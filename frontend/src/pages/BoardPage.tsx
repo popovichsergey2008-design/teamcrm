@@ -12,10 +12,10 @@ type Action =
   | { type: 'SET_COST'; taskId: string; cost: string };
 
 function reducer(state: Board | null, action: Action): Board | null {
+  // SET обрабатывается ДО guard на null — иначе начальная загрузка доски не применится
+  if (action.type === 'SET') return action.board;
   if (!state) return state;
   switch (action.type) {
-    case 'SET':
-      return action.board;
     case 'UPSERT_TASK': {
       const t = action.task;
       const columns: BoardColumn[] = state.columns.map((c) => ({
