@@ -8,5 +8,6 @@ import { TimeTrackingRepository } from './timetracking.repository';
   imports: [EconomicsModule],
   controllers: [TimeTrackingController],
   providers: [TimeTrackingService, TimeTrackingRepository],
+  exports: [TimeTrackingRepository],
 })
 export class TimeTrackingModule {}

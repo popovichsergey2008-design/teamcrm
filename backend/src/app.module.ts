@@ -23,6 +23,9 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { EconomicsModule } from './modules/economics/economics.module';
 import { TimeTrackingModule } from './modules/timetracking/timetracking.module';
 import { RatesModule } from './modules/rates/rates.module';
+import { AiModule } from './modules/ai/ai.module';
+import { TelegramModule } from './modules/telegram/telegram.module';
+import { StandupModule } from './modules/standup/standup.module';
 
 @Module({
   imports: [
@@ -50,6 +53,9 @@ import { RatesModule } from './modules/rates/rates.module';
     EconomicsModule,
     TimeTrackingModule,
     RatesModule,
+    AiModule,
+    TelegramModule,
+    StandupModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

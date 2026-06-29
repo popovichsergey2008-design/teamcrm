@@ -85,4 +85,12 @@ export class ProjectsRepository {
       [tenantId, projectId, columnId],
     );
   }
+
+  findColumnByName(tenantId: string, projectId: string, name: string): Promise<ColumnRow | null> {
+    return this.db.one<ColumnRow>(
+      `SELECT * FROM board_columns
+        WHERE tenant_id = $1 AND project_id = $2 AND lower(name) = lower($3)`,
+      [tenantId, projectId, name],
+    );
+  }
 }

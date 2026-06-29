@@ -10,7 +10,10 @@ export type DomainEvent =
   | 'deal.converted'
   // Этап 2: нефинансовые события трекинга (можно в обе комнаты)
   | 'time.started'
-  | 'time.stopped';
+  | 'time.stopped'
+  // Этап 3: нефинансовые события дейлика
+  | 'task.blocked'
+  | 'standup.applied';
 
 /** Финансовые события (Этап 2) — ТОЛЬКО internal-комната, никогда клиентам (фича №9). */
 export type FinancialEvent =

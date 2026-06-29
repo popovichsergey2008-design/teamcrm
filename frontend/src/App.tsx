@@ -1,9 +1,21 @@
+import { useState } from 'react';
 import { useAuth } from './state/auth';
+import { api, ApiError } from './lib/api';
 import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
 
 export function App() {
   const { user, loading, logout } = useAuth();
+  const [tgCode, setTgCode] = useState<string | null>(null);
+
+  const linkTelegram = async () => {
+    try {
+      const r = await api.telegramLinkCode();
+      setTgCode(r.code);
+    } catch (e) {
+      setTgCode(e instanceof ApiError ? e.message : 'ошибка');
+    }
+  };
 
   if (loading) {
     return (
@@ -22,6 +34,14 @@ export function App() {
           TEAM<span>CRM</span>
         </div>
         <div className="topbar-right">
+          {tgCode && (
+            <span className="badge" title="Отправьте код Telegram-боту для привязки">
+              TG-код: <b>{tgCode}</b>
+            </span>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={linkTelegram}>
+            Привязать Telegram
+          </button>
           <span className="dim">{user.fullName}</span>
           <span className="badge badge-role">{user.role}</span>
           <button className="btn btn-ghost btn-sm" onClick={logout}>

@@ -50,6 +50,21 @@ export class TimeTrackingRepository {
     });
   }
 
+  /** Создаёт ЗАКРЫТУЮ запись трекинга фиксированной длительности (авто-начисление из дейлика). */
+  createClosed(
+    tenantId: string,
+    taskId: string,
+    userId: string,
+    start: Date,
+    end: Date,
+  ): Promise<TimeLogRow> {
+    return this.db.one<TimeLogRow>(
+      `INSERT INTO time_logs (tenant_id, task_id, user_id, timestamp_start, timestamp_end)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [tenantId, taskId, userId, start, end],
+    ) as Promise<TimeLogRow>;
+  }
+
   /** Стоп: закрывает открытый таймер пользователя на данной задаче. */
   async stop(tenantId: string, userId: string, taskId: string): Promise<TimeLogRow | null> {
     return this.db.one<TimeLogRow>(

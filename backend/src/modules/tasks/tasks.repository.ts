@@ -101,6 +101,29 @@ export class TasksRepository {
     return res;
   }
 
+  async closeTask(tenantId: string, id: string): Promise<void> {
+    await this.db.query(
+      `UPDATE tasks SET closed_at = now(), updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 AND closed_at IS NULL`,
+      [tenantId, id],
+    );
+  }
+
+  async reopenTask(tenantId: string, id: string): Promise<void> {
+    await this.db.query(
+      `UPDATE tasks SET closed_at = NULL, updated_at = now() WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id],
+    );
+  }
+
+  async setBlocked(tenantId: string, id: string, blocked: boolean): Promise<TaskRow | null> {
+    return this.db.one<TaskRow>(
+      `UPDATE tasks SET is_blocked = $3, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [tenantId, id, blocked],
+    );
+  }
+
   /** Перенос задачи: новая колонка + позиция, с пересортировкой соседей. */
   async move(
     tenantId: string,

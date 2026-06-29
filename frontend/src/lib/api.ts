@@ -124,4 +124,8 @@ export const api = {
   myTimer: () => request<import('../types').ActiveTimer | null>('GET', '/me/timer'),
   getPnl: (projectId: string) => request<import('../types').Pnl>('GET', `/projects/${projectId}/pnl`),
   createRate: (b: { userId: string; hourlyRate: number }) => request<any>('POST', '/rates', b),
+
+  // Этап 3 — Telegram binding & standup
+  telegramLinkCode: () => request<{ code: string; expiresAt: string }>('POST', '/me/telegram/link-code'),
+  listStandups: () => request<any[]>('GET', '/standup/submissions'),
 };
