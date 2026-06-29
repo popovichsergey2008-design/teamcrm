@@ -95,6 +95,49 @@
 .risk-green { background: var(--ok); }
 .risk-yellow { background: var(--warn); }
 .risk-red { background: var(--danger); }
+
+/* board header actions */
+.board-actions { margin-left: 14px; display: inline-flex; gap: 6px; }
+
+/* drawer / side panels (Этапы 2-4) */
+.drawer-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50;
+  display: flex; justify-content: flex-end;
+}
+.drawer {
+  width: 420px; max-width: 92vw; height: 100%; overflow-y: auto;
+  background: var(--bg-elev); border-left: 1px solid var(--border);
+  padding: 20px; box-shadow: -20px 0 50px rgba(0,0,0,.4);
+}
+.drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.drawer-head h3 { margin: 0; font-size: 18px; }
+.drawer-desc { margin: 0 0 14px; }
+.drawer-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+.drawer-timer { width: 100%; margin: 8px 0 4px; }
+.drawer-section { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; }
+.drawer-section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-mut); margin-bottom: 10px; }
+.drawer-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.drawer-assign { width: 100%; margin-top: 6px; }
+.overload-warn {
+  background: rgba(255,207,92,.12); border: 1px solid rgba(255,207,92,.4); color: var(--warn);
+  padding: 10px 12px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 10px;
+}
+.overload-confirm { width: 100%; margin-top: 8px; background: rgba(255,107,107,.15); border-color: var(--danger); color: var(--danger); }
+
+/* team panel */
+.team-row { border-top: 1px solid var(--border); padding: 12px 0; }
+.team-head { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.team-rate { display: flex; gap: 6px; }
+.team-rate .input { flex: 1; }
+.team-metrics { margin-top: 8px; font-size: 13px; line-height: 1.6; }
+.add-user-input { margin-bottom: 8px; }
+
+/* copilot panel */
+.copilot-empty { margin-top: 16px; }
+.rec-row { border-top: 1px solid var(--border); padding: 12px 0; }
+.rec-head { display: flex; gap: 6px; margin-bottom: 6px; }
+.rec-detail { font-size: 13px; margin-bottom: 8px; }
+.rec-actions { display: flex; gap: 6px; }
 .task-meta { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 
 .add-task { padding: 8px 10px; }

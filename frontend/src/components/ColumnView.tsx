@@ -9,6 +9,7 @@ interface Props {
   onAddTask: (columnId: string, title: string) => void;
   onMoveTask: (taskId: string, columnId: string, position: number) => void;
   onToggleTimer: (taskId: string) => void;
+  onOpenTask: (task: Task) => void;
 }
 
 export function ColumnView({
@@ -19,6 +20,7 @@ export function ColumnView({
   onAddTask,
   onMoveTask,
   onToggleTimer,
+  onOpenTask,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
@@ -71,6 +73,7 @@ export function ColumnView({
             canTrack={canTrack}
             timerActive={activeTimerTask === t.id}
             onToggleTimer={onToggleTimer}
+            onOpen={() => onOpenTask(t)}
             onDropBefore={(e) => onDropCard(e, i)}
           />
         ))}
@@ -107,6 +110,7 @@ function TaskCard({
   canTrack,
   timerActive,
   onToggleTimer,
+  onOpen,
   onDropBefore,
 }: {
   task: Task;
@@ -114,6 +118,7 @@ function TaskCard({
   canTrack: boolean;
   timerActive: boolean;
   onToggleTimer: (taskId: string) => void;
+  onOpen: () => void;
   onDropBefore: (e: DragEvent) => void;
 }) {
   const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
@@ -121,6 +126,7 @@ function TaskCard({
     <div
       className={`task-card ${timerActive ? 'task-tracking' : ''}`}
       draggable={canEdit}
+      onClick={onOpen}
       onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
       onDrop={canEdit ? onDropBefore : undefined}
       onDragOver={(e) => canEdit && e.preventDefault()}
@@ -140,7 +146,10 @@ function TaskCard({
       {canTrack && (
         <button
           className={`btn btn-sm timer-btn ${timerActive ? 'timer-on' : ''}`}
-          onClick={() => onToggleTimer(task.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleTimer(task.id);
+          }}
         >
           {timerActive ? '⏸ Пауза' : '▶ В работу'}
         </button>

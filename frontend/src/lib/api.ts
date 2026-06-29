@@ -128,4 +128,20 @@ export const api = {
   // Этап 3 — Telegram binding & standup
   telegramLinkCode: () => request<{ code: string; expiresAt: string }>('POST', '/me/telegram/link-code'),
   listStandups: () => request<any[]>('GET', '/standup/submissions'),
+
+  // users / team
+  listUsers: () => request<import('../types').User[]>('GET', '/users'),
+  createUser: (b: { email: string; fullName: string; password: string; role?: string }) =>
+    request<import('../types').User>('POST', '/users', b),
+
+  // Этап 4 — forecast, assignment, velocity, copilot
+  assignTask: (id: string, b: { assigneeId: string; confirmOverload?: boolean; estimateHours?: number; deadlineAt?: string }) =>
+    request<any>('POST', `/tasks/${id}/assign`, b),
+  getForecast: (id: string) => request<any>('GET', `/tasks/${id}/forecast`),
+  getVelocity: (userId: string) => request<any>('GET', `/users/${userId}/velocity`),
+  getLoad: (userId: string) => request<any>('GET', `/users/${userId}/load`),
+  copilotScan: () => request<any[]>('POST', '/copilot/scan'),
+  listRecommendations: () => request<any[]>('GET', '/recommendations'),
+  acceptRecommendation: (id: string) => request<any>('POST', `/recommendations/${id}/accept`),
+  dismissRecommendation: (id: string) => request<any>('POST', `/recommendations/${id}/dismiss`),
 };

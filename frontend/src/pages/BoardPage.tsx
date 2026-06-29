@@ -2,9 +2,12 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { useAuth } from '../state/auth';
-import type { Board, BoardColumn, Pnl, Project, Task } from '../types';
+import type { Board, BoardColumn, Pnl, Project, Task, User } from '../types';
 import { ColumnView } from '../components/ColumnView';
 import { PnlPanel } from '../components/PnlPanel';
+import { TaskDrawer } from '../components/TaskDrawer';
+import { TeamPanel } from '../components/TeamPanel';
+import { CopilotPanel } from '../components/CopilotPanel';
 
 type Action =
   | { type: 'SET'; board: Board }
@@ -54,7 +57,18 @@ export function BoardPage() {
   const [activeTimerTask, setActiveTimerTask] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [newProject, setNewProject] = useState('');
+  const [users, setUsers] = useState<User[]>([]);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [showTeam, setShowTeam] = useState(false);
+  const [showCopilot, setShowCopilot] = useState(false);
   const subscribedRef = useRef<string | null>(null);
+
+  const reloadBoard = useCallback(() => {
+    if (!selected) return;
+    api.getBoard(selected).then((b) => dispatch({ type: 'SET', board: b })).catch(() => undefined);
+    if (!isClient) api.getPnl(selected).then(setPnl).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, isClient]);
 
   useEffect(() => {
     api
@@ -64,7 +78,10 @@ export function BoardPage() {
         if (ps.length && !selected) setSelected(ps[0].id);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : 'Ошибка загрузки проектов'));
-    if (!isClient) api.myTimer().then((t) => setActiveTimerTask(t?.taskId ?? null)).catch(() => undefined);
+    if (!isClient) {
+      api.myTimer().then((t) => setActiveTimerTask(t?.taskId ?? null)).catch(() => undefined);
+      api.listUsers().then(setUsers).catch(() => undefined);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -175,6 +192,8 @@ export function BoardPage() {
     [activeTimerTask],
   );
 
+  const openTask = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === openTaskId) ?? null;
+
   return (
     <div className="board-layout">
       <aside className="sidebar">
@@ -213,7 +232,15 @@ export function BoardPage() {
         {board && (
           <>
             <div className="board-header">
-              <div className="board-title">{board.project.name}</div>
+              <div className="board-title">
+                {board.project.name}
+                {!isClient && (
+                  <span className="board-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowTeam(true)}>Команда</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowCopilot(true)}>Co-pilot</button>
+                  </span>
+                )}
+              </div>
               {!isClient && <PnlPanel pnl={pnl} alert={alert} />}
             </div>
             <div className="board-columns">
@@ -227,12 +254,26 @@ export function BoardPage() {
                   onAddTask={addTask}
                   onMoveTask={moveTask}
                   onToggleTimer={toggleTimer}
+                  onOpenTask={(t) => setOpenTaskId(t.id)}
                 />
               ))}
             </div>
           </>
         )}
       </main>
+
+      {openTask && (
+        <TaskDrawer
+          task={openTask}
+          users={users}
+          timerActive={activeTimerTask === openTask.id}
+          onToggleTimer={toggleTimer}
+          onClose={() => setOpenTaskId(null)}
+          onRefresh={reloadBoard}
+        />
+      )}
+      {showTeam && <TeamPanel onClose={() => setShowTeam(false)} />}
+      {showCopilot && <CopilotPanel onClose={() => setShowCopilot(false)} onRefresh={reloadBoard} />}
     </div>
   );
 }
