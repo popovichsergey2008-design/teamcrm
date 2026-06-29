@@ -46,7 +46,30 @@
 .board-main { flex: 1; min-width: 0; padding: 20px 24px; overflow: hidden; display: flex; flex-direction: column; }
 .board-error { margin-bottom: 12px; }
 .board-placeholder { margin-top: 40px; }
-.board-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+.board-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.board-title { font-size: 18px; font-weight: 700; }
+
+/* P&L панель */
+.pnl { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.pnl-alert {
+  background: rgba(255,107,107,.12); color: var(--danger); border: 1px solid rgba(255,107,107,.4);
+  padding: 6px 12px; border-radius: var(--radius-sm); font-size: 13px;
+}
+.pnl-grid { display: flex; gap: 10px; flex-wrap: wrap; }
+.pnl-cell {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 14px;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 110px;
+}
+.pnl-label { font-size: 11px; color: var(--text-mut); text-transform: uppercase; letter-spacing: .06em; }
+.pnl-val { font-size: 16px; font-weight: 600; }
+.pnl-good { color: var(--ok); }
+.pnl-bad { color: var(--danger); }
+.pnl-delta { font-size: 13px; font-weight: 500; }
+
+/* таймер на карточке */
+.timer-btn { margin-top: 8px; width: 100%; }
+.timer-on { background: rgba(87,217,163,.15); border-color: var(--ok); color: var(--ok); }
+.task-tracking { border-color: var(--ok); box-shadow: inset 2px 0 0 var(--ok); }
 
 .board-columns { display: flex; gap: 16px; overflow-x: auto; flex: 1; padding-bottom: 8px; }
 .column {

@@ -4,6 +4,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { DatabaseModule } from './database/database.module';
+import { CacheModule } from './cache/redis.service';
+import { MessagingModule } from './messaging/rabbitmq.service';
 import { AllExceptionsFilter } from './common/http/all-exceptions.filter';
 import { ResponseInterceptor } from './common/http/response.interceptor';
 import { JwtAuthGuard } from './common/auth/jwt-auth.guard';
@@ -18,6 +20,9 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { DealsModule } from './modules/deals/deals.module';
 import { BoardModule } from './modules/board/board.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { EconomicsModule } from './modules/economics/economics.module';
+import { TimeTrackingModule } from './modules/timetracking/timetracking.module';
+import { RatesModule } from './modules/rates/rates.module';
 
 @Module({
   imports: [
@@ -31,6 +36,8 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
       }),
     }),
     DatabaseModule,
+    CacheModule,
+    MessagingModule,
     HealthModule,
     AuthModule,
     UsersModule,
@@ -40,6 +47,9 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
     DealsModule,
     BoardModule,
     RealtimeModule,
+    EconomicsModule,
+    TimeTrackingModule,
+    RatesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

@@ -49,3 +49,20 @@ export interface Board {
   project: Project;
   columns: BoardColumn[];
 }
+
+export interface ActiveTimer {
+  id: string;
+  taskId: string;
+  userId: string;
+  startedAt: string;
+  stoppedAt: string | null;
+}
+
+export interface Pnl {
+  projectId: string;
+  budget: number | null;
+  costActual: number;
+  marginActual: number | null;
+  plannedMargin: number | null;
+  marginDelta: number | null;
+}

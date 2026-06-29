@@ -1,13 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import { Server } from 'socket.io';
 
-/** Доменные события Этапа 1 (master → Realtime контракт). */
+/** Доменные события (master → Realtime контракт). */
 export type DomainEvent =
   | 'task.created'
   | 'task.updated'
   | 'task.moved'
   | 'column.updated'
-  | 'deal.converted';
+  | 'deal.converted'
+  // Этап 2: нефинансовые события трекинга (можно в обе комнаты)
+  | 'time.started'
+  | 'time.stopped';
+
+/** Финансовые события (Этап 2) — ТОЛЬКО internal-комната, никогда клиентам (фича №9). */
+export type FinancialEvent =
+  | 'task.cost_changed'
+  | 'project.pnl_changed'
+  | 'alert.raised'
+  | 'alert.resolved';
 
 /**
  * Поля, которые НИКОГДА не уходят в клиентскую комнату (фича №9 «маржа-сейф»).
@@ -72,5 +82,21 @@ export class RealtimeService {
     this.server
       .to(RealtimeService.clientRoom(tenantId, projectId))
       .emit(event, stripFinancial(payload));
+  }
+
+  /**
+   * Эмиссия ФИНАНСОВОГО события — только во внутреннюю комнату проекта.
+   * Клиентская комната не получает событие вообще (фича №9).
+   */
+  emitInternal(
+    tenantId: string,
+    projectId: string,
+    event: FinancialEvent,
+    payload: Record<string, unknown>,
+  ) {
+    if (!this.server) return;
+    this.server
+      .to(RealtimeService.internalRoom(tenantId, projectId))
+      .emit(event, payload);
   }
 }

@@ -2,21 +2,22 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { useAuth } from '../state/auth';
-import type { Board, BoardColumn, Project, Task } from '../types';
+import type { Board, BoardColumn, Pnl, Project, Task } from '../types';
 import { ColumnView } from '../components/ColumnView';
+import { PnlPanel } from '../components/PnlPanel';
 
 type Action =
   | { type: 'SET'; board: Board }
-  | { type: 'UPSERT_TASK'; task: Task };
+  | { type: 'UPSERT_TASK'; task: Task }
+  | { type: 'SET_COST'; taskId: string; cost: string };
 
 function reducer(state: Board | null, action: Action): Board | null {
+  if (!state) return state;
   switch (action.type) {
     case 'SET':
       return action.board;
     case 'UPSERT_TASK': {
-      if (!state) return state;
       const t = action.task;
-      // убираем задачу из всех колонок, вставляем в целевую, сортируем по position
       const columns: BoardColumn[] = state.columns.map((c) => ({
         ...c,
         tasks: c.tasks.filter((x) => x.id !== t.id),
@@ -26,6 +27,13 @@ function reducer(state: Board | null, action: Action): Board | null {
         target.tasks.push(t);
         target.tasks.sort((a, b) => a.position - b.position);
       }
+      return { ...state, columns };
+    }
+    case 'SET_COST': {
+      const columns = state.columns.map((c) => ({
+        ...c,
+        tasks: c.tasks.map((t) => (t.id === action.taskId ? { ...t, cost_current: action.cost } : t)),
+      }));
       return { ...state, columns };
     }
     default:
@@ -41,11 +49,13 @@ export function BoardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [board, dispatch] = useReducer(reducer, null);
+  const [pnl, setPnl] = useState<Pnl | null>(null);
+  const [alert, setAlert] = useState<string | null>(null);
+  const [activeTimerTask, setActiveTimerTask] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [newProject, setNewProject] = useState('');
   const subscribedRef = useRef<string | null>(null);
 
-  // загрузка проектов
   useEffect(() => {
     api
       .listProjects()
@@ -54,25 +64,36 @@ export function BoardPage() {
         if (ps.length && !selected) setSelected(ps[0].id);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : 'Ошибка загрузки проектов'));
+    if (!isClient) api.myTimer().then((t) => setActiveTimerTask(t?.taskId ?? null)).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // загрузка доски выбранного проекта
   useEffect(() => {
     if (!selected) return;
+    setAlert(null);
     api
       .getBoard(selected)
       .then((b) => dispatch({ type: 'SET', board: b }))
       .catch((e) => setError(e instanceof ApiError ? e.message : 'Ошибка загрузки доски'));
-  }, [selected]);
+    if (!isClient) {
+      api.getPnl(selected).then(setPnl).catch(() => setPnl(null));
+    }
+  }, [selected, isClient]);
 
-  // realtime: подписка на комнату проекта + применение доменных событий
+  // realtime: доменные + финансовые события
   useEffect(() => {
     if (!selected) return;
     const socket = getSocket();
-    const onUpsert = (t: Task) => {
-      if (t.project_id === selected) dispatch({ type: 'UPSERT_TASK', task: t });
-    };
+    const onUpsert = (t: Task) => t.project_id === selected && dispatch({ type: 'UPSERT_TASK', task: t });
+    const onCost = (p: { id: string; project_id: string; cost_current: string }) =>
+      p.project_id === selected && dispatch({ type: 'SET_COST', taskId: p.id, cost: p.cost_current });
+    const onPnl = (p: Pnl) => p.projectId === selected && setPnl(p);
+    const onAlert = (a: { projectId: string; margin: number; threshold: number }) =>
+      String(a.projectId) === String(selected) &&
+      setAlert(`Маржа ${a.margin}% ниже порога ${a.threshold}%`);
+    const onAlertResolved = (a: { projectId: string }) =>
+      String(a.projectId) === String(selected) && setAlert(null);
+
     const subscribe = () => {
       socket.emit('project.subscribe', { projectId: selected });
       subscribedRef.current = selected;
@@ -82,6 +103,10 @@ export function BoardPage() {
     socket.on('task.created', onUpsert);
     socket.on('task.updated', onUpsert);
     socket.on('task.moved', onUpsert);
+    socket.on('task.cost_changed', onCost);
+    socket.on('project.pnl_changed', onPnl);
+    socket.on('alert.raised', onAlert);
+    socket.on('alert.resolved', onAlertResolved);
 
     return () => {
       if (subscribedRef.current) socket.emit('project.unsubscribe', { projectId: subscribedRef.current });
@@ -89,6 +114,10 @@ export function BoardPage() {
       socket.off('task.created', onUpsert);
       socket.off('task.updated', onUpsert);
       socket.off('task.moved', onUpsert);
+      socket.off('task.cost_changed', onCost);
+      socket.off('project.pnl_changed', onPnl);
+      socket.off('alert.raised', onAlert);
+      socket.off('alert.resolved', onAlertResolved);
     };
   }, [selected]);
 
@@ -116,11 +145,8 @@ export function BoardPage() {
 
   const moveTask = useCallback(
     async (taskId: string, columnId: string, position: number) => {
-      // оптимистично + реконсиляция ответом сервера; realtime-эхо идемпотентно
       const current = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === taskId);
-      if (current) {
-        dispatch({ type: 'UPSERT_TASK', task: { ...current, column_id: columnId, position } });
-      }
+      if (current) dispatch({ type: 'UPSERT_TASK', task: { ...current, column_id: columnId, position } });
       try {
         const server = await api.moveTask(taskId, { columnId, position });
         dispatch({ type: 'UPSERT_TASK', task: server });
@@ -130,6 +156,23 @@ export function BoardPage() {
       }
     },
     [board, selected],
+  );
+
+  const toggleTimer = useCallback(
+    async (taskId: string) => {
+      try {
+        if (activeTimerTask === taskId) {
+          await api.stopTimer(taskId);
+          setActiveTimerTask(null);
+        } else {
+          await api.startTimer(taskId);
+          setActiveTimerTask(taskId); // старт автоматически закрыл предыдущий
+        }
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'Ошибка таймера');
+      }
+    },
+    [activeTimerTask],
   );
 
   return (
@@ -169,15 +212,21 @@ export function BoardPage() {
         {!board && <div className="muted board-placeholder">Выберите проект</div>}
         {board && (
           <>
-            <div className="board-title">{board.project.name}</div>
+            <div className="board-header">
+              <div className="board-title">{board.project.name}</div>
+              {!isClient && <PnlPanel pnl={pnl} alert={alert} />}
+            </div>
             <div className="board-columns">
               {board.columns.map((col) => (
                 <ColumnView
                   key={col.id}
                   column={col}
                   canEdit={!isClient}
+                  canTrack={!isClient}
+                  activeTimerTask={activeTimerTask}
                   onAddTask={addTask}
                   onMoveTask={moveTask}
+                  onToggleTimer={toggleTimer}
                 />
               ))}
             </div>

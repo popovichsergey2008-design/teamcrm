@@ -4,11 +4,22 @@ import type { BoardColumn, Task } from '../types';
 interface Props {
   column: BoardColumn;
   canEdit: boolean;
+  canTrack: boolean;
+  activeTimerTask: string | null;
   onAddTask: (columnId: string, title: string) => void;
   onMoveTask: (taskId: string, columnId: string, position: number) => void;
+  onToggleTimer: (taskId: string) => void;
 }
 
-export function ColumnView({ column, canEdit, onAddTask, onMoveTask }: Props) {
+export function ColumnView({
+  column,
+  canEdit,
+  canTrack,
+  activeTimerTask,
+  onAddTask,
+  onMoveTask,
+  onToggleTimer,
+}: Props) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
   const [over, setOver] = useState(false);
@@ -57,6 +68,9 @@ export function ColumnView({ column, canEdit, onAddTask, onMoveTask }: Props) {
             key={t.id}
             task={t}
             canEdit={canEdit}
+            canTrack={canTrack}
+            timerActive={activeTimerTask === t.id}
+            onToggleTimer={onToggleTimer}
             onDropBefore={(e) => onDropCard(e, i)}
           />
         ))}
@@ -90,15 +104,22 @@ export function ColumnView({ column, canEdit, onAddTask, onMoveTask }: Props) {
 function TaskCard({
   task,
   canEdit,
+  canTrack,
+  timerActive,
+  onToggleTimer,
   onDropBefore,
 }: {
   task: Task;
   canEdit: boolean;
+  canTrack: boolean;
+  timerActive: boolean;
+  onToggleTimer: (taskId: string) => void;
   onDropBefore: (e: DragEvent) => void;
 }) {
+  const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
   return (
     <div
-      className="task-card"
+      className={`task-card ${timerActive ? 'task-tracking' : ''}`}
       draggable={canEdit}
       onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
       onDrop={canEdit ? onDropBefore : undefined}
@@ -107,12 +128,20 @@ function TaskCard({
       <div className="task-title">{task.title}</div>
       <div className="task-meta">
         {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
-        {task.cost_current !== undefined && (
-          <span className="badge" title="Себестоимость (Этап 2)">
-            ₽ {Number(task.cost_current).toFixed(0)}
+        {cost !== null && (
+          <span className="badge" title="Себестоимость в реальном времени">
+            ₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}
           </span>
         )}
       </div>
+      {canTrack && (
+        <button
+          className={`btn btn-sm timer-btn ${timerActive ? 'timer-on' : ''}`}
+          onClick={() => onToggleTimer(task.id)}
+        >
+          {timerActive ? '⏸ Пауза' : '▶ В работу'}
+        </button>
+      )}
     </div>
   );
 }

@@ -49,3 +49,34 @@ docker run --rm --network teamcrm_crm-net -v /opt/teamcrm/backend:/app -w /app \
   node:20-bookworm-slim \
   bash -lc "[ -d node_modules/socket.io-client ] || npm i socket.io-client@4.8.0 --no-save; node loadtest/realtime-smoke.mjs"
 ```
+
+---
+
+# Этап 2 — нагрузочный smoke движка economics
+
+Харнесс: `economics-smoke.mjs` (только `fetch`, без зависимостей). Поток закрытий `time_log`
+(start/stop по множеству задач) → движок пересчитывает себестоимость в очереди `economics`.
+Один активный таймер на пользователя (инвариант БД) → продюсер серийный, нагрузка на стороне
+очереди/воркера + тик расписания.
+
+## Результат (TASKS=16, DURATION=20s, INTERVAL=120ms)
+
+| Метрика | Значение |
+|---|---|
+| Закрытий `time_log` | 89 (ошибок: **0**) |
+| Закрытий/сек | 4.4 |
+| `cost_actual` после drain | 1554.3 |
+| `cost_actual` после форс-пересчёта | 1554.3 |
+| **Идемпотентность** | **TRUE** (повторный полный пересчёт не изменил стоимость) |
+
+Вывод: под потоком закрытий движок пересчитывает себестоимость без потери и задвоения работы —
+форсированный повторный полный пересчёт даёт идентичный результат (полный recompute из `time_logs`
+идемпотентен по построению). 0 ошибок API таймера (инвариант одного активного таймера соблюдён).
+
+## Воспроизведение
+
+```bash
+docker run --rm --network teamcrm_crm-net -v /opt/teamcrm/backend:/app -w /app \
+  -e BASE_URL=http://crm-edge -e TASKS=16 -e DURATION_MS=20000 \
+  node:20-bookworm-slim node loadtest/economics-smoke.mjs
+```
