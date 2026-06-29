@@ -1,0 +1,132 @@
+name: teamcrm
+
+# TEAMCRM — ядро хранилищ (Этап 0).
+# Инварианты безопасности:
+#  - App-хранилища (postgres/redis/rabbitmq-amqp) НЕ публикуются на host —
+#    доступны только во внутренней docker-сети crm-net (по имени сервиса).
+#  - Админ-доступ (psql, redis-cli, RabbitMQ UI) публикуется ТОЛЬКО на
+#    WireGuard-адрес ${ADMIN_BIND} (10.8.0.1) — недоступен из публичной сети.
+#    Бинд на конкретный IP надёжнее ufw, т.к. Docker обходит ufw в nat-цепочке.
+#  - Секреты — только в .env (вне git).
+
+x-restart: &restart
+  restart: unless-stopped
+
+networks:
+  crm-net:
+    driver: bridge
+
+volumes:
+  pg-data:
+  redis-data:
+  rabbitmq-data:
+
+services:
+  crm-postgres:
+    image: pgvector/pgvector:pg16
+    <<: *restart
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${ADMIN_BIND}:5432:5432"   # admin DB tooling over VPN only
+    networks: [crm-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  crm-redis:
+    image: redis:7-alpine
+    <<: *restart
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "${ADMIN_BIND}:6379:6379"   # admin over VPN only
+    networks: [crm-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  crm-rabbitmq:
+    image: rabbitmq:4-management
+    <<: *restart
+    hostname: crm-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "${ADMIN_BIND}:15672:15672"   # management UI over VPN only
+    networks: [crm-net]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  crm-api:
+    build:
+      context: ./backend
+    <<: *restart
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@crm-postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@crm-redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@crm-rabbitmq:5672
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-2592000}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    depends_on:
+      crm-postgres: { condition: service_healthy }
+      crm-redis: { condition: service_healthy }
+      crm-rabbitmq: { condition: service_healthy }
+    networks: [crm-net]
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  crm-web:
+    build:
+      context: ./frontend
+    <<: *restart
+    networks: [crm-net]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  crm-edge:
+    image: nginx:1.27-alpine
+    <<: *restart
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:80"   # convenience http-by-IP alias
+    networks: [crm-net]
+    depends_on: [crm-api, crm-web]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

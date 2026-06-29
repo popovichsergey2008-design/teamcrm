@@ -1,0 +1,90 @@
+name: teamcrm-obs
+
+# TEAMCRM — наблюдаемость (Этап 0): метрики (Prometheus+exporters),
+# логи (Loki+Promtail), дашборды и алерты (Grafana).
+# Все UI/порты — только на WireGuard (${ADMIN_BIND}), недоступны из публичной сети.
+
+x-restart: &restart
+  restart: unless-stopped
+
+networks:
+  obs-net:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  loki-data:
+  grafana-data:
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    <<: *restart
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus-data:/prometheus
+    networks: [obs-net]
+    ports:
+      - "${ADMIN_BIND}:9090:9090"
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    <<: *restart
+    command:
+      - --path.rootfs=/host
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    networks: [obs-net]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    <<: *restart
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks: [obs-net]
+
+  loki:
+    image: grafana/loki:3.2.1
+    <<: *restart
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./loki/config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    networks: [obs-net]
+
+  promtail:
+    image: grafana/promtail:3.2.1
+    <<: *restart
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    networks: [obs-net]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    <<: *restart
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://10.8.0.1:3000
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    networks: [obs-net]
+    ports:
+      - "${ADMIN_BIND}:3000:3000"
+    depends_on: [prometheus, loki]

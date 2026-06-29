@@ -1,0 +1,25 @@
+# dependencies / build
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# secrets & env — НИКОГДА не коммитим
+.env
+.env.*
+!.env.example
+
+# infra secrets / generated artifacts
+infra/secrets/
+infra/nginx/certs/
+infra/backups/
+infra/**/.env
+
+# logs / os
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

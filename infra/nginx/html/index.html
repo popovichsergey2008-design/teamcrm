@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TEAMCRM — Этап 0</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(1200px 800px at 70% -10%, #1d2a4d 0%, #0b1020 55%, #070a14 100%);
+      color: #e8edf7;
+    }
+    .card {
+      max-width: 640px; padding: 48px 44px; margin: 24px;
+      background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.10);
+      border-radius: 18px; backdrop-filter: blur(8px);
+      box-shadow: 0 30px 80px rgba(0,0,0,.45);
+    }
+    .badge {
+      display: inline-block; font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+      color: #9fd0ff; background: rgba(80,160,255,.12); border: 1px solid rgba(120,180,255,.28);
+      padding: 6px 12px; border-radius: 999px; margin-bottom: 22px;
+    }
+    h1 { margin: 0 0 10px; font-size: 34px; letter-spacing: -.02em; }
+    p { margin: 0 0 18px; line-height: 1.6; color: #b8c2d8; }
+    ul { margin: 0; padding-left: 18px; color: #9aa6c0; line-height: 1.9; font-size: 14px; }
+    .ok { color: #7ee0a6; }
+    footer { margin-top: 26px; font-size: 12px; color: #6b779a; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">Этап 0 · Инфраструктура</span>
+    <h1>TEAMCRM</h1>
+    <p>AI-Driven CRM. Окружение поднято и захардненено. Здесь появится приложение после Этапа 1.</p>
+    <ul>
+      <li><span class="ok">✓</span> OS hardening · SSH-ключи · root отключён</li>
+      <li><span class="ok">✓</span> ufw · fail2ban · авто security-обновления</li>
+      <li><span class="ok">✓</span> WireGuard VPN для админ-плоскости</li>
+      <li><span class="ok">✓</span> Docker · PostgreSQL+pgvector · Redis · RabbitMQ</li>
+      <li><span class="ok">✓</span> nginx reverse-proxy · TLS</li>
+    </ul>
+    <footer>Placeholder · сгенерировано на Этапе 0</footer>
+  </div>
+</body>
+</html>

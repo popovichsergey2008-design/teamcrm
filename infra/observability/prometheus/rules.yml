@@ -1,0 +1,30 @@
+groups:
+  - name: teamcrm-basic
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Target {{ $labels.job }} ({{ $labels.instance }}) is down"
+
+      - alert: DiskFillingUp
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) > 0.85
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Root disk usage above 85% on {{ $labels.instance }}"
+
+      - alert: HighMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.90
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Memory usage above 90% on {{ $labels.instance }}"
+
+      - alert: ContainerDown
+        expr: absent(container_last_seen{name=~"teamcrm-.*"})
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "A teamcrm container has not reported to cAdvisor"

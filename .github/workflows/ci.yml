@@ -1,0 +1,120 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend — lint, test, e2e, build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: teamcrm
+          POSTGRES_PASSWORD: teamcrm
+          POSTGRES_DB: teamcrm
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U teamcrm" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+      rabbitmq:
+        image: rabbitmq:4-management
+        env:
+          RABBITMQ_DEFAULT_USER: teamcrm
+          RABBITMQ_DEFAULT_PASS: teamcrm
+        ports: ['5672:5672']
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping" --health-interval 15s
+          --health-timeout 10s --health-retries 5
+    env:
+      DATABASE_URL: postgres://teamcrm:teamcrm@localhost:5432/teamcrm
+      REDIS_URL: redis://localhost:6379
+      RABBITMQ_URL: amqp://teamcrm:teamcrm@localhost:5672
+      JWT_ACCESS_SECRET: ci-access-secret
+      JWT_REFRESH_SECRET: ci-refresh-secret
+      JWT_ACCESS_TTL: '900'
+      JWT_REFRESH_TTL: '2592000'
+      CORS_ORIGIN: http://localhost:5173
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - name: migrate
+        run: npm run migrate
+      - name: e2e (live PG/Redis/RabbitMQ)
+        run: npm run test:e2e
+      - run: npm run build
+
+  frontend:
+    name: Frontend — lint, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  deploy:
+    name: Deploy to staging
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Sync code to server
+        # без --delete: в /opt/teamcrm живут .env, observability/, secrets/, certs/,
+        # которых нет в репозитории — их сносить нельзя
+        run: |
+          rsync -az \
+            --exclude node_modules --exclude dist --exclude coverage \
+            --exclude .git --exclude '.env' \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            backend frontend infra/docker-compose.yml infra/nginx \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/teamcrm/"
+      - name: Build & restart stack
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
+            set -e
+            cd /opt/teamcrm
+            sed -i "s/\r$//" backend/docker/entrypoint.sh
+            docker compose build crm-api crm-web
+            docker compose up -d crm-api crm-web
+            docker compose restart crm-edge
+            docker compose ps
+          '

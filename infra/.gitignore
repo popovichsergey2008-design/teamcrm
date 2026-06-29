@@ -1,0 +1,6 @@
+# secrets & generated artifacts — never commit
+.env
+*/.env
+nginx/certs/
+backups/
+secrets/

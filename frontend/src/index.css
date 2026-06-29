@@ -1,0 +1,75 @@
+/* TEAMCRM design system — минимализм, тёмная тема, чистая типографика.
+   Намеренный контраст с перегруженным интерфейсом (ТЗ). */
+:root {
+  --bg:        #0b0f1a;
+  --bg-elev:   #121826;
+  --bg-elev-2: #1a2233;
+  --border:    #232c40;
+  --border-2:  #2e3a52;
+  --text:      #e6ebf5;
+  --text-dim:  #97a2bb;
+  --text-mut:  #66718c;
+  --accent:    #5b8cff;
+  --accent-2:  #3b6fe0;
+  --danger:    #ff6b6b;
+  --ok:        #57d9a3;
+  --warn:      #ffcf5c;
+  --radius:    10px;
+  --radius-sm: 7px;
+  --shadow:    0 10px 30px rgba(0,0,0,.35);
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+  line-height: 1.5;
+}
+a { color: var(--accent); text-decoration: none; }
+button, input, textarea { font-family: inherit; font-size: inherit; }
+
+/* base components */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1px solid var(--border-2); background: var(--bg-elev-2); color: var(--text);
+  padding: 8px 14px; border-radius: var(--radius-sm); cursor: pointer;
+  transition: background .15s, border-color .15s, opacity .15s; font-weight: 500;
+}
+.btn:hover { background: #222c42; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--accent-2); border-color: var(--accent); }
+.btn-primary:hover { background: var(--accent); }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
+.btn-ghost:hover { background: var(--bg-elev-2); color: var(--text); }
+.btn-sm { padding: 5px 10px; font-size: 13px; }
+
+.input {
+  width: 100%; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--bg); border: 1px solid var(--border-2); color: var(--text);
+  outline: none; transition: border-color .15s;
+}
+.input:focus { border-color: var(--accent); }
+
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.field label { color: var(--text-dim); font-size: 13px; }
+
+.card {
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+}
+
+.badge {
+  display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--bg-elev-2); color: var(--text-dim); border: 1px solid var(--border-2);
+}
+.badge-role { text-transform: capitalize; }
+.badge-blocked { background: rgba(255,107,107,.12); color: var(--danger); border-color: rgba(255,107,107,.4); }
+
+.error-text { color: var(--danger); font-size: 13px; min-height: 18px; }
+.muted { color: var(--text-mut); }
+.dim { color: var(--text-dim); }

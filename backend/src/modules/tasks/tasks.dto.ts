@@ -1,0 +1,57 @@
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
+
+export class CreateTaskDto {
+  @IsString()
+  projectId!: string;
+
+  @IsOptional()
+  @IsString()
+  columnId?: string; // по умолчанию — первая колонка проекта
+
+  @IsString()
+  @MaxLength(255)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  assigneeId?: string;
+}
+
+export class UpdateTaskDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  assigneeId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isBlocked?: boolean;
+}
+
+export class MoveTaskDto {
+  @IsString()
+  columnId!: string;
+
+  @IsInt()
+  @Min(0)
+  position!: number;
+}
