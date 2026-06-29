@@ -91,6 +91,10 @@
 .task-card:hover { border-color: var(--accent); }
 .task-card:active { cursor: grabbing; transform: scale(.99); }
 .task-title { font-size: 14px; }
+.risk-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: middle; }
+.risk-green { background: var(--ok); }
+.risk-yellow { background: var(--warn); }
+.risk-red { background: var(--danger); }
 .task-meta { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 
 .add-task { padding: 8px 10px; }

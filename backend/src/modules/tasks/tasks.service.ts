@@ -59,6 +59,9 @@ export class TasksService {
     if (!column) throw AppException.notFound('Target column not found');
 
     const moved = await this.repo.move(tenantId, id, dto.columnId, dto.position, column.name);
+    // перенос в Done закрывает задачу (источник для Velocity/эмбеддингов); вынос — переоткрывает
+    if (column.name.toLowerCase() === 'done') await this.repo.closeTask(tenantId, id);
+    else if (task.closed_at) await this.repo.reopenTask(tenantId, id);
     this.realtime.emit(tenantId, moved.project_id, 'task.moved', moved as any);
     return moved;
   }

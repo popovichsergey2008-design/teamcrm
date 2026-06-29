@@ -50,6 +50,15 @@ export class UsersRepository {
     );
   }
 
+  listByTenant(tenantId: string): Promise<UserRow[]> {
+    return this.db.many<UserRow>(
+      `SELECT u.*, r.code AS role_code
+         FROM users u JOIN roles r ON r.id = u.role_id
+        WHERE u.tenant_id = $1 ORDER BY u.created_at ASC`,
+      [tenantId],
+    );
+  }
+
   async create(input: {
     tenantId: string;
     email: string;

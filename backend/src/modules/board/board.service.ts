@@ -3,10 +3,12 @@ import { AppException } from '../../common/http/app-exception';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { TasksRepository, TaskRow } from '../tasks/tasks.repository';
 
-/** client-представление задачи — без cost_current (фича №9). */
-function toClientTask(t: TaskRow) {
-  const { cost_current, ...rest } = t;
+/** client-представление задачи — без финансов и внутренних метрик (фичи №9/№8).
+ *  Дата прогноза и цвет светофора клиенту видны; cost_current и risk_pct — нет. */
+function toClientTask(t: TaskRow & { risk_pct?: unknown }) {
+  const { cost_current, risk_pct, ...rest } = t;
   void cost_current;
+  void risk_pct;
   return rest;
 }
 

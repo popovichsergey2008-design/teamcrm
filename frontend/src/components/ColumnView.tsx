@@ -125,7 +125,10 @@ function TaskCard({
       onDrop={canEdit ? onDropBefore : undefined}
       onDragOver={(e) => canEdit && e.preventDefault()}
     >
-      <div className="task-title">{task.title}</div>
+      <div className="task-title">
+        {task.risk_level && <span className={`risk-dot risk-${task.risk_level}`} title={`Риск срока: ${task.risk_level}`} />}
+        {task.title}
+      </div>
       <div className="task-meta">
         {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
         {cost !== null && (

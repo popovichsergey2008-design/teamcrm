@@ -26,6 +26,9 @@ import { RatesModule } from './modules/rates/rates.module';
 import { AiModule } from './modules/ai/ai.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { StandupModule } from './modules/standup/standup.module';
+import { VelocityModule } from './modules/velocity/velocity.module';
+import { ForecastModule } from './modules/forecast/forecast.module';
+import { CopilotModule } from './modules/copilot/copilot.module';
 
 @Module({
   imports: [
@@ -56,6 +59,9 @@ import { StandupModule } from './modules/standup/standup.module';
     AiModule,
     TelegramModule,
     StandupModule,
+    VelocityModule,
+    ForecastModule,
+    CopilotModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

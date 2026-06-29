@@ -15,12 +15,18 @@ export type DomainEvent =
   | 'task.blocked'
   | 'standup.applied';
 
-/** Финансовые события (Этап 2) — ТОЛЬКО internal-комната, никогда клиентам (фича №9). */
+/**
+ * События ТОЛЬКО для internal-комнаты, никогда клиентам (фича №9):
+ * финансовые (Этап 2) + внутренние метрики/риск/рекомендации (Этап 4).
+ */
 export type FinancialEvent =
   | 'task.cost_changed'
   | 'project.pnl_changed'
   | 'alert.raised'
-  | 'alert.resolved';
+  | 'alert.resolved'
+  | 'task.risk_changed'
+  | 'overload.warned'
+  | 'recommendation.raised';
 
 /**
  * Поля, которые НИКОГДА не уходят в клиентскую комнату (фича №9 «маржа-сейф»).

@@ -36,6 +36,8 @@ export interface Task {
   status: string;
   is_blocked: boolean;
   cost_current?: string; // отсутствует в client-представлении (фича №9)
+  risk_level?: 'green' | 'yellow' | 'red' | null; // светофор честных сроков (Этап 4)
+  predicted_finish_at?: string | null;
 }
 
 export interface BoardColumn {
