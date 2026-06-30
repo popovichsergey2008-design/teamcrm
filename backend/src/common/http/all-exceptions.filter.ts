@@ -38,8 +38,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         const b = body as any;
         message = (typeof b === 'string' ? b : b?.message) ?? exception.message;
         if (Array.isArray(message)) {
+          // class-validator возвращает массив сообщений — показываем их пользователю
           details = { messages: message };
-          message = 'Validation failed';
+          message = message.join('; ') || 'Проверьте правильность заполнения полей';
           code = 'VALIDATION_FAILED';
         }
       }

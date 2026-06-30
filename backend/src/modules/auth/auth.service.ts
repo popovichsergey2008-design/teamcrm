@@ -49,7 +49,7 @@ export class AuthService {
         'SELECT 1 FROM users WHERE tenant_id = $1 AND email = $2',
         [tenant.id, dto.email],
       );
-      if (exists.rowCount) throw AppException.conflict('Email already registered');
+      if (exists.rowCount) throw AppException.conflict('Пользователь с таким e-mail уже зарегистрирован');
       const res = await client.query<UserRow>(
         `INSERT INTO users (tenant_id, email, password_hash, full_name, role_id)
          SELECT $1, $2, $3, $4, r.id FROM roles r WHERE r.code = 'owner'
@@ -67,10 +67,10 @@ export class AuthService {
     const user = dto.tenantId
       ? await this.users.findByEmail(dto.tenantId, dto.email)
       : await this.users.findByEmailGlobal(dto.email);
-    if (!user || !user.is_active) throw AppException.unauthorized('Invalid credentials');
+    if (!user || !user.is_active) throw AppException.unauthorized('Неверный e-mail или пароль');
 
     const ok = await argon2.verify(user.password_hash, dto.password);
-    if (!ok) throw AppException.unauthorized('Invalid credentials');
+    if (!ok) throw AppException.unauthorized('Неверный e-mail или пароль');
 
     const tokens = await this.issueTokens(user, meta);
     return { user: toPublicUser(user), ...tokens };
