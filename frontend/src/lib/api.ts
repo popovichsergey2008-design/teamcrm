@@ -101,12 +101,14 @@ export const api = {
   switchOrg: (tenantId: string) => request<AuthResult>('POST', '/auth/switch-org', { tenantId }),
   createOrg: (name: string) => request<AuthResult>('POST', '/auth/organizations', { name }),
   me: () => request<any>('GET', '/me'),
-  /** Скачивает защищённый файл (нужен Bearer) и возвращает blob-URL для <img>/<a>. */
-  authedObjectUrl: async (path: string): Promise<string> => {
+  /** Скачивает защищённый файл (нужен Bearer) как Blob — файлы за JwtAuthGuard, прямая ссылка даёт 401. */
+  authedBlob: async (path: string): Promise<Blob> => {
     const res = await fetch(path, { headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {} });
     if (!res.ok) throw new ApiError('INTERNAL', `Не удалось загрузить файл (${res.status})`);
-    return URL.createObjectURL(await res.blob());
+    return res.blob();
   },
+  /** Возвращает blob-URL защищённого файла для <img>/<a>. */
+  authedObjectUrl: async (path: string): Promise<string> => URL.createObjectURL(await api.authedBlob(path)),
 
   // Этап D — карточка задачи
   listComments: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/comments`),

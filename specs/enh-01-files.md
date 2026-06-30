@@ -58,6 +58,16 @@ CREATE INDEX idx_files_owner ON files (tenant_id, owner_kind, owner_id);
 | `GET` | `/api/files/{id}` | скачивание/просмотр (access-controlled) |
 | `DELETE` | `/api/files/{id}` | удаление (автор/manager/owner) |
 
+## Доступ к файлам с клиента (фикс 2026-06-30)
+
+`GET /api/files/{id}` защищён `JwtAuthGuard` — требует заголовок `Authorization: Bearer`. Поэтому **прямые ссылки в браузере недопустимы**: `<img src="/api/files/:id">`, `<a href="/api/files/:id">` и открытие URL в новой вкладке уходят БЕЗ токена → `401 Missing bearer token` (битая картинка / ошибка вместо файла).
+
+**Правило фронтенда:** любой защищённый файл загружается авторизованным `fetch` (Bearer) как Blob, далее показывается через `object-URL`:
+- `api.authedBlob(path)` → `Blob`; `api.authedObjectUrl(path)` → `URL.createObjectURL(blob)`.
+- **Аватары** — компонент `Avatar` (тянет blob по `users.avatar_file_id`), используется в шапке и кабинете.
+- **Вложения задач** — клик по файлу: картинка (`blob.type` начинается с `image/`) открывается в **попапе-лайтбоксе** (`Lightbox`), прочее — скачивается через временный `<a download>`; object-URL освобождается (`revokeObjectURL`).
+- Альтернатива на будущее (если понадобятся прямые ссылки/CDN): отдавать **presigned-URL** с коротким TTL вместо прокси-стрима.
+
 ## Этапы работ
 
 - **A.1.** Инфраструктура: `crm-minio` в compose (+том, +bind на VPN), bucket-инициализация, env, CI сервис-контейнер.

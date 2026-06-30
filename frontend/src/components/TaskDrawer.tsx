@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import type { Task, User } from '../types';
+import { Lightbox } from './Lightbox';
 
 interface Props {
   task: Task;
@@ -185,6 +186,8 @@ function ChecklistTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => 
 
 function FilesTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
   const [files, setFiles] = useState<any[]>([]);
+  const [preview, setPreview] = useState<{ url: string; name: string } | null>(null);
+  const [err, setErr] = useState('');
   const reload = () => api.listAttachments(taskId).then(setFiles).catch(() => undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reload(); }, [taskId]);
@@ -192,18 +195,41 @@ function FilesTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
     const f = e.target.files?.[0]; if (!f) return;
     try { await api.uploadAttachment(taskId, f); reload(); onRefresh(); } catch { /* */ }
   };
+  // файлы за авторизацией: тянем blob с токеном, картинку показываем в попапе, остальное скачиваем
+  const open = async (f: any) => {
+    setErr('');
+    try {
+      const blob = await api.authedBlob(`/api/files/${f.file_id}`);
+      const url = URL.createObjectURL(blob);
+      if (blob.type.startsWith('image/')) {
+        setPreview({ url, name: f.file_name });
+      } else {
+        const a = document.createElement('a');
+        a.href = url; a.download = f.file_name; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось открыть файл');
+    }
+  };
+  const closePreview = () => {
+    if (preview) URL.revokeObjectURL(preview.url);
+    setPreview(null);
+  };
   return (
     <>
       <label className="btn btn-sm" style={{ display: 'inline-block', cursor: 'pointer' }}>
         Загрузить файл<input type="file" hidden onChange={upload} />
       </label>
+      {err && <div className="error-text" style={{ marginTop: 8 }}>{err}</div>}
       {files.map((f) => (
         <div key={f.id} className="team-row team-head">
-          <a href={`/api/files/${f.file_id}`} target="_blank" rel="noreferrer">{f.file_name}</a>
+          <button className="file-link" onClick={() => open(f)}>{f.file_name}</button>
           <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteAttachment(taskId, f.id); reload(); onRefresh(); }}>✕</button>
         </div>
       ))}
       {files.length === 0 && <div className="muted" style={{ marginTop: 10 }}>Файлов нет</div>}
+      {preview && <Lightbox url={preview.url} name={preview.name} onClose={closePreview} />}
     </>
   );
 }
