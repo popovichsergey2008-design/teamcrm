@@ -172,7 +172,7 @@ export const api = {
   deleteColumn: (projectId: string, colId: string) => request<{ deleted: boolean }>('DELETE', `/projects/${projectId}/columns/${colId}`),
 
   // tasks
-  createTask: (b: { projectId: string; title: string; columnId?: string; description?: string }) =>
+  createTask: (b: { projectId: string; title: string; columnId?: string; description?: string; assigneeId?: string; managerId?: string }) =>
     request<Task>('POST', '/tasks', b),
   updateTask: (id: string, b: Partial<{ title: string; description: string; isBlocked: boolean; priority: string; managerId: string | null }>) =>
     request<Task>('PATCH', `/tasks/${id}`, b),

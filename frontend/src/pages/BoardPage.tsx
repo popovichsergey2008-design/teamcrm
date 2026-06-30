@@ -6,6 +6,7 @@ import type { Board, BoardColumn, Pnl, Project, Task, User } from '../types';
 import { ColumnView } from '../components/ColumnView';
 import { PnlPanel } from '../components/PnlPanel';
 import { TaskDrawer } from '../components/TaskDrawer';
+import { TaskCreateModal } from '../components/TaskCreateModal';
 import { TeamPanel } from '../components/TeamPanel';
 import { CopilotPanel } from '../components/CopilotPanel';
 
@@ -61,6 +62,7 @@ export function BoardPage() {
   const [newProject, setNewProject] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [createIn, setCreateIn] = useState<{ columnId: string; columnName: string } | null>(null);
   const [showTeam, setShowTeam] = useState(false);
   const [showCopilot, setShowCopilot] = useState(false);
   const subscribedRef = useRef<string | null>(null);
@@ -234,14 +236,9 @@ export function BoardPage() {
     }
   };
 
-  const addTask = async (columnId: string, title: string) => {
-    if (!selected) return;
-    try {
-      const task = await api.createTask({ projectId: selected, columnId, title });
-      dispatch({ type: 'UPSERT_TASK', task });
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Не удалось создать задачу');
-    }
+  const openCreate = (columnId: string) => {
+    const col = board?.columns.find((c) => c.id === columnId);
+    setCreateIn({ columnId, columnName: col?.name ?? '' });
   };
 
   const moveTask = useCallback(
@@ -346,7 +343,7 @@ export function BoardPage() {
                   isFirst={idx === 0}
                   isLast={idx === board.columns.length - 1}
                   activeTimerTask={activeTimerTask}
-                  onAddTask={addTask}
+                  onRequestAddTask={openCreate}
                   onMoveTask={moveTask}
                   onToggleTimer={toggleTimer}
                   onOpenTask={(t) => setOpenTaskId(t.id)}
@@ -374,6 +371,17 @@ export function BoardPage() {
           onToggleTimer={toggleTimer}
           onClose={() => setOpenTaskId(null)}
           onRefresh={reloadBoard}
+        />
+      )}
+      {createIn && selected && (
+        <TaskCreateModal
+          projectId={selected}
+          columnId={createIn.columnId}
+          columnName={createIn.columnName}
+          users={users}
+          defaultManagerId={user?.id}
+          onClose={() => setCreateIn(null)}
+          onCreated={reloadBoard}
         />
       )}
       {showTeam && <TeamPanel onClose={() => setShowTeam(false)} />}

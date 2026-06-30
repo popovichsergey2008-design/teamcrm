@@ -40,7 +40,7 @@ export class TasksService {
       title: dto.title,
       description: dto.description ?? null,
       assigneeId: dto.assigneeId ?? null,
-      createdBy: actorId, // постановщик/руководитель по умолчанию — создатель
+      createdBy: dto.managerId ?? actorId, // руководитель: явный из формы либо создатель
     });
     this.realtime.emit(tenantId, task.project_id, 'task.created', task as any);
     await this.activity.log(tenantId, task.id, actorId, 'created', { title: task.title });

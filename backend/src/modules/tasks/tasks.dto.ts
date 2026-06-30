@@ -27,6 +27,10 @@ export class CreateTaskDto {
   @IsOptional()
   @IsString()
   assigneeId?: string;
+
+  @IsOptional()
+  @IsString()
+  managerId?: string;
 }
 
 export class UpdateTaskDto {

@@ -57,4 +57,28 @@ describe('Enhancements v1 — Task roles (e2e)', () => {
     board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
     expect(findTask(board, task.id).manager_name).toBeNull();
   });
+
+  it('создание задачи с явными исполнителем и руководителем (форма)', async () => {
+    const owner = (await http.post('/api/auth/register').send({ tenantName: 'Form', email: `f_${uniq()}@t.test`, password: 'password123', fullName: 'Руководитель Р' }).expect(201)).body.data;
+    const tok = owner.accessToken;
+    // приглашаем исполнителя
+    const exec = `e_${uniq()}@t.test`;
+    const inv = (await http.post('/api/invites').set(H(tok)).send({ email: exec, role: 'member' }).expect(201)).body.data;
+    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Исполнитель И', password: 'execpass12' }).expect(201);
+    const users = (await http.get('/api/users').set(H(tok)).expect(200)).body.data;
+    const execId = users.find((u: any) => u.email === exec).id;
+    const ownerId = users.find((u: any) => u.email !== exec).id;
+
+    const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'П' }).expect(201)).body.data;
+    const board0 = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+
+    const task = (await http.post('/api/tasks').set(H(tok)).send({
+      projectId: proj.id, columnId: board0.columns[0].id, title: 'С формы', assigneeId: execId, managerId: ownerId, description: 'детали',
+    }).expect(201)).body.data;
+
+    const board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+    const card = findTask(board, task.id);
+    expect(card.assignee_name).toBe('Исполнитель И');
+    expect(card.manager_name).toBe('Руководитель Р');
+  });
 });

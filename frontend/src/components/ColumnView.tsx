@@ -10,7 +10,7 @@ interface Props {
   isFirst?: boolean;
   isLast?: boolean;
   activeTimerTask: string | null;
-  onAddTask: (columnId: string, title: string) => void;
+  onRequestAddTask: (columnId: string) => void;
   onMoveTask: (taskId: string, columnId: string, position: number) => void;
   onToggleTimer: (taskId: string) => void;
   onOpenTask: (task: Task) => void;
@@ -31,7 +31,7 @@ export function ColumnView({
   isFirst = false,
   isLast = false,
   activeTimerTask,
-  onAddTask,
+  onRequestAddTask,
   onMoveTask,
   onToggleTimer,
   onOpenTask,
@@ -40,8 +40,6 @@ export function ColumnView({
   onDeleteColumn,
   onColumnDrop,
 }: Props) {
-  const [adding, setAdding] = useState(false);
-  const [title, setTitle] = useState('');
   const [over, setOver] = useState(false);
   const [colOver, setColOver] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -53,12 +51,6 @@ export function ColumnView({
     if (v && v !== column.name) onRenameColumn?.(column.id, v);
     else setColName(column.name);
     setRenaming(false);
-  };
-
-  const submitTask = () => {
-    if (title.trim()) onAddTask(column.id, title.trim());
-    setTitle('');
-    setAdding(false);
   };
 
   const onDropColumn = (e: DragEvent) => {
@@ -161,27 +153,11 @@ export function ColumnView({
         ))}
       </div>
 
-      {canEdit &&
-        (adding ? (
-          <div className="add-task">
-            <input
-              className="input"
-              autoFocus
-              value={title}
-              placeholder="Название задачи"
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submitTask();
-                if (e.key === 'Escape') setAdding(false);
-              }}
-              onBlur={submitTask}
-            />
-          </div>
-        ) : (
-          <button className="btn btn-ghost btn-sm add-task-btn" onClick={() => setAdding(true)}>
-            + Задача
-          </button>
-        ))}
+      {canEdit && (
+        <button className="btn btn-ghost btn-sm add-task-btn" onClick={() => onRequestAddTask(column.id)}>
+          + Задача
+        </button>
+      )}
     </div>
   );
 }
