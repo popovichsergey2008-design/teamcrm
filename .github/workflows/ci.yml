@@ -126,7 +126,7 @@ jobs:
             cd /opt/teamcrm
             sed -i "s/\r$//" backend/docker/entrypoint.sh
             docker compose build crm-api crm-web
-            docker compose up -d crm-api crm-web
+            docker compose up -d           # поднимает весь стек, включая новые сервисы (crm-minio)
             docker compose restart crm-edge
             docker compose ps
           '
