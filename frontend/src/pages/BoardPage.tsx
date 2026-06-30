@@ -7,6 +7,7 @@ import { ColumnView } from '../components/ColumnView';
 import { PnlPanel } from '../components/PnlPanel';
 import { TaskDrawer } from '../components/TaskDrawer';
 import { TaskCreateModal } from '../components/TaskCreateModal';
+import { TaskListView } from '../components/TaskListView';
 import { TeamPanel } from '../components/TeamPanel';
 import { CopilotPanel } from '../components/CopilotPanel';
 import { MONETIZATION_ENABLED } from '../config';
@@ -65,6 +66,10 @@ export function BoardPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [createIn, setCreateIn] = useState<{ columnId: string; columnName: string } | null>(null);
+  const [view, setView] = useState<'board' | 'list'>(() =>
+    localStorage.getItem('teamcrm.boardView') === 'list' ? 'list' : 'board',
+  );
+  const switchView = (v: 'board' | 'list') => { setView(v); localStorage.setItem('teamcrm.boardView', v); };
   const [showTeam, setShowTeam] = useState(false);
   const [showCopilot, setShowCopilot] = useState(false);
   const subscribedRef = useRef<string | null>(null);
@@ -325,6 +330,10 @@ export function BoardPage() {
             <div className="board-header">
               <div className="board-title">
                 {board.project.name}
+                <span className="view-switch" role="tablist" aria-label="Вид доски">
+                  <button className={`view-btn ${view === 'board' ? 'active' : ''}`} onClick={() => switchView('board')} title="Канбан-доска">▦ Доска</button>
+                  <button className={`view-btn ${view === 'list' ? 'active' : ''}`} onClick={() => switchView('list')} title="Список">☰ Список</button>
+                </span>
                 {!isClient && (
                   <span className="board-actions">
                     <button className="btn btn-ghost btn-sm" onClick={() => setShowTeam(true)}>Команда</button>
@@ -334,34 +343,45 @@ export function BoardPage() {
               </div>
               {showFinance && <PnlPanel pnl={pnl} alert={alert} />}
             </div>
-            <div className="board-columns">
-              {board.columns.map((col, idx) => (
-                <ColumnView
-                  key={col.id}
-                  column={col}
-                  users={users}
-                  canEdit={!isClient}
-                  canTrack={!isClient}
-                  canManage={canManageProjects}
-                  isFirst={idx === 0}
-                  isLast={idx === board.columns.length - 1}
-                  activeTimerTask={activeTimerTask}
-                  onRequestAddTask={openCreate}
-                  onMoveTask={moveTask}
-                  onToggleTimer={toggleTimer}
-                  onOpenTask={(t) => setOpenTaskId(t.id)}
-                  onRenameColumn={renameColumn}
-                  onMoveColumn={moveColumn}
-                  onDeleteColumn={deleteColumn}
-                  onColumnDrop={reorderColumns}
-                />
-              ))}
-              {canManageProjects && (
-                <button className="add-column" onClick={addColumn} title="Добавить колонку">
-                  + колонка
-                </button>
-              )}
-            </div>
+            {view === 'list' ? (
+              <TaskListView
+                board={board}
+                users={users}
+                canTrack={!isClient}
+                activeTimerTask={activeTimerTask}
+                onOpenTask={(t) => setOpenTaskId(t.id)}
+                onToggleTimer={toggleTimer}
+              />
+            ) : (
+              <div className="board-columns">
+                {board.columns.map((col, idx) => (
+                  <ColumnView
+                    key={col.id}
+                    column={col}
+                    users={users}
+                    canEdit={!isClient}
+                    canTrack={!isClient}
+                    canManage={canManageProjects}
+                    isFirst={idx === 0}
+                    isLast={idx === board.columns.length - 1}
+                    activeTimerTask={activeTimerTask}
+                    onRequestAddTask={openCreate}
+                    onMoveTask={moveTask}
+                    onToggleTimer={toggleTimer}
+                    onOpenTask={(t) => setOpenTaskId(t.id)}
+                    onRenameColumn={renameColumn}
+                    onMoveColumn={moveColumn}
+                    onDeleteColumn={deleteColumn}
+                    onColumnDrop={reorderColumns}
+                  />
+                ))}
+                {canManageProjects && (
+                  <button className="add-column" onClick={addColumn} title="Добавить колонку">
+                    + колонка
+                  </button>
+                )}
+              </div>
+            )}
           </>
         )}
       </main>

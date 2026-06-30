@@ -149,6 +149,30 @@
 /* board header actions */
 .board-actions { margin-left: 14px; display: inline-flex; gap: 6px; }
 
+/* переключатель вида доска/список */
+.view-switch { display: inline-flex; margin-left: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; vertical-align: middle; }
+.view-btn { border: none; background: var(--bg-elev); color: var(--text-dim); padding: 5px 12px; font-size: 13px; cursor: pointer; }
+.view-btn + .view-btn { border-left: 1px solid var(--border); }
+.view-btn:hover { background: var(--bg-elev-2); color: var(--text); }
+.view-btn.active { background: var(--accent); color: #fff; }
+
+/* списочный вид */
+.task-list { flex: 1; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
+.task-list::-webkit-scrollbar { width: 8px; }
+.task-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+.list-group { margin-bottom: 18px; }
+.list-group-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-mut); padding: 6px 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.list-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; border-radius: var(--radius-sm); cursor: pointer; border: 1px solid transparent;
+}
+.list-row:hover { background: var(--bg-elev); border-color: var(--border-2); }
+.list-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; flex-wrap: wrap; }
+.list-title { font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+.list-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.list-noassignee { font-size: 12px; }
+.list-empty { padding: 8px 12px; font-size: 13px; }
+
 /* drawer / side panels (Этапы 2-4) */
 .drawer-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50;
