@@ -45,6 +45,10 @@ jobs:
       JWT_ACCESS_TTL: '900'
       JWT_REFRESH_TTL: '2592000'
       CORS_ORIGIN: http://localhost:5173
+      MINIO_ENDPOINT: http://localhost:9000
+      MINIO_ROOT_USER: teamcrm
+      MINIO_ROOT_PASSWORD: teamcrm12345
+      MINIO_BUCKET: teamcrm
     defaults:
       run:
         working-directory: backend
@@ -55,6 +59,14 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: backend/package-lock.json
+      - name: Start MinIO (official image requires a command → run as step, not service)
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=teamcrm -e MINIO_ROOT_PASSWORD=teamcrm12345 \
+            minio/minio:latest server /data
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:9000/minio/health/live && break || sleep 2
+          done
       - run: npm ci
       - run: npm run lint
       - run: npm test

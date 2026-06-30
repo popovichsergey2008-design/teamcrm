@@ -20,6 +20,7 @@ volumes:
   pg-data:
   redis-data:
   rabbitmq-data:
+  minio-data:
 
 services:
   crm-postgres:
@@ -74,6 +75,28 @@ services:
       timeout: 10s
       retries: 5
 
+  # Объектное хранилище файлов (вложения, аватары). API — только во внутр. сети;
+  # консоль — только на WireGuard (10.8.0.1). Бакет создаётся через MINIO_DEFAULT_BUCKETS.
+  crm-minio:
+    image: minio/minio:latest
+    <<: *restart
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "${ADMIN_BIND}:9001:9001"   # консоль MinIO — только через VPN
+    networks: [crm-net]
+    healthcheck:
+      # у minio/minio есть curl в образе
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    # бакет создаётся backend'ом (S3Service.ensureBucket) при старте
+
   crm-api:
     build:
       context: ./backend
@@ -89,6 +112,10 @@ services:
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-2592000}
       CORS_ORIGIN: ${CORS_ORIGIN}
+      MINIO_ENDPOINT: http://crm-minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET:-teamcrm}
     depends_on:
       crm-postgres: { condition: service_healthy }
       crm-redis: { condition: service_healthy }

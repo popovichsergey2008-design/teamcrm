@@ -29,6 +29,7 @@ import { StandupModule } from './modules/standup/standup.module';
 import { VelocityModule } from './modules/velocity/velocity.module';
 import { ForecastModule } from './modules/forecast/forecast.module';
 import { CopilotModule } from './modules/copilot/copilot.module';
+import { FilesModule } from './modules/files/files.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { CopilotModule } from './modules/copilot/copilot.module';
     VelocityModule,
     ForecastModule,
     CopilotModule,
+    FilesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
