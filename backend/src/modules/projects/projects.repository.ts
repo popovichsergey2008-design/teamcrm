@@ -86,6 +86,57 @@ export class ProjectsRepository {
     );
   }
 
+  /**
+   * Полное удаление проекта со всеми зависимостями в одной транзакции.
+   * Дочерние данные задач удаляются, неключевые ссылки (deals/alerts/recommendations)
+   * обнуляются — чтобы сохранить историю сделок/рекомендаций без проекта.
+   */
+  async deleteCascade(tenantId: string, projectId: string): Promise<void> {
+    await this.db.withTransaction(async (client) => {
+      const t: [string, string] = [tenantId, projectId];
+      // подзапрос id задач проекта
+      const taskSub = `SELECT id FROM tasks WHERE tenant_id = $1 AND project_id = $2`;
+      // отвязать ссылки на time_logs/задачи в аудите стендапов
+      await client.query(
+        `UPDATE standup_actions SET task_id = NULL, applied_time_log_id = NULL
+          WHERE tenant_id = $1 AND (task_id IN (${taskSub})
+             OR applied_time_log_id IN (SELECT id FROM time_logs WHERE tenant_id = $1 AND task_id IN (${taskSub})))`,
+        t,
+      );
+      // дочерние таблицы задач
+      for (const tbl of [
+        'task_activity',
+        'task_watchers',
+        'task_labels',
+        'task_checklist_items',
+        'task_attachments',
+        'task_comments',
+        'task_embeddings',
+        'assignment_audit',
+        'time_logs',
+      ]) {
+        await client.query(`DELETE FROM ${tbl} WHERE tenant_id = $1 AND task_id IN (${taskSub})`, t);
+      }
+      // обнулить мягкие ссылки на задачи
+      await client.query(`UPDATE alerts SET task_id = NULL WHERE tenant_id = $1 AND task_id IN (${taskSub})`, t);
+      await client.query(
+        `UPDATE recommendations SET task_id = NULL WHERE tenant_id = $1 AND task_id IN (${taskSub})`,
+        t,
+      );
+      // сами задачи и колонки
+      await client.query(`DELETE FROM tasks WHERE tenant_id = $1 AND project_id = $2`, t);
+      await client.query(`DELETE FROM board_columns WHERE tenant_id = $1 AND project_id = $2`, t);
+      // обнулить ссылки на проект
+      await client.query(`UPDATE deals SET project_id = NULL WHERE tenant_id = $1 AND project_id = $2`, t);
+      await client.query(`UPDATE alerts SET project_id = NULL WHERE tenant_id = $1 AND project_id = $2`, t);
+      await client.query(
+        `UPDATE recommendations SET project_id = NULL WHERE tenant_id = $1 AND project_id = $2`,
+        t,
+      );
+      await client.query(`DELETE FROM projects WHERE tenant_id = $1 AND id = $2`, t);
+    });
+  }
+
   findColumnByName(tenantId: string, projectId: string, name: string): Promise<ColumnRow | null> {
     return this.db.one<ColumnRow>(
       `SELECT * FROM board_columns

@@ -28,6 +28,12 @@ export class ProjectsService {
     });
   }
 
+  async remove(tenantId: string, id: string) {
+    await this.getOrThrow(tenantId, id); // 404, если проект не из этой организации
+    await this.repo.deleteCascade(tenantId, id);
+    return { deleted: true };
+  }
+
   async getOrThrow(tenantId: string, id: string): Promise<ProjectRow> {
     const row = await this.repo.findById(tenantId, id);
     if (!row) throw AppException.notFound('Project not found');

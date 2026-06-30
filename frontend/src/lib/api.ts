@@ -101,6 +101,12 @@ export const api = {
   switchOrg: (tenantId: string) => request<AuthResult>('POST', '/auth/switch-org', { tenantId }),
   createOrg: (name: string) => request<AuthResult>('POST', '/auth/organizations', { name }),
   me: () => request<any>('GET', '/me'),
+  /** Скачивает защищённый файл (нужен Bearer) и возвращает blob-URL для <img>/<a>. */
+  authedObjectUrl: async (path: string): Promise<string> => {
+    const res = await fetch(path, { headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {} });
+    if (!res.ok) throw new ApiError('INTERNAL', `Не удалось загрузить файл (${res.status})`);
+    return URL.createObjectURL(await res.blob());
+  },
 
   // Этап D — карточка задачи
   listComments: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/comments`),
@@ -154,6 +160,7 @@ export const api = {
   // projects / board
   listProjects: () => request<Project[]>('GET', '/projects'),
   createProject: (b: { name: string; budget?: number }) => request<Project>('POST', '/projects', b),
+  deleteProject: (id: string) => request<{ deleted: boolean }>('DELETE', `/projects/${id}`),
   getBoard: (projectId: string) => request<Board>('GET', `/projects/${projectId}/board`),
 
   // tasks

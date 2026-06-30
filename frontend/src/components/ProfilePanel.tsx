@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { Avatar } from './Avatar';
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify';
 
@@ -78,7 +79,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
         {tab === 'profile' && (
           <>
             <div className="avatar-row">
-              {me.avatarUrl ? <img className="avatar-lg" src={me.avatarUrl} alt="" /> : <div className="avatar-lg avatar-ph">{me.fullName?.[0] ?? '?'}</div>}
+              <Avatar path={me.avatarUrl} fallback={me.fullName?.[0] ?? '?'} className="avatar-lg" />
               <button className="btn btn-sm" onClick={() => fileRef.current?.click()}>Загрузить фото</button>
               <input ref={fileRef} type="file" accept="image/*" hidden onChange={onAvatarPick} />
             </div>

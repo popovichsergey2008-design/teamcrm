@@ -11,12 +11,14 @@ import { CopilotPanel } from '../components/CopilotPanel';
 
 type Action =
   | { type: 'SET'; board: Board }
+  | { type: 'CLEAR' }
   | { type: 'UPSERT_TASK'; task: Task }
   | { type: 'SET_COST'; taskId: string; cost: string };
 
 function reducer(state: Board | null, action: Action): Board | null {
-  // SET обрабатывается ДО guard на null — иначе начальная загрузка доски не применится
+  // SET/CLEAR обрабатываются ДО guard на null — иначе начальная загрузка доски не применится
   if (action.type === 'SET') return action.board;
+  if (action.type === 'CLEAR') return null;
   if (!state) return state;
   switch (action.type) {
     case 'UPSERT_TASK': {
@@ -86,7 +88,11 @@ export function BoardPage() {
   }, []);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {
+      dispatch({ type: 'CLEAR' });
+      setPnl(null);
+      return;
+    }
     setAlert(null);
     api
       .getBoard(selected)
@@ -150,6 +156,20 @@ export function BoardPage() {
     }
   };
 
+  const deleteProject = async (id: string, name: string) => {
+    if (!window.confirm(`Удалить проект «${name}» со всеми задачами? Действие необратимо.`)) return;
+    try {
+      await api.deleteProject(id);
+      setProjects((prev) => {
+        const rest = prev.filter((p) => p.id !== id);
+        if (selected === id) setSelected(rest[0]?.id ?? null);
+        return rest;
+      });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось удалить проект');
+    }
+  };
+
   const addTask = async (columnId: string, title: string) => {
     if (!selected) return;
     try {
@@ -200,13 +220,20 @@ export function BoardPage() {
         <div className="sidebar-head">Проекты</div>
         <div className="project-list">
           {projects.map((p) => (
-            <button
-              key={p.id}
-              className={`project-item ${p.id === selected ? 'active' : ''}`}
-              onClick={() => setSelected(p.id)}
-            >
-              {p.name}
-            </button>
+            <div key={p.id} className={`project-row ${p.id === selected ? 'active' : ''}`}>
+              <button className="project-item" onClick={() => setSelected(p.id)}>
+                {p.name}
+              </button>
+              {canManageProjects && (
+                <button
+                  className="project-del"
+                  title="Удалить проект"
+                  onClick={() => deleteProject(p.id, p.name)}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           ))}
           {projects.length === 0 && <div className="muted sidebar-empty">Пока нет проектов</div>}
         </div>

@@ -5,12 +5,13 @@ import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { ProfilePanel } from './components/ProfilePanel';
+import { Avatar } from './components/Avatar';
 
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
   const onSwitchOrg = async (tenantId: string) => {
     if (tenantId === '__new__') {
@@ -25,7 +26,7 @@ export function App() {
   const inviteToken = new URLSearchParams(window.location.search).get('invite');
 
   useEffect(() => {
-    if (user) api.me().then((m) => setAvatarUrl(m.avatarUrl)).catch(() => undefined);
+    if (user) api.me().then((m) => setAvatarPath(m.avatarUrl)).catch(() => undefined);
   }, [user]);
 
   if (inviteToken) return <AcceptInvitePage token={inviteToken} />;
@@ -70,7 +71,7 @@ export function App() {
             Привязать Telegram
           </button>
           <button className="profile-btn" onClick={() => setShowProfile(true)} title="Личный кабинет">
-            {avatarUrl ? <img className="avatar-sm" src={avatarUrl} alt="" /> : <span className="avatar-sm avatar-ph">{user.fullName?.[0] ?? '?'}</span>}
+            <Avatar path={avatarPath} fallback={user.fullName?.[0] ?? '?'} className="avatar-sm" />
             <span className="dim">{user.fullName}</span>
           </button>
           <span className="badge badge-role">{user.role}</span>
@@ -80,7 +81,7 @@ export function App() {
         </div>
       </header>
       <BoardPage key={user.tenantId} />
-      {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} onAvatar={setAvatarUrl} />}
+      {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} onAvatar={setAvatarPath} />}
     </div>
   );
 }

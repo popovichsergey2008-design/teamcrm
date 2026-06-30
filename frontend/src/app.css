@@ -34,12 +34,20 @@
 }
 .sidebar-head { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-mut); margin: 0 6px 10px; }
 .project-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.project-row { display: flex; align-items: center; border-radius: var(--radius-sm); }
+.project-row:hover { background: var(--bg-elev-2); }
+.project-row.active { background: var(--bg-elev-2); box-shadow: inset 2px 0 0 var(--accent); }
 .project-item {
-  text-align: left; padding: 8px 10px; border-radius: var(--radius-sm);
+  flex: 1; text-align: left; padding: 8px 10px; border-radius: var(--radius-sm);
   background: transparent; border: none; color: var(--text-dim); cursor: pointer;
 }
-.project-item:hover { background: var(--bg-elev-2); color: var(--text); }
-.project-item.active { background: var(--bg-elev-2); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+.project-row:hover .project-item, .project-row.active .project-item { color: var(--text); }
+.project-del {
+  border: none; background: transparent; color: var(--text-mut); cursor: pointer;
+  padding: 4px 8px; font-size: 12px; opacity: 0; transition: opacity .12s, color .12s;
+}
+.project-row:hover .project-del { opacity: 1; }
+.project-del:hover { color: var(--danger); }
 .sidebar-empty { padding: 8px 10px; font-size: 13px; }
 .new-project { display: flex; gap: 6px; margin-top: 12px; }
 
