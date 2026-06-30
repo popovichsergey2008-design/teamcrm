@@ -139,6 +139,15 @@
 .invite-box { margin-top: 8px; font-size: 13px; color: var(--text-dim); }
 .invite-box .input { margin-top: 6px; }
 
+/* профиль / аватары */
+.profile-btn { display: inline-flex; align-items: center; gap: 8px; background: none; border: none; cursor: pointer; padding: 2px 4px; border-radius: var(--radius-sm); }
+.profile-btn:hover { background: var(--bg-elev-2); }
+.avatar-sm { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+.avatar-lg { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; }
+.avatar-ph { display: inline-grid; place-items: center; background: var(--accent-2); color: #fff; font-weight: 700; }
+.avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.notify-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+
 /* copilot panel */
 .copilot-empty { margin-top: 16px; }
 .rec-row { border-top: 1px solid var(--border); padding: 12px 0; }

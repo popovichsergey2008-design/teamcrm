@@ -22,6 +22,11 @@ interface TokenPair {
   expiresIn: number;
 }
 
+export interface SessionMeta {
+  userAgent?: string;
+  ip?: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -34,7 +39,7 @@ export class AuthService {
   ) {}
 
   /** Регистрация: создаёт tenant + owner-пользователя в одной транзакции. */
-  async register(dto: RegisterDto): Promise<{ user: PublicUser } & TokenPair> {
+  async register(dto: RegisterDto, meta?: SessionMeta): Promise<{ user: PublicUser } & TokenPair> {
     const passwordHash = await argon2.hash(dto.password);
     const region = dto.dataRegion ?? 'eu';
 
@@ -54,11 +59,11 @@ export class AuthService {
       return res.rows[0];
     });
 
-    const tokens = await this.issueTokens(user);
+    const tokens = await this.issueTokens(user, meta);
     return { user: toPublicUser(user), ...tokens };
   }
 
-  async login(dto: LoginDto): Promise<{ user: PublicUser } & TokenPair> {
+  async login(dto: LoginDto, meta?: SessionMeta): Promise<{ user: PublicUser } & TokenPair> {
     const user = dto.tenantId
       ? await this.users.findByEmail(dto.tenantId, dto.email)
       : await this.users.findByEmailGlobal(dto.email);
@@ -67,12 +72,12 @@ export class AuthService {
     const ok = await argon2.verify(user.password_hash, dto.password);
     if (!ok) throw AppException.unauthorized('Invalid credentials');
 
-    const tokens = await this.issueTokens(user);
+    const tokens = await this.issueTokens(user, meta);
     return { user: toPublicUser(user), ...tokens };
   }
 
   /** Ротация: проверяет refresh, отзывает старый, выдаёт новую пару. */
-  async refresh(refreshToken: string): Promise<TokenPair> {
+  async refresh(refreshToken: string, meta?: SessionMeta): Promise<TokenPair> {
     let payload: { sub: string; tenantId: string };
     try {
       payload = await this.jwt.verifyAsync(refreshToken, {
@@ -90,38 +95,37 @@ export class AuthService {
     if (!user || !user.is_active) throw AppException.unauthorized('User inactive');
 
     await this.refreshTokens.revoke(row.id);
-    return this.issueTokens(user);
+    return this.issueTokens(user, meta);
   }
 
   async logout(refreshToken: string): Promise<void> {
     await this.refreshTokens.revokeByHash(this.sha256(refreshToken));
   }
 
-  private async issueTokens(user: UserRow): Promise<TokenPair> {
+  private async issueTokens(user: UserRow, meta?: SessionMeta): Promise<TokenPair> {
     const accessTtl = Number(this.config.get('JWT_ACCESS_TTL') ?? 900);
     const refreshTtl = Number(this.config.get('JWT_REFRESH_TTL') ?? 2_592_000);
+
+    // refresh-токен и его строку создаём ПЕРВЫМИ — id строки кладём в access как sid
+    const jti = randomUUID();
+    const refreshToken = await this.jwt.signAsync(
+      { sub: user.id, tenantId: user.tenant_id, jti },
+      { secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'), expiresIn: refreshTtl },
+    );
+    const expiresAt = new Date(Date.now() + refreshTtl * 1000);
+    const row = await this.refreshTokens.create(user.id, this.sha256(refreshToken), expiresAt, meta);
 
     const accessPayload: AccessTokenPayload = {
       sub: user.id,
       tenantId: user.tenant_id,
       role: user.role_code as RoleCode,
       email: user.email,
+      sid: row.id,
     };
     const accessToken = await this.jwt.signAsync(accessPayload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
       expiresIn: accessTtl,
     });
-
-    const jti = randomUUID();
-    const refreshToken = await this.jwt.signAsync(
-      { sub: user.id, tenantId: user.tenant_id, jti },
-      {
-        secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
-        expiresIn: refreshTtl,
-      },
-    );
-    const expiresAt = new Date(Date.now() + refreshTtl * 1000);
-    await this.refreshTokens.create(user.id, this.sha256(refreshToken), expiresAt);
 
     return { accessToken, refreshToken, expiresIn: accessTtl };
   }

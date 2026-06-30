@@ -6,6 +6,7 @@ export interface AccessTokenPayload {
   tenantId: string;
   role: RoleCode;
   email: string;
+  sid?: string; // id refresh-сессии (refresh_tokens.id) — для управления сессиями
 }
 
 /** Прикреплённый к запросу/сокету аутентифицированный пользователь. */
@@ -14,4 +15,5 @@ export interface AuthUser {
   tenantId: string;
   role: RoleCode;
   email: string;
+  sessionId?: string;
 }

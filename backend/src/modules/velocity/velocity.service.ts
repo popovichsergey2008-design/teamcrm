@@ -56,6 +56,9 @@ export class VelocityService {
   listAvailability(tenantId: string, userId: string) {
     return this.repo.listAvailability(tenantId, userId);
   }
+  removeAvailability(tenantId: string, userId: string, id: string) {
+    return this.repo.removeAvailability(tenantId, userId, id);
+  }
   listUserIds(tenantId: string) {
     return this.repo.listUserIds(tenantId);
   }

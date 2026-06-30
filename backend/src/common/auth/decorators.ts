@@ -15,7 +15,7 @@ export const Roles = (...roles: RoleCode[]) => SetMetadata(ROLES_KEY, roles);
 
 /** Достаёт аутентифицированного пользователя из запроса. */
 export const CurrentUser = createParamDecorator(
-  (data: keyof AuthUser | undefined, ctx: ExecutionContext): AuthUser | string => {
+  (data: keyof AuthUser | undefined, ctx: ExecutionContext): AuthUser | string | undefined => {
     const req = ctx.switchToHttp().getRequest();
     const user: AuthUser = req.user;
     return data ? user[data] : user;

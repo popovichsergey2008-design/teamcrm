@@ -32,6 +32,7 @@ import { CopilotModule } from './modules/copilot/copilot.module';
 import { FilesModule } from './modules/files/files.module';
 import { TeamModule } from './modules/team/team.module';
 import { InvitesModule } from './modules/team/invites.module';
+import { AccountModule } from './modules/account/account.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { InvitesModule } from './modules/team/invites.module';
     FilesModule,
     TeamModule,
     InvitesModule,
+    AccountModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

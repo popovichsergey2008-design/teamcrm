@@ -72,6 +72,60 @@ export class UsersRepository {
     );
   }
 
+  /** Полный профиль для личного кабинета. */
+  getProfile(tenantId: string, id: string) {
+    return this.db.one(
+      `SELECT u.id, u.email, u.full_name, u.phone, u.timezone, u.locale,
+              u.notify_prefs, u.avatar_file_id, u.weekly_capacity_hours, u.is_active,
+              r.code AS role_code, p.name AS position_name, u.position_id
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+         LEFT JOIN positions p ON p.id = u.position_id
+        WHERE u.tenant_id=$1 AND u.id=$2`,
+      [tenantId, id],
+    );
+  }
+
+  updateProfile(
+    tenantId: string,
+    id: string,
+    patch: { full_name?: string; phone?: string | null; timezone?: string; locale?: string },
+  ) {
+    const sets: string[] = [];
+    const vals: any[] = [];
+    let i = 1;
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) continue;
+      sets.push(`${k} = $${i++}`);
+      vals.push(v);
+    }
+    if (!sets.length) return this.getProfile(tenantId, id);
+    sets.push('updated_at = now()');
+    vals.push(tenantId, id);
+    return this.db.query(`UPDATE users SET ${sets.join(', ')} WHERE tenant_id=$${i++} AND id=$${i}`, vals)
+      .then(() => this.getProfile(tenantId, id));
+  }
+
+  async getPasswordHash(tenantId: string, id: string): Promise<string | null> {
+    const r = await this.db.one<{ password_hash: string }>(
+      `SELECT password_hash FROM users WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id],
+    );
+    return r?.password_hash ?? null;
+  }
+
+  async updatePassword(tenantId: string, id: string, hash: string): Promise<void> {
+    await this.db.query(`UPDATE users SET password_hash=$3, updated_at=now() WHERE tenant_id=$1 AND id=$2`, [tenantId, id, hash]);
+  }
+
+  async setAvatar(tenantId: string, id: string, fileId: string): Promise<void> {
+    await this.db.query(`UPDATE users SET avatar_file_id=$3, updated_at=now() WHERE tenant_id=$1 AND id=$2`, [tenantId, id, fileId]);
+  }
+
+  async setNotifyPrefs(tenantId: string, id: string, prefs: unknown): Promise<void> {
+    await this.db.query(`UPDATE users SET notify_prefs=$3::jsonb WHERE tenant_id=$1 AND id=$2`, [tenantId, id, JSON.stringify(prefs)]);
+  }
+
   async countActiveOwners(tenantId: string): Promise<number> {
     const r = await this.db.one<{ n: string }>(
       `SELECT COUNT(*) AS n FROM users u JOIN roles r ON r.id=u.role_id

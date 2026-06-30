@@ -100,4 +100,11 @@ export class VelocityRepository {
       [tenantId, userId],
     );
   }
+
+  async removeAvailability(tenantId: string, userId: string, id: string): Promise<void> {
+    await this.db.query(
+      `DELETE FROM user_availability WHERE tenant_id=$1 AND user_id=$2 AND id=$3`,
+      [tenantId, userId, id],
+    );
+  }
 }

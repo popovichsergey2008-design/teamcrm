@@ -9,6 +9,6 @@ import { RefreshTokenRepository } from './refresh-token.repository';
   imports: [TenantsModule, UsersModule],
   controllers: [AuthController],
   providers: [AuthService, RefreshTokenRepository],
-  exports: [AuthService],
+  exports: [AuthService, RefreshTokenRepository],
 })
 export class AuthModule {}

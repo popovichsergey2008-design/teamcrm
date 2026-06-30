@@ -97,7 +97,32 @@ export const api = {
   login: (b: { email: string; password: string }) =>
     rawRequest<AuthResult>('POST', '/auth/login', b, false),
   logout: () => (tokens.refresh ? rawRequest('POST', '/auth/logout', { refreshToken: tokens.refresh }, false) : Promise.resolve()),
-  me: () => request<import('../types').User>('GET', '/me'),
+  me: () => request<any>('GET', '/me'),
+
+  // Этап C — личный кабинет
+  updateProfile: (b: { fullName?: string; phone?: string; timezone?: string; locale?: string }) =>
+    request<any>('PATCH', '/me', b),
+  changePassword: (b: { currentPassword: string; newPassword: string }) =>
+    request<any>('POST', '/me/password', b),
+  setNotifications: (prefs: Record<string, unknown>) => request<any>('PUT', '/me/notifications', { prefs }),
+  myAvailability: () => request<any[]>('GET', '/me/availability'),
+  addMyAvailability: (b: { kind: string; fromDate: string; toDate: string }) => request<any>('POST', '/me/availability', b),
+  removeMyAvailability: (id: string) => request<any>('DELETE', `/me/availability/${id}`),
+  listSessions: () => request<any[]>('GET', '/me/sessions'),
+  revokeSession: (id: string) => request<any>('DELETE', `/me/sessions/${id}`),
+  revokeOtherSessions: () => request<any>('POST', '/me/sessions/revoke-all'),
+  uploadAvatar: async (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/me/avatar', {
+      method: 'POST',
+      headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+      body: fd,
+    });
+    const env = await res.json();
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Upload error');
+    return env.data;
+  },
 
   // projects / board
   listProjects: () => request<Project[]>('GET', '/projects'),
