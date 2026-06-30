@@ -140,6 +140,7 @@
 .invite-box .input { margin-top: 6px; }
 
 /* профиль / аватары */
+.org-switch { background: var(--bg-elev-2); color: var(--text); border: 1px solid var(--border-2); border-radius: var(--radius-sm); padding: 6px 10px; max-width: 220px; cursor: pointer; }
 .profile-btn { display: inline-flex; align-items: center; gap: 8px; background: none; border: none; cursor: pointer; padding: 2px 4px; border-radius: var(--radius-sm); }
 .profile-btn:hover { background: var(--bg-elev-2); }
 .avatar-sm { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }

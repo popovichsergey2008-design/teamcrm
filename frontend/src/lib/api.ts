@@ -97,6 +97,9 @@ export const api = {
   login: (b: { email: string; password: string }) =>
     rawRequest<AuthResult>('POST', '/auth/login', b, false),
   logout: () => (tokens.refresh ? rawRequest('POST', '/auth/logout', { refreshToken: tokens.refresh }, false) : Promise.resolve()),
+  organizations: () => request<import('../types').OrgRef[]>('GET', '/auth/organizations'),
+  switchOrg: (tenantId: string) => request<AuthResult>('POST', '/auth/switch-org', { tenantId }),
+  createOrg: (name: string) => request<AuthResult>('POST', '/auth/organizations', { name }),
   me: () => request<any>('GET', '/me'),
 
   // Этап D — карточка задачи

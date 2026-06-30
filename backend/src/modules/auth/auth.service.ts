@@ -14,6 +14,7 @@ import { TenantsRepository } from '../tenants/tenants.repository';
 import { UsersRepository, UserRow } from '../users/users.repository';
 import { PublicUser, toPublicUser } from '../users/users.service';
 import { RefreshTokenRepository } from './refresh-token.repository';
+import { AccountsRepository } from './accounts.repository';
 import { LoginDto, RegisterDto } from './auth.dto';
 
 interface TokenPair {
@@ -27,6 +28,12 @@ export interface SessionMeta {
   ip?: string;
 }
 
+export interface OrgRef {
+  tenantId: string;
+  name: string;
+  role: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -36,44 +43,98 @@ export class AuthService {
     private readonly tenants: TenantsRepository,
     private readonly users: UsersRepository,
     private readonly refreshTokens: RefreshTokenRepository,
+    private readonly accounts: AccountsRepository,
   ) {}
 
-  /** Регистрация: создаёт tenant + owner-пользователя в одной транзакции. */
-  async register(dto: RegisterDto, meta?: SessionMeta): Promise<{ user: PublicUser } & TokenPair> {
+  private orgRefs(rows: any[]): OrgRef[] {
+    return rows.map((m) => ({ tenantId: m.tenant_id, name: m.tenant_name, role: m.role_code }));
+  }
+
+  /**
+   * Регистрация: создаёт ГЛОБАЛЬНЫЙ аккаунт + первую организацию + owner-членство.
+   * E-mail уникален глобально (одна личность = один аккаунт).
+   */
+  async register(dto: RegisterDto, meta?: SessionMeta): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
+    if (await this.accounts.findByEmail(dto.email)) {
+      throw AppException.conflict('Пользователь с таким e-mail уже зарегистрирован — войдите и создайте организацию в кабинете');
+    }
     const passwordHash = await argon2.hash(dto.password);
     const region = dto.dataRegion ?? 'eu';
 
     const user = await this.db.withTransaction(async (client) => {
+      const account = await this.accounts.create(dto.email, passwordHash, dto.fullName, client);
       const tenant = await this.tenants.create(dto.tenantName, region, client);
-      const exists = await client.query(
-        'SELECT 1 FROM users WHERE tenant_id = $1 AND email = $2',
-        [tenant.id, dto.email],
-      );
-      if (exists.rowCount) throw AppException.conflict('Пользователь с таким e-mail уже зарегистрирован');
       const res = await client.query<UserRow>(
-        `INSERT INTO users (tenant_id, email, password_hash, full_name, role_id)
-         SELECT $1, $2, $3, $4, r.id FROM roles r WHERE r.code = 'owner'
+        `INSERT INTO users (tenant_id, email, password_hash, full_name, role_id, account_id)
+         SELECT $1, $2, $3, $4, r.id, $5 FROM roles r WHERE r.code = 'owner'
          RETURNING *, (SELECT code FROM roles WHERE code='owner') AS role_code`,
-        [tenant.id, dto.email, passwordHash, dto.fullName],
+        [tenant.id, dto.email, passwordHash, dto.fullName, account.id],
       );
       return res.rows[0];
     });
 
     const tokens = await this.issueTokens(user, meta);
-    return { user: toPublicUser(user), ...tokens };
+    const orgs = this.orgRefs(await this.users.membershipsByAccount(user.account_id as string));
+    return { user: toPublicUser(user), organizations: orgs, ...tokens };
   }
 
-  async login(dto: LoginDto, meta?: SessionMeta): Promise<{ user: PublicUser } & TokenPair> {
-    const user = dto.tenantId
-      ? await this.users.findByEmail(dto.tenantId, dto.email)
-      : await this.users.findByEmailGlobal(dto.email);
-    if (!user || !user.is_active) throw AppException.unauthorized('Неверный e-mail или пароль');
+  /** Вход по ГЛОБАЛЬНОМУ аккаунту; активная организация — выбранная или первая. */
+  async login(dto: LoginDto, meta?: SessionMeta): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
+    const account = await this.accounts.findByEmail(dto.email);
+    if (!account) throw AppException.unauthorized('Неверный e-mail или пароль');
+    if (!(await argon2.verify(account.password_hash, dto.password))) {
+      throw AppException.unauthorized('Неверный e-mail или пароль');
+    }
 
-    const ok = await argon2.verify(user.password_hash, dto.password);
-    if (!ok) throw AppException.unauthorized('Неверный e-mail или пароль');
+    const memberships = await this.users.membershipsByAccount(account.id);
+    if (memberships.length === 0) throw AppException.unauthorized('У аккаунта нет активных организаций');
+
+    const target = (dto.tenantId && memberships.find((m: any) => String(m.tenant_id) === String(dto.tenantId)))
+      ? dto.tenantId
+      : (memberships[0] as any).tenant_id;
+    const user = await this.users.findActiveByAccountAndTenant(account.id, target);
+    if (!user) throw AppException.unauthorized('Нет доступа к организации');
 
     const tokens = await this.issueTokens(user, meta);
-    return { user: toPublicUser(user), ...tokens };
+    return { user: toPublicUser(user), organizations: this.orgRefs(memberships), ...tokens };
+  }
+
+  /** Список организаций аккаунта текущего пользователя. */
+  async organizations(tenantId: string, userId: string): Promise<OrgRef[]> {
+    const acc = await this.users.accountIdOf(tenantId, userId);
+    if (!acc?.account_id) return [];
+    return this.orgRefs(await this.users.membershipsByAccount(acc.account_id));
+  }
+
+  /** Переключение активной организации — новый токен для другого членства. */
+  async switchOrg(tenantId: string, userId: string, targetTenantId: string, meta?: SessionMeta) {
+    const acc = await this.users.accountIdOf(tenantId, userId);
+    if (!acc?.account_id) throw AppException.forbidden('Нет аккаунта');
+    const member = await this.users.findActiveByAccountAndTenant(acc.account_id, targetTenantId);
+    if (!member) throw AppException.forbidden('Вы не состоите в этой организации');
+    const tokens = await this.issueTokens(member, meta);
+    return { user: toPublicUser(member), ...tokens };
+  }
+
+  /** Создать новую организацию для текущего аккаунта (owner). */
+  async createOrg(tenantId: string, userId: string, name: string, meta?: SessionMeta) {
+    const acc = await this.users.accountIdOf(tenantId, userId);
+    if (!acc?.account_id) throw AppException.forbidden('Нет аккаунта');
+    const account = await this.accounts.findById(acc.account_id);
+    if (!account) throw AppException.forbidden('Аккаунт не найден');
+
+    const member = await this.db.withTransaction(async (client) => {
+      const tenant = await this.tenants.create(name, 'eu', client);
+      const res = await client.query<UserRow>(
+        `INSERT INTO users (tenant_id, email, password_hash, full_name, role_id, account_id)
+         SELECT $1, $2, $3, $4, r.id, $5 FROM roles r WHERE r.code = 'owner'
+         RETURNING *, (SELECT code FROM roles WHERE code='owner') AS role_code`,
+        [tenant.id, account.email, account.password_hash, account.full_name, account.id],
+      );
+      return res.rows[0];
+    });
+    const tokens = await this.issueTokens(member, meta);
+    return { user: toPublicUser(member), ...tokens };
   }
 
   /** Ротация: проверяет refresh, отзывает старый, выдаёт новую пару. */

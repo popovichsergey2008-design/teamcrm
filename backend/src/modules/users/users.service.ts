@@ -4,6 +4,7 @@ import { AppException } from '../../common/http/app-exception';
 import { RoleCode } from '../../common/auth/jwt.types';
 import { PositionsRepository } from '../team/positions.repository';
 import { GroupsRepository } from '../team/groups.repository';
+import { AccountsRepository } from '../auth/accounts.repository';
 import { UserRow, UsersRepository } from './users.repository';
 import { isAssignableTeamRole, removesLastActiveOwner, Role } from './team-invariants';
 
@@ -33,6 +34,7 @@ export class UsersService {
     private readonly repo: UsersRepository,
     private readonly positions: PositionsRepository,
     private readonly groups: GroupsRepository,
+    private readonly accounts: AccountsRepository,
   ) {}
 
   findById(tenantId: string, id: string) {
@@ -54,17 +56,21 @@ export class UsersService {
     const role = input.role ?? 'member';
     if (!isAssignableTeamRole(role)) throw AppException.validation('Роль client не назначается через команду');
     const exists = await this.repo.findByEmail(tenantId, input.email);
-    if (exists) throw AppException.conflict('Email already exists in tenant');
+    if (exists) throw AppException.conflict('Пользователь с таким e-mail уже есть в организации');
     if (input.positionId && !(await this.positions.exists(tenantId, input.positionId))) {
       throw AppException.validation('Должность не найдена');
     }
+    // глобальный аккаунт: используем существующий (человек уже зарегистрирован) или создаём новый
     const passwordHash = await argon2.hash(input.password);
+    const existingAccount = await this.accounts.findByEmail(input.email);
+    const account = existingAccount ?? (await this.accounts.create(input.email, passwordHash, input.fullName));
     const row = await this.repo.create({
       tenantId,
       email: input.email,
       passwordHash,
       fullName: input.fullName,
       roleCode: role,
+      accountId: account.id,
     });
     if (input.positionId) await this.repo.updateManaged(tenantId, row.id, { positionId: input.positionId });
     if (input.groupIds?.length) await this.groups.setUserGroups(tenantId, row.id, input.groupIds);

@@ -7,10 +7,19 @@ import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { ProfilePanel } from './components/ProfilePanel';
 
 export function App() {
-  const { user, loading, logout } = useAuth();
+  const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  const onSwitchOrg = async (tenantId: string) => {
+    if (tenantId === '__new__') {
+      const name = window.prompt('Название новой организации:');
+      if (name && name.trim()) await createOrg(name.trim());
+      return;
+    }
+    if (user && tenantId !== user.tenantId) await switchOrg(tenantId);
+  };
 
   // приглашение в команду: ссылка вида /?invite=<token>
   const inviteToken = new URLSearchParams(window.location.search).get('invite');
@@ -47,6 +56,11 @@ export function App() {
           TEAM<span>CRM</span>
         </div>
         <div className="topbar-right">
+          <select className="org-switch" value={user.tenantId} onChange={(e) => onSwitchOrg(e.target.value)} title="Организация">
+            {organizations.map((o) => <option key={o.tenantId} value={o.tenantId}>{o.name} · {o.role}</option>)}
+            {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
+            <option value="__new__">+ Создать организацию…</option>
+          </select>
           {tgCode && (
             <span className="badge" title="Отправьте код Telegram-боту для привязки">
               TG-код: <b>{tgCode}</b>
@@ -65,7 +79,7 @@ export function App() {
           </button>
         </div>
       </header>
-      <BoardPage />
+      <BoardPage key={user.tenantId} />
       {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} onAvatar={setAvatarUrl} />}
     </div>
   );

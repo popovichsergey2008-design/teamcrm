@@ -5,6 +5,7 @@ import { UsersRepository } from '../users/users.repository';
 import { GroupsRepository } from '../team/groups.repository';
 import { FilesService } from '../files/files.service';
 import { RefreshTokenRepository } from '../auth/refresh-token.repository';
+import { AccountsRepository } from '../auth/accounts.repository';
 import { VelocityService } from '../velocity/velocity.service';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class AccountService {
     private readonly groups: GroupsRepository,
     private readonly files: FilesService,
     private readonly refresh: RefreshTokenRepository,
+    private readonly accounts: AccountsRepository,
     private readonly velocity: VelocityService,
   ) {}
 
@@ -55,11 +57,12 @@ export class AccountService {
 
   /** Смена пароля: проверка текущего, отзыв всех ПРОЧИХ сессий. */
   async changePassword(tenantId: string, userId: string, sessionId: string | undefined, currentPassword: string, newPassword: string) {
-    const hash = await this.users.getPasswordHash(tenantId, userId);
-    if (!hash || !(await argon2.verify(hash, currentPassword))) {
+    const acc = await this.users.accountIdOf(tenantId, userId);
+    const account = acc?.account_id ? await this.accounts.findById(acc.account_id) : null;
+    if (!account || !(await argon2.verify(account.password_hash, currentPassword))) {
       throw AppException.validation('Текущий пароль неверный');
     }
-    await this.users.updatePassword(tenantId, userId, await argon2.hash(newPassword));
+    await this.accounts.updatePassword(account.id, await argon2.hash(newPassword)); // пароль — на уровне аккаунта
     await this.refresh.revokeAllExcept(userId, sessionId); // прочие устройства разлогиниваются
     return { changed: true };
   }

@@ -9,11 +9,18 @@ export interface User {
   isActive: boolean;
 }
 
+export interface OrgRef {
+  tenantId: string;
+  name: string;
+  role: string;
+}
+
 export interface AuthResult {
   user: User;
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  organizations?: OrgRef[];
 }
 
 export interface Project {
