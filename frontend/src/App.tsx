@@ -6,6 +6,7 @@ import { BoardPage } from './pages/BoardPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { ProfilePanel } from './components/ProfilePanel';
 import { Avatar } from './components/Avatar';
+import { roleLabel } from './lib/labels';
 
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
@@ -58,7 +59,7 @@ export function App() {
         </div>
         <div className="topbar-right">
           <select className="org-switch" value={user.tenantId} onChange={(e) => onSwitchOrg(e.target.value)} title="Организация">
-            {organizations.map((o) => <option key={o.tenantId} value={o.tenantId}>{o.name} · {o.role}</option>)}
+            {organizations.map((o) => <option key={o.tenantId} value={o.tenantId}>{o.name} · {roleLabel(o.role)}</option>)}
             {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
             <option value="__new__">+ Создать организацию…</option>
           </select>
@@ -74,7 +75,7 @@ export function App() {
             <Avatar path={avatarPath} fallback={user.fullName?.[0] ?? '?'} className="avatar-sm" />
             <span className="dim">{user.fullName}</span>
           </button>
-          <span className="badge badge-role">{user.role}</span>
+          <span className="badge badge-role">{roleLabel(user.role)}</span>
           <button className="btn btn-ghost btn-sm" onClick={logout}>
             Выйти
           </button>

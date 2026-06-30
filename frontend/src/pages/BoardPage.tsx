@@ -9,6 +9,7 @@ import { TaskDrawer } from '../components/TaskDrawer';
 import { TaskCreateModal } from '../components/TaskCreateModal';
 import { TeamPanel } from '../components/TeamPanel';
 import { CopilotPanel } from '../components/CopilotPanel';
+import { MONETIZATION_ENABLED } from '../config';
 
 type Action =
   | { type: 'SET'; board: Board }
@@ -51,6 +52,7 @@ export function BoardPage() {
   const { user } = useAuth();
   const isClient = user?.role === 'client';
   const canManageProjects = user?.role === 'owner' || user?.role === 'manager';
+  const showFinance = !isClient && MONETIZATION_ENABLED;
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -70,7 +72,7 @@ export function BoardPage() {
   const reloadBoard = useCallback(() => {
     if (!selected) return;
     api.getBoard(selected).then((b) => dispatch({ type: 'SET', board: b })).catch(() => undefined);
-    if (!isClient) api.getPnl(selected).then(setPnl).catch(() => undefined);
+    if (showFinance) api.getPnl(selected).then(setPnl).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, isClient]);
 
@@ -100,9 +102,10 @@ export function BoardPage() {
       .getBoard(selected)
       .then((b) => dispatch({ type: 'SET', board: b }))
       .catch((e) => setError(e instanceof ApiError ? e.message : 'Ошибка загрузки доски'));
-    if (!isClient) {
+    if (showFinance) {
       api.getPnl(selected).then(setPnl).catch(() => setPnl(null));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, isClient]);
 
   // realtime: доменные + финансовые события
@@ -329,7 +332,7 @@ export function BoardPage() {
                   </span>
                 )}
               </div>
-              {!isClient && <PnlPanel pnl={pnl} alert={alert} />}
+              {showFinance && <PnlPanel pnl={pnl} alert={alert} />}
             </div>
             <div className="board-columns">
               {board.columns.map((col, idx) => (

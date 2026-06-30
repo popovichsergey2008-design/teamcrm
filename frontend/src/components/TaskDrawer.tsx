@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import type { Task, User } from '../types';
 import { Lightbox } from './Lightbox';
+import { MONETIZATION_ENABLED } from '../config';
 
 interface Props {
   task: Task;
@@ -63,7 +64,7 @@ export function TaskDrawer({ task, users, timerActive, onToggleTimer, onClose, o
         <div className="drawer-row">
           <span className="badge badge-role">{task.status}</span>
           {task.risk_level && <span className={`risk-dot risk-${task.risk_level}`} />}
-          {cost !== null && <span className="badge">₽ {cost.toLocaleString('ru-RU')}</span>}
+          {MONETIZATION_ENABLED && cost !== null && <span className="badge">₽ {cost.toLocaleString('ru-RU')}</span>}
           {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
           <select className="input prio-select" value={priority} onChange={(e) => changePriority(e.target.value)}>
             {PRIORITIES.map(([v, l]) => <option key={v} value={v}>приоритет: {l}</option>)}

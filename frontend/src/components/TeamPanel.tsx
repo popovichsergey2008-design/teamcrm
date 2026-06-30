@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { ASSIGNABLE_ROLES } from '../lib/labels';
+import { MONETIZATION_ENABLED } from '../config';
 
 type Tab = 'people' | 'positions' | 'groups';
-const ROLES = ['owner', 'manager', 'member'];
+const roleOptions = ASSIGNABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>);
 
 export function TeamPanel({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('people');
@@ -82,7 +84,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
             <div className="add-user">
               <input className="input add-user-input" placeholder="E-mail" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} />
               <div className="drawer-grid2">
-                <select className="input" value={inv.role} onChange={(e) => setInv({ ...inv, role: e.target.value })}>{ROLES.map((r) => <option key={r}>{r}</option>)}</select>
+                <select className="input" value={inv.role} onChange={(e) => setInv({ ...inv, role: e.target.value })}>{roleOptions}</select>
                 <select className="input" value={inv.positionId} onChange={(e) => setInv({ ...inv, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
               </div>
               <button className="btn btn-sm" onClick={sendInvite}>Создать ссылку-приглашение</button>
@@ -100,7 +102,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
               <input className="input add-user-input" placeholder="E-mail" value={nu.email} onChange={(e) => setNu({ ...nu, email: e.target.value })} />
               <input className="input add-user-input" type="password" placeholder="Пароль (≥8)" value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} />
               <div className="drawer-grid2">
-                <select className="input" value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })}>{ROLES.map((r) => <option key={r}>{r}</option>)}</select>
+                <select className="input" value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })}>{roleOptions}</select>
                 <select className="input" value={nu.positionId} onChange={(e) => setNu({ ...nu, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
               </div>
               <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={addUser}>Добавить сотрудника</button>
@@ -114,13 +116,17 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                   <span className="dim">{u.positionName ?? '—'}</span>
                 </div>
                 <div className="drawer-grid2">
-                  <select className="input" value={u.role} onChange={(e) => patchUser(u.id, { role: e.target.value })}>{ROLES.map((r) => <option key={r}>{r}</option>)}</select>
+                  <select className="input" value={u.role} onChange={(e) => patchUser(u.id, { role: e.target.value })}>{roleOptions}</select>
                   <select className="input" value={u.positionId ?? ''} onChange={(e) => patchUser(u.id, { positionId: e.target.value || null })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
                 </div>
                 {u.groups?.length > 0 && <div className="dim" style={{ marginTop: 6 }}>Группы: {u.groups.map((g: any) => g.name).join(', ')}</div>}
                 <div className="team-rate">
-                  <input className="input" type="number" placeholder="₽/час" value={rate[u.id] ?? ''} onChange={(e) => setRate((r) => ({ ...r, [u.id]: e.target.value }))} />
-                  <button className="btn btn-sm" onClick={() => saveRate(u.id)}>Ставка</button>
+                  {MONETIZATION_ENABLED && (
+                    <>
+                      <input className="input" type="number" placeholder="₽/час" value={rate[u.id] ?? ''} onChange={(e) => setRate((r) => ({ ...r, [u.id]: e.target.value }))} />
+                      <button className="btn btn-sm" onClick={() => saveRate(u.id)}>Ставка</button>
+                    </>
+                  )}
                   <button className="btn btn-ghost btn-sm" onClick={() => loadMetrics(u.id)}>Метрики</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => patchUser(u.id, { isActive: !u.isActive })}>{u.isActive ? 'Деактив.' : 'Вкл.'}</button>
                 </div>

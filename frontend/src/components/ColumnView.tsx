@@ -1,5 +1,6 @@
 import { DragEvent, useState } from 'react';
 import type { BoardColumn, Task, User } from '../types';
+import { MONETIZATION_ENABLED } from '../config';
 
 interface Props {
   column: BoardColumn;
@@ -214,7 +215,7 @@ function TaskCard({
         {!!task.commentsCount && <span className="badge" title="комментарии">💬 {task.commentsCount}</span>}
         {!!task.attachmentsCount && <span className="badge" title="вложения">📎 {task.attachmentsCount}</span>}
         {!!task.checklistTotal && <span className="badge" title="чеклист">✓ {task.checklistDone}/{task.checklistTotal}</span>}
-        {cost !== null && (
+        {MONETIZATION_ENABLED && cost !== null && (
           <span className="badge" title="Себестоимость в реальном времени">
             ₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}
           </span>
