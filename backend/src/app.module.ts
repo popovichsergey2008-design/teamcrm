@@ -30,6 +30,8 @@ import { VelocityModule } from './modules/velocity/velocity.module';
 import { ForecastModule } from './modules/forecast/forecast.module';
 import { CopilotModule } from './modules/copilot/copilot.module';
 import { FilesModule } from './modules/files/files.module';
+import { TeamModule } from './modules/team/team.module';
+import { InvitesModule } from './modules/team/invites.module';
 
 @Module({
   imports: [
@@ -64,6 +66,8 @@ import { FilesModule } from './modules/files/files.module';
     ForecastModule,
     CopilotModule,
     FilesModule,
+    TeamModule,
+    InvitesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

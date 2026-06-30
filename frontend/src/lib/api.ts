@@ -130,9 +130,26 @@ export const api = {
   listStandups: () => request<any[]>('GET', '/standup/submissions'),
 
   // users / team
-  listUsers: () => request<import('../types').User[]>('GET', '/users'),
-  createUser: (b: { email: string; fullName: string; password: string; role?: string }) =>
-    request<import('../types').User>('POST', '/users', b),
+  listUsers: () => request<any[]>('GET', '/users'),
+  createUser: (b: { email: string; fullName: string; password: string; role?: string; positionId?: string; groupIds?: string[] }) =>
+    request<any>('POST', '/users', b),
+  updateUser: (id: string, b: { role?: string; positionId?: string | null; groupIds?: string[]; isActive?: boolean }) =>
+    request<any>('PATCH', `/users/${id}`, b),
+  // positions
+  listPositions: () => request<any[]>('GET', '/positions'),
+  createPosition: (name: string) => request<any>('POST', '/positions', { name }),
+  deletePosition: (id: string) => request<any>('DELETE', `/positions/${id}`),
+  // groups
+  listGroups: () => request<any[]>('GET', '/groups'),
+  createGroup: (b: { name: string; kind?: string }) => request<any>('POST', '/groups', b),
+  deleteGroup: (id: string) => request<any>('DELETE', `/groups/${id}`),
+  groupMembers: (id: string) => request<any[]>('GET', `/groups/${id}/members`),
+  addGroupMember: (id: string, userId: string) => request<any>('POST', `/groups/${id}/members`, { userId }),
+  removeGroupMember: (id: string, userId: string) => request<any>('DELETE', `/groups/${id}/members/${userId}`),
+  // invites
+  createInvite: (b: { email: string; role: string; positionId?: string }) => request<{ token: string; email: string }>('POST', '/invites', b),
+  acceptInvite: (b: { token: string; fullName: string; password: string }) =>
+    rawRequest<any>('POST', '/invites/accept', b, false),
 
   // Этап 4 — forecast, assignment, velocity, copilot
   assignTask: (id: string, b: { assigneeId: string; confirmOverload?: boolean; estimateHours?: number; deadlineAt?: string }) =>

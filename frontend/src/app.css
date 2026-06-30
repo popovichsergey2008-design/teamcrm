@@ -131,6 +131,13 @@
 .team-rate .input { flex: 1; }
 .team-metrics { margin-top: 8px; font-size: 13px; line-height: 1.6; }
 .add-user-input { margin-bottom: 8px; }
+.add-user { margin-bottom: 14px; }
+.tabs { display: flex; gap: 6px; margin: 4px 0 14px; border-bottom: 1px solid var(--border); }
+.tab { background: none; border: none; color: var(--text-dim); padding: 8px 12px; cursor: pointer; border-bottom: 2px solid transparent; }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.team-inactive { opacity: .55; }
+.invite-box { margin-top: 8px; font-size: 13px; color: var(--text-dim); }
+.invite-box .input { margin-top: 6px; }
 
 /* copilot panel */
 .copilot-empty { margin-top: 16px; }
