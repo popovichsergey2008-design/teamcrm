@@ -5,26 +5,47 @@ interface Props {
   column: BoardColumn;
   canEdit: boolean;
   canTrack: boolean;
+  canManage?: boolean;
+  isFirst?: boolean;
+  isLast?: boolean;
   activeTimerTask: string | null;
   onAddTask: (columnId: string, title: string) => void;
   onMoveTask: (taskId: string, columnId: string, position: number) => void;
   onToggleTimer: (taskId: string) => void;
   onOpenTask: (task: Task) => void;
+  onRenameColumn?: (columnId: string, name: string) => void;
+  onMoveColumn?: (columnId: string, direction: 'left' | 'right') => void;
+  onDeleteColumn?: (columnId: string, name: string) => void;
 }
 
 export function ColumnView({
   column,
   canEdit,
   canTrack,
+  canManage = false,
+  isFirst = false,
+  isLast = false,
   activeTimerTask,
   onAddTask,
   onMoveTask,
   onToggleTimer,
   onOpenTask,
+  onRenameColumn,
+  onMoveColumn,
+  onDeleteColumn,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
   const [over, setOver] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [colName, setColName] = useState(column.name);
+
+  const submitRename = () => {
+    const v = colName.trim();
+    if (v && v !== column.name) onRenameColumn?.(column.id, v);
+    else setColName(column.name);
+    setRenaming(false);
+  };
 
   const submitTask = () => {
     if (title.trim()) onAddTask(column.id, title.trim());
@@ -60,8 +81,37 @@ export function ColumnView({
       onDrop={canEdit ? onDropColumn : undefined}
     >
       <div className="column-head">
-        <span>{column.name}</span>
-        <span className="badge">{column.tasks.length}</span>
+        {renaming ? (
+          <input
+            className="input col-rename"
+            autoFocus
+            value={colName}
+            onChange={(e) => setColName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitRename();
+              if (e.key === 'Escape') { setColName(column.name); setRenaming(false); }
+            }}
+            onBlur={submitRename}
+          />
+        ) : (
+          <span
+            className={canManage ? 'col-name' : undefined}
+            title={canManage ? 'Переименовать' : undefined}
+            onClick={() => canManage && setRenaming(true)}
+          >
+            {column.name}
+          </span>
+        )}
+        <span className="col-head-right">
+          {canManage && !renaming && (
+            <span className="col-actions">
+              <button className="col-btn" title="Влево" disabled={isFirst} onClick={() => onMoveColumn?.(column.id, 'left')}>◀</button>
+              <button className="col-btn" title="Вправо" disabled={isLast} onClick={() => onMoveColumn?.(column.id, 'right')}>▶</button>
+              <button className="col-btn col-del" title="Удалить колонку" onClick={() => onDeleteColumn?.(column.id, column.name)}>✕</button>
+            </span>
+          )}
+          <span className="badge">{column.tasks.length}</span>
+        </span>
       </div>
 
       <div className="column-tasks">

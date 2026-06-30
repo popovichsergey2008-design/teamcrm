@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
+import { RealtimeService } from '../realtime/realtime.service';
 import { ProjectRow, ProjectsRepository } from './projects.repository';
 import { CreateProjectDto } from './projects.dto';
 
@@ -12,7 +13,10 @@ function toClientProject(row: ProjectRow) {
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly repo: ProjectsRepository) {}
+  constructor(
+    private readonly repo: ProjectsRepository,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async list(tenantId: string, role: string) {
     const rows = await this.repo.list(tenantId);
@@ -32,6 +36,47 @@ export class ProjectsService {
     await this.getOrThrow(tenantId, id); // 404, если проект не из этой организации
     await this.repo.deleteCascade(tenantId, id);
     return { deleted: true };
+  }
+
+  // ───── управление колонками доски ─────
+  private notifyColumns(tenantId: string, projectId: string) {
+    this.realtime.emit(tenantId, projectId, 'column.updated', { projectId });
+  }
+
+  async addColumn(tenantId: string, projectId: string, name: string) {
+    await this.getOrThrow(tenantId, projectId);
+    const col = await this.repo.addColumn(tenantId, projectId, name.trim());
+    this.notifyColumns(tenantId, projectId);
+    return col;
+  }
+
+  async renameColumn(tenantId: string, projectId: string, columnId: string, name: string) {
+    await this.getOrThrow(tenantId, projectId);
+    const col = await this.repo.renameColumn(tenantId, projectId, columnId, name.trim());
+    if (!col) throw AppException.notFound('Колонка не найдена');
+    this.notifyColumns(tenantId, projectId);
+    return col;
+  }
+
+  async deleteColumn(tenantId: string, projectId: string, columnId: string) {
+    await this.getOrThrow(tenantId, projectId);
+    const column = await this.repo.findColumn(tenantId, projectId, columnId);
+    if (!column) throw AppException.notFound('Колонка не найдена');
+    if ((await this.repo.countColumns(tenantId, projectId)) <= 1) {
+      throw AppException.conflict('Нельзя удалить последнюю колонку доски');
+    }
+    await this.repo.deleteColumn(tenantId, projectId, columnId);
+    this.notifyColumns(tenantId, projectId);
+    return { deleted: true };
+  }
+
+  async moveColumn(tenantId: string, projectId: string, columnId: string, direction: 'left' | 'right') {
+    await this.getOrThrow(tenantId, projectId);
+    const column = await this.repo.findColumn(tenantId, projectId, columnId);
+    if (!column) throw AppException.notFound('Колонка не найдена');
+    await this.repo.moveColumn(tenantId, projectId, columnId, direction);
+    this.notifyColumns(tenantId, projectId);
+    return { moved: true };
   }
 
   async getOrThrow(tenantId: string, id: string): Promise<ProjectRow> {

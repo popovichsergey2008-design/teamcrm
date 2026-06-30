@@ -137,6 +137,113 @@ export class ProjectsRepository {
     });
   }
 
+  countColumns(tenantId: string, projectId: string): Promise<number> {
+    return this.db
+      .one<{ n: string }>(
+        `SELECT COUNT(*)::int AS n FROM board_columns WHERE tenant_id = $1 AND project_id = $2`,
+        [tenantId, projectId],
+      )
+      .then((r) => Number(r?.n ?? 0));
+  }
+
+  /** Добавляет колонку в конец доски. */
+  addColumn(tenantId: string, projectId: string, name: string): Promise<ColumnRow | null> {
+    return this.db.one<ColumnRow>(
+      `INSERT INTO board_columns (tenant_id, project_id, name, position)
+       VALUES ($1, $2, $3,
+         (SELECT COALESCE(MAX(position) + 1, 0) FROM board_columns WHERE tenant_id = $1 AND project_id = $2))
+       RETURNING *`,
+      [tenantId, projectId, name],
+    );
+  }
+
+  renameColumn(tenantId: string, projectId: string, columnId: string, name: string): Promise<ColumnRow | null> {
+    return this.db.one<ColumnRow>(
+      `UPDATE board_columns SET name = $4 WHERE tenant_id = $1 AND project_id = $2 AND id = $3 RETURNING *`,
+      [tenantId, projectId, columnId, name],
+    );
+  }
+
+  /** Удаляет колонку; её задачи переносятся в крайнюю левую из оставшихся (без потери данных). */
+  async deleteColumn(tenantId: string, projectId: string, columnId: string): Promise<void> {
+    await this.db.withTransaction(async (client) => {
+      const others = (
+        await client.query<ColumnRow>(
+          `SELECT * FROM board_columns WHERE tenant_id = $1 AND project_id = $2 AND id <> $3 ORDER BY position ASC`,
+          [tenantId, projectId, columnId],
+        )
+      ).rows;
+      const target = others[0];
+      if (target) {
+        const off = (
+          await client.query<{ next: number }>(
+            `SELECT COALESCE(MAX(position) + 1, 0) AS next FROM tasks WHERE tenant_id = $1 AND column_id = $2`,
+            [tenantId, target.id],
+          )
+        ).rows[0].next;
+        // переносим задачи в целевую колонку, переоткрываем (целевая — не Done)
+        await client.query(
+          `UPDATE tasks SET column_id = $3, position = position + $4, status = $5, closed_at = NULL, updated_at = now()
+            WHERE tenant_id = $1 AND column_id = $2`,
+          [tenantId, columnId, target.id, off, target.name],
+        );
+      }
+      await client.query(
+        `DELETE FROM board_columns WHERE tenant_id = $1 AND project_id = $2 AND id = $3`,
+        [tenantId, projectId, columnId],
+      );
+      await this.renumberColumns(client, tenantId, projectId);
+    });
+  }
+
+  /** Перемещает колонку влево/вправо (перестановка с соседом). */
+  async moveColumn(tenantId: string, projectId: string, columnId: string, direction: 'left' | 'right'): Promise<void> {
+    await this.db.withTransaction(async (client) => {
+      const cols = (
+        await client.query<ColumnRow>(
+          `SELECT * FROM board_columns WHERE tenant_id = $1 AND project_id = $2 ORDER BY position ASC FOR UPDATE`,
+          [tenantId, projectId],
+        )
+      ).rows;
+      const idx = cols.findIndex((c) => String(c.id) === String(columnId));
+      if (idx < 0) return;
+      const swap = direction === 'left' ? idx - 1 : idx + 1;
+      if (swap < 0 || swap >= cols.length) return;
+      const order = cols.map((c) => c.id);
+      [order[idx], order[swap]] = [order[swap], order[idx]];
+      await this.applyColumnOrder(client, tenantId, order);
+    });
+  }
+
+  /** Пересортировка позиций 0..n-1 по текущему порядку (двухпроходно — из-за UNIQUE(project_id,position)). */
+  private async renumberColumns(client: PoolClient, tenantId: string, projectId: string): Promise<void> {
+    const cols = (
+      await client.query<{ id: string }>(
+        `SELECT id FROM board_columns WHERE tenant_id = $1 AND project_id = $2 ORDER BY position ASC`,
+        [tenantId, projectId],
+      )
+    ).rows;
+    await this.applyColumnOrder(client, tenantId, cols.map((c) => c.id));
+  }
+
+  /** Двухпроходное проставление позиций (сначала +большой офсет, потом финальные индексы). */
+  private async applyColumnOrder(client: PoolClient, tenantId: string, orderedIds: string[]): Promise<void> {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await client.query(`UPDATE board_columns SET position = $3 WHERE tenant_id = $1 AND id = $2`, [
+        tenantId,
+        orderedIds[i],
+        i + 1000,
+      ]);
+    }
+    for (let i = 0; i < orderedIds.length; i++) {
+      await client.query(`UPDATE board_columns SET position = $3 WHERE tenant_id = $1 AND id = $2`, [
+        tenantId,
+        orderedIds[i],
+        i,
+      ]);
+    }
+  }
+
   findColumnByName(tenantId: string, projectId: string, name: string): Promise<ColumnRow | null> {
     return this.db.one<ColumnRow>(
       `SELECT * FROM board_columns

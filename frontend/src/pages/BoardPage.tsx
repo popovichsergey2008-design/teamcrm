@@ -116,6 +116,8 @@ export function BoardPage() {
       setAlert(`Маржа ${a.margin}% ниже порога ${a.threshold}%`);
     const onAlertResolved = (a: { projectId: string }) =>
       String(a.projectId) === String(selected) && setAlert(null);
+    const onColumns = (p: { projectId: string }) =>
+      String(p.projectId) === String(selected) && reloadBoard();
 
     const subscribe = () => {
       socket.emit('project.subscribe', { projectId: selected });
@@ -130,6 +132,7 @@ export function BoardPage() {
     socket.on('project.pnl_changed', onPnl);
     socket.on('alert.raised', onAlert);
     socket.on('alert.resolved', onAlertResolved);
+    socket.on('column.updated', onColumns);
 
     return () => {
       if (subscribedRef.current) socket.emit('project.unsubscribe', { projectId: subscribedRef.current });
@@ -141,7 +144,9 @@ export function BoardPage() {
       socket.off('project.pnl_changed', onPnl);
       socket.off('alert.raised', onAlert);
       socket.off('alert.resolved', onAlertResolved);
+      socket.off('column.updated', onColumns);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
   const createProject = async () => {
@@ -167,6 +172,49 @@ export function BoardPage() {
       });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Не удалось удалить проект');
+    }
+  };
+
+  const addColumn = async () => {
+    if (!selected) return;
+    const name = window.prompt('Название колонки:');
+    if (!name || !name.trim()) return;
+    try {
+      await api.addColumn(selected, name.trim());
+      reloadBoard();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось добавить колонку');
+    }
+  };
+
+  const renameColumn = async (columnId: string, name: string) => {
+    if (!selected) return;
+    try {
+      await api.renameColumn(selected, columnId, name);
+      reloadBoard();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось переименовать колонку');
+    }
+  };
+
+  const moveColumn = async (columnId: string, direction: 'left' | 'right') => {
+    if (!selected) return;
+    try {
+      await api.moveColumn(selected, columnId, direction);
+      reloadBoard();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось переместить колонку');
+    }
+  };
+
+  const deleteColumn = async (columnId: string, name: string) => {
+    if (!selected) return;
+    if (!window.confirm(`Удалить колонку «${name}»? Её задачи переедут в первую колонку.`)) return;
+    try {
+      await api.deleteColumn(selected, columnId);
+      reloadBoard();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось удалить колонку');
     }
   };
 
@@ -271,19 +319,30 @@ export function BoardPage() {
               {!isClient && <PnlPanel pnl={pnl} alert={alert} />}
             </div>
             <div className="board-columns">
-              {board.columns.map((col) => (
+              {board.columns.map((col, idx) => (
                 <ColumnView
                   key={col.id}
                   column={col}
                   canEdit={!isClient}
                   canTrack={!isClient}
+                  canManage={canManageProjects}
+                  isFirst={idx === 0}
+                  isLast={idx === board.columns.length - 1}
                   activeTimerTask={activeTimerTask}
                   onAddTask={addTask}
                   onMoveTask={moveTask}
                   onToggleTimer={toggleTimer}
                   onOpenTask={(t) => setOpenTaskId(t.id)}
+                  onRenameColumn={renameColumn}
+                  onMoveColumn={moveColumn}
+                  onDeleteColumn={deleteColumn}
                 />
               ))}
+              {canManageProjects && (
+                <button className="add-column" onClick={addColumn} title="Добавить колонку">
+                  + колонка
+                </button>
+              )}
             </div>
           </>
         )}

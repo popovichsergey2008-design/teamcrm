@@ -164,6 +164,11 @@ export const api = {
   createProject: (b: { name: string; budget?: number }) => request<Project>('POST', '/projects', b),
   deleteProject: (id: string) => request<{ deleted: boolean }>('DELETE', `/projects/${id}`),
   getBoard: (projectId: string) => request<Board>('GET', `/projects/${projectId}/board`),
+  // колонки доски
+  addColumn: (projectId: string, name: string) => request<any>('POST', `/projects/${projectId}/columns`, { name }),
+  renameColumn: (projectId: string, colId: string, name: string) => request<any>('PATCH', `/projects/${projectId}/columns/${colId}`, { name }),
+  moveColumn: (projectId: string, colId: string, direction: 'left' | 'right') => request<any>('POST', `/projects/${projectId}/columns/${colId}/move`, { direction }),
+  deleteColumn: (projectId: string, colId: string) => request<{ deleted: boolean }>('DELETE', `/projects/${projectId}/columns/${colId}`),
 
   // tasks
   createTask: (b: { projectId: string; title: string; columnId?: string; description?: string }) =>
