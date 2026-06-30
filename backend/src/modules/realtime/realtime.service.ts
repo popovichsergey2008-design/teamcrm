@@ -94,6 +94,24 @@ export class RealtimeService {
   }
 
   /**
+   * Событие карточки (Этап D): во внутреннюю комнату всегда; в клиентскую — только если
+   * контент клиент-видимый (напр. публичный комментарий). Финансовые поля стрипаются.
+   */
+  emitScoped(
+    tenantId: string,
+    projectId: string,
+    event: string,
+    payload: Record<string, unknown>,
+    clientVisible = false,
+  ) {
+    if (!this.server) return;
+    this.server.to(RealtimeService.internalRoom(tenantId, projectId)).emit(event, payload);
+    if (clientVisible) {
+      this.server.to(RealtimeService.clientRoom(tenantId, projectId)).emit(event, stripFinancial(payload));
+    }
+  }
+
+  /**
    * Эмиссия ФИНАНСОВОГО события — только во внутреннюю комнату проекта.
    * Клиентская комната не получает событие вообще (фича №9).
    */

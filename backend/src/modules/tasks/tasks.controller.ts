@@ -14,7 +14,7 @@ export class TasksController {
 
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateTaskDto) {
-    return this.tasks.create(user.tenantId, dto);
+    return this.tasks.create(user.tenantId, dto, user.userId);
   }
 
   @Patch(':id')
@@ -23,7 +23,7 @@ export class TasksController {
     @Param('id') id: string,
     @Body() dto: UpdateTaskDto,
   ) {
-    return this.tasks.update(user.tenantId, id, dto);
+    return this.tasks.update(user.tenantId, id, dto, user.userId);
   }
 
   @Post(':id/move')
@@ -32,6 +32,6 @@ export class TasksController {
     @Param('id') id: string,
     @Body() dto: MoveTaskDto,
   ) {
-    return this.tasks.move(user.tenantId, id, dto);
+    return this.tasks.move(user.tenantId, id, dto, user.userId);
   }
 }

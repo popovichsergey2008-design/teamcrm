@@ -3,6 +3,7 @@ import { AppException } from '../../common/http/app-exception';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TaskRow, TasksRepository } from './tasks.repository';
+import { TaskActivityRepository } from './task-activity.repository';
 import { CreateTaskDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
 
 @Injectable()
@@ -11,9 +12,10 @@ export class TasksService {
     private readonly repo: TasksRepository,
     private readonly projects: ProjectsRepository,
     private readonly realtime: RealtimeService,
+    private readonly activity: TaskActivityRepository,
   ) {}
 
-  async create(tenantId: string, dto: CreateTaskDto): Promise<TaskRow> {
+  async create(tenantId: string, dto: CreateTaskDto, actorId: string | null = null): Promise<TaskRow> {
     const project = await this.projects.findById(tenantId, dto.projectId);
     if (!project) throw AppException.notFound('Project not found');
 
@@ -34,10 +36,11 @@ export class TasksService {
       assigneeId: dto.assigneeId ?? null,
     });
     this.realtime.emit(tenantId, task.project_id, 'task.created', task as any);
+    await this.activity.log(tenantId, task.id, actorId, 'created', { title: task.title });
     return task;
   }
 
-  async update(tenantId: string, id: string, dto: UpdateTaskDto): Promise<TaskRow> {
+  async update(tenantId: string, id: string, dto: UpdateTaskDto, actorId: string | null = null): Promise<TaskRow> {
     const existing = await this.repo.findById(tenantId, id);
     if (!existing) throw AppException.notFound('Task not found');
 
@@ -46,12 +49,15 @@ export class TasksService {
       description: dto.description,
       assignee_id: dto.assigneeId,
       is_blocked: dto.isBlocked,
+      priority: dto.priority,
     });
     this.realtime.emit(tenantId, existing.project_id, 'task.updated', updated as any);
+    const changed = Object.keys(dto).filter((k) => (dto as any)[k] !== undefined);
+    await this.activity.log(tenantId, id, actorId, 'updated', { fields: changed });
     return updated as TaskRow;
   }
 
-  async move(tenantId: string, id: string, dto: MoveTaskDto): Promise<TaskRow> {
+  async move(tenantId: string, id: string, dto: MoveTaskDto, actorId: string | null = null): Promise<TaskRow> {
     const task = await this.repo.findById(tenantId, id);
     if (!task) throw AppException.notFound('Task not found');
 
@@ -63,6 +69,7 @@ export class TasksService {
     if (column.name.toLowerCase() === 'done') await this.repo.closeTask(tenantId, id);
     else if (task.closed_at) await this.repo.reopenTask(tenantId, id);
     this.realtime.emit(tenantId, moved.project_id, 'task.moved', moved as any);
+    await this.activity.log(tenantId, id, actorId, 'moved', { to: column.name });
     return moved;
   }
 }

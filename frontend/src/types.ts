@@ -41,6 +41,12 @@ export interface Task {
   predicted_finish_at?: string | null;
   estimate_hours?: string | null;
   deadline_at?: string | null;
+  priority?: string;
+  labels?: { id: string; name: string; color: string }[];
+  commentsCount?: number;
+  attachmentsCount?: number;
+  checklistTotal?: number;
+  checklistDone?: number;
 }
 
 export interface BoardColumn {

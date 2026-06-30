@@ -13,6 +13,7 @@ export interface TaskRow {
   status: string;
   is_blocked: boolean;
   cost_current: string;
+  priority: string;
   created_at: Date;
   updated_at: Date;
   closed_at: Date | null;
@@ -80,6 +81,7 @@ export class TasksRepository {
       description: string | null;
       assignee_id: string | null;
       is_blocked: boolean;
+      priority: string;
     }>,
   ): Promise<TaskRow | null> {
     const fields: string[] = [];

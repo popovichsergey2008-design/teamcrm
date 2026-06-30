@@ -148,6 +148,23 @@
 .avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
 .notify-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
 
+/* карточка задачи — расширенная */
+.drawer-wide { width: 520px; }
+.prio-select { width: auto; padding: 4px 8px; font-size: 13px; }
+.prio-high { background: rgba(255,207,92,.15); color: var(--warn); border-color: rgba(255,207,92,.4); }
+.prio-urgent { background: rgba(255,107,107,.15); color: var(--danger); border-color: rgba(255,107,107,.4); }
+.labels-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.label-chip { font-size: 11px; padding: 3px 9px; border-radius: 999px; color: #fff; border: 1px solid transparent; cursor: pointer; }
+.label-off { color: var(--text-dim); }
+.label-pick { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--bg-elev-2); border-radius: var(--radius-sm); margin-top: 6px; }
+.comment { border-bottom: 1px solid var(--border); padding: 8px 0; font-size: 14px; }
+.comment-head { margin-bottom: 4px; font-size: 13px; }
+.comment-input { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.activity-row { font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+/* карточка на доске */
+.card-labels { display: flex; gap: 4px; margin-bottom: 6px; }
+.card-label { width: 28px; height: 5px; border-radius: 3px; }
+
 /* copilot panel */
 .copilot-empty { margin-top: 16px; }
 .rec-row { border-top: 1px solid var(--border); padding: 12px 0; }

@@ -131,12 +131,23 @@ function TaskCard({
       onDrop={canEdit ? onDropBefore : undefined}
       onDragOver={(e) => canEdit && e.preventDefault()}
     >
+      {task.labels && task.labels.length > 0 && (
+        <div className="card-labels">
+          {task.labels.map((l) => <span key={l.id} className="card-label" style={{ background: l.color }} title={l.name} />)}
+        </div>
+      )}
       <div className="task-title">
         {task.risk_level && <span className={`risk-dot risk-${task.risk_level}`} title={`Риск срока: ${task.risk_level}`} />}
         {task.title}
       </div>
       <div className="task-meta">
         {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
+        {(task.priority === 'high' || task.priority === 'urgent') && (
+          <span className={`badge prio-${task.priority}`}>{task.priority === 'urgent' ? '🔥 срочно' : '↑ высокий'}</span>
+        )}
+        {!!task.commentsCount && <span className="badge" title="комментарии">💬 {task.commentsCount}</span>}
+        {!!task.attachmentsCount && <span className="badge" title="вложения">📎 {task.attachmentsCount}</span>}
+        {!!task.checklistTotal && <span className="badge" title="чеклист">✓ {task.checklistDone}/{task.checklistTotal}</span>}
         {cost !== null && (
           <span className="badge" title="Себестоимость в реальном времени">
             ₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}

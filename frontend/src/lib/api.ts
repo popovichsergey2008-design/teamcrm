@@ -99,6 +99,30 @@ export const api = {
   logout: () => (tokens.refresh ? rawRequest('POST', '/auth/logout', { refreshToken: tokens.refresh }, false) : Promise.resolve()),
   me: () => request<any>('GET', '/me'),
 
+  // Этап D — карточка задачи
+  listComments: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/comments`),
+  addComment: (taskId: string, body: string, isClientVisible?: boolean) => request<any>('POST', `/tasks/${taskId}/comments`, { body, isClientVisible }),
+  deleteComment: (taskId: string, cid: string) => request<any>('DELETE', `/tasks/${taskId}/comments/${cid}`),
+  listAttachments: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/attachments`),
+  deleteAttachment: (taskId: string, aid: string) => request<any>('DELETE', `/tasks/${taskId}/attachments/${aid}`),
+  uploadAttachment: async (taskId: string, file: File) => {
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`/api/tasks/${taskId}/attachments`, { method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd });
+    const env = await res.json();
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Upload error');
+    return env.data;
+  },
+  listChecklist: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/checklist`),
+  addChecklist: (taskId: string, text: string) => request<any>('POST', `/tasks/${taskId}/checklist`, { text }),
+  patchChecklist: (taskId: string, iid: string, b: { text?: string; isDone?: boolean }) => request<any>('PATCH', `/tasks/${taskId}/checklist/${iid}`, b),
+  deleteChecklist: (taskId: string, iid: string) => request<any>('DELETE', `/tasks/${taskId}/checklist/${iid}`),
+  listLabels: () => request<any[]>('GET', '/labels'),
+  createLabel: (b: { name: string; color?: string }) => request<any>('POST', '/labels', b),
+  taskLabels: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/labels`),
+  assignLabel: (taskId: string, labelId: string) => request<any>('POST', `/tasks/${taskId}/labels/${labelId}`),
+  unassignLabel: (taskId: string, labelId: string) => request<any>('DELETE', `/tasks/${taskId}/labels/${labelId}`),
+  taskActivity: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/activity`),
+
   // Этап C — личный кабинет
   updateProfile: (b: { fullName?: string; phone?: string; timezone?: string; locale?: string }) =>
     request<any>('PATCH', '/me', b),
@@ -132,7 +156,7 @@ export const api = {
   // tasks
   createTask: (b: { projectId: string; title: string; columnId?: string; description?: string }) =>
     request<Task>('POST', '/tasks', b),
-  updateTask: (id: string, b: Partial<{ title: string; description: string; isBlocked: boolean }>) =>
+  updateTask: (id: string, b: Partial<{ title: string; description: string; isBlocked: boolean; priority: string }>) =>
     request<Task>('PATCH', `/tasks/${id}`, b),
   moveTask: (id: string, b: { columnId: string; position: number }) =>
     request<Task>('POST', `/tasks/${id}/move`, b),

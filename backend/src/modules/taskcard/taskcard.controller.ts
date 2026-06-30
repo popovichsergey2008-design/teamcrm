@@ -1,0 +1,119 @@
+import {
+  Body, Controller, Delete, Get, Param, Patch, Post, UploadedFile, UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { AuthUser } from '../../common/auth/jwt.types';
+import { AppException } from '../../common/http/app-exception';
+import { TaskCardService } from './taskcard.service';
+
+class CommentDto {
+  @IsString() @MinLength(1) @MaxLength(5000) body!: string;
+  @IsOptional() @IsBoolean() isClientVisible?: boolean;
+}
+class CommentEditDto {
+  @IsString() @MinLength(1) @MaxLength(5000) body!: string;
+}
+class ChecklistDto {
+  @IsString() @MinLength(1) @MaxLength(500) text!: string;
+}
+class ChecklistPatchDto {
+  @IsOptional() @IsString() @MaxLength(500) text?: string;
+  @IsOptional() @IsBoolean() isDone?: boolean;
+}
+class WatcherDto {
+  @IsOptional() @IsString() userId?: string;
+}
+
+@ApiTags('task-card')
+@ApiBearerAuth()
+@Controller('tasks')
+@Roles('owner', 'manager', 'member')
+export class TaskCardController {
+  constructor(private readonly svc: TaskCardService) {}
+
+  // comments
+  @Get(':id/comments')
+  listComments(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.listComments(u.tenantId, id, u.role, u.userId);
+  }
+  @Post(':id/comments')
+  addComment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CommentDto) {
+    return this.svc.addComment(u.tenantId, id, u.userId, dto.body, dto.isClientVisible === true);
+  }
+  @Patch(':id/comments/:cid')
+  editComment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('cid') cid: string, @Body() dto: CommentEditDto) {
+    return this.svc.editComment(u.tenantId, id, cid, u.userId, u.role, dto.body);
+  }
+  @Delete(':id/comments/:cid')
+  delComment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('cid') cid: string) {
+    return this.svc.deleteComment(u.tenantId, id, cid, u.userId, u.role);
+  }
+
+  // attachments
+  @Get(':id/attachments')
+  listAttachments(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.listAttachments(u.tenantId, id);
+  }
+  @Post(':id/attachments')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  addAttachment(@CurrentUser() u: AuthUser, @Param('id') id: string, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw AppException.validation('file is required');
+    return this.svc.attachUploaded(u.tenantId, id, u.userId, file);
+  }
+  @Delete(':id/attachments/:aid')
+  delAttachment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('aid') aid: string) {
+    return this.svc.removeAttachment(u.tenantId, id, aid);
+  }
+
+  // checklist
+  @Get(':id/checklist')
+  listChecklist(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.listChecklist(u.tenantId, id);
+  }
+  @Post(':id/checklist')
+  addChecklist(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ChecklistDto) {
+    return this.svc.addChecklist(u.tenantId, id, u.userId, dto.text);
+  }
+  @Patch(':id/checklist/:iid')
+  patchChecklist(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('iid') iid: string, @Body() dto: ChecklistPatchDto) {
+    return this.svc.updateChecklist(u.tenantId, id, iid, dto);
+  }
+  @Delete(':id/checklist/:iid')
+  delChecklist(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('iid') iid: string) {
+    return this.svc.deleteChecklist(u.tenantId, id, iid);
+  }
+
+  // labels (assignment on task)
+  @Get(':id/labels')
+  taskLabels(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.labelsForTask(u.tenantId, id);
+  }
+  @Post(':id/labels/:labelId')
+  assignLabel(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('labelId') labelId: string) {
+    return this.svc.assignLabel(u.tenantId, id, labelId, u.userId);
+  }
+  @Delete(':id/labels/:labelId')
+  unassignLabel(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('labelId') labelId: string) {
+    return this.svc.unassignLabel(u.tenantId, id, labelId);
+  }
+
+  // watchers
+  @Post(':id/watchers')
+  addWatcher(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: WatcherDto) {
+    return this.svc.addWatcher(u.tenantId, id, dto.userId ?? u.userId);
+  }
+  @Delete(':id/watchers/:userId')
+  removeWatcher(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('userId') userId: string) {
+    return this.svc.removeWatcher(u.tenantId, id, userId);
+  }
+
+  // activity
+  @Get(':id/activity')
+  activity(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.activityLog(u.tenantId, id);
+  }
+}

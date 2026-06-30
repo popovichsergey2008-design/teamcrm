@@ -33,6 +33,7 @@ import { FilesModule } from './modules/files/files.module';
 import { TeamModule } from './modules/team/team.module';
 import { InvitesModule } from './modules/team/invites.module';
 import { AccountModule } from './modules/account/account.module';
+import { TaskCardModule } from './modules/taskcard/taskcard.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { AccountModule } from './modules/account/account.module';
     TeamModule,
     InvitesModule,
     AccountModule,
+    TaskCardModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

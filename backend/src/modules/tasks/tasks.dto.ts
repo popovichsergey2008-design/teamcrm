@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -45,6 +46,10 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsBoolean()
   isBlocked?: boolean;
+
+  @IsOptional()
+  @IsIn(['low', 'normal', 'high', 'urgent'])
+  priority?: string;
 }
 
 export class MoveTaskDto {
