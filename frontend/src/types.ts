@@ -40,6 +40,9 @@ export interface Task {
   title: string;
   description: string | null;
   assignee_id: string | null;
+  assignee_name?: string | null;
+  created_by?: string | null;
+  manager_name?: string | null;
   status: string;
   is_blocked: boolean;
   cost_current?: string; // отсутствует в client-представлении (фича №9)

@@ -339,6 +339,7 @@ export function BoardPage() {
                 <ColumnView
                   key={col.id}
                   column={col}
+                  users={users}
                   canEdit={!isClient}
                   canTrack={!isClient}
                   canManage={canManageProjects}

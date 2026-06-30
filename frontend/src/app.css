@@ -242,7 +242,12 @@
 .rec-head { display: flex; gap: 6px; margin-bottom: 6px; }
 .rec-detail { font-size: 13px; margin-bottom: 8px; }
 .rec-actions { display: flex; gap: 6px; }
-.task-meta { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.task-meta { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+.assignee-chip {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim);
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px 2px 2px;
+}
+.avatar-xs { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; font-size: 10px; }
 
 .add-task { padding: 8px 10px; }
 .add-task-btn { margin: 6px 10px 10px; align-self: flex-start; }

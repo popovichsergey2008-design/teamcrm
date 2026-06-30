@@ -174,7 +174,7 @@ export const api = {
   // tasks
   createTask: (b: { projectId: string; title: string; columnId?: string; description?: string }) =>
     request<Task>('POST', '/tasks', b),
-  updateTask: (id: string, b: Partial<{ title: string; description: string; isBlocked: boolean; priority: string }>) =>
+  updateTask: (id: string, b: Partial<{ title: string; description: string; isBlocked: boolean; priority: string; managerId: string | null }>) =>
     request<Task>('PATCH', `/tasks/${id}`, b),
   moveTask: (id: string, b: { columnId: string; position: number }) =>
     request<Task>('POST', `/tasks/${id}/move`, b),

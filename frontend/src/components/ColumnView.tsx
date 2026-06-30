@@ -1,8 +1,9 @@
 import { DragEvent, useState } from 'react';
-import type { BoardColumn, Task } from '../types';
+import type { BoardColumn, Task, User } from '../types';
 
 interface Props {
   column: BoardColumn;
+  users?: User[];
   canEdit: boolean;
   canTrack: boolean;
   canManage?: boolean;
@@ -23,6 +24,7 @@ const COL_DND = 'application/x-teamcrm-column';
 
 export function ColumnView({
   column,
+  users,
   canEdit,
   canTrack,
   canManage = false,
@@ -148,6 +150,7 @@ export function ColumnView({
           <TaskCard
             key={t.id}
             task={t}
+            assigneeName={t.assignee_name ?? users?.find((u) => u.id === t.assignee_id)?.fullName ?? null}
             canEdit={canEdit}
             canTrack={canTrack}
             timerActive={activeTimerTask === t.id}
@@ -185,6 +188,7 @@ export function ColumnView({
 
 function TaskCard({
   task,
+  assigneeName,
   canEdit,
   canTrack,
   timerActive,
@@ -193,6 +197,7 @@ function TaskCard({
   onDropBefore,
 }: {
   task: Task;
+  assigneeName: string | null;
   canEdit: boolean;
   canTrack: boolean;
   timerActive: boolean;
@@ -220,6 +225,12 @@ function TaskCard({
         {task.title}
       </div>
       <div className="task-meta">
+        {assigneeName && (
+          <span className="assignee-chip" title={`Исполнитель: ${assigneeName}`}>
+            <span className="avatar-xs avatar-ph">{assigneeName[0]?.toUpperCase()}</span>
+            {assigneeName}
+          </span>
+        )}
         {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
         {(task.priority === 'high' || task.priority === 'urgent') && (
           <span className={`badge prio-${task.priority}`}>{task.priority === 'urgent' ? '🔥 срочно' : '↑ высокий'}</span>

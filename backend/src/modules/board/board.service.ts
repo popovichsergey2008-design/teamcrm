@@ -3,6 +3,7 @@ import { AppException } from '../../common/http/app-exception';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { TasksRepository, TaskRow } from '../tasks/tasks.repository';
 import { TaskCardRepository } from '../taskcard/taskcard.repository';
+import { UsersRepository } from '../users/users.repository';
 
 /** client-представление задачи — без финансов и внутренних метрик (фичи №9/№8).
  *  Дата прогноза и цвет светофора клиенту видны; cost_current и risk_pct — нет. */
@@ -19,6 +20,7 @@ export class BoardService {
     private readonly projects: ProjectsRepository,
     private readonly tasks: TasksRepository,
     private readonly card: TaskCardRepository,
+    private readonly users: UsersRepository,
   ) {}
 
   async getBoard(tenantId: string, projectId: string, role: string) {
@@ -28,6 +30,11 @@ export class BoardService {
     const columns = await this.projects.listColumns(tenantId, projectId);
     const tasks = await this.tasks.listByProject(tenantId, projectId);
     const isClient = role === 'client';
+
+    // карта id → имя для подписи исполнителя/руководителя на карточках
+    const nameById = new Map<string, string>();
+    for (const u of await this.users.listByTenant(tenantId)) nameById.set(String(u.id), u.full_name);
+    const nameOf = (id: string | null | undefined) => (id ? nameById.get(String(id)) ?? null : null);
 
     // обогащение карточек: метки + счётчики (комментарии/вложения/чеклист)
     const { labels, counts } = await this.card.boardMeta(tenantId, projectId);
@@ -44,6 +51,8 @@ export class BoardService {
       const c = countsByTask.get(t.id);
       return {
         ...t,
+        assignee_name: nameOf(t.assignee_id),
+        manager_name: nameOf(t.created_by),
         labels: labelsByTask.get(t.id) ?? [],
         commentsCount: c ? Number(c.comments) : 0,
         attachmentsCount: c ? Number(c.attachments) : 0,

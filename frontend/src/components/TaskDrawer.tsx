@@ -24,8 +24,14 @@ export function TaskDrawer({ task, users, timerActive, onToggleTimer, onClose, o
   const [err, setErr] = useState('');
   const [desc, setDesc] = useState(task.description ?? '');
   const [priority, setPriority] = useState(task.priority ?? 'normal');
+  const [managerId, setManagerId] = useState(task.created_by ?? '');
 
   const userName = (id?: string | null) => users.find((u) => u.id === id)?.fullName ?? '—';
+  const changeManager = async (id: string) => {
+    setManagerId(id);
+    await api.updateTask(task.id, { managerId: id || null });
+    onRefresh();
+  };
 
   const assign = async (confirmOverload: boolean) => {
     if (!assigneeId) return setErr('Выберите исполнителя');
@@ -83,11 +89,19 @@ export function TaskDrawer({ task, users, timerActive, onToggleTimer, onClose, o
             </div>
             <div className="drawer-section">
               <div className="drawer-section-title">Назначение и план</div>
-              <div className="field"><label>Исполнитель</label>
-                <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-                  <option value="">— не назначен —</option>
-                  {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-                </select>
+              <div className="drawer-grid2">
+                <div className="field"><label>Исполнитель</label>
+                  <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+                    <option value="">— не назначен —</option>
+                    {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
+                  </select>
+                </div>
+                <div className="field"><label>Руководитель</label>
+                  <select className="input" value={managerId} onChange={(e) => changeManager(e.target.value)}>
+                    <option value="">— не задан —</option>
+                    {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="drawer-grid2">
                 <div className="field"><label>Оценка, ч</label><input className="input" type="number" min="0" step="0.5" value={estimate} onChange={(e) => setEstimate(e.target.value)} /></div>
@@ -108,7 +122,7 @@ export function TaskDrawer({ task, users, timerActive, onToggleTimer, onClose, o
                 <span>{task.risk_level ? `риск ${task.risk_pct ?? '—'}% (${task.risk_level})` : 'нет прогноза'}</span>
               </div>
               {task.predicted_finish_at && <div className="dim">Прогноз: {new Date(task.predicted_finish_at).toLocaleString('ru-RU')}</div>}
-              <div className="dim">Исполнитель: {userName(task.assignee_id)}</div>
+              <div className="dim">Исполнитель: {userName(task.assignee_id)} · Руководитель: {userName(task.created_by)}</div>
             </div>
             <button className="btn btn-ghost btn-sm" onClick={toggleBlocked}>{task.is_blocked ? 'Снять блокер' : 'Отметить BLOCKED'}</button>
           </>

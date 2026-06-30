@@ -32,6 +32,10 @@ export class CreateTaskDto {
 export class UpdateTaskDto {
   @IsOptional()
   @IsString()
+  managerId?: string | null;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(255)
   title?: string;
 

@@ -10,6 +10,7 @@ export interface TaskRow {
   title: string;
   description: string | null;
   assignee_id: string | null;
+  created_by: string | null;
   status: string;
   is_blocked: boolean;
   cost_current: string;
@@ -46,6 +47,7 @@ export class TasksRepository {
     title: string;
     description?: string | null;
     assigneeId?: string | null;
+    createdBy?: string | null;
   }): Promise<TaskRow> {
     return this.db.withTransaction(async (client) => {
       const posRes = await client.query<{ next: number }>(
@@ -56,8 +58,8 @@ export class TasksRepository {
       const position = posRes.rows[0].next;
       const res = await client.query<TaskRow>(
         `INSERT INTO tasks
-           (tenant_id, project_id, column_id, position, title, description, assignee_id, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+           (tenant_id, project_id, column_id, position, title, description, assignee_id, status, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
         [
           input.tenantId,
           input.projectId,
@@ -67,6 +69,7 @@ export class TasksRepository {
           input.description ?? null,
           input.assigneeId ?? null,
           input.status,
+          input.createdBy ?? null,
         ],
       );
       return res.rows[0];
@@ -80,6 +83,7 @@ export class TasksRepository {
       title: string;
       description: string | null;
       assignee_id: string | null;
+      created_by: string | null;
       is_blocked: boolean;
       priority: string;
     }>,
