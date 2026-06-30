@@ -122,7 +122,7 @@ export function TaskDrawer({ task, users, timerActive, onToggleTimer, onClose, o
                 <span>{task.risk_level ? `риск ${task.risk_pct ?? '—'}% (${task.risk_level})` : 'нет прогноза'}</span>
               </div>
               {task.predicted_finish_at && <div className="dim">Прогноз: {new Date(task.predicted_finish_at).toLocaleString('ru-RU')}</div>}
-              <div className="dim">Исполнитель: {userName(task.assignee_id)} · Руководитель: {userName(task.created_by)}</div>
+              <div className="dim">Исполнитель: {userName(assigneeId || null)} · Руководитель: {userName(managerId || null)}</div>
             </div>
             <button className="btn btn-ghost btn-sm" onClick={toggleBlocked}>{task.is_blocked ? 'Снять блокер' : 'Отметить BLOCKED'}</button>
           </>
