@@ -1,4 +1,4 @@
-import { IsIn, IsNumber, IsOptional, IsString, MaxLength, MinLength, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsIn, IsNumber, IsOptional, IsString, MaxLength, MinLength, Min } from 'class-validator';
 
 export class CreateProjectDto {
   @IsString()
@@ -25,4 +25,11 @@ export class ColumnDto {
 export class MoveColumnDto {
   @IsIn(['left', 'right'], { message: 'direction должен быть left или right' })
   direction!: 'left' | 'right';
+}
+
+export class ReorderColumnsDto {
+  @IsArray()
+  @ArrayNotEmpty({ message: 'Передайте порядок колонок' })
+  @IsString({ each: true })
+  orderedIds!: string[];
 }

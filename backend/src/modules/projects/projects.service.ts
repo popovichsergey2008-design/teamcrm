@@ -79,6 +79,20 @@ export class ProjectsService {
     return { moved: true };
   }
 
+  async reorderColumns(tenantId: string, projectId: string, orderedIds: string[]) {
+    await this.getOrThrow(tenantId, projectId);
+    const cols = await this.repo.listColumns(tenantId, projectId);
+    const existing = new Set(cols.map((c) => String(c.id)));
+    const given = orderedIds.map(String);
+    const unique = new Set(given);
+    if (given.length !== existing.size || unique.size !== given.length || !given.every((id) => existing.has(id))) {
+      throw AppException.validation('Некорректный порядок колонок (набор не совпадает с текущим)');
+    }
+    await this.repo.reorderColumns(tenantId, projectId, given);
+    this.notifyColumns(tenantId, projectId);
+    return { reordered: true };
+  }
+
   async getOrThrow(tenantId: string, id: string): Promise<ProjectRow> {
     const row = await this.repo.findById(tenantId, id);
     if (!row) throw AppException.notFound('Project not found');

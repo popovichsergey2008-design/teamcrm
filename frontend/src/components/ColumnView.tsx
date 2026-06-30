@@ -16,7 +16,10 @@ interface Props {
   onRenameColumn?: (columnId: string, name: string) => void;
   onMoveColumn?: (columnId: string, direction: 'left' | 'right') => void;
   onDeleteColumn?: (columnId: string, name: string) => void;
+  onColumnDrop?: (sourceId: string, targetId: string) => void;
 }
+
+const COL_DND = 'application/x-teamcrm-column';
 
 export function ColumnView({
   column,
@@ -33,10 +36,13 @@ export function ColumnView({
   onRenameColumn,
   onMoveColumn,
   onDeleteColumn,
+  onColumnDrop,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
   const [over, setOver] = useState(false);
+  const [colOver, setColOver] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [colName, setColName] = useState(column.name);
 
@@ -56,11 +62,21 @@ export function ColumnView({
   const onDropColumn = (e: DragEvent) => {
     e.preventDefault();
     setOver(false);
+    setColOver(false);
+    // перетаскивание колонки имеет приоритет над переносом задачи
+    const srcCol = e.dataTransfer.getData(COL_DND);
+    if (srcCol) {
+      if (srcCol !== column.id) onColumnDrop?.(srcCol, column.id);
+      return;
+    }
     const taskId = e.dataTransfer.getData('text/plain');
     if (taskId) onMoveTask(taskId, column.id, column.tasks.length);
   };
 
+  const isColumnDrag = (e: DragEvent) => e.dataTransfer.types.includes(COL_DND);
+
   const onDropCard = (e: DragEvent, index: number) => {
+    if (e.dataTransfer.types.includes(COL_DND)) return; // дроп колонки — пусть всплывёт к колонке
     e.preventDefault();
     e.stopPropagation();
     setOver(false);
@@ -70,17 +86,30 @@ export function ColumnView({
 
   return (
     <div
-      className={`column ${over ? 'column-over' : ''}`}
+      className={`column ${over ? 'column-over' : ''} ${colOver ? 'column-dnd-over' : ''} ${dragging ? 'column-dragging' : ''}`}
       onDragOver={(e) => {
-        if (canEdit) {
+        if (isColumnDrag(e)) {
+          e.preventDefault();
+          setColOver(true);
+        } else if (canEdit) {
           e.preventDefault();
           setOver(true);
         }
       }}
-      onDragLeave={() => setOver(false)}
-      onDrop={canEdit ? onDropColumn : undefined}
+      onDragLeave={() => { setOver(false); setColOver(false); }}
+      onDrop={canEdit || canManage ? onDropColumn : undefined}
     >
-      <div className="column-head">
+      <div
+        className={`column-head ${canManage && !renaming ? 'column-head-drag' : ''}`}
+        draggable={canManage && !renaming}
+        onDragStart={(e) => {
+          if (!canManage || renaming) return;
+          e.dataTransfer.setData(COL_DND, column.id);
+          e.dataTransfer.effectAllowed = 'move';
+          setDragging(true);
+        }}
+        onDragEnd={() => setDragging(false)}
+      >
         {renaming ? (
           <input
             className="input col-rename"

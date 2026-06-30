@@ -63,6 +63,23 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
     expect(allTasks).toContain(String(task.id)); // задача сохранилась
   });
 
+  it('reorder произвольным порядком (drag-and-drop); кривой набор → 400', async () => {
+    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Reord', email: `r_${uniq()}@t.test`, password: 'password123', fullName: 'Р' }).expect(201)).body.data;
+    const tok = reg.accessToken;
+    const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Доска' }).expect(201)).body.data;
+    let board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+    const [a, b, c] = board.columns.map((x: any) => x.id);
+
+    // переставляем: Done, To Do, In Progress
+    await http.post(`/api/projects/${proj.id}/columns/reorder`).set(H(tok)).send({ orderedIds: [c, a, b] }).expect(201);
+    board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+    expect(names(board)).toEqual(['Done', 'To Do', 'In Progress']);
+
+    // неполный/чужой набор — ошибка валидации
+    await http.post(`/api/projects/${proj.id}/columns/reorder`).set(H(tok)).send({ orderedIds: [c, a] }).expect(400);
+    await http.post(`/api/projects/${proj.id}/columns/reorder`).set(H(tok)).send({ orderedIds: [c, a, b, '999999'] }).expect(400);
+  });
+
   it('нельзя удалить последнюю колонку; member не управляет колонками', async () => {
     const reg = (await http.post('/api/auth/register').send({ tenantName: 'Cols2', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'Б' }).expect(201)).body.data;
     const tok = reg.accessToken;

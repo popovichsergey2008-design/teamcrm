@@ -218,6 +218,22 @@ export function BoardPage() {
     }
   };
 
+  const reorderColumns = async (sourceId: string, targetId: string) => {
+    if (!selected || !board || sourceId === targetId) return;
+    const ids = board.columns.map((c) => c.id);
+    const from = ids.indexOf(sourceId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, sourceId);
+    try {
+      await api.reorderColumns(selected, ids);
+      reloadBoard();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось переставить колонки');
+    }
+  };
+
   const addTask = async (columnId: string, title: string) => {
     if (!selected) return;
     try {
@@ -336,6 +352,7 @@ export function BoardPage() {
                   onRenameColumn={renameColumn}
                   onMoveColumn={moveColumn}
                   onDeleteColumn={deleteColumn}
+                  onColumnDrop={reorderColumns}
                 />
               ))}
               {canManageProjects && (

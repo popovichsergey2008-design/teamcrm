@@ -109,7 +109,30 @@
   border-radius: var(--radius); cursor: pointer; transition: border-color .12s, color .12s;
 }
 .add-column:hover { border-color: var(--accent); color: var(--text); }
-.column-tasks { padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; min-height: 24px; }
+.column-tasks {
+  padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overflow-x: hidden;
+  flex: 1; min-height: 24px;
+  scrollbar-width: thin; scrollbar-color: var(--border-2) transparent;
+  scroll-behavior: smooth; overscroll-behavior: contain;
+}
+.column-tasks::-webkit-scrollbar { width: 8px; }
+.column-tasks::-webkit-scrollbar-track { background: transparent; margin: 4px 0; }
+.column-tasks::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+.column-tasks::-webkit-scrollbar-thumb:hover { background: var(--text-mut); background-clip: content-box; }
+.column-tasks::-webkit-scrollbar-thumb:active { background: var(--accent); background-clip: content-box; }
+
+/* горизонтальная прокрутка доски */
+.board-columns { scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
+.board-columns::-webkit-scrollbar { height: 10px; }
+.board-columns::-webkit-scrollbar-track { background: transparent; }
+.board-columns::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+.board-columns::-webkit-scrollbar-thumb:hover { background: var(--text-mut); background-clip: content-box; }
+
+/* drag-and-drop колонок */
+.column-head-drag { cursor: grab; }
+.column-head-drag:active { cursor: grabbing; }
+.column-dragging { opacity: .5; }
+.column-dnd-over { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
 
 .task-card {
   background: var(--bg-elev-2); border: 1px solid var(--border-2); border-radius: var(--radius-sm);

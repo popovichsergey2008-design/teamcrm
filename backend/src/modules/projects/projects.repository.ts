@@ -215,6 +215,14 @@ export class ProjectsRepository {
     });
   }
 
+  /** Устанавливает произвольный порядок колонок (drag-and-drop). Валидация набора — в сервисе. */
+  async reorderColumns(tenantId: string, projectId: string, orderedIds: string[]): Promise<void> {
+    void projectId;
+    await this.db.withTransaction(async (client) => {
+      await this.applyColumnOrder(client, tenantId, orderedIds);
+    });
+  }
+
   /** Пересортировка позиций 0..n-1 по текущему порядку (двухпроходно — из-за UNIQUE(project_id,position)). */
   private async renumberColumns(client: PoolClient, tenantId: string, projectId: string): Promise<void> {
     const cols = (

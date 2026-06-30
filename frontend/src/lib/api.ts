@@ -168,6 +168,7 @@ export const api = {
   addColumn: (projectId: string, name: string) => request<any>('POST', `/projects/${projectId}/columns`, { name }),
   renameColumn: (projectId: string, colId: string, name: string) => request<any>('PATCH', `/projects/${projectId}/columns/${colId}`, { name }),
   moveColumn: (projectId: string, colId: string, direction: 'left' | 'right') => request<any>('POST', `/projects/${projectId}/columns/${colId}/move`, { direction }),
+  reorderColumns: (projectId: string, orderedIds: string[]) => request<any>('POST', `/projects/${projectId}/columns/reorder`, { orderedIds }),
   deleteColumn: (projectId: string, colId: string) => request<{ deleted: boolean }>('DELETE', `/projects/${projectId}/columns/${colId}`),
 
   // tasks

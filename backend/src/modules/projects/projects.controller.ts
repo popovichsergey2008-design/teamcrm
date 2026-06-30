@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { ProjectsService } from './projects.service';
-import { ColumnDto, CreateProjectDto, MoveColumnDto } from './projects.dto';
+import { ColumnDto, CreateProjectDto, MoveColumnDto, ReorderColumnsDto } from './projects.dto';
 
 @ApiTags('projects')
 @ApiBearerAuth()
@@ -44,6 +44,12 @@ export class ProjectsController {
     @Body() dto: ColumnDto,
   ) {
     return this.projects.renameColumn(user.tenantId, id, colId, dto.name);
+  }
+
+  @Post(':id/columns/reorder')
+  @Roles('owner', 'manager')
+  reorderColumns(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ReorderColumnsDto) {
+    return this.projects.reorderColumns(user.tenantId, id, dto.orderedIds);
   }
 
   @Post(':id/columns/:colId/move')
