@@ -32,6 +32,7 @@ export function validateUpload(contentType: string, sizeBytes: number): Validati
 /** Безопасное имя файла: убираем путь и опасные символы. */
 export function sanitizeFileName(name: string): string {
   const base = (name || 'file').split(/[\\/]/).pop() || 'file';
-  const cleaned = base.replace(/[^A-Za-z0-9._\- ()]/g, '_').replace(/\s+/g, ' ').trim();
+  // разрешаем Unicode-буквы/цифры (кириллица и т.п.), убираем только опасные символы
+  const cleaned = base.replace(/[^\p{L}\p{N}._\- ()]/gu, '_').replace(/\s+/g, ' ').trim();
   return cleaned.slice(0, 180) || 'file';
 }

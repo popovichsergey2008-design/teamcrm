@@ -147,7 +147,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     // вложение задачи (Bitrix Disk → MinIO)
     const atts = (await http$.get(`/api/tasks/${task.id}/attachments`).set(H(tok)).expect(200)).body.data;
     expect(atts.length).toBe(1);
-    expect(atts[0].file_name).toContain('договор');
+    expect(atts[0].file_name).toContain('договор'); // кириллица в имени сохраняется
 
     // лента проекта → архив сообщений
     const messages = (await http$.get(`/api/integrations/bitrix/projects/${proj.id}/messages`).set(H(tok)).expect(200)).body.data;
