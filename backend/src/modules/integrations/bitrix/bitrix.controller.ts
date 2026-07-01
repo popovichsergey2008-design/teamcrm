@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../../common/auth/decorators';
 import { AuthUser } from '../../../common/auth/jwt.types';
 import { BitrixService } from './bitrix.service';
-import { ConnectBitrixDto, ImportBitrixDto } from './bitrix.dto';
+import { ConnectBitrixDto, ImportBitrixDto, MapUserDto } from './bitrix.dto';
 
 @ApiTags('integrations/bitrix')
 @ApiBearerAuth()
@@ -42,8 +42,20 @@ export class BitrixController {
     return this.bitrix.unmatchedUsers(u.tenantId, cid);
   }
 
+  @Post('connections/:cid/user-map')
+  mapUser(@CurrentUser() u: AuthUser, @Param('cid') cid: string, @Body() dto: MapUserDto) {
+    return this.bitrix.mapUser(u.tenantId, cid, dto.externalUserId, dto.localUserId);
+  }
+
   @Get('runs/:id')
   run(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.bitrix.getRun(u.tenantId, id);
+  }
+
+  // Лента импортированного проекта — доступна и не-владельцам (метод переопределяет @Roles класса)
+  @Get('projects/:pid/messages')
+  @Roles('owner', 'manager', 'member')
+  messages(@CurrentUser() u: AuthUser, @Param('pid') pid: string) {
+    return this.bitrix.importedMessages(u.tenantId, pid);
   }
 }

@@ -103,6 +103,59 @@ export class BitrixRepository {
     );
   }
 
+  // ── ручные привязки пользователей (external_refs entity_type='user') ──
+  async userRefs(connectionId: string): Promise<Map<string, string>> {
+    const rows = await this.db.many<{ external_id: string; local_id: string }>(
+      `SELECT external_id, local_id FROM external_refs WHERE connection_id=$1 AND entity_type='user'`,
+      [connectionId],
+    );
+    const m = new Map<string, string>();
+    for (const r of rows) m.set(String(r.external_id), r.local_id);
+    return m;
+  }
+  userExists(tenantId: string, userId: string) {
+    return this.db.one(`SELECT id FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, userId]);
+  }
+
+  // ── вложение задачи (идемпотентно по external file id) ──
+  async attachmentExists(connectionId: string, externalFileId: string) {
+    return this.getRef(connectionId, 'file', externalFileId);
+  }
+  async addAttachment(i: { tenantId: string; connectionId: string; externalFileId: string; taskId: string; fileId: string }) {
+    await this.db.query(
+      `INSERT INTO task_attachments (tenant_id, task_id, file_id) VALUES ($1,$2,$3)
+       ON CONFLICT (task_id, file_id) DO NOTHING`,
+      [i.tenantId, i.taskId, i.fileId],
+    );
+    await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'file', externalId: i.externalFileId, localId: i.fileId });
+  }
+
+  // ── сообщение уровня проекта (лента) ──
+  async upsertMessage(i: {
+    tenantId: string; connectionId: string; externalId: string; projectId: string;
+    authorUserId: string | null; authorLabel: string | null; body: string; postedAt: string | null;
+  }): Promise<boolean> {
+    if (await this.getRef(i.connectionId, 'message', i.externalId)) return false;
+    const row = await this.db.one<{ id: string }>(
+      `INSERT INTO imported_messages (tenant_id, connection_id, project_id, external_id, author_user_id, author_label, body, posted_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [i.tenantId, i.connectionId, i.projectId, i.externalId, i.authorUserId, i.authorLabel, i.body, i.postedAt],
+    );
+    await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'message', externalId: i.externalId, localId: row!.id });
+    return true;
+  }
+  listMessages(tenantId: string, projectId: string) {
+    return this.db.many(
+      `SELECT m.id, m.body, m.posted_at, m.author_label, u.full_name AS author_name
+         FROM imported_messages m LEFT JOIN users u ON u.id = m.author_user_id
+        WHERE m.tenant_id=$1 AND m.project_id=$2 ORDER BY m.posted_at NULLS LAST, m.id`,
+      [tenantId, projectId],
+    );
+  }
+  projectInTenant(tenantId: string, projectId: string) {
+    return this.db.one(`SELECT id FROM projects WHERE tenant_id=$1 AND id=$2`, [tenantId, projectId]);
+  }
+
   // ── карта пользователей арендатора: lower(email) → user_id ──
   async userEmailMap(tenantId: string): Promise<Map<string, string>> {
     const rows = await this.db.many<{ id: string; email: string }>(

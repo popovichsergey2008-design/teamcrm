@@ -65,12 +65,24 @@ function ImportBlock({ cid }: { cid: string }) {
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [run, setRun] = useState<any>(null);
   const [unmatched, setUnmatched] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [mapPick, setMapPick] = useState<Record<string, string>>({});
   const [err, setErr] = useState('');
 
+  const loadUnmatched = () => api.bitrixUnmatched(cid).then(setUnmatched).catch(() => undefined);
   useEffect(() => {
     api.bitrixProjects(cid).then(setProjects).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось получить проекты'));
-    api.bitrixUnmatched(cid).then(setUnmatched).catch(() => undefined);
+    api.listUsers().then(setUsers).catch(() => undefined);
+    loadUnmatched();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid]);
+
+  const mapUser = async (externalId: string) => {
+    const localUserId = mapPick[externalId];
+    if (!localUserId) return;
+    try { await api.bitrixMapUser(cid, externalId, localUserId); loadUnmatched(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка привязки'); }
+  };
 
   const startImport = async () => {
     const ids = Object.keys(picked).filter((k) => picked[k]);
@@ -120,8 +132,18 @@ function ImportBlock({ cid }: { cid: string }) {
         </div>
       )}
       {unmatched.length > 0 && (
-        <div className="dim" style={{ marginTop: 8, fontSize: 12 }}>
-          Не сопоставлены по e-mail ({unmatched.length}): {unmatched.slice(0, 5).map((u) => u.name).join(', ')}{unmatched.length > 5 ? '…' : ''}. Их задачи импортируются без исполнителя.
+        <div style={{ marginTop: 10 }}>
+          <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Не сопоставлены по e-mail ({unmatched.length}) — привяжите вручную:</div>
+          {unmatched.map((u) => (
+            <div key={u.externalId} className="team-rate" style={{ marginBottom: 4 }}>
+              <span style={{ flex: 1, fontSize: 13 }}>{u.name} <span className="dim">{u.email}</span></span>
+              <select className="input" value={mapPick[u.externalId] ?? ''} onChange={(e) => setMapPick((m) => ({ ...m, [u.externalId]: e.target.value }))}>
+                <option value="">— наш сотрудник —</option>
+                {users.map((x) => <option key={x.id} value={x.id}>{x.fullName}</option>)}
+              </select>
+              <button className="btn btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
+            </div>
+          ))}
         </div>
       )}
     </div>

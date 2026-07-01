@@ -8,6 +8,7 @@ import { PnlPanel } from '../components/PnlPanel';
 import { TaskDrawer } from '../components/TaskDrawer';
 import { TaskCreateModal } from '../components/TaskCreateModal';
 import { TaskListView } from '../components/TaskListView';
+import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { CopilotPanel } from '../components/CopilotPanel';
 import { MONETIZATION_ENABLED } from '../config';
@@ -72,6 +73,7 @@ export function BoardPage() {
   const switchView = (v: 'board' | 'list') => { setView(v); localStorage.setItem('teamcrm.boardView', v); };
   const [showTeam, setShowTeam] = useState(false);
   const [showCopilot, setShowCopilot] = useState(false);
+  const [showFeed, setShowFeed] = useState(false);
   const subscribedRef = useRef<string | null>(null);
 
   const reloadBoard = useCallback(() => {
@@ -339,6 +341,9 @@ export function BoardPage() {
                   <span className="board-actions">
                     <button className="btn btn-ghost btn-sm" onClick={() => setShowTeam(true)}>Команда</button>
                     <button className="btn btn-ghost btn-sm" onClick={() => setShowCopilot(true)}>Co-pilot</button>
+                    {board.project.origin === 'bitrix' && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => setShowFeed(true)}>Лента (импорт)</button>
+                    )}
                   </span>
                 )}
               </div>
@@ -410,6 +415,7 @@ export function BoardPage() {
       )}
       {showTeam && <TeamPanel onClose={() => setShowTeam(false)} />}
       {showCopilot && <CopilotPanel onClose={() => setShowCopilot(false)} onRefresh={reloadBoard} />}
+      {showFeed && selected && <ImportedFeedPanel projectId={selected} onClose={() => setShowFeed(false)} />}
     </div>
   );
 }

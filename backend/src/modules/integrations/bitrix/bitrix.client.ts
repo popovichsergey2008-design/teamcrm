@@ -108,6 +108,7 @@ export class BitrixClient {
         select: [
           'ID', 'TITLE', 'DESCRIPTION', 'RESPONSIBLE_ID', 'CREATED_BY', 'STAGE_ID',
           'STATUS', 'PRIORITY', 'DEADLINE', 'GROUP_ID', 'CLOSED_DATE', 'TAGS', 'CHANGED_DATE',
+          'UF_TASK_WEBDAV_FILES',
         ],
       },
       (res) => res?.tasks ?? [],
@@ -116,6 +117,28 @@ export class BitrixClient {
   async comments(taskId: string): Promise<any[]> {
     const r = await this.call<any>('task.commentitem.getlist', { TASKID: taskId });
     return Array.isArray(r) ? r : Object.values(r ?? {});
+  }
+
+  /** Инфо о файле на Диске (имя + прямая ссылка на скачивание). */
+  diskFile(id: string) {
+    return this.call<any>('disk.file.get', { id });
+  }
+
+  /** Скачать содержимое файла по DOWNLOAD_URL (ссылка уже с авторизацией). */
+  async download(url: string): Promise<Buffer> {
+    const res = await fetch(url, { signal: AbortSignal.timeout(60000) });
+    if (!res.ok) throw new BitrixError('HTTP_' + res.status, `Скачивание файла: ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  /** Лента группы (посты). Best-effort: не все порталы отдают через REST. */
+  async groupFeed(groupId: string): Promise<any[]> {
+    try {
+      const r = await this.call<any>('log.blogpost.get', { filter: { SOCNET_GROUP_ID: groupId } });
+      return Array.isArray(r) ? r : Object.values(r ?? {});
+    } catch {
+      return [];
+    }
   }
 
   private sleep(ms: number) {

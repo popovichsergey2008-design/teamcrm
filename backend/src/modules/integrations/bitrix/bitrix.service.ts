@@ -92,16 +92,31 @@ export class BitrixService {
   async unmatchedUsers(tenantId: string, cid: string) {
     const { client } = await this.clientFor(tenantId, cid);
     const emailMap = await this.repo.userEmailMap(tenantId);
+    const mapped = await this.repo.userRefs(cid);
     const users = await client.users();
     return users
       .filter((u: any) => {
+        const extId = String(u.ID ?? u.id);
         const email = String(u.EMAIL ?? u.email ?? '').toLowerCase();
-        return !email || !emailMap.has(email);
+        return !mapped.has(extId) && (!email || !emailMap.has(email));
       })
       .map((u: any) => ({
         externalId: String(u.ID ?? u.id),
         name: [u.NAME ?? u.name, u.LAST_NAME ?? u.lastName].filter(Boolean).join(' ').trim() || String(u.ID ?? u.id),
         email: String(u.EMAIL ?? u.email ?? ''),
       }));
+  }
+
+  async mapUser(tenantId: string, cid: string, externalUserId: string, localUserId: string) {
+    const conn = await this.repo.getConnection(tenantId, cid);
+    if (!conn) throw AppException.notFound('Подключение не найдено');
+    if (!(await this.repo.userExists(tenantId, localUserId))) throw AppException.validation('Пользователь не найден в организации');
+    await this.repo.putRef({ tenantId, connectionId: cid, entityType: 'user', externalId: String(externalUserId), localId: localUserId });
+    return { mapped: true };
+  }
+
+  async importedMessages(tenantId: string, projectId: string) {
+    if (!(await this.repo.projectInTenant(tenantId, projectId))) throw AppException.notFound('Проект не найден');
+    return this.repo.listMessages(tenantId, projectId);
   }
 }

@@ -17,3 +17,11 @@ export class ImportBitrixDto {
   @IsString({ each: true })
   projectExternalIds!: string[];
 }
+
+export class MapUserDto {
+  @IsString()
+  externalUserId!: string;
+
+  @IsString()
+  localUserId!: string;
+}

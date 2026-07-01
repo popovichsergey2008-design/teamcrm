@@ -26,13 +26,24 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
       let body = '';
       req.on('data', (c) => (body += c));
       req.on('end', () => {
+        // отдача содержимого файла по DOWNLOAD_URL
+        if ((req.url ?? '').startsWith('/dl/')) {
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.end('содержимое файла из битрикса');
+          return;
+        }
         const method = (req.url ?? '').split('/').filter(Boolean).pop();
+        const port = (mock.address() as AddressInfo).port;
         const reply = (result: any, extra: any = {}) => {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ result, ...extra }));
         };
         switch (method) {
           case 'profile': return reply({ ID: 1, NAME: 'Admin' });
+          case 'disk.file.get': return reply({ ID: '1', NAME: 'договор.txt', DOWNLOAD_URL: `http://127.0.0.1:${port}/dl/dogovor.txt` });
+          case 'log.blogpost.get': return reply([
+            { ID: '50', AUTHOR_ID: '5', DETAIL_TEXT: 'пост в ленте проекта', DATE_PUBLISH: '2026-06-03T09:00:00+03:00' },
+          ]);
           case 'user.get': return reply([
             { ID: '5', NAME: 'Анна', LAST_NAME: 'Босс', EMAIL: ownerEmail },
             { ID: '6', NAME: 'Гость', LAST_NAME: '', EMAIL: 'ghost@x.test' },
@@ -47,6 +58,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
             tasks: [{
               id: '1', title: 'Задача A', description: 'описание', responsibleId: '5', createdBy: '5',
               stageId: '200', status: '2', priority: '2', deadline: '', tags: ['срочно'],
+              ufTaskWebdavFiles: ['n1'],
             }],
           });
           case 'task.commentitem.getlist': return reply([
@@ -105,6 +117,8 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     expect(run.status).toBe('done');
     expect(run.stats.tasks).toBe(1);
     expect(run.stats.comments).toBe(2);
+    expect(run.stats.attachments).toBe(1); // вложение с Диска → MinIO
+    expect(run.stats.messages).toBe(1);    // пост из ленты проекта
 
     // проект появился как импортированный
     const list = (await http$.get('/api/projects').set(H(tok)).expect(200)).body.data;
@@ -130,9 +144,22 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     expect(bodies).toContain('коммент из битрикса');
     expect(bodies.some((b: string) => b.includes('[Импортировано из Битрикса, автор: Гость]'))).toBe(true);
 
-    // несопоставленные пользователи
-    const unmatched = (await http$.get(`/api/integrations/bitrix/connections/${cid}/unmatched-users`).set(H(tok)).expect(200)).body.data;
+    // вложение задачи (Bitrix Disk → MinIO)
+    const atts = (await http$.get(`/api/tasks/${task.id}/attachments`).set(H(tok)).expect(200)).body.data;
+    expect(atts.length).toBe(1);
+    expect(atts[0].file_name).toContain('договор');
+
+    // лента проекта → архив сообщений
+    const messages = (await http$.get(`/api/integrations/bitrix/projects/${proj.id}/messages`).set(H(tok)).expect(200)).body.data;
+    expect(messages.length).toBe(1);
+    expect(messages[0].body).toBe('пост в ленте проекта');
+
+    // несопоставленные пользователи + ручная привязка
+    let unmatched = (await http$.get(`/api/integrations/bitrix/connections/${cid}/unmatched-users`).set(H(tok)).expect(200)).body.data;
     expect(unmatched.some((u: any) => u.email === 'ghost@x.test')).toBe(true);
+    await http$.post(`/api/integrations/bitrix/connections/${cid}/user-map`).set(H(tok)).send({ externalUserId: '6', localUserId: reg.user.id }).expect(201);
+    unmatched = (await http$.get(`/api/integrations/bitrix/connections/${cid}/unmatched-users`).set(H(tok)).expect(200)).body.data;
+    expect(unmatched.some((u: any) => u.externalId === '6')).toBe(false); // после привязки исчез
 
     // повторный импорт — идемпотентно (без дублей)
     const started2 = (await http$.post(`/api/integrations/bitrix/connections/${cid}/import`).set(H(tok)).send({ projectExternalIds: ['10'] }).expect(201)).body.data;
@@ -143,6 +170,10 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     expect(inWork2.tasks.length).toBe(1); // не задвоилось
     const comments2 = (await http$.get(`/api/tasks/${task.id}/comments`).set(H(tok)).expect(200)).body.data;
     expect(comments2.length).toBe(2); // комментарии не задвоились
+    const atts2 = (await http$.get(`/api/tasks/${task.id}/attachments`).set(H(tok)).expect(200)).body.data;
+    expect(atts2.length).toBe(1); // вложения не задвоились
+    const messages2 = (await http$.get(`/api/integrations/bitrix/projects/${proj.id}/messages`).set(H(tok)).expect(200)).body.data;
+    expect(messages2.length).toBe(1); // сообщения ленты не задвоились
 
     // отключение
     await http$.delete(`/api/integrations/bitrix/connections/${cid}`).set(H(tok)).expect(200);

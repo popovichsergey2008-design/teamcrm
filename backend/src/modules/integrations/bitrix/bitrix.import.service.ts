@@ -2,36 +2,49 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { BitrixClient } from './bitrix.client';
 import { BitrixRepository } from './bitrix.repository';
+import { FilesService } from '../../files/files.service';
 
 const PRIORITY: Record<string, string> = { '0': 'low', '1': 'normal', '2': 'high' };
 const f = (o: any, ...keys: string[]) => {
   for (const k of keys) if (o?.[k] !== undefined && o?.[k] !== null) return o[k];
   return undefined;
 };
+const CT_BY_EXT: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+  pdf: 'application/pdf', txt: 'text/plain', csv: 'text/csv', md: 'text/markdown', zip: 'application/zip',
+  doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+};
+const ctByName = (name: string) => CT_BY_EXT[(name.split('.').pop() || '').toLowerCase()] || 'application/octet-stream';
 
 @Injectable()
 export class BitrixImportService {
   private readonly log = new Logger('BitrixImport');
 
-  constructor(private readonly repo: BitrixRepository) {}
+  constructor(
+    private readonly repo: BitrixRepository,
+    private readonly files: FilesService,
+  ) {}
 
   /** Полный проход импорта (in-process, статус в import_runs). */
   async run(i: {
     tenantId: string; connectionId: string; webhookUrl: string; projectExternalIds: string[]; runId: string; actorId: string;
   }): Promise<void> {
     const client = new BitrixClient(i.webhookUrl);
-    const stats: any = { projects: 0, columns: 0, tasks: 0, comments: 0, labels: 0, unmatchedUsers: 0 };
+    const stats: any = { projects: 0, columns: 0, tasks: 0, comments: 0, labels: 0, attachments: 0, messages: 0, unmatchedUsers: 0 };
     try {
       await this.repo.setRunRunning(i.runId);
 
-      // 1. пользователи: строим карту bitrixUserId → наш userId (матч по e-mail)
+      // 1. пользователи: ручные привязки (external_refs) + матч по e-mail
+      const bxUserToLocal = await this.repo.userRefs(i.connectionId);
       const emailMap = await this.repo.userEmailMap(i.tenantId);
       const bxUsers = await client.users();
-      const bxUserToLocal = new Map<string, string>();
       const unmatched = new Set<string>();
       for (const u of bxUsers) {
         const email = String(f(u, 'EMAIL', 'email') ?? '').toLowerCase();
         const bxId = String(f(u, 'ID', 'id'));
+        if (bxUserToLocal.has(bxId)) continue; // уже привязан вручную
         const local = email && emailMap.get(email);
         if (local) {
           bxUserToLocal.set(bxId, local);
@@ -139,7 +152,51 @@ export class BitrixImportService {
             });
             if (inserted) stats.comments++;
           }
+
+          // вложения задачи (Bitrix Disk → MinIO)
+          const rawFiles = f(t, 'ufTaskWebdavFiles', 'UF_TASK_WEBDAV_FILES');
+          const fileIds: string[] = Array.isArray(rawFiles) ? rawFiles : rawFiles ? Object.values(rawFiles).map(String) : [];
+          for (const raw of fileIds) {
+            const diskId = String(raw).replace(/\D/g, '');
+            if (!diskId) continue;
+            const extFileId = `${extId}:${diskId}`;
+            if (await this.repo.attachmentExists(i.connectionId, extFileId)) continue;
+            try {
+              const info = await client.diskFile(diskId);
+              const url = f(info, 'DOWNLOAD_URL', 'downloadUrl');
+              const name = String(f(info, 'NAME', 'name') ?? `file_${diskId}`);
+              if (!url) continue;
+              const buffer = await client.download(String(url));
+              const uploaded = await this.files.upload({
+                tenantId: i.tenantId, userId: i.actorId, buffer, fileName: name,
+                contentType: ctByName(name), ownerKind: 'task_attachment', ownerId: task.id,
+              });
+              await this.repo.addAttachment({ tenantId: i.tenantId, connectionId: i.connectionId, externalFileId: extFileId, taskId: task.id, fileId: uploaded.id });
+              stats.attachments++;
+            } catch (e) {
+              // неподдерживаемый тип/ошибка скачивания — пропускаем файл, импорт продолжается
+              this.log.warn(`skip file ${extFileId}: ${(e as Error).message}`);
+            }
+          }
         }
+
+        // лента проекта → архив сообщений (best-effort)
+        const feed = await client.groupFeed(String(gid));
+        for (const post of feed) {
+          const body = String(f(post, 'DETAIL_TEXT', 'detailText', 'POST_TEXT', 'PREVIEW_TEXT') ?? '').trim();
+          if (!body) continue;
+          const pExtId = String(f(post, 'ID', 'id'));
+          const bxAuthor = String(f(post, 'AUTHOR_ID', 'authorId') ?? '');
+          const localAuthor = bxUserToLocal.get(bxAuthor) ?? null;
+          const postedRaw = f(post, 'DATE_PUBLISH', 'datePublish', 'POST_DATE');
+          const postedAt = postedRaw ? new Date(postedRaw).toISOString() : null;
+          const inserted = await this.repo.upsertMessage({
+            tenantId: i.tenantId, connectionId: i.connectionId, externalId: pExtId, projectId: proj.id,
+            authorUserId: localAuthor, authorLabel: localAuthor ? null : `Bitrix #${bxAuthor}`, body, postedAt,
+          });
+          if (inserted) stats.messages++;
+        }
+
         await this.repo.setRunStats(i.runId, stats);
       }
 

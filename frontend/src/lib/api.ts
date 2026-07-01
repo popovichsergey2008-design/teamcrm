@@ -187,6 +187,8 @@ export const api = {
   bitrixImport: (cid: string, projectExternalIds: string[]) => request<{ runId: string; status: string }>('POST', `/integrations/bitrix/connections/${cid}/import`, { projectExternalIds }),
   bitrixRun: (id: string) => request<any>('GET', `/integrations/bitrix/runs/${id}`),
   bitrixUnmatched: (cid: string) => request<{ externalId: string; name: string; email: string }[]>('GET', `/integrations/bitrix/connections/${cid}/unmatched-users`),
+  bitrixMapUser: (cid: string, externalUserId: string, localUserId: string) => request<any>('POST', `/integrations/bitrix/connections/${cid}/user-map`, { externalUserId, localUserId }),
+  bitrixMessages: (projectId: string) => request<any[]>('GET', `/integrations/bitrix/projects/${projectId}/messages`),
 
   // deals
   listDeals: () => request<any[]>('GET', '/deals'),
