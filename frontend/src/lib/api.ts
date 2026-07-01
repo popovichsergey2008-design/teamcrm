@@ -179,6 +179,15 @@ export const api = {
   moveTask: (id: string, b: { columnId: string; position: number }) =>
     request<Task>('POST', `/tasks/${id}/move`, b),
 
+  // интеграции — Битрикс24 (импорт)
+  bitrixConnections: () => request<any[]>('GET', '/integrations/bitrix/connections'),
+  bitrixConnect: (webhookUrl: string, label?: string) => request<any>('POST', '/integrations/bitrix/connections', { webhookUrl, label }),
+  bitrixDisconnect: (cid: string) => request<any>('DELETE', `/integrations/bitrix/connections/${cid}`),
+  bitrixProjects: (cid: string) => request<{ externalId: string; name: string }[]>('GET', `/integrations/bitrix/connections/${cid}/projects`),
+  bitrixImport: (cid: string, projectExternalIds: string[]) => request<{ runId: string; status: string }>('POST', `/integrations/bitrix/connections/${cid}/import`, { projectExternalIds }),
+  bitrixRun: (id: string) => request<any>('GET', `/integrations/bitrix/runs/${id}`),
+  bitrixUnmatched: (cid: string) => request<{ externalId: string; name: string; email: string }[]>('GET', `/integrations/bitrix/connections/${cid}/unmatched-users`),
+
   // deals
   listDeals: () => request<any[]>('GET', '/deals'),
   createDeal: (b: { title: string; amount?: number; plannedMargin?: number }) =>

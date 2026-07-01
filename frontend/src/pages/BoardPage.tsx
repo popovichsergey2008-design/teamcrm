@@ -292,6 +292,7 @@ export function BoardPage() {
             <div key={p.id} className={`project-row ${p.id === selected ? 'active' : ''}`}>
               <button className="project-item" onClick={() => setSelected(p.id)}>
                 {p.name}
+                {p.origin === 'bitrix' && <span className="project-src" title="Импортировано из Битрикс24">⤓</span>}
               </button>
               {canManageProjects && (
                 <button

@@ -5,6 +5,7 @@ import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { ProfilePanel } from './components/ProfilePanel';
+import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { Avatar } from './components/Avatar';
 import { roleLabel } from './lib/labels';
 
@@ -12,6 +13,7 @@ export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [showIntegrations, setShowIntegrations] = useState(false);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
   const onSwitchOrg = async (tenantId: string) => {
@@ -71,6 +73,11 @@ export function App() {
           <button className="btn btn-ghost btn-sm" onClick={linkTelegram}>
             Привязать Telegram
           </button>
+          {user.role === 'owner' && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowIntegrations(true)}>
+              Интеграции
+            </button>
+          )}
           <button className="profile-btn" onClick={() => setShowProfile(true)} title="Личный кабинет">
             <Avatar path={avatarPath} fallback={user.fullName?.[0] ?? '?'} className="avatar-sm" />
             <span className="dim">{user.fullName}</span>
@@ -83,6 +90,7 @@ export function App() {
       </header>
       <BoardPage key={user.tenantId} />
       {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} onAvatar={setAvatarPath} />}
+      {showIntegrations && <IntegrationsPanel onClose={() => setShowIntegrations(false)} />}
     </div>
   );
 }

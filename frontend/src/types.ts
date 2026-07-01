@@ -30,6 +30,7 @@ export interface Project {
   budget?: string | null;
   client_id?: string | null;
   deal_id?: string | null;
+  origin?: string;
 }
 
 export interface Task {

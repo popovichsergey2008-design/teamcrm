@@ -1,0 +1,49 @@
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { CurrentUser, Roles } from '../../../common/auth/decorators';
+import { AuthUser } from '../../../common/auth/jwt.types';
+import { BitrixService } from './bitrix.service';
+import { ConnectBitrixDto, ImportBitrixDto } from './bitrix.dto';
+
+@ApiTags('integrations/bitrix')
+@ApiBearerAuth()
+@Controller('integrations/bitrix')
+@Roles('owner') // подключение внешних систем — только владелец
+export class BitrixController {
+  constructor(private readonly bitrix: BitrixService) {}
+
+  @Post('connections')
+  connect(@CurrentUser() u: AuthUser, @Body() dto: ConnectBitrixDto) {
+    return this.bitrix.connect(u.tenantId, u.userId, dto.webhookUrl, dto.label);
+  }
+
+  @Get('connections')
+  list(@CurrentUser() u: AuthUser) {
+    return this.bitrix.listConnections(u.tenantId);
+  }
+
+  @Delete('connections/:cid')
+  disconnect(@CurrentUser() u: AuthUser, @Param('cid') cid: string) {
+    return this.bitrix.disconnect(u.tenantId, cid);
+  }
+
+  @Get('connections/:cid/projects')
+  projects(@CurrentUser() u: AuthUser, @Param('cid') cid: string) {
+    return this.bitrix.listProjects(u.tenantId, cid);
+  }
+
+  @Post('connections/:cid/import')
+  import(@CurrentUser() u: AuthUser, @Param('cid') cid: string, @Body() dto: ImportBitrixDto) {
+    return this.bitrix.startImport(u.tenantId, u.userId, cid, dto.projectExternalIds);
+  }
+
+  @Get('connections/:cid/unmatched-users')
+  unmatched(@CurrentUser() u: AuthUser, @Param('cid') cid: string) {
+    return this.bitrix.unmatchedUsers(u.tenantId, cid);
+  }
+
+  @Get('runs/:id')
+  run(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.bitrix.getRun(u.tenantId, id);
+  }
+}

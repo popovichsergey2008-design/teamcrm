@@ -49,6 +49,7 @@
 .project-row:hover .project-del { opacity: 1; }
 .project-del:hover { color: var(--danger); }
 .sidebar-empty { padding: 8px 10px; font-size: 13px; }
+.project-src { margin-left: 6px; color: var(--accent); font-size: 12px; }
 .new-project { display: flex; gap: 6px; margin-top: 12px; }
 
 .board-main { flex: 1; min-width: 0; padding: 20px 24px; overflow: hidden; display: flex; flex-direction: column; }
