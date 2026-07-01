@@ -52,6 +52,11 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
                 <button className="btn btn-ghost btn-sm" onClick={() => disconnect(c.id)}>Отключить</button>
               </span>
             </div>
+            <div className="invite-box">
+              Живая синхронизация: в Битриксе создайте <b>исходящий вебхук</b> на этот URL (события ONTASKADD / ONTASKUPDATE / ONTASKDELETE / ONTASKCOMMENTADD):
+              <input className="input" readOnly value={`${window.location.origin}/api/integrations/bitrix/events/${c.event_token}`} onFocus={(e) => e.currentTarget.select()} />
+              {c.last_event_at && <span className="dim" style={{ fontSize: 12 }}>Последнее событие: {new Date(c.last_event_at).toLocaleString('ru-RU')}</span>}
+            </div>
             {openCid === c.id && <ImportBlock cid={c.id} />}
           </div>
         ))}

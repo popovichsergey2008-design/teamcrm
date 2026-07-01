@@ -9,6 +9,9 @@ export interface ConnectionRow {
   portal: string | null;
   webhook_enc: string;
   is_active: boolean;
+  created_by: string | null;
+  event_token: string;
+  last_event_at: Date | null;
   created_at: Date;
 }
 
@@ -18,18 +21,18 @@ export class BitrixRepository {
 
   // ── подключения ──
   createConnection(i: {
-    tenantId: string; provider: string; label: string | null; portal: string | null; webhookEnc: string; createdBy: string;
+    tenantId: string; provider: string; label: string | null; portal: string | null; webhookEnc: string; createdBy: string; eventToken: string;
   }): Promise<ConnectionRow> {
     return this.db.one<ConnectionRow>(
-      `INSERT INTO integration_connections (tenant_id, provider, label, portal, webhook_enc, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [i.tenantId, i.provider, i.label, i.portal, i.webhookEnc, i.createdBy],
+      `INSERT INTO integration_connections (tenant_id, provider, label, portal, webhook_enc, created_by, event_token)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [i.tenantId, i.provider, i.label, i.portal, i.webhookEnc, i.createdBy, i.eventToken],
     ) as Promise<ConnectionRow>;
   }
 
   listConnections(tenantId: string, provider: string) {
     return this.db.many(
-      `SELECT id, label, portal, is_active, created_at FROM integration_connections
+      `SELECT id, label, portal, is_active, event_token, last_event_at, created_at FROM integration_connections
         WHERE tenant_id=$1 AND provider=$2 ORDER BY created_at`,
       [tenantId, provider],
     );
@@ -40,6 +43,44 @@ export class BitrixRepository {
       `SELECT * FROM integration_connections WHERE tenant_id=$1 AND id=$2`,
       [tenantId, id],
     );
+  }
+
+  connectionByEventToken(token: string): Promise<ConnectionRow | null> {
+    return this.db.one<ConnectionRow>(
+      `SELECT * FROM integration_connections WHERE event_token=$1 AND is_active=TRUE`,
+      [token],
+    );
+  }
+
+  async touchEvent(id: string) {
+    await this.db.query(`UPDATE integration_connections SET last_event_at=now() WHERE id=$1`, [id]);
+  }
+
+  /** Удаляет импортированную задачу и её данные (событие ONTASKDELETE). */
+  async deleteImportedTask(tenantId: string, connectionId: string, externalTaskId: string): Promise<boolean> {
+    const ref = await this.getRef(connectionId, 'task', externalTaskId);
+    if (!ref) return false;
+    const localId = ref.local_id;
+    await this.db.withTransaction(async (c) => {
+      const t: [string, string] = [tenantId, localId];
+      // отвязать external_refs комментариев/файлов этой задачи
+      await c.query(
+        `DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='comment'
+           AND local_id IN (SELECT id FROM task_comments WHERE tenant_id=$2 AND task_id=$3)`,
+        [connectionId, tenantId, localId],
+      );
+      await c.query(
+        `DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='file'
+           AND local_id IN (SELECT file_id FROM task_attachments WHERE tenant_id=$2 AND task_id=$3)`,
+        [connectionId, tenantId, localId],
+      );
+      for (const tbl of ['task_comments', 'task_attachments', 'task_labels', 'task_watchers', 'task_checklist_items', 'task_activity', 'time_logs']) {
+        await c.query(`DELETE FROM ${tbl} WHERE tenant_id=$1 AND task_id=$2`, t);
+      }
+      await c.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='task' AND external_id=$2`, [connectionId, externalTaskId]);
+      await c.query(`DELETE FROM tasks WHERE tenant_id=$1 AND id=$2`, t);
+    });
+    return true;
   }
 
   connectionByPortal(tenantId: string, provider: string, portal: string) {

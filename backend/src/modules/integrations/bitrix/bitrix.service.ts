@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { AppException } from '../../../common/http/app-exception';
 import { IntegrationCryptoService } from '../crypto.service';
 import { BitrixClient } from './bitrix.client';
@@ -43,9 +44,35 @@ export class BitrixService {
     }
     const conn = await this.repo.createConnection({
       tenantId, provider: PROVIDER, label: label?.trim() || portal, portal,
-      webhookEnc: this.crypto.encrypt(webhookUrl), createdBy: actorId,
+      webhookEnc: this.crypto.encrypt(webhookUrl), createdBy: actorId, eventToken: randomBytes(24).toString('hex'),
     });
-    return { id: conn.id, portal, label: conn.label, isActive: true };
+    return { id: conn.id, portal, label: conn.label, isActive: true, eventToken: conn.event_token };
+  }
+
+  /** Обработка исходящего события Битрикса (публичный маршрут, роутинг по event_token). */
+  async handleEvent(token: string, body: any) {
+    const conn = await this.repo.connectionByEventToken(token);
+    if (!conn) return { received: false };
+    await this.repo.touchEvent(conn.id);
+
+    const event = String(body?.event ?? '').toUpperCase();
+    const data = body?.data ?? {};
+    const fields = data.FIELDS_AFTER ?? data.FIELDS_BEFORE ?? data.fields_after ?? data.fields_before ?? {};
+    const isComment = event.includes('COMMENT');
+    const webhookUrl = this.crypto.decrypt(conn.webhook_enc);
+
+    if (event.includes('DELETE') && !isComment) {
+      const delId = String(fields.ID ?? fields.id ?? '');
+      if (delId) void this.importer.deleteTaskByExternal(conn.tenant_id, conn.id, delId);
+    } else {
+      const taskId = String((isComment ? (fields.TASK_ID ?? fields.taskId) : (fields.ID ?? fields.id)) ?? '');
+      if (taskId) {
+        void this.importer.syncTaskById({
+          tenantId: conn.tenant_id, connectionId: conn.id, webhookUrl, actorId: conn.created_by, taskId,
+        });
+      }
+    }
+    return { received: true };
   }
 
   listConnections(tenantId: string) {

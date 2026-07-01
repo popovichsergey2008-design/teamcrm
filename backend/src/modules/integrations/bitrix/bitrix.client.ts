@@ -114,6 +114,18 @@ export class BitrixClient {
       (res) => res?.tasks ?? [],
     );
   }
+  /** Одна задача (для живой синхронизации по событию). */
+  async taskGet(id: string): Promise<any | null> {
+    const r = await this.call<any>('tasks.task.get', {
+      taskId: id,
+      select: [
+        'ID', 'TITLE', 'DESCRIPTION', 'RESPONSIBLE_ID', 'CREATED_BY', 'STAGE_ID',
+        'STATUS', 'PRIORITY', 'DEADLINE', 'GROUP_ID', 'CLOSED_DATE', 'TAGS', 'UF_TASK_WEBDAV_FILES',
+      ],
+    });
+    return r?.task ?? r ?? null;
+  }
+
   async comments(taskId: string): Promise<any[]> {
     const r = await this.call<any>('task.commentitem.getlist', { TASKID: taskId });
     return Array.isArray(r) ? r : Object.values(r ?? {});

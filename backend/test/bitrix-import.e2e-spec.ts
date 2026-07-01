@@ -61,6 +61,15 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
               ufTaskWebdavFiles: ['n1'],
             }],
           });
+          case 'tasks.task.get': {
+            let tid = '';
+            try { tid = String(JSON.parse(body).taskId ?? ''); } catch { /* */ }
+            return reply({ task: {
+              id: tid, title: tid === '2' ? 'Событийная задача' : 'Задача A', description: 'x',
+              responsibleId: '5', createdBy: '5', groupId: '10', stageId: tid === '2' ? '300' : '200',
+              status: '2', priority: '1', deadline: '', tags: [], ufTaskWebdavFiles: [],
+            } });
+          }
           case 'task.commentitem.getlist': return reply([
             { ID: '11', AUTHOR_ID: '5', AUTHOR_NAME: 'Анна Босс', POST_MESSAGE: 'коммент из битрикса', POST_DATE: '2026-06-01T10:00:00+03:00' },
             { ID: '12', AUTHOR_ID: '6', AUTHOR_NAME: 'Гость', POST_MESSAGE: 'от несопоставленного', POST_DATE: '2026-06-02T10:00:00+03:00' },
@@ -174,6 +183,36 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     expect(atts2.length).toBe(1); // вложения не задвоились
     const messages2 = (await http$.get(`/api/integrations/bitrix/projects/${proj.id}/messages`).set(H(tok)).expect(200)).body.data;
     expect(messages2.length).toBe(1); // сообщения ленты не задвоились
+
+    // E3: живое событие — новая задача через исходящий вебхук
+    expect(conn.eventToken).toBeTruthy();
+    const evUrl = `/api/integrations/bitrix/events/${conn.eventToken}`;
+    await http$.post(evUrl).set('Content-Type', 'application/x-www-form-urlencoded')
+      .send('event=ONTASKUPDATE&data[FIELDS_AFTER][ID]=2&auth[domain]=127.0.0.1').expect(201);
+    let appeared = false;
+    for (let k = 0; k < 25 && !appeared; k++) {
+      const bd = (await http$.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+      const done = bd.columns.find((c: any) => c.name === 'Готово');
+      if (done?.tasks.some((t: any) => t.title === 'Событийная задача')) appeared = true;
+      else await sleep(250);
+    }
+    expect(appeared).toBe(true); // задача из события синхронизирована в «Готово»
+
+    // E3: удаление задачи по событию ONTASKDELETE
+    await http$.post(evUrl).set('Content-Type', 'application/x-www-form-urlencoded')
+      .send('event=ONTASKDELETE&data[FIELDS_BEFORE][ID]=1').expect(201);
+    let gone = false;
+    for (let k = 0; k < 25 && !gone; k++) {
+      const bd = (await http$.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+      const all = bd.columns.flatMap((c: any) => c.tasks);
+      if (!all.some((t: any) => String(t.id) === String(task.id))) gone = true;
+      else await sleep(250);
+    }
+    expect(gone).toBe(true); // задача удалена по событию
+
+    // неизвестный event_token — тихо игнорируется (200)
+    await http$.post('/api/integrations/bitrix/events/deadbeef').set('Content-Type', 'application/x-www-form-urlencoded')
+      .send('event=ONTASKUPDATE&data[FIELDS_AFTER][ID]=9').expect(201);
 
     // отключение
     await http$.delete(`/api/integrations/bitrix/connections/${cid}`).set(H(tok)).expect(200);
