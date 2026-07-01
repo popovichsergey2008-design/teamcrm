@@ -50,6 +50,9 @@ export class BitrixRepository {
   }
 
   async deleteConnection(tenantId: string, id: string): Promise<void> {
+    // импортированные проекты ОСТАВЛЯЕМ, лишь отвязываем от подключения (FK)
+    await this.db.query(`UPDATE projects SET origin_connection_id=NULL WHERE tenant_id=$1 AND origin_connection_id=$2`, [tenantId, id]);
+    await this.db.query(`DELETE FROM imported_messages WHERE tenant_id=$1 AND connection_id=$2`, [tenantId, id]);
     await this.db.query(`DELETE FROM external_refs WHERE tenant_id=$1 AND connection_id=$2`, [tenantId, id]);
     await this.db.query(`DELETE FROM import_runs WHERE tenant_id=$1 AND connection_id=$2`, [tenantId, id]);
     await this.db.query(`DELETE FROM integration_connections WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
