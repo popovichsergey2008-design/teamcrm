@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { AppException } from '../../../common/http/app-exception';
 import { IntegrationCryptoService } from '../crypto.service';
-import { BitrixClient } from './bitrix.client';
+import { BitrixClient, BitrixError } from './bitrix.client';
 import { BitrixRepository } from './bitrix.repository';
 import { BitrixImportService } from './bitrix.import.service';
 
@@ -93,10 +93,27 @@ export class BitrixService {
     return { client: new BitrixClient(webhookUrl), webhookUrl };
   }
 
+  /** Переводит ошибку Битрикса в понятное сообщение (иначе — 500). */
+  private translate(e: unknown): never {
+    if (e instanceof BitrixError) {
+      if (/privileg|insufficient|scope|access denied|higher privileges/i.test(e.message)) {
+        throw AppException.validation(
+          'У вебхука недостаточно прав. В настройках входящего вебхука Битрикса включите права: task, user, sonet_group (и для вложений/ленты — disk, log), затем пересоздайте подключение.',
+        );
+      }
+      throw AppException.validation(`Битрикс: ${e.message}`);
+    }
+    throw e as Error;
+  }
+
   async listProjects(tenantId: string, cid: string) {
     const { client } = await this.clientFor(tenantId, cid);
-    const groups = await client.groups();
-    return groups.map((g: any) => ({ externalId: String(g.ID ?? g.id), name: String(g.NAME ?? g.name ?? 'Проект') }));
+    try {
+      const groups = await client.groups();
+      return groups.map((g: any) => ({ externalId: String(g.ID ?? g.id), name: String(g.NAME ?? g.name ?? 'Проект') }));
+    } catch (e) {
+      this.translate(e);
+    }
   }
 
   async startImport(tenantId: string, actorId: string, cid: string, projectExternalIds: string[]) {
@@ -120,7 +137,12 @@ export class BitrixService {
     const { client } = await this.clientFor(tenantId, cid);
     const emailMap = await this.repo.userEmailMap(tenantId);
     const mapped = await this.repo.userRefs(cid);
-    const users = await client.users();
+    let users: any[];
+    try {
+      users = await client.users();
+    } catch (e) {
+      this.translate(e);
+    }
     return users
       .filter((u: any) => {
         const extId = String(u.ID ?? u.id);
