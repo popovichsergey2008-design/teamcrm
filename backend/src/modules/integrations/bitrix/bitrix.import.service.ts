@@ -11,6 +11,9 @@ const f = (o: any, ...keys: string[]) => {
 };
 const CT_BY_EXT: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+  bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff', heic: 'image/heic',
+  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', avi: 'video/x-msvideo', mkv: 'video/x-matroska', mpeg: 'video/mpeg', mpg: 'video/mpeg',
+  mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4',
   pdf: 'application/pdf', txt: 'text/plain', csv: 'text/csv', md: 'text/markdown', zip: 'application/zip',
   doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -136,19 +139,28 @@ export class BitrixImportService {
       if (inserted) stats.comments++;
     }
 
-    // вложения (Bitrix Disk → MinIO)
-    const rawFiles = f(t, 'ufTaskWebdavFiles', 'UF_TASK_WEBDAV_FILES');
-    const fileIds: string[] = Array.isArray(rawFiles) ? rawFiles : rawFiles ? Object.values(rawFiles).map(String) : [];
-    for (const raw of fileIds) {
-      const diskId = String(raw).replace(/\D/g, '');
-      if (!diskId || !ctx.actorId) continue; // загрузка файла требует автора (uploaded_by)
-      const extFileId = `${extId}:${diskId}`;
+    // вложения (Bitrix Disk → MinIO). tasks.task.list часто НЕ отдаёт поле файлов —
+    // тогда дотягиваем через tasks.task.get.
+    let rawFiles = f(t, 'ufTaskWebdavFiles', 'UF_TASK_WEBDAV_FILES');
+    if (rawFiles === undefined && ctx.actorId) {
+      const full = await ctx.client.taskGet(extId).catch(() => null);
+      if (full) rawFiles = f(full, 'ufTaskWebdavFiles', 'UF_TASK_WEBDAV_FILES');
+    }
+    const fileVals: string[] = Array.isArray(rawFiles) ? rawFiles : rawFiles ? Object.values(rawFiles).map(String) : [];
+    for (const raw of fileVals) {
+      const val = String(raw);
+      const digits = val.replace(/\D/g, '');
+      if (!digits || !ctx.actorId) continue; // загрузка файла требует автора (uploaded_by)
+      const extFileId = `${extId}:${val}`;
       if (await this.repo.attachmentExists(ctx.connectionId, extFileId)) continue;
       try {
-        const info = await ctx.client.diskFile(diskId);
+        // id вида "n123" — это attachedObject; чистое число — файл Диска
+        const info = /^n/i.test(val)
+          ? await ctx.client.attachedObject(digits)
+          : await ctx.client.diskFile(digits);
         const url = f(info, 'DOWNLOAD_URL', 'downloadUrl');
-        const name = String(f(info, 'NAME', 'name') ?? `file_${diskId}`);
-        if (!url) continue;
+        const name = String(f(info, 'NAME', 'name') ?? `file_${digits}`);
+        if (!url) { this.log.warn(`file ${extFileId}: нет DOWNLOAD_URL`); continue; }
         const buffer = await ctx.client.download(String(url));
         const uploaded = await this.files.upload({
           tenantId: ctx.tenantId, userId: ctx.actorId, buffer, fileName: name,

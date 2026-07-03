@@ -201,7 +201,7 @@ function ChecklistTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => 
 
 function FilesTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
   const [files, setFiles] = useState<any[]>([]);
-  const [preview, setPreview] = useState<{ url: string; name: string } | null>(null);
+  const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [err, setErr] = useState('');
   const reload = () => api.listAttachments(taskId).then(setFiles).catch(() => undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -216,8 +216,8 @@ function FilesTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
     try {
       const blob = await api.authedBlob(`/api/files/${f.file_id}`);
       const url = URL.createObjectURL(blob);
-      if (blob.type.startsWith('image/')) {
-        setPreview({ url, name: f.file_name });
+      if (blob.type.startsWith('image/') || blob.type.startsWith('video/')) {
+        setPreview({ url, name: f.file_name, mime: blob.type });
       } else {
         const a = document.createElement('a');
         a.href = url; a.download = f.file_name; a.click();
@@ -244,7 +244,7 @@ function FilesTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
         </div>
       ))}
       {files.length === 0 && <div className="muted" style={{ marginTop: 10 }}>Файлов нет</div>}
-      {preview && <Lightbox url={preview.url} name={preview.name} onClose={closePreview} />}
+      {preview && <Lightbox url={preview.url} name={preview.name} mime={preview.mime} onClose={closePreview} />}
     </>
   );
 }

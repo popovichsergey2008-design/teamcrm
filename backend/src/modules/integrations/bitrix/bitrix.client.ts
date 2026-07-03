@@ -136,6 +136,11 @@ export class BitrixClient {
     return this.call<any>('disk.file.get', { id });
   }
 
+  /** Прикреплённый объект (UF_TASK_WEBDAV_FILES хранит id вида n123 — это attachedObject). */
+  attachedObject(id: string) {
+    return this.call<any>('disk.attachedObject.get', { id });
+  }
+
   /** Скачать содержимое файла по DOWNLOAD_URL (ссылка уже с авторизацией). */
   async download(url: string): Promise<Buffer> {
     const res = await fetch(url, { signal: AbortSignal.timeout(60000) });

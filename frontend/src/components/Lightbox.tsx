@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 
-/** Попап-просмотр картинки поверх карточки (закрытие по фону/Esc). */
-export function Lightbox({ url, name, onClose }: { url: string; name: string; onClose: () => void }) {
+/** Попап-просмотр картинки/видео поверх карточки (закрытие по фону/Esc). */
+export function Lightbox({ url, name, mime, onClose }: { url: string; name: string; mime?: string; onClose: () => void }) {
+  const isVideo = (mime ?? '').startsWith('video/');
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -18,7 +19,9 @@ export function Lightbox({ url, name, onClose }: { url: string; name: string; on
             <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
           </div>
         </div>
-        <img className="lightbox-img" src={url} alt={name} />
+        {isVideo
+          ? <video className="lightbox-img" src={url} controls autoPlay />
+          : <img className="lightbox-img" src={url} alt={name} />}
       </div>
     </div>
   );

@@ -40,7 +40,9 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
         };
         switch (method) {
           case 'profile': return reply({ ID: 1, NAME: 'Admin' });
-          case 'disk.file.get': return reply({ ID: '1', NAME: 'договор.txt', DOWNLOAD_URL: `http://127.0.0.1:${port}/dl/dogovor.txt` });
+          case 'disk.file.get':
+          case 'disk.attachedObject.get':
+            return reply({ ID: '1', NAME: 'договор.txt', DOWNLOAD_URL: `http://127.0.0.1:${port}/dl/dogovor.txt` });
           case 'log.blogpost.get': return reply([
             { ID: '50', AUTHOR_ID: '5', DETAIL_TEXT: 'пост в ленте проекта', DATE_PUBLISH: '2026-06-03T09:00:00+03:00' },
           ]);
