@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+
 /**
  * Провайдеры AI. Реальные Whisper/Anthropic используются при наличии ключей в env,
  * иначе — детерминированный mock (конвейер полностью работает и тестируется без секретов).
@@ -7,6 +9,28 @@ export interface AiProvider {
   name: string;
   transcribe(audioRefOrText: string): Promise<string>;
   parseIntents(maskedText: string): Promise<unknown>;
+  embed(text: string): Promise<number[]>;
+}
+
+export const EMBED_DIM = 1536;
+
+/** Детерминированный псевдо-эмбеддинг (1536, единичной длины) — для dev/CI без ключей. */
+export function mockEmbed(text: string): number[] {
+  const seed = createHash('sha256').update(text).digest();
+  // xorshift128, засеянный первыми байтами хеша
+  let a = seed.readUInt32LE(0) || 1, b = seed.readUInt32LE(4) || 2, c = seed.readUInt32LE(8) || 3, d = seed.readUInt32LE(12) || 4;
+  const rnd = () => {
+    const t = a ^ (a << 11);
+    a = b; b = c; c = d;
+    d = (d ^ (d >>> 19) ^ (t ^ (t >>> 8))) >>> 0;
+    return d / 0xffffffff;
+  };
+  const v = new Array(EMBED_DIM);
+  let norm = 0;
+  for (let i = 0; i < EMBED_DIM; i++) { const x = rnd() * 2 - 1; v[i] = x; norm += x * x; }
+  norm = Math.sqrt(norm) || 1;
+  for (let i = 0; i < EMBED_DIM; i++) v[i] /= norm;
+  return v;
 }
 
 function parseMockDsl(text: string): unknown {
@@ -45,6 +69,9 @@ export class MockAiProvider implements AiProvider {
   }
   async parseIntents(maskedText: string): Promise<unknown> {
     return parseMockDsl(maskedText);
+  }
+  async embed(text: string): Promise<number[]> {
+    return mockEmbed(text);
   }
 }
 
@@ -100,6 +127,22 @@ export class RealAiProvider implements AiProvider {
       return JSON.parse(text.replace(/^```json\s*|\s*```$/g, ''));
     } catch {
       return { actions: [], confidence: 0 };
+    }
+  }
+
+  async embed(text: string): Promise<number[]> {
+    if (!this.openaiKey) return mockEmbed(text);
+    try {
+      const res = await fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.openaiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'text-embedding-3-small', input: text.slice(0, 8000) }),
+      });
+      const json: any = await res.json();
+      const vec = json?.data?.[0]?.embedding;
+      return Array.isArray(vec) && vec.length === EMBED_DIM ? vec : mockEmbed(text);
+    } catch {
+      return mockEmbed(text);
     }
   }
 }

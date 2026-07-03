@@ -14,6 +14,7 @@ export const Q_NOTIFICATIONS = 'notifications';
 export const Q_AI_STANDUP = 'ai_standup';
 export const Q_ANALYTICS = 'analytics';
 export const Q_AI_ASSIST = 'ai_assist';
+export const Q_EMBEDDINGS = 'embeddings';
 
 type Handler = (msg: any) => Promise<void>;
 
@@ -51,6 +52,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       await this.channel.assertQueue(Q_AI_STANDUP, { durable: true });
       await this.channel.assertQueue(Q_ANALYTICS, { durable: true });
       await this.channel.assertQueue(Q_AI_ASSIST, { durable: true });
+      await this.channel.assertQueue(Q_EMBEDDINGS, { durable: true });
       this.connection.on('close', () => {
         this.logger.warn('connection closed, reconnecting in 3s');
         this.channel = null;

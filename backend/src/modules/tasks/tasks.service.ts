@@ -5,6 +5,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { TaskRow, TasksRepository } from './tasks.repository';
 import { TaskActivityRepository } from './task-activity.repository';
 import { CreateTaskDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 
 /** Колонка-«готово» (закрывает задачу): дефолтное 'done' + распространённые русские имена. */
 const DONE_NAMES = new Set(['done', 'готово', 'выполнено', 'завершено', 'завершён', 'завершен', 'закрыто', 'сделано']);
@@ -19,6 +20,7 @@ export class TasksService {
     private readonly projects: ProjectsRepository,
     private readonly realtime: RealtimeService,
     private readonly activity: TaskActivityRepository,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   async create(tenantId: string, dto: CreateTaskDto, actorId: string | null = null): Promise<TaskRow> {
@@ -74,8 +76,10 @@ export class TasksService {
 
     const moved = await this.repo.move(tenantId, id, dto.columnId, dto.position, column.name);
     // перенос в Done закрывает задачу (источник для Velocity/эмбеддингов); вынос — переоткрывает
-    if (isDoneColumn(column.name)) await this.repo.closeTask(tenantId, id);
-    else if (task.closed_at) await this.repo.reopenTask(tenantId, id);
+    if (isDoneColumn(column.name)) {
+      await this.repo.closeTask(tenantId, id);
+      this.knowledge.enqueue(tenantId, 'task', id); // закрытая задача → в базу знаний
+    } else if (task.closed_at) await this.repo.reopenTask(tenantId, id);
     this.realtime.emit(tenantId, moved.project_id, 'task.moved', moved as any);
     await this.activity.log(tenantId, id, actorId, 'moved', { to: column.name });
     return moved;

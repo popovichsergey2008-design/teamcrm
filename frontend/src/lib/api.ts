@@ -179,6 +179,16 @@ export const api = {
   moveTask: (id: string, b: { columnId: string; position: number }) =>
     request<Task>('POST', `/tasks/${id}/move`, b),
 
+  // база знаний (Этап 5, K1)
+  knowledgeSearch: (q: string, k = 8) => request<any[]>('GET', `/knowledge/search?q=${encodeURIComponent(q)}&k=${k}`),
+  knowledgeStats: () => request<{ chunks: string; sources: string }>('GET', '/knowledge/stats'),
+  knowledgeReindex: () => request<{ queued: number }>('POST', '/knowledge/reindex'),
+  listRegulations: () => request<any[]>('GET', '/regulations'),
+  getRegulation: (id: string) => request<any>('GET', `/regulations/${id}`),
+  createRegulation: (b: { title: string; body: string }) => request<any>('POST', '/regulations', b),
+  updateRegulation: (id: string, b: { title: string; body: string }) => request<any>('PUT', `/regulations/${id}`, b),
+  deleteRegulation: (id: string) => request<any>('DELETE', `/regulations/${id}`),
+
   // интеграции — Битрикс24 (импорт)
   bitrixConnections: () => request<any[]>('GET', '/integrations/bitrix/connections'),
   bitrixConnect: (webhookUrl: string, label?: string) => request<any>('POST', '/integrations/bitrix/connections', { webhookUrl, label }),

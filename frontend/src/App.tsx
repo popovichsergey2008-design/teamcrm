@@ -6,6 +6,7 @@ import { BoardPage } from './pages/BoardPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
+import { KnowledgePanel } from './components/KnowledgePanel';
 import { Avatar } from './components/Avatar';
 import { roleLabel } from './lib/labels';
 
@@ -14,6 +15,7 @@ export function App() {
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showIntegrations, setShowIntegrations] = useState(false);
+  const [showKnowledge, setShowKnowledge] = useState(false);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
   const onSwitchOrg = async (tenantId: string) => {
@@ -73,6 +75,11 @@ export function App() {
           <button className="btn btn-ghost btn-sm" onClick={linkTelegram}>
             Привязать Telegram
           </button>
+          {user.role !== 'client' && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)}>
+              База знаний
+            </button>
+          )}
           {user.role === 'owner' && (
             <button className="btn btn-ghost btn-sm" onClick={() => setShowIntegrations(true)}>
               Интеграции
@@ -91,6 +98,7 @@ export function App() {
       <BoardPage key={user.tenantId} />
       {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} onAvatar={setAvatarPath} />}
       {showIntegrations && <IntegrationsPanel onClose={() => setShowIntegrations(false)} />}
+      {showKnowledge && <KnowledgePanel canManage={user.role === 'owner' || user.role === 'manager'} onClose={() => setShowKnowledge(false)} />}
     </div>
   );
 }
