@@ -21,6 +21,16 @@ const CT_BY_EXT: Record<string, string> = {
 };
 const ctByName = (name: string) => CT_BY_EXT[(name.split('.').pop() || '').toLowerCase()] || 'application/octet-stream';
 
+/** Теги Битрикса приходят строками ИЛИ объектами {id,title/name} — нормализуем в имена. */
+function tagNames(raw: any): string[] {
+  if (!raw) return [];
+  const arr = Array.isArray(raw) ? raw : Object.values(raw);
+  return arr
+    .map((x: any) => (typeof x === 'string' ? x : (x?.title ?? x?.name ?? x?.TITLE ?? x?.NAME ?? '')))
+    .map((s: any) => String(s).trim())
+    .filter(Boolean);
+}
+
 type Ctx = {
   tenantId: string;
   connectionId: string;
@@ -113,34 +123,46 @@ export class BitrixImportService {
     stats.tasks++;
 
     // теги → метки
-    const tags = f(t, 'tags', 'TAGS');
-    const tagList: string[] = Array.isArray(tags) ? tags : tags ? Object.values(tags).map(String) : [];
-    for (const tag of tagList) {
-      if (!tag) continue;
-      const labelId = await this.repo.ensureLabel(ctx.tenantId, String(tag));
+    for (const tag of tagNames(f(t, 'tags', 'TAGS'))) {
+      const labelId = await this.repo.ensureLabel(ctx.tenantId, tag);
       await this.repo.assignLabel(ctx.tenantId, task.id, labelId);
       stats.labels++;
     }
 
-    // комментарии
+    // комментарии (+ файлы, прикреплённые в комментариях)
     for (const c of await ctx.client.comments(extId)) {
+      const cId = String(f(c, 'ID', 'id'));
       const body = String(f(c, 'POST_MESSAGE', 'postMessage') ?? '').trim();
-      if (!body) continue;
-      const localAuthor = ctx.bxUserToLocal.get(String(f(c, 'AUTHOR_ID', 'authorId')));
-      const author = localAuthor ?? ctx.actorId;
-      if (!author) continue; // нет ни сопоставленного автора, ни актора — пропускаем
-      const authorName = String(f(c, 'AUTHOR_NAME', 'authorName') ?? f(c, 'AUTHOR_ID', 'authorId'));
-      const finalBody = localAuthor ? body : `[Импортировано из Битрикса, автор: ${authorName}]\n${body}`;
-      const d = f(c, 'POST_DATE', 'postDate');
-      const inserted = await this.repo.upsertComment({
-        tenantId: ctx.tenantId, connectionId: ctx.connectionId, externalId: String(f(c, 'ID', 'id')), taskId: task.id,
-        authorId: author, body: finalBody, postedAt: d ? new Date(d).toISOString() : null,
-      });
-      if (inserted) stats.comments++;
+      if (body) {
+        const localAuthor = ctx.bxUserToLocal.get(String(f(c, 'AUTHOR_ID', 'authorId')));
+        const author = localAuthor ?? ctx.actorId;
+        if (author) {
+          const authorName = String(f(c, 'AUTHOR_NAME', 'authorName') ?? f(c, 'AUTHOR_ID', 'authorId'));
+          const finalBody = localAuthor ? body : `[Импортировано из Битрикса, автор: ${authorName}]\n${body}`;
+          const d = f(c, 'POST_DATE', 'postDate');
+          const inserted = await this.repo.upsertComment({
+            tenantId: ctx.tenantId, connectionId: ctx.connectionId, externalId: cId, taskId: task.id,
+            authorId: author, body: finalBody, postedAt: d ? new Date(d).toISOString() : null,
+          });
+          if (inserted) stats.comments++;
+        }
+      }
+      // ATTACHED_OBJECTS — карта {id:{NAME,DOWNLOAD_URL}}; уже с прямой ссылкой
+      const attached = f(c, 'ATTACHED_OBJECTS', 'attachedObjects');
+      if (attached && typeof attached === 'object') {
+        for (const [aid, info] of Object.entries<any>(attached)) {
+          const url = f(info, 'DOWNLOAD_URL', 'downloadUrl');
+          const name = String(f(info, 'NAME', 'name') ?? `file_${aid}`);
+          if (url) await this.pushFile(ctx, task.id, `c${cId}:${aid}`, name, String(url), stats);
+        }
+      }
+      // UF_FORUM_MESSAGE_DOC — массив id вида n123
+      for (const raw of tagNames(f(c, 'UF_FORUM_MESSAGE_DOC', 'ufForumMessageDoc'))) {
+        await this.pushFileById(ctx, task.id, `c${cId}:${raw}`, raw, stats);
+      }
     }
 
-    // вложения (Bitrix Disk → MinIO). tasks.task.list часто НЕ отдаёт поле файлов —
-    // тогда дотягиваем через tasks.task.get.
+    // вложения задачи (UF_TASK_WEBDAV_FILES). tasks.task.list часто НЕ отдаёт поле — дотягиваем task.get.
     let rawFiles = f(t, 'ufTaskWebdavFiles', 'UF_TASK_WEBDAV_FILES');
     if (rawFiles === undefined && ctx.actorId) {
       const full = await ctx.client.taskGet(extId).catch(() => null);
@@ -148,29 +170,42 @@ export class BitrixImportService {
     }
     const fileVals: string[] = Array.isArray(rawFiles) ? rawFiles : rawFiles ? Object.values(rawFiles).map(String) : [];
     for (const raw of fileVals) {
-      const val = String(raw);
-      const digits = val.replace(/\D/g, '');
-      if (!digits || !ctx.actorId) continue; // загрузка файла требует автора (uploaded_by)
-      const extFileId = `${extId}:${val}`;
-      if (await this.repo.attachmentExists(ctx.connectionId, extFileId)) continue;
-      try {
-        // id вида "n123" — это attachedObject; чистое число — файл Диска
-        const info = /^n/i.test(val)
-          ? await ctx.client.attachedObject(digits)
-          : await ctx.client.diskFile(digits);
-        const url = f(info, 'DOWNLOAD_URL', 'downloadUrl');
-        const name = String(f(info, 'NAME', 'name') ?? `file_${digits}`);
-        if (!url) { this.log.warn(`file ${extFileId}: нет DOWNLOAD_URL`); continue; }
-        const buffer = await ctx.client.download(String(url));
-        const uploaded = await this.files.upload({
-          tenantId: ctx.tenantId, userId: ctx.actorId, buffer, fileName: name,
-          contentType: ctByName(name), ownerKind: 'task_attachment', ownerId: task.id,
-        });
-        await this.repo.addAttachment({ tenantId: ctx.tenantId, connectionId: ctx.connectionId, externalFileId: extFileId, taskId: task.id, fileId: uploaded.id });
-        stats.attachments++;
-      } catch (e) {
-        this.log.warn(`skip file ${extFileId}: ${(e as Error).message}`);
-      }
+      await this.pushFileById(ctx, task.id, `${extId}:${String(raw)}`, String(raw), stats);
+    }
+  }
+
+  /** Скачивает файл по прямой ссылке и прикрепляет к задаче (идемпотентно). */
+  private async pushFile(ctx: Ctx, taskLocalId: string, extFileId: string, name: string, url: string, stats: any) {
+    if (!ctx.actorId) return;
+    if (await this.repo.attachmentExists(ctx.connectionId, extFileId)) return;
+    try {
+      const buffer = await ctx.client.download(url);
+      const uploaded = await this.files.upload({
+        tenantId: ctx.tenantId, userId: ctx.actorId, buffer, fileName: name,
+        contentType: ctByName(name), ownerKind: 'task_attachment', ownerId: taskLocalId,
+      });
+      await this.repo.addAttachment({ tenantId: ctx.tenantId, connectionId: ctx.connectionId, externalFileId: extFileId, taskId: taskLocalId, fileId: uploaded.id });
+      stats.attachments++;
+    } catch (e) {
+      this.log.warn(`skip file ${extFileId}: ${(e as Error).message}`);
+    }
+  }
+
+  /** Резолвит id (n123 → attachedObject; число → disk.file) и прикрепляет. */
+  private async pushFileById(ctx: Ctx, taskLocalId: string, extFileId: string, val: string, stats: any) {
+    const digits = String(val).replace(/\D/g, '');
+    if (!digits || !ctx.actorId) return;
+    if (await this.repo.attachmentExists(ctx.connectionId, extFileId)) return;
+    try {
+      const info = /^n/i.test(val)
+        ? await ctx.client.attachedObject(digits)
+        : await ctx.client.diskFile(digits);
+      const url = f(info, 'DOWNLOAD_URL', 'downloadUrl');
+      const name = String(f(info, 'NAME', 'name') ?? `file_${digits}`);
+      if (!url) { this.log.warn(`file ${extFileId}: нет DOWNLOAD_URL`); return; }
+      await this.pushFile(ctx, taskLocalId, extFileId, name, String(url), stats);
+    } catch (e) {
+      this.log.warn(`skip file ${extFileId}: ${(e as Error).message}`);
     }
   }
 

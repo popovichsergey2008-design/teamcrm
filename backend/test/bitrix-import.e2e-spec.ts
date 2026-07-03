@@ -59,7 +59,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
           case 'tasks.task.list': return reply({
             tasks: [{
               id: '1', title: 'Задача A', description: 'описание', responsibleId: '5', createdBy: '5',
-              stageId: '200', status: '2', priority: '2', deadline: '', tags: ['срочно'],
+              stageId: '200', status: '2', priority: '2', deadline: '', tags: [{ id: '7', title: 'дизайн' }],
               ufTaskWebdavFiles: ['n1'],
             }],
           });
@@ -73,7 +73,10 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
             } });
           }
           case 'task.commentitem.getlist': return reply([
-            { ID: '11', AUTHOR_ID: '5', AUTHOR_NAME: 'Анна Босс', POST_MESSAGE: 'коммент из битрикса', POST_DATE: '2026-06-01T10:00:00+03:00' },
+            {
+              ID: '11', AUTHOR_ID: '5', AUTHOR_NAME: 'Анна Босс', POST_MESSAGE: 'коммент из битрикса', POST_DATE: '2026-06-01T10:00:00+03:00',
+              ATTACHED_OBJECTS: { '99': { NAME: 'скрин.png', DOWNLOAD_URL: `http://127.0.0.1:${port}/dl/screen.png` } },
+            },
             { ID: '12', AUTHOR_ID: '6', AUTHOR_NAME: 'Гость', POST_MESSAGE: 'от несопоставленного', POST_DATE: '2026-06-02T10:00:00+03:00' },
           ]);
           default: return reply([]);
@@ -128,7 +131,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     expect(run.status).toBe('done');
     expect(run.stats.tasks).toBe(1);
     expect(run.stats.comments).toBe(2);
-    expect(run.stats.attachments).toBe(1); // вложение с Диска → MinIO
+    expect(run.stats.attachments).toBe(2); // файл задачи (n1) + файл из комментария (ATTACHED_OBJECTS)
     expect(run.stats.messages).toBe(1);    // пост из ленты проекта
 
     // проект появился как импортированный
@@ -145,6 +148,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     const task = inWork.tasks[0];
     expect(task.title).toBe('Задача A');
     expect(task.priority).toBe('high');
+    expect((task.labels ?? []).some((l: any) => l.name === 'дизайн')).toBe(true); // тег-объект → корректное имя метки
     expect(task.assignee_name).toBe('Анна Босс');
     expect(task.manager_name).toBe('Анна Босс');
 
@@ -157,8 +161,10 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
 
     // вложение задачи (Bitrix Disk → MinIO)
     const atts = (await http$.get(`/api/tasks/${task.id}/attachments`).set(H(tok)).expect(200)).body.data;
-    expect(atts.length).toBe(1);
-    expect(atts[0].file_name).toContain('договор'); // кириллица в имени сохраняется
+    expect(atts.length).toBe(2); // файл задачи + файл из комментария
+    const attNames = atts.map((a: any) => a.file_name);
+    expect(attNames.some((n: string) => n.includes('договор'))).toBe(true); // кириллица сохраняется
+    expect(attNames).toContain('скрин.png');
 
     // лента проекта → архив сообщений
     const messages = (await http$.get(`/api/integrations/bitrix/projects/${proj.id}/messages`).set(H(tok)).expect(200)).body.data;
@@ -182,7 +188,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     const comments2 = (await http$.get(`/api/tasks/${task.id}/comments`).set(H(tok)).expect(200)).body.data;
     expect(comments2.length).toBe(2); // комментарии не задвоились
     const atts2 = (await http$.get(`/api/tasks/${task.id}/attachments`).set(H(tok)).expect(200)).body.data;
-    expect(atts2.length).toBe(1); // вложения не задвоились
+    expect(atts2.length).toBe(2); // вложения не задвоились
     const messages2 = (await http$.get(`/api/integrations/bitrix/projects/${proj.id}/messages`).set(H(tok)).expect(200)).body.data;
     expect(messages2.length).toBe(1); // сообщения ленты не задвоились
 
