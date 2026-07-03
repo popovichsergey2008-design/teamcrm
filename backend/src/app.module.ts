@@ -36,6 +36,7 @@ import { AccountModule } from './modules/account/account.module';
 import { TaskCardModule } from './modules/taskcard/taskcard.module';
 import { BitrixModule } from './modules/integrations/bitrix/bitrix.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
+import { BrainModule } from './modules/brain/brain.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module';
     TaskCardModule,
     BitrixModule,
     KnowledgeModule,
+    BrainModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

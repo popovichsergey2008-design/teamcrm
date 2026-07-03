@@ -3,7 +3,7 @@ import { api, ApiError } from '../lib/api';
 
 /** База знаний (Этап 5, K1): семантический поиск + регламенты + реиндекс. */
 export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState<'search' | 'regs'>('search');
+  const [tab, setTab] = useState<'brain' | 'search' | 'regs'>('brain');
   const [msg, setMsg] = useState('');
   const [stats, setStats] = useState<{ chunks: string; sources: string } | null>(null);
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
@@ -39,6 +39,28 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
 
+  // AI Brain
+  const [convId, setConvId] = useState<string | null>(null);
+  const [chat, setChat] = useState<{ role: string; content: string; citations?: any[] }[]>([]);
+  const [ask, setAsk] = useState('');
+  const [thinking, setThinking] = useState(false);
+  const sendAsk = async () => {
+    const q = ask.trim();
+    if (q.length < 2) return;
+    setAsk('');
+    setChat((c) => [...c, { role: 'user', content: q }]);
+    setThinking(true);
+    try {
+      let id = convId;
+      if (!id) { id = (await api.brainStart()).id; setConvId(id); }
+      const r = await api.brainAsk(id, q);
+      setChat((c) => [...c, { role: 'assistant', content: r.answer, citations: r.citations }]);
+    } catch (e) {
+      setChat((c) => [...c, { role: 'assistant', content: e instanceof ApiError ? e.message : 'Ошибка' }]);
+    } finally { setThinking(false); }
+  };
+  const citeLabel = (c: any) => (c.sourceType === 'task' ? 'задача' : c.sourceType === 'comment' ? 'комментарий' : 'регламент') + (c.title ? `: ${c.title}` : '');
+
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
@@ -48,10 +70,34 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
           {canManage && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={reindex}>Переиндексировать всё</button>}
         </div>
         <div className="tabs">
+          <button className={`tab ${tab === 'brain' ? 'active' : ''}`} onClick={() => setTab('brain')}>Спросить ИИ</button>
           <button className={`tab ${tab === 'search' ? 'active' : ''}`} onClick={() => setTab('search')}>Поиск</button>
           <button className={`tab ${tab === 'regs' ? 'active' : ''}`} onClick={() => setTab('regs')}>Регламенты</button>
         </div>
         {msg && <div className="dim">{msg}</div>}
+
+        {tab === 'brain' && (
+          <>
+            <div className="brain-chat">
+              {chat.length === 0 && <div className="muted">Спросите «корпоративный разум»: как мы решали ту или иную задачу? Ответ — по архиву задач, комментариев и регламентов, со ссылками на источники.</div>}
+              {chat.map((m, i) => (
+                <div key={i} className={`brain-msg brain-${m.role}`}>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                  {m.citations && m.citations.length > 0 && (
+                    <div className="brain-cites">
+                      {m.citations.map((c, j) => <span key={j} className="badge" title={citeLabel(c)}>[{j + 1}] {citeLabel(c).slice(0, 40)}</span>)}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {thinking && <div className="brain-msg brain-assistant dim">Думаю…</div>}
+            </div>
+            <div className="team-rate">
+              <input className="input" placeholder="Ваш вопрос…" value={ask} onChange={(e) => setAsk(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !thinking && sendAsk()} />
+              <button className="btn btn-primary btn-sm" onClick={sendAsk} disabled={thinking}>Спросить</button>
+            </div>
+          </>
+        )}
 
         {tab === 'search' && (
           <>

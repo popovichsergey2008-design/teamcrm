@@ -179,6 +179,10 @@ export const api = {
   moveTask: (id: string, b: { columnId: string; position: number }) =>
     request<Task>('POST', `/tasks/${id}/move`, b),
 
+  // AI Brain (Этап 5, K2)
+  brainStart: () => request<{ id: string }>('POST', '/brain/conversations'),
+  brainAsk: (id: string, question: string) => request<{ answer: string; citations: any[] }>('POST', `/brain/conversations/${id}/ask`, { question }),
+
   // база знаний (Этап 5, K1)
   knowledgeSearch: (q: string, k = 8) => request<any[]>('GET', `/knowledge/search?q=${encodeURIComponent(q)}&k=${k}`),
   knowledgeStats: () => request<{ chunks: string; sources: string }>('GET', '/knowledge/stats'),

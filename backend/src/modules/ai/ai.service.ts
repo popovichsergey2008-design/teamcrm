@@ -19,6 +19,7 @@ export class AiService {
   private readonly logger = new Logger('AI');
   private readonly provider: AiProvider;
   private readonly embedModel: string;
+  private readonly brainModel: string;
 
   constructor(
     config: ConfigService,
@@ -28,9 +29,19 @@ export class AiService {
     const openai = config.get<string>('OPENAI_API_KEY');
     const anthropic = config.get<string>('ANTHROPIC_API_KEY');
     const model = config.get<string>('AI_PARSER_MODEL') ?? 'claude-haiku-4-5';
-    this.provider = openai || anthropic ? new RealAiProvider(openai, anthropic, model) : new MockAiProvider();
+    const brainModel = config.get<string>('AI_BRAIN_MODEL');
+    this.provider = openai || anthropic ? new RealAiProvider(openai, anthropic, model, brainModel) : new MockAiProvider();
     this.embedModel = openai ? 'text-embedding-3-small' : 'mock-embed';
+    this.brainModel = brainModel ?? (anthropic ? 'claude-3-5-sonnet' : openai ? 'gpt-4o-mini' : 'mock-llm');
     this.logger.log(`AI provider: ${this.provider.name}`);
+  }
+
+  /** Аналитическая генерация (AI Brain): маскирование PII + метеринг. */
+  async generate(tenantId: string, system: string, user: string, feature = 'brain'): Promise<string> {
+    const masked = maskPII(user).masked;
+    const text = await this.provider.generate(system, masked);
+    await this.recordUsage(tenantId, feature, this.brainModel, estimateTokens(system + masked), estimateTokens(text), false);
+    return text;
   }
 
   /** Эмбеддинг текста (PII маскируется до провайдера) + durable-метеринг. */

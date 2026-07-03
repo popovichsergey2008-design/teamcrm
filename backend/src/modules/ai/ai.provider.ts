@@ -10,6 +10,8 @@ export interface AiProvider {
   transcribe(audioRefOrText: string): Promise<string>;
   parseIntents(maskedText: string): Promise<unknown>;
   embed(text: string): Promise<number[]>;
+  /** Аналитическая генерация (AI Brain): system + user → текст ответа. */
+  generate(system: string, user: string): Promise<string>;
 }
 
 export const EMBED_DIM = 1536;
@@ -73,6 +75,14 @@ export class MockAiProvider implements AiProvider {
   async embed(text: string): Promise<number[]> {
     return mockEmbed(text);
   }
+  async generate(_system: string, user: string): Promise<string> {
+    // mock: без LLM — короткий ответ, ссылающийся на найденные источники (цитаты дают ретрив)
+    void _system;
+    const hasCtx = /\[\d+\]/.test(user);
+    return hasCtx
+      ? 'На основе найденных материалов из архива компании (см. источники ниже). [1]\n\n(Демо-ответ: подключите OPENAI_API_KEY или ANTHROPIC_API_KEY для реальной генерации.)'
+      : 'В базе знаний не нашлось релевантных материалов по этому вопросу.';
+  }
 }
 
 /** Реальный провайдер (OpenAI Whisper + Anthropic) — активен только при наличии ключей. */
@@ -82,6 +92,7 @@ export class RealAiProvider implements AiProvider {
     private readonly openaiKey: string | undefined,
     private readonly anthropicKey: string | undefined,
     private readonly model: string,
+    private readonly brainModel?: string,
   ) {}
 
   async transcribe(audioRefOrText: string): Promise<string> {
@@ -128,6 +139,40 @@ export class RealAiProvider implements AiProvider {
     } catch {
       return { actions: [], confidence: 0 };
     }
+  }
+
+  async generate(system: string, user: string): Promise<string> {
+    // Anthropic — приоритетно (аналитический тир), иначе OpenAI, иначе mock.
+    if (this.anthropicKey) {
+      try {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'x-api-key': this.anthropicKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+          body: JSON.stringify({
+            model: this.brainModel || 'claude-3-5-sonnet-latest',
+            max_tokens: 1500, system, messages: [{ role: 'user', content: user }],
+          }),
+        });
+        const json: any = await res.json();
+        return json?.content?.[0]?.text ?? '';
+      } catch { /* упадём в mock ниже */ }
+    }
+    if (this.openaiKey) {
+      try {
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${this.openaiKey}`, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            model: this.brainModel || 'gpt-4o-mini',
+            messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+            max_tokens: 1500,
+          }),
+        });
+        const json: any = await res.json();
+        return json?.choices?.[0]?.message?.content ?? '';
+      } catch { /* упадём в mock ниже */ }
+    }
+    return new MockAiProvider().generate(system, user);
   }
 
   async embed(text: string): Promise<number[]> {
