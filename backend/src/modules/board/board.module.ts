@@ -10,5 +10,6 @@ import { BoardService } from './board.service';
   imports: [ProjectsModule, TasksModule, TaskCardModule, UsersModule],
   controllers: [BoardController],
   providers: [BoardService],
+  exports: [BoardService],
 })
 export class BoardModule {}

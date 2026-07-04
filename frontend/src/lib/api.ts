@@ -179,6 +179,14 @@ export const api = {
   moveTask: (id: string, b: { columnId: string; position: number }) =>
     request<Task>('POST', `/tasks/${id}/move`, b),
 
+  // клиентский портал (Этап 5)
+  portalProjects: () => request<any[]>('GET', '/portal/projects'),
+  portalBoard: (id: string) => request<any>('GET', `/portal/projects/${id}/board`),
+  portalClients: () => request<any[]>('GET', '/portal/clients'),
+  portalCreateClient: (b: { name: string; contact?: string }) => request<any>('POST', '/portal/clients', b),
+  portalInviteClient: (cid: string, email: string) => request<{ token: string; email: string }>('POST', `/portal/clients/${cid}/invite`, { email }),
+  portalAssignProject: (projectId: string, clientId: string | null) => request<any>('POST', `/portal/projects/${projectId}/assign`, { clientId }),
+
   // AI Brain (Этап 5, K2)
   brainStart: () => request<{ id: string }>('POST', '/brain/conversations'),
   brainAsk: (id: string, question: string) => request<{ answer: string; citations: any[]; cached: boolean }>('POST', `/brain/conversations/${id}/ask`, { question }),

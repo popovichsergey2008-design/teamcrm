@@ -10,5 +10,6 @@ import { InvitesRepository } from './invites.repository';
   imports: [UsersModule, TeamModule],
   controllers: [InvitesController],
   providers: [InvitesService, InvitesRepository],
+  exports: [InvitesService],
 })
 export class InvitesModule {}

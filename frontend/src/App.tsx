@@ -7,6 +7,8 @@ import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
+import { ClientsPanel } from './components/ClientsPanel';
+import { ClientPortal } from './pages/ClientPortal';
 import { Avatar } from './components/Avatar';
 import { roleLabel } from './lib/labels';
 
@@ -16,6 +18,7 @@ export function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
+  const [showClients, setShowClients] = useState(false);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
   const onSwitchOrg = async (tenantId: string) => {
@@ -55,6 +58,9 @@ export function App() {
 
   if (!user) return <LoginPage />;
 
+  // клиент видит отдельный портал (без внутренних досок/финансов)
+  if (user.role === 'client') return <ClientPortal />;
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -75,9 +81,12 @@ export function App() {
           <button className="btn btn-ghost btn-sm" onClick={linkTelegram}>
             Привязать Telegram
           </button>
-          {user.role !== 'client' && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)}>
-              База знаний
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)}>
+            База знаний
+          </button>
+          {(user.role === 'owner' || user.role === 'manager') && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowClients(true)}>
+              Клиенты
             </button>
           )}
           {user.role === 'owner' && (
@@ -99,6 +108,7 @@ export function App() {
       {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} onAvatar={setAvatarPath} />}
       {showIntegrations && <IntegrationsPanel onClose={() => setShowIntegrations(false)} />}
       {showKnowledge && <KnowledgePanel canManage={user.role === 'owner' || user.role === 'manager'} onClose={() => setShowKnowledge(false)} />}
+      {showClients && <ClientsPanel onClose={() => setShowClients(false)} />}
     </div>
   );
 }

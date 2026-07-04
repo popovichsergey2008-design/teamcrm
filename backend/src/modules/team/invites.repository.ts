@@ -7,6 +7,7 @@ export interface InviteRow {
   email: string;
   role_code: string;
   position_id: string | null;
+  client_id: string | null;
   token_hash: string;
   invited_by: string;
   expires_at: Date;
@@ -22,14 +23,15 @@ export class InvitesRepository {
     email: string;
     roleCode: string;
     positionId: string | null;
+    clientId?: string | null;
     tokenHash: string;
     invitedBy: string;
     expiresAt: Date;
   }): Promise<InviteRow> {
     return this.db.one<InviteRow>(
-      `INSERT INTO invites (tenant_id, email, role_code, position_id, token_hash, invited_by, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [input.tenantId, input.email, input.roleCode, input.positionId, input.tokenHash, input.invitedBy, input.expiresAt],
+      `INSERT INTO invites (tenant_id, email, role_code, position_id, client_id, token_hash, invited_by, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [input.tenantId, input.email, input.roleCode, input.positionId, input.clientId ?? null, input.tokenHash, input.invitedBy, input.expiresAt],
     ) as Promise<InviteRow>;
   }
 

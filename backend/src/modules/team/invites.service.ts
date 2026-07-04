@@ -21,7 +21,7 @@ export class InvitesService {
   async create(
     tenantId: string,
     invitedBy: string,
-    input: { email: string; role: string; positionId?: string | null },
+    input: { email: string; role: string; positionId?: string | null; clientId?: string | null },
   ): Promise<{ token: string; email: string; expiresAt: Date }> {
     const token = randomBytes(24).toString('hex');
     const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
@@ -30,6 +30,7 @@ export class InvitesService {
       email: input.email,
       roleCode: input.role,
       positionId: input.positionId ?? null,
+      clientId: input.clientId ?? null,
       tokenHash: this.sha256(token),
       invitedBy,
       expiresAt,
@@ -42,13 +43,14 @@ export class InvitesService {
     const invite = await this.repo.findValidByHash(this.sha256(input.token));
     if (!invite) throw AppException.unauthorized('Приглашение недействительно или истекло');
 
-    const user = await this.users.createUser(invite.tenant_id, {
-      email: invite.email,
-      password: input.password,
-      fullName: input.fullName,
-      role: invite.role_code as any,
-      positionId: invite.position_id,
-    });
+    const user = invite.role_code === 'client'
+      ? await this.users.createClientUser(invite.tenant_id, {
+          email: invite.email, password: input.password, fullName: input.fullName, clientId: invite.client_id as string,
+        })
+      : await this.users.createUser(invite.tenant_id, {
+          email: invite.email, password: input.password, fullName: input.fullName,
+          role: invite.role_code as any, positionId: invite.position_id,
+        });
     await this.repo.markAccepted(invite.id);
     return { accepted: true, user };
   }

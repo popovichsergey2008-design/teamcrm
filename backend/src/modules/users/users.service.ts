@@ -77,6 +77,23 @@ export class UsersService {
     return toPublicUser(row);
   }
 
+  /** Создание client-пользователя портала (роль client + привязка к заказчику). Отдельно от команды. */
+  async createClientUser(
+    tenantId: string,
+    input: { email: string; password: string; fullName: string; clientId: string },
+  ): Promise<PublicUser> {
+    const exists = await this.repo.findByEmail(tenantId, input.email);
+    if (exists) throw AppException.conflict('Пользователь с таким e-mail уже есть в организации');
+    const passwordHash = await argon2.hash(input.password);
+    const existingAccount = await this.accounts.findByEmail(input.email);
+    const account = existingAccount ?? (await this.accounts.create(input.email, passwordHash, input.fullName));
+    const row = await this.repo.create({
+      tenantId, email: input.email, passwordHash, fullName: input.fullName,
+      roleCode: 'client', accountId: account.id, clientId: input.clientId,
+    });
+    return toPublicUser(row);
+  }
+
   /** Управление участником: роль/должность/группы/активность (owner/manager). */
   async updateUser(
     tenantId: string,

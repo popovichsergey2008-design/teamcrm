@@ -8,6 +8,7 @@ import { ColumnDto, CreateProjectDto, MoveColumnDto, ReorderColumnsDto } from '.
 @ApiTags('projects')
 @ApiBearerAuth()
 @Controller('projects')
+@Roles('owner', 'manager', 'member') // client — только через /api/portal
 export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
 

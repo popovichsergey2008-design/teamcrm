@@ -68,11 +68,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
     const user: AuthUser = socket.data.user;
     if (!user || !body?.projectId) return { ok: false };
 
-    // tenant-изоляция: проект должен принадлежать tenant'у из токена
-    const project = await this.db.one(
-      'SELECT id FROM projects WHERE id = $1 AND tenant_id = $2',
-      [body.projectId, user.tenantId],
-    );
+    // tenant-изоляция: проект должен принадлежать tenant'у из токена.
+    // Для client — дополнительно проект должен принадлежать ЕГО заказчику (client_id).
+    const project = user.role === 'client'
+      ? await this.db.one(
+          `SELECT p.id FROM projects p JOIN users u ON u.id=$3 AND u.tenant_id=$2
+            WHERE p.id=$1 AND p.tenant_id=$2 AND p.client_id = u.client_id`,
+          [body.projectId, user.tenantId, user.userId],
+        )
+      : await this.db.one('SELECT id FROM projects WHERE id = $1 AND tenant_id = $2', [body.projectId, user.tenantId]);
     if (!project) return { ok: false, error: 'NOT_FOUND' };
 
     const room =

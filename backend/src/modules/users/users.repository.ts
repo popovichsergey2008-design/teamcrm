@@ -174,12 +174,13 @@ export class UsersRepository {
     fullName: string;
     roleCode: RoleCode;
     accountId?: string | null;
+    clientId?: string | null;
   }): Promise<UserRow> {
     const row = await this.db.one<UserRow>(
-      `INSERT INTO users (tenant_id, email, password_hash, full_name, role_id, account_id)
-       SELECT $1, $2, $3, $4, r.id, $6 FROM roles r WHERE r.code = $5
+      `INSERT INTO users (tenant_id, email, password_hash, full_name, role_id, account_id, client_id)
+       SELECT $1, $2, $3, $4, r.id, $6, $7 FROM roles r WHERE r.code = $5
        RETURNING *, (SELECT code FROM roles WHERE id = role_id) AS role_code`,
-      [input.tenantId, input.email, input.passwordHash, input.fullName, input.roleCode, input.accountId ?? null],
+      [input.tenantId, input.email, input.passwordHash, input.fullName, input.roleCode, input.accountId ?? null, input.clientId ?? null],
     );
     return row as UserRow;
   }
