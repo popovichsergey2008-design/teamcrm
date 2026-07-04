@@ -94,7 +94,12 @@ export class KnowledgeService implements OnModuleInit {
 
   /** Семантический поиск. Внутренние роли: доступ ко всем проектам арендатора (per-project ACL — на будущее). */
   async search(tenantId: string, query: string, k = 8) {
-    const vec = await this.ai.embed(tenantId, query, 'brain');
+    const vec = await this.ai.embed(tenantId, query, 'embedding');
+    return this.searchByVector(tenantId, vec, k);
+  }
+
+  /** Поиск по готовому вектору (переиспользуется в AI Brain / кэше — без повторного эмбеддинга). */
+  async searchByVector(tenantId: string, vec: number[], k = 8) {
     const hits = await this.repo.search(tenantId, vec, k, { all: true, scopes: [] });
     return hits.map((h) => ({
       sourceType: h.source_type, sourceId: h.source_id, title: h.title,

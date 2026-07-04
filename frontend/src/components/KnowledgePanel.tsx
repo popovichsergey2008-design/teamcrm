@@ -6,8 +6,13 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
   const [tab, setTab] = useState<'brain' | 'search' | 'regs'>('brain');
   const [msg, setMsg] = useState('');
   const [stats, setStats] = useState<{ chunks: string; sources: string } | null>(null);
+  const [usage, setUsage] = useState<{ totalCalls: number; cacheHits: number; cacheHitRatio: number } | null>(null);
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
-  const loadStats = () => api.knowledgeStats().then(setStats).catch(() => undefined);
+  const loadStats = () => {
+    api.knowledgeStats().then(setStats).catch(() => undefined);
+    if (canManage) api.aiUsage().then(setUsage).catch(() => undefined);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadStats(); }, []);
 
   // поиск
@@ -41,7 +46,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
 
   // AI Brain
   const [convId, setConvId] = useState<string | null>(null);
-  const [chat, setChat] = useState<{ role: string; content: string; citations?: any[] }[]>([]);
+  const [chat, setChat] = useState<{ role: string; content: string; citations?: any[]; cached?: boolean }[]>([]);
   const [ask, setAsk] = useState('');
   const [thinking, setThinking] = useState(false);
   const sendAsk = async () => {
@@ -54,7 +59,8 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
       let id = convId;
       if (!id) { id = (await api.brainStart()).id; setConvId(id); }
       const r = await api.brainAsk(id, q);
-      setChat((c) => [...c, { role: 'assistant', content: r.answer, citations: r.citations }]);
+      setChat((c) => [...c, { role: 'assistant', content: r.answer, citations: r.citations, cached: r.cached }]);
+      if (canManage) api.aiUsage().then(setUsage).catch(() => undefined);
     } catch (e) {
       setChat((c) => [...c, { role: 'assistant', content: e instanceof ApiError ? e.message : 'Ошибка' }]);
     } finally { setThinking(false); }
@@ -67,6 +73,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
         <div className="drawer-head"><h3>База знаний</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
         <div className="dim" style={{ fontSize: 12 }}>
           В индексе: {stats?.chunks ?? '—'} фрагментов из {stats?.sources ?? '—'} источников (закрытые задачи, комментарии, регламенты).
+          {usage && <> · ИИ-вызовов: {usage.totalCalls}, из кэша: {Math.round(usage.cacheHitRatio * 100)}%</>}
           {canManage && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={reindex}>Переиндексировать всё</button>}
         </div>
         <div className="tabs">
@@ -82,6 +89,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
               {chat.length === 0 && <div className="muted">Спросите «корпоративный разум»: как мы решали ту или иную задачу? Ответ — по архиву задач, комментариев и регламентов, со ссылками на источники.</div>}
               {chat.map((m, i) => (
                 <div key={i} className={`brain-msg brain-${m.role}`}>
+                  {m.cached && <span className="badge" title="Ответ из кэша, без обращения к ИИ" style={{ marginBottom: 4, display: 'inline-block' }}>⚡ из кэша</span>}
                   <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
                   {m.citations && m.citations.length > 0 && (
                     <div className="brain-cites">

@@ -62,6 +62,26 @@ describe('AI Brain (e2e)', () => {
     expect(msgs[1].role).toBe('assistant');
   });
 
+  it('повторный вопрос обслуживается из кэша (cache-hit метерится)', async () => {
+    const a = (await http.post('/api/auth/register').send({ tenantName: 'Brain-Cache', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'К' }).expect(201)).body.data;
+    const tok = a.accessToken;
+    await http.post('/api/regulations').set(H(tok)).send({ title: 'Деплой', body: 'Деплой идёт через CI: rsync на сервер и docker compose up, миграции на старте контейнера.' }).expect(201);
+    expect(await waitChunks(tok)).toBe(true);
+
+    const conv = (await http.post('/api/brain/conversations').set(H(tok)).expect(201)).body.data;
+    const q = 'как устроен деплой?';
+    const r1 = (await http.post(`/api/brain/conversations/${conv.id}/ask`).set(H(tok)).send({ question: q }).expect(201)).body.data;
+    expect(r1.cached).toBe(false);
+    const r2 = (await http.post(`/api/brain/conversations/${conv.id}/ask`).set(H(tok)).send({ question: q }).expect(201)).body.data;
+    expect(r2.cached).toBe(true); // тот же вопрос → из кэша
+    expect(r2.answer).toBe(r1.answer);
+
+    // метеринг: доля cache-hit > 0
+    const usage = (await http.get('/api/ai/usage').set(H(tok)).expect(200)).body.data;
+    expect(usage.cacheHits).toBeGreaterThanOrEqual(1);
+    expect(usage.cacheHitRatio).toBeGreaterThan(0);
+  });
+
   it('чужой диалог недоступен (изоляция по пользователю/tenant)', async () => {
     const a = (await http.post('/api/auth/register').send({ tenantName: 'Brain-Own', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'A' }).expect(201)).body.data;
     const conv = (await http.post('/api/brain/conversations').set(H(a.accessToken)).expect(201)).body.data;

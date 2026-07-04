@@ -181,7 +181,8 @@ export const api = {
 
   // AI Brain (Этап 5, K2)
   brainStart: () => request<{ id: string }>('POST', '/brain/conversations'),
-  brainAsk: (id: string, question: string) => request<{ answer: string; citations: any[] }>('POST', `/brain/conversations/${id}/ask`, { question }),
+  brainAsk: (id: string, question: string) => request<{ answer: string; citations: any[]; cached: boolean }>('POST', `/brain/conversations/${id}/ask`, { question }),
+  aiUsage: () => request<{ totalCalls: number; cacheHits: number; cacheHitRatio: number; byFeature: any[] }>('GET', '/ai/usage'),
 
   // база знаний (Этап 5, K1)
   knowledgeSearch: (q: string, k = 8) => request<any[]>('GET', `/knowledge/search?q=${encodeURIComponent(q)}&k=${k}`),

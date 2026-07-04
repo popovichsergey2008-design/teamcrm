@@ -52,6 +52,24 @@ export class AiService {
     return vec;
   }
 
+  /** Агрегаты ИИ-расхода (мониторинг): вызовы, cache-hit, токены по фичам. */
+  async usageStats(tenantId: string, days = 30) {
+    const byFeature = await this.db.many<any>(
+      `SELECT feature, count(*)::int AS calls, sum((cache_hit)::int)::int AS hits,
+              sum(input_tokens)::int AS input_tokens, sum(output_tokens)::int AS output_tokens
+         FROM ai_usage
+        WHERE tenant_id=$1 AND created_at > now() - ($2 || ' days')::interval
+        GROUP BY feature ORDER BY feature`,
+      [tenantId, days],
+    );
+    const totalCalls = byFeature.reduce((s, r) => s + Number(r.calls), 0);
+    const cacheHits = byFeature.reduce((s, r) => s + Number(r.hits), 0);
+    return {
+      periodDays: days, byFeature, totalCalls, cacheHits,
+      cacheHitRatio: totalCalls ? Number((cacheHits / totalCalls).toFixed(3)) : 0,
+    };
+  }
+
   /** Durable запись расхода ИИ (для метеринга/биллинга/наблюдаемости). */
   async recordUsage(
     tenantId: string, feature: string, model: string, inputTokens: number, outputTokens: number, cacheHit: boolean, cost = 0,

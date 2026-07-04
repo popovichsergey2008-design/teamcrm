@@ -47,4 +47,27 @@ export class BrainRepository {
       [conversationId],
     );
   }
+
+  // ── семантический кэш ответов (похожий вопрос → без вызова LLM) ──
+  private vec(v: number[]): string {
+    return '[' + v.join(',') + ']';
+  }
+
+  async cacheLookup(tenantId: string, vec: number[]): Promise<{ answer: string; citations: any; score: number } | null> {
+    const r = await this.db.one<{ answer: string; citations: any; score: number }>(
+      `SELECT answer, citations, 1 - (embedding <=> $2::vector) AS score
+         FROM ai_answer_cache WHERE tenant_id=$1
+        ORDER BY embedding <=> $2::vector LIMIT 1`,
+      [tenantId, this.vec(vec)],
+    );
+    return r ? { answer: r.answer, citations: r.citations, score: Number(r.score) } : null;
+  }
+
+  async cacheStore(tenantId: string, question: string, vec: number[], answer: string, citations: unknown) {
+    await this.db.query(
+      `INSERT INTO ai_answer_cache (tenant_id, question, answer, citations, embedding)
+       VALUES ($1,$2,$3,$4,$5::vector)`,
+      [tenantId, question, answer, citations ? JSON.stringify(citations) : null, this.vec(vec)],
+    );
+  }
 }

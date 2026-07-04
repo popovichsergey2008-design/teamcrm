@@ -1,8 +1,14 @@
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { AppException } from '../../common/http/app-exception';
+import { RedisService } from '../../cache/redis.service';
 import { AiService } from '../ai/ai.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { BrainRepository } from './brain.repository';
+
+const ANSWER_TTL = 6 * 3600; // кэш ответов — 6ч
+const SEMANTIC_THRESHOLD = 0.93; // «похожий» вопрос
+const normalize = (q: string) => q.toLowerCase().replace(/\s+/g, ' ').trim();
 
 const SYSTEM = [
   'Ты — «корпоративный разум» компании: отвечаешь новым и текущим сотрудникам на основе архива задач, комментариев и регламентов.',
@@ -16,6 +22,7 @@ export class BrainService {
     private readonly repo: BrainRepository,
     private readonly knowledge: KnowledgeService,
     private readonly ai: AiService,
+    private readonly redis: RedisService,
   ) {}
 
   async start(tenantId: string, userId: string) {
@@ -39,11 +46,27 @@ export class BrainService {
     const q = question.trim();
     if (q.length < 2) throw AppException.validation('Слишком короткий вопрос');
 
-    const hits = await this.knowledge.search(tenantId, q, 6);
     await this.repo.addMessage(conversationId, 'user', q, null);
     await this.repo.setTitle(conversationId, q);
 
-    // дедуп источников для цитат (несколько чанков одного источника → одна цитата)
+    // 1) точный кэш (Redis) — идентичный (нормализованный) вопрос в рамках арендатора
+    const exactKey = `brain:ans:${tenantId}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
+    const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null);
+    if (exact) return this.finish(tenantId, conversationId, exact.answer, exact.citations, 'exact');
+
+    // 2) эмбеддинг вопроса — переиспользуется для семантического кэша И для поиска
+    const vec = await this.ai.embed(tenantId, q, 'embedding');
+
+    // 3) семантический кэш (pgvector) — похожий вопрос
+    const sem = await this.repo.cacheLookup(tenantId, vec).catch(() => null);
+    if (sem && sem.score >= SEMANTIC_THRESHOLD) {
+      const citations = sem.citations ?? [];
+      await this.redis.setJson(exactKey, { answer: sem.answer, citations }, ANSWER_TTL).catch(() => undefined);
+      return this.finish(tenantId, conversationId, sem.answer, citations, 'semantic');
+    }
+
+    // 4) промах кэша → RAG + LLM
+    const hits = await this.knowledge.searchByVector(tenantId, vec, 6);
     const seen = new Set<string>();
     const citations: { sourceType: string; sourceId: string; title: string | null }[] = [];
     for (const h of hits) {
@@ -57,15 +80,22 @@ export class BrainService {
     if (!hits.length) {
       answer = 'В базе знаний не нашлось материалов по этому вопросу. Возможно, стоит переиндексировать знания или задать вопрос иначе.';
     } else {
-      const context = hits
-        .map((h, i) => `[${i + 1}] (${h.sourceType}${h.title ? `: ${h.title}` : ''})\n${h.snippet}`)
-        .join('\n\n');
-      const userContent = `Вопрос: ${q}\n\nКОНТЕКСТ:\n${context}`;
-      answer = (await this.ai.generate(tenantId, SYSTEM, userContent)).trim()
+      const context = hits.map((h, i) => `[${i + 1}] (${h.sourceType}${h.title ? `: ${h.title}` : ''})\n${h.snippet}`).join('\n\n');
+      answer = (await this.ai.generate(tenantId, SYSTEM, `Вопрос: ${q}\n\nКОНТЕКСТ:\n${context}`)).trim()
         || 'Не удалось сформировать ответ.';
     }
 
+    // сохранить в оба кэша
+    await this.redis.setJson(exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
+    if (hits.length) await this.repo.cacheStore(tenantId, q, vec, answer, citations).catch(() => undefined);
+
+    return this.finish(tenantId, conversationId, answer, citations, 'miss');
+  }
+
+  /** Сохраняет ответ ассистента, метерит cache-hit, возвращает результат. */
+  private async finish(tenantId: string, conversationId: string, answer: string, citations: any[], cache: 'exact' | 'semantic' | 'miss') {
+    if (cache !== 'miss') await this.ai.recordUsage(tenantId, 'brain', 'cache', 0, 0, true);
     const saved = await this.repo.addMessage(conversationId, 'assistant', answer, citations);
-    return { messageId: saved!.id, answer, citations };
+    return { messageId: saved!.id, answer, citations, cached: cache !== 'miss' };
   }
 }
