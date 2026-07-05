@@ -188,18 +188,12 @@ describe('TEAMCRM Этап 1 (e2e)', () => {
     expect(res.body.error.code).toBe('FORBIDDEN');
   });
 
-  it('client REST isolation: client does not receive cost_current / budget', async () => {
+  it('client REST isolation: client не имеет доступа к внутренним доскам (только портал)', async () => {
+    // Этап 5: client ходит только через /api/portal (жёсткий whitelist без финансов, см. portal.e2e).
+    // Внутренние эндпоинты досок/проектов для роли client закрыты.
     const clientToken = syntheticToken(tenantA, 'client');
-    const board = await http
-      .get(`/api/projects/${projectId}/board`)
-      .set('Authorization', `Bearer ${clientToken}`)
-      .expect(200);
-    expect(board.body.data.project.budget).toBeUndefined();
-    for (const col of board.body.data.columns) {
-      for (const t of col.tasks) {
-        expect(t.cost_current).toBeUndefined();
-      }
-    }
+    await http.get(`/api/projects/${projectId}/board`).set('Authorization', `Bearer ${clientToken}`).expect(403);
+    await http.get('/api/projects').set('Authorization', `Bearer ${clientToken}`).expect(403);
   });
 
   it('deal → project conversion creates a linked project (фича №5)', async () => {

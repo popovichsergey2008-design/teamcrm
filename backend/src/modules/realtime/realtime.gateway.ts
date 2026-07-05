@@ -69,14 +69,19 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
     if (!user || !body?.projectId) return { ok: false };
 
     // tenant-изоляция: проект должен принадлежать tenant'у из токена.
-    // Для client — дополнительно проект должен принадлежать ЕГО заказчику (client_id).
-    const project = user.role === 'client'
-      ? await this.db.one(
-          `SELECT p.id FROM projects p JOIN users u ON u.id=$3 AND u.tenant_id=$2
-            WHERE p.id=$1 AND p.tenant_id=$2 AND p.client_id = u.client_id`,
-          [body.projectId, user.tenantId, user.userId],
-        )
-      : await this.db.one('SELECT id FROM projects WHERE id = $1 AND tenant_id = $2', [body.projectId, user.tenantId]);
+    // Для client с привязкой к заказчику — дополнительно проект должен быть его client_id.
+    let project;
+    if (user.role === 'client') {
+      const u = await this.db.one<{ client_id: string | null }>(
+        'SELECT client_id FROM users WHERE id = $1 AND tenant_id = $2',
+        [user.userId, user.tenantId],
+      );
+      project = u?.client_id
+        ? await this.db.one('SELECT id FROM projects WHERE id = $1 AND tenant_id = $2 AND client_id = $3', [body.projectId, user.tenantId, u.client_id])
+        : await this.db.one('SELECT id FROM projects WHERE id = $1 AND tenant_id = $2', [body.projectId, user.tenantId]);
+    } else {
+      project = await this.db.one('SELECT id FROM projects WHERE id = $1 AND tenant_id = $2', [body.projectId, user.tenantId]);
+    }
     if (!project) return { ok: false, error: 'NOT_FOUND' };
 
     const room =
