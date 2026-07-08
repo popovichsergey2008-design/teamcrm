@@ -191,6 +191,9 @@ export const api = {
   brainStart: () => request<{ id: string }>('POST', '/brain/conversations'),
   brainAsk: (id: string, question: string) => request<{ answer: string; citations: any[]; cached: boolean }>('POST', `/brain/conversations/${id}/ask`, { question }),
   aiUsage: () => request<{ totalCalls: number; cacheHits: number; cacheHitRatio: number; byFeature: any[] }>('GET', '/ai/usage'),
+  aiSettingsGet: () => request<any>('GET', '/ai/settings'),
+  aiSettingsSave: (b: { openaiKey?: string; anthropicKey?: string; brainModel?: string }) => request<any>('PUT', '/ai/settings', b),
+  aiSettingsModels: () => request<string[]>('GET', '/ai/settings/models'),
 
   // база знаний (Этап 5, K1)
   knowledgeSearch: (q: string, k = 8) => request<any[]>('GET', `/knowledge/search?q=${encodeURIComponent(q)}&k=${k}`),

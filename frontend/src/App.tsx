@@ -8,6 +8,7 @@ import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
 import { ClientsPanel } from './components/ClientsPanel';
+import { AiSettingsPanel } from './components/AiSettingsPanel';
 import { ClientPortal } from './pages/ClientPortal';
 import { Avatar } from './components/Avatar';
 import { roleLabel } from './lib/labels';
@@ -19,6 +20,7 @@ export function App() {
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [showClients, setShowClients] = useState(false);
+  const [showAi, setShowAi] = useState(false);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
   const onSwitchOrg = async (tenantId: string) => {
@@ -90,6 +92,11 @@ export function App() {
             </button>
           )}
           {user.role === 'owner' && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowAi(true)}>
+              ИИ-настройки
+            </button>
+          )}
+          {user.role === 'owner' && (
             <button className="btn btn-ghost btn-sm" onClick={() => setShowIntegrations(true)}>
               Интеграции
             </button>
@@ -109,6 +116,7 @@ export function App() {
       {showIntegrations && <IntegrationsPanel onClose={() => setShowIntegrations(false)} />}
       {showKnowledge && <KnowledgePanel canManage={user.role === 'owner' || user.role === 'manager'} onClose={() => setShowKnowledge(false)} />}
       {showClients && <ClientsPanel onClose={() => setShowClients(false)} />}
+      {showAi && <AiSettingsPanel onClose={() => setShowAi(false)} />}
     </div>
   );
 }

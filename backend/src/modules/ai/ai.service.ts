@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { RedisService } from '../../cache/redis.service';
 import { DbService } from '../../database/db.service';
 import { AiProvider, MockAiProvider, RealAiProvider } from './ai.provider';
+import { AiSettingsService } from './ai-settings.service';
 import { maskPII } from './pii';
 import { StandupPackage, validateStandupPackage } from './standup-schema';
 
@@ -17,38 +18,47 @@ const estimateTokens = (s: string) => Math.ceil(s.length / 4);
 @Injectable()
 export class AiService {
   private readonly logger = new Logger('AI');
-  private readonly provider: AiProvider;
-  private readonly embedModel: string;
-  private readonly brainModel: string;
+  private readonly parserModel: string;
 
   constructor(
     config: ConfigService,
     private readonly redis: RedisService,
     private readonly db: DbService,
+    private readonly settings: AiSettingsService,
   ) {
-    const openai = config.get<string>('OPENAI_API_KEY');
-    const anthropic = config.get<string>('ANTHROPIC_API_KEY');
-    const model = config.get<string>('AI_PARSER_MODEL') ?? 'claude-haiku-4-5';
-    const brainModel = config.get<string>('AI_BRAIN_MODEL');
-    this.provider = openai || anthropic ? new RealAiProvider(openai, anthropic, model, brainModel) : new MockAiProvider();
-    this.embedModel = openai ? 'text-embedding-3-small' : 'mock-embed';
-    this.brainModel = brainModel ?? (anthropic ? 'claude-3-5-sonnet' : openai ? 'gpt-4o-mini' : 'mock-llm');
-    this.logger.log(`AI provider: ${this.provider.name}`);
+    this.parserModel = config.get<string>('AI_PARSER_MODEL') ?? 'claude-haiku-4-5';
+  }
+
+  /** Провайдер для конкретного арендатора (BYOK: ключ арендатора > глобальный .env). */
+  private async providerFor(tenantId: string) {
+    const s = await this.settings.resolve(tenantId);
+    const provider: AiProvider = (s.openaiKey || s.anthropicKey)
+      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel)
+      : new MockAiProvider();
+    const embedModel = s.openaiKey ? 'text-embedding-3-small' : 'mock-embed';
+    const brainModel = s.brainModel ?? (s.anthropicKey ? 'claude-3-5-sonnet' : s.openaiKey ? 'gpt-4o-mini' : 'mock-llm');
+    return { provider, embedModel, brainModel };
+  }
+
+  transcribe(tenantId: string, audioRefOrText: string): Promise<string> {
+    return this.providerFor(tenantId).then((p) => p.provider.transcribe(audioRefOrText));
   }
 
   /** Аналитическая генерация (AI Brain): маскирование PII + метеринг. */
   async generate(tenantId: string, system: string, user: string, feature = 'brain'): Promise<string> {
+    const { provider, brainModel } = await this.providerFor(tenantId);
     const masked = maskPII(user).masked;
-    const text = await this.provider.generate(system, masked);
-    await this.recordUsage(tenantId, feature, this.brainModel, estimateTokens(system + masked), estimateTokens(text), false);
+    const text = await provider.generate(system, masked);
+    await this.recordUsage(tenantId, feature, brainModel, estimateTokens(system + masked), estimateTokens(text), false);
     return text;
   }
 
   /** Эмбеддинг текста (PII маскируется до провайдера) + durable-метеринг. */
   async embed(tenantId: string, text: string, feature = 'embedding'): Promise<number[]> {
+    const { provider, embedModel } = await this.providerFor(tenantId);
     const { masked } = maskPII(text);
-    const vec = await this.provider.embed(masked);
-    await this.recordUsage(tenantId, feature, this.embedModel, estimateTokens(masked), 0, false);
+    const vec = await provider.embed(masked);
+    await this.recordUsage(tenantId, feature, embedModel, estimateTokens(masked), 0, false);
     return vec;
   }
 
@@ -81,10 +91,6 @@ export class AiService {
     ).catch((e) => this.logger.warn(`ai_usage write failed: ${(e as Error).message}`));
   }
 
-  transcribe(audioRefOrText: string): Promise<string> {
-    return this.provider.transcribe(audioRefOrText);
-  }
-
   /**
    * Маскирует транскрипт, отправляет в LLM, валидирует по схеме.
    * @returns masked-текст (что ушло в модель) + валидированный пакет (или ошибки).
@@ -98,7 +104,8 @@ export class AiService {
     const cacheKey = `ai:parse:${tenantId}:${createHash('sha256').update(masked).digest('hex')}`;
     let raw = await this.redis.getJson<unknown>(cacheKey).catch(() => null);
     if (raw === null) {
-      raw = await this.provider.parseIntents(masked);
+      const { provider } = await this.providerFor(tenantId);
+      raw = await provider.parseIntents(masked);
       await this.redis.setJson(cacheKey, raw, CACHE_TTL).catch(() => undefined);
     }
 

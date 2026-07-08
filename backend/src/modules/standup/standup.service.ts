@@ -110,7 +110,7 @@ export class StandupService {
   private async transcribe(sub: SubmissionRow): Promise<void> {
     if (sub.status !== 'received' && sub.status !== 'transcribing') return; // идемпотентность
     await this.repo.update(sub.id, { status: 'transcribing' });
-    const transcript = await this.ai.transcribe(sub.audio_file_ref ?? '');
+    const transcript = await this.ai.transcribe(sub.tenant_id, sub.audio_file_ref ?? '');
     await this.repo.update(sub.id, { status: 'transcribed', transcript_raw: transcript });
     await this.enqueue('parse', sub.tenant_id, sub.id);
   }
