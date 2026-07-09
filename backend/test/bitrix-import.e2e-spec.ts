@@ -236,4 +236,23 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     await http$.post('/api/integrations/bitrix/connections').set(H(tok)).send({ webhookUrl: webhookBase }).expect(201);
     await http$.post('/api/integrations/bitrix/connections').set(H(tok)).send({ webhookUrl: webhookBase }).expect(409);
   });
+
+  it('удаление импортированного проекта целиком (лента/refs/чанки не блокируют)', async () => {
+    ownerEmail = `del_${uniq()}@t.test`;
+    const reg = (await http$.post('/api/auth/register').send({ tenantName: 'ИмпDel', email: ownerEmail, password: 'password123', fullName: 'Анна Босс' }).expect(201)).body.data;
+    const tok = reg.accessToken;
+    const conn = (await http$.post('/api/integrations/bitrix/connections').set(H(tok)).send({ webhookUrl: webhookBase }).expect(201)).body.data;
+    const started = (await http$.post(`/api/integrations/bitrix/connections/${conn.id}/import`).set(H(tok)).send({ projectExternalIds: ['10'] }).expect(201)).body.data;
+    const run = await waitRun(tok, started.runId);
+    expect(run.status).toBe('done');
+
+    const list = (await http$.get('/api/projects').set(H(tok)).expect(200)).body.data;
+    const proj = list.find((p: any) => p.name === 'Медицина');
+    expect(proj.origin).toBe('bitrix');
+
+    // удаляем импортированный проект — раньше падало 500 из-за imported_messages FK
+    await http$.delete(`/api/projects/${proj.id}`).set(H(tok)).expect(200);
+    const after = (await http$.get('/api/projects').set(H(tok)).expect(200)).body.data;
+    expect(after.find((p: any) => String(p.id) === String(proj.id))).toBeUndefined();
+  });
 });

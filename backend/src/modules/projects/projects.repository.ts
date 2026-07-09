@@ -103,6 +103,16 @@ export class ProjectsRepository {
              OR applied_time_log_id IN (SELECT id FROM time_logs WHERE tenant_id = $1 AND task_id IN (${taskSub})))`,
         t,
       );
+      // external_refs комментариев/файлов задач (пока строки существуют) + маппинги задач,
+      // + чанки базы знаний этого проекта (source по access_scope=project_id)
+      await client.query(
+        `DELETE FROM external_refs WHERE tenant_id=$1 AND entity_type='comment'
+           AND local_id IN (SELECT id FROM task_comments WHERE tenant_id=$1 AND task_id IN (${taskSub}))`, t);
+      await client.query(
+        `DELETE FROM external_refs WHERE tenant_id=$1 AND entity_type='file'
+           AND local_id IN (SELECT file_id FROM task_attachments WHERE tenant_id=$1 AND task_id IN (${taskSub}))`, t);
+      await client.query(`DELETE FROM external_refs WHERE tenant_id=$1 AND entity_type='task' AND local_id IN (${taskSub})`, t);
+      await client.query(`DELETE FROM knowledge_chunks WHERE tenant_id=$1 AND access_scope=$2`, t);
       // дочерние таблицы задач
       for (const tbl of [
         'task_activity',
@@ -123,8 +133,11 @@ export class ProjectsRepository {
         `UPDATE recommendations SET task_id = NULL WHERE tenant_id = $1 AND task_id IN (${taskSub})`,
         t,
       );
-      // сами задачи и колонки
+      // сами задачи и колонки (external_refs колонок чистим, пока board_columns существуют)
       await client.query(`DELETE FROM tasks WHERE tenant_id = $1 AND project_id = $2`, t);
+      await client.query(
+        `DELETE FROM external_refs WHERE tenant_id=$1 AND entity_type='column'
+           AND local_id IN (SELECT id FROM board_columns WHERE tenant_id=$1 AND project_id=$2)`, t);
       await client.query(`DELETE FROM board_columns WHERE tenant_id = $1 AND project_id = $2`, t);
       // обнулить ссылки на проект
       await client.query(`UPDATE deals SET project_id = NULL WHERE tenant_id = $1 AND project_id = $2`, t);
@@ -133,6 +146,9 @@ export class ProjectsRepository {
         `UPDATE recommendations SET project_id = NULL WHERE tenant_id = $1 AND project_id = $2`,
         t,
       );
+      // импортированное из Битрикса: лента проекта (FK на проект) + маппинг самого проекта
+      await client.query(`DELETE FROM imported_messages WHERE tenant_id = $1 AND project_id = $2`, t);
+      await client.query(`DELETE FROM external_refs WHERE tenant_id=$1 AND entity_type='project' AND local_id=$2`, t);
       await client.query(`DELETE FROM projects WHERE tenant_id = $1 AND id = $2`, t);
     });
   }
