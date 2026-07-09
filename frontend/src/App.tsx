@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from './state/auth';
-import { api, ApiError } from './lib/api';
+import { api } from './lib/api';
 import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
@@ -8,19 +8,16 @@ import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
 import { ClientsPanel } from './components/ClientsPanel';
-import { AiSettingsPanel } from './components/AiSettingsPanel';
 import { ClientPortal } from './pages/ClientPortal';
 import { Avatar } from './components/Avatar';
 import { roleLabel } from './lib/labels';
 
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
-  const [tgCode, setTgCode] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [showClients, setShowClients] = useState(false);
-  const [showAi, setShowAi] = useState(false);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
   const onSwitchOrg = async (tenantId: string) => {
@@ -40,15 +37,6 @@ export function App() {
   }, [user]);
 
   if (inviteToken) return <AcceptInvitePage token={inviteToken} />;
-
-  const linkTelegram = async () => {
-    try {
-      const r = await api.telegramLinkCode();
-      setTgCode(r.code);
-    } catch (e) {
-      setTgCode(e instanceof ApiError ? e.message : 'ошибка');
-    }
-  };
 
   if (loading) {
     return (
@@ -75,25 +63,12 @@ export function App() {
             {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
             <option value="__new__">+ Создать организацию…</option>
           </select>
-          {tgCode && (
-            <span className="badge" title="Отправьте код Telegram-боту для привязки">
-              TG-код: <b>{tgCode}</b>
-            </span>
-          )}
-          <button className="btn btn-ghost btn-sm" onClick={linkTelegram}>
-            Привязать Telegram
-          </button>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)}>
             База знаний
           </button>
           {(user.role === 'owner' || user.role === 'manager') && (
             <button className="btn btn-ghost btn-sm" onClick={() => setShowClients(true)}>
               Клиенты
-            </button>
-          )}
-          {user.role === 'owner' && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowAi(true)}>
-              ИИ-настройки
             </button>
           )}
           {user.role === 'owner' && (
@@ -116,7 +91,6 @@ export function App() {
       {showIntegrations && <IntegrationsPanel onClose={() => setShowIntegrations(false)} />}
       {showKnowledge && <KnowledgePanel canManage={user.role === 'owner' || user.role === 'manager'} onClose={() => setShowKnowledge(false)} />}
       {showClients && <ClientsPanel onClose={() => setShowClients(false)} />}
-      {showAi && <AiSettingsPanel onClose={() => setShowAi(false)} />}
     </div>
   );
 }

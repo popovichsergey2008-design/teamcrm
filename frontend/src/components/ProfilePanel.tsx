@@ -8,7 +8,13 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   const [tab, setTab] = useState<Tab>('profile');
   const [me, setMe] = useState<any>(null);
   const [msg, setMsg] = useState('');
+  const [tgCode, setTgCode] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const linkTelegram = async () => {
+    try { const r = await api.telegramLinkCode(); setTgCode(r.code); }
+    catch (e) { setTgCode(e instanceof ApiError ? e.message : 'ошибка'); }
+  };
 
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 2500); };
   const loadMe = () => api.me().then((m) => { setMe(m); onAvatar(m.avatarUrl); });
@@ -89,6 +95,13 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             <div className="field"><label>Телефон</label><input className="input" value={me.phone ?? ''} onChange={(e) => setMe({ ...me, phone: e.target.value })} /></div>
             <div className="field"><label>Таймзона</label><input className="input" value={me.timezone ?? ''} onChange={(e) => setMe({ ...me, timezone: e.target.value })} /></div>
             <button className="btn btn-primary" style={{ width: '100%' }} onClick={saveProfile}>Сохранить</button>
+
+            <div className="drawer-section">
+              <div className="drawer-section-title">Telegram</div>
+              <div className="dim" style={{ fontSize: 12, marginBottom: 6 }}>Привяжите Telegram, чтобы сдавать дейлики боту (голосом или текстом).</div>
+              <button className="btn btn-sm" onClick={linkTelegram}>Получить код привязки</button>
+              {tgCode && <div className="dim" style={{ marginTop: 6 }}>Код: <b>{tgCode}</b> — отправьте его нашему Telegram-боту.</div>}
+            </div>
           </>
         )}
 

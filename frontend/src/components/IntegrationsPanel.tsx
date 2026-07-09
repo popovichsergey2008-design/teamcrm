@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { AiSettingsSection } from './AiSettingsPanel';
 
-/** Интеграции → Битрикс24: подключение порталов и импорт досок (E1). */
+/** Интеграции: подключения (Битрикс24) + ключи ИИ. */
 export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
+  const [tab, setTab] = useState<'bitrix' | 'ai'>('bitrix');
   const [conns, setConns] = useState<any[]>([]);
   const [msg, setMsg] = useState('');
   const [form, setForm] = useState({ webhookUrl: '', label: '' });
@@ -30,9 +32,16 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>Интеграции · Битрикс24</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3>Интеграции</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="tabs">
+          <button className={`tab ${tab === 'bitrix' ? 'active' : ''}`} onClick={() => setTab('bitrix')}>Битрикс24</button>
+          <button className={`tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')}>ИИ (ключи и модель)</button>
+        </div>
         {msg && <div className="dim">{msg}</div>}
 
+        {tab === 'ai' && <AiSettingsSection />}
+
+        {tab === 'bitrix' && (<>
         <div className="drawer-section-title">Подключить портал (входящий вебхук)</div>
         <div className="add-user">
           <input className="input add-user-input" placeholder="URL вебхука (https://portal.bitrix24.ru/rest/…/…/)" value={form.webhookUrl} onChange={(e) => setForm({ ...form, webhookUrl: e.target.value })} />
@@ -60,6 +69,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
             {openCid === c.id && <ImportBlock cid={c.id} />}
           </div>
         ))}
+        </>)}
       </aside>
     </div>
   );

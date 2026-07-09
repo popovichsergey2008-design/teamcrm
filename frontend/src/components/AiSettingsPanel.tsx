@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 
-/** BYOK: ключи ИИ-провайдеров (шифруются на сервере) + выбор модели чата. Owner. */
-export function AiSettingsPanel({ onClose }: { onClose: () => void }) {
+/** BYOK: ключи ИИ-провайдеров (шифруются на сервере) + выбор модели чата. Встраивается в «Интеграции». */
+export function AiSettingsSection() {
   const [s, setS] = useState<any>(null);
   const [openaiKey, setOpenaiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
@@ -31,9 +31,7 @@ export function AiSettingsPanel({ onClose }: { onClose: () => void }) {
 
   if (!s) return null;
   return (
-    <div className="drawer-overlay" onClick={onClose}>
-      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>ИИ-настройки</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+    <>
         <div className="dim" style={{ fontSize: 12 }}>Ваш ключ шифруется на сервере и используется вместо общего. Нужен для реального семантического поиска и ответов ИИ.</div>
         {msg && <div className="dim">{msg}</div>}
 
@@ -61,7 +59,6 @@ export function AiSettingsPanel({ onClose }: { onClose: () => void }) {
           <button className="btn btn-sm" onClick={() => save({ brainModel })}>Применить</button>
         </div>
         <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Список моделей — доступные по вашему ключу OpenAI (обновляется после сохранения ключа).</div>
-      </aside>
-    </div>
+    </>
   );
 }
