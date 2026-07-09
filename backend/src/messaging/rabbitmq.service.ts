@@ -76,9 +76,13 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`publish skipped (no channel): ${queue}`);
       return false;
     }
-    return this.channel.sendToQueue(queue, Buffer.from(JSON.stringify(message)), {
-      persistent: true,
-    });
+    try {
+      return this.channel.sendToQueue(queue, Buffer.from(JSON.stringify(message)), { persistent: true });
+    } catch (err) {
+      // канал мог закрыться (реконнект/шатдаун) — не роняем вызывающий код
+      this.logger.warn(`publish failed on ${queue}: ${(err as Error).message}`);
+      return false;
+    }
   }
 
   /** Регистрирует консьюмера; переживает реконнекты. */
