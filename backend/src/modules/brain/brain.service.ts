@@ -40,7 +40,7 @@ export class BrainService {
   }
 
   /** RAG-конвейер: поиск top-k → сборка контекста → LLM → ответ с цитатами. Изоляция по tenant/пользователю. */
-  async ask(tenantId: string, userId: string, conversationId: string, question: string) {
+  async ask(tenantId: string, userId: string, conversationId: string, question: string, projectId?: string) {
     const conv = await this.repo.conversationOwned(tenantId, userId, conversationId);
     if (!conv) throw AppException.notFound('Диалог не найден');
     const q = question.trim();
@@ -49,24 +49,27 @@ export class BrainService {
     await this.repo.addMessage(conversationId, 'user', q, null);
     await this.repo.setTitle(conversationId, q);
 
-    // 1) точный кэш (Redis) — идентичный (нормализованный) вопрос в рамках арендатора
-    const exactKey = `brain:ans:${tenantId}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
+    // 1) точный кэш (Redis) — идентичный вопрос в рамках арендатора И выбранного проекта
+    const scopeKey = projectId ? `p${projectId}` : 'all';
+    const exactKey = `brain:ans:${tenantId}:${scopeKey}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
     const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null);
     if (exact) return this.finish(tenantId, conversationId, exact.answer, exact.citations, 'exact');
 
     // 2) эмбеддинг вопроса — переиспользуется для семантического кэша И для поиска
     const vec = await this.ai.embed(tenantId, q, 'embedding');
 
-    // 3) семантический кэш (pgvector) — похожий вопрос
-    const sem = await this.repo.cacheLookup(tenantId, vec).catch(() => null);
-    if (sem && sem.score >= SEMANTIC_THRESHOLD) {
-      const citations = sem.citations ?? [];
-      await this.redis.setJson(exactKey, { answer: sem.answer, citations }, ANSWER_TTL).catch(() => undefined);
-      return this.finish(tenantId, conversationId, sem.answer, citations, 'semantic');
+    // 3) семантический кэш (pgvector) — только для общего поиска (не проектного), чтобы не смешивать разрезы
+    if (!projectId) {
+      const sem = await this.repo.cacheLookup(tenantId, vec).catch(() => null);
+      if (sem && sem.score >= SEMANTIC_THRESHOLD) {
+        const citations = sem.citations ?? [];
+        await this.redis.setJson(exactKey, { answer: sem.answer, citations }, ANSWER_TTL).catch(() => undefined);
+        return this.finish(tenantId, conversationId, sem.answer, citations, 'semantic');
+      }
     }
 
-    // 4) промах кэша → RAG + LLM
-    const hits = await this.knowledge.searchByVector(tenantId, vec, 6);
+    // 4) промах кэша → RAG + LLM (в рамках проекта, если задан)
+    const hits = await this.knowledge.searchByVector(tenantId, vec, 6, projectId);
     const seen = new Set<string>();
     const citations: { sourceType: string; sourceId: string; title: string | null }[] = [];
     for (const h of hits) {
@@ -85,9 +88,9 @@ export class BrainService {
         || 'Не удалось сформировать ответ.';
     }
 
-    // сохранить в оба кэша
+    // сохранить в кэши (семантический — только для общего разреза)
     await this.redis.setJson(exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
-    if (hits.length) await this.repo.cacheStore(tenantId, q, vec, answer, citations).catch(() => undefined);
+    if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations).catch(() => undefined);
 
     return this.finish(tenantId, conversationId, answer, citations, 'miss');
   }

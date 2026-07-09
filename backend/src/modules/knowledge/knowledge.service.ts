@@ -47,11 +47,17 @@ export class KnowledgeService implements OnModuleInit {
   private async loadSource(msg: IndexMsg): Promise<{ text: string; accessScope: string | null; title: string | null } | null> {
     if (msg.sourceType === 'task') {
       const r = await this.db.one<any>(
-        `SELECT title, description, project_id, closed_at FROM tasks WHERE tenant_id=$1 AND id=$2`,
+        `SELECT title, description, project_id FROM tasks WHERE tenant_id=$1 AND id=$2`,
         [msg.tenantId, msg.sourceId],
       );
-      if (!r || !r.closed_at) return null; // индексируем только закрытые задачи (опыт)
-      return { text: [r.title, r.description].filter(Boolean).join('\n'), accessScope: r.project_id, title: r.title };
+      if (!r) return null; // индексируем ВСЕ задачи (и открытые, и закрытые проекты)
+      const files = await this.db.many<{ file_name: string }>(
+        `SELECT f.file_name FROM task_attachments a JOIN files f ON f.id=a.file_id
+          WHERE a.tenant_id=$1 AND a.task_id=$2`,
+        [msg.tenantId, msg.sourceId],
+      );
+      const fileText = files.length ? `\nФайлы: ${files.map((f) => f.file_name).join(', ')}` : '';
+      return { text: [r.title, r.description].filter(Boolean).join('\n') + fileText, accessScope: r.project_id, title: r.title };
     }
     if (msg.sourceType === 'comment') {
       const r = await this.db.one<any>(
@@ -92,17 +98,27 @@ export class KnowledgeService implements OnModuleInit {
     this.log.log(`indexed ${msg.sourceType}#${msg.sourceId} (${chunks.length} chunk(s))`);
   }
 
-  /** Семантический поиск. Внутренние роли: доступ ко всем проектам арендатора (per-project ACL — на будущее). */
-  async search(tenantId: string, query: string, k = 8) {
+  /** Семантический поиск. Опционально в рамках одного проекта (+ общие регламенты). */
+  async search(tenantId: string, query: string, k = 8, projectId?: string) {
     const vec = await this.ai.embed(tenantId, query, 'embedding');
-    return this.searchByVector(tenantId, vec, k);
+    return this.searchByVector(tenantId, vec, k, projectId);
   }
 
   /** Поиск по готовому вектору (переиспользуется в AI Brain / кэше — без повторного эмбеддинга). */
-  async searchByVector(tenantId: string, vec: number[], k = 8) {
-    const hits = await this.repo.search(tenantId, vec, k, { all: true, scopes: [] });
+  async searchByVector(tenantId: string, vec: number[], k = 8, projectId?: string) {
+    const hits = await this.repo.search(tenantId, vec, k, projectId);
+    // подписи проектов для разреза «по проектам»
+    const scopeIds = [...new Set(hits.map((h) => h.access_scope).filter(Boolean) as string[])];
+    const names = new Map<string, string>();
+    if (scopeIds.length) {
+      const rows = await this.db.many<{ id: string; name: string }>(
+        `SELECT id, name FROM projects WHERE tenant_id=$1 AND id = ANY($2::bigint[])`, [tenantId, scopeIds],
+      );
+      for (const r of rows) names.set(String(r.id), r.name);
+    }
     return hits.map((h) => ({
       sourceType: h.source_type, sourceId: h.source_id, title: h.title,
+      projectId: h.access_scope, projectName: h.access_scope ? names.get(String(h.access_scope)) ?? null : null,
       snippet: h.content.slice(0, 400), score: Number(h.score),
     }));
   }
@@ -110,7 +126,7 @@ export class KnowledgeService implements OnModuleInit {
   /** Постановка всех знаний арендатора в очередь индексации (в т.ч. импортированных из Битрикса). */
   async backfill(tenantId: string): Promise<{ queued: number }> {
     let queued = 0;
-    const tasks = await this.db.many<{ id: string }>(`SELECT id FROM tasks WHERE tenant_id=$1 AND closed_at IS NOT NULL`, [tenantId]);
+    const tasks = await this.db.many<{ id: string }>(`SELECT id FROM tasks WHERE tenant_id=$1`, [tenantId]);
     for (const t of tasks) { this.enqueue(tenantId, 'task', t.id); queued++; }
     const comments = await this.db.many<{ id: string }>(`SELECT id FROM task_comments WHERE tenant_id=$1`, [tenantId]);
     for (const c of comments) { this.enqueue(tenantId, 'comment', c.id); queued++; }

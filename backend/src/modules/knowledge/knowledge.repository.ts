@@ -60,15 +60,15 @@ export class KnowledgeRepository {
   }
 
   /**
-   * Семантический поиск. ВСЕГДА фильтр по tenant. Если scopeAll=false — дополнительно
-   * по access_scope (проекты доступа пользователя) — инвариант «RAG не обходит RBAC».
+   * Семантический поиск. ВСЕГДА фильтр по tenant. Если задан projectId — только
+   * фрагменты этого проекта + общие регламенты (access_scope IS NULL).
    */
-  search(tenantId: string, queryVec: number[], k: number, scope: { all: boolean; scopes: string[] }): Promise<SearchHit[]> {
+  search(tenantId: string, queryVec: number[], k: number, projectId?: string): Promise<SearchHit[]> {
     const params: any[] = [tenantId, this.vec(queryVec), k];
     let scopeSql = '';
-    if (!scope.all) {
-      params.push(scope.scopes.length ? scope.scopes : ['-1']);
-      scopeSql = `AND (access_scope IS NULL OR access_scope = ANY($4::bigint[]))`;
+    if (projectId) {
+      params.push(projectId);
+      scopeSql = `AND (access_scope = $4 OR access_scope IS NULL)`;
     }
     return this.db.many<SearchHit>(
       `SELECT id, source_type, source_id, chunk_index, title, content, access_scope,

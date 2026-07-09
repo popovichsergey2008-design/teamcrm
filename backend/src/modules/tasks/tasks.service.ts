@@ -46,6 +46,7 @@ export class TasksService {
     });
     this.realtime.emit(tenantId, task.project_id, 'task.created', task as any);
     await this.activity.log(tenantId, task.id, actorId, 'created', { title: task.title });
+    this.knowledge.enqueue(tenantId, 'task', task.id); // в базу знаний (открытые проекты тоже)
     return task;
   }
 
@@ -64,6 +65,7 @@ export class TasksService {
     this.realtime.emit(tenantId, existing.project_id, 'task.updated', updated as any);
     const changed = Object.keys(dto).filter((k) => (dto as any)[k] !== undefined);
     await this.activity.log(tenantId, id, actorId, 'updated', { fields: changed });
+    if (dto.title !== undefined || dto.description !== undefined) this.knowledge.enqueue(tenantId, 'task', id); // переиндексация при смене текста
     return updated as TaskRow;
   }
 

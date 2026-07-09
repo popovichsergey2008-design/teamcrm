@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, MinLength } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -7,6 +7,7 @@ import { BrainService } from './brain.service';
 
 class AskDto {
   @IsString() @MinLength(2) question!: string;
+  @IsOptional() @IsString() projectId?: string;
 }
 
 @ApiTags('brain')
@@ -33,6 +34,6 @@ export class BrainController {
 
   @Post('conversations/:id/ask')
   ask(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AskDto) {
-    return this.brain.ask(u.tenantId, u.userId, id, dto.question);
+    return this.brain.ask(u.tenantId, u.userId, id, dto.question, dto.projectId || undefined);
   }
 }

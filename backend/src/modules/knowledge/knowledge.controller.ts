@@ -14,6 +14,7 @@ class RegulationDto {
 class SearchDto {
   @IsString() @MinLength(2) q!: string;
   @IsOptional() @IsString() k?: string;
+  @IsOptional() @IsString() projectId?: string;
 }
 
 @ApiTags('knowledge')
@@ -30,7 +31,7 @@ export class KnowledgeController {
   search(@CurrentUser() u: AuthUser, @Query() dto: SearchDto) {
     if (!dto.q || dto.q.trim().length < 2) throw AppException.validation('Слишком короткий запрос');
     const k = Math.min(Math.max(Number(dto.k) || 8, 1), 20);
-    return this.knowledge.search(u.tenantId, dto.q.trim(), k);
+    return this.knowledge.search(u.tenantId, dto.q.trim(), k, dto.projectId || undefined);
   }
 
   @Get('knowledge/stats')

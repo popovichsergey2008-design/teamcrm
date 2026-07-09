@@ -62,6 +62,27 @@ describe('Knowledge base (e2e)', () => {
     expect(hitsB.length).toBe(0);
   });
 
+  it('разрез по проекту: поиск в рамках проекта не выдаёт задачи другого проекта', async () => {
+    const reg = (await http.post('/api/auth/register').send({ tenantName: 'KB-Scope', email: `s_${uniq()}@t.test`, password: 'password123', fullName: 'С' }).expect(201)).body.data;
+    const tok = reg.accessToken;
+    const pa = (await http.post('/api/projects').set(H(tok)).send({ name: 'Проект Альфа' }).expect(201)).body.data;
+    const pb = (await http.post('/api/projects').set(H(tok)).send({ name: 'Проект Бета' }).expect(201)).body.data;
+    const colA = (await http.get(`/api/projects/${pa.id}/board`).set(H(tok)).expect(200)).body.data.columns[0].id;
+    const colB = (await http.get(`/api/projects/${pb.id}/board`).set(H(tok)).expect(200)).body.data.columns[0].id;
+    // открытые задачи (индексируются при создании)
+    await http.post('/api/tasks').set(H(tok)).send({ projectId: pa.id, columnId: colA, title: 'альфа секрет пагинация' }).expect(201);
+    await http.post('/api/tasks').set(H(tok)).send({ projectId: pb.id, columnId: colB, title: 'бета секрет редиректы' }).expect(201);
+    expect(await waitChunks(tok, 2, true)).toBeGreaterThanOrEqual(2);
+
+    // поиск в рамках проекта Альфа — не должно быть задач проекта Бета
+    const hits = (await http.get('/api/knowledge/search').query({ q: 'секрет', k: 20, projectId: pa.id }).set(H(tok)).expect(200)).body.data;
+    expect(hits.length).toBeGreaterThanOrEqual(1);
+    expect(hits.some((h: any) => /альфа/.test(h.title))).toBe(true);
+    expect(hits.some((h: any) => /бета/.test(h.title))).toBe(false);
+    // у результатов есть подпись проекта
+    expect(hits.find((h: any) => /альфа/.test(h.title)).projectName).toBe('Проект Альфа');
+  });
+
   it('закрытая задача попадает в базу знаний (триггер закрытия)', async () => {
     const reg = (await http.post('/api/auth/register').send({ tenantName: 'KB-T', email: `t_${uniq()}@t.test`, password: 'password123', fullName: 'Т' }).expect(201)).body.data;
     const tok = reg.accessToken;

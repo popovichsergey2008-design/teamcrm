@@ -12,8 +12,17 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
     api.knowledgeStats().then(setStats).catch(() => undefined);
     if (canManage) api.aiUsage().then(setUsage).catch(() => undefined);
   };
+  const [projects, setProjects] = useState<any[]>([]);
+  const [scope, setScope] = useState(''); // '' = вся организация, иначе projectId
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadStats(); }, []);
+  useEffect(() => { loadStats(); api.listProjects().then(setProjects).catch(() => undefined); }, []);
+
+  const ScopeSelect = () => (
+    <select className="input" style={{ maxWidth: 220 }} value={scope} onChange={(e) => setScope(e.target.value)} title="Разрез базы знаний">
+      <option value="">Вся организация</option>
+      {projects.map((p) => <option key={p.id} value={p.id}>Проект: {p.name}</option>)}
+    </select>
+  );
 
   // поиск
   const [q, setQ] = useState('');
@@ -22,7 +31,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
   const doSearch = async () => {
     if (q.trim().length < 2) return;
     setSearching(true);
-    try { setHits(await api.knowledgeSearch(q.trim())); }
+    try { setHits(await api.knowledgeSearch(q.trim(), 8, scope || undefined)); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка поиска'); }
     finally { setSearching(false); }
   };
@@ -58,7 +67,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
     try {
       let id = convId;
       if (!id) { id = (await api.brainStart()).id; setConvId(id); }
-      const r = await api.brainAsk(id, q);
+      const r = await api.brainAsk(id, q, scope || undefined);
       setChat((c) => [...c, { role: 'assistant', content: r.answer, citations: r.citations, cached: r.cached }]);
       if (canManage) api.aiUsage().then(setUsage).catch(() => undefined);
     } catch (e) {
@@ -100,6 +109,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
               ))}
               {thinking && <div className="brain-msg brain-assistant dim">Думаю…</div>}
             </div>
+            <div className="team-rate"><ScopeSelect /><span className="dim" style={{ fontSize: 12 }}>← искать ответ в этом разрезе</span></div>
             <div className="team-rate">
               <input className="input" placeholder="Ваш вопрос…" value={ask} onChange={(e) => setAsk(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !thinking && sendAsk()} />
               <button className="btn btn-primary btn-sm" onClick={sendAsk} disabled={thinking}>Спросить</button>
@@ -109,6 +119,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
 
         {tab === 'search' && (
           <>
+            <div className="team-rate"><ScopeSelect /></div>
             <div className="team-rate">
               <input className="input" placeholder="Спросите: как мы решали…?" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doSearch()} />
               <button className="btn btn-primary btn-sm" onClick={doSearch} disabled={searching}>{searching ? '…' : 'Найти'}</button>
@@ -117,7 +128,10 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
             {hits?.map((h, i) => (
               <div key={i} className="team-row">
                 <div className="team-head">
-                  <span><span className="badge">{h.sourceType === 'task' ? 'задача' : h.sourceType === 'comment' ? 'комментарий' : 'регламент'}</span> {h.title || '—'}</span>
+                  <span>
+                    <span className="badge">{h.sourceType === 'task' ? 'задача' : h.sourceType === 'comment' ? 'комментарий' : 'регламент'}</span>
+                    {h.projectName && <span className="badge" title="Проект">📁 {h.projectName}</span>} {h.title || '—'}
+                  </span>
                   <span className="dim" style={{ fontSize: 12 }}>{Math.round((h.score ?? 0) * 100)}%</span>
                 </div>
                 <div className="dim" style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{h.snippet}</div>
