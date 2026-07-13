@@ -54,7 +54,7 @@ export class BrainService {
 
     // PromptOps: действующая версия системного промпта (tenant-override > глобальный дефолт).
     // versionId включён в ключ кэша — смена версии сразу даёт свежий ответ.
-    const prompt = await this.prompts.resolve(tenantId, 'brain.system', {});
+    const prompt = await this.prompts.resolve(tenantId, 'brain.system', {}, userId);
     const system = prompt?.body ?? SYSTEM_FALLBACK;
     const versionId = prompt?.versionId ?? null;
     const versionKey = versionId ?? 'default';

@@ -60,6 +60,30 @@ export class PromptRepository {
     );
   }
 
+  /** Версия под A/B (B-вариант): status='testing' со сплитом. */
+  testingVersion(templateId: string) {
+    return this.db.one<PromptVersionRow>(
+      `SELECT * FROM prompt_versions WHERE template_id=$1 AND status='testing' AND ab_split IS NOT NULL
+        ORDER BY version DESC LIMIT 1`,
+      [templateId],
+    );
+  }
+
+  /** Пометить версию как B-вариант A/B (демоутит прочие testing→draft; инвариант «один testing»). */
+  async setTesting(templateId: string, version: number, split: number): Promise<void> {
+    await this.db.withTransaction(async (c) => {
+      await c.query(
+        `UPDATE prompt_versions SET status='draft', ab_split=NULL
+          WHERE template_id=$1 AND status='testing' AND version<>$2`,
+        [templateId, version],
+      );
+      await c.query(
+        `UPDATE prompt_versions SET status='testing', ab_split=$3 WHERE template_id=$1 AND version=$2`,
+        [templateId, version, split],
+      );
+    });
+  }
+
   listVersions(templateId: string) {
     return this.db.many<PromptVersionRow>(
       `SELECT * FROM prompt_versions WHERE template_id=$1 ORDER BY version DESC`,
@@ -124,7 +148,10 @@ export class PromptRepository {
     );
   }
 
-  /** Активация версии с инвариантом «одна active»: прочие active→deprecated. */
+  /**
+   * Активация версии с инвариантом «одна active»: прочие active→deprecated.
+   * Активируемая версия становится контролем — сбрасываем её ab_split (промоут B-варианта завершает A/B).
+   */
   async activateVersion(templateId: string, version: number): Promise<void> {
     await this.db.withTransaction(async (c) => {
       await c.query(
@@ -133,7 +160,7 @@ export class PromptRepository {
         [templateId, version],
       );
       await c.query(
-        `UPDATE prompt_versions SET status='active' WHERE template_id=$1 AND version=$2`,
+        `UPDATE prompt_versions SET status='active', ab_split=NULL WHERE template_id=$1 AND version=$2`,
         [templateId, version],
       );
     });

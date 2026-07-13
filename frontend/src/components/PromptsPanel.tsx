@@ -62,6 +62,15 @@ export function PromptsSection() {
     try { await api.promptDeprecate(key, v); flash(`Версия ${v} снята`); loadVersions(key); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
+  const startAb = async (v: number) => {
+    if (!key) return;
+    const raw = window.prompt('Доля трафика на этот вариант (B), % — 1..99:', '20');
+    if (raw === null) return;
+    const split = Number(raw);
+    if (!Number.isInteger(split) || split < 1 || split > 99) return flash('Нужно целое 1..99');
+    try { await api.promptAbTest(key, v, split); flash(`A/B запущен: ${split}% на v${v}`); loadVersions(key); loadTemplates(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
   const loadInto = (ver: any) => { setBody(ver.body); setModel(ver.model ?? ''); setNote(''); };
 
   return (
@@ -99,10 +108,11 @@ export function PromptsSection() {
             return (
               <div key={v.id} className="team-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4, padding: '8px 0', borderBottom: '1px solid var(--border, #2a2a2a)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <div><b>v{v.version}</b> · {STATUS[v.status] ?? v.status}{v.model ? ` · ${v.model}` : ''}</div>
+                  <div><b>v{v.version}</b> · {STATUS[v.status] ?? v.status}{v.status === 'testing' && v.abSplit ? ` ${v.abSplit}%` : ''}{v.model ? ` · ${v.model}` : ''}</div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => loadInto(v)}>В редактор</button>
                     {v.status !== 'active' && <button className="btn btn-sm" onClick={() => activate(v.version)}>Сделать активной</button>}
+                    {v.status !== 'active' && <button className="btn btn-ghost btn-sm" title="Запустить A/B: доля трафика на этот вариант" onClick={() => startAb(v.version)}>A/B</button>}
                     {v.status !== 'active' && <button className="btn btn-ghost btn-sm" onClick={() => deprecate(v.version)}>Снять</button>}
                   </div>
                 </div>

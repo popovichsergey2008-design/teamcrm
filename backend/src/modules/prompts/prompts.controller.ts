@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -11,6 +11,10 @@ class CreateVersionDto {
   @IsOptional() @IsObject() params?: Record<string, unknown>;
   @IsOptional() variables?: unknown[];
   @IsOptional() @IsString() @MaxLength(500) note?: string;
+}
+
+class AbDto {
+  @IsInt() @Min(1) @Max(99) split!: number; // % трафика на B-вариант
 }
 
 /** PromptOps: управление версиями промптов ИИ (owner/manager). Системные дефолты клонируются в override арендатора. */
@@ -39,6 +43,11 @@ export class PromptsController {
   @Post(':key/versions/:v/activate')
   activate(@CurrentUser() u: AuthUser, @Param('key') key: string, @Param('v') v: string) {
     return this.prompts.activate(u.tenantId, key, Number(v));
+  }
+
+  @Post(':key/versions/:v/ab')
+  ab(@CurrentUser() u: AuthUser, @Param('key') key: string, @Param('v') v: string, @Body() dto: AbDto) {
+    return this.prompts.setAbTest(u.tenantId, key, Number(v), dto.split);
   }
 
   @Post(':key/versions/:v/deprecate')

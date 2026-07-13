@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { AppException } from '../../common/http/app-exception';
 import { PromptRepository, PromptTemplateRow, PromptVersionRow } from './prompt.repository';
 
@@ -8,7 +9,7 @@ export interface ResolvedPrompt {
   params: Record<string, unknown>;
   versionId: string;
   version: number;
-  variant: 'active';
+  variant: 'active' | 'testing';
 }
 
 /** Подставляет {{var}} из variables. Недостающие → пусто, лишние игнорируются. */
@@ -17,6 +18,11 @@ export function interpolate(body: string, variables: Record<string, unknown> = {
     const v = variables[name];
     return v === undefined || v === null ? '' : String(v);
   });
+}
+
+/** Детерминированный бакет 0..99 из строки (стабильная маршрутизация A/B по пользователю). */
+export function abBucket(key: string): number {
+  return createHash('sha256').update(key).digest().readUInt32BE(0) % 100;
 }
 
 /**
@@ -30,22 +36,36 @@ export class PromptsService {
   constructor(private readonly repo: PromptRepository) {}
 
   /**
-   * Разрешить действующий промпт для арендатора: tenant-override > глобальный дефолт,
-   * активная версия, интерполяция {{var}}. null — если ключ не заведён (вызывающий берёт хардкод-фолбэк).
+   * Разрешить действующий промпт для арендатора: tenant-override > глобальный дефолт, активная версия,
+   * интерполяция {{var}}. Если есть B-вариант (testing+ab_split) и передан routingKey (обычно userId) —
+   * детерминированно направляем долю трафика на B (стабильно для одного пользователя). null — если ключ
+   * не заведён (вызывающий берёт хардкод-фолбэк).
    */
-  async resolve(tenantId: string, key: string, variables: Record<string, unknown> = {}): Promise<ResolvedPrompt | null> {
+  async resolve(
+    tenantId: string, key: string, variables: Record<string, unknown> = {}, routingKey?: string,
+  ): Promise<ResolvedPrompt | null> {
     try {
       const tpl = await this.repo.effectiveTemplate(tenantId, key);
       if (!tpl) return null;
-      const v = await this.repo.activeVersion(tpl.id);
-      if (!v) return null;
+      const active = await this.repo.activeVersion(tpl.id);
+      if (!active) return null;
+
+      let chosen = active;
+      let variant: ResolvedPrompt['variant'] = 'active';
+      if (routingKey) {
+        const testing = await this.repo.testingVersion(tpl.id);
+        if (testing && testing.ab_split && abBucket(`${routingKey}:${tpl.id}`) < testing.ab_split) {
+          chosen = testing;
+          variant = 'testing';
+        }
+      }
       return {
-        body: interpolate(v.body, variables),
-        model: v.model,
-        params: v.params ?? {},
-        versionId: v.id,
-        version: v.version,
-        variant: 'active',
+        body: interpolate(chosen.body, variables),
+        model: chosen.model,
+        params: chosen.params ?? {},
+        versionId: chosen.id,
+        version: chosen.version,
+        variant,
       };
     } catch (e) {
       // ИИ-слой не должен падать из-за PromptOps — деградируем к хардкод-дефолту у вызывающего.
@@ -114,6 +134,24 @@ export class PromptsService {
     const v = await this.repo.getVersion(tpl.id, version);
     if (!v) throw AppException.notFound('Версия не найдена');
     await this.repo.activateVersion(tpl.id, version);
+    return this.versions(tenantId, key);
+  }
+
+  /**
+   * Запустить A/B: пометить версию B-вариантом со сплитом split% трафика (1..99).
+   * Требует активный контроль (A); нельзя A/B-ить саму активную версию. Клон-он-райт (правка арендатора).
+   */
+  async setAbTest(tenantId: string, key: string, version: number, split: number) {
+    if (!Number.isInteger(split) || split < 1 || split > 99) {
+      throw AppException.validation('split должен быть целым 1..99');
+    }
+    const tpl = await this.ensureTenantTemplate(tenantId, key);
+    const active = await this.repo.activeVersion(tpl.id);
+    if (!active) throw AppException.validation('Нет активной версии — сначала активируйте контрольную (A)');
+    if (active.version === version) throw AppException.validation('Нельзя запустить A/B на активной версии — выберите другую как B');
+    const v = await this.repo.getVersion(tpl.id, version);
+    if (!v) throw AppException.notFound('Версия не найдена');
+    await this.repo.setTesting(tpl.id, version, split);
     return this.versions(tenantId, key);
   }
 

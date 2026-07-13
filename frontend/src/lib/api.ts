@@ -201,6 +201,7 @@ export const api = {
   promptCreateVersion: (key: string, b: { body: string; model?: string; note?: string }) =>
     request<any>('POST', `/prompts/${encodeURIComponent(key)}/versions`, b),
   promptActivate: (key: string, v: number) => request<any>('POST', `/prompts/${encodeURIComponent(key)}/versions/${v}/activate`),
+  promptAbTest: (key: string, v: number, split: number) => request<any>('POST', `/prompts/${encodeURIComponent(key)}/versions/${v}/ab`, { split }),
   promptDeprecate: (key: string, v: number) => request<any>('POST', `/prompts/${encodeURIComponent(key)}/versions/${v}/deprecate`),
   promptMetrics: (key: string, days = 30) => request<any>('GET', `/prompts/${encodeURIComponent(key)}/metrics?days=${days}`),
   promptFeedback: (b: { promptVersionId: string; rating: 1 | -1; reworked?: boolean }) => request<{ ok: boolean }>('POST', '/prompt-feedback', b),

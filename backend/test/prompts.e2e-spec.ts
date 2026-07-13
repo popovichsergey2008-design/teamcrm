@@ -143,4 +143,32 @@ describe('PromptOps (e2e)', () => {
     const other = await register();
     await http.post('/api/prompt-feedback').set(H(other)).send({ promptVersionId: activeId, rating: 1 }).expect(404);
   });
+
+  it('A/B: назначение B-варианта со сплитом, валидация, промоут очищает сплит', async () => {
+    const tok = await register();
+    // клон-он-райт + черновик v2 (v1 — активный контроль)
+    await http.post('/api/prompts/brain.system/versions').set(H(tok)).send({ body: 'B-вариант для A/B' }).expect(201);
+
+    // нельзя A/B на активной (v1)
+    await http.post('/api/prompts/brain.system/versions/1/ab').set(H(tok)).send({ split: 50 }).expect(400);
+    // сплит вне диапазона
+    await http.post('/api/prompts/brain.system/versions/2/ab').set(H(tok)).send({ split: 150 }).expect(400);
+    await http.post('/api/prompts/brain.system/versions/2/ab').set(H(tok)).send({ split: 0 }).expect(400);
+
+    // корректный A/B: v2 → testing 30%
+    await http.post('/api/prompts/brain.system/versions/2/ab').set(H(tok)).send({ split: 30 }).expect(201);
+    let v = (await http.get('/api/prompts/brain.system/versions').set(H(tok)).expect(200)).body.data;
+    const v2 = v.versions.find((x: any) => x.version === 2);
+    expect(v2.status).toBe('testing');
+    expect(v2.abSplit).toBe(30);
+    expect(v.versions.find((x: any) => x.version === 1).status).toBe('active');
+
+    // промоут B (activate v2) → active + сплит очищен, v1 deprecated
+    await http.post('/api/prompts/brain.system/versions/2/activate').set(H(tok)).expect(201);
+    v = (await http.get('/api/prompts/brain.system/versions').set(H(tok)).expect(200)).body.data;
+    const v2b = v.versions.find((x: any) => x.version === 2);
+    expect(v2b.status).toBe('active');
+    expect(v2b.abSplit).toBeNull();
+    expect(v.versions.find((x: any) => x.version === 1).status).toBe('deprecated');
+  });
 });
