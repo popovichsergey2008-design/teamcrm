@@ -5,6 +5,7 @@ import { RedisService } from '../../cache/redis.service';
 import { DbService } from '../../database/db.service';
 import { AiProvider, MockAiProvider, RealAiProvider } from './ai.provider';
 import { AiSettingsService } from './ai-settings.service';
+import { PromptsService } from '../prompts/prompts.service';
 import { maskPII } from './pii';
 import { StandupPackage, validateStandupPackage } from './standup-schema';
 
@@ -25,6 +26,7 @@ export class AiService {
     private readonly redis: RedisService,
     private readonly db: DbService,
     private readonly settings: AiSettingsService,
+    private readonly prompts: PromptsService,
   ) {
     this.parserModel = config.get<string>('AI_PARSER_MODEL') ?? 'claude-haiku-4-5';
   }
@@ -44,12 +46,22 @@ export class AiService {
     return this.providerFor(tenantId).then((p) => p.provider.transcribe(audioRefOrText));
   }
 
-  /** Аналитическая генерация (AI Brain): маскирование PII + метеринг. */
-  async generate(tenantId: string, system: string, user: string, feature = 'brain'): Promise<string> {
+  /**
+   * Аналитическая генерация (AI Brain): маскирование PII + метеринг.
+   * opts (PromptOps): переопределение модели/лимита и привязка расхода к версии промпта.
+   */
+  async generate(
+    tenantId: string, system: string, user: string, feature = 'brain',
+    opts?: { promptVersionId?: string | null; model?: string | null; params?: Record<string, unknown> },
+  ): Promise<string> {
     const { provider, brainModel } = await this.providerFor(tenantId);
     const masked = maskPII(user).masked;
-    const text = await provider.generate(system, masked);
-    await this.recordUsage(tenantId, feature, brainModel, estimateTokens(system + masked), estimateTokens(text), false);
+    const model = opts?.model || brainModel;
+    const maxTokens = typeof opts?.params?.max_tokens === 'number' ? (opts.params.max_tokens as number) : undefined;
+    const text = await provider.generate(system, masked, { model: opts?.model || undefined, maxTokens });
+    await this.recordUsage(
+      tenantId, feature, model, estimateTokens(system + masked), estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
+    );
     return text;
   }
 
@@ -80,14 +92,15 @@ export class AiService {
     };
   }
 
-  /** Durable запись расхода ИИ (для метеринга/биллинга/наблюдаемости). */
+  /** Durable запись расхода ИИ (для метеринга/биллинга/наблюдаемости). promptVersionId — привязка к версии (PromptOps). */
   async recordUsage(
-    tenantId: string, feature: string, model: string, inputTokens: number, outputTokens: number, cacheHit: boolean, cost = 0,
+    tenantId: string, feature: string, model: string, inputTokens: number, outputTokens: number, cacheHit: boolean,
+    cost = 0, promptVersionId: string | null = null,
   ): Promise<void> {
     await this.db.query(
-      `INSERT INTO ai_usage (tenant_id, feature, model, input_tokens, output_tokens, cache_hit, cost_estimate)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [tenantId, feature, model, inputTokens, outputTokens, cacheHit, cost],
+      `INSERT INTO ai_usage (tenant_id, feature, model, input_tokens, output_tokens, cache_hit, cost_estimate, prompt_version_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [tenantId, feature, model, inputTokens, outputTokens, cacheHit, cost, promptVersionId],
     ).catch((e) => this.logger.warn(`ai_usage write failed: ${(e as Error).message}`));
   }
 
@@ -101,12 +114,18 @@ export class AiService {
   ): Promise<{ masked: string; pkg: StandupPackage | null; errors: string[] }> {
     const { masked } = maskPII(transcript);
 
-    const cacheKey = `ai:parse:${tenantId}:${createHash('sha256').update(masked).digest('hex')}`;
+    // PromptOps: версионируемая инструкция парсера (фолбэк — встроенный дефолт провайдера).
+    const prompt = await this.prompts.resolve(tenantId, 'standup.parse', {});
+
+    const cacheKey = `ai:parse:${tenantId}:${prompt?.versionId ?? 'default'}:${createHash('sha256').update(masked).digest('hex')}`;
     let raw = await this.redis.getJson<unknown>(cacheKey).catch(() => null);
     if (raw === null) {
       const { provider } = await this.providerFor(tenantId);
-      raw = await provider.parseIntents(masked);
+      raw = await provider.parseIntents(masked, prompt?.body);
       await this.redis.setJson(cacheKey, raw, CACHE_TTL).catch(() => undefined);
+      await this.recordUsage(
+        tenantId, 'standup_parse', this.parserModel, estimateTokens(masked), 0, false, 0, prompt?.versionId ?? null,
+      );
     }
 
     const result = validateStandupPackage(raw);

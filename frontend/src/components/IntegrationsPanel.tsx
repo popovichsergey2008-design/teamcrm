@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { AiSettingsSection } from './AiSettingsPanel';
+import { PromptsSection } from './PromptsPanel';
 
-/** Интеграции: подключения (Битрикс24) + ключи ИИ. */
+/** Интеграции: подключения (Битрикс24) + ключи ИИ + промпты (PromptOps). */
 export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<'bitrix' | 'ai'>('bitrix');
+  const [tab, setTab] = useState<'bitrix' | 'ai' | 'prompts'>('bitrix');
   const [conns, setConns] = useState<any[]>([]);
   const [msg, setMsg] = useState('');
   const [form, setForm] = useState({ webhookUrl: '', label: '' });
@@ -36,10 +37,12 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
         <div className="tabs">
           <button className={`tab ${tab === 'bitrix' ? 'active' : ''}`} onClick={() => setTab('bitrix')}>Битрикс24</button>
           <button className={`tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')}>ИИ (ключи и модель)</button>
+          <button className={`tab ${tab === 'prompts' ? 'active' : ''}`} onClick={() => setTab('prompts')}>Промпты</button>
         </div>
         {msg && <div className="dim">{msg}</div>}
 
         {tab === 'ai' && <AiSettingsSection />}
+        {tab === 'prompts' && <PromptsSection />}
 
         {tab === 'bitrix' && (<>
         <div className="drawer-section-title">Подключить портал (входящий вебхук)</div>

@@ -38,6 +38,7 @@ import { BitrixModule } from './modules/integrations/bitrix/bitrix.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { BrainModule } from './modules/brain/brain.module';
 import { PortalModule } from './modules/portal/portal.module';
+import { PromptsModule } from './modules/prompts/prompts.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { PortalModule } from './modules/portal/portal.module';
     KnowledgeModule,
     BrainModule,
     PortalModule,
+    PromptsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

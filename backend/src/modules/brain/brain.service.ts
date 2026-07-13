@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { AppException } from '../../common/http/app-exception';
 import { RedisService } from '../../cache/redis.service';
 import { AiService } from '../ai/ai.service';
+import { PromptsService } from '../prompts/prompts.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { BrainRepository } from './brain.repository';
 
@@ -10,7 +11,8 @@ const ANSWER_TTL = 6 * 3600; // кэш ответов — 6ч
 const SEMANTIC_THRESHOLD = 0.93; // «похожий» вопрос
 const normalize = (q: string) => q.toLowerCase().replace(/\s+/g, ' ').trim();
 
-const SYSTEM = [
+// Фолбэк системного промпта, если PromptOps-дефолт недоступен (миграция не накатана / ключ удалён).
+const SYSTEM_FALLBACK = [
   'Ты — «корпоративный разум» компании: отвечаешь новым и текущим сотрудникам на основе архива задач, комментариев и регламентов.',
   'Отвечай ТОЛЬКО на основе предоставленного КОНТЕКСТА. Если в контексте нет ответа — честно скажи, что в базе знаний не нашлось материалов, и не выдумывай.',
   'Дай чёткий пошаговый ответ на русском. Ссылайся на источники в квадратных скобках, например [1], [2], соответствующих номерам в контексте.',
@@ -22,6 +24,7 @@ export class BrainService {
     private readonly repo: BrainRepository,
     private readonly knowledge: KnowledgeService,
     private readonly ai: AiService,
+    private readonly prompts: PromptsService,
     private readonly redis: RedisService,
   ) {}
 
@@ -49,18 +52,25 @@ export class BrainService {
     await this.repo.addMessage(conversationId, 'user', q, null);
     await this.repo.setTitle(conversationId, q);
 
-    // 1) точный кэш (Redis) — идентичный вопрос в рамках арендатора И выбранного проекта
+    // PromptOps: действующая версия системного промпта (tenant-override > глобальный дефолт).
+    // versionId включён в ключ кэша — смена версии сразу даёт свежий ответ.
+    const prompt = await this.prompts.resolve(tenantId, 'brain.system', {});
+    const system = prompt?.body ?? SYSTEM_FALLBACK;
+    const versionId = prompt?.versionId ?? null;
+    const versionKey = versionId ?? 'default';
+
+    // 1) точный кэш (Redis) — идентичный вопрос в рамках арендатора, проекта И версии промпта
     const scopeKey = projectId ? `p${projectId}` : 'all';
-    const exactKey = `brain:ans:${tenantId}:${scopeKey}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
+    const exactKey = `brain:ans:${tenantId}:${scopeKey}:v${versionKey}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
     const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null);
     if (exact) return this.finish(tenantId, conversationId, exact.answer, exact.citations, 'exact');
 
     // 2) эмбеддинг вопроса — переиспользуется для семантического кэша И для поиска
     const vec = await this.ai.embed(tenantId, q, 'embedding');
 
-    // 3) семантический кэш (pgvector) — только для общего поиска (не проектного), чтобы не смешивать разрезы
+    // 3) семантический кэш (pgvector) — только для общего поиска (не проектного), в разрезе версии промпта
     if (!projectId) {
-      const sem = await this.repo.cacheLookup(tenantId, vec).catch(() => null);
+      const sem = await this.repo.cacheLookup(tenantId, vec, versionId).catch(() => null);
       if (sem && sem.score >= SEMANTIC_THRESHOLD) {
         const citations = sem.citations ?? [];
         await this.redis.setJson(exactKey, { answer: sem.answer, citations }, ANSWER_TTL).catch(() => undefined);
@@ -84,13 +94,14 @@ export class BrainService {
       answer = 'В базе знаний не нашлось материалов по этому вопросу. Возможно, стоит переиндексировать знания или задать вопрос иначе.';
     } else {
       const context = hits.map((h, i) => `[${i + 1}] (${h.sourceType}${h.title ? `: ${h.title}` : ''})\n${h.snippet}`).join('\n\n');
-      answer = (await this.ai.generate(tenantId, SYSTEM, `Вопрос: ${q}\n\nКОНТЕКСТ:\n${context}`)).trim()
-        || 'Не удалось сформировать ответ.';
+      answer = (await this.ai.generate(tenantId, system, `Вопрос: ${q}\n\nКОНТЕКСТ:\n${context}`, 'brain', {
+        promptVersionId: versionId, model: prompt?.model, params: prompt?.params,
+      })).trim() || 'Не удалось сформировать ответ.';
     }
 
-    // сохранить в кэши (семантический — только для общего разреза)
+    // сохранить в кэши (семантический — только для общего разреза, в разрезе версии промпта)
     await this.redis.setJson(exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
-    if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations).catch(() => undefined);
+    if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId).catch(() => undefined);
 
     return this.finish(tenantId, conversationId, answer, citations, 'miss');
   }

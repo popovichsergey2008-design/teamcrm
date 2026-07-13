@@ -195,6 +195,15 @@ export const api = {
   aiSettingsSave: (b: { openaiKey?: string; anthropicKey?: string; brainModel?: string }) => request<any>('PUT', '/ai/settings', b),
   aiSettingsModels: () => request<string[]>('GET', '/ai/settings/models'),
 
+  // PromptOps — версионирование промптов (enh-07)
+  prompts: () => request<any[]>('GET', '/prompts'),
+  promptVersions: (key: string) => request<any>('GET', `/prompts/${encodeURIComponent(key)}/versions`),
+  promptCreateVersion: (key: string, b: { body: string; model?: string; note?: string }) =>
+    request<any>('POST', `/prompts/${encodeURIComponent(key)}/versions`, b),
+  promptActivate: (key: string, v: number) => request<any>('POST', `/prompts/${encodeURIComponent(key)}/versions/${v}/activate`),
+  promptDeprecate: (key: string, v: number) => request<any>('POST', `/prompts/${encodeURIComponent(key)}/versions/${v}/deprecate`),
+  promptMetrics: (key: string, days = 30) => request<any>('GET', `/prompts/${encodeURIComponent(key)}/metrics?days=${days}`),
+
   // база знаний (Этап 5, K1)
   knowledgeSearch: (q: string, k = 8, projectId?: string) => request<any[]>('GET', `/knowledge/search?q=${encodeURIComponent(q)}&k=${k}${projectId ? `&projectId=${projectId}` : ''}`),
   knowledgeStats: () => request<{ chunks: string; sources: string }>('GET', '/knowledge/stats'),

@@ -5,13 +5,20 @@ import { createHash } from 'crypto';
  * иначе — детерминированный mock (конвейер полностью работает и тестируется без секретов).
  * Парсер mock'а понимает мини-DSL: "#<id> done 120m", "#<id> progress blocker: ...".
  */
+/** Точечные переопределения из версии промпта (PromptOps): модель/лимит токенов под конкретный промпт. */
+export interface GenerateOpts {
+  model?: string;
+  maxTokens?: number;
+}
+
 export interface AiProvider {
   name: string;
   transcribe(audioRefOrText: string): Promise<string>;
-  parseIntents(maskedText: string): Promise<unknown>;
+  /** schemaHint — версионируемая инструкция парсера (PromptOps); при отсутствии берётся встроенный дефолт. */
+  parseIntents(maskedText: string, schemaHint?: string): Promise<unknown>;
   embed(text: string): Promise<number[]>;
   /** Аналитическая генерация (AI Brain): system + user → текст ответа. */
-  generate(system: string, user: string): Promise<string>;
+  generate(system: string, user: string, opts?: GenerateOpts): Promise<string>;
 }
 
 export const EMBED_DIM = 1536;
@@ -69,15 +76,16 @@ export class MockAiProvider implements AiProvider {
     // голос без реального Whisper — канонический заглушечный транскрипт
     return audioRefOrText;
   }
-  async parseIntents(maskedText: string): Promise<unknown> {
+  async parseIntents(maskedText: string, _schemaHint?: string): Promise<unknown> {
+    void _schemaHint; // mock понимает мини-DSL и не нуждается в инструкции
     return parseMockDsl(maskedText);
   }
   async embed(text: string): Promise<number[]> {
     return mockEmbed(text);
   }
-  async generate(_system: string, user: string): Promise<string> {
+  async generate(_system: string, user: string, _opts?: GenerateOpts): Promise<string> {
     // mock: без LLM — короткий ответ, ссылающийся на найденные источники (цитаты дают ретрив)
-    void _system;
+    void _system; void _opts;
     const hasCtx = /\[\d+\]/.test(user);
     return hasCtx
       ? 'На основе найденных материалов из архива компании (см. источники ниже). [1]\n\n(Демо-ответ: подключите OPENAI_API_KEY или ANTHROPIC_API_KEY для реальной генерации.)'
@@ -112,9 +120,9 @@ export class RealAiProvider implements AiProvider {
     return json.text ?? '';
   }
 
-  async parseIntents(maskedText: string): Promise<unknown> {
-    if (!this.anthropicKey) return new MockAiProvider().parseIntents(maskedText);
-    const schemaHint =
+  async parseIntents(maskedText: string, schemaHint?: string): Promise<unknown> {
+    if (!this.anthropicKey) return new MockAiProvider().parseIntents(maskedText, schemaHint);
+    const hint = schemaHint ??
       'Верни СТРОГО JSON {"actions":[{"task_id":number,"status_change":"DONE|IN_PROGRESS|TODO",' +
       '"time_logged_minutes":number,"blocker_detected":string}],"confidence":0..1}. ' +
       'Только JSON, без пояснений.';
@@ -128,7 +136,7 @@ export class RealAiProvider implements AiProvider {
       body: JSON.stringify({
         model: this.model,
         max_tokens: 1024,
-        system: schemaHint,
+        system: hint,
         messages: [{ role: 'user', content: maskedText }],
       }),
     });
@@ -141,7 +149,8 @@ export class RealAiProvider implements AiProvider {
     }
   }
 
-  async generate(system: string, user: string): Promise<string> {
+  async generate(system: string, user: string, opts?: GenerateOpts): Promise<string> {
+    const maxTokens = opts?.maxTokens ?? 1500;
     // Anthropic — приоритетно (аналитический тир), иначе OpenAI, иначе mock.
     if (this.anthropicKey) {
       try {
@@ -149,8 +158,8 @@ export class RealAiProvider implements AiProvider {
           method: 'POST',
           headers: { 'x-api-key': this.anthropicKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
           body: JSON.stringify({
-            model: this.brainModel || 'claude-3-5-sonnet-latest',
-            max_tokens: 1500, system, messages: [{ role: 'user', content: user }],
+            model: opts?.model || this.brainModel || 'claude-3-5-sonnet-latest',
+            max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }],
           }),
         });
         const json: any = await res.json();
@@ -163,16 +172,16 @@ export class RealAiProvider implements AiProvider {
           method: 'POST',
           headers: { Authorization: `Bearer ${this.openaiKey}`, 'content-type': 'application/json' },
           body: JSON.stringify({
-            model: this.brainModel || 'gpt-4o-mini',
+            model: opts?.model || this.brainModel || 'gpt-4o-mini',
             messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-            max_tokens: 1500,
+            max_tokens: maxTokens,
           }),
         });
         const json: any = await res.json();
         return json?.choices?.[0]?.message?.content ?? '';
       } catch { /* упадём в mock ниже */ }
     }
-    return new MockAiProvider().generate(system, user);
+    return new MockAiProvider().generate(system, user, opts);
   }
 
   async embed(text: string): Promise<number[]> {
