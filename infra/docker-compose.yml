@@ -146,6 +146,7 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./nginx/html:/usr/share/nginx/html:ro
       - ./nginx/certs:/etc/nginx/certs:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro   # Let's Encrypt сертификаты (host-persistent, вне /opt/teamcrm)
     ports:
       - "80:80"
       - "443:443"
