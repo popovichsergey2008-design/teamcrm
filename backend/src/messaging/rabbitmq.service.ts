@@ -32,6 +32,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   private readonly url: string;
   private readonly pending: Array<{ queue: string; handler: Handler; prefetch: number }> = [];
   private connecting = false;
+  private closing = false;
 
   constructor(config: ConfigService) {
     this.url = config.getOrThrow<string>('RABBITMQ_URL');
@@ -54,9 +55,10 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       await this.channel.assertQueue(Q_AI_ASSIST, { durable: true });
       await this.channel.assertQueue(Q_EMBEDDINGS, { durable: true });
       this.connection.on('close', () => {
-        this.logger.warn('connection closed, reconnecting in 3s');
         this.channel = null;
         this.connection = null;
+        if (this.closing) return; // штатный шатдаун — не реконнектим (иначе висячий таймер в тестах)
+        this.logger.warn('connection closed, reconnecting in 3s');
         setTimeout(() => this.connect(), 3000);
       });
       this.connection.on('error', () => undefined);
@@ -97,20 +99,36 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     if (!this.channel) return;
     await this.channel.prefetch(prefetch);
     await this.channel.consume(queue, async (msg) => {
-      if (!msg) return;
+      if (!msg || this.closing) return;
       try {
         const payload = JSON.parse(msg.content.toString());
         await handler(payload);
-        this.channel?.ack(msg);
+        this.safeAck(msg);
       } catch (err) {
         this.logger.error(`handler error on ${queue}: ${(err as Error).message}`);
         // requeue один раз: redelivered → отбрасываем, чтобы не зациклить
-        this.channel?.nack(msg, false, !msg.fields.redelivered);
+        this.safeNack(msg, !msg.fields.redelivered);
       }
     });
   }
 
+  /**
+   * ack/nack по закрывающемуся каналу кидают IllegalOperationError («Channel closing»);
+   * при шатдауне/реконнекте брокер сам вернёт неподтверждённые сообщения — глушим ошибку,
+   * чтобы не уронить процесс unhandled-rejection'ом (иначе падает весь e2e-suite на teardown).
+   */
+  private safeAck(msg: amqp.Message): void {
+    if (this.closing || !this.channel) return;
+    try { this.channel.ack(msg); } catch (e) { this.logger.warn(`ack skipped: ${(e as Error).message}`); }
+  }
+
+  private safeNack(msg: amqp.Message, requeue: boolean): void {
+    if (this.closing || !this.channel) return;
+    try { this.channel.nack(msg, false, requeue); } catch (e) { this.logger.warn(`nack skipped: ${(e as Error).message}`); }
+  }
+
   async onModuleDestroy() {
+    this.closing = true;
     try {
       await this.channel?.close();
       await this.connection?.close();
