@@ -130,8 +130,28 @@ export class PromptsService {
   async metrics(tenantId: string, key: string, days: number) {
     const tpl = await this.repo.effectiveTemplate(tenantId, key);
     if (!tpl) throw AppException.notFound('Промпт не найден');
-    const rows = await this.repo.metricsByVersion(tpl.id, days);
+    const rows = await this.repo.metricsByVersion(tpl.id, days, tenantId);
     return { key, periodDays: days, byVersion: rows };
+  }
+
+  /**
+   * Обратная связь по результату версии промпта (аудит качества, P2).
+   * Оценивать можно только версию своего арендатора или глобального дефолта (иначе 404 — чужая).
+   */
+  async submitFeedback(
+    tenantId: string, userId: string,
+    dto: { promptVersionId: string; rating: number; reworked?: boolean },
+  ) {
+    const rating = dto.rating > 0 ? 1 : -1;
+    const owner = await this.repo.versionOwner(dto.promptVersionId);
+    if (!owner) throw AppException.notFound('Версия промпта не найдена');
+    if (owner.tenant_id !== null && String(owner.tenant_id) !== String(tenantId)) {
+      throw AppException.notFound('Версия промпта не найдена');
+    }
+    await this.repo.insertFeedback({
+      tenantId, promptVersionId: dto.promptVersionId, rating, reworked: !!dto.reworked, userId,
+    });
+    return { ok: true };
   }
 
   /** Гарантирует override арендатора (клон глобального при первой правке). */

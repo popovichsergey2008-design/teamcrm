@@ -189,7 +189,7 @@ export const api = {
 
   // AI Brain (Этап 5, K2)
   brainStart: () => request<{ id: string }>('POST', '/brain/conversations'),
-  brainAsk: (id: string, question: string, projectId?: string) => request<{ answer: string; citations: any[]; cached: boolean }>('POST', `/brain/conversations/${id}/ask`, { question, projectId }),
+  brainAsk: (id: string, question: string, projectId?: string) => request<{ answer: string; citations: any[]; cached: boolean; promptVersionId: string | null }>('POST', `/brain/conversations/${id}/ask`, { question, projectId }),
   aiUsage: () => request<{ totalCalls: number; cacheHits: number; cacheHitRatio: number; byFeature: any[] }>('GET', '/ai/usage'),
   aiSettingsGet: () => request<any>('GET', '/ai/settings'),
   aiSettingsSave: (b: { openaiKey?: string; anthropicKey?: string; brainModel?: string }) => request<any>('PUT', '/ai/settings', b),
@@ -203,6 +203,7 @@ export const api = {
   promptActivate: (key: string, v: number) => request<any>('POST', `/prompts/${encodeURIComponent(key)}/versions/${v}/activate`),
   promptDeprecate: (key: string, v: number) => request<any>('POST', `/prompts/${encodeURIComponent(key)}/versions/${v}/deprecate`),
   promptMetrics: (key: string, days = 30) => request<any>('GET', `/prompts/${encodeURIComponent(key)}/metrics?days=${days}`),
+  promptFeedback: (b: { promptVersionId: string; rating: 1 | -1; reworked?: boolean }) => request<{ ok: boolean }>('POST', '/prompt-feedback', b),
 
   // база знаний (Этап 5, K1)
   knowledgeSearch: (q: string, k = 8, projectId?: string) => request<any[]>('GET', `/knowledge/search?q=${encodeURIComponent(q)}&k=${k}${projectId ? `&projectId=${projectId}` : ''}`),

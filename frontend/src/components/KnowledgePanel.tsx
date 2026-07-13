@@ -55,7 +55,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
 
   // AI Brain
   const [convId, setConvId] = useState<string | null>(null);
-  const [chat, setChat] = useState<{ role: string; content: string; citations?: any[]; cached?: boolean }[]>([]);
+  const [chat, setChat] = useState<{ role: string; content: string; citations?: any[]; cached?: boolean; promptVersionId?: string | null; rated?: 1 | -1 }[]>([]);
   const [ask, setAsk] = useState('');
   const [thinking, setThinking] = useState(false);
   const sendAsk = async () => {
@@ -68,13 +68,20 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
       let id = convId;
       if (!id) { id = (await api.brainStart()).id; setConvId(id); }
       const r = await api.brainAsk(id, q, scope || undefined);
-      setChat((c) => [...c, { role: 'assistant', content: r.answer, citations: r.citations, cached: r.cached }]);
+      setChat((c) => [...c, { role: 'assistant', content: r.answer, citations: r.citations, cached: r.cached, promptVersionId: r.promptVersionId }]);
       if (canManage) api.aiUsage().then(setUsage).catch(() => undefined);
     } catch (e) {
       setChat((c) => [...c, { role: 'assistant', content: e instanceof ApiError ? e.message : 'Ошибка' }]);
     } finally { setThinking(false); }
   };
   const citeLabel = (c: any) => (c.sourceType === 'task' ? 'задача' : c.sourceType === 'comment' ? 'комментарий' : 'регламент') + (c.title ? `: ${c.title}` : '');
+  // PromptOps P2: оценка ответа → аудит качества версии промпта
+  const rate = async (idx: number, rating: 1 | -1) => {
+    const m = chat[idx];
+    if (!m?.promptVersionId || m.rated) return;
+    setChat((c) => c.map((x, j) => (j === idx ? { ...x, rated: rating } : x)));
+    api.promptFeedback({ promptVersionId: m.promptVersionId, rating }).catch(() => undefined);
+  };
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
@@ -103,6 +110,19 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
                   {m.citations && m.citations.length > 0 && (
                     <div className="brain-cites">
                       {m.citations.map((c, j) => <span key={j} className="badge" title={citeLabel(c)}>[{j + 1}] {citeLabel(c).slice(0, 40)}</span>)}
+                    </div>
+                  )}
+                  {m.role === 'assistant' && m.promptVersionId && (
+                    <div className="brain-rate" style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {m.rated ? (
+                        <span className="dim" style={{ fontSize: 12 }}>Спасибо за оценку {m.rated === 1 ? '👍' : '👎'}</span>
+                      ) : (
+                        <>
+                          <span className="dim" style={{ fontSize: 12 }}>Ответ полезен?</span>
+                          <button className="btn btn-ghost btn-sm" title="Полезно" onClick={() => rate(i, 1)}>👍</button>
+                          <button className="btn btn-ghost btn-sm" title="Не полезно" onClick={() => rate(i, -1)}>👎</button>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

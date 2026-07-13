@@ -116,4 +116,31 @@ describe('PromptOps (e2e)', () => {
     expect(v2).toBeDefined();
     expect(v2.calls).toBeGreaterThanOrEqual(1);
   });
+
+  it('обратная связь 👍/👎 пишется, агрегируется в метриках, валидируется и изолируется по tenant', async () => {
+    const tok = await register();
+    // кастомная версия v2 активна
+    await http.post('/api/prompts/brain.system/versions').set(H(tok)).send({ body: 'версия для оценок' }).expect(201);
+    await http.post('/api/prompts/brain.system/versions/2/activate').set(H(tok)).expect(201);
+    const versions = (await http.get('/api/prompts/brain.system/versions').set(H(tok)).expect(200)).body.data;
+    const activeId = versions.versions.find((v: any) => v.status === 'active').id;
+
+    // 👍 и 👎+переделка
+    await http.post('/api/prompt-feedback').set(H(tok)).send({ promptVersionId: activeId, rating: 1 }).expect(201);
+    await http.post('/api/prompt-feedback').set(H(tok)).send({ promptVersionId: activeId, rating: -1, reworked: true }).expect(201);
+
+    // метрики отражают оценки
+    const m = (await http.get('/api/prompts/brain.system/metrics').set(H(tok)).expect(200)).body.data;
+    const v2 = m.byVersion.find((r: any) => r.version === 2);
+    expect(v2.up).toBeGreaterThanOrEqual(1);
+    expect(v2.down).toBeGreaterThanOrEqual(1);
+    expect(v2.reworked).toBeGreaterThanOrEqual(1);
+
+    // валидация: rating вне {1,-1} → 400
+    await http.post('/api/prompt-feedback').set(H(tok)).send({ promptVersionId: activeId, rating: 5 }).expect(400);
+
+    // изоляция: чужой арендатор не может оценить приватную версию → 404
+    const other = await register();
+    await http.post('/api/prompt-feedback').set(H(other)).send({ promptVersionId: activeId, rating: 1 }).expect(404);
+  });
 });

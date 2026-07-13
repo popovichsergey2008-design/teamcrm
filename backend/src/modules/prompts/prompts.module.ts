@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { PromptsService } from './prompts.service';
 import { PromptRepository } from './prompt.repository';
 import { PromptsController } from './prompts.controller';
+import { PromptFeedbackController } from './prompt-feedback.controller';
 
 /**
  * Global: PromptsService доступен ИИ-слою (AiService/BrainService) без явного импорта.
@@ -9,7 +10,7 @@ import { PromptsController } from './prompts.controller';
  */
 @Global()
 @Module({
-  controllers: [PromptsController],
+  controllers: [PromptsController, PromptFeedbackController],
   providers: [PromptsService, PromptRepository],
   exports: [PromptsService],
 })

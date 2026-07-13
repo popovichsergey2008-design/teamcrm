@@ -107,9 +107,15 @@ export function PromptsSection() {
                   </div>
                 </div>
                 {v.note && <div className="dim" style={{ fontSize: 12 }}>{v.note}</div>}
-                {m && (m.calls > 0) && (
+                {m && (m.calls > 0 || m.up > 0 || m.down > 0) && (
                   <div className="dim" style={{ fontSize: 12 }}>
                     За 30 дней: вызовов {m.calls}, токенов {(m.input_tokens ?? 0) + (m.output_tokens ?? 0)}{m.cache_hits ? `, из кэша ${m.cache_hits}` : ''}
+                    {(m.up > 0 || m.down > 0) && (
+                      <> · оценки 👍 {m.up} / 👎 {m.down}
+                        {(m.up + m.down) > 0 && <> ({Math.round((m.up / (m.up + m.down)) * 100)}% положит.)</>}
+                      </>
+                    )}
+                    {m.reworked > 0 && <> · переделок {m.reworked}</>}
                   </div>
                 )}
               </div>

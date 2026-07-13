@@ -63,7 +63,7 @@ export class BrainService {
     const scopeKey = projectId ? `p${projectId}` : 'all';
     const exactKey = `brain:ans:${tenantId}:${scopeKey}:v${versionKey}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
     const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null);
-    if (exact) return this.finish(tenantId, conversationId, exact.answer, exact.citations, 'exact');
+    if (exact) return this.finish(tenantId, conversationId, exact.answer, exact.citations, 'exact', versionId);
 
     // 2) эмбеддинг вопроса — переиспользуется для семантического кэша И для поиска
     const vec = await this.ai.embed(tenantId, q, 'embedding');
@@ -74,7 +74,7 @@ export class BrainService {
       if (sem && sem.score >= SEMANTIC_THRESHOLD) {
         const citations = sem.citations ?? [];
         await this.redis.setJson(exactKey, { answer: sem.answer, citations }, ANSWER_TTL).catch(() => undefined);
-        return this.finish(tenantId, conversationId, sem.answer, citations, 'semantic');
+        return this.finish(tenantId, conversationId, sem.answer, citations, 'semantic', versionId);
       }
     }
 
@@ -103,13 +103,16 @@ export class BrainService {
     await this.redis.setJson(exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
     if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId).catch(() => undefined);
 
-    return this.finish(tenantId, conversationId, answer, citations, 'miss');
+    return this.finish(tenantId, conversationId, answer, citations, 'miss', versionId);
   }
 
-  /** Сохраняет ответ ассистента, метерит cache-hit, возвращает результат. */
-  private async finish(tenantId: string, conversationId: string, answer: string, citations: any[], cache: 'exact' | 'semantic' | 'miss') {
-    if (cache !== 'miss') await this.ai.recordUsage(tenantId, 'brain', 'cache', 0, 0, true);
+  /** Сохраняет ответ ассистента, метерит cache-hit, возвращает результат (+ версию промпта для аудита 👍/👎). */
+  private async finish(
+    tenantId: string, conversationId: string, answer: string, citations: any[],
+    cache: 'exact' | 'semantic' | 'miss', promptVersionId: string | null,
+  ) {
+    if (cache !== 'miss') await this.ai.recordUsage(tenantId, 'brain', 'cache', 0, 0, true, 0, promptVersionId);
     const saved = await this.repo.addMessage(conversationId, 'assistant', answer, citations);
-    return { messageId: saved!.id, answer, citations, cached: cache !== 'miss' };
+    return { messageId: saved!.id, answer, citations, cached: cache !== 'miss', promptVersionId };
   }
 }

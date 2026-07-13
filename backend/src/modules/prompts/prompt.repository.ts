@@ -146,22 +146,49 @@ export class PromptRepository {
     );
   }
 
-  /** Метрики по версиям шаблона: вызовы, токены (из ai_usage, привязанного к версии). */
-  metricsByVersion(templateId: string, days: number) {
+  /**
+   * Метрики по версиям шаблона — СТРОГО в разрезе арендатора (важно для глобальных дефолтов,
+   * которые делят versionId между tenant'ами: без tenant-фильтра счётчики потекли бы между ними).
+   * Вызовы/токены из ai_usage + агрегаты обратной связи (👍/👎/переделки) из prompt_feedback.
+   */
+  metricsByVersion(templateId: string, days: number, tenantId: string) {
     return this.db.many<any>(
       `SELECT v.version, v.status,
               count(u.id)::int AS calls,
               coalesce(sum(u.input_tokens),0)::int AS input_tokens,
               coalesce(sum(u.output_tokens),0)::int AS output_tokens,
-              coalesce(sum((u.cache_hit)::int),0)::int AS cache_hits
+              coalesce(sum((u.cache_hit)::int),0)::int AS cache_hits,
+              (SELECT count(*) FROM prompt_feedback f
+                WHERE f.prompt_version_id=v.id AND f.tenant_id=$3 AND f.rating>0)::int AS up,
+              (SELECT count(*) FROM prompt_feedback f
+                WHERE f.prompt_version_id=v.id AND f.tenant_id=$3 AND f.rating<0)::int AS down,
+              (SELECT count(*) FROM prompt_feedback f
+                WHERE f.prompt_version_id=v.id AND f.tenant_id=$3 AND f.reworked)::int AS reworked
          FROM prompt_versions v
          LEFT JOIN ai_usage u
            ON u.prompt_version_id = v.id
+          AND u.tenant_id = $3
           AND u.created_at > now() - ($2 || ' days')::interval
         WHERE v.template_id=$1
-        GROUP BY v.version, v.status
+        GROUP BY v.id, v.version, v.status
         ORDER BY v.version DESC`,
-      [templateId, days],
+      [templateId, days, tenantId],
+    );
+  }
+
+  /** Владелец версии: tenant_id шаблона (NULL = глобальный дефолт). null-строка → версии нет. */
+  versionOwner(versionId: string) {
+    return this.db.one<{ tenant_id: string | null }>(
+      `SELECT t.tenant_id FROM prompt_versions v JOIN prompt_templates t ON t.id=v.template_id WHERE v.id=$1`,
+      [versionId],
+    );
+  }
+
+  insertFeedback(i: { tenantId: string; promptVersionId: string; rating: number; reworked: boolean; userId: string | null }) {
+    return this.db.query(
+      `INSERT INTO prompt_feedback (tenant_id, prompt_version_id, rating, reworked, user_id)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [i.tenantId, i.promptVersionId, i.rating, i.reworked, i.userId],
     );
   }
 }
