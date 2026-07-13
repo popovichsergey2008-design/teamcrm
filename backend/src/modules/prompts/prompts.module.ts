@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { PromptsService } from './prompts.service';
+import { PromptOptimizerService } from './prompt-optimizer.service';
 import { PromptRepository } from './prompt.repository';
 import { PromptsController } from './prompts.controller';
 import { PromptFeedbackController } from './prompt-feedback.controller';
@@ -11,7 +12,7 @@ import { PromptFeedbackController } from './prompt-feedback.controller';
 @Global()
 @Module({
   controllers: [PromptsController, PromptFeedbackController],
-  providers: [PromptsService, PromptRepository],
+  providers: [PromptsService, PromptOptimizerService, PromptRepository],
   exports: [PromptsService],
 })
 export class PromptsModule {}

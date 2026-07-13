@@ -25,6 +25,14 @@ export function abBucket(key: string): number {
   return createHash('sha256').update(key).digest().readUInt32BE(0) % 100;
 }
 
+// Приблизительная цена (USD за 1М токенов) уровня мелкой чат-модели — для cost-aware дашборда.
+const PRICE_IN_PER_M = 0.15;
+const PRICE_OUT_PER_M = 0.6;
+export function estCostUsd(inputTokens: number, outputTokens: number): number {
+  const usd = (inputTokens / 1e6) * PRICE_IN_PER_M + (outputTokens / 1e6) * PRICE_OUT_PER_M;
+  return Number(usd.toFixed(4));
+}
+
 /**
  * PromptOps: разрешение и управление версиями промптов.
  * resolve() — «горячий путь» ИИ-слоя; управление (create/activate/deprecate) — owner/manager.
@@ -169,7 +177,9 @@ export class PromptsService {
     const tpl = await this.repo.effectiveTemplate(tenantId, key);
     if (!tpl) throw AppException.notFound('Промпт не найден');
     const rows = await this.repo.metricsByVersion(tpl.id, days, tenantId);
-    return { key, periodDays: days, byVersion: rows };
+    // приблизительная стоимость (cost-aware): токены × усреднённая цена мелкой модели
+    const byVersion = rows.map((r) => ({ ...r, costUsd: estCostUsd(r.input_tokens ?? 0, r.output_tokens ?? 0) }));
+    return { key, periodDays: days, byVersion };
   }
 
   /**

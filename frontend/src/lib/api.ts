@@ -204,6 +204,7 @@ export const api = {
   promptAbTest: (key: string, v: number, split: number) => request<any>('POST', `/prompts/${encodeURIComponent(key)}/versions/${v}/ab`, { split }),
   promptDeprecate: (key: string, v: number) => request<any>('POST', `/prompts/${encodeURIComponent(key)}/versions/${v}/deprecate`),
   promptMetrics: (key: string, days = 30) => request<any>('GET', `/prompts/${encodeURIComponent(key)}/metrics?days=${days}`),
+  promptOptimize: (key: string, days = 30) => request<{ key: string; currentVersion: number; current: string; suggestion: string | null; rationale: string | null; warning: string | null; metrics: string; model: string | null }>('POST', `/prompts/${encodeURIComponent(key)}/optimize?days=${days}`),
   promptFeedback: (b: { promptVersionId: string; rating: 1 | -1; reworked?: boolean }) => request<{ ok: boolean }>('POST', '/prompt-feedback', b),
 
   // база знаний (Этап 5, K1)

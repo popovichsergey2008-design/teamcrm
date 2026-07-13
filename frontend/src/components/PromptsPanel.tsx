@@ -13,6 +13,8 @@ export function PromptsSection() {
   const [model, setModel] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [suggest, setSuggest] = useState<any>(null); // предложение оптимизатора
+  const [optimizing, setOptimizing] = useState(false);
   const [msg, setMsg] = useState('');
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3500); };
 
@@ -26,7 +28,7 @@ export function PromptsSection() {
     api.promptVersions(k).then((d) => {
       setData(d);
       const active = d.versions.find((v: any) => v.status === 'active') ?? d.versions[0];
-      setBody(active?.body ?? ''); setModel(active?.model ?? ''); setNote('');
+      setBody(active?.body ?? ''); setModel(active?.model ?? ''); setNote(''); setSuggest(null);
     }).catch(() => setData(null));
     api.promptMetrics(k).then((m) => {
       const map: Record<number, any> = {};
@@ -73,6 +75,21 @@ export function PromptsSection() {
   };
   const loadInto = (ver: any) => { setBody(ver.body); setModel(ver.model ?? ''); setNote(''); };
 
+  // P4: ИИ предлагает улучшение по метрикам; применяет только владелец (в редактор → сохранить как версию)
+  const optimize = async () => {
+    if (!key) return;
+    setOptimizing(true); setSuggest(null);
+    try { setSuggest(await api.promptOptimize(key)); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+    finally { setOptimizing(false); }
+  };
+  const takeSuggestion = () => {
+    if (!suggest?.suggestion) return;
+    setBody(suggest.suggestion);
+    setNote('ИИ-оптимизация'); setSuggest(null);
+    flash('Предложение перенесено в редактор. Проверьте и «Сохранить как новую версию».');
+  };
+
   return (
     <>
       <div className="dim" style={{ fontSize: 12 }}>
@@ -101,6 +118,28 @@ export function PromptsSection() {
           <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} disabled={busy} onClick={saveVersion}>
             Сохранить как новую версию
           </button>
+          <button className="btn btn-ghost btn-sm" style={{ width: '100%', marginTop: 6 }} disabled={optimizing} onClick={optimize}>
+            {optimizing ? 'ИИ анализирует…' : '✨ Предложить улучшение (ИИ)'}
+          </button>
+
+          {suggest && (
+            <div style={{ marginTop: 8, padding: 8, border: '1px solid var(--border, #2a2a2a)', borderRadius: 6 }}>
+              <div className="drawer-section-title" style={{ marginTop: 0 }}>Предложение ИИ (по метрикам: {suggest.metrics})</div>
+              {suggest.suggestion ? (
+                <>
+                  <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, maxHeight: 200, overflow: 'auto' }}>{suggest.suggestion}</div>
+                  {suggest.rationale && <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Почему: {suggest.rationale}</div>}
+                  {suggest.warning && <div style={{ fontSize: 12, marginTop: 4, color: '#c9a227' }}>⚠ {suggest.warning}</div>}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                    <button className="btn btn-primary btn-sm" onClick={takeSuggestion}>Взять в редактор</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setSuggest(null)}>Отклонить</button>
+                  </div>
+                </>
+              ) : (
+                <div className="dim" style={{ fontSize: 12 }}>{suggest.rationale ?? 'Предложение недоступно.'}</div>
+              )}
+            </div>
+          )}
 
           <div className="drawer-section-title">История версий</div>
           {data.versions.map((v: any) => {
@@ -119,7 +158,7 @@ export function PromptsSection() {
                 {v.note && <div className="dim" style={{ fontSize: 12 }}>{v.note}</div>}
                 {m && (m.calls > 0 || m.up > 0 || m.down > 0) && (
                   <div className="dim" style={{ fontSize: 12 }}>
-                    За 30 дней: вызовов {m.calls}, токенов {(m.input_tokens ?? 0) + (m.output_tokens ?? 0)}{m.cache_hits ? `, из кэша ${m.cache_hits}` : ''}
+                    За 30 дней: вызовов {m.calls}, токенов {(m.input_tokens ?? 0) + (m.output_tokens ?? 0)}{m.costUsd > 0 ? ` · ≈$${m.costUsd}` : ''}{m.cache_hits ? `, из кэша ${m.cache_hits}` : ''}
                     {(m.up > 0 || m.down > 0) && (
                       <> · оценки 👍 {m.up} / 👎 {m.down}
                         {(m.up + m.down) > 0 && <> ({Math.round((m.up / (m.up + m.down)) * 100)}% положит.)</>}

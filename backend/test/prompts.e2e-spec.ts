@@ -171,4 +171,22 @@ describe('PromptOps (e2e)', () => {
     expect(v2b.abSplit).toBeNull();
     expect(v.versions.find((x: any) => x.version === 1).status).toBe('deprecated');
   });
+
+  it('P4: авто-оптимизация возвращает текущий промпт+метрики и метерит мета-промпт (деградирует без LLM)', async () => {
+    const tok = await register();
+    const r = (await http.post('/api/prompts/brain.system/optimize').set(H(tok)).expect(201)).body.data;
+    expect(r.currentVersion).toBe(1);
+    expect(typeof r.current).toBe('string');
+    expect(r.current.length).toBeGreaterThan(0);
+    expect(typeof r.metrics).toBe('string');
+    // mock-провайдер (без ключа) → предложение не парсится в JSON → suggestion null + пояснение
+    expect(r.suggestion === null || typeof r.suggestion === 'string').toBe(true);
+    if (!r.suggestion) expect(typeof r.rationale).toBe('string');
+
+    // мета-промпт оптимизатора сам метерится под promptops.optimize (догфудинг)
+    const m = (await http.get('/api/prompts/promptops.optimize/metrics').set(H(tok)).expect(200)).body.data;
+    const v1 = m.byVersion.find((x: any) => x.version === 1);
+    expect(v1).toBeDefined();
+    expect(v1.calls).toBeGreaterThanOrEqual(1);
+  });
 });

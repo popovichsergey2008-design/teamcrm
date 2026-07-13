@@ -4,6 +4,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { PromptsService } from './prompts.service';
+import { PromptOptimizerService } from './prompt-optimizer.service';
 
 class CreateVersionDto {
   @IsString() @MinLength(1) @MaxLength(20000) body!: string;
@@ -23,7 +24,10 @@ class AbDto {
 @Controller('prompts')
 @Roles('owner', 'manager')
 export class PromptsController {
-  constructor(private readonly prompts: PromptsService) {}
+  constructor(
+    private readonly prompts: PromptsService,
+    private readonly optimizer: PromptOptimizerService,
+  ) {}
 
   @Get()
   list(@CurrentUser() u: AuthUser) {
@@ -59,5 +63,12 @@ export class PromptsController {
   metrics(@CurrentUser() u: AuthUser, @Param('key') key: string, @Query('days') days?: string) {
     const d = Math.min(Math.max(Number(days) || 30, 1), 365);
     return this.prompts.metrics(u.tenantId, key, d);
+  }
+
+  /** P4: ИИ предлагает улучшенную версию по метрикам (не применяет — владелец сохраняет вручную). */
+  @Post(':key/optimize')
+  optimize(@CurrentUser() u: AuthUser, @Param('key') key: string, @Query('days') days?: string) {
+    const d = Math.min(Math.max(Number(days) || 30, 1), 365);
+    return this.optimizer.optimize(u.tenantId, key, d);
   }
 }
