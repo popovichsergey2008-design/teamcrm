@@ -208,6 +208,25 @@ export class BitrixRepository {
     return m;
   }
 
+  /** Импортированные из этого подключения проекты — кандидаты для ИИ-раскладки (без служебного inbox). */
+  importedProjects(tenantId: string, connectionId: string, excludeExternalId = '__inbox__') {
+    return this.db.many<{ id: string; name: string; external_id: string }>(
+      `SELECT p.id, p.name, r.external_id
+         FROM projects p
+         JOIN external_refs r ON r.local_id = p.id AND r.connection_id=$2 AND r.entity_type='project'
+        WHERE p.tenant_id=$1 AND p.origin_connection_id=$2 AND r.external_id <> $3
+        ORDER BY p.name`,
+      [tenantId, connectionId, excludeExternalId],
+    );
+  }
+
+  /** Служебный проект «Входящие из Битрикса» (для внегрупповых задач и общей ленты). Идемпотентно. */
+  async ensureServiceProject(tenantId: string, connectionId: string, name: string, externalId = '__inbox__') {
+    const proj = await this.upsertProject({ tenantId, connectionId, externalId, name });
+    await this.ensureDefaultColumns(tenantId, proj.id);
+    return proj;
+  }
+
   // ── upsert проекта (origin=bitrix) ──
   async upsertProject(i: {
     tenantId: string; connectionId: string; externalId: string; name: string;
@@ -291,11 +310,11 @@ export class BitrixRepository {
       await this.db.query(
         `UPDATE tasks SET title=$3, description=$4, column_id=$5, assignee_id=$6, created_by=$7,
              priority=$8, deadline_at=$9, status=$10, closed_at=$11,
-             position=COALESCE($12, position), updated_at=now()
+             position=COALESCE($12, position), project_id=$13, updated_at=now()
           WHERE tenant_id=$1 AND id=$2`,
         [
           i.tenantId, ref.local_id, i.title, i.description, i.columnId, i.assigneeId, i.createdBy,
-          i.priority, i.deadlineAt, i.status, i.closed ? new Date().toISOString() : null, position ?? null,
+          i.priority, i.deadlineAt, i.status, i.closed ? new Date().toISOString() : null, position ?? null, i.projectId,
         ],
       );
       await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'task', externalId: i.externalId, localId: ref.local_id, hash: i.hash });

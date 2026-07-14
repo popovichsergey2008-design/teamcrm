@@ -1,4 +1,5 @@
-import { ArrayNotEmpty, IsArray, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ConnectBitrixDto {
   @IsString()
@@ -12,10 +13,32 @@ export class ConnectBitrixDto {
 }
 
 export class ImportBitrixDto {
+  @IsOptional()
   @IsArray()
-  @ArrayNotEmpty({ message: 'Выберите хотя бы один проект' })
   @IsString({ each: true })
-  projectExternalIds!: string[];
+  projectExternalIds?: string[];
+
+  // импортировать общую Живую ленту компании в служебный контейнер «Входящие из Битрикса»
+  @IsOptional()
+  @IsBoolean()
+  includeGeneralFeed?: boolean;
+}
+
+export class UngroupedAssignmentDto {
+  @IsString()
+  externalId!: string;
+
+  // id проекта-получателя; null/пусто → «Входящие из Битрикса»
+  @IsOptional()
+  @IsString()
+  projectId?: string | null;
+}
+
+export class ApplyUngroupedDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UngroupedAssignmentDto)
+  assignments!: UngroupedAssignmentDto[];
 }
 
 export class MapUserDto {

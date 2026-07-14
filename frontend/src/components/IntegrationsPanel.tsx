@@ -81,6 +81,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
 function ImportBlock({ cid }: { cid: string }) {
   const [projects, setProjects] = useState<{ externalId: string; name: string }[]>([]);
   const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [feed, setFeed] = useState(false);
   const [run, setRun] = useState<any>(null);
   const [unmatched, setUnmatched] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -104,10 +105,10 @@ function ImportBlock({ cid }: { cid: string }) {
 
   const startImport = async () => {
     const ids = Object.keys(picked).filter((k) => picked[k]);
-    if (!ids.length) return setErr('Отметьте проекты');
+    if (!ids.length && !feed) return setErr('Отметьте проекты или общую ленту');
     setErr('');
     try {
-      const { runId } = await api.bitrixImport(cid, ids);
+      const { runId } = await api.bitrixImport(cid, ids, feed);
       setRun({ status: 'queued' });
       poll(runId);
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка запуска'); }
@@ -138,6 +139,10 @@ function ImportBlock({ cid }: { cid: string }) {
           {p.name}
         </label>
       ))}
+      <label className="notify-row" style={{ padding: '4px 0' }}>
+        <input type="checkbox" checked={feed} onChange={(e) => setFeed(e.target.checked)} />
+        Общая Живая лента компании → «Входящие из Битрикса»
+      </label>
       <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={startImport} disabled={run && run.status === 'running'}>
         Импортировать выбранные
       </button>
@@ -146,9 +151,12 @@ function ImportBlock({ cid }: { cid: string }) {
           {run.status === 'queued' && 'В очереди…'}
           {run.status === 'running' && 'Импорт идёт…'}
           {run.status === 'error' && <span className="error-text">Ошибка: {run.error}</span>}
-          {run.status === 'done' && run.stats && `Готово: проектов ${run.stats.projects}, задач ${run.stats.tasks}, комментариев ${run.stats.comments}. Обновляем…`}
+          {run.status === 'done' && run.stats && `Готово: проектов ${run.stats.projects ?? 0}, задач ${run.stats.tasks ?? 0}, комментариев ${run.stats.comments ?? 0}, постов ленты ${run.stats.messages ?? 0}. Обновляем…`}
         </div>
       )}
+
+      <UngroupedBlock cid={cid} />
+
       {unmatched.length > 0 && (
         <div style={{ marginTop: 10 }}>
           <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Не сопоставлены по e-mail ({unmatched.length}) — привяжите вручную:</div>
@@ -164,6 +172,92 @@ function ImportBlock({ cid }: { cid: string }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** ИИ-раскладка задач вне проектов (GROUP_ID=0): предпросмотр → правка → применение. */
+function UngroupedBlock({ cid }: { cid: string }) {
+  const [ana, setAna] = useState<{ projects: { id: string; name: string }[]; tasks: { externalId: string; title: string; suggestedProjectId: string | null; confidence: number }[] } | null>(null);
+  const [pick, setPick] = useState<Record<string, string>>({}); // externalId → projectId ('' = Входящие)
+  const [loading, setLoading] = useState(false);
+  const [run, setRun] = useState<any>(null);
+  const [err, setErr] = useState('');
+
+  const analyze = async () => {
+    setErr(''); setLoading(true); setRun(null);
+    try {
+      const res = await api.bitrixAnalyzeUngrouped(cid);
+      setAna(res);
+      const init: Record<string, string> = {};
+      for (const t of res.tasks) init[t.externalId] = t.suggestedProjectId ?? '';
+      setPick(init);
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось получить задачи'); }
+    finally { setLoading(false); }
+  };
+
+  const apply = async () => {
+    if (!ana) return;
+    setErr('');
+    const assignments = ana.tasks.map((t) => ({ externalId: t.externalId, projectId: pick[t.externalId] || null }));
+    try {
+      const { runId } = await api.bitrixApplyUngrouped(cid, assignments);
+      setRun({ status: 'queued' });
+      const tick = async () => {
+        try {
+          const r = await api.bitrixRun(runId);
+          setRun(r);
+          if (r.status === 'done' || r.status === 'error') {
+            if (r.status === 'done') setTimeout(() => window.location.reload(), 1200);
+            return;
+          }
+        } catch { /* ignore */ }
+        setTimeout(tick, 800);
+      };
+      tick();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка применения'); }
+  };
+
+  return (
+    <div style={{ marginTop: 14, borderTop: '1px solid var(--border, #e5e7eb)', paddingTop: 10 }}>
+      <div className="drawer-section-title" style={{ marginBottom: 4 }}>Задачи без проекта (ИИ-раскладка)</div>
+      <div className="dim" style={{ fontSize: 12, marginBottom: 6 }}>
+        ИИ прочитает задачи вне рабочих групп Битрикса и предложит проект для каждой. Проверьте и примените.
+      </div>
+      {err && <div className="error-text">{err}</div>}
+      <button className="btn btn-sm" style={{ width: '100%' }} onClick={analyze} disabled={loading}>
+        {loading ? 'Анализирую…' : '✨ Проанализировать задачи без проекта'}
+      </button>
+
+      {ana && (ana.tasks.length === 0
+        ? <div className="dim" style={{ marginTop: 8, fontSize: 13 }}>Задач вне проектов не найдено.</div>
+        : (
+          <div style={{ marginTop: 8 }}>
+            {ana.tasks.map((t) => (
+              <div key={t.externalId} className="team-rate" style={{ marginBottom: 4, alignItems: 'center' }}>
+                <span style={{ flex: 1, fontSize: 13 }}>
+                  {t.title}
+                  {t.confidence > 0 && <span className="dim" style={{ fontSize: 11, marginLeft: 6 }}>увер. {Math.round(t.confidence * 100)}%</span>}
+                </span>
+                <select className="input" value={pick[t.externalId] ?? ''} onChange={(e) => setPick((s) => ({ ...s, [t.externalId]: e.target.value }))}>
+                  <option value="">— Входящие из Битрикса —</option>
+                  {ana.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            ))}
+            <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={apply} disabled={run && run.status === 'running'}>
+              Применить раскладку ({ana.tasks.length})
+            </button>
+            {run && (
+              <div className="dim" style={{ marginTop: 6, fontSize: 13 }}>
+                {run.status === 'queued' && 'В очереди…'}
+                {run.status === 'running' && 'Раскладываю…'}
+                {run.status === 'error' && <span className="error-text">Ошибка: {run.error}</span>}
+                {run.status === 'done' && run.stats && `Готово: в проекты ${run.stats.routed ?? 0}, во «Входящие» ${run.stats.inbox ?? 0}. Обновляем…`}
+              </div>
+            )}
+          </div>
+        ))}
     </div>
   );
 }

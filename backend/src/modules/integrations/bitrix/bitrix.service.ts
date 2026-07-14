@@ -116,14 +116,56 @@ export class BitrixService {
     }
   }
 
-  async startImport(tenantId: string, actorId: string, cid: string, projectExternalIds: string[]) {
-    if (!projectExternalIds?.length) throw AppException.validation('Выберите хотя бы один проект');
+  async startImport(tenantId: string, actorId: string, cid: string, projectExternalIds: string[], includeGeneralFeed = false) {
+    const ids = (projectExternalIds ?? []).map(String);
+    if (!ids.length && !includeGeneralFeed) throw AppException.validation('Выберите хотя бы один проект или общую ленту');
     const { webhookUrl } = await this.clientFor(tenantId, cid);
-    const run = await this.repo.createRun(tenantId, cid, { projectExternalIds });
+    const run = await this.repo.createRun(tenantId, cid, { projectExternalIds: ids, includeGeneralFeed });
     // запуск в фоне (in-process); статус — через GET /runs/:id
     void this.importer.run({
-      tenantId, connectionId: cid, webhookUrl, projectExternalIds: projectExternalIds.map(String), runId: run!.id, actorId,
+      tenantId, connectionId: cid, webhookUrl, projectExternalIds: ids, runId: run!.id, actorId, includeGeneralFeed,
     });
+    return { runId: run!.id, status: 'queued' };
+  }
+
+  /** Предпросмотр ИИ-раскладки внегрупповых задач по импортированным проектам (ничего не пишет). */
+  async analyzeUngrouped(tenantId: string, cid: string) {
+    const { client } = await this.clientFor(tenantId, cid);
+    const projects = await this.repo.importedProjects(tenantId, cid);
+    let raw: any[];
+    try {
+      raw = await client.ungroupedTasks();
+    } catch (e) {
+      this.translate(e);
+    }
+    const tasks = raw.map((t: any) => ({
+      externalId: String(t.id ?? t.ID),
+      title: String(t.title ?? t.TITLE ?? 'Без названия'),
+      description: String(t.description ?? t.DESCRIPTION ?? ''),
+    }));
+    const routing = await this.importer.classifyUngrouped(
+      tenantId, tasks, projects.map((p) => ({ id: p.id, name: p.name })),
+    );
+    return {
+      projects: projects.map((p) => ({ id: p.id, name: p.name })),
+      tasks: tasks.map((t) => {
+        const r = routing.get(t.externalId);
+        return {
+          externalId: t.externalId,
+          title: t.title,
+          suggestedProjectId: r?.projectId ?? null,
+          confidence: r?.confidence ?? 0,
+        };
+      }),
+    };
+  }
+
+  /** Применяет подтверждённую раскладку внегрупповых задач (фоновый run, прогресс через GET /runs/:id). */
+  async applyUngrouped(tenantId: string, actorId: string, cid: string, assignments: { externalId: string; projectId?: string | null }[]) {
+    if (!assignments?.length) throw AppException.validation('Нет задач для раскладки');
+    const { webhookUrl } = await this.clientFor(tenantId, cid);
+    const run = await this.repo.createRun(tenantId, cid, { ungrouped: assignments.length });
+    void this.importer.applyUngrouped({ tenantId, connectionId: cid, webhookUrl, runId: run!.id, actorId, assignments });
     return { runId: run!.id, status: 'queued' };
   }
 

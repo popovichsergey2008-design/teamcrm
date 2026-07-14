@@ -114,6 +114,21 @@ export class BitrixClient {
       (res) => res?.tasks ?? [],
     );
   }
+  /** Задачи вне рабочих групп (GROUP_ID=0) — «личные»/несгруппированные. */
+  ungroupedTasks() {
+    return this.list(
+      'tasks.task.list',
+      {
+        filter: { GROUP_ID: 0 },
+        select: [
+          'ID', 'TITLE', 'DESCRIPTION', 'RESPONSIBLE_ID', 'CREATED_BY', 'STAGE_ID',
+          'STATUS', 'PRIORITY', 'DEADLINE', 'GROUP_ID', 'CLOSED_DATE', 'TAGS', 'CHANGED_DATE',
+          'UF_TASK_WEBDAV_FILES',
+        ],
+      },
+      (res) => res?.tasks ?? [],
+    );
+  }
   /** Одна задача (для живой синхронизации по событию). */
   async taskGet(id: string): Promise<any | null> {
     const r = await this.call<any>('tasks.task.get', {
@@ -152,6 +167,16 @@ export class BitrixClient {
   async groupFeed(groupId: string): Promise<any[]> {
     try {
       const r = await this.call<any>('log.blogpost.get', { filter: { SOCNET_GROUP_ID: groupId } });
+      return Array.isArray(r) ? r : Object.values(r ?? {});
+    } catch {
+      return [];
+    }
+  }
+
+  /** Общая Живая лента компании (посты вне рабочих групп). Best-effort. */
+  async generalFeed(): Promise<any[]> {
+    try {
+      const r = await this.call<any>('log.blogpost.get', {});
       return Array.isArray(r) ? r : Object.values(r ?? {});
     } catch {
       return [];

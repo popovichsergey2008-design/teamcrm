@@ -3,6 +3,11 @@ import { createHash } from 'crypto';
 import { BitrixClient } from './bitrix.client';
 import { BitrixRepository } from './bitrix.repository';
 import { FilesService } from '../../files/files.service';
+import { AiService } from '../../ai/ai.service';
+
+/** Служебный контейнер для внегрупповых задач и общей ленты. */
+export const INBOX_EXTERNAL_ID = '__inbox__';
+export const INBOX_NAME = 'Входящие из Битрикса';
 
 const PRIORITY: Record<string, string> = { '0': 'low', '1': 'normal', '2': 'high' };
 const f = (o: any, ...keys: string[]) => {
@@ -47,6 +52,7 @@ export class BitrixImportService {
   constructor(
     private readonly repo: BitrixRepository,
     private readonly files: FilesService,
+    private readonly ai: AiService,
   ) {}
 
   /** Карта bitrixUserId → наш userId: ручные привязки (external_refs) + матч по e-mail. */
@@ -71,7 +77,8 @@ export class BitrixImportService {
 
   /** Создаёт/сопоставляет колонки проекта из стадий Битрикса; возвращает резолвер колонки задачи. */
   private async ensureColumns(ctx: Ctx, projectId: string, groupId: string): Promise<ColResolver> {
-    const stages = await ctx.client.stages(groupId);
+    // Служебный контейнер (__inbox__) не соответствует реальной группе Битрикса — сразу дефолтные колонки.
+    const stages = groupId && !groupId.startsWith('__') ? await ctx.client.stages(groupId) : [];
     const stageToCol = new Map<string, string>();
     let defaults: { name: string; id: string }[] = [];
     if (stages.length) {
@@ -87,6 +94,7 @@ export class BitrixImportService {
     } else {
       defaults = await this.repo.ensureDefaultColumns(ctx.tenantId, projectId);
     }
+    const stageCols = [...stageToCol.values()];
     return (stageId, status, closed) => {
       if (stageId !== undefined && stageToCol.get(String(stageId))) return stageToCol.get(String(stageId))!;
       if (defaults.length) {
@@ -94,7 +102,9 @@ export class BitrixImportService {
         if (status === '3') return defaults[1].id;
         return defaults[0].id;
       }
-      return stageToCol.values().next().value as string;
+      // Стадия задачи не из этого проекта (напр. внегрупповая задача, размещённая ИИ):
+      // закрытую — в последнюю колонку, иначе в первую.
+      return (closed || status === '5' ? stageCols[stageCols.length - 1] : stageCols[0]) as string;
     };
   }
 
@@ -209,9 +219,27 @@ export class BitrixImportService {
     }
   }
 
+  /** Импорт постов ленты (группы или общей) в архив сообщений проекта (best-effort, идемпотентно). */
+  private async importFeed(ctx: Ctx, projectId: string, posts: any[], stats: any) {
+    for (const post of posts) {
+      const body = String(f(post, 'DETAIL_TEXT', 'detailText', 'POST_TEXT', 'PREVIEW_TEXT') ?? '').trim();
+      if (!body) continue;
+      const bxAuthor = String(f(post, 'AUTHOR_ID', 'authorId') ?? '');
+      const localAuthor = ctx.bxUserToLocal.get(bxAuthor) ?? null;
+      const postedRaw = f(post, 'DATE_PUBLISH', 'datePublish', 'POST_DATE');
+      const inserted = await this.repo.upsertMessage({
+        tenantId: ctx.tenantId, connectionId: ctx.connectionId, externalId: String(f(post, 'ID', 'id')), projectId,
+        authorUserId: localAuthor, authorLabel: localAuthor ? null : `Bitrix #${bxAuthor}`, body,
+        postedAt: postedRaw ? new Date(postedRaw).toISOString() : null,
+      });
+      if (inserted) stats.messages++;
+    }
+  }
+
   /** Полный проход импорта (in-process, статус в import_runs). */
   async run(i: {
     tenantId: string; connectionId: string; webhookUrl: string; projectExternalIds: string[]; runId: string; actorId: string;
+    includeGeneralFeed?: boolean;
   }): Promise<void> {
     const client = new BitrixClient(i.webhookUrl);
     const stats: any = { projects: 0, columns: 0, tasks: 0, comments: 0, labels: 0, attachments: 0, messages: 0, unmatchedUsers: 0 };
@@ -237,21 +265,17 @@ export class BitrixImportService {
         }
 
         // лента проекта → архив сообщений (best-effort)
-        for (const post of await client.groupFeed(String(gid))) {
-          const body = String(f(post, 'DETAIL_TEXT', 'detailText', 'POST_TEXT', 'PREVIEW_TEXT') ?? '').trim();
-          if (!body) continue;
-          const bxAuthor = String(f(post, 'AUTHOR_ID', 'authorId') ?? '');
-          const localAuthor = bxUserToLocal.get(bxAuthor) ?? null;
-          const postedRaw = f(post, 'DATE_PUBLISH', 'datePublish', 'POST_DATE');
-          const inserted = await this.repo.upsertMessage({
-            tenantId: i.tenantId, connectionId: i.connectionId, externalId: String(f(post, 'ID', 'id')), projectId: proj.id,
-            authorUserId: localAuthor, authorLabel: localAuthor ? null : `Bitrix #${bxAuthor}`, body,
-            postedAt: postedRaw ? new Date(postedRaw).toISOString() : null,
-          });
-          if (inserted) stats.messages++;
-        }
+        await this.importFeed(ctx, proj.id, await client.groupFeed(String(gid)), stats);
         await this.repo.setRunStats(i.runId, stats);
       }
+
+      // общая Живая лента компании → служебный контейнер «Входящие из Битрикса»
+      if (i.includeGeneralFeed) {
+        const inbox = await this.repo.ensureServiceProject(i.tenantId, i.connectionId, INBOX_NAME);
+        await this.importFeed(ctx, inbox.id, await client.generalFeed(), stats);
+        await this.repo.setRunStats(i.runId, stats);
+      }
+
       await this.repo.finishRun(i.runId, 'done', stats);
     } catch (e) {
       this.log.error(`import run ${i.runId} failed: ${(e as Error).message}`);
@@ -284,6 +308,133 @@ export class BitrixImportService {
       await this.repo.deleteImportedTask(tenantId, connectionId, taskId);
     } catch (e) {
       this.log.error(`delete task ${taskId} failed: ${(e as Error).message}`);
+    }
+  }
+
+  // ── ИИ-раскладка внегрупповых задач по проектам ──
+
+  /**
+   * Для каждой внегрупповой задачи предлагает наиболее подходящий проект (по названию/описанию).
+   * Пытается через LLM (строгий JSON); при отсутствии ключа/сбое парсинга — детерминированная эвристика
+   * (совпадение значимых слов задачи с названием проекта). projectId=null → «Входящие» на ручную разборку.
+   */
+  async classifyUngrouped(
+    tenantId: string,
+    tasks: { externalId: string; title: string; description?: string | null }[],
+    projects: { id: string; name: string }[],
+  ): Promise<Map<string, { projectId: string | null; confidence: number }>> {
+    const result = new Map<string, { projectId: string | null; confidence: number }>();
+    if (!tasks.length) return result;
+    if (!projects.length) {
+      for (const t of tasks) result.set(t.externalId, { projectId: null, confidence: 0 });
+      return result;
+    }
+
+    const valid = new Set(projects.map((p) => String(p.id)));
+    const byId = new Map<string, { projectId: string | null; confidence: number }>();
+
+    const system =
+      'Ты распределяешь задачи по проектам компании. Для КАЖДОЙ задачи выбери НАИБОЛЕЕ подходящий проект ' +
+      'из списка по смыслу названия и описания. Если ни один проект явно не подходит — projectId=null. ' +
+      'Верни СТРОГО JSON-массив без пояснений: [{"taskId":"<id задачи>","projectId":"<id проекта или null>","confidence":<число 0..1>}].';
+    const user = JSON.stringify({
+      projects: projects.map((p) => ({ id: String(p.id), name: p.name })),
+      tasks: tasks.map((t) => ({ id: t.externalId, title: t.title, description: String(t.description ?? '').slice(0, 500) })),
+    });
+    try {
+      const raw = await this.ai.generate(tenantId, system, user, 'bitrix_route');
+      const cleaned = raw.replace(/^```json\s*|\s*```$/g, '').trim();
+      const json = JSON.parse(cleaned);
+      const arr: any[] = Array.isArray(json) ? json : Array.isArray(json?.assignments) ? json.assignments : [];
+      for (const r of arr) {
+        const tid = String(r?.taskId ?? r?.id ?? '');
+        if (!tid) continue;
+        let pid = r?.projectId === null || r?.projectId === undefined ? null : String(r.projectId);
+        if (pid && !valid.has(pid)) pid = null;
+        const conf = Math.max(0, Math.min(1, Number(r?.confidence) || 0));
+        byId.set(tid, { projectId: pid, confidence: conf });
+      }
+    } catch {
+      /* нет ключа / модель вернула не-JSON → падаем в эвристику ниже */
+    }
+
+    for (const t of tasks) {
+      result.set(t.externalId, byId.get(t.externalId) ?? this.heuristicMatch(t, projects));
+    }
+    return result;
+  }
+
+  /** Эвристика без LLM: пересечение значимых слов задачи с названием проекта. */
+  private heuristicMatch(
+    task: { title: string; description?: string | null },
+    projects: { id: string; name: string }[],
+  ): { projectId: string | null; confidence: number } {
+    const words = (s: string) =>
+      (s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').split(' ').filter((w) => w.length >= 3);
+    const taskWords = new Set([...words(task.title), ...words(String(task.description ?? ''))]);
+    let best: { id: string; name: string } | null = null;
+    let bestScore = 0;
+    for (const p of projects) {
+      let score = 0;
+      for (const w of words(p.name)) if (taskWords.has(w)) score++;
+      if (score > bestScore) { bestScore = score; best = p; }
+    }
+    if (best && bestScore > 0) return { projectId: String(best.id), confidence: Math.min(0.9, 0.4 + 0.2 * bestScore) };
+    return { projectId: null, confidence: 0 };
+  }
+
+  /**
+   * Применяет раскладку внегрупповых задач (после подтверждения пользователем): каждую задачу импортирует
+   * в выбранный проект, либо (projectId пустой) в служебный контейнер «Входящие из Битрикса».
+   */
+  async applyUngrouped(i: {
+    tenantId: string; connectionId: string; webhookUrl: string; runId: string; actorId: string;
+    assignments: { externalId: string; projectId?: string | null }[];
+  }): Promise<void> {
+    const client = new BitrixClient(i.webhookUrl);
+    const stats: any = { tasks: 0, comments: 0, labels: 0, attachments: 0, routed: 0, inbox: 0 };
+    try {
+      await this.repo.setRunRunning(i.runId);
+      const { map: bxUserToLocal } = await this.buildUserMap(i.tenantId, i.connectionId, client);
+      const ctx: Ctx = { tenantId: i.tenantId, connectionId: i.connectionId, actorId: i.actorId, client, bxUserToLocal };
+
+      // внегрупповые задачи из Битрикса → карта extId → задача
+      const byExt = new Map<string, any>();
+      for (const t of await client.ungroupedTasks()) byExt.set(String(f(t, 'id', 'ID')), t);
+
+      // допустимые целевые проекты (внешний gid для резолвера колонок)
+      const cands = await this.repo.importedProjects(i.tenantId, i.connectionId);
+      const gidByProject = new Map(cands.map((c) => [String(c.id), String(c.external_id)]));
+      const resolvers = new Map<string, ColResolver>();
+      let inboxId: string | null = null;
+
+      for (const a of i.assignments) {
+        const t = byExt.get(String(a.externalId));
+        if (!t) continue;
+        let projId = a.projectId ? String(a.projectId) : null;
+        if (projId && !gidByProject.has(projId)) projId = null; // отсеиваем несуществующие/чужие проекты
+
+        let targetId: string;
+        let gid: string;
+        if (projId) {
+          targetId = projId;
+          gid = gidByProject.get(projId)!;
+        } else {
+          if (!inboxId) inboxId = (await this.repo.ensureServiceProject(i.tenantId, i.connectionId, INBOX_NAME)).id;
+          targetId = inboxId;
+          gid = INBOX_EXTERNAL_ID;
+        }
+
+        let col = resolvers.get(targetId);
+        if (!col) { col = await this.ensureColumns(ctx, targetId, gid); resolvers.set(targetId, col); }
+        await this.importTaskCore(ctx, t, targetId, col, stats);
+        if (projId) stats.routed++; else stats.inbox++;
+        await this.repo.setRunStats(i.runId, stats);
+      }
+      await this.repo.finishRun(i.runId, 'done', stats);
+    } catch (e) {
+      this.log.error(`applyUngrouped run ${i.runId} failed: ${(e as Error).message}`);
+      await this.repo.finishRun(i.runId, 'error', stats, (e as Error).message);
     }
   }
 }

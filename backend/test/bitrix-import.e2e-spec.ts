@@ -43,9 +43,13 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
           case 'disk.file.get':
           case 'disk.attachedObject.get':
             return reply({ ID: '1', NAME: 'договор.txt', DOWNLOAD_URL: `http://127.0.0.1:${port}/dl/dogovor.txt` });
-          case 'log.blogpost.get': return reply([
-            { ID: '50', AUTHOR_ID: '5', DETAIL_TEXT: 'пост в ленте проекта', DATE_PUBLISH: '2026-06-03T09:00:00+03:00' },
-          ]);
+          case 'log.blogpost.get': {
+            let hasGroup = false;
+            try { hasGroup = JSON.parse(body)?.filter?.SOCNET_GROUP_ID !== undefined; } catch { /* */ }
+            return reply(hasGroup
+              ? [{ ID: '50', AUTHOR_ID: '5', DETAIL_TEXT: 'пост в ленте проекта', DATE_PUBLISH: '2026-06-03T09:00:00+03:00' }]
+              : [{ ID: '70', AUTHOR_ID: '5', DETAIL_TEXT: 'пост в общей ленте компании', DATE_PUBLISH: '2026-06-04T09:00:00+03:00' }]);
+          }
           case 'user.get': return reply([
             { ID: '5', NAME: 'Анна', LAST_NAME: 'Босс', EMAIL: ownerEmail },
             { ID: '6', NAME: 'Гость', LAST_NAME: '', EMAIL: 'ghost@x.test' },
@@ -56,13 +60,24 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
             '200': { ID: '200', TITLE: 'В работе', SORT: 200 },
             '300': { ID: '300', TITLE: 'Готово', SORT: 300 },
           });
-          case 'tasks.task.list': return reply({
-            tasks: [{
-              id: '1', title: 'Задача A', description: 'описание', responsibleId: '5', createdBy: '5',
-              stageId: '200', status: '2', priority: '2', deadline: '', tags: [{ id: '7', title: 'дизайн' }],
-              ufTaskWebdavFiles: ['n1'],
-            }],
-          });
+          case 'tasks.task.list': {
+            let groupId = '';
+            try { groupId = String(JSON.parse(body)?.filter?.GROUP_ID ?? ''); } catch { /* */ }
+            if (groupId === '0') {
+              // задачи вне рабочих групп (GROUP_ID=0)
+              return reply({ tasks: [
+                { id: '90', title: 'Медицина договор с клиникой', description: '', responsibleId: '5', createdBy: '5', status: '2', priority: '1', deadline: '', tags: [] },
+                { id: '91', title: 'Купить кофе в офис', description: '', responsibleId: '5', createdBy: '5', status: '2', priority: '1', deadline: '', tags: [] },
+              ] });
+            }
+            return reply({
+              tasks: [{
+                id: '1', title: 'Задача A', description: 'описание', responsibleId: '5', createdBy: '5',
+                stageId: '200', status: '2', priority: '2', deadline: '', tags: [{ id: '7', title: 'дизайн' }],
+                ufTaskWebdavFiles: ['n1'],
+              }],
+            });
+          }
           case 'tasks.task.get': {
             let tid = '';
             try { tid = String(JSON.parse(body).taskId ?? ''); } catch { /* */ }
@@ -235,6 +250,64 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     // первый ок, второй тот же портал → 409
     await http$.post('/api/integrations/bitrix/connections').set(H(tok)).send({ webhookUrl: webhookBase }).expect(201);
     await http$.post('/api/integrations/bitrix/connections').set(H(tok)).send({ webhookUrl: webhookBase }).expect(409);
+  });
+
+  it('задачи вне проектов: ИИ-раскладка по проектам + общая Живая лента в «Входящие»', async () => {
+    ownerEmail = `ung_${uniq()}@t.test`;
+    const reg = (await http$.post('/api/auth/register').send({ tenantName: 'ИмпUng', email: ownerEmail, password: 'password123', fullName: 'Анна Босс' }).expect(201)).body.data;
+    const tok = reg.accessToken;
+    const conn = (await http$.post('/api/integrations/bitrix/connections').set(H(tok)).send({ webhookUrl: webhookBase }).expect(201)).body.data;
+    const cid = conn.id;
+
+    // сначала импортируем группу «Медицина» — она станет кандидатом для ИИ-раскладки
+    const started = (await http$.post(`/api/integrations/bitrix/connections/${cid}/import`).set(H(tok)).send({ projectExternalIds: ['10'] }).expect(201)).body.data;
+    expect((await waitRun(tok, started.runId)).status).toBe('done');
+    const medProj = (await http$.get('/api/projects').set(H(tok)).expect(200)).body.data.find((p: any) => p.name === 'Медицина');
+    expect(medProj).toBeTruthy();
+
+    // предпросмотр раскладки: без LLM-ключа работает эвристика (совпадение слов)
+    const ana = (await http$.post(`/api/integrations/bitrix/connections/${cid}/ungrouped/analyze`).set(H(tok)).expect(201)).body.data;
+    expect(ana.projects.some((p: any) => p.name === 'Медицина')).toBe(true);
+    const t90 = ana.tasks.find((t: any) => t.externalId === '90');
+    const t91 = ana.tasks.find((t: any) => t.externalId === '91');
+    expect(t90.suggestedProjectId).toBe(medProj.id); // «Медицина …» → проект Медицина
+    expect(t91.suggestedProjectId).toBeNull();       // «Купить кофе …» → ни один проект → Входящие
+
+    // применяем подтверждённую раскладку (принимаем предложение ИИ)
+    const applied = (await http$.post(`/api/integrations/bitrix/connections/${cid}/ungrouped/apply`).set(H(tok))
+      .send({ assignments: [{ externalId: '90', projectId: medProj.id }, { externalId: '91', projectId: null }] }).expect(201)).body.data;
+    const runApply = await waitRun(tok, applied.runId);
+    expect(runApply.status).toBe('done');
+    expect(runApply.stats.routed).toBe(1);
+    expect(runApply.stats.inbox).toBe(1);
+
+    // задача 90 попала в доску «Медицина»
+    const medBoard = (await http$.get(`/api/projects/${medProj.id}/board`).set(H(tok)).expect(200)).body.data;
+    expect(medBoard.columns.flatMap((c: any) => c.tasks).some((t: any) => t.title.includes('Медицина договор'))).toBe(true);
+
+    // появился служебный проект «Входящие из Битрикса» с задачей 91
+    const inbox = (await http$.get('/api/projects').set(H(tok)).expect(200)).body.data.find((p: any) => p.name === 'Входящие из Битрикса');
+    expect(inbox).toBeTruthy();
+    expect(inbox.origin).toBe('bitrix');
+    const inboxBoard = (await http$.get(`/api/projects/${inbox.id}/board`).set(H(tok)).expect(200)).body.data;
+    expect(inboxBoard.columns.flatMap((c: any) => c.tasks).some((t: any) => t.title.includes('кофе'))).toBe(true);
+
+    // повторный analyze — задачи 90/91 уже разложены? Нет: они остаются в Битриксе, но analyze их снова покажет.
+    // Идемпотентность применения: повторный apply не задваивает (external_refs task).
+    const applied2 = (await http$.post(`/api/integrations/bitrix/connections/${cid}/ungrouped/apply`).set(H(tok))
+      .send({ assignments: [{ externalId: '90', projectId: medProj.id }] }).expect(201)).body.data;
+    expect((await waitRun(tok, applied2.runId)).status).toBe('done');
+    const medBoard2 = (await http$.get(`/api/projects/${medProj.id}/board`).set(H(tok)).expect(200)).body.data;
+    expect(medBoard2.columns.flatMap((c: any) => c.tasks).filter((t: any) => t.title.includes('Медицина договор')).length).toBe(1);
+
+    // общая Живая лента → «Входящие из Битрикса» (импорт только ленты, без проектов)
+    const feedRun = (await http$.post(`/api/integrations/bitrix/connections/${cid}/import`).set(H(tok))
+      .send({ projectExternalIds: [], includeGeneralFeed: true }).expect(201)).body.data;
+    const runFeed = await waitRun(tok, feedRun.runId);
+    expect(runFeed.status).toBe('done');
+    expect(runFeed.stats.messages).toBeGreaterThanOrEqual(1);
+    const msgs = (await http$.get(`/api/integrations/bitrix/projects/${inbox.id}/messages`).set(H(tok)).expect(200)).body.data;
+    expect(msgs.some((m: any) => m.body.includes('общей ленте компании'))).toBe(true);
   });
 
   it('удаление импортированного проекта целиком (лента/refs/чанки не блокируют)', async () => {

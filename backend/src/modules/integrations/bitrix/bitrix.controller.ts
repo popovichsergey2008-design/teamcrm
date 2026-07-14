@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../../common/auth/decorators';
 import { AuthUser } from '../../../common/auth/jwt.types';
 import { BitrixService } from './bitrix.service';
-import { ConnectBitrixDto, ImportBitrixDto, MapUserDto } from './bitrix.dto';
+import { ApplyUngroupedDto, ConnectBitrixDto, ImportBitrixDto, MapUserDto } from './bitrix.dto';
 
 @ApiTags('integrations/bitrix')
 @ApiBearerAuth()
@@ -34,7 +34,18 @@ export class BitrixController {
 
   @Post('connections/:cid/import')
   import(@CurrentUser() u: AuthUser, @Param('cid') cid: string, @Body() dto: ImportBitrixDto) {
-    return this.bitrix.startImport(u.tenantId, u.userId, cid, dto.projectExternalIds);
+    return this.bitrix.startImport(u.tenantId, u.userId, cid, dto.projectExternalIds ?? [], dto.includeGeneralFeed ?? false);
+  }
+
+  // ИИ-раскладка внегрупповых задач: предпросмотр → подтверждение
+  @Post('connections/:cid/ungrouped/analyze')
+  analyzeUngrouped(@CurrentUser() u: AuthUser, @Param('cid') cid: string) {
+    return this.bitrix.analyzeUngrouped(u.tenantId, cid);
+  }
+
+  @Post('connections/:cid/ungrouped/apply')
+  applyUngrouped(@CurrentUser() u: AuthUser, @Param('cid') cid: string, @Body() dto: ApplyUngroupedDto) {
+    return this.bitrix.applyUngrouped(u.tenantId, u.userId, cid, dto.assignments);
   }
 
   @Get('connections/:cid/unmatched-users')
