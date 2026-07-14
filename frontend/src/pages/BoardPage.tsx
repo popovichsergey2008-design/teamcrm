@@ -326,7 +326,7 @@ export function BoardPage() {
         <div className="project-list">
           {localProjects.map((p) => renderProjectRow(p))}
           {bitrixGroups.map(([cid, g]) => {
-            const isOpen = expandedConns.has(cid) || g.items.some((p) => p.id === selected);
+            const isOpen = expandedConns.has(cid);
             return (
               <div key={cid} className="project-group">
                 <button
