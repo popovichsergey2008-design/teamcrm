@@ -84,15 +84,17 @@ function ImportBlock({ cid }: { cid: string }) {
   const [feed, setFeed] = useState(false);
   const [run, setRun] = useState<any>(null);
   const [unmatched, setUnmatched] = useState<{ total: number; items: any[] }>({ total: 0, items: [] });
+  const [showUnmatched, setShowUnmatched] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [mapPick, setMapPick] = useState<Record<string, string>>({});
   const [err, setErr] = useState('');
 
+  // Список несопоставленных НЕ грузим автоматически — на больших порталах это тысячи юзеров.
+  // Загружаем только по явному клику; матчинг команды по e-mail при импорте идёт независимо.
   const loadUnmatched = () => api.bitrixUnmatched(cid).then(setUnmatched).catch(() => undefined);
   useEffect(() => {
     api.bitrixProjects(cid).then(setProjects).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось получить проекты'));
     api.listUsers().then(setUsers).catch(() => undefined);
-    loadUnmatched();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid]);
 
@@ -161,7 +163,15 @@ function ImportBlock({ cid }: { cid: string }) {
 
       <UngroupedBlock cid={cid} />
 
-      {unmatched.total > 0 && (
+      {!showUnmatched && (
+        <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={() => { setShowUnmatched(true); loadUnmatched(); }}>
+          Сопоставить исполнителей вручную (необязательно)
+        </button>
+      )}
+      {showUnmatched && unmatched.total === 0 && (
+        <div className="dim" style={{ marginTop: 10, fontSize: 12 }}>Несопоставленных нет (или список ещё грузится).</div>
+      )}
+      {showUnmatched && unmatched.total > 0 && (
         <div style={{ marginTop: 10 }}>
           <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
             Не сопоставлены по e-mail: {unmatched.total}. Привязка <b>необязательна</b> — никого в вашу команду не добавляем, несопоставленные задачи просто останутся без исполнителя.
