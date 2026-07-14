@@ -29,8 +29,13 @@ export class ProjectsRepository {
   constructor(private readonly db: DbService) {}
 
   list(tenantId: string): Promise<ProjectRow[]> {
+    // origin_label — имя портала-источника (для группировки импортированных проектов в сайдбаре)
     return this.db.many<ProjectRow>(
-      `SELECT * FROM projects WHERE tenant_id = $1 ORDER BY created_at DESC`,
+      `SELECT p.*, c.label AS origin_label, c.portal AS origin_portal
+         FROM projects p
+         LEFT JOIN integration_connections c ON c.id = p.origin_connection_id
+        WHERE p.tenant_id = $1
+        ORDER BY p.created_at DESC`,
       [tenantId],
     );
   }

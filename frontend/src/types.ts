@@ -31,6 +31,9 @@ export interface Project {
   client_id?: string | null;
   deal_id?: string | null;
   origin?: string;
+  origin_connection_id?: string | null;
+  origin_label?: string | null;
+  origin_portal?: string | null;
 }
 
 export interface Task {

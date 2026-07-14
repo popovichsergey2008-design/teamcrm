@@ -74,6 +74,15 @@ export function BoardPage() {
   const [showTeam, setShowTeam] = useState(false);
   const [showCopilot, setShowCopilot] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
+  const [expandedConns, setExpandedConns] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('teamcrm.expandedBitrix') || '[]')); } catch { return new Set(); }
+  });
+  const toggleConn = (cid: string) => setExpandedConns((s) => {
+    const n = new Set(s);
+    if (n.has(cid)) n.delete(cid); else n.add(cid);
+    localStorage.setItem('teamcrm.expandedBitrix', JSON.stringify([...n]));
+    return n;
+  });
   const subscribedRef = useRef<string | null>(null);
 
   const reloadBoard = useCallback(() => {
@@ -285,28 +294,56 @@ export function BoardPage() {
 
   const openTask = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === openTaskId) ?? null;
 
+  // Сайдбар: локальные проекты — верхним уровнем; импортированные из Битрикса — свёрнуты под узлом-порталом.
+  const localProjects = projects.filter((p) => !p.origin_connection_id);
+  const bitrixGroups: [string, { label: string; items: Project[] }][] = [];
+  {
+    const byConn = new Map<string, { label: string; items: Project[] }>();
+    for (const p of projects) {
+      const cid = p.origin_connection_id;
+      if (!cid) continue;
+      let g = byConn.get(cid);
+      if (!g) { g = { label: p.origin_label || p.origin_portal || 'Битрикс24', items: [] }; byConn.set(cid, g); bitrixGroups.push([cid, g]); }
+      g.items.push(p);
+    }
+  }
+  const renderProjectRow = (p: Project, nested = false) => (
+    <div key={p.id} className={`project-row ${p.id === selected ? 'active' : ''}`} style={nested ? { paddingLeft: 18 } : undefined}>
+      <button className="project-item" onClick={() => setSelected(p.id)}>
+        {p.name}
+        {p.origin === 'bitrix' && !nested && <span className="project-src" title="Импортировано из Битрикс24">⤓</span>}
+      </button>
+      {canManageProjects && (
+        <button className="project-del" title="Удалить проект" onClick={() => deleteProject(p.id, p.name)}>✕</button>
+      )}
+    </div>
+  );
+
   return (
     <div className="board-layout">
       <aside className="sidebar">
         <div className="sidebar-head">Проекты</div>
         <div className="project-list">
-          {projects.map((p) => (
-            <div key={p.id} className={`project-row ${p.id === selected ? 'active' : ''}`}>
-              <button className="project-item" onClick={() => setSelected(p.id)}>
-                {p.name}
-                {p.origin === 'bitrix' && <span className="project-src" title="Импортировано из Битрикс24">⤓</span>}
-              </button>
-              {canManageProjects && (
+          {localProjects.map((p) => renderProjectRow(p))}
+          {bitrixGroups.map(([cid, g]) => {
+            const isOpen = expandedConns.has(cid) || g.items.some((p) => p.id === selected);
+            return (
+              <div key={cid} className="project-group">
                 <button
-                  className="project-del"
-                  title="Удалить проект"
-                  onClick={() => deleteProject(p.id, p.name)}
+                  className="project-group-head"
+                  onClick={() => toggleConn(cid)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px', color: 'inherit', font: 'inherit', textAlign: 'left' }}
+                  title={`Импортировано из Битрикс24: ${g.label}`}
                 >
-                  ✕
+                  <span style={{ width: 10, opacity: 0.7 }}>{isOpen ? '▾' : '▸'}</span>
+                  <span>⤓</span>
+                  <span style={{ flex: 1, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.label}</span>
+                  <span style={{ opacity: 0.6, fontSize: 12 }}>{g.items.length}</span>
                 </button>
-              )}
-            </div>
-          ))}
+                {isOpen && g.items.map((p) => renderProjectRow(p, true))}
+              </div>
+            );
+          })}
           {projects.length === 0 && <div className="muted sidebar-empty">Пока нет проектов</div>}
         </div>
         {canManageProjects && (
