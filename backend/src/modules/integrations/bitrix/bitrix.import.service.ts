@@ -272,7 +272,12 @@ export class BitrixImportService {
       // общая Живая лента компании → служебный контейнер «Входящие из Битрикса»
       if (i.includeGeneralFeed) {
         const inbox = await this.repo.ensureServiceProject(i.tenantId, i.connectionId, INBOX_NAME);
-        await this.importFeed(ctx, inbox.id, await client.generalFeed(), stats);
+        try {
+          await this.importFeed(ctx, inbox.id, await client.generalFeed(), stats);
+        } catch (e) {
+          // напр. у вебхука нет права log — не роняем весь импорт, показываем предупреждение
+          stats.warnings = [...(stats.warnings ?? []), `Лента не импортирована: ${(e as Error).message}`];
+        }
         await this.repo.setRunStats(i.runId, stats);
       }
 

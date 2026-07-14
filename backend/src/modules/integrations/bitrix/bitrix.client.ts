@@ -179,13 +179,10 @@ export class BitrixClient {
     }
   }
 
-  /** Общая Живая лента компании (посты, доступные пользователю вебхука). Best-effort, с пагинацией. */
-  async generalFeed(): Promise<any[]> {
-    try {
-      return await this.list('log.blogpost.get', {}, (r) => (Array.isArray(r) ? r : Object.values(r ?? {})));
-    } catch {
-      return [];
-    }
+  /** Общая Живая лента компании (посты, доступные пользователю вебхука), с пагинацией.
+   *  Бросает BitrixError при отказе (напр. нет права log) — вызывающий решает, как показать. */
+  generalFeed(): Promise<any[]> {
+    return this.list('log.blogpost.get', {}, (r) => (Array.isArray(r) ? r : Object.values(r ?? {})));
   }
 
   private sleep(ms: number) {

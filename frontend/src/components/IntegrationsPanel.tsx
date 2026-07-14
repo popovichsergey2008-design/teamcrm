@@ -153,6 +153,9 @@ function ImportBlock({ cid }: { cid: string }) {
           {run.status === 'running' && 'Импорт идёт…'}
           {run.status === 'error' && <span className="error-text">Ошибка: {run.error}</span>}
           {run.status === 'done' && run.stats && `Готово: проектов ${run.stats.projects ?? 0}, задач ${run.stats.tasks ?? 0}, комментариев ${run.stats.comments ?? 0}, постов ленты ${run.stats.messages ?? 0}. Обновляем…`}
+          {run.status === 'done' && Array.isArray(run.stats?.warnings) && run.stats.warnings.map((w: string, idx: number) => (
+            <div key={idx} className="error-text" style={{ fontSize: 12 }}>⚠ {w}</div>
+          ))}
         </div>
       )}
 
