@@ -50,7 +50,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
           <input className="input add-user-input" placeholder="URL вебхука (https://portal.bitrix24.ru/rest/…/…/)" value={form.webhookUrl} onChange={(e) => setForm({ ...form, webhookUrl: e.target.value })} />
           <input className="input add-user-input" placeholder="Название (напр. «Основной»)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
           <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={connect}>Подключить и проверить</button>
-          <div className="dim" style={{ marginTop: 6, fontSize: 12 }}>В Битриксе: Разработчикам → Другое → Входящий вебхук, права task, user, sonet_group.</div>
+          <div className="dim" style={{ marginTop: 6, fontSize: 12 }}>В Битриксе: Разработчикам → Другое → Входящий вебхук, права <b>task, user, sonet_group</b>; для вложений — <b>disk</b>, для общей ленты — <b>log</b>. Права можно дописать в существующий вебхук (URL не меняется).</div>
         </div>
 
         <div className="drawer-section-title">Подключённые порталы ({conns.length})</div>

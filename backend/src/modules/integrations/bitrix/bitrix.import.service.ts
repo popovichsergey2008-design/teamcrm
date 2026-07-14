@@ -337,26 +337,34 @@ export class BitrixImportService {
       'Ты распределяешь задачи по проектам компании. Для КАЖДОЙ задачи выбери НАИБОЛЕЕ подходящий проект ' +
       'из списка по смыслу названия и описания. Если ни один проект явно не подходит — projectId=null. ' +
       'Верни СТРОГО JSON-массив без пояснений: [{"taskId":"<id задачи>","projectId":"<id проекта или null>","confidence":<число 0..1>}].';
-    const user = JSON.stringify({
-      projects: projects.map((p) => ({ id: String(p.id), name: p.name })),
-      tasks: tasks.map((t) => ({ id: t.externalId, title: t.title, description: String(t.description ?? '').slice(0, 500) })),
-    });
-    try {
-      const raw = await this.ai.generate(tenantId, system, user, 'bitrix_route');
-      const cleaned = raw.replace(/^```json\s*|\s*```$/g, '').trim();
-      const json = JSON.parse(cleaned);
-      const arr: any[] = Array.isArray(json) ? json : Array.isArray(json?.assignments) ? json.assignments : [];
-      for (const r of arr) {
-        const tid = String(r?.taskId ?? r?.id ?? '');
-        if (!tid) continue;
-        let pid = r?.projectId === null || r?.projectId === undefined ? null : String(r.projectId);
-        if (pid && !valid.has(pid)) pid = null;
-        const conf = Math.max(0, Math.min(1, Number(r?.confidence) || 0));
-        byId.set(tid, { projectId: pid, confidence: conf });
+    const projectList = projects.map((p) => ({ id: String(p.id), name: p.name }));
+
+    // Батчим: один запрос на ~30 задач — иначе ответ LLM обрезается лимитом токенов и молча теряется.
+    const BATCH = 30;
+    const batches: typeof tasks[] = [];
+    for (let s = 0; s < tasks.length; s += BATCH) batches.push(tasks.slice(s, s + BATCH));
+
+    await Promise.all(batches.map(async (batch) => {
+      const user = JSON.stringify({
+        projects: projectList,
+        tasks: batch.map((t) => ({ id: t.externalId, title: t.title, description: String(t.description ?? '').slice(0, 500) })),
+      });
+      try {
+        const raw = await this.ai.generate(tenantId, system, user, 'bitrix_route', { params: { max_tokens: 2000 } });
+        const json = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+        const arr: any[] = Array.isArray(json) ? json : Array.isArray(json?.assignments) ? json.assignments : [];
+        for (const r of arr) {
+          const tid = String(r?.taskId ?? r?.id ?? '');
+          if (!tid) continue;
+          let pid = r?.projectId === null || r?.projectId === undefined ? null : String(r.projectId);
+          if (pid && !valid.has(pid)) pid = null;
+          const conf = Math.max(0, Math.min(1, Number(r?.confidence) || 0));
+          byId.set(tid, { projectId: pid, confidence: conf });
+        }
+      } catch {
+        /* нет ключа / модель вернула не-JSON / обрезка → этот батч уйдёт в эвристику ниже */
       }
-    } catch {
-      /* нет ключа / модель вернула не-JSON → падаем в эвристику ниже */
-    }
+    }));
 
     for (const t of tasks) {
       result.set(t.externalId, byId.get(t.externalId) ?? this.heuristicMatch(t, projects));
