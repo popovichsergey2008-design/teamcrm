@@ -132,6 +132,7 @@ function ImportBlock({ cid }: { cid: string }) {
   return (
     <div style={{ marginTop: 8 }}>
       {err && <div className="error-text">{err}</div>}
+      <DiagnosticsBar cid={cid} />
       <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Проекты Битрикса:</div>
       {projects.map((p) => (
         <label key={p.externalId} className="notify-row" style={{ padding: '4px 0' }}>
@@ -170,6 +171,51 @@ function ImportBlock({ cid }: { cid: string }) {
               <button className="btn btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Диагностика подключения: права вебхука + что реально отдаёт портал. */
+function DiagnosticsBar({ cid }: { cid: string }) {
+  const [rep, setRep] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const run = async () => {
+    setErr(''); setLoading(true); setRep(null);
+    try { setRep(await api.bitrixDiagnostics(cid)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка диагностики'); }
+    finally { setLoading(false); }
+  };
+
+  const has = (s: string) => Array.isArray(rep?.scopes) && rep.scopes.includes(s);
+  const line = (label: string, v: { count: number | null; error: string | null }) =>
+    v.error ? `${label}: ошибка — ${v.error}` : `${label}: ${v.count ?? 0}`;
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <button className="btn btn-ghost btn-sm" onClick={run} disabled={loading}>
+        {loading ? 'Проверяю…' : '🔍 Диагностика подключения'}
+      </button>
+      {err && <div className="error-text">{err}</div>}
+      {rep && (
+        <div className="invite-box" style={{ marginTop: 6, fontSize: 13, lineHeight: 1.6 }}>
+          <div>
+            <b>Права вебхука:</b> {rep.scopesError ? `ошибка — ${rep.scopesError}` : (rep.scopes.join(', ') || '—')}
+          </div>
+          {!rep.scopesError && (
+            <div className="dim" style={{ fontSize: 12 }}>
+              {has('task') ? '✓ task' : '✗ task (нужен для задач)'} · {has('log') ? '✓ log' : '✗ log — лента недоступна, добавьте право log'} · {has('sonet_group') ? '✓ sonet_group' : '✗ sonet_group'} · {has('disk') ? '✓ disk' : '✗ disk (вложения)'}
+            </div>
+          )}
+          <div>{line('Группы (проекты)', rep.groups)}</div>
+          <div>{line('Задачи без группы', rep.ungrouped)}</div>
+          {rep.ungrouped.count === 0 && !rep.ungrouped.error && (
+            <div className="dim" style={{ fontSize: 12 }}>0 — либо все задачи в группах, либо вебхук создан не под администратором (Битрикс отдаёт только задачи пользователя вебхука).</div>
+          )}
+          <div>{line('Посты общей ленты', rep.feed)}</div>
         </div>
       )}
     </div>

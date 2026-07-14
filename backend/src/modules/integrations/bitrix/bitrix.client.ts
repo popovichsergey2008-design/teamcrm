@@ -16,6 +16,12 @@ export class BitrixClient {
     this.base = webhookUrl.endsWith('/') ? webhookUrl : webhookUrl + '/';
   }
 
+  /** Права (scope) вебхука. */
+  async scope(): Promise<string[]> {
+    const r = await this.call<any>('scope');
+    return Array.isArray(r) ? r.map(String) : Object.values(r ?? {}).map(String);
+  }
+
   /** Домен портала (для отображения). */
   get portal(): string {
     try {
@@ -173,11 +179,10 @@ export class BitrixClient {
     }
   }
 
-  /** Общая Живая лента компании (посты вне рабочих групп). Best-effort. */
+  /** Общая Живая лента компании (посты, доступные пользователю вебхука). Best-effort, с пагинацией. */
   async generalFeed(): Promise<any[]> {
     try {
-      const r = await this.call<any>('log.blogpost.get', {});
-      return Array.isArray(r) ? r : Object.values(r ?? {});
+      return await this.list('log.blogpost.get', {}, (r) => (Array.isArray(r) ? r : Object.values(r ?? {})));
     } catch {
       return [];
     }

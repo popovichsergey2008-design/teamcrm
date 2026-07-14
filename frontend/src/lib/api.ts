@@ -227,6 +227,7 @@ export const api = {
   bitrixApplyUngrouped: (cid: string, assignments: { externalId: string; projectId: string | null }[]) => request<{ runId: string; status: string }>('POST', `/integrations/bitrix/connections/${cid}/ungrouped/apply`, { assignments }),
   bitrixRun: (id: string) => request<any>('GET', `/integrations/bitrix/runs/${id}`),
   bitrixUnmatched: (cid: string) => request<{ externalId: string; name: string; email: string }[]>('GET', `/integrations/bitrix/connections/${cid}/unmatched-users`),
+  bitrixDiagnostics: (cid: string) => request<{ scopes: string[]; scopesError: string | null; ungrouped: { count: number | null; error: string | null }; feed: { count: number | null; error: string | null }; groups: { count: number | null; error: string | null } }>('GET', `/integrations/bitrix/connections/${cid}/diagnostics`),
   bitrixMapUser: (cid: string, externalUserId: string, localUserId: string) => request<any>('POST', `/integrations/bitrix/connections/${cid}/user-map`, { externalUserId, localUserId }),
   bitrixMessages: (projectId: string) => request<any[]>('GET', `/integrations/bitrix/projects/${projectId}/messages`),
 

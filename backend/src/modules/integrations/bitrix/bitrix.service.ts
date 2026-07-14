@@ -206,6 +206,33 @@ export class BitrixService {
     return { mapped: true };
   }
 
+  /** Диагностика подключения: права вебхука + что реально отдаёт портал (для разбора «пусто»). */
+  async diagnostics(tenantId: string, cid: string) {
+    const { client } = await this.clientFor(tenantId, cid);
+    const errMsg = (e: unknown) => (e instanceof BitrixError ? e.message : (e as Error).message || 'ошибка');
+    const out: {
+      scopes: string[]; scopesError: string | null;
+      ungrouped: { count: number | null; error: string | null };
+      feed: { count: number | null; error: string | null };
+      groups: { count: number | null; error: string | null };
+    } = {
+      scopes: [], scopesError: null,
+      ungrouped: { count: null, error: null },
+      feed: { count: null, error: null },
+      groups: { count: null, error: null },
+    };
+
+    try { out.scopes = await client.scope(); } catch (e) { out.scopesError = errMsg(e); }
+    try { out.ungrouped.count = (await client.ungroupedTasks()).length; } catch (e) { out.ungrouped.error = errMsg(e); }
+    try {
+      const r = await client.call<any>('log.blogpost.get', {});
+      out.feed.count = Array.isArray(r) ? r.length : Object.values(r ?? {}).length;
+    } catch (e) { out.feed.error = errMsg(e); }
+    try { out.groups.count = (await client.groups()).length; } catch (e) { out.groups.error = errMsg(e); }
+
+    return out;
+  }
+
   async importedMessages(tenantId: string, projectId: string) {
     if (!(await this.repo.projectInTenant(tenantId, projectId))) throw AppException.notFound('Проект не найден');
     return this.repo.listMessages(tenantId, projectId);

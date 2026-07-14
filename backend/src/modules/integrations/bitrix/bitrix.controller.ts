@@ -53,6 +53,11 @@ export class BitrixController {
     return this.bitrix.unmatchedUsers(u.tenantId, cid);
   }
 
+  @Get('connections/:cid/diagnostics')
+  diagnostics(@CurrentUser() u: AuthUser, @Param('cid') cid: string) {
+    return this.bitrix.diagnostics(u.tenantId, cid);
+  }
+
   @Post('connections/:cid/user-map')
   mapUser(@CurrentUser() u: AuthUser, @Param('cid') cid: string, @Body() dto: MapUserDto) {
     return this.bitrix.mapUser(u.tenantId, cid, dto.externalUserId, dto.localUserId);
