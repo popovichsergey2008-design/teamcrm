@@ -110,7 +110,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
             }
             return reply([
             {
-              ID: '11', AUTHOR_ID: '5', AUTHOR_NAME: 'Анна Босс', POST_MESSAGE: 'коммент из битрикса', POST_DATE: '2026-06-01T10:00:00+03:00',
+              ID: '11', AUTHOR_ID: '5', AUTHOR_NAME: 'Анна Босс', POST_MESSAGE: '[B]коммент из битрикса[/B]', POST_DATE: '2026-06-01T10:00:00+03:00',
               ATTACHED_OBJECTS: { '99': { NAME: 'скрин.png', DOWNLOAD_URL: `http://127.0.0.1:${port}/dl/screen.png` } },
             },
             { ID: '12', AUTHOR_ID: '6', AUTHOR_NAME: 'Гость', POST_MESSAGE: 'от несопоставленного', POST_DATE: '2026-06-02T10:00:00+03:00' },

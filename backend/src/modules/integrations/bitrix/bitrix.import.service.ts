@@ -4,6 +4,7 @@ import { BitrixClient } from './bitrix.client';
 import { BitrixRepository } from './bitrix.repository';
 import { FilesService } from '../../files/files.service';
 import { AiService } from '../../ai/ai.service';
+import { cleanBitrixMarkup } from './bitrix.text';
 
 /** Служебный контейнер для внегрупповых задач и общей ленты. */
 export const INBOX_EXTERNAL_ID = '__inbox__';
@@ -128,7 +129,7 @@ export class BitrixImportService {
     const deadlineRaw = f(t, 'deadline', 'DEADLINE');
     const deadlineAt = deadlineRaw ? new Date(deadlineRaw).toISOString() : null;
     const title = String(f(t, 'title', 'TITLE') ?? 'Без названия').slice(0, 255);
-    const description = (f(t, 'description', 'DESCRIPTION') ?? null) as string | null;
+    const description = cleanBitrixMarkup(f(t, 'description', 'DESCRIPTION')) || null;
     const hash = createHash('sha256')
       .update(JSON.stringify([title, description, columnId, assignee, manager, priority, deadlineAt, closed]))
       .digest('hex').slice(0, 40);
@@ -155,7 +156,7 @@ export class BitrixImportService {
     });
     for (const c of taskComments) {
       const cId = String(f(c, 'ID', 'id'));
-      const body = String(f(c, 'POST_MESSAGE', 'postMessage') ?? '').trim();
+      const body = cleanBitrixMarkup(f(c, 'POST_MESSAGE', 'postMessage'));
       if (body) {
         const localAuthor = ctx.bxUserToLocal.get(String(f(c, 'AUTHOR_ID', 'authorId')));
         const author = localAuthor ?? ctx.actorId;
@@ -244,7 +245,7 @@ export class BitrixImportService {
   /** Импорт постов ленты (группы или общей) в архив сообщений проекта (best-effort, идемпотентно). */
   private async importFeed(ctx: Ctx, projectId: string, posts: any[], stats: any) {
     for (const post of posts) {
-      const body = String(f(post, 'DETAIL_TEXT', 'detailText', 'POST_TEXT', 'PREVIEW_TEXT') ?? '').trim();
+      const body = cleanBitrixMarkup(f(post, 'DETAIL_TEXT', 'detailText', 'POST_TEXT', 'PREVIEW_TEXT'));
       if (!body) continue;
       const bxAuthor = String(f(post, 'AUTHOR_ID', 'authorId') ?? '');
       const localAuthor = ctx.bxUserToLocal.get(bxAuthor) ?? null;
