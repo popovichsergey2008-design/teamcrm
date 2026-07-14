@@ -139,8 +139,13 @@ export class BitrixImportService {
       stats.labels++;
     }
 
-    // комментарии (+ файлы, прикреплённые в комментариях)
-    for (const c of await ctx.client.comments(extId)) {
+    // комментарии (+ файлы, прикреплённые в комментариях). best-effort: нет доступа к комментам
+    // задачи — импортируем саму задачу без них (иначе одна недоступная задача роняла бы весь прогон).
+    const taskComments = await ctx.client.comments(extId).catch((e) => {
+      this.log.warn(`comments for task ${extId} unavailable: ${(e as Error).message}`);
+      return [] as any[];
+    });
+    for (const c of taskComments) {
       const cId = String(f(c, 'ID', 'id'));
       const body = String(f(c, 'POST_MESSAGE', 'postMessage') ?? '').trim();
       if (body) {
@@ -219,6 +224,15 @@ export class BitrixImportService {
     }
   }
 
+  /** Фиксирует пропуск задачи: счётчик + до 5 уникальных сообщений (в stats.warnings для показа в UI). */
+  private noteSkip(stats: any, externalId: string, e: unknown) {
+    const msg = (e as Error).message || 'ошибка';
+    this.log.warn(`skip task ${externalId}: ${msg}`);
+    stats.skipped = (stats.skipped ?? 0) + 1;
+    stats.warnings = stats.warnings ?? [];
+    if (!stats.warnings.includes(msg) && stats.warnings.length < 5) stats.warnings.push(msg);
+  }
+
   /** Импорт постов ленты (группы или общей) в архив сообщений проекта (best-effort, идемпотентно). */
   private async importFeed(ctx: Ctx, projectId: string, posts: any[], stats: any) {
     for (const post of posts) {
@@ -261,7 +275,11 @@ export class BitrixImportService {
         const col = await this.ensureColumns(ctx, proj.id, String(gid));
 
         for (const t of await client.tasks(String(gid))) {
-          await this.importTaskCore(ctx, t, proj.id, col, stats);
+          try {
+            await this.importTaskCore(ctx, t, proj.id, col, stats);
+          } catch (e) {
+            this.noteSkip(stats, String(f(t, 'id', 'ID')), e); // недоступная задача не роняет импорт группы
+          }
         }
 
         // лента проекта → архив сообщений (best-effort)
@@ -440,8 +458,12 @@ export class BitrixImportService {
 
         let col = resolvers.get(targetId);
         if (!col) { col = await this.ensureColumns(ctx, targetId, gid); resolvers.set(targetId, col); }
-        await this.importTaskCore(ctx, t, targetId, col, stats);
-        if (projId) stats.routed++; else stats.inbox++;
+        try {
+          await this.importTaskCore(ctx, t, targetId, col, stats);
+          if (projId) stats.routed++; else stats.inbox++;
+        } catch (e) {
+          this.noteSkip(stats, a.externalId, e); // одна недоступная задача не роняет всю раскладку
+        }
         await this.repo.setRunStats(i.runId, stats);
       }
       await this.repo.finishRun(i.runId, 'done', stats);

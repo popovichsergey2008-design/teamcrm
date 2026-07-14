@@ -302,7 +302,10 @@ function UngroupedBlock({ cid }: { cid: string }) {
                 {run.status === 'queued' && 'В очереди…'}
                 {run.status === 'running' && 'Раскладываю…'}
                 {run.status === 'error' && <span className="error-text">Ошибка: {run.error}</span>}
-                {run.status === 'done' && run.stats && `Готово: в проекты ${run.stats.routed ?? 0}, во «Входящие» ${run.stats.inbox ?? 0}. Обновляем…`}
+                {run.status === 'done' && run.stats && `Готово: в проекты ${run.stats.routed ?? 0}, во «Входящие» ${run.stats.inbox ?? 0}${run.stats.skipped ? `, пропущено ${run.stats.skipped}` : ''}. Обновляем…`}
+                {run.status === 'done' && Array.isArray(run.stats?.warnings) && run.stats.warnings.map((w: string, idx: number) => (
+                  <div key={idx} className="error-text" style={{ fontSize: 12 }}>⚠ {w}</div>
+                ))}
               </div>
             )}
           </div>

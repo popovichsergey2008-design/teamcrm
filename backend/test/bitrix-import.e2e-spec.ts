@@ -64,10 +64,11 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
             let groupId = '';
             try { groupId = String(JSON.parse(body)?.filter?.GROUP_ID ?? ''); } catch { /* */ }
             if (groupId === '0') {
-              // задачи вне рабочих групп (GROUP_ID=0)
+              // задачи вне рабочих групп (GROUP_ID=0); задача 92 — с недоступными комментариями
               return reply({ tasks: [
                 { id: '90', title: 'Медицина договор с клиникой', description: '', responsibleId: '5', createdBy: '5', status: '2', priority: '1', deadline: '', tags: [] },
                 { id: '91', title: 'Купить кофе в офис', description: '', responsibleId: '5', createdBy: '5', status: '2', priority: '1', deadline: '', tags: [] },
+                { id: '92', title: 'Кофемашина сломалась', description: '', responsibleId: '5', createdBy: '5', status: '2', priority: '1', deadline: '', tags: [] },
               ] });
             }
             return reply({
@@ -87,13 +88,22 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
               status: '2', priority: '1', deadline: '', tags: [], ufTaskWebdavFiles: [],
             } });
           }
-          case 'task.commentitem.getlist': return reply([
+          case 'task.commentitem.getlist': {
+            let ctid = '';
+            try { ctid = String(JSON.parse(body).TASKID ?? ''); } catch { /* */ }
+            if (ctid === '92') { // нет доступа к комментариям задачи — не должно ронять весь прогон
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'ACCESS_DENIED', error_description: 'Вы не можете просматривать задачи в этой группе' }));
+              return;
+            }
+            return reply([
             {
               ID: '11', AUTHOR_ID: '5', AUTHOR_NAME: 'Анна Босс', POST_MESSAGE: 'коммент из битрикса', POST_DATE: '2026-06-01T10:00:00+03:00',
               ATTACHED_OBJECTS: { '99': { NAME: 'скрин.png', DOWNLOAD_URL: `http://127.0.0.1:${port}/dl/screen.png` } },
             },
             { ID: '12', AUTHOR_ID: '6', AUTHOR_NAME: 'Гость', POST_MESSAGE: 'от несопоставленного', POST_DATE: '2026-06-02T10:00:00+03:00' },
-          ]);
+            ]);
+          }
           default: return reply([]);
         }
       });
@@ -299,6 +309,18 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     expect((await waitRun(tok, applied2.runId)).status).toBe('done');
     const medBoard2 = (await http$.get(`/api/projects/${medProj.id}/board`).set(H(tok)).expect(200)).body.data;
     expect(medBoard2.columns.flatMap((c: any) => c.tasks).filter((t: any) => t.title.includes('Медицина договор')).length).toBe(1);
+
+    // устойчивость: задача 92 с недоступными комментариями не роняет прогон, импортируется без них
+    const applied92 = (await http$.post(`/api/integrations/bitrix/connections/${cid}/ungrouped/apply`).set(H(tok))
+      .send({ assignments: [{ externalId: '92', projectId: null }] }).expect(201)).body.data;
+    const run92 = await waitRun(tok, applied92.runId);
+    expect(run92.status).toBe('done'); // не error, несмотря на ACCESS_DENIED по комментам
+    expect(run92.stats.inbox).toBe(1);
+    const inboxBoard2 = (await http$.get(`/api/projects/${inbox.id}/board`).set(H(tok)).expect(200)).body.data;
+    const task92 = inboxBoard2.columns.flatMap((c: any) => c.tasks).find((t: any) => t.title.includes('Кофемашина'));
+    expect(task92).toBeTruthy();
+    const comments92 = (await http$.get(`/api/tasks/${task92.id}/comments`).set(H(tok)).expect(200)).body.data;
+    expect(comments92.length).toBe(0); // комментарии недоступны — задача импортирована без них
 
     // общая Живая лента → «Входящие из Битрикса» (импорт только ленты, без проектов)
     const feedRun = (await http$.post(`/api/integrations/bitrix/connections/${cid}/import`).set(H(tok))
