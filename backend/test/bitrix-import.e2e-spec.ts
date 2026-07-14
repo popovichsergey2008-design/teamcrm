@@ -210,10 +210,10 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
 
     // несопоставленные пользователи + ручная привязка
     let unmatched = (await http$.get(`/api/integrations/bitrix/connections/${cid}/unmatched-users`).set(H(tok)).expect(200)).body.data;
-    expect(unmatched.some((u: any) => u.email === 'ghost@x.test')).toBe(true);
+    expect(unmatched.items.some((u: any) => u.email === 'ghost@x.test')).toBe(true);
     await http$.post(`/api/integrations/bitrix/connections/${cid}/user-map`).set(H(tok)).send({ externalUserId: '6', localUserId: reg.user.id }).expect(201);
     unmatched = (await http$.get(`/api/integrations/bitrix/connections/${cid}/unmatched-users`).set(H(tok)).expect(200)).body.data;
-    expect(unmatched.some((u: any) => u.externalId === '6')).toBe(false); // после привязки исчез
+    expect(unmatched.items.some((u: any) => u.externalId === '6')).toBe(false); // после привязки исчез
 
     // повторный импорт — идемпотентно (без дублей)
     const started2 = (await http$.post(`/api/integrations/bitrix/connections/${cid}/import`).set(H(tok)).send({ projectExternalIds: ['10'] }).expect(201)).body.data;

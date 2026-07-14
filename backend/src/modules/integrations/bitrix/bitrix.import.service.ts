@@ -464,9 +464,9 @@ export class BitrixImportService {
           gid = INBOX_EXTERNAL_ID;
         }
 
-        let col = resolvers.get(targetId);
-        if (!col) { col = await this.ensureColumns(ctx, targetId, gid); resolvers.set(targetId, col); }
         try {
+          let col = resolvers.get(targetId);
+          if (!col) { col = await this.ensureColumns(ctx, targetId, gid); resolvers.set(targetId, col); }
           await this.importTaskCore(ctx, t, targetId, col, stats);
           if (projId) stats.routed++; else stats.inbox++;
         } catch (e) {

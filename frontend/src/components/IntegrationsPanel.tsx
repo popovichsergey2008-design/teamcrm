@@ -83,7 +83,7 @@ function ImportBlock({ cid }: { cid: string }) {
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [feed, setFeed] = useState(false);
   const [run, setRun] = useState<any>(null);
-  const [unmatched, setUnmatched] = useState<any[]>([]);
+  const [unmatched, setUnmatched] = useState<{ total: number; items: any[] }>({ total: 0, items: [] });
   const [users, setUsers] = useState<any[]>([]);
   const [mapPick, setMapPick] = useState<Record<string, string>>({});
   const [err, setErr] = useState('');
@@ -161,10 +161,13 @@ function ImportBlock({ cid }: { cid: string }) {
 
       <UngroupedBlock cid={cid} />
 
-      {unmatched.length > 0 && (
+      {unmatched.total > 0 && (
         <div style={{ marginTop: 10 }}>
-          <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Не сопоставлены по e-mail ({unmatched.length}) — привяжите вручную:</div>
-          {unmatched.map((u) => (
+          <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
+            Не сопоставлены по e-mail: {unmatched.total}. Привязка <b>необязательна</b> — никого в вашу команду не добавляем, несопоставленные задачи просто останутся без исполнителя.
+            {unmatched.total > unmatched.items.length ? ` Показаны первые ${unmatched.items.length}.` : ''}
+          </div>
+          {unmatched.items.map((u) => (
             <div key={u.externalId} className="team-rate" style={{ marginBottom: 4 }}>
               <span style={{ flex: 1, fontSize: 13 }}>{u.name} <span className="dim">{u.email}</span></span>
               <select className="input" value={mapPick[u.externalId] ?? ''} onChange={(e) => setMapPick((m) => ({ ...m, [u.externalId]: e.target.value }))}>

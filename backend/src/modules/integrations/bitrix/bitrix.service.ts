@@ -185,7 +185,7 @@ export class BitrixService {
     } catch (e) {
       this.translate(e);
     }
-    return users
+    const all = users
       .filter((u: any) => {
         const extId = String(u.ID ?? u.id);
         const email = String(u.EMAIL ?? u.email ?? '').toLowerCase();
@@ -196,6 +196,8 @@ export class BitrixService {
         name: [u.NAME ?? u.name, u.LAST_NAME ?? u.lastName].filter(Boolean).join(' ').trim() || String(u.ID ?? u.id),
         email: String(u.EMAIL ?? u.email ?? ''),
       }));
+    // Порталы бывают с тысячами юзеров; привязка НЕОБЯЗАТЕЛЬНА — отдаём только первую сотню.
+    return { total: all.length, items: all.slice(0, 100) };
   }
 
   async mapUser(tenantId: string, cid: string, externalUserId: string, localUserId: string) {
