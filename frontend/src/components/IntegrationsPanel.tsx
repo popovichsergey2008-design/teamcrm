@@ -295,6 +295,10 @@ function UngroupedBlock({ cid }: { cid: string }) {
         ? <div className="dim" style={{ marginTop: 8, fontSize: 13 }}>Задач вне проектов не найдено.</div>
         : (
           <div style={{ marginTop: 8 }}>
+            <div className="dim" style={{ fontSize: 12, marginBottom: 6 }}>
+              Проектов-кандидатов: <b>{ana.projects.length}</b>. ИИ раскладывает задачи только по импортированным проектам, остальное — во «Входящие».
+              {ana.projects.length <= 2 && ' Импортировано мало проектов — импортируйте нужные группы Битрикса выше (чекбоксами), тогда распределение будет точнее.'}
+            </div>
             {ana.tasks.map((t) => (
               <div key={t.externalId} className="team-rate" style={{ marginBottom: 4, alignItems: 'center' }}>
                 <span style={{ flex: 1, fontSize: 13 }}>

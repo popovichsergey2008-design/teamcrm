@@ -302,7 +302,7 @@ export class BitrixRepository {
       [tenantId, projectId],
     );
     if (existing.length) return existing;
-    const names = ['To Do', 'In Progress', 'Done'];
+    const names = ['Новые', 'В работе', 'Готово'];
     const out: { name: string; id: string }[] = [];
     for (let i = 0; i < names.length; i++) {
       const r = await this.db.one<{ id: string }>(
