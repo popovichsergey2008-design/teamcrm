@@ -54,23 +54,35 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
             { ID: '5', NAME: 'Анна', LAST_NAME: 'Босс', EMAIL: ownerEmail },
             { ID: '6', NAME: 'Гость', LAST_NAME: '', EMAIL: 'ghost@x.test' },
           ]);
-          case 'sonet_group.get': return reply([{ ID: '10', NAME: 'Медицина' }]);
-          case 'task.stages.get': return reply({
-            '100': { ID: '100', TITLE: 'Новые', SORT: 100 },
-            '200': { ID: '200', TITLE: 'В работе', SORT: 200 },
-            '300': { ID: '300', TITLE: 'Готово', SORT: 300 },
-          });
+          case 'sonet_group.get': return reply([{ ID: '10', NAME: 'Медицина' }, { ID: '20', NAME: 'Разработка' }]);
+          case 'task.stages.get': {
+            let entityId = '';
+            try { entityId = String(JSON.parse(body).entityId ?? ''); } catch { /* */ }
+            if (entityId === '20') { // группа без колонки «Готово» — проверяем авто-создание
+              return reply({
+                '400': { ID: '400', TITLE: 'Бэклог', SORT: 100 },
+                '500': { ID: '500', TITLE: 'Разработка', SORT: 200 },
+              });
+            }
+            return reply({
+              '100': { ID: '100', TITLE: 'Новые', SORT: 100 },
+              '200': { ID: '200', TITLE: 'В работе', SORT: 200 },
+              '300': { ID: '300', TITLE: 'Готово', SORT: 300 },
+            });
+          }
           case 'tasks.task.list': {
             let groupId = '';
             try { groupId = String(JSON.parse(body)?.filter?.GROUP_ID ?? ''); } catch { /* */ }
             if (groupId === '0') {
-              // задачи вне рабочих групп (GROUP_ID=0); задача 92 — с недоступными комментариями
+              // задачи вне рабочих групп (GROUP_ID=0); 92 — недоступные комменты; 93 — завершённая (для авто-колонки)
               return reply({ tasks: [
                 { id: '90', title: 'Медицина договор с клиникой', description: '', responsibleId: '5', createdBy: '5', status: '2', priority: '1', deadline: '', tags: [] },
                 { id: '91', title: 'Купить кофе в офис', description: '', responsibleId: '5', createdBy: '5', status: '2', priority: '1', deadline: '', tags: [] },
                 { id: '92', title: 'Кофемашина сломалась', description: '', responsibleId: '5', createdBy: '5', status: '2', priority: '1', deadline: '', tags: [] },
+                { id: '93', title: 'Релиз выкачен', description: '', responsibleId: '5', createdBy: '5', status: '5', priority: '1', deadline: '', closedDate: '2026-06-10', tags: [] },
               ] });
             }
+            if (groupId === '20') return reply({ tasks: [] }); // группа «Разработка» — без своих задач в тесте
             return reply({
               tasks: [{
                 id: '1', title: 'Задача A', description: 'описание', responsibleId: '5', createdBy: '5',
@@ -148,7 +160,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
 
     // projects
     const projects = (await http$.get(`/api/integrations/bitrix/connections/${cid}/projects`).set(H(tok)).expect(200)).body.data;
-    expect(projects).toEqual([{ externalId: '10', name: 'Медицина' }]);
+    expect(projects).toEqual([{ externalId: '10', name: 'Медицина' }, { externalId: '20', name: 'Разработка' }]);
 
     // import
     const started = (await http$.post(`/api/integrations/bitrix/connections/${cid}/import`).set(H(tok)).send({ projectExternalIds: ['10'] }).expect(201)).body.data;
@@ -269,11 +281,17 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     const conn = (await http$.post('/api/integrations/bitrix/connections').set(H(tok)).send({ webhookUrl: webhookBase }).expect(201)).body.data;
     const cid = conn.id;
 
-    // сначала импортируем группу «Медицина» — она станет кандидатом для ИИ-раскладки
-    const started = (await http$.post(`/api/integrations/bitrix/connections/${cid}/import`).set(H(tok)).send({ projectExternalIds: ['10'] }).expect(201)).body.data;
+    // импортируем группы — они станут кандидатами для ИИ-раскладки
+    const started = (await http$.post(`/api/integrations/bitrix/connections/${cid}/import`).set(H(tok)).send({ projectExternalIds: ['10', '20'] }).expect(201)).body.data;
     expect((await waitRun(tok, started.runId)).status).toBe('done');
-    const medProj = (await http$.get('/api/projects').set(H(tok)).expect(200)).body.data.find((p: any) => p.name === 'Медицина');
+    const projList = (await http$.get('/api/projects').set(H(tok)).expect(200)).body.data;
+    const medProj = projList.find((p: any) => p.name === 'Медицина');
+    const devProj = projList.find((p: any) => p.name === 'Разработка');
     expect(medProj).toBeTruthy();
+    expect(devProj).toBeTruthy();
+    // у «Разработки» нет колонки «Готово» (только Бэклог/Разработка)
+    const devBoard0 = (await http$.get(`/api/projects/${devProj.id}/board`).set(H(tok)).expect(200)).body.data;
+    expect(devBoard0.columns.map((c: any) => c.name)).toEqual(['Бэклог', 'Разработка']);
 
     // предпросмотр раскладки: без LLM-ключа работает эвристика (совпадение слов)
     const ana = (await http$.post(`/api/integrations/bitrix/connections/${cid}/ungrouped/analyze`).set(H(tok)).expect(201)).body.data;
@@ -321,6 +339,15 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
     expect(task92).toBeTruthy();
     const comments92 = (await http$.get(`/api/tasks/${task92.id}/comments`).set(H(tok)).expect(200)).body.data;
     expect(comments92.length).toBe(0); // комментарии недоступны — задача импортирована без них
+
+    // авто-создание колонки: завершённую задачу 93 кладём в «Разработку», где нет «Готово» → колонка создаётся
+    const applied93 = (await http$.post(`/api/integrations/bitrix/connections/${cid}/ungrouped/apply`).set(H(tok))
+      .send({ assignments: [{ externalId: '93', projectId: devProj.id }] }).expect(201)).body.data;
+    expect((await waitRun(tok, applied93.runId)).status).toBe('done');
+    const devBoard = (await http$.get(`/api/projects/${devProj.id}/board`).set(H(tok)).expect(200)).body.data;
+    const doneCol = devBoard.columns.find((c: any) => c.name === 'Готово');
+    expect(doneCol).toBeTruthy(); // колонка создана автоматически под завершённую задачу
+    expect(doneCol.tasks.some((t: any) => t.title.includes('Релиз'))).toBe(true);
 
     // общая Живая лента → «Входящие из Битрикса» (импорт только ленты, без проектов)
     const feedRun = (await http$.post(`/api/integrations/bitrix/connections/${cid}/import`).set(H(tok))

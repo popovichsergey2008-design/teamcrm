@@ -43,7 +43,7 @@ type Ctx = {
   client: BitrixClient;
   bxUserToLocal: Map<string, string>;
 };
-type ColResolver = (stageId: any, status: string, closed: boolean) => string;
+type ColResolver = (stageId: any, status: string, closed: boolean) => Promise<string>;
 
 @Injectable()
 export class BitrixImportService {
@@ -78,9 +78,15 @@ export class BitrixImportService {
   /** Создаёт/сопоставляет колонки проекта из стадий Битрикса; возвращает резолвер колонки задачи. */
   private async ensureColumns(ctx: Ctx, projectId: string, groupId: string): Promise<ColResolver> {
     // Служебный контейнер (__inbox__) не соответствует реальной группе Битрикса — сразу дефолтные колонки.
-    const stages = groupId && !groupId.startsWith('__') ? await ctx.client.stages(groupId) : [];
+    // Стадии best-effort: нет доступа к группе (task.stages.get → «не можете просматривать задачи в этой группе»)
+    // → используем существующие/дефолтные колонки проекта, а не роняем прогон.
+    const stages = groupId && !groupId.startsWith('__')
+      ? await ctx.client.stages(groupId).catch((e) => {
+        this.log.warn(`stages for group ${groupId} unavailable: ${(e as Error).message}`);
+        return [] as any[];
+      })
+      : [];
     const stageToCol = new Map<string, string>();
-    let defaults: { name: string; id: string }[] = [];
     if (stages.length) {
       stages.sort((a, b) => Number(f(a, 'SORT', 'sort') ?? 0) - Number(f(b, 'SORT', 'sort') ?? 0));
       for (let idx = 0; idx < stages.length; idx++) {
@@ -92,19 +98,21 @@ export class BitrixImportService {
         stageToCol.set(String(f(st, 'ID', 'id')), colId);
       }
     } else {
-      defaults = await this.repo.ensureDefaultColumns(ctx.tenantId, projectId);
+      await this.repo.ensureDefaultColumns(ctx.tenantId, projectId);
     }
-    const stageCols = [...stageToCol.values()];
-    return (stageId, status, closed) => {
+    // Ведро по статусу; кэш на проект, чтобы не пересоздавать/перечитывать колонку в рамках прогона.
+    const bucketCache = new Map<string, string>();
+    return async (stageId, status, closed) => {
+      // Стадия задачи есть среди колонок проекта — кладём точно туда.
       if (stageId !== undefined && stageToCol.get(String(stageId))) return stageToCol.get(String(stageId))!;
-      if (defaults.length) {
-        if (closed || status === '5') return defaults[2].id;
-        if (status === '3') return defaults[1].id;
-        return defaults[0].id;
-      }
-      // Стадия задачи не из этого проекта (напр. внегрупповая задача, размещённая ИИ):
-      // закрытую — в последнюю колонку, иначе в первую.
-      return (closed || status === '5' ? stageCols[stageCols.length - 1] : stageCols[0]) as string;
+      // Иначе (напр. внегрупповая задача, размещённая ИИ): подбираем колонку по смыслу статуса,
+      // а если подходящей в проекте нет — СОЗДАЁМ её автоматически (get-or-create по синонимам).
+      const bucket = (closed || status === '5') ? 'done' : (status === '3' || status === '4') ? 'inprogress' : 'todo';
+      const cached = bucketCache.get(bucket);
+      if (cached) return cached;
+      const colId = await this.repo.ensureColumnByBucket(ctx.tenantId, projectId, bucket);
+      bucketCache.set(bucket, colId);
+      return colId;
     };
   }
 
@@ -113,7 +121,7 @@ export class BitrixImportService {
     const extId = String(f(t, 'id', 'ID'));
     const status = String(f(t, 'status', 'STATUS') ?? '');
     const closed = status === '5' || !!f(t, 'closedDate', 'CLOSED_DATE');
-    const columnId = col(f(t, 'stageId', 'STAGE_ID'), status, closed);
+    const columnId = await col(f(t, 'stageId', 'STAGE_ID'), status, closed);
     const assignee = ctx.bxUserToLocal.get(String(f(t, 'responsibleId', 'RESPONSIBLE_ID'))) ?? null;
     const manager = ctx.bxUserToLocal.get(String(f(t, 'createdBy', 'CREATED_BY'))) ?? null;
     const priority = PRIORITY[String(f(t, 'priority', 'PRIORITY') ?? '1')] ?? 'normal';

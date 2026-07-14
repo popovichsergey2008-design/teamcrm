@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../../database/db.service';
 
+/** Смысловые «вёдра» колонок + синонимы (чтобы находить существующую колонку и не плодить дубли). */
+const BUCKET_SYNONYMS: Record<string, string[]> = {
+  todo: ['to do', 'todo', 'к выполнению', 'новые', 'новая', 'новый', 'бэклог', 'беклог', 'backlog', 'очередь', 'открыто', 'open', 'new'],
+  inprogress: ['in progress', 'inprogress', 'в работе', 'в процессе', 'делаю', 'doing', 'wip', 'выполняется'],
+  done: ['done', 'готово', 'готова', 'выполнено', 'выполнена', 'завершено', 'завершена', 'закрыто', 'закрыта', 'сделано', 'complete', 'completed', 'closed'],
+};
+const BUCKET_NAME: Record<string, string> = { todo: 'Новые', inprogress: 'В работе', done: 'Готово' };
+
 export interface ConnectionRow {
   id: string;
   tenant_id: string;
@@ -263,6 +271,27 @@ export class BitrixRepository {
       [i.tenantId, i.projectId, i.name, i.position],
     );
     await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'column', externalId: i.externalId, localId: row!.id });
+    return row!.id;
+  }
+
+  /**
+   * Колонка проекта под смысловое «ведро» задачи (todo/inprogress/done):
+   * ищет существующую по синонимам имени, иначе СОЗДАЁТ новую с каноничным именем в конец доски.
+   */
+  async ensureColumnByBucket(tenantId: string, projectId: string, bucket: string): Promise<string> {
+    const cols = await this.db.many<{ id: string; name: string; position: number }>(
+      `SELECT id, name, position FROM board_columns WHERE tenant_id=$1 AND project_id=$2 ORDER BY position`,
+      [tenantId, projectId],
+    );
+    const syn = BUCKET_SYNONYMS[bucket] ?? [];
+    const found = cols.find((c) => syn.includes(String(c.name).trim().toLowerCase()));
+    if (found) return found.id;
+    const name = BUCKET_NAME[bucket] ?? 'Новые';
+    const position = cols.length ? Math.max(...cols.map((c) => Number(c.position))) + 1 : 0;
+    const row = await this.db.one<{ id: string }>(
+      `INSERT INTO board_columns (tenant_id, project_id, name, position) VALUES ($1,$2,$3,$4) RETURNING id`,
+      [tenantId, projectId, name, position],
+    );
     return row!.id;
   }
 
