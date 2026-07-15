@@ -6,7 +6,7 @@ import { AiService } from '../ai/ai.service';
 import { maskPII } from '../ai/pii';
 import { KnowledgeRepository } from './knowledge.repository';
 
-export type SourceType = 'task' | 'comment' | 'regulation';
+export type SourceType = 'task' | 'comment' | 'regulation' | 'gdoc';
 interface IndexMsg { tenantId: string; sourceType: SourceType; sourceId: string; }
 
 const CHUNK = 1200;
@@ -68,6 +68,14 @@ export class KnowledgeService implements OnModuleInit {
       );
       if (!r || !String(r.body ?? '').trim()) return null;
       return { text: r.body, accessScope: r.project_id, title: r.task_title };
+    }
+    if (msg.sourceType === 'gdoc') {
+      const r = await this.db.one<any>(
+        `SELECT title, text, project_id FROM google_docs WHERE tenant_id=$1 AND id=$2 AND status='indexed'`,
+        [msg.tenantId, msg.sourceId],
+      );
+      if (!r || !String(r.text ?? '').trim()) return null;
+      return { text: [r.title, r.text].filter(Boolean).join('\n'), accessScope: r.project_id, title: r.title };
     }
     // regulation
     const r = await this.db.one<any>(`SELECT title, body FROM regulations WHERE tenant_id=$1 AND id=$2`, [msg.tenantId, msg.sourceId]);

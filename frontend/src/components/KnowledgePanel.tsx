@@ -14,8 +14,24 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
   };
   const [projects, setProjects] = useState<any[]>([]);
   const [scope, setScope] = useState(''); // '' = вся организация, иначе projectId
+  const [gd, setGd] = useState<{ scanning: boolean; total: number; byStatus: Record<string, number> } | null>(null);
+  const loadGdocs = () => api.gdocsStatus().then(setGd).catch(() => undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadStats(); api.listProjects().then(setProjects).catch(() => undefined); }, []);
+  useEffect(() => { loadStats(); api.listProjects().then(setProjects).catch(() => undefined); if (canManage) loadGdocs(); }, []);
+
+  const scanGdocs = async () => {
+    try {
+      const r = await api.gdocsScan();
+      flash(r.started ? 'Сканирование Google-доков запущено…' : 'Сканирование уже идёт');
+      loadGdocs();
+      let ticks = 0;
+      const iv = setInterval(async () => {
+        const s = await api.gdocsStatus().catch(() => null);
+        if (s) { setGd(s); if (!s.scanning) { clearInterval(iv); loadStats(); } }
+        if (++ticks > 240) clearInterval(iv); // предохранитель ~10 мин
+      }, 2500);
+    } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
 
   const ScopeSelect = () => (
     <select className="input" style={{ maxWidth: 220 }} value={scope} onChange={(e) => setScope(e.target.value)} title="Разрез базы знаний">
@@ -92,6 +108,18 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
           {usage && <> · ИИ-вызовов: {usage.totalCalls}, из кэша: {Math.round(usage.cacheHitRatio * 100)}%</>}
           {canManage && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={reindex}>Переиндексировать всё</button>}
         </div>
+        {canManage && (
+          <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>
+            Google-доки из задач: {gd ? `${gd.byStatus.indexed ?? 0} в базе` : '—'}
+            {gd?.byStatus.no_access ? `, нет доступа: ${gd.byStatus.no_access}` : ''}
+            {gd?.byStatus.unsupported ? `, не поддержано: ${gd.byStatus.unsupported}` : ''}
+            {gd?.byStatus.error ? `, ошибок: ${gd.byStatus.error}` : ''}
+            <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={scanGdocs} disabled={gd?.scanning}>
+              {gd?.scanning ? 'Сканирую…' : '🔗 Сканировать Google-доки'}
+            </button>
+            <div style={{ fontSize: 11, opacity: 0.75 }}>Читаются только доки, открытые «по ссылке»; приватные помечаются «нет доступа».</div>
+          </div>
+        )}
         <div className="tabs">
           <button className={`tab ${tab === 'brain' ? 'active' : ''}`} onClick={() => setTab('brain')}>Спросить ИИ</button>
           <button className={`tab ${tab === 'search' ? 'active' : ''}`} onClick={() => setTab('search')}>Поиск</button>

@@ -230,6 +230,9 @@ export const api = {
   bitrixDiagnostics: (cid: string) => request<{ scopes: string[]; scopesError: string | null; ungrouped: { count: number | null; error: string | null }; feed: { count: number | null; error: string | null }; groups: { count: number | null; error: string | null } }>('GET', `/integrations/bitrix/connections/${cid}/diagnostics`),
   bitrixMapUser: (cid: string, externalUserId: string, localUserId: string) => request<any>('POST', `/integrations/bitrix/connections/${cid}/user-map`, { externalUserId, localUserId }),
   bitrixMessages: (projectId: string) => request<any[]>('GET', `/integrations/bitrix/projects/${projectId}/messages`),
+  // Google-доки из задач → база знаний
+  gdocsScan: () => request<{ started: boolean }>('POST', '/integrations/gdocs/scan'),
+  gdocsStatus: () => request<{ scanning: boolean; total: number; byStatus: Record<string, number> }>('GET', '/integrations/gdocs/status'),
 
   // deals
   listDeals: () => request<any[]>('GET', '/deals'),
