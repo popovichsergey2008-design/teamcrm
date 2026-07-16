@@ -6,6 +6,7 @@ export function AiSettingsSection() {
   const [s, setS] = useState<any>(null);
   const [openaiKey, setOpenaiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
+  const [openrouterKey, setOpenrouterKey] = useState('');
   const [brainModel, setBrainModel] = useState('');
   const [models, setModels] = useState<string[]>([]);
   const [msg, setMsg] = useState('');
@@ -15,7 +16,7 @@ export function AiSettingsSection() {
   const loadModels = () => api.aiSettingsModels().then(setModels).catch(() => undefined);
   useEffect(() => { load(); loadModels(); }, []);
 
-  const save = async (patch: { openaiKey?: string; anthropicKey?: string; brainModel?: string }) => {
+  const save = async (patch: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; brainModel?: string }) => {
     try { const r = await api.aiSettingsSave(patch); setS(r); flash('Сохранено'); loadModels(); return r; }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
@@ -24,9 +25,10 @@ export function AiSettingsSection() {
     const patch: any = {};
     if (openaiKey.trim()) patch.openaiKey = openaiKey.trim();
     if (anthropicKey.trim()) patch.anthropicKey = anthropicKey.trim();
+    if (openrouterKey.trim()) patch.openrouterKey = openrouterKey.trim();
     if (!Object.keys(patch).length) return flash('Вставьте ключ');
     await save(patch);
-    setOpenaiKey(''); setAnthropicKey('');
+    setOpenaiKey(''); setAnthropicKey(''); setOpenrouterKey('');
   };
 
   if (!s) return null;
@@ -45,20 +47,29 @@ export function AiSettingsSection() {
         <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Статус: {s.anthropicKeySet ? '✅ задан' : '— не задан —'}</div>
         <input className="input add-user-input" type="password" placeholder="sk-ant-..." value={anthropicKey} onChange={(e) => setAnthropicKey(e.target.value)} />
 
+        <div className="drawer-section-title">Ключ OpenRouter — опционально (бесплатные модели)</div>
+        <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
+          Статус: {s.openrouterKeySet ? '✅ задан' : s.globalOpenrouter ? 'используется общий' : '— не задан —'}. Даёт доступ к бесплатным моделям (Llama, DeepSeek, Gemini Flash и др.). Ключ — на <span className="dim">openrouter.ai/keys</span>.
+        </div>
+        <input className="input add-user-input" type="password" placeholder="sk-or-..." value={openrouterKey} onChange={(e) => setOpenrouterKey(e.target.value)} />
+
         <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={saveKeys}>Сохранить ключи</button>
-        {(s.openaiKeySet || s.anthropicKeySet) && (
-          <button className="btn btn-ghost btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={() => save({ openaiKey: '', anthropicKey: '' })}>Удалить свои ключи (вернуться к общему)</button>
+        {(s.openaiKeySet || s.anthropicKeySet || s.openrouterKeySet) && (
+          <button className="btn btn-ghost btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={() => save({ openaiKey: '', anthropicKey: '', openrouterKey: '' })}>Удалить свои ключи (вернуться к общему)</button>
         )}
 
         <div className="drawer-section-title">Модель ответов ИИ (Brain)</div>
         <div className="team-rate">
           <select className="input" value={brainModel} onChange={(e) => setBrainModel(e.target.value)}>
             <option value="">по умолчанию</option>
-            {models.map((m) => <option key={m} value={m}>{m}</option>)}
+            {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}</option>)}
           </select>
           <button className="btn btn-sm" onClick={() => save({ brainModel })}>Применить</button>
         </div>
-        <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Список моделей — доступные по вашему ключу OpenAI (обновляется после сохранения ключа).</div>
+        <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>
+          Модели по вашим ключам (обновляется после сохранения ключа). Модели с «:free» — бесплатные через OpenRouter.
+          Примечание: OpenRouter — для ответов/чата ИИ; семантический поиск (эмбеддинги) требует ключ OpenAI.
+        </div>
     </>
   );
 }

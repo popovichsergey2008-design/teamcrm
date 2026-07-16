@@ -34,11 +34,12 @@ export class AiService {
   /** Провайдер для конкретного арендатора (BYOK: ключ арендатора > глобальный .env). */
   private async providerFor(tenantId: string) {
     const s = await this.settings.resolve(tenantId);
-    const provider: AiProvider = (s.openaiKey || s.anthropicKey)
-      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel)
+    const provider: AiProvider = (s.openaiKey || s.anthropicKey || s.openrouterKey)
+      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel, s.openrouterKey)
       : new MockAiProvider();
     const embedModel = s.openaiKey ? 'text-embedding-3-small' : 'mock-embed';
-    const brainModel = s.brainModel ?? (s.anthropicKey ? 'claude-3-5-sonnet' : s.openaiKey ? 'gpt-4o-mini' : 'mock-llm');
+    const brainModel = s.brainModel
+      ?? (s.anthropicKey ? 'claude-3-5-sonnet' : s.openaiKey ? 'gpt-4o-mini' : s.openrouterKey ? 'meta-llama/llama-3.3-70b-instruct:free' : 'mock-llm');
     return { provider, embedModel, brainModel };
   }
 

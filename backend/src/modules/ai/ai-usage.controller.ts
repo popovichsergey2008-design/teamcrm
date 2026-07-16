@@ -9,7 +9,8 @@ import { AiSettingsService } from './ai-settings.service';
 class AiSettingsDto {
   @IsOptional() @IsString() @MaxLength(200) openaiKey?: string;
   @IsOptional() @IsString() @MaxLength(200) anthropicKey?: string;
-  @IsOptional() @IsString() @MaxLength(64) brainModel?: string;
+  @IsOptional() @IsString() @MaxLength(200) openrouterKey?: string;
+  @IsOptional() @IsString() @MaxLength(96) brainModel?: string;
 }
 
 /** Мониторинг ИИ-расхода + BYOK-настройки (ключи/модель на арендатора). */

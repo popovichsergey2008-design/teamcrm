@@ -192,7 +192,7 @@ export const api = {
   brainAsk: (id: string, question: string, projectId?: string) => request<{ answer: string; citations: any[]; cached: boolean; promptVersionId: string | null }>('POST', `/brain/conversations/${id}/ask`, { question, projectId }),
   aiUsage: () => request<{ totalCalls: number; cacheHits: number; cacheHitRatio: number; byFeature: any[] }>('GET', '/ai/usage'),
   aiSettingsGet: () => request<any>('GET', '/ai/settings'),
-  aiSettingsSave: (b: { openaiKey?: string; anthropicKey?: string; brainModel?: string }) => request<any>('PUT', '/ai/settings', b),
+  aiSettingsSave: (b: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; brainModel?: string }) => request<any>('PUT', '/ai/settings', b),
   aiSettingsModels: () => request<string[]>('GET', '/ai/settings/models'),
 
   // PromptOps — версионирование промптов (enh-07)

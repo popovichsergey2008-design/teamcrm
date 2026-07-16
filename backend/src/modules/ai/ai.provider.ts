@@ -101,7 +101,24 @@ export class RealAiProvider implements AiProvider {
     private readonly anthropicKey: string | undefined,
     private readonly model: string,
     private readonly brainModel?: string,
+    private readonly openrouterKey?: string,
   ) {}
+
+  /** Вызов OpenAI-совместимого chat/completions (OpenAI и OpenRouter — один формат). */
+  private async chatCompletion(
+    url: string, key: string, model: string, system: string, user: string, maxTokens: number, extraHeaders: Record<string, string> = {},
+  ): Promise<string> {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json', ...extraHeaders },
+      body: JSON.stringify({
+        model, max_tokens: maxTokens,
+        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      }),
+    });
+    const json: any = await res.json();
+    return json?.choices?.[0]?.message?.content ?? '';
+  }
 
   async transcribe(audioRefOrText: string): Promise<string> {
     if (audioRefOrText.startsWith('text:')) return audioRefOrText.slice(5);
@@ -151,8 +168,16 @@ export class RealAiProvider implements AiProvider {
 
   async generate(system: string, user: string, opts?: GenerateOpts): Promise<string> {
     const maxTokens = opts?.maxTokens ?? 1500;
-    // Anthropic — приоритетно (аналитический тир), иначе OpenAI, иначе mock.
-    if (this.anthropicKey) {
+    const model = opts?.model || this.brainModel || '';
+    const isOpenRouter = model.includes('/'); // id вида vendor/model[:free] → OpenRouter
+    const OR = { url: 'https://openrouter.ai/api/v1/chat/completions', headers: { 'HTTP-Referer': 'https://teamsmrt.com', 'X-Title': 'TeamCRM' } };
+
+    // 1) Явно выбрана модель OpenRouter.
+    if (isOpenRouter && this.openrouterKey) {
+      try { const t = await this.chatCompletion(OR.url, this.openrouterKey, model, system, user, maxTokens, OR.headers); if (t) return t; } catch { /* фолбэк ниже */ }
+    }
+    // 2) Anthropic — для claude-* или когда модель не задана.
+    if (this.anthropicKey && (!model || /^claude/i.test(model))) {
       try {
         const res = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -163,23 +188,17 @@ export class RealAiProvider implements AiProvider {
           }),
         });
         const json: any = await res.json();
-        return json?.content?.[0]?.text ?? '';
-      } catch { /* упадём в mock ниже */ }
+        const t = json?.content?.[0]?.text ?? '';
+        if (t) return t;
+      } catch { /* фолбэк ниже */ }
     }
-    if (this.openaiKey) {
-      try {
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${this.openaiKey}`, 'content-type': 'application/json' },
-          body: JSON.stringify({
-            model: opts?.model || this.brainModel || 'gpt-4o-mini',
-            messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-            max_tokens: maxTokens,
-          }),
-        });
-        const json: any = await res.json();
-        return json?.choices?.[0]?.message?.content ?? '';
-      } catch { /* упадём в mock ниже */ }
+    // 3) OpenAI.
+    if (this.openaiKey && !isOpenRouter) {
+      try { const t = await this.chatCompletion('https://api.openai.com/v1/chat/completions', this.openaiKey, model || 'gpt-4o-mini', system, user, maxTokens); if (t) return t; } catch { /* фолбэк ниже */ }
+    }
+    // 4) OpenRouter как общий фолбэк (в т.ч. если задан только его ключ).
+    if (this.openrouterKey) {
+      try { const t = await this.chatCompletion(OR.url, this.openrouterKey, isOpenRouter ? model : (model || 'meta-llama/llama-3.3-70b-instruct:free'), system, user, maxTokens, OR.headers); if (t) return t; } catch { /* mock ниже */ }
     }
     return new MockAiProvider().generate(system, user, opts);
   }
