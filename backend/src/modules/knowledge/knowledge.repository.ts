@@ -81,6 +81,27 @@ export class KnowledgeRepository {
     );
   }
 
+  /** Список проиндексированных источников (для просмотра содержимого базы). */
+  listSources(tenantId: string, opts: { projectId?: string; type?: string; q?: string; limit: number; offset: number }) {
+    const params: any[] = [tenantId];
+    const where: string[] = ['tenant_id=$1'];
+    if (opts.projectId) { params.push(opts.projectId); where.push(`(access_scope=$${params.length} OR access_scope IS NULL)`); }
+    if (opts.type) { params.push(opts.type); where.push(`source_type=$${params.length}`); }
+    if (opts.q) { params.push(`%${opts.q}%`); where.push(`title ILIKE $${params.length}`); }
+    params.push(opts.limit); const limIdx = params.length;
+    params.push(opts.offset); const offIdx = params.length;
+    return this.db.many<{ source_type: string; source_id: string; title: string | null; access_scope: string | null; chunks: number; snippet: string }>(
+      `SELECT source_type, source_id, max(title) AS title, max(access_scope) AS access_scope, count(*)::int AS chunks,
+              substring((array_agg(content ORDER BY chunk_index))[1] for 220) AS snippet
+         FROM knowledge_chunks
+        WHERE ${where.join(' AND ')}
+        GROUP BY source_type, source_id
+        ORDER BY max(title) NULLS LAST, source_type
+        LIMIT $${limIdx} OFFSET $${offIdx}`,
+      params,
+    );
+  }
+
   countByTenant(tenantId: string) {
     return this.db.one<{ chunks: string; sources: string }>(
       `SELECT count(*) AS chunks, count(DISTINCT (source_type, source_id)) AS sources

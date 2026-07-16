@@ -39,6 +39,27 @@ export class KnowledgeController {
     return this.knowledge.stats(u.tenantId);
   }
 
+  // ── просмотр содержимого базы ──
+  @Get('knowledge/sources')
+  sources(
+    @CurrentUser() u: AuthUser,
+    @Query('projectId') projectId?: string,
+    @Query('type') type?: string,
+    @Query('q') q?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.knowledge.listSources(u.tenantId, {
+      projectId: projectId || undefined, type: type || undefined, q: q?.trim() || undefined, offset: Number(offset) || 0,
+    });
+  }
+
+  @Get('knowledge/sources/:type/:id')
+  async sourceContent(@CurrentUser() u: AuthUser, @Param('type') type: string, @Param('id') id: string) {
+    const r = await this.knowledge.sourceContent(u.tenantId, type, id);
+    if (!r) throw AppException.notFound('Источник не найден');
+    return r;
+  }
+
   @Post('knowledge/reindex')
   @Roles('owner', 'manager')
   reindex(@CurrentUser() u: AuthUser) {

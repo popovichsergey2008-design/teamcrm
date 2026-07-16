@@ -231,6 +231,15 @@ export const api = {
   bitrixMapUser: (cid: string, externalUserId: string, localUserId: string) => request<any>('POST', `/integrations/bitrix/connections/${cid}/user-map`, { externalUserId, localUserId }),
   bitrixMessages: (projectId: string) => request<any[]>('GET', `/integrations/bitrix/projects/${projectId}/messages`),
   // Google-доки из задач → база знаний
+  knowledgeSources: (p: { projectId?: string; type?: string; q?: string; offset?: number }) => {
+    const qs = new URLSearchParams();
+    if (p.projectId) qs.set('projectId', p.projectId);
+    if (p.type) qs.set('type', p.type);
+    if (p.q) qs.set('q', p.q);
+    if (p.offset) qs.set('offset', String(p.offset));
+    return request<{ items: any[]; hasMore: boolean; offset: number; limit: number }>('GET', `/knowledge/sources?${qs.toString()}`);
+  },
+  knowledgeSource: (type: string, id: string) => request<{ sourceType: string; title: string | null; text: string; url?: string | null; projectName?: string | null }>('GET', `/knowledge/sources/${type}/${id}`),
   gdocsScan: () => request<{ started: boolean }>('POST', '/integrations/gdocs/scan'),
   gdocsStatus: () => request<{ scanning: boolean; total: number; byStatus: Record<string, number> }>('GET', '/integrations/gdocs/status'),
 

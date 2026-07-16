@@ -3,7 +3,7 @@ import { api, ApiError } from '../lib/api';
 
 /** База знаний (Этап 5, K1): семантический поиск + регламенты + реиндекс. */
 export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState<'brain' | 'search' | 'regs'>('brain');
+  const [tab, setTab] = useState<'brain' | 'search' | 'regs' | 'content'>('brain');
   const [msg, setMsg] = useState('');
   const [stats, setStats] = useState<{ chunks: string; sources: string } | null>(null);
   const [usage, setUsage] = useState<{ totalCalls: number; cacheHits: number; cacheHitRatio: number } | null>(null);
@@ -69,6 +69,33 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
 
+  // просмотр содержимого базы
+  const srcTypeLabel = (t: string) => t === 'task' ? 'задача' : t === 'comment' ? 'комментарий' : t === 'gdoc' ? 'Google-док' : 'регламент';
+  const [sources, setSources] = useState<any[]>([]);
+  const [srcType, setSrcType] = useState('');
+  const [srcQ, setSrcQ] = useState('');
+  const [srcOffset, setSrcOffset] = useState(0);
+  const [srcHasMore, setSrcHasMore] = useState(false);
+  const [openSrc, setOpenSrc] = useState<{ key: string; data: any | null } | null>(null);
+  const loadSources = async (reset: boolean) => {
+    const offset = reset ? 0 : srcOffset;
+    try {
+      const res = await api.knowledgeSources({ projectId: scope || undefined, type: srcType || undefined, q: srcQ.trim() || undefined, offset });
+      setSources((prev) => (reset ? res.items : [...prev, ...res.items]));
+      setSrcOffset(offset + res.items.length);
+      setSrcHasMore(res.hasMore);
+    } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (tab === 'content') { setOpenSrc(null); loadSources(true); } }, [tab, scope, srcType]);
+  const viewSource = async (type: string, id: string) => {
+    const key = `${type}:${id}`;
+    if (openSrc?.key === key) return setOpenSrc(null);
+    setOpenSrc({ key, data: null });
+    try { setOpenSrc({ key, data: await api.knowledgeSource(type, id) }); }
+    catch { setOpenSrc({ key, data: { text: 'Не удалось загрузить' } }); }
+  };
+
   // AI Brain
   const [convId, setConvId] = useState<string | null>(null);
   const [chat, setChat] = useState<{ role: string; content: string; citations?: any[]; cached?: boolean; promptVersionId?: string | null; rated?: 1 | -1 }[]>([]);
@@ -123,6 +150,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
         <div className="tabs">
           <button className={`tab ${tab === 'brain' ? 'active' : ''}`} onClick={() => setTab('brain')}>Спросить ИИ</button>
           <button className={`tab ${tab === 'search' ? 'active' : ''}`} onClick={() => setTab('search')}>Поиск</button>
+          <button className={`tab ${tab === 'content' ? 'active' : ''}`} onClick={() => setTab('content')}>Содержимое</button>
           <button className={`tab ${tab === 'regs' ? 'active' : ''}`} onClick={() => setTab('regs')}>Регламенты</button>
         </div>
         {msg && <div className="dim">{msg}</div>}
@@ -185,6 +213,54 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
                 <div className="dim" style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{h.snippet}</div>
               </div>
             ))}
+          </>
+        )}
+
+        {tab === 'content' && (
+          <>
+            <div className="team-rate">
+              <ScopeSelect />
+              <select className="input" style={{ maxWidth: 180 }} value={srcType} onChange={(e) => setSrcType(e.target.value)}>
+                <option value="">Все типы</option>
+                <option value="task">Задачи</option>
+                <option value="comment">Комментарии</option>
+                <option value="gdoc">Google-доки</option>
+                <option value="regulation">Регламенты</option>
+              </select>
+            </div>
+            <div className="team-rate">
+              <input className="input" placeholder="Поиск по названию…" value={srcQ} onChange={(e) => setSrcQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && loadSources(true)} />
+              <button className="btn btn-primary btn-sm" onClick={() => loadSources(true)}>Найти</button>
+            </div>
+            {sources.length === 0 && <div className="muted" style={{ marginTop: 10 }}>Пусто. Проиндексированные источники появятся здесь (задачи, комментарии, регламенты, Google-доки).</div>}
+            {sources.map((s) => {
+              const key = `${s.sourceType}:${s.sourceId}`;
+              const open = openSrc?.key === key;
+              return (
+                <div key={key} className="team-row">
+                  <div className="team-head" style={{ cursor: 'pointer' }} onClick={() => viewSource(s.sourceType, s.sourceId)}>
+                    <span>
+                      <span className="badge">{srcTypeLabel(s.sourceType)}</span>
+                      {s.projectName && <span className="badge" title="Проект">📁 {s.projectName}</span>} {s.title || '—'}
+                    </span>
+                    <span className="dim" style={{ fontSize: 12 }}>{open ? '▾' : '▸'} {s.chunks} фр.</span>
+                  </div>
+                  {open ? (
+                    <div className="dim" style={{ whiteSpace: 'pre-wrap', fontSize: 13, marginTop: 6, maxHeight: 320, overflow: 'auto' }}>
+                      {openSrc?.data
+                        ? <>
+                            {openSrc.data.url && <div style={{ marginBottom: 4 }}><a href={openSrc.data.url} target="_blank" rel="noreferrer">{openSrc.data.url}</a></div>}
+                            {openSrc.data.text || '(пусто)'}
+                          </>
+                        : 'Загрузка…'}
+                    </div>
+                  ) : (
+                    <div className="dim" style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{s.snippet}</div>
+                  )}
+                </div>
+              );
+            })}
+            {srcHasMore && <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => loadSources(false)}>Показать ещё</button>}
           </>
         )}
 

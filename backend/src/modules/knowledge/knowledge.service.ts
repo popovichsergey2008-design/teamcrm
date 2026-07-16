@@ -146,4 +146,55 @@ export class KnowledgeService implements OnModuleInit {
   stats(tenantId: string) {
     return this.repo.countByTenant(tenantId);
   }
+
+  /** Список источников базы знаний (для ручного просмотра содержимого) + имена проектов. */
+  async listSources(tenantId: string, opts: { projectId?: string; type?: string; q?: string; limit?: number; offset?: number }) {
+    const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
+    const offset = Math.max(opts.offset ?? 0, 0);
+    const rows = await this.repo.listSources(tenantId, { projectId: opts.projectId, type: opts.type, q: opts.q, limit, offset });
+    const scopeIds = [...new Set(rows.map((r) => r.access_scope).filter(Boolean) as string[])];
+    const names = new Map<string, string>();
+    if (scopeIds.length) {
+      const prj = await this.db.many<{ id: string; name: string }>(
+        `SELECT id, name FROM projects WHERE tenant_id=$1 AND id = ANY($2::bigint[])`, [tenantId, scopeIds],
+      );
+      for (const p of prj) names.set(String(p.id), p.name);
+    }
+    return {
+      items: rows.map((r) => ({
+        sourceType: r.source_type, sourceId: r.source_id, title: r.title, chunks: r.chunks, snippet: r.snippet,
+        projectId: r.access_scope, projectName: r.access_scope ? names.get(String(r.access_scope)) ?? null : null,
+      })),
+      limit, offset, hasMore: rows.length === limit,
+    };
+  }
+
+  /** Полное содержимое одного источника из исходной таблицы (для просмотра в базе знаний). */
+  async sourceContent(tenantId: string, type: string, id: string): Promise<{ sourceType: string; title: string | null; text: string; url?: string | null; projectName?: string | null } | null> {
+    const projName = async (projectId: string | null) =>
+      projectId ? (await this.db.one<{ name: string }>(`SELECT name FROM projects WHERE tenant_id=$1 AND id=$2`, [tenantId, projectId]))?.name ?? null : null;
+
+    if (type === 'task') {
+      const r = await this.db.one<any>(`SELECT title, description, project_id FROM tasks WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+      if (!r) return null;
+      return { sourceType: type, title: r.title, text: String(r.description ?? ''), projectName: await projName(r.project_id) };
+    }
+    if (type === 'comment') {
+      const r = await this.db.one<any>(
+        `SELECT c.body, t.title AS task_title, t.project_id FROM task_comments c JOIN tasks t ON t.id=c.task_id WHERE c.tenant_id=$1 AND c.id=$2`, [tenantId, id]);
+      if (!r) return null;
+      return { sourceType: type, title: r.task_title, text: String(r.body ?? ''), projectName: await projName(r.project_id) };
+    }
+    if (type === 'gdoc') {
+      const r = await this.db.one<any>(`SELECT title, text, url, project_id FROM google_docs WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+      if (!r) return null;
+      return { sourceType: type, title: r.title, text: String(r.text ?? ''), url: r.url, projectName: await projName(r.project_id) };
+    }
+    if (type === 'regulation') {
+      const r = await this.db.one<any>(`SELECT title, body FROM regulations WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+      if (!r) return null;
+      return { sourceType: type, title: r.title, text: String(r.body ?? '') };
+    }
+    return null;
+  }
 }
