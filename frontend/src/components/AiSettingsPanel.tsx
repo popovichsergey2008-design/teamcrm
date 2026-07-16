@@ -49,7 +49,7 @@ export function AiSettingsSection() {
 
         <div className="drawer-section-title">Ключ OpenRouter — опционально (бесплатные модели)</div>
         <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
-          Статус: {s.openrouterKeySet ? '✅ задан' : s.globalOpenrouter ? 'используется общий' : '— не задан —'}. Даёт доступ к бесплатным моделям (Llama, DeepSeek, Gemini Flash и др.). Ключ — на <span className="dim">openrouter.ai/keys</span>.
+          Статус: {s.openrouterKeySet ? '✅ задан' : s.globalOpenrouter ? 'используется общий' : '— не задан —'}. Один ключ OpenRouter <b>полностью заменяет OpenAI</b> — покрывает и ответы ИИ (в т.ч. бесплатные модели Llama/DeepSeek/Gemini Flash), и семантический поиск/индексацию (эмбеддинги через OpenRouter). Ключ — на <span className="dim">openrouter.ai/keys</span>.
         </div>
         <input className="input add-user-input" type="password" placeholder="sk-or-..." value={openrouterKey} onChange={(e) => setOpenrouterKey(e.target.value)} />
 
@@ -68,7 +68,7 @@ export function AiSettingsSection() {
         </div>
         <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>
           Модели по вашим ключам (обновляется после сохранения ключа). Модели с «:free» — бесплатные через OpenRouter.
-          Примечание: OpenRouter — для ответов/чата ИИ; семантический поиск (эмбеддинги) требует ключ OpenAI.
+          Это модель для ответов/чата; эмбеддинги поиска идут через OpenAI-совместимую модель (по вашему ключу OpenAI или OpenRouter).
         </div>
     </>
   );

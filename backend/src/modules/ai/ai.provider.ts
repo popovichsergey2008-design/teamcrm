@@ -204,18 +204,30 @@ export class RealAiProvider implements AiProvider {
   }
 
   async embed(text: string): Promise<number[]> {
-    if (!this.openaiKey) return mockEmbed(text);
-    try {
-      const res = await fetch('https://api.openai.com/v1/embeddings', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${this.openaiKey}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ model: 'text-embedding-3-small', input: text.slice(0, 8000) }),
-      });
-      const json: any = await res.json();
-      const vec = json?.data?.[0]?.embedding;
-      return Array.isArray(vec) && vec.length === EMBED_DIM ? vec : mockEmbed(text);
-    } catch {
-      return mockEmbed(text);
+    const input = text.slice(0, 8000);
+    // OpenAI напрямую, иначе через OpenRouter (та же модель text-embedding-3-small → 1536, совместимо
+    // с уже проиндексированными чанками). Так ключ OpenRouter полностью заменяет OpenAI и для поиска.
+    if (this.openaiKey) {
+      try { const v = await this.embedVia('https://api.openai.com/v1/embeddings', this.openaiKey, 'text-embedding-3-small', input); if (v) return v; } catch { /* фолбэк ниже */ }
     }
+    if (this.openrouterKey) {
+      try {
+        const v = await this.embedVia('https://openrouter.ai/api/v1/embeddings', this.openrouterKey, 'openai/text-embedding-3-small', input, { 'HTTP-Referer': 'https://teamsmrt.com', 'X-Title': 'TeamCRM' });
+        if (v) return v;
+      } catch { /* mock ниже */ }
+    }
+    return mockEmbed(text);
+  }
+
+  /** Эмбеддинг через OpenAI-совместимый endpoint; возвращает null при неверной размерности (страховка колонки vector(1536)). */
+  private async embedVia(url: string, key: string, model: string, input: string, extraHeaders: Record<string, string> = {}): Promise<number[] | null> {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json', ...extraHeaders },
+      body: JSON.stringify({ model, input }),
+    });
+    const json: any = await res.json();
+    const vec = json?.data?.[0]?.embedding;
+    return Array.isArray(vec) && vec.length === EMBED_DIM ? vec : null;
   }
 }
