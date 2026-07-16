@@ -1,4 +1,7 @@
 import { createHash } from 'crypto';
+import { Logger } from '@nestjs/common';
+
+const providerLog = new Logger('AiProvider');
 
 /**
  * Провайдеры AI. Реальные Whisper/Anthropic используются при наличии ключей в env,
@@ -104,7 +107,7 @@ export class RealAiProvider implements AiProvider {
     private readonly openrouterKey?: string,
   ) {}
 
-  /** Вызов OpenAI-совместимого chat/completions (OpenAI и OpenRouter — один формат). */
+  /** Вызов OpenAI-совместимого chat/completions (OpenAI и OpenRouter — один формат). Бросает ошибку API. */
   private async chatCompletion(
     url: string, key: string, model: string, system: string, user: string, maxTokens: number, extraHeaders: Record<string, string> = {},
   ): Promise<string> {
@@ -116,8 +119,22 @@ export class RealAiProvider implements AiProvider {
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       }),
     });
-    const json: any = await res.json();
+    const json: any = await res.json().catch(() => ({}));
+    if (json?.error) throw new Error(typeof json.error === 'string' ? json.error : (json.error.message || JSON.stringify(json.error)));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return json?.choices?.[0]?.message?.content ?? '';
+  }
+
+  private async anthropicChat(model: string, system: string, user: string, maxTokens: number): Promise<string> {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': this.anthropicKey!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+    });
+    const json: any = await res.json().catch(() => ({}));
+    if (json?.error) throw new Error(json.error?.message || JSON.stringify(json.error));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return json?.content?.[0]?.text ?? '';
   }
 
   async transcribe(audioRefOrText: string): Promise<string> {
@@ -170,35 +187,29 @@ export class RealAiProvider implements AiProvider {
     const maxTokens = opts?.maxTokens ?? 1500;
     const model = opts?.model || this.brainModel || '';
     const isOpenRouter = model.includes('/'); // id вида vendor/model[:free] → OpenRouter
-    const OR = { url: 'https://openrouter.ai/api/v1/chat/completions', headers: { 'HTTP-Referer': 'https://teamsmrt.com', 'X-Title': 'TeamCRM' } };
+    const OR_URL = 'https://openrouter.ai/api/v1/chat/completions';
+    const ORH = { 'HTTP-Referer': 'https://teamsmrt.com', 'X-Title': 'TeamCRM' };
+    const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
-    // 1) Явно выбрана модель OpenRouter.
-    if (isOpenRouter && this.openrouterKey) {
-      try { const t = await this.chatCompletion(OR.url, this.openrouterKey, model, system, user, maxTokens, OR.headers); if (t) return t; } catch { /* фолбэк ниже */ }
-    }
-    // 2) Anthropic — для claude-* или когда модель не задана.
-    if (this.anthropicKey && (!model || /^claude/i.test(model))) {
+    // Упорядоченные попытки: сначала выбранная модель/провайдер, затем ЛЮБОЙ рабочий бэкенд (чтобы
+    // из-за неудачной free-модели не сваливаться в mock, когда есть рабочий ключ).
+    const attempts: { name: string; run: () => Promise<string> }[] = [];
+    if (isOpenRouter && this.openrouterKey) attempts.push({ name: `openrouter(${model})`, run: () => this.chatCompletion(OR_URL, this.openrouterKey!, model, system, user, maxTokens, ORH) });
+    if (this.anthropicKey && (!model || /^claude/i.test(model))) attempts.push({ name: `anthropic(${model || 'default'})`, run: () => this.anthropicChat(model || 'claude-3-5-sonnet-latest', system, user, maxTokens) });
+    if (this.openaiKey && !isOpenRouter) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens) });
+    // фолбэки на любой доступный ключ
+    if (this.openaiKey) attempts.push({ name: 'openai(fallback)', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens) });
+    if (this.anthropicKey) attempts.push({ name: 'anthropic(fallback)', run: () => this.anthropicChat('claude-3-5-sonnet-latest', system, user, maxTokens) });
+    if (this.openrouterKey) attempts.push({ name: 'openrouter(fallback)', run: () => this.chatCompletion(OR_URL, this.openrouterKey!, isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', system, user, maxTokens, ORH) });
+
+    for (const a of attempts) {
       try {
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'x-api-key': this.anthropicKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-          body: JSON.stringify({
-            model: opts?.model || this.brainModel || 'claude-3-5-sonnet-latest',
-            max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }],
-          }),
-        });
-        const json: any = await res.json();
-        const t = json?.content?.[0]?.text ?? '';
-        if (t) return t;
-      } catch { /* фолбэк ниже */ }
-    }
-    // 3) OpenAI.
-    if (this.openaiKey && !isOpenRouter) {
-      try { const t = await this.chatCompletion('https://api.openai.com/v1/chat/completions', this.openaiKey, model || 'gpt-4o-mini', system, user, maxTokens); if (t) return t; } catch { /* фолбэк ниже */ }
-    }
-    // 4) OpenRouter как общий фолбэк (в т.ч. если задан только его ключ).
-    if (this.openrouterKey) {
-      try { const t = await this.chatCompletion(OR.url, this.openrouterKey, isOpenRouter ? model : (model || 'meta-llama/llama-3.3-70b-instruct:free'), system, user, maxTokens, OR.headers); if (t) return t; } catch { /* mock ниже */ }
+        const t = await a.run();
+        if (t && t.trim()) return t;
+        providerLog.warn(`generate: ${a.name} — пустой ответ`);
+      } catch (e) {
+        providerLog.warn(`generate: ${a.name} — ошибка: ${(e as Error).message}`);
+      }
     }
     return new MockAiProvider().generate(system, user, opts);
   }
