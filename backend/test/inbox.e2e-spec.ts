@@ -72,6 +72,18 @@ describe('Inbox — авто-задачи из переписок (e2e)', () => 
     const created = (await http$.get('/api/inbox/items?status=created').set(H(tok)).expect(200)).body.data;
     expect(created.some((i: any) => i.id === rcv.itemId)).toBe(true);
 
+    // Mailgun-стиль: multipart/form-data (поля from/subject/body-plain + «вложение») → приём и создание задачи
+    const rcvMp = (await http$.post(`/api/inbox/hook/${source.token}`)
+      .field('from', 'lead@acme.com').field('subject', 'Коммерческое предложение')
+      .field('body-plain', 'Подготовьте КП по нашему проекту')
+      .attach('attachment-1', Buffer.from('dummy file content'), 'brief.txt')
+      .expect(201)).body.data;
+    expect(rcvMp.received).toBe(true);
+    expect(rcvMp.itemId).toBeTruthy();
+    const confirmedMp = (await http$.post(`/api/inbox/items/${rcvMp.itemId}/confirm`).set(H(tok))
+      .send({ task: { projectId: proj.id, title: 'Подготовить КП' } }).expect(201)).body.data;
+    expect(confirmedMp.created).toBe(true);
+
     // второе письмо → отклонить
     const rcv2 = (await http$.post(`/api/inbox/hook/${source.token}`)
       .send({ from: 'spam@x.com', body: 'реклама' }).expect(201)).body.data;

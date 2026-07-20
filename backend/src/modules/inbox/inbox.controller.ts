@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseInterceptors } from '@nestjs/common';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
@@ -55,8 +56,12 @@ export class InboxController {
 export class InboxHookController {
   constructor(private readonly inbox: InboxService) {}
 
+  // Mailgun/Postmark inbound шлют multipart/form-data (текстовые поля + вложения).
+  // Multer разбирает поля в req.body; вложения не сохраняем — inbox работает только с текстом.
+  // Лимиты щедрые (крупные HTML-письма, вложения-подписи), чтобы вебхук не падал 413/500 → без ретраев.
   @Public()
   @Post(':token')
+  @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: 25 * 1024 * 1024, files: 25, fieldSize: 10 * 1024 * 1024 } }))
   receive(@Param('token') token: string, @Req() req: Request) {
     return this.inbox.receive(token, req.body);
   }
