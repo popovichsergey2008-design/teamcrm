@@ -1,12 +1,51 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 
-/** NL-команда / Zero-UI: пишешь обычным языком → ИИ предлагает создать задачу/сделку → подтверждаешь. */
+/** NL-команда / Zero-UI: пишешь ИЛИ говоришь обычным языком → ИИ предлагает создать задачу/сделку → подтверждаешь. */
 export function NlCommandModal({ onClose }: { onClose: () => void }) {
   const [text, setText] = useState('');
   const [draft, setDraft] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  // запись голоса → Whisper → текст в то же поле команды (дальше обычное распознавание)
+  const startRec = async () => {
+    setMsg('');
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      return setMsg('Браузер не поддерживает запись с микрофона');
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setRecording(false);
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
+        if (!blob.size) return;
+        setTranscribing(true);
+        try {
+          const { text: t } = await api.nlTranscribe(blob);
+          if (!t) setMsg('Речь не распознана. Для голоса нужен ключ OpenAI (Whisper) в «Интеграции → ИИ», либо введите текстом.');
+          else setText((prev) => (prev.trim() ? prev.trim() + ' ' : '') + t);
+        } catch (e) { setMsg(e instanceof ApiError ? e.message : 'Ошибка распознавания речи'); }
+        finally { setTranscribing(false); }
+      };
+      mr.start();
+      recRef.current = mr;
+      setRecording(true);
+    } catch { setMsg('Нет доступа к микрофону'); }
+  };
+  const stopRec = () => recRef.current?.stop();
+  const toggleRec = () => (recording ? stopRec() : startRec());
+
+  // остановить запись и отпустить микрофон, если модалку закрыли на середине
+  useEffect(() => () => { if (recRef.current && recRef.current.state !== 'inactive') recRef.current.stop(); }, []);
 
   const parse = async () => {
     if (text.trim().length < 3) return setMsg('Слишком короткая команда');
@@ -39,12 +78,20 @@ export function NlCommandModal({ onClose }: { onClose: () => void }) {
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head"><h3>⚡ Быстрая команда</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
         <div className="dim" style={{ fontSize: 12 }}>
-          Напишите обычным языком — ИИ поймёт и предложит создать задачу или сделку (с подтверждением).
+          Напишите или продиктуйте обычным языком — ИИ поймёт и предложит создать задачу или сделку (с подтверждением).
           Например: «Иванову задача обновить баннер на главной к пятнице, срочно».
         </div>
         {msg && <div className="error-text">{msg}</div>}
         <textarea className="input" rows={3} placeholder="Ваша команда…" value={text} onChange={(e) => setText(e.target.value)} style={{ marginTop: 6 }} />
-        <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={parse} disabled={busy}>
+        <button
+          className={`btn btn-sm ${recording ? 'btn-primary' : 'btn-ghost'}`}
+          style={{ width: '100%', marginTop: 6 }}
+          onClick={toggleRec}
+          disabled={busy || transcribing}
+        >
+          {recording ? '⏺ Остановить и распознать' : transcribing ? 'Распознаю речь…' : '🎤 Записать голосом'}
+        </button>
+        <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={parse} disabled={busy || recording || transcribing}>
           {busy && !draft ? 'Распознаю…' : '✨ Распознать'}
         </button>
 

@@ -60,4 +60,18 @@ describe('NL-команда (e2e)', () => {
     expect(deal.type).toBe('deal');
     expect(deal.deal.title).toBe('Продажа Иванову');
   });
+
+  it('transcribe: multipart аудио принимается (mock → пустой текст); без файла — 400', async () => {
+    const email = `nlv_${uniq()}@t.test`;
+    const reg = (await http$.post('/api/auth/register').send({ tenantName: 'NLV', email, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const tok = reg.accessToken;
+
+    // multipart с аудио-полем → 200, ответ содержит строковое поле text (под mock Whisper — пусто)
+    const res = (await http$.post('/api/nl/transcribe').set(H(tok))
+      .attach('audio', Buffer.from('fake audio bytes'), 'command.webm').expect(201)).body.data;
+    expect(typeof res.text).toBe('string');
+
+    // без файла → 400 (валидация)
+    await http$.post('/api/nl/transcribe').set(H(tok)).expect(400);
+  });
 });

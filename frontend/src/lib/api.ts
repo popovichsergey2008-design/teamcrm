@@ -234,6 +234,15 @@ export const api = {
   // NL-команда / Zero-UI
   nlParse: (text: string) => request<any>('POST', '/nl/parse', { text }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),
+  /** Голосовая команда: аудио-запись → Whisper → распознанный текст. */
+  nlTranscribe: async (blob: Blob): Promise<{ text: string }> => {
+    const fd = new FormData();
+    fd.append('audio', blob, 'command.webm');
+    const res = await fetch(`${BASE}/nl/transcribe`, { method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd });
+    const env = await res.json().catch(() => ({ ok: false }));
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Ошибка распознавания речи');
+    return env.data;
+  },
   // Входящие → авто-задачи
   inboxSources: () => request<any[]>('GET', '/inbox/sources'),
   inboxCreateSource: (label?: string, defaultProjectId?: string) => request<any>('POST', '/inbox/sources', { label, defaultProjectId }),

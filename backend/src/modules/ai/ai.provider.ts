@@ -17,6 +17,8 @@ export interface GenerateOpts {
 export interface AiProvider {
   name: string;
   transcribe(audioRefOrText: string): Promise<string>;
+  /** Транскрипция загруженного аудио-буфера (веб-запись голоса) → текст. '' если реальный Whisper недоступен. */
+  transcribeAudio(audio: Buffer, filename: string): Promise<string>;
   /** schemaHint — версионируемая инструкция парсера (PromptOps); при отсутствии берётся встроенный дефолт. */
   parseIntents(maskedText: string, schemaHint?: string): Promise<unknown>;
   embed(text: string): Promise<number[]>;
@@ -78,6 +80,10 @@ export class MockAiProvider implements AiProvider {
     if (audioRefOrText.startsWith('text:')) return audioRefOrText.slice(5);
     // голос без реального Whisper — канонический заглушечный транскрипт
     return audioRefOrText;
+  }
+  async transcribeAudio(_audio: Buffer, _filename: string): Promise<string> {
+    void _audio; void _filename; // без ключа OpenAI распознать запись нельзя — пусто (UI подскажет)
+    return '';
   }
   async parseIntents(maskedText: string, _schemaHint?: string): Promise<unknown> {
     void _schemaHint; // mock понимает мини-DSL и не нуждается в инструкции
@@ -142,12 +148,22 @@ export class RealAiProvider implements AiProvider {
     if (!this.openaiKey) return audioRefOrText;
     // audioRefOrText — URL временного аудио (Telegram file). Скачиваем и шлём в Whisper.
     const audio = await fetch(audioRefOrText).then((r) => r.arrayBuffer());
+    return this.whisper(Buffer.from(audio), 'audio.ogg');
+  }
+
+  async transcribeAudio(audio: Buffer, filename: string): Promise<string> {
+    if (!this.openaiKey) return '';
+    return this.whisper(audio, filename || 'audio.webm');
+  }
+
+  /** OpenAI Whisper: аудио-буфер → распознанный текст. */
+  private async whisper(audio: Buffer, filename: string): Promise<string> {
     const form = new FormData();
-    form.append('file', new Blob([audio]), 'audio.ogg');
+    form.append('file', new Blob([new Uint8Array(audio)]), filename);
     form.append('model', 'whisper-1');
     const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${this.openaiKey}` },
+      headers: { Authorization: `Bearer ${this.openaiKey!}` },
       body: form,
     });
     const json: any = await res.json();

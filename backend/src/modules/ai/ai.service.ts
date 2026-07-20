@@ -47,6 +47,11 @@ export class AiService {
     return this.providerFor(tenantId).then((p) => p.provider.transcribe(audioRefOrText));
   }
 
+  /** Веб-запись голоса (аудио-буфер) → текст через Whisper (mock → '' при отсутствии ключа). */
+  transcribeAudio(tenantId: string, audio: Buffer, filename: string): Promise<string> {
+    return this.providerFor(tenantId).then((p) => p.provider.transcribeAudio(audio, filename));
+  }
+
   /**
    * Аналитическая генерация (AI Brain): маскирование PII + метеринг.
    * opts (PromptOps): переопределение модели/лимита и привязка расхода к версии промпта.
