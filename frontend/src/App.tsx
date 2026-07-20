@@ -9,6 +9,7 @@ import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
 import { ClientsPanel } from './components/ClientsPanel';
 import { NlCommandModal } from './components/NlCommandModal';
+import { InboxPanel } from './components/InboxPanel';
 import { ClientPortal } from './pages/ClientPortal';
 import { Avatar } from './components/Avatar';
 import { roleLabel } from './lib/labels';
@@ -20,6 +21,7 @@ export function App() {
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [showClients, setShowClients] = useState(false);
   const [showNl, setShowNl] = useState(false);
+  const [showInbox, setShowInbox] = useState(false);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
   const onSwitchOrg = async (tenantId: string) => {
@@ -76,6 +78,11 @@ export function App() {
               Клиенты
             </button>
           )}
+          {(user.role === 'owner' || user.role === 'manager') && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowInbox(true)} title="Входящие письма → черновики задач">
+              📥 Входящие
+            </button>
+          )}
           {user.role === 'owner' && (
             <button className="btn btn-ghost btn-sm" onClick={() => setShowIntegrations(true)}>
               Интеграции
@@ -97,6 +104,7 @@ export function App() {
       {showKnowledge && <KnowledgePanel canManage={user.role === 'owner' || user.role === 'manager'} onClose={() => setShowKnowledge(false)} />}
       {showClients && <ClientsPanel onClose={() => setShowClients(false)} />}
       {showNl && <NlCommandModal onClose={() => setShowNl(false)} />}
+      {showInbox && <InboxPanel onClose={() => setShowInbox(false)} />}
     </div>
   );
 }

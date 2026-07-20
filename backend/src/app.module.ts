@@ -38,6 +38,7 @@ import { BitrixModule } from './modules/integrations/bitrix/bitrix.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { GdocsModule } from './modules/gdocs/gdocs.module';
 import { NlModule } from './modules/nl/nl.module';
+import { InboxModule } from './modules/inbox/inbox.module';
 import { BrainModule } from './modules/brain/brain.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { PromptsModule } from './modules/prompts/prompts.module';
@@ -83,6 +84,7 @@ import { PromptsModule } from './modules/prompts/prompts.module';
     KnowledgeModule,
     GdocsModule,
     NlModule,
+    InboxModule,
     BrainModule,
     PortalModule,
     PromptsModule,

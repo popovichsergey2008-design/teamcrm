@@ -234,6 +234,13 @@ export const api = {
   // NL-команда / Zero-UI
   nlParse: (text: string) => request<any>('POST', '/nl/parse', { text }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),
+  // Входящие → авто-задачи
+  inboxSources: () => request<any[]>('GET', '/inbox/sources'),
+  inboxCreateSource: (label?: string, defaultProjectId?: string) => request<any>('POST', '/inbox/sources', { label, defaultProjectId }),
+  inboxDeleteSource: (id: string) => request<any>('DELETE', `/inbox/sources/${id}`),
+  inboxItems: (status = 'pending') => request<any[]>('GET', `/inbox/items?status=${status}`),
+  inboxConfirm: (id: string, task: any) => request<any>('POST', `/inbox/items/${id}/confirm`, { task }),
+  inboxDismiss: (id: string) => request<any>('POST', `/inbox/items/${id}/dismiss`),
   knowledgeSources: (p: { projectId?: string; type?: string; q?: string; offset?: number }) => {
     const qs = new URLSearchParams();
     if (p.projectId) qs.set('projectId', p.projectId);
