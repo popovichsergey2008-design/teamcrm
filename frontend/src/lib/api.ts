@@ -231,6 +231,9 @@ export const api = {
   bitrixMapUser: (cid: string, externalUserId: string, localUserId: string) => request<any>('POST', `/integrations/bitrix/connections/${cid}/user-map`, { externalUserId, localUserId }),
   bitrixMessages: (projectId: string) => request<any[]>('GET', `/integrations/bitrix/projects/${projectId}/messages`),
   // Google-доки из задач → база знаний
+  // NL-команда / Zero-UI
+  nlParse: (text: string) => request<any>('POST', '/nl/parse', { text }),
+  nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),
   knowledgeSources: (p: { projectId?: string; type?: string; q?: string; offset?: number }) => {
     const qs = new URLSearchParams();
     if (p.projectId) qs.set('projectId', p.projectId);

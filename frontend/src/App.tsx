@@ -8,6 +8,7 @@ import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
 import { ClientsPanel } from './components/ClientsPanel';
+import { NlCommandModal } from './components/NlCommandModal';
 import { ClientPortal } from './pages/ClientPortal';
 import { Avatar } from './components/Avatar';
 import { roleLabel } from './lib/labels';
@@ -18,6 +19,7 @@ export function App() {
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [showClients, setShowClients] = useState(false);
+  const [showNl, setShowNl] = useState(false);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
   const onSwitchOrg = async (tenantId: string) => {
@@ -63,6 +65,9 @@ export function App() {
             {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
             <option value="__new__">+ Создать организацию…</option>
           </select>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowNl(true)} title="Создать задачу/сделку обычным языком">
+            ⚡ Команда
+          </button>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)}>
             База знаний
           </button>
@@ -91,6 +96,7 @@ export function App() {
       {showIntegrations && <IntegrationsPanel onClose={() => setShowIntegrations(false)} />}
       {showKnowledge && <KnowledgePanel canManage={user.role === 'owner' || user.role === 'manager'} onClose={() => setShowKnowledge(false)} />}
       {showClients && <ClientsPanel onClose={() => setShowClients(false)} />}
+      {showNl && <NlCommandModal onClose={() => setShowNl(false)} />}
     </div>
   );
 }
