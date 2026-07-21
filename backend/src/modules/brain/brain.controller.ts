@@ -42,6 +42,7 @@ export class BrainController {
   /** Стрим ответа (SSE): события citations → delta* → done|error. Читается фронтом через fetch+ReadableStream. */
   @Post('conversations/:id/ask/stream')
   async askStream(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AskDto, @Res() res: Response) {
+    res.status(200);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
