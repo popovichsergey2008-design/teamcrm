@@ -24,6 +24,8 @@ export interface AiProvider {
   embed(text: string): Promise<number[]>;
   /** Аналитическая генерация (AI Brain): system + user → текст ответа. */
   generate(system: string, user: string, opts?: GenerateOpts): Promise<string>;
+  /** Потоковая генерация: onDelta вызывается по мере поступления фрагментов; возвращает полный текст. */
+  generateStream(system: string, user: string, opts: GenerateOpts | undefined, onDelta: (text: string) => void): Promise<string>;
 }
 
 export const EMBED_DIM = 1536;
@@ -99,6 +101,12 @@ export class MockAiProvider implements AiProvider {
     return hasCtx
       ? 'На основе найденных материалов из архива компании (см. источники ниже). [1]\n\n(Демо-ответ: подключите OPENAI_API_KEY или ANTHROPIC_API_KEY для реальной генерации.)'
       : 'В базе знаний не нашлось релевантных материалов по этому вопросу.';
+  }
+  async generateStream(system: string, user: string, opts: GenerateOpts | undefined, onDelta: (t: string) => void): Promise<string> {
+    // mock: без LLM реального стрима нет — эмулируем «печать», отдавая ответ по словам
+    const full = await this.generate(system, user, opts);
+    for (const part of full.split(/(\s+)/)) if (part) onDelta(part);
+    return full;
   }
 }
 
@@ -228,6 +236,76 @@ export class RealAiProvider implements AiProvider {
       }
     }
     return new MockAiProvider().generate(system, user, opts);
+  }
+
+  /** Читает SSE-поток fetch-ответа, вызывая onData для каждого data-события (JSON). */
+  private async readSSE(res: Response, onData: (obj: any) => void): Promise<void> {
+    const reader = (res.body as ReadableStream<Uint8Array> | null)?.getReader();
+    if (!reader) throw new Error('нет тела потока');
+    const decoder = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') return;
+        try { onData(JSON.parse(payload)); } catch { /* keep-alive / частичная строка — пропускаем */ }
+      }
+    }
+  }
+
+  /** Потоковый chat/completions (OpenAI/OpenRouter). */
+  private async openaiStream(url: string, key: string, model: string, system: string, user: string, maxTokens: number, onDelta: (t: string) => void, extraHeaders: Record<string, string> = {}): Promise<string> {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json', ...extraHeaders },
+      body: JSON.stringify({ model, max_tokens: maxTokens, stream: true, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    let full = '';
+    await this.readSSE(res, (o) => { const d = o?.choices?.[0]?.delta?.content; if (d) { full += d; onDelta(d); } });
+    return full;
+  }
+
+  /** Потоковый Anthropic messages. */
+  private async anthropicStream(model: string, system: string, user: string, maxTokens: number, onDelta: (t: string) => void): Promise<string> {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': this.anthropicKey!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, stream: true, messages: [{ role: 'user', content: user }] }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    let full = '';
+    await this.readSSE(res, (o) => { if (o?.type === 'content_block_delta' && o?.delta?.text) { full += o.delta.text; onDelta(o.delta.text); } });
+    return full;
+  }
+
+  async generateStream(system: string, user: string, opts: GenerateOpts | undefined, onDelta: (t: string) => void): Promise<string> {
+    const maxTokens = opts?.maxTokens ?? 1500;
+    const model = opts?.model || this.brainModel || '';
+    const isOpenRouter = model.includes('/');
+    const ORH = { 'HTTP-Referer': 'https://teamsmrt.com', 'X-Title': 'TeamCRM' };
+    try {
+      let full = '';
+      if (isOpenRouter && this.openrouterKey) full = await this.openaiStream('https://openrouter.ai/api/v1/chat/completions', this.openrouterKey, model, system, user, maxTokens, onDelta, ORH);
+      else if (this.anthropicKey && (!model || /^claude/i.test(model))) full = await this.anthropicStream(model || 'claude-3-5-sonnet-latest', system, user, maxTokens, onDelta);
+      else if (this.openaiKey && !isOpenRouter) full = await this.openaiStream('https://api.openai.com/v1/chat/completions', this.openaiKey, model || 'gpt-4o-mini', system, user, maxTokens, onDelta);
+      else throw new Error('нет бэкенда для стрима');
+      if (full && full.trim()) return full;
+      throw new Error('пустой поток');
+    } catch (e) {
+      // стрим не удался → обычная генерация (полный набор фолбэков) одним куском, чтобы не терять ответ
+      providerLog.warn(`generateStream fallback: ${(e as Error).message}`);
+      const full = await this.generate(system, user, opts);
+      if (full) onDelta(full);
+      return full;
+    }
   }
 
   async embed(text: string): Promise<number[]> {

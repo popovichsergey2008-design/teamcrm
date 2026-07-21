@@ -106,6 +106,72 @@ export class BrainService {
     return this.finish(tenantId, conversationId, answer, citations, 'miss', versionId);
   }
 
+  /**
+   * Стрим-версия ask(): тот же RAG-конвейер, но ответ LLM отдаётся по фрагментам через on.delta.
+   * Кэш/«нет материалов» отдаются одним фрагментом (мгновенно). on.citations вызывается до текста.
+   */
+  async askStream(
+    tenantId: string, userId: string, conversationId: string, question: string, projectId: string | undefined,
+    on: { citations: (c: any[]) => void; delta: (t: string) => void },
+  ) {
+    const conv = await this.repo.conversationOwned(tenantId, userId, conversationId);
+    if (!conv) throw AppException.notFound('Диалог не найден');
+    const q = question.trim();
+    if (q.length < 2) throw AppException.validation('Слишком короткий вопрос');
+
+    await this.repo.addMessage(conversationId, 'user', q, null);
+    await this.repo.setTitle(conversationId, q);
+
+    const prompt = await this.prompts.resolve(tenantId, 'brain.system', {}, userId);
+    const system = prompt?.body ?? SYSTEM_FALLBACK;
+    const versionId = prompt?.versionId ?? null;
+    const versionKey = versionId ?? 'default';
+
+    const scopeKey = projectId ? `p${projectId}` : 'all';
+    const exactKey = `brain:ans:${tenantId}:${scopeKey}:v${versionKey}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
+    const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null);
+    if (exact) { on.citations(exact.citations); on.delta(exact.answer); return this.finish(tenantId, conversationId, exact.answer, exact.citations, 'exact', versionId); }
+
+    const vec = await this.ai.embed(tenantId, q, 'embedding');
+
+    if (!projectId) {
+      const sem = await this.repo.cacheLookup(tenantId, vec, versionId).catch(() => null);
+      if (sem && sem.score >= SEMANTIC_THRESHOLD) {
+        const citations = sem.citations ?? [];
+        await this.redis.setJson(exactKey, { answer: sem.answer, citations }, ANSWER_TTL).catch(() => undefined);
+        on.citations(citations); on.delta(sem.answer);
+        return this.finish(tenantId, conversationId, sem.answer, citations, 'semantic', versionId);
+      }
+    }
+
+    const hits = await this.knowledge.searchByVector(tenantId, vec, 6, projectId);
+    const seen = new Set<string>();
+    const citations: { sourceType: string; sourceId: string; title: string | null }[] = [];
+    for (const h of hits) {
+      const key = `${h.sourceType}:${h.sourceId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      citations.push({ sourceType: h.sourceType, sourceId: h.sourceId, title: h.title });
+    }
+    on.citations(citations);
+
+    let answer: string;
+    if (!hits.length) {
+      answer = 'В базе знаний не нашлось материалов по этому вопросу. Возможно, стоит переиндексировать знания или задать вопрос иначе.';
+      on.delta(answer);
+    } else {
+      const context = hits.map((h, i) => `[${i + 1}] (${h.sourceType}${h.title ? `: ${h.title}` : ''})\n${h.snippet}`).join('\n\n');
+      answer = (await this.ai.generateStream(tenantId, system, `Вопрос: ${q}\n\nКОНТЕКСТ:\n${context}`, on.delta, 'brain', {
+        promptVersionId: versionId, model: prompt?.model, params: prompt?.params,
+      })).trim() || 'Не удалось сформировать ответ.';
+    }
+
+    await this.redis.setJson(exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
+    if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId).catch(() => undefined);
+
+    return this.finish(tenantId, conversationId, answer, citations, 'miss', versionId);
+  }
+
   /** Сохраняет ответ ассистента, метерит cache-hit, возвращает результат (+ версию промпта для аудита 👍/👎). */
   private async finish(
     tenantId: string, conversationId: string, answer: string, citations: any[],

@@ -190,6 +190,40 @@ export const api = {
   // AI Brain (Этап 5, K2)
   brainStart: () => request<{ id: string }>('POST', '/brain/conversations'),
   brainAsk: (id: string, question: string, projectId?: string) => request<{ answer: string; citations: any[]; cached: boolean; promptVersionId: string | null }>('POST', `/brain/conversations/${id}/ask`, { question, projectId }),
+  /** Стрим ответа Brain (SSE): onCitations → onDelta* → onDone|onError. Возвращает true, если поток отработал. */
+  brainAskStream: async (
+    id: string, question: string, projectId: string | undefined,
+    on: { onCitations?: (c: any[]) => void; onDelta?: (t: string) => void; onDone?: (d: { messageId: string; cached: boolean; promptVersionId: string | null }) => void; onError?: (m: string) => void },
+  ): Promise<boolean> => {
+    const res = await fetch(`${BASE}/brain/conversations/${id}/ask/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}) },
+      body: JSON.stringify({ question, projectId }),
+    });
+    if (!res.ok || !res.body) return false; // вызывающий откатится на нестрим-brainAsk
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let sep: number;
+      while ((sep = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        const ev = /event: (.+)/.exec(block)?.[1];
+        const dm = /data: ([\s\S]+)/.exec(block)?.[1];
+        if (!ev || !dm) continue;
+        let data: any; try { data = JSON.parse(dm); } catch { continue; }
+        if (ev === 'citations') on.onCitations?.(data.citations);
+        else if (ev === 'delta') on.onDelta?.(data.text);
+        else if (ev === 'done') on.onDone?.(data);
+        else if (ev === 'error') on.onError?.(data.message);
+      }
+    }
+    return true;
+  },
   aiUsage: () => request<{ totalCalls: number; cacheHits: number; cacheHitRatio: number; byFeature: any[] }>('GET', '/ai/usage'),
   aiSettingsGet: () => request<any>('GET', '/ai/settings'),
   aiSettingsSave: (b: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; brainModel?: string }) => request<any>('PUT', '/ai/settings', b),

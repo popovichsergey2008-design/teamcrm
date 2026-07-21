@@ -71,6 +71,22 @@ export class AiService {
     return text;
   }
 
+  /** Потоковая генерация (Brain «печатается»): маскирование + метеринг как в generate(); onDelta — фрагменты. */
+  async generateStream(
+    tenantId: string, system: string, user: string, onDelta: (t: string) => void, feature = 'brain',
+    opts?: { promptVersionId?: string | null; model?: string | null; params?: Record<string, unknown> },
+  ): Promise<string> {
+    const { provider, brainModel } = await this.providerFor(tenantId);
+    const masked = maskPII(user).masked;
+    const model = opts?.model || brainModel;
+    const maxTokens = typeof opts?.params?.max_tokens === 'number' ? (opts.params.max_tokens as number) : undefined;
+    const text = await provider.generateStream(system, masked, { model: opts?.model || undefined, maxTokens }, onDelta);
+    await this.recordUsage(
+      tenantId, feature, model, estimateTokens(system + masked), estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
+    );
+    return text;
+  }
+
   /** Эмбеддинг текста (PII маскируется до провайдера) + durable-метеринг. */
   async embed(tenantId: string, text: string, feature = 'embedding'): Promise<number[]> {
     const { provider, embedModel } = await this.providerFor(tenantId);

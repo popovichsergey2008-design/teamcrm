@@ -82,6 +82,27 @@ describe('AI Brain (e2e)', () => {
     expect(usage.cacheHitRatio).toBeGreaterThan(0);
   });
 
+  it('стрим (SSE): события citations → delta → done; ответ сохранён в истории', async () => {
+    const a = (await http.post('/api/auth/register').send({ tenantName: 'Brain-Stream', email: `s_${uniq()}@t.test`, password: 'password123', fullName: 'С' }).expect(201)).body.data;
+    const tok = a.accessToken;
+    await http.post('/api/regulations').set(H(tok)).send({ title: 'Онбординг', body: 'Новичок получает доступы, читает регламенты и берёт первую задачу из беклога.' }).expect(201);
+    expect(await waitChunks(tok)).toBe(true);
+
+    const conv = (await http.post('/api/brain/conversations').set(H(tok)).expect(201)).body.data;
+    // @Res()-эндпоинт: supertest буферизует весь SSE-ответ (res.end вызывается). Content-Type — event-stream.
+    const res = await http.post(`/api/brain/conversations/${conv.id}/ask/stream`).set(H(tok)).send({ question: 'как проходит онбординг?' }).expect(200);
+    expect(res.headers['content-type']).toContain('text/event-stream');
+    expect(res.text).toContain('event: citations');
+    expect(res.text).toContain('event: delta');
+    expect(res.text).toContain('event: done');
+
+    // ответ ассистента сохранён (вопрос + ответ)
+    const msgs = (await http.get(`/api/brain/conversations/${conv.id}/messages`).set(H(tok)).expect(200)).body.data;
+    expect(msgs.length).toBe(2);
+    expect(msgs[1].role).toBe('assistant');
+    expect(msgs[1].content.length).toBeGreaterThan(0);
+  });
+
   it('чужой диалог недоступен (изоляция по пользователю/tenant)', async () => {
     const a = (await http.post('/api/auth/register').send({ tenantName: 'Brain-Own', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'A' }).expect(201)).body.data;
     const conv = (await http.post('/api/brain/conversations').set(H(a.accessToken)).expect(201)).body.data;

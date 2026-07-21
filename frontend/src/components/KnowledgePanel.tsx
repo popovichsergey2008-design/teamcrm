@@ -98,23 +98,37 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
 
   // AI Brain
   const [convId, setConvId] = useState<string | null>(null);
-  const [chat, setChat] = useState<{ role: string; content: string; citations?: any[]; cached?: boolean; promptVersionId?: string | null; rated?: 1 | -1 }[]>([]);
+  const [chat, setChat] = useState<{ role: string; content: string; citations?: any[]; cached?: boolean; promptVersionId?: string | null; rated?: 1 | -1; _id?: string }[]>([]);
   const [ask, setAsk] = useState('');
   const [thinking, setThinking] = useState(false);
   const sendAsk = async () => {
     const q = ask.trim();
     if (q.length < 2) return;
     setAsk('');
-    setChat((c) => [...c, { role: 'user', content: q }]);
+    // стабильный id сообщения ассистента, в которое «печатается» ответ (безопасно к StrictMode)
+    const aid = `a${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    setChat((c) => [...c, { role: 'user', content: q }, { role: 'assistant', content: '', _id: aid }]);
     setThinking(true);
+    const patch = (p: Partial<{ content: string; citations: any[]; cached: boolean; promptVersionId: string | null }>) =>
+      setChat((c) => c.map((m) => (m._id === aid ? { ...m, ...p } : m)));
     try {
       let id = convId;
       if (!id) { id = (await api.brainStart()).id; setConvId(id); }
-      const r = await api.brainAsk(id, q, scope || undefined);
-      setChat((c) => [...c, { role: 'assistant', content: r.answer, citations: r.citations, cached: r.cached, promptVersionId: r.promptVersionId }]);
+      let acc = '';
+      const streamed = await api.brainAskStream(id, q, scope || undefined, {
+        onCitations: (cites) => patch({ citations: cites }),
+        onDelta: (t) => { acc += t; patch({ content: acc }); },
+        onDone: (d) => patch({ cached: d.cached, promptVersionId: d.promptVersionId }),
+        onError: (m) => patch({ content: acc || m }),
+      });
+      if (!streamed) {
+        // стрим недоступен (напр. истёк токен) → обычный запрос с авто-рефрешем
+        const r = await api.brainAsk(id, q, scope || undefined);
+        patch({ content: r.answer, citations: r.citations, cached: r.cached, promptVersionId: r.promptVersionId });
+      }
       if (canManage) api.aiUsage().then(setUsage).catch(() => undefined);
     } catch (e) {
-      setChat((c) => [...c, { role: 'assistant', content: e instanceof ApiError ? e.message : 'Ошибка' }]);
+      patch({ content: e instanceof ApiError ? e.message : 'Ошибка' });
     } finally { setThinking(false); }
   };
   const citeLabel = (c: any) => (c.sourceType === 'task' ? 'задача' : c.sourceType === 'comment' ? 'комментарий' : 'регламент') + (c.title ? `: ${c.title}` : '');
@@ -162,7 +176,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
               {chat.map((m, i) => (
                 <div key={i} className={`brain-msg brain-${m.role}`}>
                   {m.cached && <span className="badge" title="Ответ из кэша, без обращения к ИИ" style={{ marginBottom: 4, display: 'inline-block' }}>⚡ из кэша</span>}
-                  <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}{m.role === 'assistant' && thinking && !m.content && <span className="dim">думаю…</span>}</div>
                   {m.citations && m.citations.length > 0 && (
                     <div className="brain-cites">
                       {m.citations.map((c, j) => <span key={j} className="badge" title={citeLabel(c)}>[{j + 1}] {citeLabel(c).slice(0, 40)}</span>)}
