@@ -33,7 +33,7 @@ export class InboxRepository {
     await this.db.query(`DELETE FROM inbox_sources WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
   }
 
-  createItem(i: { tenantId: string; sourceId: string; sender: string | null; subject: string | null; body: string }) {
+  createItem(i: { tenantId: string; sourceId: string | null; sender: string | null; subject: string | null; body: string }) {
     return this.db.one<{ id: string }>(
       `INSERT INTO inbox_items (tenant_id, source_id, sender, subject, body) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
       [i.tenantId, i.sourceId, i.sender, i.subject, i.body],
@@ -52,9 +52,11 @@ export class InboxRepository {
     return this.db.one<any>(`SELECT * FROM inbox_items WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
   }
   listItems(tenantId: string, status: string) {
+    // LEFT JOIN: голосовые заметки без канала (source_id IS NULL) помечаем «Голос».
     return this.db.many(
-      `SELECT i.id, i.sender, i.subject, i.body, i.status, i.draft, i.task_id, i.created_at, s.label AS source_label
-         FROM inbox_items i JOIN inbox_sources s ON s.id=i.source_id
+      `SELECT i.id, i.sender, i.subject, i.body, i.status, i.draft, i.task_id, i.created_at,
+              CASE WHEN i.source_id IS NULL THEN 'Голос' ELSE s.label END AS source_label
+         FROM inbox_items i LEFT JOIN inbox_sources s ON s.id=i.source_id
         WHERE i.tenant_id=$1 AND i.status=$2 ORDER BY i.created_at DESC LIMIT 200`,
       [tenantId, status],
     );

@@ -102,6 +102,12 @@ describe('Inbox — авто-задачи из переписок (e2e)', () => 
     const memTok = (await http$.post('/api/auth/login').send({ email: memEmail, password: 'password123' }).expect(201)).body.data.accessToken;
     await http$.get('/api/inbox/sources').set(H(memTok)).expect(403);
 
+    // голосовая заметка: multipart-аудио принимается; под mock Whisper речь пустая → 400 (нужен ключ)
+    await http$.post('/api/inbox/voice').set(H(tok))
+      .attach('audio', Buffer.from('fake audio bytes'), 'note.webm').expect(400);
+    // без файла → 400
+    await http$.post('/api/inbox/voice').set(H(tok)).expect(400);
+
     // удаление канала
     await http$.delete(`/api/inbox/sources/${source.id}`).set(H(tok)).expect(200);
     const after = (await http$.get('/api/inbox/sources').set(H(tok)).expect(200)).body.data;

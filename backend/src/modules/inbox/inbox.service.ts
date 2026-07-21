@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { AppException } from '../../common/http/app-exception';
+import { AiService } from '../ai/ai.service';
 import { NlService } from '../nl/nl.service';
 import { InboxRepository } from './inbox.repository';
 
@@ -11,6 +12,7 @@ export class InboxService {
   constructor(
     private readonly repo: InboxRepository,
     private readonly nl: NlService,
+    private readonly ai: AiService,
   ) {}
 
   // ── каналы ──
@@ -48,6 +50,18 @@ export class InboxService {
     });
     void this.parseItem(source, item!.id, subject, body);
     return { received: true, itemId: item!.id };
+  }
+
+  // ── голосовая заметка (надиктовал в приложении) ──
+  /** Аудио-запись → Whisper → черновик задачи на ревью (тот же конвейер, что письмо; без канала). */
+  async captureVoice(tenantId: string, userId: string, audio: Buffer, filename: string, defaultProjectId?: string) {
+    const text = (await this.ai.transcribeAudio(tenantId, audio, filename)).trim();
+    if (!text) throw AppException.validation('Речь не распознана. Нужен ключ OpenAI (Whisper) в «Интеграции → ИИ».');
+    const item = await this.repo.createItem({
+      tenantId, sourceId: null, sender: 'Голосовая заметка', subject: null, body: text.slice(0, 20000),
+    });
+    void this.parseItem({ tenant_id: tenantId, created_by: userId, default_project_id: defaultProjectId || null }, item!.id, null, text);
+    return { itemId: item!.id, text };
   }
 
   /** Фоново распознаёт задачу из сообщения (NL-ядро) и сохраняет черновик на ревью. */

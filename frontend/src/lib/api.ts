@@ -248,6 +248,16 @@ export const api = {
   inboxCreateSource: (label?: string, defaultProjectId?: string) => request<any>('POST', '/inbox/sources', { label, defaultProjectId }),
   inboxDeleteSource: (id: string) => request<any>('DELETE', `/inbox/sources/${id}`),
   inboxItems: (status = 'pending') => request<any[]>('GET', `/inbox/items?status=${status}`),
+  /** Голосовая заметка → черновик задачи на ревью (Whisper). */
+  inboxVoice: async (blob: Blob, defaultProjectId?: string): Promise<{ itemId: string; text: string }> => {
+    const fd = new FormData();
+    fd.append('audio', blob, 'note.webm');
+    if (defaultProjectId) fd.append('defaultProjectId', defaultProjectId);
+    const res = await fetch(`${BASE}/inbox/voice`, { method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd });
+    const env = await res.json().catch(() => ({ ok: false }));
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Ошибка распознавания речи');
+    return env.data;
+  },
   inboxConfirm: (id: string, task: any) => request<any>('POST', `/inbox/items/${id}/confirm`, { task }),
   inboxDismiss: (id: string) => request<any>('POST', `/inbox/items/${id}/dismiss`),
   knowledgeSources: (p: { projectId?: string; type?: string; q?: string; offset?: number }) => {

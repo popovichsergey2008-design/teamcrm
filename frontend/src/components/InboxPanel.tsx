@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 
-/** Авто-задачи из переписок: каналы приёма (вебхук) + ревью черновиков задач из входящих сообщений. */
+/** Авто-задачи из переписок: каналы приёма (вебхук) + голосовые заметки + ревью черновиков задач. */
 export function InboxPanel({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<'items' | 'sources'>('items');
   const [sources, setSources] = useState<any[]>([]);
@@ -11,6 +11,10 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
   const [edits, setEdits] = useState<Record<string, any>>({});
   const [form, setForm] = useState({ label: '', defaultProjectId: '' });
   const [msg, setMsg] = useState('');
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3500); };
 
   const loadSources = () => api.inboxSources().then(setSources).catch(() => undefined);
@@ -60,6 +64,36 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
     try { await api.inboxDismiss(id); loadItems(); loadSources(); } catch { /* */ }
   };
 
+  // голосовая заметка → черновик задачи на ревью (тот же список «Черновики»)
+  const startRec = async () => {
+    setMsg('');
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') return flash('Браузер не поддерживает запись с микрофона');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setRecording(false);
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
+        if (!blob.size) return;
+        setTranscribing(true);
+        try {
+          await api.inboxVoice(blob);
+          flash('Заметка распознана — черновик в списке');
+          loadItems();
+        } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка распознавания речи'); }
+        finally { setTranscribing(false); }
+      };
+      mr.start();
+      recRef.current = mr;
+      setRecording(true);
+    } catch { flash('Нет доступа к микрофону'); }
+  };
+  const toggleRec = () => (recording ? recRef.current?.stop() : startRec());
+  useEffect(() => () => { if (recRef.current && recRef.current.state !== 'inactive') recRef.current.stop(); }, []);
+
   const hookUrl = (token: string) => `${window.location.origin}/api/inbox/hook/${token}`;
 
   return (
@@ -75,7 +109,16 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
 
         {tab === 'items' && (
           <>
-            {items.length === 0 && <div className="muted" style={{ marginTop: 10 }}>Черновиков нет. Как придёт письмо на вебхук канала — здесь появится предложенная задача.</div>}
+            <button
+              className={`btn btn-sm ${recording ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ width: '100%', marginTop: 8 }}
+              onClick={toggleRec}
+              disabled={transcribing}
+              title="Продиктовать задачу голосом — ИИ распознает и предложит черновик"
+            >
+              {recording ? '⏺ Остановить и распознать' : transcribing ? 'Распознаю речь…' : '🎤 Надиктовать задачу'}
+            </button>
+            {items.length === 0 && <div className="muted" style={{ marginTop: 10 }}>Черновиков нет. Надиктуйте задачу или пришлите письмо на вебхук канала — здесь появится предложенная задача.</div>}
             {items.map((it) => {
               const e = edits[it.id] ?? {};
               return (

@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseInterceptors } from '@nestjs/common';
-import { AnyFilesInterceptor } from '@nestjs/platform-express';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
+import { AppException } from '../../common/http/app-exception';
 import { InboxService } from './inbox.service';
 
 class CreateSourceDto {
@@ -34,6 +35,14 @@ export class InboxController {
   @Delete('sources/:id')
   deleteSource(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.inbox.deleteSource(u.tenantId, id);
+  }
+
+  /** Голосовая заметка: надиктовал (multipart 'audio') → Whisper → черновик задачи на ревью. */
+  @Post('voice')
+  @UseInterceptors(FileInterceptor('audio', { limits: { fileSize: 25 * 1024 * 1024 } }))
+  voice(@CurrentUser() u: AuthUser, @Body('defaultProjectId') defaultProjectId?: string, @UploadedFile() file?: Express.Multer.File) {
+    if (!file?.buffer?.length) throw AppException.validation('Аудио не получено');
+    return this.inbox.captureVoice(u.tenantId, u.userId, file.buffer, file.originalname || 'note.webm', defaultProjectId);
   }
 
   @Get('items')
