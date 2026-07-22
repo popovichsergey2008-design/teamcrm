@@ -20,14 +20,25 @@ const DRAFT_SYSTEM = [
   'Не выдумывай фактов вне контекста. Это черновик для человека — он проверит и решит, использовать ли.',
 ].join(' ');
 
+const OFFLINE_MARKER = '[НЕ АВТОМАТИЗИРУЕТСЯ]';
+
 // Агент-исполнитель: сразу выдаёт готовый результат (v1 — текстовые задачи: письма/КП/посты/документы/данные).
 const EXECUTE_SYSTEM = [
   'Ты — ИИ-исполнитель в CRM. ВЫПОЛНИ задачу и верни ГОТОВЫЙ результат на русском —',
   'готовый к использованию текст (письмо, коммерческое предложение, пост, документ или структурированные данные),',
   'а не план и не «вот черновик». Опирайся на описание задачи и КОНТЕКСТ из базы знаний, ссылайся на источники [1],[2].',
   'Если критичных данных не хватает — сделай разумное предположение и явно пометь «[требует уточнения: …]».',
-  'Результат пойдёт человеку на проверку — выдай законченный текст.',
+  `Если задача требует ФИЗИЧЕСКОГО или офлайн-действия человека (звонок, встреча, съёмка, дизайн-макет, покупка, доставка) и НЕ сводится к тексту — начни ответ строго с «${OFFLINE_MARKER}» и коротко объясни, что должен сделать человек.`,
+  'Иначе — выдай законченный текст (он пойдёт человеку на проверку).',
 ].join(' ');
+
+/** Грубая эвристика: задача явно про офлайн/физическое действие (для отказа без обращения к LLM). */
+function looksOffline(text: string): boolean {
+  const t = text.toLowerCase();
+  const signals = ['позвон', 'созвон', 'перезвон', 'встретит', 'встреча с', 'съездить', 'командировк', 'курьер',
+    'распечатать', 'напечатать', 'отсканир', 'съёмк', 'съемк', 'фотосъ', 'видеосъ', 'замерить', 'замер объект'];
+  return signals.some((s) => t.includes(s));
+}
 
 @Injectable()
 export class AgentsService {
@@ -141,15 +152,26 @@ export class AgentsService {
         : '(в базе знаний нет релевантных материалов — действуй по здравому смыслу и отметь это)';
       const userMsg = `Задача: ${task.title}\n${task.description ?? ''}\n\nКОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ:\n${context}${opts.extra ?? ''}`;
 
-      const answer = (await this.ai.generate(tenantId, opts.system, userMsg, opts.feature)).trim() || opts.fallback;
-      const citeLine = citations.length
+      // классификатор пригодности (только для выполнения): явно офлайн-задачу не гоняем через LLM
+      const preOffline = opts.moveToTesting && looksOffline(`${task.title} ${task.description ?? ''}`);
+      const answer = preOffline
+        ? `${OFFLINE_MARKER} Задача требует действий человека (звонок/встреча/офлайн) — ИИ-агент не может её выполнить. Оставил задачу как есть.`
+        : (await this.ai.generate(tenantId, opts.system, userMsg, opts.feature)).trim() || opts.fallback;
+      const declined = opts.moveToTesting && answer.startsWith(OFFLINE_MARKER);
+
+      const citeLine = !declined && citations.length
         ? `\n\n—\nИсточники: ${citations.map((c, i) => `[${i + 1}] ${c.title ?? c.sourceType}`).join('; ')}`
         : '';
-      const body = `${opts.commentPrefix}\n\n${answer}${citeLine}`;
+      const body = `${declined ? '🤖 ИИ-агент: задача не автоматизируется' : opts.commentPrefix}\n\n${answer}${citeLine}`;
 
       const comment: any = await this.taskcard.addComment(tenantId, taskId, userId, body, false);
 
-      // авто-перенос на проверку: результат исполнителя едет в колонку тестирования (не закрывается)
+      // отказ → не переносим и помечаем запуск; иначе авто-перенос результата на проверку (не закрываем)
+      if (declined) {
+        await this.repo.declineRun(run.id, answer, comment?.id ?? null);
+        return { id: run.id, kind: opts.kind, status: 'declined', declined: true, result: answer, commentId: comment?.id ?? null, citations: [], movedTo: null };
+      }
+
       let movedTo: string | null = null;
       if (opts.moveToTesting) {
         const col = await this.projects.findTestingColumn(tenantId, task.project_id);
@@ -159,11 +181,11 @@ export class AgentsService {
         }
       }
 
-      const inputTokens = Math.ceil(userMsg.length / 4);
-      const outputTokens = Math.ceil(answer.length / 4);
+      const inputTokens = preOffline ? 0 : Math.ceil(userMsg.length / 4);
+      const outputTokens = preOffline ? 0 : Math.ceil(answer.length / 4);
       await this.repo.finishRun(run.id, { result: answer, commentId: comment?.id ?? null, citations, inputTokens, outputTokens });
 
-      return { id: run.id, kind: opts.kind, status: 'done', result: answer, commentId: comment?.id ?? null, citations, movedTo };
+      return { id: run.id, kind: opts.kind, status: 'done', declined: false, result: answer, commentId: comment?.id ?? null, citations, movedTo };
     } catch (e) {
       this.log.warn(`agent run ${run.id} (${opts.kind}) failed: ${(e as Error).message}`);
       await this.repo.failRun(run.id, (e as Error).message);

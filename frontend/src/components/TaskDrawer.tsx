@@ -246,6 +246,7 @@ function AgentTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
     done: { label: 'на ревью', cls: 'badge-warn' },
     accepted: { label: 'принят', cls: 'badge-ok' },
     rejected: { label: 'отклонён', cls: 'badge-muted' },
+    declined: { label: 'не автоматизируется', cls: 'badge-muted' },
     failed: { label: 'ошибка', cls: 'badge-danger' },
   } as Record<string, { label: string; cls: string }>)[s] ?? { label: s, cls: 'badge-muted' });
 
@@ -260,7 +261,9 @@ function AgentTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
     setBusy(true); setMsg('');
     try {
       const r = await api.agentExecute(taskId);
-      flash(r.movedTo ? `Выполнено — задача перенесена в «${r.movedTo}» на проверку` : 'Выполнено — результат в обсуждении задачи');
+      flash(r.declined
+        ? 'Задача требует человека — агент не может её выполнить (см. пояснение ниже)'
+        : r.movedTo ? `Выполнено — задача перенесена в «${r.movedTo}» на проверку` : 'Выполнено — результат в обсуждении задачи');
       reload(); onRefresh();
     } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка выполнения'); }
     finally { setBusy(false); }

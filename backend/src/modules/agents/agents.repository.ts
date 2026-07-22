@@ -48,6 +48,14 @@ export class AgentsRepository {
     await this.db.query(`UPDATE agent_runs SET status=$2 WHERE id=$1`, [id, outcome]);
   }
 
+  /** Отказ агента (задача не автоматизируется): фиксируем результат-пояснение и статус. */
+  async declineRun(id: string, note: string, commentId: string | null): Promise<void> {
+    await this.db.query(
+      `UPDATE agent_runs SET status='declined', result=$2, comment_id=$3, finished_at=now() WHERE id=$1`,
+      [id, note, commentId],
+    );
+  }
+
   listForTask(tenantId: string, taskId: string) {
     return this.db.many(
       `SELECT id, kind, status, result, comment_id, citations, input_tokens, output_tokens, error, created_by, created_at, finished_at

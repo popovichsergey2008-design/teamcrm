@@ -79,6 +79,30 @@ describe('AI-агенты (e2e)', () => {
     expect(comments.some((c: any) => /Результат ИИ-агента/.test(c.body))).toBe(true);
   });
 
+  it('v3 классификатор: офлайн-задачу (звонок/встреча) агент не выполняет и НЕ переносит', async () => {
+    const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag-Cl', email: `acl_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const tok = a.accessToken;
+    const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Кл' }).expect(201)).body.data;
+    const board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+    const firstCol = board.columns[0];
+    const task = (await http.post('/api/tasks').set(H(tok)).send({
+      projectId: proj.id, columnId: firstCol.id, title: 'Позвонить клиенту и встретиться в офисе',
+    }).expect(201)).body.data;
+
+    const run = (await http.post(`/api/agents/tasks/${task.id}/execute`).set(H(tok)).expect(201)).body.data;
+    expect(run.declined).toBe(true);
+    expect(run.status).toBe('declined');
+    expect(run.movedTo).toBeNull();
+
+    // задача осталась в исходной колонке (не переехала в «На тестировании»)
+    const b2 = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+    const stillFirst = b2.columns.find((c: any) => c.id === firstCol.id).tasks.some((t: any) => t.id === task.id);
+    expect(stillFirst).toBe(true);
+    // в журнале статус declined
+    const runs = (await http.get(`/api/agents/tasks/${task.id}/runs`).set(H(tok)).expect(200)).body.data;
+    expect(runs[0].status).toBe('declined');
+  });
+
   it('v2 доработка: результат выполнения возвращается агенту на доработку (черновик — нельзя)', async () => {
     const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag-RW', email: `arw_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
     const tok = a.accessToken;
