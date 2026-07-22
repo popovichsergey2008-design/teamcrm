@@ -24,7 +24,10 @@
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--bg-elev);
 }
-.topbar-right { display: flex; align-items: center; gap: 12px; }
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+/* группа разделов — визуально отделена от быстрой кнопки и меню профиля */
+.topbar-nav { display: flex; align-items: center; gap: 4px; padding: 0 6px; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+.topbar-nav .btn { white-space: nowrap; }
 
 /* board layout */
 .board-layout { display: flex; flex: 1; min-height: 0; }
@@ -234,9 +237,23 @@
 
 /* профиль / аватары */
 .org-switch { background: var(--bg-elev-2); color: var(--text); border: 1px solid var(--border-2); border-radius: var(--radius-sm); padding: 6px 10px; max-width: 220px; cursor: pointer; }
-.profile-btn { display: inline-flex; align-items: center; gap: 8px; background: none; border: none; cursor: pointer; padding: 2px 4px; border-radius: var(--radius-sm); }
+.profile-btn { display: inline-flex; align-items: center; gap: 8px; background: none; border: none; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); color: var(--text); }
 .profile-btn:hover { background: var(--bg-elev-2); }
+.profile-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-btn .caret { opacity: .55; font-size: 11px; }
 .avatar-sm { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+
+/* меню профиля */
+.user-menu { position: relative; }
+.menu-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); min-width: 190px; z-index: 60;
+  background: var(--bg-elev); border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 6px;
+}
+.menu-role { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; opacity: .55; padding: 4px 8px 6px; }
+.menu-item { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--text); font: inherit; padding: 8px; border-radius: var(--radius-sm); cursor: pointer; }
+.menu-item:hover { background: var(--bg-elev-2); }
+.menu-danger { color: var(--danger, #e5484d); }
 .avatar-lg { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; }
 .avatar-ph { display: inline-grid; place-items: center; background: var(--accent-2); color: #fff; font-weight: 700; }
 .avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }

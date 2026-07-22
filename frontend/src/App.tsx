@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from './state/auth';
 import { api } from './lib/api';
 import { LoginPage } from './pages/LoginPage';
@@ -23,7 +23,17 @@ export function App() {
   const [showClients, setShowClients] = useState(false);
   const [showNl, setShowNl] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // закрытие меню профиля по клику вне
+  useEffect(() => {
+    if (!menuOpen) return;
+    const h = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [menuOpen]);
 
   const onSwitchOrg = async (tenantId: string) => {
     if (tenantId === '__new__') {
@@ -71,35 +81,46 @@ export function App() {
             {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
             <option value="__new__">+ Создать организацию…</option>
           </select>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowNl(true)} title="Создать задачу/сделку обычным языком">
-            ⚡ Команда
+
+          <button className="btn btn-primary btn-sm" onClick={() => setShowNl(true)} title="Создать задачу или сделку обычным языком (текст или голос)">
+            ⚡ Создать
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)}>
-            База знаний
-          </button>
-          {(user.role === 'owner' || user.role === 'manager') && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowClients(true)}>
-              Клиенты
+
+          <nav className="topbar-nav" aria-label="Разделы">
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)} title="База знаний: спросить ИИ по архиву компании">
+              📚 База знаний
             </button>
-          )}
-          {(user.role === 'owner' || user.role === 'manager') && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowInbox(true)} title="Входящие письма → черновики задач">
-              📥 Входящие
+            {(user.role === 'owner' || user.role === 'manager') && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowClients(true)} title="Клиенты">
+                🤝 Клиенты
+              </button>
+            )}
+            {(user.role === 'owner' || user.role === 'manager') && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowInbox(true)} title="Входящие: письма и голосовые заметки → черновики задач">
+                📥 Входящие
+              </button>
+            )}
+            {user.role === 'owner' && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowIntegrations(true)} title="Интеграции: Битрикс24, ИИ-ключи, промпты, Telegram">
+                🔌 Интеграции
+              </button>
+            )}
+          </nav>
+
+          <div className="user-menu" ref={menuRef}>
+            <button className="profile-btn" onClick={() => setMenuOpen((v) => !v)} title="Профиль и настройки" aria-haspopup="menu" aria-expanded={menuOpen}>
+              <Avatar path={avatarPath} fallback={user.fullName?.[0] ?? '?'} className="avatar-sm" />
+              <span className="dim profile-name">{user.fullName}</span>
+              <span className="caret">▾</span>
             </button>
-          )}
-          {user.role === 'owner' && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowIntegrations(true)}>
-              Интеграции
-            </button>
-          )}
-          <button className="profile-btn" onClick={() => setShowProfile(true)} title="Личный кабинет">
-            <Avatar path={avatarPath} fallback={user.fullName?.[0] ?? '?'} className="avatar-sm" />
-            <span className="dim">{user.fullName}</span>
-          </button>
-          <span className="badge badge-role">{roleLabel(user.role)}</span>
-          <button className="btn btn-ghost btn-sm" onClick={logout}>
-            Выйти
-          </button>
+            {menuOpen && (
+              <div className="menu-pop" role="menu">
+                <div className="menu-role">{roleLabel(user.role)}</div>
+                <button className="menu-item" role="menuitem" onClick={() => { setShowProfile(true); setMenuOpen(false); }}>Личный кабинет</button>
+                <button className="menu-item menu-danger" role="menuitem" onClick={() => { setMenuOpen(false); logout(); }}>Выйти</button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
       <BoardPage key={user.tenantId} />

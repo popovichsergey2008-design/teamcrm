@@ -386,10 +386,10 @@ export function BoardPage() {
                 </span>
                 {!isClient && (
                   <span className="board-actions">
-                    <button className="btn btn-ghost btn-sm" onClick={() => setShowTeam(true)}>Команда</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setShowCopilot(true)}>Co-pilot</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowTeam(true)} title="Сотрудники, должности, группы, приглашения">👥 Команда</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowCopilot(true)} title="ИИ-рекомендации по проекту">🧭 Co-pilot</button>
                     {board.project.origin === 'bitrix' && (
-                      <button className="btn btn-ghost btn-sm" onClick={() => setShowFeed(true)}>Лента (импорт)</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setShowFeed(true)} title="Живая лента импортированного проекта">📰 Лента</button>
                     )}
                   </span>
                 )}
