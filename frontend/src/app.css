@@ -254,6 +254,11 @@
 .menu-item { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--text); font: inherit; padding: 8px; border-radius: var(--radius-sm); cursor: pointer; }
 .menu-item:hover { background: var(--bg-elev-2); }
 .menu-danger { color: var(--danger, #e5484d); }
+
+/* тулбар секции (заголовок + действие) и сворачиваемая область добавления */
+.panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 12px; }
+.add-area { background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px 4px; margin-bottom: 14px; }
+.add-area .drawer-section-title:first-of-type { margin-top: 2px; }
 .avatar-lg { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; }
 .avatar-ph { display: inline-grid; place-items: center; background: var(--accent-2); color: #fff; font-weight: 700; }
 .avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }

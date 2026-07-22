@@ -143,7 +143,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>База знаний</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3>📚 База знаний</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
         <div className="dim" style={{ fontSize: 12 }}>
           В индексе: {stats?.chunks ?? '—'} фрагментов из {stats?.sources ?? '—'} источников (закрытые задачи, комментарии, регламенты).
           {usage && <> · ИИ-вызовов: {usage.totalCalls}, из кэша: {Math.round(usage.cacheHitRatio * 100)}%</>}

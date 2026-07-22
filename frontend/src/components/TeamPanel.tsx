@@ -18,6 +18,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
   const [links, setLinks] = useState<any[]>([]);
   const [linkForm, setLinkForm] = useState({ role: 'member', maxUses: '', expiresInDays: '' });
   const [newLink, setNewLink] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
 
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 2500); };
   const reload = async () => {
@@ -91,7 +92,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>Команда</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3>👥 Команда</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
         <div className="tabs">
           <button className={`tab ${tab === 'people' ? 'active' : ''}`} onClick={() => setTab('people')}>Сотрудники</button>
           <button className={`tab ${tab === 'positions' ? 'active' : ''}`} onClick={() => setTab('positions')}>Должности</button>
@@ -101,67 +102,79 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
 
         {tab === 'people' && (
           <>
-            <div className="drawer-section-title">Пригласить по ссылке</div>
-            <div className="add-user">
-              <input className="input add-user-input" placeholder="E-mail" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} />
-              <div className="drawer-grid2">
-                <select className="input" value={inv.role} onChange={(e) => setInv({ ...inv, role: e.target.value })}>{roleOptions}</select>
-                <select className="input" value={inv.positionId} onChange={(e) => setInv({ ...inv, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-              </div>
-              <button className="btn btn-sm" onClick={sendInvite}>Создать ссылку-приглашение</button>
-              {invite && (
-                <div className="invite-box">
-                  Ссылка для {invite.email}:
-                  <input className="input" readOnly value={invite.link} onFocus={(e) => e.currentTarget.select()} />
-                </div>
-              )}
+            <div className="panel-toolbar">
+              <div className="drawer-section-title" style={{ margin: 0 }}>Сотрудники ({users.length})</div>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowAdd((v) => !v)}>{showAdd ? 'Скрыть' : '＋ Добавить людей'}</button>
             </div>
 
-            <div className="drawer-section-title">Многоразовая ссылка</div>
-            <div className="add-user">
-              <div className="dim" style={{ fontSize: 12 }}>Одна ссылка — много участников. Каждый вводит свой e-mail, имя и пароль. Можно задать лимит входов и срок (необязательно).</div>
-              <div className="drawer-grid2">
-                <select className="input" value={linkForm.role} onChange={(e) => setLinkForm({ ...linkForm, role: e.target.value })}>
-                  <option value="member">Участник</option>
-                  <option value="manager">Менеджер</option>
-                </select>
-                <input className="input" type="number" min={1} placeholder="Лимит входов" value={linkForm.maxUses} onChange={(e) => setLinkForm({ ...linkForm, maxUses: e.target.value })} />
-              </div>
-              <input className="input" type="number" min={1} placeholder="Срок действия, дней" value={linkForm.expiresInDays} onChange={(e) => setLinkForm({ ...linkForm, expiresInDays: e.target.value })} />
-              <button className="btn btn-sm" onClick={createLink}>Создать многоразовую ссылку</button>
-              {newLink && (
-                <div className="invite-box">
-                  Ссылка (можно раздать многим):
-                  <input className="input" readOnly value={newLink} onFocus={(e) => e.currentTarget.select()} />
-                </div>
-              )}
-            </div>
-            {links.length > 0 && links.map((l) => (
-              <div key={l.id} className={`team-row ${l.is_active ? '' : 'team-inactive'}`}>
-                <div className="team-head">
-                  <span>
-                    {roleLabel(l.role_code)} · вошло {l.uses}{l.max_uses ? ` из ${l.max_uses}` : ''}
-                    {!l.is_active && <span className="badge">отключена</span>}
-                    {l.expires_at && <span className="dim" style={{ fontSize: 11 }}> · до {new Date(l.expires_at).toLocaleDateString()}</span>}
-                  </span>
-                  {l.is_active && <button className="btn btn-ghost btn-sm" onClick={() => deleteLink(l.id)}>Отключить</button>}
-                </div>
-              </div>
-            ))}
+            {showAdd && (
+              <div className="add-area">
+                <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Выберите подходящий способ:</div>
 
-            <div className="drawer-section-title">Создать сразу</div>
-            <div className="add-user">
-              <input className="input add-user-input" placeholder="Имя" value={nu.fullName} onChange={(e) => setNu({ ...nu, fullName: e.target.value })} />
-              <input className="input add-user-input" placeholder="E-mail" value={nu.email} onChange={(e) => setNu({ ...nu, email: e.target.value })} />
-              <input className="input add-user-input" type="password" placeholder="Пароль (≥8)" value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} />
-              <div className="drawer-grid2">
-                <select className="input" value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })}>{roleOptions}</select>
-                <select className="input" value={nu.positionId} onChange={(e) => setNu({ ...nu, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-              </div>
-              <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={addUser}>Добавить сотрудника</button>
-            </div>
+                <div className="drawer-section-title">🔗 Ссылка для многих</div>
+                <div className="add-user">
+                  <div className="dim" style={{ fontSize: 12 }}>Одна ссылка — много участников (для чата/рассылки). Каждый вводит свои данные. Лимит и срок — по желанию.</div>
+                  <div className="drawer-grid2">
+                    <select className="input" value={linkForm.role} onChange={(e) => setLinkForm({ ...linkForm, role: e.target.value })}>
+                      <option value="member">Участник</option>
+                      <option value="manager">Менеджер</option>
+                    </select>
+                    <input className="input" type="number" min={1} placeholder="Лимит входов" value={linkForm.maxUses} onChange={(e) => setLinkForm({ ...linkForm, maxUses: e.target.value })} />
+                  </div>
+                  <input className="input" type="number" min={1} placeholder="Срок действия, дней" value={linkForm.expiresInDays} onChange={(e) => setLinkForm({ ...linkForm, expiresInDays: e.target.value })} />
+                  <button className="btn btn-sm" onClick={createLink}>Создать ссылку</button>
+                  {newLink && (
+                    <div className="invite-box">
+                      Ссылка (можно раздать многим):
+                      <input className="input" readOnly value={newLink} onFocus={(e) => e.currentTarget.select()} />
+                    </div>
+                  )}
+                </div>
+                {links.length > 0 && links.map((l) => (
+                  <div key={l.id} className={`team-row ${l.is_active ? '' : 'team-inactive'}`}>
+                    <div className="team-head">
+                      <span>
+                        {roleLabel(l.role_code)} · вошло {l.uses}{l.max_uses ? ` из ${l.max_uses}` : ''}
+                        {!l.is_active && <span className="badge">отключена</span>}
+                        {l.expires_at && <span className="dim" style={{ fontSize: 11 }}> · до {new Date(l.expires_at).toLocaleDateString()}</span>}
+                      </span>
+                      {l.is_active && <button className="btn btn-ghost btn-sm" onClick={() => deleteLink(l.id)}>Отключить</button>}
+                    </div>
+                  </div>
+                ))}
 
-            <div className="drawer-section-title">Сотрудники ({users.length})</div>
+                <div className="drawer-section-title">✉️ Приглашение одному</div>
+                <div className="add-user">
+                  <div className="dim" style={{ fontSize: 12 }}>Персональная ссылка на конкретный e-mail (одноразовая).</div>
+                  <input className="input add-user-input" placeholder="E-mail" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} />
+                  <div className="drawer-grid2">
+                    <select className="input" value={inv.role} onChange={(e) => setInv({ ...inv, role: e.target.value })}>{roleOptions}</select>
+                    <select className="input" value={inv.positionId} onChange={(e) => setInv({ ...inv, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                  </div>
+                  <button className="btn btn-sm" onClick={sendInvite}>Создать приглашение</button>
+                  {invite && (
+                    <div className="invite-box">
+                      Ссылка для {invite.email}:
+                      <input className="input" readOnly value={invite.link} onFocus={(e) => e.currentTarget.select()} />
+                    </div>
+                  )}
+                </div>
+
+                <div className="drawer-section-title">⌨️ Создать вручную</div>
+                <div className="add-user">
+                  <div className="dim" style={{ fontSize: 12 }}>Сразу задать пароль (без письма-приглашения).</div>
+                  <input className="input add-user-input" placeholder="Имя" value={nu.fullName} onChange={(e) => setNu({ ...nu, fullName: e.target.value })} />
+                  <input className="input add-user-input" placeholder="E-mail" value={nu.email} onChange={(e) => setNu({ ...nu, email: e.target.value })} />
+                  <input className="input add-user-input" type="password" placeholder="Пароль (≥8)" value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} />
+                  <div className="drawer-grid2">
+                    <select className="input" value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })}>{roleOptions}</select>
+                    <select className="input" value={nu.positionId} onChange={(e) => setNu({ ...nu, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                  </div>
+                  <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={addUser}>Добавить сотрудника</button>
+                </div>
+              </div>
+            )}
+
             {users.map((u) => (
               <div key={u.id} className={`team-row ${u.isActive ? '' : 'team-inactive'}`}>
                 <div className="team-head">

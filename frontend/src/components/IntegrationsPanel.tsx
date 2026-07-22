@@ -33,7 +33,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>Интеграции</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3>🔌 Интеграции</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
         <div className="tabs">
           <button className={`tab ${tab === 'bitrix' ? 'active' : ''}`} onClick={() => setTab('bitrix')}>Битрикс24</button>
           <button className={`tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')}>ИИ (ключи и модель)</button>
