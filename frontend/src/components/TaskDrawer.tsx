@@ -7,6 +7,7 @@ import { MONETIZATION_ENABLED } from '../config';
 interface Props {
   task: Task;
   users: User[];
+  columns?: { id: string; name: string }[];
   canManage?: boolean;
   timerActive: boolean;
   onToggleTimer: (taskId: string) => void;
@@ -17,7 +18,7 @@ interface Props {
 type Tab = 'overview' | 'checklist' | 'files' | 'discussion' | 'agent';
 const PRIORITIES = [['low', 'низкий'], ['normal', 'обычный'], ['high', 'высокий'], ['urgent', 'срочно']];
 
-export function TaskDrawer({ task, users, canManage, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
+export function TaskDrawer({ task, users, columns = [], canManage, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
   const [estimate, setEstimate] = useState(task.estimate_hours ?? '');
@@ -51,6 +52,15 @@ export function TaskDrawer({ task, users, canManage, timerActive, onToggleTimer,
   const saveDesc = async () => { await api.updateTask(task.id, { description: desc }); onRefresh(); };
   const changePriority = async (p: string) => { setPriority(p); await api.updateTask(task.id, { priority: p }); onRefresh(); };
   const toggleBlocked = async () => { await api.updateTask(task.id, { isBlocked: !task.is_blocked }); onRefresh(); };
+  // сменить статус = переместить в колонку доски (наверх колонки)
+  const [moving, setMoving] = useState(false);
+  const moveToColumn = async (columnId: string) => {
+    if (columnId === task.column_id || moving) return;
+    setErr(''); setMoving(true);
+    try { await api.moveTask(task.id, { columnId, position: 0 }); onRefresh(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось сменить статус'); }
+    finally { setMoving(false); }
+  };
 
   const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
 
@@ -62,15 +72,36 @@ export function TaskDrawer({ task, users, canManage, timerActive, onToggleTimer,
           <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
         </div>
 
-        <div className="drawer-row">
-          <span className="badge badge-role">{task.status}</span>
-          {task.risk_level && <span className={`risk-dot risk-${task.risk_level}`} />}
-          {MONETIZATION_ENABLED && cost !== null && <span className="badge">₽ {cost.toLocaleString('ru-RU')}</span>}
-          {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
+        {columns.length > 0 && (
+          <div className="status-bar">
+            <span className="status-label">Статус</span>
+            <div className="status-pills">
+              {columns.map((c) => (
+                <button
+                  key={c.id}
+                  className={`status-pill ${c.id === task.column_id ? 'active' : ''}`}
+                  onClick={() => moveToColumn(c.id)}
+                  disabled={moving}
+                  title={c.id === task.column_id ? 'Текущая колонка' : `Переместить в «${c.name}»`}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="drawer-row card-meta">
           <select className="input prio-select" value={priority} onChange={(e) => changePriority(e.target.value)}>
             {PRIORITIES.map(([v, l]) => <option key={v} value={v}>приоритет: {l}</option>)}
           </select>
+          {task.risk_level && <span className={`badge risk-badge risk-${task.risk_level}`} title="Риск срыва срока">⚠ {task.risk_pct ?? '—'}%</span>}
+          {MONETIZATION_ENABLED && cost !== null && <span className="badge">₽ {cost.toLocaleString('ru-RU')}</span>}
+          <button className={`btn btn-ghost btn-sm ${task.is_blocked ? 'blocked-on' : ''}`} onClick={toggleBlocked} title="Блокировка задачи">
+            {task.is_blocked ? '🚫 BLOCKED' : 'Отметить BLOCKED'}
+          </button>
         </div>
+        {err && <div className="error-text">{err}</div>}
         <LabelsRow task={task} onRefresh={onRefresh} />
 
         <div className="tabs">
@@ -117,7 +148,6 @@ export function TaskDrawer({ task, users, canManage, timerActive, onToggleTimer,
                   <button className="btn btn-sm overload-confirm" onClick={() => assign(true)}>Всё равно назначить</button>
                 </div>
               )}
-              {err && <div className="error-text">{err}</div>}
               <button className="btn btn-primary drawer-assign" onClick={() => assign(false)}>Назначить</button>
             </div>
             <div className="drawer-section">
@@ -129,7 +159,6 @@ export function TaskDrawer({ task, users, canManage, timerActive, onToggleTimer,
               {task.predicted_finish_at && <div className="dim">Прогноз: {new Date(task.predicted_finish_at).toLocaleString('ru-RU')}</div>}
               <div className="dim">Исполнитель: {userName(assigneeId || null)} · Руководитель: {userName(managerId || null)}</div>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={toggleBlocked}>{task.is_blocked ? 'Снять блокер' : 'Отметить BLOCKED'}</button>
           </>
         )}
 

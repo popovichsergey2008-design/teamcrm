@@ -259,6 +259,25 @@
 .panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 12px; }
 .add-area { background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px 4px; margin-bottom: 14px; }
 .add-area .drawer-section-title:first-of-type { margin-top: 2px; }
+
+/* карточка задачи: панель статусов-колонок (клик = переезд в колонку доски) */
+.status-bar { display: flex; align-items: center; gap: 10px; margin: 12px 0 8px; flex-wrap: wrap; }
+.status-label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; opacity: .55; }
+.status-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.status-pill {
+  font-size: 12px; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--bg-elev-2); border: 1px solid var(--border-2); color: var(--text-dim);
+  transition: background .15s, border-color .15s, color .15s;
+}
+.status-pill:hover:not(.active):not(:disabled) { color: var(--text); border-color: var(--accent); }
+.status-pill.active { background: var(--accent-2); border-color: var(--accent); color: #fff; font-weight: 600; cursor: default; }
+.status-pill:disabled { opacity: .6; cursor: default; }
+/* meta-строка карточки: приоритет, риск, стоимость, блокер */
+.card-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.risk-badge.risk-high, .risk-badge.risk-critical { background: rgba(255,107,107,.12); color: var(--danger); border-color: rgba(255,107,107,.4); }
+.risk-badge.risk-medium { background: rgba(255,207,92,.14); color: var(--warn); border-color: rgba(255,207,92,.42); }
+.risk-badge.risk-low { background: rgba(87,217,163,.12); color: var(--ok); border-color: rgba(87,217,163,.4); }
+.blocked-on { color: var(--danger) !important; border-color: rgba(255,107,107,.4) !important; background: rgba(255,107,107,.1) !important; }
 .avatar-lg { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; }
 .avatar-ph { display: inline-grid; place-items: center; background: var(--accent-2); color: #fff; font-weight: 700; }
 .avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }

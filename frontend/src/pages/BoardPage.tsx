@@ -443,6 +443,7 @@ export function BoardPage() {
         <TaskDrawer
           task={openTask}
           users={users}
+          columns={board?.columns.map((c) => ({ id: c.id, name: c.name })) ?? []}
           canManage={canManageProjects}
           timerActive={activeTimerTask === openTask.id}
           onToggleTimer={toggleTimer}
