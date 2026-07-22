@@ -135,7 +135,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                     <div className="team-head">
                       <span>
                         {roleLabel(l.role_code)} · вошло {l.uses}{l.max_uses ? ` из ${l.max_uses}` : ''}
-                        {!l.is_active && <span className="badge">отключена</span>}
+                        {!l.is_active && <span className="badge badge-muted">отключена</span>}
                         {l.expires_at && <span className="dim" style={{ fontSize: 11 }}> · до {new Date(l.expires_at).toLocaleDateString()}</span>}
                       </span>
                       {l.is_active && <button className="btn btn-ghost btn-sm" onClick={() => deleteLink(l.id)}>Отключить</button>}
@@ -178,7 +178,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
             {users.map((u) => (
               <div key={u.id} className={`team-row ${u.isActive ? '' : 'team-inactive'}`}>
                 <div className="team-head">
-                  <span>{u.fullName} {!u.isActive && <span className="badge">неактивен</span>}</span>
+                  <span>{u.fullName} {!u.isActive && <span className="badge badge-muted">неактивен</span>}</span>
                   <span className="dim">{u.positionName ?? '—'}</span>
                 </div>
                 <div className="drawer-grid2">

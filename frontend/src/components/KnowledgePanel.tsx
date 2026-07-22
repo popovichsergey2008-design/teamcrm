@@ -175,7 +175,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
               {chat.length === 0 && <div className="muted">Спросите «корпоративный разум»: как мы решали ту или иную задачу? Ответ — по архиву задач, комментариев и регламентов, со ссылками на источники.</div>}
               {chat.map((m, i) => (
                 <div key={i} className={`brain-msg brain-${m.role}`}>
-                  {m.cached && <span className="badge" title="Ответ из кэша, без обращения к ИИ" style={{ marginBottom: 4, display: 'inline-block' }}>⚡ из кэша</span>}
+                  {m.cached && <span className="badge badge-info" title="Ответ из кэша, без обращения к ИИ" style={{ marginBottom: 4 }}>⚡ из кэша</span>}
                   <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}{m.role === 'assistant' && thinking && !m.content && <span className="dim">думаю…</span>}</div>
                   {m.citations && m.citations.length > 0 && (
                     <div className="brain-cites">

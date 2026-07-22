@@ -212,7 +212,13 @@ function AgentTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reload(); }, [taskId]);
 
-  const statusLabel = (s: string) => (({ running: 'выполняется', done: 'на ревью', accepted: 'принят', rejected: 'отклонён', failed: 'ошибка' } as Record<string, string>)[s] ?? s);
+  const statusBadge = (s: string) => (({
+    running: { label: 'выполняется', cls: 'badge-info' },
+    done: { label: 'на ревью', cls: 'badge-warn' },
+    accepted: { label: 'принят', cls: 'badge-ok' },
+    rejected: { label: 'отклонён', cls: 'badge-muted' },
+    failed: { label: 'ошибка', cls: 'badge-danger' },
+  } as Record<string, { label: string; cls: string }>)[s] ?? { label: s, cls: 'badge-muted' });
 
   const run = async () => {
     setBusy(true); setMsg('');
@@ -241,8 +247,9 @@ function AgentTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
       {runs.map((r) => (
         <div key={r.id} className="team-row" style={{ marginTop: 8 }}>
           <div className="team-head">
+            <span className={`badge ${statusBadge(r.status).cls}`}>{statusBadge(r.status).label}</span>
             <span className="dim" style={{ fontSize: 12 }}>
-              {new Date(r.created_at).toLocaleString('ru-RU')} · {statusLabel(r.status)}
+              {new Date(r.created_at).toLocaleString('ru-RU')}
               {(r.input_tokens || r.output_tokens) ? ` · ~${(r.input_tokens || 0) + (r.output_tokens || 0)} ток.` : ''}
             </span>
           </div>

@@ -167,7 +167,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
             {sources.map((s) => (
               <div key={s.id} className="team-row">
                 <div className="team-head">
-                  <span>{s.label || 'Без названия'} {s.default_project_name && <span className="badge" title="Проект по умолчанию">📁 {s.default_project_name}</span>} {s.pending ? <span className="badge">{s.pending} на ревью</span> : null}</span>
+                  <span>{s.label || 'Без названия'} {s.default_project_name && <span className="badge" title="Проект по умолчанию">📁 {s.default_project_name}</span>} {s.pending ? <span className="badge badge-warn">{s.pending} на ревью</span> : null}</span>
                   <button className="btn btn-ghost btn-sm" onClick={() => deleteSource(s.id)}>Удалить</button>
                 </div>
                 <div className="invite-box">
