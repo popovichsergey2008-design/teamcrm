@@ -4,6 +4,7 @@ import { api } from './lib/api';
 import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
+import { JoinOrgPage } from './pages/JoinOrgPage';
 import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
@@ -33,14 +34,17 @@ export function App() {
     if (user && tenantId !== user.tenantId) await switchOrg(tenantId);
   };
 
-  // приглашение в команду: ссылка вида /?invite=<token>
-  const inviteToken = new URLSearchParams(window.location.search).get('invite');
+  // приглашение в команду: одноразовое /?invite=<token> или многоразовое /?join=<token>
+  const params = new URLSearchParams(window.location.search);
+  const inviteToken = params.get('invite');
+  const joinToken = params.get('join');
 
   useEffect(() => {
     if (user) api.me().then((m) => setAvatarPath(m.avatarUrl)).catch(() => undefined);
   }, [user]);
 
   if (inviteToken) return <AcceptInvitePage token={inviteToken} />;
+  if (joinToken) return <JoinOrgPage token={joinToken} />;
 
   if (loading) {
     return (

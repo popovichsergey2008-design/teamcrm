@@ -14,6 +14,19 @@ export interface InviteRow {
   accepted_at: Date | null;
 }
 
+export interface InviteLinkRow {
+  id: string;
+  tenant_id: string;
+  role_code: string;
+  position_id: string | null;
+  token_hash: string;
+  created_by: string;
+  is_active: boolean;
+  max_uses: number | null;
+  uses: number;
+  expires_at: Date | null;
+}
+
 @Injectable()
 export class InvitesRepository {
   constructor(private readonly db: DbService) {}
@@ -52,5 +65,45 @@ export class InvitesRepository {
          FROM invites WHERE tenant_id=$1 AND accepted_at IS NULL ORDER BY created_at DESC`,
       [tenantId],
     );
+  }
+
+  // ── многоразовые ссылки-приглашения ──
+  createLink(input: {
+    tenantId: string; roleCode: string; positionId: string | null; tokenHash: string;
+    createdBy: string; maxUses: number | null; expiresAt: Date | null;
+  }): Promise<InviteLinkRow> {
+    return this.db.one<InviteLinkRow>(
+      `INSERT INTO invite_links (tenant_id, role_code, position_id, token_hash, created_by, max_uses, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [input.tenantId, input.roleCode, input.positionId, input.tokenHash, input.createdBy, input.maxUses, input.expiresAt],
+    ) as Promise<InviteLinkRow>;
+  }
+
+  listLinks(tenantId: string) {
+    return this.db.many(
+      `SELECT id, role_code, position_id, is_active, max_uses, uses, expires_at, created_at
+         FROM invite_links WHERE tenant_id=$1 ORDER BY created_at DESC`,
+      [tenantId],
+    );
+  }
+
+  /** Действующая ссылка по хэшу: активна, не истекла, лимит не исчерпан. С именем организации (для публичной страницы). */
+  findActiveLinkByHash(tokenHash: string): Promise<(InviteLinkRow & { tenant_name: string }) | null> {
+    return this.db.one<InviteLinkRow & { tenant_name: string }>(
+      `SELECT l.*, t.name AS tenant_name
+         FROM invite_links l JOIN tenants t ON t.id=l.tenant_id
+        WHERE l.token_hash=$1 AND l.is_active
+          AND (l.expires_at IS NULL OR l.expires_at > now())
+          AND (l.max_uses IS NULL OR l.uses < l.max_uses)`,
+      [tokenHash],
+    );
+  }
+
+  async incrementLinkUses(id: string): Promise<void> {
+    await this.db.query(`UPDATE invite_links SET uses=uses+1 WHERE id=$1`, [id]);
+  }
+
+  async deactivateLink(tenantId: string, id: string): Promise<void> {
+    await this.db.query(`UPDATE invite_links SET is_active=FALSE WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
   }
 }

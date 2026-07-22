@@ -344,6 +344,14 @@ export const api = {
   createInvite: (b: { email: string; role: string; positionId?: string }) => request<{ token: string; email: string }>('POST', '/invites', b),
   acceptInvite: (b: { token: string; fullName: string; password: string }) =>
     rawRequest<any>('POST', '/invites/accept', b, false),
+  // многоразовые ссылки-приглашения
+  createInviteLink: (b: { role?: string; positionId?: string; maxUses?: number; expiresInDays?: number }) =>
+    request<{ token: string; id: string; role: string; maxUses: number | null; expiresAt: string | null }>('POST', '/invites/links', b),
+  listInviteLinks: () => request<any[]>('GET', '/invites/links'),
+  deleteInviteLink: (id: string) => request<any>('DELETE', `/invites/links/${id}`),
+  inviteLinkInfo: (token: string) => rawRequest<{ tenantName: string; role: string }>('GET', `/invites/links/${token}/info`, undefined, false),
+  acceptInviteLink: (b: { token: string; email: string; fullName: string; password: string }) =>
+    rawRequest<any>('POST', '/invites/links/accept', b, false),
 
   // Этап 4 — forecast, assignment, velocity, copilot
   assignTask: (id: string, b: { assigneeId: string; confirmOverload?: boolean; estimateHours?: number; deadlineAt?: string }) =>

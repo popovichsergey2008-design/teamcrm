@@ -58,4 +58,50 @@ export class InvitesService {
   listPending(tenantId: string) {
     return this.repo.listPending(tenantId);
   }
+
+  // ── многоразовые ссылки-приглашения ──
+  /** Создать многоразовую ссылку (member|manager). maxUses/expiresInDays — необязательны. */
+  async createLink(
+    tenantId: string, createdBy: string,
+    input: { role?: string; positionId?: string | null; maxUses?: number | null; expiresInDays?: number | null },
+  ) {
+    const role = input.role === 'manager' ? 'manager' : 'member'; // через открытую ссылку только member|manager
+    const token = randomBytes(24).toString('hex');
+    const expiresAt = input.expiresInDays && input.expiresInDays > 0
+      ? new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000) : null;
+    const maxUses = input.maxUses && input.maxUses > 0 ? Math.floor(input.maxUses) : null;
+    const link = await this.repo.createLink({
+      tenantId, roleCode: role, positionId: input.positionId ?? null,
+      tokenHash: this.sha256(token), createdBy, maxUses, expiresAt,
+    });
+    return { token, id: link.id, role, maxUses, expiresAt };
+  }
+
+  listLinks(tenantId: string) {
+    return this.repo.listLinks(tenantId);
+  }
+
+  async deactivateLink(tenantId: string, id: string) {
+    await this.repo.deactivateLink(tenantId, id);
+    return { deactivated: true };
+  }
+
+  /** Публичная информация о ссылке (для страницы вступления): организация + роль. Не раскрывает лишнего. */
+  async linkInfo(token: string) {
+    const link = await this.repo.findActiveLinkByHash(this.sha256(token));
+    if (!link) throw AppException.unauthorized('Ссылка недействительна, истекла или исчерпана');
+    return { tenantName: link.tenant_name, role: link.role_code };
+  }
+
+  /** Вступить по многоразовой ссылке: человек вводит свой email/имя/пароль → создаётся участник. */
+  async acceptLink(input: { token: string; email: string; fullName: string; password: string }) {
+    const link = await this.repo.findActiveLinkByHash(this.sha256(input.token));
+    if (!link) throw AppException.unauthorized('Ссылка недействительна, истекла или исчерпана');
+    const user = await this.users.createUser(link.tenant_id, {
+      email: input.email, password: input.password, fullName: input.fullName,
+      role: link.role_code as any, positionId: link.position_id,
+    });
+    await this.repo.incrementLinkUses(link.id);
+    return { accepted: true, user };
+  }
 }

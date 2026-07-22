@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
-import { ASSIGNABLE_ROLES } from '../lib/labels';
+import { ASSIGNABLE_ROLES, roleLabel } from '../lib/labels';
 import { MONETIZATION_ENABLED } from '../config';
 
 type Tab = 'people' | 'positions' | 'groups';
@@ -15,12 +15,16 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
   const [metrics, setMetrics] = useState<Record<string, any>>({});
   const [msg, setMsg] = useState('');
   const [invite, setInvite] = useState<{ email: string; link: string } | null>(null);
+  const [links, setLinks] = useState<any[]>([]);
+  const [linkForm, setLinkForm] = useState({ role: 'member', maxUses: '', expiresInDays: '' });
+  const [newLink, setNewLink] = useState<string | null>(null);
 
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 2500); };
   const reload = async () => {
     setUsers(await api.listUsers().catch(() => []));
     setPositions(await api.listPositions().catch(() => []));
     setGroups(await api.listGroups().catch(() => []));
+    setLinks(await api.listInviteLinks().catch(() => []));
   };
   useEffect(() => { reload(); }, []);
 
@@ -56,6 +60,23 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
       setInvite({ email: r.email, link: `${window.location.origin}/?invite=${r.token}` });
       setInv({ email: '', role: 'member', positionId: '' });
     } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+
+  // --- многоразовая ссылка ---
+  const createLink = async () => {
+    try {
+      const r = await api.createInviteLink({
+        role: linkForm.role,
+        maxUses: linkForm.maxUses ? Number(linkForm.maxUses) : undefined,
+        expiresInDays: linkForm.expiresInDays ? Number(linkForm.expiresInDays) : undefined,
+      });
+      setNewLink(`${window.location.origin}/?join=${r.token}`);
+      setLinkForm({ role: 'member', maxUses: '', expiresInDays: '' });
+      reload();
+    } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+  const deleteLink = async (id: string) => {
+    try { await api.deleteInviteLink(id); reload(); } catch { /* */ }
   };
 
   // --- positions ---
@@ -95,6 +116,38 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                 </div>
               )}
             </div>
+
+            <div className="drawer-section-title">Многоразовая ссылка</div>
+            <div className="add-user">
+              <div className="dim" style={{ fontSize: 12 }}>Одна ссылка — много участников. Каждый вводит свой e-mail, имя и пароль. Можно задать лимит входов и срок (необязательно).</div>
+              <div className="drawer-grid2">
+                <select className="input" value={linkForm.role} onChange={(e) => setLinkForm({ ...linkForm, role: e.target.value })}>
+                  <option value="member">Участник</option>
+                  <option value="manager">Менеджер</option>
+                </select>
+                <input className="input" type="number" min={1} placeholder="Лимит входов" value={linkForm.maxUses} onChange={(e) => setLinkForm({ ...linkForm, maxUses: e.target.value })} />
+              </div>
+              <input className="input" type="number" min={1} placeholder="Срок действия, дней" value={linkForm.expiresInDays} onChange={(e) => setLinkForm({ ...linkForm, expiresInDays: e.target.value })} />
+              <button className="btn btn-sm" onClick={createLink}>Создать многоразовую ссылку</button>
+              {newLink && (
+                <div className="invite-box">
+                  Ссылка (можно раздать многим):
+                  <input className="input" readOnly value={newLink} onFocus={(e) => e.currentTarget.select()} />
+                </div>
+              )}
+            </div>
+            {links.length > 0 && links.map((l) => (
+              <div key={l.id} className={`team-row ${l.is_active ? '' : 'team-inactive'}`}>
+                <div className="team-head">
+                  <span>
+                    {roleLabel(l.role_code)} · вошло {l.uses}{l.max_uses ? ` из ${l.max_uses}` : ''}
+                    {!l.is_active && <span className="badge">отключена</span>}
+                    {l.expires_at && <span className="dim" style={{ fontSize: 11 }}> · до {new Date(l.expires_at).toLocaleDateString()}</span>}
+                  </span>
+                  {l.is_active && <button className="btn btn-ghost btn-sm" onClick={() => deleteLink(l.id)}>Отключить</button>}
+                </div>
+              </div>
+            ))}
 
             <div className="drawer-section-title">Создать сразу</div>
             <div className="add-user">

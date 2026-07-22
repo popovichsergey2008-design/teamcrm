@@ -125,4 +125,44 @@ describe('Enhancements v1 — Team (e2e)', () => {
     const list = (await http.get('/api/positions').set({ Authorization: `Bearer ${reg.body.data.accessToken}` }).expect(200)).body.data;
     expect(list.some((p: any) => p.id === posId)).toBe(false);
   });
+
+  it('многоразовая ссылка: несколько участников по одной ссылке; лимит; отключение; роль owner нельзя', async () => {
+    // создать многоразовую ссылку с лимитом 2 входа
+    const link = (await http.post('/api/invites/links').set(A()).send({ role: 'member', maxUses: 2 }).expect(201)).body.data;
+    expect(link.token).toMatch(/^[0-9a-f]{48}$/);
+    expect(link.role).toBe('member');
+
+    // публичная инфа о ссылке (без авторизации): организация + роль
+    const info = (await http.get(`/api/invites/links/${link.token}/info`).expect(200)).body.data;
+    expect(info.tenantName).toBe('Team');
+    expect(info.role).toBe('member');
+
+    // двое вступают по одной ссылке (каждый со своим e-mail)
+    const e1 = `join1_${uniq()}@t.test`, e2 = `join2_${uniq()}@t.test`;
+    await http.post('/api/invites/links/accept').send({ token: link.token, email: e1, fullName: 'Первый', password: 'password123' }).expect(201);
+    await http.post('/api/invites/links/accept').send({ token: link.token, email: e2, fullName: 'Второй', password: 'password123' }).expect(201);
+    // оба реально логинятся
+    await http.post('/api/auth/login').send({ email: e1, password: 'password123' }).expect(201);
+    await http.post('/api/auth/login').send({ email: e2, password: 'password123' }).expect(201);
+
+    // лимит исчерпан (2/2) → третий не может
+    await http.post('/api/invites/links/accept').send({ token: link.token, email: `join3_${uniq()}@t.test`, fullName: 'Третий', password: 'password123' }).expect(401);
+
+    // в списке видно счётчик использований
+    const links = (await http.get('/api/invites/links').set(A()).expect(200)).body.data;
+    const row = links.find((l: any) => l.id === link.id);
+    expect(row.uses).toBe(2);
+
+    // отключение ссылки → больше не действует
+    const link2 = (await http.post('/api/invites/links').set(A()).send({ role: 'member' }).expect(201)).body.data;
+    await http.delete(`/api/invites/links/${link2.id}`).set(A()).expect(200);
+    await http.get(`/api/invites/links/${link2.token}/info`).expect(401);
+    await http.post('/api/invites/links/accept').send({ token: link2.token, email: `x_${uniq()}@t.test`, fullName: 'X', password: 'password123' }).expect(401);
+
+    // роль owner через открытую ссылку запрещена (валидация DTO)
+    await http.post('/api/invites/links').set(A()).send({ role: 'owner' }).expect(400);
+
+    // member не может создавать ссылки (RBAC)
+    await http.post('/api/invites/links').set({ Authorization: `Bearer ${synth('member')}` }).send({ role: 'member' }).expect(403);
+  });
 });
