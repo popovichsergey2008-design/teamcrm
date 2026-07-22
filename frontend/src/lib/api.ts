@@ -265,6 +265,11 @@ export const api = {
   bitrixMapUser: (cid: string, externalUserId: string, localUserId: string) => request<any>('POST', `/integrations/bitrix/connections/${cid}/user-map`, { externalUserId, localUserId }),
   bitrixMessages: (projectId: string) => request<any[]>('GET', `/integrations/bitrix/projects/${projectId}/messages`),
   // Google-доки из задач → база знаний
+  // ИИ-агенты
+  agentRun: (taskId: string) => request<{ id: string; status: string; result: string; commentId: string | null; citations: any[] }>('POST', `/agents/tasks/${taskId}/run`),
+  agentRuns: (taskId: string) => request<any[]>('GET', `/agents/tasks/${taskId}/runs`),
+  agentAccept: (runId: string, toChecklist: boolean) => request<{ accepted: boolean; addedChecklist: number }>('POST', `/agents/runs/${runId}/accept`, { toChecklist }),
+  agentReject: (runId: string) => request<{ rejected: boolean }>('POST', `/agents/runs/${runId}/reject`),
   // NL-команда / Zero-UI
   nlParse: (text: string) => request<any>('POST', '/nl/parse', { text }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),

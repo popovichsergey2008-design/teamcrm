@@ -433,6 +433,7 @@ export function BoardPage() {
         <TaskDrawer
           task={openTask}
           users={users}
+          canManage={canManageProjects}
           timerActive={activeTimerTask === openTask.id}
           onToggleTimer={toggleTimer}
           onClose={() => setOpenTaskId(null)}

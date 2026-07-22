@@ -7,16 +7,17 @@ import { MONETIZATION_ENABLED } from '../config';
 interface Props {
   task: Task;
   users: User[];
+  canManage?: boolean;
   timerActive: boolean;
   onToggleTimer: (taskId: string) => void;
   onClose: () => void;
   onRefresh: () => void;
 }
 
-type Tab = 'overview' | 'checklist' | 'files' | 'discussion';
+type Tab = 'overview' | 'checklist' | 'files' | 'discussion' | 'agent';
 const PRIORITIES = [['low', 'низкий'], ['normal', 'обычный'], ['high', 'высокий'], ['urgent', 'срочно']];
 
-export function TaskDrawer({ task, users, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
+export function TaskDrawer({ task, users, canManage, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
   const [estimate, setEstimate] = useState(task.estimate_hours ?? '');
@@ -77,7 +78,10 @@ export function TaskDrawer({ task, users, timerActive, onToggleTimer, onClose, o
           <button className={`tab ${tab === 'checklist' ? 'active' : ''}`} onClick={() => setTab('checklist')}>Чеклист</button>
           <button className={`tab ${tab === 'files' ? 'active' : ''}`} onClick={() => setTab('files')}>Файлы</button>
           <button className={`tab ${tab === 'discussion' ? 'active' : ''}`} onClick={() => setTab('discussion')}>Обсуждение</button>
+          {canManage && <button className={`tab ${tab === 'agent' ? 'active' : ''}`} onClick={() => setTab('agent')}>🤖 Агент</button>}
         </div>
+
+        {tab === 'agent' && canManage && <AgentTab taskId={task.id} onRefresh={onRefresh} />}
 
         {tab === 'overview' && (
           <>
@@ -195,6 +199,64 @@ function ChecklistTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => 
         <input className="input" placeholder="новый пункт" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && text.trim() && (async () => { await api.addChecklist(taskId, text.trim()); setText(''); reload(); onRefresh(); })()} />
         <button className="btn btn-primary btn-sm" onClick={async () => { if (text.trim()) { await api.addChecklist(taskId, text.trim()); setText(''); reload(); onRefresh(); } }}>+</button>
       </div>
+    </>
+  );
+}
+
+function AgentTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
+  const [runs, setRuns] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4000); };
+  const reload = () => api.agentRuns(taskId).then(setRuns).catch(() => undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload(); }, [taskId]);
+
+  const statusLabel = (s: string) => (({ running: 'выполняется', done: 'на ревью', accepted: 'принят', rejected: 'отклонён', failed: 'ошибка' } as Record<string, string>)[s] ?? s);
+
+  const run = async () => {
+    setBusy(true); setMsg('');
+    try { await api.agentRun(taskId); flash('Готово — черновик ниже и в обсуждении задачи'); reload(); onRefresh(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка запуска агента'); }
+    finally { setBusy(false); }
+  };
+  const accept = async (id: string, toChecklist: boolean) => {
+    try { const r = await api.agentAccept(id, toChecklist); flash(toChecklist ? `Принято, добавлено пунктов: ${r.addedChecklist}` : 'Черновик принят'); reload(); onRefresh(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+  const reject = async (id: string) => {
+    try { await api.agentReject(id); flash('Черновик отклонён'); reload(); onRefresh(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+
+  return (
+    <>
+      <div className="dim" style={{ fontSize: 12 }}>
+        ИИ-агент прочитает задачу и базу знаний компании и предложит черновик решения. Он появится в «Обсуждении» с пометкой; ничего не меняется без вашего подтверждения.
+      </div>
+      <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={run} disabled={busy}>
+        {busy ? 'Агент думает…' : '✨ Запустить агента'}
+      </button>
+      {msg && <div className="dim" style={{ marginTop: 6 }}>{msg}</div>}
+      {runs.map((r) => (
+        <div key={r.id} className="team-row" style={{ marginTop: 8 }}>
+          <div className="team-head">
+            <span className="dim" style={{ fontSize: 12 }}>
+              {new Date(r.created_at).toLocaleString('ru-RU')} · {statusLabel(r.status)}
+              {(r.input_tokens || r.output_tokens) ? ` · ~${(r.input_tokens || 0) + (r.output_tokens || 0)} ток.` : ''}
+            </span>
+          </div>
+          {r.result && <div className="dim" style={{ whiteSpace: 'pre-wrap', fontSize: 12, maxHeight: 220, overflow: 'auto', margin: '4px 0' }}>{r.result}</div>}
+          {r.error && <div className="error-text" style={{ fontSize: 12 }}>{r.error}</div>}
+          {r.status === 'done' && (
+            <div className="team-rate">
+              <button className="btn btn-primary btn-sm" onClick={() => accept(r.id, false)}>Принять</button>
+              <button className="btn btn-sm" onClick={() => accept(r.id, true)}>В чеклист</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => reject(r.id)}>Отклонить</button>
+            </div>
+          )}
+        </div>
+      ))}
     </>
   );
 }

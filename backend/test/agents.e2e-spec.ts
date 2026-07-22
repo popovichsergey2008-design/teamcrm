@@ -58,6 +58,33 @@ describe('AI-агенты (e2e)', () => {
     expect(runs[0].status).toBe('done');
   });
 
+  it('ревью: «В чеклист» добавляет пункты; «Отклонить» убирает черновик-комментарий', async () => {
+    const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag2', email: `ag2_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const tok = a.accessToken;
+
+    // принять в чеклист
+    const t1 = await makeTask(tok);
+    const run1 = (await http.post(`/api/agents/tasks/${t1.id}/run`).set(H(tok)).expect(201)).body.data;
+    const acc = (await http.post(`/api/agents/runs/${run1.id}/accept`).set(H(tok)).send({ toChecklist: true }).expect(201)).body.data;
+    expect(acc.accepted).toBe(true);
+    expect(acc.addedChecklist).toBeGreaterThanOrEqual(1);
+    const checklist = (await http.get(`/api/tasks/${t1.id}/checklist`).set(H(tok)).expect(200)).body.data;
+    expect(checklist.length).toBeGreaterThanOrEqual(1);
+    // повторно принять нельзя (уже accepted, не done)
+    await http.post(`/api/agents/runs/${run1.id}/accept`).set(H(tok)).send({ toChecklist: false }).expect(400);
+
+    // отклонить → черновик-комментарий удаляется
+    const t2 = await makeTask(tok);
+    const run2 = (await http.post(`/api/agents/tasks/${t2.id}/run`).set(H(tok)).expect(201)).body.data;
+    let comments = (await http.get(`/api/tasks/${t2.id}/comments`).set(H(tok)).expect(200)).body.data;
+    expect(comments.some((c: any) => /Черновик от ИИ-агента/.test(c.body))).toBe(true);
+    await http.post(`/api/agents/runs/${run2.id}/reject`).set(H(tok)).expect(201);
+    comments = (await http.get(`/api/tasks/${t2.id}/comments`).set(H(tok)).expect(200)).body.data;
+    expect(comments.some((c: any) => /Черновик от ИИ-агента/.test(c.body))).toBe(false);
+    const runs = (await http.get(`/api/agents/tasks/${t2.id}/runs`).set(H(tok)).expect(200)).body.data;
+    expect(runs[0].status).toBe('rejected');
+  });
+
   it('изоляция: чужую задачу агенту не запустить (404)', async () => {
     const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag-A', email: `aa_${uniq()}@t.test`, password: 'password123', fullName: 'A' }).expect(201)).body.data;
     const task = await makeTask(a.accessToken);

@@ -44,6 +44,10 @@ export class AgentsRepository {
     return this.db.one<AgentRunRow>(`SELECT * FROM agent_runs WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
   }
 
+  async setOutcome(id: string, outcome: 'accepted' | 'rejected'): Promise<void> {
+    await this.db.query(`UPDATE agent_runs SET status=$2 WHERE id=$1`, [id, outcome]);
+  }
+
   listForTask(tenantId: string, taskId: string) {
     return this.db.many(
       `SELECT id, kind, status, result, comment_id, citations, input_tokens, output_tokens, error, created_by, created_at, finished_at
