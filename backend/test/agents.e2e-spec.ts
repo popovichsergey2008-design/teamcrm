@@ -58,6 +58,27 @@ describe('AI-агенты (e2e)', () => {
     expect(runs[0].status).toBe('done');
   });
 
+  it('автономное выполнение: результат в задачу + авто-перенос в «На тестировании»', async () => {
+    const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag-Exec', email: `ae_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const tok = a.accessToken;
+    const task = await makeTask(tok); // дефолтные колонки включают «На тестировании»
+
+    const run = (await http.post(`/api/agents/tasks/${task.id}/execute`).set(H(tok)).expect(201)).body.data;
+    expect(run.status).toBe('done');
+    expect(run.kind).toBe('task_execute');
+    expect(run.result.length).toBeGreaterThan(0);
+    expect(run.movedTo).toBe('На тестировании');
+
+    // задача реально переехала в колонку «На тестировании»
+    const board = (await http.get(`/api/projects/${task.project_id}/board`).set(H(tok)).expect(200)).body.data;
+    const testCol = board.columns.find((c: any) => c.name === 'На тестировании');
+    expect(testCol.tasks.some((t: any) => t.id === task.id)).toBe(true);
+
+    // результат добавлен комментарием
+    const comments = (await http.get(`/api/tasks/${task.id}/comments`).set(H(tok)).expect(200)).body.data;
+    expect(comments.some((c: any) => /Результат ИИ-агента/.test(c.body))).toBe(true);
+  });
+
   it('ревью: «В чеклист» добавляет пункты; «Отклонить» убирает черновик-комментарий', async () => {
     const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag2', email: `ag2_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
     const tok = a.accessToken;

@@ -3,17 +3,29 @@ import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { TasksRepository } from '../tasks/tasks.repository';
+import { TasksService } from '../tasks/tasks.service';
+import { ProjectsRepository } from '../projects/projects.repository';
 import { TaskCardService } from '../taskcard/taskcard.service';
 import { AgentsRepository } from './agents.repository';
 
 const RATE_LIMIT_PER_HOUR = 30; // запусков агента на арендатора в час — защита от «сжигания» токенов
 const MAX_CHECKLIST_ITEMS = 12;
 
-const SYSTEM = [
+// Агент-советник: предлагает план (ничего не меняет).
+const DRAFT_SYSTEM = [
   'Ты — ИИ-ассистент-исполнитель в CRM. По описанию задачи и КОНТЕКСТУ из базы знаний компании',
   '(похожие задачи, комментарии, регламенты) предложи КОНКРЕТНЫЙ черновик решения на русском:',
   'краткий план по шагам, что проверить, возможные подводные камни. Опирайся на контекст, ссылайся на источники [1],[2].',
   'Не выдумывай фактов вне контекста. Это черновик для человека — он проверит и решит, использовать ли.',
+].join(' ');
+
+// Агент-исполнитель: сразу выдаёт готовый результат (v1 — текстовые задачи: письма/КП/посты/документы/данные).
+const EXECUTE_SYSTEM = [
+  'Ты — ИИ-исполнитель в CRM. ВЫПОЛНИ задачу и верни ГОТОВЫЙ результат на русском —',
+  'готовый к использованию текст (письмо, коммерческое предложение, пост, документ или структурированные данные),',
+  'а не план и не «вот черновик». Опирайся на описание задачи и КОНТЕКСТ из базы знаний, ссылайся на источники [1],[2].',
+  'Если критичных данных не хватает — сделай разумное предположение и явно пометь «[требует уточнения: …]».',
+  'Результат пойдёт человеку на проверку — выдай законченный текст.',
 ].join(' ');
 
 @Injectable()
@@ -23,6 +35,8 @@ export class AgentsService {
   constructor(
     private readonly repo: AgentsRepository,
     private readonly tasks: TasksRepository,
+    private readonly tasksService: TasksService,
+    private readonly projects: ProjectsRepository,
     private readonly knowledge: KnowledgeService,
     private readonly ai: AiService,
     private readonly taskcard: TaskCardService,
@@ -33,10 +47,40 @@ export class AgentsService {
   }
 
   /**
-   * Агент «черновик решения задачи»: задача + RAG-контекст → предложение ИИ → комментарий-черновик на ревью.
+   * Агент-советник: задача + RAG-контекст → предложение ИИ → комментарий-черновик на ревью.
    * Human-in-the-loop: ничего в задаче не меняется, только добавляется помеченный комментарий.
    */
-  async runTaskDraft(tenantId: string, userId: string, taskId: string) {
+  runTaskDraft(tenantId: string, userId: string, taskId: string) {
+    return this.runCore(tenantId, userId, taskId, {
+      kind: 'task_draft',
+      feature: 'agent_task_draft',
+      system: DRAFT_SYSTEM,
+      commentPrefix: '🤖 Черновик от ИИ-агента (на ревью — проверьте перед использованием):',
+      fallback: 'Не удалось сформировать черновик.',
+      moveToTesting: false,
+    });
+  }
+
+  /**
+   * v1 автономного выполнения: агент делает ГОТОВЫЙ результат (текст/КП) → кладёт в задачу комментарием
+   * и авто-переносит задачу в колонку «На тестировании» на проверку человеку (не в «Готово»!).
+   */
+  executeTask(tenantId: string, userId: string, taskId: string) {
+    return this.runCore(tenantId, userId, taskId, {
+      kind: 'task_execute',
+      feature: 'agent_task_execute',
+      system: EXECUTE_SYSTEM,
+      commentPrefix: '🤖 Результат ИИ-агента (на проверку):',
+      fallback: 'Не удалось выполнить задачу.',
+      moveToTesting: true,
+    });
+  }
+
+  /** Общее ядро запуска агента: RAG-контекст → LLM → комментарий; опц. авто-перенос в тестирование. */
+  private async runCore(
+    tenantId: string, userId: string, taskId: string,
+    opts: { kind: string; feature: string; system: string; commentPrefix: string; fallback: string; moveToTesting: boolean },
+  ) {
     const task = await this.tasks.findById(tenantId, taskId);
     if (!task) throw AppException.notFound('Задача не найдена');
 
@@ -46,7 +90,7 @@ export class AgentsService {
       throw AppException.conflict(`Достигнут лимит запусков ИИ-агента (${RATE_LIMIT_PER_HOUR}/час). Попробуйте позже.`);
     }
 
-    const run = await this.repo.createRun(tenantId, taskId, 'task_draft', userId);
+    const run = await this.repo.createRun(tenantId, taskId, opts.kind, userId);
     try {
       const query = [task.title, task.description].filter(Boolean).join('\n').slice(0, 2000);
       const hits = await this.knowledge.search(tenantId, query, 6, task.project_id);
@@ -62,25 +106,36 @@ export class AgentsService {
 
       const context = hits.length
         ? hits.map((h, i) => `[${i + 1}] (${h.sourceType}${h.title ? `: ${h.title}` : ''})\n${h.snippet}`).join('\n\n')
-        : '(в базе знаний нет релевантных материалов — предложи решение по здравому смыслу и отметь это)';
+        : '(в базе знаний нет релевантных материалов — действуй по здравому смыслу и отметь это)';
       const userMsg = `Задача: ${task.title}\n${task.description ?? ''}\n\nКОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ:\n${context}`;
 
-      const answer = (await this.ai.generate(tenantId, SYSTEM, userMsg, 'agent_task_draft')).trim() || 'Не удалось сформировать черновик.';
+      const answer = (await this.ai.generate(tenantId, opts.system, userMsg, opts.feature)).trim() || opts.fallback;
       const citeLine = citations.length
         ? `\n\n—\nИсточники: ${citations.map((c, i) => `[${i + 1}] ${c.title ?? c.sourceType}`).join('; ')}`
         : '';
-      const body = `🤖 Черновик от ИИ-агента (на ревью — проверьте перед использованием):\n\n${answer}${citeLine}`;
+      const body = `${opts.commentPrefix}\n\n${answer}${citeLine}`;
 
       const comment: any = await this.taskcard.addComment(tenantId, taskId, userId, body, false);
+
+      // авто-перенос на проверку: результат исполнителя едет в колонку тестирования (не закрывается)
+      let movedTo: string | null = null;
+      if (opts.moveToTesting) {
+        const col = await this.projects.findTestingColumn(tenantId, task.project_id);
+        if (col && col.id !== task.column_id) {
+          await this.tasksService.move(tenantId, taskId, { columnId: col.id, position: 0 }, userId);
+          movedTo = col.name;
+        }
+      }
+
       const inputTokens = Math.ceil(userMsg.length / 4);
       const outputTokens = Math.ceil(answer.length / 4);
       await this.repo.finishRun(run.id, { result: answer, commentId: comment?.id ?? null, citations, inputTokens, outputTokens });
 
-      return { id: run.id, status: 'done', result: answer, commentId: comment?.id ?? null, citations };
+      return { id: run.id, kind: opts.kind, status: 'done', result: answer, commentId: comment?.id ?? null, citations, movedTo };
     } catch (e) {
-      this.log.warn(`agent run ${run.id} failed: ${(e as Error).message}`);
+      this.log.warn(`agent run ${run.id} (${opts.kind}) failed: ${(e as Error).message}`);
       await this.repo.failRun(run.id, (e as Error).message);
-      throw AppException.validation('Агент не смог сформировать черновик. Попробуйте ещё раз.');
+      throw AppException.validation('Агент не справился с задачей. Попробуйте ещё раз.');
     }
   }
 

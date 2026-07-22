@@ -255,30 +255,47 @@ function AgentTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка запуска агента'); }
     finally { setBusy(false); }
   };
+  const execute = async () => {
+    if (!window.confirm('Передать задачу ИИ-агенту? Он выполнит её и перенесёт в «На тестировании» на вашу проверку.')) return;
+    setBusy(true); setMsg('');
+    try {
+      const r = await api.agentExecute(taskId);
+      flash(r.movedTo ? `Выполнено — задача перенесена в «${r.movedTo}» на проверку` : 'Выполнено — результат в обсуждении задачи');
+      reload(); onRefresh();
+    } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка выполнения'); }
+    finally { setBusy(false); }
+  };
   const accept = async (id: string, toChecklist: boolean) => {
-    try { const r = await api.agentAccept(id, toChecklist); flash(toChecklist ? `Принято, добавлено пунктов: ${r.addedChecklist}` : 'Черновик принят'); reload(); onRefresh(); }
+    try { const r = await api.agentAccept(id, toChecklist); flash(toChecklist ? `Принято, добавлено пунктов: ${r.addedChecklist}` : 'Результат принят'); reload(); onRefresh(); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
   const reject = async (id: string) => {
-    try { await api.agentReject(id); flash('Черновик отклонён'); reload(); onRefresh(); }
+    try { await api.agentReject(id); flash('Отклонено'); reload(); onRefresh(); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
+  const kindLabel = (k: string) => (k === 'task_execute' ? '▶ выполнение' : '✨ черновик');
 
   return (
     <>
       <div className="dim" style={{ fontSize: 12 }}>
-        ИИ-агент прочитает задачу и базу знаний компании и предложит черновик решения. Он появится в «Обсуждении» с пометкой; ничего не меняется без вашего подтверждения.
+        ИИ-агент читает задачу и базу знаний компании. <b>Черновик</b> — предложит план (ничего не меняет).
+        <b> Выполнить</b> — сделает готовый результат (текст/КП) и перенесёт задачу в «На тестировании» на вашу проверку.
       </div>
-      <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={run} disabled={busy}>
-        {busy ? 'Агент думает…' : '✨ Запустить агента'}
-      </button>
+      <div className="team-rate" style={{ marginTop: 8 }}>
+        <button className="btn btn-sm" style={{ flex: 1 }} onClick={run} disabled={busy}>
+          {busy ? 'Агент думает…' : '✨ Черновик'}
+        </button>
+        <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={execute} disabled={busy} title="Автономно выполнить задачу (текст/КП) → на тестирование">
+          {busy ? 'Агент работает…' : '🤖 Выполнить'}
+        </button>
+      </div>
       {msg && <div className="dim" style={{ marginTop: 6 }}>{msg}</div>}
       {runs.map((r) => (
         <div key={r.id} className="team-row" style={{ marginTop: 8 }}>
           <div className="team-head">
             <span className={`badge ${statusBadge(r.status).cls}`}>{statusBadge(r.status).label}</span>
             <span className="dim" style={{ fontSize: 12 }}>
-              {new Date(r.created_at).toLocaleString('ru-RU')}
+              {kindLabel(r.kind)} · {new Date(r.created_at).toLocaleString('ru-RU')}
               {(r.input_tokens || r.output_tokens) ? ` · ~${(r.input_tokens || 0) + (r.output_tokens || 0)} ток.` : ''}
             </span>
           </div>

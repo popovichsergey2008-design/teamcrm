@@ -290,6 +290,17 @@ export class ProjectsRepository {
     return null;
   }
 
+  /** Колонка тестирования/ревью (для авто-переноса результата ИИ-агента на проверку человеку). */
+  findTestingColumn(tenantId: string, projectId: string): Promise<ColumnRow | null> {
+    return this.db.one<ColumnRow>(
+      `SELECT * FROM board_columns
+        WHERE tenant_id=$1 AND project_id=$2
+          AND (lower(name) LIKE '%тест%' OR lower(name) LIKE '%testing%' OR lower(name) LIKE '%ревью%' OR lower(name) LIKE '%review%' OR lower(name)='qa')
+        ORDER BY position LIMIT 1`,
+      [tenantId, projectId],
+    );
+  }
+
   /** Колонка проекта по «корзине» (todo|inprogress|done); понимает и русский, и английский набор. */
   async findColumnByBucket(tenantId: string, projectId: string, bucket: 'todo' | 'inprogress' | 'done'): Promise<ColumnRow | null> {
     const cols = await this.db.many<ColumnRow>(

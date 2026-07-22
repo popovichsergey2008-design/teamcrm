@@ -22,6 +22,12 @@ export class AgentsController {
     return this.agents.runTaskDraft(u.tenantId, u.userId, taskId);
   }
 
+  /** v1 автономного выполнения: агент выполняет задачу → результат в задачу + перенос в «На тестировании». */
+  @Post('tasks/:taskId/execute')
+  execute(@CurrentUser() u: AuthUser, @Param('taskId') taskId: string) {
+    return this.agents.executeTask(u.tenantId, u.userId, taskId);
+  }
+
   @Get('tasks/:taskId/runs')
   runs(@CurrentUser() u: AuthUser, @Param('taskId') taskId: string) {
     return this.agents.listForTask(u.tenantId, taskId);
