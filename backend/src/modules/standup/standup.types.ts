@@ -7,8 +7,4 @@ export interface StandupMessage {
   dedupKey: string;
 }
 
-export const STATUS_COLUMN: Record<string, string> = {
-  DONE: 'Done',
-  IN_PROGRESS: 'In Progress',
-  TODO: 'To Do',
-};
+// Standup ищет колонку по «корзине» (см. ProjectsRepository.findColumnByBucket) — понимает EN+RU наборы.

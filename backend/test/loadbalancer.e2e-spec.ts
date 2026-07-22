@@ -40,7 +40,7 @@ describe('TEAMCRM Этап 4 — Load Balancer (e2e)', () => {
   }
   async function doneColumnId(): Promise<string> {
     const b = (await http.get(`/api/projects/${projectId}/board`).set(auth()).expect(200)).body.data;
-    return b.columns.find((c: any) => c.name === 'Done').id;
+    return b.columns.find((c: any) => c.name === 'Готово').id;
   }
 
   beforeAll(async () => {

@@ -15,7 +15,7 @@ export interface DealRow {
   updated_at: Date;
 }
 
-const DEFAULT_COLUMNS = ['To Do', 'In Progress', 'Done'];
+const DEFAULT_COLUMNS = ['Новые', 'В работе', 'На тестировании', 'Готово'];
 
 @Injectable()
 export class DealsRepository {

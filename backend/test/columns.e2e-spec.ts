@@ -36,29 +36,29 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Доска' }).expect(201)).body.data;
 
     let board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
-    expect(names(board)).toEqual(['To Do', 'In Progress', 'Done']);
+    expect(names(board)).toEqual(['Новые', 'В работе', 'На тестировании', 'Готово']);
 
     // добавить колонку
     await http.post(`/api/projects/${proj.id}/columns`).set(H(tok)).send({ name: 'Ревью' }).expect(201);
     board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
-    expect(names(board)).toEqual(['To Do', 'In Progress', 'Done', 'Ревью']);
+    expect(names(board)).toEqual(['Новые', 'В работе', 'На тестировании', 'Готово', 'Ревью']);
 
     // переименовать первую
     const first = board.columns[0].id;
     await http.patch(`/api/projects/${proj.id}/columns/${first}`).set(H(tok)).send({ name: 'Бэклог' }).expect(200);
 
-    // переместить последнюю (Ревью) влево
-    const revue = board.columns[3].id;
+    // переместить последнюю (Ревью, индекс 4) влево
+    const revue = board.columns[4].id;
     await http.post(`/api/projects/${proj.id}/columns/${revue}/move`).set(H(tok)).send({ direction: 'left' }).expect(201);
     board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
-    expect(names(board)).toEqual(['Бэклог', 'In Progress', 'Ревью', 'Done']);
+    expect(names(board)).toEqual(['Бэклог', 'В работе', 'На тестировании', 'Ревью', 'Готово']);
 
     // задача во второй колонке → удаляем эту колонку → задача переезжает (не теряется)
     const col2 = board.columns[1].id;
     const task = (await http.post('/api/tasks').set(H(tok)).send({ projectId: proj.id, columnId: col2, title: 'Перенос' }).expect(201)).body.data;
     await http.delete(`/api/projects/${proj.id}/columns/${col2}`).set(H(tok)).expect(200);
     board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
-    expect(names(board)).toEqual(['Бэклог', 'Ревью', 'Done']);
+    expect(names(board)).toEqual(['Бэклог', 'На тестировании', 'Ревью', 'Готово']);
     const allTasks = board.columns.flatMap((c: any) => c.tasks.map((t: any) => String(t.id)));
     expect(allTasks).toContain(String(task.id)); // задача сохранилась
   });
@@ -68,16 +68,16 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Доска' }).expect(201)).body.data;
     let board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
-    const [a, b, c] = board.columns.map((x: any) => x.id);
+    const [a, b, c, d] = board.columns.map((x: any) => x.id); // Новые, В работе, На тестировании, Готово
 
-    // переставляем: Done, To Do, In Progress
-    await http.post(`/api/projects/${proj.id}/columns/reorder`).set(H(tok)).send({ orderedIds: [c, a, b] }).expect(201);
+    // переставляем в обратном порядке (полный набор)
+    await http.post(`/api/projects/${proj.id}/columns/reorder`).set(H(tok)).send({ orderedIds: [d, c, b, a] }).expect(201);
     board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
-    expect(names(board)).toEqual(['Done', 'To Do', 'In Progress']);
+    expect(names(board)).toEqual(['Готово', 'На тестировании', 'В работе', 'Новые']);
 
     // неполный/чужой набор — ошибка валидации
     await http.post(`/api/projects/${proj.id}/columns/reorder`).set(H(tok)).send({ orderedIds: [c, a] }).expect(400);
-    await http.post(`/api/projects/${proj.id}/columns/reorder`).set(H(tok)).send({ orderedIds: [c, a, b, '999999'] }).expect(400);
+    await http.post(`/api/projects/${proj.id}/columns/reorder`).set(H(tok)).send({ orderedIds: [d, c, b, a, '999999'] }).expect(400);
   });
 
   it('нельзя удалить последнюю колонку; member не управляет колонками', async () => {
@@ -86,7 +86,8 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Доска2' }).expect(201)).body.data;
     let board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
 
-    // удаляем до одной
+    // удаляем до одной (дефолтных теперь 4)
+    await http.delete(`/api/projects/${proj.id}/columns/${board.columns[3].id}`).set(H(tok)).expect(200);
     await http.delete(`/api/projects/${proj.id}/columns/${board.columns[2].id}`).set(H(tok)).expect(200);
     await http.delete(`/api/projects/${proj.id}/columns/${board.columns[1].id}`).set(H(tok)).expect(200);
     board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;

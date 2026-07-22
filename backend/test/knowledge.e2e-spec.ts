@@ -88,7 +88,7 @@ describe('Knowledge base (e2e)', () => {
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'П' }).expect(201)).body.data;
     const board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
-    const done = board.columns.find((c: any) => c.name === 'Done');
+    const done = board.columns.find((c: any) => c.name === 'Готово');
     const first = board.columns[0].id;
 
     const task = (await http.post('/api/tasks').set(H(tok)).send({ projectId: proj.id, columnId: first, title: 'Оптимизация редиректов и robots' }).expect(201)).body.data;

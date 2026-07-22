@@ -22,7 +22,7 @@ export interface ColumnRow {
   position: number;
 }
 
-const DEFAULT_COLUMNS = ['To Do', 'In Progress', 'Done'];
+const DEFAULT_COLUMNS = ['Новые', 'В работе', 'На тестировании', 'Готово'];
 
 @Injectable()
 export class ProjectsRepository {
@@ -279,5 +279,23 @@ export class ProjectsRepository {
         WHERE tenant_id = $1 AND project_id = $2 AND lower(name) = lower($3)`,
       [tenantId, projectId, name],
     );
+  }
+
+  /** Распознаёт «корзину» колонки по имени (EN+RU) — чтобы статус-переносы работали независимо от языка набора. */
+  private bucketOf(name: string): 'todo' | 'inprogress' | 'done' | null {
+    const n = name.trim().toLowerCase();
+    if (['done', 'готово', 'выполнено', 'завершено', 'завершён', 'завершен', 'закрыто', 'сделано'].includes(n)) return 'done';
+    if (['in progress', 'inprogress', 'в работе', 'в процессе', 'делается', 'разработка'].includes(n)) return 'inprogress';
+    if (['to do', 'todo', 'backlog', 'бэклог', 'новые', 'новая', 'сделать', 'очередь', 'к выполнению'].includes(n)) return 'todo';
+    return null;
+  }
+
+  /** Колонка проекта по «корзине» (todo|inprogress|done); понимает и русский, и английский набор. */
+  async findColumnByBucket(tenantId: string, projectId: string, bucket: 'todo' | 'inprogress' | 'done'): Promise<ColumnRow | null> {
+    const cols = await this.db.many<ColumnRow>(
+      `SELECT * FROM board_columns WHERE tenant_id=$1 AND project_id=$2 ORDER BY position`,
+      [tenantId, projectId],
+    );
+    return cols.find((c) => this.bucketOf(c.name) === bucket) ?? null;
   }
 }

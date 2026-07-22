@@ -153,8 +153,8 @@ describe('TEAMCRM Этап 3 — AI Standup (e2e)', () => {
     const allTasks = board.columns.flatMap((c: any) => c.tasks.map((t: any) => ({ ...t, col: c.name })));
     const task1 = allTasks.find((t: any) => t.id === t1);
     const task2 = allTasks.find((t: any) => t.id === t2);
-    expect(task1.col).toBe('Done');
-    expect(task2.col).toBe('In Progress');
+    expect(task1.col).toBe('Готово'); // дефолтные колонки теперь русские; DONE → «Готово» по bucket
+    expect(task2.col).toBe('В работе'); // IN_PROGRESS → «В работе»
     expect(task2.is_blocked).toBe(true);
   });
 

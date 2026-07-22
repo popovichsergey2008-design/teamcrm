@@ -136,7 +136,7 @@ describe('TEAMCRM Этап 1 (e2e)', () => {
       .get(`/api/projects/${projectId}/board`)
       .set('Authorization', `Bearer ${ownerAToken}`)
       .expect(200);
-    expect(board.body.data.columns.length).toBe(3);
+    expect(board.body.data.columns.length).toBe(4);
   });
 
   it('creates and moves a task; board reflects new column', async () => {

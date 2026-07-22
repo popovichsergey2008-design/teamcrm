@@ -12,7 +12,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { TelegramSender } from '../telegram/telegram.sender';
 import { StandupRepository, SubmissionRow } from './standup.repository';
-import { StandupMessage, STATUS_COLUMN } from './standup.types';
+import { StandupMessage } from './standup.types';
 
 const APPEND = 1_000_000; // позиция «в конец» (без сдвига соседей)
 
@@ -199,13 +199,13 @@ export class StandupService {
       let timeLogId: string | null = null;
       let rejectedInvalid = false;
 
-      // 1) перенос по статусу
+      // 1) перенос по статусу (колонку ищем по «корзине» — работает и на русском, и на английском наборе)
       if (a.status_change) {
-        const colName = STATUS_COLUMN[a.status_change];
-        const col = await this.projects.findColumnByName(tenantId, projectId, colName);
+        const bucket = ({ DONE: 'done', IN_PROGRESS: 'inprogress', TODO: 'todo' } as const)[a.status_change];
+        const col = bucket ? await this.projects.findColumnByBucket(tenantId, projectId, bucket) : null;
         if (!col) {
           rejectedInvalid = true;
-          detail.statusError = `no column "${colName}"`;
+          detail.statusError = `no column for ${a.status_change}`;
         } else {
           detail.move = { from: task.column_id, to: col.id };
           await this.tasks.move(tenantId, a.task_id, { columnId: col.id, position: APPEND });
