@@ -37,6 +37,16 @@ export class EconomicsController {
     return this.service.getProjectPnl(user.tenantId, id);
   }
 
+  @Get('tasks/:id/cost-of-work')
+  taskCostOfWork(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.getTaskCostOfWork(user.tenantId, id);
+  }
+
+  @Get('projects/:id/cost-of-work')
+  projectCostOfWork(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.getProjectCostOfWork(user.tenantId, id);
+  }
+
   @Get('projects/:id/economics/timeline')
   timeline(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.service.getTimeline(user.tenantId, id);

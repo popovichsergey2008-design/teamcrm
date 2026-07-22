@@ -322,6 +322,7 @@ export const api = {
   stopTimer: (taskId: string) => request<import('../types').ActiveTimer>('POST', `/tasks/${taskId}/timer/stop`),
   myTimer: () => request<import('../types').ActiveTimer | null>('GET', '/me/timer'),
   getPnl: (projectId: string) => request<import('../types').Pnl>('GET', `/projects/${projectId}/pnl`),
+  getProjectCostOfWork: (projectId: string) => request<import('../types').CostOfWork>('GET', `/projects/${projectId}/cost-of-work`),
   createRate: (b: { userId: string; hourlyRate: number }) => request<any>('POST', '/rates', b),
 
   // Этап 3 — Telegram binding & standup

@@ -8,6 +8,9 @@ import { EconomicsRepository, ProjectPnl } from './economics.repository';
 import { EconomicsMessage } from './economics.types';
 
 const PNL_TTL = 60; // сек
+// Ориентировочная цена ИИ-работы за 1000 токенов (в той же денежной единице, что и ставки).
+// Груба́я оценка для показателя «полная себестоимость»; расход по токенам считается точно.
+const AI_COST_PER_1K = Number(process.env.AI_COST_PER_1K_TOKENS ?? 0.01) || 0.01;
 
 @Injectable()
 export class EconomicsService {
@@ -156,6 +159,43 @@ export class EconomicsService {
   }
 
   /** P&L проекта: cache-first (Redis), иначе из PostgreSQL (восстановимо). */
+  /**
+   * Единый «cost of work»: труд (часы × ставки, из time_logs) + работа ИИ-агента (токены agent_runs).
+   * Даёт честную полную себестоимость задачи/проекта. ИИ считается только по агенту (он привязан
+   * к задаче); фоновый ИИ (Brain/поиск) — общий по организации и здесь не разносится.
+   */
+  async getTaskCostOfWork(tenantId: string, taskId: string) {
+    const row = await this.repo.getTaskCost(tenantId, taskId);
+    if (!row) throw AppException.notFound('Task not found');
+    const laborCost = Number(row.cost_current ?? 0);
+    const hours = await this.repo.taskHours(tenantId, taskId);
+    const ai = await this.repo.taskAgentAi(tenantId, taskId);
+    return this.costOfWorkView('task', taskId, laborCost, hours, ai);
+  }
+
+  async getProjectCostOfWork(tenantId: string, projectId: string) {
+    const row: any = await this.repo.getProjectPnlRow(tenantId, projectId);
+    if (!row) throw AppException.notFound('Project not found');
+    const laborCost = Number(row.cost_actual ?? 0);
+    const hours = await this.repo.projectHours(tenantId, projectId);
+    const ai = await this.repo.projectAgentAi(tenantId, projectId);
+    return this.costOfWorkView('project', projectId, laborCost, hours, ai);
+  }
+
+  private costOfWorkView(scope: 'task' | 'project', id: string, laborCost: number, hours: number, ai: { tokens: number; runs: number }) {
+    const aiCost = Math.round((ai.tokens / 1000) * AI_COST_PER_1K * 100) / 100;
+    return {
+      scope,
+      id,
+      laborHours: Math.round(hours * 100) / 100,
+      laborCost: Math.round(laborCost * 100) / 100,
+      aiTokens: ai.tokens,
+      aiRuns: ai.runs,
+      aiCost,
+      total: Math.round((laborCost + aiCost) * 100) / 100,
+    };
+  }
+
   async getProjectPnl(tenantId: string, projectId: string) {
     const cached = await this.redis.getJson(`pnl:${tenantId}:${projectId}`).catch(() => null);
     if (cached) return cached;

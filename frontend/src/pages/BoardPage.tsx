@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { useAuth } from '../state/auth';
-import type { Board, BoardColumn, Pnl, Project, Task, User } from '../types';
+import type { Board, BoardColumn, CostOfWork, Pnl, Project, Task, User } from '../types';
 import { ColumnView } from '../components/ColumnView';
 import { PnlPanel } from '../components/PnlPanel';
 import { TaskDrawer } from '../components/TaskDrawer';
@@ -60,6 +60,7 @@ export function BoardPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [board, dispatch] = useReducer(reducer, null);
   const [pnl, setPnl] = useState<Pnl | null>(null);
+  const [cow, setCow] = useState<CostOfWork | null>(null);
   const [alert, setAlert] = useState<string | null>(null);
   const [activeTimerTask, setActiveTimerTask] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -88,7 +89,10 @@ export function BoardPage() {
   const reloadBoard = useCallback(() => {
     if (!selected) return;
     api.getBoard(selected).then((b) => dispatch({ type: 'SET', board: b })).catch(() => undefined);
-    if (showFinance) api.getPnl(selected).then(setPnl).catch(() => undefined);
+    if (showFinance) {
+      api.getPnl(selected).then(setPnl).catch(() => undefined);
+      api.getProjectCostOfWork(selected).then(setCow).catch(() => undefined);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, isClient]);
 
@@ -111,6 +115,7 @@ export function BoardPage() {
     if (!selected) {
       dispatch({ type: 'CLEAR' });
       setPnl(null);
+      setCow(null);
       return;
     }
     setAlert(null);
@@ -120,6 +125,7 @@ export function BoardPage() {
       .catch((e) => setError(e instanceof ApiError ? e.message : 'Ошибка загрузки доски'));
     if (showFinance) {
       api.getPnl(selected).then(setPnl).catch(() => setPnl(null));
+      api.getProjectCostOfWork(selected).then(setCow).catch(() => setCow(null));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, isClient]);
@@ -131,7 +137,11 @@ export function BoardPage() {
     const onUpsert = (t: Task) => t.project_id === selected && dispatch({ type: 'UPSERT_TASK', task: t });
     const onCost = (p: { id: string; project_id: string; cost_current: string }) =>
       p.project_id === selected && dispatch({ type: 'SET_COST', taskId: p.id, cost: p.cost_current });
-    const onPnl = (p: Pnl) => p.projectId === selected && setPnl(p);
+    const onPnl = (p: Pnl) => {
+      if (p.projectId !== selected) return;
+      setPnl(p);
+      if (showFinance) api.getProjectCostOfWork(selected).then(setCow).catch(() => undefined);
+    };
     const onAlert = (a: { projectId: string; margin: number; threshold: number }) =>
       String(a.projectId) === String(selected) &&
       setAlert(`Маржа ${a.margin}% ниже порога ${a.threshold}%`);
@@ -384,7 +394,7 @@ export function BoardPage() {
                   </span>
                 )}
               </div>
-              {showFinance && <PnlPanel pnl={pnl} alert={alert} />}
+              {showFinance && <PnlPanel pnl={pnl} alert={alert} cow={cow} />}
             </div>
             {view === 'list' ? (
               <TaskListView

@@ -192,6 +192,43 @@ export class EconomicsRepository {
     return this.db.one(`SELECT id, cost_current FROM tasks WHERE tenant_id=$1 AND id=$2`, [tenantId, taskId]);
   }
 
+  // ── единый «cost of work»: часы (time_logs) + токены ИИ-агента (agent_runs) ──
+  async taskHours(tenantId: string, taskId: string): Promise<number> {
+    const r = await this.db.one<{ hours: string }>(
+      `SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (timestamp_end - timestamp_start))),0)/3600.0 AS hours
+         FROM time_logs WHERE tenant_id=$1 AND task_id=$2 AND timestamp_end IS NOT NULL`,
+      [tenantId, taskId],
+    );
+    return Number(r?.hours ?? 0);
+  }
+  async projectHours(tenantId: string, projectId: string): Promise<number> {
+    const r = await this.db.one<{ hours: string }>(
+      `SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (timestamp_end - timestamp_start))),0)/3600.0 AS hours
+         FROM time_logs WHERE tenant_id=$1 AND timestamp_end IS NOT NULL
+          AND task_id IN (SELECT id FROM tasks WHERE tenant_id=$1 AND project_id=$2)`,
+      [tenantId, projectId],
+    );
+    return Number(r?.hours ?? 0);
+  }
+  /** Расход ИИ-агента, привязанный к задаче/проекту (agent_runs). Только успешные запуски. */
+  async taskAgentAi(tenantId: string, taskId: string): Promise<{ tokens: number; runs: number }> {
+    const r = await this.db.one<{ tokens: string; runs: string }>(
+      `SELECT COALESCE(SUM(input_tokens+output_tokens),0)::int AS tokens, count(*)::int AS runs
+         FROM agent_runs WHERE tenant_id=$1 AND task_id=$2 AND status IN ('done','accepted')`,
+      [tenantId, taskId],
+    );
+    return { tokens: Number(r?.tokens ?? 0), runs: Number(r?.runs ?? 0) };
+  }
+  async projectAgentAi(tenantId: string, projectId: string): Promise<{ tokens: number; runs: number }> {
+    const r = await this.db.one<{ tokens: string; runs: string }>(
+      `SELECT COALESCE(SUM(input_tokens+output_tokens),0)::int AS tokens, count(*)::int AS runs
+         FROM agent_runs WHERE tenant_id=$1 AND status IN ('done','accepted')
+          AND task_id IN (SELECT id FROM tasks WHERE tenant_id=$1 AND project_id=$2)`,
+      [tenantId, projectId],
+    );
+    return { tokens: Number(r?.tokens ?? 0), runs: Number(r?.runs ?? 0) };
+  }
+
   async getProjectPnlRow(tenantId: string, projectId: string) {
     return this.db.one(
       `SELECT p.id, p.name, p.budget, p.cost_actual, p.margin_actual, p.deal_id,

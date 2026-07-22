@@ -91,3 +91,14 @@ export interface Pnl {
   plannedMargin: number | null;
   marginDelta: number | null;
 }
+
+export interface CostOfWork {
+  scope: 'task' | 'project';
+  id: string;
+  laborHours: number;
+  laborCost: number;
+  aiTokens: number;
+  aiRuns: number;
+  aiCost: number;
+  total: number;
+}

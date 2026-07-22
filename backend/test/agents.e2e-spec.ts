@@ -85,6 +85,26 @@ describe('AI-агенты (e2e)', () => {
     expect(runs[0].status).toBe('rejected');
   });
 
+  it('единый cost of work: работа ИИ-агента входит в полную себестоимость проекта', async () => {
+    const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag-CoW', email: `cow_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const tok = a.accessToken;
+    const task = await makeTask(tok);
+    await http.post(`/api/agents/tasks/${task.id}/run`).set(H(tok)).expect(201);
+
+    const cow = (await http.get(`/api/projects/${task.project_id}/cost-of-work`).set(H(tok)).expect(200)).body.data;
+    expect(cow.scope).toBe('project');
+    expect(cow.aiRuns).toBeGreaterThanOrEqual(1);
+    expect(cow.aiTokens).toBeGreaterThan(0);
+    expect(cow.aiCost).toBeGreaterThanOrEqual(0);
+    // полная себестоимость = труд + ИИ
+    expect(cow.total).toBeCloseTo(cow.laborCost + cow.aiCost, 2);
+
+    // на уровне задачи тоже виден агентский расход
+    const cowT = (await http.get(`/api/tasks/${task.id}/cost-of-work`).set(H(tok)).expect(200)).body.data;
+    expect(cowT.scope).toBe('task');
+    expect(cowT.aiRuns).toBeGreaterThanOrEqual(1);
+  });
+
   it('изоляция: чужую задачу агенту не запустить (404)', async () => {
     const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag-A', email: `aa_${uniq()}@t.test`, password: 'password123', fullName: 'A' }).expect(201)).body.data;
     const task = await makeTask(a.accessToken);
