@@ -92,6 +92,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
         )}
 
         <div className="drawer-row card-meta">
+          {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент">🤖 ИИ-агент</span>}
           <select className="input prio-select" value={priority} onChange={(e) => changePriority(e.target.value)}>
             {PRIORITIES.map(([v, l]) => <option key={v} value={v}>приоритет: {l}</option>)}
           </select>
@@ -112,7 +113,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
           {canManage && <button className={`tab ${tab === 'agent' ? 'active' : ''}`} onClick={() => setTab('agent')}>🤖 Агент</button>}
         </div>
 
-        {tab === 'agent' && canManage && <AgentTab taskId={task.id} onRefresh={onRefresh} />}
+        {tab === 'agent' && canManage && <AgentTab taskId={task.id} assigned={!!task.agent_assigned} onRefresh={onRefresh} />}
 
         {tab === 'overview' && (
           <>
@@ -232,7 +233,7 @@ function ChecklistTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => 
   );
 }
 
-function AgentTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
+function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: boolean; onRefresh: () => void }) {
   const [runs, setRuns] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -240,6 +241,24 @@ function AgentTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
   const reload = () => api.agentRuns(taskId).then(setRuns).catch(() => undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reload(); }, [taskId]);
+
+  const assign = async () => {
+    if (!window.confirm('Передать задачу ИИ-агенту? Он станет исполнителем и сразу выполнит её (результат — на «На тестировании»).')) return;
+    setBusy(true); setMsg('');
+    try {
+      const r = await api.agentAssign(taskId, true);
+      flash(r.run?.declined ? 'Передано агенту, но задача требует человека (см. ниже)'
+        : r.run?.movedTo ? `Передано агенту — выполнено, задача в «${r.run.movedTo}»` : 'Задача передана ИИ-агенту');
+      reload(); onRefresh();
+    } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+    finally { setBusy(false); }
+  };
+  const unassign = async () => {
+    setBusy(true);
+    try { await api.agentUnassign(taskId); flash('Снято с агента'); onRefresh(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+    finally { setBusy(false); }
+  };
 
   const statusBadge = (s: string) => (({
     running: { label: 'выполняется', cls: 'badge-info' },
@@ -288,10 +307,24 @@ function AgentTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
 
   return (
     <>
+      <div className="add-area" style={{ marginBottom: 10 }}>
+        {assigned ? (
+          <div className="team-head">
+            <span className="badge badge-info">🤖 Исполнитель — ИИ-агент</span>
+            <button className="btn btn-ghost btn-sm" onClick={unassign} disabled={busy}>Снять с агента</button>
+          </div>
+        ) : (
+          <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={assign} disabled={busy}>
+            🤖 Передать агенту
+          </button>
+        )}
+        <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
+          «Передать агенту» — назначить ИИ исполнителем и сразу выполнить (текстовые задачи). Задача пойдёт на «На тестировании» вам на проверку.
+        </div>
+      </div>
       <div className="dim" style={{ fontSize: 12 }}>
-        ИИ-агент читает задачу и базу знаний компании. <b>Черновик</b> — предложит план (ничего не меняет).
-        <b> Выполнить</b> — сделает готовый результат (текст/КП) и перенесёт задачу в «На тестировании» на проверку.
-        Не устроил результат — «🔁 Доработать» с замечаниями, агент переделает.
+        Разовые запуски без назначения: <b>Черновик</b> — предложит план (ничего не меняет).
+        <b> Выполнить</b> — готовый результат → «На тестировании». Не устроило — «🔁 Доработать» с замечаниями.
       </div>
       <div className="team-rate" style={{ marginTop: 8 }}>
         <button className="btn btn-sm" style={{ flex: 1 }} onClick={run} disabled={busy}>

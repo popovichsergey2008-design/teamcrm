@@ -58,6 +58,23 @@ export class AgentsService {
     return this.repo.listForTask(tenantId, taskId);
   }
 
+  /** Виртуальный исполнитель: передать задачу ИИ-агенту (флаг). autoRun=true — сразу выполнить. */
+  async assignAgent(tenantId: string, userId: string, taskId: string, autoRun: boolean) {
+    const task = await this.tasks.findById(tenantId, taskId);
+    if (!task) throw AppException.notFound('Задача не найдена');
+    await this.tasks.setAgentAssigned(tenantId, taskId, true);
+    const run = autoRun ? await this.executeTask(tenantId, userId, taskId) : null;
+    return { assigned: true, run };
+  }
+
+  /** Снять задачу с ИИ-агента. */
+  async unassignAgent(tenantId: string, taskId: string) {
+    const task = await this.tasks.findById(tenantId, taskId);
+    if (!task) throw AppException.notFound('Задача не найдена');
+    await this.tasks.setAgentAssigned(tenantId, taskId, false);
+    return { assigned: false };
+  }
+
   /**
    * Агент-советник: задача + RAG-контекст → предложение ИИ → комментарий-черновик на ревью.
    * Human-in-the-loop: ничего в задаче не меняется, только добавляется помеченный комментарий.

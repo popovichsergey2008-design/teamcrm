@@ -39,6 +39,11 @@ export class TasksRepository {
     );
   }
 
+  /** Флаг «задача передана ИИ-агенту» (виртуальный исполнитель). */
+  async setAgentAssigned(tenantId: string, taskId: string, value: boolean): Promise<void> {
+    await this.db.query(`UPDATE tasks SET agent_assigned=$3 WHERE tenant_id=$1 AND id=$2`, [tenantId, taskId, value]);
+  }
+
   async create(input: {
     tenantId: string;
     projectId: string;

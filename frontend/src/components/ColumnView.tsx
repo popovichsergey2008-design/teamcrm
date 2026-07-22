@@ -208,6 +208,7 @@ function TaskCard({
             {assigneeName}
           </span>
         )}
+        {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент">🤖 ИИ-агент</span>}
         {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
         {(task.priority === 'high' || task.priority === 'urgent') && (
           <span className={`badge prio-${task.priority}`}>{task.priority === 'urgent' ? '🔥 срочно' : '↑ высокий'}</span>

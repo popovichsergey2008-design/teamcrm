@@ -272,6 +272,8 @@ export const api = {
   agentAccept: (runId: string, toChecklist: boolean) => request<{ accepted: boolean; addedChecklist: number }>('POST', `/agents/runs/${runId}/accept`, { toChecklist }),
   agentReject: (runId: string) => request<{ rejected: boolean }>('POST', `/agents/runs/${runId}/reject`),
   agentRework: (runId: string, feedback: string) => request<{ id: string; status: string; result: string; movedTo: string | null }>('POST', `/agents/runs/${runId}/rework`, { feedback }),
+  agentAssign: (taskId: string, autoRun = true) => request<{ assigned: boolean; run: { status: string; declined?: boolean; movedTo: string | null } | null }>('POST', `/agents/tasks/${taskId}/assign`, { autoRun }),
+  agentUnassign: (taskId: string) => request<{ assigned: boolean }>('POST', `/agents/tasks/${taskId}/unassign`),
   // NL-команда / Zero-UI
   nlParse: (text: string) => request<any>('POST', '/nl/parse', { text }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),

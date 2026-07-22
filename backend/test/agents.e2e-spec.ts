@@ -79,6 +79,29 @@ describe('AI-агенты (e2e)', () => {
     expect(comments.some((c: any) => /Результат ИИ-агента/.test(c.body))).toBe(true);
   });
 
+  it('виртуальный исполнитель: передать агенту (флаг + авто-выполнение) и снять', async () => {
+    const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag-As', email: `aas_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const tok = a.accessToken;
+    const task = await makeTask(tok);
+
+    const res = (await http.post(`/api/agents/tasks/${task.id}/assign`).set(H(tok)).send({ autoRun: true }).expect(201)).body.data;
+    expect(res.assigned).toBe(true);
+    expect(res.run.status).toBe('done');
+    expect(res.run.movedTo).toBe('На тестировании');
+
+    // задача помечена как переданная агенту (флаг виден в доске) + переехала в тестирование
+    let board = (await http.get(`/api/projects/${task.project_id}/board`).set(H(tok)).expect(200)).body.data;
+    let t = board.columns.flatMap((c: any) => c.tasks).find((x: any) => x.id === task.id);
+    expect(t.agent_assigned).toBe(true);
+    expect(board.columns.find((c: any) => c.name === 'На тестировании').tasks.some((x: any) => x.id === task.id)).toBe(true);
+
+    // снять с агента
+    await http.post(`/api/agents/tasks/${task.id}/unassign`).set(H(tok)).expect(201);
+    board = (await http.get(`/api/projects/${task.project_id}/board`).set(H(tok)).expect(200)).body.data;
+    t = board.columns.flatMap((c: any) => c.tasks).find((x: any) => x.id === task.id);
+    expect(t.agent_assigned).toBe(false);
+  });
+
   it('v3 классификатор: офлайн-задачу (звонок/встреча) агент не выполняет и НЕ переносит', async () => {
     const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag-Cl', email: `acl_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
     const tok = a.accessToken;

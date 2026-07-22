@@ -13,6 +13,10 @@ class ReworkRunDto {
   @IsString() @MinLength(2) @MaxLength(2000) feedback!: string;
 }
 
+class AssignAgentDto {
+  @IsOptional() @IsBoolean() autoRun?: boolean;
+}
+
 /** Оркестрация ИИ-агентов: запуск агента по задаче + история запусков. Внутренние роли (owner/manager). */
 @ApiTags('agents')
 @ApiBearerAuth()
@@ -35,6 +39,17 @@ export class AgentsController {
   @Get('tasks/:taskId/runs')
   runs(@CurrentUser() u: AuthUser, @Param('taskId') taskId: string) {
     return this.agents.listForTask(u.tenantId, taskId);
+  }
+
+  /** v3.2: передать задачу ИИ-агенту (виртуальный исполнитель); autoRun по умолчанию — сразу выполнить. */
+  @Post('tasks/:taskId/assign')
+  assign(@CurrentUser() u: AuthUser, @Param('taskId') taskId: string, @Body() dto: AssignAgentDto) {
+    return this.agents.assignAgent(u.tenantId, u.userId, taskId, dto.autoRun ?? true);
+  }
+
+  @Post('tasks/:taskId/unassign')
+  unassign(@CurrentUser() u: AuthUser, @Param('taskId') taskId: string) {
+    return this.agents.unassignAgent(u.tenantId, taskId);
   }
 
   @Post('runs/:id/accept')
