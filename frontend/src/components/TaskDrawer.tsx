@@ -282,7 +282,7 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
       const r = await api.agentExecute(taskId);
       flash(r.declined
         ? 'Задача требует человека — агент не может её выполнить (см. пояснение ниже)'
-        : r.movedTo ? `Выполнено — задача перенесена в «${r.movedTo}» на проверку` : 'Выполнено — результат в обсуждении задачи');
+        : `Выполнено${r.fileName ? ' — файл во вкладке «Файлы»' : ''}${r.movedTo ? `, задача в «${r.movedTo}»` : ''}`);
       reload(); onRefresh();
     } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка выполнения'); }
     finally { setBusy(false); }

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx';
 import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
@@ -31,6 +32,18 @@ const EXECUTE_SYSTEM = [
   `Если задача требует ФИЗИЧЕСКОГО или офлайн-действия человека (звонок, встреча, съёмка, дизайн-макет, покупка, доставка) и НЕ сводится к тексту — начни ответ строго с «${OFFLINE_MARKER}» и коротко объясни, что должен сделать человек.`,
   'Иначе — выдай законченный текст (он пойдёт человеку на проверку).',
 ].join(' ');
+
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+/** Готовый результат агента → .docx (кириллица без шрифтовой возни). */
+async function buildDocx(title: string, body: string): Promise<Buffer> {
+  const paragraphs = [
+    new Paragraph({ text: title, heading: HeadingLevel.HEADING_1 }),
+    ...body.split('\n').map((line) => new Paragraph({ children: [new TextRun(line)] })),
+  ];
+  const doc = new Document({ creator: 'TeamCRM · ИИ-агент', sections: [{ children: paragraphs }] });
+  return Packer.toBuffer(doc);
+}
 
 /** Грубая эвристика: задача явно про офлайн/физическое действие (для отказа без обращения к LLM). */
 function looksOffline(text: string): boolean {
@@ -99,7 +112,7 @@ export class AgentsService {
       kind: 'task_execute',
       feature: 'agent_task_execute',
       system: EXECUTE_SYSTEM,
-      commentPrefix: '🤖 Результат ИИ-агента (на проверку):',
+      commentPrefix: '🤖 Результат ИИ-агента (готовый файл — во вкладке «Файлы» · на проверку):',
       fallback: 'Не удалось выполнить задачу.',
       moveToTesting: true,
     });
@@ -129,7 +142,7 @@ export class AgentsService {
       kind: 'task_rework',
       feature: 'agent_task_rework',
       system: EXECUTE_SYSTEM,
-      commentPrefix: '🤖 Доработка ИИ-агента (по замечаниям):',
+      commentPrefix: '🤖 Доработка ИИ-агента (файл обновлён · по замечаниям):',
       fallback: 'Не удалось доработать.',
       moveToTesting: true,
       extra: `\n\nПРЕДЫДУЩИЙ РЕЗУЛЬТАТ:\n${(prev.result ?? '').slice(0, 4000)}\n\nЗАМЕЧАНИЯ РЕВЬЮЕРА (учти и исправь):\n${fb.slice(0, 2000)}`,
@@ -190,11 +203,23 @@ export class AgentsService {
       }
 
       let movedTo: string | null = null;
+      let fileName: string | null = null;
       if (opts.moveToTesting) {
         const col = await this.projects.findTestingColumn(tenantId, task.project_id);
         if (col && col.id !== task.column_id) {
           await this.tasksService.move(tenantId, taskId, { columnId: col.id, position: 0 }, userId);
           movedTo = col.name;
+        }
+        // готовый результат прикрепляем файлом .docx во вкладку «Файлы» (best-effort — не роняем запуск)
+        try {
+          const docx = await buildDocx(task.title, answer);
+          const name = `${task.title}`.slice(0, 100).trim() || 'Результат';
+          const att = await this.taskcard.attachUploaded(tenantId, taskId, userId, {
+            buffer: docx, originalname: `${name}.docx`, mimetype: DOCX_MIME,
+          });
+          fileName = att?.fileName ?? `${name}.docx`;
+        } catch (e) {
+          this.log.warn(`agent run ${run.id}: docx attach failed: ${(e as Error).message}`);
         }
       }
 
@@ -202,7 +227,7 @@ export class AgentsService {
       const outputTokens = preOffline ? 0 : Math.ceil(answer.length / 4);
       await this.repo.finishRun(run.id, { result: answer, commentId: comment?.id ?? null, citations, inputTokens, outputTokens });
 
-      return { id: run.id, kind: opts.kind, status: 'done', declined: false, result: answer, commentId: comment?.id ?? null, citations, movedTo };
+      return { id: run.id, kind: opts.kind, status: 'done', declined: false, result: answer, commentId: comment?.id ?? null, citations, movedTo, fileName };
     } catch (e) {
       this.log.warn(`agent run ${run.id} (${opts.kind}) failed: ${(e as Error).message}`);
       await this.repo.failRun(run.id, (e as Error).message);

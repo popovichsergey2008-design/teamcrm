@@ -68,6 +68,11 @@ describe('AI-агенты (e2e)', () => {
     expect(run.kind).toBe('task_execute');
     expect(run.result.length).toBeGreaterThan(0);
     expect(run.movedTo).toBe('На тестировании');
+    expect(run.fileName).toMatch(/\.docx$/);
+
+    // готовый результат прикреплён файлом .docx во вкладку «Файлы»
+    const atts = (await http.get(`/api/tasks/${task.id}/attachments`).set(H(tok)).expect(200)).body.data;
+    expect(atts.some((a: any) => /\.docx$/i.test(a.file_name) && String(a.content_type).includes('wordprocessingml'))).toBe(true);
 
     // задача реально переехала в колонку «На тестировании»
     const board = (await http.get(`/api/projects/${task.project_id}/board`).set(H(tok)).expect(200)).body.data;

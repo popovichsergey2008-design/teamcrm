@@ -267,7 +267,7 @@ export const api = {
   // Google-доки из задач → база знаний
   // ИИ-агенты
   agentRun: (taskId: string) => request<{ id: string; status: string; result: string; commentId: string | null; citations: any[] }>('POST', `/agents/tasks/${taskId}/run`),
-  agentExecute: (taskId: string) => request<{ id: string; status: string; declined?: boolean; result: string; commentId: string | null; movedTo: string | null }>('POST', `/agents/tasks/${taskId}/execute`),
+  agentExecute: (taskId: string) => request<{ id: string; status: string; declined?: boolean; result: string; commentId: string | null; movedTo: string | null; fileName?: string | null }>('POST', `/agents/tasks/${taskId}/execute`),
   agentRuns: (taskId: string) => request<any[]>('GET', `/agents/tasks/${taskId}/runs`),
   agentAccept: (runId: string, toChecklist: boolean) => request<{ accepted: boolean; addedChecklist: number }>('POST', `/agents/runs/${runId}/accept`, { toChecklist }),
   agentReject: (runId: string) => request<{ rejected: boolean }>('POST', `/agents/runs/${runId}/reject`),
