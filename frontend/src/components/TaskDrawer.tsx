@@ -273,13 +273,22 @@ function AgentTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
     try { await api.agentReject(id); flash('Отклонено'); reload(); onRefresh(); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
-  const kindLabel = (k: string) => (k === 'task_execute' ? '▶ выполнение' : '✨ черновик');
+  const rework = async (id: string) => {
+    const feedback = window.prompt('Что доработать? Агент переделает результат с учётом замечаний:');
+    if (!feedback || feedback.trim().length < 2) return;
+    setBusy(true); setMsg('');
+    try { await api.agentRework(id, feedback.trim()); flash('Доработка готова — новый результат ниже'); reload(); onRefresh(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка доработки'); }
+    finally { setBusy(false); }
+  };
+  const kindLabel = (k: string) => (k === 'task_execute' ? '▶ выполнение' : k === 'task_rework' ? '🔁 доработка' : '✨ черновик');
 
   return (
     <>
       <div className="dim" style={{ fontSize: 12 }}>
         ИИ-агент читает задачу и базу знаний компании. <b>Черновик</b> — предложит план (ничего не меняет).
-        <b> Выполнить</b> — сделает готовый результат (текст/КП) и перенесёт задачу в «На тестировании» на вашу проверку.
+        <b> Выполнить</b> — сделает готовый результат (текст/КП) и перенесёт задачу в «На тестировании» на проверку.
+        Не устроил результат — «🔁 Доработать» с замечаниями, агент переделает.
       </div>
       <div className="team-rate" style={{ marginTop: 8 }}>
         <button className="btn btn-sm" style={{ flex: 1 }} onClick={run} disabled={busy}>
@@ -301,11 +310,12 @@ function AgentTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
           </div>
           {r.result && <div className="dim" style={{ whiteSpace: 'pre-wrap', fontSize: 12, maxHeight: 220, overflow: 'auto', margin: '4px 0' }}>{r.result}</div>}
           {r.error && <div className="error-text" style={{ fontSize: 12 }}>{r.error}</div>}
-          {r.status === 'done' && (
+          {(r.status === 'done' || (r.status === 'accepted' && (r.kind === 'task_execute' || r.kind === 'task_rework'))) && (
             <div className="team-rate">
-              <button className="btn btn-primary btn-sm" onClick={() => accept(r.id, false)}>Принять</button>
-              <button className="btn btn-sm" onClick={() => accept(r.id, true)}>В чеклист</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => reject(r.id)}>Отклонить</button>
+              {r.status === 'done' && <button className="btn btn-primary btn-sm" onClick={() => accept(r.id, false)}>Принять</button>}
+              {r.status === 'done' && r.kind === 'task_draft' && <button className="btn btn-sm" onClick={() => accept(r.id, true)}>В чеклист</button>}
+              {(r.kind === 'task_execute' || r.kind === 'task_rework') && <button className="btn btn-sm" onClick={() => rework(r.id)} disabled={busy} title="Вернуть на доработку с замечаниями">🔁 Доработать</button>}
+              {r.status === 'done' && <button className="btn btn-ghost btn-sm" onClick={() => reject(r.id)}>Отклонить</button>}
             </div>
           )}
         </div>

@@ -79,6 +79,28 @@ describe('AI-агенты (e2e)', () => {
     expect(comments.some((c: any) => /Результат ИИ-агента/.test(c.body))).toBe(true);
   });
 
+  it('v2 доработка: результат выполнения возвращается агенту на доработку (черновик — нельзя)', async () => {
+    const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag-RW', email: `arw_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const tok = a.accessToken;
+    const task = await makeTask(tok);
+
+    const run = (await http.post(`/api/agents/tasks/${task.id}/execute`).set(H(tok)).expect(201)).body.data;
+    const rw = (await http.post(`/api/agents/runs/${run.id}/rework`).set(H(tok)).send({ feedback: 'Сделай короче и добавь цену' }).expect(201)).body.data;
+    expect(rw.kind).toBe('task_rework');
+    expect(rw.status).toBe('done');
+    expect(rw.result.length).toBeGreaterThan(0);
+
+    // в журнале появился запуск доработки + комментарий доработки
+    const runs = (await http.get(`/api/agents/tasks/${task.id}/runs`).set(H(tok)).expect(200)).body.data;
+    expect(runs.some((r: any) => r.kind === 'task_rework')).toBe(true);
+    const comments = (await http.get(`/api/tasks/${task.id}/comments`).set(H(tok)).expect(200)).body.data;
+    expect(comments.some((c: any) => /Доработка ИИ-агента/.test(c.body))).toBe(true);
+
+    // доработать ЧЕРНОВИК (task_draft) нельзя → 400
+    const draft = (await http.post(`/api/agents/tasks/${task.id}/run`).set(H(tok)).expect(201)).body.data;
+    await http.post(`/api/agents/runs/${draft.id}/rework`).set(H(tok)).send({ feedback: 'переделай' }).expect(400);
+  });
+
   it('ревью: «В чеклист» добавляет пункты; «Отклонить» убирает черновик-комментарий', async () => {
     const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag2', email: `ag2_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
     const tok = a.accessToken;

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -7,6 +7,10 @@ import { AgentsService } from './agents.service';
 
 class AcceptRunDto {
   @IsOptional() @IsBoolean() toChecklist?: boolean;
+}
+
+class ReworkRunDto {
+  @IsString() @MinLength(2) @MaxLength(2000) feedback!: string;
 }
 
 /** Оркестрация ИИ-агентов: запуск агента по задаче + история запусков. Внутренние роли (owner/manager). */
@@ -41,5 +45,11 @@ export class AgentsController {
   @Post('runs/:id/reject')
   reject(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.agents.rejectRun(u.tenantId, u.userId, u.role, id);
+  }
+
+  /** v2: доработать результат агента по замечаниям ревьюера. */
+  @Post('runs/:id/rework')
+  rework(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ReworkRunDto) {
+    return this.agents.reworkRun(u.tenantId, u.userId, id, dto.feedback);
   }
 }

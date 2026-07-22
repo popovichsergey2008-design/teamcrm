@@ -271,6 +271,7 @@ export const api = {
   agentRuns: (taskId: string) => request<any[]>('GET', `/agents/tasks/${taskId}/runs`),
   agentAccept: (runId: string, toChecklist: boolean) => request<{ accepted: boolean; addedChecklist: number }>('POST', `/agents/runs/${runId}/accept`, { toChecklist }),
   agentReject: (runId: string) => request<{ rejected: boolean }>('POST', `/agents/runs/${runId}/reject`),
+  agentRework: (runId: string, feedback: string) => request<{ id: string; status: string; result: string; movedTo: string | null }>('POST', `/agents/runs/${runId}/rework`, { feedback }),
   // NL-команда / Zero-UI
   nlParse: (text: string) => request<any>('POST', '/nl/parse', { text }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),

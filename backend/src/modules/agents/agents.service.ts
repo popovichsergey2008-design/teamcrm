@@ -10,6 +10,7 @@ import { AgentsRepository } from './agents.repository';
 
 const RATE_LIMIT_PER_HOUR = 30; // запусков агента на арендатора в час — защита от «сжигания» токенов
 const MAX_CHECKLIST_ITEMS = 12;
+const MAX_ITERATIONS = 6; // выполнение + доработки на одну задачу — защита от бесконечного цикла
 
 // Агент-советник: предлагает план (ничего не меняет).
 const DRAFT_SYSTEM = [
@@ -76,10 +77,41 @@ export class AgentsService {
     });
   }
 
+  /**
+   * v2 итерации: доработать результат агента по замечаниям ревьюера.
+   * Агент получает предыдущий результат + замечания → выдаёт исправленную готовую версию (снова на тестирование).
+   */
+  async reworkRun(tenantId: string, userId: string, runId: string, feedback: string) {
+    const prev = await this.repo.getRun(tenantId, runId);
+    if (!prev) throw AppException.notFound('Запуск не найден');
+    if (prev.kind !== 'task_execute' && prev.kind !== 'task_rework') {
+      throw AppException.validation('Дорабатывать можно только результат выполнения');
+    }
+    const fb = (feedback ?? '').trim();
+    if (fb.length < 2) throw AppException.validation('Укажите, что нужно доработать');
+
+    // guard: не зацикливаться на одной задаче
+    const runs = await this.repo.listForTask(tenantId, prev.task_id);
+    const iterations = runs.filter((r: any) => r.kind === 'task_execute' || r.kind === 'task_rework').length;
+    if (iterations >= MAX_ITERATIONS) {
+      throw AppException.conflict(`Достигнут лимит доработок по задаче (${MAX_ITERATIONS}). Доработайте вручную.`);
+    }
+
+    return this.runCore(tenantId, userId, prev.task_id, {
+      kind: 'task_rework',
+      feature: 'agent_task_rework',
+      system: EXECUTE_SYSTEM,
+      commentPrefix: '🤖 Доработка ИИ-агента (по замечаниям):',
+      fallback: 'Не удалось доработать.',
+      moveToTesting: true,
+      extra: `\n\nПРЕДЫДУЩИЙ РЕЗУЛЬТАТ:\n${(prev.result ?? '').slice(0, 4000)}\n\nЗАМЕЧАНИЯ РЕВЬЮЕРА (учти и исправь):\n${fb.slice(0, 2000)}`,
+    });
+  }
+
   /** Общее ядро запуска агента: RAG-контекст → LLM → комментарий; опц. авто-перенос в тестирование. */
   private async runCore(
     tenantId: string, userId: string, taskId: string,
-    opts: { kind: string; feature: string; system: string; commentPrefix: string; fallback: string; moveToTesting: boolean },
+    opts: { kind: string; feature: string; system: string; commentPrefix: string; fallback: string; moveToTesting: boolean; extra?: string },
   ) {
     const task = await this.tasks.findById(tenantId, taskId);
     if (!task) throw AppException.notFound('Задача не найдена');
@@ -107,7 +139,7 @@ export class AgentsService {
       const context = hits.length
         ? hits.map((h, i) => `[${i + 1}] (${h.sourceType}${h.title ? `: ${h.title}` : ''})\n${h.snippet}`).join('\n\n')
         : '(в базе знаний нет релевантных материалов — действуй по здравому смыслу и отметь это)';
-      const userMsg = `Задача: ${task.title}\n${task.description ?? ''}\n\nКОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ:\n${context}`;
+      const userMsg = `Задача: ${task.title}\n${task.description ?? ''}\n\nКОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ:\n${context}${opts.extra ?? ''}`;
 
       const answer = (await this.ai.generate(tenantId, opts.system, userMsg, opts.feature)).trim() || opts.fallback;
       const citeLine = citations.length
