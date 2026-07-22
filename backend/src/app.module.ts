@@ -39,6 +39,7 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { GdocsModule } from './modules/gdocs/gdocs.module';
 import { NlModule } from './modules/nl/nl.module';
 import { InboxModule } from './modules/inbox/inbox.module';
+import { AgentsModule } from './modules/agents/agents.module';
 import { BrainModule } from './modules/brain/brain.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { PromptsModule } from './modules/prompts/prompts.module';
@@ -85,6 +86,7 @@ import { PromptsModule } from './modules/prompts/prompts.module';
     GdocsModule,
     NlModule,
     InboxModule,
+    AgentsModule,
     BrainModule,
     PortalModule,
     PromptsModule,

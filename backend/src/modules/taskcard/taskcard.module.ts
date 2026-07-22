@@ -9,6 +9,6 @@ import { TaskCardRepository } from './taskcard.repository';
   imports: [TasksModule],
   controllers: [TaskCardController, LabelsController],
   providers: [TaskCardService, TaskCardRepository],
-  exports: [TaskCardRepository],
+  exports: [TaskCardRepository, TaskCardService],
 })
 export class TaskCardModule {}
