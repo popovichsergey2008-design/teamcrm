@@ -15,6 +15,7 @@ Socket.io · JWT/RBAC · Docker Compose.
 | Путь | Содержимое |
 |---|---|
 | `specs/` | спецификация (master + этапы) |
+| `docs/` | пользовательские руководства ([ИИ-функции и командная работа](docs/руководство-ии-функции.md)) |
 | `backend/` | NestJS API, домен, realtime, миграции, тесты, нагрузочный smoke |
 | `frontend/` | React SPA (дизайн-система, логин, канбан, realtime) |
 | `infra/` | инфраструктура как код (Docker Compose, nginx, observability, бэкапы) |
