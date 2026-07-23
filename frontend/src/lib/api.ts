@@ -267,13 +267,20 @@ export const api = {
   // Google-доки из задач → база знаний
   // ИИ-агенты
   agentRun: (taskId: string) => request<{ id: string; status: string; result: string; commentId: string | null; citations: any[] }>('POST', `/agents/tasks/${taskId}/run`),
-  agentExecute: (taskId: string) => request<{ id: string; status: string; declined?: boolean; result: string; commentId: string | null; movedTo: string | null; fileName?: string | null }>('POST', `/agents/tasks/${taskId}/execute`),
+  agentExecute: (taskId: string, opts?: { presetId?: string; instruction?: string; model?: string }) => request<{ id: string; status: string; declined?: boolean; result: string; commentId: string | null; movedTo: string | null; fileName?: string | null }>('POST', `/agents/tasks/${taskId}/execute`, opts ?? {}),
   agentRuns: (taskId: string) => request<any[]>('GET', `/agents/tasks/${taskId}/runs`),
   agentAccept: (runId: string, toChecklist: boolean) => request<{ accepted: boolean; addedChecklist: number }>('POST', `/agents/runs/${runId}/accept`, { toChecklist }),
   agentReject: (runId: string) => request<{ rejected: boolean }>('POST', `/agents/runs/${runId}/reject`),
   agentRework: (runId: string, feedback: string) => request<{ id: string; status: string; result: string; movedTo: string | null }>('POST', `/agents/runs/${runId}/rework`, { feedback }),
-  agentAssign: (taskId: string, autoRun = true) => request<{ assigned: boolean; run: { status: string; declined?: boolean; movedTo: string | null } | null }>('POST', `/agents/tasks/${taskId}/assign`, { autoRun }),
+  agentAssign: (taskId: string, autoRun = true, opts?: { presetId?: string; instruction?: string; model?: string }) =>
+    request<{ assigned: boolean; run: { status: string; declined?: boolean; movedTo: string | null; fileName?: string | null } | null }>('POST', `/agents/tasks/${taskId}/assign`, { autoRun, ...(opts ?? {}) }),
   agentUnassign: (taskId: string) => request<{ assigned: boolean }>('POST', `/agents/tasks/${taskId}/unassign`),
+  // библиотека промптов агента
+  agentModels: () => request<string[]>('GET', '/agents/models'),
+  agentPrompts: () => request<any[]>('GET', '/agents/prompts'),
+  agentPromptCreate: (b: { name: string; instruction: string; model?: string; isShared?: boolean }) => request<any>('POST', '/agents/prompts', b),
+  agentPromptUpdate: (id: string, b: { name?: string; instruction?: string; model?: string; isShared?: boolean }) => request<any>('PATCH', `/agents/prompts/${id}`, b),
+  agentPromptDelete: (id: string) => request<any>('DELETE', `/agents/prompts/${id}`),
   // NL-команда / Zero-UI
   nlParse: (text: string) => request<any>('POST', '/nl/parse', { text }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),

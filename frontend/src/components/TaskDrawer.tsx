@@ -237,16 +237,32 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
   const [runs, setRuns] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [prompts, setPrompts] = useState<any[]>([]);
+  const [models, setModels] = useState<string[]>([]);
+  const [promptId, setPromptId] = useState(''); // '' = по умолчанию, '__custom__' = свой, иначе id пресета
+  const [customText, setCustomText] = useState('');
+  const [customModel, setCustomModel] = useState('');
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4000); };
   const reload = () => api.agentRuns(taskId).then(setRuns).catch(() => undefined);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { reload(); }, [taskId]);
+  useEffect(() => {
+    reload();
+    api.agentPrompts().then(setPrompts).catch(() => undefined);
+    api.agentModels().then(setModels).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
+
+  // опции запуска из выбранного промпта (пресет / свой / по умолчанию)
+  const runOpts = (): { presetId?: string; instruction?: string; model?: string } | undefined => {
+    if (promptId === '__custom__') return { instruction: customText.trim() || undefined, model: customModel || undefined };
+    if (promptId) return { presetId: promptId };
+    return undefined;
+  };
 
   const assign = async () => {
     if (!window.confirm('Передать задачу ИИ-агенту? Он станет исполнителем и сразу выполнит её (результат — на «На тестировании»).')) return;
     setBusy(true); setMsg('');
     try {
-      const r = await api.agentAssign(taskId, true);
+      const r = await api.agentAssign(taskId, true, runOpts());
       flash(r.run?.declined ? 'Передано агенту, но задача требует человека (см. ниже)'
         : r.run?.movedTo ? `Передано агенту — выполнено, задача в «${r.run.movedTo}»` : 'Задача передана ИИ-агенту');
       reload(); onRefresh();
@@ -279,7 +295,7 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
     if (!window.confirm('Передать задачу ИИ-агенту? Он выполнит её и перенесёт в «На тестировании» на вашу проверку.')) return;
     setBusy(true); setMsg('');
     try {
-      const r = await api.agentExecute(taskId);
+      const r = await api.agentExecute(taskId, runOpts());
       flash(r.declined
         ? 'Задача требует человека — агент не может её выполнить (см. пояснение ниже)'
         : `Выполнено${r.fileName ? ' — файл во вкладке «Файлы»' : ''}${r.movedTo ? `, задача в «${r.movedTo}»` : ''}`);
@@ -323,8 +339,27 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
         </div>
       </div>
       <div className="dim" style={{ fontSize: 12 }}>
-        Разовые запуски без назначения: <b>Черновик</b> — предложит план (ничего не меняет).
+        Разовые запуски: <b>Черновик</b> — предложит план (ничего не меняет).
         <b> Выполнить</b> — готовый результат → «На тестировании». Не устроило — «🔁 Доработать» с замечаниями.
+      </div>
+
+      {/* выбор промпта: пресет из библиотеки / свой / по умолчанию */}
+      <div style={{ marginTop: 8 }}>
+        <select className="input" value={promptId} onChange={(e) => setPromptId(e.target.value)} title="Промпт для агента">
+          <option value="">Промпт: по умолчанию</option>
+          {prompts.map((p) => <option key={p.id} value={p.id}>{p.name}{p.is_shared ? ' · общий' : ''}{p.model ? ` · ${p.model}` : ''}</option>)}
+          <option value="__custom__">✍️ Свой промпт…</option>
+        </select>
+        {promptId === '__custom__' && (
+          <>
+            <textarea className="input" rows={3} style={{ marginTop: 6 }} placeholder="Инструкция агенту на этот запуск: роль, тон, структура…" value={customText} onChange={(e) => setCustomText(e.target.value)} />
+            <select className="input" style={{ marginTop: 6 }} value={customModel} onChange={(e) => setCustomModel(e.target.value)} title="Модель">
+              <option value="">Модель по умолчанию</option>
+              {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}</option>)}
+            </select>
+            <div className="dim" style={{ fontSize: 11, marginTop: 4 }}>Совет: удачный промпт сохраните в «Личный кабинет → Мои промпты», чтобы переиспользовать.</div>
+          </>
+        )}
       </div>
       <div className="team-rate" style={{ marginTop: 8 }}>
         <button className="btn btn-sm" style={{ flex: 1 }} onClick={run} disabled={busy}>

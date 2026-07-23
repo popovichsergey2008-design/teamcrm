@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { Avatar } from './Avatar';
 
-type Tab = 'profile' | 'security' | 'availability' | 'notify';
+type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts';
 
 export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAvatar: (url: string | null) => void }) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -79,8 +79,11 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
           <button className={`tab ${tab === 'security' ? 'active' : ''}`} onClick={() => setTab('security')}>Безопасность</button>
           <button className={`tab ${tab === 'availability' ? 'active' : ''}`} onClick={() => setTab('availability')}>Доступность</button>
           <button className={`tab ${tab === 'notify' ? 'active' : ''}`} onClick={() => setTab('notify')}>Уведомления</button>
+          <button className={`tab ${tab === 'prompts' ? 'active' : ''}`} onClick={() => setTab('prompts')}>🤖 Мои промпты</button>
         </div>
         {msg && <div className="dim">{msg}</div>}
+
+        {tab === 'prompts' && <PromptsLibrary />}
 
         {tab === 'profile' && (
           <>
@@ -158,5 +161,96 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
         )}
       </aside>
     </div>
+  );
+}
+
+const EMPTY_FORM = { name: '', instruction: '', model: '', isShared: false };
+
+/** Библиотека промптов агента: свои + общие командные; создать/редактировать/удалить; наработка со счётчиком. */
+function PromptsLibrary() {
+  const [list, setList] = useState<any[]>([]);
+  const [models, setModels] = useState<string[]>([]);
+  const [editId, setEditId] = useState<string | null>(null); // null = не редактируем/создаём новый
+  const [open, setOpen] = useState(false); // форма создания раскрыта
+  const [form, setForm] = useState<{ name: string; instruction: string; model: string; isShared: boolean }>(EMPTY_FORM);
+  const [msg, setMsg] = useState('');
+  const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
+
+  const reload = () => api.agentPrompts().then(setList).catch(() => undefined);
+  useEffect(() => { reload(); api.agentModels().then(setModels).catch(() => undefined); }, []);
+
+  const startNew = () => { setEditId(null); setForm(EMPTY_FORM); setOpen(true); };
+  const startEdit = (p: any) => { setEditId(p.id); setForm({ name: p.name, instruction: p.instruction, model: p.model ?? '', isShared: !!p.is_shared }); setOpen(true); };
+  const cancel = () => { setOpen(false); setEditId(null); setForm(EMPTY_FORM); };
+
+  const save = async () => {
+    if (!form.name.trim() || !form.instruction.trim()) return flash('Заполните название и текст промпта');
+    const body = { name: form.name.trim(), instruction: form.instruction.trim(), model: form.model || undefined, isShared: form.isShared };
+    try {
+      if (editId) await api.agentPromptUpdate(editId, body);
+      else await api.agentPromptCreate(body);
+      flash(editId ? 'Сохранено' : 'Промпт создан'); cancel(); reload();
+    } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+  const duplicate = (p: any) => { setEditId(null); setForm({ name: `${p.name} (копия)`, instruction: p.instruction, model: p.model ?? '', isShared: false }); setOpen(true); };
+  const del = async (p: any) => {
+    if (!window.confirm(`Удалить промпт «${p.name}»?`)) return;
+    try { await api.agentPromptDelete(p.id); reload(); } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+
+  return (
+    <>
+      <div className="dim" style={{ fontSize: 12 }}>
+        Свои промпты для ИИ-агента (роль/стиль/структура) под разные задачи. Применяются в карточке задачи при «🤖 Выполнить». Личные — только ваши; общие — видны всей команде.
+      </div>
+      <div className="panel-toolbar">
+        <div className="drawer-section-title" style={{ margin: 0 }}>Промпты ({list.length})</div>
+        {!open && <button className="btn btn-primary btn-sm" onClick={startNew}>＋ Новый промпт</button>}
+      </div>
+      {msg && <div className="dim">{msg}</div>}
+
+      {open && (
+        <div className="add-area">
+          <div className="drawer-section-title" style={{ marginTop: 2 }}>{editId ? 'Редактирование' : 'Новый промпт'}</div>
+          <input className="input" placeholder="Название (напр. «Копирайтер: КП»)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <textarea className="input" rows={5} style={{ marginTop: 6 }} placeholder="Инструкция агенту: роль, тон, структура, что учесть…&#10;Напр.: Пиши дружелюбно и по делу. Структура: заголовок → оффер → выгоды → цена → призыв." value={form.instruction} onChange={(e) => setForm({ ...form, instruction: e.target.value })} />
+          <div className="drawer-grid2" style={{ marginTop: 6 }}>
+            <select className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} title="Модель ИИ">
+              <option value="">Модель по умолчанию</option>
+              {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}</option>)}
+            </select>
+            <label className="notify-row" style={{ cursor: 'pointer' }}>
+              <input type="checkbox" checked={form.isShared} onChange={(e) => setForm({ ...form, isShared: e.target.checked })} />
+              <span>Общий (для всей команды)</span>
+            </label>
+          </div>
+          <div className="team-rate" style={{ marginTop: 8 }}>
+            <button className="btn btn-primary btn-sm" onClick={save}>{editId ? 'Сохранить' : 'Создать'}</button>
+            <button className="btn btn-ghost btn-sm" onClick={cancel}>Отмена</button>
+          </div>
+        </div>
+      )}
+
+      {list.length === 0 && !open && <div className="muted" style={{ marginTop: 10 }}>Пока нет промптов. Создайте первый — и он появится в задаче при запуске агента.</div>}
+      {list.map((p) => (
+        <div key={p.id} className="team-row" style={{ marginBottom: 8 }}>
+          <div className="team-head">
+            <span>
+              <b>{p.name}</b>{' '}
+              <span className={`badge ${p.is_shared ? 'badge-info' : 'badge-muted'}`}>{p.is_shared ? 'общий' : 'личный'}</span>{' '}
+              {p.model && <span className="badge badge-muted" title="Модель">{p.model.length > 22 ? p.model.slice(0, 22) + '…' : p.model}</span>}{' '}
+              {p.usage_count > 0 && <span className="badge" title="Использований">↺ {p.usage_count}</span>}
+              {!p.mine && <span className="dim" style={{ fontSize: 11 }}> · автор: {p.author_name}</span>}
+            </span>
+          </div>
+          <div className="dim" style={{ fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 60, overflow: 'auto', margin: '4px 0', opacity: 0.8 }}>{p.instruction.slice(0, 240)}</div>
+          <div className="team-rate">
+            {p.mine && <button className="btn btn-ghost btn-sm" onClick={() => startEdit(p)}>Изменить</button>}
+            <button className="btn btn-ghost btn-sm" onClick={() => duplicate(p)}>Дублировать</button>
+            {p.mine && <button className="btn btn-ghost btn-sm" onClick={() => del(p)}>Удалить</button>}
+          </div>
+        </div>
+      ))}
+    </>
   );
 }

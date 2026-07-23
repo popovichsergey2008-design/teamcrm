@@ -207,16 +207,55 @@ describe('AI-агенты (e2e)', () => {
     await http.post(`/api/agents/tasks/${task.id}/run`).set(H(b.accessToken)).expect(404);
   });
 
-  it('RBAC: рядовой участник (member) не запускает агента (403)', async () => {
+  it('доступ: рядовой участник (member, напр. копирайтер) может запускать агента', async () => {
     const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag-R', email: `ar_${uniq()}@t.test`, password: 'password123', fullName: 'Owner' }).expect(201)).body.data;
     const tok = a.accessToken;
     const task = await makeTask(tok);
 
     const memEmail = `m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(tok)).send({ email: memEmail, role: 'member' }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Участник', password: 'password123' }).expect(201);
+    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Копирайтер', password: 'password123' }).expect(201);
     const memTok = (await http.post('/api/auth/login').send({ email: memEmail, password: 'password123' }).expect(201)).body.data.accessToken;
 
-    await http.post(`/api/agents/tasks/${task.id}/run`).set(H(memTok)).expect(403);
+    // member запускает агента-советника (403 больше нет)
+    const run = (await http.post(`/api/agents/tasks/${task.id}/run`).set(H(memTok)).expect(201)).body.data;
+    expect(run.status).toBe('done');
+  });
+
+  it('библиотека промптов: создать → применить пресет (usage++) → редактировать → удалить', async () => {
+    const a = (await http.post('/api/auth/register').send({ tenantName: 'Ag-P', email: `ap_${uniq()}@t.test`, password: 'password123', fullName: 'Копирайтер' }).expect(201)).body.data;
+    const tok = a.accessToken;
+    const task = await makeTask(tok);
+
+    const preset = (await http.post('/api/agents/prompts').set(H(tok)).send({
+      name: 'Копирайтер: КП', instruction: 'Пиши дружелюбно и по делу. Структура: заголовок → оффер → выгоды → цена → CTA.', isShared: true,
+    }).expect(201)).body.data;
+    expect(preset.name).toBe('Копирайтер: КП');
+
+    // виден в библиотеке как «мой»
+    let list = (await http.get('/api/agents/prompts').set(H(tok)).expect(200)).body.data;
+    expect(list.some((p: any) => p.id === preset.id && p.mine === true)).toBe(true);
+
+    // применить пресет при выполнении → счётчик использований растёт
+    const run = (await http.post(`/api/agents/tasks/${task.id}/execute`).set(H(tok)).send({ presetId: preset.id }).expect(201)).body.data;
+    expect(run.status).toBe('done');
+    list = (await http.get('/api/agents/prompts').set(H(tok)).expect(200)).body.data;
+    expect(Number(list.find((p: any) => p.id === preset.id).usage_count)).toBeGreaterThanOrEqual(1);
+
+    // редактировать
+    const upd = (await http.patch(`/api/agents/prompts/${preset.id}`).set(H(tok)).send({ name: 'Копирайтер: КП v2' }).expect(200)).body.data;
+    expect(upd.name).toBe('Копирайтер: КП v2');
+
+    // ad-hoc промпт (без пресета) тоже работает
+    await http.post(`/api/agents/tasks/${task.id}/execute`).set(H(tok)).send({ instruction: 'Короткий официальный текст' }).expect(201);
+
+    // удалить
+    await http.delete(`/api/agents/prompts/${preset.id}`).set(H(tok)).expect(200);
+    list = (await http.get('/api/agents/prompts').set(H(tok)).expect(200)).body.data;
+    expect(list.some((p: any) => p.id === preset.id)).toBe(false);
+
+    // доступные модели отдаются (список строк)
+    const models = (await http.get('/api/agents/models').set(H(tok)).expect(200)).body.data;
+    expect(Array.isArray(models)).toBe(true);
   });
 });

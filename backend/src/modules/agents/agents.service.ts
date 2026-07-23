@@ -8,6 +8,9 @@ import { TasksService } from '../tasks/tasks.service';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { TaskCardService } from '../taskcard/taskcard.service';
 import { AgentsRepository } from './agents.repository';
+import { AgentPromptsService } from './agent-prompts.service';
+
+export interface AgentPromptOpts { presetId?: string; instruction?: string; model?: string }
 
 const RATE_LIMIT_PER_HOUR = 30; // запусков агента на арендатора в час — защита от «сжигания» токенов
 const MAX_CHECKLIST_ITEMS = 12;
@@ -66,18 +69,35 @@ export class AgentsService {
     private readonly knowledge: KnowledgeService,
     private readonly ai: AiService,
     private readonly taskcard: TaskCardService,
+    private readonly presets: AgentPromptsService,
   ) {}
+
+  /** Собирает системный промпт: база + доп.инструкция (пресет или ad-hoc) и выбранную модель. */
+  private async resolvePrompt(base: string, tenantId: string, userId: string, p?: AgentPromptOpts): Promise<{ system: string; model: string | null }> {
+    if (!p) return { system: base, model: null };
+    let instruction = (p.instruction ?? '').trim();
+    let model = (p.model ?? '').trim() || null;
+    if (p.presetId) {
+      const preset = await this.presets.resolve(tenantId, userId, p.presetId);
+      if (!instruction) instruction = preset.instruction;
+      if (!model) model = preset.model;
+    }
+    const system = instruction
+      ? `${base}\n\n=== ДОП. ИНСТРУКЦИЯ ОТ СОТРУДНИКА (роль/стиль/структура — следуй ей) ===\n${instruction.slice(0, 4000)}`
+      : base;
+    return { system, model };
+  }
 
   listForTask(tenantId: string, taskId: string) {
     return this.repo.listForTask(tenantId, taskId);
   }
 
   /** Виртуальный исполнитель: передать задачу ИИ-агенту (флаг). autoRun=true — сразу выполнить. */
-  async assignAgent(tenantId: string, userId: string, taskId: string, autoRun: boolean) {
+  async assignAgent(tenantId: string, userId: string, taskId: string, autoRun: boolean, prompt?: AgentPromptOpts) {
     const task = await this.tasks.findById(tenantId, taskId);
     if (!task) throw AppException.notFound('Задача не найдена');
     await this.tasks.setAgentAssigned(tenantId, taskId, true);
-    const run = autoRun ? await this.executeTask(tenantId, userId, taskId) : null;
+    const run = autoRun ? await this.executeTask(tenantId, userId, taskId, prompt) : null;
     return { assigned: true, run };
   }
 
@@ -108,11 +128,13 @@ export class AgentsService {
    * v1 автономного выполнения: агент делает ГОТОВЫЙ результат (текст/КП) → кладёт в задачу комментарием
    * и авто-переносит задачу в колонку «На тестировании» на проверку человеку (не в «Готово»!).
    */
-  executeTask(tenantId: string, userId: string, taskId: string) {
+  async executeTask(tenantId: string, userId: string, taskId: string, prompt?: AgentPromptOpts) {
+    const { system, model } = await this.resolvePrompt(EXECUTE_SYSTEM, tenantId, userId, prompt);
     return this.runCore(tenantId, userId, taskId, {
       kind: 'task_execute',
       feature: 'agent_task_execute',
-      system: EXECUTE_SYSTEM,
+      system,
+      model,
       commentPrefix: '🤖 Результат ИИ-агента (готовый файл — во вкладке «Файлы» · на проверку):',
       fallback: 'Не удалось выполнить задачу.',
       moveToTesting: true,
@@ -153,7 +175,7 @@ export class AgentsService {
   /** Общее ядро запуска агента: RAG-контекст → LLM → комментарий; опц. авто-перенос в тестирование. */
   private async runCore(
     tenantId: string, userId: string, taskId: string,
-    opts: { kind: string; feature: string; system: string; commentPrefix: string; fallback: string; moveToTesting: boolean; extra?: string },
+    opts: { kind: string; feature: string; system: string; commentPrefix: string; fallback: string; moveToTesting: boolean; extra?: string; model?: string | null },
   ) {
     const task = await this.tasks.findById(tenantId, taskId);
     if (!task) throw AppException.notFound('Задача не найдена');
@@ -187,7 +209,7 @@ export class AgentsService {
       const preOffline = opts.moveToTesting && looksOffline(`${task.title} ${task.description ?? ''}`);
       const answer = preOffline
         ? `${OFFLINE_MARKER} Задача требует действий человека (звонок/встреча/офлайн) — ИИ-агент не может её выполнить. Оставил задачу как есть.`
-        : (await this.ai.generate(tenantId, opts.system, userMsg, opts.feature)).trim() || opts.fallback;
+        : (await this.ai.generate(tenantId, opts.system, userMsg, opts.feature, { model: opts.model ?? undefined })).trim() || opts.fallback;
       const declined = opts.moveToTesting && answer.startsWith(OFFLINE_MARKER);
 
       const citeLine = !declined && citations.length
