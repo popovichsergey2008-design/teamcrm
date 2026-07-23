@@ -40,7 +40,7 @@ export class AgentPromptsRepository {
   getVisible(tenantId: string, userId: string, id: string) {
     return this.db.one<AgentPromptRow>(
       `SELECT * FROM agent_prompts WHERE tenant_id=$1 AND id=$2 AND (created_by=$3 OR is_shared=TRUE)`,
-      [tenantId, userId, id],
+      [tenantId, id, userId],
     );
   }
 
