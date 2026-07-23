@@ -71,19 +71,23 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   ];
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
-      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>Личный кабинет</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
-        <div className="tabs">
-          <button className={`tab ${tab === 'profile' ? 'active' : ''}`} onClick={() => setTab('profile')}>Профиль</button>
-          <button className={`tab ${tab === 'security' ? 'active' : ''}`} onClick={() => setTab('security')}>Безопасность</button>
-          <button className={`tab ${tab === 'availability' ? 'active' : ''}`} onClick={() => setTab('availability')}>Доступность</button>
-          <button className={`tab ${tab === 'notify' ? 'active' : ''}`} onClick={() => setTab('notify')}>Уведомления</button>
-          <button className={`tab ${tab === 'prompts' ? 'active' : ''}`} onClick={() => setTab('prompts')}>🤖 Мои промпты</button>
-        </div>
-        {msg && <div className="dim">{msg}</div>}
+    <div className="page profile-page">
+      <div className="page-head">
+        <button className="btn btn-ghost btn-sm" onClick={onClose}>← К доскам</button>
+        <h2>Личный кабинет</h2>
+      </div>
+      <div className="profile-layout">
+        <nav className="profile-nav">
+          <button className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')}>Профиль</button>
+          <button className={tab === 'security' ? 'active' : ''} onClick={() => setTab('security')}>Безопасность</button>
+          <button className={tab === 'availability' ? 'active' : ''} onClick={() => setTab('availability')}>Доступность</button>
+          <button className={tab === 'notify' ? 'active' : ''} onClick={() => setTab('notify')}>Уведомления</button>
+          <button className={tab === 'prompts' ? 'active' : ''} onClick={() => setTab('prompts')}>🤖 Мои промпты</button>
+        </nav>
+        <div className="profile-content">
+          {msg && <div className="dim">{msg}</div>}
 
-        {tab === 'prompts' && <PromptsLibrary />}
+          {tab === 'prompts' && <PromptsLibrary />}
 
         {tab === 'profile' && (
           <>
@@ -159,7 +163,8 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             ))}
           </>
         )}
-      </aside>
+        </div>
+      </div>
     </div>
   );
 }

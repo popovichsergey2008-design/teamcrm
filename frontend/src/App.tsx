@@ -17,7 +17,7 @@ import { roleLabel } from './lib/labels';
 
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
-  const [showProfile, setShowProfile] = useState(false);
+  const [route, setRoute] = useState<'board' | 'profile'>('board');
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [showClients, setShowClients] = useState(false);
@@ -72,7 +72,7 @@ export function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand">
+        <div className="brand" onClick={() => setRoute('board')} style={{ cursor: 'pointer' }} title="К доскам">
           TEAM<span>CRM</span>
         </div>
         <div className="topbar-right">
@@ -116,15 +116,16 @@ export function App() {
             {menuOpen && (
               <div className="menu-pop" role="menu">
                 <div className="menu-role">{roleLabel(user.role)}</div>
-                <button className="menu-item" role="menuitem" onClick={() => { setShowProfile(true); setMenuOpen(false); }}>Личный кабинет</button>
+                <button className="menu-item" role="menuitem" onClick={() => { setRoute('profile'); setMenuOpen(false); }}>Личный кабинет</button>
                 <button className="menu-item menu-danger" role="menuitem" onClick={() => { setMenuOpen(false); logout(); }}>Выйти</button>
               </div>
             )}
           </div>
         </div>
       </header>
-      <BoardPage key={user.tenantId} />
-      {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} onAvatar={setAvatarPath} />}
+      {route === 'profile'
+        ? <ProfilePanel onClose={() => setRoute('board')} onAvatar={setAvatarPath} />
+        : <BoardPage key={user.tenantId} />}
       {showIntegrations && <IntegrationsPanel onClose={() => setShowIntegrations(false)} />}
       {showKnowledge && <KnowledgePanel canManage={user.role === 'owner' || user.role === 'manager'} onClose={() => setShowKnowledge(false)} />}
       {showClients && <ClientsPanel onClose={() => setShowClients(false)} />}
