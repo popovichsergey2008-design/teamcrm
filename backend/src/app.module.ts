@@ -35,6 +35,7 @@ import { InvitesModule } from './modules/team/invites.module';
 import { AccountModule } from './modules/account/account.module';
 import { TaskCardModule } from './modules/taskcard/taskcard.module';
 import { BitrixModule } from './modules/integrations/bitrix/bitrix.module';
+import { YougileModule } from './modules/integrations/yougile/yougile.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { GdocsModule } from './modules/gdocs/gdocs.module';
 import { NlModule } from './modules/nl/nl.module';
@@ -82,6 +83,7 @@ import { PromptsModule } from './modules/prompts/prompts.module';
     AccountModule,
     TaskCardModule,
     BitrixModule,
+    YougileModule,
     KnowledgeModule,
     GdocsModule,
     NlModule,

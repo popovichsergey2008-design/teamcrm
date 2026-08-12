@@ -5,7 +5,7 @@ import { PromptsSection } from './PromptsPanel';
 
 /** Интеграции: подключения (Битрикс24) + ключи ИИ + промпты (PromptOps). */
 export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<'bitrix' | 'ai' | 'prompts'>('bitrix');
+  const [tab, setTab] = useState<'bitrix' | 'yougile' | 'ai' | 'prompts'>('bitrix');
   const [conns, setConns] = useState<any[]>([]);
   const [msg, setMsg] = useState('');
   const [form, setForm] = useState({ webhookUrl: '', label: '' });
@@ -36,6 +36,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
         <div className="drawer-head"><h3>🔌 Интеграции</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
         <div className="tabs">
           <button className={`tab ${tab === 'bitrix' ? 'active' : ''}`} onClick={() => setTab('bitrix')}>Битрикс24</button>
+          <button className={`tab ${tab === 'yougile' ? 'active' : ''}`} onClick={() => setTab('yougile')}>YouGile</button>
           <button className={`tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')}>ИИ (ключи и модель)</button>
           <button className={`tab ${tab === 'prompts' ? 'active' : ''}`} onClick={() => setTab('prompts')}>Промпты</button>
         </div>
@@ -43,6 +44,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
 
         {tab === 'ai' && <AiSettingsSection />}
         {tab === 'prompts' && <PromptsSection />}
+        {tab === 'yougile' && <YougileSection />}
 
         {tab === 'bitrix' && (<>
         <div className="drawer-section-title">Подключить портал (входящий вебхук)</div>
@@ -327,6 +329,105 @@ function UngroupedBlock({ cid }: { cid: string }) {
             )}
           </div>
         ))}
+    </div>
+  );
+}
+
+/** YouGile E1: подключение по API-ключу + импорт досок/колонок/задач. */
+function YougileSection() {
+  const [conns, setConns] = useState<any[]>([]);
+  const [form, setForm] = useState({ apiKey: '', label: '' });
+  const [msg, setMsg] = useState('');
+  const [openCid, setOpenCid] = useState<string | null>(null);
+  const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4000); };
+  const reload = () => api.yougileConnections().then(setConns).catch(() => setConns([]));
+  useEffect(() => { reload(); }, []);
+
+  const connect = async () => {
+    if (!form.apiKey.trim()) return flash('Вставьте API-ключ YouGile');
+    try { await api.yougileConnect(form.apiKey.trim(), form.label.trim() || undefined); setForm({ apiKey: '', label: '' }); flash('Подключено'); reload(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+  const disconnect = async (cid: string) => {
+    if (!window.confirm('Удалить подключение YouGile? Импортированные проекты останутся.')) return;
+    try { await api.yougileDisconnect(cid); if (openCid === cid) setOpenCid(null); reload(); } catch { /* */ }
+  };
+
+  return (
+    <>
+      <div className="dim" style={{ fontSize: 12 }}>
+        Создайте API-ключ в YouGile (Настройки → API) и вставьте сюда. Импорт тянет доски → проекты, колонки, задачи (с исполнителями и сроками). Односторонне, идемпотентно.
+      </div>
+      <div className="drawer-section-title">Подключить YouGile</div>
+      <div className="add-user">
+        <input className="input add-user-input" placeholder="API-ключ YouGile" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
+        <input className="input add-user-input" placeholder="Название (напр. «Основной»)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
+        <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={connect}>Подключить</button>
+      </div>
+      {msg && <div className="dim">{msg}</div>}
+
+      <div className="drawer-section-title">Подключения ({conns.length})</div>
+      {conns.length === 0 && <div className="muted">Пока нет подключений</div>}
+      {conns.map((c) => (
+        <div key={c.id} className="team-row">
+          <div className="team-head">
+            <span>{c.label || 'YouGile'}</span>
+            <span className="team-rate">
+              <button className="btn btn-ghost btn-sm" onClick={() => setOpenCid(openCid === c.id ? null : c.id)}>{openCid === c.id ? 'Скрыть' : 'Импорт'}</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => disconnect(c.id)}>Удалить</button>
+            </span>
+          </div>
+          {openCid === c.id && <YougileImportBlock cid={c.id} />}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function YougileImportBlock({ cid }: { cid: string }) {
+  const [boards, setBoards] = useState<{ externalId: string; title: string; projectTitle: string | null }[] | null>(null);
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [run, setRun] = useState<any>(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => { api.yougileBoards(cid).then(setBoards).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось получить доски')); }, [cid]);
+
+  const startImport = async () => {
+    const ids = Object.keys(picked).filter((k) => picked[k]);
+    if (!ids.length) return setErr('Выберите доски');
+    setErr('');
+    try {
+      const { runId } = await api.yougileImport(cid, ids);
+      const poll = setInterval(async () => {
+        const r = await api.yougileRun(runId).catch(() => null);
+        if (r) { setRun(r); if (r.status === 'done' || r.status === 'error') { clearInterval(poll); if (r.status === 'done') setTimeout(() => window.location.reload(), 1200); } }
+      }, 1000);
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка импорта'); }
+  };
+
+  return (
+    <div className="invite-box">
+      {err && <div className="error-text" style={{ fontSize: 12 }}>{err}</div>}
+      {!boards && !err && <div className="dim">Загружаю доски…</div>}
+      {boards && boards.length === 0 && <div className="muted">Досок не найдено</div>}
+      {boards && boards.map((b) => (
+        <label key={b.externalId} className="notify-row" style={{ cursor: 'pointer' }}>
+          <input type="checkbox" checked={!!picked[b.externalId]} onChange={(e) => setPicked({ ...picked, [b.externalId]: e.target.checked })} />
+          <span>{b.title}{b.projectTitle && <span className="dim" style={{ fontSize: 11 }}> · {b.projectTitle}</span>}</span>
+        </label>
+      ))}
+      {boards && boards.length > 0 && (
+        <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={startImport} disabled={run && (run.status === 'running' || run.status === 'queued')}>
+          Импортировать выбранные
+        </button>
+      )}
+      {run && (
+        <div className="dim" style={{ marginTop: 6, fontSize: 12 }}>
+          {(run.status === 'queued' || run.status === 'running') && 'Импорт идёт…'}
+          {run.status === 'error' && <span className="error-text">Ошибка: {run.error}</span>}
+          {run.status === 'done' && run.stats && `Готово: досок ${run.stats.boards ?? 0}, колонок ${run.stats.columns ?? 0}, задач ${run.stats.tasks ?? 0}. Обновляем…`}
+        </div>
+      )}
     </div>
   );
 }

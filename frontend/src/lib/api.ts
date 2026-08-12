@@ -264,6 +264,13 @@ export const api = {
   bitrixDiagnostics: (cid: string) => request<{ scopes: string[]; scopesError: string | null; ungrouped: { count: number | null; error: string | null }; feed: { count: number | null; error: string | null }; groups: { count: number | null; error: string | null } }>('GET', `/integrations/bitrix/connections/${cid}/diagnostics`),
   bitrixMapUser: (cid: string, externalUserId: string, localUserId: string) => request<any>('POST', `/integrations/bitrix/connections/${cid}/user-map`, { externalUserId, localUserId }),
   bitrixMessages: (projectId: string) => request<any[]>('GET', `/integrations/bitrix/projects/${projectId}/messages`),
+  // YouGile (E1)
+  yougileConnections: () => request<any[]>('GET', '/integrations/yougile/connections'),
+  yougileConnect: (apiKey: string, label?: string) => request<any>('POST', '/integrations/yougile/connections', { apiKey, label }),
+  yougileDisconnect: (cid: string) => request<any>('DELETE', `/integrations/yougile/connections/${cid}`),
+  yougileBoards: (cid: string) => request<{ externalId: string; title: string; projectTitle: string | null }[]>('GET', `/integrations/yougile/connections/${cid}/boards`),
+  yougileImport: (cid: string, boardExternalIds: string[]) => request<{ runId: string }>('POST', `/integrations/yougile/connections/${cid}/import`, { boardExternalIds }),
+  yougileRun: (id: string) => request<any>('GET', `/integrations/yougile/runs/${id}`),
   // Google-доки из задач → база знаний
   // ИИ-агенты
   agentRun: (taskId: string) => request<{ id: string; status: string; result: string; commentId: string | null; citations: any[] }>('POST', `/agents/tasks/${taskId}/run`),
