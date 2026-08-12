@@ -404,6 +404,12 @@ function YougileImportBlock({ cid }: { cid: string }) {
     if (!local) return;
     try { await api.yougileMapUser(cid, extId, local); loadUsers(); } catch { /* */ }
   };
+  const [live, setLive] = useState<{ url: string; events: string[]; created: string[] } | null>(null);
+  const [liveErr, setLiveErr] = useState('');
+  const enableLive = async () => {
+    setLiveErr('');
+    try { setLive(await api.yougileEnableLive(cid)); } catch (e) { setLiveErr(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
 
   const startImport = async () => {
     const ids = Object.keys(picked).filter((k) => picked[k]);
@@ -439,6 +445,16 @@ function YougileImportBlock({ cid }: { cid: string }) {
           {(run.status === 'queued' || run.status === 'running') && 'Импорт идёт…'}
           {run.status === 'error' && <span className="error-text">Ошибка: {run.error}</span>}
           {run.status === 'done' && run.stats && `Готово: досок ${run.stats.boards ?? 0}, колонок ${run.stats.columns ?? 0}, задач ${run.stats.tasks ?? 0}, комментариев ${run.stats.comments ?? 0}, файлов ${run.stats.attachments ?? 0}. Обновляем…`}
+        </div>
+      )}
+
+      <div className="drawer-section-title" style={{ marginTop: 10 }}>Живая синхронизация</div>
+      <div className="dim" style={{ fontSize: 12 }}>После включения YouGile будет присылать изменения задач (создание/перенос/правка/удаление) в реальном времени.</div>
+      {!live && <button className="btn btn-ghost btn-sm" onClick={enableLive}>Включить живую синхронизацию</button>}
+      {liveErr && <div className="error-text" style={{ fontSize: 12 }}>{liveErr}</div>}
+      {live && (
+        <div className="dim" style={{ fontSize: 12 }}>
+          ✓ Включена (события: {live.events.join(', ')}). Вебхуки зарегистрированы в YouGile на наш адрес.
         </div>
       )}
 

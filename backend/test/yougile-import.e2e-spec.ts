@@ -31,6 +31,17 @@ describe('YouGile импорт (e2e)', () => {
       if (url.pathname === '/boards') return page(state.boards);
       if (url.pathname === '/columns') return page(state.columns);
       if (url.pathname === '/tasks') { const c = url.searchParams.get('columnId') ?? ''; return page(state.tasksByCol[c] ?? []); }
+      if (url.pathname === '/webhooks') {
+        if (req.method === 'POST') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ id: 'wh1' })); return; }
+        return page(state.webhooks ?? []);
+      }
+      const single = url.pathname.match(/^\/tasks\/([^/]+)$/);
+      if (single) {
+        const id = decodeURIComponent(single[1]);
+        const t = state.taskById?.[id] ?? (Object.values(state.tasksByCol).flat() as any[]).find((x: any) => String(x.id) === id);
+        if (!t) { res.writeHead(404); res.end('{}'); return; }
+        res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(t)); return;
+      }
       const chat = url.pathname.match(/^\/chats\/([^/]+)\/messages$/);
       if (chat) return page(state.messagesByTask[decodeURIComponent(chat[1])] ?? []);
       if (url.pathname.startsWith('/files/')) { res.writeHead(200, { 'content-type': 'image/png' }); res.end(Buffer.from('fakepngbytes')); return; }
@@ -133,6 +144,28 @@ describe('YouGile импорт (e2e)', () => {
     const board2 = (await http$.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
     const count1 = board2.columns.flatMap((c: any) => c.tasks).filter((t: any) => t.title === 'Задача 1').length;
     expect(count1).toBe(1);
+
+    // E3: живая синхронизация — событие вебхука двигает задачу t1 в «Done» и переименовывает
+    const token = conns.find((c: any) => c.id === conn.id).event_token;
+    state.taskById = { t1: { id: 't1', title: 'Задача 1 (перемещена)', columnId: 'c2', assigned: ['u1'] } };
+    await http$.post(`/api/integrations/yougile/events/${token}`).send({ event: 'task-moved', id: 't1' }).expect(201);
+    let moved = false;
+    for (let i = 0; i < 40; i++) {
+      const b = (await http$.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+      const done = b.columns.find((c: any) => c.name === 'Done');
+      if (done?.tasks.some((t: any) => t.title === 'Задача 1 (перемещена)')) { moved = true; break; }
+      await sleep(150);
+    }
+    expect(moved).toBe(true);
+
+    // enable-live регистрирует вебхуки на наш URL (мок принимает POST /webhooks)
+    const live = (await http$.post(`/api/integrations/yougile/connections/${conn.id}/enable-live`).set(H(tok)).expect(201)).body.data;
+    expect(live.url).toContain(`/events/${token}`);
+    expect(live.events).toContain('task-moved');
+
+    // неизвестный token события → received:false (200)
+    const bad = (await http$.post('/api/integrations/yougile/events/deadbeef').send({ event: 'task-moved', id: 't1' }).expect(201)).body.data;
+    expect(bad.received).toBe(false);
   });
 
   it('неверный ключ YouGile → 400 при подключении', async () => {

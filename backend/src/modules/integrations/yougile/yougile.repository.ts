@@ -32,6 +32,34 @@ export class YougileRepository {
   connectionByEventToken(token: string): Promise<ConnectionRow | null> {
     return this.db.one<ConnectionRow>(`SELECT * FROM integration_connections WHERE event_token=$1 AND provider='yougile' AND is_active=TRUE`, [token]);
   }
+  async touchEvent(id: string) {
+    await this.db.query(`UPDATE integration_connections SET last_event_at=now() WHERE id=$1`, [id]);
+  }
+  /** Локальная колонка по внешнему id + её проект (для инкрементальной синхронизации). */
+  async columnTarget(connectionId: string, externalColumnId: string): Promise<{ columnId: string; projectId: string } | null> {
+    const ref = await this.getRef(connectionId, 'column', externalColumnId);
+    if (!ref) return null;
+    const row = await this.db.one<{ project_id: string }>(`SELECT project_id FROM board_columns WHERE id=$1`, [ref.local_id]);
+    if (!row) return null;
+    return { columnId: ref.local_id, projectId: row.project_id };
+  }
+  /** Удаляет импортированную задачу и её комментарии/вложения/refs (событие task-deleted). */
+  async deleteImportedTask(tenantId: string, connectionId: string, externalTaskId: string): Promise<boolean> {
+    const ref = await this.getRef(connectionId, 'task', externalTaskId);
+    if (!ref) return false;
+    const localId = ref.local_id;
+    await this.db.withTransaction(async (c) => {
+      const t: [string, string] = [tenantId, localId];
+      await c.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='comment' AND local_id IN (SELECT id FROM task_comments WHERE tenant_id=$2 AND task_id=$3)`, [connectionId, tenantId, localId]);
+      await c.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='file' AND local_id IN (SELECT file_id FROM task_attachments WHERE tenant_id=$2 AND task_id=$3)`, [connectionId, tenantId, localId]);
+      for (const tbl of ['task_comments', 'task_attachments', 'task_labels', 'task_watchers', 'task_checklist_items', 'task_activity', 'time_logs']) {
+        await c.query(`DELETE FROM ${tbl} WHERE tenant_id=$1 AND task_id=$2`, t);
+      }
+      await c.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='task' AND external_id=$2`, [connectionId, externalTaskId]);
+      await c.query(`DELETE FROM tasks WHERE tenant_id=$1 AND id=$2`, t);
+    });
+    return true;
+  }
   async deleteConnection(tenantId: string, id: string): Promise<void> {
     await this.db.query(`UPDATE projects SET origin_connection_id=NULL WHERE tenant_id=$1 AND origin_connection_id=$2`, [tenantId, id]);
     await this.db.query(`DELETE FROM external_refs WHERE tenant_id=$1 AND connection_id=$2`, [tenantId, id]);

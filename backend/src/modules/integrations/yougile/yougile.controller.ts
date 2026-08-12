@@ -48,6 +48,12 @@ export class YougileController {
     return this.yougile.mapUser(u.tenantId, cid, dto.externalUserId, dto.localUserId);
   }
 
+  /** E3: включить живую синхронизацию — зарегистрировать вебхуки YouGile на наш URL. */
+  @Post('connections/:cid/enable-live')
+  enableLive(@CurrentUser() u: AuthUser, @Param('cid') cid: string) {
+    return this.yougile.enableLive(u.tenantId, cid);
+  }
+
   @Get('runs/:id')
   run(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.yougile.getRun(u.tenantId, id);

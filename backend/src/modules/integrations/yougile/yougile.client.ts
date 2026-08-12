@@ -91,9 +91,27 @@ export class YougileClient {
     return rows.filter((t) => String(t.columnId) === String(columnId));
   }
 
+  /** Одна задача по id (для живой синхронизации по событию вебхука). null — не найдена. */
+  async getTask(id: string): Promise<YgTask | null> {
+    try { return await this.req<YgTask>(`/tasks/${encodeURIComponent(id)}`); }
+    catch (e) { if (e instanceof YougileError && e.code === 'HTTP') return null; throw e; }
+  }
+
   /** Сообщения чата задачи (в YouGile chatId = id задачи). Файлы — в message.files. */
   taskMessages(taskId: string) {
     return this.all<YgMessage>(`chats/${encodeURIComponent(taskId)}/messages`);
+  }
+
+  // ── вебхуки (E3, живая синхронизация) ──
+  listWebhooks() { return this.all<{ id: string; url: string; event: string; deleted?: boolean }>('webhooks'); }
+  async createWebhook(url: string, event: string): Promise<void> {
+    const res = await fetch(this.base + '/webhooks', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, event }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) throw new YougileError('HTTP', `webhook create HTTP ${res.status}`);
   }
 
   /** Скачивание файла YouGile (относительный url → добавляем origin; авторизация Bearer). */

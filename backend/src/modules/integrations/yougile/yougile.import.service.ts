@@ -36,18 +36,7 @@ export class YougileImportService {
     await this.repo.setRunRunning(runId);
     try {
       const client = new YougileClient(msg.apiKey);
-
-      // карта пользователей YouGile → локальные (по e-mail автоматически + ручные привязки)
-      const [ygUsers, emailMap, manual] = await Promise.all([
-        client.listUsers(), this.repo.userEmailMap(tenantId), this.repo.userRefs(connectionId),
-      ]);
-      const userMap = new Map<string, string>();
-      for (const u of ygUsers) {
-        const byManual = manual.get(String(u.id));
-        const byEmail = u.email ? emailMap.get(u.email.toLowerCase()) : undefined;
-        const local = byManual ?? byEmail;
-        if (local) userMap.set(String(u.id), local);
-      }
+      const userMap = await this.buildUserMap(client, tenantId, connectionId);
 
       // доски и колонки — одним махом, колонки группируем по доске
       const [boards, columns] = await Promise.all([client.listBoards(), client.listColumns()]);
@@ -95,6 +84,41 @@ export class YougileImportService {
     } catch (e) {
       this.log.warn(`import run ${runId} failed: ${(e as Error).message}`);
       await this.repo.finishRun(runId, 'error', stats, (e as Error).message);
+    }
+  }
+
+  /** Карта пользователей YouGile → локальные (ручная привязка > совпадение по e-mail). */
+  private async buildUserMap(client: YougileClient, tenantId: string, connectionId: string): Promise<Map<string, string>> {
+    const [ygUsers, emailMap, manual] = await Promise.all([
+      client.listUsers(), this.repo.userEmailMap(tenantId), this.repo.userRefs(connectionId),
+    ]);
+    const map = new Map<string, string>();
+    for (const u of ygUsers) {
+      const local = manual.get(String(u.id)) ?? (u.email ? emailMap.get(u.email.toLowerCase()) : undefined);
+      if (local) map.set(String(u.id), local);
+    }
+    return map;
+  }
+
+  /**
+   * Живая синхронизация одной задачи по событию вебхука YouGile.
+   * Удаление → удаляем локальную задачу; иначе тянем задачу и апсертим (+чат). Идемпотентно.
+   */
+  async syncOne(msg: { tenantId: string; connectionId: string; apiKey: string; taskExternalId: string; event: string; actorId: string | null }) {
+    const { tenantId, connectionId, taskExternalId } = msg;
+    try {
+      if (/delet/i.test(msg.event)) { await this.repo.deleteImportedTask(tenantId, connectionId, taskExternalId); return; }
+      const client = new YougileClient(msg.apiKey);
+      const task = await client.getTask(taskExternalId);
+      if (!task || task.deleted) { await this.repo.deleteImportedTask(tenantId, connectionId, taskExternalId); return; }
+      const target = await this.repo.columnTarget(connectionId, String(task.columnId));
+      if (!target) return; // задача из неимпортированной доски — игнорируем
+      const userMap = await this.buildUserMap(client, tenantId, connectionId);
+      const localTaskId = await this.importTask(tenantId, connectionId, target.projectId, target.columnId, task, userMap);
+      const throwaway: Stats = { boards: 0, columns: 0, tasks: 0, comments: 0, attachments: 0, skipped: 0, warnings: [] };
+      await this.importChat(client, { tenantId, connectionId, actorId: msg.actorId }, taskExternalId, localTaskId, userMap, throwaway);
+    } catch (e) {
+      this.log.warn(`syncOne task ${taskExternalId} failed: ${(e as Error).message}`);
     }
   }
 
