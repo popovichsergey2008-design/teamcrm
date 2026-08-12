@@ -304,16 +304,17 @@ export function BoardPage() {
 
   const openTask = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === openTaskId) ?? null;
 
-  // Сайдбар: локальные проекты — верхним уровнем; импортированные из Битрикса — свёрнуты под узлом-порталом.
+  // Сайдбар: локальные проекты — верхним уровнем; импортированные (Битрикс/YouGile) — свёрнуты под узлом-источником.
+  const providerLabel = (origin?: string) => (origin === 'yougile' ? 'YouGile' : 'Битрикс24');
   const localProjects = projects.filter((p) => !p.origin_connection_id);
-  const bitrixGroups: [string, { label: string; items: Project[] }][] = [];
+  const importedGroups: [string, { label: string; origin: string; items: Project[] }][] = [];
   {
-    const byConn = new Map<string, { label: string; items: Project[] }>();
+    const byConn = new Map<string, { label: string; origin: string; items: Project[] }>();
     for (const p of projects) {
       const cid = p.origin_connection_id;
       if (!cid) continue;
       let g = byConn.get(cid);
-      if (!g) { g = { label: p.origin_label || p.origin_portal || 'Битрикс24', items: [] }; byConn.set(cid, g); bitrixGroups.push([cid, g]); }
+      if (!g) { g = { label: p.origin_label || p.origin_portal || providerLabel(p.origin), origin: p.origin ?? 'bitrix', items: [] }; byConn.set(cid, g); importedGroups.push([cid, g]); }
       g.items.push(p);
     }
   }
@@ -321,7 +322,7 @@ export function BoardPage() {
     <div key={p.id} className={`project-row ${p.id === selected ? 'active' : ''}`} style={nested ? { paddingLeft: 18 } : undefined}>
       <button className="project-item" onClick={() => setSelected(p.id)}>
         {p.name}
-        {p.origin === 'bitrix' && !nested && <span className="project-src" title="Импортировано из Битрикс24">⤓</span>}
+        {(p.origin === 'bitrix' || p.origin === 'yougile') && !nested && <span className="project-src" title={`Импортировано из ${providerLabel(p.origin)}`}>⤓</span>}
       </button>
       {canManageProjects && (
         <button className="project-del" title="Удалить проект" onClick={() => deleteProject(p.id, p.name)}>✕</button>
@@ -335,7 +336,7 @@ export function BoardPage() {
         <div className="sidebar-head">Проекты</div>
         <div className="project-list">
           {localProjects.map((p) => renderProjectRow(p))}
-          {bitrixGroups.map(([cid, g]) => {
+          {importedGroups.map(([cid, g]) => {
             const isOpen = expandedConns.has(cid);
             return (
               <div key={cid} className="project-group">
@@ -343,7 +344,7 @@ export function BoardPage() {
                   className="project-group-head"
                   onClick={() => toggleConn(cid)}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px', color: 'inherit', font: 'inherit', textAlign: 'left' }}
-                  title={`Импортировано из Битрикс24: ${g.label}`}
+                  title={`Импортировано из ${providerLabel(g.origin)}: ${g.label}`}
                 >
                   <span style={{ width: 10, opacity: 0.7 }}>{isOpen ? '▾' : '▸'}</span>
                   <span>⤓</span>

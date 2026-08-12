@@ -20,6 +20,16 @@ const MIME_BY_EXT: Record<string, string> = {
 };
 const ctByName = (name: string): string => MIME_BY_EXT[(name.split('.').pop() ?? '').toLowerCase()] ?? 'application/octet-stream';
 
+/** Имя CRM-проекта из проекта+доски YouGile: доски часто безымянные («Новая доска»),
+ *  поэтому берём имя ПРОЕКТА; имя доски добавляем только если у проекта несколько досок. */
+function projectName(projectTitle: string, boardTitle: string, multiBoard: boolean): string {
+  const p = projectTitle.trim();
+  const b = boardTitle.trim();
+  const isDefaultBoard = !b || /^(новая доска|board|new board|доска|доска задач)$/i.test(b);
+  const name = multiBoard ? `${p || 'Проект'} · ${b || 'доска'}` : (isDefaultBoard ? (p || b) : (b || p));
+  return (name || 'Без названия').slice(0, 120);
+}
+
 @Injectable()
 export class YougileImportService {
   private readonly log = new Logger('YougileImport');
@@ -38,8 +48,11 @@ export class YougileImportService {
       const client = new YougileClient(msg.apiKey);
       const userMap = await this.buildUserMap(client, tenantId, connectionId);
 
-      // доски и колонки — одним махом, колонки группируем по доске
-      const [boards, columns] = await Promise.all([client.listBoards(), client.listColumns()]);
+      // проекты (для осмысленных имён), доски и колонки — одним махом
+      const [projects, boards, columns] = await Promise.all([client.listProjects(), client.listBoards(), client.listColumns()]);
+      const projTitle = new Map(projects.map((p) => [String(p.id), p.title]));
+      const boardCount = new Map<string, number>();
+      for (const b of boards) boardCount.set(String(b.projectId), (boardCount.get(String(b.projectId)) ?? 0) + 1);
       const colsByBoard = new Map<string, typeof columns>();
       for (const c of columns) {
         if (c.deleted) continue;
@@ -51,7 +64,8 @@ export class YougileImportService {
         const board = boards.find((b) => String(b.id) === String(boardId));
         if (!board || board.deleted) { stats.warnings.push(`Доска ${boardId} не найдена`); continue; }
 
-        const project = await this.repo.upsertProject({ tenantId, connectionId, externalId: String(board.id), name: board.title || 'Без названия' });
+        const name = projectName(projTitle.get(String(board.projectId)) ?? '', board.title ?? '', (boardCount.get(String(board.projectId)) ?? 1) > 1);
+        const project = await this.repo.upsertProject({ tenantId, connectionId, externalId: String(board.id), name });
         stats.boards++;
 
         const cols = colsByBoard.get(String(board.id)) ?? [];
