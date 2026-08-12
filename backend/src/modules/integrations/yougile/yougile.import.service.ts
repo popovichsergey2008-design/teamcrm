@@ -4,6 +4,14 @@ import { YougileRepository } from './yougile.repository';
 import { YougileClient, YgTask, YgMessage } from './yougile.client';
 import { chatEchoKey, taskStateHash } from './yougile.hash';
 import { buildPriorityMap, EMPTY_PRIORITY_MAP, PriorityMap, priorityFromStickers } from './yougile.priority';
+import { buildLabelMap, labelsForTask, StickerLabel } from './yougile.labels';
+
+/** Разбор кастомных стикеров YouGile: приоритет + метки. Готовится один раз на прогон. */
+interface StickerCtx {
+  prio: PriorityMap;
+  labels: Map<string, StickerLabel>;
+  owned: Set<string>; // локальные метки, заведённые этой интеграцией
+}
 
 export interface YougileImportMsg {
   tenantId: string; connectionId: string; apiKey: string; boardExternalIds: string[]; runId: string; actorId: string | null;
@@ -48,7 +56,7 @@ export class YougileImportService {
     try {
       const client = new YougileClient(msg.apiKey);
       const userMap = await this.buildUserMap(client, tenantId, connectionId);
-      const prio = await this.loadPriorityMap(client);
+      const stickers = await this.loadStickers(client, connectionId);
 
       // проекты (для осмысленных имён), доски и колонки — одним махом
       const [projects, boards, columns] = await Promise.all([client.listProjects(), client.listBoards(), client.listColumns()]);
@@ -87,7 +95,7 @@ export class YougileImportService {
           const localColId = localColByExt.get(String(col.id)) ?? fallbackCol!;
           for (const t of tasks) {
             if (t.deleted || t.archived) { stats.skipped++; continue; }
-            const localTaskId = await this.importTask(tenantId, connectionId, project.id, localColId, t, userMap, prio);
+            const localTaskId = await this.importTask(tenantId, connectionId, project.id, localColId, t, userMap, stickers);
             stats.tasks++;
             await this.importChat(client, { tenantId, connectionId, actorId: msg.actorId }, String(t.id), localTaskId, userMap, stats);
           }
@@ -130,8 +138,8 @@ export class YougileImportService {
       const target = await this.repo.columnTarget(connectionId, String(task.columnId));
       if (!target) return; // задача из неимпортированной доски — игнорируем
       const userMap = await this.buildUserMap(client, tenantId, connectionId);
-      const prio = await this.loadPriorityMap(client);
-      const localTaskId = await this.importTask(tenantId, connectionId, target.projectId, target.columnId, task, userMap, prio);
+      const stickers = await this.loadStickers(client, connectionId);
+      const localTaskId = await this.importTask(tenantId, connectionId, target.projectId, target.columnId, task, userMap, stickers);
       const throwaway: Stats = { boards: 0, columns: 0, tasks: 0, comments: 0, attachments: 0, skipped: 0, warnings: [] };
       await this.importChat(client, { tenantId, connectionId, actorId: msg.actorId }, taskExternalId, localTaskId, userMap, throwaway);
     } catch (e) {
@@ -139,15 +147,23 @@ export class YougileImportService {
     }
   }
 
-  /** Стикеры компании (в них живёт приоритет). Ошибку глушим — приоритет не критичен для импорта. */
-  private async loadPriorityMap(client: YougileClient): Promise<PriorityMap> {
-    try { return buildPriorityMap(await client.listStringStickers()); }
-    catch { return EMPTY_PRIORITY_MAP; }
+  /**
+   * Кастомные стикеры компании: один — приоритет, остальные («Тип задачи», «Устройство», …)
+   * становятся метками задач. Ошибку глушим: стикеры — обогащение, без них импорт валиден.
+   */
+  private async loadStickers(client: YougileClient, connectionId: string): Promise<StickerCtx> {
+    try {
+      const stickers = await client.listStringStickers();
+      const prio = buildPriorityMap(stickers);
+      return { prio, labels: buildLabelMap(stickers, prio.stickerId), owned: await this.repo.importedLabelIds(connectionId) };
+    } catch {
+      return { prio: EMPTY_PRIORITY_MAP, labels: new Map(), owned: new Set() };
+    }
   }
 
   private async importTask(
     tenantId: string, connectionId: string, projectId: string, columnId: string,
-    t: YgTask, userMap: Map<string, string>, prio: PriorityMap,
+    t: YgTask, userMap: Map<string, string>, st: StickerCtx,
   ) {
     const assigneeId = (t.assigned ?? []).map((u) => userMap.get(String(u))).find(Boolean) ?? null;
     const createdBy = t.createdBy ? userMap.get(String(t.createdBy)) ?? null : null;
@@ -155,7 +171,7 @@ export class YougileImportService {
     const deadlineAt = deadlineMs ? new Date(Number(deadlineMs)).toISOString() : null;
     const completed = !!t.completed;
     const description = t.description ? String(t.description).slice(0, 20000) : null;
-    const priority = priorityFromStickers(prio, t.stickers);
+    const priority = priorityFromStickers(st.prio, t.stickers);
     const hash = taskStateHash({
       title: t.title, description, localColumnId: columnId,
       assigned: (t.assigned ?? []).map(String), deadlineIso: deadlineAt, completed, priority,
@@ -166,6 +182,18 @@ export class YougileImportService {
       assigneeId, createdBy, priority, deadlineAt,
       status: completed ? 'done' : 'todo', closed: completed, hash,
     });
+
+    // Метки из прочих стикеров. Синхронизируем независимо от хеша: смена «Тип задачи»
+    // не меняет полей задачи, и по хешу такое изменение было бы не видно.
+    if (st.labels.size) {
+      const desired: string[] = [];
+      for (const l of labelsForTask(st.labels, t.stickers)) {
+        const labelId = await this.repo.ensureLabel({ tenantId, connectionId, externalId: l.externalId, name: l.name, color: l.color });
+        st.owned.add(labelId);
+        desired.push(labelId);
+      }
+      await this.repo.syncTaskLabels(tenantId, id, desired, st.owned);
+    }
     return id;
   }
 

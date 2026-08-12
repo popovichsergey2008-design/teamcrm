@@ -199,6 +199,56 @@ export class YougileRepository {
     return true;
   }
 
+  // ── метки из стикеров YouGile ──
+
+  /**
+   * Метка под состояние стикера: заводим один раз и запоминаем в external_refs.
+   * Имя метки уникально в организации, поэтому одноимённые состояния разных стикеров
+   * (и уже заведённая вручную метка с тем же именем) переиспользуют одну запись.
+   */
+  async ensureLabel(i: { tenantId: string; connectionId: string; externalId: string; name: string; color: string }): Promise<string> {
+    const ref = await this.getRef(i.connectionId, 'label', i.externalId);
+    if (ref) return ref.local_id;
+    const row = await this.db.one<{ id: string }>(
+      `INSERT INTO labels (tenant_id, name, color) VALUES ($1,$2,$3)
+       ON CONFLICT (tenant_id, name) DO UPDATE SET name=labels.name
+       RETURNING id`,
+      [i.tenantId, i.name, i.color],
+    );
+    await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'label', externalId: i.externalId, localId: row!.id });
+    return row!.id;
+  }
+
+  /** Метки, заведённые интеграцией: только их импорт вправе снимать с задачи. */
+  async importedLabelIds(connectionId: string): Promise<Set<string>> {
+    const rows = await this.db.many<{ local_id: string }>(
+      `SELECT local_id FROM external_refs WHERE connection_id=$1 AND entity_type='label'`, [connectionId]);
+    return new Set(rows.map((r) => String(r.local_id)));
+  }
+
+  /**
+   * Приводит метки задачи к состоянию стикеров YouGile.
+   * Снимаем только «свои» метки — поставленные руками в CRM не трогаем.
+   */
+  async syncTaskLabels(tenantId: string, taskId: string, desired: string[], owned: Set<string>): Promise<void> {
+    const current = (await this.db.many<{ label_id: string }>(
+      `SELECT label_id FROM task_labels WHERE tenant_id=$1 AND task_id=$2`, [tenantId, taskId]))
+      .map((r) => String(r.label_id));
+    const want = new Set(desired.map(String));
+    const have = new Set(current);
+
+    for (const id of want) {
+      if (have.has(id)) continue;
+      await this.db.query(
+        `INSERT INTO task_labels (tenant_id, task_id, label_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+        [tenantId, taskId, id]);
+    }
+    for (const id of have) {
+      if (want.has(id) || !owned.has(id)) continue; // чужую (ручную) метку не снимаем
+      await this.db.query(`DELETE FROM task_labels WHERE tenant_id=$1 AND task_id=$2 AND label_id=$3`, [tenantId, taskId, id]);
+    }
+  }
+
   // ── вложение задачи (идемпотентно по external file id) ──
   attachmentExists(connectionId: string, externalFileId: string) {
     return this.getRef(connectionId, 'file', externalFileId);

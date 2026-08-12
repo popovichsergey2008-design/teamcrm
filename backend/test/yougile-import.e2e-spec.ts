@@ -74,12 +74,13 @@ describe('YouGile импорт (e2e)', () => {
     state.boards = [{ id: 'b1', title: 'Доска 1', projectId: 'p1' }];
     state.columns = [{ id: 'c1', title: 'To Do', boardId: 'b1' }, { id: 'c2', title: 'Done', boardId: 'b1' }];
     // приоритет в YouGile — состояние кастомного стикера, а не поле задачи
-    state.stickers = [{
-      id: 'st-prio', name: 'Приоритет',
-      states: [{ id: 's-urgent', name: 'Срочно' }, { id: 's-low', name: 'Низкий' }],
-    }];
+    state.stickers = [
+      { id: 'st-prio', name: 'Приоритет', states: [{ id: 's-urgent', name: 'Срочно' }, { id: 's-low', name: 'Низкий' }] },
+      // прочие стикеры превращаются в метки задачи
+      { id: 'st-type', name: 'Тип задачи', states: [{ id: 'ty-bug', name: 'Баг', color: 4 }, { id: 'ty-feat', name: 'Фича', color: 2 }] },
+    ];
     state.tasksByCol = {
-      c1: [{ id: 't1', title: 'Задача 1', columnId: 'c1', description: 'детали', assigned: ['u1'], deadline: { deadline: deadlineMs }, stickers: { 'st-prio': 's-urgent' } }],
+      c1: [{ id: 't1', title: 'Задача 1', columnId: 'c1', description: 'детали', assigned: ['u1'], deadline: { deadline: deadlineMs }, stickers: { 'st-prio': 's-urgent', 'st-type': 'ty-bug' } }],
       c2: [{ id: 't2', title: 'Задача 2', columnId: 'c2', completed: true }],
     };
     state.messagesByTask = {
@@ -126,6 +127,8 @@ describe('YouGile импорт (e2e)', () => {
     expect(t1.deadline_at).toBeTruthy();
     expect(t1.priority).toBe('urgent');       // приоритет разобран из стикера
     expect(t2.priority).toBe('normal');       // без стикера — обычный
+    expect(t1.labels.map((l: any) => l.name)).toEqual(['Баг']); // прочий стикер стал меткой
+    expect(t2.labels).toEqual([]);
     expect(t2.col).toBe('Done');
 
     // E2: комментарий из чата + вложение из файла сообщения
