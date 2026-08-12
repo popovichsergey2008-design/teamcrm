@@ -20,6 +20,27 @@ describe('YouGile: приоритет из стикера', () => {
     expect(priorityFromStickers(map, { 'st-prio': 's-normal' })).toBe('normal');
   });
 
+  it('джировские названия состояний (реальный стикер клиента: critical/major/normal/low)', () => {
+    const map = buildPriorityMap([{
+      id: 'st-j', name: 'Приоритет',
+      states: [{ id: 'c', name: 'critical' }, { id: 'm', name: 'major' }, { id: 'n', name: 'normal' }, { id: 'l', name: 'low' }],
+    }]);
+    expect(priorityFromStickers(map, { 'st-j': 'c' })).toBe('urgent');
+    expect(priorityFromStickers(map, { 'st-j': 'm' })).toBe('high'); // major — это высокий, а не «обычный»
+    expect(priorityFromStickers(map, { 'st-j': 'n' })).toBe('normal');
+    expect(priorityFromStickers(map, { 'st-j': 'l' })).toBe('low');
+  });
+
+  it('minor и major не путаются между собой', () => {
+    const map = buildPriorityMap([{
+      id: 'st-m', name: 'Priority',
+      states: [{ id: 'a', name: 'Major' }, { id: 'b', name: 'Minor' }, { id: 'c', name: 'Blocker' }],
+    }]);
+    expect(priorityFromStickers(map, { 'st-m': 'a' })).toBe('high');
+    expect(priorityFromStickers(map, { 'st-m': 'b' })).toBe('low');
+    expect(priorityFromStickers(map, { 'st-m': 'c' })).toBe('urgent');
+  });
+
   it('нет стикера, чужой стикер или неизвестное состояние — приоритет обычный', () => {
     const map = buildPriorityMap([sticker]);
     expect(priorityFromStickers(map, null)).toBe('normal');

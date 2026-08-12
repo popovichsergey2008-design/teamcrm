@@ -24,11 +24,15 @@ export const EMPTY_PRIORITY_MAP: PriorityMap = {
 /** Стикер приоритета опознаём по названию — своего типа для него в API нет. */
 const PRIORITY_STICKER_RE = /(приоритет|priority|важн)/i;
 
-/** Название состояния → наш приоритет. Порядок важен: «очень высокий» должен стать urgent, а не high. */
+/**
+ * Название состояния → наш приоритет. Порядок важен: «высочайший» должен стать urgent,
+ * а не high, поэтому правило urgent проверяется первым.
+ * Покрываем и русские названия, и джировские (critical/major/minor) — у клиента ровно такие.
+ */
 const STATE_RULES: { re: RegExp; priority: string }[] = [
-  { re: /(срочн|критич|urgent|critical|блокер|blocker|очень высок|высочайш|asap|p0)/i, priority: 'urgent' },
-  { re: /(высок|high|важн|p1)/i, priority: 'high' },
-  { re: /(низк|low|минимал|потом|p3)/i, priority: 'low' },
+  { re: /(срочн|критич|urgent|critical|блокер|blocker|очень высок|высочайш|highest|asap|p0)/i, priority: 'urgent' },
+  { re: /(высок|high|важн|major|p1)/i, priority: 'high' },
+  { re: /(низк|low|lowest|minor|trivial|минимал|потом|p3)/i, priority: 'low' },
   { re: /(обычн|средн|нормальн|normal|medium|standard|p2)/i, priority: 'normal' },
 ];
 
