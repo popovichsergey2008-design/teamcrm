@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "git": {
+    "approval": "auto",
+    "strategy": "exact_files",
+    "custom": null,
+    "selected_by_user": true
+  },
+  "deploy": {
+    "approval": "confirm",
+    "strategy": "agent_choice",
+    "custom": null,
+    "selected_by_user": false,
+    "note": "Safe defaults: deploy policy was NOT chosen by the user. Ask separately before the first deploy."
+  }
+}
