@@ -71,6 +71,13 @@ export function LoginPage() {
           {busy ? '...' : mode === 'login' ? 'Войти' : 'Создать'}
         </button>
 
+        {/* писем система не шлёт, поэтому честно: ссылку на смену пароля выдаёт владелец */}
+        {mode === 'login' && (
+          <div className="dim" style={{ fontSize: 12, marginTop: 10, textAlign: 'center' }}>
+            Забыли пароль? Попросите владельца организации — в разделе «Команда» он выдаст вам ссылку на смену пароля.
+          </div>
+        )}
+
         <button
           type="button"
           className="btn btn-ghost btn-sm auth-toggle"

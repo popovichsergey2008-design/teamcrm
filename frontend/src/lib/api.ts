@@ -386,6 +386,15 @@ export const api = {
   acceptInviteLink: (b: { token: string; email: string; fullName: string; password: string }) =>
     rawRequest<any>('POST', '/invites/links/accept', b, false),
 
+  // сброс пароля: владелец выдаёт одноразовую ссылку, человек задаёт пароль сам
+  createPasswordResetLink: (userId: string) =>
+    request<{ token: string; expiresAt: string; email: string; fullName: string; alsoAffectsOrgs: string[] }>(
+      'POST', '/auth/password/reset-link', { userId }),
+  passwordResetInfo: (token: string) =>
+    rawRequest<{ email: string; fullName: string }>('GET', `/auth/password/reset/${token}`, undefined, false),
+  resetPassword: (b: { token: string; password: string }) =>
+    rawRequest<{ reset: boolean; email: string }>('POST', '/auth/password/reset', b, false),
+
   // Этап 4 — forecast, assignment, velocity, copilot
   assignTask: (id: string, b: { assigneeId: string; confirmOverload?: boolean; estimateHours?: number; deadlineAt?: string }) =>
     request<any>('POST', `/tasks/${id}/assign`, b),

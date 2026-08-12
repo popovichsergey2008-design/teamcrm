@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Headers, Ip, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Ip, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsString, MaxLength, MinLength } from 'class-validator';
-import { CurrentUser, Public } from '../../common/auth/decorators';
+import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AuthService, SessionMeta } from './auth.service';
+import { PasswordResetService } from './password-reset.service';
 import { LoginDto, LogoutDto, RefreshDto, RegisterDto } from './auth.dto';
 
 class SwitchOrgDto {
@@ -12,11 +13,43 @@ class SwitchOrgDto {
 class CreateOrgDto {
   @IsString() @MinLength(2) @MaxLength(160) name!: string;
 }
+class ResetLinkDto {
+  @IsString() userId!: string;
+}
+class ResetPasswordDto {
+  @IsString() token!: string;
+  @IsString() @MinLength(8) @MaxLength(128) password!: string;
+}
 
 @ApiTags('auth')
 @Controller()
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly reset: PasswordResetService,
+  ) {}
+
+  // ── сброс пароля (почты в проекте нет: владелец выдаёт ссылку и передаёт лично) ──
+
+  /** Владелец выдаёт сотруднику одноразовую ссылку. Сам пароль владелец не узнаёт. */
+  @ApiBearerAuth()
+  @Post('auth/password/reset-link')
+  @Roles('owner')
+  resetLink(@CurrentUser() user: AuthUser, @Body() dto: ResetLinkDto) {
+    return this.reset.createLink(user.tenantId, user.userId, dto.userId);
+  }
+
+  @Public()
+  @Get('auth/password/reset/:token')
+  resetInfo(@Param('token') token: string) {
+    return this.reset.info(token);
+  }
+
+  @Public()
+  @Post('auth/password/reset')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.reset.complete(dto.token, dto.password);
+  }
 
   @Public()
   @Post('auth/register')

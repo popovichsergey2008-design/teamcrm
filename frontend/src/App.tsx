@@ -5,6 +5,7 @@ import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { JoinOrgPage } from './pages/JoinOrgPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
@@ -44,10 +45,12 @@ export function App() {
     if (user && tenantId !== user.tenantId) await switchOrg(tenantId);
   };
 
-  // приглашение в команду: одноразовое /?invite=<token> или многоразовое /?join=<token>
+  // приглашение в команду: одноразовое /?invite=<token> или многоразовое /?join=<token>;
+  // сброс пароля по ссылке от владельца: /?reset=<token>
   const params = new URLSearchParams(window.location.search);
   const inviteToken = params.get('invite');
   const joinToken = params.get('join');
+  const resetToken = params.get('reset');
 
   useEffect(() => {
     if (user) api.me().then((m) => setAvatarPath(m.avatarUrl)).catch(() => undefined);
@@ -55,6 +58,7 @@ export function App() {
 
   if (inviteToken) return <AcceptInvitePage token={inviteToken} />;
   if (joinToken) return <JoinOrgPage token={joinToken} />;
+  if (resetToken) return <ResetPasswordPage token={resetToken} />;
 
   if (loading) {
     return (

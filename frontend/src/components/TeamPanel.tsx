@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { ASSIGNABLE_ROLES, roleLabel } from '../lib/labels';
 import { MONETIZATION_ENABLED } from '../config';
+import { useAuth } from '../state/auth';
 
 type Tab = 'people' | 'positions' | 'groups';
 const roleOptions = ASSIGNABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>);
@@ -19,6 +20,9 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
   const [linkForm, setLinkForm] = useState({ role: 'member', maxUses: '', expiresInDays: '' });
   const [newLink, setNewLink] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  // сброс пароля сотруднику — только владелец (эндпоинт закрыт ролью owner)
+  const { user: me } = useAuth();
+  const [reset, setReset] = useState<{ userId: string; link: string; alsoAffectsOrgs: string[] } | null>(null);
 
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 2500); };
   const reload = async () => {
@@ -60,6 +64,14 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
       const r = await api.createInvite({ email: inv.email, role: inv.role, positionId: inv.positionId || undefined });
       setInvite({ email: r.email, link: `${window.location.origin}/?invite=${r.token}` });
       setInv({ email: '', role: 'member', positionId: '' });
+    } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+
+  /** Выдать сотруднику ссылку на смену пароля. Пароль задаёт он сам — владелец его не видит. */
+  const makeResetLink = async (userId: string) => {
+    try {
+      const r = await api.createPasswordResetLink(userId);
+      setReset({ userId, link: `${window.location.origin}/?reset=${r.token}`, alsoAffectsOrgs: r.alsoAffectsOrgs });
     } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
 
@@ -195,7 +207,22 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                   )}
                   <button className="btn btn-ghost btn-sm" onClick={() => loadMetrics(u.id)}>Метрики</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => patchUser(u.id, { isActive: !u.isActive })}>{u.isActive ? 'Деактив.' : 'Вкл.'}</button>
+                  {me?.role === 'owner' && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => makeResetLink(u.id)} title="Выдать ссылку на смену пароля">Сброс пароля</button>
+                  )}
                 </div>
+                {reset && reset.userId === u.id && (
+                  <div className="invite-box">
+                    Ссылка на смену пароля (действует 2 часа, одноразовая). Передайте её сотруднику — пароль он задаст сам:
+                    <input className="input" readOnly value={reset.link} onFocus={(e) => e.currentTarget.select()} />
+                    {reset.alsoAffectsOrgs.length > 0 && (
+                      <div className="error-text" style={{ fontSize: 12 }}>
+                        ⚠ Пароль общий для всех организаций этого человека — смена затронет также: {reset.alsoAffectsOrgs.join(', ')}.
+                      </div>
+                    )}
+                    <button className="btn btn-ghost btn-sm" onClick={() => setReset(null)}>Скрыть</button>
+                  </div>
+                )}
                 {metrics[u.id] && (
                   <div className="dim team-metrics">
                     Velocity {Number(metrics[u.id].v.velocity).toFixed(3)} · закрыто {metrics[u.id].v.closedTasks} · загрузка {metrics[u.id].l.queueHours}ч / {metrics[u.id].l.effectiveCapacityHours}ч
