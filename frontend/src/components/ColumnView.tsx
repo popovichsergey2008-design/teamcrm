@@ -1,6 +1,7 @@
 import { DragEvent, useState } from 'react';
 import type { BoardColumn, Task, User } from '../types';
 import { MONETIZATION_ENABLED } from '../config';
+import { deadlineBadge, priorityBadge } from '../lib/labels';
 
 interface Props {
   column: BoardColumn;
@@ -183,6 +184,8 @@ function TaskCard({
   onDropBefore: (e: DragEvent) => void;
 }) {
   const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
+  const prio = priorityBadge(task.priority);
+  const due = deadlineBadge(task.deadline_at, !!task.closed_at);
   return (
     <div
       className={`task-card ${timerActive ? 'task-tracking' : ''}`}
@@ -210,9 +213,8 @@ function TaskCard({
         )}
         {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент">🤖 ИИ-агент</span>}
         {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
-        {(task.priority === 'high' || task.priority === 'urgent') && (
-          <span className={`badge prio-${task.priority}`}>{task.priority === 'urgent' ? '🔥 срочно' : '↑ высокий'}</span>
-        )}
+        {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
+        {due && <span className={due.cls} title={due.title}>{due.text}</span>}
         {!!task.commentsCount && <span className="badge" title="комментарии">💬 {task.commentsCount}</span>}
         {!!task.attachmentsCount && <span className="badge" title="вложения">📎 {task.attachmentsCount}</span>}
         {!!task.checklistTotal && <span className="badge" title="чеклист">✓ {task.checklistDone}/{task.checklistTotal}</span>}

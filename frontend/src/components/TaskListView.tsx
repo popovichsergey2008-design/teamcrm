@@ -1,5 +1,6 @@
 import type { Board, Task, User } from '../types';
 import { MONETIZATION_ENABLED } from '../config';
+import { deadlineBadge, priorityBadge } from '../lib/labels';
 
 interface Props {
   board: Board;
@@ -9,8 +10,6 @@ interface Props {
   onOpenTask: (task: Task) => void;
   onToggleTimer: (taskId: string) => void;
 }
-
-const PRIO_LABEL: Record<string, string> = { urgent: '🔥 срочно', high: '↑ высокий', low: '↓ низкий' };
 
 /** Списочный вид доски: задачи сгруппированы по колонкам, компактные строки. */
 export function TaskListView({ board, users, canTrack, activeTimerTask, onOpenTask, onToggleTimer }: Props) {
@@ -27,6 +26,8 @@ export function TaskListView({ board, users, canTrack, activeTimerTask, onOpenTa
           {col.tasks.map((t) => {
             const assignee = nameOf(t);
             const cost = t.cost_current !== undefined ? Number(t.cost_current) : null;
+            const prio = priorityBadge(t.priority);
+            const due = deadlineBadge(t.deadline_at, !!t.closed_at);
             return (
               <div key={t.id} className="list-row" onClick={() => onOpenTask(t)}>
                 <div className="list-main">
@@ -36,9 +37,8 @@ export function TaskListView({ board, users, canTrack, activeTimerTask, onOpenTa
                 </div>
                 <div className="list-side">
                   {t.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
-                  {t.priority && PRIO_LABEL[t.priority] && (
-                    <span className={`badge prio-${t.priority}`}>{PRIO_LABEL[t.priority]}</span>
-                  )}
+                  {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
+                  {due && <span className={due.cls} title={due.title}>{due.text}</span>}
                   {!!t.commentsCount && <span className="badge" title="комментарии">💬 {t.commentsCount}</span>}
                   {!!t.attachmentsCount && <span className="badge" title="вложения">📎 {t.attachmentsCount}</span>}
                   {!!t.checklistTotal && <span className="badge" title="чеклист">✓ {t.checklistDone}/{t.checklistTotal}</span>}
