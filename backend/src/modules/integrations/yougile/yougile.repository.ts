@@ -16,7 +16,7 @@ export interface OutboxRow {
 /** Поля задачи, которые CRM выгружает в YouGile. */
 export interface PushTaskRow {
   id: string; project_id: string; column_id: string; title: string;
-  description: string | null; assignee_id: string | null;
+  description: string | null; assignee_id: string | null; priority: string;
   deadline_at: Date | null; closed_at: Date | null;
 }
 
@@ -264,7 +264,7 @@ export class YougileRepository {
   // ── E4: чтение локальных объектов для выгрузки ──
   taskForPush(tenantId: string, id: string) {
     return this.db.one<PushTaskRow>(
-      `SELECT id, project_id, column_id, title, description, assignee_id, deadline_at, closed_at
+      `SELECT id, project_id, column_id, title, description, assignee_id, priority, deadline_at, closed_at
          FROM tasks WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
   }
   columnForPush(tenantId: string, id: string) {

@@ -27,6 +27,7 @@ describe('YouGile импорт (e2e)', () => {
       const url = new URL(req.url ?? '/', 'http://x');
       const page = (arr: any[]) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ content: arr, paging: { limit: 50, offset: 0, next: false, count: arr.length } })); };
       if (url.pathname === '/users') return page(state.users);
+      if (url.pathname === '/string-stickers') return page(state.stickers ?? []);
       if (url.pathname === '/projects') return page(state.projects);
       if (url.pathname === '/boards') return page(state.boards);
       if (url.pathname === '/columns') return page(state.columns);
@@ -72,8 +73,13 @@ describe('YouGile импорт (e2e)', () => {
     state.projects = [{ id: 'p1', title: 'Проект А' }];
     state.boards = [{ id: 'b1', title: 'Доска 1', projectId: 'p1' }];
     state.columns = [{ id: 'c1', title: 'To Do', boardId: 'b1' }, { id: 'c2', title: 'Done', boardId: 'b1' }];
+    // приоритет в YouGile — состояние кастомного стикера, а не поле задачи
+    state.stickers = [{
+      id: 'st-prio', name: 'Приоритет',
+      states: [{ id: 's-urgent', name: 'Срочно' }, { id: 's-low', name: 'Низкий' }],
+    }];
     state.tasksByCol = {
-      c1: [{ id: 't1', title: 'Задача 1', columnId: 'c1', description: 'детали', assigned: ['u1'], deadline: { deadline: deadlineMs } }],
+      c1: [{ id: 't1', title: 'Задача 1', columnId: 'c1', description: 'детали', assigned: ['u1'], deadline: { deadline: deadlineMs }, stickers: { 'st-prio': 's-urgent' } }],
       c2: [{ id: 't2', title: 'Задача 2', columnId: 'c2', completed: true }],
     };
     state.messagesByTask = {
@@ -118,6 +124,8 @@ describe('YouGile импорт (e2e)', () => {
     expect(t1.col).toBe('To Do');
     expect(t1.assignee_id).toBe(reg.user.id); // исполнитель сопоставлен по e-mail
     expect(t1.deadline_at).toBeTruthy();
+    expect(t1.priority).toBe('urgent');       // приоритет разобран из стикера
+    expect(t2.priority).toBe('normal');       // без стикера — обычный
     expect(t2.col).toBe('Done');
 
     // E2: комментарий из чата + вложение из файла сообщения

@@ -43,6 +43,7 @@ describe('YouGile двусторонняя синхронизация (e2e)', ()
 
         // ── чтение ──
         if (url.pathname === '/users') return page(state.users);
+        if (url.pathname === '/string-stickers') return page(state.stickers ?? []);
         if (url.pathname === '/projects') return page(state.projects);
         if (url.pathname === '/boards') return page(state.boards);
         if (url.pathname === '/columns' && method === 'GET') return page(state.columns);
@@ -116,6 +117,7 @@ describe('YouGile двусторонняя синхронизация (e2e)', ()
     state.projects = [{ id: 'p1', title: 'Проект А' }];
     state.boards = [{ id: 'b1', title: 'Доска 1', projectId: 'p1' }];
     state.columns = [{ id: 'c1', title: 'To Do', boardId: 'b1' }, { id: 'c2', title: 'Готово', boardId: 'b1' }];
+    state.stickers = [{ id: 'st-prio', name: 'Приоритет', states: [{ id: 's-urgent', name: 'Срочно' }, { id: 's-normal', name: 'Обычный' }] }];
     state.tasksByCol = { c1: [{ id: 't1', title: 'Задача 1', columnId: 'c1', assigned: ['u1'] }], c2: [] };
     state.taskById = { t1: { id: 't1', title: 'Задача 1', columnId: 'c1', assigned: ['u1'] } };
     state.messagesByTask = { t1: [] };
@@ -161,6 +163,12 @@ describe('YouGile двусторонняя синхронизация (e2e)', ()
     expect(upd).toHaveLength(1);
     expect(upd[0].body.title).toBe('Задача 1 (правка из CRM)');
     expect(upd[0].body.assigned).toEqual(['u1']);
+
+    // 2б) приоритет уезжает состоянием стикера (в YouGile это не поле задачи)
+    calls = [];
+    await http$.patch(`/api/tasks/${task.id}`).set(H(tok)).send({ priority: 'urgent' }).expect(200);
+    await http$.post(`/api/integrations/yougile/connections/${conn.id}/push/flush`).set(H(tok)).expect(201);
+    expect(findCall('PUT', /^\/tasks\/t1$/)[0].body.stickers).toEqual({ 'st-prio': 's-urgent' });
 
     // 3) комментарий → сообщение в чат задачи, автор подписан в тексте
     calls = [];

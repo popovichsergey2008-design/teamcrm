@@ -3,6 +3,7 @@ import { FilesService } from '../../files/files.service';
 import { YougileRepository } from './yougile.repository';
 import { YougileClient, YgTask, YgMessage } from './yougile.client';
 import { chatEchoKey, taskStateHash } from './yougile.hash';
+import { buildPriorityMap, EMPTY_PRIORITY_MAP, PriorityMap, priorityFromStickers } from './yougile.priority';
 
 export interface YougileImportMsg {
   tenantId: string; connectionId: string; apiKey: string; boardExternalIds: string[]; runId: string; actorId: string | null;
@@ -47,6 +48,7 @@ export class YougileImportService {
     try {
       const client = new YougileClient(msg.apiKey);
       const userMap = await this.buildUserMap(client, tenantId, connectionId);
+      const prio = await this.loadPriorityMap(client);
 
       // проекты (для осмысленных имён), доски и колонки — одним махом
       const [projects, boards, columns] = await Promise.all([client.listProjects(), client.listBoards(), client.listColumns()]);
@@ -85,7 +87,7 @@ export class YougileImportService {
           const localColId = localColByExt.get(String(col.id)) ?? fallbackCol!;
           for (const t of tasks) {
             if (t.deleted || t.archived) { stats.skipped++; continue; }
-            const localTaskId = await this.importTask(tenantId, connectionId, project.id, localColId, t, userMap);
+            const localTaskId = await this.importTask(tenantId, connectionId, project.id, localColId, t, userMap, prio);
             stats.tasks++;
             await this.importChat(client, { tenantId, connectionId, actorId: msg.actorId }, String(t.id), localTaskId, userMap, stats);
           }
@@ -128,7 +130,8 @@ export class YougileImportService {
       const target = await this.repo.columnTarget(connectionId, String(task.columnId));
       if (!target) return; // задача из неимпортированной доски — игнорируем
       const userMap = await this.buildUserMap(client, tenantId, connectionId);
-      const localTaskId = await this.importTask(tenantId, connectionId, target.projectId, target.columnId, task, userMap);
+      const prio = await this.loadPriorityMap(client);
+      const localTaskId = await this.importTask(tenantId, connectionId, target.projectId, target.columnId, task, userMap, prio);
       const throwaway: Stats = { boards: 0, columns: 0, tasks: 0, comments: 0, attachments: 0, skipped: 0, warnings: [] };
       await this.importChat(client, { tenantId, connectionId, actorId: msg.actorId }, taskExternalId, localTaskId, userMap, throwaway);
     } catch (e) {
@@ -136,21 +139,31 @@ export class YougileImportService {
     }
   }
 
-  private async importTask(tenantId: string, connectionId: string, projectId: string, columnId: string, t: YgTask, userMap: Map<string, string>) {
+  /** Стикеры компании (в них живёт приоритет). Ошибку глушим — приоритет не критичен для импорта. */
+  private async loadPriorityMap(client: YougileClient): Promise<PriorityMap> {
+    try { return buildPriorityMap(await client.listStringStickers()); }
+    catch { return EMPTY_PRIORITY_MAP; }
+  }
+
+  private async importTask(
+    tenantId: string, connectionId: string, projectId: string, columnId: string,
+    t: YgTask, userMap: Map<string, string>, prio: PriorityMap,
+  ) {
     const assigneeId = (t.assigned ?? []).map((u) => userMap.get(String(u))).find(Boolean) ?? null;
     const createdBy = t.createdBy ? userMap.get(String(t.createdBy)) ?? null : null;
     const deadlineMs = t.deadline?.deadline;
     const deadlineAt = deadlineMs ? new Date(Number(deadlineMs)).toISOString() : null;
     const completed = !!t.completed;
     const description = t.description ? String(t.description).slice(0, 20000) : null;
+    const priority = priorityFromStickers(prio, t.stickers);
     const hash = taskStateHash({
       title: t.title, description, localColumnId: columnId,
-      assigned: (t.assigned ?? []).map(String), deadlineIso: deadlineAt, completed,
+      assigned: (t.assigned ?? []).map(String), deadlineIso: deadlineAt, completed, priority,
     });
     const { id } = await this.repo.upsertTask({
       tenantId, connectionId, externalId: String(t.id), projectId, columnId,
       title: (t.title || 'Без названия').slice(0, 255), description,
-      assigneeId, createdBy, priority: 'normal', deadlineAt,
+      assigneeId, createdBy, priority, deadlineAt,
       status: completed ? 'done' : 'todo', closed: completed, hash,
     });
     return id;

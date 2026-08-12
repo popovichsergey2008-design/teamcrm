@@ -9,14 +9,18 @@ describe('YouGile: хеш состояния задачи и ключ своег
     assigned: ['u1', 'u2'],
     deadlineIso: '2030-01-01T00:00:00.000Z',
     completed: false,
+    priority: 'high',
   };
 
-  it('совпадает с формулой, которой посчитаны уже сохранённые хеши импорта', () => {
-    // формула до выделения в общий модуль (E1–E3) — менять её нельзя без пересчёта external_hash
-    const legacy = createHash('sha256')
-      .update(['Задача 1', 'детали', '42', 'u1,u2', '2030-01-01T00:00:00.000Z', '0'].join('|'))
+  it('считается по фиксированному составу полей (импорт и выгрузка должны совпадать)', () => {
+    const expected = createHash('sha256')
+      .update(['Задача 1', 'детали', '42', 'u1,u2', '2030-01-01T00:00:00.000Z', '0', 'high'].join('|'))
       .digest('hex').slice(0, 64);
-    expect(taskStateHash(sample)).toBe(legacy);
+    expect(taskStateHash(sample)).toBe(expected);
+  });
+
+  it('различает приоритет — иначе смена приоритета в YouGile не доехала бы до CRM', () => {
+    expect(taskStateHash({ ...sample, priority: 'urgent' })).not.toBe(taskStateHash(sample));
   });
 
   it('пустое описание и отсутствие срока дают тот же хеш, что null (импорт кладёт null)', () => {

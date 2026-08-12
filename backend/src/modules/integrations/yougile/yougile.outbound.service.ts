@@ -5,6 +5,7 @@ import { IntegrationCryptoService } from '../crypto.service';
 import { ConnectionRow, OutboxRow, PushTaskRow, YougileRepository } from './yougile.repository';
 import { YgTaskWrite, YougileClient, YougileError } from './yougile.client';
 import { chatEchoKey, taskStateHash } from './yougile.hash';
+import { buildPriorityMap, EMPTY_PRIORITY_MAP, PriorityMap, stickersForPriority } from './yougile.priority';
 
 const BATCH = 10;
 const MAX_ATTEMPTS = 6;
@@ -14,6 +15,7 @@ interface Ctx {
   conn: ConnectionRow;
   client: YougileClient;
   users?: Map<string, string>; // e-mail (lower) → id пользователя YouGile
+  prio?: PriorityMap;          // приоритет в YouGile — кастомный стикер
 }
 
 async function toBuffer(stream: Readable): Promise<Buffer> {
@@ -137,6 +139,13 @@ export class YougileOutboundService implements OnModuleInit, OnModuleDestroy {
     if (assigned) body.assigned = assigned;
     if (deadlineIso) body.deadline = { deadline: new Date(deadlineIso).getTime(), withTime: true };
 
+    // приоритет: в YouGile это состояние стикера. Если стикера приоритета в компании нет,
+    // отправлять нечего — и в хеш тогда пишем 'normal', ровно как посчитал бы импорт.
+    const prio = await this.priorityMap(ctx);
+    const stickers = stickersForPriority(prio, task.priority);
+    if (stickers) body.stickers = stickers;
+    const expectedPriority = stickers ? task.priority : 'normal';
+
     const ref = await this.repo.refByLocal(ctx.conn.id, 'task', taskId);
     let externalId: string;
     if (ref) {
@@ -153,7 +162,7 @@ export class YougileOutboundService implements OnModuleInit, OnModuleDestroy {
     // ответное событие просто перечитает задачу из YouGile (лишняя, но безопасная запись).
     const hash = assigned ? taskStateHash({
       title: task.title, description: task.description, localColumnId: task.column_id,
-      assigned, deadlineIso, completed,
+      assigned, deadlineIso, completed, priority: expectedPriority,
     }) : null;
     await this.repo.putRef({ tenantId, connectionId: ctx.conn.id, entityType: 'task', externalId, localId: taskId, hash });
     return externalId;
@@ -193,6 +202,15 @@ export class YougileOutboundService implements OnModuleInit, OnModuleDestroy {
     if (!externalId) return undefined; // такого сотрудника в YouGile нет
     await this.repo.putRef({ tenantId, connectionId: ctx.conn.id, entityType: 'user', externalId, localId: task.assignee_id });
     return [externalId];
+  }
+
+  /** Стикеры компании тянем один раз на проход очереди. Сбой не должен ронять выгрузку задачи. */
+  private async priorityMap(ctx: Ctx): Promise<PriorityMap> {
+    if (!ctx.prio) {
+      try { ctx.prio = buildPriorityMap(await ctx.client.listStringStickers()); }
+      catch { ctx.prio = EMPTY_PRIORITY_MAP; }
+    }
+    return ctx.prio;
   }
 
   // ───── колонки ─────

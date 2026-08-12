@@ -22,6 +22,13 @@ export interface YgTask {
   completed?: boolean; archived?: boolean; deleted?: boolean;
   assigned?: string[]; createdBy?: string | null; timestamp?: number;
   deadline?: { deadline?: number; startDate?: number; withTime?: boolean } | null;
+  /** { id стикера: id состояния } — здесь же лежит приоритет (в YouGile это кастомный стикер). */
+  stickers?: Record<string, string> | null;
+}
+/** Кастомный стикер компании с состояниями (GET /string-stickers). */
+export interface YgSticker {
+  id: string; name?: string; boardId?: string; deleted?: boolean;
+  states?: { id: string; name?: string; color?: number; deleted?: boolean }[];
 }
 export interface YgFile { name?: string; url?: string; size?: number }
 /** Тело записи задачи (POST /tasks, PUT /tasks/{id}) — только поля, которые ведёт CRM. */
@@ -29,6 +36,7 @@ export interface YgTaskWrite {
   title?: string; description?: string; columnId?: string; assigned?: string[];
   completed?: boolean; archived?: boolean; deleted?: boolean;
   deadline?: { deadline: number; withTime?: boolean } | null;
+  stickers?: Record<string, string>;
 }
 export interface YgMessage {
   id: string | number; deleted?: boolean; text?: string | null; fromUserId?: string | null;
@@ -166,6 +174,8 @@ export class YougileClient {
   listBoards() { return this.all<YgBoard>('boards'); }
   listColumns() { return this.all<YgColumn>('columns'); }
   listUsers() { return this.all<YgUser>('users'); }
+  /** Кастомные стикеры компании — среди них живёт приоритет. */
+  listStringStickers() { return this.all<YgSticker>('string-stickers'); }
   /** Задачи колонки (сервер фильтрует по columnId; клиентский фильтр — страховка). */
   async listTasks(columnId: string): Promise<YgTask[]> {
     const rows = await this.all<YgTask>('tasks', { columnId });

@@ -6,7 +6,10 @@ import { createHash } from 'crypto';
  * Импорт кладёт его в external_refs.external_hash и пропускает задачу, если хеш не изменился.
  * Выгрузка после успешной отправки записывает хеш ОЖИДАЕМОГО состояния YouGile — поэтому
  * вебхук о нашей же правке приходит «пустым» и не перезаписывает карточку обратно (защита от эха).
- * Поля и порядок менять нельзя, не пересчитав хеши: иначе один прогон импорта пройдёт вхолостую.
+ *
+ * Состав полей менять — значит обесценить все сохранённые хеши: ближайший импорт один раз
+ * перезапишет каждую задачу теми же значениями и дальше снова будет пропускать неизменённые.
+ * Так было при добавлении priority (иначе смена приоритета в YouGile не доезжала бы до CRM).
  */
 export function taskStateHash(i: {
   title: string;
@@ -15,6 +18,7 @@ export function taskStateHash(i: {
   assigned: string[];
   deadlineIso: string | null;
   completed: boolean;
+  priority: string;
 }): string {
   return createHash('sha256')
     .update([
@@ -24,6 +28,7 @@ export function taskStateHash(i: {
       i.assigned.join(','),
       i.deadlineIso ?? '',
       i.completed ? '1' : '0',
+      i.priority,
     ].join('|'))
     .digest('hex')
     .slice(0, 64);
