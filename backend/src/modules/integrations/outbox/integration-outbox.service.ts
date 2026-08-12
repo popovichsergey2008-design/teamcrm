@@ -33,12 +33,14 @@ export class IntegrationOutboxService {
       if (!conn) return; // локальный проект или выгрузка выключена
       // Схлопываем дубли: воркер читает актуальное состояние из БД, поэтому
       // несколько ждущих правок одного объекта одного вида не нужны.
+      // Типы параметров указаны явно: в INSERT ... SELECT Postgres не выводит их
+      // из колонок назначения (в отличие от INSERT ... VALUES) и падает на разборе.
       await this.db.query(
         `INSERT INTO integration_outbox (tenant_id, connection_id, kind, local_id, payload)
-         SELECT $1,$2,$3,$4,$5
+         SELECT $1::bigint, $2::bigint, $3::varchar, $4::bigint, $5::jsonb
           WHERE NOT EXISTS (
             SELECT 1 FROM integration_outbox
-             WHERE connection_id=$2 AND kind=$3 AND local_id=$4 AND status='pending')`,
+             WHERE connection_id=$2::bigint AND kind=$3::varchar AND local_id=$4::bigint AND status='pending')`,
         [tenantId, conn.id, kind, localId, payload == null ? null : JSON.stringify(payload)],
       );
     } catch (e) {

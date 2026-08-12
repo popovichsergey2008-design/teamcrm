@@ -172,7 +172,8 @@ describe('YouGile двусторонняя синхронизация (e2e)', ()
 
     // 4) вложение → загрузка файла + ссылка сообщением в чат
     calls = [];
-    await http$.post(`/api/tasks/${task.id}/attachments`).set(H(tok)).attach('file', Buffer.from('hello'), 'note.txt').expect(201);
+    await http$.post(`/api/tasks/${task.id}/attachments`).set(H(tok))
+      .attach('file', Buffer.from('hello'), { filename: 'note.txt', contentType: 'text/plain' }).expect(201);
     await http$.post(`/api/integrations/yougile/connections/${conn.id}/push/flush`).set(H(tok)).expect(201);
     expect(findCall('POST', /^\/upload-file$/)).toHaveLength(1);
     expect(findCall('POST', /^\/chats\/t1\/messages$/)[0].body.text).toContain('note.txt');
