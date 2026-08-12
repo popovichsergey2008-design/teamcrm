@@ -389,8 +389,21 @@ function YougileImportBlock({ cid }: { cid: string }) {
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [run, setRun] = useState<any>(null);
   const [err, setErr] = useState('');
+  const [unmatched, setUnmatched] = useState<{ total: number; items: { externalId: string; name: string; email: string }[] } | null>(null);
+  const [locals, setLocals] = useState<any[]>([]);
+  const [mapPick, setMapPick] = useState<Record<string, string>>({});
 
   useEffect(() => { api.yougileBoards(cid).then(setBoards).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось получить доски')); }, [cid]);
+
+  const loadUsers = () => {
+    api.yougileUnmatched(cid).then(setUnmatched).catch(() => undefined);
+    if (!locals.length) api.listUsers().then(setLocals).catch(() => undefined);
+  };
+  const mapUser = async (extId: string) => {
+    const local = mapPick[extId];
+    if (!local) return;
+    try { await api.yougileMapUser(cid, extId, local); loadUsers(); } catch { /* */ }
+  };
 
   const startImport = async () => {
     const ids = Object.keys(picked).filter((k) => picked[k]);
@@ -425,8 +438,27 @@ function YougileImportBlock({ cid }: { cid: string }) {
         <div className="dim" style={{ marginTop: 6, fontSize: 12 }}>
           {(run.status === 'queued' || run.status === 'running') && 'Импорт идёт…'}
           {run.status === 'error' && <span className="error-text">Ошибка: {run.error}</span>}
-          {run.status === 'done' && run.stats && `Готово: досок ${run.stats.boards ?? 0}, колонок ${run.stats.columns ?? 0}, задач ${run.stats.tasks ?? 0}. Обновляем…`}
+          {run.status === 'done' && run.stats && `Готово: досок ${run.stats.boards ?? 0}, колонок ${run.stats.columns ?? 0}, задач ${run.stats.tasks ?? 0}, комментариев ${run.stats.comments ?? 0}, файлов ${run.stats.attachments ?? 0}. Обновляем…`}
         </div>
+      )}
+
+      <div className="drawer-section-title" style={{ marginTop: 10 }}>Сопоставление пользователей</div>
+      {!unmatched && <button className="btn btn-ghost btn-sm" onClick={loadUsers}>Показать несопоставленных</button>}
+      {unmatched && (
+        <>
+          <div className="dim" style={{ fontSize: 12 }}>Юзеры YouGile без совпадения по e-mail. Привяжите вручную — применится при повторном импорте.</div>
+          {unmatched.items.length === 0 && <div className="muted">Все сопоставлены ✓</div>}
+          {unmatched.items.map((u) => (
+            <div key={u.externalId} className="team-rate" style={{ marginTop: 4 }}>
+              <span style={{ flex: 1, fontSize: 13 }}>{u.name}{u.email && <span className="dim" style={{ fontSize: 11 }}> · {u.email}</span>}</span>
+              <select className="input" value={mapPick[u.externalId] ?? ''} onChange={(e) => setMapPick({ ...mapPick, [u.externalId]: e.target.value })}>
+                <option value="">— выбрать —</option>
+                {locals.map((l) => <option key={l.id} value={l.id}>{l.fullName}</option>)}
+              </select>
+              <button className="btn btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
+            </div>
+          ))}
+        </>
       )}
     </div>
   );

@@ -1,24 +1,38 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
+import { FilesService } from '../../files/files.service';
 import { YougileRepository } from './yougile.repository';
-import { YougileClient, YgTask } from './yougile.client';
+import { YougileClient, YgTask, YgMessage } from './yougile.client';
 
 export interface YougileImportMsg {
   tenantId: string; connectionId: string; apiKey: string; boardExternalIds: string[]; runId: string; actorId: string | null;
 }
 
-interface Stats { boards: number; columns: number; tasks: number; skipped: number; warnings: string[] }
+interface Stats { boards: number; columns: number; tasks: number; comments: number; attachments: number; skipped: number; warnings: string[] }
+
+const MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
+  pdf: 'application/pdf', txt: 'text/plain', csv: 'text/csv', md: 'text/markdown', zip: 'application/zip',
+  doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav',
+};
+const ctByName = (name: string): string => MIME_BY_EXT[(name.split('.').pop() ?? '').toLowerCase()] ?? 'application/octet-stream';
 
 @Injectable()
 export class YougileImportService {
   private readonly log = new Logger('YougileImport');
 
-  constructor(private readonly repo: YougileRepository) {}
+  constructor(
+    private readonly repo: YougileRepository,
+    private readonly files: FilesService,
+  ) {}
 
   /** Фоновый импорт выбранных досок YouGile: доски→проекты, колонки, задачи (исполнители/сроки). Идемпотентно. */
   async run(msg: YougileImportMsg): Promise<void> {
     const { tenantId, connectionId, runId } = msg;
-    const stats: Stats = { boards: 0, columns: 0, tasks: 0, skipped: 0, warnings: [] };
+    const stats: Stats = { boards: 0, columns: 0, tasks: 0, comments: 0, attachments: 0, skipped: 0, warnings: [] };
     await this.repo.setRunRunning(runId);
     try {
       const client = new YougileClient(msg.apiKey);
@@ -68,8 +82,9 @@ export class YougileImportService {
           const localColId = localColByExt.get(String(col.id)) ?? fallbackCol!;
           for (const t of tasks) {
             if (t.deleted || t.archived) { stats.skipped++; continue; }
-            await this.importTask(tenantId, connectionId, project.id, localColId, t, userMap);
+            const localTaskId = await this.importTask(tenantId, connectionId, project.id, localColId, t, userMap);
             stats.tasks++;
+            await this.importChat(client, { tenantId, connectionId, actorId: msg.actorId }, String(t.id), localTaskId, userMap, stats);
           }
           await this.repo.setRunStats(runId, stats);
         }
@@ -93,11 +108,55 @@ export class YougileImportService {
     const hash = createHash('sha256')
       .update([t.title, description ?? '', columnId, (t.assigned ?? []).join(','), deadlineAt ?? '', completed ? '1' : '0'].join('|'))
       .digest('hex').slice(0, 64);
-    await this.repo.upsertTask({
+    const { id } = await this.repo.upsertTask({
       tenantId, connectionId, externalId: String(t.id), projectId, columnId,
       title: (t.title || 'Без названия').slice(0, 255), description,
       assigneeId, createdBy, priority: 'normal', deadlineAt,
       status: completed ? 'done' : 'todo', closed: completed, hash,
     });
+    return id;
+  }
+
+  /** Чат задачи YouGile → комментарии + вложения (файлы сообщений → MinIO). Best-effort, идемпотентно. */
+  private async importChat(
+    client: YougileClient, ctx: { tenantId: string; connectionId: string; actorId: string | null },
+    taskExternalId: string, localTaskId: string, userMap: Map<string, string>, stats: Stats,
+  ) {
+    let messages: YgMessage[] = [];
+    try { messages = await client.taskMessages(taskExternalId); }
+    catch { return; } // нет доступа к чату задачи — импортируем задачу без комментариев
+    for (const m of messages) {
+      if (m.deleted) continue;
+      const author = (m.fromUserId ? userMap.get(String(m.fromUserId)) : undefined) ?? ctx.actorId;
+      const body = (m.text ?? '').trim();
+      const external = `${taskExternalId}:${m.id}`;
+      if (body && author) {
+        const prefix = m.fromUserId && !userMap.get(String(m.fromUserId)) ? '[Импортировано из YouGile]\n' : '';
+        const inserted = await this.repo.upsertComment({
+          tenantId: ctx.tenantId, connectionId: ctx.connectionId, externalId: external, taskId: localTaskId,
+          authorId: author, body: (prefix + body).slice(0, 20000),
+          postedAt: m.timestamp ? new Date(Number(m.timestamp)).toISOString() : null,
+        }).catch(() => false);
+        if (inserted) stats.comments++;
+      }
+      // файлы сообщения → MinIO как вложения задачи
+      for (const [idx, file] of (m.files ?? []).entries()) {
+        if (!file?.url) continue;
+        const extFileId = `${external}:f${idx}`;
+        if (await this.repo.attachmentExists(ctx.connectionId, extFileId)) continue;
+        try {
+          const buffer = await client.download(file.url);
+          const name = file.name || `file-${idx}`;
+          const uploaded = await this.files.upload({
+            tenantId: ctx.tenantId, userId: ctx.actorId ?? author!, buffer, fileName: name,
+            contentType: ctByName(name), ownerKind: 'task_attachment', ownerId: localTaskId,
+          });
+          await this.repo.addAttachment({ tenantId: ctx.tenantId, connectionId: ctx.connectionId, externalFileId: extFileId, taskId: localTaskId, fileId: uploaded.id });
+          stats.attachments++;
+        } catch (e) {
+          stats.warnings.push(`Файл «${file.name ?? extFileId}»: ${(e as Error).message}`);
+        }
+      }
+    }
   }
 }

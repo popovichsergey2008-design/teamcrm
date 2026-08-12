@@ -122,6 +122,31 @@ export class YougileRepository {
     return row!.id;
   }
 
+  userExists(tenantId: string, userId: string) {
+    return this.db.one(`SELECT id FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, userId]);
+  }
+
+  // ── комментарий задачи (идемпотентно по external_refs 'comment') ──
+  async upsertComment(i: { tenantId: string; connectionId: string; externalId: string; taskId: string; authorId: string; body: string; postedAt: string | null }): Promise<boolean> {
+    if (await this.getRef(i.connectionId, 'comment', i.externalId)) return false;
+    const row = await this.db.one<{ id: string }>(
+      `INSERT INTO task_comments (tenant_id, task_id, author_id, body, created_at) VALUES ($1,$2,$3,$4, COALESCE($5, now())) RETURNING id`,
+      [i.tenantId, i.taskId, i.authorId, i.body, i.postedAt]);
+    await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'comment', externalId: i.externalId, localId: row!.id });
+    return true;
+  }
+
+  // ── вложение задачи (идемпотентно по external file id) ──
+  attachmentExists(connectionId: string, externalFileId: string) {
+    return this.getRef(connectionId, 'file', externalFileId);
+  }
+  async addAttachment(i: { tenantId: string; connectionId: string; externalFileId: string; taskId: string; fileId: string }) {
+    await this.db.query(
+      `INSERT INTO task_attachments (tenant_id, task_id, file_id) VALUES ($1,$2,$3) ON CONFLICT (task_id, file_id) DO NOTHING`,
+      [i.tenantId, i.taskId, i.fileId]);
+    await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'file', externalId: i.externalFileId, localId: i.fileId });
+  }
+
   private async nextPosition(tenantId: string, columnId: string): Promise<number> {
     const r = await this.db.one<{ next: number }>(`SELECT COALESCE(MAX(position)+1,0) AS next FROM tasks WHERE tenant_id=$1 AND column_id=$2`, [tenantId, columnId]);
     return r?.next ?? 0;

@@ -20,7 +20,7 @@ describe('YouGile импорт (e2e)', () => {
 
   // состояние мока YouGile (заполняем в тесте)
   const deadlineMs = 1893456000000; // 2030-01-01
-  const state: any = { users: [], projects: [], boards: [], columns: [], tasksByCol: {} };
+  const state: any = { users: [], projects: [], boards: [], columns: [], tasksByCol: {}, messagesByTask: {} };
 
   beforeAll(async () => {
     mock = http.createServer((req, res) => {
@@ -31,6 +31,9 @@ describe('YouGile импорт (e2e)', () => {
       if (url.pathname === '/boards') return page(state.boards);
       if (url.pathname === '/columns') return page(state.columns);
       if (url.pathname === '/tasks') { const c = url.searchParams.get('columnId') ?? ''; return page(state.tasksByCol[c] ?? []); }
+      const chat = url.pathname.match(/^\/chats\/([^/]+)\/messages$/);
+      if (chat) return page(state.messagesByTask[decodeURIComponent(chat[1])] ?? []);
+      if (url.pathname.startsWith('/files/')) { res.writeHead(200, { 'content-type': 'image/png' }); res.end(Buffer.from('fakepngbytes')); return; }
       res.writeHead(404); res.end('{}');
     });
     await new Promise<void>((r) => mock.listen(0, '127.0.0.1', () => r()));
@@ -62,6 +65,10 @@ describe('YouGile импорт (e2e)', () => {
       c1: [{ id: 't1', title: 'Задача 1', columnId: 'c1', description: 'детали', assigned: ['u1'], deadline: { deadline: deadlineMs } }],
       c2: [{ id: 't2', title: 'Задача 2', columnId: 'c2', completed: true }],
     };
+    state.messagesByTask = {
+      t1: [{ id: 'm1', fromUserId: 'u1', text: 'Первый коммент', timestamp: 1700000000000, files: [{ name: 'doc.png', url: '/files/f1', size: 12 }] }],
+      t2: [],
+    };
 
     // подключение по ключу (validate дергает /users — мок отвечает)
     const conn = (await http$.post('/api/integrations/yougile/connections').set(H(tok)).send({ apiKey: 'test-key', label: 'Основной' }).expect(201)).body.data;
@@ -85,6 +92,8 @@ describe('YouGile импорт (e2e)', () => {
     expect(run.stats.boards).toBe(1);
     expect(run.stats.columns).toBe(2);
     expect(run.stats.tasks).toBe(2);
+    expect(run.stats.comments).toBeGreaterThanOrEqual(1);
+    expect(run.stats.attachments).toBeGreaterThanOrEqual(1);
 
     // проект создан, колонки и задачи на месте
     const projects = (await http$.get('/api/projects').set(H(tok)).expect(200)).body.data;
@@ -99,6 +108,20 @@ describe('YouGile импорт (e2e)', () => {
     expect(t1.assignee_id).toBe(reg.user.id); // исполнитель сопоставлен по e-mail
     expect(t1.deadline_at).toBeTruthy();
     expect(t2.col).toBe('Done');
+
+    // E2: комментарий из чата + вложение из файла сообщения
+    const comments = (await http$.get(`/api/tasks/${t1.id}/comments`).set(H(tok)).expect(200)).body.data;
+    expect(comments.some((c: any) => /Первый коммент/.test(c.body))).toBe(true);
+    const atts = (await http$.get(`/api/tasks/${t1.id}/attachments`).set(H(tok)).expect(200)).body.data;
+    expect(atts.some((a: any) => a.file_name === 'doc.png')).toBe(true);
+
+    // E2: несопоставленные юзеры (u2 без e-mail-мэтча) + ручная привязка убирает из списка
+    const unm = (await http$.get(`/api/integrations/yougile/connections/${conn.id}/unmatched-users`).set(H(tok)).expect(200)).body.data;
+    expect(unm.items.some((i: any) => i.externalId === 'u2')).toBe(true);
+    expect(unm.items.some((i: any) => i.externalId === 'u1')).toBe(false); // владелец сопоставлен по e-mail
+    await http$.post(`/api/integrations/yougile/connections/${conn.id}/user-map`).set(H(tok)).send({ externalUserId: 'u2', localUserId: reg.user.id }).expect(201);
+    const unm2 = (await http$.get(`/api/integrations/yougile/connections/${conn.id}/unmatched-users`).set(H(tok)).expect(200)).body.data;
+    expect(unm2.items.some((i: any) => i.externalId === 'u2')).toBe(false);
 
     // идемпотентность: повторный импорт не плодит дубли
     const r2 = (await http$.post(`/api/integrations/yougile/connections/${conn.id}/import`).set(H(tok)).send({ boardExternalIds: ['b1'] }).expect(201)).body.data;

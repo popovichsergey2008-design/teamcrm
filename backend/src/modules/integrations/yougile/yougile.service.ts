@@ -72,4 +72,25 @@ export class YougileService {
     if (!r) throw AppException.notFound('Запуск не найден');
     return r;
   }
+
+  /** Пользователи YouGile без сопоставления (нет ни авто-мэтча по e-mail, ни ручной привязки). */
+  async unmatchedUsers(tenantId: string, cid: string) {
+    const key = await this.keyFor(tenantId, cid);
+    const [ygUsers, emailMap, manual] = await Promise.all([
+      new YougileClient(key).listUsers(), this.repo.userEmailMap(tenantId), this.repo.userRefs(cid),
+    ]);
+    const items = ygUsers
+      .filter((u) => !manual.get(String(u.id)) && !(u.email && emailMap.get(u.email.toLowerCase())))
+      .map((u) => ({ externalId: String(u.id), name: u.realName ?? '—', email: u.email ?? '' }));
+    return { total: items.length, items: items.slice(0, 200) };
+  }
+
+  /** Ручная привязка пользователя YouGile к локальному (external_refs). Применится при следующем импорте. */
+  async mapUser(tenantId: string, cid: string, externalUserId: string, localUserId: string) {
+    const conn = await this.repo.getConnection(tenantId, cid);
+    if (!conn) throw AppException.notFound('Подключение не найдено');
+    if (!(await this.repo.userExists(tenantId, localUserId))) throw AppException.validation('Пользователь не найден');
+    await this.repo.putRef({ tenantId, connectionId: cid, entityType: 'user', externalId: String(externalUserId), localId: localUserId });
+    return { mapped: true };
+  }
 }

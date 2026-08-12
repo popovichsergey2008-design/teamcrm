@@ -19,6 +19,11 @@ export interface YgTask {
   assigned?: string[]; createdBy?: string | null; timestamp?: number;
   deadline?: { deadline?: number; startDate?: number; withTime?: boolean } | null;
 }
+export interface YgFile { name?: string; url?: string; size?: number }
+export interface YgMessage {
+  id: string | number; deleted?: boolean; text?: string | null; fromUserId?: string | null;
+  timestamp?: number; label?: string | null; files?: YgFile[];
+}
 
 const PAGE = 50;
 
@@ -84,5 +89,18 @@ export class YougileClient {
   async listTasks(columnId: string): Promise<YgTask[]> {
     const rows = await this.all<YgTask>('tasks', { columnId });
     return rows.filter((t) => String(t.columnId) === String(columnId));
+  }
+
+  /** Сообщения чата задачи (в YouGile chatId = id задачи). Файлы — в message.files. */
+  taskMessages(taskId: string) {
+    return this.all<YgMessage>(`chats/${encodeURIComponent(taskId)}/messages`);
+  }
+
+  /** Скачивание файла YouGile (относительный url → добавляем origin; авторизация Bearer). */
+  async download(url: string): Promise<Buffer> {
+    const abs = url.startsWith('http') ? url : new URL(this.base).origin + (url.startsWith('/') ? url : '/' + url);
+    const res = await fetch(abs, { headers: { Authorization: `Bearer ${this.apiKey}` }, signal: AbortSignal.timeout(60000) });
+    if (!res.ok) throw new YougileError('HTTP', `file HTTP ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
   }
 }

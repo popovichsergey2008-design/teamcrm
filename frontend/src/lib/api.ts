@@ -271,6 +271,8 @@ export const api = {
   yougileBoards: (cid: string) => request<{ externalId: string; title: string; projectTitle: string | null }[]>('GET', `/integrations/yougile/connections/${cid}/boards`),
   yougileImport: (cid: string, boardExternalIds: string[]) => request<{ runId: string }>('POST', `/integrations/yougile/connections/${cid}/import`, { boardExternalIds }),
   yougileRun: (id: string) => request<any>('GET', `/integrations/yougile/runs/${id}`),
+  yougileUnmatched: (cid: string) => request<{ total: number; items: { externalId: string; name: string; email: string }[] }>('GET', `/integrations/yougile/connections/${cid}/unmatched-users`),
+  yougileMapUser: (cid: string, externalUserId: string, localUserId: string) => request<any>('POST', `/integrations/yougile/connections/${cid}/user-map`, { externalUserId, localUserId }),
   // Google-доки из задач → база знаний
   // ИИ-агенты
   agentRun: (taskId: string) => request<{ id: string; status: string; result: string; commentId: string | null; citations: any[] }>('POST', `/agents/tasks/${taskId}/run`),

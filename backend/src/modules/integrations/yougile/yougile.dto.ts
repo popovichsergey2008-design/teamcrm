@@ -16,3 +16,11 @@ export class ImportYougileDto {
   @IsString({ each: true })
   boardExternalIds!: string[];
 }
+
+export class MapUserDto {
+  @IsString()
+  externalUserId!: string;
+
+  @IsString()
+  localUserId!: string;
+}

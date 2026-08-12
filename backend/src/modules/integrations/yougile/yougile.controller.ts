@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../../common/auth/decorators';
 import { AuthUser } from '../../../common/auth/jwt.types';
 import { YougileService } from './yougile.service';
-import { ConnectYougileDto, ImportYougileDto } from './yougile.dto';
+import { ConnectYougileDto, ImportYougileDto, MapUserDto } from './yougile.dto';
 
 /** Интеграция с YouGile (E1): подключение по ключу + импорт досок/колонок/задач. Только владелец. */
 @ApiTags('integrations/yougile')
@@ -36,6 +36,16 @@ export class YougileController {
   @Post('connections/:cid/import')
   import(@CurrentUser() u: AuthUser, @Param('cid') cid: string, @Body() dto: ImportYougileDto) {
     return this.yougile.startImport(u.tenantId, u.userId, cid, dto.boardExternalIds ?? []);
+  }
+
+  @Get('connections/:cid/unmatched-users')
+  unmatched(@CurrentUser() u: AuthUser, @Param('cid') cid: string) {
+    return this.yougile.unmatchedUsers(u.tenantId, cid);
+  }
+
+  @Post('connections/:cid/user-map')
+  mapUser(@CurrentUser() u: AuthUser, @Param('cid') cid: string, @Body() dto: MapUserDto) {
+    return this.yougile.mapUser(u.tenantId, cid, dto.externalUserId, dto.localUserId);
   }
 
   @Get('runs/:id')
