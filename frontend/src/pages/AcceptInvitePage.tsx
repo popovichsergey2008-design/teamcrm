@@ -5,7 +5,7 @@ export function AcceptInvitePage({ token }: { token: string }) {
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<{ usedExistingAccount: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: FormEvent) {
@@ -13,8 +13,8 @@ export function AcceptInvitePage({ token }: { token: string }) {
     setError('');
     setBusy(true);
     try {
-      await api.acceptInvite({ token, fullName, password });
-      setDone(true);
+      const r = await api.acceptInvite({ token, fullName, password });
+      setDone({ usedExistingAccount: !!r?.usedExistingAccount });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Не удалось принять приглашение');
     } finally {
@@ -29,7 +29,17 @@ export function AcceptInvitePage({ token }: { token: string }) {
         <p className="dim auth-sub">Принятие приглашения в команду</p>
         {done ? (
           <>
-            <div className="pnl-good" style={{ marginBottom: 14 }}>✅ Аккаунт создан. Теперь войдите.</div>
+            {done.usedExistingAccount ? (
+              // пароль существующего аккаунта не меняем — иначе по ссылке-приглашению
+              // можно было бы сменить пароль чужому человеку
+              <div className="pnl-good" style={{ marginBottom: 14 }}>
+                ✅ Вы добавлены в организацию.<br />
+                У вас уже был аккаунт с этим e-mail, поэтому <b>введённый сейчас пароль не применён</b> — входите своим прежним.
+                Забыли его — попросите владельца выдать ссылку на смену пароля.
+              </div>
+            ) : (
+              <div className="pnl-good" style={{ marginBottom: 14 }}>✅ Аккаунт создан. Теперь войдите.</div>
+            )}
             <a className="btn btn-primary auth-submit" href="/">Перейти ко входу</a>
           </>
         ) : (

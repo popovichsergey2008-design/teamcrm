@@ -43,7 +43,7 @@ export class InvitesService {
     const invite = await this.repo.findValidByHash(this.sha256(input.token));
     if (!invite) throw AppException.unauthorized('Приглашение недействительно или истекло');
 
-    const user = invite.role_code === 'client'
+    const created = invite.role_code === 'client'
       ? await this.users.createClientUser(invite.tenant_id, {
           email: invite.email, password: input.password, fullName: input.fullName, clientId: invite.client_id as string,
         })
@@ -52,7 +52,9 @@ export class InvitesService {
           role: invite.role_code as any, positionId: invite.position_id,
         });
     await this.repo.markAccepted(invite.id);
-    return { accepted: true, user };
+    // usedExistingAccount: аккаунт уже был — заданный сейчас пароль не применён,
+    // человек входит прежним. Фронт обязан показать это, а не рапортовать «аккаунт создан».
+    return { accepted: true, user: created.user, usedExistingAccount: created.usedExistingAccount };
   }
 
   listPending(tenantId: string) {
@@ -97,11 +99,11 @@ export class InvitesService {
   async acceptLink(input: { token: string; email: string; fullName: string; password: string }) {
     const link = await this.repo.findActiveLinkByHash(this.sha256(input.token));
     if (!link) throw AppException.unauthorized('Ссылка недействительна, истекла или исчерпана');
-    const user = await this.users.createUser(link.tenant_id, {
+    const created = await this.users.createUser(link.tenant_id, {
       email: input.email, password: input.password, fullName: input.fullName,
       role: link.role_code as any, positionId: link.position_id,
     });
     await this.repo.incrementLinkUses(link.id);
-    return { accepted: true, user };
+    return { accepted: true, user: created.user, usedExistingAccount: created.usedExistingAccount };
   }
 }

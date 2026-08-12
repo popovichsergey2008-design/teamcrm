@@ -45,8 +45,11 @@ export class UsersController {
 
   @Post()
   @Roles('owner', 'manager')
-  create(@CurrentUser() user: AuthUser, @Body() dto: CreateUserDto) {
-    return this.users.createUser(user.tenantId, dto);
+  async create(@CurrentUser() user: AuthUser, @Body() dto: CreateUserDto) {
+    const created = await this.users.createUser(user.tenantId, dto);
+    // форма ответа прежняя (сотрудник), плюс честный флаг: если аккаунт уже существовал,
+    // заданный пароль не применён — человек входит своим прежним
+    return { ...created.user, usedExistingAccount: created.usedExistingAccount };
   }
 
   @Patch(':id')

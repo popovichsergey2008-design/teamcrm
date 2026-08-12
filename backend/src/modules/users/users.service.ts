@@ -17,6 +17,16 @@ export interface PublicUser {
   isActive: boolean;
 }
 
+/**
+ * Итог создания сотрудника. `usedExistingAccount` — у человека уже был глобальный аккаунт
+ * (он состоит в другой организации), поэтому заданный сейчас пароль НЕ применён:
+ * вход идёт по паролю аккаунта. Вызывающий обязан сказать об этом человеку.
+ */
+export interface CreateUserResult {
+  user: PublicUser;
+  usedExistingAccount: boolean;
+}
+
 export function toPublicUser(row: UserRow): PublicUser {
   return {
     id: row.id,
@@ -52,7 +62,7 @@ export class UsersService {
       positionId?: string | null;
       groupIds?: string[];
     },
-  ): Promise<PublicUser> {
+  ): Promise<CreateUserResult> {
     const role = input.role ?? 'member';
     if (!isAssignableTeamRole(role)) throw AppException.validation('Роль client не назначается через команду');
     const exists = await this.repo.findByEmail(tenantId, input.email);
@@ -60,38 +70,42 @@ export class UsersService {
     if (input.positionId && !(await this.positions.exists(tenantId, input.positionId))) {
       throw AppException.validation('Должность не найдена');
     }
-    // глобальный аккаунт: используем существующий (человек уже зарегистрирован) или создаём новый
-    const passwordHash = await argon2.hash(input.password);
+    // Глобальный аккаунт: используем существующий (человек уже зарегистрирован) либо создаём.
+    // ВАЖНО: пароль существующего аккаунта НЕ трогаем. Перезаписать его здесь означало бы,
+    // что любой обладатель ссылки-приглашения может указать чужой e-mail и сменить чужой пароль.
+    // Поэтому такой человек входит своим прежним паролем, а строка users получает хеш аккаунта.
     const existingAccount = await this.accounts.findByEmail(input.email);
-    const account = existingAccount ?? (await this.accounts.create(input.email, passwordHash, input.fullName));
+    const account = existingAccount
+      ?? (await this.accounts.create(input.email, await argon2.hash(input.password), input.fullName));
     const row = await this.repo.create({
       tenantId,
       email: input.email,
-      passwordHash,
+      passwordHash: account.password_hash,
       fullName: input.fullName,
       roleCode: role,
       accountId: account.id,
     });
     if (input.positionId) await this.repo.updateManaged(tenantId, row.id, { positionId: input.positionId });
     if (input.groupIds?.length) await this.groups.setUserGroups(tenantId, row.id, input.groupIds);
-    return toPublicUser(row);
+    return { user: toPublicUser(row), usedExistingAccount: !!existingAccount };
   }
 
   /** Создание client-пользователя портала (роль client + привязка к заказчику). Отдельно от команды. */
   async createClientUser(
     tenantId: string,
     input: { email: string; password: string; fullName: string; clientId: string },
-  ): Promise<PublicUser> {
+  ): Promise<CreateUserResult> {
     const exists = await this.repo.findByEmail(tenantId, input.email);
     if (exists) throw AppException.conflict('Пользователь с таким e-mail уже есть в организации');
-    const passwordHash = await argon2.hash(input.password);
+    // пароль существующего аккаунта не трогаем — см. комментарий в createUser
     const existingAccount = await this.accounts.findByEmail(input.email);
-    const account = existingAccount ?? (await this.accounts.create(input.email, passwordHash, input.fullName));
+    const account = existingAccount
+      ?? (await this.accounts.create(input.email, await argon2.hash(input.password), input.fullName));
     const row = await this.repo.create({
-      tenantId, email: input.email, passwordHash, fullName: input.fullName,
+      tenantId, email: input.email, passwordHash: account.password_hash, fullName: input.fullName,
       roleCode: 'client', accountId: account.id, clientId: input.clientId,
     });
-    return toPublicUser(row);
+    return { user: toPublicUser(row), usedExistingAccount: !!existingAccount };
   }
 
   /** Управление участником: роль/должность/группы/активность (owner/manager). */

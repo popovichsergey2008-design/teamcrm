@@ -10,7 +10,7 @@ export function JoinOrgPage({ token }: { token: string }) {
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<{ usedExistingAccount: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -24,8 +24,8 @@ export function JoinOrgPage({ token }: { token: string }) {
     setError('');
     setBusy(true);
     try {
-      await api.acceptInviteLink({ token, email, fullName, password });
-      setDone(true);
+      const r = await api.acceptInviteLink({ token, email, fullName, password });
+      setDone({ usedExistingAccount: !!r?.usedExistingAccount });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Не удалось вступить');
     } finally {
@@ -44,7 +44,17 @@ export function JoinOrgPage({ token }: { token: string }) {
           <div className="error-text">{invalid}</div>
         ) : done ? (
           <>
-            <div className="pnl-good" style={{ marginBottom: 14 }}>✅ Аккаунт создан. Теперь войдите.</div>
+            {done.usedExistingAccount ? (
+              // пароль существующего аккаунта не трогаем: иначе по открытой ссылке
+              // можно было бы указать чужой e-mail и сменить чужой пароль
+              <div className="pnl-good" style={{ marginBottom: 14 }}>
+                ✅ Вы добавлены в организацию.<br />
+                У вас уже был аккаунт с этим e-mail, поэтому <b>введённый сейчас пароль не применён</b> — входите своим прежним.
+                Забыли его — попросите владельца выдать ссылку на смену пароля.
+              </div>
+            ) : (
+              <div className="pnl-good" style={{ marginBottom: 14 }}>✅ Аккаунт создан. Теперь войдите.</div>
+            )}
             <a className="btn btn-primary auth-submit" href="/">Перейти ко входу</a>
           </>
         ) : (
