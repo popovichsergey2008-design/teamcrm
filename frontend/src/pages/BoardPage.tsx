@@ -50,7 +50,7 @@ function reducer(state: Board | null, action: Action): Board | null {
   }
 }
 
-export function BoardPage() {
+export function BoardPage({ initial }: { initial?: { projectId: string; taskId?: string } } = {}) {
   const { user } = useAuth();
   const isClient = user?.role === 'client';
   const canManageProjects = user?.role === 'owner' || user?.role === 'manager';
@@ -72,6 +72,7 @@ export function BoardPage() {
     localStorage.getItem('teamcrm.boardView') === 'list' ? 'list' : 'board',
   );
   const switchView = (v: 'board' | 'list') => { setView(v); localStorage.setItem('teamcrm.boardView', v); };
+  const [showArchived, setShowArchived] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
   const [showCopilot, setShowCopilot] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
@@ -98,10 +99,13 @@ export function BoardPage() {
 
   useEffect(() => {
     api
-      .listProjects()
+      .listProjects(showArchived)
       .then((ps) => {
         setProjects(ps);
-        if (ps.length && !selected) setSelected(ps[0].id);
+        if (initial?.projectId && ps.some((p) => p.id === initial.projectId)) {
+          setSelected(initial.projectId);
+          setOpenTaskId(initial.taskId ?? null);
+        } else if (ps.length && !selected) setSelected(ps[0].id);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : 'Ошибка загрузки проектов'));
     if (!isClient) {
@@ -109,7 +113,7 @@ export function BoardPage() {
       api.listUsers().then(setUsers).catch(() => undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [showArchived]);
 
   useEffect(() => {
     if (!selected) {
@@ -189,6 +193,20 @@ export function BoardPage() {
       setSelected(p.id);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Не удалось создать проект');
+    }
+  };
+
+  /** Архив: проект уходит из списка (данные целы). Возврат — тем же переключателем. */
+  const toggleArchive = async (p: Project) => {
+    const archived = p.status === 'archived';
+    if (!archived && !window.confirm(`Убрать проект «${p.name}» в архив? Он исчезнет из списка, данные сохранятся.`)) return;
+    try {
+      if (archived) await api.unarchiveProject(p.id); else await api.archiveProject(p.id);
+      const next = await api.listProjects(showArchived);
+      setProjects(next);
+      if (!archived && selected === p.id) setSelected(next.find((x) => x.status !== 'archived')?.id ?? null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось изменить архив');
     }
   };
 
@@ -319,13 +337,23 @@ export function BoardPage() {
     }
   }
   const renderProjectRow = (p: Project, nested = false) => (
-    <div key={p.id} className={`project-row ${p.id === selected ? 'active' : ''}`} style={nested ? { paddingLeft: 18 } : undefined}>
+    <div key={p.id} className={`project-row ${p.id === selected ? 'active' : ''} ${p.status === 'archived' ? 'project-archived' : ''}`} style={nested ? { paddingLeft: 18 } : undefined}>
       <button className="project-item" onClick={() => setSelected(p.id)}>
         {p.name}
+        {p.status === 'archived' && <span className="project-src" title="В архиве">🗄</span>}
         {(p.origin === 'bitrix' || p.origin === 'yougile') && !nested && <span className="project-src" title={`Импортировано из ${providerLabel(p.origin)}`}>⤓</span>}
       </button>
       {canManageProjects && (
-        <button className="project-del" title="Удалить проект" onClick={() => deleteProject(p.id, p.name)}>✕</button>
+        <>
+          <button
+            className="project-del"
+            title={p.status === 'archived' ? 'Вернуть из архива' : 'Убрать в архив (данные сохранятся)'}
+            onClick={() => toggleArchive(p)}
+          >
+            {p.status === 'archived' ? '⤴' : '🗄'}
+          </button>
+          <button className="project-del" title="Удалить проект" onClick={() => deleteProject(p.id, p.name)}>✕</button>
+        </>
       )}
     </div>
   );
@@ -357,6 +385,12 @@ export function BoardPage() {
           })}
           {projects.length === 0 && <div className="muted sidebar-empty">Пока нет проектов</div>}
         </div>
+        {canManageProjects && (
+          <label className="notify-row sidebar-archive" style={{ cursor: 'pointer' }} title="Архивные проекты скрыты из списка; данные сохранены">
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            <span className="dim">Показать архив</span>
+          </label>
+        )}
         {canManageProjects && (
           <div className="new-project">
             <input

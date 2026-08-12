@@ -20,9 +20,20 @@ export class ProjectsService {
     private readonly outbox: IntegrationOutboxService,
   ) {}
 
-  async list(tenantId: string, role: string) {
-    const rows = await this.repo.list(tenantId);
+  async list(tenantId: string, role: string, includeArchived = false) {
+    const rows = await this.repo.list(tenantId, includeArchived);
     return role === 'client' ? rows.map(toClientProject) : rows;
+  }
+
+  /**
+   * Архивация: проект уходит из сайдбара и списков, но данные и доска сохраняются.
+   * Realtime-события не шлём: список проектов у других вкладок обновится при перезагрузке,
+   * а плодить событие, которое никто не слушает, смысла нет.
+   */
+  async setArchived(tenantId: string, id: string, archived: boolean) {
+    await this.getOrThrow(tenantId, id);
+    await this.repo.setArchived(tenantId, id, archived);
+    return { archived };
   }
 
   async create(tenantId: string, dto: CreateProjectDto) {

@@ -160,7 +160,8 @@ export const api = {
   },
 
   // projects / board
-  listProjects: () => request<Project[]>('GET', '/projects'),
+  listProjects: (includeArchived = false) =>
+    request<Project[]>('GET', `/projects${includeArchived ? '?archived=1' : ''}`),
   createProject: (b: { name: string; budget?: number }) => request<Project>('POST', '/projects', b),
   deleteProject: (id: string) => request<{ deleted: boolean }>('DELETE', `/projects/${id}`),
   getBoard: (projectId: string) => request<Board>('GET', `/projects/${projectId}/board`),
@@ -385,6 +386,13 @@ export const api = {
   inviteLinkInfo: (token: string) => rawRequest<{ tenantName: string; role: string }>('GET', `/invites/links/${token}/info`, undefined, false),
   acceptInviteLink: (b: { token: string; email: string; fullName: string; password: string }) =>
     rawRequest<any>('POST', '/invites/links/accept', b, false),
+
+  /** Сквозные вкладки: мои задачи и порученные другим (по всем проектам). */
+  myTasks: (scope: 'mine' | 'delegated', closed = false) =>
+    request<any[]>('GET', `/tasks/my?scope=${scope}${closed ? '&closed=1' : ''}`),
+  // архив проектов
+  archiveProject: (id: string) => request<{ archived: boolean }>('POST', `/projects/${id}/archive`),
+  unarchiveProject: (id: string) => request<{ archived: boolean }>('POST', `/projects/${id}/unarchive`),
 
   // сброс пароля: владелец выдаёт одноразовую ссылку, человек задаёт пароль сам
   createPasswordResetLink: (userId: string) =>

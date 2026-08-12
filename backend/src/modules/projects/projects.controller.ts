@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -12,9 +12,23 @@ import { ColumnDto, CreateProjectDto, MoveColumnDto, ReorderColumnsDto } from '.
 export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
 
+  /** ?archived=1 — вернуть вместе с архивными (переключатель «Показать архив»). */
   @Get()
-  list(@CurrentUser() user: AuthUser) {
-    return this.projects.list(user.tenantId, user.role);
+  list(@CurrentUser() user: AuthUser, @Query('archived') archived?: string) {
+    return this.projects.list(user.tenantId, user.role, archived === '1' || archived === 'true');
+  }
+
+  /** Убрать проект в архив / вернуть из архива. Данные сохраняются. */
+  @Post(':id/archive')
+  @Roles('owner', 'manager')
+  archive(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.projects.setArchived(user.tenantId, id, true);
+  }
+
+  @Post(':id/unarchive')
+  @Roles('owner', 'manager')
+  unarchive(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.projects.setArchived(user.tenantId, id, false);
   }
 
   @Post()

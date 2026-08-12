@@ -294,6 +294,29 @@
 .status-pill:hover:not(.active):not(:disabled) { color: var(--text); border-color: var(--accent); }
 .status-pill.active { background: var(--accent-2); border-color: var(--accent); color: #fff; font-weight: 600; cursor: default; }
 .status-pill:disabled { opacity: .6; cursor: default; }
+
+/* архив проектов: приглушённая строка + переключатель под списком */
+.project-row.project-archived .project-item { opacity: .55; font-style: italic; }
+.sidebar-archive { padding: 6px 8px; font-size: 12px; }
+
+/* сквозные вкладки «Мои задачи» / «Порученные» */
+.mytasks { padding: 16px 20px; overflow: auto; }
+.mytasks-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; flex-wrap: wrap; }
+.list-row.row-done .list-title { opacity: .6; text-decoration: line-through; }
+
+/* «Завершить задачу»: заметное зелёное действие + выбор целевой колонки */
+.drawer-head-actions { display: flex; align-items: center; gap: 8px; }
+.btn-finish {
+  background: rgba(87,217,163,.16); border: 1px solid var(--ok); color: var(--ok); font-weight: 600;
+}
+.btn-finish:hover:not(:disabled) { background: var(--ok); color: #08110d; }
+.finish-picker {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 8px 0; padding: 10px 12px; border-radius: 10px;
+  background: rgba(87,217,163,.08); border: 1px solid rgba(87,217,163,.35);
+}
+.status-pill.pill-final { border-color: var(--ok); color: var(--ok); }
+.status-pill.pill-final:hover:not(:disabled) { background: var(--ok); color: #08110d; }
 /* meta-строка карточки: приоритет, риск, стоимость, блокер */
 .card-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .risk-badge.risk-high, .risk-badge.risk-critical { background: rgba(255,107,107,.12); color: var(--danger); border-color: rgba(255,107,107,.4); }

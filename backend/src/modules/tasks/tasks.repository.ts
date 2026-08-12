@@ -39,6 +39,39 @@ export class TasksRepository {
     );
   }
 
+  /**
+   * Сквозная выборка задач по всем проектам организации — для вкладок «Мои» и «Порученные».
+   * scope=mine — я исполнитель; scope=delegated — я руководитель, а исполнитель кто-то другой
+   * (свои же задачи не дублируются между вкладками). Архивные проекты не показываем.
+   */
+  listForUser(
+    tenantId: string,
+    userId: string,
+    scope: 'mine' | 'delegated',
+    includeClosed: boolean,
+  ): Promise<(TaskRow & { project_name: string; column_name: string; assignee_name: string | null; manager_name: string | null })[]> {
+    const scopeSql = scope === 'mine'
+      ? `t.assignee_id = $2`
+      : `t.created_by = $2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)`;
+    return this.db.many(
+      `SELECT t.*, p.name AS project_name, bc.name AS column_name,
+              ua.full_name AS assignee_name, um.full_name AS manager_name
+         FROM tasks t
+         JOIN projects p ON p.id = t.project_id
+         JOIN board_columns bc ON bc.id = t.column_id
+         LEFT JOIN users ua ON ua.id = t.assignee_id
+         LEFT JOIN users um ON um.id = t.created_by
+        WHERE t.tenant_id = $1 AND ${scopeSql}
+          AND p.status <> 'archived'
+          AND ($3::boolean OR t.closed_at IS NULL)
+        ORDER BY t.closed_at IS NOT NULL,
+                 t.deadline_at IS NULL, t.deadline_at ASC,
+                 CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+                 t.created_at DESC`,
+      [tenantId, userId, includeClosed],
+    );
+  }
+
   /** Флаг «задача передана ИИ-агенту» (виртуальный исполнитель). */
   async setAgentAssigned(tenantId: string, taskId: string, value: boolean): Promise<void> {
     await this.db.query(`UPDATE tasks SET agent_assigned=$3 WHERE tenant_id=$1 AND id=$2`, [tenantId, taskId, value]);

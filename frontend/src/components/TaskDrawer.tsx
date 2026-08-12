@@ -18,6 +18,18 @@ interface Props {
 type Tab = 'overview' | 'checklist' | 'files' | 'discussion' | 'agent';
 const PRIORITIES = [['low', 'низкий'], ['normal', 'обычный'], ['high', 'высокий'], ['urgent', 'срочно']];
 
+/** Колонки, означающие закрытие задачи (совпадает с логикой закрытия на бэкенде). */
+const DONE_RE = /^(done|готово|выполнено|завершено|завершён|завершен|закрыто|сделано)$/i;
+const NEAR_DONE_RE = /(тест|провер|ревью|review|сдан|приём|приемк)/i;
+
+/** Финальные колонки — вперёд: чаще всего завершают именно туда. */
+function orderFinishColumns(columns: { id: string; name: string }[]) {
+  const rank = (name: string) => (DONE_RE.test(name.trim()) ? 0 : NEAR_DONE_RE.test(name) ? 1 : 2);
+  return columns
+    .map((c) => ({ ...c, final: rank(c.name) === 0 }))
+    .sort((a, b) => rank(a.name) - rank(b.name));
+}
+
 export function TaskDrawer({ task, users, columns = [], canManage, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
@@ -64,13 +76,46 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
 
   const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
 
+  // «Завершить» = перенос в финальную колонку; какую именно — выбирает человек,
+  // потому что у досок это по-разному («Готово», «На тестировании», «Сдано»)
+  const [choosing, setChoosing] = useState(false);
+  const finishTargets = orderFinishColumns(columns).filter((c) => c.id !== task.column_id);
+  const isDone = !!task.closed_at;
+
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3>{task.title}</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+          <span className="drawer-head-actions">
+            {isDone ? (
+              <span className="badge badge-ok" title="Задача закрыта">✓ завершена</span>
+            ) : finishTargets.length > 0 && (
+              <button className="btn btn-sm btn-finish" onClick={() => setChoosing((v) => !v)} disabled={moving}>
+                ✓ Завершить
+              </button>
+            )}
+            <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+          </span>
         </div>
+
+        {choosing && !isDone && (
+          <div className="finish-picker">
+            <span className="status-label">Куда перенести задачу?</span>
+            <div className="status-pills">
+              {finishTargets.map((c) => (
+                <button
+                  key={c.id}
+                  className={`status-pill ${c.final ? 'pill-final' : ''}`}
+                  disabled={moving}
+                  onClick={async () => { await moveToColumn(c.id); setChoosing(false); }}
+                >
+                  {c.final ? '✓ ' : ''}{c.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {columns.length > 0 && (
           <div className="status-bar">

@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -11,6 +11,20 @@ import { CreateTaskDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
 @Roles('owner', 'manager', 'member') // клиенты не мутируют задачи
 export class TasksController {
   constructor(private readonly tasks: TasksService) {}
+
+  /**
+   * Мои задачи (scope=mine) и порученные другим (scope=delegated) по всем проектам.
+   * ?closed=1 — показать и завершённые.
+   */
+  @Get('my')
+  my(@CurrentUser() user: AuthUser, @Query('scope') scope?: string, @Query('closed') closed?: string) {
+    return this.tasks.listForUser(
+      user.tenantId,
+      user.userId,
+      scope === 'delegated' ? 'delegated' : 'mine',
+      closed === '1' || closed === 'true',
+    );
+  }
 
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateTaskDto) {

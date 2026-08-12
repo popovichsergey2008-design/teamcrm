@@ -28,15 +28,25 @@ const DEFAULT_COLUMNS = ['Новые', 'В работе', 'На тестиров
 export class ProjectsRepository {
   constructor(private readonly db: DbService) {}
 
-  list(tenantId: string): Promise<ProjectRow[]> {
+  /** Список проектов. Архивные (status='archived') скрыты, пока их не запросят явно. */
+  list(tenantId: string, includeArchived = false): Promise<ProjectRow[]> {
     // origin_label — имя портала-источника (для группировки импортированных проектов в сайдбаре)
     return this.db.many<ProjectRow>(
       `SELECT p.*, c.label AS origin_label, c.portal AS origin_portal
          FROM projects p
          LEFT JOIN integration_connections c ON c.id = p.origin_connection_id
-        WHERE p.tenant_id = $1
+        WHERE p.tenant_id = $1 AND ($2::boolean OR p.status <> 'archived')
         ORDER BY p.created_at DESC`,
-      [tenantId],
+      [tenantId, includeArchived],
+    );
+  }
+
+  /** Перевод проекта в архив и обратно. Данные не трогаем — проект просто исчезает из списков. */
+  setArchived(tenantId: string, id: string, archived: boolean): Promise<ProjectRow | null> {
+    return this.db.one<ProjectRow>(
+      `UPDATE projects SET status = $3, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [tenantId, id, archived ? 'archived' : 'active'],
     );
   }
 

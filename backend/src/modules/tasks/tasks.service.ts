@@ -25,6 +25,11 @@ export class TasksService {
     private readonly outbox: IntegrationOutboxService,
   ) {}
 
+  /** Вкладки «Мои задачи» / «Порученные»: задачи по всем проектам, а не по одной доске. */
+  listForUser(tenantId: string, userId: string, scope: 'mine' | 'delegated', includeClosed: boolean) {
+    return this.repo.listForUser(tenantId, userId, scope, includeClosed);
+  }
+
   async create(tenantId: string, dto: CreateTaskDto, actorId: string | null = null): Promise<TaskRow> {
     const project = await this.projects.findById(tenantId, dto.projectId);
     if (!project) throw AppException.notFound('Project not found');
