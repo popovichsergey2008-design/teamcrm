@@ -3,6 +3,7 @@ import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ProjectRow, ProjectsRepository } from './projects.repository';
 import { CreateProjectDto } from './projects.dto';
+import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
 
 /** client-представление проекта — без budget (фича №9). */
 function toClientProject(row: ProjectRow) {
@@ -16,6 +17,7 @@ export class ProjectsService {
   constructor(
     private readonly repo: ProjectsRepository,
     private readonly realtime: RealtimeService,
+    private readonly outbox: IntegrationOutboxService,
   ) {}
 
   async list(tenantId: string, role: string) {
@@ -47,6 +49,7 @@ export class ProjectsService {
     await this.getOrThrow(tenantId, projectId);
     const col = await this.repo.addColumn(tenantId, projectId, name.trim());
     this.notifyColumns(tenantId, projectId);
+    if (col) await this.outbox.enqueue(tenantId, projectId, 'column.create', col.id);
     return col;
   }
 
@@ -55,6 +58,7 @@ export class ProjectsService {
     const col = await this.repo.renameColumn(tenantId, projectId, columnId, name.trim());
     if (!col) throw AppException.notFound('Колонка не найдена');
     this.notifyColumns(tenantId, projectId);
+    await this.outbox.enqueue(tenantId, projectId, 'column.rename', col.id);
     return col;
   }
 
@@ -65,7 +69,13 @@ export class ProjectsService {
     if ((await this.repo.countColumns(tenantId, projectId)) <= 1) {
       throw AppException.conflict('Нельзя удалить последнюю колонку доски');
     }
+    // Задачи колонки переезжают в соседнюю — сначала ставим в очередь их перенос,
+    // и только потом удаление колонки: воркер идёт по очереди по порядку и не удалит
+    // колонку во внешней системе раньше, чем вынесет из неё задачи.
+    const affected = await this.repo.columnTaskIds(tenantId, columnId);
     await this.repo.deleteColumn(tenantId, projectId, columnId);
+    for (const taskId of affected) await this.outbox.enqueue(tenantId, projectId, 'task.move', taskId);
+    await this.outbox.enqueue(tenantId, projectId, 'column.delete', columnId);
     this.notifyColumns(tenantId, projectId);
     return { deleted: true };
   }

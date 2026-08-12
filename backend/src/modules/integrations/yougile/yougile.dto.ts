@@ -1,4 +1,4 @@
-import { IsArray, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class ConnectYougileDto {
   @IsString()
@@ -15,6 +15,12 @@ export class ImportYougileDto {
   @IsArray()
   @IsString({ each: true })
   boardExternalIds!: string[];
+}
+
+/** E4: включение обратной выгрузки CRM → YouGile на подключении. */
+export class PushYougileDto {
+  @IsBoolean()
+  enabled!: boolean;
 }
 
 export class MapUserDto {

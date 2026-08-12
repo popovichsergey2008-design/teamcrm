@@ -4,6 +4,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { VelocityRepository } from '../velocity/velocity.repository';
 import { computeForecast, computeOverload } from './forecast.calculator';
 import { ForecastRepository } from './forecast.repository';
+import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
 
 const DAY_MS = 86_400_000;
 
@@ -13,6 +14,7 @@ export class ForecastService {
     private readonly repo: ForecastRepository,
     private readonly velocity: VelocityRepository,
     private readonly realtime: RealtimeService,
+    private readonly outbox: IntegrationOutboxService,
   ) {}
 
   /** Детерминированный пересчёт прогноза/риска задачи + эмиссия task.risk_changed (internal). */
@@ -108,6 +110,7 @@ export class ForecastService {
       riskPct: f.riskPct,
       overloadConfirmed: overload.warn && confirmOverload,
     });
+    await this.outbox.enqueueForTask(tenantId, taskId, 'task.update'); // исполнитель → во внешнюю систему
     const fc = await this.recomputeTask(tenantId, taskId);
     return { assigned: true, warning: false, overloadConfirmed: overload.warn && confirmOverload, forecast: fc };
   }
@@ -125,7 +128,9 @@ export class ForecastService {
     };
   }
 
-  setEstimateDeadline(tenantId: string, taskId: string, estimate: number | null, deadline: string | null) {
-    return this.repo.setEstimateDeadline(tenantId, taskId, estimate, deadline);
+  async setEstimateDeadline(tenantId: string, taskId: string, estimate: number | null, deadline: string | null) {
+    const res = await this.repo.setEstimateDeadline(tenantId, taskId, estimate, deadline);
+    if (deadline) await this.outbox.enqueueForTask(tenantId, taskId, 'task.update'); // срок → во внешнюю систему
+    return res;
   }
 }

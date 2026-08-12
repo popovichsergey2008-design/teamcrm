@@ -185,6 +185,13 @@ export class ProjectsRepository {
     );
   }
 
+  /** Задачи колонки — нужны, чтобы перед удалением колонки переставить их и во внешней системе. */
+  async columnTaskIds(tenantId: string, columnId: string): Promise<string[]> {
+    const rows = await this.db.many<{ id: string }>(
+      `SELECT id FROM tasks WHERE tenant_id = $1 AND column_id = $2`, [tenantId, columnId]);
+    return rows.map((r) => r.id);
+  }
+
   /** Удаляет колонку; её задачи переносятся в крайнюю левую из оставшихся (без потери данных). */
   async deleteColumn(tenantId: string, projectId: string, columnId: string): Promise<void> {
     await this.db.withTransaction(async (client) => {

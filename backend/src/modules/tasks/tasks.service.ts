@@ -6,6 +6,7 @@ import { TaskRow, TasksRepository } from './tasks.repository';
 import { TaskActivityRepository } from './task-activity.repository';
 import { CreateTaskDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
 
 /** Колонка-«готово» (закрывает задачу): дефолтное 'done' + распространённые русские имена. */
 const DONE_NAMES = new Set(['done', 'готово', 'выполнено', 'завершено', 'завершён', 'завершен', 'закрыто', 'сделано']);
@@ -21,6 +22,7 @@ export class TasksService {
     private readonly realtime: RealtimeService,
     private readonly activity: TaskActivityRepository,
     private readonly knowledge: KnowledgeService,
+    private readonly outbox: IntegrationOutboxService,
   ) {}
 
   async create(tenantId: string, dto: CreateTaskDto, actorId: string | null = null): Promise<TaskRow> {
@@ -47,6 +49,7 @@ export class TasksService {
     this.realtime.emit(tenantId, task.project_id, 'task.created', task as any);
     await this.activity.log(tenantId, task.id, actorId, 'created', { title: task.title });
     this.knowledge.enqueue(tenantId, 'task', task.id); // в базу знаний (открытые проекты тоже)
+    await this.outbox.enqueue(tenantId, task.project_id, 'task.create', task.id); // выгрузка во внешнюю систему
     return task;
   }
 
@@ -66,6 +69,7 @@ export class TasksService {
     const changed = Object.keys(dto).filter((k) => (dto as any)[k] !== undefined);
     await this.activity.log(tenantId, id, actorId, 'updated', { fields: changed });
     if (dto.title !== undefined || dto.description !== undefined) this.knowledge.enqueue(tenantId, 'task', id); // переиндексация при смене текста
+    await this.outbox.enqueue(tenantId, existing.project_id, 'task.update', id);
     return updated as TaskRow;
   }
 
@@ -84,6 +88,7 @@ export class TasksService {
     } else if (task.closed_at) await this.repo.reopenTask(tenantId, id);
     this.realtime.emit(tenantId, moved.project_id, 'task.moved', moved as any);
     await this.activity.log(tenantId, id, actorId, 'moved', { to: column.name });
+    await this.outbox.enqueue(tenantId, moved.project_id, 'task.move', id);
     return moved;
   }
 }

@@ -4,6 +4,20 @@ import { DbService } from '../../../database/db.service';
 export interface ConnectionRow {
   id: string; tenant_id: string; provider: string; label: string | null; portal: string | null;
   webhook_enc: string; is_active: boolean; created_by: string | null; event_token: string;
+  push_enabled: boolean;
+}
+
+/** Строка очереди выгрузки CRM → YouGile (integration_outbox). */
+export interface OutboxRow {
+  id: string; tenant_id: string; connection_id: string; kind: string;
+  local_id: string; payload: Record<string, any> | null; attempts: number;
+}
+
+/** Поля задачи, которые CRM выгружает в YouGile. */
+export interface PushTaskRow {
+  id: string; project_id: string; column_id: string; title: string;
+  description: string | null; assignee_id: string | null;
+  deadline_at: Date | null; closed_at: Date | null;
 }
 
 /** Работа с общими таблицами интеграций для провайдера YouGile (origin='yougile'). */
@@ -21,9 +35,17 @@ export class YougileRepository {
   }
   listConnections(tenantId: string) {
     return this.db.many(
-      `SELECT id, label, portal, is_active, event_token, last_event_at, created_at FROM integration_connections
+      `SELECT id, label, portal, is_active, event_token, last_event_at, push_enabled, created_at FROM integration_connections
         WHERE tenant_id=$1 AND provider='yougile' ORDER BY created_at`,
       [tenantId],
+    );
+  }
+  /** Включение/выключение выгрузки CRM → YouGile на подключении (E4). */
+  async setPush(tenantId: string, id: string, enabled: boolean): Promise<void> {
+    await this.db.query(
+      `UPDATE integration_connections SET push_enabled=$3, updated_at=now()
+        WHERE tenant_id=$1 AND id=$2 AND provider='yougile'`,
+      [tenantId, id, enabled],
     );
   }
   getConnection(tenantId: string, id: string): Promise<ConnectionRow | null> {
@@ -52,6 +74,7 @@ export class YougileRepository {
       const t: [string, string] = [tenantId, localId];
       await c.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='comment' AND local_id IN (SELECT id FROM task_comments WHERE tenant_id=$2 AND task_id=$3)`, [connectionId, tenantId, localId]);
       await c.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='file' AND local_id IN (SELECT file_id FROM task_attachments WHERE tenant_id=$2 AND task_id=$3)`, [connectionId, tenantId, localId]);
+      await c.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='chat_echo' AND local_id=$2`, [connectionId, localId]);
       for (const tbl of ['task_comments', 'task_attachments', 'task_labels', 'task_watchers', 'task_checklist_items', 'task_activity', 'time_logs']) {
         await c.query(`DELETE FROM ${tbl} WHERE tenant_id=$1 AND task_id=$2`, t);
       }
@@ -82,6 +105,18 @@ export class YougileRepository {
        DO UPDATE SET local_id=EXCLUDED.local_id, external_hash=EXCLUDED.external_hash, synced_at=now()`,
       [i.tenantId, i.connectionId, i.entityType, String(i.externalId), i.localId, i.hash ?? null],
     );
+  }
+  /** Обратный поиск: локальный объект → внешний id (нужен для выгрузки CRM → YouGile). */
+  refByLocal(connectionId: string, entityType: string, localId: string) {
+    return this.db.one<{ external_id: string; external_hash: string | null }>(
+      `SELECT external_id, external_hash FROM external_refs
+        WHERE connection_id=$1 AND entity_type=$2 AND local_id=$3`,
+      [connectionId, entityType, localId],
+    );
+  }
+  async deleteRef(connectionId: string, entityType: string, externalId: string): Promise<void> {
+    await this.db.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type=$2 AND external_id=$3`,
+      [connectionId, entityType, String(externalId)]);
   }
   async userRefs(connectionId: string): Promise<Map<string, string>> {
     const rows = await this.db.many<{ external_id: string; local_id: string }>(
@@ -175,6 +210,85 @@ export class YougileRepository {
     await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'file', externalId: i.externalFileId, localId: i.fileId });
   }
 
+  // ── E4: очередь выгрузки CRM → YouGile ──
+
+  /** Берёт пачку ждущих операций и помечает их «в отправке» (SKIP LOCKED — безопасно при нескольких инстансах). */
+  claimOutbox(limit: number): Promise<OutboxRow[]> {
+    return this.db.many<OutboxRow>(
+      `UPDATE integration_outbox o SET status='sending', attempts=attempts+1, updated_at=now()
+        WHERE o.id IN (
+          SELECT id FROM integration_outbox
+           WHERE status='pending' AND next_attempt_at<=now()
+           ORDER BY id LIMIT $1 FOR UPDATE SKIP LOCKED)
+        RETURNING o.*`,
+      [limit],
+    );
+  }
+  async outboxDone(id: string): Promise<void> {
+    await this.db.query(`UPDATE integration_outbox SET status='done', last_error=NULL, updated_at=now() WHERE id=$1`, [id]);
+  }
+  /** Неудача: либо повтор с бэкоффом, либо окончательная ошибка (её видно в UI). */
+  async outboxFail(id: string, error: string, retryInSec: number | null): Promise<void> {
+    if (retryInSec === null) {
+      await this.db.query(`UPDATE integration_outbox SET status='error', last_error=$2, updated_at=now() WHERE id=$1`, [id, error.slice(0, 500)]);
+      return;
+    }
+    await this.db.query(
+      `UPDATE integration_outbox SET status='pending', last_error=$2, next_attempt_at=now() + ($3 || ' seconds')::interval, updated_at=now()
+        WHERE id=$1`,
+      [id, error.slice(0, 500), String(retryInSec)],
+    );
+  }
+  /** Перезапуск приложения: «в отправке» без ответа → снова в очередь. */
+  async outboxRequeueStuck(): Promise<void> {
+    await this.db.query(`UPDATE integration_outbox SET status='pending', updated_at=now() WHERE status='sending'`);
+  }
+  async outboxStats(tenantId: string, connectionId: string) {
+    const rows = await this.db.many<{ status: string; n: string }>(
+      `SELECT status, COUNT(*)::text AS n FROM integration_outbox WHERE tenant_id=$1 AND connection_id=$2 GROUP BY status`,
+      [tenantId, connectionId]);
+    const by = (s: string) => Number(rows.find((r) => r.status === s)?.n ?? 0);
+    const last = await this.db.one<{ last_error: string; updated_at: Date; kind: string }>(
+      `SELECT kind, last_error, updated_at FROM integration_outbox
+        WHERE tenant_id=$1 AND connection_id=$2 AND status='error' ORDER BY updated_at DESC LIMIT 1`,
+      [tenantId, connectionId]);
+    return {
+      pending: by('pending') + by('sending'), done: by('done'), errors: by('error'),
+      lastError: last ? { kind: last.kind, message: last.last_error, at: last.updated_at } : null,
+    };
+  }
+  connectionById(id: string): Promise<ConnectionRow | null> {
+    return this.db.one<ConnectionRow>(`SELECT * FROM integration_connections WHERE id=$1`, [id]);
+  }
+
+  // ── E4: чтение локальных объектов для выгрузки ──
+  taskForPush(tenantId: string, id: string) {
+    return this.db.one<PushTaskRow>(
+      `SELECT id, project_id, column_id, title, description, assignee_id, deadline_at, closed_at
+         FROM tasks WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+  }
+  columnForPush(tenantId: string, id: string) {
+    return this.db.one<{ id: string; project_id: string; name: string }>(
+      `SELECT id, project_id, name FROM board_columns WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+  }
+  projectName(tenantId: string, id: string) {
+    return this.db.one<{ name: string }>(`SELECT name FROM projects WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+  }
+  commentForPush(tenantId: string, id: string) {
+    return this.db.one<{ id: string; task_id: string; body: string; author_name: string | null }>(
+      `SELECT c.id, c.task_id, c.body, u.full_name AS author_name
+         FROM task_comments c LEFT JOIN users u ON u.id=c.author_id
+        WHERE c.tenant_id=$1 AND c.id=$2`, [tenantId, id]);
+  }
+  attachmentForPush(tenantId: string, fileId: string) {
+    return this.db.one<{ task_id: string; file_id: string; file_name: string; content_type: string }>(
+      `SELECT a.task_id, a.file_id, f.file_name, f.content_type
+         FROM task_attachments a JOIN files f ON f.id=a.file_id
+        WHERE a.tenant_id=$1 AND a.file_id=$2 LIMIT 1`, [tenantId, fileId]);
+  }
+  userEmail(tenantId: string, id: string) {
+    return this.db.one<{ email: string | null }>(`SELECT email FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+  }
   private async nextPosition(tenantId: string, columnId: string): Promise<number> {
     const r = await this.db.one<{ next: number }>(`SELECT COALESCE(MAX(position)+1,0) AS next FROM tasks WHERE tenant_id=$1 AND column_id=$2`, [tenantId, columnId]);
     return r?.next ?? 0;

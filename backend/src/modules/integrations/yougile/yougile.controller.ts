@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../../common/auth/decorators';
 import { AuthUser } from '../../../common/auth/jwt.types';
 import { YougileService } from './yougile.service';
-import { ConnectYougileDto, ImportYougileDto, MapUserDto } from './yougile.dto';
+import { ConnectYougileDto, ImportYougileDto, MapUserDto, PushYougileDto } from './yougile.dto';
 
 /** Интеграция с YouGile (E1): подключение по ключу + импорт досок/колонок/задач. Только владелец. */
 @ApiTags('integrations/yougile')
@@ -52,6 +52,23 @@ export class YougileController {
   @Post('connections/:cid/enable-live')
   enableLive(@CurrentUser() u: AuthUser, @Param('cid') cid: string) {
     return this.yougile.enableLive(u.tenantId, cid);
+  }
+
+  /** E4: включить/выключить выгрузку изменений CRM → YouGile. */
+  @Post('connections/:cid/push')
+  push(@CurrentUser() u: AuthUser, @Param('cid') cid: string, @Body() dto: PushYougileDto) {
+    return this.yougile.setPush(u.tenantId, cid, dto.enabled);
+  }
+
+  @Get('connections/:cid/push')
+  pushStatus(@CurrentUser() u: AuthUser, @Param('cid') cid: string) {
+    return this.yougile.pushStatus(u.tenantId, cid);
+  }
+
+  /** E4: отправить очередь немедленно (обычно её разбирает фоновый воркер). */
+  @Post('connections/:cid/push/flush')
+  pushFlush(@CurrentUser() u: AuthUser, @Param('cid') cid: string) {
+    return this.yougile.flushPush(u.tenantId, cid);
   }
 
   @Get('runs/:id')

@@ -1,7 +1,11 @@
+import { randomBytes } from 'crypto';
+
 /**
  * Низкоуровневый клиент YouGile REST API v2 (авторизация — API-ключ компании, Bearer).
  * База настраивается (YOUGILE_API_BASE) — для e2e подменяется на локальный мок.
  * Пагинация: ?limit&offset, ответ { content:[], paging:{ limit, offset, next, count } }.
+ * Запись (E4, выгрузка CRM → YouGile): POST/PUT /tasks, /columns, /boards,
+ * POST /chats/{id}/messages, POST /upload-file (multipart).
  */
 export class YougileError extends Error {
   constructor(public code: string, message: string) {
@@ -20,6 +24,12 @@ export interface YgTask {
   deadline?: { deadline?: number; startDate?: number; withTime?: boolean } | null;
 }
 export interface YgFile { name?: string; url?: string; size?: number }
+/** Тело записи задачи (POST /tasks, PUT /tasks/{id}) — только поля, которые ведёт CRM. */
+export interface YgTaskWrite {
+  title?: string; description?: string; columnId?: string; assigned?: string[];
+  completed?: boolean; archived?: boolean; deleted?: boolean;
+  deadline?: { deadline: number; withTime?: boolean } | null;
+}
 export interface YgMessage {
   id: string | number; deleted?: boolean; text?: string | null; fromUserId?: string | null;
   timestamp?: number; label?: string | null; files?: YgFile[];
@@ -74,6 +84,77 @@ export class YougileClient {
   }
 
   private sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
+
+  /**
+   * Запись (POST/PUT). Повторы осторожные: 429 безопасен всегда (запрос отклонён),
+   * сеть и 5xx повторяем только для идемпотентного PUT — повтор POST мог бы создать дубль.
+   */
+  private async send<T = any>(method: 'POST' | 'PUT', path: string, body: unknown): Promise<T> {
+    const idempotent = method === 'PUT';
+    const MAX = 4;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= MAX; attempt++) {
+      let res: Response;
+      try {
+        res = await fetch(this.base + path, {
+          method,
+          headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body ?? {}),
+          signal: AbortSignal.timeout(30000),
+        });
+      } catch (e) {
+        lastErr = e;
+        if (!idempotent) throw new YougileError('NETWORK', `YouGile недоступен: ${(e as Error).message}`);
+        await this.sleep(attempt * 500);
+        continue;
+      }
+      if (res.status === 401 || res.status === 403) throw new YougileError('AUTH', 'Ключ YouGile недействителен или нет прав');
+      if (res.status === 429) { await this.sleep(attempt * 800); lastErr = new YougileError('HTTP', 'YouGile HTTP 429'); continue; }
+      if (res.status >= 500 && idempotent) { lastErr = new YougileError('HTTP', `YouGile HTTP ${res.status}`); await this.sleep(attempt * 500); continue; }
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        // 400 — YouGile не принял тело (например неизвестное поле); вызывающий может упростить запрос
+        throw new YougileError(res.status === 400 ? 'BAD_REQUEST' : 'HTTP', `YouGile HTTP ${res.status} ${text}`.trim().slice(0, 300));
+      }
+      return (await res.json().catch(() => ({}))) as T;
+    }
+    throw (lastErr instanceof Error ? lastErr : new YougileError('NETWORK', 'YouGile недоступен'));
+  }
+
+  createTask(body: YgTaskWrite) { return this.send<{ id: string }>('POST', '/tasks', body); }
+  updateTask(id: string, body: YgTaskWrite) { return this.send('PUT', `/tasks/${encodeURIComponent(id)}`, body); }
+  createColumn(body: { title: string; boardId: string; color?: number }) { return this.send<{ id: string }>('POST', '/columns', body); }
+  updateColumn(id: string, body: { title?: string; color?: number; deleted?: boolean }) { return this.send('PUT', `/columns/${encodeURIComponent(id)}`, body); }
+  updateBoard(id: string, body: { title?: string }) { return this.send('PUT', `/boards/${encodeURIComponent(id)}`, body); }
+  /** Сообщение в чат задачи (chatId = id задачи). Пишется от имени владельца API-ключа. */
+  sendMessage(chatId: string, text: string) {
+    return this.send<{ id?: string | number }>('POST', `/chats/${encodeURIComponent(chatId)}/messages`, { text });
+  }
+
+  /**
+   * Загрузка файла (multipart). Тело собираем руками — так не зависим от глобальных
+   * FormData/Blob и точно контролируем заголовок filename для не-ASCII имён.
+   */
+  async uploadFile(buffer: Buffer, name: string, contentType: string): Promise<{ url: string | null }> {
+    const boundary = `----teamcrm${randomBytes(12).toString('hex')}`;
+    const safe = name.replace(/["\r\n]/g, '_');
+    const ascii = safe.replace(/[^\x20-\x7e]/g, '_');
+    const head = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${ascii}"; ` +
+      `filename*=UTF-8''${encodeURIComponent(safe)}\r\nContent-Type: ${contentType}\r\n\r\n`,
+    );
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+    const res = await fetch(this.base + '/upload-file', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+      body: Buffer.concat([head, buffer, tail]),
+      signal: AbortSignal.timeout(120000),
+    });
+    if (!res.ok) throw new YougileError('HTTP', `upload-file HTTP ${res.status}`);
+    const j = (await res.json().catch(() => ({}))) as { url?: string; fullUrl?: string };
+    const url = j.fullUrl || j.url || null;
+    return { url: url && !url.startsWith('http') ? new URL(this.base).origin + (url.startsWith('/') ? url : '/' + url) : url };
+  }
 
   /** Проверка ключа (лёгкий вызов). */
   async validate(): Promise<boolean> {

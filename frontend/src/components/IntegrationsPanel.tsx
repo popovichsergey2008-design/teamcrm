@@ -333,6 +333,48 @@ function UngroupedBlock({ cid }: { cid: string }) {
   );
 }
 
+/**
+ * YouGile E4 — обратная выгрузка: изменения в CRM уезжают в YouGile.
+ * Отправка идёт очередью в фоне, поэтому показываем сколько ждёт и последнюю ошибку.
+ */
+function TwoWayBlock({ cid }: { cid: string }) {
+  const [st, setSt] = useState<{ pushEnabled: boolean; pending: number; errors: number; lastError: { kind: string; message: string } | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const load = () => api.yougilePushStatus(cid).then(setSt).catch(() => undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [cid]);
+
+  const toggle = async (enabled: boolean) => {
+    setErr(''); setBusy(true);
+    try { await api.yougileSetPush(cid, enabled); await load(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <div className="drawer-section-title" style={{ marginTop: 10 }}>Двусторонняя синхронизация</div>
+      <div className="dim" style={{ fontSize: 12 }}>
+        Перенос карточек, правка названия/описания/исполнителя/срока, комментарии и файлы из CRM будут уходить в YouGile.
+        Комментарии и файлы отправляются от имени владельца API-ключа — автор подписывается в тексте.
+      </div>
+      <label className="notify-row" style={{ cursor: 'pointer' }}>
+        <input type="checkbox" disabled={busy || !st} checked={!!st?.pushEnabled} onChange={(e) => toggle(e.target.checked)} />
+        <span>Отправлять изменения из CRM в YouGile</span>
+      </label>
+      {err && <div className="error-text" style={{ fontSize: 12 }}>{err}</div>}
+      {st?.pushEnabled && (
+        <div className="dim" style={{ fontSize: 12 }}>
+          В очереди: {st.pending}{st.errors > 0 && <span className="error-text"> · не отправлено: {st.errors}</span>}
+          {st.lastError && <div className="error-text" style={{ fontSize: 12 }}>⚠ {st.lastError.kind}: {st.lastError.message}</div>}
+        </div>
+      )}
+    </>
+  );
+}
+
 /** YouGile E1: подключение по API-ключу + импорт досок/колонок/задач. */
 function YougileSection() {
   const [conns, setConns] = useState<any[]>([]);
@@ -356,7 +398,8 @@ function YougileSection() {
   return (
     <>
       <div className="dim" style={{ fontSize: 12 }}>
-        Создайте API-ключ в YouGile (Настройки → API) и вставьте сюда. Импорт тянет доски → проекты, колонки, задачи (с исполнителями и сроками). Односторонне, идемпотентно.
+        Создайте API-ключ в YouGile (Настройки → API) и вставьте сюда. Импорт тянет доски → проекты, колонки, задачи (с исполнителями и сроками), идемпотентно.
+        Обратная выгрузка (изменения из CRM в YouGile) включается отдельно — в блоке «Импорт» у подключения.
       </div>
       <div className="drawer-section-title">Подключить YouGile</div>
       <div className="add-user">
@@ -457,6 +500,8 @@ function YougileImportBlock({ cid }: { cid: string }) {
           ✓ Включена (события: {live.events.join(', ')}). Вебхуки зарегистрированы в YouGile на наш адрес.
         </div>
       )}
+
+      <TwoWayBlock cid={cid} />
 
       <div className="drawer-section-title" style={{ marginTop: 10 }}>Сопоставление пользователей</div>
       {!unmatched && <button className="btn btn-ghost btn-sm" onClick={loadUsers}>Показать несопоставленных</button>}

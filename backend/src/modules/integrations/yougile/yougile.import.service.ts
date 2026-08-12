@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'crypto';
 import { FilesService } from '../../files/files.service';
 import { YougileRepository } from './yougile.repository';
 import { YougileClient, YgTask, YgMessage } from './yougile.client';
+import { chatEchoKey, taskStateHash } from './yougile.hash';
 
 export interface YougileImportMsg {
   tenantId: string; connectionId: string; apiKey: string; boardExternalIds: string[]; runId: string; actorId: string | null;
@@ -143,9 +143,10 @@ export class YougileImportService {
     const deadlineAt = deadlineMs ? new Date(Number(deadlineMs)).toISOString() : null;
     const completed = !!t.completed;
     const description = t.description ? String(t.description).slice(0, 20000) : null;
-    const hash = createHash('sha256')
-      .update([t.title, description ?? '', columnId, (t.assigned ?? []).join(','), deadlineAt ?? '', completed ? '1' : '0'].join('|'))
-      .digest('hex').slice(0, 64);
+    const hash = taskStateHash({
+      title: t.title, description, localColumnId: columnId,
+      assigned: (t.assigned ?? []).map(String), deadlineIso: deadlineAt, completed,
+    });
     const { id } = await this.repo.upsertTask({
       tenantId, connectionId, externalId: String(t.id), projectId, columnId,
       title: (t.title || 'Без названия').slice(0, 255), description,
@@ -167,6 +168,8 @@ export class YougileImportService {
       if (m.deleted) continue;
       const author = (m.fromUserId ? userMap.get(String(m.fromUserId)) : undefined) ?? ctx.actorId;
       const body = (m.text ?? '').trim();
+      // наше же сообщение, отправленное из CRM (E4) — вернулось из YouGile; дубль не заводим
+      if (body && await this.repo.getRef(ctx.connectionId, 'chat_echo', chatEchoKey(taskExternalId, body))) continue;
       const external = `${taskExternalId}:${m.id}`;
       if (body && author) {
         const prefix = m.fromUserId && !userMap.get(String(m.fromUserId)) ? '[Импортировано из YouGile]\n' : '';

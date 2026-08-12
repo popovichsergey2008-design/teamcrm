@@ -274,6 +274,12 @@ export const api = {
   yougileUnmatched: (cid: string) => request<{ total: number; items: { externalId: string; name: string; email: string }[] }>('GET', `/integrations/yougile/connections/${cid}/unmatched-users`),
   yougileMapUser: (cid: string, externalUserId: string, localUserId: string) => request<any>('POST', `/integrations/yougile/connections/${cid}/user-map`, { externalUserId, localUserId }),
   yougileEnableLive: (cid: string) => request<{ url: string; events: string[]; created: string[] }>('POST', `/integrations/yougile/connections/${cid}/enable-live`),
+  // E4: обратная выгрузка CRM → YouGile
+  yougileSetPush: (cid: string, enabled: boolean) => request<{ pushEnabled: boolean; liveEvents: string[] }>('POST', `/integrations/yougile/connections/${cid}/push`, { enabled }),
+  yougilePushStatus: (cid: string) => request<{
+    pushEnabled: boolean; pending: number; done: number; errors: number;
+    lastError: { kind: string; message: string; at: string } | null;
+  }>('GET', `/integrations/yougile/connections/${cid}/push`),
   // Google-доки из задач → база знаний
   // ИИ-агенты
   agentRun: (taskId: string) => request<{ id: string; status: string; result: string; commentId: string | null; citations: any[] }>('POST', `/agents/tasks/${taskId}/run`),

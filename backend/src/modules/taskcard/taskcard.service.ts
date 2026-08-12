@@ -6,6 +6,7 @@ import { TasksRepository, TaskRow } from '../tasks/tasks.repository';
 import { TaskActivityRepository } from '../tasks/task-activity.repository';
 import { FilesService } from '../files/files.service';
 import { TaskCardRepository } from './taskcard.repository';
+import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
 
 @Injectable()
 export class TaskCardService {
@@ -16,6 +17,7 @@ export class TaskCardService {
     private readonly files: FilesService,
     private readonly realtime: RealtimeService,
     private readonly mq: RabbitMQService,
+    private readonly outbox: IntegrationOutboxService,
   ) {}
 
   private async task(tenantId: string, taskId: string): Promise<TaskRow> {
@@ -41,6 +43,7 @@ export class TaskCardService {
     await this.activity.log(tenantId, taskId, authorId, 'commented', { commentId: c.id });
     this.realtime.emitScoped(tenantId, task.project_id, 'task.comment_added', { taskId, commentId: c.id, authorId }, clientVisible);
     await this.notifyWatchers(tenantId, task, 'task_comment', authorId);
+    await this.outbox.enqueue(tenantId, task.project_id, 'comment.create', c.id, { taskId });
     return c;
   }
   listComments(tenantId: string, taskId: string, role: string, viewerId: string) {
@@ -72,6 +75,7 @@ export class TaskCardService {
     await this.activity.log(tenantId, taskId, userId, 'attached', { fileName: f.file_name });
     this.realtime.emitScoped(tenantId, task.project_id, 'task.attachment_added', { taskId, fileId: f.id }, false);
     await this.notifyWatchers(tenantId, task, 'task_attachment', userId);
+    await this.outbox.enqueue(tenantId, task.project_id, 'attachment.create', f.id, { taskId });
     return { id: (a as any)?.id, fileId: f.id, fileName: f.file_name, contentType: f.content_type, sizeBytes: Number(f.size_bytes) };
   }
   listAttachments(tenantId: string, taskId: string) {

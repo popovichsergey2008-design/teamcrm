@@ -5,9 +5,10 @@ import { TasksService } from './tasks.service';
 import { TasksRepository } from './tasks.repository';
 import { TaskActivityRepository } from './task-activity.repository';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
+import { IntegrationOutboxModule } from '../integrations/outbox/integration-outbox.module';
 
 @Module({
-  imports: [ProjectsModule, KnowledgeModule],
+  imports: [ProjectsModule, KnowledgeModule, IntegrationOutboxModule],
   controllers: [TasksController],
   providers: [TasksService, TasksRepository, TaskActivityRepository],
   exports: [TasksService, TasksRepository, TaskActivityRepository],

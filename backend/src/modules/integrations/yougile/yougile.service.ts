@@ -5,6 +5,7 @@ import { AppException } from '../../../common/http/app-exception';
 import { IntegrationCryptoService } from '../crypto.service';
 import { YougileRepository, ConnectionRow } from './yougile.repository';
 import { YougileImportService } from './yougile.import.service';
+import { YougileOutboundService } from './yougile.outbound.service';
 import { YougileClient } from './yougile.client';
 
 const LIVE_EVENTS = ['task-created', 'task-moved', 'task-updated', 'task-deleted', 'task-restored'];
@@ -18,6 +19,7 @@ export class YougileService {
     private readonly repo: YougileRepository,
     private readonly crypto: IntegrationCryptoService,
     private readonly importer: YougileImportService,
+    private readonly outbound: YougileOutboundService,
     private readonly config: ConfigService,
   ) {}
 
@@ -74,6 +76,35 @@ export class YougileService {
       catch (e) { this.log.warn(`webhook ${event} failed: ${(e as Error).message}`); }
     }
     return { url, events: LIVE_EVENTS, created };
+  }
+
+  /**
+   * E4: включить/выключить обратную выгрузку (CRM → YouGile).
+   * Включение имеет смысл вместе с живой синхронизацией, поэтому вебхуки регистрируем заодно —
+   * иначе изменения уедут в YouGile, а обратно ничего приходить не будет.
+   */
+  async setPush(tenantId: string, cid: string, enabled: boolean) {
+    const conn = await this.repo.getConnection(tenantId, cid);
+    if (!conn) throw AppException.notFound('Подключение не найдено');
+    await this.repo.setPush(tenantId, cid, enabled);
+    let live: { created: string[] } | null = null;
+    if (enabled) live = await this.enableLive(tenantId, cid).catch(() => null);
+    return { pushEnabled: enabled, liveEvents: live?.created ?? [] };
+  }
+
+  /** Состояние очереди выгрузки: сколько ждёт отправки и последняя ошибка (для UI). */
+  async pushStatus(tenantId: string, cid: string) {
+    const conn = await this.repo.getConnection(tenantId, cid);
+    if (!conn) throw AppException.notFound('Подключение не найдено');
+    const stats = await this.repo.outboxStats(tenantId, cid);
+    return { pushEnabled: conn.push_enabled, ...stats };
+  }
+
+  /** Протолкнуть очередь немедленно, не дожидаясь тика воркера. */
+  async flushPush(tenantId: string, cid: string) {
+    const conn = await this.repo.getConnection(tenantId, cid);
+    if (!conn) throw AppException.notFound('Подключение не найдено');
+    return { sent: await this.outbound.tick() };
   }
 
   async connect(tenantId: string, actorId: string, apiKey: string, label?: string) {
