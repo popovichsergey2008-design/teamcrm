@@ -58,7 +58,31 @@
   background: var(--bg-elev); display: flex; flex-direction: column; padding: 16px 12px;
 }
 .sidebar-head { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-mut); margin: 0 6px 10px; }
-.project-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+/* вкладки сайдбара: «Проекты» и «Архив» (появляется, только когда в архиве что-то есть) */
+.sidebar-tabs { display: flex; gap: 4px; margin: 0 0 10px; border-bottom: 1px solid var(--border); }
+.sidebar-tab {
+  flex: 1; background: none; border: none; cursor: pointer; padding: 6px 4px 8px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-mut); border-bottom: 2px solid transparent; transition: color .15s, border-color .15s;
+}
+.sidebar-tab:hover { color: var(--text-dim); }
+.sidebar-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.sidebar-tab-count {
+  display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 999px;
+  background: var(--bg-elev-2); color: var(--text-mut); font-size: 10px; letter-spacing: 0;
+}
+
+/* Список проектов прокручивается сам; полосу делаем такой же тонкой, как на доске,
+   иначе системный скроллбар уродует узкий сайдбар. */
+.project-list {
+  flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+  padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--border-2) transparent;
+  overscroll-behavior: contain;
+}
+.project-list::-webkit-scrollbar { width: 8px; }
+.project-list::-webkit-scrollbar-track { background: transparent; }
+.project-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+.project-list::-webkit-scrollbar-thumb:hover { background: var(--text-mut); background-clip: content-box; }
 .project-row { display: flex; align-items: center; border-radius: var(--radius-sm); }
 .project-row:hover { background: var(--bg-elev-2); }
 .project-row.active { background: var(--bg-elev-2); box-shadow: inset 2px 0 0 var(--accent); }
@@ -295,12 +319,20 @@
 .status-pill.active { background: var(--accent-2); border-color: var(--accent); color: #fff; font-weight: 600; cursor: default; }
 .status-pill:disabled { opacity: .6; cursor: default; }
 
-/* архив проектов: приглушённая строка + переключатель под списком */
-.project-row.project-archived .project-item { opacity: .55; font-style: italic; }
-.sidebar-archive { padding: 6px 8px; font-size: 12px; }
+/* архив проектов: строка приглушена, чтобы вкладка читалась как «не в работе» */
+.project-row.project-archived .project-item { opacity: .6; }
 
 /* сквозные вкладки «Мои задачи» / «Порученные» */
-.mytasks { padding: 16px 20px; overflow: auto; }
+.mytasks {
+  padding: 16px 20px; overflow-y: auto; flex: 1; min-height: 0;
+  scrollbar-width: thin; scrollbar-color: var(--border-2) transparent;
+}
+.mytasks::-webkit-scrollbar { width: 8px; }
+.mytasks::-webkit-scrollbar-track { background: transparent; }
+.mytasks::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+.mytasks::-webkit-scrollbar-thumb:hover { background: var(--text-mut); background-clip: content-box; }
+/* внутренний список не скроллим отдельно — иначе на странице две полосы прокрутки */
+.mytasks .task-list { flex: none; overflow: visible; padding-right: 0; }
 .mytasks-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; flex-wrap: wrap; }
 .list-row.row-done .list-title { opacity: .6; text-decoration: line-through; }
 

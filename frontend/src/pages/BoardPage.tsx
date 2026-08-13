@@ -72,7 +72,7 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
     localStorage.getItem('teamcrm.boardView') === 'list' ? 'list' : 'board',
   );
   const switchView = (v: 'board' | 'list') => { setView(v); localStorage.setItem('teamcrm.boardView', v); };
-  const [showArchived, setShowArchived] = useState(false);
+  const [tab, setTab] = useState<'active' | 'archived'>('active');
   const [showTeam, setShowTeam] = useState(false);
   const [showCopilot, setShowCopilot] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
@@ -98,14 +98,15 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
   }, [selected, isClient]);
 
   useEffect(() => {
+    // тянем сразу с архивом: он лежит на отдельной вкладке, второй запрос ради счётчика не нужен
     api
-      .listProjects(showArchived)
+      .listProjects(true)
       .then((ps) => {
         setProjects(ps);
         if (initial?.projectId && ps.some((p) => p.id === initial.projectId)) {
           setSelected(initial.projectId);
           setOpenTaskId(initial.taskId ?? null);
-        } else if (ps.length && !selected) setSelected(ps[0].id);
+        } else if (!selected) setSelected(ps.find((p) => p.status !== 'archived')?.id ?? null);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : 'Ошибка загрузки проектов'));
     if (!isClient) {
@@ -113,7 +114,7 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
       api.listUsers().then(setUsers).catch(() => undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showArchived]);
+  }, []);
 
   useEffect(() => {
     if (!selected) {
@@ -196,15 +197,19 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
     }
   };
 
-  /** Архив: проект уходит из списка (данные целы). Возврат — тем же переключателем. */
+  /** Архив: проект переезжает между вкладками «Проекты» и «Архив». Данные целы. */
   const toggleArchive = async (p: Project) => {
     const archived = p.status === 'archived';
-    if (!archived && !window.confirm(`Убрать проект «${p.name}» в архив? Он исчезнет из списка, данные сохранятся.`)) return;
+    if (!archived && !window.confirm(`Убрать проект «${p.name}» в архив? Он уйдёт на вкладку «Архив», данные сохранятся.`)) return;
     try {
       if (archived) await api.unarchiveProject(p.id); else await api.archiveProject(p.id);
-      const next = await api.listProjects(showArchived);
+      const next = await api.listProjects(true);
       setProjects(next);
-      if (!archived && selected === p.id) setSelected(next.find((x) => x.status !== 'archived')?.id ?? null);
+      // выбранный проект уехал на другую вкладку — переводим выбор на соседний из текущей
+      if (selected === p.id) {
+        const stay = tab === 'archived' ? next.filter((x) => x.status === 'archived') : next.filter((x) => x.status !== 'archived');
+        setSelected(stay[0]?.id ?? null);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Не удалось изменить архив');
     }
@@ -323,12 +328,15 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
   const openTask = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === openTaskId) ?? null;
 
   // Сайдбар: локальные проекты — верхним уровнем; импортированные (Битрикс/YouGile) — свёрнуты под узлом-источником.
+  // Архив — отдельная вкладка: в работе он только мешает, но остаётся под рукой.
   const providerLabel = (origin?: string) => (origin === 'yougile' ? 'YouGile' : 'Битрикс24');
-  const localProjects = projects.filter((p) => !p.origin_connection_id);
+  const archivedCount = projects.filter((p) => p.status === 'archived').length;
+  const shown = projects.filter((p) => (tab === 'archived' ? p.status === 'archived' : p.status !== 'archived'));
+  const localProjects = shown.filter((p) => !p.origin_connection_id);
   const importedGroups: [string, { label: string; origin: string; items: Project[] }][] = [];
   {
     const byConn = new Map<string, { label: string; origin: string; items: Project[] }>();
-    for (const p of projects) {
+    for (const p of shown) {
       const cid = p.origin_connection_id;
       if (!cid) continue;
       let g = byConn.get(cid);
@@ -340,7 +348,7 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
     <div key={p.id} className={`project-row ${p.id === selected ? 'active' : ''} ${p.status === 'archived' ? 'project-archived' : ''}`} style={nested ? { paddingLeft: 18 } : undefined}>
       <button className="project-item" onClick={() => setSelected(p.id)}>
         {p.name}
-        {p.status === 'archived' && <span className="project-src" title="В архиве">🗄</span>}
+        {/* значок «в архиве» не нужен: на вкладке «Архив» и так всё архивное */}
         {(p.origin === 'bitrix' || p.origin === 'yougile') && !nested && <span className="project-src" title={`Импортировано из ${providerLabel(p.origin)}`}>⤓</span>}
       </button>
       {canManageProjects && (
@@ -361,7 +369,18 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
   return (
     <div className="board-layout">
       <aside className="sidebar">
-        <div className="sidebar-head">Проекты</div>
+        {archivedCount > 0 ? (
+          <div className="sidebar-tabs">
+            <button className={`sidebar-tab ${tab === 'active' ? 'active' : ''}`} onClick={() => setTab('active')}>
+              Проекты
+            </button>
+            <button className={`sidebar-tab ${tab === 'archived' ? 'active' : ''}`} onClick={() => setTab('archived')} title="Проекты в архиве — данные сохранены">
+              Архив <span className="sidebar-tab-count">{archivedCount}</span>
+            </button>
+          </div>
+        ) : (
+          <div className="sidebar-head">Проекты</div>
+        )}
         <div className="project-list">
           {localProjects.map((p) => renderProjectRow(p))}
           {importedGroups.map(([cid, g]) => {
@@ -383,15 +402,11 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
               </div>
             );
           })}
-          {projects.length === 0 && <div className="muted sidebar-empty">Пока нет проектов</div>}
+          {shown.length === 0 && (
+            <div className="muted sidebar-empty">{tab === 'archived' ? 'Архив пуст' : 'Пока нет проектов'}</div>
+          )}
         </div>
-        {canManageProjects && (
-          <label className="notify-row sidebar-archive" style={{ cursor: 'pointer' }} title="Архивные проекты скрыты из списка; данные сохранены">
-            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
-            <span className="dim">Показать архив</span>
-          </label>
-        )}
-        {canManageProjects && (
+        {canManageProjects && tab === 'active' && (
           <div className="new-project">
             <input
               className="input"
