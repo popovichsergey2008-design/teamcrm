@@ -442,10 +442,18 @@ function YougileImportBlock({ cid }: { cid: string }) {
     api.yougileUnmatched(cid).then(setUnmatched).catch(() => undefined);
     if (!locals.length) api.listUsers().then(setLocals).catch(() => undefined);
   };
+  const [mapHint, setMapHint] = useState('');
   const mapUser = async (extId: string) => {
     const local = mapPick[extId];
     if (!local) return;
-    try { await api.yougileMapUser(cid, extId, local); loadUsers(); } catch { /* */ }
+    try {
+      const r = await api.yougileMapUser(cid, extId, local);
+      // привязка сама по себе ничего не меняет в уже импортированных задачах — нужен прогон импорта
+      setMapHint(r.tasksToRefresh > 0
+        ? `Привязано. Запустите импорт ещё раз — исполнители и постановщики применятся к ${r.tasksToRefresh} задачам.`
+        : 'Привязано. Применится при следующем импорте.');
+      loadUsers();
+    } catch { /* */ }
   };
   const [live, setLive] = useState<{ url: string; events: string[]; created: string[] } | null>(null);
   const [liveErr, setLiveErr] = useState('');
@@ -507,7 +515,12 @@ function YougileImportBlock({ cid }: { cid: string }) {
       {!unmatched && <button className="btn btn-ghost btn-sm" onClick={loadUsers}>Показать несопоставленных</button>}
       {unmatched && (
         <>
-          <div className="dim" style={{ fontSize: 12 }}>Юзеры YouGile без совпадения по e-mail. Привяжите вручную — применится при повторном импорте.</div>
+          <div className="dim" style={{ fontSize: 12 }}>
+            Юзеры YouGile без совпадения по e-mail. Пока человек не привязан, задачи, которые он ставил или делает,
+            приезжают без руководителя и исполнителя — и не попадают во вкладки «Мои задачи» и «Порученные».
+            Привяжите вручную и запустите импорт ещё раз.
+          </div>
+          {mapHint && <div className="pnl-good" style={{ fontSize: 12 }}>{mapHint}</div>}
           {unmatched.items.length === 0 && <div className="muted">Все сопоставлены ✓</div>}
           {unmatched.items.map((u) => (
             <div key={u.externalId} className="team-rate" style={{ marginTop: 4 }}>

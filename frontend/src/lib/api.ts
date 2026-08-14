@@ -273,7 +273,8 @@ export const api = {
   yougileImport: (cid: string, boardExternalIds: string[]) => request<{ runId: string }>('POST', `/integrations/yougile/connections/${cid}/import`, { boardExternalIds }),
   yougileRun: (id: string) => request<any>('GET', `/integrations/yougile/runs/${id}`),
   yougileUnmatched: (cid: string) => request<{ total: number; items: { externalId: string; name: string; email: string }[] }>('GET', `/integrations/yougile/connections/${cid}/unmatched-users`),
-  yougileMapUser: (cid: string, externalUserId: string, localUserId: string) => request<any>('POST', `/integrations/yougile/connections/${cid}/user-map`, { externalUserId, localUserId }),
+  yougileMapUser: (cid: string, externalUserId: string, localUserId: string) =>
+    request<{ mapped: boolean; tasksToRefresh: number }>('POST', `/integrations/yougile/connections/${cid}/user-map`, { externalUserId, localUserId }),
   yougileEnableLive: (cid: string) => request<{ url: string; events: string[]; created: string[] }>('POST', `/integrations/yougile/connections/${cid}/enable-live`),
   // E4: обратная выгрузка CRM → YouGile
   yougileSetPush: (cid: string, enabled: boolean) => request<{ pushEnabled: boolean; liveEvents: string[] }>('POST', `/integrations/yougile/connections/${cid}/push`, { enabled }),

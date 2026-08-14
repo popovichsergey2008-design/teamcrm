@@ -114,6 +114,20 @@ export class YougileRepository {
       [connectionId, entityType, localId],
     );
   }
+  /**
+   * Сбрасывает хеши задач подключения. Нужен после ручной привязки пользователя:
+   * хеш считается по данным СО СТОРОНЫ YouGile, а привязка живёт у нас — без сброса
+   * импорт решит, что задача не изменилась, и новый исполнитель/руководитель не применится.
+   */
+  async resetTaskHashes(connectionId: string): Promise<number> {
+    const res = await this.db.query(
+      `UPDATE external_refs SET external_hash=NULL
+        WHERE connection_id=$1 AND entity_type='task' AND external_hash IS NOT NULL`,
+      [connectionId],
+    );
+    return res.rowCount ?? 0;
+  }
+
   async deleteRef(connectionId: string, entityType: string, externalId: string): Promise<void> {
     await this.db.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type=$2 AND external_id=$3`,
       [connectionId, entityType, String(externalId)]);

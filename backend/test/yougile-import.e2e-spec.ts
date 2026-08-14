@@ -80,7 +80,8 @@ describe('YouGile импорт (e2e)', () => {
       { id: 'st-type', name: 'Тип задачи', states: [{ id: 'ty-bug', name: 'Баг', color: 4 }, { id: 'ty-feat', name: 'Фича', color: 2 }] },
     ];
     state.tasksByCol = {
-      c1: [{ id: 't1', title: 'Задача 1', columnId: 'c1', description: 'детали', assigned: ['u1'], deadline: { deadline: deadlineMs }, stickers: { 'st-prio': 's-urgent', 'st-type': 'ty-bug' } }],
+      // createdBy=u2 — постановщик, которого нет в CRM: до ручной привязки руководителя быть не должно
+      c1: [{ id: 't1', title: 'Задача 1', columnId: 'c1', description: 'детали', assigned: ['u1'], createdBy: 'u2', deadline: { deadline: deadlineMs }, stickers: { 'st-prio': 's-urgent', 'st-type': 'ty-bug' } }],
       c2: [{ id: 't2', title: 'Задача 2', columnId: 'c2', completed: true }],
     };
     state.messagesByTask = {
@@ -129,6 +130,7 @@ describe('YouGile импорт (e2e)', () => {
     expect(t2.priority).toBe('normal');       // без стикера — обычный
     expect(t1.labels.map((l: any) => l.name)).toEqual(['Баг']); // прочий стикер стал меткой
     expect(t2.labels).toEqual([]);
+    expect(t1.created_by).toBeNull(); // постановщик u2 ещё не сопоставлен с сотрудником
     expect(t2.col).toBe('Done');
 
     // E2: комментарий из чата + вложение из файла сообщения
@@ -141,7 +143,9 @@ describe('YouGile импорт (e2e)', () => {
     const unm = (await http$.get(`/api/integrations/yougile/connections/${conn.id}/unmatched-users`).set(H(tok)).expect(200)).body.data;
     expect(unm.items.some((i: any) => i.externalId === 'u2')).toBe(true);
     expect(unm.items.some((i: any) => i.externalId === 'u1')).toBe(false); // владелец сопоставлен по e-mail
-    await http$.post(`/api/integrations/yougile/connections/${conn.id}/user-map`).set(H(tok)).send({ externalUserId: 'u2', localUserId: reg.user.id }).expect(201);
+    const mapped = (await http$.post(`/api/integrations/yougile/connections/${conn.id}/user-map`).set(H(tok))
+      .send({ externalUserId: 'u2', localUserId: reg.user.id }).expect(201)).body.data;
+    expect(mapped.tasksToRefresh).toBeGreaterThan(0); // хеши сброшены — иначе привязка не долетит до старых задач
     const unm2 = (await http$.get(`/api/integrations/yougile/connections/${conn.id}/unmatched-users`).set(H(tok)).expect(200)).body.data;
     expect(unm2.items.some((i: any) => i.externalId === 'u2')).toBe(false);
 
@@ -153,8 +157,11 @@ describe('YouGile импорт (e2e)', () => {
       await sleep(150);
     }
     const board2 = (await http$.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
-    const count1 = board2.columns.flatMap((c: any) => c.tasks).filter((t: any) => t.title === 'Задача 1').length;
+    const all2 = board2.columns.flatMap((c: any) => c.tasks);
+    const count1 = all2.filter((t: any) => t.title === 'Задача 1').length;
     expect(count1).toBe(1);
+    // ручная привязка применилась к УЖЕ импортированной задаче: постановщик стал руководителем
+    expect(all2.find((t: any) => t.title === 'Задача 1').created_by).toBe(reg.user.id);
 
     // E3: живая синхронизация — событие вебхука двигает задачу t1 в «Done» и переименовывает
     const token = conns.find((c: any) => c.id === conn.id).event_token;

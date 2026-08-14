@@ -177,12 +177,17 @@ export class YougileService {
     return { total: items.length, items: items.slice(0, 200) };
   }
 
-  /** Ручная привязка пользователя YouGile к локальному (external_refs). Применится при следующем импорте. */
+  /**
+   * Ручная привязка пользователя YouGile к локальному (external_refs).
+   * Сбрасываем хеши задач: иначе импорт сочтёт их неизменёнными и привязка применится
+   * только к новым задачам, а уже импортированные останутся без исполнителя/руководителя.
+   */
   async mapUser(tenantId: string, cid: string, externalUserId: string, localUserId: string) {
     const conn = await this.repo.getConnection(tenantId, cid);
     if (!conn) throw AppException.notFound('Подключение не найдено');
     if (!(await this.repo.userExists(tenantId, localUserId))) throw AppException.validation('Пользователь не найден');
     await this.repo.putRef({ tenantId, connectionId: cid, entityType: 'user', externalId: String(externalUserId), localId: localUserId });
-    return { mapped: true };
+    const tasksToRefresh = await this.repo.resetTaskHashes(cid);
+    return { mapped: true, tasksToRefresh };
   }
 }
