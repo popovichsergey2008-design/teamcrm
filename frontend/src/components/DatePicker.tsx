@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 interface Props {
   /** «ГГГГ-ММ-ДД» или «ГГГГ-ММ-ДДTЧЧ:ММ» — тот же формат, что у нативного input, чтобы вызывающий код не менялся. */
@@ -39,10 +39,26 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
   const selected = useMemo(() => parseValue(value), [value]);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState(() => startOfDay(selected ?? new Date()));
+  // раскрываем вверх: поле срока обычно у нижнего края карточки, и вниз календарь уходил за экран
+  const [placement, setPlacement] = useState<'up' | 'down'>('up');
+  const [alignRight, setAlignRight] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
 
   // открыли — показываем месяц выбранной даты, а не тот, где остановились в прошлый раз
   useEffect(() => { if (open) setView(startOfDay(selected ?? new Date())); }, [open, selected]);
+
+  // если сверху не помещается (поле у верхней кромки) — единственный раз падаем вниз
+  useLayoutEffect(() => {
+    if (!open) return;
+    const trigger = box.current?.getBoundingClientRect();
+    if (!trigger) return;
+    const height = pop.current?.offsetHeight ?? 320;
+    const width = pop.current?.offsetWidth ?? 244;
+    setPlacement(trigger.top >= height + 12 ? 'up' : 'down');
+    // в правой колонке формы попап шире поля — прижимаем к правому краю, чтобы не срезало
+    setAlignRight(trigger.left + width > window.innerWidth - 12);
+  }, [open, withTime]);
 
   useEffect(() => {
     if (!open) return;
@@ -115,7 +131,7 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
       </button>
 
       {open && (
-        <div className="dp-pop">
+        <div className={`dp-pop ${placement === 'up' ? 'dp-up' : 'dp-down'} ${alignRight ? 'dp-right' : ''}`} ref={pop}>
           <div className="dp-head">
             <button type="button" className="dp-nav" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))} aria-label="Предыдущий месяц">‹</button>
             <span className="dp-month">{view.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</span>
