@@ -349,6 +349,13 @@
 }
 .status-pill.pill-final { border-color: var(--ok); color: var(--ok); }
 .status-pill.pill-final:hover:not(:disabled) { background: var(--ok); color: #08110d; }
+
+/* обратное действие: снять завершение и вернуть задачу в работу */
+.btn-reopen { background: rgba(91,140,255,.14); border: 1px solid var(--accent); color: var(--accent); font-weight: 600; }
+.btn-reopen:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.finish-picker.reopen-picker { background: rgba(91,140,255,.08); border-color: rgba(91,140,255,.35); }
+.status-pill.pill-work { border-color: var(--accent); color: var(--accent); }
+.status-pill.pill-work:hover:not(:disabled) { background: var(--accent); color: #fff; }
 /* meta-строка карточки: приоритет, риск, стоимость, блокер */
 .card-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .risk-badge.risk-high, .risk-badge.risk-critical { background: rgba(255,107,107,.12); color: var(--danger); border-color: rgba(255,107,107,.4); }

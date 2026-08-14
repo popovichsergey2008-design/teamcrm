@@ -22,12 +22,18 @@ const PRIORITIES = [['low', 'низкий'], ['normal', 'обычный'], ['hig
 const DONE_RE = /^(done|готово|выполнено|завершено|завершён|завершен|закрыто|сделано)$/i;
 const NEAR_DONE_RE = /(тест|провер|ревью|review|сдан|приём|приемк)/i;
 
-/** Финальные колонки — вперёд: чаще всего завершают именно туда. */
-function orderFinishColumns(columns: { id: string; name: string }[]) {
+/**
+ * Порядок колонок в выборе: при завершении вперёд идут финальные, при возврате в работу —
+ * наоборот, рабочие. Подсвечиваем те, что уместнее в текущем действии.
+ */
+function orderColumns(columns: { id: string; name: string }[], mode: 'finish' | 'reopen') {
   const rank = (name: string) => (DONE_RE.test(name.trim()) ? 0 : NEAR_DONE_RE.test(name) ? 1 : 2);
   return columns
-    .map((c) => ({ ...c, final: rank(c.name) === 0 }))
-    .sort((a, b) => rank(a.name) - rank(b.name));
+    .map((c) => {
+      const r = rank(c.name);
+      return { ...c, rank: r, highlight: mode === 'finish' ? r === 0 : r === 2 };
+    })
+    .sort((a, b) => (mode === 'finish' ? a.rank - b.rank : b.rank - a.rank));
 }
 
 export function TaskDrawer({ task, users, columns = [], canManage, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
@@ -77,10 +83,11 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
   const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
 
   // «Завершить» = перенос в финальную колонку; какую именно — выбирает человек,
-  // потому что у досок это по-разному («Готово», «На тестировании», «Сдано»)
+  // потому что у досок это по-разному («Готово», «На тестировании», «Сдано»).
+  // Обратное действие такое же: возврат в рабочую колонку снимает закрытие задачи.
   const [choosing, setChoosing] = useState(false);
-  const finishTargets = orderFinishColumns(columns).filter((c) => c.id !== task.column_id);
   const isDone = !!task.closed_at;
+  const targets = orderColumns(columns, isDone ? 'reopen' : 'finish').filter((c) => c.id !== task.column_id);
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
@@ -88,29 +95,33 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
         <div className="drawer-head">
           <h3>{task.title}</h3>
           <span className="drawer-head-actions">
-            {isDone ? (
-              <span className="badge badge-ok" title="Задача закрыта">✓ завершена</span>
-            ) : finishTargets.length > 0 && (
-              <button className="btn btn-sm btn-finish" onClick={() => setChoosing((v) => !v)} disabled={moving}>
-                ✓ Завершить
+            {isDone && <span className="badge badge-ok" title="Задача закрыта">✓ завершена</span>}
+            {targets.length > 0 && (
+              <button
+                className={`btn btn-sm ${isDone ? 'btn-reopen' : 'btn-finish'}`}
+                onClick={() => setChoosing((v) => !v)}
+                disabled={moving}
+                title={isDone ? 'Снять завершение и вернуть задачу в работу' : 'Перенести задачу в финальную колонку'}
+              >
+                {isDone ? '↩ Вернуть в работу' : '✓ Завершить'}
               </button>
             )}
             <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
           </span>
         </div>
 
-        {choosing && !isDone && (
-          <div className="finish-picker">
-            <span className="status-label">Куда перенести задачу?</span>
+        {choosing && (
+          <div className={`finish-picker ${isDone ? 'reopen-picker' : ''}`}>
+            <span className="status-label">{isDone ? 'Вернуть в колонку' : 'Куда перенести задачу?'}</span>
             <div className="status-pills">
-              {finishTargets.map((c) => (
+              {targets.map((c) => (
                 <button
                   key={c.id}
-                  className={`status-pill ${c.final ? 'pill-final' : ''}`}
+                  className={`status-pill ${c.highlight ? (isDone ? 'pill-work' : 'pill-final') : ''}`}
                   disabled={moving}
                   onClick={async () => { await moveToColumn(c.id); setChoosing(false); }}
                 >
-                  {c.final ? '✓ ' : ''}{c.name}
+                  {c.highlight && !isDone ? '✓ ' : ''}{c.name}
                 </button>
               ))}
             </div>
