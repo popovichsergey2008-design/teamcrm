@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { DatePicker } from './DatePicker';
 
 /** NL-команда / Zero-UI: пишешь ИЛИ говоришь обычным языком → ИИ предлагает создать задачу/сделку → подтверждаешь. */
 export function NlCommandModal({ onClose }: { onClose: () => void }) {
@@ -117,7 +118,7 @@ export function NlCommandModal({ onClose }: { onClose: () => void }) {
               <select className="input" value={draft.task.priority} onChange={(e) => setTask({ priority: e.target.value })}>
                 <option value="low">Низкий</option><option value="normal">Обычный</option><option value="high">Высокий</option><option value="urgent">Срочный</option>
               </select>
-              <input className="input" type="date" value={draft.task.deadline ?? ''} onChange={(e) => setTask({ deadline: e.target.value || null })} />
+              <DatePicker value={draft.task.deadline ?? ''} onChange={(v) => setTask({ deadline: v || null })} placeholder="срок не задан" />
             </div>
             <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={apply} disabled={busy || !draft.task.projectId}>Создать задачу</button>
           </div>

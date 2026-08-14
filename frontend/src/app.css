@@ -350,6 +350,55 @@
 .status-pill.pill-final { border-color: var(--ok); color: var(--ok); }
 .status-pill.pill-final:hover:not(:disabled) { background: var(--ok); color: #08110d; }
 
+/* ───── календарь выбора даты (вместо нативного datetime-local) ───── */
+.dp { position: relative; }
+.dp-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; text-align: left; cursor: pointer;
+}
+.dp-trigger:hover:not(:disabled) { border-color: var(--accent); }
+.dp-trigger.dp-empty { color: var(--text-mut); }
+.dp-trigger.dp-past { border-color: rgba(255,107,107,.5); color: var(--danger); }
+.dp-clear { opacity: .5; padding: 0 2px; font-size: 12px; }
+.dp-clear:hover { opacity: 1; color: var(--danger); }
+
+.dp-pop {
+  position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; min-width: 262px;
+  background: var(--bg-elev); border: 1px solid var(--border-2); border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0,0,0,.45); padding: 10px;
+}
+.dp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.dp-month { font-size: 13px; font-weight: 600; text-transform: capitalize; }
+.dp-nav {
+  background: none; border: 1px solid transparent; color: var(--text-dim); cursor: pointer;
+  width: 26px; height: 26px; border-radius: var(--radius-sm); font-size: 16px; line-height: 1;
+}
+.dp-nav:hover { background: var(--bg-elev-2); color: var(--text); border-color: var(--border-2); }
+
+.dp-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 4px; }
+.dp-week span { text-align: center; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); }
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dp-day {
+  height: 30px; border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer;
+  background: none; color: var(--text-dim); font-size: 13px; transition: background .12s, color .12s, border-color .12s;
+}
+.dp-day:hover { background: var(--bg-elev-2); color: var(--text); }
+.dp-day.dp-other { opacity: .35; }
+.dp-day.dp-weekend { color: var(--text-mut); }
+.dp-day.dp-today { border-color: var(--border-2); font-weight: 600; color: var(--text); }
+.dp-day.dp-selected { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.dp-day.dp-selected:hover { background: var(--accent); }
+
+.dp-time { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.dp-time-input { width: auto; padding: 5px 8px; font-size: 13px; }
+.dp-quick { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.dp-chip {
+  font-size: 11px; padding: 4px 9px; border-radius: 999px; cursor: pointer;
+  background: var(--bg-elev-2); border: 1px solid var(--border-2); color: var(--text-dim);
+}
+.dp-chip:hover { color: var(--text); border-color: var(--accent); }
+.dp-chip-clear:hover { color: var(--danger); border-color: var(--danger); }
+
 /* обратное действие: снять завершение и вернуть задачу в работу */
 .btn-reopen { background: rgba(91,140,255,.14); border: 1px solid var(--accent); color: var(--accent); font-weight: 600; }
 .btn-reopen:hover:not(:disabled) { background: var(--accent); color: #fff; }

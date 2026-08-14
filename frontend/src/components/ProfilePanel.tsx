@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { Avatar } from './Avatar';
+import { DatePicker } from './DatePicker';
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts';
 
@@ -139,8 +140,8 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 <option value="vacation">отпуск</option><option value="sick">больничный</option><option value="other">другое</option>
               </select>
               <div />
-              <input className="input" type="date" value={newAv.fromDate} onChange={(e) => setNewAv({ ...newAv, fromDate: e.target.value })} />
-              <input className="input" type="date" value={newAv.toDate} onChange={(e) => setNewAv({ ...newAv, toDate: e.target.value })} />
+              <DatePicker value={newAv.fromDate} onChange={(v) => setNewAv({ ...newAv, fromDate: v })} placeholder="с какого числа" />
+              <DatePicker value={newAv.toDate} onChange={(v) => setNewAv({ ...newAv, toDate: v })} placeholder="по какое число" />
             </div>
             <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={addAv}>Добавить</button>
             {av.map((a) => (

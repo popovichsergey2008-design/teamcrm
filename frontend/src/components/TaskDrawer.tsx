@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import type { Task, User } from '../types';
 import { Lightbox } from './Lightbox';
+import { DatePicker } from './DatePicker';
 import { MONETIZATION_ENABLED } from '../config';
 
 interface Props {
@@ -40,7 +41,13 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
   const [tab, setTab] = useState<Tab>('overview');
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
   const [estimate, setEstimate] = useState(task.estimate_hours ?? '');
-  const [deadline, setDeadline] = useState(task.deadline_at ? new Date(task.deadline_at).toISOString().slice(0, 16) : '');
+  // формат поля — локальное время; toISOString здесь давал сдвиг на часовой пояс и показывал чужой час
+  const [deadline, setDeadline] = useState(() => {
+    if (!task.deadline_at) return '';
+    const d = new Date(task.deadline_at);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  });
   const [warn, setWarn] = useState<any>(null);
   const [err, setErr] = useState('');
   const [desc, setDesc] = useState(task.description ?? '');
@@ -198,7 +205,9 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
               </div>
               <div className="drawer-grid2">
                 <div className="field"><label>Оценка, ч</label><input className="input" type="number" min="0" step="0.5" value={estimate} onChange={(e) => setEstimate(e.target.value)} /></div>
-                <div className="field"><label>Дедлайн</label><input className="input" type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} /></div>
+                <div className="field"><label>Дедлайн</label>
+                  <DatePicker value={deadline} onChange={setDeadline} withTime warnPast placeholder="срок не задан" />
+                </div>
               </div>
               {warn && (
                 <div className="overload-warn">⚠ Перегруз: риск {warn.riskPct ?? '—'}%, {warn.projectedHours}ч &gt; {warn.capacityHours}ч/нед.
