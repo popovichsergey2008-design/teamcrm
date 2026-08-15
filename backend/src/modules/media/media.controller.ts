@@ -5,6 +5,11 @@ import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { MediaService } from './media.service';
 
+/** Объявляем ДО контроллера: декоратор @Body() читает тип в момент объявления класса. */
+class StartRoomDto {
+  @IsOptional() @IsString() projectId?: string;
+}
+
 /** Диагностика медиа-слоя: поднялись ли воркеры и какие созвоны идут прямо сейчас. */
 @ApiTags('media')
 @ApiBearerAuth()
@@ -36,8 +41,4 @@ export class MediaController {
     const room = await this.media.createRoom(u.tenantId, dto.projectId ?? null);
     return { id: room.id, projectId: room.projectId };
   }
-}
-
-class StartRoomDto {
-  @IsOptional() @IsString() projectId?: string;
 }
