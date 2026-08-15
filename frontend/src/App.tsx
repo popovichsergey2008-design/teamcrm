@@ -8,6 +8,7 @@ import { JoinOrgPage } from './pages/JoinOrgPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { MyTasksPage } from './pages/MyTasksPage';
 import { MeetingsPage } from './pages/MeetingsPage';
+import { CallPanel } from './components/CallPanel';
 import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
@@ -23,6 +24,9 @@ export function App() {
   const [route, setRoute] = useState<'board' | 'profile' | 'mytasks' | 'meetings'>('board');
   // переход из «Моих задач» на доску проекта с открытой карточкой
   const [jumpTo, setJumpTo] = useState<{ projectId: string; taskId?: string } | undefined>();
+  // созвон: id комнаты, в которой мы сейчас, и список идущих в организации
+  const [callId, setCallId] = useState<string | null>(null);
+  const [activeCalls, setActiveCalls] = useState<{ id: string; participants: { displayName: string }[] }[]>([]);
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [showClients, setShowClients] = useState(false);
@@ -59,6 +63,26 @@ export function App() {
   useEffect(() => {
     if (user) api.me().then((m) => setAvatarPath(m.avatarUrl)).catch(() => undefined);
   }, [user]);
+
+  // Кто-то уже созванивается — показываем баннер с возможностью присоединиться.
+  // Опрос, а не push: постоянное WS-соединение ради этого держать не нужно.
+  useEffect(() => {
+    if (!user || user.role === 'client') return;
+    const poll = () => api.activeCalls().then(setActiveCalls).catch(() => undefined);
+    poll();
+    const t = setInterval(poll, 10_000);
+    return () => clearInterval(t);
+  }, [user]);
+
+  /** Присоединяемся к идущему созвону, а если его нет — начинаем новый. */
+  const startOrJoinCall = async () => {
+    try {
+      const existing = activeCalls[0];
+      setCallId(existing ? existing.id : (await api.startCall()).id);
+    } catch {
+      setCallId(null);
+    }
+  };
 
   if (inviteToken) return <AcceptInvitePage token={inviteToken} />;
   if (joinToken) return <JoinOrgPage token={joinToken} />;
@@ -109,6 +133,13 @@ export function App() {
             >
               🎙 Встречи
             </button>
+            <button
+              className={`btn btn-ghost btn-sm ${activeCalls.length ? 'nav-active' : ''}`}
+              onClick={startOrJoinCall}
+              title={activeCalls.length ? 'Идёт созвон — присоединиться' : 'Начать созвон'}
+            >
+              📞 {activeCalls.length ? `Созвон · ${activeCalls[0].participants.length}` : 'Созвон'}
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)} title="База знаний: спросить ИИ по архиву компании">
               📚 База знаний
             </button>
@@ -151,6 +182,7 @@ export function App() {
       )}
       {route === 'meetings' && <MeetingsPage />}
       {route === 'board' && <BoardPage key={`${user.tenantId}:${jumpTo?.taskId ?? ''}`} initial={jumpTo} />}
+      {callId && <CallPanel meetingId={callId} onClose={() => setCallId(null)} />}
       {showIntegrations && <IntegrationsPanel onClose={() => setShowIntegrations(false)} />}
       {showKnowledge && <KnowledgePanel canManage={user.role === 'owner' || user.role === 'manager'} onClose={() => setShowKnowledge(false)} />}
       {showClients && <ClientsPanel onClose={() => setShowClients(false)} />}

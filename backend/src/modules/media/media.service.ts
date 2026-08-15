@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'crypto';
+import { createHmac, randomUUID } from 'crypto';
 import { MeetingRoom, MsRouter, MsTransport, MsWorker, Participant } from './media.types';
 
 /** Кодеки: Opus для звука, три видеокодека — браузеры договорятся сами. */
@@ -228,6 +228,30 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
         if (c.kind === 'video') await c.setPreferredLayers(layers).catch(() => undefined);
       }
     }
+  }
+
+  /**
+   * ICE-серверы для клиента. Учётные данные TURN — ВРЕМЕННЫЕ, по схеме coturn
+   * `use-auth-secret`: имя = «срок:пользователь», пароль = HMAC от него. Постоянный пароль
+   * в бандле фронтенда (как было в TeamConnect) означал бы, что сервером-ретранслятором
+   * может пользоваться любой, кто открыл сайт.
+   */
+  iceServers(userId: string): { urls: string | string[]; username?: string; credential?: string }[] {
+    const host = this.config.get<string>('TURN_HOST') || this.config.get<string>('MEDIASOUP_ANNOUNCED_IP');
+    const secret = this.config.get<string>('TURN_SECRET');
+    const stun = this.config.get<string>('STUN_URL') || 'stun:stun.l.google.com:19302';
+    const servers: { urls: string | string[]; username?: string; credential?: string }[] = [{ urls: stun }];
+    if (!host || !secret) return servers; // TURN не настроен — останется прямое соединение и STUN
+
+    const ttl = Number(this.config.get('TURN_TTL_SEC') ?? 8 * 3600);
+    const username = `${Math.floor(Date.now() / 1000) + ttl}:${userId}`;
+    const credential = createHmac('sha1', secret).update(username).digest('base64');
+    servers.push({ urls: `stun:${host}:3478` });
+    servers.push({
+      urls: [`turn:${host}:3478?transport=udp`, `turn:${host}:3478?transport=tcp`],
+      username, credential,
+    });
+    return servers;
   }
 
   participantList(room: MeetingRoom) {

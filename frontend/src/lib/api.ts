@@ -388,6 +388,12 @@ export const api = {
   acceptInviteLink: (b: { token: string; email: string; fullName: string; password: string }) =>
     rawRequest<any>('POST', '/invites/links/accept', b, false),
 
+  // созвоны (mediasoup)
+  mediaHealth: () => request<{ available: boolean; workers: number; error: string | null }>('GET', '/media/health'),
+  iceServers: () => request<{ iceServers: RTCIceServer[] }>('GET', '/media/ice'),
+  activeCalls: () => request<{ id: string; projectId: string | null; participants: { userId: string; displayName: string }[] }[]>('GET', '/media/rooms'),
+  startCall: (projectId?: string) => request<{ id: string; projectId: string | null }>('POST', '/media/rooms', { projectId }),
+
   // встречи: запись → стенограмма → сводка → черновики задач
   listMeetings: () => request<any[]>('GET', '/meetings'),
   meetingDetails: (id: string) => request<{ meeting: any; segments: any[]; summary: any; drafts: any[] }>('GET', `/meetings/${id}`),

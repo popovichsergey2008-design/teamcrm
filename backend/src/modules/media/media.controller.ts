@@ -1,4 +1,5 @@
-import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
+import { IsOptional, IsString } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -22,4 +23,21 @@ export class MediaController {
   rooms(@CurrentUser() u: AuthUser) {
     return this.media.activeRooms(u.tenantId);
   }
+
+  /** Настройки соединения для браузера. Учётные данные TURN временные — см. MediaService. */
+  @Get('ice')
+  ice(@CurrentUser() u: AuthUser) {
+    return { iceServers: this.media.iceServers(u.userId) };
+  }
+
+  /** Начать созвон: комната живёт в памяти, участники входят по WebSocket. */
+  @Post('rooms')
+  async start(@CurrentUser() u: AuthUser, @Body() dto: StartRoomDto) {
+    const room = await this.media.createRoom(u.tenantId, dto.projectId ?? null);
+    return { id: room.id, projectId: room.projectId };
+  }
+}
+
+class StartRoomDto {
+  @IsOptional() @IsString() projectId?: string;
 }
