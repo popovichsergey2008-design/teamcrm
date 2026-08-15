@@ -34,7 +34,8 @@
     "pg": "^8.13.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "socket.io": "^4.8.0"
+    "socket.io": "^4.8.0",
+    "ws": "^8.21.3"
   },
   "optionalDependencies": {
     "mediasoup": "^3.14.14"
@@ -50,6 +51,7 @@
     "@types/node": "^20.16.10",
     "@types/pg": "^8.11.10",
     "@types/supertest": "^6.0.2",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.57.1",
