@@ -116,6 +116,19 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET:-teamcrm}
+      # Созвоны (Этап 6). Без ANNOUNCED_IP связь не установится: за NAT SFU обязан
+      # объявлять внешний адрес, иначе ICE-кандидаты указывают внутрь контейнера.
+      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:-}
+      MEDIASOUP_NUM_WORKERS: ${MEDIASOUP_NUM_WORKERS:-2}
+      MEDIASOUP_MIN_PORT: ${MEDIASOUP_MIN_PORT:-40000}
+      MEDIASOUP_MAX_PORT: ${MEDIASOUP_MAX_PORT:-40040}
+      TURN_HOST: ${TURN_HOST:-}
+      TURN_SECRET: ${TURN_SECRET:-}
+    # RTP ходит мимо nginx — порты публикуем напрямую. Диапазон узкий намеренно:
+    # docker поднимает по процессу-посреднику на каждый порт, и «на всякий случай»
+    # тут стоило бы 10 тысяч процессов. 41 порта хватает на созвон вшестером.
+    ports:
+      - "40000-40040:40000-40040/udp"
     depends_on:
       crm-postgres: { condition: service_healthy }
       crm-redis: { condition: service_healthy }
