@@ -45,6 +45,7 @@ import { BrainModule } from './modules/brain/brain.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { PromptsModule } from './modules/prompts/prompts.module';
 import { MeetingsModule } from './modules/meetings/meetings.module';
+import { MediaModule } from './modules/media/media.module';
 
 @Module({
   imports: [
@@ -94,6 +95,7 @@ import { MeetingsModule } from './modules/meetings/meetings.module';
     PortalModule,
     PromptsModule,
     MeetingsModule,
+    MediaModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

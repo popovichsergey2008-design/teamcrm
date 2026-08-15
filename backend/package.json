@@ -36,6 +36,9 @@
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.0"
   },
+  "optionalDependencies": {
+    "mediasoup": "^3.14.14"
+  },
   "devDependencies": {
     "@nestjs/cli": "^10.4.5",
     "@nestjs/schematics": "^10.1.4",
