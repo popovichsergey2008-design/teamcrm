@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { RedisService } from '../../cache/redis.service';
 import { DbService } from '../../database/db.service';
-import { AiProvider, MockAiProvider, RealAiProvider } from './ai.provider';
+import { AiProvider, MockAiProvider, RealAiProvider, TranscriptSegment } from './ai.provider';
 import { AiSettingsService } from './ai-settings.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { maskPII } from './pii';
@@ -50,6 +50,20 @@ export class AiService {
   /** Веб-запись голоса (аудио-буфер) → текст через Whisper (mock → '' при отсутствии ключа). */
   transcribeAudio(tenantId: string, audio: Buffer, filename: string): Promise<string> {
     return this.providerFor(tenantId).then((p) => p.provider.transcribeAudio(audio, filename));
+  }
+
+  /**
+   * Стенограмма встречи с таймкодами. Куски режет вызывающий — у Whisper лимит 25 МБ.
+   * PII здесь не маскируется: замаскировать речь в аудио нельзя. Маскирование применяется
+   * дальше, к тексту стенограммы, перед отправкой в LLM на разбор.
+   */
+  async transcribeSegments(tenantId: string, audio: Buffer, filename: string, seconds: number): Promise<TranscriptSegment[]> {
+    const { provider } = await this.providerFor(tenantId);
+    const segments = await provider.transcribeSegments(audio, filename);
+    // Whisper тарифицируется по минутам звука, а не по токенам — пишем в расход стоимость
+    const cost = Number(((Math.max(seconds, 0) / 60) * 0.006).toFixed(4));
+    await this.recordUsage(tenantId, 'meeting_transcribe', provider.name === 'mock' ? 'mock-stt' : 'whisper-1', 0, 0, false, cost);
+    return segments;
   }
 
   /**

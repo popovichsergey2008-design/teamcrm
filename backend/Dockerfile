@@ -10,6 +10,9 @@ RUN npm run build
 FROM node:20-bookworm-slim AS runner
 ENV NODE_ENV=production
 WORKDIR /app
+# ffmpeg — извлечение аудиодорожки и нарезка записи встречи на куски под лимит Whisper (25 МБ)
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist

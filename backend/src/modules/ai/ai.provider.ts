@@ -14,11 +14,23 @@ export interface GenerateOpts {
   maxTokens?: number;
 }
 
+/** Реплика стенограммы: время от начала записи + текст. */
+export interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
 export interface AiProvider {
   name: string;
   transcribe(audioRefOrText: string): Promise<string>;
   /** Транскрипция загруженного аудио-буфера (веб-запись голоса) → текст. '' если реальный Whisper недоступен. */
   transcribeAudio(audio: Buffer, filename: string): Promise<string>;
+  /**
+   * Транскрипция С ТАЙМКОДАМИ (стенограмма встречи). Куски длинной записи нарезает
+   * вызывающий: у Whisper лимит 25 МБ на запрос. [] — распознавание недоступно.
+   */
+  transcribeSegments(audio: Buffer, filename: string): Promise<TranscriptSegment[]>;
   /** schemaHint — версионируемая инструкция парсера (PromptOps); при отсутствии берётся встроенный дефолт. */
   parseIntents(maskedText: string, schemaHint?: string): Promise<unknown>;
   embed(text: string): Promise<number[]>;
@@ -86,6 +98,10 @@ export class MockAiProvider implements AiProvider {
   async transcribeAudio(_audio: Buffer, _filename: string): Promise<string> {
     void _audio; void _filename; // без ключа OpenAI распознать запись нельзя — пусто (UI подскажет)
     return '';
+  }
+  async transcribeSegments(_audio: Buffer, _filename: string): Promise<TranscriptSegment[]> {
+    void _audio; void _filename;
+    return [];
   }
   async parseIntents(maskedText: string, _schemaHint?: string): Promise<unknown> {
     void _schemaHint; // mock понимает мини-DSL и не нуждается в инструкции
@@ -164,18 +180,35 @@ export class RealAiProvider implements AiProvider {
     return this.whisper(audio, filename || 'audio.webm');
   }
 
+  async transcribeSegments(audio: Buffer, filename: string): Promise<TranscriptSegment[]> {
+    if (!this.openaiKey) return [];
+    const json = await this.whisperRaw(audio, filename || 'audio.mp3', 'verbose_json');
+    const segments = Array.isArray(json?.segments) ? json.segments : [];
+    return segments
+      .map((s: any) => ({ start: Number(s.start) || 0, end: Number(s.end) || 0, text: String(s.text ?? '').trim() }))
+      .filter((s: TranscriptSegment) => s.text.length > 0);
+  }
+
   /** OpenAI Whisper: аудио-буфер → распознанный текст. */
   private async whisper(audio: Buffer, filename: string): Promise<string> {
+    const json = await this.whisperRaw(audio, filename, 'json');
+    return json?.text ?? '';
+  }
+
+  /** Общий вызов Whisper. verbose_json даёт сегменты с таймкодами — основа стенограммы. */
+  private async whisperRaw(audio: Buffer, filename: string, format: 'json' | 'verbose_json'): Promise<any> {
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(audio)]), filename);
     form.append('model', 'whisper-1');
+    form.append('response_format', format);
     const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.openaiKey!}` },
       body: form,
+      signal: AbortSignal.timeout(300_000), // час записи режется на куски, но каждый кусок — минуты
     });
-    const json: any = await res.json();
-    return json.text ?? '';
+    if (!res.ok) throw new Error(`Whisper HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    return res.json();
   }
 
   async parseIntents(maskedText: string, schemaHint?: string): Promise<unknown> {

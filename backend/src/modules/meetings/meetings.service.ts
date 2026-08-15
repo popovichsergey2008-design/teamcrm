@@ -1,0 +1,222 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Readable } from 'stream';
+import { AppException } from '../../common/http/app-exception';
+import { AiService } from '../ai/ai.service';
+import { FilesService } from '../files/files.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
+import { TasksService } from '../tasks/tasks.service';
+import { describeFfmpegError, extractAudioChunks } from './audio.util';
+import { MEETING_PROMPT, validateMeetingAnalysis } from './meeting-schema';
+import { MeetingsRepository } from './meetings.repository';
+import { parseSubtitles, repliesToText, Reply, shiftSegments } from './transcript.util';
+
+/** Записи встреч тяжелее обычных вложений: час видео легко весит сотни мегабайт. */
+const MAX_RECORDING_BYTES = 600 * 1024 * 1024;
+const SUBTITLE_EXT = /\.(vtt|srt)$/i;
+
+async function toBuffer(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const c of stream) chunks.push(Buffer.from(c));
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Разбор записи встречи: файл → стенограмма → сводка и черновики задач.
+ *
+ * Задачи создаются ТОЛЬКО после подтверждения человеком и через обычный TasksService —
+ * у ИИ нет отдельного входа в домен. Обработка идёт фоном: час записи — это минуты работы.
+ */
+@Injectable()
+export class MeetingsService {
+  private readonly log = new Logger('Meetings');
+
+  constructor(
+    private readonly repo: MeetingsRepository,
+    private readonly files: FilesService,
+    private readonly ai: AiService,
+    private readonly tasks: TasksService,
+    private readonly knowledge: KnowledgeService,
+  ) {}
+
+  list(tenantId: string) {
+    return this.repo.list(tenantId);
+  }
+
+  async details(tenantId: string, id: string) {
+    const meeting = await this.repo.get(tenantId, id);
+    if (!meeting) throw AppException.notFound('Встреча не найдена');
+    const [segments, summary, drafts] = await Promise.all([
+      this.repo.segments(tenantId, id),
+      this.repo.summary(tenantId, id),
+      this.repo.drafts(tenantId, id),
+    ]);
+    return { meeting, segments, summary, drafts };
+  }
+
+  /** Загрузка записи или готовых субтитров. Обработку запускаем фоном и сразу отвечаем. */
+  async create(
+    tenantId: string, actorId: string,
+    input: { title: string; projectId?: string | null; happenedAt?: string | null },
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+  ) {
+    const isSubtitles = SUBTITLE_EXT.test(file.originalname);
+    const stored = await this.files.upload({
+      tenantId, userId: actorId, buffer: file.buffer, fileName: file.originalname,
+      // .vtt/.srt приходят как text/plain или octet-stream — нормализуем, чтобы пройти валидацию
+      contentType: isSubtitles ? 'text/plain' : file.mimetype,
+      ownerKind: 'meeting_recording', maxBytes: MAX_RECORDING_BYTES,
+    });
+
+    const meeting = await this.repo.create({
+      tenantId, projectId: input.projectId ?? null, title: input.title.trim().slice(0, 255),
+      happenedAt: input.happenedAt ?? null, source: isSubtitles ? 'transcript' : 'audio',
+      fileId: stored.id, createdBy: actorId,
+    });
+
+    void this.process(tenantId, meeting.id);
+    return meeting;
+  }
+
+  /** Повторная обработка — после сбоя или когда появился ключ распознавания. */
+  async retry(tenantId: string, id: string) {
+    const meeting = await this.repo.get(tenantId, id);
+    if (!meeting) throw AppException.notFound('Встреча не найдена');
+    await this.repo.setStatus(id, 'queued', null);
+    void this.process(tenantId, id);
+    return { restarted: true };
+  }
+
+  /** Конвейер: стенограмма → разбор → черновики. Ошибки не роняют процесс, а видны в статусе. */
+  async process(tenantId: string, meetingId: string): Promise<void> {
+    try {
+      const meeting = await this.repo.get(tenantId, meetingId);
+      if (!meeting?.file_id) return;
+
+      await this.repo.setStatus(meetingId, 'transcribing');
+      const { stream } = await this.files.getForDownload(tenantId, meeting.file_id);
+      const source = await toBuffer(stream);
+
+      const replies = meeting.source === 'transcript'
+        ? parseSubtitles(source.toString('utf8'))
+        : await this.transcribeRecording(tenantId, meetingId, source, meeting.title);
+
+      if (!replies.length) {
+        await this.repo.setStatus(meetingId, 'error',
+          meeting.source === 'transcript'
+            ? 'В файле субтитров не нашлось реплик'
+            : 'Распознавание вернуло пустой результат — проверьте ключ OpenAI и качество записи');
+        return;
+      }
+      await this.repo.replaceSegments(tenantId, meetingId, replies);
+      if (meeting.source === 'transcript') {
+        await this.repo.setDuration(meetingId, Math.round(replies[replies.length - 1].end));
+      }
+
+      await this.repo.setStatus(meetingId, 'analyzing');
+      await this.analyze(tenantId, meetingId, meeting.project_id, replies);
+
+      await this.repo.setStatus(meetingId, 'done');
+      this.knowledge.enqueue(tenantId, 'meeting', meetingId); // стенограмма → корпоративная память
+    } catch (e) {
+      this.log.warn(`meeting ${meetingId} failed: ${(e as Error).message}`);
+      await this.repo.setStatus(meetingId, 'error', describeFfmpegError(e)).catch(() => undefined);
+    }
+  }
+
+  /** Звук → куски → распознавание каждого куска → сшивка по времени. */
+  private async transcribeRecording(tenantId: string, meetingId: string, source: Buffer, name: string): Promise<Reply[]> {
+    const { chunks, durationSec } = await extractAudioChunks(source, name);
+    if (durationSec) await this.repo.setDuration(meetingId, durationSec);
+
+    const replies: Reply[] = [];
+    for (const chunk of chunks) {
+      const segments = await this.ai.transcribeSegments(tenantId, chunk.buffer, chunk.name, chunk.buffer.length / 4000);
+      replies.push(...shiftSegments(segments, chunk.offsetSec));
+    }
+    return replies;
+  }
+
+  /** Стенограмма → LLM → строгая схема → черновики задач с сопоставленными исполнителями. */
+  private async analyze(tenantId: string, meetingId: string, projectId: string | null, replies: Reply[]): Promise<void> {
+    const transcript = repliesToText(replies).slice(0, 120_000); // защита от гигантских встреч
+    const raw = await this.ai.generate(tenantId, MEETING_PROMPT, transcript, 'meeting_analyze');
+    const parsed = safeJson(raw);
+    const { value, errors } = validateMeetingAnalysis(parsed);
+    if (errors.length) this.log.warn(`meeting ${meetingId}: разбор с замечаниями — ${errors.join('; ')}`);
+    if (!value) {
+      await this.repo.saveSummary(tenantId, meetingId, 'ИИ не смог разобрать встречу. Стенограмма доступна целиком.', [], []);
+      return;
+    }
+
+    await this.repo.saveSummary(tenantId, meetingId, value.summary, value.decisions, value.risks);
+
+    const team = await this.repo.teamMembers(tenantId);
+    await this.repo.replaceDrafts(tenantId, meetingId, value.tasks.map((t) => ({
+      title: t.title,
+      description: t.description,
+      assigneeId: matchTeamMember(team, t.assigneeHint),
+      assigneeHint: t.assigneeHint,
+      projectId,
+      deadlineAt: t.deadline,
+      quote: t.quote,
+    })));
+  }
+
+  /** Подтверждение черновика: создаём обычную задачу тем же путём, что и руками. */
+  async applyDraft(tenantId: string, actorId: string, draftId: string, patch?: {
+    title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
+  }) {
+    const draft = await this.repo.draft(tenantId, draftId);
+    if (!draft) throw AppException.notFound('Черновик не найден');
+    if (draft.status !== 'pending') throw AppException.conflict('Черновик уже обработан');
+
+    const projectId = patch?.projectId ?? draft.project_id;
+    if (!projectId) throw AppException.validation('Выберите проект для задачи');
+
+    const task = await this.tasks.create(tenantId, {
+      projectId,
+      title: (patch?.title ?? draft.title).slice(0, 255),
+      description: patch?.description ?? draft.description ?? undefined,
+      assigneeId: (patch?.assigneeId ?? draft.assignee_id) ?? undefined,
+    } as any, actorId);
+
+    await this.repo.markDraftApplied(draftId, task.id);
+    return task;
+  }
+
+  async rejectDraft(tenantId: string, draftId: string) {
+    const draft = await this.repo.draft(tenantId, draftId);
+    if (!draft) throw AppException.notFound('Черновик не найден');
+    await this.repo.markDraftRejected(draftId);
+    return { rejected: true };
+  }
+}
+
+/** LLM любит обрамлять JSON пояснениями и ```-блоками — достаём объект из текста. */
+function safeJson(raw: string): unknown {
+  const cleaned = raw.replace(/```(?:json)?/gi, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch { return null; }
+}
+
+/**
+ * Имя, прозвучавшее на встрече → сотрудник. При неоднозначности возвращаем null:
+ * лучше пустой исполнитель, который заполнит человек, чем задача на не того.
+ */
+export function matchTeamMember(team: { id: string; full_name: string }[], hint: string | null): string | null {
+  if (!hint) return null;
+  const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е').trim();
+  const needle = norm(hint);
+  if (needle.length < 2) return null;
+
+  const exact = team.filter((u) => norm(u.full_name) === needle);
+  if (exact.length === 1) return exact[0].id;
+
+  const byToken = team.filter((u) => norm(u.full_name).split(/\s+/).includes(needle));
+  if (byToken.length === 1) return byToken[0].id;
+
+  const byPrefix = team.filter((u) => norm(u.full_name).startsWith(needle));
+  return byPrefix.length === 1 ? byPrefix[0].id : null;
+}

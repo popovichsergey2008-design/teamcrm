@@ -24,9 +24,9 @@ export interface ValidationOk {
   ok: true;
 }
 
-export function validateUpload(contentType: string, sizeBytes: number): ValidationOk | ValidationError {
+export function validateUpload(contentType: string, sizeBytes: number, maxBytes = MAX_FILE_BYTES): ValidationOk | ValidationError {
   if (sizeBytes <= 0) return { ok: false, reason: 'empty file' };
-  if (sizeBytes > MAX_FILE_BYTES) return { ok: false, reason: `file too large (>${MAX_FILE_BYTES} bytes)` };
+  if (sizeBytes > maxBytes) return { ok: false, reason: `file too large (>${maxBytes} bytes)` };
   if (!ALLOWED.has(contentType)) return { ok: false, reason: `content-type not allowed: ${contentType}` };
   return { ok: true };
 }
