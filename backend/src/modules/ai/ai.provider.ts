@@ -87,6 +87,32 @@ function parseMockDsl(text: string): unknown {
   return { actions, confidence: actions.length ? 0.92 : 0 };
 }
 
+/**
+ * Детерминированный разбор стенограммы без LLM: реплика вида «Имя: беру/сделаю…»
+ * считается договорённостью и превращается в задачу. Формат ответа — тот же JSON,
+ * что вернула бы модель, поэтому вся цепочка валидации работает как на проде.
+ */
+function mockMeetingAnalysis(transcript: string): string {
+  const lines = transcript.split('\n').filter(Boolean);
+  const tasks = lines
+    .map((l) => /^\[[\d:]+\]\s*([^:]{2,40}):\s*(.*(?:беру|сделаю|подготовлю|займусь).*)$/i.exec(l))
+    .filter((m): m is RegExpExecArray => !!m)
+    .slice(0, 5)
+    .map((m) => ({
+      title: m[2].trim().slice(0, 120),
+      description: null,
+      assignee: m[1].trim(),
+      deadline: null,
+      quote: m[0].replace(/^\[[\d:]+\]\s*/, ''),
+    }));
+  return JSON.stringify({
+    summary: `Разобрано реплик: ${lines.length}. (Демо-разбор: подключите ключ ИИ для осмысленной сводки.)`,
+    decisions: [],
+    risks: [],
+    tasks,
+  });
+}
+
 export class MockAiProvider implements AiProvider {
   name = 'mock';
   async transcribe(audioRefOrText: string): Promise<string> {
@@ -111,8 +137,11 @@ export class MockAiProvider implements AiProvider {
     return mockEmbed(text);
   }
   async generate(_system: string, user: string, _opts?: GenerateOpts): Promise<string> {
-    // mock: без LLM — короткий ответ, ссылающийся на найденные источники (цитаты дают ретрив)
-    void _system; void _opts;
+    void _opts;
+    // Разбор встречи: без LLM собираем ответ по схеме прямо из стенограммы —
+    // берём реплики с явной договорённостью. Это делает путь «встреча → задача»
+    // проверяемым на CI, где ключей ИИ нет.
+    if (/стенограмму рабочей встречи/.test(_system)) return mockMeetingAnalysis(user);
     const hasCtx = /\[\d+\]/.test(user);
     return hasCtx
       ? 'На основе найденных материалов из архива компании (см. источники ниже). [1]\n\n(Демо-ответ: подключите OPENAI_API_KEY или ANTHROPIC_API_KEY для реальной генерации.)'

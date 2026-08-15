@@ -388,6 +388,24 @@ export const api = {
   acceptInviteLink: (b: { token: string; email: string; fullName: string; password: string }) =>
     rawRequest<any>('POST', '/invites/links/accept', b, false),
 
+  // встречи: запись → стенограмма → сводка → черновики задач
+  listMeetings: () => request<any[]>('GET', '/meetings'),
+  meetingDetails: (id: string) => request<{ meeting: any; segments: any[]; summary: any; drafts: any[] }>('GET', `/meetings/${id}`),
+  uploadMeeting: async (form: FormData) => {
+    const res = await fetch('/api/meetings', {
+      method: 'POST',
+      headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+      body: form,
+    });
+    const env = await res.json();
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Не удалось загрузить запись');
+    return env.data;
+  },
+  retryMeeting: (id: string) => request<any>('POST', `/meetings/${id}/retry`),
+  applyMeetingDraft: (draftId: string, b: { title?: string; assigneeId?: string; projectId?: string }) =>
+    request<any>('POST', `/meetings/drafts/${draftId}/apply`, b),
+  rejectMeetingDraft: (draftId: string) => request<any>('POST', `/meetings/drafts/${draftId}/reject`),
+
   /** Сквозные вкладки: мои задачи и порученные другим (по всем проектам). */
   myTasks: (scope: 'mine' | 'delegated', closed = false) =>
     request<any[]>('GET', `/tasks/my?scope=${scope}${closed ? '&closed=1' : ''}`),

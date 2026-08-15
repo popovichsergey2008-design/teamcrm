@@ -7,6 +7,7 @@ import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { JoinOrgPage } from './pages/JoinOrgPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { MyTasksPage } from './pages/MyTasksPage';
+import { MeetingsPage } from './pages/MeetingsPage';
 import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
@@ -19,7 +20,7 @@ import { roleLabel } from './lib/labels';
 
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
-  const [route, setRoute] = useState<'board' | 'profile' | 'mytasks'>('board');
+  const [route, setRoute] = useState<'board' | 'profile' | 'mytasks' | 'meetings'>('board');
   // переход из «Моих задач» на доску проекта с открытой карточкой
   const [jumpTo, setJumpTo] = useState<{ projectId: string; taskId?: string } | undefined>();
   const [showIntegrations, setShowIntegrations] = useState(false);
@@ -101,6 +102,13 @@ export function App() {
             >
               ✅ Мои задачи
             </button>
+            <button
+              className={`btn btn-ghost btn-sm ${route === 'meetings' ? 'nav-active' : ''}`}
+              onClick={() => setRoute(route === 'meetings' ? 'board' : 'meetings')}
+              title="Разбор записей встреч: стенограмма, сводка, задачи"
+            >
+              🎙 Встречи
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)} title="База знаний: спросить ИИ по архиву компании">
               📚 База знаний
             </button>
@@ -141,6 +149,7 @@ export function App() {
       {route === 'mytasks' && (
         <MyTasksPage onOpenProject={(projectId, taskId) => { setJumpTo({ projectId, taskId }); setRoute('board'); }} />
       )}
+      {route === 'meetings' && <MeetingsPage />}
       {route === 'board' && <BoardPage key={`${user.tenantId}:${jumpTo?.taskId ?? ''}`} initial={jumpTo} />}
       {showIntegrations && <IntegrationsPanel onClose={() => setShowIntegrations(false)} />}
       {showKnowledge && <KnowledgePanel canManage={user.role === 'owner' || user.role === 'manager'} onClose={() => setShowKnowledge(false)} />}
