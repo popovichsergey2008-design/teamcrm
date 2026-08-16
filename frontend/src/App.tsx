@@ -77,21 +77,21 @@ export function App() {
     return () => clearInterval(t);
   }, [user]);
 
-  /** Присоединяемся к идущему созвону, а если его нет — начинаем новый. */
-  const startOrJoinCall = async () => {
-    try {
-      const existing = activeCalls[0];
-      setCallInvite([]);
-      setCallId(existing ? existing.id : (await api.startCall()).id);
-    } catch {
-      setCallId(null);
-    }
+  /** Присоединиться к уже идущему созвону. */
+  const joinActiveCall = () => {
+    const existing = activeCalls[0];
+    if (!existing) return;
+    setCallInvite([]);
+    setCallId(existing.id);
   };
 
-  /** Звонок из чата: поднимаем комнату и зовём собеседников — им прилетит входящий. */
-  const callFromChat = async (chat: { id: string; title: string; memberIds: string[] }) => {
+  /**
+   * Звонок из чата: поднимаем комнату и зовём собеседников — им прилетит входящий.
+   * Для чата проекта передаём проект: тогда задачи из стенограммы сразу лягут в его доску.
+   */
+  const callFromChat = async (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null }) => {
     try {
-      const room = await api.startCall();
+      const room = await api.startCall(chat.projectId ?? undefined);
       setCallInvite(chat.memberIds);
       setCallId(room.id);
     } catch { /* недоступность медиа покажет само окно звонка */ }
@@ -155,13 +155,13 @@ export function App() {
             >
               💬 Чаты
             </button>
-            <button
-              className={`btn btn-ghost btn-sm ${activeCalls.length ? 'nav-active' : ''}`}
-              onClick={startOrJoinCall}
-              title={activeCalls.length ? 'Идёт созвон — присоединиться' : 'Начать общий созвон'}
-            >
-              📞 {activeCalls.length ? `Созвон · ${activeCalls[0].participants.length}` : 'Созвон'}
-            </button>
+            {/* Звонок начинают из чата. Здесь остаётся только вход в ИДУЩИЙ созвон —
+                иначе к разговору не присоединиться тому, кого не позвали. */}
+            {activeCalls.length > 0 && (
+              <button className="btn btn-ghost btn-sm nav-active" onClick={joinActiveCall} title="Идёт созвон — присоединиться">
+                📞 Идёт созвон · {activeCalls[0].participants.length}
+              </button>
+            )}
             <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)} title="База знаний: спросить ИИ по архиву компании">
               📚 База знаний
             </button>

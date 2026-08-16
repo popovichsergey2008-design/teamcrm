@@ -21,7 +21,9 @@ const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 
  * Мессенджер: слева люди и группы, справа переписка. Звонок — из шапки чата,
  * то есть звонишь конкретному человеку, а не в общую комнату.
  */
-export function ChatsPage({ onCall }: { onCall: (chat: { id: string; title: string; memberIds: string[] }) => void }) {
+export function ChatsPage({ onCall }: {
+  onCall: (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null }) => void;
+}) {
   const { user } = useAuth();
   const [chats, setChats] = useState<Chat[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -34,6 +36,15 @@ export function ChatsPage({ onCall }: { onCall: (chat: { id: string; title: stri
 
   const reload = useCallback(() => api.listChats().then(setChats).catch(() => undefined), []);
 
+  /**
+   * Добавление в ленту с защитой от дубля. Своё сообщение прилетает дважды:
+   * событием по сокету (сервер рассылает всем участникам, включая автора) и ответом REST,
+   * причём событие обычно приходит РАНЬШЕ ответа. Сверяем по id.
+   */
+  const appendMessage = useCallback((m: Message) => {
+    setMessages((prev) => (prev.some((x) => String(x.id) === String(m.id)) ? prev : [...prev, m]));
+  }, []);
+
   useEffect(() => {
     reload();
     api.listUsers().then(setUsers).catch(() => undefined);
@@ -44,7 +55,7 @@ export function ChatsPage({ onCall }: { onCall: (chat: { id: string; title: stri
     const socket = getSocket();
     const onMessage = (p: { chatId: string; message: Message }) => {
       if (String(p.chatId) === String(activeId)) {
-        setMessages((prev) => (prev.some((m) => m.id === p.message.id) ? prev : [...prev, p.message]));
+        appendMessage(p.message);
         api.markChatRead(p.chatId).catch(() => undefined);
       }
       reload();
@@ -60,7 +71,7 @@ export function ChatsPage({ onCall }: { onCall: (chat: { id: string; title: stri
       socket.off('chat.message_deleted', onDeleted);
       socket.off('chat.created', reload);
     };
-  }, [activeId, reload]);
+  }, [activeId, reload, appendMessage]);
 
   const openChat = useCallback(async (id: string) => {
     setActiveId(id); setErr('');
@@ -82,7 +93,7 @@ export function ChatsPage({ onCall }: { onCall: (chat: { id: string; title: stri
     setDraft('');
     try {
       const message = await api.sendChatMessage(activeId, text);
-      setMessages((prev) => [...prev, message]);
+      appendMessage(message);
       reload();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Сообщение не отправлено');
@@ -95,7 +106,7 @@ export function ChatsPage({ onCall }: { onCall: (chat: { id: string; title: stri
     try {
       const message = await api.sendChatFile(activeId, file, draft.trim());
       setDraft('');
-      setMessages((prev) => [...prev, message]);
+      appendMessage(message);
       reload();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Файл не отправлен'); }
   };
@@ -159,6 +170,7 @@ export function ChatsPage({ onCall }: { onCall: (chat: { id: string; title: stri
                   id: active.id,
                   title: active.title ?? 'Чат',
                   memberIds: active.peerId ? [String(active.peerId)] : [],
+                  projectId: active.projectId,
                 })}
               >
                 📞 Позвонить
