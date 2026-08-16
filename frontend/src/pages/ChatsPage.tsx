@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
+import { notificationPermission, notifyChatsChanged, requestNotificationPermission } from '../lib/notifications';
 import { useAuth } from '../state/auth';
 import { GroupChatModal } from '../components/GroupChatModal';
 import { GroupManageModal } from '../components/GroupManageModal';
@@ -23,8 +24,10 @@ const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 
  * Мессенджер: слева люди и группы, справа переписка. Звонок — из шапки чата,
  * то есть звонишь конкретному человеку, а не в общую комнату.
  */
-export function ChatsPage({ onCall }: {
+export function ChatsPage({ onCall, onActiveChat }: {
   onCall: (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null; withAi?: boolean }) => void;
+  /** Наверх — какой чат открыт: по нему уведомления не показываются. */
+  onActiveChat?: (chatId: string | null) => void;
 }) {
   // «Позвать ИИ» — решение на конкретный звонок, поэтому галочка живёт рядом с кнопкой,
   // а не в настройках: перед разговором видно, будет он записан или нет
@@ -38,6 +41,7 @@ export function ChatsPage({ onCall }: {
   const [query, setQuery] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
+  const [perm, setPerm] = useState(notificationPermission());
   const [err, setErr] = useState('');
   const feedRef = useRef<HTMLDivElement | null>(null);
 
@@ -90,10 +94,16 @@ export function ChatsPage({ onCall }: {
   const openChat = useCallback(async (id: string) => {
     setActiveId(id); setErr('');
     try {
-      setMessages(await api.chatMessages(id));
+      setMessages(await api.chatMessages(id)); // чтение помечается на сервере этим же запросом
       reload();
+      notifyChatsChanged(); // счётчик в шапке должен упасть сразу
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть чат'); }
   }, [reload]);
+
+  useEffect(() => {
+    onActiveChat?.(activeId);
+    return () => onActiveChat?.(null); // ушли из раздела — уведомления снова нужны
+  }, [activeId, onActiveChat]);
 
   // лента всегда прокручена вниз: читают последнее, а не начало переписки
   useEffect(() => {
@@ -151,6 +161,20 @@ export function ChatsPage({ onCall }: {
           <input className="input chat-search" placeholder="Поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
           <button className="btn btn-ghost btn-sm" title="Создать группу" onClick={() => setGroupOpen(true)}>＋</button>
         </div>
+
+        {/* Разрешение спрашиваем по кнопке: непрошеный запрос браузеры глушат,
+            и человек больше не сможет его выдать. */}
+        {perm === 'default' && (
+          <button className="btn btn-ghost btn-sm chat-notify-ask"
+                  onClick={async () => setPerm(await requestNotificationPermission())}>
+            🔔 Включить уведомления
+          </button>
+        )}
+        {perm === 'denied' && (
+          <div className="dim chat-notify-hint">
+            Уведомления запрещены в браузере. Непрочитанное всё равно видно в шапке и в заголовке вкладки.
+          </div>
+        )}
 
         {dms.filter((c) => match(c.title)).map((c) => (
           <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} />

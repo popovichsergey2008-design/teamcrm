@@ -11,6 +11,7 @@ import { MeetingsPage } from './pages/MeetingsPage';
 import { CallPanel } from './components/CallPanel';
 import { ChatsPage } from './pages/ChatsPage';
 import { IncomingCallDialog, useIncomingCalls } from './components/IncomingCall';
+import { useChatNotifications } from './hooks/useChatNotifications';
 import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
@@ -29,6 +30,8 @@ export function App() {
   // созвон: id комнаты, в которой мы сейчас, и список идущих в организации
   const [callId, setCallId] = useState<string | null>(null);
   const [callInvite, setCallInvite] = useState<string[]>([]);
+  // какой чат открыт — чтобы не слать уведомление о сообщении, которое человек и так видит
+  const [openChatId, setOpenChatId] = useState<string | null>(null);
   const [activeCalls, setActiveCalls] = useState<{ id: string; participants: { displayName: string }[] }[]>([]);
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
@@ -100,6 +103,11 @@ export function App() {
   };
 
   const { incoming, accept, decline } = useIncomingCalls(!!user && user.role !== 'client');
+  const { unread } = useChatNotifications(
+    !!user && user.role !== 'client',
+    route === 'chats' ? openChatId : null,
+    () => setRoute('chats'),
+  );
 
   if (inviteToken) return <AcceptInvitePage token={inviteToken} />;
   if (joinToken) return <JoinOrgPage token={joinToken} />;
@@ -156,6 +164,7 @@ export function App() {
               title="Чаты команды: личные, группы и обсуждения проектов"
             >
               💬 Чаты
+              {unread > 0 && <span className="nav-badge">{unread > 99 ? '99+' : unread}</span>}
             </button>
             {/* Звонок начинают из чата. Здесь остаётся только вход в ИДУЩИЙ созвон —
                 иначе к разговору не присоединиться тому, кого не позвали. */}
@@ -204,7 +213,7 @@ export function App() {
       {route === 'mytasks' && (
         <MyTasksPage onOpenProject={(projectId, taskId) => { setJumpTo({ projectId, taskId }); setRoute('board'); }} />
       )}
-      {route === 'chats' && <ChatsPage onCall={callFromChat} />}
+      {route === 'chats' && <ChatsPage onCall={callFromChat} onActiveChat={setOpenChatId} />}
       {route === 'meetings' && <MeetingsPage />}
       {route === 'board' && <BoardPage key={`${user.tenantId}:${jumpTo?.taskId ?? ''}`} initial={jumpTo} />}
       {callId && <CallPanel meetingId={callId} inviteUserIds={callInvite} onClose={() => { setCallId(null); setCallInvite([]); }} />}
