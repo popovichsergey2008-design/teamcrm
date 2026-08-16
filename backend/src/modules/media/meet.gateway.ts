@@ -250,6 +250,8 @@ export class MeetGateway implements OnModuleInit {
           return this.send(c.ws, 'meet.error', { message: 'Поток недоступен для приёма' });
         }
         const owner = this.producerOwner(room, p.producer_id);
+        // свой же поток обратно не отдаём: иначе человек слышит себя из динамиков
+        if (owner && String(owner.userId) === String(c.userId)) return;
         try {
           const consumer = await participant.recvTransport.consume({
             producerId: p.producer_id,

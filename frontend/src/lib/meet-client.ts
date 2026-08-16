@@ -43,6 +43,8 @@ export class MeetClient {
   private readonly producers = new Map<string, types.Producer>();
   private readonly consumers = new Map<string, types.Consumer>();
   private readonly peers = new Map<string, Peer>();
+  /** Уже запрошенные потоки: защита от повторного приёма того же продюсера. */
+  private readonly requested = new Set<string>();
 
   /** Ожидания ответов сервера: соединение транспорта и подтверждение produce. */
   private readonly connectAcks = new Map<string, () => void>();
@@ -55,6 +57,8 @@ export class MeetClient {
     private readonly token: string,
     private readonly iceServers: RTCIceServer[],
     private readonly ev: MeetEvents,
+    /** Свой id: по нему отсеиваем собственные потоки, чтобы не слышать себя. */
+    private readonly myUserId: string,
   ) {}
 
   async join(): Promise<void> {
@@ -100,8 +104,11 @@ export class MeetClient {
           });
         }
         this.ev.onPeers([...this.peers.values()]);
-        // потоки тех, кто уже говорит, надо запросить самому — сервер о них не напомнит
+        // Потоки тех, кто уже говорит, запрашиваем сами — сервер о них не напомнит.
+        // СВОИ пропускаем: иначе слышишь себя из динамиков. Список рассылается заново
+        // (например, при старте записи), когда свой поток уже существует.
         for (const it of p.participants ?? []) {
+          if (String(it.userId) === String(this.myUserId)) continue;
           for (const pr of it.producers ?? []) this.consume(pr.id);
         }
         return;
@@ -155,6 +162,8 @@ export class MeetClient {
             this.ev.onTrackGone(id);
           }
         }
+        // поток закрыт — разрешаем запросить его заново, если человек снова включит камеру
+        if (msg.type === 'meet.producer-closed') this.requested.delete(p.producer_id);
         return;
       }
 
@@ -224,8 +233,10 @@ export class MeetClient {
     });
   }
 
+  /** Повторный запрос того же потока дал бы вторую дорожку и двойной звук. */
   private consume(producerId: string): void {
-    if (!this.device.loaded) return;
+    if (!this.device.loaded || this.requested.has(producerId)) return;
+    this.requested.add(producerId);
     this.emit('meet.consume', { producer_id: producerId, rtp_capabilities: this.device.rtpCapabilities });
   }
 

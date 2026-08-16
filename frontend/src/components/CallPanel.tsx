@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, tokens } from '../lib/api';
 import { MeetClient, Peer, RemoteTrack } from '../lib/meet-client';
+import { useAuth } from '../state/auth';
 
 const STATE_LABEL: Record<string, string> = {
   connecting: 'Подключаюсь…',
@@ -16,6 +17,7 @@ const STATE_LABEL: Record<string, string> = {
 export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
   meetingId: string; inviteUserIds?: string[]; onClose: () => void;
 }) {
+  const { user } = useAuth();
   const [state, setState] = useState<'connecting' | 'connected' | 'reconnecting' | 'closed'>('connecting');
   const [peers, setPeers] = useState<Peer[]>([]);
   const [tracks, setTracks] = useState<RemoteTrack[]>([]);
@@ -47,12 +49,16 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
           onRecording: setRecording,
           onAiInvited: () => setAiInvited(true),
           onError: setErr,
-        });
+        }, String(user?.id ?? ''));
         client.current = c;
         await c.join();
 
         // микрофон берём сразу: звонок без звука бессмысленен
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Просим подавление эха явно: со значением по умолчанию браузеры расходятся,
+        // и голос из динамиков возвращается собеседнику отражённым.
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
         localStream.current = stream;
         const audio = stream.getAudioTracks()[0];
         if (audio) await c.publish(audio);
