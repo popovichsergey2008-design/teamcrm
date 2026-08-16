@@ -13,7 +13,9 @@ const STATE_LABEL: Record<string, string> = {
  * Окно созвона. Микрофон включается сразу, камера — по желанию: на рабочих
  * планёрках она нужна не всегда, а трафик экономит заметно.
  */
-export function CallPanel({ meetingId, onClose }: { meetingId: string; onClose: () => void }) {
+export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
+  meetingId: string; inviteUserIds?: string[]; onClose: () => void;
+}) {
   const [state, setState] = useState<'connecting' | 'connected' | 'reconnecting' | 'closed'>('connecting');
   const [peers, setPeers] = useState<Peer[]>([]);
   const [tracks, setTracks] = useState<RemoteTrack[]>([]);
@@ -52,6 +54,10 @@ export function CallPanel({ meetingId, onClose }: { meetingId: string; onClose: 
         localStream.current = stream;
         const audio = stream.getAudioTracks()[0];
         if (audio) await c.publish(audio);
+
+        // зовём собеседников уже после того, как сами вошли: иначе человек примет
+        // звонок и попадёт в пустую комнату
+        if (inviteUserIds.length) c.invite(inviteUserIds);
       } catch (e) {
         setErr(e instanceof ApiError ? e.message : (e as Error)?.message ?? 'Не удалось подключиться');
       }
@@ -61,6 +67,8 @@ export function CallPanel({ meetingId, onClose }: { meetingId: string; onClose: 
       client.current?.leave();
       localStream.current?.getTracks().forEach((t) => t.stop());
     };
+    // список приглашаемых берётся один раз при входе в комнату — перезаходить на его смену нельзя
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meetingId]);
 
   const toggleMic = useCallback(async () => {

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
   OnGatewayConnection,
+  OnGatewayDisconnect,
   OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
@@ -21,7 +22,7 @@ import { RealtimeService } from './realtime.service';
  * WebSocket — только транспорт уведомлений; запись идёт через REST.
  */
 @WebSocketGateway({ transports: ['websocket', 'polling'] })
-export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
+export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger('Realtime');
 
   @WebSocketServer()
@@ -54,10 +55,19 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
         email: payload.email,
       };
       socket.data.user = user;
+      // личная комната: сюда приходят сообщения мессенджера, адресованные этому человеку
+      await socket.join(RealtimeService.userRoom(user.tenantId, user.userId));
+      this.realtime.presenceConnect(user.tenantId, user.userId);
     } catch {
       socket.emit('error', { code: 'UNAUTHORIZED', message: 'Socket auth failed' });
       socket.disconnect(true);
     }
+  }
+
+  /** Ушёл со всех устройств — гаснет точка «в сети» в мессенджере. */
+  handleDisconnect(socket: Socket) {
+    const user: AuthUser | undefined = socket.data?.user;
+    if (user) this.realtime.presenceDisconnect(user.tenantId, user.userId);
   }
 
   @SubscribeMessage('project.subscribe')

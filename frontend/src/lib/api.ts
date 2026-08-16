@@ -388,6 +388,28 @@ export const api = {
   acceptInviteLink: (b: { token: string; email: string; fullName: string; password: string }) =>
     rawRequest<any>('POST', '/invites/links/accept', b, false),
 
+  // мессенджер команды
+  listChats: () => request<any[]>('GET', '/chats'),
+  openDm: (userId: string) => request<{ id: string; kind: string }>('POST', '/chats/dm', { userId }),
+  createChatGroup: (title: string, userIds: string[]) => request<any>('POST', '/chats/groups', { title, userIds }),
+  openProjectChat: (projectId: string) => request<{ id: string; kind: string }>('POST', `/chats/project/${projectId}`),
+  chatMessages: (chatId: string, before?: string) =>
+    request<any[]>('GET', `/chats/${chatId}/messages${before ? `?before=${before}` : ''}`),
+  sendChatMessage: (chatId: string, body: string) => request<any>('POST', `/chats/${chatId}/messages`, { body }),
+  markChatRead: (chatId: string) => request<any>('POST', `/chats/${chatId}/read`),
+  deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
+  sendChatFile: async (chatId: string, file: File, body: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (body) fd.append('body', body);
+    const res = await fetch(`/api/chats/${chatId}/files`, {
+      method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
+    });
+    const env = await res.json();
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Не удалось отправить файл');
+    return env.data;
+  },
+
   // созвоны (mediasoup)
   mediaHealth: () => request<{ available: boolean; workers: number; error: string | null }>('GET', '/media/health'),
   iceServers: () => request<{ iceServers: RTCIceServer[] }>('GET', '/media/ice'),

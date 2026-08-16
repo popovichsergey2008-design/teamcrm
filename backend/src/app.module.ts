@@ -46,6 +46,7 @@ import { PortalModule } from './modules/portal/portal.module';
 import { PromptsModule } from './modules/prompts/prompts.module';
 import { MeetingsModule } from './modules/meetings/meetings.module';
 import { MediaModule } from './modules/media/media.module';
+import { ChatsModule } from './modules/chats/chats.module';
 
 @Module({
   imports: [
@@ -96,6 +97,7 @@ import { MediaModule } from './modules/media/media.module';
     PromptsModule,
     MeetingsModule,
     MediaModule,
+    ChatsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

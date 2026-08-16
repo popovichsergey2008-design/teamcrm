@@ -67,11 +67,45 @@ export class RealtimeService {
     this.server = server;
   }
 
+  /** Кто сейчас онлайн: сокеты по пользователю (мессенджер показывает точку «в сети»). */
+  private readonly online = new Map<string, number>();
+
   static internalRoom(tenantId: string, projectId: string) {
     return `project:${tenantId}:${projectId}`;
   }
   static clientRoom(tenantId: string, projectId: string) {
     return `project:${tenantId}:${projectId}:client`;
+  }
+  /** Личная комната — доставка сообщений мессенджера конкретному человеку. */
+  static userRoom(tenantId: string, userId: string) {
+    return `user:${tenantId}:${userId}`;
+  }
+
+  /** Сообщение чата адресатам: у каждого свои устройства, комната решает это сама. */
+  emitToUsers(tenantId: string, userIds: string[], event: string, payload: Record<string, unknown>) {
+    if (!this.server) return;
+    for (const userId of new Set(userIds)) {
+      this.server.to(RealtimeService.userRoom(tenantId, userId)).emit(event, payload);
+    }
+  }
+
+  private key(tenantId: string, userId: string) { return `${tenantId}:${userId}`; }
+
+  presenceConnect(tenantId: string, userId: string) {
+    const k = this.key(tenantId, userId);
+    this.online.set(k, (this.online.get(k) ?? 0) + 1);
+  }
+  presenceDisconnect(tenantId: string, userId: string) {
+    const k = this.key(tenantId, userId);
+    const n = (this.online.get(k) ?? 1) - 1;
+    if (n <= 0) this.online.delete(k); else this.online.set(k, n);
+  }
+  isOnline(tenantId: string, userId: string): boolean {
+    return this.online.has(this.key(tenantId, userId));
+  }
+  onlineUsers(tenantId: string): string[] {
+    const prefix = `${tenantId}:`;
+    return [...this.online.keys()].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
   }
 
   /**

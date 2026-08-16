@@ -9,6 +9,8 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { MyTasksPage } from './pages/MyTasksPage';
 import { MeetingsPage } from './pages/MeetingsPage';
 import { CallPanel } from './components/CallPanel';
+import { ChatsPage } from './pages/ChatsPage';
+import { IncomingCallDialog, useIncomingCalls } from './components/IncomingCall';
 import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
@@ -21,11 +23,12 @@ import { roleLabel } from './lib/labels';
 
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
-  const [route, setRoute] = useState<'board' | 'profile' | 'mytasks' | 'meetings'>('board');
+  const [route, setRoute] = useState<'board' | 'profile' | 'mytasks' | 'meetings' | 'chats'>('board');
   // переход из «Моих задач» на доску проекта с открытой карточкой
   const [jumpTo, setJumpTo] = useState<{ projectId: string; taskId?: string } | undefined>();
   // созвон: id комнаты, в которой мы сейчас, и список идущих в организации
   const [callId, setCallId] = useState<string | null>(null);
+  const [callInvite, setCallInvite] = useState<string[]>([]);
   const [activeCalls, setActiveCalls] = useState<{ id: string; participants: { displayName: string }[] }[]>([]);
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
@@ -78,11 +81,23 @@ export function App() {
   const startOrJoinCall = async () => {
     try {
       const existing = activeCalls[0];
+      setCallInvite([]);
       setCallId(existing ? existing.id : (await api.startCall()).id);
     } catch {
       setCallId(null);
     }
   };
+
+  /** Звонок из чата: поднимаем комнату и зовём собеседников — им прилетит входящий. */
+  const callFromChat = async (chat: { id: string; title: string; memberIds: string[] }) => {
+    try {
+      const room = await api.startCall();
+      setCallInvite(chat.memberIds);
+      setCallId(room.id);
+    } catch { /* недоступность медиа покажет само окно звонка */ }
+  };
+
+  const { incoming, accept, decline } = useIncomingCalls(!!user && user.role !== 'client');
 
   if (inviteToken) return <AcceptInvitePage token={inviteToken} />;
   if (joinToken) return <JoinOrgPage token={joinToken} />;
@@ -134,9 +149,16 @@ export function App() {
               🎙 Встречи
             </button>
             <button
+              className={`btn btn-ghost btn-sm ${route === 'chats' ? 'nav-active' : ''}`}
+              onClick={() => setRoute(route === 'chats' ? 'board' : 'chats')}
+              title="Чаты команды: личные, группы и обсуждения проектов"
+            >
+              💬 Чаты
+            </button>
+            <button
               className={`btn btn-ghost btn-sm ${activeCalls.length ? 'nav-active' : ''}`}
               onClick={startOrJoinCall}
-              title={activeCalls.length ? 'Идёт созвон — присоединиться' : 'Начать созвон'}
+              title={activeCalls.length ? 'Идёт созвон — присоединиться' : 'Начать общий созвон'}
             >
               📞 {activeCalls.length ? `Созвон · ${activeCalls[0].participants.length}` : 'Созвон'}
             </button>
@@ -180,9 +202,17 @@ export function App() {
       {route === 'mytasks' && (
         <MyTasksPage onOpenProject={(projectId, taskId) => { setJumpTo({ projectId, taskId }); setRoute('board'); }} />
       )}
+      {route === 'chats' && <ChatsPage onCall={callFromChat} />}
       {route === 'meetings' && <MeetingsPage />}
       {route === 'board' && <BoardPage key={`${user.tenantId}:${jumpTo?.taskId ?? ''}`} initial={jumpTo} />}
-      {callId && <CallPanel meetingId={callId} onClose={() => setCallId(null)} />}
+      {callId && <CallPanel meetingId={callId} inviteUserIds={callInvite} onClose={() => { setCallId(null); setCallInvite([]); }} />}
+      {incoming && !callId && (
+        <IncomingCallDialog
+          call={incoming}
+          onAccept={() => { const id = accept(); if (id) { setCallInvite([]); setCallId(id); } }}
+          onDecline={decline}
+        />
+      )}
       {showIntegrations && <IntegrationsPanel onClose={() => setShowIntegrations(false)} />}
       {showKnowledge && <KnowledgePanel canManage={user.role === 'owner' || user.role === 'manager'} onClose={() => setShowKnowledge(false)} />}
       {showClients && <ClientsPanel onClose={() => setShowClients(false)} />}
