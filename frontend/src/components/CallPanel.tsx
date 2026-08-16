@@ -24,6 +24,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
   const [screenOn, setScreenOn] = useState(false);
   const [hand, setHand] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [aiInvited, setAiInvited] = useState(false);
   const [err, setErr] = useState('');
 
   const client = useRef<MeetClient | null>(null);
@@ -44,6 +45,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
           onTrackGone: (id) => setTracks((prev) => prev.filter((x) => x.consumerId !== id)),
           onState: setState,
           onRecording: setRecording,
+          onAiInvited: () => setAiInvited(true),
           onError: setErr,
         });
         client.current = c;
@@ -143,6 +145,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
             ⏺ Идёт запись. После завершения ИИ соберёт стенограмму с именами, сводку и предложит задачи.
           </div>
         )}
+        {/* ИИ позвали, но запись ещё не пошла: звук не начался */}
+        {aiInvited && !recording && (
+          <div className="call-recording call-ai-waiting">
+            🤖 ИИ-ассистент приглашён — запись начнётся, как только кто-нибудь заговорит.
+          </div>
+        )}
         {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
 
         <div className="call-grid">
@@ -167,8 +175,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
 
         <div className="call-peers">
           {peers.map((p) => (
-            <span key={p.userId} className="badge badge-muted">
-              {p.handRaised ? '✋ ' : ''}{p.displayName}
+            <span key={p.userId} className={`badge ${p.isAi ? 'peer-ai' : 'badge-muted'}`}
+                  title={p.isAi ? 'ИИ ведёт стенограмму встречи' : undefined}>
+              {p.isAi ? '🤖 ' : p.handRaised ? '✋ ' : ''}{p.displayName}
             </span>
           ))}
         </div>

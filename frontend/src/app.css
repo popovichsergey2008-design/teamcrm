@@ -402,6 +402,8 @@
 .chat-file { display: inline-block; font-size: 13px; margin-top: 4px; }
 .chat-time { font-size: 10px; color: var(--text-mut); text-align: right; margin-top: 2px; }
 .chat-input { display: flex; align-items: center; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--border); }
+.chat-call { display: flex; align-items: center; gap: 8px; }
+.chat-ai-toggle { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
 
 /* входящий звонок: поверх всего, в углу — как в мессенджерах */
 .incoming-call {
@@ -462,6 +464,9 @@
   background: rgba(255,107,107,.12); border: 1px solid rgba(255,107,107,.45); color: var(--danger);
 }
 .call-rec-on { background: rgba(255,107,107,.16); border-color: var(--danger); color: var(--danger); font-weight: 600; }
+/* ИИ приглашён, но ещё не пишет — это ожидание, а не тревога */
+.call-ai-waiting { background: rgba(91,140,255,.10); border-color: rgba(91,140,255,.40); color: var(--accent); }
+.peer-ai { background: rgba(91,140,255,.16); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .call-leave { margin-left: auto; background: rgba(255,107,107,.16); border-color: var(--danger); color: var(--danger); font-weight: 600; }
 .call-leave:hover { background: var(--danger); color: #fff; }
 

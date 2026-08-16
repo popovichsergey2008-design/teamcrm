@@ -89,9 +89,11 @@ export function App() {
    * Звонок из чата: поднимаем комнату и зовём собеседников — им прилетит входящий.
    * Для чата проекта передаём проект: тогда задачи из стенограммы сразу лягут в его доску.
    */
-  const callFromChat = async (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null }) => {
+  const callFromChat = async (chat: {
+    id: string; title: string; memberIds: string[]; projectId?: string | null; withAi?: boolean;
+  }) => {
     try {
-      const room = await api.startCall(chat.projectId ?? undefined);
+      const room = await api.startCall(chat.projectId ?? undefined, chat.withAi === true);
       setCallInvite(chat.memberIds);
       setCallId(room.id);
     } catch { /* недоступность медиа покажет само окно звонка */ }

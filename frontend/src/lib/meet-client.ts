@@ -12,6 +12,8 @@ export interface Peer {
   userId: string;
   displayName: string;
   handRaised: boolean;
+  /** ИИ-ассистент: показывается в списке наравне с людьми, пока идёт запись. */
+  isAi?: boolean;
 }
 
 export interface MeetEvents {
@@ -20,6 +22,7 @@ export interface MeetEvents {
   onTrackGone: (consumerId: string) => void;
   onState: (state: 'connecting' | 'connected' | 'reconnecting' | 'closed') => void;
   onRecording: (active: boolean) => void;
+  onAiInvited?: () => void;
   onError: (message: string) => void;
 }
 
@@ -91,7 +94,10 @@ export class MeetClient {
       case 'meet.participants':
         this.peers.clear();
         for (const it of p.participants ?? []) {
-          this.peers.set(it.userId, { userId: it.userId, displayName: it.displayName, handRaised: !!it.handRaised });
+          this.peers.set(it.userId, {
+            userId: it.userId, displayName: it.displayName,
+            handRaised: !!it.handRaised, isAi: !!it.isAi,
+          });
         }
         this.ev.onPeers([...this.peers.values()]);
         // потоки тех, кто уже говорит, надо запросить самому — сервер о них не напомнит
@@ -165,6 +171,11 @@ export class MeetClient {
 
       case 'meet.recording':
         this.ev.onRecording(!!p.active);
+        return;
+
+      case 'meet.ai-invited':
+        // ИИ позвали при старте: запись включится с первым звуком, но сказать надо сразу
+        this.ev.onAiInvited?.();
         return;
 
       case 'meet.error':

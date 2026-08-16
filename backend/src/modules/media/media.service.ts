@@ -145,11 +145,12 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
 
   // ───── комнаты ─────
 
-  async createRoom(tenantId: string, projectId: string | null): Promise<MeetingRoom> {
+  async createRoom(tenantId: string, projectId: string | null, aiEnabled = false): Promise<MeetingRoom> {
     if (!this.available) throw new Error('Медиа-сервер недоступен');
     const router: MsRouter = await this.pickWorker().createRouter({ mediaCodecs: MEDIA_CODECS });
     const room: MeetingRoom = {
-      id: randomUUID(), tenantId, projectId, router, participants: new Map(), startedAt: Date.now(),
+      id: randomUUID(), tenantId, projectId, router, participants: new Map(),
+      startedAt: Date.now(), aiEnabled,
     };
     this.rooms.set(room.id, room);
     return room;
@@ -164,7 +165,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     return [...this.rooms.values()]
       .filter((r) => r.tenantId === tenantId)
       .map((r) => ({
-        id: r.id, projectId: r.projectId, startedAt: r.startedAt,
+        id: r.id, projectId: r.projectId, startedAt: r.startedAt, aiEnabled: r.aiEnabled,
         participants: [...r.participants.values()].map((p) => ({ userId: p.userId, displayName: p.displayName })),
       }));
   }

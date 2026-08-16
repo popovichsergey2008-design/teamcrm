@@ -84,4 +84,15 @@ export interface MeetingRoom {
   router: MsRouter;
   participants: Map<string, Participant>;
   startedAt: number;
+  /** ИИ позвали при старте: запись включится сама, как только пойдёт звук. */
+  aiEnabled: boolean;
 }
+
+/** ИИ в списке участников — не человек, поэтому вынесен отдельным описанием. */
+export const AI_PARTICIPANT = {
+  userId: 'ai',
+  displayName: 'ИИ-ассистент',
+  handRaised: false,
+  isAi: true,
+  producers: [] as { id: string; kind: string; appData: unknown }[],
+};

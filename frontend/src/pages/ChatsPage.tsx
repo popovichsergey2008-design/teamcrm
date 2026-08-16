@@ -22,8 +22,11 @@ const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 
  * то есть звонишь конкретному человеку, а не в общую комнату.
  */
 export function ChatsPage({ onCall }: {
-  onCall: (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null }) => void;
+  onCall: (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null; withAi?: boolean }) => void;
 }) {
+  // «Позвать ИИ» — решение на конкретный звонок, поэтому галочка живёт рядом с кнопкой,
+  // а не в настройках: перед разговором видно, будет он записан или нет
+  const [withAi, setWithAi] = useState(false);
   const { user } = useAuth();
   const [chats, setChats] = useState<Chat[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -163,18 +166,25 @@ export function ChatsPage({ onCall }: {
                 <b>{active.title ?? 'Чат'}</b>
                 {active.kind === 'project' && <span className="badge badge-muted" style={{ marginLeft: 6 }}>проект</span>}
               </span>
-              <button
-                className="btn btn-sm"
-                title="Позвонить участникам чата"
-                onClick={() => onCall({
-                  id: active.id,
-                  title: active.title ?? 'Чат',
-                  memberIds: active.peerId ? [String(active.peerId)] : [],
-                  projectId: active.projectId,
-                })}
-              >
-                📞 Позвонить
-              </button>
+              <span className="chat-call">
+                <label className="chat-ai-toggle" title="ИИ войдёт в созвон, запишет его и предложит задачи по итогам">
+                  <input type="checkbox" checked={withAi} onChange={(e) => setWithAi(e.target.checked)} />
+                  🤖 с ИИ
+                </label>
+                <button
+                  className="btn btn-sm"
+                  title="Позвонить участникам чата"
+                  onClick={() => onCall({
+                    id: active.id,
+                    title: active.title ?? 'Чат',
+                    memberIds: active.peerId ? [String(active.peerId)] : [],
+                    projectId: active.projectId,
+                    withAi,
+                  })}
+                >
+                  📞 Позвонить
+                </button>
+              </span>
             </div>
 
             {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}

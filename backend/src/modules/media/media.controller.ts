@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
-import { IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -8,6 +8,8 @@ import { MediaService } from './media.service';
 /** Объявляем ДО контроллера: декоратор @Body() читает тип в момент объявления класса. */
 class StartRoomDto {
   @IsOptional() @IsString() projectId?: string;
+  /** Позвать ИИ-ассистента: он появится в списке участников и включит запись. */
+  @IsOptional() @IsBoolean() withAi?: boolean;
 }
 
 /** Диагностика медиа-слоя: поднялись ли воркеры и какие созвоны идут прямо сейчас. */
@@ -38,7 +40,7 @@ export class MediaController {
   /** Начать созвон: комната живёт в памяти, участники входят по WebSocket. */
   @Post('rooms')
   async start(@CurrentUser() u: AuthUser, @Body() dto: StartRoomDto) {
-    const room = await this.media.createRoom(u.tenantId, dto.projectId ?? null);
-    return { id: room.id, projectId: room.projectId };
+    const room = await this.media.createRoom(u.tenantId, dto.projectId ?? null, dto.withAi === true);
+    return { id: room.id, projectId: room.projectId, aiEnabled: room.aiEnabled };
   }
 }

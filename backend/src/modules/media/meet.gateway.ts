@@ -10,7 +10,7 @@ import { DbService } from '../../database/db.service';
 import { MeetingsService } from '../meetings/meetings.service';
 import { MediaService, optimalLayers } from './media.service';
 import { RecordingService } from './recording.service';
-import { MeetingRoom } from './media.types';
+import { AI_PARTICIPANT, MeetingRoom } from './media.types';
 
 const PATH = '/ws/meet';
 
@@ -167,8 +167,12 @@ export class MeetGateway implements OnModuleInit {
         c.meetingId = room.id;
 
         this.send(c.ws, 'meet.router-capabilities', { meeting_id: room.id, rtp_capabilities: room.router.rtpCapabilities });
-        this.send(c.ws, 'meet.participants', { meeting_id: room.id, participants: this.media.participantList(room) });
+        this.send(c.ws, 'meet.participants', { meeting_id: room.id, participants: this.participants(room) });
         this.broadcast(room, 'meet.peer-joined', { meeting_id: room.id, user_id: c.userId, display_name: c.displayName }, c.userId);
+        // ИИ позвали при создании — вошедший должен видеть это сразу, ещё до первой реплики
+        if (room.aiEnabled && !this.recording.isRecording(room.id)) {
+          this.send(c.ws, 'meet.ai-invited', { meeting_id: room.id });
+        }
 
         // другие устройства этого же человека гасят входящий звонок
         for (const ws of this.byUser.get(this.key(c.tenantId, c.userId)) ?? []) {
@@ -222,9 +226,15 @@ export class MeetGateway implements OnModuleInit {
             meeting_id: room.id, user_id: c.userId, producer_id: producer.id,
             kind: producer.kind, app_data: producer.appData,
           }, c.userId);
-          // включил микрофон при уже идущей записи — подхватываем дорожку на ходу
-          if (producer.kind === 'audio' && this.recording.isRecording(room.id)) {
-            void this.recording.attachLate(room, participant);
+          if (producer.kind === 'audio') {
+            if (this.recording.isRecording(room.id)) {
+              // включил микрофон при уже идущей записи — подхватываем дорожку на ходу
+              void this.recording.attachLate(room, participant);
+            } else if (room.aiEnabled) {
+              // ИИ позвали при старте: запись стартует с первым же звуком, а не по кнопке.
+              // Раньше делать нечего — записывать было бы нечего.
+              void this.startRecording(room, c.userId);
+            }
           }
         } catch (e) {
           this.log.warn(`produce: ${(e as Error).message}`);
@@ -357,23 +367,41 @@ export class MeetGateway implements OnModuleInit {
       /** Запись включается по кнопке и видна всем — тихой записи в продукте нет. */
       case 'meet.record-start': {
         if (!room || !room.participants.has(c.userId)) return;
-        await this.recording.start(room, c.userId);
-        this.broadcast(room, 'meet.recording', { meeting_id: room.id, ...this.recording.recordingInfo(room.id) });
-        this.send(c.ws, 'meet.recording', { meeting_id: room.id, ...this.recording.recordingInfo(room.id) });
+        await this.startRecording(room, c.userId);
         return;
       }
 
       case 'meet.record-stop': {
         if (!room || !room.participants.has(c.userId)) return;
+        room.aiEnabled = false; // остановили вручную — не поднимаем запись заново на следующем звуке
         await this.finishRecording(room, c.userId);
-        this.broadcast(room, 'meet.recording', { meeting_id: room.id, active: false });
-        this.send(c.ws, 'meet.recording', { meeting_id: room.id, active: false });
+        for (const userId of room.participants.keys()) {
+          this.toUser(room.tenantId, userId, 'meet.recording', { meeting_id: room.id, active: false });
+        }
+        this.syncParticipants(room); // ИИ уходит из списка
         return;
       }
 
       case 'meet.leave':
         return this.leave(c);
     }
+  }
+
+  /** Запуск записи + оповещение: плашка у всех и ИИ в списке участников. */
+  private async startRecording(room: MeetingRoom, actorId: string): Promise<void> {
+    if (this.recording.isRecording(room.id)) return;
+    try {
+      await this.recording.start(room, actorId);
+    } catch (e) {
+      this.log.warn(`не удалось начать запись ${room.id}: ${(e as Error).message}`);
+      this.toUser(room.tenantId, actorId, 'meet.error', { message: 'Не удалось начать запись' });
+      return;
+    }
+    const info = this.recording.recordingInfo(room.id);
+    for (const userId of room.participants.keys()) {
+      this.toUser(room.tenantId, userId, 'meet.recording', { meeting_id: room.id, ...info });
+    }
+    this.syncParticipants(room); // ИИ появляется в списке
   }
 
   /**
@@ -392,6 +420,24 @@ export class MeetGateway implements OnModuleInit {
       });
     } catch (e) {
       this.log.warn(`обработка записи ${room.id}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Список участников: пока идёт запись, ИИ показывается наравне с людьми.
+   * Он именно в списке, а не только плашкой — так его невозможно не заметить.
+   */
+  private participants(room: MeetingRoom) {
+    const list: unknown[] = this.media.participantList(room);
+    if (this.recording.isRecording(room.id)) list.unshift(AI_PARTICIPANT);
+    return list;
+  }
+
+  /** Разослать всем актуальный состав — после входа, выхода и смены состояния записи. */
+  private syncParticipants(room: MeetingRoom) {
+    const participants = this.participants(room);
+    for (const userId of room.participants.keys()) {
+      this.toUser(room.tenantId, userId, 'meet.participants', { meeting_id: room.id, participants });
     }
   }
 
