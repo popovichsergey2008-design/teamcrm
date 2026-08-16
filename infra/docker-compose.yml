@@ -124,11 +124,13 @@ services:
       MEDIASOUP_MAX_PORT: ${MEDIASOUP_MAX_PORT:-40040}
       TURN_HOST: ${TURN_HOST:-}
       TURN_SECRET: ${TURN_SECRET:-}
+      TURN_TTL_SEC: ${TURN_TTL_SEC:-28800}
     # RTP ходит мимо nginx — порты публикуем напрямую. Диапазон узкий намеренно:
     # docker поднимает по процессу-посреднику на каждый порт, и «на всякий случай»
     # тут стоило бы 10 тысяч процессов. 41 порта хватает на созвон вшестером.
     ports:
       - "40000-40040:40000-40040/udp"
+      - "40000-40040:40000-40040/tcp"
     depends_on:
       crm-postgres: { condition: service_healthy }
       crm-redis: { condition: service_healthy }
