@@ -359,7 +359,16 @@
 }
 .chat-list::-webkit-scrollbar { width: 8px; }
 .chat-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
-.chat-search { margin-bottom: 8px; }
+.chat-list-head { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.chat-search { flex: 1; min-width: 0; }
+/* список участников в форме группы прокручивается сам, а не растягивает окно */
+.group-members {
+  max-height: 260px; overflow-y: auto; border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm); padding: 4px;
+  scrollbar-width: thin; scrollbar-color: var(--border-2) transparent;
+}
+.group-members::-webkit-scrollbar { width: 8px; }
+.group-members::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 .chat-group-head { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-mut); margin: 12px 6px 4px; }
 .chat-row {
   display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border: none;

@@ -107,6 +107,44 @@ describe('Чаты команды (e2e)', () => {
     expect(list.find((c: any) => String(c.id) === String(first.id)).title).toBe('Мануфактура');
   });
 
+  it('группа: видна участникам, посторонний в неё не попадает', async () => {
+    const email = `gr_${uniq()}@t.test`;
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'GR', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+
+    const make = async (name: string) => {
+      const mail = `${name}_${uniq()}@t.test`;
+      const u = (await http$.post('/api/users').set(H(owner.accessToken))
+        .send({ email: mail, fullName: name, password: 'password123', role: 'member' }).expect(201)).body.data;
+      const login = (await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data;
+      return { id: u.id, token: login.accessToken };
+    };
+    const inside = await make('Внутри');
+    const outside = await make('Снаружи');
+
+    const group = (await http$.post('/api/chats/groups').set(H(owner.accessToken))
+      .send({ title: 'Продакшн', userIds: [inside.id] }).expect(201)).body.data;
+    expect(group.title).toBe('Продакшн');
+
+    await http$.post(`/api/chats/${group.id}/messages`).set(H(owner.accessToken)).send({ body: 'сбор в 10' }).expect(201);
+
+    // участник видит группу в списке и читает переписку
+    const list = (await http$.get('/api/chats').set(H(inside.token)).expect(200)).body.data;
+    const seen = list.find((c: any) => String(c.id) === String(group.id));
+    expect(seen.title).toBe('Продакшн');
+    expect(seen.unread).toBe(1);
+    const feed = (await http$.get(`/api/chats/${group.id}/messages`).set(H(inside.token)).expect(200)).body.data;
+    expect(feed[0].body).toBe('сбор в 10');
+
+    // посторонний сотрудник той же организации — мимо
+    await http$.get(`/api/chats/${group.id}/messages`).set(H(outside.token)).expect(403);
+    const outsideList = (await http$.get('/api/chats').set(H(outside.token)).expect(200)).body.data;
+    expect(outsideList.some((c: any) => String(c.id) === String(group.id))).toBe(false);
+
+    // группа без названия не создаётся
+    await http$.post('/api/chats/groups').set(H(owner.accessToken)).send({ title: '   ', userIds: [inside.id] }).expect(400);
+  });
+
   it('пустое сообщение и чужое удаление отклоняются', async () => {
     const email = `em_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')

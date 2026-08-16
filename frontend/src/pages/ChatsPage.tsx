@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { useAuth } from '../state/auth';
+import { GroupChatModal } from '../components/GroupChatModal';
 import type { User } from '../types';
 
 interface Chat {
@@ -34,6 +35,7 @@ export function ChatsPage({ onCall }: {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
+  const [groupOpen, setGroupOpen] = useState(false);
   const [err, setErr] = useState('');
   const feedRef = useRef<HTMLDivElement | null>(null);
 
@@ -136,7 +138,10 @@ export function ChatsPage({ onCall }: {
   return (
     <div className="chats">
       <aside className="chat-list">
-        <input className="input chat-search" placeholder="Поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <div className="chat-list-head">
+          <input className="input chat-search" placeholder="Поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <button className="btn btn-ghost btn-sm" title="Создать группу" onClick={() => setGroupOpen(true)}>＋</button>
+        </div>
 
         {dms.filter((c) => match(c.title)).map((c) => (
           <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} />
@@ -229,6 +234,19 @@ export function ChatsPage({ onCall }: {
           </>
         )}
       </section>
+
+      {groupOpen && (
+        <GroupChatModal
+          users={users}
+          meId={user?.id}
+          onClose={() => setGroupOpen(false)}
+          onCreated={async (chatId) => {
+            setGroupOpen(false);
+            await reload();
+            openChat(chatId); // сразу открываем созданную группу — иначе её надо искать в списке
+          }}
+        />
+      )}
     </div>
   );
 }
