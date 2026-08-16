@@ -12,6 +12,8 @@ import { CallPanel } from './components/CallPanel';
 import { ChatsPage } from './pages/ChatsPage';
 import { IncomingCallDialog, useIncomingCalls } from './components/IncomingCall';
 import { useChatNotifications } from './hooks/useChatNotifications';
+import { Icon } from './components/Icon';
+import { ThemeSwitch } from './components/ThemeSwitch';
 import { ProfilePanel } from './components/ProfilePanel';
 import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { KnowledgePanel } from './components/KnowledgePanel';
@@ -140,7 +142,7 @@ export function App() {
           </select>
 
           <button className="btn btn-primary btn-sm" onClick={() => setShowNl(true)} title="Создать задачу или сделку обычным языком (текст или голос)">
-            ⚡ Создать
+            <Icon name="zap" size={15} /> Создать
           </button>
 
           <nav className="topbar-nav" aria-label="Разделы">
@@ -149,46 +151,46 @@ export function App() {
               onClick={() => setRoute(route === 'mytasks' ? 'board' : 'mytasks')}
               title="Мои задачи и порученные — по всем проектам"
             >
-              ✅ Мои задачи
+              <Icon name="check-circle" size={15} /> Мои задачи
             </button>
             <button
               className={`btn btn-ghost btn-sm ${route === 'meetings' ? 'nav-active' : ''}`}
               onClick={() => setRoute(route === 'meetings' ? 'board' : 'meetings')}
               title="Разбор записей встреч: стенограмма, сводка, задачи"
             >
-              🎙 Встречи
+              <Icon name="record" size={15} /> Встречи
             </button>
             <button
               className={`btn btn-ghost btn-sm ${route === 'chats' ? 'nav-active' : ''}`}
               onClick={() => setRoute(route === 'chats' ? 'board' : 'chats')}
               title="Чаты команды: личные, группы и обсуждения проектов"
             >
-              💬 Чаты
+              <Icon name="chat" size={15} /> Чаты
               {unread > 0 && <span className="nav-badge">{unread > 99 ? '99+' : unread}</span>}
             </button>
             {/* Звонок начинают из чата. Здесь остаётся только вход в ИДУЩИЙ созвон —
                 иначе к разговору не присоединиться тому, кого не позвали. */}
             {activeCalls.length > 0 && (
               <button className="btn btn-ghost btn-sm nav-active" onClick={joinActiveCall} title="Идёт созвон — присоединиться">
-                📞 Идёт созвон · {activeCalls[0].participants.length}
+                <Icon name="phone" size={15} /> Идёт созвон · {activeCalls[0].participants.length}
               </button>
             )}
             <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)} title="База знаний: спросить ИИ по архиву компании">
-              📚 База знаний
+              <Icon name="book" size={15} /> База знаний
             </button>
             {(user.role === 'owner' || user.role === 'manager') && (
               <button className="btn btn-ghost btn-sm" onClick={() => setShowClients(true)} title="Клиенты">
-                🤝 Клиенты
+                <Icon name="handshake" size={15} /> Клиенты
               </button>
             )}
             {(user.role === 'owner' || user.role === 'manager') && (
               <button className="btn btn-ghost btn-sm" onClick={() => setShowInbox(true)} title="Входящие: письма и голосовые заметки → черновики задач">
-                📥 Входящие
+                <Icon name="inbox" size={15} /> Входящие
               </button>
             )}
             {user.role === 'owner' && (
               <button className="btn btn-ghost btn-sm" onClick={() => setShowIntegrations(true)} title="Интеграции: Битрикс24, ИИ-ключи, промпты, Telegram">
-                🔌 Интеграции
+                <Icon name="plug" size={15} /> Интеграции
               </button>
             )}
           </nav>
@@ -202,8 +204,16 @@ export function App() {
             {menuOpen && (
               <div className="menu-pop" role="menu">
                 <div className="menu-role">{roleLabel(user.role)}</div>
-                <button className="menu-item" role="menuitem" onClick={() => { setRoute('profile'); setMenuOpen(false); }}>Личный кабинет</button>
-                <button className="menu-item menu-danger" role="menuitem" onClick={() => { setMenuOpen(false); logout(); }}>Выйти</button>
+                <button className="menu-item" role="menuitem" onClick={() => { setRoute('profile'); setMenuOpen(false); }}>
+                  <Icon name="user" size={15} /> Личный кабинет
+                </button>
+                <div className="menu-theme">
+                  <span className="dim">Тема</span>
+                  <ThemeSwitch />
+                </div>
+                <button className="menu-item menu-danger" role="menuitem" onClick={() => { setMenuOpen(false); logout(); }}>
+                  <Icon name="logout" size={15} /> Выйти
+                </button>
               </div>
             )}
           </div>

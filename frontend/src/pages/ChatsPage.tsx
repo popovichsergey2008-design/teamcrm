@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { notificationPermission, notifyChatsChanged, requestNotificationPermission } from '../lib/notifications';
@@ -159,7 +160,7 @@ export function ChatsPage({ onCall, onActiveChat }: {
       <aside className="chat-list">
         <div className="chat-list-head">
           <input className="input chat-search" placeholder="Поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <button className="btn btn-ghost btn-sm" title="Создать группу" onClick={() => setGroupOpen(true)}>＋</button>
+          <button className="btn btn-ghost btn-sm" title="Создать группу" onClick={() => setGroupOpen(true)}><Icon name="plus" /></button>
         </div>
 
         {/* Разрешение спрашиваем по кнопке: непрошеный запрос браузеры глушат,
@@ -167,7 +168,7 @@ export function ChatsPage({ onCall, onActiveChat }: {
         {perm === 'default' && (
           <button className="btn btn-ghost btn-sm chat-notify-ask"
                   onClick={async () => setPerm(await requestNotificationPermission())}>
-            🔔 Включить уведомления
+            <Icon name="bell" size={15} /> Включить уведомления
           </button>
         )}
         {perm === 'denied' && (
@@ -205,13 +206,13 @@ export function ChatsPage({ onCall, onActiveChat }: {
                 {active.kind === 'project' && <span className="badge badge-muted" style={{ marginLeft: 6 }}>проект</span>}
                 {active.kind === 'group' && (
                   <button className="btn btn-ghost btn-sm" title="Участники и настройки группы"
-                          onClick={() => setManageOpen(true)}>⚙</button>
+                          onClick={() => setManageOpen(true)}><Icon name="settings" /></button>
                 )}
               </span>
               <span className="chat-call">
                 <label className="chat-ai-toggle" title="ИИ войдёт в созвон, запишет его и предложит задачи по итогам">
                   <input type="checkbox" checked={withAi} onChange={(e) => setWithAi(e.target.checked)} />
-                  🤖 с ИИ
+                  <Icon name="robot" size={14} /> с ИИ
                 </label>
                 <button
                   className="btn btn-sm"
@@ -224,7 +225,7 @@ export function ChatsPage({ onCall, onActiveChat }: {
                     withAi,
                   })}
                 >
-                  📞 Позвонить
+                  <Icon name="phone" size={15} /> Позвонить
                 </button>
               </span>
             </div>
@@ -253,7 +254,7 @@ export function ChatsPage({ onCall, onActiveChat }: {
                       {m.body && <div className="chat-body">{m.body}</div>}
                       {m.file_id && (
                         <a className="chat-file" href={`/api/files/${m.file_id}`} target="_blank" rel="noreferrer">
-                          📎 {m.file_name}
+                          <Icon name="paperclip" size={14} /> {m.file_name}
                         </a>
                       )}
                       <div className="chat-time">{timeOf(m.created_at)}</div>
@@ -265,7 +266,7 @@ export function ChatsPage({ onCall, onActiveChat }: {
 
             <div className="chat-input">
               <label className="btn btn-ghost btn-sm" title="Прикрепить файл" style={{ cursor: 'pointer' }}>
-                📎
+                <Icon name="paperclip" size={16} />
                 <input type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) attach(f); e.currentTarget.value = ''; }} />
               </label>
               <input
@@ -275,7 +276,7 @@ export function ChatsPage({ onCall, onActiveChat }: {
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
               />
-              <button className="btn btn-primary btn-sm" onClick={send} disabled={!draft.trim()}>➤</button>
+              <button className="btn btn-primary btn-sm" onClick={send} disabled={!draft.trim()} title="Отправить"><Icon name="send" /></button>
             </div>
           </>
         )}

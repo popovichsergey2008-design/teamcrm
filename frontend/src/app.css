@@ -43,7 +43,7 @@
   padding: 10px 12px; border-radius: var(--radius-sm); cursor: pointer; font: inherit; white-space: nowrap;
 }
 .profile-nav button:hover { background: var(--bg-elev-2); color: var(--text); }
-.profile-nav button.active { background: var(--accent-2); color: #fff; font-weight: 600; }
+.profile-nav button.active { background: var(--accent-2); color: var(--on-accent); font-weight: 600; }
 .profile-content { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 26px; }
 .profile-content > * { max-width: 760px; } /* читаемая ширина форм на широких экранах */
 @media (max-width: 720px) {
@@ -110,7 +110,7 @@
 /* P&L панель */
 .pnl { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .pnl-alert {
-  background: rgba(255,107,107,.12); color: var(--danger); border: 1px solid rgba(255,107,107,.4);
+  background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-line);
   padding: 6px 12px; border-radius: var(--radius-sm); font-size: 13px;
 }
 .pnl-grid { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -126,7 +126,7 @@
 
 /* таймер на карточке */
 .timer-btn { margin-top: 8px; width: 100%; }
-.timer-on { background: rgba(87,217,163,.15); border-color: var(--ok); color: var(--ok); }
+.timer-on { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
 .task-tracking { border-color: var(--ok); box-shadow: inset 2px 0 0 var(--ok); }
 
 .board-columns { display: flex; gap: 16px; overflow-x: auto; flex: 1; padding-bottom: 8px; }
@@ -204,7 +204,7 @@
 .view-btn { border: none; background: var(--bg-elev); color: var(--text-dim); padding: 5px 12px; font-size: 13px; cursor: pointer; }
 .view-btn + .view-btn { border-left: 1px solid var(--border); }
 .view-btn:hover { background: var(--bg-elev-2); color: var(--text); }
-.view-btn.active { background: var(--accent); color: #fff; }
+.view-btn.active { background: var(--accent); color: var(--on-accent); }
 
 /* списочный вид */
 .task-list { flex: 1; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
@@ -225,13 +225,13 @@
 
 /* drawer / side panels (Этапы 2-4) */
 .drawer-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50;
+  position: fixed; inset: 0; background: var(--overlay); z-index: 50;
   display: flex; justify-content: flex-end;
 }
 .drawer {
   width: 420px; max-width: 92vw; height: 100%; overflow-y: auto;
   background: var(--bg-elev); border-left: 1px solid var(--border);
-  padding: 20px; box-shadow: -20px 0 50px rgba(0,0,0,.4);
+  padding: 20px; box-shadow: var(--shadow-lg);
 }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .drawer-head h3 { margin: 0; font-size: 18px; }
@@ -243,21 +243,21 @@
 .drawer-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .drawer-assign { width: 100%; margin-top: 6px; }
 .overload-warn {
-  background: rgba(255,207,92,.12); border: 1px solid rgba(255,207,92,.4); color: var(--warn);
+  background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--warn);
   padding: 10px 12px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 10px;
 }
-.overload-confirm { width: 100%; margin-top: 8px; background: rgba(255,107,107,.15); border-color: var(--danger); color: var(--danger); }
+.overload-confirm { width: 100%; margin-top: 8px; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
 /* AI Brain чат */
 .brain-chat { display: flex; flex-direction: column; gap: 10px; max-height: 52vh; overflow-y: auto; padding: 8px 2px; margin-bottom: 8px; }
 .brain-msg { padding: 10px 12px; border-radius: var(--radius-sm); font-size: 14px; max-width: 92%; }
-.brain-user { align-self: flex-end; background: var(--accent); color: #fff; }
+.brain-user { align-self: flex-end; background: var(--accent); color: var(--on-accent); }
 .brain-assistant { align-self: flex-start; background: var(--bg-elev-2); border: 1px solid var(--border); }
 .brain-cites { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 
 /* модалка создания задачи */
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 60;
+  position: fixed; inset: 0; background: var(--overlay); z-index: 60;
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .modal-card {
@@ -297,9 +297,13 @@
   border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 6px;
 }
 .menu-role { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; opacity: .55; padding: 4px 8px 6px; }
-.menu-item { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--text); font: inherit; padding: 8px; border-radius: var(--radius-sm); cursor: pointer; }
+.menu-item {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; text-align: left;
+  background: none; border: none; color: var(--text); font: inherit;
+  padding: var(--sp-2); border-radius: var(--radius-sm); cursor: pointer;
+}
 .menu-item:hover { background: var(--bg-elev-2); }
-.menu-danger { color: var(--danger, #e5484d); }
+.menu-danger { color: var(--danger); }
 
 /* тулбар секции (заголовок + действие) и сворачиваемая область добавления */
 .panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 12px; }
@@ -316,7 +320,7 @@
   transition: background .15s, border-color .15s, color .15s;
 }
 .status-pill:hover:not(.active):not(:disabled) { color: var(--text); border-color: var(--accent); }
-.status-pill.active { background: var(--accent-2); border-color: var(--accent); color: #fff; font-weight: 600; cursor: default; }
+.status-pill.active { background: var(--accent-2); border-color: var(--accent); color: var(--on-accent); font-weight: 600; cursor: default; }
 .status-pill:disabled { opacity: .6; cursor: default; }
 
 /* архив проектов: строка приглушена, чтобы вкладка читалась как «не в работе» */
@@ -339,16 +343,16 @@
 /* «Завершить задачу»: заметное зелёное действие + выбор целевой колонки */
 .drawer-head-actions { display: flex; align-items: center; gap: 8px; }
 .btn-finish {
-  background: rgba(87,217,163,.16); border: 1px solid var(--ok); color: var(--ok); font-weight: 600;
+  background: var(--ok-soft); border: 1px solid var(--ok); color: var(--ok); font-weight: 600;
 }
-.btn-finish:hover:not(:disabled) { background: var(--ok); color: #08110d; }
+.btn-finish:hover:not(:disabled) { background: var(--ok); color: var(--on-ok); }
 .finish-picker {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin: 8px 0; padding: 10px 12px; border-radius: 10px;
-  background: rgba(87,217,163,.08); border: 1px solid rgba(87,217,163,.35);
+  background: var(--ok-soft); border: 1px solid var(--ok-line);
 }
 .status-pill.pill-final { border-color: var(--ok); color: var(--ok); }
-.status-pill.pill-final:hover:not(:disabled) { background: var(--ok); color: #08110d; }
+.status-pill.pill-final:hover:not(:disabled) { background: var(--ok); color: var(--on-ok); }
 
 /* ───── мессенджер: слева чаты, справа переписка ───── */
 .chats { flex: 1; min-height: 0; display: flex; }
@@ -363,7 +367,7 @@
 .nav-badge {
   display: inline-flex; align-items: center; justify-content: center; margin-left: 6px;
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-  background: var(--danger); color: #fff; font-size: 11px; font-weight: 600;
+  background: var(--danger); color: var(--on-danger); font-size: 11px; font-weight: 600;
 }
 .chat-list-head { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
 .chat-notify-ask { width: 100%; margin-bottom: 6px; color: var(--accent); border: 1px dashed var(--border-2); }
@@ -389,7 +393,7 @@
 .chat-row-last { font-size: 11px; color: var(--text-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-unread {
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent);
-  color: #fff; font-size: 11px; display: flex; align-items: center; justify-content: center;
+  color: var(--on-accent); font-size: 11px; display: flex; align-items: center; justify-content: center;
 }
 /* точка присутствия: серая — не в сети, зелёная — онлайн */
 .presence { width: 7px; height: 7px; border-radius: 50%; background: var(--border-2); flex-shrink: 0; }
@@ -412,7 +416,7 @@
 /* служебные строки: кого добавили, кто вышел, как переименовали */
 .chat-system { text-align: center; font-size: 12px; color: var(--text-mut); margin: 6px 0; font-style: italic; }
 .group-leave { width: 100%; margin-top: 12px; color: var(--danger); }
-.group-leave:hover { background: rgba(255,107,107,.12); border-color: var(--danger); }
+.group-leave:hover { background: var(--danger-soft); border-color: var(--danger); }
 .chat-msg {
   max-width: 70%; padding: 8px 12px; border-radius: 12px; background: var(--bg-elev-2);
   border: 1px solid var(--border); margin-bottom: 2px; width: fit-content;
@@ -430,29 +434,29 @@
 .incoming-call {
   position: fixed; right: 20px; bottom: 20px; z-index: 70; min-width: 260px;
   padding: 14px 16px; border-radius: var(--radius); background: var(--bg-elev);
-  border: 1px solid var(--accent); box-shadow: 0 16px 40px rgba(0,0,0,.55);
+  border: 1px solid var(--accent); box-shadow: var(--shadow-lg);
   animation: incoming-pulse 1.6s ease-in-out infinite;
 }
 @keyframes incoming-pulse {
-  0%, 100% { box-shadow: 0 16px 40px rgba(0,0,0,.55); }
-  50% { box-shadow: 0 16px 40px rgba(0,0,0,.55), 0 0 0 4px rgba(91,140,255,.18); }
+  0%, 100% { box-shadow: var(--shadow-lg); }
+  50% { box-shadow: var(--shadow-lg), 0 0 0 4px var(--accent-soft); }
 }
 .incoming-title { font-weight: 600; margin-bottom: 10px; }
 .incoming-actions { display: flex; gap: 8px; }
-.incoming-accept { background: rgba(87,217,163,.16); border-color: var(--ok); color: var(--ok); font-weight: 600; }
-.incoming-accept:hover { background: var(--ok); color: #08110d; }
-.incoming-decline { background: rgba(255,107,107,.14); border-color: var(--danger); color: var(--danger); }
-.incoming-decline:hover { background: var(--danger); color: #fff; }
+.incoming-accept { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); font-weight: 600; }
+.incoming-accept:hover { background: var(--ok); color: var(--on-ok); }
+.incoming-decline { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+.incoming-decline:hover { background: var(--danger); color: var(--on-danger); }
 
 /* ───── окно созвона ───── */
 .call-overlay {
-  position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.6);
+  position: fixed; inset: 0; z-index: 60; background: var(--overlay);
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .call-window {
   width: min(1100px, 100%); max-height: 90vh; display: flex; flex-direction: column;
   background: var(--bg-elev); border: 1px solid var(--border-2); border-radius: var(--radius);
-  box-shadow: 0 20px 60px rgba(0,0,0,.6); overflow: hidden;
+  box-shadow: var(--shadow-lg); overflow: hidden;
 }
 .call-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -463,7 +467,7 @@
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-content: start;
 }
 .call-empty { grid-column: 1 / -1; text-align: center; padding: 40px 0; }
-.call-tile { position: relative; background: #000; border-radius: var(--radius-sm); overflow: hidden; aspect-ratio: 16 / 9; }
+.call-tile { position: relative; background: var(--video-bg); border-radius: var(--radius-sm); overflow: hidden; aspect-ratio: 16 / 9; }
 .call-tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* демонстрацию экрана растягиваем на всю ширину: мелкий текст иначе не прочесть */
 .call-tile.call-screen { grid-column: 1 / -1; aspect-ratio: auto; max-height: 60vh; }
@@ -471,7 +475,7 @@
 .call-self { outline: 1px solid var(--accent); }
 .call-name {
   position: absolute; left: 6px; bottom: 6px; font-size: 11px; padding: 2px 6px;
-  background: rgba(0,0,0,.55); border-radius: 4px; color: #fff;
+  background: var(--overlay); border-radius: 4px; color: #fff; /* поверх видео — тёмного в любой теме */
 }
 .call-peers { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 8px; }
 .call-controls {
@@ -482,14 +486,14 @@
 .call-recording {
   display: flex; align-items: center; gap: 8px; margin: 0 12px 8px; padding: 8px 12px;
   border-radius: var(--radius-sm); font-size: 13px;
-  background: rgba(255,107,107,.12); border: 1px solid rgba(255,107,107,.45); color: var(--danger);
+  background: var(--danger-soft); border: 1px solid var(--danger-line); color: var(--danger);
 }
-.call-rec-on { background: rgba(255,107,107,.16); border-color: var(--danger); color: var(--danger); font-weight: 600; }
+.call-rec-on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); font-weight: 600; }
 /* ИИ приглашён, но ещё не пишет — это ожидание, а не тревога */
-.call-ai-waiting { background: rgba(91,140,255,.10); border-color: rgba(91,140,255,.40); color: var(--accent); }
-.peer-ai { background: rgba(91,140,255,.16); border-color: var(--accent); color: var(--accent); font-weight: 600; }
-.call-leave { margin-left: auto; background: rgba(255,107,107,.16); border-color: var(--danger); color: var(--danger); font-weight: 600; }
-.call-leave:hover { background: var(--danger); color: #fff; }
+.call-ai-waiting { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.peer-ai { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.call-leave { margin-left: auto; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); font-weight: 600; }
+.call-leave:hover { background: var(--danger); color: var(--on-danger); }
 
 /* ───── календарь выбора даты (вместо нативного datetime-local) ───── */
 .dp { position: relative; }
@@ -502,7 +506,7 @@
 .dp-trigger > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dp-trigger:hover:not(:disabled) { border-color: var(--accent); }
 .dp-trigger.dp-empty { color: var(--text-mut); }
-.dp-trigger.dp-past { border-color: rgba(255,107,107,.5); color: var(--danger); }
+.dp-trigger.dp-past { border-color: var(--danger-line); color: var(--danger); }
 .dp-clear { opacity: .5; padding: 0 2px; font-size: 12px; }
 .dp-clear:hover { opacity: 1; color: var(--danger); }
 
@@ -512,7 +516,7 @@
 .dp-pop {
   position: absolute; z-index: 40; left: 0; width: 244px;
   background: var(--bg-elev); border: 1px solid var(--border-2); border-radius: var(--radius);
-  box-shadow: 0 10px 28px rgba(0,0,0,.5); padding: 8px;
+  box-shadow: var(--shadow); padding: 8px;
 }
 .dp-pop.dp-up { bottom: calc(100% + 6px); }
 .dp-pop.dp-down { top: calc(100% + 6px); }
@@ -536,7 +540,7 @@
 .dp-day.dp-other { opacity: .35; }
 .dp-day.dp-weekend { color: var(--text-mut); }
 .dp-day.dp-today { border-color: var(--border-2); font-weight: 600; color: var(--text); }
-.dp-day.dp-selected { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.dp-day.dp-selected { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 .dp-day.dp-selected:hover { background: var(--accent); }
 
 .dp-time { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
@@ -550,28 +554,29 @@
 .dp-chip-clear:hover { color: var(--danger); border-color: var(--danger); }
 
 /* обратное действие: снять завершение и вернуть задачу в работу */
-.btn-reopen { background: rgba(91,140,255,.14); border: 1px solid var(--accent); color: var(--accent); font-weight: 600; }
-.btn-reopen:hover:not(:disabled) { background: var(--accent); color: #fff; }
-.finish-picker.reopen-picker { background: rgba(91,140,255,.08); border-color: rgba(91,140,255,.35); }
+.btn-reopen { background: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent); font-weight: 600; }
+.btn-reopen:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
+.finish-picker.reopen-picker { background: var(--accent-soft); border-color: var(--accent-line); }
 .status-pill.pill-work { border-color: var(--accent); color: var(--accent); }
-.status-pill.pill-work:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.status-pill.pill-work:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
 /* meta-строка карточки: приоритет, риск, стоимость, блокер */
 .card-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-.risk-badge.risk-high, .risk-badge.risk-critical { background: rgba(255,107,107,.12); color: var(--danger); border-color: rgba(255,107,107,.4); }
-.risk-badge.risk-medium { background: rgba(255,207,92,.14); color: var(--warn); border-color: rgba(255,207,92,.42); }
-.risk-badge.risk-low { background: rgba(87,217,163,.12); color: var(--ok); border-color: rgba(87,217,163,.4); }
-.blocked-on { color: var(--danger) !important; border-color: rgba(255,107,107,.4) !important; background: rgba(255,107,107,.1) !important; }
+.risk-badge.risk-high, .risk-badge.risk-critical { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
+.risk-badge.risk-medium { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
+.risk-badge.risk-low { background: var(--ok-soft); color: var(--ok); border-color: var(--ok-line); }
+.blocked-on { color: var(--danger) !important; border-color: var(--danger-line) !important; background: var(--danger-soft) !important; }
 .avatar-lg { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; }
-.avatar-ph { display: inline-grid; place-items: center; background: var(--accent-2); color: #fff; font-weight: 700; }
+.avatar-ph { display: inline-grid; place-items: center; background: var(--accent-2); color: var(--on-accent); font-weight: 700; }
 .avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
 .notify-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
 
 /* карточка задачи — расширенная */
 .drawer-wide { width: 520px; }
 .prio-select { width: auto; padding: 4px 8px; font-size: 13px; }
-.prio-high { background: rgba(255,207,92,.15); color: var(--warn); border-color: rgba(255,207,92,.4); }
-.prio-urgent { background: rgba(255,107,107,.15); color: var(--danger); border-color: rgba(255,107,107,.4); }
+.prio-high { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
+.prio-urgent { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
 .labels-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+/* цвет метки задаёт пользователь, поэтому текст всегда белый */
 .label-chip { font-size: 11px; padding: 3px 9px; border-radius: 999px; color: #fff; border: 1px solid transparent; cursor: pointer; }
 .label-off { color: var(--text-dim); }
 .label-pick { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--bg-elev-2); border-radius: var(--radius-sm); margin-top: 6px; }
@@ -592,7 +597,7 @@
 
 /* лайтбокс просмотра картинки */
 .lightbox-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 80;
+  position: fixed; inset: 0; background: var(--overlay); z-index: 80;
   display: flex; align-items: center; justify-content: center; padding: 32px;
 }
 .lightbox-body {
@@ -618,3 +623,18 @@
 
 .add-task { padding: 8px 10px; }
 .add-task-btn { margin: 6px 10px 10px; align-self: flex-start; }
+
+/* выбор темы в меню профиля: три состояния одной группой */
+.menu-theme {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  padding: var(--sp-2); margin: var(--sp-1) 0;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.theme-switch { display: flex; gap: 2px; padding: 2px; background: var(--bg-elev-2); border-radius: var(--radius-sm); }
+.theme-option {
+  display: grid; place-items: center; width: 28px; height: 24px; cursor: pointer;
+  background: none; border: none; color: var(--text-mut); border-radius: 5px; transition: background .15s, color .15s;
+}
+.theme-option:hover { color: var(--text); }
+.theme-option.active { background: var(--bg-elev); color: var(--accent); box-shadow: var(--shadow); }

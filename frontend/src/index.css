@@ -1,6 +1,94 @@
-/* TEAMCRM design system — минимализм, тёмная тема, чистая типографика.
-   Намеренный контраст с перегруженным интерфейсом (ТЗ). */
+/* TEAMCRM design system.
+   Две темы на общих токенах: светлая — база, тёмная — переопределение.
+   Правило: в компонентах НЕ пишем цвета литералами, только токены, иначе
+   светлая тема ломается там, где о ней забыли. */
+
 :root {
+  color-scheme: light;
+
+  /* поверхности: страница → панель → подложка внутри панели */
+  --bg:        #f4f6fa;
+  --bg-elev:   #ffffff;
+  --bg-elev-2: #eaeef6;
+  --border:    #e3e8f0;
+  --border-2:  #cfd7e5;
+
+  /* текст: основной → второстепенный → подсказки */
+  --text:      #101623;
+  --text-dim:  #4d5768;
+  --text-mut:  #7a8496;
+
+  /* акцент: --accent для текста, рамок и наведения, --accent-2 — заливка кнопки */
+  --accent:      #1e57e6;
+  --accent-2:    #2f6bff;
+  --accent-soft: #e8effe;
+  --accent-line: #b9cdfb;
+
+  /* статусы: у каждого мягкая подложка и рамка, чтобы не смешивать прозрачности */
+  --ok:          #17875a;
+  --ok-soft:     #e4f6ee;
+  --ok-line:     #a9e0c8;
+  --warn:        #9a6a00;
+  --warn-soft:   #fdf3dd;
+  --warn-line:   #f0d093;
+  --danger:      #cf2b3b;
+  --danger-soft: #fdeaec;
+  --danger-line: #f4bcc2;
+
+  /* текст поверх цветных заливок */
+  --on-accent: #ffffff;
+  --on-ok:     #ffffff;
+  --on-danger: #ffffff;
+
+  --overlay:   rgba(15,23,42,.45);
+  --shadow:    0 8px 24px rgba(16,22,35,.10);
+  --shadow-lg: 0 18px 48px rgba(16,22,35,.18);
+  --video-bg:  #0d1117;   /* видео читается на тёмном в любой теме */
+
+  /* шкалы: одинаковые шаги вместо произвольных чисел в каждом месте */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --radius-sm: 7px; --radius: 10px; --radius-lg: 14px;
+  --fs-xs: 11px; --fs-sm: 13px; --fs-md: 14px; --fs-lg: 18px;
+
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Тёмная тема: по системной настройке, если человек не выбрал светлую явно. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg:        #0b0f1a;
+    --bg-elev:   #121826;
+    --bg-elev-2: #1a2233;
+    --border:    #232c40;
+    --border-2:  #2e3a52;
+    --text:      #e6ebf5;
+    --text-dim:  #97a2bb;
+    --text-mut:  #66718c;
+    --accent:      #5b8cff;
+    --accent-2:    #3b6fe0;
+    --accent-soft: rgba(91,140,255,.14);
+    --accent-line: rgba(91,140,255,.42);
+    --ok:          #57d9a3;
+    --ok-soft:     rgba(87,217,163,.12);
+    --ok-line:     rgba(87,217,163,.40);
+    --warn:        #ffcf5c;
+    --warn-soft:   rgba(255,207,92,.14);
+    --warn-line:   rgba(255,207,92,.42);
+    --danger:      #ff6b6b;
+    --danger-soft: rgba(255,107,107,.12);
+    --danger-line: rgba(255,107,107,.40);
+    --on-ok:     #08110d;
+    --overlay:   rgba(0,0,0,.55);
+    --shadow:    0 10px 30px rgba(0,0,0,.35);
+    --shadow-lg: 0 20px 60px rgba(0,0,0,.60);
+    --video-bg:  #000000;
+  }
+}
+
+/* Явный выбор человека сильнее системной настройки — в обе стороны. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
   --bg:        #0b0f1a;
   --bg-elev:   #121826;
   --bg-elev-2: #1a2233;
@@ -9,15 +97,24 @@
   --text:      #e6ebf5;
   --text-dim:  #97a2bb;
   --text-mut:  #66718c;
-  --accent:    #5b8cff;
-  --accent-2:  #3b6fe0;
-  --danger:    #ff6b6b;
-  --ok:        #57d9a3;
-  --warn:      #ffcf5c;
-  --radius:    10px;
-  --radius-sm: 7px;
+  --accent:      #5b8cff;
+  --accent-2:    #3b6fe0;
+  --accent-soft: rgba(91,140,255,.14);
+  --accent-line: rgba(91,140,255,.42);
+  --ok:          #57d9a3;
+  --ok-soft:     rgba(87,217,163,.12);
+  --ok-line:     rgba(87,217,163,.40);
+  --warn:        #ffcf5c;
+  --warn-soft:   rgba(255,207,92,.14);
+  --warn-line:   rgba(255,207,92,.42);
+  --danger:      #ff6b6b;
+  --danger-soft: rgba(255,107,107,.12);
+  --danger-line: rgba(255,107,107,.40);
+  --on-ok:     #08110d;
+  --overlay:   rgba(0,0,0,.55);
   --shadow:    0 10px 30px rgba(0,0,0,.35);
-  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --shadow-lg: 0 20px 60px rgba(0,0,0,.60);
+  --video-bg:  #000000;
 }
 
 * { box-sizing: border-box; }
@@ -28,57 +125,69 @@ body {
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
-  font-size: 14px;
+  font-size: var(--fs-md);
   line-height: 1.5;
 }
 a { color: var(--accent); text-decoration: none; }
-button, input, textarea { font-family: inherit; font-size: inherit; }
+button, input, textarea, select { font-family: inherit; font-size: inherit; }
 
-/* base components */
+/* ───── базовые компоненты ───── */
+
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
   border: 1px solid var(--border-2); background: var(--bg-elev-2); color: var(--text);
-  padding: 8px 14px; border-radius: var(--radius-sm); cursor: pointer;
-  transition: background .15s, border-color .15s, opacity .15s; font-weight: 500;
+  padding: var(--sp-2) 14px; border-radius: var(--radius-sm); cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, opacity .15s; font-weight: 500;
 }
-.btn:hover { background: #222c42; }
+.btn:hover:not(:disabled) { border-color: var(--border-2); background: var(--border); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-/* доступность: видимый фокус с клавиатуры (мышь фокус-кольцо не показывает) */
+/* доступность: видимое кольцо только при навигации с клавиатуры */
 .btn:focus-visible, .input:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.btn-primary { background: var(--accent-2); border-color: var(--accent); }
-.btn-primary:hover { background: var(--accent); }
+
+.btn-primary { background: var(--accent-2); border-color: var(--accent-2); color: var(--on-accent); }
+.btn-primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
-.btn-ghost:hover { background: var(--bg-elev-2); color: var(--text); }
-.btn-sm { padding: 5px 10px; font-size: 13px; }
+.btn-ghost:hover:not(:disabled) { background: var(--bg-elev-2); color: var(--text); }
+.btn-danger { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: var(--danger); border-color: var(--danger); color: var(--on-danger); }
+.btn-sm { padding: 5px 10px; font-size: var(--fs-sm); }
+/* кнопка-иконка: квадрат, чтобы значки не разъезжались по высоте строки */
+.btn-icon { padding: 6px; width: 32px; height: 32px; }
+.btn-icon.btn-sm { padding: 4px; width: 28px; height: 28px; }
 
 .input {
-  width: 100%; padding: 10px 12px; border-radius: var(--radius-sm);
-  background: var(--bg); border: 1px solid var(--border-2); color: var(--text);
-  outline: none; transition: border-color .15s;
+  width: 100%; padding: 10px var(--sp-3); border-radius: var(--radius-sm);
+  background: var(--bg-elev); border: 1px solid var(--border-2); color: var(--text);
+  outline: none; transition: border-color .15s, box-shadow .15s;
 }
-.input:focus { border-color: var(--accent); }
+.input:hover:not(:disabled) { border-color: var(--text-mut); }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.input:disabled { opacity: .6; cursor: not-allowed; }
+.input::placeholder { color: var(--text-mut); }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-.field label { color: var(--text-dim); font-size: 13px; }
+.field label { color: var(--text-dim); font-size: var(--fs-sm); }
 
-.card {
-  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
-}
+.card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); }
 
 .badge {
-  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 2px 8px; border-radius: 999px;
-  background: var(--bg-elev-2); color: var(--text-dim); border: 1px solid var(--border-2); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs);
+  padding: 2px var(--sp-2); border-radius: 999px; white-space: nowrap;
+  background: var(--bg-elev-2); color: var(--text-dim); border: 1px solid var(--border-2);
 }
 .badge-role { text-transform: capitalize; }
 /* единая палитра статусов: успех / внимание / ошибка / инфо / приглушённый */
-.badge-ok     { background: rgba(87,217,163,.12);  color: var(--ok);     border-color: rgba(87,217,163,.4); }
-.badge-warn   { background: rgba(255,207,92,.14);  color: var(--warn);   border-color: rgba(255,207,92,.42); }
-.badge-danger { background: rgba(255,107,107,.12); color: var(--danger); border-color: rgba(255,107,107,.4); }
-.badge-info   { background: rgba(91,140,255,.14);  color: var(--accent); border-color: rgba(91,140,255,.42); }
-.badge-muted  { background: var(--bg-elev-2);      color: var(--text-mut); border-color: var(--border-2); }
-.badge-blocked { background: rgba(255,107,107,.12); color: var(--danger); border-color: rgba(255,107,107,.4); }
+.badge-ok      { background: var(--ok-soft);     color: var(--ok);       border-color: var(--ok-line); }
+.badge-warn    { background: var(--warn-soft);   color: var(--warn);     border-color: var(--warn-line); }
+.badge-danger  { background: var(--danger-soft); color: var(--danger);   border-color: var(--danger-line); }
+.badge-info    { background: var(--accent-soft); color: var(--accent);   border-color: var(--accent-line); }
+.badge-muted   { background: var(--bg-elev-2);   color: var(--text-mut); border-color: var(--border-2); }
+.badge-blocked { background: var(--danger-soft); color: var(--danger);   border-color: var(--danger-line); }
 
-.error-text { color: var(--danger); font-size: 13px; min-height: 18px; }
+.error-text { color: var(--danger); font-size: var(--fs-sm); min-height: 18px; }
 .muted { color: var(--text-mut); }
 .dim { color: var(--text-dim); }
+
+/* иконки: наследуют цвет текста и выравниваются по строке */
+.icon { display: inline-block; vertical-align: -0.125em; flex-shrink: 0; }

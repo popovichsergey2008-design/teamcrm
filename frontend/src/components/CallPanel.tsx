@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError, tokens } from '../lib/api';
 import { MeetClient, Peer, RemoteTrack } from '../lib/meet-client';
 import { useAuth } from '../state/auth';
@@ -139,22 +140,22 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
       <div className="call-window">
         <div className="call-head">
           <span>
-            📞 Созвон · <span className="dim">{STATE_LABEL[state]}</span>
+            <Icon name="phone" size={16} /> Созвон · <span className="dim">{STATE_LABEL[state]}</span>
             {peers.length > 0 && <span className="badge badge-muted" style={{ marginLeft: 8 }}>участников: {peers.length}</span>}
           </span>
-          <button className="btn btn-ghost btn-sm" onClick={leave}>✕</button>
+          <button className="btn btn-ghost btn-sm" onClick={leave} title="Закрыть"><Icon name="close" /></button>
         </div>
 
         {/* запись видна всем и всегда: тихой записи в продукте нет */}
         {recording && (
           <div className="call-recording">
-            ⏺ Идёт запись. После завершения ИИ соберёт стенограмму с именами, сводку и предложит задачи.
+            <Icon name="record" /> Идёт запись. После завершения ИИ соберёт стенограмму с именами, сводку и предложит задачи.
           </div>
         )}
         {/* ИИ позвали, но запись ещё не пошла: звук не начался */}
         {aiInvited && !recording && (
           <div className="call-recording call-ai-waiting">
-            🤖 ИИ-ассистент приглашён — запись начнётся, как только кто-нибудь заговорит.
+            <Icon name="robot" /> ИИ-ассистент приглашён — запись начнётся, как только кто-нибудь заговорит.
           </div>
         )}
         {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
@@ -183,30 +184,30 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
           {peers.map((p) => (
             <span key={p.userId} className={`badge ${p.isAi ? 'peer-ai' : 'badge-muted'}`}
                   title={p.isAi ? 'ИИ ведёт стенограмму встречи' : undefined}>
-              {p.isAi ? '🤖 ' : p.handRaised ? '✋ ' : ''}{p.displayName}
+              {p.isAi ? <Icon name="robot" size={13} /> : p.handRaised ? <Icon name="hand" size={13} /> : null}{p.displayName}
             </span>
           ))}
         </div>
 
         <div className="call-controls">
           <button className={`btn btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic}>
-            {micOn ? '🎤 Микрофон' : '🔇 Включить микрофон'}
+            <Icon name={micOn ? 'mic' : 'mic-off'} size={15} />{micOn ? 'Микрофон' : 'Включить микрофон'}
           </button>
           <button className={`btn btn-sm ${camOn ? '' : 'call-off'}`} onClick={toggleCam}>
-            {camOn ? '📹 Камера' : '📷 Включить камеру'}
+            <Icon name={camOn ? 'video' : 'video-off'} size={15} />{camOn ? 'Камера' : 'Включить камеру'}
           </button>
           <button className={`btn btn-sm ${screenOn ? '' : 'call-off'}`} onClick={toggleScreen}>
-            {screenOn ? '🖥 Показ идёт' : '🖥 Показать экран'}
+            <Icon name="screen" size={15} />{screenOn ? 'Показ идёт' : 'Показать экран'}
           </button>
           <button className={`btn btn-sm ${hand ? '' : 'call-off'}`} onClick={() => { setHand(!hand); client.current?.raiseHand(!hand); }}>
-            ✋ Рука
+            <Icon name="hand" size={15} /> Рука
           </button>
           <button
             className={`btn btn-sm ${recording ? 'call-rec-on' : 'call-off'}`}
             onClick={() => client.current?.setRecording(!recording)}
             title={recording ? 'Остановить запись и получить стенограмму' : 'Записать созвон для стенограммы и задач'}
           >
-            {recording ? '⏹ Остановить запись' : '⏺ Записать'}
+            <Icon name={recording ? 'stop' : 'record'} size={15} />{recording ? 'Остановить запись' : 'Записать'}
           </button>
           <button className="btn btn-sm call-leave" onClick={leave}>Выйти</button>
         </div>

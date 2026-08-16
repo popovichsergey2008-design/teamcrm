@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 import type { Project, User } from '../types';
 
@@ -62,7 +63,7 @@ export function MeetingsPage() {
 
   return (
     <div className="mytasks">
-      <div className="drawer-section-title">🎙 Разбор встреч</div>
+      <div className="drawer-section-title"><Icon name="record" size={16} /> Разбор встреч</div>
       <div className="dim" style={{ fontSize: 12, marginBottom: 10 }}>
         Загрузите запись встречи из Meet, Zoom или диктофона — получите стенограмму, сводку и предложенные задачи.
         Файл субтитров <b>.vtt/.srt</b> предпочтительнее: там платформа уже разметила, кто что сказал.
@@ -76,7 +77,7 @@ export function MeetingsPage() {
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <label className={`btn btn-primary btn-sm ${busy ? 'disabled' : ''}`} style={{ width: '100%', textAlign: 'center', cursor: 'pointer' }}>
-          {busy ? 'Загружаю…' : '📎 Выбрать файл записи или субтитров'}
+          {busy ? 'Загружаю…' : <><Icon name="paperclip" size={15} /> Выбрать файл записи или субтитров</>}
           <input type="file" hidden disabled={busy} accept="audio/*,video/*,.vtt,.srt"
                  onChange={(e) => { const f = e.target.files?.[0]; if (f) submit(f); e.currentTarget.value = ''; }} />
         </label>
@@ -174,7 +175,7 @@ function MeetingDetails({ id, projects, users, onChanged }: { id: string; projec
       )}
       {drafts.some((d: any) => d.status === 'applied') && (
         <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
-          ✓ Создано задач: {drafts.filter((d: any) => d.status === 'applied').length}
+          <Icon name="check" size={13} /> Создано задач: {drafts.filter((d: any) => d.status === 'applied').length}
         </div>
       )}
 

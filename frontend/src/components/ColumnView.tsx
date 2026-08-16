@@ -1,4 +1,5 @@
 import { DragEvent, useState } from 'react';
+import { Icon } from './Icon';
 import type { BoardColumn, Task, User } from '../types';
 import { MONETIZATION_ENABLED } from '../config';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
@@ -132,7 +133,7 @@ export function ColumnView({
             <span className="col-actions">
               <button className="col-btn" title="Влево" disabled={isFirst} onClick={() => onMoveColumn?.(column.id, 'left')}>◀</button>
               <button className="col-btn" title="Вправо" disabled={isLast} onClick={() => onMoveColumn?.(column.id, 'right')}>▶</button>
-              <button className="col-btn col-del" title="Удалить колонку" onClick={() => onDeleteColumn?.(column.id, column.name)}>✕</button>
+              <button className="col-btn col-del" title="Удалить колонку" onClick={() => onDeleteColumn?.(column.id, column.name)}><Icon name="close" size={13} /></button>
             </span>
           )}
           <span className="badge">{column.tasks.length}</span>
@@ -211,13 +212,13 @@ function TaskCard({
             {assigneeName}
           </span>
         )}
-        {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент">🤖 ИИ-агент</span>}
+        {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={12} /> ИИ-агент</span>}
         {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
         {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
         {due && <span className={due.cls} title={due.title}>{due.text}</span>}
-        {!!task.commentsCount && <span className="badge" title="комментарии">💬 {task.commentsCount}</span>}
-        {!!task.attachmentsCount && <span className="badge" title="вложения">📎 {task.attachmentsCount}</span>}
-        {!!task.checklistTotal && <span className="badge" title="чеклист">✓ {task.checklistDone}/{task.checklistTotal}</span>}
+        {!!task.commentsCount && <span className="badge" title="комментарии"><Icon name="chat" size={12} /> {task.commentsCount}</span>}
+        {!!task.attachmentsCount && <span className="badge" title="вложения"><Icon name="paperclip" size={12} /> {task.attachmentsCount}</span>}
+        {!!task.checklistTotal && <span className="badge" title="чеклист"><Icon name="check" size={12} /> {task.checklistDone}/{task.checklistTotal}</span>}
         {MONETIZATION_ENABLED && cost !== null && (
           <span className="badge" title="Себестоимость в реальном времени">
             ₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}

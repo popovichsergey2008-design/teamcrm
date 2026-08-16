@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import type { Task } from '../types';
@@ -32,8 +33,8 @@ export function MyTasksPage({ onOpenProject }: { onOpenProject: (projectId: stri
   return (
     <div className="mytasks">
       <div className="tabs">
-        <button className={`tab ${scope === 'mine' ? 'active' : ''}`} onClick={() => setScope('mine')}>🙋 Мои задачи</button>
-        <button className={`tab ${scope === 'delegated' ? 'active' : ''}`} onClick={() => setScope('delegated')}>📤 Порученные</button>
+        <button className={`tab ${scope === 'mine' ? 'active' : ''}`} onClick={() => setScope('mine')}><Icon name="user" size={15} /> Мои задачи</button>
+        <button className={`tab ${scope === 'delegated' ? 'active' : ''}`} onClick={() => setScope('delegated')}><Icon name="send" size={15} /> Порученные</button>
       </div>
 
       <div className="mytasks-bar">
@@ -76,7 +77,7 @@ export function MyTasksPage({ onOpenProject }: { onOpenProject: (projectId: stri
                 {t.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
                 {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
                 {due && <span className={due.cls} title={due.title}>{due.text}</span>}
-                {t.closed_at && <span className="badge badge-ok">✓ завершена</span>}
+                {t.closed_at && <span className="badge badge-ok"><Icon name="check" size={12} /> завершена</span>}
                 {who && (
                   <span className="assignee-chip" title={scope === 'mine' ? `Руководитель: ${who}` : `Исполнитель: ${who}`}>
                     <span className="avatar-xs avatar-ph">{who[0]?.toUpperCase()}</span>

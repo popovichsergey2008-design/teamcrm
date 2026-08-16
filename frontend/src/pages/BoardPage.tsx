@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { useAuth } from '../state/auth';
@@ -358,9 +359,9 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
             title={p.status === 'archived' ? 'Вернуть из архива' : 'Убрать в архив (данные сохранятся)'}
             onClick={() => toggleArchive(p)}
           >
-            {p.status === 'archived' ? '⤴' : '🗄'}
+            <Icon name={p.status === 'archived' ? 'arrow-up' : 'archive'} size={13} />
           </button>
-          <button className="project-del" title="Удалить проект" onClick={() => deleteProject(p.id, p.name)}>✕</button>
+          <button className="project-del" title="Удалить проект" onClick={() => deleteProject(p.id, p.name)}><Icon name="close" size={13} /></button>
         </>
       )}
     </div>
@@ -432,14 +433,14 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
                 {board.project.name}
                 <span className="view-switch" role="tablist" aria-label="Вид доски">
                   <button className={`view-btn ${view === 'board' ? 'active' : ''}`} onClick={() => switchView('board')} title="Канбан-доска">▦ Доска</button>
-                  <button className={`view-btn ${view === 'list' ? 'active' : ''}`} onClick={() => switchView('list')} title="Список">☰ Список</button>
+                  <button className={`view-btn ${view === 'list' ? 'active' : ''}`} onClick={() => switchView('list')} title="Список"><Icon name="list" size={14} /> Список</button>
                 </span>
                 {!isClient && (
                   <span className="board-actions">
-                    <button className="btn btn-ghost btn-sm" onClick={() => setShowTeam(true)} title="Сотрудники, должности, группы, приглашения">👥 Команда</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setShowCopilot(true)} title="ИИ-рекомендации по проекту">🧭 Co-pilot</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowTeam(true)} title="Сотрудники, должности, группы, приглашения"><Icon name="users" size={15} /> Команда</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowCopilot(true)} title="ИИ-рекомендации по проекту"><Icon name="sparkles" size={15} /> Co-pilot</button>
                     {board.project.origin === 'bitrix' && (
-                      <button className="btn btn-ghost btn-sm" onClick={() => setShowFeed(true)} title="Живая лента импортированного проекта">📰 Лента</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setShowFeed(true)} title="Живая лента импортированного проекта"><Icon name="list" size={15} /> Лента</button>
                     )}
                   </span>
                 )}
