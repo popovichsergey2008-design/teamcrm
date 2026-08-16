@@ -7,7 +7,9 @@ import { Duplex } from 'stream';
 import { WebSocket, WebSocketServer } from 'ws';
 import { AccessTokenPayload } from '../../common/auth/jwt.types';
 import { DbService } from '../../database/db.service';
+import { MeetingsService } from '../meetings/meetings.service';
 import { MediaService, optimalLayers } from './media.service';
+import { RecordingService } from './recording.service';
 import { MeetingRoom } from './media.types';
 
 const PATH = '/ws/meet';
@@ -42,6 +44,8 @@ export class MeetGateway implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly media: MediaService,
     private readonly db: DbService,
+    private readonly recording: RecordingService,
+    private readonly meetings: MeetingsService,
   ) {}
 
   onModuleInit(): void {
@@ -170,6 +174,8 @@ export class MeetGateway implements OnModuleInit {
         for (const ws of this.byUser.get(this.key(c.tenantId, c.userId)) ?? []) {
           if (ws !== c.ws) this.send(ws, 'meet.call-answered-elsewhere', { meeting_id: room.id });
         }
+        // вошедший обязан сразу узнать, что идёт запись, — это не мелочь интерфейса
+        this.send(c.ws, 'meet.recording', { meeting_id: room.id, ...this.recording.recordingInfo(room.id) });
         await this.media.recalcQuality(room);
         return;
       }
@@ -216,6 +222,10 @@ export class MeetGateway implements OnModuleInit {
             meeting_id: room.id, user_id: c.userId, producer_id: producer.id,
             kind: producer.kind, app_data: producer.appData,
           }, c.userId);
+          // включил микрофон при уже идущей записи — подхватываем дорожку на ходу
+          if (producer.kind === 'audio' && this.recording.isRecording(room.id)) {
+            void this.recording.attachLate(room, participant);
+          }
         } catch (e) {
           this.log.warn(`produce: ${(e as Error).message}`);
           this.send(c.ws, 'meet.error', { message: 'Не удалось начать передачу', _req_id: p._req_id });
@@ -344,8 +354,44 @@ export class MeetGateway implements OnModuleInit {
         return;
       }
 
+      /** Запись включается по кнопке и видна всем — тихой записи в продукте нет. */
+      case 'meet.record-start': {
+        if (!room || !room.participants.has(c.userId)) return;
+        await this.recording.start(room, c.userId);
+        this.broadcast(room, 'meet.recording', { meeting_id: room.id, ...this.recording.recordingInfo(room.id) });
+        this.send(c.ws, 'meet.recording', { meeting_id: room.id, ...this.recording.recordingInfo(room.id) });
+        return;
+      }
+
+      case 'meet.record-stop': {
+        if (!room || !room.participants.has(c.userId)) return;
+        await this.finishRecording(room, c.userId);
+        this.broadcast(room, 'meet.recording', { meeting_id: room.id, active: false });
+        this.send(c.ws, 'meet.recording', { meeting_id: room.id, active: false });
+        return;
+      }
+
       case 'meet.leave':
         return this.leave(c);
+    }
+  }
+
+  /**
+   * Останавливает запись и отдаёт дорожки в конвейер встреч: стенограмма с именами,
+   * сводка, черновики задач. Ошибка обработки не должна ронять созвон.
+   */
+  private async finishRecording(room: MeetingRoom, actorId: string | null): Promise<void> {
+    if (!this.recording.isRecording(room.id)) return;
+    try {
+      const tracks = await this.recording.stop(room.id);
+      if (!tracks.length) return;
+      const when = new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      await this.meetings.ingestCallRecording({
+        tenantId: room.tenantId, actorId, projectId: room.projectId,
+        title: `Созвон ${when}`, tracks,
+      });
+    } catch (e) {
+      this.log.warn(`обработка записи ${room.id}: ${(e as Error).message}`);
     }
   }
 
@@ -373,7 +419,13 @@ export class MeetGateway implements OnModuleInit {
     if (!this.media.removeParticipant(room, c.userId)) return;
 
     this.broadcast(room, 'meet.peer-left', { meeting_id: room.id, user_id: c.userId });
-    if (room.participants.size === 0) this.media.closeRoom(room.id);
-    else await this.media.recalcQuality(room);
+    if (room.participants.size === 0) {
+      // все разошлись, кнопку «стоп» никто не нажал — дописываем сами,
+      // иначе ffmpeg остался бы висеть, а запись пропала
+      await this.finishRecording(room, c.userId);
+      this.media.closeRoom(room.id);
+    } else {
+      await this.media.recalcQuality(room);
+    }
   }
 }

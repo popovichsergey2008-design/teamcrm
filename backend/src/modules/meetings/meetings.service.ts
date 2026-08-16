@@ -77,6 +77,70 @@ export class MeetingsService {
     return meeting;
   }
 
+  /**
+   * Запись СВОЕГО созвона: дорожка на каждого участника, поэтому говорящий известен
+   * достоверно — не по эвристике имени из субтитров, а по авторизованному пользователю.
+   * Ради этого и городился огород с PlainTransport и ffmpeg.
+   */
+  async ingestCallRecording(input: {
+    tenantId: string;
+    actorId: string | null;
+    projectId: string | null;
+    title: string;
+    tracks: { userId: string; displayName: string; buffer: Buffer; fileName: string; offsetSec: number }[];
+  }): Promise<string | null> {
+    if (!input.tracks.length) return null;
+
+    const meeting = await this.repo.create({
+      tenantId: input.tenantId, projectId: input.projectId, title: input.title.slice(0, 255),
+      happenedAt: new Date().toISOString(), source: 'call', fileId: null, createdBy: input.actorId ?? '',
+    });
+
+    void (async () => {
+      try {
+        await this.repo.setStatus(meeting.id, 'transcribing');
+        const replies: (Reply & { speakerUserId: string | null })[] = [];
+
+        for (const track of input.tracks) {
+          // храним дорожки как вложения встречи — на случай спора «я такого не говорил»
+          await this.files.upload({
+            tenantId: input.tenantId, userId: input.actorId ?? track.userId, buffer: track.buffer,
+            fileName: track.fileName, contentType: 'audio/ogg',
+            ownerKind: 'meeting_recording', ownerId: meeting.id, maxBytes: MAX_RECORDING_BYTES,
+          }).catch((e) => this.log.warn(`дорожка ${track.userId} не сохранена: ${(e as Error).message}`));
+
+          const { chunks } = await extractAudioChunks(track.buffer, track.fileName);
+          for (const chunk of chunks) {
+            const segments = await this.ai.transcribeSegments(
+              input.tenantId, chunk.buffer, chunk.name, chunk.buffer.length / 4000);
+            for (const s of shiftSegments(segments, chunk.offsetSec + track.offsetSec)) {
+              replies.push({ ...s, speaker: track.displayName, speakerUserId: track.userId });
+            }
+          }
+        }
+
+        if (!replies.length) {
+          await this.repo.setStatus(meeting.id, 'error', 'Речь не распознана — проверьте ключ OpenAI');
+          return;
+        }
+        // дорожки писались параллельно: сводим в одну ленту по времени, иначе диалог не читается
+        replies.sort((a, b) => a.start - b.start);
+        await this.repo.replaceSegments(input.tenantId, meeting.id, replies);
+        await this.repo.setDuration(meeting.id, Math.round(replies[replies.length - 1].end));
+
+        await this.repo.setStatus(meeting.id, 'analyzing');
+        await this.analyze(input.tenantId, meeting.id, input.projectId, replies);
+        await this.repo.setStatus(meeting.id, 'done');
+        this.knowledge.enqueue(input.tenantId, 'meeting', meeting.id);
+      } catch (e) {
+        this.log.warn(`созвон ${meeting.id}: ${(e as Error).message}`);
+        await this.repo.setStatus(meeting.id, 'error', describeFfmpegError(e)).catch(() => undefined);
+      }
+    })();
+
+    return meeting.id;
+  }
+
   /** Повторная обработка — после сбоя или когда появился ключ распознавания. */
   async retry(tenantId: string, id: string) {
     const meeting = await this.repo.get(tenantId, id);

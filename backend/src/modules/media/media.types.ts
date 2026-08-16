@@ -42,9 +42,19 @@ export interface MsConsumer {
   on(event: string, cb: (...args: any[]) => void): void;
 }
 
+/** Транспорт для записи: RTP уходит на локальный порт, где слушает ffmpeg. */
+export interface MsPlainTransport {
+  id: string;
+  tuple: { localPort?: number };
+  connect(o: { ip: string; port: number }): Promise<void>;
+  consume(o: { producerId: string; rtpCapabilities: unknown; paused?: boolean }): Promise<MsConsumer>;
+  close(): void;
+}
+
 export interface MsRouter {
   rtpCapabilities: unknown;
   createWebRtcTransport(options: unknown): Promise<MsTransport>;
+  createPlainTransport(options: unknown): Promise<MsPlainTransport>;
   canConsume(o: { producerId: string; rtpCapabilities: unknown }): boolean;
   close(): void;
 }

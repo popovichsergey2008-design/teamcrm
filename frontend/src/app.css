@@ -385,6 +385,12 @@
   border-top: 1px solid var(--border); background: var(--bg-elev-2);
 }
 .call-off { opacity: .65; }
+.call-recording {
+  display: flex; align-items: center; gap: 8px; margin: 0 12px 8px; padding: 8px 12px;
+  border-radius: var(--radius-sm); font-size: 13px;
+  background: rgba(255,107,107,.12); border: 1px solid rgba(255,107,107,.45); color: var(--danger);
+}
+.call-rec-on { background: rgba(255,107,107,.16); border-color: var(--danger); color: var(--danger); font-weight: 600; }
 .call-leave { margin-left: auto; background: rgba(255,107,107,.16); border-color: var(--danger); color: var(--danger); font-weight: 600; }
 .call-leave:hover { background: var(--danger); color: #fff; }
 

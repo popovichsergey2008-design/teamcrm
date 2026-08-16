@@ -47,14 +47,17 @@ export class MeetingsRepository {
   }
 
   /** Стенограмма пишется целиком: повторная обработка заменяет прежнюю, а не дописывает. */
-  async replaceSegments(tenantId: string, meetingId: string, replies: Reply[]): Promise<void> {
+  async replaceSegments(
+    tenantId: string, meetingId: string,
+    replies: (Reply & { speakerUserId?: string | null })[],
+  ): Promise<void> {
     await this.db.withTransaction(async (c) => {
       await c.query(`DELETE FROM meeting_segments WHERE meeting_id=$1`, [meetingId]);
       for (const [idx, r] of replies.entries()) {
         await c.query(
-          `INSERT INTO meeting_segments (tenant_id, meeting_id, idx, start_sec, end_sec, speaker, text)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [tenantId, meetingId, idx, r.start.toFixed(2), r.end.toFixed(2), r.speaker, r.text],
+          `INSERT INTO meeting_segments (tenant_id, meeting_id, idx, start_sec, end_sec, speaker, speaker_user_id, text)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [tenantId, meetingId, idx, r.start.toFixed(2), r.end.toFixed(2), r.speaker, r.speakerUserId ?? null, r.text],
         );
       }
     });

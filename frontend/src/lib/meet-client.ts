@@ -19,6 +19,7 @@ export interface MeetEvents {
   onTrack: (t: RemoteTrack) => void;
   onTrackGone: (consumerId: string) => void;
   onState: (state: 'connecting' | 'connected' | 'reconnecting' | 'closed') => void;
+  onRecording: (active: boolean) => void;
   onError: (message: string) => void;
 }
 
@@ -162,6 +163,10 @@ export class MeetClient {
         (this.send?.id === p.transport_id ? this.send : this.recv)?.restartIce({ iceParameters: p.ice_parameters });
         return;
 
+      case 'meet.recording':
+        this.ev.onRecording(!!p.active);
+        return;
+
       case 'meet.error':
         this.ev.onError(p.message ?? 'Ошибка созвона');
         return;
@@ -256,6 +261,11 @@ export class MeetClient {
 
   raiseHand(up: boolean): void {
     this.emit(up ? 'meet.hand-raise' : 'meet.hand-lower', {});
+  }
+
+  /** Запись созвона: по остановке сервер сам сделает стенограмму и черновики задач. */
+  setRecording(on: boolean): void {
+    this.emit(on ? 'meet.record-start' : 'meet.record-stop', {});
   }
 
   invite(userIds: string[]): void {

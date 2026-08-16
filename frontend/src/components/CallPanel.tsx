@@ -21,6 +21,7 @@ export function CallPanel({ meetingId, onClose }: { meetingId: string; onClose: 
   const [camOn, setCamOn] = useState(false);
   const [screenOn, setScreenOn] = useState(false);
   const [hand, setHand] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [err, setErr] = useState('');
 
   const client = useRef<MeetClient | null>(null);
@@ -40,6 +41,7 @@ export function CallPanel({ meetingId, onClose }: { meetingId: string; onClose: 
           onTrack: (t) => setTracks((prev) => [...prev.filter((x) => x.consumerId !== t.consumerId), t]),
           onTrackGone: (id) => setTracks((prev) => prev.filter((x) => x.consumerId !== id)),
           onState: setState,
+          onRecording: setRecording,
           onError: setErr,
         });
         client.current = c;
@@ -127,6 +129,12 @@ export function CallPanel({ meetingId, onClose }: { meetingId: string; onClose: 
           <button className="btn btn-ghost btn-sm" onClick={leave}>✕</button>
         </div>
 
+        {/* запись видна всем и всегда: тихой записи в продукте нет */}
+        {recording && (
+          <div className="call-recording">
+            ⏺ Идёт запись. После завершения ИИ соберёт стенограмму с именами, сводку и предложит задачи.
+          </div>
+        )}
         {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
 
         <div className="call-grid">
@@ -169,6 +177,13 @@ export function CallPanel({ meetingId, onClose }: { meetingId: string; onClose: 
           </button>
           <button className={`btn btn-sm ${hand ? '' : 'call-off'}`} onClick={() => { setHand(!hand); client.current?.raiseHand(!hand); }}>
             ✋ Рука
+          </button>
+          <button
+            className={`btn btn-sm ${recording ? 'call-rec-on' : 'call-off'}`}
+            onClick={() => client.current?.setRecording(!recording)}
+            title={recording ? 'Остановить запись и получить стенограмму' : 'Записать созвон для стенограммы и задач'}
+          >
+            {recording ? '⏹ Остановить запись' : '⏺ Записать'}
           </button>
           <button className="btn btn-sm call-leave" onClick={leave}>Выйти</button>
         </div>
