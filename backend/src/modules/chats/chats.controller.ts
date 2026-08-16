@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsOptional, IsString, MaxLength } from 'class-validator';
@@ -16,6 +16,12 @@ class CreateGroupDto {
 }
 class SendDto {
   @IsOptional() @IsString() @MaxLength(8000) body?: string;
+}
+class AddMembersDto {
+  @IsArray() @IsString({ each: true }) userIds!: string[];
+}
+class RenameDto {
+  @IsString() @MaxLength(160) title!: string;
 }
 
 /** Мессенджер команды. Роль client сюда не допускается — у заказчика свой портал. */
@@ -67,6 +73,33 @@ export class ChatsController {
   ) {
     if (!file) throw AppException.validation('Файл не приложен');
     return this.chats.sendFile(u.tenantId, id, u, file, dto.body ?? '');
+  }
+
+  // ───── управление группой ─────
+
+  @Get(':id/members')
+  members(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.members(u.tenantId, id, u);
+  }
+
+  @Post(':id/members')
+  addMembers(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AddMembersDto) {
+    return this.chats.addMembers(u.tenantId, id, u, dto.userIds);
+  }
+
+  @Delete(':id/members/:userId')
+  removeMember(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('userId') userId: string) {
+    return this.chats.removeMember(u.tenantId, id, u, userId);
+  }
+
+  @Patch(':id')
+  rename(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: RenameDto) {
+    return this.chats.rename(u.tenantId, id, u, dto.title);
+  }
+
+  @Post(':id/leave')
+  leave(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.leave(u.tenantId, id, u);
   }
 
   @Post(':id/read')

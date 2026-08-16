@@ -113,6 +113,84 @@ export class ChatsService {
     return this.send(tenantId, chatId, user, body, stored.id);
   }
 
+  // ───── управление группой ─────
+
+  /** Операции состава есть только у групп: у диалога участники неизменны, у проекта — вся команда. */
+  private async group(tenantId: string, chatId: string, user: { userId: string; role: string }): Promise<ChatRow> {
+    const chat = await this.access(tenantId, chatId, user);
+    if (chat.kind !== 'group') throw AppException.validation('Состав меняется только у групповых чатов');
+    return chat;
+  }
+
+  /** Изменять группу вправе её создатель и руководство: иначе любой может выкинуть любого. */
+  private canManage(chat: ChatRow, user: { userId: string; role: string }): boolean {
+    return String(chat.created_by) === String(user.userId) || user.role === 'owner' || user.role === 'manager';
+  }
+
+  async members(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    const chat = await this.access(tenantId, chatId, user);
+    const rows = await this.repo.members(tenantId, chatId);
+    return {
+      canManage: chat.kind === 'group' && this.canManage(chat, user),
+      createdBy: chat.created_by,
+      members: rows.map((r) => ({ userId: r.user_id, fullName: r.full_name })),
+    };
+  }
+
+  /** Добавлять может любой участник: звать коллегу в обсуждение — обычное дело. */
+  async addMembers(tenantId: string, chatId: string, user: { userId: string; role: string }, userIds: string[]) {
+    const chat = await this.group(tenantId, chatId, user);
+    const added = await this.repo.addMembers(tenantId, chatId, userIds);
+    if (!added.length) return { added: 0 };
+
+    const names = (await this.repo.members(tenantId, chatId))
+      .filter((m) => added.includes(String(m.user_id))).map((m) => m.full_name);
+    await this.announce(tenantId, chat, `${names.join(', ')} ${names.length > 1 ? 'добавлены' : 'добавлен(а)'} в группу`);
+    // новичкам чат должен появиться в списке сразу
+    this.realtime.emitToUsers(tenantId, added, 'chat.created', { chatId, title: chat.title });
+    return { added: added.length };
+  }
+
+  async removeMember(tenantId: string, chatId: string, user: { userId: string; role: string }, targetId: string) {
+    const chat = await this.group(tenantId, chatId, user);
+    if (String(targetId) === String(user.userId)) throw AppException.validation('Чтобы выйти самому, используйте «Выйти из группы»');
+    if (!this.canManage(chat, user)) throw AppException.forbidden('Убирать участников может создатель группы или руководитель');
+
+    const name = (await this.repo.members(tenantId, chatId)).find((m) => String(m.user_id) === String(targetId))?.full_name;
+    if (!(await this.repo.removeMember(chatId, targetId))) throw AppException.notFound('Участник не найден');
+    await this.announce(tenantId, chat, `${name ?? 'Участник'} удалён(а) из группы`);
+    // исключённому чат исчезает из списка
+    this.realtime.emitToUsers(tenantId, [targetId], 'chat.removed', { chatId });
+    return { removed: true };
+  }
+
+  async rename(tenantId: string, chatId: string, user: { userId: string; role: string }, title: string) {
+    const chat = await this.group(tenantId, chatId, user);
+    if (!this.canManage(chat, user)) throw AppException.forbidden('Переименовать может создатель группы или руководитель');
+    const name = title.trim();
+    if (!name) throw AppException.validation('Название не может быть пустым');
+    await this.repo.rename(tenantId, chatId, name.slice(0, 160));
+    await this.announce(tenantId, chat, `Группа переименована в «${name.slice(0, 160)}»`);
+    return { title: name.slice(0, 160) };
+  }
+
+  /** Выйти может каждый. Историю не трогаем: переписка остаётся у оставшихся. */
+  async leave(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    const chat = await this.group(tenantId, chatId, user);
+    const name = (await this.repo.members(tenantId, chatId)).find((m) => String(m.user_id) === String(user.userId))?.full_name;
+    await this.repo.removeMember(chatId, user.userId);
+    await this.announce(tenantId, chat, `${name ?? 'Участник'} вышел(ла) из группы`);
+    this.realtime.emitToUsers(tenantId, [user.userId], 'chat.removed', { chatId });
+    return { left: true };
+  }
+
+  /** Служебная строка в ленту + рассылка оставшимся. */
+  private async announce(tenantId: string, chat: ChatRow, text: string): Promise<void> {
+    const message = await this.repo.addSystemMessage(tenantId, chat.id, text);
+    const to = await this.recipients(chat, tenantId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId: chat.id, message });
+  }
+
   async markRead(tenantId: string, chatId: string, user: { userId: string; role: string }) {
     await this.access(tenantId, chatId, user);
     await this.repo.markRead(tenantId, chatId, user.userId);

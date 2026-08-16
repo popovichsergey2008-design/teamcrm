@@ -186,6 +186,59 @@ export class ChatsRepository {
     );
   }
 
+  /** Состав группы с именами — для окна управления участниками. */
+  members(tenantId: string, chatId: string) {
+    return this.db.many<{ user_id: string; full_name: string; joined_at: Date }>(
+      `SELECT m.user_id, u.full_name, m.joined_at
+         FROM chat_members m JOIN users u ON u.id = m.user_id
+        WHERE m.tenant_id=$1 AND m.chat_id=$2 ORDER BY m.joined_at`,
+      [tenantId, chatId],
+    );
+  }
+
+  async addMembers(tenantId: string, chatId: string, userIds: string[]): Promise<string[]> {
+    const added: string[] = [];
+    for (const userId of new Set(userIds.map(String))) {
+      // сотрудник должен быть из этой же организации — иначе можно втащить чужого по id
+      const ok = await this.db.one(`SELECT 1 AS ok FROM users WHERE id=$1 AND tenant_id=$2 AND is_active`, [userId, tenantId]);
+      if (!ok) continue;
+      const res = await this.db.query(
+        `INSERT INTO chat_members (chat_id, user_id, tenant_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+        [chatId, userId, tenantId],
+      );
+      if (res.rowCount) added.push(userId);
+    }
+    return added;
+  }
+
+  async removeMember(chatId: string, userId: string): Promise<boolean> {
+    const res = await this.db.query(`DELETE FROM chat_members WHERE chat_id=$1 AND user_id=$2`, [chatId, userId]);
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async rename(tenantId: string, chatId: string, title: string): Promise<void> {
+    await this.db.query(`UPDATE chats SET title=$3 WHERE tenant_id=$1 AND id=$2`, [tenantId, chatId, title]);
+  }
+
+  /**
+   * Служебная запись в ленту («добавлен», «вышел», «переименована»).
+   * author_id = NULL — по нему интерфейс отличает системную строку от реплики человека.
+   */
+  async addSystemMessage(tenantId: string, chatId: string, body: string): Promise<MessageRow> {
+    const row = await this.db.one<{ id: string }>(
+      `INSERT INTO chat_messages (tenant_id, chat_id, author_id, body) VALUES ($1,$2,NULL,$3) RETURNING id`,
+      [tenantId, chatId, body],
+    );
+    await this.db.query(`UPDATE chats SET last_message_at=now() WHERE id=$1`, [chatId]);
+    return (await this.db.one<MessageRow>(
+      `SELECT id, chat_id, author_id, NULL::varchar AS author_name, body, file_id,
+              NULL::varchar AS file_name, NULL::varchar AS content_type, NULL::text AS size_bytes,
+              created_at, edited_at
+         FROM chat_messages WHERE id=$1`,
+      [row!.id],
+    ))!;
+  }
+
   message(tenantId: string, id: string) {
     return this.db.one<{ id: string; chat_id: string; author_id: string | null }>(
       `SELECT id, chat_id, author_id FROM chat_messages WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);

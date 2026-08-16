@@ -145,6 +145,62 @@ describe('Чаты команды (e2e)', () => {
     await http$.post('/api/chats/groups').set(H(owner.accessToken)).send({ title: '   ', userIds: [inside.id] }).expect(400);
   });
 
+  it('управление группой: добавить, переименовать, убрать, выйти', async () => {
+    const email = `gm_${uniq()}@t.test`;
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'GM', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+
+    const make = async (name: string) => {
+      const mail = `${name}_${uniq()}@t.test`;
+      const u = (await http$.post('/api/users').set(H(owner.accessToken))
+        .send({ email: mail, fullName: name, password: 'password123', role: 'member' }).expect(201)).body.data;
+      const login = (await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data;
+      return { id: u.id, token: login.accessToken };
+    };
+    const alice = await make('Алиса');
+    const bob = await make('Боб');
+
+    const group = (await http$.post('/api/chats/groups').set(H(owner.accessToken))
+      .send({ title: 'Смена', userIds: [alice.id] }).expect(201)).body.data;
+
+    // добавление: любой участник вправе позвать коллегу
+    const added = (await http$.post(`/api/chats/${group.id}/members`).set(H(alice.token))
+      .send({ userIds: [bob.id] }).expect(201)).body.data;
+    expect(added.added).toBe(1);
+    const withBob = (await http$.get(`/api/chats/${group.id}/members`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(withBob.members).toHaveLength(3);
+
+    // повторное добавление того же человека ничего не меняет
+    expect((await http$.post(`/api/chats/${group.id}/members`).set(H(alice.token))
+      .send({ userIds: [bob.id] }).expect(201)).body.data.added).toBe(0);
+
+    // переименование и удаление — только создателю или руководству
+    await http$.patch(`/api/chats/${group.id}`).set(H(alice.token)).send({ title: 'Чужое имя' }).expect(403);
+    await http$.delete(`/api/chats/${group.id}/members/${bob.id}`).set(H(alice.token)).expect(403);
+
+    const renamed = (await http$.patch(`/api/chats/${group.id}`).set(H(owner.accessToken)).send({ title: 'Ночная смена' }).expect(200)).body.data;
+    expect(renamed.title).toBe('Ночная смена');
+
+    await http$.delete(`/api/chats/${group.id}/members/${bob.id}`).set(H(owner.accessToken)).expect(200);
+    // убранный теряет доступ к переписке
+    await http$.get(`/api/chats/${group.id}/messages`).set(H(bob.token)).expect(403);
+
+    // выход: доступен каждому, но не через удаление самого себя
+    await http$.delete(`/api/chats/${group.id}/members/${alice.id}`).set(H(alice.token)).expect(400);
+    await http$.post(`/api/chats/${group.id}/leave`).set(H(alice.token)).expect(201);
+    await http$.get(`/api/chats/${group.id}/messages`).set(H(alice.token)).expect(403);
+
+    // в ленте остались служебные строки — без автора
+    const feed = (await http$.get(`/api/chats/${group.id}/messages`).set(H(owner.accessToken)).expect(200)).body.data;
+    const system = feed.filter((m: any) => m.author_id === null);
+    expect(system.length).toBeGreaterThanOrEqual(4); // добавлен, переименована, удалён, вышел
+    expect(system.some((m: any) => /Ночная смена/.test(m.body))).toBe(true);
+
+    // состав диалога и чата проекта не меняется
+    const dm = (await http$.post('/api/chats/dm').set(H(owner.accessToken)).send({ userId: bob.id }).expect(201)).body.data;
+    await http$.post(`/api/chats/${dm.id}/members`).set(H(owner.accessToken)).send({ userIds: [alice.id] }).expect(400);
+  });
+
   it('пустое сообщение и чужое удаление отклоняются', async () => {
     const email = `em_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')

@@ -3,6 +3,7 @@ import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { useAuth } from '../state/auth';
 import { GroupChatModal } from '../components/GroupChatModal';
+import { GroupManageModal } from '../components/GroupManageModal';
 import type { User } from '../types';
 
 interface Chat {
@@ -36,6 +37,7 @@ export function ChatsPage({ onCall }: {
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
   const [err, setErr] = useState('');
   const feedRef = useRef<HTMLDivElement | null>(null);
 
@@ -68,13 +70,20 @@ export function ChatsPage({ onCall }: {
     const onDeleted = (p: { chatId: string; messageId: string }) => {
       if (String(p.chatId) === String(activeId)) setMessages((prev) => prev.filter((m) => m.id !== p.messageId));
     };
+    // нас убрали из группы — чат должен исчезнуть, а не висеть открытым с ошибками
+    const onRemoved = (p: { chatId: string }) => {
+      if (String(p.chatId) === String(activeId)) { setActiveId(null); setMessages([]); }
+      reload();
+    };
     socket.on('chat.message', onMessage);
     socket.on('chat.message_deleted', onDeleted);
     socket.on('chat.created', reload);
+    socket.on('chat.removed', onRemoved);
     return () => {
       socket.off('chat.message', onMessage);
       socket.off('chat.message_deleted', onDeleted);
       socket.off('chat.created', reload);
+      socket.off('chat.removed', onRemoved);
     };
   }, [activeId, reload, appendMessage]);
 
@@ -170,6 +179,10 @@ export function ChatsPage({ onCall }: {
                 {active.kind === 'dm' && <span className={`presence ${active.peerOnline ? 'on' : ''}`} title={active.peerOnline ? 'в сети' : 'не в сети'} />}
                 <b>{active.title ?? 'Чат'}</b>
                 {active.kind === 'project' && <span className="badge badge-muted" style={{ marginLeft: 6 }}>проект</span>}
+                {active.kind === 'group' && (
+                  <button className="btn btn-ghost btn-sm" title="Участники и настройки группы"
+                          onClick={() => setManageOpen(true)}>⚙</button>
+                )}
               </span>
               <span className="chat-call">
                 <label className="chat-ai-toggle" title="ИИ войдёт в созвон, запишет его и предложит задачи по итогам">
@@ -199,6 +212,15 @@ export function ChatsPage({ onCall }: {
               {messages.map((m, i) => {
                 const mine = String(m.author_id) === String(user?.id);
                 const newDay = i === 0 || dayOf(m.created_at) !== dayOf(messages[i - 1].created_at);
+                // системная строка (кого добавили, кто вышел) — без автора и без «пузыря»
+                if (!m.author_id) {
+                  return (
+                    <div key={m.id}>
+                      {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
+                      <div className="chat-system">{m.body}</div>
+                    </div>
+                  );
+                }
                 return (
                   <div key={m.id}>
                     {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
@@ -234,6 +256,24 @@ export function ChatsPage({ onCall }: {
           </>
         )}
       </section>
+
+      {manageOpen && active && (
+        <GroupManageModal
+          chatId={active.id}
+          title={active.title ?? ''}
+          users={users}
+          meId={user?.id}
+          onClose={() => setManageOpen(false)}
+          onChanged={reload}
+          onLeft={() => {
+            // вышли — чат больше не наш: закрываем окно и очищаем ленту
+            setManageOpen(false);
+            setActiveId(null);
+            setMessages([]);
+            reload();
+          }}
+        />
+      )}
 
       {groupOpen && (
         <GroupChatModal

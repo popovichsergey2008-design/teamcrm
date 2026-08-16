@@ -397,6 +397,13 @@ export const api = {
     request<any[]>('GET', `/chats/${chatId}/messages${before ? `?before=${before}` : ''}`),
   sendChatMessage: (chatId: string, body: string) => request<any>('POST', `/chats/${chatId}/messages`, { body }),
   markChatRead: (chatId: string) => request<any>('POST', `/chats/${chatId}/read`),
+  chatMembers: (chatId: string) => request<{
+    canManage: boolean; createdBy: string | null; members: { userId: string; fullName: string }[];
+  }>('GET', `/chats/${chatId}/members`),
+  addChatMembers: (chatId: string, userIds: string[]) => request<{ added: number }>('POST', `/chats/${chatId}/members`, { userIds }),
+  removeChatMember: (chatId: string, userId: string) => request<any>('DELETE', `/chats/${chatId}/members/${userId}`),
+  renameChat: (chatId: string, title: string) => request<{ title: string }>('PATCH', `/chats/${chatId}`, { title }),
+  leaveChat: (chatId: string) => request<any>('POST', `/chats/${chatId}/leave`),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
   sendChatFile: async (chatId: string, file: File, body: string) => {
     const fd = new FormData();
