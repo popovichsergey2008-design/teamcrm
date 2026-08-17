@@ -162,6 +162,16 @@ export function ChatsPage({ onCall, onActiveChat }: {
   }, [users, dms, user]);
 
   const match = (s: string | null) => !query || (s ?? '').toLowerCase().includes(query.toLowerCase());
+  // подразделения по id сотрудника — подписываем ими собеседников в списке и шапке
+  const groupOf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of users) {
+      const names = (u.groups ?? []).map((g) => g.name);
+      if (names.length) m.set(String(u.id), names.join(', '));
+    }
+    return m;
+  }, [users]);
+  const groupFor = (userId?: string | null) => (userId ? groupOf.get(String(userId)) : undefined);
   const listEmpty =
     dms.filter((c) => match(c.title)).length === 0 &&
     groups.filter((c) => match(c.title)).length === 0 &&
@@ -190,7 +200,7 @@ export function ChatsPage({ onCall, onActiveChat }: {
         )}
 
         {dms.filter((c) => match(c.title)).map((c) => (
-          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} />
+          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} group={groupFor(c.peerId)} onClick={() => openChat(c.id)} />
         ))}
 
         {groups.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Группы и проекты</div>}
@@ -202,7 +212,12 @@ export function ChatsPage({ onCall, onActiveChat }: {
         {others.filter((u) => match(u.fullName)).map((u) => (
           <button key={u.id} className="chat-row" onClick={() => writeTo(u.id)}>
             <span className="avatar-xs avatar-ph">{u.fullName[0]?.toUpperCase()}</span>
-            <span className="chat-row-main"><span className="chat-row-title">{u.fullName}</span></span>
+            <span className="chat-row-main">
+              <span className="chat-row-title">
+                {u.fullName}
+                {groupFor(u.id) && <span className="chat-row-group">{groupFor(u.id)}</span>}
+              </span>
+            </span>
           </button>
         ))}
 
@@ -237,6 +252,9 @@ export function ChatsPage({ onCall, onActiveChat }: {
               <span>
                 {active.kind === 'dm' && <span className={`presence ${active.peerOnline ? 'on' : ''}`} title={active.peerOnline ? 'в сети' : 'не в сети'} />}
                 <b>{active.title ?? 'Чат'}</b>
+                {active.kind === 'dm' && groupFor(active.peerId) && (
+                  <span className="chat-row-group">{groupFor(active.peerId)}</span>
+                )}
                 {active.kind === 'project' && <span className="badge badge-muted" style={{ marginLeft: 6 }}>проект</span>}
                 {active.kind === 'group' && (
                   <button className="btn btn-ghost btn-sm" title="Участники и настройки группы"
@@ -360,7 +378,7 @@ export function ChatsPage({ onCall, onActiveChat }: {
   );
 }
 
-function ChatRow({ chat, active, onClick }: { chat: Chat; active: boolean; onClick: () => void }) {
+function ChatRow({ chat, active, group, onClick }: { chat: Chat; active: boolean; group?: string; onClick: () => void }) {
   const icon = chat.kind === 'dm' ? (chat.title?.[0]?.toUpperCase() ?? '?') : '#';
   return (
     <button className={`chat-row ${active ? 'active' : ''}`} onClick={onClick}>
@@ -369,6 +387,8 @@ function ChatRow({ chat, active, onClick }: { chat: Chat; active: boolean; onCli
         <span className="chat-row-title">
           {chat.kind === 'dm' && <span className={`presence ${chat.peerOnline ? 'on' : ''}`} />}
           {chat.title ?? 'Чат'}
+          {/* подразделение собеседника: когда в компании полсотни человек, одно имя мало что говорит */}
+          {group && <span className="chat-row-group" title={`Подразделение: ${group}`}>{group}</span>}
         </span>
         {chat.lastBody && (
           <span className="chat-row-last">

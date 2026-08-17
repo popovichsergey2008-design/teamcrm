@@ -312,6 +312,27 @@
 
 /* team panel */
 .team-row { border-top: 1px solid var(--border); padding: 12px 0; }
+
+/* состав групп: участники и переключатели принадлежности */
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.group-empty { font-size: var(--fs-xs); margin-top: 8px; }
+.member-chip, .group-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--fs-xs); padding: 3px 9px; border-radius: 999px; cursor: pointer;
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text);
+  transition: border-color .15s, background .15s, color .15s;
+}
+.member-chip:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.group-chip { color: var(--text-dim); }
+.group-chip:hover:not(:disabled) { border-color: var(--border-2); color: var(--text); }
+.group-chip-on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.member-chip:disabled, .group-chip:disabled { opacity: .5; cursor: default; }
+.group-add { margin-top: 8px; }
+/* подразделение рядом с именем собеседника — подпись, а не акцент */
+.chat-row-group {
+  margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--text-mut);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;
+}
 .team-head { display: flex; justify-content: space-between; margin-bottom: 8px; }
 .team-rate { display: flex; gap: 6px; }
 .team-rate .input { flex: 1; }

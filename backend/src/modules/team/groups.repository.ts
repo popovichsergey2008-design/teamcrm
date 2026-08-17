@@ -74,12 +74,34 @@ export class GroupsRepository {
     );
   }
 
-  groupsForUser(tenantId: string, userId: string): Promise<Array<{ id: string; name: string }>> {
+  groupsForUser(tenantId: string, userId: string): Promise<Array<{ id: string; name: string; kind: string }>> {
     return this.db.many(
-      `SELECT g.id, g.name FROM user_groups ug JOIN groups g ON g.id=ug.group_id
+      `SELECT g.id, g.name, g.kind FROM user_groups ug JOIN groups g ON g.id=ug.group_id
         WHERE ug.tenant_id=$1 AND ug.user_id=$2 ORDER BY g.name`,
       [tenantId, userId],
     );
+  }
+
+  /**
+   * Группы сразу всей команды, одним запросом.
+   * Список сотрудников тянется на каждом открытии чатов и доски, и запрос
+   * на человека в цикле превращался в десятки обращений к базе на ровном месте.
+   */
+  async groupsForUsers(tenantId: string): Promise<Map<string, Array<{ id: string; name: string; kind: string }>>> {
+    const rows = await this.db.many<{ user_id: string; id: string; name: string; kind: string }>(
+      `SELECT ug.user_id, g.id, g.name, g.kind FROM user_groups ug
+         JOIN groups g ON g.id=ug.group_id
+        WHERE ug.tenant_id=$1 ORDER BY g.name`,
+      [tenantId],
+    );
+    const byUser = new Map<string, Array<{ id: string; name: string; kind: string }>>();
+    for (const r of rows) {
+      const key = String(r.user_id);
+      const list = byUser.get(key) ?? [];
+      list.push({ id: r.id, name: r.name, kind: r.kind });
+      byUser.set(key, list);
+    }
+    return byUser;
   }
 
   /** Заменить набор групп пользователя (используется в PATCH /users/:id). */

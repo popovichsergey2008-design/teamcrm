@@ -148,20 +148,16 @@ export class UsersService {
   /** Список команды с должностью и группами. */
   async list(tenantId: string) {
     const rows = await this.repo.listEnriched(tenantId);
-    const out: any[] = [];
-    for (const u of rows) {
-      const groups = await this.groups.groupsForUser(tenantId, u.id);
-      out.push({
-        id: u.id,
-        email: u.email,
-        fullName: u.full_name,
-        role: u.role_code,
-        isActive: u.is_active,
-        positionId: u.position_id,
-        positionName: u.position_name,
-        groups,
-      });
-    }
-    return out;
+    const byUser = await this.groups.groupsForUsers(tenantId); // одним запросом на всех, а не по запросу на человека
+    return rows.map((u) => ({
+      id: u.id,
+      email: u.email,
+      fullName: u.full_name,
+      role: u.role_code,
+      isActive: u.is_active,
+      positionId: u.position_id,
+      positionName: u.position_name,
+      groups: byUser.get(String(u.id)) ?? [],
+    }));
   }
 }

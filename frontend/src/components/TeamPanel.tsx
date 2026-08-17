@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { ASSIGNABLE_ROLES, roleLabel } from '../lib/labels';
@@ -7,6 +8,17 @@ import { useAuth } from '../state/auth';
 
 type Tab = 'people' | 'positions' | 'groups';
 const roleOptions = ASSIGNABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>);
+
+/** kind приходит из базы по-английски — в интерфейсе он не нужен в таком виде. */
+const KIND_LABEL: Record<string, string> = { department: 'отдел', group: 'группа' };
+const inGroup = (user: any, groupId: string) =>
+  (user.groups ?? []).some((g: any) => String(g.id) === String(groupId));
+const plural = (n: number, one: string, few: string, many: string) => {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return `${n} ${one}`;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return `${n} ${few}`;
+  return `${n} ${many}`;
+};
 
 export function TeamPanel({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('people');
@@ -100,7 +112,30 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
   // --- groups ---
   const [newGroup, setNewGroup] = useState({ name: '', kind: 'group' });
   const addGroup = async () => { if (!newGroup.name.trim()) return; try { await api.createGroup({ name: newGroup.name.trim(), kind: newGroup.kind }); setNewGroup({ name: '', kind: 'group' }); reload(); } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); } };
-  const [memberPick, setMemberPick] = useState<Record<string, string>>({});
+
+  /** Удаление спрашивает подтверждение: раньше промах по кнопке молча сносил отдел с людьми. */
+  const removeGroup = async (id: string, name: string, count: number) => {
+    const warn = count > 0 ? ` В ней ${plural(count, 'человек', 'человека', 'человек')} — они останутся в системе, но потеряют это подразделение.` : '';
+    if (!window.confirm(`Удалить «${name}»?${warn}`)) return;
+    try { await api.deleteGroup(id); await reload(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Не удалось удалить группу'); }
+  };
+
+  // Состав группы берём из списка сотрудников: он и так приходит с их группами,
+  // поэтому обе вкладки показывают одно и то же и не расходятся между собой.
+  const membersOf = (groupId: string) => users.filter((u) => inGroup(u, groupId));
+  const [busyGroup, setBusyGroup] = useState('');
+  /** Добавить/убрать человека в группе. Обе вкладки зовут это же — правки видны сразу везде. */
+  const toggleMembership = async (groupId: string, userId: string, isMember: boolean) => {
+    setBusyGroup(`${groupId}:${userId}`);
+    try {
+      if (isMember) await api.removeGroupMember(groupId, userId);
+      else await api.addGroupMember(groupId, userId);
+      await reload();
+    } catch (e) {
+      flash(e instanceof ApiError ? e.message : 'Не удалось изменить состав группы');
+    } finally { setBusyGroup(''); }
+  };
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
@@ -198,7 +233,26 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                   <select className="input" value={u.role} onChange={(e) => patchUser(u.id, { role: e.target.value })}>{roleOptions}</select>
                   <select className="input" value={u.positionId ?? ''} onChange={(e) => patchUser(u.id, { positionId: e.target.value || null })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
                 </div>
-                {u.groups?.length > 0 && <div className="dim" style={{ marginTop: 6 }}>Группы: {u.groups.map((g: any) => g.name).join(', ')}</div>}
+                {/* Группы правятся прямо здесь: думают о них обычно от человека
+                    («куда его определить»), а не от списка отделов. */}
+                {groups.length > 0 && (
+                  <div className="chip-row" style={{ marginTop: 6 }}>
+                    {groups.map((g) => {
+                      const has = inGroup(u, g.id);
+                      return (
+                        <button
+                          key={g.id}
+                          className={`group-chip ${has ? 'group-chip-on' : ''}`}
+                          disabled={busyGroup === `${g.id}:${u.id}`}
+                          onClick={() => toggleMembership(g.id, u.id, has)}
+                          title={has ? `Убрать из «${g.name}»` : `Добавить в «${g.name}»`}
+                        >
+                          {g.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="team-rate">
                   {MONETIZATION_ENABLED && (
                     <>
@@ -258,21 +312,69 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                 <button className="btn btn-primary btn-sm" onClick={addGroup}>Создать</button>
               </div>
             </div>
-            {groups.map((g) => (
-              <div key={g.id} className="team-row">
-                <div className="team-head">
-                  <span>{g.name} <span className="badge">{g.kind}</span></span>
-                  <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteGroup(g.id); reload(); }}>Удалить</button>
+            {groups.length === 0 && (
+              <EmptyState
+                compact
+                icon="users"
+                title="Групп пока нет"
+                hint="Отделы и группы нужны, чтобы понимать, кто чем занимается: рядом с именем в чатах видно подразделение человека. Создайте первую формой выше."
+              />
+            )}
+
+            {groups.map((g) => {
+              const members = membersOf(g.id);
+              const outside = users.filter((u) => !inGroup(u, g.id));
+              return (
+                <div key={g.id} className="team-row">
+                  <div className="team-head">
+                    <span>
+                      {g.name} <span className="badge badge-muted">{KIND_LABEL[g.kind] ?? g.kind}</span>{' '}
+                      <span className="dim">{plural(members.length, 'человек', 'человека', 'человек')}</span>
+                    </span>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => removeGroup(g.id, g.name, members.length)}
+                      title="Удалить группу"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+
+                  {members.length === 0
+                    ? <div className="dim group-empty">Пока никого — добавьте сотрудников списком ниже.</div>
+                    : (
+                      <div className="chip-row">
+                        {members.map((u) => (
+                          <button
+                            key={u.id}
+                            className="member-chip"
+                            disabled={busyGroup === `${g.id}:${u.id}`}
+                            onClick={() => toggleMembership(g.id, u.id, true)}
+                            title={`Убрать ${u.fullName} из «${g.name}»`}
+                          >
+                            <span className="avatar-xs avatar-ph">{u.fullName[0]?.toUpperCase()}</span>
+                            {u.fullName}
+                            <Icon name="close" size={11} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                  {/* Выбор из списка сразу добавляет: отдельная кнопка «+» только добавляла шаг,
+                      на котором забывали нажать. В списке — лишь те, кого в группе ещё нет. */}
+                  {outside.length > 0 && (
+                    <select
+                      className="input group-add"
+                      value=""
+                      onChange={(e) => e.target.value && toggleMembership(g.id, e.target.value, false)}
+                    >
+                      <option value="">+ добавить сотрудника…</option>
+                      {outside.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
+                    </select>
+                  )}
                 </div>
-                <div className="team-rate">
-                  <select className="input" value={memberPick[g.id] ?? ''} onChange={(e) => setMemberPick((m) => ({ ...m, [g.id]: e.target.value }))}>
-                    <option value="">— добавить участника —</option>
-                    {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-                  </select>
-                  <button className="btn btn-sm" onClick={async () => { if (memberPick[g.id]) { await api.addGroupMember(g.id, memberPick[g.id]); reload(); } }}>+</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </>
         )}
       </aside>

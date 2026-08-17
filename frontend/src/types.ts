@@ -7,6 +7,8 @@ export interface User {
   fullName: string;
   role: RoleCode;
   isActive: boolean;
+  /** Отделы и группы человека. Приходят из GET /users; в токене авторизации их нет. */
+  groups?: { id: string; name: string; kind: string }[];
 }
 
 export interface OrgRef {

@@ -63,6 +63,27 @@ describe('Enhancements v1 — Team (e2e)', () => {
     expect(members.some((m: any) => m.id === ownerId)).toBe(true);
   });
 
+  it('состав группы виден в списке команды и снимается обратно', async () => {
+    // интерфейс рисует состав групп из GET /users, а не из /groups/:id/members,
+    // поэтому именно этот список должен отражать правку сразу
+    const inList = (list: any[], uid: string) =>
+      list.find((u: any) => String(u.id) === String(uid))?.groups ?? [];
+
+    let users = (await http.get('/api/users').set(A()).expect(200)).body.data;
+    const mine = inList(users, ownerId);
+    expect(mine.some((g: any) => String(g.id) === String(groupId))).toBe(true);
+    expect(mine.find((g: any) => String(g.id) === String(groupId)).kind).toBe('department'); // вид нужен для подписи в интерфейсе
+
+    await http.delete(`/api/groups/${groupId}/members/${ownerId}`).set(A()).expect(200);
+    users = (await http.get('/api/users').set(A()).expect(200)).body.data;
+    expect(inList(users, ownerId).some((g: any) => String(g.id) === String(groupId))).toBe(false);
+
+    // возвращаем: следующие проверки в файле рассчитывают на членство
+    await http.post(`/api/groups/${groupId}/members`).set(A()).send({ userId: ownerId }).expect(201);
+    users = (await http.get('/api/users').set(A()).expect(200)).body.data;
+    expect(inList(users, ownerId).some((g: any) => String(g.id) === String(groupId))).toBe(true);
+  });
+
   it('создание сотрудника с должностью и группой; список обогащён', async () => {
     const email = `u2_${uniq()}@t.test`;
     const u2 = (await http
