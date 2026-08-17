@@ -187,14 +187,32 @@ export class MeetingsService {
     }
   }
 
+  /**
+   * Словарь встречи для распознавания: имена команды и рабочие слова.
+   *
+   * Без него Whisper подставляет похожее по звучанию из общего языка — так
+   * «на Юру» превращалось в «на евро», а «стенограмма» в «синаграмму».
+   * Имена сотрудников он угадать не может в принципе, их надо назвать.
+   */
+  private async speechHint(tenantId: string): Promise<string> {
+    const team = await this.repo.teamMembers(tenantId).catch(() => []);
+    const names = team.map((u) => u.full_name).filter(Boolean).slice(0, 40).join(', ');
+    return [
+      'Рабочий созвон команды.',
+      names ? `Участники: ${names}.` : '',
+      'Термины: задача, стенограмма, дедлайн, созвон, доска, проект, спринт, тестирование, интеграция.',
+    ].filter(Boolean).join(' ');
+  }
+
   /** Звук → куски → распознавание каждого куска → сшивка по времени. */
   private async transcribeRecording(tenantId: string, meetingId: string, source: Buffer, name: string): Promise<Reply[]> {
     const { chunks, durationSec } = await extractAudioChunks(source, name);
     if (durationSec) await this.repo.setDuration(meetingId, durationSec);
 
+    const hint = await this.speechHint(tenantId);
     const replies: Reply[] = [];
     for (const chunk of chunks) {
-      const segments = await this.ai.transcribeSegments(tenantId, chunk.buffer, chunk.name, chunk.buffer.length / 4000);
+      const segments = await this.ai.transcribeSegments(tenantId, chunk.buffer, chunk.name, chunk.buffer.length / 4000, hint);
       replies.push(...shiftSegments(segments, chunk.offsetSec));
     }
     return replies;
@@ -202,7 +220,15 @@ export class MeetingsService {
 
   /** Стенограмма → LLM → строгая схема → черновики задач с сопоставленными исполнителями. */
   private async analyze(tenantId: string, meetingId: string, projectId: string | null, replies: Reply[]): Promise<void> {
-    const transcript = repliesToText(replies).slice(0, 120_000); // защита от гигантских встреч
+    const team = await this.repo.teamMembers(tenantId);
+    // Состав команды идёт вместе со стенограммой: без него модель не свяжет
+    // «поставь на Юру» с Юрием Про и оставит задачу без исполнителя.
+    const roster = team.length
+      ? `Сотрудники компании: ${team.map((u) => u.full_name).slice(0, 60).join(', ')}.
+
+`
+      : '';
+    const transcript = roster + repliesToText(replies).slice(0, 120_000); // защита от гигантских встреч
     const raw = await this.ai.generate(tenantId, MEETING_PROMPT, transcript, 'meeting_analyze');
     const parsed = safeJson(raw);
     const { value, errors } = validateMeetingAnalysis(parsed);
@@ -214,7 +240,6 @@ export class MeetingsService {
 
     await this.repo.saveSummary(tenantId, meetingId, value.summary, value.decisions, value.risks);
 
-    const team = await this.repo.teamMembers(tenantId);
     await this.repo.replaceDrafts(tenantId, meetingId, value.tasks.map((t) => ({
       title: t.title,
       description: t.description,

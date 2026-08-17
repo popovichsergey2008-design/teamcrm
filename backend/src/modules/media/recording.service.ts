@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { MeetingRoom, MsConsumer, MsPlainTransport, Participant } from './media.types';
+import { DiagService } from '../diagnostics/diag.service';
 
 /** Локальные порты для RTP «mediasoup → ffmpeg». Наружу не выходят, в ufw не нужны. */
 const PORT_FROM = 42000;
@@ -54,6 +55,8 @@ export class RecordingService {
   private readonly sessions = new Map<string, Session>();
   private readonly usedPorts = new Set<number>();
 
+  constructor(private readonly diag: DiagService) {}
+
   isRecording(meetingId: string): boolean {
     return this.sessions.has(meetingId);
   }
@@ -63,9 +66,17 @@ export class RecordingService {
     return s ? { active: true, startedBy: s.startedBy, startedAt: s.startedAt } : { active: false };
   }
 
+  /**
+   * Порт под дорожку — только чётный, с шагом 2.
+   *
+   * rtcpMux избавляет от второго порта нас, но не ffmpeg: получив SDP со строкой
+   * «m=audio N», он всё равно занимает N под звук и N+1 под служебный канал.
+   * При шаге 1 второму участнику доставался порт, уже занятый первым, ffmpeg
+   * падал с «Address already in use», и человек просто отсутствовал в записи —
+   * молча, потому что сама дорожка создавалась успешно.
+   */
   private allocPort(): number {
-    // RTP и RTCP мультиплексируем в один порт (rtcpMux), поэтому шаг — 1
-    for (let p = PORT_FROM; p <= PORT_TO; p++) {
+    for (let p = PORT_FROM; p <= PORT_TO; p += 2) {
       if (!this.usedPorts.has(p)) { this.usedPorts.add(p); return p; }
     }
     throw new Error('нет свободных портов для записи');
@@ -160,18 +171,33 @@ export class RecordingService {
       this.usedPorts.delete(t.port);
       // SIGINT, а не kill: ffmpeg должен корректно закрыть контейнер ogg, иначе файл битый
       await this.finish(t.proc);
+      // Пустая дорожка — это либо человек промолчал, либо запись сорвалась.
+      // Раньше разницы не было видно вовсе: участник просто исчезал из стенограммы.
+      let bytes = 0;
       try {
         const buffer = await readFile(t.file);
-        if (buffer.length > 1024) {
+        bytes = buffer.length;
+        if (bytes > 1024) {
           out.push({
             userId: t.userId, displayName: t.displayName, buffer,
             fileName: `${t.displayName}.ogg`, offsetSec: t.offsetSec,
           });
         }
-      } catch { /* участник молчал — файла может не быть */ }
+      } catch { /* файла может не быть вовсе */ }
+      if (bytes <= 1024) {
+        this.log.warn(`запись ${meetingId}: дорожка ${t.displayName} пуста (${bytes} байт)`);
+        this.diag.write({
+          tenantId: session.tenantId, scope: 'meet', refId: meetingId, userId: t.userId,
+          side: 'server', event: 'recording.track-empty', data: { name: t.displayName, bytes, port: t.port },
+        });
+      }
     }
     await rm(session.dir, { recursive: true, force: true }).catch(() => undefined);
-    this.log.log(`запись завершена: ${meetingId}, дорожек с речью ${out.length}`);
+    this.log.log(`запись завершена: ${meetingId}, дорожек с речью ${out.length} из ${session.tracks.size}`);
+    this.diag.write({
+      tenantId: session.tenantId, scope: 'meet', refId: meetingId, side: 'server',
+      event: 'recording.finished', data: { withSpeech: out.length, tracks: session.tracks.size },
+    });
     return out;
   }
 

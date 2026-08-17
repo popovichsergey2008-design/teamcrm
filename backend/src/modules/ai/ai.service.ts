@@ -57,9 +57,11 @@ export class AiService {
    * PII здесь не маскируется: замаскировать речь в аудио нельзя. Маскирование применяется
    * дальше, к тексту стенограммы, перед отправкой в LLM на разбор.
    */
-  async transcribeSegments(tenantId: string, audio: Buffer, filename: string, seconds: number): Promise<TranscriptSegment[]> {
+  async transcribeSegments(
+    tenantId: string, audio: Buffer, filename: string, seconds: number, hint?: string,
+  ): Promise<TranscriptSegment[]> {
     const { provider } = await this.providerFor(tenantId);
-    const segments = await provider.transcribeSegments(audio, filename);
+    const segments = await provider.transcribeSegments(audio, filename, hint);
     // Whisper тарифицируется по минутам звука, а не по токенам — пишем в расход стоимость
     const cost = Number(((Math.max(seconds, 0) / 60) * 0.006).toFixed(4));
     await this.recordUsage(tenantId, 'meeting_transcribe', provider.name === 'mock' ? 'mock-stt' : 'whisper-1', 0, 0, false, cost);

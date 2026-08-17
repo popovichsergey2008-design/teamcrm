@@ -30,7 +30,8 @@ export interface AiProvider {
    * Транскрипция С ТАЙМКОДАМИ (стенограмма встречи). Куски длинной записи нарезает
    * вызывающий: у Whisper лимит 25 МБ на запрос. [] — распознавание недоступно.
    */
-  transcribeSegments(audio: Buffer, filename: string): Promise<TranscriptSegment[]>;
+  /** hint — словарь встречи (имена, рабочие слова): заметно снижает число ошибок распознавания. */
+  transcribeSegments(audio: Buffer, filename: string, hint?: string): Promise<TranscriptSegment[]>;
   /** schemaHint — версионируемая инструкция парсера (PromptOps); при отсутствии берётся встроенный дефолт. */
   parseIntents(maskedText: string, schemaHint?: string): Promise<unknown>;
   embed(text: string): Promise<number[]>;
@@ -209,9 +210,9 @@ export class RealAiProvider implements AiProvider {
     return this.whisper(audio, filename || 'audio.webm');
   }
 
-  async transcribeSegments(audio: Buffer, filename: string): Promise<TranscriptSegment[]> {
+  async transcribeSegments(audio: Buffer, filename: string, hint?: string): Promise<TranscriptSegment[]> {
     if (!this.openaiKey) return [];
-    const json = await this.whisperRaw(audio, filename || 'audio.mp3', 'verbose_json');
+    const json = await this.whisperRaw(audio, filename || 'audio.mp3', 'verbose_json', hint);
     const segments = Array.isArray(json?.segments) ? json.segments : [];
     return segments
       .map((s: any) => ({ start: Number(s.start) || 0, end: Number(s.end) || 0, text: String(s.text ?? '').trim() }))
@@ -224,12 +225,23 @@ export class RealAiProvider implements AiProvider {
     return json?.text ?? '';
   }
 
-  /** Общий вызов Whisper. verbose_json даёт сегменты с таймкодами — основа стенограммы. */
-  private async whisperRaw(audio: Buffer, filename: string, format: 'json' | 'verbose_json'): Promise<any> {
+  /**
+   * Общий вызов Whisper. verbose_json даёт сегменты с таймкодами — основа стенограммы.
+   *
+   * Язык указываем явно: на коротких и шумных записях определение языка ошибается,
+   * и русская речь распознаётся как похожая на слух латиница.
+   *
+   * hint — словарь встречи: имена участников и рабочие слова. Whisper принимает его
+   * как контекст и заметно реже коверкает то, чего не ожидает: «на Юру» вместо
+   * «на евро», «стенограмма» вместо «синаграмма».
+   */
+  private async whisperRaw(audio: Buffer, filename: string, format: 'json' | 'verbose_json', hint?: string): Promise<any> {
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(audio)]), filename);
     form.append('model', 'whisper-1');
     form.append('response_format', format);
+    form.append('language', 'ru');
+    if (hint) form.append('prompt', hint.slice(0, 880)); // Whisper читает не больше ~224 токенов
     const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.openaiKey!}` },
