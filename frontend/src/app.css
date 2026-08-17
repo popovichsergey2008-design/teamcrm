@@ -586,6 +586,9 @@
 .call-strip .call-avatar { width: 38px; height: 38px; font-size: 15px; }
 .call-tile-ai .call-avatar { background: var(--accent); color: var(--on-accent); }
 .call-self { outline: 2px solid var(--accent); }
+/* себя показываем зеркально, как в зеркале и во всех привычных созвонах:
+   незеркальное собственное изображение читается как чужое */
+.call-self video { transform: scaleX(-1); }
 .call-hand { position: absolute; top: 6px; right: 6px; color: var(--warn); }
 .call-muted-mark { position: absolute; top: 6px; left: 6px; color: var(--danger); }
 .call-name {

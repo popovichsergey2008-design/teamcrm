@@ -34,7 +34,10 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
   const localStream = useRef<MediaStream | null>(null);
   const camProducer = useRef<string | null>(null);
   const screenProducer = useRef<string | null>(null);
-  const localVideo = useRef<HTMLVideoElement | null>(null);
+  // Своя дорожка хранится состоянием, а не ссылкой на элемент: элемент появляется
+  // только после включения камеры, и присваивать ему поток раньше было некуда —
+  // собственная плитка оставалась пустой.
+  const [selfVideo, setSelfVideo] = useState<MediaStreamTrack | null>(null);
   const windowRef = useRef<HTMLDivElement | null>(null);
   const [full, setFull] = useState(false);
 
@@ -112,14 +115,14 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
         if (camProducer.current) await c.unpublish(camProducer.current);
         camProducer.current = null;
         localStream.current?.getVideoTracks().forEach((t) => { t.stop(); localStream.current?.removeTrack(t); });
-        if (localVideo.current) localVideo.current.srcObject = null;
+        setSelfVideo(null);
         setCamOn(false);
         return;
       }
       const cam = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
       const track = cam.getVideoTracks()[0];
       localStream.current?.addTrack(track);
-      if (localVideo.current) localVideo.current.srcObject = new MediaStream([track]);
+      setSelfVideo(track);
       camProducer.current = await c.publish(track);
       setCamOn(true);
     } catch {
@@ -202,8 +205,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
                 peer={peer}
                 track={track?.track ?? null}
                 self={String(peer.userId) === me}
-                selfVideoRef={String(peer.userId) === me ? localVideo : undefined}
-                selfCamOn={camOn}
+                selfTrack={String(peer.userId) === me ? selfVideo : null}
                 selfMicOn={micOn}
               />
             ))}
@@ -245,21 +247,18 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
  * видеовстречах. Без камеры показываем инициал, иначе на месте человека
  * зияет чёрный прямоугольник и непонятно, здесь он вообще или нет.
  */
-function ParticipantTile({ peer, track, self, selfVideoRef, selfCamOn, selfMicOn }: {
+function ParticipantTile({ peer, track, self, selfTrack, selfMicOn }: {
   peer: Peer;
   track: MediaStreamTrack | null;
   self: boolean;
-  selfVideoRef?: React.MutableRefObject<HTMLVideoElement | null>;
-  selfCamOn: boolean;
+  selfTrack: MediaStreamTrack | null;
   selfMicOn: boolean;
 }) {
-  const hasVideo = self ? selfCamOn : !!track;
+  const shown = self ? selfTrack : track;
   return (
     <div className={`call-tile ${self ? 'call-self' : ''} ${peer.isAi ? 'call-tile-ai' : ''}`}>
-      {hasVideo
-        ? (self
-          ? <video ref={selfVideoRef} autoPlay playsInline muted />
-          : <RemoteMedia track={track!} />)
+      {shown
+        ? <RemoteMedia track={shown} muted={self} />
         : (
           <span className="call-avatar">
             {peer.isAi ? <Icon name="robot" size={26} /> : (peer.displayName?.[0] ?? '?').toUpperCase()}
@@ -272,13 +271,17 @@ function ParticipantTile({ peer, track, self, selfVideoRef, selfCamOn, selfMicOn
   );
 }
 
-/** Видеодорожка в элемент: srcObject нельзя задать разметкой. */
-function RemoteMedia({ track }: { track: MediaStreamTrack }) {
+/**
+ * Видеодорожка в элемент: srcObject нельзя задать разметкой, только из кода,
+ * и делать это надо после появления элемента — отсюда эффект.
+ * Своё видео обязательно без звука, иначе слышишь сам себя.
+ */
+function RemoteMedia({ track, muted = false }: { track: MediaStreamTrack; muted?: boolean }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     if (ref.current) ref.current.srcObject = new MediaStream([track]);
   }, [track]);
-  return <video ref={ref} autoPlay playsInline />;
+  return <video ref={ref} autoPlay playsInline muted={muted} />;
 }
 
 function RemoteAudio({ track }: { track: MediaStreamTrack }) {
