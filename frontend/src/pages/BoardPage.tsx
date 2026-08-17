@@ -12,6 +12,8 @@ import { TaskListView } from '../components/TaskListView';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { CopilotPanel } from '../components/CopilotPanel';
+import { EmptyState } from '../components/EmptyState';
+import { SkeletonBoard, SkeletonList } from '../components/Skeleton';
 import { MONETIZATION_ENABLED } from '../config';
 
 type Action =
@@ -58,6 +60,7 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
   const showFinance = !isClient && MONETIZATION_ENABLED;
 
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [board, dispatch] = useReducer(reducer, null);
   const [pnl, setPnl] = useState<Pnl | null>(null);
@@ -87,6 +90,8 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
     return n;
   });
   const subscribedRef = useRef<string | null>(null);
+  // поле создания проекта живёт внизу сайдбара — с пустого экрана до него ведёт кнопка
+  const newProjectRef = useRef<HTMLInputElement>(null);
 
   const reloadBoard = useCallback(() => {
     if (!selected) return;
@@ -109,7 +114,8 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
           setOpenTaskId(initial.taskId ?? null);
         } else if (!selected) setSelected(ps.find((p) => p.status !== 'archived')?.id ?? null);
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : 'Ошибка загрузки проектов'));
+      .catch((e) => setError(e instanceof ApiError ? e.message : 'Ошибка загрузки проектов'))
+      .finally(() => setProjectsLoading(false));
     if (!isClient) {
       api.myTimer().then((t) => setActiveTimerTask(t?.taskId ?? null)).catch(() => undefined);
       api.listUsers().then(setUsers).catch(() => undefined);
@@ -403,13 +409,26 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
               </div>
             );
           })}
-          {shown.length === 0 && (
-            <div className="muted sidebar-empty">{tab === 'archived' ? 'Архив пуст' : 'Пока нет проектов'}</div>
+          {projectsLoading && <div className="sidebar-empty"><SkeletonList rows={5} /></div>}
+          {!projectsLoading && shown.length === 0 && (
+            tab === 'archived' ? (
+              <EmptyState compact icon="archive" title="Архив пуст" hint="Сюда попадают проекты, которые вы завершили или отложили." />
+            ) : (
+              <EmptyState
+                compact
+                icon="folder"
+                title="Пока нет проектов"
+                hint={canManageProjects
+                  ? 'Создайте первый проект в поле ниже или подключите доски из YouGile в разделе «Интеграции».'
+                  : 'Вас пока не добавили ни в один проект. Попросите руководителя открыть доступ.'}
+              />
+            )
           )}
         </div>
         {canManageProjects && tab === 'active' && (
           <div className="new-project">
             <input
+              ref={newProjectRef}
               className="input"
               placeholder="Новый проект"
               value={newProject}
@@ -425,14 +444,34 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
 
       <main className="board-main">
         {error && <div className="error-text board-error">{error}</div>}
-        {!board && <div className="muted board-placeholder">Выберите проект</div>}
+        {/* Пока проект не выбран или доска ещё едет — разные состояния, а не одна надпись:
+            «выберите проект» на пустом аккаунте выглядит как тупик. */}
+        {!board && (
+          // при ошибке заглушку не показываем: она обещает данные, которых уже не будет
+          (selected && !error) || projectsLoading ? (
+            <SkeletonBoard />
+          ) : projects.length === 0 ? (
+            <EmptyState
+              icon="board"
+              title="Здесь появится доска"
+              hint={canManageProjects
+                ? 'Создайте проект — и сможете вести задачи по колонкам. Уже работаете в YouGile? Подключите импорт в «Интеграциях».'
+                : 'Как только вас добавят в проект, его доска откроется здесь.'}
+              action={canManageProjects
+                ? { label: 'Создать проект', onClick: () => newProjectRef.current?.focus() }
+                : undefined}
+            />
+          ) : (
+            <EmptyState icon="arrow-left" title="Выберите проект" hint="Список проектов — слева." />
+          )
+        )}
         {board && (
           <>
             <div className="board-header">
               <div className="board-title">
                 {board.project.name}
                 <span className="view-switch" role="tablist" aria-label="Вид доски">
-                  <button className={`view-btn ${view === 'board' ? 'active' : ''}`} onClick={() => switchView('board')} title="Канбан-доска">▦ Доска</button>
+                  <button className={`view-btn ${view === 'board' ? 'active' : ''}`} onClick={() => switchView('board')} title="Канбан-доска"><Icon name="board" size={14} /> Доска</button>
                   <button className={`view-btn ${view === 'list' ? 'active' : ''}`} onClick={() => switchView('list')} title="Список"><Icon name="list" size={14} /> Список</button>
                 </span>
                 {!isClient && (

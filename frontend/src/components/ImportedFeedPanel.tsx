@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
+import { SkeletonList } from './Skeleton';
 import { api } from '../lib/api';
 
 /** Лента импортированного из Битрикса проекта (read-only архив; чата пока нет). */
@@ -16,7 +18,10 @@ export function ImportedFeedPanel({ projectId, onClose }: { projectId: string; o
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head"><h3>Лента (импорт из Битрикса)</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="dim" style={{ fontSize: 12, marginBottom: 8 }}>Сообщения проекта, перенесённые из Битрикса. Только для чтения — при появлении чата станут его историей.</div>
-        {loaded && messages.length === 0 && <div className="muted">Сообщений нет</div>}
+        {!loaded && <SkeletonList rows={4} />}
+        {loaded && messages.length === 0 && (
+          <EmptyState compact icon="inbox" title="Лента пуста" hint="В этом проекте не было сообщений на момент импорта." />
+        )}
         {messages.map((m) => (
           <div key={m.id} className="comment">
             <div className="comment-head dim">

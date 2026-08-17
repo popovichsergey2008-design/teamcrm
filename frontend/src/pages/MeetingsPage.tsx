@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
+import { SkeletonList } from '../components/Skeleton';
 import { api, ApiError } from '../lib/api';
 import type { Project, User } from '../types';
 
@@ -23,6 +25,7 @@ const stamp = (sec: number) => {
  */
 export function MeetingsPage() {
   const [list, setList] = useState<any[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -30,7 +33,10 @@ export function MeetingsPage() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ title: '', projectId: '' });
 
-  const reload = useCallback(() => api.listMeetings().then(setList).catch(() => undefined), []);
+  const reload = useCallback(
+    () => api.listMeetings().then(setList).catch(() => undefined).finally(() => setLoaded(true)),
+    [],
+  );
   useEffect(() => {
     reload();
     api.listProjects().then(setProjects).catch(() => undefined);
@@ -85,7 +91,14 @@ export function MeetingsPage() {
       {err && <div className="error-text">{err}</div>}
 
       <div className="drawer-section-title" style={{ marginTop: 16 }}>Встречи ({list.length})</div>
-      {list.length === 0 && <div className="muted">Пока ничего не загружено</div>}
+      {!loaded && <SkeletonList rows={3} />}
+      {loaded && list.length === 0 && (
+        <EmptyState
+          icon="record"
+          title="Разборов пока нет"
+          hint="Загрузите первую запись формой выше. Через несколько минут здесь появится стенограмма с именами, краткая сводка и задачи, которые ИИ предложит завести по итогам."
+        />
+      )}
 
       <div className="task-list">
         {list.map((m) => (
@@ -119,7 +132,7 @@ function MeetingDetails({ id, projects, users, onChanged }: { id: string; projec
   const load = useCallback(() => api.meetingDetails(id).then(setData).catch(() => undefined), [id]);
   useEffect(() => { load(); }, [load]);
 
-  if (!data) return <div className="dim" style={{ padding: 10 }}>Загружаю…</div>;
+  if (!data) return <div style={{ padding: 10 }}><SkeletonList rows={3} /></div>;
   const { meeting, segments, summary, drafts } = data;
   const pending = drafts.filter((d: any) => d.status === 'pending');
 
@@ -180,7 +193,16 @@ function MeetingDetails({ id, projects, users, onChanged }: { id: string; projec
       )}
 
       <div className="drawer-section-title" style={{ marginTop: 10 }}>Стенограмма ({segments.length})</div>
-      {segments.length === 0 && <div className="muted">Пока пусто</div>}
+      {segments.length === 0 && (
+        <EmptyState
+          compact
+          icon={meeting.status === 'error' ? 'alert' : 'clock'}
+          title={meeting.status === 'error' ? 'Стенограммы не будет' : 'Расшифровка ещё идёт'}
+          hint={meeting.status === 'error'
+            ? 'Обработка прервалась — причина указана выше. Нажмите «Повторить обработку».'
+            : 'Час записи разбирается несколько минут. Страницу обновлять не нужно — текст появится сам.'}
+        />
+      )}
       <div style={{ maxHeight: showAll ? 'none' : 220, overflow: 'hidden', fontSize: 13, lineHeight: 1.6 }}>
         {segments.map((s: any) => (
           <div key={s.idx}>

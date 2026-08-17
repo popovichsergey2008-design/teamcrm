@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 
@@ -173,7 +174,10 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
         {tab === 'brain' && (
           <>
             <div className="brain-chat">
-              {chat.length === 0 && <div className="muted">Спросите «корпоративный разум»: как мы решали ту или иную задачу? Ответ — по архиву задач, комментариев и регламентов, со ссылками на источники.</div>}
+              {chat.length === 0 && (
+                <EmptyState icon="sparkles" title="Спросите «корпоративный разум»"
+                  hint="Как мы решали такую задачу раньше? Какой у нас регламент по возвратам? Ответ соберётся по архиву задач, комментариев и регламентов — со ссылками на источники." />
+              )}
               {chat.map((m, i) => (
                 <div key={i} className={`brain-msg brain-${m.role}`}>
                   {m.cached && <span className="badge badge-info" title="Ответ из кэша, без обращения к ИИ" style={{ marginBottom: 4 }}><Icon name="zap" size={11} /> из кэша</span>}
@@ -294,7 +298,12 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
                 {canManage && <button className="btn btn-ghost btn-sm" onClick={() => delReg(r.id)}>Удалить</button>}
               </div>
             ))}
-            {regs.length === 0 && <div className="muted">Регламентов пока нет</div>}
+            {regs.length === 0 && (
+              <EmptyState compact icon="book" title="Регламентов пока нет"
+                hint={canManage
+                  ? 'Добавьте первый — инструкции, правила, шаблоны ответов. ИИ будет опираться на них, отвечая команде.'
+                  : 'Как только руководитель добавит инструкции и правила, они появятся здесь.'} />
+            )}
           </>
         )}
       </aside>

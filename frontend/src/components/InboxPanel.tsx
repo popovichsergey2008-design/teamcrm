@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 
@@ -119,7 +120,14 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
             >
               {recording ? <><Icon name="stop" size={14} /> Остановить и распознать</> : transcribing ? 'Распознаю речь…' : <><Icon name="mic" size={14} /> Надиктовать задачу</>}
             </button>
-            {items.length === 0 && <div className="muted" style={{ marginTop: 10 }}>Черновиков нет. Надиктуйте задачу или пришлите письмо на вебхук канала — здесь появится предложенная задача.</div>}
+            {items.length === 0 && (
+              <EmptyState
+                compact
+                icon="inbox"
+                title="Черновиков нет"
+                hint="Надиктуйте задачу кнопкой выше или пришлите письмо на вебхук канала — ИИ разберёт текст и предложит готовую карточку."
+              />
+            )}
             {items.map((it) => {
               const e = edits[it.id] ?? {};
               return (
@@ -164,7 +172,14 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
               <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={createSource}>Создать канал</button>
             </div>
             <div className="drawer-section-title">Каналы ({sources.length})</div>
-            {sources.length === 0 && <div className="muted">Пока нет каналов</div>}
+            {sources.length === 0 && (
+              <EmptyState
+                compact
+                icon="plug"
+                title="Пока нет каналов"
+                hint="Канал — это адрес, на который приходят письма и заявки. Создайте его формой выше, и входящие начнут превращаться в черновики задач."
+              />
+            )}
             {sources.map((s) => (
               <div key={s.id} className="team-row">
                 <div className="team-head">

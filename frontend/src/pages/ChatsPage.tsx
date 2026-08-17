@@ -4,6 +4,8 @@ import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { notificationPermission, notifyChatsChanged, requestNotificationPermission } from '../lib/notifications';
 import { useAuth } from '../state/auth';
+import { EmptyState } from '../components/EmptyState';
+import { SkeletonList } from '../components/Skeleton';
 import { GroupChatModal } from '../components/GroupChatModal';
 import { GroupManageModal } from '../components/GroupManageModal';
 import type { User } from '../types';
@@ -35,6 +37,8 @@ export function ChatsPage({ onCall, onActiveChat }: {
   const [withAi, setWithAi] = useState(false);
   const { user } = useAuth();
   const [chats, setChats] = useState<Chat[]>([]);
+  const [chatsLoaded, setChatsLoaded] = useState(false);
+  const [msgLoading, setMsgLoading] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -46,7 +50,10 @@ export function ChatsPage({ onCall, onActiveChat }: {
   const [err, setErr] = useState('');
   const feedRef = useRef<HTMLDivElement | null>(null);
 
-  const reload = useCallback(() => api.listChats().then(setChats).catch(() => undefined), []);
+  const reload = useCallback(
+    () => api.listChats().then(setChats).catch(() => undefined).finally(() => setChatsLoaded(true)),
+    [],
+  );
 
   /**
    * Добавление в ленту с защитой от дубля. Своё сообщение прилетает дважды:
@@ -93,12 +100,13 @@ export function ChatsPage({ onCall, onActiveChat }: {
   }, [activeId, reload, appendMessage]);
 
   const openChat = useCallback(async (id: string) => {
-    setActiveId(id); setErr('');
+    setActiveId(id); setErr(''); setMessages([]); setMsgLoading(true);
     try {
       setMessages(await api.chatMessages(id)); // чтение помечается на сервере этим же запросом
       reload();
       notifyChatsChanged(); // счётчик в шапке должен упасть сразу
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть чат'); }
+    finally { setMsgLoading(false); }
   }, [reload]);
 
   useEffect(() => {
@@ -154,6 +162,10 @@ export function ChatsPage({ onCall, onActiveChat }: {
   }, [users, dms, user]);
 
   const match = (s: string | null) => !query || (s ?? '').toLowerCase().includes(query.toLowerCase());
+  const listEmpty =
+    dms.filter((c) => match(c.title)).length === 0 &&
+    groups.filter((c) => match(c.title)).length === 0 &&
+    others.filter((u) => match(u.fullName)).length === 0;
 
   return (
     <div className="chats">
@@ -193,10 +205,32 @@ export function ChatsPage({ onCall, onActiveChat }: {
             <span className="chat-row-main"><span className="chat-row-title">{u.fullName}</span></span>
           </button>
         ))}
+
+        {!chatsLoaded && <div style={{ padding: '4px 8px' }}><SkeletonList rows={5} /></div>}
+        {chatsLoaded && listEmpty && (
+          query.trim() ? (
+            <EmptyState compact icon="search" title="Ничего не нашлось" hint={`По запросу «${query.trim()}» нет ни чатов, ни коллег.`} />
+          ) : (
+            <EmptyState
+              compact
+              icon="users"
+              title="Писать пока некому"
+              hint="В организации нет других сотрудников. Пригласите команду в разделе «Команда» — и они появятся здесь."
+            />
+          )
+        )}
       </aside>
 
       <section className="chat-view">
-        {!active && <div className="muted chat-empty">Выберите, кому написать</div>}
+        {!active && (
+          <div className="chat-empty">
+            <EmptyState
+              icon="chat"
+              title="Выберите, кому написать"
+              hint="Слева — личные диалоги и группы. Чтобы собрать несколько человек, нажмите «+» над списком. Из любого чата можно позвонить — с ИИ, который запишет разговор."
+            />
+          </div>
+        )}
         {active && (
           <>
             <div className="chat-head">
@@ -233,7 +267,17 @@ export function ChatsPage({ onCall, onActiveChat }: {
             {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
 
             <div className="chat-feed" ref={feedRef}>
-              {messages.length === 0 && <div className="muted" style={{ padding: 12 }}>Сообщений пока нет</div>}
+              {msgLoading && <div style={{ padding: 12 }}><SkeletonList rows={4} /></div>}
+              {!msgLoading && messages.length === 0 && (
+                <EmptyState
+                  compact
+                  icon="send"
+                  title="Здесь пока пусто"
+                  hint={active.kind === 'dm'
+                    ? 'Напишите первым — собеседник получит уведомление.'
+                    : 'Начните обсуждение: сообщение увидят все участники группы.'}
+                />
+              )}
               {messages.map((m, i) => {
                 const mine = String(m.author_id) === String(user?.id);
                 const newDay = i === 0 || dayOf(m.created_at) !== dayOf(messages[i - 1].created_at);

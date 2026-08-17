@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { Avatar } from './Avatar';
@@ -238,7 +239,10 @@ function PromptsLibrary() {
         </div>
       )}
 
-      {list.length === 0 && !open && <div className="muted" style={{ marginTop: 10 }}>Пока нет промптов. Создайте первый — и он появится в задаче при запуске агента.</div>}
+      {list.length === 0 && !open && (
+        <EmptyState compact icon="sparkles" title="Пока нет промптов"
+          hint="Промпт — это заготовка задания для ИИ: «напиши коммерческое предложение», «разбери претензию клиента». Создайте первый — и он появится в карточке задачи при запуске агента." />
+      )}
       {list.map((p) => (
         <div key={p.id} className="team-row" style={{ marginBottom: 8 }}>
           <div className="team-head">

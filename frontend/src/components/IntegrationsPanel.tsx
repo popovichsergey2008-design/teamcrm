@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
+import { SkeletonList } from './Skeleton';
 import { api, ApiError } from '../lib/api';
 import { AiSettingsSection } from './AiSettingsPanel';
 import { PromptsSection } from './PromptsPanel';
@@ -57,7 +59,10 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="drawer-section-title">Подключённые порталы ({conns.length})</div>
-        {conns.length === 0 && <div className="muted">Пока нет подключений</div>}
+        {conns.length === 0 && (
+          <EmptyState compact icon="plug" title="Порталы не подключены"
+            hint="Вставьте URL входящего вебхука в форму выше — после проверки прав можно будет выбрать доски для импорта." />
+        )}
         {conns.map((c) => (
           <div key={c.id} className="team-row">
             <div className="team-head">
@@ -415,7 +420,10 @@ function YougileSection() {
       {msg && <div className="dim">{msg}</div>}
 
       <div className="drawer-section-title">Подключения ({conns.length})</div>
-      {conns.length === 0 && <div className="muted">Пока нет подключений</div>}
+      {conns.length === 0 && (
+        <EmptyState compact icon="plug" title="YouGile не подключён"
+          hint="Ключ берётся в YouGile: аватар → Настройки компании → API-ключи. После подключения появится список досок для импорта." />
+      )}
       {conns.map((c) => (
         <div key={c.id} className="team-row">
           <div className="team-head">
@@ -483,8 +491,11 @@ function YougileImportBlock({ cid }: { cid: string }) {
   return (
     <div className="invite-box">
       {err && <div className="error-text" style={{ fontSize: 12 }}>{err}</div>}
-      {!boards && !err && <div className="dim">Загружаю доски…</div>}
-      {boards && boards.length === 0 && <div className="muted">Досок не найдено</div>}
+      {!boards && !err && <SkeletonList rows={3} />}
+      {boards && boards.length === 0 && (
+        <EmptyState compact icon="board" title="Досок не найдено"
+          hint="Ключ рабочий, но доски не видны. Проверьте, что у владельца ключа есть доступ хотя бы к одному проекту в YouGile." />
+      )}
       {boards && boards.map((b) => (
         <label key={b.externalId} className="notify-row" style={{ cursor: 'pointer' }}>
           <input type="checkbox" checked={!!picked[b.externalId]} onChange={(e) => setPicked({ ...picked, [b.externalId]: e.target.checked })} />

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../components/Icon';
+import { EmptyState } from '../components/EmptyState';
+import { SkeletonList } from '../components/Skeleton';
 import { api, ApiError } from '../lib/api';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import type { Task } from '../types';
@@ -39,7 +41,8 @@ export function MyTasksPage({ onOpenProject }: { onOpenProject: (projectId: stri
 
       <div className="mytasks-bar">
         <span className="dim">
-          {loading ? 'Загружаю…' : `Задач: ${tasks.length}`}
+          {/* при загрузке молчим: ниже уже стоят заглушки, дублировать словами незачем */}
+          {loading ? '' : `Задач: ${tasks.length}`}
           {!loading && overdue > 0 && <span className="error-text"> · просрочено: {overdue}</span>}
         </span>
         <label className="notify-row" style={{ cursor: 'pointer' }}>
@@ -49,10 +52,23 @@ export function MyTasksPage({ onOpenProject }: { onOpenProject: (projectId: stri
       </div>
 
       {err && <div className="error-text">{err}</div>}
-      {!loading && tasks.length === 0 && (
-        <div className="muted" style={{ padding: 16 }}>
-          {scope === 'mine' ? 'На вас сейчас ничего не назначено.' : 'Вы никому не поручали задач.'}
-        </div>
+      {loading && <SkeletonList rows={6} />}
+      {!loading && !err && tasks.length === 0 && (
+        scope === 'mine' ? (
+          <EmptyState
+            icon="check-circle"
+            title={showClosed ? 'Задач нет' : 'Свободно: на вас ничего не назначено'}
+            hint={showClosed
+              ? 'Ни активных, ни завершённых задач за вами не числится.'
+              : 'Как только вас назначат исполнителем, задача появится здесь. Завершённые скрыты — включите галочку выше, чтобы их увидеть.'}
+          />
+        ) : (
+          <EmptyState
+            icon="send"
+            title="Вы никому не поручали задач"
+            hint="Здесь собираются задачи, где вы руководитель, а работу делает кто-то другой. Назначьте исполнителя в карточке задачи — она попадёт в этот список."
+          />
+        )
       )}
 
       <div className="task-list">
