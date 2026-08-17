@@ -89,6 +89,9 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
     localStorage.setItem('teamcrm.expandedBitrix', JSON.stringify([...n]));
     return n;
   });
+  // Ключ памяти о проекте — свой на каждую организацию: при переключении
+  // компании возврат должен вести в её проект, а не в чужой.
+  const lastProjectKey = `teamcrm.lastProject.${user?.tenantId ?? 'anon'}`;
   const subscribedRef = useRef<string | null>(null);
   // поле создания проекта живёт внизу сайдбара — с пустого экрана до него ведёт кнопка
   const newProjectRef = useRef<HTMLInputElement>(null);
@@ -103,6 +106,12 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, isClient]);
 
+  // Запоминаем выбор при каждой смене — одним местом на все пути:
+  // клик по проекту, переход из «Моих задач», удаление и архивация соседнего.
+  useEffect(() => {
+    if (selected) localStorage.setItem(lastProjectKey, String(selected));
+  }, [selected, lastProjectKey]);
+
   useEffect(() => {
     // тянем сразу с архивом: он лежит на отдельной вкладке, второй запрос ради счётчика не нужен
     api
@@ -112,7 +121,15 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
         if (initial?.projectId && ps.some((p) => p.id === initial.projectId)) {
           setSelected(initial.projectId);
           setOpenTaskId(initial.taskId ?? null);
-        } else if (!selected) setSelected(ps.find((p) => p.status !== 'archived')?.id ?? null);
+        } else if (!selected) {
+          // после F5 возвращаемся в последний открытый проект, а не в начало списка;
+          // если его больше нет (удалён, сменилась организация) — первый активный
+          const savedId = localStorage.getItem(lastProjectKey);
+          const restored = savedId ? ps.find((p) => String(p.id) === savedId) : undefined;
+          const pick = restored ?? ps.find((p) => p.status !== 'archived') ?? null;
+          setSelected(pick?.id ?? null);
+          if (pick?.status === 'archived') setTab('archived'); // иначе проект открыт, но в списке его не видно
+        }
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : 'Ошибка загрузки проектов'))
       .finally(() => setProjectsLoading(false));

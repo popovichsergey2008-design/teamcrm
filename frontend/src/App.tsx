@@ -24,9 +24,18 @@ import { ClientPortal } from './pages/ClientPortal';
 import { Avatar } from './components/Avatar';
 import { roleLabel } from './lib/labels';
 
+const ROUTES = ['board', 'profile', 'mytasks', 'meetings', 'chats'] as const;
+type Route = (typeof ROUTES)[number];
+const ROUTE_KEY = 'teamcrm.route';
+
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
-  const [route, setRoute] = useState<'board' | 'profile' | 'mytasks' | 'meetings' | 'chats'>('board');
+  const [route, setRouteState] = useState<Route>(() => {
+    const saved = localStorage.getItem(ROUTE_KEY);
+    return ROUTES.includes(saved as Route) ? (saved as Route) : 'board';
+  });
+  // раздел запоминается: обновление страницы не должно выкидывать из чатов на доску
+  const setRoute = (r: Route) => { setRouteState(r); localStorage.setItem(ROUTE_KEY, r); };
   // переход из «Моих задач» на доску проекта с открытой карточкой
   const [jumpTo, setJumpTo] = useState<{ projectId: string; taskId?: string } | undefined>();
   // созвон: id комнаты, в которой мы сейчас, и список идущих в организации
