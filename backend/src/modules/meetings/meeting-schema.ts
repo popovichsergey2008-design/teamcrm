@@ -8,6 +8,11 @@ export interface MeetingTaskDraft {
   title: string;
   description: string | null;
   assigneeHint: string | null;
+  /** Кто поручил — на встрече это не всегда тот, кто потом нажмёт «создать». */
+  authorHint: string | null;
+  /** Проект и колонка, названные вслух: «в проект Аэрос, в колонку Тексты». */
+  projectHint: string | null;
+  columnHint: string | null;
   deadline: string | null; // ISO-дата или null
   quote: string | null;    // цитата из стенограммы — по ней предложение проверяется
 }
@@ -58,6 +63,9 @@ export function validateMeetingAnalysis(raw: unknown): { value: MeetingAnalysis 
       title,
       description: str(rec.description, 4000),
       assigneeHint: str(rec.assignee ?? rec.assigneeHint, 120),
+      authorHint: str(rec.author ?? rec.authorHint, 120),
+      projectHint: str(rec.project ?? rec.projectHint, 120),
+      columnHint: str(rec.column ?? rec.columnHint, 120),
       deadline: parseDeadline(rec.deadline),
       quote: str(rec.quote, 500),
     });
@@ -86,5 +94,9 @@ export const MEETING_PROMPT =
   'Если сопоставить не с кем — null, выдумывать людей нельзя.\n' +
   'Стенограмма распознана автоматически и содержит ошибки: восстанавливай смысл по контексту, ' +
   'а не по буквальному звучанию. Сводка описывает содержание разговора, а не сам факт записи.\n' +
+  'Поручил тот, кто произнёс поручение, — смотри имя говорящего в стенограмме. ' +
+  'Не путай его с исполнителем: «Константин: ставь задачу на Юру» — поручил Константин, исполнитель Юрий.\n' +
+  'Перед стенограммой дан список проектов с их колонками. Если проект или колонка названы вслух — ' +
+  'верни их точные названия из списка. Колонка принадлежит выбранному проекту. Не угадывай: не прозвучало — null.\n' +
   'Сроки не выдумывай: не прозвучал — null. ' +
   'Цитата обязательна и берётся из стенограммы как есть, даже с ошибками распознавания.';

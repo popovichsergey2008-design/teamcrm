@@ -11,6 +11,8 @@ export interface MeetingRow {
 export interface DraftRow {
   id: string; meeting_id: string; title: string; description: string | null;
   assignee_id: string | null; assignee_hint: string | null; project_id: string | null;
+  project_hint: string | null; column_id: string | null; column_hint: string | null;
+  author_id: string | null; author_hint: string | null;
   deadline_at: Date | null; quote: string | null; status: string; task_id: string | null;
 }
 
@@ -90,18 +92,39 @@ export class MeetingsRepository {
   /** Черновики пересоздаются при повторном разборе — но уже применённые не трогаем. */
   async replaceDrafts(tenantId: string, meetingId: string, drafts: {
     title: string; description: string | null; assigneeId: string | null; assigneeHint: string | null;
-    projectId: string | null; deadlineAt: string | null; quote: string | null;
+    projectId: string | null; projectHint: string | null;
+    columnId: string | null; columnHint: string | null;
+    authorId: string | null; authorHint: string | null;
+    deadlineAt: string | null; quote: string | null;
   }[]): Promise<void> {
     await this.db.withTransaction(async (c) => {
       await c.query(`DELETE FROM meeting_task_drafts WHERE meeting_id=$1 AND status='pending'`, [meetingId]);
       for (const d of drafts) {
         await c.query(
-          `INSERT INTO meeting_task_drafts (tenant_id, meeting_id, title, description, assignee_id, assignee_hint, project_id, deadline_at, quote)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-          [tenantId, meetingId, d.title, d.description, d.assigneeId, d.assigneeHint, d.projectId, d.deadlineAt, d.quote],
+          `INSERT INTO meeting_task_drafts
+             (tenant_id, meeting_id, title, description, assignee_id, assignee_hint,
+              project_id, project_hint, column_id, column_hint, author_id, author_hint, deadline_at, quote)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          [tenantId, meetingId, d.title, d.description, d.assigneeId, d.assigneeHint,
+            d.projectId, d.projectHint, d.columnId, d.columnHint, d.authorId, d.authorHint, d.deadlineAt, d.quote],
         );
       }
     });
+  }
+
+  /** Проекты арендатора вместе с колонками — контекст для разбора встречи. */
+  projectsWithColumns(tenantId: string) {
+    return this.db.many<{ id: string; name: string; columns: { id: string; name: string }[] }>(
+      `SELECT p.id, p.name,
+              COALESCE(json_agg(json_build_object('id', c.id, 'name', c.name) ORDER BY c.position)
+                       FILTER (WHERE c.id IS NOT NULL), '[]') AS columns
+         FROM projects p
+    LEFT JOIN board_columns c ON c.project_id = p.id
+        WHERE p.tenant_id = $1 AND p.status <> 'archived'
+        GROUP BY p.id, p.name
+        ORDER BY p.name`,
+      [tenantId],
+    );
   }
 
   drafts(tenantId: string, meetingId: string) {

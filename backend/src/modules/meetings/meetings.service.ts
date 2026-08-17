@@ -100,6 +100,9 @@ export class MeetingsService {
       try {
         await this.repo.setStatus(meeting.id, 'transcribing');
         const replies: (Reply & { speakerUserId: string | null })[] = [];
+        // Словарь встречи нужен и здесь: записи созвонов идут этим путём,
+        // а не тем, куда попадают загруженные вручную файлы.
+        const hint = await this.speechHint(input.tenantId);
 
         for (const track of input.tracks) {
           // храним дорожки как вложения встречи — на случай спора «я такого не говорил»
@@ -112,7 +115,7 @@ export class MeetingsService {
           const { chunks } = await extractAudioChunks(track.buffer, track.fileName);
           for (const chunk of chunks) {
             const segments = await this.ai.transcribeSegments(
-              input.tenantId, chunk.buffer, chunk.name, chunk.buffer.length / 4000);
+              input.tenantId, chunk.buffer, chunk.name, chunk.buffer.length / 4000, hint);
             for (const s of shiftSegments(segments, chunk.offsetSec + track.offsetSec)) {
               replies.push({ ...s, speaker: track.displayName, speakerUserId: track.userId });
             }
@@ -220,15 +223,20 @@ export class MeetingsService {
 
   /** Стенограмма → LLM → строгая схема → черновики задач с сопоставленными исполнителями. */
   private async analyze(tenantId: string, meetingId: string, projectId: string | null, replies: Reply[]): Promise<void> {
-    const team = await this.repo.teamMembers(tenantId);
-    // Состав команды идёт вместе со стенограммой: без него модель не свяжет
-    // «поставь на Юру» с Юрием Про и оставит задачу без исполнителя.
+    const [team, projects] = await Promise.all([
+      this.repo.teamMembers(tenantId),
+      this.repo.projectsWithColumns(tenantId).catch(() => []),
+    ]);
+    // Состав команды и доски идут вместе со стенограммой: без них модель не свяжет
+    // «поставь на Юру» с Юрием Про и «в колонку Тексты» — с настоящей колонкой.
     const roster = team.length
-      ? `Сотрудники компании: ${team.map((u) => u.full_name).slice(0, 60).join(', ')}.
-
-`
+      ? `Сотрудники компании: ${team.map((u) => u.full_name).slice(0, 60).join(', ')}.\n`
       : '';
-    const transcript = roster + repliesToText(replies).slice(0, 120_000); // защита от гигантских встреч
+    const boards = projects.length
+      ? `Проекты и их колонки:\n${projects.slice(0, 40)
+        .map((p) => `- ${p.name}: ${(p.columns ?? []).map((c) => c.name).join(', ') || '—'}`).join('\n')}\n`
+      : '';
+    const transcript = `${roster}${boards}\n${repliesToText(replies).slice(0, 120_000)}`; // защита от гигантских встреч
     const raw = await this.ai.generate(tenantId, MEETING_PROMPT, transcript, 'meeting_analyze');
     const parsed = safeJson(raw);
     const { value, errors } = validateMeetingAnalysis(parsed);
@@ -240,15 +248,27 @@ export class MeetingsService {
 
     await this.repo.saveSummary(tenantId, meetingId, value.summary, value.decisions, value.risks);
 
-    await this.repo.replaceDrafts(tenantId, meetingId, value.tasks.map((t) => ({
-      title: t.title,
-      description: t.description,
-      assigneeId: matchTeamMember(team, t.assigneeHint),
-      assigneeHint: t.assigneeHint,
-      projectId,
-      deadlineAt: t.deadline,
-      quote: t.quote,
-    })));
+    await this.repo.replaceDrafts(tenantId, meetingId, value.tasks.map((t) => {
+      // Названный вслух проект важнее выбранного при загрузке записи: на встрече
+      // говорят о деле, а поле в форме часто оставляют пустым.
+      const project = matchNamed(projects, t.projectHint);
+      const column = project ? matchNamed(project.columns ?? [], t.columnHint) : null;
+      return {
+        title: t.title,
+        description: t.description,
+        assigneeId: matchTeamMember(team, t.assigneeHint),
+        assigneeHint: t.assigneeHint,
+        projectId: project?.id ?? projectId,
+        projectHint: t.projectHint,
+        columnId: column?.id ?? null,
+        columnHint: t.columnHint,
+        // Постановщик — тот, кто поручил на встрече, а не тот, кто нажмёт «создать».
+        authorId: matchTeamMember(team, t.authorHint),
+        authorHint: t.authorHint,
+        deadlineAt: t.deadline,
+        quote: t.quote,
+      };
+    }));
   }
 
   /** Подтверждение черновика: создаём обычную задачу тем же путём, что и руками. */
@@ -262,11 +282,20 @@ export class MeetingsService {
     const projectId = patch?.projectId ?? draft.project_id;
     if (!projectId) throw AppException.validation('Выберите проект для задачи');
 
+    // Колонка — только если она принадлежит выбранному проекту: проект могли
+    // сменить руками, и колонка из другого проекта сломала бы доску.
+    const columnId = draft.column_id && String(projectId) === String(draft.project_id)
+      ? draft.column_id : undefined;
+
     const task = await this.tasks.create(tenantId, {
       projectId,
+      columnId,
       title: (patch?.title ?? draft.title).slice(0, 255),
       description: patch?.description ?? draft.description ?? undefined,
       assigneeId: (patch?.assigneeId ?? draft.assignee_id) ?? undefined,
+      // Постановщик — тот, кто поручил на встрече. Нажавший «создать» лишь
+      // подтвердил чужое поручение, и приписывать его себе неправильно.
+      managerId: draft.author_id ?? undefined,
     } as any, actorId);
 
     await this.repo.markDraftApplied(draftId, task.id);
@@ -294,6 +323,26 @@ function safeJson(raw: string): unknown {
  * Имя, прозвучавшее на встрече → сотрудник. При неоднозначности возвращаем null:
  * лучше пустой исполнитель, который заполнит человек, чем задача на не того.
  */
+/**
+ * Проект или колонка по названию, как оно прозвучало.
+ *
+ * Точное совпадение, затем вхождение — речь редко воспроизводит название
+ * дословно: «в текстах», «колонка Тексты». Неоднозначность оставляем пустой:
+ * положить задачу не туда хуже, чем не положить никуда.
+ */
+export function matchNamed<T extends { id: string; name: string }>(items: T[], hint: string | null): T | null {
+  if (!hint) return null;
+  const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е').trim();
+  const needle = norm(hint);
+  if (needle.length < 2) return null;
+
+  const exact = items.filter((x) => norm(x.name) === needle);
+  if (exact.length === 1) return exact[0];
+
+  const partial = items.filter((x) => norm(x.name).includes(needle) || needle.includes(norm(x.name)));
+  return partial.length === 1 ? partial[0] : null;
+}
+
 export function matchTeamMember(team: { id: string; full_name: string }[], hint: string | null): string | null {
   if (!hint) return null;
   const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е').trim();
