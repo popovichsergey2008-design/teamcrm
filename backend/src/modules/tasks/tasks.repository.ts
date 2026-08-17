@@ -86,6 +86,10 @@ export class TasksRepository {
     description?: string | null;
     assigneeId?: string | null;
     createdBy?: string | null;
+    priority?: string | null;
+    deadlineAt?: string | null;
+    estimateHours?: number | null;
+    labelIds?: string[];
   }): Promise<TaskRow> {
     return this.db.withTransaction(async (client) => {
       const posRes = await client.query<{ next: number }>(
@@ -96,8 +100,10 @@ export class TasksRepository {
       const position = posRes.rows[0].next;
       const res = await client.query<TaskRow>(
         `INSERT INTO tasks
-           (tenant_id, project_id, column_id, position, title, description, assignee_id, status, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+           (tenant_id, project_id, column_id, position, title, description, assignee_id, status, created_by,
+            priority, deadline_at, estimate_hours)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
+                 COALESCE($10::varchar, 'normal'), $11::timestamptz, $12::numeric) RETURNING *`,
         [
           input.tenantId,
           input.projectId,
@@ -108,9 +114,25 @@ export class TasksRepository {
           input.assigneeId ?? null,
           input.status,
           input.createdBy ?? null,
+          input.priority ?? null,
+          input.deadlineAt ?? null,
+          input.estimateHours ?? null,
         ],
       );
-      return res.rows[0];
+      const task = res.rows[0];
+
+      // Метки вешаем в той же транзакции: задача с половиной заданных полей хуже,
+      // чем неудача целиком. Принадлежность метки арендатору проверяет сам запрос.
+      if (input.labelIds?.length) {
+        await client.query(
+          `INSERT INTO task_labels (tenant_id, task_id, label_id)
+           SELECT $1::bigint, $2::bigint, l.id FROM labels l
+            WHERE l.tenant_id = $1::bigint AND l.id = ANY($3::bigint[])
+           ON CONFLICT DO NOTHING`,
+          [input.tenantId, task.id, input.labelIds],
+        );
+      }
+      return task;
     });
   }
 

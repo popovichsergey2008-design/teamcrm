@@ -50,6 +50,10 @@ export class TasksService {
       description: dto.description ?? null,
       assigneeId: dto.assigneeId ?? null,
       createdBy: dto.managerId ?? actorId, // руководитель: явный из формы либо создатель
+      priority: dto.priority ?? null,
+      deadlineAt: dto.deadlineAt ?? null,
+      estimateHours: dto.estimateHours ?? null,
+      labelIds: dto.labelIds,
     });
     this.realtime.emit(tenantId, task.project_id, 'task.created', task as any);
     await this.activity.log(tenantId, task.id, actorId, 'created', { title: task.title });

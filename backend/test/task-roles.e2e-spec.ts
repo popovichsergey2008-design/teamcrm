@@ -81,4 +81,40 @@ describe('Enhancements v1 — Task roles (e2e)', () => {
     expect(card.assignee_name).toBe('Исполнитель И');
     expect(card.manager_name).toBe('Руководитель Р');
   });
+
+  it('форма создания задаёт приоритет, срок, оценку и метки одним запросом', async () => {
+    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Full', email: `u_${uniq()}@t.test`, password: 'password123', fullName: 'Полная Форма' }).expect(201)).body.data;
+    const tok = reg.accessToken;
+    const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'П' }).expect(201)).body.data;
+    const board0 = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+
+    const label = (await http.post('/api/labels').set(H(tok)).send({ name: `срочно_${uniq()}` }).expect(201)).body.data;
+    const deadline = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+
+    const task = (await http.post('/api/tasks').set(H(tok)).send({
+      projectId: proj.id,
+      columnId: board0.columns[0].id,
+      title: 'Со всеми полями',
+      priority: 'high',
+      deadlineAt: deadline,
+      estimateHours: 6.5,
+      labelIds: [String(label.id)],
+    }).expect(201)).body.data;
+
+    expect(task.priority).toBe('high');
+    expect(Number(task.estimate_hours)).toBe(6.5);
+    expect(new Date(task.deadline_at).toISOString()).toBe(deadline);
+
+    // метка должна быть привязана в той же транзакции, что и сама задача
+    const labels = (await http.get(`/api/tasks/${task.id}/labels`).set(H(tok)).expect(200)).body.data;
+    expect(labels.map((l: any) => String(l.id))).toContain(String(label.id));
+
+    // без указанных полей поведение прежнее: приоритет по умолчанию, срок пуст
+    const plain = (await http.post('/api/tasks').set(H(tok)).send({
+      projectId: proj.id, columnId: board0.columns[0].id, title: 'Без полей',
+    }).expect(201)).body.data;
+    expect(plain.priority).toBe('normal');
+    expect(plain.deadline_at).toBeNull();
+    expect(plain.estimate_hours).toBeNull();
+  });
 });

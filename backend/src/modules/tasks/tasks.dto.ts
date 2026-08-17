@@ -1,7 +1,9 @@
 import {
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
@@ -31,6 +33,26 @@ export class CreateTaskDto {
   @IsOptional()
   @IsString()
   managerId?: string;
+
+  // Ниже — поля, которые раньше можно было задать только в открытой карточке.
+  // Форма создания должна уметь то же самое, иначе задачу приходится доводить в два захода.
+  @IsOptional()
+  @IsIn(['low', 'normal', 'high', 'urgent'])
+  priority?: string;
+
+  @IsOptional()
+  @IsString()
+  deadlineAt?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  estimateHours?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  labelIds?: string[];
 }
 
 export class UpdateTaskDto {
