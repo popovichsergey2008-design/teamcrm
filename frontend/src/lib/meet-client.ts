@@ -43,6 +43,8 @@ export class MeetClient {
   private recv: types.Transport | null = null;
   private readonly producers = new Map<string, types.Producer>();
   private readonly consumers = new Map<string, types.Consumer>();
+  /** Чей поток и какого рода — нужно, чтобы вернуть дорожку после паузы. */
+  private readonly consumerMeta = new Map<string, { userId: string; screen: boolean }>();
   private readonly peers = new Map<string, Peer>();
   /** Уже запрошенные потоки: защита от повторного приёма того же продюсера. */
   private readonly requested = new Set<string>();
@@ -189,6 +191,7 @@ export class MeetClient {
           id: p.consumer_id, producerId: p.producer_id, kind: p.kind, rtpParameters: p.rtp_parameters,
         });
         this.consumers.set(consumer.id, consumer);
+        this.consumerMeta.set(consumer.id, { userId: p.producer_user_id, screen: p.app_data?.type === 'screen' });
         this.log('track.received', { kind: p.kind, from: p.producer_user_id, muted: consumer.track.muted, live: consumer.track.readyState });
         this.emit('meet.resume-consumer', { consumer_id: consumer.id });
         this.ev.onTrack({
@@ -198,16 +201,46 @@ export class MeetClient {
         return;
       }
 
-      case 'meet.producer-closed':
-      case 'meet.producer-paused': {
+      case 'meet.producer-closed': {
         for (const [id, c] of this.consumers) {
-          if (c.producerId === p.producer_id) {
-            if (msg.type === 'meet.producer-closed') { c.close(); this.consumers.delete(id); }
-            this.ev.onTrackGone(id);
-          }
+          if (c.producerId !== p.producer_id) continue;
+          c.close();
+          this.consumers.delete(id);
+          this.consumerMeta.delete(id);
+          this.ev.onTrackGone(id);
         }
         // поток закрыт — разрешаем запросить его заново, если человек снова включит камеру
-        if (msg.type === 'meet.producer-closed') this.requested.delete(p.producer_id);
+        this.requested.delete(p.producer_id);
+        return;
+      }
+
+      /**
+       * Пауза — это не конец потока.
+       *
+       * Раньше пауза убирала дорожку наравне с закрытием, а сообщения о снятии
+       * паузы клиент вовсе не знал — возвращать было нечему. Достаточно было
+       * собеседнику выключить и включить микрофон, чтобы его больше никто
+       * не услышал до конца созвона.
+       *
+       * Звук на паузе не трогаем совсем: дорожка жива и просто молчит. Видео
+       * убираем с плитки — иначе висит застывший кадр, будто человек замер.
+       */
+      case 'meet.producer-paused': {
+        for (const [id, c] of this.consumers) {
+          if (c.producerId === p.producer_id && c.kind === 'video') this.ev.onTrackGone(id);
+        }
+        return;
+      }
+
+      case 'meet.producer-resumed': {
+        for (const [id, c] of this.consumers) {
+          if (c.producerId !== p.producer_id || c.kind !== 'video') continue;
+          const meta = this.consumerMeta.get(id);
+          this.ev.onTrack({
+            consumerId: id, userId: meta?.userId ?? '', kind: 'video',
+            screen: !!meta?.screen, track: c.track,
+          });
+        }
         return;
       }
 
@@ -387,6 +420,7 @@ export class MeetClient {
     this.emit('meet.leave', {});
     for (const p of this.producers.values()) p.close();
     for (const c of this.consumers.values()) c.close();
+    this.consumerMeta.clear();
     this.send?.close();
     this.recv?.close();
     this.ws?.close();
