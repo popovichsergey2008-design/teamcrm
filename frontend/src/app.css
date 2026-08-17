@@ -385,7 +385,8 @@
 .list-row.row-done .list-title { opacity: .6; text-decoration: line-through; }
 
 /* «Завершить задачу»: заметное зелёное действие + выбор целевой колонки */
-.drawer-head-actions { display: flex; align-items: center; gap: 8px; }
+/* строка главного действия карточки — под заголовком, а не сбоку от него */
+.task-actions-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .btn-finish {
   background: var(--ok-soft); border: 1px solid var(--ok); color: var(--ok); font-weight: 600;
 }

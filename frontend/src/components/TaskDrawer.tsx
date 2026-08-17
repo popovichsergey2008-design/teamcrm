@@ -103,8 +103,13 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3>{task.title}</h3>
-          <span className="drawer-head-actions">
-            {isDone && <span className="badge badge-ok" title="Задача закрыта"><Icon name="check" size={12} /> завершена</span>}
+          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+        </div>
+
+        {/* Завершение — отдельной строкой под заголовком. Сбоку от названия кнопка
+            жалась к «закрыть» и терялась тем сильнее, чем длиннее название задачи. */}
+        {(isDone || targets.length > 0) && (
+          <div className="task-actions-row">
             {targets.length > 0 && (
               <button
                 className={`btn btn-sm ${isDone ? 'btn-reopen' : 'btn-finish'}`}
@@ -115,9 +120,9 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
                 {isDone ? <><Icon name="reply" size={14} /> Вернуть в работу</> : <><Icon name="check" size={14} /> Завершить</>}
               </button>
             )}
-            <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
-          </span>
-        </div>
+            {isDone && <span className="badge badge-ok" title="Задача закрыта"><Icon name="check" size={12} /> завершена</span>}
+          </div>
+        )}
 
         {choosing && (
           <div className={`finish-picker ${isDone ? 'reopen-picker' : ''}`}>
