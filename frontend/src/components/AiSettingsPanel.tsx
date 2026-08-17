@@ -39,17 +39,17 @@ export function AiSettingsSection() {
 
         <div className="drawer-section-title">Ключ OpenAI (GPT)</div>
         <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
-          Статус: {s.openaiKeySet ? '✅ задан (свой)' : s.globalOpenai ? 'используется общий' : '— не задан —'}
+          Статус: {s.openaiKeySet ? 'задан (свой)' : s.globalOpenai ? 'используется общий' : '— не задан —'}
         </div>
         <input className="input add-user-input" type="password" placeholder="sk-... (вставьте, чтобы задать/сменить)" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} />
 
         <div className="drawer-section-title">Ключ Anthropic (Claude) — опционально</div>
-        <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Статус: {s.anthropicKeySet ? '✅ задан' : '— не задан —'}</div>
+        <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Статус: {s.anthropicKeySet ? 'задан' : '— не задан —'}</div>
         <input className="input add-user-input" type="password" placeholder="sk-ant-..." value={anthropicKey} onChange={(e) => setAnthropicKey(e.target.value)} />
 
         <div className="drawer-section-title">Ключ OpenRouter — опционально (бесплатные модели)</div>
         <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
-          Статус: {s.openrouterKeySet ? '✅ задан' : s.globalOpenrouter ? 'используется общий' : '— не задан —'}. Один ключ OpenRouter <b>полностью заменяет OpenAI</b> — покрывает и ответы ИИ (в т.ч. бесплатные модели Llama/DeepSeek/Gemini Flash), и семантический поиск/индексацию (эмбеддинги через OpenRouter). Ключ — на <span className="dim">openrouter.ai/keys</span>.
+          Статус: {s.openrouterKeySet ? 'задан' : s.globalOpenrouter ? 'используется общий' : '— не задан —'}. Один ключ OpenRouter <b>полностью заменяет OpenAI</b> — покрывает и ответы ИИ (в т.ч. бесплатные модели Llama/DeepSeek/Gemini Flash), и семантический поиск/индексацию (эмбеддинги через OpenRouter). Ключ — на <span className="dim">openrouter.ai/keys</span>.
         </div>
         <input className="input add-user-input" type="password" placeholder="sk-or-..." value={openrouterKey} onChange={(e) => setOpenrouterKey(e.target.value)} />
 

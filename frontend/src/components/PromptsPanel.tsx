@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 
-const STATUS: Record<string, string> = { active: '⭐ активная', testing: '🧪 тест', draft: 'черновик', deprecated: 'снята' };
+const STATUS: Record<string, string> = { active: 'активная', testing: 'тест', draft: 'черновик', deprecated: 'снята' };
 
 /** PromptOps: версии промптов ИИ (owner/manager). «Git для инструкций ИИ»: правка/откат без релиза. */
 export function PromptsSection() {
@@ -119,7 +120,7 @@ export function PromptsSection() {
             Сохранить как новую версию
           </button>
           <button className="btn btn-ghost btn-sm" style={{ width: '100%', marginTop: 6 }} disabled={optimizing} onClick={optimize}>
-            {optimizing ? 'ИИ анализирует…' : '✨ Предложить улучшение (ИИ)'}
+            {optimizing ? 'ИИ анализирует…' : <><Icon name="sparkles" size={14} /> Предложить улучшение (ИИ)</>}
           </button>
 
           {suggest && (
@@ -129,7 +130,7 @@ export function PromptsSection() {
                 <>
                   <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, maxHeight: 200, overflow: 'auto' }}>{suggest.suggestion}</div>
                   {suggest.rationale && <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Почему: {suggest.rationale}</div>}
-                  {suggest.warning && <div style={{ fontSize: 12, marginTop: 4, color: '#c9a227' }}>⚠ {suggest.warning}</div>}
+                  {suggest.warning && <div style={{ fontSize: 12, marginTop: 4, color: 'var(--warn)' }}><Icon name="alert" size={12} /> {suggest.warning}</div>}
                   <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                     <button className="btn btn-primary btn-sm" onClick={takeSuggestion}>Взять в редактор</button>
                     <button className="btn btn-ghost btn-sm" onClick={() => setSuggest(null)}>Отклонить</button>
@@ -160,7 +161,7 @@ export function PromptsSection() {
                   <div className="dim" style={{ fontSize: 12 }}>
                     За 30 дней: вызовов {m.calls}, токенов {(m.input_tokens ?? 0) + (m.output_tokens ?? 0)}{m.costUsd > 0 ? ` · ≈$${m.costUsd}` : ''}{m.cache_hits ? `, из кэша ${m.cache_hits}` : ''}
                     {(m.up > 0 || m.down > 0) && (
-                      <> · оценки 👍 {m.up} / 👎 {m.down}
+                      <> · оценки <Icon name="check" size={11} /> {m.up} / <Icon name="close" size={11} /> {m.down}
                         {(m.up + m.down) > 0 && <> ({Math.round((m.up / (m.up + m.down)) * 100)}% положит.)</>}
                       </>
                     )}

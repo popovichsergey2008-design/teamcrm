@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Icon } from './Icon';
 import { tokens } from '../lib/api';
 
 export interface Incoming {
@@ -75,10 +76,10 @@ export function IncomingCallDialog({ call, onAccept, onDecline }: {
 }) {
   return (
     <div className="incoming-call">
-      <div className="incoming-title">📞 Звонит {call.callerName}</div>
+      <div className="incoming-title"><Icon name="phone" size={16} /> Звонит {call.callerName}</div>
       <div className="incoming-actions">
-        <button className="btn btn-sm incoming-accept" onClick={onAccept}>✔ Принять</button>
-        <button className="btn btn-sm incoming-decline" onClick={onDecline}>✕ Отклонить</button>
+        <button className="btn btn-sm incoming-accept" onClick={onAccept}><Icon name="check" size={14} /> Принять</button>
+        <button className="btn btn-sm incoming-decline" onClick={onDecline}><Icon name="close" size={14} /> Отклонить</button>
       </div>
     </div>
   );

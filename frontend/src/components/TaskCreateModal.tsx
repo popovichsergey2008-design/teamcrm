@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
 
@@ -47,7 +48,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3>Новая задача · {columnName}</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
 
         <div className="field"><label>Название</label>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from '../components/Icon';
 import { api } from '../lib/api';
 import { useAuth } from '../state/auth';
 
@@ -78,7 +79,7 @@ export function ClientPortal() {
                           <div className="task-meta">
                             {t.is_blocked && <span className="badge badge-blocked">В ожидании</span>}
                             {t.deadline_at && <span className="badge" title="Срок">до {new Date(t.deadline_at).toLocaleDateString('ru-RU')}</span>}
-                            {!!t.checklistTotal && <span className="badge" title="чеклист">✓ {t.checklistDone}/{t.checklistTotal}</span>}
+                            {!!t.checklistTotal && <span className="badge" title="чеклист"><Icon name="check" size={12} /> {t.checklistDone}/{t.checklistTotal}</span>}
                           </div>
                         </div>
                       ))}

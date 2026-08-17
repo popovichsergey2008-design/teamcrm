@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 
 /**
@@ -46,7 +47,7 @@ export function ResetPasswordPage({ token }: { token: string }) {
           <div className="error-text">{invalid}</div>
         ) : done ? (
           <>
-            <div className="pnl-good" style={{ marginBottom: 14 }}>✅ Пароль изменён. Теперь войдите с новым паролем.</div>
+            <div className="pnl-good" style={{ marginBottom: 14 }}><Icon name="check-circle" size={15} /> Пароль изменён. Теперь войдите с новым паролем.</div>
             <a className="btn btn-primary auth-submit" href="/">Перейти ко входу</a>
           </>
         ) : (

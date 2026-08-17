@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
 
@@ -40,7 +41,7 @@ export function GroupChatModal({ users, meId, onClose, onCreated }: {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>Новая группа</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3>Новая группа</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
 
         <div className="field"><label>Название</label>
           <input

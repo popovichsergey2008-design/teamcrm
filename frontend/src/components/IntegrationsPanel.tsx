@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { AiSettingsSection } from './AiSettingsPanel';
 import { PromptsSection } from './PromptsPanel';
@@ -33,7 +34,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>🔌 Интеграции</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3><Icon name="plug" size={18} /> Интеграции</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="tabs">
           <button className={`tab ${tab === 'bitrix' ? 'active' : ''}`} onClick={() => setTab('bitrix')}>Битрикс24</button>
           <button className={`tab ${tab === 'yougile' ? 'active' : ''}`} onClick={() => setTab('yougile')}>YouGile</button>
@@ -158,7 +159,7 @@ function ImportBlock({ cid }: { cid: string }) {
           {run.status === 'error' && <span className="error-text">Ошибка: {run.error}</span>}
           {run.status === 'done' && run.stats && `Готово: проектов ${run.stats.projects ?? 0}, задач ${run.stats.tasks ?? 0}, комментариев ${run.stats.comments ?? 0}, постов ленты ${run.stats.messages ?? 0}. Обновляем…`}
           {run.status === 'done' && Array.isArray(run.stats?.warnings) && run.stats.warnings.map((w: string, idx: number) => (
-            <div key={idx} className="error-text" style={{ fontSize: 12 }}>⚠ {w}</div>
+            <div key={idx} className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {w}</div>
           ))}
         </div>
       )}
@@ -215,7 +216,7 @@ function DiagnosticsBar({ cid }: { cid: string }) {
   return (
     <div style={{ marginBottom: 10 }}>
       <button className="btn btn-ghost btn-sm" onClick={run} disabled={loading}>
-        {loading ? 'Проверяю…' : '🔍 Диагностика подключения'}
+        {loading ? 'Проверяю…' : <><Icon name="search" size={14} /> Диагностика подключения</>}
       </button>
       {err && <div className="error-text">{err}</div>}
       {rep && (
@@ -225,7 +226,11 @@ function DiagnosticsBar({ cid }: { cid: string }) {
           </div>
           {!rep.scopesError && (
             <div className="dim" style={{ fontSize: 12 }}>
-              {has('task') ? '✓ task' : '✗ task (нужен для задач)'} · {has('log') ? '✓ log' : '✗ log — лента недоступна, добавьте право log'} · {has('sonet_group') ? '✓ sonet_group' : '✗ sonet_group'} · {has('disk') ? '✓ disk' : '✗ disk (вложения)'}
+              {[['task','нужен для задач'],['log','лента недоступна'],['sonet_group',''],['disk','вложения']].map(([code, hint]) => (
+                <span key={code} style={{ marginRight: 10 }}>
+                  <Icon name={has(code) ? 'check' : 'close'} size={12} /> {code}{!has(code) && hint ? ` — ${hint}` : ''}
+                </span>
+              ))}
             </div>
           )}
           <div>{line('Группы (проекты)', rep.groups)}</div>
@@ -290,7 +295,7 @@ function UngroupedBlock({ cid }: { cid: string }) {
       </div>
       {err && <div className="error-text">{err}</div>}
       <button className="btn btn-sm" style={{ width: '100%' }} onClick={analyze} disabled={loading}>
-        {loading ? 'Анализирую…' : '✨ Проанализировать задачи без проекта'}
+        {loading ? 'Анализирую…' : <><Icon name="sparkles" size={14} /> Проанализировать задачи без проекта</>}
       </button>
 
       {ana && (ana.tasks.length === 0
@@ -323,7 +328,7 @@ function UngroupedBlock({ cid }: { cid: string }) {
                 {run.status === 'error' && <span className="error-text">Ошибка: {run.error}</span>}
                 {run.status === 'done' && run.stats && `Готово: в проекты ${run.stats.routed ?? 0}, во «Входящие» ${run.stats.inbox ?? 0}${run.stats.skipped ? `, пропущено ${run.stats.skipped}` : ''}. Обновляем…`}
                 {run.status === 'done' && Array.isArray(run.stats?.warnings) && run.stats.warnings.map((w: string, idx: number) => (
-                  <div key={idx} className="error-text" style={{ fontSize: 12 }}>⚠ {w}</div>
+                  <div key={idx} className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {w}</div>
                 ))}
               </div>
             )}
@@ -368,7 +373,7 @@ function TwoWayBlock({ cid }: { cid: string }) {
       {st?.pushEnabled && (
         <div className="dim" style={{ fontSize: 12 }}>
           В очереди: {st.pending}{st.errors > 0 && <span className="error-text"> · не отправлено: {st.errors}</span>}
-          {st.lastError && <div className="error-text" style={{ fontSize: 12 }}>⚠ {st.lastError.kind}: {st.lastError.message}</div>}
+          {st.lastError && <div className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {st.lastError.kind}: {st.lastError.message}</div>}
         </div>
       )}
     </>
@@ -505,7 +510,7 @@ function YougileImportBlock({ cid }: { cid: string }) {
       {liveErr && <div className="error-text" style={{ fontSize: 12 }}>{liveErr}</div>}
       {live && (
         <div className="dim" style={{ fontSize: 12 }}>
-          ✓ Включена (события: {live.events.join(', ')}). Вебхуки зарегистрированы в YouGile на наш адрес.
+          <Icon name="check" size={13} /> Включена (события: {live.events.join(', ')}). Вебхуки зарегистрированы в YouGile на наш адрес.
         </div>
       )}
 
@@ -521,7 +526,7 @@ function YougileImportBlock({ cid }: { cid: string }) {
             Привяжите вручную и запустите импорт ещё раз.
           </div>
           {mapHint && <div className="pnl-good" style={{ fontSize: 12 }}>{mapHint}</div>}
-          {unmatched.items.length === 0 && <div className="muted">Все сопоставлены ✓</div>}
+          {unmatched.items.length === 0 && <div className="muted">Все сопоставлены <Icon name="check" size={12} /></div>}
           {unmatched.items.map((u) => (
             <div key={u.externalId} className="team-rate" style={{ marginTop: 4 }}>
               <span style={{ flex: 1, fontSize: 13 }}>{u.name}{u.email && <span className="dim" style={{ fontSize: 11 }}> · {u.email}</span>}</span>

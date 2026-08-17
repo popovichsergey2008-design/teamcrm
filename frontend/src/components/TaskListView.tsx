@@ -1,4 +1,5 @@
 import type { Board, Task, User } from '../types';
+import { Icon } from './Icon';
 import { MONETIZATION_ENABLED } from '../config';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 
@@ -39,9 +40,9 @@ export function TaskListView({ board, users, canTrack, activeTimerTask, onOpenTa
                   {t.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
                   {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
                   {due && <span className={due.cls} title={due.title}>{due.text}</span>}
-                  {!!t.commentsCount && <span className="badge" title="комментарии">💬 {t.commentsCount}</span>}
-                  {!!t.attachmentsCount && <span className="badge" title="вложения">📎 {t.attachmentsCount}</span>}
-                  {!!t.checklistTotal && <span className="badge" title="чеклист">✓ {t.checklistDone}/{t.checklistTotal}</span>}
+                  {!!t.commentsCount && <span className="badge" title="комментарии"><Icon name="chat" size={12} /> {t.commentsCount}</span>}
+                  {!!t.attachmentsCount && <span className="badge" title="вложения"><Icon name="paperclip" size={12} /> {t.attachmentsCount}</span>}
+                  {!!t.checklistTotal && <span className="badge" title="чеклист"><Icon name="check" size={12} /> {t.checklistDone}/{t.checklistTotal}</span>}
                   {MONETIZATION_ENABLED && cost !== null && (
                     <span className="badge" title="Себестоимость">₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</span>
                   )}

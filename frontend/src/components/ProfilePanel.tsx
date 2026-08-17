@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { Avatar } from './Avatar';
 import { DatePicker } from './DatePicker';
@@ -74,7 +75,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   return (
     <div className="page profile-page">
       <div className="page-head">
-        <button className="btn btn-ghost btn-sm" onClick={onClose}>← К доскам</button>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}><Icon name="arrow-left" size={14} /> К доскам</button>
         <h2>Личный кабинет</h2>
       </div>
       <div className="profile-layout">
@@ -83,7 +84,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
           <button className={tab === 'security' ? 'active' : ''} onClick={() => setTab('security')}>Безопасность</button>
           <button className={tab === 'availability' ? 'active' : ''} onClick={() => setTab('availability')}>Доступность</button>
           <button className={tab === 'notify' ? 'active' : ''} onClick={() => setTab('notify')}>Уведомления</button>
-          <button className={tab === 'prompts' ? 'active' : ''} onClick={() => setTab('prompts')}>🤖 Мои промпты</button>
+          <button className={tab === 'prompts' ? 'active' : ''} onClick={() => setTab('prompts')}><Icon name="robot" size={14} /> Мои промпты</button>
         </nav>
         <div className="profile-content">
           {msg && <div className="dim">{msg}</div>}
@@ -147,7 +148,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             {av.map((a) => (
               <div key={a.id} className="team-row team-head">
                 <span>{a.kind}: {a.from_date?.slice(0, 10)} — {a.to_date?.slice(0, 10)}</span>
-                <button className="btn btn-ghost btn-sm" onClick={async () => { await api.removeMyAvailability(a.id); loadAv(); }}>✕</button>
+                <button className="btn btn-ghost btn-sm" onClick={async () => { await api.removeMyAvailability(a.id); loadAv(); }} title="Убрать"><Icon name="close" size={13} /></button>
               </div>
             ))}
             <div className="dim" style={{ marginTop: 10 }}>Недельная ёмкость: {me.weeklyCapacityHours} ч</div>
@@ -207,7 +208,7 @@ function PromptsLibrary() {
   return (
     <>
       <div className="dim" style={{ fontSize: 12 }}>
-        Свои промпты для ИИ-агента (роль/стиль/структура) под разные задачи. Применяются в карточке задачи при «🤖 Выполнить». Личные — только ваши; общие — видны всей команде.
+        Свои промпты для ИИ-агента (роль/стиль/структура) под разные задачи. Применяются в карточке задачи при «Выполнить». Личные — только ваши; общие — видны всей команде.
       </div>
       <div className="panel-toolbar">
         <div className="drawer-section-title" style={{ margin: 0 }}>Промпты ({list.length})</div>
@@ -245,7 +246,7 @@ function PromptsLibrary() {
               <b>{p.name}</b>{' '}
               <span className={`badge ${p.is_shared ? 'badge-info' : 'badge-muted'}`}>{p.is_shared ? 'общий' : 'личный'}</span>{' '}
               {p.model && <span className="badge badge-muted" title="Модель">{p.model.length > 22 ? p.model.slice(0, 22) + '…' : p.model}</span>}{' '}
-              {p.usage_count > 0 && <span className="badge" title="Использований">↺ {p.usage_count}</span>}
+              {p.usage_count > 0 && <span className="badge" title="Использований"><Icon name="refresh" size={11} /> {p.usage_count}</span>}
               {!p.mine && <span className="dim" style={{ fontSize: 11 }}> · автор: {p.author_name}</span>}
             </span>
           </div>

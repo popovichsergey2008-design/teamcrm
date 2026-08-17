@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 
 /** Авто-задачи из переписок: каналы приёма (вебхук) + голосовые заметки + ревью черновиков задач. */
@@ -99,7 +100,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>📥 Входящие → задачи</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3><Icon name="inbox" size={18} /> Входящие → задачи</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="dim" style={{ fontSize: 12 }}>Пересылайте письма/сообщения на вебхук канала — ИИ предложит черновик задачи, вы подтверждаете.</div>
         {msg && <div className="dim">{msg}</div>}
         <div className="tabs">
@@ -116,7 +117,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
               disabled={transcribing}
               title="Продиктовать задачу голосом — ИИ распознает и предложит черновик"
             >
-              {recording ? '⏺ Остановить и распознать' : transcribing ? 'Распознаю речь…' : '🎤 Надиктовать задачу'}
+              {recording ? <><Icon name="stop" size={14} /> Остановить и распознать</> : transcribing ? 'Распознаю речь…' : <><Icon name="mic" size={14} /> Надиктовать задачу</>}
             </button>
             {items.length === 0 && <div className="muted" style={{ marginTop: 10 }}>Черновиков нет. Надиктуйте задачу или пришлите письмо на вебхук канала — здесь появится предложенная задача.</div>}
             {items.map((it) => {
@@ -167,7 +168,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
             {sources.map((s) => (
               <div key={s.id} className="team-row">
                 <div className="team-head">
-                  <span>{s.label || 'Без названия'} {s.default_project_name && <span className="badge" title="Проект по умолчанию">📁 {s.default_project_name}</span>} {s.pending ? <span className="badge badge-warn">{s.pending} на ревью</span> : null}</span>
+                  <span>{s.label || 'Без названия'} {s.default_project_name && <span className="badge" title="Проект по умолчанию"><Icon name="folder" size={12} /> {s.default_project_name}</span>} {s.pending ? <span className="badge badge-warn">{s.pending} на ревью</span> : null}</span>
                   <button className="btn btn-ghost btn-sm" onClick={() => deleteSource(s.id)}>Удалить</button>
                 </div>
                 <div className="invite-box">

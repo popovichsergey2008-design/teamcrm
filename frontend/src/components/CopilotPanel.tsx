@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from './Icon';
 import { api } from '../lib/api';
 
 const LABEL: Record<string, string> = {
@@ -31,7 +32,7 @@ export function CopilotPanel({ onClose, onRefresh }: { onClose: () => void; onRe
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3>Co-pilot · рекомендации</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
         <button className="btn btn-primary btn-sm" disabled={busy} onClick={scan}>
           {busy ? '...' : '⟳ Сканировать'}

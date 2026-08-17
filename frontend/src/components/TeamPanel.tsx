@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { ASSIGNABLE_ROLES, roleLabel } from '../lib/labels';
 import { MONETIZATION_ENABLED } from '../config';
@@ -104,7 +105,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>👥 Команда</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3><Icon name="users" size={18} /> Команда</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="tabs">
           <button className={`tab ${tab === 'people' ? 'active' : ''}`} onClick={() => setTab('people')}>Сотрудники</button>
           <button className={`tab ${tab === 'positions' ? 'active' : ''}`} onClick={() => setTab('positions')}>Должности</button>
@@ -123,7 +124,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
               <div className="add-area">
                 <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Выберите подходящий способ:</div>
 
-                <div className="drawer-section-title">🔗 Ссылка для многих</div>
+                <div className="drawer-section-title"><Icon name="link" size={14} /> Ссылка для многих</div>
                 <div className="add-user">
                   <div className="dim" style={{ fontSize: 12 }}>Одна ссылка — много участников (для чата/рассылки). Каждый вводит свои данные. Лимит и срок — по желанию.</div>
                   <div className="drawer-grid2">
@@ -155,7 +156,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                   </div>
                 ))}
 
-                <div className="drawer-section-title">✉️ Приглашение одному</div>
+                <div className="drawer-section-title"><Icon name="mail" size={14} /> Приглашение одному</div>
                 <div className="add-user">
                   <div className="dim" style={{ fontSize: 12 }}>Персональная ссылка на конкретный e-mail (одноразовая).</div>
                   <input className="input add-user-input" placeholder="E-mail" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} />
@@ -217,7 +218,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                     <input className="input" readOnly value={reset.link} onFocus={(e) => e.currentTarget.select()} />
                     {reset.alsoAffectsOrgs.length > 0 && (
                       <div className="error-text" style={{ fontSize: 12 }}>
-                        ⚠ Пароль общий для всех организаций этого человека — смена затронет также: {reset.alsoAffectsOrgs.join(', ')}.
+                        <Icon name="alert" size={13} /> Пароль общий для всех организаций этого человека — смена затронет также: {reset.alsoAffectsOrgs.join(', ')}.
                       </div>
                     )}
                     <button className="btn btn-ghost btn-sm" onClick={() => setReset(null)}>Скрыть</button>

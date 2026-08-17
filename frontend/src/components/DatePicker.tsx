@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Icon } from './Icon';
 
 interface Props {
   /** «ГГГГ-ММ-ДД» или «ГГГГ-ММ-ДДTЧЧ:ММ» — тот же формат, что у нативного input, чтобы вызывающий код не менялся. */
@@ -116,7 +117,7 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
         disabled={disabled}
         title={selected ? 'Изменить дату' : 'Выбрать дату'}
       >
-        <span>📅 {label}</span>
+        <span><Icon name="calendar" size={14} /> {label}</span>
         {selected && !disabled && (
           <span
             className="dp-clear"
@@ -125,7 +126,7 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
             title="Убрать дату"
             onClick={(e) => { e.stopPropagation(); onChange(''); setOpen(false); }}
           >
-            ✕
+            <Icon name="close" size={12} />
           </span>
         )}
       </button>

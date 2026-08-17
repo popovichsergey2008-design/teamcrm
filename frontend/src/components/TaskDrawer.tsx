@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { Task, User } from '../types';
 import { Lightbox } from './Lightbox';
@@ -102,7 +103,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
         <div className="drawer-head">
           <h3>{task.title}</h3>
           <span className="drawer-head-actions">
-            {isDone && <span className="badge badge-ok" title="Задача закрыта">✓ завершена</span>}
+            {isDone && <span className="badge badge-ok" title="Задача закрыта"><Icon name="check" size={12} /> завершена</span>}
             {targets.length > 0 && (
               <button
                 className={`btn btn-sm ${isDone ? 'btn-reopen' : 'btn-finish'}`}
@@ -110,10 +111,10 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
                 disabled={moving}
                 title={isDone ? 'Снять завершение и вернуть задачу в работу' : 'Перенести задачу в финальную колонку'}
               >
-                {isDone ? '↩ Вернуть в работу' : '✓ Завершить'}
+                {isDone ? <><Icon name="reply" size={14} /> Вернуть в работу</> : <><Icon name="check" size={14} /> Завершить</>}
               </button>
             )}
-            <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+            <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
           </span>
         </div>
 
@@ -128,7 +129,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
                   disabled={moving}
                   onClick={async () => { await moveToColumn(c.id); setChoosing(false); }}
                 >
-                  {c.highlight && !isDone ? '✓ ' : ''}{c.name}
+                  {c.highlight && !isDone && <Icon name="check" size={12} />}{c.name}
                 </button>
               ))}
             </div>
@@ -155,14 +156,14 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
         )}
 
         <div className="drawer-row card-meta">
-          {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент">🤖 ИИ-агент</span>}
+          {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={12} /> ИИ-агент</span>}
           <select className="input prio-select" value={priority} onChange={(e) => changePriority(e.target.value)}>
             {PRIORITIES.map(([v, l]) => <option key={v} value={v}>приоритет: {l}</option>)}
           </select>
-          {task.risk_level && <span className={`badge risk-badge risk-${task.risk_level}`} title="Риск срыва срока">⚠ {task.risk_pct ?? '—'}%</span>}
+          {task.risk_level && <span className={`badge risk-badge risk-${task.risk_level}`} title="Риск срыва срока"><Icon name="alert" size={12} /> {task.risk_pct ?? '—'}%</span>}
           {MONETIZATION_ENABLED && cost !== null && <span className="badge">₽ {cost.toLocaleString('ru-RU')}</span>}
           <button className={`btn btn-ghost btn-sm ${task.is_blocked ? 'blocked-on' : ''}`} onClick={toggleBlocked} title="Блокировка задачи">
-            {task.is_blocked ? '🚫 BLOCKED' : 'Отметить BLOCKED'}
+            {task.is_blocked ? <><Icon name="alert" size={14} /> BLOCKED</> : 'Отметить BLOCKED'}
           </button>
         </div>
         {err && <div className="error-text">{err}</div>}
@@ -173,7 +174,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
           <button className={`tab ${tab === 'checklist' ? 'active' : ''}`} onClick={() => setTab('checklist')}>Чеклист</button>
           <button className={`tab ${tab === 'files' ? 'active' : ''}`} onClick={() => setTab('files')}>Файлы</button>
           <button className={`tab ${tab === 'discussion' ? 'active' : ''}`} onClick={() => setTab('discussion')}>Обсуждение</button>
-          {canManage && <button className={`tab ${tab === 'agent' ? 'active' : ''}`} onClick={() => setTab('agent')}>🤖 Агент</button>}
+          {canManage && <button className={`tab ${tab === 'agent' ? 'active' : ''}`} onClick={() => setTab('agent')}><Icon name="robot" size={14} /> Агент</button>}
         </div>
 
         {tab === 'agent' && canManage && <AgentTab taskId={task.id} assigned={!!task.agent_assigned} onRefresh={onRefresh} />}
@@ -210,7 +211,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
                 </div>
               </div>
               {warn && (
-                <div className="overload-warn">⚠ Перегруз: риск {warn.riskPct ?? '—'}%, {warn.projectedHours}ч &gt; {warn.capacityHours}ч/нед.
+                <div className="overload-warn"><Icon name="alert" size={13} /> Перегруз: риск {warn.riskPct ?? '—'}%, {warn.projectedHours}ч &gt; {warn.capacityHours}ч/нед.
                   <button className="btn btn-sm overload-confirm" onClick={() => assign(true)}>Всё равно назначить</button>
                 </div>
               )}
@@ -287,7 +288,7 @@ function ChecklistTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => 
         <label key={i.id} className="notify-row">
           <input type="checkbox" checked={i.is_done} onChange={async () => { await api.patchChecklist(taskId, i.id, { isDone: !i.is_done }); reload(); onRefresh(); }} />
           <span style={{ flex: 1, textDecoration: i.is_done ? 'line-through' : 'none' }}>{i.text}</span>
-          <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteChecklist(taskId, i.id); reload(); onRefresh(); }}>✕</button>
+          <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteChecklist(taskId, i.id); reload(); onRefresh(); }} title="Удалить"><Icon name="close" size={13} /></button>
         </label>
       ))}
       <div className="team-rate" style={{ marginTop: 10 }}>
@@ -384,19 +385,19 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка доработки'); }
     finally { setBusy(false); }
   };
-  const kindLabel = (k: string) => (k === 'task_execute' ? '▶ выполнение' : k === 'task_rework' ? '🔁 доработка' : '✨ черновик');
+  const kindLabel = (k: string) => (k === 'task_execute' ? 'выполнение' : k === 'task_rework' ? 'доработка' : 'черновик');
 
   return (
     <>
       <div className="add-area" style={{ marginBottom: 10 }}>
         {assigned ? (
           <div className="team-head">
-            <span className="badge badge-info">🤖 Исполнитель — ИИ-агент</span>
+            <span className="badge badge-info"><Icon name="robot" size={12} /> Исполнитель — ИИ-агент</span>
             <button className="btn btn-ghost btn-sm" onClick={unassign} disabled={busy}>Снять с агента</button>
           </div>
         ) : (
           <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={assign} disabled={busy}>
-            🤖 Передать агенту
+            <Icon name="robot" size={14} /> Передать агенту
           </button>
         )}
         <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
@@ -405,7 +406,7 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
       </div>
       <div className="dim" style={{ fontSize: 12 }}>
         Разовые запуски: <b>Черновик</b> — предложит план (ничего не меняет).
-        <b> Выполнить</b> — готовый результат → «На тестировании». Не устроило — «🔁 Доработать» с замечаниями.
+        <b> Выполнить</b> — готовый результат → «На тестировании». Не устроило — «Доработать» с замечаниями.
       </div>
 
       {/* выбор промпта: пресет из библиотеки / свой / по умолчанию */}
@@ -413,7 +414,7 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
         <select className="input" value={promptId} onChange={(e) => setPromptId(e.target.value)} title="Промпт для агента">
           <option value="">Промпт: по умолчанию</option>
           {prompts.map((p) => <option key={p.id} value={p.id}>{p.name}{p.is_shared ? ' · общий' : ''}{p.model ? ` · ${p.model}` : ''}</option>)}
-          <option value="__custom__">✍️ Свой промпт…</option>
+          <option value="__custom__">Свой промпт…</option>
         </select>
         {promptId === '__custom__' && (
           <>
@@ -428,10 +429,10 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
       </div>
       <div className="team-rate" style={{ marginTop: 8 }}>
         <button className="btn btn-sm" style={{ flex: 1 }} onClick={run} disabled={busy}>
-          {busy ? 'Агент думает…' : '✨ Черновик'}
+          {busy ? 'Агент думает…' : <><Icon name="sparkles" size={14} /> Черновик</>}
         </button>
         <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={execute} disabled={busy} title="Автономно выполнить задачу (текст/КП) → на тестирование">
-          {busy ? 'Агент работает…' : '🤖 Выполнить'}
+          {busy ? 'Агент работает…' : <><Icon name="robot" size={14} /> Выполнить</>}
         </button>
       </div>
       {msg && <div className="dim" style={{ marginTop: 6 }}>{msg}</div>}
@@ -450,7 +451,7 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
             <div className="team-rate">
               {r.status === 'done' && <button className="btn btn-primary btn-sm" onClick={() => accept(r.id, false)}>Принять</button>}
               {r.status === 'done' && r.kind === 'task_draft' && <button className="btn btn-sm" onClick={() => accept(r.id, true)}>В чеклист</button>}
-              {(r.kind === 'task_execute' || r.kind === 'task_rework') && <button className="btn btn-sm" onClick={() => rework(r.id)} disabled={busy} title="Вернуть на доработку с замечаниями">🔁 Доработать</button>}
+              {(r.kind === 'task_execute' || r.kind === 'task_rework') && <button className="btn btn-sm" onClick={() => rework(r.id)} disabled={busy} title="Вернуть на доработку с замечаниями"><Icon name="refresh" size={13} /> Доработать</button>}
               {r.status === 'done' && <button className="btn btn-ghost btn-sm" onClick={() => reject(r.id)}>Отклонить</button>}
             </div>
           )}
@@ -501,7 +502,7 @@ function FilesTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
       {files.map((f) => (
         <div key={f.id} className="team-row team-head">
           <button className="file-link" onClick={() => open(f)}>{f.file_name}</button>
-          <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteAttachment(taskId, f.id); reload(); onRefresh(); }}>✕</button>
+          <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteAttachment(taskId, f.id); reload(); onRefresh(); }} title="Удалить"><Icon name="close" size={13} /></button>
         </div>
       ))}
       {files.length === 0 && <div className="muted" style={{ marginTop: 10 }}>Файлов нет</div>}

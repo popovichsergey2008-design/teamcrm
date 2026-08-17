@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 
 /** База знаний (Этап 5, K1): семантический поиск + регламенты + реиндекс. */
@@ -143,7 +144,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>📚 База знаний</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3><Icon name="book" size={18} /> База знаний</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="dim" style={{ fontSize: 12 }}>
           В индексе: {stats?.chunks ?? '—'} фрагментов из {stats?.sources ?? '—'} источников (закрытые задачи, комментарии, регламенты).
           {usage && <> · ИИ-вызовов: {usage.totalCalls}, из кэша: {Math.round(usage.cacheHitRatio * 100)}%</>}
@@ -156,7 +157,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
             {gd?.byStatus.unsupported ? `, не поддержано: ${gd.byStatus.unsupported}` : ''}
             {gd?.byStatus.error ? `, ошибок: ${gd.byStatus.error}` : ''}
             <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={scanGdocs} disabled={gd?.scanning}>
-              {gd?.scanning ? 'Сканирую…' : '🔗 Сканировать Google-доки'}
+              {gd?.scanning ? 'Сканирую…' : <><Icon name="link" size={14} /> Сканировать Google-доки</>}
             </button>
             <div style={{ fontSize: 11, opacity: 0.75 }}>Читаются только доки, открытые «по ссылке»; приватные помечаются «нет доступа».</div>
           </div>
@@ -175,7 +176,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
               {chat.length === 0 && <div className="muted">Спросите «корпоративный разум»: как мы решали ту или иную задачу? Ответ — по архиву задач, комментариев и регламентов, со ссылками на источники.</div>}
               {chat.map((m, i) => (
                 <div key={i} className={`brain-msg brain-${m.role}`}>
-                  {m.cached && <span className="badge badge-info" title="Ответ из кэша, без обращения к ИИ" style={{ marginBottom: 4 }}>⚡ из кэша</span>}
+                  {m.cached && <span className="badge badge-info" title="Ответ из кэша, без обращения к ИИ" style={{ marginBottom: 4 }}><Icon name="zap" size={11} /> из кэша</span>}
                   <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}{m.role === 'assistant' && thinking && !m.content && <span className="dim">думаю…</span>}</div>
                   {m.citations && m.citations.length > 0 && (
                     <div className="brain-cites">
@@ -185,12 +186,12 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
                   {m.role === 'assistant' && m.promptVersionId && (
                     <div className="brain-rate" style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
                       {m.rated ? (
-                        <span className="dim" style={{ fontSize: 12 }}>Спасибо за оценку {m.rated === 1 ? '👍' : '👎'}</span>
+                        <span className="dim" style={{ fontSize: 12 }}>Спасибо за оценку</span>
                       ) : (
                         <>
                           <span className="dim" style={{ fontSize: 12 }}>Ответ полезен?</span>
-                          <button className="btn btn-ghost btn-sm" title="Полезно" onClick={() => rate(i, 1)}>👍</button>
-                          <button className="btn btn-ghost btn-sm" title="Не полезно" onClick={() => rate(i, -1)}>👎</button>
+                          <button className="btn btn-ghost btn-sm" title="Полезно" onClick={() => rate(i, 1)}><Icon name="check" size={14} /></button>
+                          <button className="btn btn-ghost btn-sm" title="Не полезно" onClick={() => rate(i, -1)}><Icon name="close" size={14} /></button>
                         </>
                       )}
                     </div>
@@ -220,7 +221,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
                 <div className="team-head">
                   <span>
                     <span className="badge">{h.sourceType === 'task' ? 'задача' : h.sourceType === 'comment' ? 'комментарий' : 'регламент'}</span>
-                    {h.projectName && <span className="badge" title="Проект">📁 {h.projectName}</span>} {h.title || '—'}
+                    {h.projectName && <span className="badge" title="Проект"><Icon name="folder" size={12} /> {h.projectName}</span>} {h.title || '—'}
                   </span>
                   <span className="dim" style={{ fontSize: 12 }}>{Math.round((h.score ?? 0) * 100)}%</span>
                 </div>
@@ -255,7 +256,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
                   <div className="team-head" style={{ cursor: 'pointer' }} onClick={() => viewSource(s.sourceType, s.sourceId)}>
                     <span>
                       <span className="badge">{srcTypeLabel(s.sourceType)}</span>
-                      {s.projectName && <span className="badge" title="Проект">📁 {s.projectName}</span>} {s.title || '—'}
+                      {s.projectName && <span className="badge" title="Проект"><Icon name="folder" size={12} /> {s.projectName}</span>} {s.title || '—'}
                     </span>
                     <span className="dim" style={{ fontSize: 12 }}>{open ? '▾' : '▸'} {s.chunks} фр.</span>
                   </div>

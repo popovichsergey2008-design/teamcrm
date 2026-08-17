@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react';
+import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 
 export function AcceptInvitePage({ token }: { token: string }) {
@@ -33,12 +34,12 @@ export function AcceptInvitePage({ token }: { token: string }) {
               // пароль существующего аккаунта не меняем — иначе по ссылке-приглашению
               // можно было бы сменить пароль чужому человеку
               <div className="pnl-good" style={{ marginBottom: 14 }}>
-                ✅ Вы добавлены в организацию.<br />
+                <Icon name="check-circle" size={15} /> Вы добавлены в организацию.<br />
                 У вас уже был аккаунт с этим e-mail, поэтому <b>введённый сейчас пароль не применён</b> — входите своим прежним.
                 Забыли его — попросите владельца выдать ссылку на смену пароля.
               </div>
             ) : (
-              <div className="pnl-good" style={{ marginBottom: 14 }}>✅ Аккаунт создан. Теперь войдите.</div>
+              <div className="pnl-good" style={{ marginBottom: 14 }}><Icon name="check-circle" size={15} /> Аккаунт создан. Теперь войдите.</div>
             )}
             <a className="btn btn-primary auth-submit" href="/">Перейти ко входу</a>
           </>

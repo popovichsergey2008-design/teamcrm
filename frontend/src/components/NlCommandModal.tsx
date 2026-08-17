@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { DatePicker } from './DatePicker';
 
@@ -77,7 +78,7 @@ export function NlCommandModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>⚡ Быстрая команда</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3><Icon name="zap" size={18} /> Быстрая команда</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="dim" style={{ fontSize: 12 }}>
           Напишите или продиктуйте обычным языком — ИИ поймёт и предложит создать задачу или сделку (с подтверждением).
           Например: «Иванову задача обновить баннер на главной к пятнице, срочно».
@@ -90,10 +91,10 @@ export function NlCommandModal({ onClose }: { onClose: () => void }) {
           onClick={toggleRec}
           disabled={busy || transcribing}
         >
-          {recording ? '⏺ Остановить и распознать' : transcribing ? 'Распознаю речь…' : '🎤 Записать голосом'}
+          {recording ? <><Icon name="stop" size={14} /> Остановить и распознать</> : transcribing ? 'Распознаю речь…' : <><Icon name="mic" size={14} /> Записать голосом</>}
         </button>
         <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={parse} disabled={busy || recording || transcribing}>
-          {busy && !draft ? 'Распознаю…' : '✨ Распознать'}
+          {busy && !draft ? 'Распознаю…' : <><Icon name="sparkles" size={14} /> Распознать</>}
         </button>
 
         {draft && draft.intent === 'none' && (
@@ -103,7 +104,7 @@ export function NlCommandModal({ onClose }: { onClose: () => void }) {
         {draft && draft.intent === 'create_task' && draft.task && (
           <div style={{ marginTop: 12 }}>
             <div className="drawer-section-title">Задача{conf}</div>
-            {draft.warnings?.map((w: string, i: number) => <div key={i} className="error-text" style={{ fontSize: 12 }}>⚠ {w}</div>)}
+            {draft.warnings?.map((w: string, i: number) => <div key={i} className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {w}</div>)}
             <input className="input" placeholder="Название" value={draft.task.title} onChange={(e) => setTask({ title: e.target.value })} />
             <textarea className="input" rows={2} placeholder="Описание (необязательно)" value={draft.task.description ?? ''} onChange={(e) => setTask({ description: e.target.value })} style={{ marginTop: 6 }} />
             <select className="input" style={{ marginTop: 6 }} value={draft.task.projectId ?? ''} onChange={(e) => setTask({ projectId: e.target.value || null })}>
@@ -127,7 +128,7 @@ export function NlCommandModal({ onClose }: { onClose: () => void }) {
         {draft && draft.intent === 'create_deal' && draft.deal && (
           <div style={{ marginTop: 12 }}>
             <div className="drawer-section-title">Сделка{conf}</div>
-            {draft.warnings?.map((w: string, i: number) => <div key={i} className="error-text" style={{ fontSize: 12 }}>⚠ {w}</div>)}
+            {draft.warnings?.map((w: string, i: number) => <div key={i} className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {w}</div>)}
             <input className="input" placeholder="Название сделки" value={draft.deal.title} onChange={(e) => setDeal({ title: e.target.value })} />
             <div className="team-rate" style={{ marginTop: 6 }}>
               <input className="input" type="number" placeholder="Сумма" value={draft.deal.amount ?? ''} onChange={(e) => setDeal({ amount: e.target.value === '' ? null : Number(e.target.value) })} />

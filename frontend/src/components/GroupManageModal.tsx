@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
 
@@ -56,7 +57,7 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>Группа</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3>Группа</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
 
         <div className="field"><label>Название</label>
           <div className="team-rate">
@@ -78,7 +79,7 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
               <span style={{ flex: 1 }}>{m.fullName}{String(m.userId) === String(meId) && <span className="dim"> — вы</span>}</span>
               {canManage && String(m.userId) !== String(meId) && (
                 <button className="btn btn-ghost btn-sm" title="Убрать из группы" disabled={busy}
-                        onClick={() => wrap(() => api.removeChatMember(chatId, m.userId))}>✕</button>
+                        onClick={() => wrap(() => api.removeChatMember(chatId, m.userId))}><Icon name="close" size={13} /></button>
               )}
             </div>
           ))}

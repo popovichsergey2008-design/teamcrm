@@ -1,4 +1,5 @@
 import type { CostOfWork, Pnl } from '../types';
+import { Icon } from './Icon';
 
 const money = (n: number | null | undefined) =>
   n === null || n === undefined ? '—' : '₽ ' + Number(n).toLocaleString('ru-RU', { maximumFractionDigits: 0 });
@@ -12,7 +13,7 @@ export function PnlPanel({ pnl, alert, cow }: { pnl: Pnl | null; alert: string |
     pnl.marginActual !== null && pnl.plannedMargin !== null && pnl.marginActual < pnl.plannedMargin;
   return (
     <div className="pnl">
-      {alert && <div className="pnl-alert">⚠ {alert}</div>}
+      {alert && <div className="pnl-alert"><Icon name="alert" size={14} /> {alert}</div>}
       <div className="pnl-grid">
         <div className="pnl-cell">
           <span className="pnl-label">Бюджет</span>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 
 /** Управление клиентами портала (owner/manager): компании, приглашения, привязка проектов. */
@@ -36,7 +37,7 @@ export function ClientsPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>🤝 Клиенты и портал</h3><button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button></div>
+        <div className="drawer-head"><h3><Icon name="handshake" size={18} /> Клиенты и портал</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="dim" style={{ fontSize: 12 }}>Клиент видит в портале только прогресс/статусы/сроки своих проектов — без финансов.</div>
         {msg && <div className="dim">{msg}</div>}
 
