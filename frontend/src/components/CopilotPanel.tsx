@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api } from '../lib/api';
 
@@ -35,9 +36,16 @@ export function CopilotPanel({ onClose, onRefresh }: { onClose: () => void; onRe
           <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
         <button className="btn btn-primary btn-sm" disabled={busy} onClick={scan}>
-          {busy ? '...' : '⟳ Сканировать'}
+          {busy ? '...' : <><Icon name="refresh" size={14} /> Сканировать</>}
         </button>
-        {recs.length === 0 && <div className="muted copilot-empty">Активных рекомендаций нет</div>}
+        {recs.length === 0 && (
+          <EmptyState
+            compact
+            icon="sparkles"
+            title="Активных рекомендаций нет"
+            hint="Нажмите «Сканировать» — co-pilot пройдёт по проекту и укажет на перегруз людей, сроки под угрозой и задачи без движения."
+          />
+        )}
         {recs.map((r) => (
           <div key={r.id} className="rec-row">
             <div className="rec-head">

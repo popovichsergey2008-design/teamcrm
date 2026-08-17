@@ -219,7 +219,10 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
               <input className="input" placeholder="Спросите: как мы решали…?" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doSearch()} />
               <button className="btn btn-primary btn-sm" onClick={doSearch} disabled={searching}>{searching ? '…' : 'Найти'}</button>
             </div>
-            {hits && hits.length === 0 && <div className="muted" style={{ marginTop: 10 }}>Ничего не найдено</div>}
+            {hits && hits.length === 0 && (
+              <EmptyState compact icon="search" title="Ничего не нашлось"
+                hint="Поиск идёт по смыслу, а не по точным словам. Попробуйте переформулировать вопрос — или проверьте на вкладке «Содержимое», что нужные источники проиндексированы." />
+            )}
             {hits?.map((h, i) => (
               <div key={i} className="team-row">
                 <div className="team-head">
@@ -251,7 +254,12 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
               <input className="input" placeholder="Поиск по названию…" value={srcQ} onChange={(e) => setSrcQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && loadSources(true)} />
               <button className="btn btn-primary btn-sm" onClick={() => loadSources(true)}>Найти</button>
             </div>
-            {sources.length === 0 && <div className="muted" style={{ marginTop: 10 }}>Пусто. Проиндексированные источники появятся здесь (задачи, комментарии, регламенты, Google-доки).</div>}
+            {sources.length === 0 && (
+              <EmptyState compact icon="book" title="Пока ничего не проиндексировано"
+                hint={srcQ.trim()
+                  ? `По запросу «${srcQ.trim()}» источников нет.`
+                  : 'Сюда попадают задачи, комментарии, регламенты и Google-документы после индексации. Именно на них опирается ИИ, отвечая на вопросы.'} />
+            )}
             {sources.map((s) => {
               const key = `${s.sourceType}:${s.sourceId}`;
               const open = openSrc?.key === key;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { Task, User } from '../types';
@@ -253,7 +254,7 @@ function LabelsRow({ task, onRefresh }: { task: Task; onRefresh: () => void }) {
       <button className="btn btn-ghost btn-sm" onClick={() => setOpen(!open)}>+ метка</button>
       {open && (
         <div className="label-pick">
-          {all.length === 0 && <span className="dim">Меток нет (создайте в «Команда»? — нет: метки общие, добавьте через API/доску)</span>}
+          {all.length === 0 && <span className="dim">Меток пока нет — создайте первую полем ниже. Метки общие для всех проектов.</span>}
           {all.map((l) => {
             const has = labels.some((x) => x.id === l.id);
             return <button key={l.id} className={`label-chip ${has ? '' : 'label-off'}`} style={{ background: has ? l.color : 'transparent', borderColor: l.color }} onClick={() => toggle(l.id, has)}>{l.name}</button>;
@@ -284,6 +285,10 @@ function ChecklistTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => 
   return (
     <>
       {items.length > 0 && <div className="dim">{done} / {items.length} выполнено</div>}
+      {items.length === 0 && (
+        <EmptyState compact icon="check" title="Чек-листа нет"
+          hint="Разбейте задачу на шаги — станет видно, сколько уже сделано, и работу проще передать." />
+      )}
       {items.map((i) => (
         <label key={i.id} className="notify-row">
           <input type="checkbox" checked={i.is_done} onChange={async () => { await api.patchChecklist(taskId, i.id, { isDone: !i.is_done }); reload(); onRefresh(); }} />
@@ -505,7 +510,10 @@ function FilesTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
           <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteAttachment(taskId, f.id); reload(); onRefresh(); }} title="Удалить"><Icon name="close" size={13} /></button>
         </div>
       ))}
-      {files.length === 0 && <div className="muted" style={{ marginTop: 10 }}>Файлов нет</div>}
+      {files.length === 0 && (
+        <EmptyState compact icon="paperclip" title="Файлов нет"
+          hint="Прикрепите документы, макеты или скриншоты — они останутся в задаче и будут видны всем участникам." />
+      )}
       {preview && <Lightbox url={preview.url} name={preview.name} mime={preview.mime} onClose={closePreview} />}
     </>
   );
@@ -522,6 +530,10 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
   return (
     <>
       <div className="drawer-section-title">Комментарии</div>
+      {comments.length === 0 && (
+        <EmptyState compact icon="chat" title="Обсуждения ещё не было"
+          hint="Здесь остаётся история решений по задаче — почему сделали так, а не иначе." />
+      )}
       {comments.map((c) => (
         <div key={c.id} className="comment">
           <div className="comment-head"><b>{c.author_name}</b> <span className="dim">{new Date(c.created_at).toLocaleString('ru-RU')}</span></div>
