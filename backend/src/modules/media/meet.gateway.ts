@@ -352,6 +352,12 @@ export class MeetGateway implements OnModuleInit {
         if (!room || !room.participants.has(c.userId) || !Array.isArray(p.user_ids)) return;
         for (const target of p.user_ids.slice(0, 50)) {
           if (String(target) === c.userId) continue;
+          // занятого не дёргаем: вызов поверх идущего разговора либо не виден,
+          // либо, если его примут, выбрасывает человека из текущей комнаты
+          if (this.media.isBusy(c.tenantId, String(target))) {
+            this.send(c.ws, 'meet.peer-busy', { meeting_id: room.id, user_id: String(target) });
+            continue;
+          }
           this.toUser(c.tenantId, String(target), 'meet.incoming-call', {
             meeting_id: room.id, project_id: room.projectId,
             caller_id: c.userId, caller_name: c.displayName,

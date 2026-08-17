@@ -255,6 +255,19 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     return servers;
   }
 
+  /**
+   * Человек уже в каком-то созвоне.
+   *
+   * Звонить занятому бессмысленно: он не увидит вызов за окном разговора,
+   * а если увидит и примет — вылетит из текущей комнаты в новую.
+   */
+  isBusy(tenantId: string, userId: string): boolean {
+    for (const room of this.rooms.values()) {
+      if (room.tenantId === tenantId && room.participants.has(String(userId))) return true;
+    }
+    return false;
+  }
+
   participantList(room: MeetingRoom) {
     return [...room.participants.values()].map((p) => ({
       userId: p.userId,

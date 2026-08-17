@@ -64,6 +64,20 @@ export class MeetClient {
   private resolveSendReady!: () => void;
   private readonly sendReady = new Promise<void>((r) => { this.resolveSendReady = r; });
 
+  /**
+   * Готовность входящего транспорта.
+   *
+   * Та же беда с другой стороны и куда злее. Сервер присылает состав созвона
+   * сразу после входа — вместе с потоками тех, кто уже говорит. Но входящий
+   * транспорт к этому моменту ещё не создан: он появляется после загрузки
+   * возможностей устройства. Запрос на приём приходил на сервер раньше времени,
+   * тот молча его отбрасывал, а повторять было некому — поток помечался
+   * запрошенным навсегда. Итог: вошедший вторым не слышал того, кто уже был
+   * в комнате, хотя его самого слышали прекрасно.
+   */
+  private resolveRecvReady!: () => void;
+  private readonly recvReady = new Promise<void>((r) => { this.resolveRecvReady = r; });
+
   constructor(
     private readonly meetingId: string,
     private readonly token: string,
@@ -121,7 +135,7 @@ export class MeetClient {
         // (например, при старте записи), когда свой поток уже существует.
         for (const it of p.participants ?? []) {
           if (String(it.userId) === String(this.myUserId)) continue;
-          for (const pr of it.producers ?? []) this.consume(pr.id);
+          for (const pr of it.producers ?? []) void this.consume(pr.id);
         }
         return;
 
@@ -150,7 +164,7 @@ export class MeetClient {
         return;
 
       case 'meet.new-producer':
-        this.consume(p.producer_id);
+        void this.consume(p.producer_id);
         return;
 
       case 'meet.consumed': {
@@ -199,6 +213,11 @@ export class MeetClient {
         this.ev.onAiInvited?.();
         return;
 
+      case 'meet.peer-busy':
+        // не молчим: иначе непонятно, почему человек «не берёт трубку»
+        this.ev.onError('Собеседник сейчас в другом созвоне — вызов ему не ушёл');
+        return;
+
       case 'meet.error':
         this.ev.onError(p.message ?? 'Ошибка созвона');
         return;
@@ -217,6 +236,7 @@ export class MeetClient {
       ? (this.send = this.device.createSendTransport(options))
       : (this.recv = this.device.createRecvTransport(options));
     if (p.direction === 'send') this.resolveSendReady();
+    else this.resolveRecvReady();
 
     transport.on('connect', ({ dtlsParameters }, ok, fail) => {
       const timer = setTimeout(() => fail(new Error('Сервер не подтвердил соединение')), RESPONSE_TIMEOUT);
@@ -233,6 +253,10 @@ export class MeetClient {
       });
     }
 
+    // Оба канала готовы — просим состав заново. Первый список приходит до создания
+    // каналов, и всё, что в нём было, надо перечитать: и участников, и их потоки.
+    if (this.send && this.recv) this.emit('meet.get-participants', {});
+
     transport.on('connectionstatechange', (state) => {
       if (state === 'connected') this.ev.onState('connected');
       // разрыв лечится перезапуском ICE: сеть моргнула — звонок не должен разваливаться
@@ -246,9 +270,24 @@ export class MeetClient {
     });
   }
 
-  /** Повторный запрос того же потока дал бы вторую дорожку и двойной звук. */
-  private consume(producerId: string): void {
-    if (!this.device.loaded || this.requested.has(producerId)) return;
+  /**
+   * Запрос потока на приём.
+   *
+   * Ждём входящий транспорт: без него сервер отбрасывает запрос молча.
+   * Отметку «запрошен» ставим только перед самой отправкой — иначе неудачная
+   * ранняя попытка навсегда закрывала бы дорогу повторной.
+   */
+  private async consume(producerId: string): Promise<void> {
+    if (this.requested.has(producerId)) return; // повтор дал бы вторую дорожку и двойной звук
+    try {
+      await Promise.race([
+        this.recvReady,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('нет входящего канала')), RESPONSE_TIMEOUT)),
+      ]);
+    } catch {
+      return; // канал так и не появился — приём невозможен, дальше молчать бессмысленно
+    }
+    if (this.closed || !this.device.loaded || this.requested.has(producerId)) return;
     this.requested.add(producerId);
     this.emit('meet.consume', { producer_id: producerId, rtp_capabilities: this.device.rtpCapabilities });
   }

@@ -109,6 +109,9 @@ export function App() {
   const callFromChat = async (chat: {
     id: string; title: string; memberIds: string[]; projectId?: string | null; withAi?: boolean;
   }) => {
+    // Уже в созвоне — второй не начинаем. Иначе собеседник, с которым вы и так
+    // говорите, получал вызов в новую комнату, и разговор рвался пополам.
+    if (callId) return;
     try {
       const room = await api.startCall(chat.projectId ?? undefined, chat.withAi === true);
       setCallInvite(chat.memberIds);
@@ -235,7 +238,7 @@ export function App() {
       {route === 'mytasks' && (
         <MyTasksPage onOpenProject={(projectId, taskId) => { setJumpTo({ projectId, taskId }); setRoute('board'); }} />
       )}
-      {route === 'chats' && <ChatsPage onCall={callFromChat} onActiveChat={setOpenChatId} initialChatId={chatToOpen} />}
+      {route === 'chats' && <ChatsPage onCall={callFromChat} onActiveChat={setOpenChatId} initialChatId={chatToOpen} inCall={!!callId} />}
       {route === 'meetings' && <MeetingsPage />}
       {route === 'board' && <BoardPage key={`${user.tenantId}:${jumpTo?.taskId ?? ''}`} initial={jumpTo} />}
       <Toasts onOpenChat={(chatId) => { setChatToOpen(chatId ?? null); setRoute('chats'); }} />

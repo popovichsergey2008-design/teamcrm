@@ -27,8 +27,10 @@ const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 
  * Мессенджер: слева люди и группы, справа переписка. Звонок — из шапки чата,
  * то есть звонишь конкретному человеку, а не в общую комнату.
  */
-export function ChatsPage({ onCall, onActiveChat, initialChatId }: {
+export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   onCall: (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null; withAi?: boolean }) => void;
+  /** Уже идёт созвон — второй начинать нельзя, кнопка гасится. */
+  inCall?: boolean;
   /** Наверх — какой чат открыт: по нему уведомления не показываются. */
   onActiveChat?: (chatId: string | null) => void;
   /** Чат, который просили открыть снаружи — например кликом по уведомлению. */
@@ -275,7 +277,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId }: {
                 </label>
                 <button
                   className="btn btn-sm"
-                  title="Позвонить участникам чата"
+                  disabled={inCall}
+                  title={inCall ? 'Вы уже в созвоне' : 'Позвонить участникам чата'}
                   onClick={() => onCall({
                     id: active.id,
                     title: active.title ?? 'Чат',
