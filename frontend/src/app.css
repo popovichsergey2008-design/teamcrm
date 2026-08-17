@@ -408,6 +408,9 @@
 /* «Завершить задачу»: заметное зелёное действие + выбор целевой колонки */
 /* строка главного действия карточки — под заголовком, а не сбоку от него */
 .task-actions-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+/* удаление стоит с краю и не окрашено до наведения: это не рядовое действие */
+.btn-delete { margin-left: auto; color: var(--text-dim); }
+.btn-delete:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
 .btn-finish {
   background: var(--ok-soft); border: 1px solid var(--ok); color: var(--ok); font-weight: 600;
 }

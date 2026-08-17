@@ -82,6 +82,29 @@ export class TasksService {
     return updated as TaskRow;
   }
 
+  /**
+   * Удаление задачи.
+   *
+   * Задачу с учтённым временем не трогаем: по ней уже посчитана себестоимость,
+   * и молча стереть её значит испортить P&L проекта. Такие закрывают, а не удаляют.
+   */
+  async remove(tenantId: string, id: string, actorId: string | null = null): Promise<{ deleted: true }> {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+
+    const logged = await this.repo.loggedSeconds(tenantId, id);
+    if (logged > 0) {
+      throw AppException.conflict(
+        'По задаче есть учтённое время — она уже попала в себестоимость проекта. Такую задачу закрывают, а не удаляют.',
+      );
+    }
+
+    await this.repo.remove(tenantId, id);
+    this.realtime.emit(tenantId, task.project_id, 'task.deleted', { id, project_id: task.project_id } as any);
+    void actorId; // историю задачи удалили вместе с ней — писать в неё запись не во что
+    return { deleted: true };
+  }
+
   async move(tenantId: string, id: string, dto: MoveTaskDto, actorId: string | null = null): Promise<TaskRow> {
     const task = await this.repo.findById(tenantId, id);
     if (!task) throw AppException.notFound('Task not found');

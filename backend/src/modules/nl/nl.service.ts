@@ -5,6 +5,7 @@ import { AiService } from '../ai/ai.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { TasksService } from '../tasks/tasks.service';
 import { DealsService } from '../deals/deals.service';
+import { matchUserInText } from './nl.match';
 
 type Intent = 'create_task' | 'create_deal' | 'none';
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -22,6 +23,9 @@ export interface NlDraft {
 const FALLBACK_SYSTEM = [
   'Ты — парсер команд CRM. По сообщению определи намерение (create_task | create_deal | none) и извлеки поля.',
   'В JSON-входе: text, projects[{id,name}], users[{id,name}], clients[{id,name}], today. Сопоставляй имена с id ТОЛЬКО из списков (иначе null, не выдумывай).',
+  'title — формулировка человека дословно, без пересказа: сохраняй наклонение и залог, убирай лишь служебную обёртку команды («поставь задачу», «на Ивана»).',
+  'Исполнитель называется после «на», «для», «поручи», «назначь»; имя обычно в косвенном падеже — это тот же человек.',
+  'deadline — срок выполнения задачи, а не любая дата в тексте: если дата часть содержания задачи, ставь null.',
   'Относительные сроки переводи в YYYY-MM-DD относительно today. priority: low|normal|high|urgent.',
   'Верни СТРОГО JSON: {"intent":"","confidence":0,"task":{"title":"","description":null,"projectId":null,"assigneeId":null,"priority":"normal","deadline":null},"deal":{"title":"","amount":null,"plannedMargin":null,"clientId":null,"stage":"new"},"note":""}',
 ].join(' ');
@@ -86,7 +90,9 @@ export class NlService {
       if (!title) { base.intent = 'none'; warnings.push('Не понял, какую задачу создать'); return base; }
       const projectId = idIn(t.projectId, projectSet);
       if (t.projectId && !projectId) warnings.push('Проект не распознан — выберите вручную');
-      const assigneeId = idIn(t.assigneeId, userSet);
+      // Модель часто не возвращает исполнителя, хотя он назван прямым текстом,
+      // — тогда ищем имя в команде сами.
+      const assigneeId = idIn(t.assigneeId, userSet) ?? matchUserInText(clean, users);
       if (t.assigneeId && !assigneeId) warnings.push('Исполнитель не распознан');
       const priority = PRIORITIES.includes(String(t.priority)) ? String(t.priority) : 'normal';
       const deadline = /^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? '')) ? String(t.deadline) : null;
@@ -120,17 +126,19 @@ export class NlService {
       const t = body.task ?? {};
       if (!t.projectId) throw AppException.validation('Выберите проект для задачи');
       if (!String(t.title ?? '').trim()) throw AppException.validation('Укажите название задачи');
-      let description = t.description ? String(t.description) : undefined;
-      if (t.deadline && /^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline))) {
-        description = `${description ? description + '\n\n' : ''}Срок: ${t.deadline}`;
-      }
+      // Срок раньше дописывался строкой в описание («Срок: 2026-08-17») — задача выходила
+      // без даты, и ни светофор, ни «просрочено» её не видели. Теперь это настоящее поле.
+      const deadlineAt = /^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? ''))
+        ? new Date(`${t.deadline}T18:00:00`).toISOString() // день без времени — считаем концом рабочего дня
+        : undefined;
       const task = await this.tasks.create(tenantId, {
         projectId: String(t.projectId), title: String(t.title).trim().slice(0, 255),
-        description, assigneeId: t.assigneeId ? String(t.assigneeId) : undefined, managerId: userId,
+        description: t.description ? String(t.description) : undefined,
+        assigneeId: t.assigneeId ? String(t.assigneeId) : undefined,
+        managerId: userId,
+        priority: PRIORITIES.includes(String(t.priority)) ? String(t.priority) : undefined,
+        deadlineAt,
       } as any, userId);
-      if (t.priority && PRIORITIES.includes(String(t.priority)) && t.priority !== 'normal') {
-        await this.tasks.update(tenantId, task.id, { priority: String(t.priority) } as any, userId).catch(() => undefined);
-      }
       return { type: 'task', task };
     }
     if (body.intent === 'create_deal') {

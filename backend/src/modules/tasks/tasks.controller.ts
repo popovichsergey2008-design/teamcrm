@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -38,6 +38,13 @@ export class TasksController {
     @Body() dto: UpdateTaskDto,
   ) {
     return this.tasks.update(user.tenantId, id, dto, user.userId);
+  }
+
+  /** Удаление задачи целиком. Рядовому сотруднику недоступно: чистка доски — дело ведущего. */
+  @Delete(':id')
+  @Roles('owner', 'manager')
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.tasks.remove(user.tenantId, id, user.userId);
   }
 
   @Post(':id/move')

@@ -136,6 +136,60 @@ export class TasksRepository {
     });
   }
 
+  /** Учтённое время по задаче: удалять такую нельзя — это финансовая история проекта. */
+  async loggedSeconds(tenantId: string, taskId: string): Promise<number> {
+    const row = await this.db.one<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM time_logs WHERE tenant_id=$1 AND task_id=$2`,
+      [tenantId, taskId],
+    );
+    return Number(row?.n ?? 0);
+  }
+
+  /**
+   * Полное удаление задачи вместе с её спутниками.
+   *
+   * Внешние ключи на tasks почти нигде не каскадные, поэтому строки-спутники
+   * (комментарии, чек-лист, метки, вложения, история) убираем явно и в одной
+   * транзакции. Ссылки, где задача необязательна (алерты, рекомендации,
+   * черновики со встреч, разборы стендапов), обнуляем: сами записи осмысленны
+   * и без задачи, терять их незачем.
+   */
+  async remove(tenantId: string, taskId: string): Promise<void> {
+    await this.db.withTransaction(async (client) => {
+      for (const sql of [
+        `DELETE FROM task_labels WHERE task_id=$1`,
+        `DELETE FROM task_watchers WHERE task_id=$1`,
+        `DELETE FROM task_checklist_items WHERE task_id=$1`,
+        `DELETE FROM task_comments WHERE task_id=$1`,
+        `DELETE FROM task_attachments WHERE task_id=$1`,
+        `DELETE FROM task_activity WHERE task_id=$1`,
+        `DELETE FROM task_embeddings WHERE task_id=$1`,
+        `DELETE FROM assignment_audit WHERE task_id=$1`,
+      ]) {
+        await client.query(sql, [taskId]);
+      }
+      for (const sql of [
+        `UPDATE alerts SET task_id=NULL WHERE task_id=$1`,
+        `UPDATE standup_actions SET task_id=NULL WHERE task_id=$1`,
+        `UPDATE recommendations SET task_id=NULL WHERE task_id=$1`,
+        `UPDATE meeting_task_drafts SET task_id=NULL WHERE task_id=$1`,
+      ]) {
+        await client.query(sql, [taskId]);
+      }
+      // след во внешних системах и в базе знаний: иначе задача «воскреснет» при
+      // следующем импорте или останется цитироваться в ответах ИИ
+      await client.query(
+        `DELETE FROM external_refs WHERE tenant_id=$1 AND entity_type='task' AND local_id=$2`,
+        [tenantId, taskId],
+      );
+      await client.query(
+        `DELETE FROM knowledge_chunks WHERE tenant_id=$1 AND source_type='task' AND source_id=$2`,
+        [tenantId, taskId],
+      );
+      await client.query(`DELETE FROM tasks WHERE tenant_id=$1 AND id=$2`, [tenantId, taskId]);
+    });
+  }
+
   async update(
     tenantId: string,
     id: string,

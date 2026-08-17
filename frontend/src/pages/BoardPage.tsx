@@ -20,6 +20,7 @@ type Action =
   | { type: 'SET'; board: Board }
   | { type: 'CLEAR' }
   | { type: 'UPSERT_TASK'; task: Task }
+  | { type: 'REMOVE_TASK'; taskId: string }
   | { type: 'SET_COST'; taskId: string; cost: string };
 
 function reducer(state: Board | null, action: Action): Board | null {
@@ -39,6 +40,10 @@ function reducer(state: Board | null, action: Action): Board | null {
         target.tasks.push(t);
         target.tasks.sort((a, b) => a.position - b.position);
       }
+      return { ...state, columns };
+    }
+    case 'REMOVE_TASK': {
+      const columns = state.columns.map((c) => ({ ...c, tasks: c.tasks.filter((t) => String(t.id) !== String(action.taskId)) }));
       return { ...state, columns };
     }
     case 'SET_COST': {
@@ -164,6 +169,11 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
     if (!selected) return;
     const socket = getSocket();
     const onUpsert = (t: Task) => t.project_id === selected && dispatch({ type: 'UPSERT_TASK', task: t });
+    const onDeleted = (p: { id: string; project_id: string }) => {
+      if (String(p.project_id) !== String(selected)) return;
+      dispatch({ type: 'REMOVE_TASK', taskId: String(p.id) });
+      setOpenTaskId((cur) => (String(cur) === String(p.id) ? null : cur)); // карточку удалённой задачи держать открытой нельзя
+    };
     const onCost = (p: { id: string; project_id: string; cost_current: string }) =>
       p.project_id === selected && dispatch({ type: 'SET_COST', taskId: p.id, cost: p.cost_current });
     const onPnl = (p: Pnl) => {
@@ -188,6 +198,7 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
     socket.on('task.created', onUpsert);
     socket.on('task.updated', onUpsert);
     socket.on('task.moved', onUpsert);
+    socket.on('task.deleted', onDeleted);
     socket.on('task.cost_changed', onCost);
     socket.on('project.pnl_changed', onPnl);
     socket.on('alert.raised', onAlert);
@@ -200,6 +211,7 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
       socket.off('task.created', onUpsert);
       socket.off('task.updated', onUpsert);
       socket.off('task.moved', onUpsert);
+      socket.off('task.deleted', onDeleted);
       socket.off('task.cost_changed', onCost);
       socket.off('project.pnl_changed', onPnl);
       socket.off('alert.raised', onAlert);

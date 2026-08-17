@@ -89,6 +89,15 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
     finally { setMoving(false); }
   };
 
+  // Удаление безвозвратно и уносит комментарии с чек-листом, поэтому спрашиваем прямо.
+  const removeTask = async () => {
+    if (!window.confirm(`Удалить задачу «${task.title}»? Вместе с ней исчезнут комментарии, чек-лист и вложения. Отменить это будет нельзя.`)) return;
+    setErr(''); setMoving(true);
+    try { await api.deleteTask(task.id); onRefresh(); onClose(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось удалить задачу'); }
+    finally { setMoving(false); }
+  };
+
   const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
 
   // «Завершить» = перенос в финальную колонку; какую именно — выбирает человек,
@@ -108,7 +117,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
 
         {/* Завершение — отдельной строкой под заголовком. Сбоку от названия кнопка
             жалась к «закрыть» и терялась тем сильнее, чем длиннее название задачи. */}
-        {(isDone || targets.length > 0) && (
+        {(isDone || targets.length > 0 || canManage) && (
           <div className="task-actions-row">
             {targets.length > 0 && (
               <button
@@ -121,6 +130,11 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
               </button>
             )}
             {isDone && <span className="badge badge-ok" title="Задача закрыта"><Icon name="check" size={12} /> завершена</span>}
+            {canManage && (
+              <button className="btn btn-ghost btn-sm btn-delete" onClick={removeTask} disabled={moving} title="Удалить задачу без возможности восстановления">
+                <Icon name="trash" size={14} /> Удалить
+              </button>
+            )}
           </div>
         )}
 

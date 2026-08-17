@@ -465,6 +465,7 @@ export const api = {
   // Этап 4 — forecast, assignment, velocity, copilot
   assignTask: (id: string, b: { assigneeId: string; confirmOverload?: boolean; estimateHours?: number; deadlineAt?: string }) =>
     request<any>('POST', `/tasks/${id}/assign`, b),
+  deleteTask: (id: string) => request<{ deleted: true }>('DELETE', `/tasks/${id}`),
   getForecast: (id: string) => request<any>('GET', `/tasks/${id}/forecast`),
   getVelocity: (userId: string) => request<any>('GET', `/users/${userId}/velocity`),
   getLoad: (userId: string) => request<any>('GET', `/users/${userId}/load`),

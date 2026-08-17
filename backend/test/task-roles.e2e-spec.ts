@@ -117,4 +117,31 @@ describe('Enhancements v1 — Task roles (e2e)', () => {
     expect(plain.deadline_at).toBeNull();
     expect(plain.estimate_hours).toBeNull();
   });
+
+  it('удаление задачи: уносит её спутников, но не трогает задачи с учтённым временем', async () => {
+    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Del', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Удаляющий' }).expect(201)).body.data;
+    const tok = reg.accessToken;
+    const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'П' }).expect(201)).body.data;
+    const col = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data.columns[0].id;
+
+    // задача со спутниками: без явного удаления связанных строк внешние ключи не дали бы её стереть
+    const task = (await http.post('/api/tasks').set(H(tok)).send({ projectId: proj.id, columnId: col, title: 'Мусорная' }).expect(201)).body.data;
+    await http.post(`/api/tasks/${task.id}/comments`).set(H(tok)).send({ body: 'коммент' }).expect(201);
+    await http.post(`/api/tasks/${task.id}/checklist`).set(H(tok)).send({ text: 'шаг' }).expect(201);
+    const label = (await http.post('/api/labels').set(H(tok)).send({ name: `м_${uniq()}` }).expect(201)).body.data;
+    await http.post(`/api/tasks/${task.id}/labels/${label.id}`).set(H(tok)).expect(201);
+
+    await http.delete(`/api/tasks/${task.id}`).set(H(tok)).expect(200);
+    const board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+    expect(findTask(board, task.id)).toBeUndefined();
+    await http.delete(`/api/tasks/${task.id}`).set(H(tok)).expect(404); // второй раз удалять уже нечего
+
+    // с учтённым временем задача уже попала в себестоимость — такую не удаляем
+    const paid = (await http.post('/api/tasks').set(H(tok)).send({ projectId: proj.id, columnId: col, title: 'С временем' }).expect(201)).body.data;
+    await http.post(`/api/tasks/${paid.id}/timer/start`).set(H(tok)).expect(201);
+    await http.post(`/api/tasks/${paid.id}/timer/stop`).set(H(tok)).expect(201);
+    await http.delete(`/api/tasks/${paid.id}`).set(H(tok)).expect(409);
+    const after = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+    expect(findTask(after, paid.id)).toBeDefined();
+  });
 });

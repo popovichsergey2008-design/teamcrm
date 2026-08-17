@@ -6,6 +6,7 @@ export type DomainEvent =
   | 'task.created'
   | 'task.updated'
   | 'task.moved'
+  | 'task.deleted'
   | 'column.updated'
   | 'deal.converted'
   // Этап 2: нефинансовые события трекинга (можно в обе комнаты)
