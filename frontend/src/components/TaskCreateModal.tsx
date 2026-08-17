@@ -93,7 +93,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
               {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
             </select>
           </div>
-          <div className="field"><label>Руководитель</label>
+          <div className="field"><label title="Кто ставит задачу и принимает результат">Постановщик</label>
             <select className="input" value={managerId} onChange={(e) => setManagerId(e.target.value)}>
               <option value="">— не задан —</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}

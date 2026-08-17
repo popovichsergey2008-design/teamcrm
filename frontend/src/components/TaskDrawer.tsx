@@ -203,7 +203,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
                     {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
                   </select>
                 </div>
-                <div className="field"><label>Руководитель</label>
+                <div className="field"><label title="Кто ставит задачу и принимает результат">Постановщик</label>
                   <select className="input" value={managerId} onChange={(e) => changeManager(e.target.value)}>
                     <option value="">— не задан —</option>
                     {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
@@ -230,7 +230,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
                 <span>{task.risk_level ? `риск ${task.risk_pct ?? '—'}% (${task.risk_level})` : 'нет прогноза'}</span>
               </div>
               {task.predicted_finish_at && <div className="dim">Прогноз: {new Date(task.predicted_finish_at).toLocaleString('ru-RU')}</div>}
-              <div className="dim">Исполнитель: {userName(assigneeId || null)} · Руководитель: {userName(managerId || null)}</div>
+              <div className="dim">Исполнитель: {userName(assigneeId || null)} · Постановщик: {userName(managerId || null)}</div>
             </div>
           </>
         )}

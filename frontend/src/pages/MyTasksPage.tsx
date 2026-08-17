@@ -13,7 +13,7 @@ type CrossTask = Task & { project_name: string; column_name: string };
 
 /**
  * «Мои задачи» и «Порученные» — срез по всем проектам сразу, без выбора доски.
- * Мои — где я исполнитель; порученные — где я руководитель, а делает кто-то другой.
+ * Мои — где я исполнитель; порученные — где я постановщик, а делает кто-то другой.
  */
 export function MyTasksPage({ onOpenProject }: { onOpenProject: (projectId: string, taskId: string) => void }) {
   const [scope, setScope] = useState<Scope>('mine');
@@ -66,7 +66,7 @@ export function MyTasksPage({ onOpenProject }: { onOpenProject: (projectId: stri
           <EmptyState
             icon="send"
             title="Вы никому не поручали задач"
-            hint="Здесь собираются задачи, где вы руководитель, а работу делает кто-то другой. Назначьте исполнителя в карточке задачи — она попадёт в этот список."
+            hint="Здесь собираются задачи, которые поставили вы, а работу делает кто-то другой. Назначьте исполнителя в карточке задачи — она попадёт в этот список."
           />
         )
       )}
@@ -95,7 +95,7 @@ export function MyTasksPage({ onOpenProject }: { onOpenProject: (projectId: stri
                 {due && <span className={due.cls} title={due.title}>{due.text}</span>}
                 {t.closed_at && <span className="badge badge-ok"><Icon name="check" size={12} /> завершена</span>}
                 {who && (
-                  <span className="assignee-chip" title={scope === 'mine' ? `Руководитель: ${who}` : `Исполнитель: ${who}`}>
+                  <span className="assignee-chip" title={scope === 'mine' ? `Постановщик: ${who}` : `Исполнитель: ${who}`}>
                     <span className="avatar-xs avatar-ph">{who[0]?.toUpperCase()}</span>
                     {who}
                   </span>
