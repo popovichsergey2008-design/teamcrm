@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { DbService } from '../../database/db.service';
-import { EventKey } from './mail.templates';
+import { EventKey, OWN_EVENT_KEY } from './mail.templates';
 
 export interface MailRow {
   id: string; tenant_id: string; user_id: string | null; to_email: string;
@@ -19,9 +19,12 @@ export class NotificationsRepository {
   constructor(private readonly db: DbService) {}
 
   /**
-   * Получатели события по задаче: исполнитель и постановщик, кроме самого автора
-   * действия — писать человеку о том, что он только что сделал сам, незачем.
-   * Отключившие этот вид писем отсеиваются здесь же, чтобы не готовить письмо зря.
+   * Получатели события по задаче: исполнитель и постановщик.
+   *
+   * Автор действия получает письмо наравне с остальными — так задача, поставленная
+   * себе, тоже приходит на почту и работает напоминанием. Кому это лишнее, выключают
+   * отдельным переключателем «письма о моих собственных действиях».
+   * Отключившие вид письма отсеиваются здесь же, чтобы не готовить письмо зря.
    */
   async recipientsForTask(tenantId: string, taskId: string, eventKey: EventKey, actorId: string | null): Promise<Recipient[]> {
     return this.db.many<Recipient>(
@@ -30,12 +33,14 @@ export class NotificationsRepository {
          JOIN users u ON u.tenant_id = t.tenant_id AND u.id IN (t.assignee_id, t.created_by)
     LEFT JOIN notification_prefs p
            ON p.tenant_id = u.tenant_id AND p.user_id = u.id AND p.event_key = $3
+    LEFT JOIN notification_prefs own
+           ON own.tenant_id = u.tenant_id AND own.user_id = u.id AND own.event_key = $5
         WHERE t.tenant_id = $1 AND t.id = $2
           AND u.is_active = TRUE
           AND u.email IS NOT NULL
-          AND ($4::bigint IS NULL OR u.id <> $4::bigint)
-          AND COALESCE(p.enabled, TRUE)`,
-      [tenantId, taskId, eventKey, actorId],
+          AND COALESCE(p.enabled, TRUE)
+          AND ($4::bigint IS NULL OR u.id <> $4::bigint OR COALESCE(own.enabled, TRUE))`,
+      [tenantId, taskId, eventKey, actorId, OWN_EVENT_KEY],
     );
   }
 
@@ -47,11 +52,20 @@ export class NotificationsRepository {
     return row?.full_name || 'Коллега';
   }
 
-  /** Данные для письма: название задачи, проект. */
+  /** Данные для письма: чем полнее сводка, тем реже приходится открывать задачу. */
   taskCard(tenantId: string, taskId: string) {
-    return this.db.one<{ title: string; project_id: string; project_name: string }>(
-      `SELECT t.title, t.project_id, p.name AS project_name
-         FROM tasks t JOIN projects p ON p.id = t.project_id
+    return this.db.one<{
+      title: string; project_id: string; project_name: string;
+      column_name: string | null; assignee_name: string | null;
+      priority: string | null; deadline_at: Date | null;
+    }>(
+      `SELECT t.title, t.project_id, p.name AS project_name,
+              c.name AS column_name, a.full_name AS assignee_name,
+              t.priority, t.deadline_at
+         FROM tasks t
+         JOIN projects p ON p.id = t.project_id
+    LEFT JOIN board_columns c ON c.id = t.column_id
+    LEFT JOIN users a ON a.id = t.assignee_id
         WHERE t.tenant_id = $1 AND t.id = $2`,
       [tenantId, taskId],
     );

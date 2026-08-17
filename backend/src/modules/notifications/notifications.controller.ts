@@ -5,12 +5,15 @@ import type { Response } from 'express';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { NotificationsRepository } from './notifications.repository';
-import { EVENT_TITLE, EventKey } from './mail.templates';
+import { EVENT_TITLE, EventKey, OWN_EVENT_KEY, OWN_EVENT_TITLE } from './mail.templates';
 
+/** Виды писем в интерфейсе: три события плюс переключатель «и о моих действиях». */
 const EVENT_KEYS = Object.keys(EVENT_TITLE) as EventKey[];
+const ALL_KEYS: string[] = [...EVENT_KEYS, OWN_EVENT_KEY];
+const TITLE: Record<string, string> = { ...EVENT_TITLE, [OWN_EVENT_KEY]: OWN_EVENT_TITLE };
 
 class PrefDto {
-  @IsString() @IsIn(EVENT_KEYS) eventKey!: string;
+  @IsString() @IsIn(ALL_KEYS) eventKey!: string;
   @IsBoolean() enabled!: boolean;
 }
 
@@ -25,9 +28,9 @@ export class NotificationsController {
   @Roles('owner', 'manager', 'member')
   async prefs(@CurrentUser() u: AuthUser) {
     const saved = new Map((await this.repo.listPrefs(u.tenantId, u.userId)).map((p) => [p.event_key, p.enabled]));
-    return EVENT_KEYS.map((key) => ({
+    return ALL_KEYS.map((key) => ({
       eventKey: key,
-      title: EVENT_TITLE[key],
+      title: TITLE[key],
       enabled: saved.get(key) ?? true,
     }));
   }
@@ -48,7 +51,7 @@ export class NotificationsController {
   @Get('unsubscribe')
   @Public()
   async unsubscribe(@Query('token') token: string, @Res() res: Response) {
-    const ok = token ? await this.repo.unsubscribeByToken(String(token), EVENT_KEYS) : false;
+    const ok = token ? await this.repo.unsubscribeByToken(String(token), ALL_KEYS) : false;
     const text = ok
       ? 'Письма отключены. Включить обратно можно в личном кабинете TEAMCRM.'
       : 'Ссылка недействительна. Настройки писем есть в личном кабинете TEAMCRM.';

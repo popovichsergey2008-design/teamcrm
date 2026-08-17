@@ -80,7 +80,9 @@ describe('Почтовые уведомления (e2e)', () => {
     expect(created.some((m) => m.event_key === 'task.created')).toBe(true);
     expect(created[0].body_text).toContain('Обновить прайс');
     expect(created[0].body_text).toContain('Ольга Владелец'); // видно, кто поставил
-    expect(await readMail(ownerEmail)).toEqual([]); // сам поставил — сам себе не пишем
+    // автор действия тоже получает письмо: задача, поставленная себе, должна дойти
+    const mine = await mailFor(ownerEmail, { event: 'task.created' });
+    expect(mine.length).toBeGreaterThan(0);
 
     // комментарий владельца → письмо исполнителю
     await http.post(`/api/tasks/${task.id}/comments`).set(H(tok)).send({ body: 'Уточнение по срокам' }).expect(201);
@@ -112,7 +114,7 @@ describe('Почтовые уведомления (e2e)', () => {
 
     const prefs = (await http.get('/api/notifications/prefs').set(H(tok)).expect(200)).body.data;
     expect(prefs.map((p: any) => p.eventKey).sort())
-      .toEqual(['task.commented', 'task.created', 'task.status']);
+      .toEqual(['task.commented', 'task.created', 'task.own', 'task.status']);
     expect(prefs.every((p: any) => p.enabled)).toBe(true); // по умолчанию письма приходят
 
     await http.put('/api/notifications/prefs').set(H(tok))
@@ -123,6 +125,12 @@ describe('Почтовые уведомления (e2e)', () => {
     // неизвестное событие не принимаем
     await http.put('/api/notifications/prefs').set(H(tok))
       .send({ eventKey: 'task.whatever', enabled: false }).expect(400);
+
+    // выключение писем о собственных действиях
+    await http.put('/api/notifications/prefs').set(H(tok))
+      .send({ eventKey: 'task.own', enabled: false }).expect(200);
+    const own = (await http.get('/api/notifications/prefs').set(H(tok)).expect(200)).body.data;
+    expect(own.find((p: any) => p.eventKey === 'task.own').enabled).toBe(false);
 
     // отписка по битому токену не должна ничего менять и не должна падать
     await http.get('/api/notifications/unsubscribe?token=нет-такого').expect(404);

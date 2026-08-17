@@ -52,6 +52,10 @@ export class NotificationsService {
           projectName: card.project_name,
           taskUrl: this.taskUrl(card.project_id, taskId),
           actorName,
+          assigneeName: card.assignee_name,
+          columnName: card.column_name,
+          priority: card.priority,
+          deadlineAt: card.deadline_at,
         };
         const letter = render(ctx, this.unsubscribeUrl(token));
         await this.repo.enqueue({

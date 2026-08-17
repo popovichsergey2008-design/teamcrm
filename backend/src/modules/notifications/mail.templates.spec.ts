@@ -17,6 +17,34 @@ describe('письма по задачам', () => {
       .toBe('Задача перенесена в «В работе»: Обновить прайс');
   });
 
+  it('сводка попадает и в разметку, и в текстовую часть', () => {
+    const rich = { ...CTX, assigneeName: 'Глеб', columnName: 'В работе', priority: 'urgent', deadlineAt: '2026-09-01T15:00:00Z' };
+    const letter = taskCreatedLetter(rich, UNSUB);
+    for (const part of [letter.html, letter.text]) {
+      expect(part).toContain('Глеб');
+      expect(part).toContain('В работе');
+      expect(part).toContain('Срочно');
+    }
+    // пустые поля не превращаются в пустые строки сводки
+    const bare = taskCreatedLetter(CTX, UNSUB);
+    expect(bare.html).not.toContain('Исполнитель');
+    expect(bare.html).not.toContain('Срок');
+  });
+
+  it('оформление не полагается на внешние ресурсы: их почтовики режут', () => {
+    const letter = taskCreatedLetter(CTX, UNSUB);
+    expect(letter.html).not.toMatch(/<img/i);
+    expect(letter.html).not.toMatch(/<link/i);
+    expect(letter.html).not.toMatch(/https?:\/\/(?!teamsmrt\.com)/); // никаких чужих адресов
+  });
+
+  it('своя задача описывается иначе, чем чужая', () => {
+    const own = taskCreatedLetter({ ...CTX, assigneeName: 'Сергей Попович' }, UNSUB);
+    expect(own.text).toContain('Вы поставили себе задачу');
+    const other = taskCreatedLetter({ ...CTX, assigneeName: 'Глеб' }, UNSUB);
+    expect(other.text).toContain('Сергей Попович поставил задачу на вас');
+  });
+
   it('в каждом письме есть ссылка на задачу и отписка', () => {
     for (const letter of [
       taskCreatedLetter(CTX, UNSUB),
@@ -44,6 +72,6 @@ describe('письма по задачам', () => {
     const long = 'а'.repeat(400);
     expect(taskCreatedLetter({ ...CTX, taskTitle: long }, UNSUB).subject.length).toBeLessThanOrEqual(120);
     const letter = taskCommentedLetter({ ...CTX, comment: 'б'.repeat(2000) }, UNSUB);
-    expect(letter.html.length).toBeLessThan(3000);
+    expect(letter.html).not.toContain('б'.repeat(700)); // длинный комментарий обрезан
   });
 });
