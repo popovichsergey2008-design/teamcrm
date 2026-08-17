@@ -52,6 +52,18 @@ export class MeetClient {
   private reqCounter = 0;
   private closed = false;
 
+  /**
+   * Готовность исходящего транспорта.
+   *
+   * join() возвращается, как только открылся WebSocket, а транспорт создаётся
+   * позже — после обмена возможностями с сервером. Микрофон же берётся сразу и,
+   * если разрешение уже выдано, оказывается готов раньше транспорта. Тогда
+   * publish() уходил в никуда: собеседник слышал тишину, при том что его самого
+   * было слышно прекрасно. Теперь публикация ждёт транспорт.
+   */
+  private resolveSendReady!: () => void;
+  private readonly sendReady = new Promise<void>((r) => { this.resolveSendReady = r; });
+
   constructor(
     private readonly meetingId: string,
     private readonly token: string,
@@ -204,6 +216,7 @@ export class MeetClient {
     const transport = p.direction === 'send'
       ? (this.send = this.device.createSendTransport(options))
       : (this.recv = this.device.createRecvTransport(options));
+    if (p.direction === 'send') this.resolveSendReady();
 
     transport.on('connect', ({ dtlsParameters }, ok, fail) => {
       const timer = setTimeout(() => fail(new Error('Сервер не подтвердил соединение')), RESPONSE_TIMEOUT);
@@ -242,7 +255,14 @@ export class MeetClient {
 
   /** Публикация дорожки. Демонстрация экрана намеренно скромнее по битрейту и кадрам. */
   async publish(track: MediaStreamTrack, opts: { screen?: boolean } = {}): Promise<string | null> {
-    if (!this.send) return null;
+    if (!this.send) {
+      // ждём транспорт, но не бесконечно: молчаливое зависание хуже честной ошибки
+      await Promise.race([
+        this.sendReady,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Сервер созвонов не открыл исходящий канал')), RESPONSE_TIMEOUT)),
+      ]);
+    }
+    if (!this.send || this.closed) return null;
     const isVideo = track.kind === 'video';
     const producer = await this.send.produce({
       track,

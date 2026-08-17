@@ -328,6 +328,26 @@
 .group-chip-on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
 .member-chip:disabled, .group-chip:disabled { opacity: .5; cursor: default; }
 .group-add { margin-top: 8px; }
+/* всплывающие уведомления о сообщениях */
+.toasts {
+  position: fixed; right: 16px; bottom: 16px; z-index: 80;
+  display: flex; flex-direction: column; gap: 8px; max-width: min(360px, calc(100vw - 32px));
+}
+.toast {
+  display: flex; align-items: flex-start; gap: 8px; text-align: left; cursor: pointer;
+  padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border-2);
+  background: var(--bg-elev); color: var(--text); box-shadow: var(--shadow-lg);
+  animation: toast-in .18s ease-out;
+}
+.toast:hover { border-color: var(--accent); }
+.toast-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.toast-title { font-size: var(--fs-sm); font-weight: 600; }
+.toast-body { font-size: var(--fs-xs); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast-close { color: var(--text-mut); flex-shrink: 0; }
+.toast-close:hover { color: var(--text); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
 /* подразделение рядом с именем собеседника — подпись, а не акцент */
 .chat-row-group {
   margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--text-mut);
@@ -527,26 +547,52 @@
   background: var(--bg-elev); border: 1px solid var(--border-2); border-radius: var(--radius);
   box-shadow: var(--shadow-lg); overflow: hidden;
 }
+/* на весь экран окно занимает всё и без скруглений: рамка вокруг видео только мешает */
+.call-window:fullscreen {
+  width: 100%; max-height: none; height: 100%; border: none; border-radius: 0;
+  background: var(--video-bg);
+}
+.call-window:fullscreen .call-stage { padding: 10px; }
 .call-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 12px; border-bottom: 1px solid var(--border); font-weight: 600;
 }
+.call-head-actions { display: flex; align-items: center; gap: 4px; }
+
+/* Сцена созвона. Обычно — сетка равных плиток; когда кто-то показывает экран,
+   он занимает почти всё, а люди уезжают в полосу снизу: читать чужой код
+   в плитке 240px невозможно. */
+.call-stage { flex: 1; min-height: 260px; display: flex; flex-direction: column; gap: 8px; padding: 12px; overflow: hidden; }
 .call-grid {
-  flex: 1; min-height: 240px; display: grid; gap: 8px; padding: 12px; overflow: auto;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-content: start;
+  flex: 1; display: grid; gap: 8px; overflow: auto; align-content: center;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
-.call-empty { grid-column: 1 / -1; text-align: center; padding: 40px 0; }
-.call-tile { position: relative; background: var(--video-bg); border-radius: var(--radius-sm); overflow: hidden; aspect-ratio: 16 / 9; }
+.call-spotlight { flex: 1; min-height: 0; display: flex; background: var(--video-bg); border-radius: var(--radius-sm); overflow: hidden; }
+.call-spotlight video { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* полоса участников под демонстрацией: маленькая, но лица видно */
+.call-strip { display: flex; gap: 8px; overflow-x: auto; flex: 0 0 auto; padding-bottom: 2px; }
+.call-strip .call-tile { width: 150px; flex: 0 0 auto; }
+
+.call-tile {
+  position: relative; background: var(--video-bg); border-radius: var(--radius-sm);
+  overflow: hidden; aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center;
+}
 .call-tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
-/* демонстрацию экрана растягиваем на всю ширину: мелкий текст иначе не прочесть */
-.call-tile.call-screen { grid-column: 1 / -1; aspect-ratio: auto; max-height: 60vh; }
-.call-tile.call-screen video { object-fit: contain; }
-.call-self { outline: 1px solid var(--accent); }
-.call-name {
-  position: absolute; left: 6px; bottom: 6px; font-size: 11px; padding: 2px 6px;
-  background: var(--overlay); border-radius: 4px; color: #fff; /* поверх видео — тёмного в любой теме */
+/* плитка без видео: инициал вместо чёрного прямоугольника, как в привычных созвонах */
+.call-avatar {
+  width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent); font-size: 24px; font-weight: 600;
 }
-.call-peers { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 8px; }
+.call-strip .call-avatar { width: 38px; height: 38px; font-size: 15px; }
+.call-tile-ai .call-avatar { background: var(--accent); color: var(--on-accent); }
+.call-self { outline: 2px solid var(--accent); }
+.call-hand { position: absolute; top: 6px; right: 6px; color: var(--warn); }
+.call-muted-mark { position: absolute; top: 6px; left: 6px; color: var(--danger); }
+.call-name {
+  position: absolute; left: 6px; bottom: 6px; right: 6px; font-size: 11px; padding: 2px 6px;
+  background: var(--overlay); border-radius: 4px; color: #fff; /* поверх видео — тёмного в любой теме */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .call-controls {
   display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px;
   border-top: 1px solid var(--border); background: var(--bg-elev-2);

@@ -22,6 +22,7 @@ import { NlCommandModal } from './components/NlCommandModal';
 import { InboxPanel } from './components/InboxPanel';
 import { ClientPortal } from './pages/ClientPortal';
 import { Avatar } from './components/Avatar';
+import { Toasts } from './components/Toasts';
 import { roleLabel } from './lib/labels';
 
 const ROUTES = ['board', 'profile', 'mytasks', 'meetings', 'chats'] as const;
@@ -43,6 +44,8 @@ export function App() {
   const [callInvite, setCallInvite] = useState<string[]>([]);
   // какой чат открыт — чтобы не слать уведомление о сообщении, которое человек и так видит
   const [openChatId, setOpenChatId] = useState<string | null>(null);
+  // чат, который просили открыть кликом по уведомлению
+  const [chatToOpen, setChatToOpen] = useState<string | null>(null);
   const [activeCalls, setActiveCalls] = useState<{ id: string; participants: { displayName: string }[] }[]>([]);
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
@@ -232,9 +235,10 @@ export function App() {
       {route === 'mytasks' && (
         <MyTasksPage onOpenProject={(projectId, taskId) => { setJumpTo({ projectId, taskId }); setRoute('board'); }} />
       )}
-      {route === 'chats' && <ChatsPage onCall={callFromChat} onActiveChat={setOpenChatId} />}
+      {route === 'chats' && <ChatsPage onCall={callFromChat} onActiveChat={setOpenChatId} initialChatId={chatToOpen} />}
       {route === 'meetings' && <MeetingsPage />}
       {route === 'board' && <BoardPage key={`${user.tenantId}:${jumpTo?.taskId ?? ''}`} initial={jumpTo} />}
+      <Toasts onOpenChat={(chatId) => { setChatToOpen(chatId ?? null); setRoute('chats'); }} />
       {callId && <CallPanel meetingId={callId} inviteUserIds={callInvite} onClose={() => { setCallId(null); setCallInvite([]); }} />}
       {incoming && !callId && (
         <IncomingCallDialog

@@ -35,6 +35,22 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
   const camProducer = useRef<string | null>(null);
   const screenProducer = useRef<string | null>(null);
   const localVideo = useRef<HTMLVideoElement | null>(null);
+  const windowRef = useRef<HTMLDivElement | null>(null);
+  const [full, setFull] = useState(false);
+
+  // Полноэкранный режим: следим за системным событием, а не за своей кнопкой —
+  // выйти можно и клавишей Esc, кнопка обязана это отражать.
+  useEffect(() => {
+    const onChange = () => setFull(document.fullscreenElement === windowRef.current);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+  const toggleFull = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await windowRef.current?.requestFullscreen();
+    } catch { setErr('Браузер не разрешил полноэкранный режим'); }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +78,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
         });
         localStream.current = stream;
         const audio = stream.getAudioTracks()[0];
-        if (audio) await c.publish(audio);
+        // молчание в одну сторону — самая обидная поломка созвона, поэтому говорим прямо
+        if (!audio) setErr('Микрофон не найден — вас не будет слышно');
+        else if (!(await c.publish(audio))) setErr('Микрофон не удалось передать — перезайдите в созвон');
 
         // зовём собеседников уже после того, как сами вошли: иначе человек примет
         // звонок и попадёт в пустую комнату
@@ -132,18 +150,27 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
 
   const leave = () => { client.current?.leave(); onClose(); };
 
-  const videos = tracks.filter((t) => t.kind === 'video');
   const audios = tracks.filter((t) => t.kind === 'audio');
+  const screenTrack = tracks.find((t) => t.kind === 'video' && t.screen) ?? null;
+  // видео по участникам: плитка есть у каждого, даже если камера выключена
+  const camByUser = new Map(tracks.filter((t) => t.kind === 'video' && !t.screen).map((t) => [String(t.userId), t]));
+  const me = String(user?.id ?? '');
+  const tiles = peers.map((p) => ({ peer: p, track: camByUser.get(String(p.userId)) ?? null }));
 
   return (
     <div className="call-overlay">
-      <div className="call-window">
+      <div className="call-window" ref={windowRef}>
         <div className="call-head">
           <span>
             <Icon name="phone" size={16} /> Созвон · <span className="dim">{STATE_LABEL[state]}</span>
             {peers.length > 0 && <span className="badge badge-muted" style={{ marginLeft: 8 }}>участников: {peers.length}</span>}
           </span>
-          <button className="btn btn-ghost btn-sm" onClick={leave} title="Закрыть"><Icon name="close" /></button>
+          <span className="call-head-actions">
+            <button className="btn btn-ghost btn-sm" onClick={toggleFull} title={full ? 'Свернуть из полного экрана' : 'Развернуть на весь экран'}>
+              <Icon name={full ? 'minimize' : 'maximize'} size={15} />
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={leave} title="Закрыть"><Icon name="close" /></button>
+          </span>
         </div>
 
         {/* запись видна всем и всегда: тихой записи в продукте нет */}
@@ -160,34 +187,31 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
         )}
         {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
 
-        <div className="call-grid">
-          {videos.length === 0 && (
-            <div className="call-empty muted">
-              Видео никто не включил — идёт разговор голосом.
+        {/* Показ экрана занимает сцену целиком, люди уезжают в полосу снизу:
+            в общей сетке демонстрация выходила мелкой и нечитаемой. */}
+        <div className="call-stage">
+          {screenTrack && (
+            <div className="call-spotlight">
+              <RemoteMedia track={screenTrack.track} />
             </div>
           )}
-          {videos.map((t) => (
-            <RemoteVideo key={t.consumerId} track={t} name={peers.find((p) => p.userId === t.userId)?.displayName ?? '…'} />
-          ))}
-          {camOn && (
-            <div className="call-tile call-self">
-              <video ref={localVideo} autoPlay playsInline muted />
-              <span className="call-name">вы</span>
-            </div>
-          )}
+          <div className={screenTrack ? 'call-strip' : 'call-grid'}>
+            {tiles.map(({ peer, track }) => (
+              <ParticipantTile
+                key={peer.userId}
+                peer={peer}
+                track={track?.track ?? null}
+                self={String(peer.userId) === me}
+                selfVideoRef={String(peer.userId) === me ? localVideo : undefined}
+                selfCamOn={camOn}
+                selfMicOn={micOn}
+              />
+            ))}
+          </div>
         </div>
 
-        {/* Звук воспроизводится скрытыми элементами: в сетке ему делать нечего */}
+        {/* Звук воспроизводится скрытыми элементами: на сцене ему делать нечего */}
         {audios.map((t) => <RemoteAudio key={t.consumerId} track={t.track} />)}
-
-        <div className="call-peers">
-          {peers.map((p) => (
-            <span key={p.userId} className={`badge ${p.isAi ? 'peer-ai' : 'badge-muted'}`}
-                  title={p.isAi ? 'ИИ ведёт стенограмму встречи' : undefined}>
-              {p.isAi ? <Icon name="robot" size={13} /> : p.handRaised ? <Icon name="hand" size={13} /> : null}{p.displayName}
-            </span>
-          ))}
-        </div>
 
         <div className="call-controls">
           <button className={`btn btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic}>
@@ -216,17 +240,45 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
   );
 }
 
-function RemoteVideo({ track, name }: { track: RemoteTrack; name: string }) {
-  const ref = useRef<HTMLVideoElement | null>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.srcObject = new MediaStream([track.track]);
-  }, [track]);
+/**
+ * Плитка участника: своя у каждого, кто в созвоне, — как в привычных
+ * видеовстречах. Без камеры показываем инициал, иначе на месте человека
+ * зияет чёрный прямоугольник и непонятно, здесь он вообще или нет.
+ */
+function ParticipantTile({ peer, track, self, selfVideoRef, selfCamOn, selfMicOn }: {
+  peer: Peer;
+  track: MediaStreamTrack | null;
+  self: boolean;
+  selfVideoRef?: React.MutableRefObject<HTMLVideoElement | null>;
+  selfCamOn: boolean;
+  selfMicOn: boolean;
+}) {
+  const hasVideo = self ? selfCamOn : !!track;
   return (
-    <div className={`call-tile ${track.screen ? 'call-screen' : ''}`}>
-      <video ref={ref} autoPlay playsInline />
-      <span className="call-name">{name}{track.screen ? ' · экран' : ''}</span>
+    <div className={`call-tile ${self ? 'call-self' : ''} ${peer.isAi ? 'call-tile-ai' : ''}`}>
+      {hasVideo
+        ? (self
+          ? <video ref={selfVideoRef} autoPlay playsInline muted />
+          : <RemoteMedia track={track!} />)
+        : (
+          <span className="call-avatar">
+            {peer.isAi ? <Icon name="robot" size={26} /> : (peer.displayName?.[0] ?? '?').toUpperCase()}
+          </span>
+        )}
+      {peer.handRaised && <span className="call-hand" title="Просит слова"><Icon name="hand" size={16} /></span>}
+      {self && !selfMicOn && <span className="call-muted-mark" title="Ваш микрофон выключен"><Icon name="mic-off" size={16} /></span>}
+      <span className="call-name">{self ? 'вы' : peer.displayName}{peer.isAi ? ' · стенограмма' : ''}</span>
     </div>
   );
+}
+
+/** Видеодорожка в элемент: srcObject нельзя задать разметкой. */
+function RemoteMedia({ track }: { track: MediaStreamTrack }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.srcObject = new MediaStream([track]);
+  }, [track]);
+  return <video ref={ref} autoPlay playsInline />;
 }
 
 function RemoteAudio({ track }: { track: MediaStreamTrack }) {

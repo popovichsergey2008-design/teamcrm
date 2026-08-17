@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { getSocket } from '../lib/socket';
-import { CHATS_CHANGED, setTitleUnread, showNotification } from '../lib/notifications';
+import { CHATS_CHANGED, playChime, setTitleUnread, showNotification, showToast } from '../lib/notifications';
 
 /**
  * Непрочитанные сообщения на уровне всего приложения.
@@ -38,11 +38,13 @@ export function useChatNotifications(enabled: boolean, openChatId: string | null
       // системные строки и открытый чат не тревожим; свои сообщения — тем более
       if (!m.author_id) return;
       if (String(p.chatId) === String(openRef.current) && !document.hidden) return;
-      showNotification(
-        m.author_name ?? 'Новое сообщение',
-        m.body?.trim() || (m.file_name ? `📎 ${m.file_name}` : 'Вложение'),
-        () => openChats.current(),
-      );
+      const title = m.author_name ?? 'Новое сообщение';
+      const body = m.body?.trim() || (m.file_name ? `Файл: ${m.file_name}` : 'Вложение');
+      // Показываем сразу двумя способами: системное уведомление видно и при свёрнутом
+      // окне, но требует разрешения; своё — работает всегда, пока вкладка открыта.
+      showNotification(title, body, () => openChats.current());
+      showToast({ title, body, chatId: String(p.chatId) });
+      playChime();
     };
 
     socket.on('chat.message', onMessage);

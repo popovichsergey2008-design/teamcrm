@@ -27,10 +27,12 @@ const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 
  * Мессенджер: слева люди и группы, справа переписка. Звонок — из шапки чата,
  * то есть звонишь конкретному человеку, а не в общую комнату.
  */
-export function ChatsPage({ onCall, onActiveChat }: {
+export function ChatsPage({ onCall, onActiveChat, initialChatId }: {
   onCall: (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null; withAi?: boolean }) => void;
   /** Наверх — какой чат открыт: по нему уведомления не показываются. */
   onActiveChat?: (chatId: string | null) => void;
+  /** Чат, который просили открыть снаружи — например кликом по уведомлению. */
+  initialChatId?: string | null;
 }) {
   // «Позвать ИИ» — решение на конкретный звонок, поэтому галочка живёт рядом с кнопкой,
   // а не в настройках: перед разговором видно, будет он записан или нет
@@ -108,6 +110,11 @@ export function ChatsPage({ onCall, onActiveChat }: {
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть чат'); }
     finally { setMsgLoading(false); }
   }, [reload]);
+
+  // пришли из уведомления — открываем названный чат, а не последний
+  useEffect(() => {
+    if (initialChatId) openChat(String(initialChatId));
+  }, [initialChatId, openChat]);
 
   useEffect(() => {
     onActiveChat?.(activeId);
