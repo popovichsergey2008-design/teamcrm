@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, tokens } from '../lib/api';
 import { MeetClient, Peer, RemoteTrack } from '../lib/meet-client';
+import { diag } from '../lib/diag';
 import { useAuth } from '../state/auth';
 
 const STATE_LABEL: Record<string, string> = {
@@ -81,6 +82,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
         });
         localStream.current = stream;
         const audio = stream.getAudioTracks()[0];
+        // Что именно дал браузер: заглушенный или выключённый микрофон выглядит
+        // для собеседника ровно как «не слышно», а причина совсем другая.
+        diag('meet', 'mic', meetingId, audio
+          ? { label: audio.label, enabled: audio.enabled, muted: audio.muted, state: audio.readyState }
+          : { missing: true });
         // молчание в одну сторону — самая обидная поломка созвона, поэтому говорим прямо
         if (!audio) setErr('Микрофон не найден — вас не будет слышно');
         else if (!(await c.publish(audio))) setErr('Микрофон не удалось передать — перезайдите в созвон');
@@ -125,10 +131,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
       setSelfVideo(track);
       camProducer.current = await c.publish(track);
       setCamOn(true);
-    } catch {
+    } catch (e) {
+      diag('meet', 'camera.denied', meetingId, { error: (e as Error)?.name });
       setErr('Нет доступа к камере');
     }
-  }, [camOn]);
+  }, [camOn, meetingId]);
 
   const toggleScreen = useCallback(async () => {
     const c = client.current;
@@ -146,10 +153,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
       track.onended = () => { screenProducer.current = null; setScreenOn(false); };
       screenProducer.current = await c.publish(track, { screen: true });
       setScreenOn(true);
-    } catch {
+    } catch (e) {
+      diag('meet', 'screen.cancelled', meetingId, { error: (e as Error)?.name });
       setErr('Демонстрация экрана отменена');
     }
-  }, [screenOn]);
+  }, [screenOn, meetingId]);
 
   const leave = () => { client.current?.leave(); onClose(); };
 

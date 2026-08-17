@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
+import { DiagService } from '../diagnostics/diag.service';
 import { FilesService } from '../files/files.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ChatRow, ChatsRepository } from './chats.repository';
@@ -19,6 +20,7 @@ export class ChatsService {
     private readonly repo: ChatsRepository,
     private readonly files: FilesService,
     private readonly realtime: RealtimeService,
+    private readonly diag: DiagService,
   ) {}
 
   /** Список чатов + кто сейчас в сети (точка рядом с именем). */
@@ -97,6 +99,12 @@ export class ChatsService {
 
     const to = await this.recipients(chat, tenantId);
     this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
+    // В журнал — только факт и адресаты: по нему видно, ушло ли сообщение и кому,
+    // когда человек говорит «мне не пришло». Текста сообщения здесь нет.
+    this.diag.write({
+      tenantId, scope: 'chat', refId: String(chatId), userId: user.userId, side: 'server',
+      event: 'message.sent', data: { messageId: String(message.id), recipients: to.length, hasFile: !!fileId, length: text.length },
+    });
     return message;
   }
 

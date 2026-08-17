@@ -1,4 +1,5 @@
 import { Device, types } from 'mediasoup-client';
+import { diag, flushDiag } from './diag';
 
 export interface RemoteTrack {
   consumerId: string;
@@ -112,8 +113,24 @@ export class MeetClient {
     }
   }
 
+  private log(event: string, data?: unknown): void {
+    diag('meet', event, this.meetingId, data);
+  }
+
   private async onMessage(msg: { type: string; payload?: any }): Promise<void> {
     const p = msg.payload ?? {};
+    // Порядок сообщений — половина диагноза: именно он ломал приём звука.
+    this.log(`in:${msg.type.replace('meet.', '')}`, {
+      producerId: p.producer_id ?? undefined,
+      direction: p.direction ?? undefined,
+      people: Array.isArray(p.participants) ? p.participants.length : undefined,
+      producers: Array.isArray(p.participants)
+        ? p.participants.reduce((n: number, it: any) => n + (it.producers?.length ?? 0), 0)
+        : undefined,
+      deviceLoaded: this.device.loaded,
+      hasRecv: !!this.recv,
+      hasSend: !!this.send,
+    });
     switch (msg.type) {
       case 'meet.router-capabilities':
         if (!this.device.loaded) await this.device.load({ routerRtpCapabilities: p.rtp_capabilities });
@@ -172,6 +189,7 @@ export class MeetClient {
           id: p.consumer_id, producerId: p.producer_id, kind: p.kind, rtpParameters: p.rtp_parameters,
         });
         this.consumers.set(consumer.id, consumer);
+        this.log('track.received', { kind: p.kind, from: p.producer_user_id, muted: consumer.track.muted, live: consumer.track.readyState });
         this.emit('meet.resume-consumer', { consumer_id: consumer.id });
         this.ev.onTrack({
           consumerId: consumer.id, userId: p.producer_user_id, kind: p.kind,
@@ -235,6 +253,7 @@ export class MeetClient {
     const transport = p.direction === 'send'
       ? (this.send = this.device.createSendTransport(options))
       : (this.recv = this.device.createRecvTransport(options));
+    this.log('transport.created', { direction: p.direction, iceServers: this.iceServers.length });
     if (p.direction === 'send') this.resolveSendReady();
     else this.resolveRecvReady();
 
@@ -258,6 +277,8 @@ export class MeetClient {
     if (this.send && this.recv) this.emit('meet.get-participants', {});
 
     transport.on('connectionstatechange', (state) => {
+      // Здесь видно, дошла ли связь вообще: «failed» почти всегда значит TURN.
+      this.log('transport.state', { direction: p.direction, state });
       if (state === 'connected') this.ev.onState('connected');
       // разрыв лечится перезапуском ICE: сеть моргнула — звонок не должен разваливаться
       if (state === 'failed') this.emit('meet.restart-ice', { transport_id: transport.id });
@@ -285,10 +306,12 @@ export class MeetClient {
         new Promise((_, reject) => setTimeout(() => reject(new Error('нет входящего канала')), RESPONSE_TIMEOUT)),
       ]);
     } catch {
+      this.log('consume.no-recv-transport', { producerId });
       return; // канал так и не появился — приём невозможен, дальше молчать бессмысленно
     }
     if (this.closed || !this.device.loaded || this.requested.has(producerId)) return;
     this.requested.add(producerId);
+    this.log('consume.request', { producerId });
     this.emit('meet.consume', { producer_id: producerId, rtp_capabilities: this.device.rtpCapabilities });
   }
 
@@ -301,7 +324,10 @@ export class MeetClient {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Сервер созвонов не открыл исходящий канал')), RESPONSE_TIMEOUT)),
       ]);
     }
-    if (!this.send || this.closed) return null;
+    if (!this.send || this.closed) {
+      this.log('publish.failed', { kind: track.kind, reason: this.closed ? 'closed' : 'no-send-transport' });
+      return null;
+    }
     const isVideo = track.kind === 'video';
     const producer = await this.send.produce({
       track,
@@ -321,6 +347,7 @@ export class MeetClient {
           : {}),
     });
     this.producers.set(producer.id, producer);
+    this.log('publish', { kind: track.kind, screen: !!opts.screen, producerId: producer.id, track: track.readyState });
     return producer.id;
   }
 
@@ -354,6 +381,8 @@ export class MeetClient {
   }
 
   leave(): void {
+    this.log('leave', { producers: this.producers.size, consumers: this.consumers.size, peers: this.peers.size });
+    flushDiag();
     this.closed = true;
     this.emit('meet.leave', {});
     for (const p of this.producers.values()) p.close();

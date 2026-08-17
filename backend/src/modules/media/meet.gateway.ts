@@ -10,6 +10,7 @@ import { DbService } from '../../database/db.service';
 import { MeetingsService } from '../meetings/meetings.service';
 import { MediaService, optimalLayers } from './media.service';
 import { RecordingService } from './recording.service';
+import { DiagService } from '../diagnostics/diag.service';
 import { AI_PARTICIPANT, MeetingRoom } from './media.types';
 
 const PATH = '/ws/meet';
@@ -46,7 +47,16 @@ export class MeetGateway implements OnModuleInit {
     private readonly db: DbService,
     private readonly recording: RecordingService,
     private readonly meetings: MeetingsService,
+    private readonly diag: DiagService,
   ) {}
+
+  /** Короткая запись в диагностический журнал: без await, ошибки внутри проглатываются. */
+  private trace(c: Client, event: string, data?: unknown): void {
+    this.diag.write({
+      tenantId: c.tenantId, scope: 'meet', refId: c.meetingId ?? null,
+      userId: c.userId, side: 'server', event, data,
+    });
+  }
 
   onModuleInit(): void {
     const server = this.adapterHost.httpAdapter?.getHttpServer();
@@ -157,7 +167,10 @@ export class MeetGateway implements OnModuleInit {
 
     switch (msg.type) {
       case 'meet.join': {
-        if (!room) return this.send(c.ws, 'meet.error', { message: 'Созвон не найден' });
+        if (!room) {
+          this.diag.write({ tenantId: c.tenantId, scope: 'meet', refId: String(p.meeting_id ?? ''), userId: c.userId, side: 'server', event: 'join.rejected', data: { reason: 'room-not-found' } });
+          return this.send(c.ws, 'meet.error', { message: 'Созвон не найден' });
+        }
         // вход со второго устройства вытесняет первое — иначе в списке два одинаковых человека
         if (room.participants.has(c.userId)) {
           this.media.removeParticipant(room, c.userId);
@@ -181,6 +194,7 @@ export class MeetGateway implements OnModuleInit {
         // вошедший обязан сразу узнать, что идёт запись, — это не мелочь интерфейса
         this.send(c.ws, 'meet.recording', { meeting_id: room.id, ...this.recording.recordingInfo(room.id) });
         await this.media.recalcQuality(room);
+        this.trace(c, 'join', { people: room.participants.size, producers: this.media.participantList(room).reduce((n: number, x: any) => n + x.producers.length, 0) });
         return;
       }
 
@@ -191,6 +205,7 @@ export class MeetGateway implements OnModuleInit {
         const transport = await this.media.createTransport(room);
         if (direction === 'send') participant.sendTransport = transport;
         else participant.recvTransport = transport;
+        this.trace(c, 'transport.created', { direction, transportId: transport.id });
 
         return this.send(c.ws, 'meet.transport-created', {
           meeting_id: room.id, direction, transport_id: transport.id,
@@ -220,6 +235,7 @@ export class MeetGateway implements OnModuleInit {
             kind: p.kind, rtpParameters: p.rtp_parameters, appData: p.app_data ?? {},
           });
           participant.producers.set(producer.id, producer);
+          this.trace(c, 'produce', { kind: producer.kind, type: (p.app_data ?? {}).type ?? producer.kind, producerId: producer.id, listeners: room.participants.size - 1 });
           // _req_id возвращаем обязательно: клиент по нему сопоставляет ответ со своим вызовом
           this.send(c.ws, 'meet.produced', { meeting_id: room.id, producer_id: producer.id, _req_id: p._req_id });
           this.broadcast(room, 'meet.new-producer', {
@@ -237,6 +253,7 @@ export class MeetGateway implements OnModuleInit {
             }
           }
         } catch (e) {
+          this.trace(c, 'produce.failed', { kind: p.kind, error: (e as Error).message });
           this.log.warn(`produce: ${(e as Error).message}`);
           this.send(c.ws, 'meet.error', { message: 'Не удалось начать передачу', _req_id: p._req_id });
         }
@@ -245,13 +262,26 @@ export class MeetGateway implements OnModuleInit {
 
       case 'meet.consume': {
         const participant = room?.participants.get(c.userId);
-        if (!room || !participant?.recvTransport || !p.producer_id || !p.rtp_capabilities) return;
+        // Каждый отказ записываем. Именно молчание здесь скрывало ошибку, из-за которой
+        // вошедший вторым не слышал никого: причину было не отличить от «не запрашивал».
+        if (!room || !participant?.recvTransport || !p.producer_id || !p.rtp_capabilities) {
+          this.trace(c, 'consume.refused', {
+            producerId: p.producer_id ?? null,
+            reason: !room ? 'no-room' : !participant ? 'not-in-room'
+              : !participant.recvTransport ? 'no-recv-transport' : 'bad-request',
+          });
+          return;
+        }
         if (!room.router.canConsume({ producerId: p.producer_id, rtpCapabilities: p.rtp_capabilities })) {
+          this.trace(c, 'consume.refused', { producerId: p.producer_id, reason: 'cannot-consume' });
           return this.send(c.ws, 'meet.error', { message: 'Поток недоступен для приёма' });
         }
         const owner = this.producerOwner(room, p.producer_id);
         // свой же поток обратно не отдаём: иначе человек слышит себя из динамиков
-        if (owner && String(owner.userId) === String(c.userId)) return;
+        if (owner && String(owner.userId) === String(c.userId)) {
+          this.trace(c, 'consume.refused', { producerId: p.producer_id, reason: 'own-producer' });
+          return;
+        }
         try {
           const consumer = await participant.recvTransport.consume({
             producerId: p.producer_id,
@@ -261,6 +291,7 @@ export class MeetGateway implements OnModuleInit {
             paused: owner?.kind === 'video',
           });
           participant.consumers.set(consumer.id, consumer);
+          this.trace(c, 'consume.ok', { producerId: p.producer_id, kind: consumer.kind, from: owner?.userId ?? null });
           if (consumer.kind === 'video') {
             await consumer.setPreferredLayers(optimalLayers(room.participants.size)).catch(() => undefined);
           }
@@ -355,6 +386,7 @@ export class MeetGateway implements OnModuleInit {
           // занятого не дёргаем: вызов поверх идущего разговора либо не виден,
           // либо, если его примут, выбрасывает человека из текущей комнаты
           if (this.media.isBusy(c.tenantId, String(target))) {
+            this.trace(c, 'invite.busy', { target: String(target) });
             this.send(c.ws, 'meet.peer-busy', { meeting_id: room.id, user_id: String(target) });
             continue;
           }
@@ -468,9 +500,14 @@ export class MeetGateway implements OnModuleInit {
   /** Выход: последний участник закрывает комнату, иначе роутеры копились бы вечно. */
   private async leave(c: Client): Promise<void> {
     const room = c.meetingId ? this.media.getRoom(c.meetingId) : null;
+    const wasIn = c.meetingId;
     c.meetingId = null;
     if (!room) return;
     if (!this.media.removeParticipant(room, c.userId)) return;
+    this.diag.write({
+      tenantId: c.tenantId, scope: 'meet', refId: wasIn, userId: c.userId,
+      side: 'server', event: 'leave', data: { left: room.participants.size },
+    });
 
     this.broadcast(room, 'meet.peer-left', { meeting_id: room.id, user_id: c.userId });
     if (room.participants.size === 0) {
