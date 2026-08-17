@@ -1,4 +1,4 @@
-import { matchUserInText } from './nl.match';
+import { matchUserInText, normalizeDeadline } from './nl.match';
 
 const USERS = [
   { id: '2', name: 'Сергей Попович' },
@@ -28,6 +28,17 @@ describe('NL — исполнитель по имени в тексте', () => 
     expect(matchUserInText('', USERS)).toBeNull();
     // двое подходящих — выбирать за человека нельзя
     expect(matchUserInText('Глеб и Алина делают вместе', USERS)).toBeNull();
+  });
+
+  it('не подставляет срок в прошлом', () => {
+    const today = '2026-08-17';
+    // из-за этого задача заводилась уже просроченной
+    expect(normalizeDeadline('2026-08-16', today)).toBeNull();
+    expect(normalizeDeadline('2025-01-01', today)).toBeNull();
+    expect(normalizeDeadline(today, today)).toBe(today); // сегодня — нормальный срок
+    expect(normalizeDeadline('2026-08-25', today)).toBe('2026-08-25');
+    expect(normalizeDeadline(null, today)).toBeNull();
+    expect(normalizeDeadline('завтра', today)).toBeNull(); // модель обязана вернуть дату, а не слово
   });
 
   it('не цепляется за случайные короткие совпадения', () => {

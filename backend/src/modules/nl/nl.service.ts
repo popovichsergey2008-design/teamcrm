@@ -5,7 +5,7 @@ import { AiService } from '../ai/ai.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { TasksService } from '../tasks/tasks.service';
 import { DealsService } from '../deals/deals.service';
-import { matchUserInText } from './nl.match';
+import { matchUserInText, normalizeDeadline } from './nl.match';
 
 type Intent = 'create_task' | 'create_deal' | 'none';
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -95,7 +95,8 @@ export class NlService {
       const assigneeId = idIn(t.assigneeId, userSet) ?? matchUserInText(clean, users);
       if (t.assigneeId && !assigneeId) warnings.push('Исполнитель не распознан');
       const priority = PRIORITIES.includes(String(t.priority)) ? String(t.priority) : 'normal';
-      const deadline = /^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? '')) ? String(t.deadline) : null;
+      const deadline = normalizeDeadline(t.deadline, today);
+      if (t.deadline && !deadline) warnings.push('Срок не подставил: дата в прошлом или не распознана — выберите вручную');
       base.task = {
         title: title.slice(0, 255), description: t.description ? String(t.description) : null,
         projectId, projectName: projectId ? projectSet.get(projectId)! : null,

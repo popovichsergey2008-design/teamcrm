@@ -52,3 +52,17 @@ export function matchUserInText(text: string, users: NamedUser[]): string | null
   });
   return hits.length === 1 ? String(hits[0].id) : null;
 }
+
+/**
+ * Срок из разобранной команды.
+ *
+ * Модель охотно возвращает дату, просто упомянутую в тексте («с дедлайном на вчера»),
+ * и задача заводилась уже просроченной. Срок в прошлом сроком не считаем: поставить
+ * задачу на вчера нельзя, а нужную дату человек выберет в форме сам.
+ * Обе даты в формате YYYY-MM-DD, поэтому сравнение строк совпадает с хронологией.
+ */
+export function normalizeDeadline(raw: unknown, today: string): string | null {
+  const v = String(raw ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  return v >= today ? v : null;
+}
