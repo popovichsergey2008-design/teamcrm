@@ -125,6 +125,13 @@ services:
       TURN_HOST: ${TURN_HOST:-}
       TURN_SECRET: ${TURN_SECRET:-}
       TURN_TTL_SEC: ${TURN_TTL_SEC:-28800}
+      # Почтовые уведомления. Без ключа приложение пишет письма в журнал вместо
+      # отправки — это рабочий режим, а не ошибка. APP_BASE_URL нужен для ссылок
+      # в письмах: по адресу с самоподписанным сертификатом их никто не откроет.
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-noreply@teamsmrt.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-TEAMCRM}
+      APP_BASE_URL: ${APP_BASE_URL:-https://teamsmrt.com}
     # RTP ходит мимо nginx — порты публикуем напрямую. Диапазон узкий намеренно:
     # docker поднимает по процессу-посреднику на каждый порт, и «на всякий случай»
     # тут стоило бы 10 тысяч процессов. 41 порта хватает на созвон вшестером.

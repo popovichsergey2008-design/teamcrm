@@ -44,8 +44,10 @@ export class BrevoTransport implements MailTransport {
     });
     if (res.ok) return;
     const body = await res.text().catch(() => '');
-    // 4xx (кроме перегрузки) — это про само письмо: адрес, ключ, домен. Повтор не поможет.
-    if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+    // Отбрасываем только то, что относится к самому письму: неверный адрес или тело
+    // запроса. Отказ по ключу и незарешённому IP (401/403) — общая чинимая беда,
+    // и терять из-за неё письма нельзя: настроят доступ — очередь уйдёт сама.
+    if (res.status === 400 || res.status === 422) {
       throw new MailPermanentError(`Brevo ${res.status}: ${body.slice(0, 200)}`);
     }
     throw new Error(`Brevo ${res.status}: ${body.slice(0, 200)}`);
