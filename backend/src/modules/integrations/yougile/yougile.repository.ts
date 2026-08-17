@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../../database/db.service';
+import { DONE_COLUMN_NAMES } from '../../tasks/task-columns';
 
 export interface ConnectionRow {
   id: string; tenant_id: string; provider: string; label: string | null; portal: string | null;
@@ -197,6 +198,21 @@ export class YougileRepository {
     if (existing) return existing.id;
     const row = await this.db.one<{ id: string }>(`INSERT INTO board_columns (tenant_id, project_id, name, position) VALUES ($1,$2,'Задачи',0) RETURNING id`, [tenantId, projectId]);
     return row!.id;
+  }
+
+  /**
+   * Колонка «Готово» проекта, если она есть.
+   * В YouGile «завершено» — флажок на задаче, не зависящий от колонки, поэтому
+   * закрытая задача приезжает в свою «Паузу» и висит там с отметкой «завершена».
+   */
+  async doneColumnId(tenantId: string, projectId: string): Promise<string | null> {
+    const row = await this.db.one<{ id: string }>(
+      `SELECT id FROM board_columns
+        WHERE tenant_id=$1 AND project_id=$2 AND lower(btrim(name)) = ANY($3::text[])
+        ORDER BY position LIMIT 1`,
+      [tenantId, projectId, DONE_COLUMN_NAMES],
+    );
+    return row?.id ?? null;
   }
 
   userExists(tenantId: string, userId: string) {

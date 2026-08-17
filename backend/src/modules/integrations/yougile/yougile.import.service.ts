@@ -172,12 +172,19 @@ export class YougileImportService {
     const completed = !!t.completed;
     const description = t.description ? String(t.description).slice(0, 20000) : null;
     const priority = priorityFromStickers(st.prio, t.stickers);
+
+    // В YouGile «завершено» — флажок, не зависящий от колонки, поэтому закрытая задача
+    // приезжала в свою «Паузу» и висела там с отметкой «завершена». Кладём такие в «Готово»,
+    // если колонка есть. Правило детерминированное, поэтому и хеш считаем по итоговой
+    // колонке — иначе каждый следующий импорт видел бы расхождение и таскал карточку туда-сюда.
+    const placementId = (completed && (await this.repo.doneColumnId(tenantId, projectId))) || columnId;
+
     const hash = taskStateHash({
-      title: t.title, description, localColumnId: columnId,
+      title: t.title, description, localColumnId: placementId,
       assigned: (t.assigned ?? []).map(String), deadlineIso: deadlineAt, completed, priority,
     });
     const { id } = await this.repo.upsertTask({
-      tenantId, connectionId, externalId: String(t.id), projectId, columnId,
+      tenantId, connectionId, externalId: String(t.id), projectId, columnId: placementId,
       title: (t.title || 'Без названия').slice(0, 255), description,
       assigneeId, createdBy, priority, deadlineAt,
       status: completed ? 'done' : 'todo', closed: completed, hash,

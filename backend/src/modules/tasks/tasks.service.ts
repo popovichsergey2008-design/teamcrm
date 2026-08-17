@@ -7,12 +7,7 @@ import { TaskActivityRepository } from './task-activity.repository';
 import { CreateTaskDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
-
-/** Колонка-«готово» (закрывает задачу): дефолтное 'done' + распространённые русские имена. */
-const DONE_NAMES = new Set(['done', 'готово', 'выполнено', 'завершено', 'завершён', 'завершен', 'закрыто', 'сделано']);
-function isDoneColumn(name: string): boolean {
-  return DONE_NAMES.has(name.trim().toLowerCase());
-}
+import { isDoneColumn } from './task-columns';
 
 @Injectable()
 export class TasksService {

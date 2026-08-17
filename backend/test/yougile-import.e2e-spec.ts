@@ -84,9 +84,13 @@ describe('YouGile импорт (e2e)', () => {
       c1: [{ id: 't1', title: 'Задача 1', columnId: 'c1', description: 'детали', assigned: ['u1'], createdBy: 'u2', deadline: { deadline: deadlineMs }, stickers: { 'st-prio': 's-urgent', 'st-type': 'ty-bug' } }],
       c2: [{ id: 't2', title: 'Задача 2', columnId: 'c2', completed: true }],
     };
+    // в YouGile «завершено» — флажок, не связанный с колонкой: закрытая задача
+    // может лежать в рабочей колонке. На доске CRM ей место в «Done».
+    state.tasksByCol.c1.push({ id: 't3', title: 'Задача 3', columnId: 'c1', completed: true });
     state.messagesByTask = {
       t1: [{ id: 'm1', fromUserId: 'u1', text: 'Первый коммент', timestamp: 1700000000000, files: [{ name: 'doc.png', url: '/files/f1', size: 12 }] }],
       t2: [],
+      t3: [],
     };
 
     // подключение по ключу (validate дергает /users — мок отвечает)
@@ -110,7 +114,7 @@ describe('YouGile импорт (e2e)', () => {
     expect(run.status).toBe('done');
     expect(run.stats.boards).toBe(1);
     expect(run.stats.columns).toBe(2);
-    expect(run.stats.tasks).toBe(2);
+    expect(run.stats.tasks).toBe(3);
     expect(run.stats.comments).toBeGreaterThanOrEqual(1);
     expect(run.stats.attachments).toBeGreaterThanOrEqual(1);
 
@@ -132,6 +136,10 @@ describe('YouGile импорт (e2e)', () => {
     expect(t2.labels).toEqual([]);
     expect(t1.created_by).toBeNull(); // постановщик u2 ещё не сопоставлен с сотрудником
     expect(t2.col).toBe('Done');
+    // завершённая задача из рабочей колонки «To Do» переехала в «Done»
+    const t3 = all.find((t: any) => t.title === 'Задача 3');
+    expect(t3.col).toBe('Done');
+    expect(t3.closed_at).toBeTruthy();
 
     // E2: комментарий из чата + вложение из файла сообщения
     const comments = (await http$.get(`/api/tasks/${t1.id}/comments`).set(H(tok)).expect(200)).body.data;
@@ -160,6 +168,10 @@ describe('YouGile импорт (e2e)', () => {
     const all2 = board2.columns.flatMap((c: any) => c.tasks);
     const count1 = all2.filter((t: any) => t.title === 'Задача 1').length;
     expect(count1).toBe(1);
+    // повторный импорт не возвращает завершённую задачу в исходную колонку
+    const done2 = board2.columns.find((c: any) => c.name === 'Done');
+    expect(done2.tasks.some((t: any) => t.title === 'Задача 3')).toBe(true);
+    expect(all2.filter((t: any) => t.title === 'Задача 3').length).toBe(1);
     // ручная привязка применилась к УЖЕ импортированной задаче: постановщик стал руководителем
     expect(all2.find((t: any) => t.title === 'Задача 1').created_by).toBe(reg.user.id);
 
