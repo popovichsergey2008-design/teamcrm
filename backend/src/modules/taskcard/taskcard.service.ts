@@ -7,6 +7,7 @@ import { TaskActivityRepository } from '../tasks/task-activity.repository';
 import { FilesService } from '../files/files.service';
 import { TaskCardRepository } from './taskcard.repository';
 import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class TaskCardService {
@@ -18,6 +19,7 @@ export class TaskCardService {
     private readonly realtime: RealtimeService,
     private readonly mq: RabbitMQService,
     private readonly outbox: IntegrationOutboxService,
+    private readonly notify: NotificationsService,
   ) {}
 
   private async task(tenantId: string, taskId: string): Promise<TaskRow> {
@@ -44,6 +46,7 @@ export class TaskCardService {
     this.realtime.emitScoped(tenantId, task.project_id, 'task.comment_added', { taskId, commentId: c.id, authorId }, clientVisible);
     await this.notifyWatchers(tenantId, task, 'task_comment', authorId);
     await this.outbox.enqueue(tenantId, task.project_id, 'comment.create', c.id, { taskId });
+    void this.notify.taskCommented(tenantId, taskId, authorId, String(c.id), body); // письмо на почту
     return c;
   }
   listComments(tenantId: string, taskId: string, role: string, viewerId: string) {

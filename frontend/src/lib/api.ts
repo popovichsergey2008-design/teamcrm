@@ -373,6 +373,10 @@ export const api = {
   createPosition: (name: string) => request<any>('POST', '/positions', { name }),
   deletePosition: (id: string) => request<any>('DELETE', `/positions/${id}`),
   // groups
+  // почтовые уведомления
+  notificationPrefs: () => request<{ eventKey: string; title: string; enabled: boolean }[]>('GET', '/notifications/prefs'),
+  setNotificationPref: (eventKey: string, enabled: boolean) =>
+    request<{ ok: true }>('PUT', '/notifications/prefs', { eventKey, enabled }),
   listGroups: () => request<any[]>('GET', '/groups'),
   createGroup: (b: { name: string; kind?: string }) => request<any>('POST', '/groups', b),
   deleteGroup: (id: string) => request<any>('DELETE', `/groups/${id}`),

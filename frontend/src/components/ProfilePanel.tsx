@@ -12,6 +12,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   const [me, setMe] = useState<any>(null);
   const [msg, setMsg] = useState('');
   const [tgCode, setTgCode] = useState<string | null>(null);
+  const [mailPrefs, setMailPrefs] = useState<{ eventKey: string; title: string; enabled: boolean }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const linkTelegram = async () => {
@@ -23,6 +24,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   const loadMe = () => api.me().then((m) => { setMe(m); onAvatar(m.avatarUrl); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadMe(); }, []);
+  useEffect(() => { api.notificationPrefs().then(setMailPrefs).catch(() => undefined); }, []);
 
   // profile
   const saveProfile = async () => {
@@ -105,6 +107,29 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             <div className="field"><label>Телефон</label><input className="input" value={me.phone ?? ''} onChange={(e) => setMe({ ...me, phone: e.target.value })} /></div>
             <div className="field"><label>Таймзона</label><input className="input" value={me.timezone ?? ''} onChange={(e) => setMe({ ...me, timezone: e.target.value })} /></div>
             <button className="btn btn-primary" style={{ width: '100%' }} onClick={saveProfile}>Сохранить</button>
+
+            <div className="drawer-section">
+              <div className="drawer-section-title">Письма на почту</div>
+              <div className="dim" style={{ fontSize: 12, marginBottom: 6 }}>
+                Приходят на {me.email ?? 'вашу почту'} — по задачам, где вы исполнитель или постановщик.
+                О собственных действиях писем нет.
+              </div>
+              {mailPrefs.map((p) => (
+                <label key={p.eventKey} className="notify-row" style={{ cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={p.enabled}
+                    onChange={async (e) => {
+                      const enabled = e.target.checked;
+                      setMailPrefs((prev) => prev.map((x) => (x.eventKey === p.eventKey ? { ...x, enabled } : x)));
+                      try { await api.setNotificationPref(p.eventKey, enabled); }
+                      catch { setMailPrefs((prev) => prev.map((x) => (x.eventKey === p.eventKey ? { ...x, enabled: !enabled } : x))); }
+                    }}
+                  />
+                  <span>{p.title}</span>
+                </label>
+              ))}
+            </div>
 
             <div className="drawer-section">
               <div className="drawer-section-title">Telegram</div>

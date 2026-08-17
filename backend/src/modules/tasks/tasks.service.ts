@@ -8,6 +8,7 @@ import { CreateTaskDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
 import { isDoneColumn } from './task-columns';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class TasksService {
@@ -18,6 +19,7 @@ export class TasksService {
     private readonly activity: TaskActivityRepository,
     private readonly knowledge: KnowledgeService,
     private readonly outbox: IntegrationOutboxService,
+    private readonly notify: NotificationsService,
   ) {}
 
   /** Вкладки «Мои задачи» / «Порученные»: задачи по всем проектам, а не по одной доске. */
@@ -54,6 +56,7 @@ export class TasksService {
     await this.activity.log(tenantId, task.id, actorId, 'created', { title: task.title });
     this.knowledge.enqueue(tenantId, 'task', task.id); // в базу знаний (открытые проекты тоже)
     await this.outbox.enqueue(tenantId, task.project_id, 'task.create', task.id); // выгрузка во внешнюю систему
+    void this.notify.taskCreated(tenantId, task.id, actorId); // письмо исполнителю; ответа не ждём
     return task;
   }
 
@@ -116,6 +119,8 @@ export class TasksService {
     this.realtime.emit(tenantId, moved.project_id, 'task.moved', moved as any);
     await this.activity.log(tenantId, id, actorId, 'moved', { to: column.name });
     await this.outbox.enqueue(tenantId, moved.project_id, 'task.move', id);
+    // смена статуса = перенос в другую колонку; о своём же переносе человеку не пишем
+    void this.notify.taskStatusChanged(tenantId, id, actorId, column.name, isDoneColumn(column.name));
     return moved;
   }
 }

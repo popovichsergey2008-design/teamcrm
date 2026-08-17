@@ -5,9 +5,10 @@ import { LabelsController } from './labels.controller';
 import { TaskCardService } from './taskcard.service';
 import { TaskCardRepository } from './taskcard.repository';
 import { IntegrationOutboxModule } from '../integrations/outbox/integration-outbox.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TasksModule, IntegrationOutboxModule],
+  imports: [TasksModule, IntegrationOutboxModule, NotificationsModule],
   controllers: [TaskCardController, LabelsController],
   providers: [TaskCardService, TaskCardRepository],
   exports: [TaskCardRepository, TaskCardService],
