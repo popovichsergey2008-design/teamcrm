@@ -69,11 +69,15 @@ services:
     ports:
       - "${ADMIN_BIND}:15672:15672"   # management UI over VPN only
     networks: [crm-net]
+    # rabbitmq-diagnostics поднимает отдельную Erlang-VM: под нагрузкой хоста она
+    # не укладывалась в 10s, брокер объявлялся больным и деплой падал на
+    # depends_on у crm-api, хотя AMQP всё это время обслуживал соединения.
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
+      interval: 30s
+      timeout: 45s
+      retries: 6
+      start_period: 60s
 
   # Объектное хранилище файлов (вложения, аватары). API — только во внутр. сети;
   # консоль — только на WireGuard (10.8.0.1). Бакет создаётся через MINIO_DEFAULT_BUCKETS.
