@@ -57,5 +57,5 @@ export function deadlineBadge(deadlineAt?: string | null, closed = false): { tex
   if (days === 0) return { text: '⏰ сегодня', cls: 'badge badge-danger', title };
   if (days === 1) return { text: '⏰ завтра', cls: 'badge badge-warn', title };
   if (days <= 3) return { text: `⏰ ${date}`, cls: 'badge badge-warn', title: `${title} — через ${days} дн.` };
-  return { text: `⏰ ${date}`, cls: 'badge badge-muted', title };
+  return { text: `⏰ ${date}`, cls: 'badge badge-deadline', title };
 }

@@ -184,6 +184,8 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
 .badge-info    { background: var(--accent-soft); color: var(--accent);   border-color: var(--accent-line); }
 .badge-muted   { background: var(--bg-elev-2);   color: var(--text-mut); border-color: var(--border-2); }
 .badge-blocked { background: var(--danger-soft); color: var(--danger);   border-color: var(--danger-line); }
+/* срок — это данные, а не декор: дату читают, поэтому текст в полную силу */
+.badge-deadline { background: var(--bg-elev-2); color: var(--text); border-color: var(--border-2); }
 
 .error-text { color: var(--danger); font-size: var(--fs-sm); min-height: 18px; }
 .muted { color: var(--text-mut); }
