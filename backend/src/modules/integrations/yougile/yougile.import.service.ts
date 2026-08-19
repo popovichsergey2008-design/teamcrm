@@ -149,14 +149,29 @@ export class YougileImportService {
 
   /**
    * Кастомные стикеры компании: один — приоритет, остальные («Тип задачи», «Устройство», …)
-   * становятся метками задач. Ошибку глушим: стикеры — обогащение, без них импорт валиден.
+   * становятся метками задач. Импорт от них не зависит — без стикеров он валиден,
+   * поэтому ошибку не роняем наружу. Но и молчать нельзя: раньше здесь стоял пустой
+   * catch, и отказ стикеров выглядел на доске как «у всех задач обычный приоритет и
+   * ни одной метки», без единой строки в логе. Пишем и отказ, и то, какой стикер
+   * опознан приоритетом, — иначе непонятно, стикеров нет или название не подошло.
    */
   private async loadStickers(client: YougileClient, connectionId: string): Promise<StickerCtx> {
     try {
       const stickers = await client.listStringStickers();
       const prio = buildPriorityMap(stickers);
-      return { prio, labels: buildLabelMap(stickers, prio.stickerId), owned: await this.repo.importedLabelIds(connectionId) };
-    } catch {
+      const labels = buildLabelMap(stickers, prio.stickerId);
+      if (prio.stickerId) {
+        const name = stickers.find((s) => String(s.id) === prio.stickerId)?.name ?? '?';
+        this.log.log(`stickers: приоритет — «${name}» (${prio.stateToPriority.size} состояний), меток ${labels.size}`);
+      } else {
+        this.log.warn(
+          `stickers: стикер приоритета не опознан среди ${stickers.length} — у всех задач будет «обычный». ` +
+            'Опознаём по названию (приоритет / priority / важн) и по названиям состояний.',
+        );
+      }
+      return { prio, labels, owned: await this.repo.importedLabelIds(connectionId) };
+    } catch (e) {
+      this.log.warn(`stickers: не загрузились (${(e as Error).message}) — импорт без приоритетов и меток`);
       return { prio: EMPTY_PRIORITY_MAP, labels: new Map(), owned: new Set() };
     }
   }
