@@ -201,9 +201,32 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
 
         {tab === 'overview' && (
           <>
-            <button className={`btn btn-sm drawer-timer ${timerActive ? 'timer-on' : ''}`} onClick={() => onToggleTimer(task.id)}>
-              {timerActive ? '⏸ Пауза' : '▶ В работу'}
-            </button>
+            {/* Обе кнопки на виду: одна кнопка-переключатель не показывала, в каком
+                состоянии таймер сейчас, и «Пауза» читалась как «идёт пауза». */}
+            <div className={`timer-panel ${timerActive ? 'is-running' : ''}`}>
+              <div className="timer-state">
+                <span className="timer-dot" />
+                <span>{timerActive ? 'Идёт работа' : 'Таймер остановлен'}</span>
+              </div>
+              <div className="timer-actions">
+                <button
+                  className="btn btn-sm timer-go"
+                  disabled={timerActive}
+                  title={timerActive ? 'Таймер уже идёт' : 'Начать отсчёт времени по задаче'}
+                  onClick={() => onToggleTimer(task.id)}
+                >
+                  <Icon name="play" size={13} /> В работу
+                </button>
+                <button
+                  className="btn btn-sm timer-pause"
+                  disabled={!timerActive}
+                  title={timerActive ? 'Остановить отсчёт' : 'Таймер не запущен'}
+                  onClick={() => onToggleTimer(task.id)}
+                >
+                  <Icon name="pause" size={13} /> Пауза
+                </button>
+              </div>
+            </div>
             <div className="field"><label>Описание (Markdown)</label>
               <textarea className="input" rows={5} value={desc} onChange={(e) => setDesc(e.target.value)} />
               <button className="btn btn-sm" style={{ marginTop: 6 }} onClick={saveDesc}>Сохранить описание</button>

@@ -8,14 +8,12 @@ interface Props {
   column: BoardColumn;
   users?: User[];
   canEdit: boolean;
-  canTrack: boolean;
   canManage?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
   activeTimerTask: string | null;
   onRequestAddTask: (columnId: string) => void;
   onMoveTask: (taskId: string, columnId: string, position: number) => void;
-  onToggleTimer: (taskId: string) => void;
   onOpenTask: (task: Task) => void;
   onRenameColumn?: (columnId: string, name: string) => void;
   onMoveColumn?: (columnId: string, direction: 'left' | 'right') => void;
@@ -29,14 +27,12 @@ export function ColumnView({
   column,
   users,
   canEdit,
-  canTrack,
   canManage = false,
   isFirst = false,
   isLast = false,
   activeTimerTask,
   onRequestAddTask,
   onMoveTask,
-  onToggleTimer,
   onOpenTask,
   onRenameColumn,
   onMoveColumn,
@@ -147,9 +143,7 @@ export function ColumnView({
             task={t}
             assigneeName={t.assignee_name ?? users?.find((u) => u.id === t.assignee_id)?.fullName ?? null}
             canEdit={canEdit}
-            canTrack={canTrack}
             timerActive={activeTimerTask === t.id}
-            onToggleTimer={onToggleTimer}
             onOpen={() => onOpenTask(t)}
             onDropBefore={(e) => onDropCard(e, i)}
           />
@@ -169,18 +163,14 @@ function TaskCard({
   task,
   assigneeName,
   canEdit,
-  canTrack,
   timerActive,
-  onToggleTimer,
   onOpen,
   onDropBefore,
 }: {
   task: Task;
   assigneeName: string | null;
   canEdit: boolean;
-  canTrack: boolean;
   timerActive: boolean;
-  onToggleTimer: (taskId: string) => void;
   onOpen: () => void;
   onDropBefore: (e: DragEvent) => void;
 }) {
@@ -225,17 +215,6 @@ function TaskCard({
           </span>
         )}
       </div>
-      {canTrack && (
-        <button
-          className={`btn btn-sm timer-btn ${timerActive ? 'timer-on' : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleTimer(task.id);
-          }}
-        >
-          {timerActive ? '⏸ Пауза' : '▶ В работу'}
-        </button>
-      )}
     </div>
   );
 }

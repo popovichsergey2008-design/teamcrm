@@ -6,14 +6,12 @@ import { deadlineBadge, priorityBadge } from '../lib/labels';
 interface Props {
   board: Board;
   users: User[];
-  canTrack: boolean;
   activeTimerTask: string | null;
   onOpenTask: (task: Task) => void;
-  onToggleTimer: (taskId: string) => void;
 }
 
 /** Списочный вид доски: задачи сгруппированы по колонкам, компактные строки. */
-export function TaskListView({ board, users, canTrack, activeTimerTask, onOpenTask, onToggleTimer }: Props) {
+export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Props) {
   const nameOf = (t: Task) => t.assignee_name ?? users.find((u) => u.id === t.assignee_id)?.fullName ?? null;
 
   return (
@@ -30,7 +28,7 @@ export function TaskListView({ board, users, canTrack, activeTimerTask, onOpenTa
             const prio = priorityBadge(t.priority);
             const due = deadlineBadge(t.deadline_at, !!t.closed_at);
             return (
-              <div key={t.id} className="list-row" onClick={() => onOpenTask(t)}>
+              <div key={t.id} className={`list-row ${activeTimerTask === t.id ? 'task-tracking' : ''}`} onClick={() => onOpenTask(t)}>
                 <div className="list-main">
                   {t.risk_level && <span className={`risk-dot risk-${t.risk_level}`} title={`Риск срока: ${t.risk_level}`} />}
                   <span className="list-title">{t.title}</span>
@@ -53,14 +51,6 @@ export function TaskListView({ board, users, canTrack, activeTimerTask, onOpenTa
                     </span>
                   ) : (
                     <span className="dim list-noassignee">— не назначен —</span>
-                  )}
-                  {canTrack && (
-                    <button
-                      className={`btn btn-sm timer-btn ${activeTimerTask === t.id ? 'timer-on' : ''}`}
-                      onClick={(e) => { e.stopPropagation(); onToggleTimer(t.id); }}
-                    >
-                      {activeTimerTask === t.id ? '⏸' : '▶'}
-                    </button>
                   )}
                 </div>
               </div>

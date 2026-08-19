@@ -124,9 +124,8 @@
 .pnl-bad { color: var(--danger); }
 .pnl-delta { font-size: 13px; font-weight: 500; }
 
-/* таймер на карточке */
-.timer-btn { margin-top: 8px; width: 100%; }
-.timer-on { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+/* Задача, по которой сейчас идёт отсчёт: полоса слева на карточке и в строке
+   списка. Кнопки таймера с превью убраны — они живут в самой задаче. */
 .task-tracking { border-color: var(--ok); box-shadow: inset 2px 0 0 var(--ok); }
 
 .board-columns { display: flex; gap: 16px; overflow-x: auto; flex: 1; padding-bottom: 8px; }
@@ -281,7 +280,25 @@
 .drawer-head h3 { margin: 0; font-size: 18px; }
 .drawer-desc { margin: 0 0 14px; }
 .drawer-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
-.drawer-timer { width: 100%; margin: 8px 0 4px; }
+/* Панель таймера в задаче: слева — состояние, справа — обе кнопки сразу,
+   недоступная гаснет. Одна кнопка-переключатель состояние не показывала. */
+.timer-panel {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin: 10px 0 16px; padding: 10px 12px; border-radius: var(--radius);
+  background: var(--bg-elev-2); border: 1px solid var(--border-2);
+}
+.timer-panel.is-running { background: var(--ok-soft); border-color: var(--ok-line); }
+.timer-state { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--text-dim); }
+.timer-panel.is-running .timer-state { color: var(--ok); font-weight: 600; }
+.timer-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-mut); flex-shrink: 0; }
+.timer-panel.is-running .timer-dot { background: var(--ok); animation: timer-pulse 1.6s ease-in-out infinite; }
+@keyframes timer-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+.timer-actions { display: flex; gap: 8px; }
+.timer-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.timer-go:not(:disabled) { background: var(--ok); border-color: var(--ok); color: var(--on-ok); font-weight: 600; }
+.timer-pause:not(:disabled) { background: var(--warn); border-color: var(--warn); color: var(--on-warn); font-weight: 600; }
+.timer-actions .btn:disabled { opacity: .45; }
+@media (prefers-reduced-motion: reduce) { .timer-panel.is-running .timer-dot { animation: none; } }
 .drawer-section { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; }
 .drawer-section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-mut); margin-bottom: 10px; }
 .drawer-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

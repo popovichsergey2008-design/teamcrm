@@ -519,10 +519,8 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
               <TaskListView
                 board={board}
                 users={users}
-                canTrack={!isClient}
                 activeTimerTask={activeTimerTask}
                 onOpenTask={(t) => setOpenTaskId(t.id)}
-                onToggleTimer={toggleTimer}
               />
             ) : (
               <div className="board-columns">
@@ -532,14 +530,12 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
                     column={col}
                     users={users}
                     canEdit={!isClient}
-                    canTrack={!isClient}
                     canManage={canManageProjects}
                     isFirst={idx === 0}
                     isLast={idx === board.columns.length - 1}
                     activeTimerTask={activeTimerTask}
                     onRequestAddTask={openCreate}
                     onMoveTask={moveTask}
-                    onToggleTimer={toggleTimer}
                     onOpenTask={(t) => setOpenTaskId(t.id)}
                     onRenameColumn={renameColumn}
                     onMoveColumn={moveColumn}

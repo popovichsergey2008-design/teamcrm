@@ -38,6 +38,7 @@
   /* текст поверх цветных заливок */
   --on-accent: #ffffff;
   --on-ok:     #ffffff;
+  --on-warn:   #ffffff;
   --on-danger: #ffffff;
 
   /* заливки плашек: плотный цвет под белый текст (не путать с *-soft — те под цветной) */
@@ -92,6 +93,7 @@
     --fill-info:   #2f5fd0;
     --fill-muted:  #4d5c77;
     --on-ok:     #08110d;
+  --on-warn:   #1a1300;
     --overlay:   rgba(0,0,0,.55);
     --shadow:    0 10px 30px rgba(0,0,0,.35);
     --shadow-lg: 0 20px 60px rgba(0,0,0,.60);
@@ -129,6 +131,7 @@
   --fill-info:   #2f5fd0;
   --fill-muted:  #4d5c77;
   --on-ok:     #08110d;
+  --on-warn:   #1a1300;
   --overlay:   rgba(0,0,0,.55);
   --shadow:    0 10px 30px rgba(0,0,0,.35);
   --shadow-lg: 0 20px 60px rgba(0,0,0,.60);
