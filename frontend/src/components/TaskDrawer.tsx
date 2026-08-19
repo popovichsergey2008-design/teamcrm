@@ -100,12 +100,17 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
 
   const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
 
-  // «Завершить» = перенос в финальную колонку; какую именно — выбирает человек,
-  // потому что у досок это по-разному («Готово», «На тестировании», «Сдано»).
-  // Обратное действие такое же: возврат в рабочую колонку снимает закрытие задачи.
+  // «Завершить» = перенос в финальную колонку. Если у проекта есть «Готово» —
+  // переносим сразу туда, без вопросов: в 99% случаев ответ именно такой, а
+  // лишний выбор превращал одно действие в два. Выбор колонки остался рядом,
+  // под кнопкой «…», и становится основным там, где «Готово» нет: у импортных
+  // досок финальная колонка называется по-своему («Сдано», «На тестировании»),
+  // и угадывать за человека мы не будем.
+  // Возврат в работу выбор сохраняет: рабочих колонок много и очевидной среди них нет.
   const [choosing, setChoosing] = useState(false);
   const isDone = !!task.closed_at;
   const targets = orderColumns(columns, isDone ? 'reopen' : 'finish').filter((c) => c.id !== task.column_id);
+  const doneTarget = isDone ? null : targets.find((c) => DONE_RE.test(c.name.trim())) ?? null;
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
@@ -120,14 +125,31 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
         {(isDone || targets.length > 0 || canManage) && (
           <div className="task-actions-row">
             {targets.length > 0 && (
-              <button
-                className={`btn btn-sm ${isDone ? 'btn-reopen' : 'btn-finish'}`}
-                onClick={() => setChoosing((v) => !v)}
-                disabled={moving}
-                title={isDone ? 'Снять завершение и вернуть задачу в работу' : 'Перенести задачу в финальную колонку'}
-              >
-                {isDone ? <><Icon name="reply" size={14} /> Вернуть в работу</> : <><Icon name="check" size={14} /> Завершить</>}
-              </button>
+              <div className="finish-group">
+                <button
+                  className={`btn btn-sm ${isDone ? 'btn-reopen' : 'btn-finish'}`}
+                  onClick={() => (doneTarget ? moveToColumn(doneTarget.id) : setChoosing((v) => !v))}
+                  disabled={moving}
+                  title={
+                    isDone ? 'Снять завершение и вернуть задачу в работу'
+                      : doneTarget ? `Завершить и перенести в «${doneTarget.name}»`
+                        : 'Перенести задачу в финальную колонку'
+                  }
+                >
+                  {isDone ? <><Icon name="reply" size={14} /> Вернуть в работу</> : <><Icon name="check" size={14} /> Завершить</>}
+                </button>
+                {doneTarget && (
+                  <button
+                    className="btn btn-sm finish-more"
+                    onClick={() => setChoosing((v) => !v)}
+                    disabled={moving}
+                    title="Завершить, но перенести в другую колонку"
+                    aria-label="Выбрать колонку"
+                  >
+                    <Icon name="more" size={14} />
+                  </button>
+                )}
+              </div>
             )}
             {isDone && <span className="badge badge-ok" title="Задача закрыта"><Icon name="check" size={12} /> завершена</span>}
             {canManage && (

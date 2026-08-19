@@ -448,10 +448,19 @@
 /* удаление стоит с краю и не окрашено до наведения: это не рядовое действие */
 .btn-delete { margin-left: auto; color: var(--text-dim); }
 .btn-delete:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
+/* «Завершить» и «…» — одно действие с уточнением, поэтому склеены в одну кнопку */
+.finish-group { display: inline-flex; }
+.finish-group .btn-finish, .finish-group .btn-reopen { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.finish-group > :only-child { border-radius: var(--radius-sm); }
 .btn-finish {
   background: var(--ok-soft); border: 1px solid var(--ok); color: var(--ok); font-weight: 600;
 }
 .btn-finish:hover:not(:disabled) { background: var(--ok); color: var(--on-ok); }
+.finish-more {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin-left: -1px; padding-left: 8px; padding-right: 8px;
+  background: var(--ok-soft); border: 1px solid var(--ok); color: var(--ok);
+}
+.finish-more:hover:not(:disabled) { background: var(--ok); color: var(--on-ok); }
 .finish-picker {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin: 8px 0; padding: 10px 12px; border-radius: 10px;
