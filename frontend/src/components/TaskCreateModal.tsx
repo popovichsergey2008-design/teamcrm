@@ -3,6 +3,7 @@ import { DatePicker } from './DatePicker';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
+import { labelTextColor } from '../lib/labels';
 
 interface Props {
   projectId: string;
@@ -127,7 +128,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
                     key={l.id}
                     type="button"
                     className={`label-chip ${has ? '' : 'label-off'}`}
-                    style={{ background: has ? l.color : 'transparent', borderColor: l.color }}
+                    style={{ background: has ? l.color : 'transparent', borderColor: l.color, color: has ? labelTextColor(l.color) : undefined }}
                     onClick={() => toggleLabel(String(l.id))}
                   >
                     {l.name}

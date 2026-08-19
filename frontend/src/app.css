@@ -203,7 +203,7 @@
 .view-btn { border: none; background: var(--bg-elev); color: var(--text-dim); padding: 5px 12px; font-size: 13px; cursor: pointer; }
 .view-btn + .view-btn { border-left: 1px solid var(--border); }
 .view-btn:hover { background: var(--bg-elev-2); color: var(--text); }
-.view-btn.active { background: var(--accent); color: var(--on-accent); }
+.view-btn.active { background: var(--fill-info); color: var(--on-fill); }
 
 /* списочный вид */
 .task-list { flex: 1; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
@@ -312,7 +312,7 @@
 /* AI Brain чат */
 .brain-chat { display: flex; flex-direction: column; gap: 10px; max-height: 52vh; overflow-y: auto; padding: 8px 2px; margin-bottom: 8px; }
 .brain-msg { padding: 10px 12px; border-radius: var(--radius-sm); font-size: 14px; max-width: 92%; }
-.brain-user { align-self: flex-end; background: var(--accent); color: var(--on-accent); }
+.brain-user { align-self: flex-end; background: var(--fill-info); color: var(--on-fill); }
 .brain-assistant { align-self: flex-start; background: var(--bg-elev-2); border: 1px solid var(--border); }
 .brain-cites { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 
@@ -507,8 +507,8 @@
 .chat-row-title { font-size: 13px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-row-last { font-size: 11px; color: var(--text-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-unread {
-  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent);
-  color: var(--on-accent); font-size: 11px; display: flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--fill-info);
+  color: var(--on-fill); font-size: 11px; display: flex; align-items: center; justify-content: center;
 }
 /* точка присутствия: серая — не в сети, зелёная — онлайн */
 .presence { width: 7px; height: 7px; border-radius: 50%; background: var(--border-2); flex-shrink: 0; }
@@ -561,7 +561,7 @@
 .incoming-accept { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); font-weight: 600; }
 .incoming-accept:hover { background: var(--ok); color: var(--on-ok); }
 .incoming-decline { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
-.incoming-decline:hover { background: var(--danger); color: var(--on-danger); }
+.incoming-decline:hover { background: var(--fill-danger); color: var(--on-fill); }
 
 /* ───── окно созвона ───── */
 .call-overlay {
@@ -610,7 +610,7 @@
   background: var(--accent-soft); color: var(--accent); font-size: 24px; font-weight: 600;
 }
 .call-strip .call-avatar { width: 38px; height: 38px; font-size: 15px; }
-.call-tile-ai .call-avatar { background: var(--accent); color: var(--on-accent); }
+.call-tile-ai .call-avatar { background: var(--fill-info); color: var(--on-fill); }
 .call-self { outline: 2px solid var(--accent); }
 /* себя показываем зеркально, как в зеркале и во всех привычных созвонах:
    незеркальное собственное изображение читается как чужое */
@@ -637,7 +637,7 @@
 .call-ai-waiting { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
 .peer-ai { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .call-leave { margin-left: auto; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); font-weight: 600; }
-.call-leave:hover { background: var(--danger); color: var(--on-danger); }
+.call-leave:hover { background: var(--fill-danger); color: var(--on-fill); }
 
 /* ───── календарь выбора даты (вместо нативного datetime-local) ───── */
 .dp { position: relative; }
@@ -684,8 +684,8 @@
 .dp-day.dp-other { opacity: .35; }
 .dp-day.dp-weekend { color: var(--text-mut); }
 .dp-day.dp-today { border-color: var(--border-2); font-weight: 600; color: var(--text); }
-.dp-day.dp-selected { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
-.dp-day.dp-selected:hover { background: var(--accent); }
+.dp-day.dp-selected { background: var(--fill-info); border-color: var(--fill-info); color: var(--on-fill); font-weight: 600; }
+.dp-day.dp-selected:hover { background: var(--fill-info); }
 
 .dp-time { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .dp-time-input { width: auto; padding: 4px 7px; font-size: 12px; }
@@ -699,10 +699,10 @@
 
 /* обратное действие: снять завершение и вернуть задачу в работу */
 .btn-reopen { background: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent); font-weight: 600; }
-.btn-reopen:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
+.btn-reopen:hover:not(:disabled) { background: var(--fill-info); color: var(--on-fill); }
 .finish-picker.reopen-picker { background: var(--accent-soft); border-color: var(--accent-line); }
 .status-pill.pill-work { border-color: var(--accent); color: var(--accent); }
-.status-pill.pill-work:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
+.status-pill.pill-work:hover:not(:disabled) { background: var(--fill-info); color: var(--on-fill); }
 /* meta-строка карточки: приоритет, риск, стоимость, блокер */
 .card-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 /* риск — та же плашка, что и остальные: плотная заливка, белый текст из .badge */

@@ -1,7 +1,7 @@
 import type { Board, Task, User } from '../types';
 import { Icon } from './Icon';
 import { MONETIZATION_ENABLED } from '../config';
-import { deadlineBadge, priorityBadge } from '../lib/labels';
+import { deadlineBadge, labelTextColor, priorityBadge } from '../lib/labels';
 
 interface Props {
   board: Board;
@@ -32,7 +32,7 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
                 <div className="list-main">
                   {t.risk_level && <span className={`risk-dot risk-${t.risk_level}`} title={`Риск срока: ${t.risk_level}`} />}
                   <span className="list-title">{t.title}</span>
-                  {t.labels?.map((l) => <span key={l.id} className="label-chip" style={{ background: l.color }}>{l.name}</span>)}
+                  {t.labels?.map((l) => <span key={l.id} className="label-chip" style={{ background: l.color, color: labelTextColor(l.color) }}>{l.name}</span>)}
                 </div>
                 <div className="list-side">
                   {t.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}

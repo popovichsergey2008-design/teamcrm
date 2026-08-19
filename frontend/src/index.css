@@ -16,22 +16,22 @@
   /* текст: основной → второстепенный → подсказки */
   --text:      #101623;
   --text-dim:  #4d5768;
-  --text-mut:  #7a8496;
+  --text-mut:  #626b7c;
 
   /* акцент: --accent для текста, рамок и наведения, --accent-2 — заливка кнопки */
   --accent:      #1e57e6;
-  --accent-2:    #2f6bff;
+  --accent-2:    #2a67ff;
   --accent-soft: #e8effe;
   --accent-line: #b9cdfb;
 
   /* статусы: у каждого мягкая подложка и рамка, чтобы не смешивать прозрачности */
-  --ok:          #17875a;
+  --ok:          #157a51;
   --ok-soft:     #e4f6ee;
   --ok-line:     #a9e0c8;
-  --warn:        #9a6a00;
+  --warn:        #956600;
   --warn-soft:   #fdf3dd;
   --warn-line:   #f0d093;
-  --danger:      #cf2b3b;
+  --danger:      #cb2a3a;
   --danger-soft: #fdeaec;
   --danger-line: #f4bcc2;
 
@@ -42,7 +42,7 @@
   --on-danger: #ffffff;
 
   /* заливки плашек: плотный цвет под белый текст (не путать с *-soft — те под цветной) */
-  --fill-ok:     #17875a;
+  --fill-ok:     #157a51;
   --fill-warn:   #9a6a00;
   --fill-danger: #cf2b3b;
   --fill-info:   #1e57e6;
@@ -73,7 +73,7 @@
     --border-2:  #2e3a52;
     --text:      #e6ebf5;
     --text-dim:  #97a2bb;
-    --text-mut:  #66718c;
+    --text-mut:  #7f89a1;
     --accent:      #5b8cff;
     --accent-2:    #3b6fe0;
     --accent-soft: rgba(91,140,255,.14);
@@ -111,7 +111,7 @@
   --border-2:  #2e3a52;
   --text:      #e6ebf5;
   --text-dim:  #97a2bb;
-  --text-mut:  #66718c;
+  --text-mut:  #7f89a1;
   --accent:      #5b8cff;
   --accent-2:    #3b6fe0;
   --accent-soft: rgba(91,140,255,.14);
@@ -171,7 +171,7 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
 .btn-ghost:hover:not(:disabled) { background: var(--bg-elev-2); color: var(--text); }
 .btn-danger { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
-.btn-danger:hover:not(:disabled) { background: var(--danger); border-color: var(--danger); color: var(--on-danger); }
+.btn-danger:hover:not(:disabled) { background: var(--fill-danger); border-color: var(--fill-danger); color: var(--on-fill); }
 .btn-sm { padding: 5px 10px; font-size: var(--fs-sm); }
 /* кнопка-иконка: квадрат, чтобы значки не разъезжались по высоте строки */
 .btn-icon { padding: 6px; width: 32px; height: 32px; }
@@ -212,7 +212,6 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
 .badge-info    { background: var(--fill-info); }
 .badge-muted   { background: var(--fill-muted); }
 .badge-blocked { background: var(--fill-danger); }
-.badge-deadline { background: var(--fill-muted); }
 
 .error-text { color: var(--danger); font-size: var(--fs-sm); min-height: 18px; }
 .muted { color: var(--text-mut); }

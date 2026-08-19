@@ -57,5 +57,25 @@ export function deadlineBadge(deadlineAt?: string | null, closed = false): { tex
   if (days === 0) return { text: '⏰ сегодня', cls: 'badge badge-danger', title };
   if (days === 1) return { text: '⏰ завтра', cls: 'badge badge-warn', title };
   if (days <= 3) return { text: `⏰ ${date}`, cls: 'badge badge-warn', title: `${title} — через ${days} дн.` };
-  return { text: `⏰ ${date}`, cls: 'badge badge-deadline', title };
+  return { text: `⏰ ${date}`, cls: 'badge badge-muted', title };
+}
+
+/**
+ * Читаемый текст на произвольном цвете метки.
+ *
+ * Цвета меток приезжают из YouGile, а там палитра пастельная: белым по
+ * «#ffd43b» получалось 1.4:1 — надпись пропадала целиком. Считаем яркость
+ * фона по WCAG и выбираем чёрный или белый — тот, что даёт больший контраст.
+ */
+export function labelTextColor(bg?: string | null): string {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec((bg ?? '').trim());
+  if (!m) return '#ffffff';
+  const hex = m[1].length === 3 ? m[1].split('').map((c) => c + c).join('') : m[1];
+  const chan = (i: number) => {
+    const c = parseInt(hex.slice(i * 2, i * 2 + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const lum = 0.2126 * chan(0) + 0.7152 * chan(1) + 0.0722 * chan(2);
+  // порог там, где контраст с белым сравнивается с контрастом с чёрным
+  return lum > 0.179 ? '#141a26' : '#ffffff';
 }

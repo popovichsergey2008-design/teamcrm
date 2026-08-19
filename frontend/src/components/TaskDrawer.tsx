@@ -6,6 +6,7 @@ import type { Task, User } from '../types';
 import { Lightbox } from './Lightbox';
 import { DatePicker } from './DatePicker';
 import { MONETIZATION_ENABLED } from '../config';
+import { labelTextColor } from '../lib/labels';
 
 interface Props {
   task: Task;
@@ -314,14 +315,14 @@ function LabelsRow({ task, onRefresh }: { task: Task; onRefresh: () => void }) {
   };
   return (
     <div className="labels-row">
-      {labels.map((l) => <span key={l.id} className="label-chip" style={{ background: l.color }}>{l.name}</span>)}
+      {labels.map((l) => <span key={l.id} className="label-chip" style={{ background: l.color, color: labelTextColor(l.color) }}>{l.name}</span>)}
       <button className="btn btn-ghost btn-sm" onClick={() => setOpen(!open)}>+ метка</button>
       {open && (
         <div className="label-pick">
           {all.length === 0 && <span className="dim">Меток пока нет — создайте первую полем ниже. Метки общие для всех проектов.</span>}
           {all.map((l) => {
             const has = labels.some((x) => x.id === l.id);
-            return <button key={l.id} className={`label-chip ${has ? '' : 'label-off'}`} style={{ background: has ? l.color : 'transparent', borderColor: l.color }} onClick={() => toggle(l.id, has)}>{l.name}</button>;
+            return <button key={l.id} className={`label-chip ${has ? '' : 'label-off'}`} style={{ background: has ? l.color : 'transparent', borderColor: l.color, color: has ? labelTextColor(l.color) : undefined }} onClick={() => toggle(l.id, has)}>{l.name}</button>;
           })}
           <NewLabel onCreated={() => api.listLabels().then(setAll)} />
         </div>
