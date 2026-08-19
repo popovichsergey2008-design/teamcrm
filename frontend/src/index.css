@@ -40,6 +40,14 @@
   --on-ok:     #ffffff;
   --on-danger: #ffffff;
 
+  /* заливки плашек: плотный цвет под белый текст (не путать с *-soft — те под цветной) */
+  --fill-ok:     #17875a;
+  --fill-warn:   #9a6a00;
+  --fill-danger: #cf2b3b;
+  --fill-info:   #1e57e6;
+  --fill-muted:  #5a6478;
+  --on-fill:     #ffffff;
+
   --overlay:   rgba(15,23,42,.45);
   --shadow:    0 8px 24px rgba(16,22,35,.10);
   --shadow-lg: 0 18px 48px rgba(16,22,35,.18);
@@ -78,6 +86,11 @@
     --danger:      #ff6b6b;
     --danger-soft: rgba(255,107,107,.12);
     --danger-line: rgba(255,107,107,.40);
+    --fill-ok:     #16714f;
+    --fill-warn:   #8a5a00;
+    --fill-danger: #b3303a;
+    --fill-info:   #2f5fd0;
+    --fill-muted:  #4d5c77;
     --on-ok:     #08110d;
     --overlay:   rgba(0,0,0,.55);
     --shadow:    0 10px 30px rgba(0,0,0,.35);
@@ -110,6 +123,11 @@
   --danger:      #ff6b6b;
   --danger-soft: rgba(255,107,107,.12);
   --danger-line: rgba(255,107,107,.40);
+  --fill-ok:     #16714f;
+  --fill-warn:   #8a5a00;
+  --fill-danger: #b3303a;
+  --fill-info:   #2f5fd0;
+  --fill-muted:  #4d5c77;
   --on-ok:     #08110d;
   --overlay:   rgba(0,0,0,.55);
   --shadow:    0 10px 30px rgba(0,0,0,.35);
@@ -171,21 +189,27 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
 
 .card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); }
 
+/*
+ * Плашки залиты плотным цветом, текст — белый. Прежняя схема (бледная подложка +
+ * цветной текст) давала контраст ~3-4:1 на 11px: красное на розовом и серое на
+ * сером приходилось выискивать. Белое по плотному даёт 4.5-6:1 в обеих темах.
+ * В тёмной теме заливки свои: --danger/--warn/--ok там пастельные, они задуманы
+ * как цвет текста на тёмном фоне, и белое по ним не читается.
+ */
 .badge {
   display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs);
   padding: 2px var(--sp-2); border-radius: 999px; white-space: nowrap;
-  background: var(--bg-elev-2); color: var(--text-dim); border: 1px solid var(--border-2);
+  background: var(--fill-muted); color: var(--on-fill); border: 1px solid transparent;
 }
 .badge-role { text-transform: capitalize; }
 /* единая палитра статусов: успех / внимание / ошибка / инфо / приглушённый */
-.badge-ok      { background: var(--ok-soft);     color: var(--ok);       border-color: var(--ok-line); }
-.badge-warn    { background: var(--warn-soft);   color: var(--warn);     border-color: var(--warn-line); }
-.badge-danger  { background: var(--danger-soft); color: var(--danger);   border-color: var(--danger-line); }
-.badge-info    { background: var(--accent-soft); color: var(--accent);   border-color: var(--accent-line); }
-.badge-muted   { background: var(--bg-elev-2);   color: var(--text-mut); border-color: var(--border-2); }
-.badge-blocked { background: var(--danger-soft); color: var(--danger);   border-color: var(--danger-line); }
-/* срок — это данные, а не декор: дату читают, поэтому текст в полную силу */
-.badge-deadline { background: var(--bg-elev-2); color: var(--text); border-color: var(--border-2); }
+.badge-ok      { background: var(--fill-ok); }
+.badge-warn    { background: var(--fill-warn); }
+.badge-danger  { background: var(--fill-danger); }
+.badge-info    { background: var(--fill-info); }
+.badge-muted   { background: var(--fill-muted); }
+.badge-blocked { background: var(--fill-danger); }
+.badge-deadline { background: var(--fill-muted); }
 
 .error-text { color: var(--danger); font-size: var(--fs-sm); min-height: 18px; }
 .muted { color: var(--text-mut); }

@@ -456,7 +456,7 @@
 .nav-badge {
   display: inline-flex; align-items: center; justify-content: center; margin-left: 6px;
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-  background: var(--danger); color: var(--on-danger); font-size: 11px; font-weight: 600;
+  background: var(--fill-danger); color: var(--on-fill); font-size: 11px; font-weight: 600;
 }
 .chat-list-head { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
 .chat-notify-ask { width: 100%; margin-bottom: 6px; color: var(--accent); border: 1px dashed var(--border-2); }
@@ -679,9 +679,10 @@
 .status-pill.pill-work:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
 /* meta-строка карточки: приоритет, риск, стоимость, блокер */
 .card-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-.risk-badge.risk-high, .risk-badge.risk-critical { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
-.risk-badge.risk-medium { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
-.risk-badge.risk-low { background: var(--ok-soft); color: var(--ok); border-color: var(--ok-line); }
+/* риск — та же плашка, что и остальные: плотная заливка, белый текст из .badge */
+.risk-badge.risk-high, .risk-badge.risk-critical { background: var(--fill-danger); border-color: transparent; }
+.risk-badge.risk-medium { background: var(--fill-warn); border-color: transparent; }
+.risk-badge.risk-low { background: var(--fill-ok); border-color: transparent; }
 .blocked-on { color: var(--danger) !important; border-color: var(--danger-line) !important; background: var(--danger-soft) !important; }
 .avatar-lg { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; }
 .avatar-ph { display: inline-grid; place-items: center; background: var(--accent-2); color: var(--on-accent); font-weight: 700; }
