@@ -58,7 +58,11 @@ function reducer(state: Board | null, action: Action): Board | null {
   }
 }
 
-export function BoardPage({ initial }: { initial?: { projectId: string; taskId?: string } } = {}) {
+export function BoardPage({ initial, onNavigate }: {
+  initial?: { projectId: string; taskId?: string };
+  /** Сообщает наверх, что показано сейчас, — чтобы адрес в строке браузера совпадал с экраном. */
+  onNavigate?: (projectId: string | null, taskId: string | null) => void;
+} = {}) {
   const { user } = useAuth();
   const isClient = user?.role === 'client';
   const canManageProjects = user?.role === 'owner' || user?.role === 'manager';
@@ -116,6 +120,16 @@ export function BoardPage({ initial }: { initial?: { projectId: string; taskId?:
   useEffect(() => {
     if (selected) localStorage.setItem(lastProjectKey, String(selected));
   }, [selected, lastProjectKey]);
+
+  // Адрес догоняет экран: открытый проект и карточка видны в строке браузера,
+  // поэтому ссылку на задачу можно просто скопировать и отправить.
+  // До загрузки списка проектов молчим: там выбранного ещё нет, и адрес с задачей
+  // успел бы схлопнуться до «/projects» прямо на глазах у человека.
+  useEffect(() => {
+    if (projectsLoading) return;
+    onNavigate?.(selected, openTaskId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, openTaskId, projectsLoading]);
 
   useEffect(() => {
     // тянем сразу с архивом: он лежит на отдельной вкладке, второй запрос ради счётчика не нужен

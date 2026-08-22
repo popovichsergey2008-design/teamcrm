@@ -1,0 +1,283 @@
+import { ReactNode, useEffect, useRef, useState } from 'react';
+import { Icon, IconName } from './Icon';
+import { Avatar } from './Avatar';
+import { ThemeSwitch } from './ThemeSwitch';
+import { buildPath, navigate, Route, Section } from '../lib/router';
+import { roleLabel } from '../lib/labels';
+
+/**
+ * Левая панель — единственная навигация приложения.
+ *
+ * Структура из ТЗ и менять её нельзя: верхний блок (команда, поиск, «Новая задача»),
+ * ровно четыре раздела, нижний блок (AI Секретарь, настройки, профиль с фокусом).
+ * Разделы, которых в ТЗ нет (Встречи, Клиенты, Входящие), живут подпунктами внутри
+ * своего раздела — пятый пункт меню добавлять запрещено.
+ *
+ * Пункты фильтруются по роли: показать раздел, куда человеку закрыт вход, хуже,
+ * чем не показать вовсе — он ткнёт и получит отказ.
+ */
+
+const COLLAPSED_KEY = 'teamcrm.nav.collapsed';
+
+type Role = string;
+
+type Item = {
+  section: Section;
+  label: string;
+  icon: IconName;
+  hint: string;
+  /** роли, которым пункт виден; пусто — виден всем */
+  roles?: Role[];
+  subs?: { label: string; icon: IconName; route: Route; roles?: Role[] }[];
+};
+
+const MENU: Item[] = [
+  {
+    section: 'focus',
+    label: 'Фокус дня',
+    icon: 'target',
+    hint: 'Что делать сегодня, поручения другим и то, что ждёт вашего решения',
+    subs: [
+      {
+        label: 'Входящие',
+        icon: 'inbox',
+        route: { section: 'focus', view: 'inbox' },
+        roles: ['owner', 'manager'],
+      },
+    ],
+  },
+  {
+    section: 'projects',
+    label: 'Проекты и доски',
+    icon: 'board',
+    hint: 'Пространства задач компании: списки и канбан',
+    subs: [
+      {
+        label: 'Клиенты и сделки',
+        icon: 'handshake',
+        route: { section: 'projects', view: 'clients' },
+        roles: ['owner', 'manager'],
+      },
+    ],
+  },
+  {
+    section: 'chat',
+    label: 'Командный чат',
+    icon: 'chat',
+    hint: 'Личные, групповые и проектные обсуждения, созвоны',
+    subs: [
+      { label: 'Встречи', icon: 'record', route: { section: 'chat', view: 'meetings' } },
+    ],
+  },
+  {
+    section: 'radar',
+    label: 'Пульс команды',
+    icon: 'chart',
+    hint: 'Экран руководителя: прогресс, загрузка, риски срыва сроков',
+    roles: ['owner', 'manager'],
+  },
+];
+
+const visible = (roles: Role[] | undefined, role: Role) => !roles || roles.includes(role);
+
+export function Sidebar({
+  route, user, organizations, avatarPath, unread, activeCall,
+  onSwitchOrg, onNewTask, onSearch, onJoinCall, onLogout,
+}: {
+  route: Route;
+  user: { role: string; fullName: string; tenantId: string };
+  organizations: { tenantId: string; name: string; role: string }[];
+  avatarPath: string | null;
+  unread: number;
+  activeCall: { participants: number } | null;
+  onSwitchOrg: (tenantId: string) => void;
+  onNewTask: () => void;
+  onSearch: () => void;
+  onJoinCall: () => void;
+  onLogout: () => void;
+}) {
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1');
+  // на узком экране панель выезжает поверх содержимого, а не сжимает его
+  const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const toggleCollapsed = () => {
+    setCollapsed((v) => {
+      localStorage.setItem(COLLAPSED_KEY, v ? '0' : '1');
+      return !v;
+    });
+  };
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const h = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [menuOpen]);
+
+  // переход по разделу закрывает выехавшую панель — иначе она перекрывает то, куда шли
+  const go = (to: Route) => { navigate(to); setOpen(false); };
+
+  const link = (to: Route, active: boolean, cls: string, title: string, children: ReactNode) => (
+    <a
+      className={`${cls}${active ? ' active' : ''}`}
+      href={buildPath(to)}
+      title={collapsed ? title : undefined}
+      aria-current={active ? 'page' : undefined}
+      onClick={(e) => {
+        // Ctrl/Cmd-клик и средняя кнопка должны открывать в новой вкладке как обычная ссылка
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        go(to);
+      }}
+    >
+      {children}
+    </a>
+  );
+
+  const orgName = organizations.find((o) => o.tenantId === user.tenantId)?.name ?? 'Моя организация';
+
+  return (
+    <>
+      <button
+        className="nav-open-btn"
+        onClick={() => setOpen(true)}
+        title="Меню"
+        aria-label="Открыть меню"
+      >
+        <Icon name="list" size={18} />
+      </button>
+      {open && <div className="nav-backdrop" onClick={() => setOpen(false)} />}
+
+      <aside className={`nav-sidebar${collapsed ? ' nav-collapsed' : ''}${open ? ' nav-open' : ''}`}>
+        {/* ── верхний блок ── */}
+        <div className="nav-top">
+          <div className="nav-org">
+            <span className="nav-org-mark" aria-hidden="true">{orgName.slice(0, 1).toUpperCase()}</span>
+            <select
+              className="nav-org-select"
+              value={user.tenantId}
+              onChange={(e) => onSwitchOrg(e.target.value)}
+              title={`Организация: ${orgName}`}
+              aria-label="Организация"
+            >
+              {organizations.map((o) => (
+                <option key={o.tenantId} value={o.tenantId}>{o.name} · {roleLabel(o.role)}</option>
+              ))}
+              {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
+              <option value="__new__">+ Создать организацию…</option>
+            </select>
+            <button
+              className="nav-collapse"
+              onClick={toggleCollapsed}
+              title={collapsed ? 'Развернуть панель' : 'Свернуть панель'}
+              aria-label={collapsed ? 'Развернуть панель' : 'Свернуть панель'}
+            >
+              <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
+            </button>
+          </div>
+
+          <button className="nav-search" onClick={onSearch} title="Поиск и команды (Ctrl+K)">
+            <Icon name="search" size={16} />
+            <span className="nav-label">Найти или сказать…</span>
+            <kbd className="nav-kbd">Ctrl K</kbd>
+          </button>
+
+          <button className="btn btn-primary nav-new" onClick={onNewTask} title="Новая задача — текстом или голосом (клавиша C)">
+            <Icon name="plus" size={16} />
+            <span className="nav-label">Новая задача</span>
+          </button>
+        </div>
+
+        {/* ── основное меню: ровно 4 раздела ── */}
+        <nav className="nav-main" aria-label="Разделы">
+          {MENU.filter((i) => visible(i.roles, user.role)).map((item) => {
+            const active = route.section === item.section;
+            const badge = item.section === 'chat' ? unread : 0;
+            return (
+              <div key={item.section} className="nav-group">
+                {link({ section: item.section }, active, 'nav-item', item.label, (
+                  <>
+                    <Icon name={item.icon} size={18} />
+                    <span className="nav-label">{item.label}</span>
+                    {badge > 0 && <span className="nav-count">{badge > 99 ? '99+' : badge}</span>}
+                  </>
+                ))}
+                {/* подпункты — только у открытого раздела: панель должна оставаться короткой */}
+                {active && !collapsed && item.subs?.filter((s) => visible(s.roles, user.role)).map((sub) => (
+                  <span key={sub.label}>
+                    {link(sub.route, route.view === sub.route.view, 'nav-sub', sub.label, (
+                      <>
+                        <Icon name={sub.icon} size={15} />
+                        <span className="nav-label">{sub.label}</span>
+                      </>
+                    ))}
+                  </span>
+                ))}
+              </div>
+            );
+          })}
+
+          {/* Созвон уже идёт — вход в него, иначе к разговору не присоединиться тому, кого не позвали */}
+          {activeCall && (
+            <button className="nav-item nav-call" onClick={onJoinCall} title="Идёт созвон — присоединиться">
+              <Icon name="phone" size={18} />
+              <span className="nav-label">Идёт созвон · {activeCall.participants}</span>
+            </button>
+          )}
+        </nav>
+
+        {/* ── нижний блок ── */}
+        <div className="nav-bottom">
+          {/* Виджет «AI Секретарь» встанет сюда в Ш5 — вместе с журналом авто-действий.
+              До появления таблицы событий счётчик показывал бы выдуманное число. */}
+
+          {link({ section: 'settings' }, route.section === 'settings', 'nav-item', 'Настройки и интеграции', (
+            <>
+              <Icon name="settings" size={18} />
+              <span className="nav-label">Настройки</span>
+            </>
+          ))}
+
+          <div className="nav-profile" ref={menuRef}>
+            <button
+              className={`nav-user${route.section === 'profile' ? ' active' : ''}`}
+              onClick={() => setMenuOpen((v) => !v)}
+              title={`${user.fullName} — профиль и тема`}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
+              <Avatar path={avatarPath} fallback={user.fullName?.[0] ?? '?'} className="avatar-sm" />
+              <span className="nav-user-text">
+                <span className="nav-user-name">{user.fullName}</span>
+                {/* строка текущего фокуса появится в Ш5, когда будет что показывать */}
+                <span className="nav-user-role">{roleLabel(user.role)}</span>
+              </span>
+            </button>
+            {menuOpen && (
+              <div className="menu-pop nav-menu-pop" role="menu">
+                <button
+                  className="menu-item"
+                  role="menuitem"
+                  onClick={() => { setMenuOpen(false); go({ section: 'profile' }); }}
+                >
+                  <Icon name="user" size={15} /> Личный кабинет
+                </button>
+                <div className="menu-theme">
+                  <span className="dim">Тема</span>
+                  <ThemeSwitch />
+                </div>
+                <button className="menu-item menu-danger" role="menuitem" onClick={() => { setMenuOpen(false); onLogout(); }}>
+                  <Icon name="logout" size={15} /> Выйти
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+}
