@@ -4,8 +4,14 @@ import { api, ApiError } from '../lib/api';
 import { DatePicker } from './DatePicker';
 
 /** NL-команда / Zero-UI: пишешь ИЛИ говоришь обычным языком → ИИ предлагает создать задачу/сделку → подтверждаешь. */
-export function NlCommandModal({ onClose }: { onClose: () => void }) {
-  const [text, setText] = useState('');
+export function NlCommandModal({ onClose, initialText, autoRecord }: {
+  onClose: () => void;
+  /** Текст, набранный в командной строке: переспрашивать уже сформулированное незачем. */
+  initialText?: string;
+  /** Пришли по кнопке микрофона — сразу слушаем, не заставляя нажимать ещё раз. */
+  autoRecord?: boolean;
+}) {
+  const [text, setText] = useState(initialText ?? '');
   const [draft, setDraft] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -48,6 +54,16 @@ export function NlCommandModal({ onClose }: { onClose: () => void }) {
 
   // остановить запись и отпустить микрофон, если модалку закрыли на середине
   useEffect(() => () => { if (recRef.current && recRef.current.state !== 'inactive') recRef.current.stop(); }, []);
+
+  // Автозапуск записи ровно один раз: в режиме разработки эффекты вызываются дважды,
+  // и без флага у человека открывались бы два микрофонных потока подряд.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (!autoRecord || autoStarted.current) return;
+    autoStarted.current = true;
+    startRec();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRecord]);
 
   const parse = async () => {
     if (text.trim().length < 3) return setMsg('Слишком короткая команда');

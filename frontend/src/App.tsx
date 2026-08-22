@@ -18,6 +18,7 @@ import { Sidebar } from './components/Sidebar';
 import { ProfilePanel } from './components/ProfilePanel';
 import { ClientsPanel } from './components/ClientsPanel';
 import { NlCommandModal } from './components/NlCommandModal';
+import { CommandPalette } from './components/CommandPalette';
 import { InboxPanel } from './components/InboxPanel';
 import { ClientPortal } from './pages/ClientPortal';
 import { Toasts } from './components/Toasts';
@@ -48,7 +49,9 @@ export function App() {
   // какой чат открыт — чтобы не слать уведомление о сообщении, которое человек и так видит
   const [openChatId, setOpenChatId] = useState<string | null>(null);
   const [activeCalls, setActiveCalls] = useState<{ id: string; participants: { displayName: string }[] }[]>([]);
-  const [showNl, setShowNl] = useState(false);
+  // окно быстрой команды: null — закрыто; текст и голос приходят из командной строки
+  const [nl, setNl] = useState<{ text?: string; voice?: boolean } | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
   const onSwitchOrg = async (tenantId: string) => {
@@ -109,13 +112,13 @@ export function App() {
       const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setShowNl(true);
+        setPaletteOpen(true);
         return;
       }
       if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === 'c' || e.key === 'C' || e.key === 'с' || e.key === 'С') {
         e.preventDefault();
-        setShowNl(true);
+        setNl({});
       }
     };
     window.addEventListener('keydown', onKey);
@@ -198,8 +201,9 @@ export function App() {
         unread={unread}
         activeCall={activeCalls.length > 0 ? { participants: activeCalls[0].participants.length } : null}
         onSwitchOrg={onSwitchOrg}
-        onNewTask={() => setShowNl(true)}
-        onSearch={() => setShowNl(true)}
+        onNewTask={() => setNl({})}
+        onVoiceTask={() => setNl({ voice: true })}
+        onSearch={() => setPaletteOpen(true)}
         onJoinCall={joinActiveCall}
         onLogout={logout}
       />
@@ -258,7 +262,14 @@ export function App() {
           onDecline={decline}
         />
       )}
-      {showNl && <NlCommandModal onClose={() => setShowNl(false)} />}
+      {paletteOpen && (
+        <CommandPalette
+          role={user.role}
+          onClose={() => setPaletteOpen(false)}
+          onCreate={(opts) => setNl(opts)}
+        />
+      )}
+      {nl && <NlCommandModal onClose={() => setNl(null)} initialText={nl.text} autoRecord={nl.voice} />}
     </div>
   );
 }

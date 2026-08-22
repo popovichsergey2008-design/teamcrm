@@ -893,3 +893,55 @@
 
 /* пульс команды: до появления дашборда — честное объяснение по центру */
 .radar-body { flex: 1; min-height: 0; display: grid; place-items: center; padding: var(--sp-5); }
+
+/* ───── командная строка (Ctrl+K) ───── */
+/* Открывается поверх всего и прижата к верхней трети: там её ищет взгляд,
+   и содержимое под ней остаётся видно — переход не ощущается сменой экрана. */
+.palette-overlay {
+  position: fixed; inset: 0; z-index: 90; background: var(--overlay);
+  display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px;
+}
+.palette {
+  width: 100%; max-width: 620px; max-height: 70vh; display: flex; flex-direction: column;
+  background: var(--bg-elev); border: 1px solid var(--border-2);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden;
+}
+.palette-input-row {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); color: var(--text-mut);
+}
+.palette-input {
+  flex: 1; min-width: 0; background: none; border: none; outline: none;
+  color: var(--text); font-size: 16px; padding: 2px 0;
+}
+.palette-input::placeholder { color: var(--text-mut); }
+.palette-mic {
+  background: none; border: none; cursor: pointer; color: var(--accent);
+  padding: 6px; border-radius: var(--radius-sm); display: grid; place-items: center;
+}
+.palette-mic:hover { background: var(--accent-soft); }
+.palette-list { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-2); }
+.palette-group {
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-mut); padding: var(--sp-2) var(--sp-2) var(--sp-1);
+}
+.palette-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: none; border: none; font: inherit; color: var(--text-dim); cursor: pointer;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+}
+.palette-item.active { background: var(--accent-soft); color: var(--accent); }
+.palette-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-hint { font-size: var(--fs-xs); color: var(--text-mut); white-space: nowrap; }
+.palette-item.active .palette-hint { color: var(--accent); }
+.palette-foot {
+  display: flex; gap: var(--sp-4); padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--text-mut);
+}
+.palette-foot .muted { margin-left: auto; }
+
+/* «Новая задача» + микрофон одной строкой */
+.nav-new-row { display: flex; gap: var(--sp-1); }
+.nav-new-row .nav-new { flex: 1; min-width: 0; }
+.nav-new-mic { flex-shrink: 0; padding: 10px; }
+.nav-collapsed .nav-new-mic { display: none; }

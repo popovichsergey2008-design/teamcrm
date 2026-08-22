@@ -82,7 +82,7 @@ const visible = (roles: Role[] | undefined, role: Role) => !roles || roles.inclu
 
 export function Sidebar({
   route, user, organizations, avatarPath, unread, activeCall,
-  onSwitchOrg, onNewTask, onSearch, onJoinCall, onLogout,
+  onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onLogout,
 }: {
   route: Route;
   user: { role: string; fullName: string; tenantId: string };
@@ -92,6 +92,7 @@ export function Sidebar({
   activeCall: { participants: number } | null;
   onSwitchOrg: (tenantId: string) => void;
   onNewTask: () => void;
+  onVoiceTask: () => void;
   onSearch: () => void;
   onJoinCall: () => void;
   onLogout: () => void;
@@ -186,10 +187,17 @@ export function Sidebar({
             <kbd className="nav-kbd">Ctrl K</kbd>
           </button>
 
-          <button className="btn btn-primary nav-new" onClick={onNewTask} title="Новая задача — текстом или голосом (клавиша C)">
-            <Icon name="plus" size={16} />
-            <span className="nav-label">Новая задача</span>
-          </button>
+          {/* Голос — отдельной кнопкой, а не режимом внутри окна: по ТЗ надиктовать
+              задачу нужно одним движением, а не «открыть, найти микрофон, нажать». */}
+          <div className="nav-new-row">
+            <button className="btn btn-primary nav-new" onClick={onNewTask} title="Новая задача — текстом (клавиша C)">
+              <Icon name="plus" size={16} />
+              <span className="nav-label">Новая задача</span>
+            </button>
+            <button className="btn btn-primary nav-new-mic" onClick={onVoiceTask} title="Продиктовать задачу голосом" aria-label="Продиктовать задачу голосом">
+              <Icon name="mic" size={16} />
+            </button>
+          </div>
         </div>
 
         {/* ── основное меню: ровно 4 раздела ── */}
