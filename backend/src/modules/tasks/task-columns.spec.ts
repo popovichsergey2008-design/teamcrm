@@ -1,4 +1,4 @@
-import { isDoneColumn, pickDoneColumn } from './task-columns';
+import { isDoneColumn, isReviewColumn, pickDoneColumn } from './task-columns';
 
 describe('колонка «готово»', () => {
   it('узнаёт разные написания, включая регистр и пробелы', () => {
@@ -11,6 +11,16 @@ describe('колонка «готово»', () => {
     // именно здесь копились закрытые задачи
     for (const n of ['Пауза', 'В работе', 'На тестировании', 'Новые', 'Готовится', 'Не готово']) {
       expect(isDoneColumn(n)).toBe(false);
+    }
+  });
+
+  it('отличает «проверку» от «готово» и от рабочих колонок', () => {
+    for (const n of ['На тестировании', ' на проверке ', 'СОГЛАСОВАНИЕ', 'Review', 'QA', 'На приёмке']) {
+      expect(isReviewColumn(n)).toBe(true);
+    }
+    // «Готово» — уже принято, решения не ждёт; «В работе» — ещё не сдано
+    for (const n of ['Готово', 'Done', 'В работе', 'Новые', 'Пауза']) {
+      expect(isReviewColumn(n)).toBe(false);
     }
   });
 

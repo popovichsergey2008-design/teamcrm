@@ -14,6 +14,7 @@ import { CallPanel } from './components/CallPanel';
 import { ChatsPage } from './pages/ChatsPage';
 import { IncomingCallDialog, useIncomingCalls } from './components/IncomingCall';
 import { useChatNotifications } from './hooks/useChatNotifications';
+import { useNavCounters } from './hooks/useNavCounters';
 import { Sidebar } from './components/Sidebar';
 import { ProfilePanel } from './components/ProfilePanel';
 import { ClientsPanel } from './components/ClientsPanel';
@@ -165,6 +166,7 @@ export function App() {
     } catch { /* недоступность медиа покажет само окно звонка */ }
   };
 
+  const counters = useNavCounters(!!user && user.role !== 'client', route.section);
   const { incoming, accept, decline } = useIncomingCalls(!!user && user.role !== 'client');
   const { unread } = useChatNotifications(
     !!user && user.role !== 'client',
@@ -199,6 +201,7 @@ export function App() {
         organizations={organizations}
         avatarPath={avatarPath}
         unread={unread}
+        counters={counters}
         activeCall={activeCalls.length > 0 ? { participants: activeCalls[0].participants.length } : null}
         onSwitchOrg={onSwitchOrg}
         onNewTask={() => setNl({})}

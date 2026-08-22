@@ -77,14 +77,31 @@ async function tryRefresh(): Promise<void> {
   return refreshing;
 }
 
+/**
+ * Изменили задачу — сообщаем об этом всему приложению.
+ *
+ * Иначе счётчики в левой панели пришлось бы дёргать из каждого места, где задачу
+ * создают, двигают, закрывают или удаляют: доска, карточка, список, быстрая команда,
+ * разбор встречи. Один сигнал из общего места честнее пяти забытых вызовов.
+ */
+function announceTaskChange(method: string, path: string) {
+  if (method === 'GET') return;
+  if (!path.startsWith('/tasks')) return;
+  window.dispatchEvent(new Event('teamcrm:tasks-changed'));
+}
+
 /** Запрос с авто-обновлением access-токена при 401/UNAUTHORIZED. */
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   try {
-    return await rawRequest<T>(method, path, body);
+    const res = await rawRequest<T>(method, path, body);
+    announceTaskChange(method, path);
+    return res;
   } catch (e) {
     if (e instanceof ApiError && e.code === 'UNAUTHORIZED' && tokens.refresh) {
       await tryRefresh();
-      return await rawRequest<T>(method, path, body);
+      const res = await rawRequest<T>(method, path, body);
+      announceTaskChange(method, path);
+      return res;
     }
     throw e;
   }
@@ -158,6 +175,15 @@ export const api = {
     if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Upload error');
     return env.data;
   },
+
+  /**
+   * Счётчики бейджей левой панели одним запросом.
+   * Часовой пояс отдаём свой: «сегодня» у человека и на сервере — разные дни.
+   */
+  navCounters: () =>
+    request<{ focus: { decide: number; today: number }; radar: { risks: number } | null }>(
+      'GET', `/nav/counters?tz=${new Date().getTimezoneOffset()}`,
+    ),
 
   // projects / board
   listProjects: (includeArchived = false) =>

@@ -48,6 +48,7 @@ import { PortalModule } from './modules/portal/portal.module';
 import { PromptsModule } from './modules/prompts/prompts.module';
 import { MeetingsModule } from './modules/meetings/meetings.module';
 import { MediaModule } from './modules/media/media.module';
+import { NavModule } from './modules/nav/nav.module';
 import { ChatsModule } from './modules/chats/chats.module';
 
 @Module({
@@ -101,6 +102,7 @@ import { ChatsModule } from './modules/chats/chats.module';
     PromptsModule,
     MeetingsModule,
     MediaModule,
+    NavModule,
     ChatsModule,
   ],
   providers: [

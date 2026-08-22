@@ -945,3 +945,6 @@
 .nav-new-row .nav-new { flex: 1; min-width: 0; }
 .nav-new-mic { flex-shrink: 0; padding: 10px; }
 .nav-collapsed .nav-new-mic { display: none; }
+
+/* риск-счётчик отличается от непрочитанного: это не «новое», а «горит» */
+.nav-count-warn { background: var(--fill-warn); }

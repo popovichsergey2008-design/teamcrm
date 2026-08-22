@@ -4,6 +4,7 @@ import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { buildPath, navigate, Route, Section } from '../lib/router';
 import { roleLabel } from '../lib/labels';
+import { NavCounters } from '../hooks/useNavCounters';
 
 /**
  * Левая панель — единственная навигация приложения.
@@ -81,7 +82,7 @@ const MENU: Item[] = [
 const visible = (roles: Role[] | undefined, role: Role) => !roles || roles.includes(role);
 
 export function Sidebar({
-  route, user, organizations, avatarPath, unread, activeCall,
+  route, user, organizations, avatarPath, unread, counters, activeCall,
   onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onLogout,
 }: {
   route: Route;
@@ -89,6 +90,7 @@ export function Sidebar({
   organizations: { tenantId: string; name: string; role: string }[];
   avatarPath: string | null;
   unread: number;
+  counters: NavCounters;
   activeCall: { participants: number } | null;
   onSwitchOrg: (tenantId: string) => void;
   onNewTask: () => void;
@@ -204,14 +206,28 @@ export function Sidebar({
         <nav className="nav-main" aria-label="Разделы">
           {MENU.filter((i) => visible(i.roles, user.role)).map((item) => {
             const active = route.section === item.section;
-            const badge = item.section === 'chat' ? unread : 0;
+            // Ноль не показываем вовсе — по ТЗ панель молчит, пока от человека
+            // ничего не требуется. Пустой кружок читался бы как «что-то есть».
+            const badge = item.section === 'chat' ? unread
+              : item.section === 'focus' ? counters.focus.decide
+              : item.section === 'radar' ? counters.radar?.risks ?? 0
+              : 0;
+            const badgeTitle = item.section === 'focus' ? 'ждут вашего решения'
+              : item.section === 'radar' ? 'задач просрочено' : undefined;
             return (
               <div key={item.section} className="nav-group">
                 {link({ section: item.section }, active, 'nav-item', item.label, (
                   <>
                     <Icon name={item.icon} size={18} />
                     <span className="nav-label">{item.label}</span>
-                    {badge > 0 && <span className="nav-count">{badge > 99 ? '99+' : badge}</span>}
+                    {badge > 0 && (
+                      <span
+                        className={`nav-count${item.section === 'radar' ? ' nav-count-warn' : ''}`}
+                        title={badgeTitle}
+                      >
+                        {badge > 99 ? '99+' : badge}
+                      </span>
+                    )}
                   </>
                 ))}
                 {/* подпункты — только у открытого раздела: панель должна оставаться короткой */}

@@ -25,3 +25,23 @@ export const DONE_COLUMN_NAMES = [...DONE_NAMES];
 export function pickDoneColumn<T extends { id: string; name: string }>(columns: T[]): T | null {
   return columns.find((c) => isDoneColumn(c.name)) ?? null;
 }
+
+/**
+ * Колонка-«проверка»: работа сдана и ждёт чужого решения — принять или вернуть.
+ *
+ * Нужна счётчику «Требует моего решения»: задача в такой колонке, где вы постановщик,
+ * стоит не у вас в работе, а у вас на совести. Имена собраны и по нашему набору
+ * («На тестировании» заводится по умолчанию), и по импортным доскам Битрикса и
+ * YouGile, где та же стадия называется по-своему.
+ */
+const REVIEW_NAMES = new Set([
+  'на тестировании', 'тестирование', 'на проверке', 'проверка', 'на согласовании',
+  'согласование', 'ревью', 'review', 'in review', 'testing', 'qa', 'на приёмке', 'на приемке',
+]);
+
+export function isReviewColumn(name: string): boolean {
+  return REVIEW_NAMES.has(name.trim().toLowerCase());
+}
+
+/** Для SQL: тот же набор имён в нижнем регистре. */
+export const REVIEW_COLUMN_NAMES = [...REVIEW_NAMES];
