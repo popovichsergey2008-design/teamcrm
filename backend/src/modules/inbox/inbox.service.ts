@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
+import { SecretaryService } from '../secretary/secretary.service';
 import { NlService } from '../nl/nl.service';
 import { InboxRepository } from './inbox.repository';
 
@@ -13,6 +14,7 @@ export class InboxService {
     private readonly repo: InboxRepository,
     private readonly nl: NlService,
     private readonly ai: AiService,
+    private readonly secretary: SecretaryService,
   ) {}
 
   // ── каналы ──
@@ -73,6 +75,11 @@ export class InboxService {
         const task = draft.task;
         if (!task.projectId && source.default_project_id) task.projectId = source.default_project_id;
         await this.repo.setItemResult(itemId, 'pending', { task });
+        // Письмо или голосовая заметка превращены в оформленный черновик без участия человека
+        void this.secretary.record({
+          tenantId: source.tenant_id, userId: source.created_by, kind: 'inbox_draft',
+          summary: `Из входящего собран черновик: «${String(task.title ?? '').slice(0, 120)}»`,
+        });
       } else {
         // не распознали действенную задачу — помечаем «проигнорировано» (в ревью не мешает)
         await this.repo.setItemResult(itemId, 'ignored', { note: draft.note ?? null });

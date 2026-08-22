@@ -1,4 +1,4 @@
-import type { AuthResult, Board, Project, Task } from '../types';
+import type { AiAction, AuthResult, Board, Focus, Project, Task } from '../types';
 
 const ACCESS_KEY = 'teamcrm.access';
 const REFRESH_KEY = 'teamcrm.refresh';
@@ -175,6 +175,19 @@ export const api = {
     if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Upload error');
     return env.data;
   },
+
+  // текущий фокус: над чем человек работает и до какого времени
+  getFocus: () => request<Focus | null>('GET', '/focus/me'),
+  setFocus: (b: { kind: string; note?: string; minutes?: number; taskId?: string }) =>
+    request<Focus>('PUT', '/focus/me', b),
+  clearFocus: () => request<{ cleared: boolean }>('DELETE', '/focus/me'),
+
+  // AI Секретарь: что система сделала за людей сама
+  secretarySummary: () =>
+    request<{ actions: number; savedMinutes: number }>(
+      'GET', `/secretary/summary?tz=${new Date().getTimezoneOffset()}`,
+    ),
+  secretaryLog: (limit = 50) => request<AiAction[]>('GET', `/secretary/log?limit=${limit}`),
 
   /**
    * Счётчики бейджей левой панели одним запросом.

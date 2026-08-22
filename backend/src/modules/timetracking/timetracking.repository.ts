@@ -14,8 +14,9 @@ export interface TimeLogRow {
 export class TimeTrackingRepository {
   constructor(private readonly db: DbService) {}
 
-  taskProject(tenantId: string, taskId: string): Promise<{ project_id: string } | null> {
-    return this.db.one(`SELECT project_id FROM tasks WHERE tenant_id=$1 AND id=$2`, [tenantId, taskId]);
+  // название нужно автофокусу: «Работаю над …» пишется само при старте таймера
+  taskProject(tenantId: string, taskId: string): Promise<{ project_id: string; title: string } | null> {
+    return this.db.one(`SELECT project_id, title FROM tasks WHERE tenant_id=$1 AND id=$2`, [tenantId, taskId]);
   }
 
   activeTimer(tenantId: string, userId: string): Promise<TimeLogRow | null> {

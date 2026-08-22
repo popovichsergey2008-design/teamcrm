@@ -5,6 +5,10 @@ import { ThemeSwitch } from './ThemeSwitch';
 import { buildPath, navigate, Route, Section } from '../lib/router';
 import { roleLabel } from '../lib/labels';
 import { NavCounters } from '../hooks/useNavCounters';
+import { FocusMenu, focusLine } from './FocusMenu';
+import { humanMinutes } from './SecretaryPanel';
+import { api } from '../lib/api';
+import type { Focus } from '../types';
 
 /**
  * Левая панель — единственная навигация приложения.
@@ -83,7 +87,7 @@ const visible = (roles: Role[] | undefined, role: Role) => !roles || roles.inclu
 
 export function Sidebar({
   route, user, organizations, avatarPath, unread, counters, activeCall,
-  onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onLogout,
+  onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onOpenSecretary, onLogout,
 }: {
   route: Route;
   user: { role: string; fullName: string; tenantId: string };
@@ -97,13 +101,26 @@ export function Sidebar({
   onVoiceTask: () => void;
   onSearch: () => void;
   onJoinCall: () => void;
+  onOpenSecretary: () => void;
   onLogout: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1');
   // на узком экране панель выезжает поверх содержимого, а не сжимает его
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [focus, setFocus] = useState<Focus | null>(null);
+  const [secretary, setSecretary] = useState<{ actions: number; savedMinutes: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Фокус и сводка ассистента живут ровно здесь: больше их никто не показывает.
+  // Обе выборки дешёвые, поэтому обновляем их вместе со счётчиками разделов.
+  useEffect(() => {
+    api.getFocus().then(setFocus).catch(() => undefined);
+    const loadSummary = () => api.secretarySummary().then(setSecretary).catch(() => undefined);
+    loadSummary();
+    window.addEventListener('teamcrm:tasks-changed', loadSummary);
+    return () => window.removeEventListener('teamcrm:tasks-changed', loadSummary);
+  }, []);
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {
@@ -256,8 +273,17 @@ export function Sidebar({
 
         {/* ── нижний блок ── */}
         <div className="nav-bottom">
-          {/* Виджет «AI Секретарь» встанет сюда в Ш5 — вместе с журналом авто-действий.
-              До появления таблицы событий счётчик показывал бы выдуманное число. */}
+          {/* AI Секретарь: показываем ровно то, что записано в журнале действий.
+              Ноль тоже показываем — это честнее, чем прятать виджет, обещавший пользу. */}
+          <button className="nav-secretary" onClick={onOpenSecretary} title="Что система сделала за вас сама">
+            <Icon name="sparkles" size={18} />
+            <span className="nav-label nav-secretary-text">
+              <span>AI Секретарь · {secretary?.actions ?? 0}</span>
+              <span className="nav-secretary-saved">
+                {secretary && secretary.savedMinutes > 0 ? `сэкономлено ${humanMinutes(secretary.savedMinutes)}` : 'действий сегодня'}
+              </span>
+            </span>
+          </button>
 
           {link({ section: 'settings' }, route.section === 'settings', 'nav-item', 'Настройки и интеграции', (
             <>
@@ -275,14 +301,15 @@ export function Sidebar({
               aria-expanded={menuOpen}
             >
               <Avatar path={avatarPath} fallback={user.fullName?.[0] ?? '?'} className="avatar-sm" />
+              <span className={`nav-dot nav-dot-${focus?.kind ?? 'free'}`} aria-hidden="true" />
               <span className="nav-user-text">
                 <span className="nav-user-name">{user.fullName}</span>
-                {/* строка текущего фокуса появится в Ш5, когда будет что показывать */}
-                <span className="nav-user-role">{roleLabel(user.role)}</span>
+                <span className="nav-user-role" title={focusLine(focus)}>{focusLine(focus)}</span>
               </span>
             </button>
             {menuOpen && (
               <div className="menu-pop nav-menu-pop" role="menu">
+                <FocusMenu focus={focus} onChange={(f) => { setFocus(f); setMenuOpen(false); }} />
                 <button
                   className="menu-item"
                   role="menuitem"

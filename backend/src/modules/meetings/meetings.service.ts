@@ -4,6 +4,7 @@ import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
 import { FilesService } from '../files/files.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { SecretaryService } from '../secretary/secretary.service';
 import { TasksService } from '../tasks/tasks.service';
 import { describeFfmpegError, extractAudioChunks } from './audio.util';
 import { MEETING_PROMPT, validateMeetingAnalysis } from './meeting-schema';
@@ -36,6 +37,7 @@ export class MeetingsService {
     private readonly ai: AiService,
     private readonly tasks: TasksService,
     private readonly knowledge: KnowledgeService,
+    private readonly secretary: SecretaryService,
   ) {}
 
   list(tenantId: string) {
@@ -247,6 +249,13 @@ export class MeetingsService {
     }
 
     await this.repo.saveSummary(tenantId, meetingId, value.summary, value.decisions, value.risks);
+    // Протокол встречи — самая дорогая ручная работа из всего, что делает ассистент:
+    // раньше его писал человек по памяти, если вообще писал.
+    void this.secretary.record({
+      tenantId, kind: 'meeting_summary',
+      summary: `Протокол встречи: ${value.decisions.length} договорённостей, ${value.tasks.length} задач`,
+      subjectType: 'meeting', subjectId: meetingId,
+    });
 
     await this.repo.replaceDrafts(tenantId, meetingId, value.tasks.map((t) => {
       // Названный вслух проект важнее выбранного при загрузке записи: на встрече
@@ -299,6 +308,10 @@ export class MeetingsService {
     } as any, actorId);
 
     await this.repo.markDraftApplied(draftId, task.id);
+    void this.secretary.record({
+      tenantId, userId: draft.author_id ?? actorId, kind: 'meeting_task',
+      summary: `Задача со встречи: «${task.title}»`, subjectType: 'task', subjectId: task.id,
+    });
     return task;
   }
 

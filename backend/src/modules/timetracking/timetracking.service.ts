@@ -3,6 +3,7 @@ import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
 import { EconomicsProducer } from '../economics/economics.producer';
 import { TimeLogRow, TimeTrackingRepository } from './timetracking.repository';
+import { FocusService } from '../focus/focus.service';
 
 @Injectable()
 export class TimeTrackingService {
@@ -10,6 +11,7 @@ export class TimeTrackingService {
     private readonly repo: TimeTrackingRepository,
     private readonly realtime: RealtimeService,
     private readonly economics: EconomicsProducer,
+    private readonly focus: FocusService,
   ) {}
 
   async start(tenantId: string, userId: string, taskId: string) {
@@ -17,6 +19,10 @@ export class TimeTrackingService {
     if (!tp) throw AppException.notFound('Task not found');
 
     const { started, closed } = await this.repo.start(tenantId, userId, taskId);
+
+    // Взял задачу в работу — статус в профиле ставится сам. По ТЗ это Zero-Click:
+    // руками статус не меняет почти никто, и коллеги всё равно спрашивают «ты занят?».
+    void this.focus.fromTaskStart(tenantId, userId, taskId, tp.title);
 
     // событие старта (нефинансовое) в комнату проекта
     this.realtime.emit(tenantId, tp.project_id, 'time.started', {

@@ -106,3 +106,25 @@ export interface CostOfWork {
   aiCost: number;
   total: number;
 }
+
+/** Текущий фокус сотрудника: над чем работает и до какого времени. */
+export interface Focus {
+  kind: 'deep' | 'call' | 'quick' | 'break' | 'task';
+  note: string | null;
+  taskId: string | null;
+  until: string | null;
+  userId?: string;
+  userName?: string;
+}
+
+/** Строка журнала «AI Секретаря»: что система сделала за людей сама. */
+export interface AiAction {
+  id: string;
+  kind: string;
+  summary: string;
+  saved_minutes: number;
+  created_at: string;
+  subject_type: string | null;
+  subject_id: string | null;
+  user_name: string | null;
+}

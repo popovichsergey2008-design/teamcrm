@@ -5,6 +5,7 @@ import { AiService } from '../ai/ai.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { TasksService } from '../tasks/tasks.service';
 import { DealsService } from '../deals/deals.service';
+import { SecretaryService } from '../secretary/secretary.service';
 import { matchUserInText, normalizeDeadline } from './nl.match';
 
 type Intent = 'create_task' | 'create_deal' | 'none';
@@ -40,6 +41,7 @@ export class NlService {
     private readonly prompts: PromptsService,
     private readonly tasks: TasksService,
     private readonly deals: DealsService,
+    private readonly secretary: SecretaryService,
   ) {}
 
   private async context(tenantId: string) {
@@ -140,6 +142,10 @@ export class NlService {
         priority: PRIORITIES.includes(String(t.priority)) ? String(t.priority) : undefined,
         deadlineAt,
       } as any, userId);
+      void this.secretary.record({
+        tenantId, userId, kind: 'nl_task',
+        summary: `Задача из фразы: «${task.title}»`, subjectType: 'task', subjectId: task.id,
+      });
       return { type: 'task', task };
     }
     if (body.intent === 'create_deal') {

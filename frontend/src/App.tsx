@@ -20,6 +20,7 @@ import { ProfilePanel } from './components/ProfilePanel';
 import { ClientsPanel } from './components/ClientsPanel';
 import { NlCommandModal } from './components/NlCommandModal';
 import { CommandPalette } from './components/CommandPalette';
+import { SecretaryPanel } from './components/SecretaryPanel';
 import { InboxPanel } from './components/InboxPanel';
 import { ClientPortal } from './pages/ClientPortal';
 import { Toasts } from './components/Toasts';
@@ -53,6 +54,7 @@ export function App() {
   // окно быстрой команды: null — закрыто; текст и голос приходят из командной строки
   const [nl, setNl] = useState<{ text?: string; voice?: boolean } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [secretaryOpen, setSecretaryOpen] = useState(false);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
   const onSwitchOrg = async (tenantId: string) => {
@@ -208,6 +210,7 @@ export function App() {
         onVoiceTask={() => setNl({ voice: true })}
         onSearch={() => setPaletteOpen(true)}
         onJoinCall={joinActiveCall}
+        onOpenSecretary={() => setSecretaryOpen(true)}
         onLogout={logout}
       />
 
@@ -272,6 +275,7 @@ export function App() {
           onCreate={(opts) => setNl(opts)}
         />
       )}
+      {secretaryOpen && <SecretaryPanel onClose={() => setSecretaryOpen(false)} />}
       {nl && <NlCommandModal onClose={() => setNl(null)} initialText={nl.text} autoRecord={nl.voice} />}
     </div>
   );

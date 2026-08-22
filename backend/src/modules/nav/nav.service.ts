@@ -1,14 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { NavRepository } from './nav.repository';
+import { endOfLocalDay } from '../../common/time/local-day';
 
 export type NavCounters = {
   focus: { decide: number; today: number };
   /** null у тех, кому «Пульс команды» не показывается: считать общий счётчик незачем */
   radar: { risks: number } | null;
 };
-
-/** Минуты смещения от UTC, как их отдаёт браузер: от -14 до +12 часов. */
-const MAX_OFFSET_MIN = 14 * 60;
 
 /**
  * Счётчики левой панели.
@@ -23,24 +21,9 @@ const MAX_OFFSET_MIN = 14 * 60;
 export class NavService {
   constructor(private readonly repo: NavRepository) {}
 
-  /**
-   * Конец сегодняшнего дня у пользователя, выраженный в UTC.
-   *
-   * Считать «сегодня» по времени сервера нельзя: он живёт в UTC, и для Москвы
-   * задача со сроком «сегодня в 23:00» уезжала бы в завтрашний день.
-   */
-  static endOfLocalDay(tzOffsetMin: number, now = new Date()): Date {
-    const offset = Number.isFinite(tzOffsetMin)
-      ? Math.max(-MAX_OFFSET_MIN, Math.min(MAX_OFFSET_MIN, Math.trunc(tzOffsetMin)))
-      : 0;
-    const shifted = new Date(now.getTime() - offset * 60_000); // время на часах пользователя
-    shifted.setUTCHours(23, 59, 59, 999);
-    return new Date(shifted.getTime() + offset * 60_000);
-  }
-
   async counters(tenantId: string, userId: string, role: string, tzOffsetMin: number): Promise<NavCounters> {
     const withRisks = role === 'owner' || role === 'manager';
-    const row = await this.repo.counts(tenantId, userId, NavService.endOfLocalDay(tzOffsetMin), withRisks);
+    const row = await this.repo.counts(tenantId, userId, endOfLocalDay(tzOffsetMin), withRisks);
     return {
       focus: { decide: row?.decide ?? 0, today: row?.today ?? 0 },
       radar: withRisks ? { risks: row?.risks ?? 0 } : null,
