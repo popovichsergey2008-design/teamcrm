@@ -32,9 +32,14 @@ export class JwtAuthGuard implements CanActivate {
     if (!token) throw AppException.unauthorized('Missing bearer token');
 
     try {
-      const payload = await this.jwt.verifyAsync<AccessTokenPayload>(token, {
+      const payload = await this.jwt.verifyAsync<AccessTokenPayload & { kind?: string }>(token, {
         secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
       });
+      // Гостевой токен созвона подписан ТЕМ ЖЕ ключом, но пользователем не является:
+      // без этой проверки он открыл бы любой маршрут, где роли не указаны явно.
+      if (payload.kind === 'guest' || !payload.sub || !payload.role) {
+        throw AppException.unauthorized('Invalid or expired token');
+      }
       const user: AuthUser = {
         userId: payload.sub,
         tenantId: payload.tenantId,

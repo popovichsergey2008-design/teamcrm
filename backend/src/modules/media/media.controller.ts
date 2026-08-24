@@ -40,7 +40,7 @@ export class MediaController {
   /** Начать созвон: комната живёт в памяти, участники входят по WebSocket. */
   @Post('rooms')
   async start(@CurrentUser() u: AuthUser, @Body() dto: StartRoomDto) {
-    const room = await this.media.createRoom(u.tenantId, dto.projectId ?? null, dto.withAi === true);
+    const room = await this.media.createRoom(u.tenantId, dto.projectId ?? null, dto.withAi === true, u.userId);
     return { id: room.id, projectId: room.projectId, aiEnabled: room.aiEnabled };
   }
 }

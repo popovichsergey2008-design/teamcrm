@@ -499,6 +499,22 @@ export const api = {
   startCall: (projectId?: string, withAi = false) =>
     request<{ id: string; projectId: string | null; aiEnabled: boolean }>('POST', '/media/rooms', { projectId, withAi }),
 
+  // гостевой доступ в созвон по ссылке
+  createGuestLink: (b: { roomId?: string; projectId?: string; label?: string; ttlHours?: number }) =>
+    request<{ id: string; roomId: string; url: string; expiresAt: string }>('POST', '/meet/guest-links', b),
+  listGuestLinks: () => request<any[]>('GET', '/meet/guest-links'),
+  revokeGuestLink: (id: string) =>
+    request<{ id: string; roomId: string; kicked: number }>('DELETE', `/meet/guest-links/${id}`),
+  /** Гостевые вызовы идут БЕЗ токена: у гостя нет учётной записи и быть не может. */
+  guestLinkInfo: (token: string) =>
+    rawRequest<
+      | { ok: true; orgName: string; label: string | null; roomActive: boolean; hostPresent: boolean }
+      | { ok: false; reason: string }
+    >('GET', `/meet/guest/${encodeURIComponent(token)}`, undefined, false),
+  guestJoin: (token: string, name: string) =>
+    rawRequest<{ token: string; roomId: string; name: string; userId: string; iceServers: RTCIceServer[] }>(
+      'POST', `/meet/guest/${encodeURIComponent(token)}/join`, { name }, false),
+
   // встречи: запись → стенограмма → сводка → черновики задач
   listMeetings: () => request<any[]>('GET', '/meetings'),
   meetingDetails: (id: string) => request<{ meeting: any; segments: any[]; summary: any; drafts: any[] }>('GET', `/meetings/${id}`),

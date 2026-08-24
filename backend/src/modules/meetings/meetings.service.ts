@@ -95,7 +95,7 @@ export class MeetingsService {
 
     const meeting = await this.repo.create({
       tenantId: input.tenantId, projectId: input.projectId, title: input.title.slice(0, 255),
-      happenedAt: new Date().toISOString(), source: 'call', fileId: null, createdBy: input.actorId ?? '',
+      happenedAt: new Date().toISOString(), source: 'call', fileId: null, createdBy: input.actorId,
     });
 
     void (async () => {
@@ -106,10 +106,16 @@ export class MeetingsService {
         // а не тем, куда попадают загруженные вручную файлы.
         const hint = await this.speechHint(input.tenantId);
 
+        // Владелец файлов — сотрудник: files.uploaded_by ссылается на users(id), а дорожка
+        // вполне может принадлежать гостю. Некому владеть — дорожки не храним, но стенограмму
+        // всё равно делаем: она ценнее исходных файлов.
+        const owner = input.actorId ?? input.tracks.find((t) => !t.userId.startsWith('guest:'))?.userId ?? null;
+        if (!owner) this.log.warn(`встреча ${meeting.id}: дорожки не сохранены — в комнате не было сотрудника`);
+
         for (const track of input.tracks) {
           // храним дорожки как вложения встречи — на случай спора «я такого не говорил»
-          await this.files.upload({
-            tenantId: input.tenantId, userId: input.actorId ?? track.userId, buffer: track.buffer,
+          if (owner) await this.files.upload({
+            tenantId: input.tenantId, userId: owner, buffer: track.buffer,
             fileName: track.fileName, contentType: 'audio/ogg',
             ownerKind: 'meeting_recording', ownerId: meeting.id, maxBytes: MAX_RECORDING_BYTES,
           }).catch((e) => this.log.warn(`дорожка ${track.userId} не сохранена: ${(e as Error).message}`));
@@ -118,8 +124,15 @@ export class MeetingsService {
           for (const chunk of chunks) {
             const segments = await this.ai.transcribeSegments(
               input.tenantId, chunk.buffer, chunk.name, chunk.buffer.length / 4000, hint);
+            // Гость сотрудником не является: speaker_user_id ссылается на users(id),
+            // и запись туда «guest:<uuid>» уронила бы расшифровку всей встречи.
+            const guest = track.userId.startsWith('guest:');
             for (const s of shiftSegments(segments, chunk.offsetSec + track.offsetSec)) {
-              replies.push({ ...s, speaker: track.displayName, speakerUserId: track.userId });
+              replies.push({
+                ...s,
+                speaker: guest ? `${track.displayName} (гость)` : track.displayName,
+                speakerUserId: guest ? null : track.userId,
+              });
             }
           }
         }

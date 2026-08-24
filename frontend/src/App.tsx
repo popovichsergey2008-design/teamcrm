@@ -5,6 +5,7 @@ import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { JoinOrgPage } from './pages/JoinOrgPage';
+import { GuestMeetPage } from './pages/GuestMeetPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { FocusPage } from './pages/FocusPage';
 import { MeetingsPage } from './pages/MeetingsPage';
@@ -95,6 +96,9 @@ export function App() {
   // приглашение в команду: одноразовое /?invite=<token> или многоразовое /?join=<token>;
   // сброс пароля по ссылке от владельца: /?reset=<token>
   const params = new URLSearchParams(window.location.search);
+  const guestMeetToken = window.location.pathname.startsWith('/meet/')
+    ? decodeURIComponent(window.location.pathname.slice('/meet/'.length)).replace(/\/+$/, '')
+    : null;
   const inviteToken = params.get('invite');
   const joinToken = params.get('join');
   const resetToken = params.get('reset');
@@ -187,6 +191,10 @@ export function App() {
     route.section === 'chat' && !route.view ? openChatId : null,
     () => navigate({ section: 'chat' }),
   );
+
+  // Гость по ссылке `/meet/<токен>` — до всякой авторизации: у него нет учётной записи,
+  // и экран входа на его пути означал бы «встреча только для сотрудников».
+  if (guestMeetToken) return <GuestMeetPage token={guestMeetToken} />;
 
   if (inviteToken) return <AcceptInvitePage token={inviteToken} />;
   if (joinToken) return <JoinOrgPage token={joinToken} />;

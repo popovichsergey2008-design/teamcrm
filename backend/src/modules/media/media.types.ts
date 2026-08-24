@@ -81,6 +81,14 @@ export interface MeetingRoom {
   id: string;
   tenantId: string;
   projectId: string | null;
+  /**
+   * Сотрудник, с которого началась встреча.
+   *
+   * Нужен, потому что автором записи и владельцем файлов дорожек может быть только
+   * пользователь: у гостя строки в users нет. Последним из комнаты вполне может выйти
+   * именно гость — и тогда без этого поля запись оказалась бы без автора.
+   */
+  startedBy: string | null;
   router: MsRouter;
   participants: Map<string, Participant>;
   startedAt: number;

@@ -20,7 +20,7 @@ export interface DraftRow {
 export class MeetingsRepository {
   constructor(private readonly db: DbService) {}
 
-  create(i: { tenantId: string; projectId: string | null; title: string; happenedAt: string | null; source: string; fileId: string | null; createdBy: string }) {
+  create(i: { tenantId: string; projectId: string | null; title: string; happenedAt: string | null; source: string; fileId: string | null; createdBy: string | null }) {
     return this.db.one<MeetingRow>(
       `INSERT INTO meetings (tenant_id, project_id, title, happened_at, source, file_id, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,

@@ -15,6 +15,14 @@ export interface Peer {
   handRaised: boolean;
   /** ИИ-ассистент: показывается в списке наравне с людьми, пока идёт запись. */
   isAi?: boolean;
+  /** Гость по ссылке: в списке помечен, чтобы «свой человек» и «чужой» не путались. */
+  isGuest?: boolean;
+}
+
+/** Гость, стоящий за дверью: показывается сотрудникам до впуска. */
+export interface Knock {
+  guestId: string;
+  name: string;
 }
 
 export interface MeetEvents {
@@ -24,6 +32,14 @@ export interface MeetEvents {
   onState: (state: 'connecting' | 'connected' | 'reconnecting' | 'closed') => void;
   onRecording: (active: boolean) => void;
   onAiInvited?: () => void;
+  /** Гостю: стучимся, ждём впуска (hostPresent — есть ли кому впускать). */
+  onGuestWaiting?: (hostPresent: boolean) => void;
+  /** Гостю: впустили — дальше обычный созвон. */
+  onGuestAdmitted?: () => void;
+  /** Гостю: отказали или отозвали ссылку. */
+  onGuestRejected?: (reason: string) => void;
+  /** Сотруднику: список стучащихся изменился. */
+  onKnocks?: (knocks: Knock[]) => void;
   onError: (message: string) => void;
 }
 
@@ -46,6 +62,8 @@ export class MeetClient {
   /** Чей поток и какого рода — нужно, чтобы вернуть дорожку после паузы. */
   private readonly consumerMeta = new Map<string, { userId: string; screen: boolean }>();
   private readonly peers = new Map<string, Peer>();
+  /** Гости за дверью — только для сотрудников. */
+  private readonly knocks = new Map<string, Knock>();
   /** Уже запрошенные потоки: защита от повторного приёма того же продюсера. */
   private readonly requested = new Set<string>();
 
@@ -145,7 +163,7 @@ export class MeetClient {
         for (const it of p.participants ?? []) {
           this.peers.set(it.userId, {
             userId: it.userId, displayName: it.displayName,
-            handRaised: !!it.handRaised, isAi: !!it.isAi,
+            handRaised: !!it.handRaised, isAi: !!it.isAi, isGuest: !!it.isGuest,
           });
         }
         this.ev.onPeers([...this.peers.values()]);
@@ -173,7 +191,9 @@ export class MeetClient {
         return;
 
       case 'meet.peer-joined':
-        this.peers.set(p.user_id, { userId: p.user_id, displayName: p.display_name, handRaised: false });
+        this.peers.set(p.user_id, {
+          userId: p.user_id, displayName: p.display_name, handRaised: false, isGuest: !!p.is_guest,
+        });
         this.ev.onPeers([...this.peers.values()]);
         return;
 
@@ -267,6 +287,28 @@ export class MeetClient {
       case 'meet.peer-busy':
         // не молчим: иначе непонятно, почему человек «не берёт трубку»
         this.ev.onError('Собеседник сейчас в другом созвоне — вызов ему не ушёл');
+        return;
+
+      case 'meet.guest-waiting':
+        this.ev.onGuestWaiting?.(!!p.host_present);
+        return;
+
+      case 'meet.guest-admitted':
+        this.ev.onGuestAdmitted?.();
+        return;
+
+      case 'meet.guest-rejected':
+        this.ev.onGuestRejected?.(String(p.reason ?? 'declined'));
+        return;
+
+      case 'meet.guest-knocking':
+        this.knocks.set(p.guest_id, { guestId: p.guest_id, name: p.name });
+        this.ev.onKnocks?.([...this.knocks.values()]);
+        return;
+
+      case 'meet.guest-gone':
+        this.knocks.delete(p.guest_id);
+        this.ev.onKnocks?.([...this.knocks.values()]);
         return;
 
       case 'meet.error':
@@ -407,6 +449,13 @@ export class MeetClient {
   /** Запись созвона: по остановке сервер сам сделает стенограмму и черновики задач. */
   setRecording(on: boolean): void {
     this.emit(on ? 'meet.record-start' : 'meet.record-stop', {});
+  }
+
+  /** Впустить или выставить стучащегося гостя. Доступно только сотруднику. */
+  answerKnock(guestId: string, admit: boolean): void {
+    this.knocks.delete(guestId);
+    this.ev.onKnocks?.([...this.knocks.values()]);
+    this.emit(admit ? 'meet.guest-admit' : 'meet.guest-reject', { guest_id: guestId });
   }
 
   invite(userIds: string[]): void {

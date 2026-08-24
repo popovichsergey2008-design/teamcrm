@@ -728,6 +728,37 @@
 .call-leave { margin-left: auto; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); font-weight: 600; }
 .call-leave:hover { background: var(--fill-danger); color: var(--on-fill); }
 
+/* ── Гость по ссылке ── */
+
+/* Стук в дверь. Полоса намеренно заметная: пропустить человека, который стоит
+   за дверью и ждёт, — худший исход этой функции. */
+.call-knock {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 0 12px 8px; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px;
+  background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--warn);
+}
+.call-knock-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+
+/* Комната ожидания: у гостя вместо сцены — объяснение, что происходит. */
+.call-lobby { align-items: center; justify-content: center; }
+.call-lobby-box {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-align: center; max-width: 420px; color: var(--text-dim);
+}
+.call-lobby-box h3 { margin: 0; color: var(--text); font-size: var(--fs-lg); }
+.call-lobby-box p { margin: 0; }
+
+/* Телефон: окно созвона занимает экран целиком — рамка и отступы съедают видео. */
+@media (max-width: 720px) {
+  .call-overlay { padding: 0; }
+  .call-window { max-height: 100%; height: 100%; border: none; border-radius: 0; }
+  .call-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .call-controls { justify-content: center; }
+  .call-controls .btn { flex: 1 1 auto; justify-content: center; }
+  .call-leave { margin-left: 0; }
+  .call-knock { flex-direction: column; align-items: stretch; }
+}
+
 /* ───── календарь выбора даты (вместо нативного datetime-local) ───── */
 .dp { position: relative; }
 /* поле выглядит и меряется как обычный .input: та же типографика и высота строки,

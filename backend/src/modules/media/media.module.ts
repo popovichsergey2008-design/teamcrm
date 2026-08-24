@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { MeetingsModule } from '../meetings/meetings.module';
+import { GuestLinksRepository } from './guest-links.repository';
+import { GuestLinksService } from './guest-links.service';
 import { MediaController } from './media.controller';
 import { MediaService } from './media.service';
+import { MeetGuestController } from './meet-guest.controller';
 import { MeetGateway } from './meet.gateway';
 import { RecordingService } from './recording.service';
 
@@ -12,8 +15,8 @@ import { RecordingService } from './recording.service';
  */
 @Module({
   imports: [MeetingsModule], // запись созвона отдаётся в тот же конвейер, что и загруженные встречи
-  controllers: [MediaController],
-  providers: [MediaService, MeetGateway, RecordingService],
+  controllers: [MediaController, MeetGuestController],
+  providers: [MediaService, MeetGateway, RecordingService, GuestLinksService, GuestLinksRepository],
   exports: [MediaService],
 })
 export class MediaModule {}

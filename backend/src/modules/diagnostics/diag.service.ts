@@ -56,9 +56,10 @@ export class DiagService implements OnModuleInit, OnModuleDestroy {
       const values: unknown[] = [];
       const chunks = rows.map((e, i) => {
         const b = i * 8;
+        const { userId, data } = this.actor(e);
         values.push(
-          e.tenantId ?? null, e.scope, e.refId ?? null, e.userId ?? null,
-          e.side, e.event.slice(0, 48), e.data === undefined ? null : JSON.stringify(e.data),
+          e.tenantId ?? null, e.scope, e.refId ?? null, userId,
+          e.side, e.event.slice(0, 48), data === undefined ? null : JSON.stringify(data),
           e.at ?? null,
         );
         return `($${b + 1}::bigint,$${b + 2}::varchar,$${b + 3}::varchar,$${b + 4}::bigint,`
@@ -72,6 +73,21 @@ export class DiagService implements OnModuleInit, OnModuleDestroy {
     } catch (e) {
       this.log.debug?.(`запись журнала не удалась: ${(e as Error).message}`);
     }
+  }
+
+  /**
+   * Гость в журнале.
+   *
+   * `user_id` — bigint, а у гостя созвона идентификатор вида `guest:<uuid>`. Попытка
+   * записать его роняла бы ВЕСЬ пакет событий (до двухсот строк одного созвона), причём
+   * молча: ошибки здесь проглатываются намеренно. Поэтому нечисловой участник уходит
+   * в `data.actor`, а колонка остаётся пустой.
+   */
+  private actor(e: DiagEntry): { userId: string | null; data: unknown } {
+    const id = e.userId ?? null;
+    if (id === null || /^\d+$/.test(id)) return { userId: id, data: e.data };
+    const base = e.data && typeof e.data === 'object' ? e.data : e.data === undefined ? {} : { value: e.data };
+    return { userId: null, data: { ...(base as Record<string, unknown>), actor: id } };
   }
 
   /** Лента одного созвона или чата по порядку. */

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, tokens } from '../lib/api';
-import { MeetClient, Peer, RemoteTrack } from '../lib/meet-client';
+import { Knock, MeetClient, Peer, RemoteTrack } from '../lib/meet-client';
 import { diag } from '../lib/diag';
 import { useAuth } from '../state/auth';
 
@@ -16,10 +16,18 @@ const STATE_LABEL: Record<string, string> = {
  * Окно созвона. Микрофон включается сразу, камера — по желанию: на рабочих
  * планёрках она нужна не всегда, а трафик экономит заметно.
  */
-export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
-  meetingId: string; inviteUserIds?: string[]; onClose: () => void;
+export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
+  meetingId: string;
+  inviteUserIds?: string[];
+  /**
+   * Гостевой вход по ссылке: свой токен и свои ICE-серверы, потому что учётной записи
+   * у гостя нет. Внутри окна он отличается только урезанными правами.
+   */
+  guest?: { token: string; iceServers: RTCIceServer[]; userId: string };
+  onClose: () => void;
 }) {
   const { user } = useAuth();
+  const isGuest = !!guest;
   const [state, setState] = useState<'connecting' | 'connected' | 'reconnecting' | 'closed'>('connecting');
   const [peers, setPeers] = useState<Peer[]>([]);
   const [tracks, setTracks] = useState<RemoteTrack[]>([]);
@@ -30,6 +38,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
   const [recording, setRecording] = useState(false);
   const [aiInvited, setAiInvited] = useState(false);
   const [err, setErr] = useState('');
+  /** Гости, стучащиеся в дверь (видит только сотрудник). */
+  const [knocks, setKnocks] = useState<Knock[]>([]);
+  /** Состояние самого гостя: пока не впустили — сцены нет. */
+  const [guestState, setGuestState] = useState<'waiting' | 'in' | 'rejected'>(isGuest ? 'waiting' : 'in');
+  const [guestNote, setGuestNote] = useState('');
+  const [linkNote, setLinkNote] = useState('');
 
   const client = useRef<MeetClient | null>(null);
   const localStream = useRef<MediaStream | null>(null);
@@ -60,17 +74,32 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
     let cancelled = false;
     (async () => {
       try {
-        const { iceServers } = await api.iceServers();
+        // у гостя ICE уже на руках — он получил их вместе с токеном, отдельного маршрута ему не дают
+        const iceServers = guest ? guest.iceServers : (await api.iceServers()).iceServers;
         if (cancelled) return;
-        const c = new MeetClient(meetingId, tokens.access ?? '', iceServers, {
+        const c = new MeetClient(meetingId, guest?.token ?? tokens.access ?? '', iceServers, {
           onPeers: setPeers,
           onTrack: (t) => setTracks((prev) => [...prev.filter((x) => x.consumerId !== t.consumerId), t]),
           onTrackGone: (id) => setTracks((prev) => prev.filter((x) => x.consumerId !== id)),
           onState: setState,
           onRecording: setRecording,
           onAiInvited: () => setAiInvited(true),
+          onKnocks: setKnocks,
+          onGuestWaiting: (hostPresent) => {
+            setGuestState('waiting');
+            setGuestNote(hostPresent
+              ? 'Вы в комнате ожидания — организатор видит вашу заявку.'
+              : 'Встреча ещё не началась. Как только организатор подключится, он вас впустит.');
+          },
+          onGuestAdmitted: () => { setGuestState('in'); setGuestNote(''); },
+          onGuestRejected: (reason) => {
+            setGuestState('rejected');
+            setGuestNote(reason === 'revoked'
+              ? 'Ссылка больше не действует — попросите новую.'
+              : 'Организатор отклонил вход.');
+          },
           onError: setErr,
-        }, String(user?.id ?? ''));
+        }, String(guest?.userId ?? user?.id ?? ''));
         client.current = c;
         await c.join();
 
@@ -161,11 +190,30 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
 
   const leave = () => { client.current?.leave(); onClose(); };
 
+  /**
+   * Ссылка для внешнего гостя. Копируем сразу в буфер: её всё равно понесут в мессенджер,
+   * а показывать длинный токен на экране незачем.
+   */
+  const copyGuestLink = async () => {
+    try {
+      const { url } = await api.createGuestLink({ roomId: meetingId });
+      try {
+        await navigator.clipboard.writeText(url);
+        setLinkNote('Ссылка скопирована — отправьте её гостю. Действует сутки.');
+      } catch {
+        // буфер обмена может быть запрещён политикой браузера — тогда показываем адрес
+        setLinkNote(url);
+      }
+    } catch (e) {
+      setLinkNote(e instanceof ApiError ? e.message : 'Не удалось создать ссылку');
+    }
+  };
+
   const audios = tracks.filter((t) => t.kind === 'audio');
   const screenTrack = tracks.find((t) => t.kind === 'video' && t.screen) ?? null;
   // видео по участникам: плитка есть у каждого, даже если камера выключена
   const camByUser = new Map(tracks.filter((t) => t.kind === 'video' && !t.screen).map((t) => [String(t.userId), t]));
-  const me = String(user?.id ?? '');
+  const me = String(guest?.userId ?? user?.id ?? '');
   const tiles = peers.map((p) => ({ peer: p, track: camByUser.get(String(p.userId)) ?? null }));
 
   return (
@@ -207,8 +255,41 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
         )}
         {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
 
+        {/* Гости за дверью. Впустить может любой сотрудник, который уже в комнате. */}
+        {knocks.map((k) => (
+          <div className="call-knock" key={k.guestId}>
+            <span><Icon name="user" size={15} /> <b>{k.name}</b> просится в созвон — это внешний гость</span>
+            <span className="call-knock-actions">
+              <button className="btn btn-sm" onClick={() => { client.current?.answerKnock(k.guestId, true); setKnocks((x) => x.filter((i) => i.guestId !== k.guestId)); }}>
+                Впустить
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { client.current?.answerKnock(k.guestId, false); setKnocks((x) => x.filter((i) => i.guestId !== k.guestId)); }}>
+                Отказать
+              </button>
+            </span>
+          </div>
+        ))}
+        {linkNote && <div className="call-recording call-ai-waiting"><Icon name="link" size={15} /> {linkNote}</div>}
+
+        {/* Гость до впуска сцены не видит и не слышит: он ещё не в комнате. */}
+        {isGuest && guestState !== 'in' && (
+          <div className="call-stage call-lobby">
+            <div className="call-lobby-box">
+              <Icon name={guestState === 'rejected' ? 'close' : 'clock'} size={28} />
+              <h3>{guestState === 'rejected' ? 'Вход не состоялся' : 'Ждём, пока вас впустят'}</h3>
+              <p className="dim">{guestNote}</p>
+              {guestState !== 'rejected' && (
+                <p className="dim" style={{ fontSize: 12 }}>
+                  Микрофон можно разрешить заранее — тогда вы сразу сможете говорить.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Показ экрана занимает сцену целиком, люди уезжают в полосу снизу:
             в общей сетке демонстрация выходила мелкой и нечитаемой. */}
+        {(!isGuest || guestState === 'in') && (
         <div className="call-stage">
           {screenTrack && (
             <div className="call-spotlight">
@@ -228,6 +309,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
             ))}
           </div>
         </div>
+        )}
 
         {/* Звук воспроизводится скрытыми элементами: на сцене ему делать нечего */}
         {audios.map((t) => <RemoteAudio key={t.consumerId} track={t.track} />)}
@@ -245,13 +327,21 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
           <button className={`btn btn-sm ${hand ? '' : 'call-off'}`} onClick={() => { setHand(!hand); client.current?.raiseHand(!hand); }}>
             <Icon name="hand" size={15} /> Рука
           </button>
-          <button
-            className={`btn btn-sm ${recording ? 'call-rec-on' : 'call-off'}`}
-            onClick={() => client.current?.setRecording(!recording)}
-            title={recording ? 'Остановить запись и получить стенограмму' : 'Записать созвон для стенограммы и задач'}
-          >
-            <Icon name={recording ? 'stop' : 'record'} size={15} />AI-запись: {recording ? 'вкл' : 'выкл'}
-          </button>
+          {/* Запись и приглашение гостей — права хозяина встречи, не гостя */}
+          {!isGuest && (
+            <button
+              className={`btn btn-sm ${recording ? 'call-rec-on' : 'call-off'}`}
+              onClick={() => client.current?.setRecording(!recording)}
+              title={recording ? 'Остановить запись и получить стенограмму' : 'Записать созвон для стенограммы и задач'}
+            >
+              <Icon name={recording ? 'stop' : 'record'} size={15} />AI-запись: {recording ? 'вкл' : 'выкл'}
+            </button>
+          )}
+          {!isGuest && (
+            <button className="btn btn-sm call-off" onClick={copyGuestLink} title="Скопировать ссылку для внешнего гостя — он войдёт из браузера, без регистрации">
+              <Icon name="link" size={15} /> Ссылка для гостя
+            </button>
+          )}
           <button className="btn btn-sm call-leave" onClick={leave}>Выйти</button>
         </div>
       </div>
@@ -283,7 +373,12 @@ function ParticipantTile({ peer, track, self, selfTrack, selfMicOn }: {
         )}
       {peer.handRaised && <span className="call-hand" title="Просит слова"><Icon name="hand" size={16} /></span>}
       {self && !selfMicOn && <span className="call-muted-mark" title="Ваш микрофон выключен"><Icon name="mic-off" size={16} /></span>}
-      <span className="call-name">{self ? 'вы' : peer.displayName}{peer.isAi ? ' · стенограмма' : ''}</span>
+      <span className="call-name">
+        {self ? 'вы' : peer.displayName}
+        {peer.isAi ? ' · стенограмма' : ''}
+        {/* внешнего человека видно сразу: при нём говорят иначе, чем при своих */}
+        {peer.isGuest ? ' · гость' : ''}
+      </span>
     </div>
   );
 }

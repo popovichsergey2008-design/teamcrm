@@ -12,8 +12,20 @@ import { MediaService, optimalLayers } from './media.service';
 import { RecordingService } from './recording.service';
 import { DiagService } from '../diagnostics/diag.service';
 import { AI_PARTICIPANT, MeetingRoom } from './media.types';
+import { GuestLinksService, GuestTokenPayload } from './guest-links.service';
 
 const PATH = '/ws/meet';
+
+/**
+ * Что гостю МОЖНО. Именно белый список, а не запреты: при добавлении нового сообщения
+ * в протокол забыть внести его в запреты — значит молча выдать гостю новое право.
+ */
+const GUEST_ALLOWED = new Set([
+  'meet.join', 'meet.create-transport', 'meet.connect-transport', 'meet.produce',
+  'meet.consume', 'meet.resume-consumer', 'meet.producer-pause', 'meet.producer-resume',
+  'meet.producer-close', 'meet.hand-raise', 'meet.hand-lower', 'meet.reaction',
+  'meet.restart-ice', 'meet.set-consumer-layers', 'meet.get-participants', 'meet.leave',
+]);
 
 interface Client {
   ws: WebSocket;
@@ -21,6 +33,10 @@ interface Client {
   tenantId: string;
   displayName: string;
   meetingId: string | null;
+  /** Гость по ссылке: не сотрудник, комната зашита в токене, права урезаны. */
+  isGuest: boolean;
+  /** Для гостя — единственная комната, куда он вправе войти. */
+  guestRoomId?: string;
 }
 
 /**
@@ -48,7 +64,16 @@ export class MeetGateway implements OnModuleInit {
     private readonly recording: RecordingService,
     private readonly meetings: MeetingsService,
     private readonly diag: DiagService,
+    private readonly guests: GuestLinksService,
   ) {}
+
+  /**
+   * Гости, которые постучались, но их ещё не впустили: roomId → gid → соединение.
+   *
+   * Лобби живёт в шлюзе, а не в комнате SFU: пока человека не впустили, у него нет
+   * ни транспортов, ни потоков — он не участник, а звонок в дверь.
+   */
+  private readonly lobby = new Map<string, Map<string, Client>>();
 
   /** Короткая запись в диагностический журнал: без await, ошибки внутри проглатываются. */
   private trace(c: Client, event: string, data?: unknown): void {
@@ -69,14 +94,18 @@ export class MeetGateway implements OnModuleInit {
       const url = new URL(req.url ?? '/', 'http://localhost');
       if (url.pathname !== PATH) return;
 
-      const user = this.authenticate(url.searchParams.get('token'));
+      const raw = url.searchParams.get('token');
+      const user = this.authenticate(raw);
+      // гостевой токен подписан тем же ключом, но это НЕ пользователь: у него свой разбор
+      const guest = user ? null : this.guests.verify(raw ?? '');
       // заказчику (роль client) командные созвоны недоступны — у него свой портал
-      if (!user || user.role === 'client') {
+      if ((!user && !guest) || user?.role === 'client') {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
       }
-      this.wss!.handleUpgrade(req, socket, head, (ws) => void this.onConnect(ws, user));
+      this.wss!.handleUpgrade(req, socket, head, (ws) =>
+        void (guest ? this.onGuestConnect(ws, guest) : this.onConnect(ws, user!)));
     });
     this.log.log(`сигналинг созвонов слушает ${PATH}`);
   }
@@ -85,9 +114,11 @@ export class MeetGateway implements OnModuleInit {
   private authenticate(token: string | null): AccessTokenPayload | null {
     if (!token) return null;
     try {
-      return this.jwt.verify<AccessTokenPayload>(token, {
+      const payload = this.jwt.verify<AccessTokenPayload & { kind?: string }>(token, {
         secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
       });
+      // токен гостя сюда попадать не должен: у него нет ни пользователя, ни роли
+      return payload.kind === 'guest' || !payload.sub || !payload.role ? null : payload;
     } catch {
       return null;
     }
@@ -104,7 +135,31 @@ export class MeetGateway implements OnModuleInit {
       tenantId: String(user.tenantId),
       displayName: row?.full_name || user.email || 'Участник',
       meetingId: null,
+      isGuest: false,
     };
+    this.wire(client);
+  }
+
+  /**
+   * Гость по ссылке. Имя он вводит сам — в базе его нет и не будет: заводить строку
+   * в users ради человека из другой компании значит поселить его в списках сотрудников,
+   * в подсказках исполнителей и в статистике.
+   */
+  private onGuestConnect(ws: WebSocket, guest: GuestTokenPayload): void {
+    this.wire({
+      ws,
+      userId: `guest:${guest.gid}`,
+      tenantId: String(guest.tenantId),
+      displayName: guest.name,
+      meetingId: null,
+      isGuest: true,
+      guestRoomId: guest.roomId,
+    });
+  }
+
+  /** Общая обвязка сокета: приём сообщений и уборка при обрыве — одна на всех. */
+  private wire(client: Client): void {
+    const ws = client.ws;
     this.clients.set(ws, client);
     this.track(client, ws);
 
@@ -115,6 +170,7 @@ export class MeetGateway implements OnModuleInit {
         this.log.warn(`${msg?.type}: ${(e as Error).message}`));
     });
     ws.on('close', () => {
+      if (client.isGuest) this.leaveLobby(client);
       if (client.meetingId) void this.leave(client);
       this.clients.delete(ws);
       this.untrack(client, ws);
@@ -157,16 +213,20 @@ export class MeetGateway implements OnModuleInit {
   /** Комната только своей организации: чужой созвон недоступен даже по угаданному id. */
   private roomFor(c: Client, meetingId: unknown): MeetingRoom | null {
     if (typeof meetingId !== 'string') return null;
+    // гость заперт в своей комнате: её id зашит в токене, знание чужого id ничего не даёт
+    if (c.isGuest && meetingId !== c.guestRoomId) return null;
     const room = this.media.getRoom(meetingId);
     return room && room.tenantId === c.tenantId ? room : null;
   }
 
   private async handle(c: Client, msg: { type: string; payload?: Record<string, any> }): Promise<void> {
     const p = msg.payload ?? {};
+    if (c.isGuest && !GUEST_ALLOWED.has(msg.type)) return;
     const room = this.roomFor(c, p.meeting_id);
 
     switch (msg.type) {
       case 'meet.join': {
+        if (c.isGuest) return this.knock(c);
         if (!room) {
           this.diag.write({ tenantId: c.tenantId, scope: 'meet', refId: String(p.meeting_id ?? ''), userId: c.userId, side: 'server', event: 'join.rejected', data: { reason: 'room-not-found' } });
           return this.send(c.ws, 'meet.error', { message: 'Созвон не найден' });
@@ -176,25 +236,30 @@ export class MeetGateway implements OnModuleInit {
           this.media.removeParticipant(room, c.userId);
           this.broadcast(room, 'meet.peer-left', { meeting_id: room.id, user_id: c.userId });
         }
-        this.media.addParticipant(room, c.userId, c.displayName);
-        c.meetingId = room.id;
-
-        this.send(c.ws, 'meet.router-capabilities', { meeting_id: room.id, rtp_capabilities: room.router.rtpCapabilities });
-        this.send(c.ws, 'meet.participants', { meeting_id: room.id, participants: this.participants(room) });
-        this.broadcast(room, 'meet.peer-joined', { meeting_id: room.id, user_id: c.userId, display_name: c.displayName }, c.userId);
-        // ИИ позвали при создании — вошедший должен видеть это сразу, ещё до первой реплики
-        if (room.aiEnabled && !this.recording.isRecording(room.id)) {
-          this.send(c.ws, 'meet.ai-invited', { meeting_id: room.id });
+        await this.joinRoom(c, room);
+        // сотрудник вошёл — покажем ему тех, кто уже стоит за дверью
+        for (const g of this.lobby.get(room.id)?.values() ?? []) {
+          this.send(c.ws, 'meet.guest-knocking', { meeting_id: room.id, guest_id: g.userId, name: g.displayName });
         }
+        return;
+      }
 
-        // другие устройства этого же человека гасят входящий звонок
-        for (const ws of this.byUser.get(this.key(c.tenantId, c.userId)) ?? []) {
-          if (ws !== c.ws) this.send(ws, 'meet.call-answered-elsewhere', { meeting_id: room.id });
+      /** Впустить или отказать. Решает любой сотрудник, уже находящийся в комнате. */
+      case 'meet.guest-admit':
+      case 'meet.guest-reject': {
+        if (!room || !room.participants.has(c.userId) || typeof p.guest_id !== 'string') return;
+        const guest = this.lobby.get(room.id)?.get(p.guest_id);
+        if (!guest) return;
+        this.lobby.get(room.id)?.delete(p.guest_id);
+        if (msg.type === 'meet.guest-reject') {
+          this.send(guest.ws, 'meet.guest-rejected', { meeting_id: room.id, reason: 'declined' });
+          guest.ws.close();
+          this.trace(c, 'guest.rejected', { guest: guest.displayName });
+          return;
         }
-        // вошедший обязан сразу узнать, что идёт запись, — это не мелочь интерфейса
-        this.send(c.ws, 'meet.recording', { meeting_id: room.id, ...this.recording.recordingInfo(room.id) });
-        await this.media.recalcQuality(room);
-        this.trace(c, 'join', { people: room.participants.size, producers: this.media.participantList(room).reduce((n: number, x: any) => n + x.producers.length, 0) });
+        this.send(guest.ws, 'meet.guest-admitted', { meeting_id: room.id });
+        await this.joinRoom(guest, room);
+        this.trace(c, 'guest.admitted', { guest: guest.displayName });
         return;
       }
 
@@ -427,6 +492,133 @@ export class MeetGateway implements OnModuleInit {
     }
   }
 
+  /**
+   * Вход в комнату — общий и для сотрудника, и для впущенного гостя.
+   *
+   * Порядок сообщений здесь имеет значение и выстрадан: возможности роутера, потом
+   * состав, потом остальным «вошёл», и только затем состояние записи. Обратный порядок
+   * приводил к тому, что вошедший не слышал уже говорящих.
+   */
+  private async joinRoom(c: Client, room: MeetingRoom): Promise<void> {
+    // вход со второго устройства вытесняет первое — иначе в списке два одинаковых человека
+    if (room.participants.has(c.userId)) {
+      this.media.removeParticipant(room, c.userId);
+      this.broadcast(room, 'meet.peer-left', { meeting_id: room.id, user_id: c.userId });
+    }
+    this.media.addParticipant(room, c.userId, c.displayName);
+    // комнату по гостевой ссылке поднимает тот, кто вошёл первым; хозяином становится
+    // первый сотрудник — гость на эту роль не годится, у него нет учётной записи
+    if (!room.startedBy && !c.isGuest) room.startedBy = c.userId;
+    c.meetingId = room.id;
+
+    this.send(c.ws, 'meet.router-capabilities', { meeting_id: room.id, rtp_capabilities: room.router.rtpCapabilities });
+    this.send(c.ws, 'meet.participants', { meeting_id: room.id, participants: this.participants(room) });
+    this.broadcast(room, 'meet.peer-joined', {
+      meeting_id: room.id, user_id: c.userId, display_name: c.displayName, is_guest: c.isGuest,
+    }, c.userId);
+    // ИИ позвали при создании — вошедший должен видеть это сразу, ещё до первой реплики
+    if (room.aiEnabled && !this.recording.isRecording(room.id)) {
+      this.send(c.ws, 'meet.ai-invited', { meeting_id: room.id });
+    }
+
+    // другие устройства этого же человека гасят входящий звонок
+    for (const ws of this.byUser.get(this.key(c.tenantId, c.userId)) ?? []) {
+      if (ws !== c.ws) this.send(ws, 'meet.call-answered-elsewhere', { meeting_id: room.id });
+    }
+    // вошедший обязан сразу узнать, что идёт запись, — это не мелочь интерфейса
+    this.send(c.ws, 'meet.recording', { meeting_id: room.id, ...this.recording.recordingInfo(room.id) });
+    await this.media.recalcQuality(room);
+    this.trace(c, 'join', {
+      guest: c.isGuest, people: room.participants.size,
+      producers: this.media.participantList(room).reduce((n: number, x: any) => n + x.producers.length, 0),
+    });
+  }
+
+  /**
+   * Стук гостя в дверь.
+   *
+   * Ссылка может утечь — её перешлют, она осядет в переписке и в истории браузера.
+   * Поэтому переход по ссылке не пускает в разговор: гость ждёт, пока его впустит
+   * живой сотрудник. Если сотрудников в комнате нет, впускать некому — ждёт дальше.
+   */
+  private async knock(c: Client): Promise<void> {
+    const roomId = c.guestRoomId;
+    if (!roomId) return;
+    // ссылку могли отозвать уже после выдачи токена — проверяем в момент входа
+    if (!(await this.guests.roomStillOpen(c.tenantId, roomId).catch(() => false))) {
+      this.send(c.ws, 'meet.guest-rejected', { meeting_id: roomId, reason: 'revoked' });
+      c.ws.close();
+      return;
+    }
+    let room: MeetingRoom;
+    try {
+      room = await this.media.ensureRoom(c.tenantId, roomId, null);
+    } catch (e) {
+      this.log.warn(`гость не смог открыть комнату ${roomId}: ${(e as Error).message}`);
+      return this.send(c.ws, 'meet.error', { message: 'Созвон недоступен' });
+    }
+
+    const waiting = this.lobby.get(room.id) ?? new Map<string, Client>();
+    waiting.set(c.userId, c);
+    this.lobby.set(room.id, waiting);
+
+    const hosts = [...room.participants.keys()].filter((id) => !id.startsWith('guest:'));
+    for (const host of hosts) {
+      this.toUser(c.tenantId, host, 'meet.guest-knocking', {
+        meeting_id: room.id, guest_id: c.userId, name: c.displayName,
+      });
+    }
+    this.send(c.ws, 'meet.guest-waiting', { meeting_id: room.id, host_present: hosts.length > 0 });
+    this.diag.write({
+      tenantId: c.tenantId, scope: 'meet', refId: room.id, userId: c.userId,
+      side: 'server', event: 'guest.knock', data: { name: c.displayName, hosts: hosts.length },
+    });
+  }
+
+  /** Гость ушёл, не дождавшись: убираем из лобби и снимаем стук у сотрудников. */
+  private leaveLobby(c: Client): void {
+    const roomId = c.guestRoomId;
+    if (!roomId) return;
+    const waiting = this.lobby.get(roomId);
+    if (!waiting?.delete(c.userId)) return;
+    if (!waiting.size) this.lobby.delete(roomId);
+    const room = this.media.getRoom(roomId);
+    if (!room) return;
+    for (const host of room.participants.keys()) {
+      if (host.startsWith('guest:')) continue;
+      this.toUser(c.tenantId, host, 'meet.guest-gone', { meeting_id: roomId, guest_id: c.userId });
+    }
+  }
+
+  /**
+   * Отозвали ссылку — выставляем всех, кто по ней пришёл: и стоящих за дверью,
+   * и уже сидящих в комнате. Отзыв, который действует «когда-нибудь потом»,
+   * бесполезен: отзывают именно тогда, когда человек уже не должен слышать разговор.
+   */
+  kickRoomGuests(tenantId: string, roomId: string, reason = 'revoked'): number {
+    let kicked = 0;
+    for (const guest of this.lobby.get(roomId)?.values() ?? []) {
+      this.send(guest.ws, 'meet.guest-rejected', { meeting_id: roomId, reason });
+      guest.ws.close();
+      kicked++;
+    }
+    this.lobby.delete(roomId);
+
+    const room = this.media.getRoom(roomId);
+    if (!room || room.tenantId !== tenantId) return kicked;
+    for (const userId of [...room.participants.keys()]) {
+      if (!userId.startsWith('guest:')) continue;
+      for (const ws of this.byUser.get(this.key(tenantId, userId)) ?? []) {
+        this.send(ws, 'meet.guest-rejected', { meeting_id: roomId, reason });
+        ws.close();
+      }
+      this.media.removeParticipant(room, userId);
+      this.broadcast(room, 'meet.peer-left', { meeting_id: roomId, user_id: userId });
+      kicked++;
+    }
+    return kicked;
+  }
+
   /** Запуск записи + оповещение: плашка у всех и ИИ в списке участников. */
   private async startRecording(room: MeetingRoom, actorId: string): Promise<void> {
     if (this.recording.isRecording(room.id)) return;
@@ -450,12 +642,14 @@ export class MeetGateway implements OnModuleInit {
    */
   private async finishRecording(room: MeetingRoom, actorId: string | null): Promise<void> {
     if (!this.recording.isRecording(room.id)) return;
+    // автор записи — всегда сотрудник: created_by и uploaded_by ссылаются на users(id)
+    const author = room.startedBy ?? (actorId && !actorId.startsWith('guest:') ? actorId : null);
     try {
       const tracks = await this.recording.stop(room.id);
       if (!tracks.length) return;
       const when = new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
       await this.meetings.ingestCallRecording({
-        tenantId: room.tenantId, actorId, projectId: room.projectId,
+        tenantId: room.tenantId, actorId: author, projectId: room.projectId,
         title: `Созвон ${when}`, tracks,
       });
     } catch (e) {
@@ -513,7 +707,7 @@ export class MeetGateway implements OnModuleInit {
     if (room.participants.size === 0) {
       // все разошлись, кнопку «стоп» никто не нажал — дописываем сами,
       // иначе ffmpeg остался бы висеть, а запись пропала
-      await this.finishRecording(room, c.userId);
+      await this.finishRecording(room, c.isGuest ? null : c.userId);
       this.media.closeRoom(room.id);
     } else {
       await this.media.recalcQuality(room);

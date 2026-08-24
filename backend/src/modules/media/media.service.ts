@@ -145,12 +145,36 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
 
   // ───── комнаты ─────
 
-  async createRoom(tenantId: string, projectId: string | null, aiEnabled = false): Promise<MeetingRoom> {
+  async createRoom(tenantId: string, projectId: string | null, aiEnabled = false, startedBy: string | null = null): Promise<MeetingRoom> {
     if (!this.available) throw new Error('Медиа-сервер недоступен');
     const router: MsRouter = await this.pickWorker().createRouter({ mediaCodecs: MEDIA_CODECS });
     const room: MeetingRoom = {
       id: randomUUID(), tenantId, projectId, router, participants: new Map(),
-      startedAt: Date.now(), aiEnabled,
+      startedAt: Date.now(), aiEnabled, startedBy,
+    };
+    this.rooms.set(room.id, room);
+    return room;
+  }
+
+  /**
+   * Комната по ЗАРАНЕЕ известному id — для гостевых ссылок.
+   *
+   * Ссылку клиенту отправляют заранее, а комнаты живут в памяти и умирают, когда вышел
+   * последний. Поэтому id выделяется вместе со ссылкой, а роутер поднимается при первом
+   * входе — хоть гостя, хоть хозяина. Иначе пришедший первым видел бы «созвон не найден».
+   */
+  async ensureRoom(tenantId: string, roomId: string, projectId: string | null, aiEnabled = false): Promise<MeetingRoom> {
+    const existing = this.rooms.get(roomId);
+    if (existing) {
+      // совпадение id между организациями невозможно (uuid), но проверка стоит одного сравнения
+      if (existing.tenantId !== tenantId) throw new Error('Созвон не найден');
+      return existing;
+    }
+    if (!this.available) throw new Error('Медиа-сервер недоступен');
+    const router: MsRouter = await this.pickWorker().createRouter({ mediaCodecs: MEDIA_CODECS });
+    const room: MeetingRoom = {
+      id: roomId, tenantId, projectId, router, participants: new Map(),
+      startedAt: Date.now(), aiEnabled, startedBy: null,
     };
     this.rooms.set(room.id, room);
     return room;
@@ -273,6 +297,8 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
       userId: p.userId,
       displayName: p.displayName,
       handRaised: p.handRaised,
+      // гость виден как гость — и в списке, и в стенограмме; тихих чужих в комнате нет
+      isGuest: p.userId.startsWith('guest:'),
       producers: [...p.producers.values()].map((pr) => ({ id: pr.id, kind: pr.kind, appData: pr.appData })),
     }));
   }
