@@ -74,7 +74,8 @@ export class RadarRepository {
              JOIN projects p ON p.id = t.project_id
             WHERE t.tenant_id = $1 AND t.closed_at IS NULL AND p.status <> 'archived'
          ) t ON t.assignee_id = u.id
-        WHERE u.tenant_id = $1 AND u.is_active AND u.role_code <> 'client'
+         JOIN roles r ON r.id = u.role_id
+        WHERE u.tenant_id = $1 AND u.is_active AND r.code <> 'client'
         GROUP BY u.id, u.full_name
         ORDER BY open DESC, u.full_name`,
       [tenantId, endOfDay],
