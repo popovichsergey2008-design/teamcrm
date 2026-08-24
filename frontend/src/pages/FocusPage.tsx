@@ -29,6 +29,13 @@ type CrossTask = Task & { project_name: string; column_name: string };
 
 const isOverdue = (t: CrossTask) => !!t.deadline_at && !t.closed_at && new Date(t.deadline_at) < new Date();
 
+/** Дата в формате ГГГГ-ММ-ДД по местным часам: сервер живёт в UTC, а день — у человека. */
+function localDay(offsetDays = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function endOfToday(): number {
   const d = new Date();
   d.setHours(23, 59, 59, 999);
@@ -45,11 +52,13 @@ function greeting(): string {
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
 
-function FocusCard({ task, side, onOpen }: {
+function FocusCard({ task, side, onOpen, onPlan }: {
   task: CrossTask;
   /** что показать справа: кто поручил или кому поручено */
   side: 'manager' | 'assignee' | null;
   onOpen: () => void;
+  /** планирование дня: доступно только по своим задачам */
+  onPlan?: (date: string | null) => void;
 }) {
   const prio = priorityBadge(task.priority);
   const due = deadlineBadge(task.deadline_at, !!task.closed_at);
@@ -67,6 +76,16 @@ function FocusCard({ task, side, onOpen }: {
         {due && <span className={due.cls} title={due.title}>{due.text}</span>}
         {checklist && <span className="focus-check"><Icon name="check" size={12} /> {checklist}</span>}
       </span>
+      {onPlan && (
+        // Планирование — отдельной строкой и явными словами: «сегодня» это личный план,
+        // а не срок. Кнопка не должна читаться как перенос обязательства перед другими.
+        <span className="focus-plan" onClick={(e) => e.stopPropagation()}>
+          {task.focus_date === localDay()
+            ? <button className="focus-plan-btn active" onClick={() => onPlan(null)}>Убрать из дня</button>
+            : <button className="focus-plan-btn" onClick={() => onPlan(localDay())}>В сегодня</button>}
+          <button className="focus-plan-btn" onClick={() => onPlan(localDay(1))}>На завтра</button>
+        </span>
+      )}
       {who && (
         <span className="focus-card-who">
           <span className="avatar-xs avatar-ph">{who[0]?.toUpperCase()}</span>
@@ -130,14 +149,33 @@ export function FocusPage({ onOpenTask, active = true }: {
   }, [load, active]);
 
   const till = endOfToday();
+  const day = localDay();
   const open = mine.filter((t) => !t.closed_at);
-  const today = open.filter((t) => (t.deadline_at && new Date(t.deadline_at).getTime() <= till) || t.priority === 'urgent');
+  // День — это срок на сегодня, личный план на сегодня и срочное. Задача без срока
+  // раньше не попадала в день вовсе, и её приходилось помнить в голове.
+  const today = open.filter((t) =>
+    (t.deadline_at && new Date(t.deadline_at).getTime() <= till)
+    || t.focus_date === day
+    || t.priority === 'urgent');
   const rest = open.filter((t) => !today.includes(t));
   const doneToday = mine.filter((t) => t.closed_at && new Date(t.closed_at).toDateString() === new Date().toDateString());
   const planned = today.length + doneToday.length;
   const donePct = planned ? Math.round((doneToday.length / planned) * 100) : 0;
 
   const openTask = (t: CrossTask) => onOpenTask(t.project_id, t.id);
+
+  /**
+   * Планирование дня. Список правим сразу, не дожидаясь сети: человек нажал «в сегодня»
+   * и должен увидеть перемещение, а не задержку. Ошибка вернёт всё назад перезагрузкой.
+   */
+  const plan = async (task: CrossTask, date: string | null) => {
+    setMine((prev) => prev.map((t) => (t.id === task.id ? { ...t, focus_date: date } : t)));
+    try {
+      await api.setFocusDate(task.id, date);
+    } catch {
+      load(true);
+    }
+  };
 
   return (
     <div className="focus-page">
@@ -198,14 +236,18 @@ export function FocusPage({ onOpenTask, active = true }: {
               hint="Здесь собираются задачи со сроком на сегодня, просроченные и срочные."
             />
           )}
-          {today.map((t) => <FocusCard key={t.id} task={t} side="manager" onOpen={() => openTask(t)} />)}
+          {today.map((t) => (
+            <FocusCard key={t.id} task={t} side="manager" onOpen={() => openTask(t)} onPlan={(d) => plan(t, d)} />
+          ))}
 
           {rest.length > 0 && (
             <>
               <button className="focus-more" onClick={() => setShowRest((v) => !v)}>
                 {showRest ? 'Скрыть' : `Ещё ${rest.length} моих задач без срока на сегодня`}
               </button>
-              {showRest && rest.map((t) => <FocusCard key={t.id} task={t} side="manager" onOpen={() => openTask(t)} />)}
+              {showRest && rest.map((t) => (
+                <FocusCard key={t.id} task={t} side="manager" onOpen={() => openTask(t)} onPlan={(d) => plan(t, d)} />
+              ))}
             </>
           )}
         </section>

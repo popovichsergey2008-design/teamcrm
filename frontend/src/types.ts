@@ -58,6 +58,8 @@ export interface Task {
   predicted_finish_at?: string | null;
   estimate_hours?: string | null;
   deadline_at?: string | null;
+  /** личный план: на какой день человек взял задачу (не срок) */
+  focus_date?: string | null;
   closed_at?: string | null;
   priority?: string;
   labels?: { id: string; name: string; color: string }[];

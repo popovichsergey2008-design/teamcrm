@@ -17,6 +17,8 @@ export interface TaskRow {
   cost_current: string;
   priority: string;
   created_at: Date;
+  /** личный план: на какой день человек взял задачу (не срок) */
+  focus_date: string | null;
   updated_at: Date;
   closed_at: Date | null;
 }
@@ -77,6 +79,36 @@ export class TasksRepository {
       scope === 'review'
         ? [tenantId, userId, includeClosed, REVIEW_COLUMN_NAMES]
         : [tenantId, userId, includeClosed],
+    );
+  }
+
+  /**
+   * Поставить или снять дату фокуса.
+   *
+   * Планировать может только тот, кто задачу делает: это личный план, а не поручение.
+   * Проверка исполнителя — в сервисе, здесь только запись.
+   */
+  async setFocusDate(tenantId: string, taskId: string, date: string | null): Promise<TaskRow | null> {
+    return this.db.one<TaskRow>(
+      `UPDATE tasks SET focus_date = $3::date, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2
+        RETURNING *`,
+      [tenantId, taskId, date],
+    );
+  }
+
+  /** Незакрытые задачи, запланированные на прошедшие дни, — «хвосты» для разбора. */
+  leftovers(tenantId: string, userId: string, today: string): Promise<(TaskRow & { project_name: string })[]> {
+    return this.db.many(
+      `SELECT t.*, p.name AS project_name
+         FROM tasks t
+         JOIN projects p ON p.id = t.project_id
+        WHERE t.tenant_id = $1 AND t.assignee_id = $2
+          AND t.closed_at IS NULL
+          AND t.focus_date IS NOT NULL AND t.focus_date < $3::date
+          AND p.status <> 'archived'
+        ORDER BY t.focus_date, t.id`,
+      [tenantId, userId, today],
     );
   }
 

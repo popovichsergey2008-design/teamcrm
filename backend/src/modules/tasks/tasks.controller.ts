@@ -3,7 +3,12 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { TasksService } from './tasks.service';
-import { CreateTaskDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
+import { CreateTaskDto, FocusDateDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
+
+/** Пустую или кривую дату не подставляем молча: считаем, что клиент имел в виду сегодня. */
+function isoDate(value?: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value ?? '') ? (value as string) : new Date().toISOString().slice(0, 10);
+}
 
 @ApiTags('tasks')
 @ApiBearerAuth()
@@ -25,6 +30,25 @@ export class TasksController {
       scope === 'delegated' ? 'delegated' : scope === 'review' ? 'review' : 'mine',
       closed === '1' || closed === 'true',
     );
+  }
+
+  /**
+   * План на день: дата или null, чтобы снять. Дату присылает клиент — «сегодня»
+   * у человека и на сервере это разные дни.
+   */
+  @Patch(':id/focus-date')
+  setFocusDate(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: FocusDateDto,
+  ) {
+    return this.tasks.setFocusDate(user.tenantId, id, user.userId, dto.date ?? null);
+  }
+
+  /** Незакрытое со вчера и раньше — для разбора хвостов при первом входе за день. */
+  @Get('my/leftovers')
+  leftovers(@CurrentUser() user: AuthUser, @Query('today') today?: string) {
+    return this.tasks.leftovers(user.tenantId, user.userId, isoDate(today));
   }
 
   @Post()

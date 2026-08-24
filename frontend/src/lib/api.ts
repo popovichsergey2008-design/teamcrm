@@ -518,6 +518,13 @@ export const api = {
   rejectMeetingDraft: (draftId: string) => request<any>('POST', `/meetings/drafts/${draftId}/reject`),
 
   /** Сквозные вкладки: мои задачи и порученные другим (по всем проектам). */
+  /** План на день: дата ГГГГ-ММ-ДД или null, чтобы снять. Дату считаем по часам человека. */
+  setFocusDate: (taskId: string, date: string | null) =>
+    request<Task>('PATCH', `/tasks/${taskId}/focus-date`, { date }),
+  /** Незакрытое, запланированное на прошедшие дни, — хвосты для разбора. */
+  leftovers: (today: string) =>
+    request<(Task & { project_name: string })[]>('GET', `/tasks/my/leftovers?today=${today}`),
+
   myTasks: (scope: 'mine' | 'delegated' | 'review', closed = false) =>
     request<any[]>('GET', `/tasks/my?scope=${scope}${closed ? '&closed=1' : ''}`),
   // архив проектов

@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -80,6 +81,13 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsIn(['low', 'normal', 'high', 'urgent'])
   priority?: string;
+}
+
+/** План на день. null — снять план (задача уходит из «сегодня», срок при этом не трогаем). */
+export class FocusDateDto {
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Дата в формате ГГГГ-ММ-ДД' })
+  date?: string | null;
 }
 
 export class MoveTaskDto {

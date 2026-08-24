@@ -27,6 +27,31 @@ export class TasksService {
     return this.repo.listForUser(tenantId, userId, scope, includeClosed);
   }
 
+  /**
+   * Запланировать задачу на день (или снять план).
+   *
+   * Планирует только исполнитель: это личный план, а не поручение. Руководитель
+   * распоряжается сроком и приоритетом — тем, что видно всем, — а не чужим днём;
+   * иначе «фокус дня» превращается в ещё один канал раздачи указаний.
+   */
+  async setFocusDate(tenantId: string, taskId: string, userId: string, date: string | null) {
+    const task = await this.repo.findById(tenantId, taskId);
+    if (!task) throw AppException.notFound('Task not found');
+    if (String(task.assignee_id ?? '') !== String(userId)) {
+      throw AppException.forbidden('Планировать день может только исполнитель задачи');
+    }
+    if (task.closed_at) throw AppException.conflict('Задача уже завершена');
+    return this.repo.setFocusDate(tenantId, taskId, date);
+  }
+
+  /**
+   * Хвосты: незакрытое, запланированное на прошедшие дни.
+   * `today` приходит с клиента — «сегодня» у человека и на сервере разные дни.
+   */
+  leftovers(tenantId: string, userId: string, today: string) {
+    return this.repo.leftovers(tenantId, userId, today);
+  }
+
   async create(tenantId: string, dto: CreateTaskDto, actorId: string | null = null): Promise<TaskRow> {
     const project = await this.projects.findById(tenantId, dto.projectId);
     if (!project) throw AppException.notFound('Project not found');

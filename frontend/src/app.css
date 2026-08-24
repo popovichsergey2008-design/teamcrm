@@ -1089,6 +1089,7 @@
 .nav-secretary:focus-visible, .nav-user:focus-visible, .nav-collapse:focus-visible,
 .nav-org-select:focus-visible, .nav-open-btn:focus-visible,
 .focus-card:focus-visible, .focus-more:focus-visible, .focus-chip:focus-visible,
+.focus-plan-btn:focus-visible,
 .focus-template:focus-visible, .focus-clear:focus-visible,
 .radar-row:focus-visible, .settings-card:focus-visible,
 .palette-item:focus-visible, .palette-mic:focus-visible, .palette-input:focus-visible,
@@ -1163,3 +1164,12 @@
     background: var(--accent-2); color: var(--on-accent); border: none; box-shadow: var(--shadow-lg);
   }
 }
+
+/* планирование дня на карточке: намеренно неброско — это личный план, а не срок */
+.focus-plan { display: flex; gap: 4px; }
+.focus-plan-btn {
+  background: none; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text-mut); cursor: pointer; font: inherit; font-size: var(--fs-xs); padding: 2px 7px;
+}
+.focus-plan-btn:hover { color: var(--text); border-color: var(--border-2); }
+.focus-plan-btn.active { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
