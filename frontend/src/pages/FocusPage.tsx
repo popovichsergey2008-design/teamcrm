@@ -8,6 +8,7 @@ import { deadlineBadge, priorityBadge } from '../lib/labels';
 import { useAuth } from '../state/auth';
 import type { Approval, Task } from '../types';
 import { ApprovalCard } from '../components/ApprovalCard';
+import { LeftoversDialog, leftoversSeenToday } from '../components/LeftoversDialog';
 
 /** Задача из сквозной выборки — с именем проекта и колонки (доска не одна). */
 type CrossTask = Task & { project_name: string; column_name: string };
@@ -118,6 +119,8 @@ export function FocusPage({ onOpenTask, active = true }: {
   const [delegated, setDelegated] = useState<CrossTask[]>([]);
   const [review, setReview] = useState<CrossTask[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  // вчерашние хвосты: спрашиваем один раз в день и только если они есть
+  const [tails, setTails] = useState<(CrossTask)[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [showRest, setShowRest] = useState(false);
@@ -140,6 +143,15 @@ export function FocusPage({ onOpenTask, active = true }: {
       setLoading(false);
     }
   }, []);
+
+  // Разбор хвостов — при первом за день открытии экрана. Не при каждом заходе:
+  // вопрос, который задают по десять раз, перестают читать.
+  useEffect(() => {
+    if (!active || leftoversSeenToday(localDay())) return;
+    api.leftovers(localDay())
+      .then((rows) => { if (rows.length) setTails(rows as CrossTask[]); })
+      .catch(() => undefined);
+  }, [active]);
 
   useEffect(() => {
     if (!active) return;
@@ -207,6 +219,15 @@ export function FocusPage({ onOpenTask, active = true }: {
       </div>
 
       {err && <div className="error-text">{err}</div>}
+
+      {tails && tails.length > 0 && (
+        <LeftoversDialog
+          tasks={tails}
+          today={localDay()}
+          onClose={() => setTails(null)}
+          onDone={() => { setTails(null); load(true); }}
+        />
+      )}
 
       <div className="focus-columns">
         <section className="focus-col">

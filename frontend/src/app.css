@@ -1193,3 +1193,22 @@
 .approval-actions { display: flex; gap: 6px; margin-top: 2px; }
 .approval-yes { background: var(--fill-ok); border-color: var(--fill-ok); color: var(--on-fill); }
 .approval-yes:hover:not(:disabled) { background: var(--ok); border-color: var(--ok); color: var(--on-ok); }
+
+/* ───── разбор вчерашних хвостов ───── */
+.leftovers {
+  width: 100%; max-width: 560px; max-height: 80vh; display: flex; flex-direction: column;
+  background: var(--bg-elev); border: 1px solid var(--border-2); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); padding: var(--sp-4); margin: auto;
+}
+.leftovers-head { display: flex; align-items: center; justify-content: space-between; }
+.leftovers-head h3 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: var(--fs-lg); }
+.leftovers-hint { font-size: var(--fs-sm); margin: 6px 0 var(--sp-3); }
+.leftovers-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.leftovers-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.leftovers-main { min-width: 0; }
+.leftovers-meta { display: flex; gap: 4px; margin-top: 4px; }
+.leftovers-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.leftovers-foot { display: flex; gap: 6px; justify-content: flex-end; margin-top: var(--sp-3); border-top: 1px solid var(--border); padding-top: var(--sp-3); }
