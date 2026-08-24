@@ -17,7 +17,6 @@ const OVERLAP = 150;
 @Injectable()
 export class KnowledgeService implements OnModuleInit {
   private readonly log = new Logger('Knowledge');
-  private readonly model: string;
 
   constructor(
     private readonly db: DbService,
@@ -25,9 +24,7 @@ export class KnowledgeService implements OnModuleInit {
     private readonly ai: AiService,
     private readonly mq: RabbitMQService,
     private readonly files: FilesService,
-  ) {
-    this.model = process.env.OPENAI_API_KEY ? 'text-embedding-3-small' : 'mock-embed';
-  }
+  ) {}
 
   async onModuleInit() {
     // воркер очереди эмбеддингов
@@ -179,9 +176,11 @@ ${extracted.text}`,
     }
     if (!chunks.length) { await this.repo.deleteBySource(msg.tenantId, msg.sourceType, msg.sourceId); return; }
 
+    // подпись модели берём у провайдера арендатора: ключи живут в ai_settings, а не в .env
+    const model = await this.ai.embedModelFor(msg.tenantId);
     await this.repo.replaceChunks({
       tenantId: msg.tenantId, sourceType: msg.sourceType, sourceId: msg.sourceId,
-      accessScope: src.accessScope, title: src.title, hash, model: this.model, chunks,
+      accessScope: src.accessScope, title: src.title, hash, model, chunks,
     });
     this.log.log(`indexed ${msg.sourceType}#${msg.sourceId} (${chunks.length} chunk(s))`);
   }

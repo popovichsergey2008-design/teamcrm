@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
-import { Q_AI_STANDUP, Q_NOTIFICATIONS, RabbitMQService } from '../../messaging/rabbitmq.service';
+import { Q_AI_STANDUP, RabbitMQService } from '../../messaging/rabbitmq.service';
 import { AiService } from '../ai/ai.service';
 import { validateStandupPackage } from '../ai/standup-schema';
 import { ProjectsRepository } from '../projects/projects.repository';
@@ -243,13 +243,6 @@ export class StandupService {
           type: 'task_blocked',
           projectId,
           taskId: a.task_id,
-        });
-        await this.mq.publish(Q_NOTIFICATIONS, {
-          type: 'task_blocked',
-          tenantId,
-          projectId,
-          taskId: a.task_id,
-          text: a.blocker_detected,
         });
       }
 

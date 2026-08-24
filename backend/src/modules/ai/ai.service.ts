@@ -31,6 +31,11 @@ export class AiService {
     this.parserModel = config.get<string>('AI_PARSER_MODEL') ?? 'claude-haiku-4-5';
   }
 
+  /** Подпись модели эмбеддингов арендатора: индекс должен помнить, чем его считали. */
+  async embedModelFor(tenantId: string): Promise<string> {
+    return (await this.providerFor(tenantId)).embedModel;
+  }
+
   /** Провайдер для конкретного арендатора (BYOK: ключ арендатора > глобальный .env). */
   private async providerFor(tenantId: string) {
     const s = await this.settings.resolve(tenantId);

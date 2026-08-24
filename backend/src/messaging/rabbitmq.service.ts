@@ -10,7 +10,6 @@ import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
 
 export const Q_ECONOMICS = 'economics';
-export const Q_NOTIFICATIONS = 'notifications';
 export const Q_AI_STANDUP = 'ai_standup';
 export const Q_ANALYTICS = 'analytics';
 export const Q_AI_ASSIST = 'ai_assist';
@@ -49,7 +48,6 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       this.connection = await amqp.connect(this.url);
       this.channel = await this.connection.createChannel();
       await this.channel.assertQueue(Q_ECONOMICS, { durable: true });
-      await this.channel.assertQueue(Q_NOTIFICATIONS, { durable: true });
       await this.channel.assertQueue(Q_AI_STANDUP, { durable: true });
       await this.channel.assertQueue(Q_ANALYTICS, { durable: true });
       await this.channel.assertQueue(Q_AI_ASSIST, { durable: true });

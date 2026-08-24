@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
-import { Q_NOTIFICATIONS, RabbitMQService } from '../../messaging/rabbitmq.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TasksRepository, TaskRow } from '../tasks/tasks.repository';
 import { TaskActivityRepository } from '../tasks/task-activity.repository';
@@ -18,7 +17,6 @@ export class TaskCardService {
     private readonly activity: TaskActivityRepository,
     private readonly files: FilesService,
     private readonly realtime: RealtimeService,
-    private readonly mq: RabbitMQService,
     private readonly outbox: IntegrationOutboxService,
     private readonly notify: NotificationsService,
     private readonly knowledge: KnowledgeService,
@@ -30,15 +28,6 @@ export class TaskCardService {
     return t;
   }
 
-  private async notifyWatchers(tenantId: string, task: TaskRow, kind: string, exceptUserId?: string) {
-    const watchers = (await this.repo.watchers(tenantId, task.id)).map((w) => w.user_id);
-    const set = new Set<string>(watchers);
-    if (task.assignee_id) set.add(task.assignee_id);
-    if (exceptUserId) set.delete(exceptUserId);
-    if (set.size === 0) return;
-    await this.mq.publish(Q_NOTIFICATIONS, { type: kind, tenantId, taskId: task.id, recipients: [...set] });
-  }
-
   // ---- comments ----
   async addComment(tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean) {
     const task = await this.task(tenantId, taskId);
@@ -46,7 +35,6 @@ export class TaskCardService {
     const c: any = await this.repo.addComment(tenantId, taskId, authorId, body, clientVisible);
     await this.activity.log(tenantId, taskId, authorId, 'commented', { commentId: c.id });
     this.realtime.emitScoped(tenantId, task.project_id, 'task.comment_added', { taskId, commentId: c.id, authorId }, clientVisible);
-    await this.notifyWatchers(tenantId, task, 'task_comment', authorId);
     await this.outbox.enqueue(tenantId, task.project_id, 'comment.create', c.id, { taskId });
     void this.notify.taskCommented(tenantId, taskId, authorId, String(c.id), body); // письмо на почту
     return c;
@@ -79,7 +67,6 @@ export class TaskCardService {
     const a = await this.repo.addAttachment(tenantId, taskId, f.id);
     await this.activity.log(tenantId, taskId, userId, 'attached', { fileName: f.file_name });
     this.realtime.emitScoped(tenantId, task.project_id, 'task.attachment_added', { taskId, fileId: f.id }, false);
-    await this.notifyWatchers(tenantId, task, 'task_attachment', userId);
     await this.outbox.enqueue(tenantId, task.project_id, 'attachment.create', f.id, { taskId });
     // содержимое файла — в корпоративную память: искать нужно по тексту договора, а не по имени
     this.knowledge.enqueue(tenantId, 'file', String(f.id));

@@ -116,12 +116,14 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
       - name: Sync code to server
-        # без --delete: в /opt/teamcrm живут .env, observability/, secrets/, certs/,
-        # которых нет в репозитории — их сносить нельзя
+        # --delete держит дерево сервера равным репозиторию: без него удалённый в git файл
+        # остаётся на проде навсегда. Удаление работает только внутри backend/, frontend/
+        # и nginx/ — .env, observability/, backups/, scripts/ лежат уровнем выше и не
+        # затрагиваются, а certs/ (самоподписанный сертификат edge-nginx) защищён исключением.
         run: |
-          rsync -az \
+          rsync -az --delete \
             --exclude node_modules --exclude dist --exclude coverage \
-            --exclude .git --exclude '.env' \
+            --exclude .git --exclude '.env' --exclude certs \
             -e "ssh -i ~/.ssh/deploy_key" \
             backend frontend infra/docker-compose.yml infra/nginx \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/teamcrm/"
