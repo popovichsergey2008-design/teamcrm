@@ -77,19 +77,25 @@ export class GuestLinksService {
     return { id: row.id, roomId: row.room_id, revokedAt: row.revoked_at };
   }
 
-  /** Разбор ссылки без побочных действий — для экрана «вы приглашены». */
+  /**
+   * Разбор ссылки без побочных действий — для экрана «вы приглашены».
+   *
+   * Поле называется `valid`, а не `ok`, намеренно: конвертом ответа служит
+   * `{ok, data}`, и объект с собственным `ok` проходит через обёртку насквозь —
+   * клиент получил бы пустой `data` вместо ответа.
+   */
   async describe(token: string): Promise<
-    | { ok: true; orgName: string; label: string | null; roomActive: boolean; hostPresent: boolean }
-    | { ok: false; reason: LinkRefusal }
+    | { valid: true; orgName: string; label: string | null; roomActive: boolean; hostPresent: boolean }
+    | { valid: false; reason: LinkRefusal }
   > {
     const link = await this.repo.findByHash(this.sha256(String(token || '')));
-    if (!link) return { ok: false, reason: 'unknown' };
+    if (!link) return { valid: false, reason: 'unknown' };
     const refusal = this.refusalFor(link);
-    if (refusal) return { ok: false, reason: refusal };
+    if (refusal) return { valid: false, reason: refusal };
 
     const room = this.media.getRoom(link.room_id);
     return {
-      ok: true,
+      valid: true,
       orgName: link.tenant_name,
       label: link.label,
       roomActive: !!room,

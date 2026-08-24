@@ -44,7 +44,7 @@ export function GuestMeetPage({ token }: { token: string }) {
     api.guestLinkInfo(token)
       .then((r) => {
         if (!alive) return;
-        if (r.ok) setInfo({ orgName: r.orgName, label: r.label, roomActive: r.roomActive, hostPresent: r.hostPresent });
+        if (r.valid) setInfo({ orgName: r.orgName, label: r.label, roomActive: r.roomActive, hostPresent: r.hostPresent });
         else setRefusal(REFUSAL[r.reason] ?? 'Ссылка недействительна.');
       })
       .catch((e) => alive && setRefusal(e instanceof ApiError ? e.message : 'Не удалось проверить ссылку'));

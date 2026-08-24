@@ -32,7 +32,7 @@ describe('Гостевая ссылка в созвон', () => {
 
   it('действующая ссылка показывает организацию и то, что встреча ещё не идёт', async () => {
     const info = await build(link()).describe('t');
-    expect(info).toEqual({ ok: true, orgName: 'Борис и КО', label: 'ООО Вектор', roomActive: false, hostPresent: false });
+    expect(info).toEqual({ valid: true, orgName: 'Борис и КО', label: 'ООО Вектор', roomActive: false, hostPresent: false });
   });
 
   it.each([
@@ -40,11 +40,11 @@ describe('Гостевая ссылка в созвон', () => {
     ['просрочена', { expires_at: new Date(Date.now() - 1000) }, 'expired'],
     ['исчерпана', { max_uses: 1, uses: 1 }, 'used-up'],
   ])('%s — причина отказа названа прямо', async (_name, over, reason) => {
-    expect(await build(link(over)).describe('t')).toEqual({ ok: false, reason });
+    expect(await build(link(over)).describe('t')).toEqual({ valid: false, reason });
   });
 
   it('несуществующая ссылка не отличается по ответу от чужой — «unknown» и всё', async () => {
-    expect(await build(null).describe('t')).toEqual({ ok: false, reason: 'unknown' });
+    expect(await build(null).describe('t')).toEqual({ valid: false, reason: 'unknown' });
   });
 
   it('вход выдаёт токен на ОДНУ комнату и отмечает использование ссылки', async () => {

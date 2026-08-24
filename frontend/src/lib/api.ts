@@ -508,8 +508,8 @@ export const api = {
   /** Гостевые вызовы идут БЕЗ токена: у гостя нет учётной записи и быть не может. */
   guestLinkInfo: (token: string) =>
     rawRequest<
-      | { ok: true; orgName: string; label: string | null; roomActive: boolean; hostPresent: boolean }
-      | { ok: false; reason: string }
+      | { valid: true; orgName: string; label: string | null; roomActive: boolean; hostPresent: boolean }
+      | { valid: false; reason: string }
     >('GET', `/meet/guest/${encodeURIComponent(token)}`, undefined, false),
   guestJoin: (token: string, name: string) =>
     rawRequest<{ token: string; roomId: string; name: string; userId: string; iceServers: RTCIceServer[] }>(

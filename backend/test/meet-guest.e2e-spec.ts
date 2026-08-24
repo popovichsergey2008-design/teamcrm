@@ -51,7 +51,9 @@ describe('Гостевой доступ в созвон (e2e)', () => {
 
     // страница приглашения: название организации и для кого ссылка — и ничего лишнего
     const info = (await http$.get(`/api/meet/guest/${token}`).expect(200)).body.data;
-    expect(info.ok).toBe(true);
+    // ответ обязан приезжать в общем конверте {ok, data}: поле `ok` внутри данных
+    // проходило бы обёртку насквозь, и фронт получал бы пустоту
+    expect(info.valid).toBe(true);
     expect(info.orgName).toBe('Гости');
     expect(info.label).toBe('ООО Вектор');
     // созвон ещё не идёт — гостю это честно сообщается, а не «ссылка битая»
@@ -80,7 +82,7 @@ describe('Гостевой доступ в созвон (e2e)', () => {
     await http$.delete(`/api/meet/guest-links/${link.id}`).set(H(owner.accessToken)).expect(200);
 
     const after = (await http$.get(`/api/meet/guest/${token}`).expect(200)).body.data;
-    expect(after).toEqual({ ok: false, reason: 'revoked' });
+    expect(after).toEqual({ valid: false, reason: 'revoked' });
     await http$.post(`/api/meet/guest/${token}/join`).send({ name: 'Сергей из Вектора' }).expect(401);
 
     // отозванная ссылка пропадает из списка активных
@@ -102,11 +104,11 @@ describe('Гостевой доступ в созвон (e2e)', () => {
     // ссылка соседа при этом продолжает работать
     const token = link.url.split('/meet/')[1];
     const info = (await http$.get(`/api/meet/guest/${token}`).expect(200)).body.data;
-    expect(info.ok).toBe(true);
+    expect(info.valid).toBe(true);
 
     // выдуманный токен — «нет такой ссылки», без подсказок
     const bogus = (await http$.get('/api/meet/guest/definitely-not-a-token').expect(200)).body.data;
-    expect(bogus).toEqual({ ok: false, reason: 'unknown' });
+    expect(bogus).toEqual({ valid: false, reason: 'unknown' });
     await http$.post('/api/meet/guest/definitely-not-a-token/join').send({ name: 'Кто-то' }).expect(401);
   });
 });
