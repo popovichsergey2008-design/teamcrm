@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { EmptyState } from './EmptyState';
 import { SkeletonList } from './Skeleton';
 import type { AiAction } from '../types';
+import { useEscape } from '../hooks/useEscape';
 
 /**
  * Журнал «AI Секретаря»: что система сделала за людей сама.
@@ -40,6 +41,7 @@ function when(iso: string): string {
 }
 
 export function SecretaryPanel({ onClose }: { onClose: () => void }) {
+  useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   const [items, setItems] = useState<AiAction[] | null>(null);
   const [summary, setSummary] = useState<{ actions: number; savedMinutes: number } | null>(null);
 

@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { useEscape } from '../hooks/useEscape';
 
 /** База знаний (Этап 5, K1): семантический поиск + регламенты + реиндекс. */
 export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onClose: () => void }) {
+  useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   const [tab, setTab] = useState<'brain' | 'search' | 'regs' | 'content'>('brain');
   const [msg, setMsg] = useState('');
   const [stats, setStats] = useState<{ chunks: string; sources: string } | null>(null);

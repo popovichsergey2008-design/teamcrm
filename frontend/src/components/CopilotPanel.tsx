@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api } from '../lib/api';
+import { useEscape } from '../hooks/useEscape';
 
 const LABEL: Record<string, string> = {
   reassign: 'Переназначить (перегруз)',
@@ -10,6 +11,7 @@ const LABEL: Record<string, string> = {
 };
 
 export function CopilotPanel({ onClose, onRefresh }: { onClose: () => void; onRefresh: () => void }) {
+  useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   const [recs, setRecs] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
 

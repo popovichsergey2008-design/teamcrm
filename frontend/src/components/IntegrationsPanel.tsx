@@ -5,9 +5,11 @@ import { SkeletonList } from './Skeleton';
 import { api, ApiError } from '../lib/api';
 import { AiSettingsSection } from './AiSettingsPanel';
 import { PromptsSection } from './PromptsPanel';
+import { useEscape } from '../hooks/useEscape';
 
 /** Интеграции: подключения (Битрикс24) + ключи ИИ + промпты (PromptOps). */
 export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
+  useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   const [tab, setTab] = useState<'bitrix' | 'yougile' | 'ai' | 'prompts'>('bitrix');
   const [conns, setConns] = useState<any[]>([]);
   const [msg, setMsg] = useState('');

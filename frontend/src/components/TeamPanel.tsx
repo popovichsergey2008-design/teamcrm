@@ -5,6 +5,7 @@ import { api, ApiError } from '../lib/api';
 import { ASSIGNABLE_ROLES, roleLabel } from '../lib/labels';
 import { MONETIZATION_ENABLED } from '../config';
 import { useAuth } from '../state/auth';
+import { useEscape } from '../hooks/useEscape';
 
 type Tab = 'people' | 'positions' | 'groups';
 const roleOptions = ASSIGNABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>);
@@ -21,6 +22,7 @@ const plural = (n: number, one: string, few: string, many: string) => {
 };
 
 export function TeamPanel({ onClose }: { onClose: () => void }) {
+  useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   const [tab, setTab] = useState<Tab>('people');
   const [users, setUsers] = useState<any[]>([]);
   const [positions, setPositions] = useState<any[]>([]);

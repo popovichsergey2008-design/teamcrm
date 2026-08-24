@@ -46,7 +46,7 @@ export function ShortcutsHelp({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="palette-overlay" onMouseDown={onClose}>
-      <div className="palette shortcuts" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Горячие клавиши">
+      <div className="palette shortcuts" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Горячие клавиши">
         <div className="palette-input-row">
           <Icon name="help" size={18} />
           <span className="shortcuts-title">Горячие клавиши</span>

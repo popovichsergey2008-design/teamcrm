@@ -5,6 +5,7 @@ import { ThemeSwitch } from './ThemeSwitch';
 import { buildPath, navigate, Route, Section } from '../lib/router';
 import { roleLabel } from '../lib/labels';
 import { NavCounters } from '../hooks/useNavCounters';
+import { useEscape } from '../hooks/useEscape';
 import { FocusMenu, focusLine } from './FocusMenu';
 import { humanMinutes } from './SecretaryPanel';
 import { api } from '../lib/api';
@@ -131,6 +132,9 @@ export function Sidebar({
     });
   };
 
+  // на узком экране панель выезжает поверх — Esc обязан её убирать, как любое окно
+  useEscape(() => setOpen(false), open);
+
   // сворачивание панели живёт здесь, а горячая клавиша — в общем обработчике
   useEffect(() => {
     const toggle = () => setCollapsed((v) => {
@@ -184,7 +188,10 @@ export function Sidebar({
       </button>
       {open && <div className="nav-backdrop" onClick={() => setOpen(false)} />}
 
-      <aside className={`nav-sidebar${collapsed ? ' nav-collapsed' : ''}${open ? ' nav-open' : ''}`}>
+      <aside
+        className={`nav-sidebar${collapsed ? ' nav-collapsed' : ''}${open ? ' nav-open' : ''}`}
+        aria-label="Главное меню"
+      >
         {/* ── верхний блок ── */}
         <div className="nav-top">
           <div className="nav-org">
@@ -253,6 +260,7 @@ export function Sidebar({
                       <span
                         className={`nav-count${item.section === 'radar' ? ' nav-count-warn' : ''}`}
                         title={badgeTitle}
+                        aria-label={badgeTitle ? `${badge} ${badgeTitle}` : `${badge} непрочитанных`}
                       >
                         {badge > 99 ? '99+' : badge}
                       </span>

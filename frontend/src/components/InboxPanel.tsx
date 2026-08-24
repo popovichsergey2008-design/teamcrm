@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { useEscape } from '../hooks/useEscape';
 
 /** Авто-задачи из переписок: каналы приёма (вебхук) + голосовые заметки + ревью черновиков задач. */
 export function InboxPanel({ onClose }: { onClose: () => void }) {
+  useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   const [tab, setTab] = useState<'items' | 'sources'>('items');
   const [sources, setSources] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);

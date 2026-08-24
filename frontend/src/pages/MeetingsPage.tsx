@@ -103,7 +103,9 @@ export function MeetingsPage() {
       <div className="task-list">
         {list.map((m) => (
           <div key={m.id}>
-            <div className="list-row" onClick={() => setOpenId(openId === m.id ? null : m.id)}>
+            <div className="list-row" role="button" tabIndex={0}
+                 onClick={() => setOpenId(openId === m.id ? null : m.id)}
+                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenId(openId === m.id ? null : m.id); } }}>
               <div className="list-main">
                 <span className="list-title">{m.title}</span>
                 {m.duration_sec > 0 && <span className="badge badge-muted">{Math.round(m.duration_sec / 60)} мин</span>}

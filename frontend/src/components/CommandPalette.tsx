@@ -165,7 +165,7 @@ export function CommandPalette({ role, onClose, onCreate }: {
 
   return (
     <div className="palette-overlay" onMouseDown={onClose}>
-      <div className="palette" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Поиск и команды">
+      <div className="palette" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Поиск и команды">
         <div className="palette-input-row">
           <Icon name="search" size={18} />
           <input

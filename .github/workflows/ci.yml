@@ -77,7 +77,7 @@ jobs:
       - run: npm run build
 
   frontend:
-    name: Frontend — lint, contrast, build
+    name: Frontend — lint, contrast, a11y, build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -93,6 +93,8 @@ jobs:
       - run: npm run lint
       - name: contrast (WCAG AA по обеим темам)
         run: npm run contrast
+      - name: focus (видимое кольцо у всего кликабельного)
+        run: npm run a11y
       - run: npm run build
 
   deploy:

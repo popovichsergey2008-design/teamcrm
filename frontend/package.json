@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings 0",
-    "contrast": "node scripts/contrast-audit.mjs"
+    "contrast": "node scripts/contrast-audit.mjs",
+    "a11y": "node scripts/focus-audit.mjs"
   },
   "dependencies": {
     "mediasoup-client": "^3.22.0",

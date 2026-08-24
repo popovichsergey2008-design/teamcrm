@@ -151,7 +151,16 @@ export function FocusPage({ onOpenTask, active = true }: {
             <span>{doneToday.length} из {planned} на сегодня</span>
             <span className="dim">{donePct}%</span>
           </div>
-          <div className="focus-progress"><span style={{ width: `${donePct}%` }} /></div>
+          <div
+            className="focus-progress"
+            role="progressbar"
+            aria-valuenow={donePct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Закрыто ${doneToday.length} из ${planned} задач на сегодня`}
+          >
+            <span style={{ width: `${donePct}%` }} />
+          </div>
         </div>
       </div>
 

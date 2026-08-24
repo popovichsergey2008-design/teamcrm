@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { useEscape } from '../hooks/useEscape';
 
 /** Управление клиентами портала (owner/manager): компании, приглашения, привязка проектов. */
 export function ClientsPanel({ onClose }: { onClose: () => void }) {
+  useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   const [clients, setClients] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [msg, setMsg] = useState('');

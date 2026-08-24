@@ -875,7 +875,7 @@
 
 /* ───── настройки: витрина разделов ───── */
 .settings-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   gap: var(--sp-3); padding: var(--sp-5); overflow-y: auto;
 }
 .settings-card {
@@ -1045,7 +1045,7 @@
 /* ───── Пульс команды ───── */
 .radar-grid {
   flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-4) var(--sp-5);
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--sp-4); align-content: start;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: var(--sp-4); align-content: start;
 }
 .radar-block { padding: var(--sp-4); display: flex; flex-direction: column; gap: 4px; }
 .radar-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: var(--fs-md); font-weight: 700; }
@@ -1078,4 +1078,39 @@
 .shortcuts-keys {
   min-width: 130px; font-size: var(--fs-sm); color: var(--text);
   border: 1px solid var(--border-2); border-radius: 5px; padding: 1px 6px; text-align: center;
+}
+
+/* ───── доступность ─────
+   Видимое кольцо на всём, что кликается, но не является .btn: пункты панели,
+   карточки задач, строки пульса, элементы командной строки. Без него навигация
+   табом идёт вслепую — человек не знает, где находится.
+   Проверяется скриптом: npm run a11y. */
+.nav-item:focus-visible, .nav-sub:focus-visible, .nav-search:focus-visible,
+.nav-secretary:focus-visible, .nav-user:focus-visible, .nav-collapse:focus-visible,
+.nav-org-select:focus-visible, .nav-open-btn:focus-visible,
+.focus-card:focus-visible, .focus-more:focus-visible, .focus-chip:focus-visible,
+.focus-template:focus-visible, .focus-clear:focus-visible,
+.radar-row:focus-visible, .settings-card:focus-visible,
+.palette-item:focus-visible, .palette-mic:focus-visible, .palette-input:focus-visible,
+.project-item:focus-visible, .menu-item:focus-visible,
+.add-column:focus-visible, .chat-ai-toggle:focus-visible, .chat-row:focus-visible,
+.col-btn:focus-visible, .dp-chip:focus-visible, .dp-nav:focus-visible, .dp-trigger:focus-visible,
+.file-link:focus-visible, .group-chip:focus-visible, .label-chip:focus-visible,
+.list-row:focus-visible, .member-chip:focus-visible, .notify-row:focus-visible,
+.profile-nav button:focus-visible, .project-del:focus-visible, .sidebar-tab:focus-visible,
+.status-pill:focus-visible, .theme-option:focus-visible, .toast:focus-visible, .view-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Кто просил систему не анимировать — тому не анимируем. Движение на экране
+   мешает при вестибулярных нарушениях, а у нас его хватает: выезжающая панель,
+   пульсирующая точка таймера, крутящийся индикатор загрузки. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

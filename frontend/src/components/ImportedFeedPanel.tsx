@@ -3,9 +3,11 @@ import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { SkeletonList } from './Skeleton';
 import { api } from '../lib/api';
+import { useEscape } from '../hooks/useEscape';
 
 /** Лента импортированного из Битрикса проекта (read-only архив; чата пока нет). */
 export function ImportedFeedPanel({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   const [messages, setMessages] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
 

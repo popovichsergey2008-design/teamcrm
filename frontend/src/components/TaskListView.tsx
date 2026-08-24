@@ -28,7 +28,10 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
             const prio = priorityBadge(t.priority);
             const due = deadlineBadge(t.deadline_at, !!t.closed_at);
             return (
-              <div key={t.id} className={`list-row ${activeTimerTask === t.id ? 'task-tracking' : ''}`} onClick={() => onOpenTask(t)}>
+              <div key={t.id} className={`list-row ${activeTimerTask === t.id ? 'task-tracking' : ''}`}
+                   role="button" tabIndex={0}
+                   onClick={() => onOpenTask(t)}
+                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenTask(t); } }}>
                 <div className="list-main">
                   {t.risk_level && <span className={`risk-dot risk-${t.risk_level}`} title={`Риск срока: ${t.risk_level}`} />}
                   <span className="list-title">{t.title}</span>
