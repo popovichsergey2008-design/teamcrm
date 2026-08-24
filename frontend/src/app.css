@@ -1067,3 +1067,15 @@
 .radar-big { font-size: 24px; font-weight: 700; }
 .radar-up { color: var(--ok); }
 .radar-down { color: var(--danger); }
+
+/* Панель раздела: занимает всю рабочую область, скрытая — не влияет на раскладку */
+.pane { flex: 1; min-height: 0; min-width: 0; flex-direction: column; }
+
+/* подсказка по клавишам — та же коробка, что у командной строки */
+.shortcuts-title { flex: 1; font-weight: 600; color: var(--text); }
+.shortcuts-body { padding: var(--sp-2) var(--sp-3) var(--sp-3); overflow-y: auto; }
+.shortcuts-row { display: flex; gap: var(--sp-3); align-items: baseline; padding: 5px 8px; color: var(--text-dim); }
+.shortcuts-keys {
+  min-width: 130px; font-size: var(--fs-sm); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: 5px; padding: 1px 6px; text-align: center;
+}

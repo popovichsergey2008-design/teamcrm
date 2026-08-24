@@ -87,7 +87,7 @@ const visible = (roles: Role[] | undefined, role: Role) => !roles || roles.inclu
 
 export function Sidebar({
   route, user, organizations, avatarPath, unread, counters, activeCall,
-  onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onOpenSecretary, onLogout,
+  onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onOpenSecretary, onHoverSection, onLogout,
 }: {
   route: Route;
   user: { role: string; fullName: string; tenantId: string };
@@ -102,6 +102,8 @@ export function Sidebar({
   onSearch: () => void;
   onJoinCall: () => void;
   onOpenSecretary: () => void;
+  /** наведение на пункт меню — повод прогреть данные раздела заранее */
+  onHoverSection: (section: Section) => void;
   onLogout: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1');
@@ -128,6 +130,16 @@ export function Sidebar({
       return !v;
     });
   };
+
+  // сворачивание панели живёт здесь, а горячая клавиша — в общем обработчике
+  useEffect(() => {
+    const toggle = () => setCollapsed((v) => {
+      localStorage.setItem(COLLAPSED_KEY, v ? '0' : '1');
+      return !v;
+    });
+    window.addEventListener('teamcrm:toggle-sidebar', toggle);
+    return () => window.removeEventListener('teamcrm:toggle-sidebar', toggle);
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -232,7 +244,7 @@ export function Sidebar({
             const badgeTitle = item.section === 'focus' ? 'ждут вашего решения'
               : item.section === 'radar' ? 'задач просрочено' : undefined;
             return (
-              <div key={item.section} className="nav-group">
+              <div key={item.section} className="nav-group" onMouseEnter={() => onHoverSection(item.section)}>
                 {link({ section: item.section }, active, 'nav-item', item.label, (
                   <>
                     <Icon name={item.icon} size={18} />

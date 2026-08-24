@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from './state/auth';
 import { api } from './lib/api';
 import { LoginPage } from './pages/LoginPage';
@@ -24,18 +24,31 @@ import { SecretaryPanel } from './components/SecretaryPanel';
 import { InboxPanel } from './components/InboxPanel';
 import { ClientPortal } from './pages/ClientPortal';
 import { Toasts } from './components/Toasts';
-import { navigate, parsePath, useRoute } from './lib/router';
+import { navigate, parsePath, Section, useRoute } from './lib/router';
+import { dropCache } from './lib/cache';
+import { useShortcuts } from './hooks/useShortcuts';
+import { ShortcutsHelp } from './components/ShortcutsHelp';
+import { prefetchFocus } from './pages/FocusPage';
+import { prefetchRadar } from './pages/RadarPage';
+
+/**
+ * Обёртка раздела, который остаётся жить после ухода с него.
+ * `display: none` вместо размонтирования: React сохраняет состояние, браузер —
+ * позицию прокрутки, а сеть не трогается вовсе.
+ */
+function Pane({ active, children }: { active: boolean; children: ReactNode }) {
+  return <div className="pane" style={{ display: active ? 'flex' : 'none' }}>{children}</div>;
+}
 
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
   const route = useRoute();
 
   /**
-   * Доска умеет принимать «куда прыгнуть» только при монтировании, поэтому
-   * переход извне (из фокуса, по уведомлению, кнопкой «назад») отмечается сменой
-   * nonce — он же ключ ремонтирования. Собственный выбор проекта внутри доски
-   * сюда не попадает: он лишь дописывает адрес, не пересоздавая экран.
-   * Снятие ремонтирования — отдельный шаг про скорость (Ш7).
+   * Доска умеет принимать «куда прыгнуть» только при монтировании, поэтому переход
+   * ИЗВНЕ (из фокуса, по уведомлению, кнопкой «назад») отмечается сменой nonce —
+   * он же ключ пересоздания. Обычное переключение разделов доску не трогает: она
+   * остаётся жить в скрытой панели со всеми загруженными задачами.
    */
   const [boardJump, setBoardJump] = useState<{ projectId?: string; taskId?: string; nonce: number }>(
     () => ({ projectId: route.projectId, taskId: route.taskId, nonce: 0 }),
@@ -55,7 +68,14 @@ export function App() {
   const [nl, setNl] = useState<{ text?: string; voice?: boolean } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [secretaryOpen, setSecretaryOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  // какие разделы уже открывали: только их держим смонтированными
+  const [visited, setVisited] = useState<Set<Section>>(() => new Set([route.section]));
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    setVisited((v) => (v.has(route.section) ? v : new Set(v).add(route.section)));
+  }, [route.section]);
 
   const onSwitchOrg = async (tenantId: string) => {
     if (tenantId === '__new__') {
@@ -63,7 +83,12 @@ export function App() {
       if (name && name.trim()) await createOrg(name.trim());
       return;
     }
-    if (user && tenantId !== user.tenantId) await switchOrg(tenantId);
+    if (user && tenantId !== user.tenantId) {
+      // данные прошлой организации не должны пережить переключение ни в кэше, ни в разделах
+      dropCache();
+      setVisited(new Set([route.section]));
+      await switchOrg(tenantId);
+    }
   };
 
   // приглашение в команду: одноразовое /?invite=<token> или многоразовое /?join=<token>;
@@ -106,27 +131,13 @@ export function App() {
     }
   }, [user, route.section, route.tab]);
 
-  // Горячие клавиши: C — новая задача, Ctrl/Cmd+K — поиск и команды.
-  // Ввод текста не перехватываем, иначе буква C перестанет печататься.
-  useEffect(() => {
-    if (!user || user.role === 'client') return;
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setPaletteOpen(true);
-        return;
-      }
-      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === 'c' || e.key === 'C' || e.key === 'с' || e.key === 'С') {
-        e.preventDefault();
-        setNl({});
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [user]);
+  useShortcuts(!!user && user.role !== 'client', {
+    newTask: () => setNl({}),
+    palette: () => setPaletteOpen(true),
+    help: () => setHelpOpen((v) => !v),
+    toggleSidebar: () => window.dispatchEvent(new Event('teamcrm:toggle-sidebar')),
+    go: (section) => navigate({ section }),
+  });
 
   /**
    * Какой чат открыт: нужен и уведомлениям, и адресу.
@@ -209,39 +220,62 @@ export function App() {
         onNewTask={() => setNl({})}
         onVoiceTask={() => setNl({ voice: true })}
         onSearch={() => setPaletteOpen(true)}
+        onHoverSection={(section) => {
+          if (section === 'focus') prefetchFocus();
+          if (section === 'radar' && canManage) prefetchRadar();
+        }}
         onJoinCall={joinActiveCall}
         onOpenSecretary={() => setSecretaryOpen(true)}
         onLogout={logout}
       />
 
-      <main className="app-main">
-        {route.section === 'focus' && (
-          <FocusPage onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })} />
+      {/*
+        Разделы не пересобираются при переключении: однажды открытый остаётся
+        смонтированным и просто прячется. Это и есть требование ТЗ «без спиннеров» —
+        доска не грузит заново проекты и задачи, чат не теряет ленту и прокрутку.
+        Ключ по организации: при её смене всё содержимое обязано исчезнуть, иначе
+        человек увидит данные чужой компании.
+      */}
+      <main className="app-main" key={user.tenantId}>
+        {visited.has('focus') && (
+          <Pane active={route.section === 'focus'}>
+            <FocusPage
+              active={route.section === 'focus'}
+              onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
+            />
+          </Pane>
         )}
-        {route.section === 'projects' && (
-          <BoardPage
-            key={`${user.tenantId}:${boardJump.nonce}`}
-            initial={boardJump.projectId ? { projectId: boardJump.projectId, taskId: boardJump.taskId } : undefined}
-            onNavigate={(projectId, taskId) => {
-              boardReported.current = { projectId: projectId ?? undefined, taskId: taskId ?? undefined };
-              // открыт подраздел — адрес принадлежит ему, доска его не перебивает
-              if (route.view) return;
-              navigate(
-                { section: 'projects', projectId: projectId ?? undefined, taskId: taskId ?? undefined },
-                { replace: true },
-              );
-            }}
-          />
+        {visited.has('projects') && (
+          <Pane active={route.section === 'projects'}>
+            <BoardPage
+              key={boardJump.nonce}
+              initial={boardJump.projectId ? { projectId: boardJump.projectId, taskId: boardJump.taskId } : undefined}
+              onNavigate={(projectId, taskId) => {
+                boardReported.current = { projectId: projectId ?? undefined, taskId: taskId ?? undefined };
+                // Доска живёт в фоне и может доложить о себе, когда открыт другой раздел
+                // или подраздел, — адрес тогда принадлежит не ей.
+                const now = parsePath(window.location.pathname);
+                if (now.section !== 'projects' || now.view) return;
+                navigate(
+                  { section: 'projects', projectId: projectId ?? undefined, taskId: taskId ?? undefined },
+                  { replace: true },
+                );
+              }}
+            />
+          </Pane>
         )}
+        {visited.has('chat') && (
+          <Pane active={route.section === 'chat' && !route.view}>
+            <ChatsPage
+              onCall={callFromChat}
+              onActiveChat={onActiveChat}
+              initialChatId={route.chatId ?? null}
+              inCall={!!callId}
+            />
+          </Pane>
+        )}
+        {/* Остальное открывают редко и ненадолго — держать это в памяти незачем */}
         {route.section === 'chat' && route.view === 'meetings' && <MeetingsPage />}
-        {route.section === 'chat' && !route.view && (
-          <ChatsPage
-            onCall={callFromChat}
-            onActiveChat={onActiveChat}
-            initialChatId={route.chatId ?? null}
-            inCall={!!callId}
-          />
-        )}
         {route.section === 'radar' && canManage && <RadarPage />}
         {route.section === 'settings' && <SettingsPage route={route} role={user.role} />}
         {route.section === 'profile' && (
@@ -274,6 +308,7 @@ export function App() {
         />
       )}
       {secretaryOpen && <SecretaryPanel onClose={() => setSecretaryOpen(false)} />}
+      {helpOpen && <ShortcutsHelp onClose={() => setHelpOpen(false)} />}
       {nl && <NlCommandModal onClose={() => setNl(null)} initialText={nl.text} autoRecord={nl.voice} />}
     </div>
   );

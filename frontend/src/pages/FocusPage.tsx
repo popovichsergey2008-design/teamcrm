@@ -3,6 +3,7 @@ import { Icon } from '../components/Icon';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonList } from '../components/Skeleton';
 import { api, ApiError } from '../lib/api';
+import { cached, dropCache } from '../lib/cache';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import { useAuth } from '../state/auth';
 import type { Task } from '../types';
@@ -79,7 +80,18 @@ function FocusCard({ task, side, onOpen }: {
   );
 }
 
-export function FocusPage({ onOpenTask }: { onOpenTask: (projectId: string, taskId: string) => void }) {
+/** Прогрев по наведению на пункт меню: к клику данные уже здесь. */
+export function prefetchFocus() {
+  cached('focus:mine', () => api.myTasks('mine', true));
+  cached('focus:delegated', () => api.myTasks('delegated'));
+  cached('focus:review', () => api.myTasks('review'));
+}
+
+export function FocusPage({ onOpenTask, active = true }: {
+  onOpenTask: (projectId: string, taskId: string) => void;
+  /** экран остаётся смонтированным в фоне — в это время он не ходит в сеть */
+  active?: boolean;
+}) {
   const { user } = useAuth();
   const [mine, setMine] = useState<CrossTask[]>([]);
   const [delegated, setDelegated] = useState<CrossTask[]>([]);
@@ -88,14 +100,15 @@ export function FocusPage({ onOpenTask }: { onOpenTask: (projectId: string, task
   const [err, setErr] = useState('');
   const [showRest, setShowRest] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     setErr('');
+    if (fresh) dropCache('focus:');
     try {
       // closed=1 в своей выборке: закрытые сегодня нужны для полосы прогресса дня
       const [m, d, r] = await Promise.all([
-        api.myTasks('mine', true),
-        api.myTasks('delegated'),
-        api.myTasks('review'),
+        cached('focus:mine', () => api.myTasks('mine', true)),
+        cached('focus:delegated', () => api.myTasks('delegated')),
+        cached('focus:review', () => api.myTasks('review')),
       ]);
       setMine(m); setDelegated(d); setReview(r);
     } catch (e) {
@@ -106,11 +119,15 @@ export function FocusPage({ onOpenTask }: { onOpenTask: (projectId: string, task
   }, []);
 
   useEffect(() => {
+    if (!active) return;
     load();
-    // задачу могли закрыть из карточки или доски — экран не должен врать до перезагрузки
-    window.addEventListener('teamcrm:tasks-changed', load);
-    return () => window.removeEventListener('teamcrm:tasks-changed', load);
-  }, [load]);
+    // Задачу могли закрыть из карточки или доски — экран не должен врать.
+    // В фоне не обновляемся: незачем ходить в сеть ради невидимого экрана,
+    // всё равно перечитаем при возврате.
+    const refresh = () => load(true);
+    window.addEventListener('teamcrm:tasks-changed', refresh);
+    return () => window.removeEventListener('teamcrm:tasks-changed', refresh);
+  }, [load, active]);
 
   const till = endOfToday();
   const open = mine.filter((t) => !t.closed_at);

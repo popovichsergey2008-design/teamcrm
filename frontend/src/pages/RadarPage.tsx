@@ -4,6 +4,7 @@ import { EmptyState } from '../components/EmptyState';
 import { SkeletonList } from '../components/Skeleton';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
+import { cached } from '../lib/cache';
 
 /**
  * «Пульс команды» — экран руководителя.
@@ -25,12 +26,17 @@ function since(iso: string): string {
   return `${Math.floor(h / 24)} дн. без движения`;
 }
 
+/** Прогрев по наведению: сводка тяжелее прочих экранов, её ждать обиднее всего. */
+export function prefetchRadar() {
+  cached('radar', () => api.radar());
+}
+
 export function RadarPage() {
   const [data, setData] = useState<Radar | null>(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    api.radar().then(setData).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось собрать сводку'));
+    cached('radar', () => api.radar()).then(setData).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось собрать сводку'));
   }, []);
 
   const velocityDelta = data ? data.velocity.last7 - data.velocity.prev7 : 0;
