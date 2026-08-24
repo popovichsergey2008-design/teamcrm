@@ -1114,3 +1114,13 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* подсветка совпадения в командной строке */
+.palette-mark { background: var(--warn-soft); color: inherit; border-radius: 3px; padding: 0 1px; }
+.palette-item.active .palette-mark { background: transparent; text-decoration: underline; }
+/* «идёт поиск» — точка вместо спиннера: строка не должна дёргаться на каждую букву */
+.palette-searching {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  animation: palette-pulse 1s ease-in-out infinite; flex-shrink: 0;
+}
+@keyframes palette-pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }

@@ -51,6 +51,7 @@ import { MediaModule } from './modules/media/media.module';
 import { NavModule } from './modules/nav/nav.module';
 import { FocusModule } from './modules/focus/focus.module';
 import { RadarModule } from './modules/radar/radar.module';
+import { SearchModule } from './modules/search/search.module';
 import { SecretaryModule } from './modules/secretary/secretary.module';
 import { ChatsModule } from './modules/chats/chats.module';
 
@@ -108,6 +109,7 @@ import { ChatsModule } from './modules/chats/chats.module';
     NavModule,
     FocusModule,
     RadarModule,
+    SearchModule,
     SecretaryModule,
     ChatsModule,
   ],

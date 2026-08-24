@@ -1,20 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { api } from '../lib/api';
 import { navigate, Route } from '../lib/router';
 import { norm, score } from '../lib/palette-match';
+import type { SearchResults } from '../types';
 
 /**
- * Командная строка (Ctrl+K) — навигационный слой.
+ * Командная строка (Ctrl+K).
  *
- * По ТЗ у неё три слоя: поиск, поиск по смыслу и быстрые команды. Здесь сделан
- * первый и самый дешёвый: переход к разделу, проекту, чату и своей задаче без мыши.
- * Поиск по содержимому файлов, сообщениям и смыслу требует бэкенда и живёт в отдельном
- * этапе — но строка обязана работать уже сейчас, иначе подпись «Найти или сказать…»
- * в панели была бы обманом.
+ * Два слоя, и это осознанно:
+ *   1) МГНОВЕННЫЙ локальный — разделы и уже загруженные проекты и чаты. Отвечает на первое
+ *      нажатие клавиши, сеть в набор текста не вмешивается;
+ *   2) СЕРВЕРНЫЙ — задачи, чужие проекты, сообщения, люди, регламенты. Уходит с задержкой,
+ *      чтобы не слать запрос на каждую букву, и дополняет список, не перетряхивая его.
  *
- * Данные берём те, что и так есть в API: список проектов, чатов и своих задач.
- * Всё фильтруется на клиенте — открытие мгновенное, сеть в набор текста не вмешивается.
+ * Права проверяет сервер: чужая переписка сюда не попадает даже теоретически.
+ * Поиск по смыслу и по содержимому файлов — следующие шаги этапа.
  */
 
 type Item = {
@@ -26,11 +27,10 @@ type Item = {
   run: () => void;
 };
 
-type Loaded = {
-  projects: { id: string; name: string; status?: string }[];
-  chats: { id: string; title?: string; kind?: string }[];
-  tasks: { id: string; title: string; project_id: string; project_name?: string }[];
-};
+/** Задержка перед запросом: столько человек набирает следующую букву. */
+const DEBOUNCE_MS = 160;
+const RECENT_KEY = 'teamcrm.recent';
+const RECENT_MAX = 5;
 
 const SECTIONS: { title: string; icon: IconName; route: Route; roles?: string[] }[] = [
   { title: 'Фокус дня', icon: 'target', route: { section: 'focus' } },
@@ -44,6 +44,36 @@ const SECTIONS: { title: string; icon: IconName; route: Route; roles?: string[] 
   { title: 'Личный кабинет', icon: 'user', route: { section: 'profile' } },
 ];
 
+type Recent = { title: string; path: string; icon: IconName };
+
+/** Куда человек ходил в последний раз: при пустой строке это полезнее пустоты. */
+export function rememberVisit(entry: Recent) {
+  try {
+    const list: Recent[] = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
+    const next = [entry, ...list.filter((r) => r.path !== entry.path)].slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch { /* переполненное хранилище — не повод ломать переход */ }
+}
+
+function readRecent(): Recent[] {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'); } catch { return []; }
+}
+
+/** Подсветка совпадения: человек должен видеть, за что зацепился поиск. */
+function highlight(text: string, query: string): ReactNode {
+  const q = norm(query);
+  if (!q) return text;
+  const at = norm(text).indexOf(q);
+  if (at < 0) return text;
+  return (
+    <>
+      {text.slice(0, at)}
+      <mark className="palette-mark">{text.slice(at, at + q.length)}</mark>
+      {text.slice(at + q.length)}
+    </>
+  );
+}
+
 export function CommandPalette({ role, onClose, onCreate }: {
   role: string;
   onClose: () => void;
@@ -52,107 +82,170 @@ export function CommandPalette({ role, onClose, onCreate }: {
 }) {
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
-  const [data, setData] = useState<Loaded>({ projects: [], chats: [], tasks: [] });
+  const [local, setLocal] = useState<{ projects: any[]; chats: any[] }>({ projects: [], chats: [] });
+  const [remote, setRemote] = useState<SearchResults | null>(null);
+  const [searching, setSearching] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Окно открылось сразу, содержимое подтягивается следом — ждать сеть, чтобы
     // показать поле ввода, значит потерять всю скорость.
     let alive = true;
-    Promise.allSettled([api.listProjects(true), api.listChats(), api.myTasks('mine')]).then((r) => {
+    Promise.allSettled([api.listProjects(true), api.listChats()]).then((r) => {
       if (!alive) return;
-      setData({
+      setLocal({
         projects: r[0].status === 'fulfilled' ? r[0].value : [],
         chats: r[1].status === 'fulfilled' ? r[1].value : [],
-        tasks: r[2].status === 'fulfilled' ? r[2].value : [],
       });
     });
     return () => { alive = false; };
   }, []);
 
-  const go = (to: Route) => { navigate(to); onClose(); };
+  // серверный поиск с задержкой; ответ на устаревший запрос выбрасываем
+  useEffect(() => {
+    const query = q.trim();
+    if (query.length < 2) { setRemote(null); setSearching(false); return; }
+    setSearching(true);
+    let alive = true;
+    const timer = setTimeout(() => {
+      api.search(query)
+        .then((res) => { if (alive) setRemote(res); })
+        .catch(() => { if (alive) setRemote(null); })
+        .finally(() => { if (alive) setSearching(false); });
+    }, DEBOUNCE_MS);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [q]);
+
+  const go = (to: Route, remember?: Recent) => {
+    if (remember) rememberVisit(remember);
+    navigate(to);
+    onClose();
+  };
 
   const items = useMemo<Item[]>(() => {
     const query = norm(q);
-    const all: (Item & { rank: number })[] = [];
-    const push = (item: Item, rank: number | null) => { if (rank !== null) all.push({ ...item, rank }); };
+    const seen = new Set<string>();
+    const out: Item[] = [];
+    const add = (item: Item) => { if (!seen.has(item.key)) { seen.add(item.key); out.push(item); } };
 
-    for (const s of SECTIONS) {
-      if (s.roles && !s.roles.includes(role)) continue;
-      push(
-        { key: `s:${s.title}`, group: 'Разделы', title: s.title, icon: s.icon, run: () => go(s.route) },
-        query ? score(s.title, query) : 0,
-      );
-    }
-    for (const p of data.projects) {
-      push(
-        {
-          key: `p:${p.id}`,
-          group: 'Проекты',
-          title: p.name,
-          hint: p.status === 'archived' ? 'в архиве' : undefined,
-          icon: 'board',
-          run: () => go({ section: 'projects', projectId: String(p.id) }),
-        },
-        query ? score(p.name, query) : 0,
-      );
-    }
-    for (const c of data.chats) {
-      const title = c.title ?? 'Чат';
-      push(
-        {
-          key: `c:${c.id}`,
-          group: 'Чаты',
-          title,
-          hint: c.kind === 'dm' ? 'личный' : undefined,
-          icon: 'chat',
-          run: () => go({ section: 'chat', chatId: String(c.id) }),
-        },
-        query ? score(title, query) : 0,
-      );
-    }
-    for (const t of data.tasks) {
-      push(
-        {
-          key: `t:${t.id}`,
-          group: 'Мои задачи',
-          title: t.title,
-          hint: t.project_name,
-          icon: 'check-circle',
-          run: () => go({ section: 'projects', projectId: String(t.project_id), taskId: String(t.id) }),
-        },
-        query ? score(t.title, query) : null, // без запроса список своих задач не вываливаем: он длинный
-      );
+    if (!query) {
+      for (const r of readRecent()) {
+        add({
+          key: `r:${r.path}`, group: 'Недавнее', title: r.title, icon: r.icon,
+          run: () => { navigate(r.path); onClose(); },
+        });
+      }
     }
 
-    all.sort((a, b) => a.rank - b.rank || a.title.localeCompare(b.title, 'ru'));
+    // разделы — локально и всегда
+    const sections = SECTIONS.filter((s) => !s.roles || s.roles.includes(role))
+      .map((s) => ({ s, rank: query ? score(s.title, query) : 0 }))
+      .filter((x) => x.rank !== null)
+      .sort((a, b) => (a.rank as number) - (b.rank as number));
+    for (const { s } of sections.slice(0, 6)) {
+      add({
+        key: `s:${s.title}`, group: 'Разделы', title: s.title, icon: s.icon,
+        run: () => go(s.route, { title: s.title, path: '', icon: s.icon }),
+      });
+    }
+
+    // проекты и чаты — сначала из уже загруженного (мгновенно), потом с сервера
+    const localProjects = local.projects
+      .map((p) => ({ p, rank: query ? score(p.name, query) : null }))
+      .filter((x) => x.rank !== null)
+      .sort((a, b) => (a.rank as number) - (b.rank as number));
+    for (const { p } of localProjects.slice(0, 6)) {
+      add({
+        key: `p:${p.id}`, group: 'Проекты', title: p.name,
+        hint: p.status === 'archived' ? 'в архиве' : undefined, icon: 'board',
+        run: () => go({ section: 'projects', projectId: String(p.id) },
+          { title: p.name, path: `/projects/${p.id}`, icon: 'board' }),
+      });
+    }
+    for (const p of remote?.projects ?? []) {
+      add({
+        key: `p:${p.id}`, group: 'Проекты', title: p.name,
+        hint: p.status === 'archived' ? 'в архиве' : undefined, icon: 'board',
+        run: () => go({ section: 'projects', projectId: String(p.id) },
+          { title: p.name, path: `/projects/${p.id}`, icon: 'board' }),
+      });
+    }
+
+    const localChats = local.chats
+      .map((c) => ({ c, rank: query ? score(c.title ?? 'Чат', query) : null }))
+      .filter((x) => x.rank !== null)
+      .sort((a, b) => (a.rank as number) - (b.rank as number));
+    for (const { c } of localChats.slice(0, 6)) {
+      add({
+        key: `c:${c.id}`, group: 'Чаты', title: c.title ?? 'Чат',
+        hint: c.kind === 'dm' ? 'личный' : undefined, icon: 'chat',
+        run: () => go({ section: 'chat', chatId: String(c.id) },
+          { title: c.title ?? 'Чат', path: `/chat/${c.id}`, icon: 'chat' }),
+      });
+    }
+    for (const c of remote?.chats ?? []) {
+      add({
+        key: `c:${c.id}`, group: 'Чаты', title: c.title ?? 'Чат',
+        hint: c.kind === 'dm' ? 'личный' : undefined, icon: 'chat',
+        run: () => go({ section: 'chat', chatId: String(c.id) },
+          { title: c.title ?? 'Чат', path: `/chat/${c.id}`, icon: 'chat' }),
+      });
+    }
+
+    for (const t of remote?.tasks ?? []) {
+      add({
+        key: `t:${t.id}`, group: 'Задачи', title: t.title,
+        hint: [t.project_name, t.closed ? 'завершена' : t.column_name].filter(Boolean).join(' · '),
+        icon: 'check-circle',
+        run: () => go({ section: 'projects', projectId: String(t.project_id), taskId: String(t.id) },
+          { title: t.title, path: `/projects/${t.project_id}/task/${t.id}`, icon: 'check-circle' }),
+      });
+    }
+
+    for (const m of remote?.messages ?? []) {
+      add({
+        key: `m:${m.id}`, group: 'Сообщения', title: m.body,
+        hint: [m.author_name, m.chat_title ?? 'личный чат'].filter(Boolean).join(' · '),
+        icon: 'chat',
+        run: () => go({ section: 'chat', chatId: String(m.chat_id) },
+          { title: m.chat_title ?? 'Чат', path: `/chat/${m.chat_id}`, icon: 'chat' }),
+      });
+    }
+
+    for (const p of remote?.people ?? []) {
+      add({
+        key: `u:${p.id}`, group: 'Люди', title: p.full_name,
+        hint: [p.position, p.email].filter(Boolean).join(' · '), icon: 'user',
+        run: () => go({ section: 'settings', tab: 'team' }),
+      });
+    }
+
+    for (const d of remote?.docs ?? []) {
+      add({
+        key: `d:${d.id}`, group: 'Регламенты', title: d.title, icon: 'book',
+        run: () => go({ section: 'settings', tab: 'knowledge' }),
+      });
+    }
 
     // Создание задачи — всегда последним: это запасной ход, когда ничего не нашлось.
-    const create: Item = {
+    add({
       key: 'act:create',
       group: 'Действия',
-      title: query ? `Создать задачу: «${q.trim()}»` : 'Создать задачу',
+      title: q.trim() ? `Создать задачу: «${q.trim()}»` : 'Создать задачу',
       hint: 'обычным языком, текстом или голосом',
       icon: 'zap',
       run: () => { onClose(); onCreate({ text: q.trim() || undefined }); },
-    };
+    });
 
-    // По группам, не больше шести в каждой: длинный список читать некогда, для того и палитра.
-    const byGroup = new Map<string, Item[]>();
-    for (const it of all) {
-      const arr = byGroup.get(it.group) ?? [];
-      if (arr.length < 6) arr.push(it);
-      byGroup.set(it.group, arr);
-    }
-    return [...[...byGroup.values()].flat(), create];
-  }, [q, data, role]); // eslint-disable-line react-hooks/exhaustive-deps
+    return out;
+  }, [q, local, remote, role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { setActive(0); }, [q]);
 
   // держим выбранную строку в поле зрения при листании с клавиатуры
   useEffect(() => {
     listRef.current?.querySelector('.palette-item.active')?.scrollIntoView({ block: 'nearest' });
-  }, [active]);
+  }, [active, items.length]);
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => (i + 1) % items.length); }
@@ -174,9 +267,10 @@ export function CommandPalette({ role, onClose, onCreate }: {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Найти раздел, проект, чат или задачу…"
+            placeholder="Найти задачу, проект, сообщение, человека…"
             aria-label="Поиск"
           />
+          {searching && <span className="palette-searching" aria-hidden="true" />}
           <button
             className="palette-mic"
             onClick={() => { onClose(); onCreate({ text: q.trim() || undefined, voice: true }); }}
@@ -200,7 +294,7 @@ export function CommandPalette({ role, onClose, onCreate }: {
                   onClick={it.run}
                 >
                   <Icon name={it.icon} size={16} />
-                  <span className="palette-title">{it.title}</span>
+                  <span className="palette-title">{highlight(it.title, q)}</span>
                   {it.hint && <span className="palette-hint">{it.hint}</span>}
                 </button>
               </div>
@@ -211,7 +305,7 @@ export function CommandPalette({ role, onClose, onCreate }: {
         <div className="palette-foot">
           <span>↑↓ — выбор</span>
           <span>Enter — открыть</span>
-          <span className="muted">Поиск по сообщениям и файлам появится позже</span>
+          <span className="muted">Поиск по смыслу и по содержимому файлов — следующий шаг</span>
         </div>
       </div>
     </div>

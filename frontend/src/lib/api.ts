@@ -1,4 +1,4 @@
-import type { AiAction, AuthResult, Board, Focus, Project, Task } from '../types';
+import type { AiAction, AuthResult, Board, Focus, Project, SearchResults, Task } from '../types';
 
 const ACCESS_KEY = 'teamcrm.access';
 const REFRESH_KEY = 'teamcrm.refresh';
@@ -188,6 +188,9 @@ export const api = {
       'GET', `/secretary/summary?tz=${new Date().getTimezoneOffset()}`,
     ),
   secretaryLog: (limit = 50) => request<AiAction[]>('GET', `/secretary/log?limit=${limit}`),
+
+  /** Поиск командной строки: одна ручка на все источники, права проверяет сервер. */
+  search: (q: string) => request<SearchResults>('GET', `/search?q=${encodeURIComponent(q)}`),
 
   /** Сводка «Пульса команды»: проекты, загрузка людей, узкие места, скорость. */
   radar: () => request<{
