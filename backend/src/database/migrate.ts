@@ -43,6 +43,18 @@ async function main() {
       }
       const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf8');
       const client = await pool.connect();
+      /**
+       * Сообщения самой миграции (RAISE NOTICE) выводим в лог деплоя.
+       *
+       * Раньше они пропадали: pg отдаёт их событием, которое никто не слушал. Из-за
+       * этого разовая правка данных отчитывалась «в никуда» — миграция 0042 честно
+       * посчитала, сколько имён файлов починила, и сказала это в пустоту. Теперь любая
+       * миграция может рассказать о результате, и он виден в логе выкатки.
+       */
+      const onNotice = (n: { message?: string }) => {
+        if (n.message) console.log(`  ${version}: ${n.message}`);
+      };
+      client.on('notice', onNotice);
       try {
         await client.query('BEGIN');
         await client.query(sql);
@@ -55,6 +67,9 @@ async function main() {
         console.error(`! failed ${version}:`, (err as Error).message);
         throw err;
       } finally {
+        // Соединение возвращается в пул и достанется следующей миграции — слушатель
+        // обязан уйти вместе с ней, иначе чужие сообщения подпишутся не тем номером.
+        client.removeListener('notice', onNotice);
         client.release();
       }
     }
