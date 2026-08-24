@@ -5,6 +5,7 @@ import { navigate, Route } from '../lib/router';
 import { norm, score } from '../lib/palette-match';
 import { Command, findCommands } from '../lib/commands';
 import { setThemeChoice } from '../lib/theme';
+import { useVoiceInput } from '../hooks/useVoiceInput';
 import type { SearchResults, SemanticHit } from '../types';
 
 /**
@@ -100,9 +101,11 @@ const HIT_LABEL: Record<string, string> = {
   gdoc: 'документ', regulation: 'регламент',
 };
 
-export function CommandPalette({ role, onClose, onCreate }: {
+export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
   role: string;
   onClose: () => void;
+  /** открыли кнопкой микрофона (мобильный экран) — сразу слушаем */
+  autoVoice?: boolean;
   /** Передаём то, что человек успел набрать: он уже сформулировал задачу — заново не спрашиваем. */
   onCreate: (opts: { text?: string; voice?: boolean }) => void;
 }) {
@@ -117,6 +120,13 @@ export function CommandPalette({ role, onClose, onCreate }: {
   // результат команды, показанный прямо в строке: «мои просроченные», «кто свободен» и т.п.
   const [inline, setInline] = useState<{ group: string; items: Item[] } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Распознанное дописываем в строку, а не заменяем ею: человек мог начать печатать,
+  // а договорить голосом.
+  const voice = useVoiceInput((text) => {
+    setQ((prev) => (prev.trim() ? `${prev.trim()} ${text}` : text));
+    inputRef.current?.focus();
+  });
 
   useEffect(() => {
     // Окно открылось сразу, содержимое подтягивается следом — ждать сеть, чтобы
@@ -146,6 +156,16 @@ export function CommandPalette({ role, onClose, onCreate }: {
     }, DEBOUNCE_MS);
     return () => { alive = false; clearTimeout(timer); };
   }, [q]);
+
+  // Автозапуск ровно один раз: в режиме разработки эффекты вызываются дважды,
+  // и без флага открывались бы два микрофонных потока подряд.
+  const voiceStarted = useRef(false);
+  useEffect(() => {
+    if (!autoVoice || voiceStarted.current) return;
+    voiceStarted.current = true;
+    voice.start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoVoice]);
 
   const go = (to: Route, remember?: Recent) => {
     if (remember) rememberVisit(remember);
@@ -479,6 +499,9 @@ export function CommandPalette({ role, onClose, onCreate }: {
   }, [active, items.length]);
 
   const onKey = (e: React.KeyboardEvent) => {
+    // Удержание пробела диктует, но только пока строка пуста: иначе человек не сможет
+    // поставить пробел между словами, а это дороже любого удобства.
+    if (e.key === ' ' && !q && !voice.recording) { e.preventDefault(); voice.start(); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => (i + 1) % items.length); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => (i - 1 + items.length) % items.length); }
     else if (e.key === 'Enter') { e.preventDefault(); items[active]?.run(); }
@@ -497,20 +520,31 @@ export function CommandPalette({ role, onClose, onCreate }: {
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            ref={inputRef}
             onKeyDown={onKey}
-            placeholder="Найти задачу, проект, сообщение, человека…"
+            onKeyUp={(e) => { if (e.key === ' ' && voice.recording) { e.preventDefault(); voice.stop(); } }}
+            placeholder={voice.recording ? 'Говорите…' : 'Найти задачу, проект, сообщение, человека…'}
             aria-label="Поиск"
           />
           {searching && <span className="palette-searching" aria-hidden="true" />}
           <button
-            className="palette-mic"
-            onClick={() => { onClose(); onCreate({ text: q.trim() || undefined, voice: true }); }}
-            title="Продиктовать голосом"
+            className={`palette-mic${voice.recording ? ' recording' : ''}`}
+            onClick={voice.toggle}
+            title={voice.recording ? 'Остановить и распознать' : 'Продиктовать (или удерживайте пробел при пустой строке)'}
+            aria-label="Голосовой ввод"
           >
-            <Icon name="mic" size={16} />
+            <Icon name={voice.recording ? 'stop' : 'mic'} size={16} />
           </button>
           <kbd className="nav-kbd">Esc</kbd>
         </div>
+
+        {(voice.recording || voice.transcribing || voice.error) && (
+          <div className={`palette-voice${voice.error ? ' error' : ''}`}>
+            {voice.recording && <><span className="voice-wave"><i /><i /><i /><i /></span> Слушаю — отпустите пробел или нажмите «стоп»</>}
+            {voice.transcribing && 'Распознаю речь…'}
+            {voice.error && voice.error}
+          </div>
+        )}
 
         {answer && (
           <div className="palette-answer">

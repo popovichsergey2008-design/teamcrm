@@ -1092,6 +1092,7 @@
 .focus-template:focus-visible, .focus-clear:focus-visible,
 .radar-row:focus-visible, .settings-card:focus-visible,
 .palette-item:focus-visible, .palette-mic:focus-visible, .palette-input:focus-visible,
+.voice-fab:focus-visible,
 .project-item:focus-visible, .menu-item:focus-visible,
 .add-column:focus-visible, .chat-ai-toggle:focus-visible, .chat-row:focus-visible,
 .col-btn:focus-visible, .dp-chip:focus-visible, .dp-nav:focus-visible, .dp-trigger:focus-visible,
@@ -1136,3 +1137,29 @@
   font-weight: 600; margin-bottom: 6px;
 }
 .palette-answer-src { margin-top: 8px; color: var(--text-mut); font-size: var(--fs-xs); }
+
+/* голос в командной строке: видно, что идёт запись, и слышно ли систему */
+.palette-mic.recording { background: var(--fill-danger); color: var(--on-fill); }
+.palette-voice {
+  display: flex; align-items: center; gap: 8px; padding: 8px var(--sp-4);
+  border-bottom: 1px solid var(--border); font-size: var(--fs-sm); color: var(--text-dim);
+}
+.palette-voice.error { color: var(--danger); }
+/* «живая волна»: четыре полоски, а не картинка — тем же цветом, что и текст */
+.voice-wave { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.voice-wave i { width: 3px; background: var(--accent); border-radius: 2px; animation: voice-bar .9s ease-in-out infinite; }
+.voice-wave i:nth-child(1) { height: 6px; animation-delay: 0s; }
+.voice-wave i:nth-child(2) { height: 12px; animation-delay: .15s; }
+.voice-wave i:nth-child(3) { height: 9px; animation-delay: .3s; }
+.voice-wave i:nth-child(4) { height: 14px; animation-delay: .45s; }
+@keyframes voice-bar { 0%, 100% { transform: scaleY(.4); } 50% { transform: scaleY(1); } }
+
+/* кнопка диктовки под большим пальцем — только на узком экране */
+.voice-fab { display: none; }
+@media (max-width: 1100px) {
+  .voice-fab {
+    display: grid; place-items: center; position: fixed; right: 16px; bottom: 16px; z-index: 60;
+    width: 52px; height: 52px; border-radius: 50%; cursor: pointer;
+    background: var(--accent-2); color: var(--on-accent); border: none; box-shadow: var(--shadow-lg);
+  }
+}

@@ -16,6 +16,7 @@ import { IncomingCallDialog, useIncomingCalls } from './components/IncomingCall'
 import { useChatNotifications } from './hooks/useChatNotifications';
 import { useNavCounters } from './hooks/useNavCounters';
 import { Sidebar } from './components/Sidebar';
+import { Icon } from './components/Icon';
 import { ProfilePanel } from './components/ProfilePanel';
 import { ClientsPanel } from './components/ClientsPanel';
 import { NlCommandModal } from './components/NlCommandModal';
@@ -66,7 +67,7 @@ export function App() {
   const [activeCalls, setActiveCalls] = useState<{ id: string; participants: { displayName: string }[] }[]>([]);
   // окно быстрой команды: null — закрыто; текст и голос приходят из командной строки
   const [nl, setNl] = useState<{ text?: string; voice?: boolean } | null>(null);
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState<{ voice?: boolean } | null>(null);
   const [secretaryOpen, setSecretaryOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // какие разделы уже открывали: только их держим смонтированными
@@ -133,7 +134,7 @@ export function App() {
 
   useShortcuts(!!user && user.role !== 'client', {
     newTask: () => setNl({}),
-    palette: () => setPaletteOpen(true),
+    palette: () => setPaletteOpen({}),
     help: () => setHelpOpen((v) => !v),
     toggleSidebar: () => window.dispatchEvent(new Event('teamcrm:toggle-sidebar')),
     go: (section) => navigate({ section }),
@@ -219,7 +220,7 @@ export function App() {
         onSwitchOrg={onSwitchOrg}
         onNewTask={() => setNl({})}
         onVoiceTask={() => setNl({ voice: true })}
-        onSearch={() => setPaletteOpen(true)}
+        onSearch={() => setPaletteOpen({})}
         onHoverSection={(section) => {
           if (section === 'focus') prefetchFocus();
           if (section === 'radar' && canManage) prefetchRadar();
@@ -300,10 +301,16 @@ export function App() {
           onDecline={decline}
         />
       )}
+      {/* Кнопка диктовки под большим пальцем: на телефоне до Ctrl+K не дотянуться */}
+      <button className="voice-fab" onClick={() => setPaletteOpen({ voice: true })} aria-label="Продиктовать">
+        <Icon name="mic" size={22} />
+      </button>
+
       {paletteOpen && (
         <CommandPalette
           role={user.role}
-          onClose={() => setPaletteOpen(false)}
+          autoVoice={paletteOpen.voice}
+          onClose={() => setPaletteOpen(null)}
           onCreate={(opts) => setNl(opts)}
         />
       )}
