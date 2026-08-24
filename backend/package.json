@@ -31,6 +31,8 @@
     "class-validator": "^0.14.1",
     "docx": "^9.7.1",
     "ioredis": "^5.4.1",
+    "jszip": "^3.10.1",
+    "pdf-parse": "^1.1.4",
     "pg": "^8.13.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",

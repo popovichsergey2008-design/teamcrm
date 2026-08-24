@@ -8,6 +8,7 @@ import { FilesService } from '../files/files.service';
 import { TaskCardRepository } from './taskcard.repository';
 import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 
 @Injectable()
 export class TaskCardService {
@@ -20,6 +21,7 @@ export class TaskCardService {
     private readonly mq: RabbitMQService,
     private readonly outbox: IntegrationOutboxService,
     private readonly notify: NotificationsService,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   private async task(tenantId: string, taskId: string): Promise<TaskRow> {
@@ -79,6 +81,8 @@ export class TaskCardService {
     this.realtime.emitScoped(tenantId, task.project_id, 'task.attachment_added', { taskId, fileId: f.id }, false);
     await this.notifyWatchers(tenantId, task, 'task_attachment', userId);
     await this.outbox.enqueue(tenantId, task.project_id, 'attachment.create', f.id, { taskId });
+    // содержимое файла — в корпоративную память: искать нужно по тексту договора, а не по имени
+    this.knowledge.enqueue(tenantId, 'file', String(f.id));
     return { id: (a as any)?.id, fileId: f.id, fileName: f.file_name, contentType: f.content_type, sizeBytes: Number(f.size_bytes) };
   }
   listAttachments(tenantId: string, taskId: string) {
@@ -88,6 +92,8 @@ export class TaskCardService {
     const a = await this.repo.getAttachment(tenantId, id);
     if (!a || a.task_id !== taskId) throw AppException.notFound('Attachment not found');
     await this.repo.deleteAttachment(tenantId, id);
+    // источник исчез — чанки обязаны уйти следом, иначе поиск будет находить удалённое
+    this.knowledge.enqueue(tenantId, 'file', String(a.file_id));
     return { deleted: true };
   }
 

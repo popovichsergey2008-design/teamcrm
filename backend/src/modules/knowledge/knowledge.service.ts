@@ -1,12 +1,14 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createHash } from 'crypto';
+import { extractText, MAX_FILE_BYTES } from './file-text';
 import { DbService } from '../../database/db.service';
 import { RabbitMQService, Q_EMBEDDINGS } from '../../messaging/rabbitmq.service';
 import { AiService } from '../ai/ai.service';
 import { maskPII } from '../ai/pii';
 import { KnowledgeRepository } from './knowledge.repository';
+import { FilesService } from '../files/files.service';
 
-export type SourceType = 'task' | 'comment' | 'regulation' | 'gdoc' | 'meeting';
+export type SourceType = 'task' | 'comment' | 'regulation' | 'gdoc' | 'meeting' | 'file';
 interface IndexMsg { tenantId: string; sourceType: SourceType; sourceId: string; }
 
 const CHUNK = 1200;
@@ -22,6 +24,7 @@ export class KnowledgeService implements OnModuleInit {
     private readonly repo: KnowledgeRepository,
     private readonly ai: AiService,
     private readonly mq: RabbitMQService,
+    private readonly files: FilesService,
   ) {
     this.model = process.env.OPENAI_API_KEY ? 'text-embedding-3-small' : 'mock-embed';
   }
@@ -98,10 +101,66 @@ export class KnowledgeService implements OnModuleInit {
       if (!r || !String(r.text ?? '').trim()) return null;
       return { text: [r.title, r.text].filter(Boolean).join('\n'), accessScope: r.project_id, title: r.title };
     }
+    if (msg.sourceType === 'file') {
+      // Индексируем только вложения задач: у них есть проект, а значит и область доступа.
+      // Аватарки и служебные файлы в корпоративную память не попадают.
+      const f = await this.db.one<any>(
+        `SELECT f.id, f.file_name, f.content_type, f.size_bytes, t.project_id, t.title AS task_title
+           FROM files f
+           JOIN task_attachments a ON a.file_id = f.id
+           JOIN tasks t ON t.id = a.task_id
+          WHERE f.tenant_id = $1 AND f.id = $2
+          LIMIT 1`,
+        [msg.tenantId, msg.sourceId],
+      );
+      if (!f) return null; // файл удалён или отвязан от задачи — чанки уйдут следом
+      if (Number(f.size_bytes) > MAX_FILE_BYTES) {
+        this.log.warn(`файл ${f.file_name} не индексирован: ${Math.round(Number(f.size_bytes) / 1048576)} МБ больше лимита`);
+        return null;
+      }
+      const buf = await this.download(msg.tenantId, String(f.id));
+      if (!buf) return null;
+      const extracted = await extractText(buf, f.file_name, f.content_type);
+      if (!extracted) {
+        // Ни ошибки, ни тишины: человек должен понимать, почему скан не находится поиском.
+        this.log.log(`из файла ${f.file_name} текст не извлечён (формат не поддержан или это скан)`);
+        return null;
+      }
+      return {
+        text: `Файл: ${f.file_name} (задача: ${f.task_title})
+${extracted.text}`,
+        accessScope: f.project_id,
+        title: f.file_name,
+      };
+    }
+
     // regulation
     const r = await this.db.one<any>(`SELECT title, body FROM regulations WHERE tenant_id=$1 AND id=$2`, [msg.tenantId, msg.sourceId]);
     if (!r) return null;
     return { text: [r.title, r.body].filter(Boolean).join('\n'), accessScope: null, title: r.title };
+  }
+
+  /**
+   * Скачать вложение целиком в память.
+   *
+   * Читаем потоком с ограничением: размер в базе может врать (файл подменили в хранилище),
+   * а разбор гигантского документа заблокировал бы очередь эмбеддингов.
+   */
+  private async download(tenantId: string, fileId: string): Promise<Buffer | null> {
+    try {
+      const { stream } = await this.files.getForDownload(tenantId, fileId);
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of stream) {
+        size += (chunk as Buffer).length;
+        if (size > MAX_FILE_BYTES) return null;
+        chunks.push(chunk as Buffer);
+      }
+      return Buffer.concat(chunks);
+    } catch (e) {
+      this.log.warn(`не удалось прочитать файл ${fileId}: ${e instanceof Error ? e.message : e}`);
+      return null;
+    }
   }
 
   /** Идемпотентная индексация источника: маскирование PII → чанкинг → эмбеддинги → замена чанков. */
@@ -157,6 +216,11 @@ export class KnowledgeService implements OnModuleInit {
     let queued = 0;
     const tasks = await this.db.many<{ id: string }>(`SELECT id FROM tasks WHERE tenant_id=$1`, [tenantId]);
     for (const t of tasks) { this.enqueue(tenantId, 'task', t.id); queued++; }
+    const files = await this.db.many<{ id: string }>(
+      `SELECT DISTINCT f.id FROM files f JOIN task_attachments a ON a.file_id = f.id WHERE f.tenant_id=$1`,
+      [tenantId],
+    );
+    for (const f of files) { this.enqueue(tenantId, 'file', f.id); queued++; }
     const comments = await this.db.many<{ id: string }>(`SELECT id FROM task_comments WHERE tenant_id=$1`, [tenantId]);
     for (const c of comments) { this.enqueue(tenantId, 'comment', c.id); queued++; }
     const regs = await this.db.many<{ id: string }>(`SELECT id FROM regulations WHERE tenant_id=$1`, [tenantId]);

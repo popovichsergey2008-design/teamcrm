@@ -83,6 +83,34 @@ describe('Knowledge base (e2e)', () => {
     expect(hits.find((h: any) => /альфа/.test(h.title)).projectName).toBe('Проект Альфа');
   });
 
+  it('содержимое вложенного файла попадает в поиск, а не только его имя', async () => {
+    const a = (await http.post('/api/auth/register').send({ tenantName: 'KB-File', email: `f_${uniq()}@t.test`, password: 'password123', fullName: 'Фёдор' }).expect(201)).body.data;
+    const tok = a.accessToken;
+    const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Документы' }).expect(201)).body.data;
+    const task = (await http.post('/api/tasks').set(H(tok)).send({ projectId: proj.id, title: 'Подписать бумаги' }).expect(201)).body.data;
+
+    // Слово есть ТОЛЬКО внутри файла: если поиск его найдёт, значит прочитано содержимое,
+    // а не имя вложения.
+    const secret = `гарантийныйсрок${uniq()}`;
+    await http.post(`/api/tasks/${task.id}/attachments`).set(H(tok))
+      .attach('file', Buffer.from(`Условия поставки. ${secret} составляет 24 месяца.`, 'utf8'),
+        { filename: 'условия.txt', contentType: 'text/plain' })
+      .expect(201);
+
+    expect(await waitChunks(tok, 1, true)).toBeGreaterThanOrEqual(1);
+
+    let found: any[] = [];
+    for (let i = 0; i < 20; i++) {
+      found = (await http.get(`/api/knowledge/search?q=${encodeURIComponent(secret)}`).set(H(tok)).expect(200)).body.data;
+      if (found.some((h: any) => h.sourceType === 'file')) break;
+      await sleep(300);
+    }
+    const hit = found.find((h: any) => h.sourceType === 'file');
+    expect(hit).toBeTruthy();
+    expect(hit.title).toBe('условия.txt');
+    expect(hit.snippet).toContain(secret);
+  });
+
   it('закрытая задача попадает в базу знаний (триггер закрытия)', async () => {
     const reg = (await http.post('/api/auth/register').send({ tenantName: 'KB-T', email: `t_${uniq()}@t.test`, password: 'password123', fullName: 'Т' }).expect(201)).body.data;
     const tok = reg.accessToken;
