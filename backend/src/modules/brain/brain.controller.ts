@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Res } from '@nestjs/common';
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
@@ -12,12 +12,26 @@ class AskDto {
   @IsOptional() @IsString() projectId?: string;
 }
 
+class AnswerDto {
+  @IsString() @MaxLength(500) question!: string;
+  @IsOptional() @IsString() projectId?: string;
+}
+
 @ApiTags('brain')
 @ApiBearerAuth()
 @Controller('brain')
 @Roles('owner', 'manager', 'member') // корпоративный разум — внутренний, client не имеет доступа
 export class BrainController {
   constructor(private readonly brain: BrainService) {}
+
+  /**
+   * Разовый вопрос без диалога — для командной строки.
+   * Тот же конвейер и те же кэши, что у обычного ответа: расхождений быть не должно.
+   */
+  @Post('answer')
+  answer(@CurrentUser() u: AuthUser, @Body() dto: AnswerDto) {
+    return this.brain.answer(u.tenantId, u.userId, dto.question, dto.projectId || undefined);
+  }
 
   @Post('conversations')
   start(@CurrentUser() u: AuthUser) {

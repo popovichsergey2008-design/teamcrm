@@ -103,6 +103,32 @@ describe('AI Brain (e2e)', () => {
     expect(msgs[1].content.length).toBeGreaterThan(0);
   });
 
+  it('разовый вопрос из командной строки отвечает и НЕ заводит диалог', async () => {
+    const a = (await http.post('/api/auth/register').send({ tenantName: 'Brain-OneShot', email: `os_${uniq()}@t.test`, password: 'password123', fullName: 'Оля' }).expect(201)).body.data;
+    const tok = a.accessToken;
+    await http.post('/api/regulations').set(H(tok)).send({
+      title: 'Гарантия для оптовиков',
+      body: 'Гарантия на оптовые поставки — 24 месяца при монтаже сертифицированным мастером.',
+    }).expect(201);
+    expect(await waitChunks(tok)).toBe(true);
+
+    const res = (await http.post('/api/brain/answer').set(H(tok))
+      .send({ question: 'какая гарантия у оптовиков?' }).expect(201)).body.data;
+    expect(typeof res.answer).toBe('string');
+    expect(res.answer.length).toBeGreaterThan(0);
+    expect(res.citations.length).toBeGreaterThanOrEqual(1);
+
+    // Главное: палитра не засоряет список диалогов «Спросить ИИ» —
+    // человек задал вопрос мимоходом, а не начал переписку с системой.
+    const conversations = (await http.get('/api/brain/conversations').set(H(tok)).expect(200)).body.data;
+    expect(conversations).toEqual([]);
+
+    // повтор того же вопроса приходит из кэша — общего с обычным ответом
+    const again = (await http.post('/api/brain/answer').set(H(tok))
+      .send({ question: 'какая гарантия у оптовиков?' }).expect(201)).body.data;
+    expect(again.cached).toBe(true);
+  });
+
   it('чужой диалог недоступен (изоляция по пользователю/tenant)', async () => {
     const a = (await http.post('/api/auth/register').send({ tenantName: 'Brain-Own', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'A' }).expect(201)).body.data;
     const conv = (await http.post('/api/brain/conversations').set(H(a.accessToken)).expect(201)).body.data;

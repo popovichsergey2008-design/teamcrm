@@ -139,3 +139,14 @@ export interface SearchResults {
   people: { id: string; full_name: string; email: string; role_code: string; position: string | null }[];
   docs: { id: string; title: string; source: string }[];
 }
+
+/** Находка смыслового поиска: кусок текста из архива и то, откуда он взят. */
+export interface SemanticHit {
+  sourceType: string;
+  sourceId: string;
+  title: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  snippet: string;
+  score: number;
+}

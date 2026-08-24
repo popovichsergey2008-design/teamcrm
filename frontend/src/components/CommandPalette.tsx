@@ -3,7 +3,7 @@ import { Icon, IconName } from './Icon';
 import { api } from '../lib/api';
 import { navigate, Route } from '../lib/router';
 import { norm, score } from '../lib/palette-match';
-import type { SearchResults } from '../types';
+import type { SearchResults, SemanticHit } from '../types';
 
 /**
  * Командная строка (Ctrl+K).
@@ -15,7 +15,10 @@ import type { SearchResults } from '../types';
  *      чтобы не слать запрос на каждую букву, и дополняет список, не перетряхивая его.
  *
  * Права проверяет сервер: чужая переписка сюда не попадает даже теоретически.
- * Поиск по смыслу и по содержимому файлов — следующие шаги этапа.
+ *
+ * Третий слой — по смыслу — включается ЯВНЫМ действием, а не на каждую букву: он тратит
+ * запрос к модели, и молча жечь деньги клиента на каждое нажатие нельзя. Поиск по
+ * содержимому файлов — следующий шаг этапа.
  */
 
 type Item = {
@@ -74,6 +77,27 @@ function highlight(text: string, query: string): ReactNode {
   );
 }
 
+/**
+ * Куда ведёт находка из архива. У комментария известен только его собственный id и
+ * название задачи — точной ссылки на него нет, поэтому открываем проект и честно
+ * подписываем, что это комментарий, а не делаем вид, что ведём в нужное место.
+ */
+function hitRoute(h: SemanticHit): Route {
+  if (h.sourceType === 'task') {
+    return h.projectId
+      ? { section: 'projects', projectId: String(h.projectId), taskId: String(h.sourceId) }
+      : { section: 'projects' };
+  }
+  if (h.sourceType === 'meeting') return { section: 'chat', view: 'meetings' };
+  if (h.projectId) return { section: 'projects', projectId: String(h.projectId) };
+  return { section: 'settings', tab: 'knowledge' };
+}
+
+const HIT_LABEL: Record<string, string> = {
+  task: 'задача', comment: 'комментарий', meeting: 'встреча',
+  gdoc: 'документ', regulation: 'регламент',
+};
+
 export function CommandPalette({ role, onClose, onCreate }: {
   role: string;
   onClose: () => void;
@@ -85,6 +109,9 @@ export function CommandPalette({ role, onClose, onCreate }: {
   const [local, setLocal] = useState<{ projects: any[]; chats: any[] }>({ projects: [], chats: [] });
   const [remote, setRemote] = useState<SearchResults | null>(null);
   const [searching, setSearching] = useState(false);
+  const [semantic, setSemantic] = useState<SemanticHit[] | null>(null);
+  const [answer, setAnswer] = useState<{ text: string; sources: string[] } | null>(null);
+  const [thinking, setThinking] = useState<'search' | 'answer' | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -120,6 +147,22 @@ export function CommandPalette({ role, onClose, onCreate }: {
     if (remember) rememberVisit(remember);
     navigate(to);
     onClose();
+  };
+
+  const askSemantic = async () => {
+    setThinking('search');
+    try { setSemantic(await api.semanticSearch(q.trim())); }
+    catch { setSemantic([]); }
+    finally { setThinking(null); }
+  };
+
+  const askAi = async () => {
+    setThinking('answer');
+    try {
+      const r = await api.brainAnswer(q.trim());
+      setAnswer({ text: r.answer, sources: r.citations.map((c) => c.title).filter(Boolean) as string[] });
+    } catch { setAnswer({ text: 'Не удалось получить ответ. Проверьте ключ модели в настройках ИИ.', sources: [] }); }
+    finally { setThinking(null); }
   };
 
   const items = useMemo<Item[]>(() => {
@@ -227,6 +270,42 @@ export function CommandPalette({ role, onClose, onCreate }: {
       });
     }
 
+    // Третий слой — по смыслу. Сначала это ПРЕДЛОЖЕНИЕ (запрос к модели стоит денег),
+    // после запуска — сами находки из архива.
+    if (query.length >= 3) {
+      if (semantic === null) {
+        add({
+          key: 'act:semantic', group: 'По смыслу',
+          title: thinking === 'search' ? 'Ищу по смыслу…' : `Искать по смыслу: «${q.trim()}»`,
+          hint: 'по архиву задач, встреч и документов', icon: 'sparkles',
+          run: () => { if (!thinking) askSemantic(); },
+        });
+      } else if (semantic.length === 0) {
+        add({
+          key: 'act:semantic-empty', group: 'По смыслу', title: 'В архиве ничего похожего',
+          hint: 'возможно, знания ещё не проиндексированы', icon: 'sparkles', run: () => undefined,
+        });
+      } else {
+        for (const h of semantic) {
+          add({
+            key: `sem:${h.sourceType}:${h.sourceId}`, group: 'По смыслу',
+            title: h.snippet.slice(0, 140),
+            hint: [HIT_LABEL[h.sourceType] ?? h.sourceType, h.title, h.projectName].filter(Boolean).join(' · '),
+            icon: 'sparkles',
+            run: () => go(hitRoute(h)),
+          });
+        }
+      }
+      if (!answer) {
+        add({
+          key: 'act:ai', group: 'По смыслу',
+          title: thinking === 'answer' ? 'Собираю ответ…' : 'Спросить ИИ',
+          hint: 'ответ по архиву компании со ссылками на источники', icon: 'robot',
+          run: () => { if (!thinking) askAi(); },
+        });
+      }
+    }
+
     // Создание задачи — всегда последним: это запасной ход, когда ничего не нашлось.
     add({
       key: 'act:create',
@@ -238,9 +317,16 @@ export function CommandPalette({ role, onClose, onCreate }: {
     });
 
     return out;
-  }, [q, local, remote, role]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, local, remote, role, semantic, answer, thinking]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { setActive(0); }, [q]);
+  useEffect(() => {
+    setActive(0);
+    // Смысловой слой относится к конкретной формулировке: при правке строки его
+    // результаты устаревают, и оставлять их под новым запросом — обман.
+    setSemantic(null);
+    setAnswer(null);
+  }, [q]);
+
 
   // держим выбранную строку в поле зрения при листании с клавиатуры
   useEffect(() => {
@@ -281,6 +367,16 @@ export function CommandPalette({ role, onClose, onCreate }: {
           <kbd className="nav-kbd">Esc</kbd>
         </div>
 
+        {answer && (
+          <div className="palette-answer">
+            <div className="palette-answer-head"><Icon name="robot" size={15} /> Ответ по архиву компании</div>
+            <div>{answer.text}</div>
+            {answer.sources.length > 0 && (
+              <div className="palette-answer-src">Источники: {answer.sources.join(' · ')}</div>
+            )}
+          </div>
+        )}
+
         <div className="palette-list" ref={listRef}>
           {items.map((it, i) => {
             const head = it.group !== lastGroup ? it.group : null;
@@ -305,7 +401,7 @@ export function CommandPalette({ role, onClose, onCreate }: {
         <div className="palette-foot">
           <span>↑↓ — выбор</span>
           <span>Enter — открыть</span>
-          <span className="muted">Поиск по смыслу и по содержимому файлов — следующий шаг</span>
+          <span className="muted">Поиск по содержимому файлов — следующий шаг</span>
         </div>
       </div>
     </div>

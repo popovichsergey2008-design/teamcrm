@@ -1124,3 +1124,15 @@
   animation: palette-pulse 1s ease-in-out infinite; flex-shrink: 0;
 }
 @keyframes palette-pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+/* ответ ИИ в командной строке: отделён от списка, источники подписаны */
+.palette-answer {
+  padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border);
+  background: var(--accent-soft); font-size: var(--fs-sm); line-height: 1.5;
+  max-height: 40vh; overflow-y: auto; white-space: pre-wrap;
+}
+.palette-answer-head {
+  display: flex; align-items: center; gap: 6px; color: var(--accent);
+  font-weight: 600; margin-bottom: 6px;
+}
+.palette-answer-src { margin-top: 8px; color: var(--text-mut); font-size: var(--fs-xs); }

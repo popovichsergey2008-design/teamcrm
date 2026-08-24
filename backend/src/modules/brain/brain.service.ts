@@ -52,6 +52,38 @@ export class BrainService {
     await this.repo.addMessage(conversationId, 'user', q, null);
     await this.repo.setTitle(conversationId, q);
 
+    const r = await this.resolve(tenantId, q, userId, projectId);
+    return this.finish(tenantId, conversationId, r.answer, r.citations, r.cache, r.versionId);
+  }
+
+  /**
+   * Разовый вопрос без диалога — для командной строки.
+   *
+   * Проходит через тот же resolve(), что и ответ в диалоге: кэши общие, версия промпта та же.
+   * Своя копия конвейера означала бы свой кэш и разные ответы на один вопрос в палитре
+   * и в разделе «Спросить ИИ» — а это первое, что заметит человек.
+   */
+  async answer(tenantId: string, userId: string, question: string, projectId?: string) {
+    const q = question.trim();
+    if (q.length < 2) throw AppException.validation('Слишком короткий вопрос');
+    const r = await this.resolve(tenantId, q, userId, projectId);
+    if (r.cache !== 'miss') await this.ai.recordUsage(tenantId, 'brain', 'cache', 0, 0, true, 0, r.versionId);
+    return { answer: r.answer, citations: r.citations, cached: r.cache !== 'miss' };
+  }
+
+  /**
+   * Ядро RAG: точный кэш → эмбеддинг → семантический кэш → поиск и LLM.
+   * Вынесено из ask(), чтобы диалог и разовый вопрос делили один конвейер и одни кэши.
+   *
+   * `userId` — ключ A/B-маршрутизации промпта: человек не должен получать то испытуемую
+   * версию, то действующую от вопроса к вопросу.
+   */
+  private async resolve(tenantId: string, q: string, userId: string, projectId?: string): Promise<{
+    answer: string;
+    citations: { sourceType: string; sourceId: string; title: string | null }[];
+    cache: 'exact' | 'semantic' | 'miss';
+    versionId: string | null;
+  }> {
     // PromptOps: действующая версия системного промпта (tenant-override > глобальный дефолт).
     // versionId включён в ключ кэша — смена версии сразу даёт свежий ответ.
     const prompt = await this.prompts.resolve(tenantId, 'brain.system', {}, userId);
@@ -63,7 +95,7 @@ export class BrainService {
     const scopeKey = projectId ? `p${projectId}` : 'all';
     const exactKey = `brain:ans:${tenantId}:${scopeKey}:v${versionKey}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
     const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null);
-    if (exact) return this.finish(tenantId, conversationId, exact.answer, exact.citations, 'exact', versionId);
+    if (exact) return { answer: exact.answer, citations: exact.citations, cache: 'exact', versionId };
 
     // 2) эмбеддинг вопроса — переиспользуется для семантического кэша И для поиска
     const vec = await this.ai.embed(tenantId, q, 'embedding');
@@ -74,7 +106,7 @@ export class BrainService {
       if (sem && sem.score >= SEMANTIC_THRESHOLD) {
         const citations = sem.citations ?? [];
         await this.redis.setJson(exactKey, { answer: sem.answer, citations }, ANSWER_TTL).catch(() => undefined);
-        return this.finish(tenantId, conversationId, sem.answer, citations, 'semantic', versionId);
+        return { answer: sem.answer, citations, cache: 'semantic', versionId };
       }
     }
 
@@ -103,7 +135,7 @@ export class BrainService {
     await this.redis.setJson(exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
     if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId).catch(() => undefined);
 
-    return this.finish(tenantId, conversationId, answer, citations, 'miss', versionId);
+    return { answer, citations, cache: 'miss' as const, versionId };
   }
 
   /**

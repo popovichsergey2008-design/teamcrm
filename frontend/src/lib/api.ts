@@ -1,4 +1,4 @@
-import type { AiAction, AuthResult, Board, Focus, Project, SearchResults, Task } from '../types';
+import type { AiAction, AuthResult, Board, Focus, Project, SearchResults, SemanticHit, Task } from '../types';
 
 const ACCESS_KEY = 'teamcrm.access';
 const REFRESH_KEY = 'teamcrm.refresh';
@@ -188,6 +188,20 @@ export const api = {
       'GET', `/secretary/summary?tz=${new Date().getTimezoneOffset()}`,
     ),
   secretaryLog: (limit = 50) => request<AiAction[]>('GET', `/secretary/log?limit=${limit}`),
+
+  /**
+   * Поиск по смыслу: эмбеддинг запроса + pgvector по архиву (задачи, комментарии,
+   * встречи, доки, регламенты). Стоит одного дешёвого запроса к модели, поэтому
+   * вызывается явным действием, а не на каждую букву.
+   */
+  semanticSearch: (q: string) =>
+    request<SemanticHit[]>('GET', `/knowledge/search?q=${encodeURIComponent(q)}&k=6`),
+
+  /** Разовый вопрос ИИ со ссылками на источники (тот же конвейер и кэш, что у «Спросить ИИ»). */
+  brainAnswer: (question: string) =>
+    request<{ answer: string; citations: { sourceType: string; sourceId: string; title: string | null }[]; cached: boolean }>(
+      'POST', '/brain/answer', { question },
+    ),
 
   /** Поиск командной строки: одна ручка на все источники, права проверяет сервер. */
   search: (q: string) => request<SearchResults>('GET', `/search?q=${encodeURIComponent(q)}`),
