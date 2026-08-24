@@ -1089,7 +1089,8 @@
 .nav-secretary:focus-visible, .nav-user:focus-visible, .nav-collapse:focus-visible,
 .nav-org-select:focus-visible, .nav-open-btn:focus-visible,
 .focus-card:focus-visible, .focus-more:focus-visible, .focus-chip:focus-visible,
-.focus-plan-btn:focus-visible, .approval-task:focus-visible,
+.focus-plan-btn:focus-visible, .approval-task:focus-visible, .call-starter-row:focus-visible,
+.call-starter-ai:focus-visible,
 .focus-template:focus-visible, .focus-clear:focus-visible,
 .radar-row:focus-visible, .settings-card:focus-visible,
 .palette-item:focus-visible, .palette-mic:focus-visible, .palette-input:focus-visible,
@@ -1212,3 +1213,33 @@
 .leftovers-meta { display: flex; gap: 4px; margin-top: 4px; }
 .leftovers-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .leftovers-foot { display: flex; gap: 6px; justify-content: flex-end; margin-top: var(--sp-3); border-top: 1px solid var(--border); padding-top: var(--sp-3); }
+
+/* ───── выбор участников созвона ───── */
+.call-starter { position: relative; display: inline-flex; }
+.call-starter-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; width: 280px;
+  background: var(--bg-elev); border: 1px solid var(--border-2); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: var(--sp-3); display: flex; flex-direction: column; gap: 8px;
+}
+.call-starter-head { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .07em; color: var(--text-mut); }
+.call-starter-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.call-starter-row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 6px;
+  border-radius: var(--radius-sm); cursor: pointer; font-size: var(--fs-sm);
+}
+.call-starter-row:hover { background: var(--bg-elev-2); }
+.call-starter-ai {
+  display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-dim);
+  border-top: 1px solid var(--border); padding-top: 8px; cursor: pointer;
+}
+.call-starter-go { width: 100%; }
+
+/* статус ИИ в шапке созвона: цвет точки говорит, слушают ли вас */
+.call-ai-status {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: 10px;
+  font-size: var(--fs-xs); color: var(--text-mut);
+}
+.call-ai-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-mut); }
+.call-ai-status.on { color: var(--ok); }
+.call-ai-status.on .call-ai-dot { background: var(--ok); animation: voice-bar 1.6s ease-in-out infinite; }
+.call-ai-what { font-size: var(--fs-xs); }

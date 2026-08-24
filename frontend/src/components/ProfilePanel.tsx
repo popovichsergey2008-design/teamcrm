@@ -7,6 +7,45 @@ import { DatePicker } from './DatePicker';
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts';
 
+
+/**
+ * Часовые пояса, которыми реально пользуется команда, плюс основные европейские.
+ * Полный список IANA — несколько сотен строк, и человек в нём ищет дольше, чем нужно;
+ * если чей-то пояс сюда не попал, он подставляется кнопкой «как на этом компьютере».
+ */
+const TIMEZONES: { id: string; label: string }[] = [
+  { id: 'Europe/Kaliningrad', label: 'Калининград (UTC+2)' },
+  { id: 'Europe/Moscow', label: 'Москва (UTC+3)' },
+  { id: 'Europe/Samara', label: 'Самара (UTC+4)' },
+  { id: 'Asia/Yekaterinburg', label: 'Екатеринбург (UTC+5)' },
+  { id: 'Asia/Omsk', label: 'Омск (UTC+6)' },
+  { id: 'Asia/Krasnoyarsk', label: 'Красноярск (UTC+7)' },
+  { id: 'Asia/Irkutsk', label: 'Иркутск (UTC+8)' },
+  { id: 'Asia/Yakutsk', label: 'Якутск (UTC+9)' },
+  { id: 'Asia/Vladivostok', label: 'Владивосток (UTC+10)' },
+  { id: 'Asia/Magadan', label: 'Магадан (UTC+11)' },
+  { id: 'Asia/Kamchatka', label: 'Камчатка (UTC+12)' },
+  { id: 'Europe/Minsk', label: 'Минск (UTC+3)' },
+  { id: 'Europe/Kyiv', label: 'Киев (UTC+2/+3)' },
+  { id: 'Asia/Almaty', label: 'Алматы (UTC+5)' },
+  { id: 'Asia/Tbilisi', label: 'Тбилиси (UTC+4)' },
+  { id: 'Asia/Yerevan', label: 'Ереван (UTC+4)' },
+  { id: 'Asia/Baku', label: 'Баку (UTC+4)' },
+  { id: 'Asia/Tashkent', label: 'Ташкент (UTC+5)' },
+  { id: 'Europe/Belgrade', label: 'Белград (UTC+1/+2)' },
+  { id: 'Europe/Berlin', label: 'Берлин (UTC+1/+2)' },
+  { id: 'Europe/Lisbon', label: 'Лиссабон (UTC+0/+1)' },
+  { id: 'Europe/London', label: 'Лондон (UTC+0/+1)' },
+  { id: 'Asia/Dubai', label: 'Дубай (UTC+4)' },
+  { id: 'Asia/Bangkok', label: 'Бангкок (UTC+7)' },
+  { id: 'UTC', label: 'UTC' },
+];
+
+/** Пояс из настроек компьютера — им заполняем поле по кнопке. */
+function browserTimezone(): string {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+}
+
 export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAvatar: (url: string | null) => void }) {
   const [tab, setTab] = useState<Tab>('profile');
   const [me, setMe] = useState<any>(null);
@@ -105,7 +144,31 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             <div className="field"><label>E-mail</label><input className="input" value={me.email} disabled /></div>
             <div className="field"><label>Должность</label><input className="input" value={me.positionName ?? '—'} disabled /></div>
             <div className="field"><label>Телефон</label><input className="input" value={me.phone ?? ''} onChange={(e) => setMe({ ...me, phone: e.target.value })} /></div>
-            <div className="field"><label>Таймзона</label><input className="input" value={me.timezone ?? ''} onChange={(e) => setMe({ ...me, timezone: e.target.value })} /></div>
+            <div className="field">
+              <label>Часовой пояс</label>
+              {/* Выбор из списка, а не свободный ввод: опечатка в «Europe/Moskow» тихо
+                  ломала бы сроки и напоминания, и человек не понял бы почему. */}
+              <select
+                className="input"
+                value={me.timezone ?? ''}
+                onChange={(e) => setMe({ ...me, timezone: e.target.value })}
+              >
+                <option value="">Не выбран</option>
+                {TIMEZONES.map((tz) => <option key={tz.id} value={tz.id}>{tz.label}</option>)}
+                {/* Пояс из профиля может отсутствовать в списке — не теряем его молча */}
+                {me.timezone && !TIMEZONES.some((t) => t.id === me.timezone) && (
+                  <option value={me.timezone}>{me.timezone}</option>
+                )}
+              </select>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ alignSelf: 'flex-start', marginTop: 4 }}
+                onClick={() => setMe({ ...me, timezone: browserTimezone() })}
+                title={`Определить по настройкам компьютера: ${browserTimezone()}`}
+              >
+                <Icon name="refresh" size={13} /> Как на этом компьютере
+              </button>
+            </div>
             <button className="btn btn-primary" style={{ width: '100%' }} onClick={saveProfile}>Сохранить</button>
 
             <div className="drawer-section">

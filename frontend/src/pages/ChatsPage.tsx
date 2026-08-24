@@ -7,6 +7,7 @@ import { useAuth } from '../state/auth';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonList } from '../components/Skeleton';
 import { GroupChatModal } from '../components/GroupChatModal';
+import { CallStarter } from '../components/CallStarter';
 import { GroupManageModal } from '../components/GroupManageModal';
 import type { User } from '../types';
 
@@ -38,7 +39,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 }) {
   // «Позвать ИИ» — решение на конкретный звонок, поэтому галочка живёт рядом с кнопкой,
   // а не в настройках: перед разговором видно, будет он записан или нет
-  const [withAi, setWithAi] = useState(false);
   const { user } = useAuth();
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatsLoaded, setChatsLoaded] = useState(false);
@@ -271,24 +271,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                 )}
               </span>
               <span className="chat-call">
-                <label className="chat-ai-toggle" title="ИИ войдёт в созвон, запишет его и предложит задачи по итогам">
-                  <input type="checkbox" checked={withAi} onChange={(e) => setWithAi(e.target.checked)} />
-                  <Icon name="robot" size={14} /> с ИИ
-                </label>
-                <button
-                  className="btn btn-sm"
-                  disabled={inCall}
-                  title={inCall ? 'Вы уже в созвоне' : 'Позвонить участникам чата'}
-                  onClick={() => onCall({
+                <CallStarter
+                  chatId={String(active.id)}
+                  kind={active.kind}
+                  peerId={active.peerId}
+                  disabled={!!inCall}
+                  onStart={({ memberIds, withAi: ai }) => onCall({
                     id: active.id,
                     title: active.title ?? 'Чат',
-                    memberIds: active.peerId ? [String(active.peerId)] : [],
+                    memberIds,
                     projectId: active.projectId,
-                    withAi,
+                    withAi: ai,
                   })}
-                >
-                  <Icon name="phone" size={15} /> Позвонить
-                </button>
+                />
               </span>
             </div>
 

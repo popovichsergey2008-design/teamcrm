@@ -68,7 +68,7 @@ const MENU: Item[] = [
   },
   {
     section: 'chat',
-    label: 'Командный чат',
+    label: 'Чаты & Миты',
     icon: 'chat',
     hint: 'Личные, групповые и проектные обсуждения, созвоны',
     subs: [

@@ -175,6 +175,15 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
           <span>
             <Icon name="phone" size={16} /> Созвон · <span className="dim">{STATE_LABEL[state]}</span>
             {peers.length > 0 && <span className="badge badge-muted" style={{ marginLeft: 8 }}>участников: {peers.length}</span>}
+            {/* Статус ИИ виден всегда и первым делом: человек должен понимать,
+                слушает его система или нет, не разглядывая кнопки внизу. */}
+            <span className={`call-ai-status${recording ? ' on' : ''}`} title={recording
+              ? 'Идёт запись: после созвона будут стенограмма, сводка и предложенные задачи'
+              : 'Запись выключена — стенограммы и задач по этому созвону не будет'}>
+              <span className="call-ai-dot" aria-hidden="true" />
+              AI: {recording ? 'активен' : aiInvited ? 'ждёт речи' : 'выключен'}
+              {recording && <span className="dim call-ai-what"> — транскрибирует и готовит задачи</span>}
+            </span>
           </span>
           <span className="call-head-actions">
             <button className="btn btn-ghost btn-sm" onClick={toggleFull} title={full ? 'Свернуть из полного экрана' : 'Развернуть на весь экран'}>
@@ -241,7 +250,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], onClose }: {
             onClick={() => client.current?.setRecording(!recording)}
             title={recording ? 'Остановить запись и получить стенограмму' : 'Записать созвон для стенограммы и задач'}
           >
-            <Icon name={recording ? 'stop' : 'record'} size={15} />{recording ? 'Остановить запись' : 'Записать'}
+            <Icon name={recording ? 'stop' : 'record'} size={15} />AI-запись: {recording ? 'вкл' : 'выкл'}
           </button>
           <button className="btn btn-sm call-leave" onClick={leave}>Выйти</button>
         </div>
