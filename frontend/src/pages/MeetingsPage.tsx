@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { EmptyState } from '../components/EmptyState';
+import { GuestMeetsPanel } from '../components/GuestMeetsPanel';
 import { Icon } from '../components/Icon';
 import { SkeletonList } from '../components/Skeleton';
 import { api, ApiError } from '../lib/api';
@@ -23,7 +24,7 @@ const stamp = (sec: number) => {
  * Встречи: загрузили запись → получили стенограмму, сводку и черновики задач.
  * Задачи создаются только по подтверждению — ИИ ничего не заводит молча.
  */
-export function MeetingsPage() {
+export function MeetingsPage({ onEnterGuestMeet }: { onEnterGuestMeet: (roomId: string) => void }) {
   const [list, setList] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -69,6 +70,10 @@ export function MeetingsPage() {
 
   return (
     <div className="mytasks">
+      {/* Гостевые встречи идут первыми: это то, что назначают на будущее,
+          тогда как разбор записей — работа с уже прошедшим. */}
+      <GuestMeetsPanel onEnter={onEnterGuestMeet} />
+
       <div className="drawer-section-title"><Icon name="record" size={16} /> Разбор встреч</div>
       <div className="dim" style={{ fontSize: 12, marginBottom: 10 }}>
         Загрузите запись встречи из Meet, Zoom или диктофона — получите стенограмму, сводку и предложенные задачи.

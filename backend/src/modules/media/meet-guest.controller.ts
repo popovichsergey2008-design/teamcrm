@@ -45,6 +45,13 @@ export class MeetGuestController {
     return this.guests.list(u.tenantId);
   }
 
+  /** Войти в комнату ранее выданной ссылки: гость ждёт именно её, а не «любой созвон». */
+  @Post('meet/guest-links/:id/open')
+  @Roles('owner', 'manager', 'member')
+  open(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.guests.open(u.tenantId, id);
+  }
+
   /** Отзыв действует немедленно: гость по этой ссылке вылетает из комнаты сейчас, а не потом. */
   @Delete('meet/guest-links/:id')
   @Roles('owner', 'manager', 'member')

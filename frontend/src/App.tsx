@@ -284,7 +284,9 @@ export function App() {
           </Pane>
         )}
         {/* Остальное открывают редко и ненадолго — держать это в памяти незачем */}
-        {route.section === 'chat' && route.view === 'meetings' && <MeetingsPage />}
+        {route.section === 'chat' && route.view === 'meetings' && (
+          <MeetingsPage onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
+        )}
         {route.section === 'radar' && canManage && <RadarPage />}
         {route.section === 'settings' && <SettingsPage route={route} role={user.role} />}
         {route.section === 'profile' && (

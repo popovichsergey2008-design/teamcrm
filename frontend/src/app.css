@@ -748,6 +748,29 @@
 .call-lobby-box h3 { margin: 0; color: var(--text); font-size: var(--fs-lg); }
 .call-lobby-box p { margin: 0; }
 
+/* Список гостевых встреч в разделе «Миты». */
+.guest-links { padding: 14px; margin-bottom: 14px; max-width: 720px; }
+.guest-links h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: var(--fs-lg); }
+.guest-links-new { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+.guest-links-new .input { flex: 1 1 240px; }
+.guest-links-fresh { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+/* Адрес показывается один раз — его должно быть видно целиком, а не «...» */
+.guest-links-url { word-break: break-all; font-size: 12px; opacity: .9; }
+.guest-links-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.guest-links-list li {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.guest-links-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.guest-links-who .dim { font-size: 12px; }
+.guest-links-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+
+@media (max-width: 720px) {
+  .guest-links-list li { flex-direction: column; align-items: stretch; }
+  .guest-links-actions { justify-content: stretch; }
+  .guest-links-actions .btn { flex: 1 1 auto; justify-content: center; }
+}
+
 /* Телефон: окно созвона занимает экран целиком — рамка и отступы съедают видео. */
 @media (max-width: 720px) {
   .call-overlay { padding: 0; }

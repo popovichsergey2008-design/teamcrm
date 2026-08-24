@@ -503,6 +503,10 @@ export const api = {
   createGuestLink: (b: { roomId?: string; projectId?: string; label?: string; ttlHours?: number }) =>
     request<{ id: string; roomId: string; url: string; expiresAt: string }>('POST', '/meet/guest-links', b),
   listGuestLinks: () => request<any[]>('GET', '/meet/guest-links'),
+  /** Войти в комнату ранее выданной ссылки — гость ждёт именно её. */
+  openGuestLink: (id: string) =>
+    request<{ roomId: string; projectId: string | null; label: string | null }>(
+      'POST', `/meet/guest-links/${id}/open`),
   revokeGuestLink: (id: string) =>
     request<{ id: string; roomId: string; kicked: number }>('DELETE', `/meet/guest-links/${id}`),
   /** Гостевые вызовы идут БЕЗ токена: у гостя нет учётной записи и быть не может. */

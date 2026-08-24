@@ -88,6 +88,9 @@ describe('Гостевой доступ в созвон (e2e)', () => {
     // отозванная ссылка пропадает из списка активных
     const listAfter = (await http$.get('/api/meet/guest-links').set(H(owner.accessToken)).expect(200)).body.data;
     expect(listAfter.some((l: any) => String(l.id) === String(link.id))).toBe(false);
+
+    // и войти в её комнату хозяин больше не может: встреча по отозванной ссылке не «полуживая»
+    await http$.post(`/api/meet/guest-links/${link.id}/open`).set(H(owner.accessToken)).expect(404);
   });
 
   it('чужую ссылку соседняя организация не отзывает, выдуманный токен ничего не открывает', async () => {
@@ -100,6 +103,9 @@ describe('Гостевой доступ в созвон (e2e)', () => {
     const foreignList = (await http$.get('/api/meet/guest-links').set(H(b.accessToken)).expect(200)).body.data;
     expect(foreignList).toEqual([]);
     await http$.delete(`/api/meet/guest-links/${link.id}`).set(H(b.accessToken)).expect(404);
+
+    // и войти в чужую комнату по номеру ссылки тоже нельзя
+    await http$.post(`/api/meet/guest-links/${link.id}/open`).set(H(b.accessToken)).expect(404);
 
     // ссылка соседа при этом продолжает работать
     const token = link.url.split('/meet/')[1];

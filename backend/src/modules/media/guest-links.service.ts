@@ -78,6 +78,20 @@ export class GuestLinksService {
   }
 
   /**
+   * Открыть комнату выданной ссылки — вход ХОЗЯИНА.
+   *
+   * Без этого сценарий «отправили ссылку вчера, встреча сегодня» не работал:
+   * ссылка оставалась годной, гость приходил и ждал, а сотруднику войти в ту же
+   * комнату было неоткуда — в интерфейсе есть только идущие созвоны.
+   */
+  async open(tenantId: string, id: string) {
+    const link = await this.repo.findActive(tenantId, id);
+    if (!link) throw AppException.notFound('Ссылка не найдена или больше не действует');
+    const room = await this.media.ensureRoom(tenantId, link.room_id, link.project_id);
+    return { roomId: room.id, projectId: room.projectId, label: link.label };
+  }
+
+  /**
    * Разбор ссылки без побочных действий — для экрана «вы приглашены».
    *
    * Поле называется `valid`, а не `ok`, намеренно: конвертом ответа служит

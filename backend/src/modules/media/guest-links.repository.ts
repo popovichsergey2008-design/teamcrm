@@ -56,6 +56,15 @@ export class GuestLinksRepository {
     );
   }
 
+  /** Действующая ссылка организации по номеру — для входа хозяина в ту же комнату. */
+  findActive(tenantId: string, id: string): Promise<GuestLinkRow | null> {
+    return this.db.one<GuestLinkRow>(
+      `SELECT * FROM meet_guest_links
+        WHERE tenant_id = $1 AND id = $2 AND revoked_at IS NULL AND expires_at > now()`,
+      [tenantId, id],
+    );
+  }
+
   list(tenantId: string) {
     return this.db.many<GuestLinkRow & { author: string | null }>(
       `SELECT l.id, l.room_id, l.project_id, l.label, l.expires_at, l.revoked_at,
