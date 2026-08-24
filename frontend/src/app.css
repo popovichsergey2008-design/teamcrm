@@ -1089,7 +1089,7 @@
 .nav-secretary:focus-visible, .nav-user:focus-visible, .nav-collapse:focus-visible,
 .nav-org-select:focus-visible, .nav-open-btn:focus-visible,
 .focus-card:focus-visible, .focus-more:focus-visible, .focus-chip:focus-visible,
-.focus-plan-btn:focus-visible,
+.focus-plan-btn:focus-visible, .approval-task:focus-visible,
 .focus-template:focus-visible, .focus-clear:focus-visible,
 .radar-row:focus-visible, .settings-card:focus-visible,
 .palette-item:focus-visible, .palette-mic:focus-visible, .palette-input:focus-visible,
@@ -1173,3 +1173,23 @@
 }
 .focus-plan-btn:hover { color: var(--text); border-color: var(--border-2); }
 .focus-plan-btn.active { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+
+/* ───── карточка согласования ─────
+   Отличается от карточки задачи намеренно: здесь не работа, а решение на минуту. */
+.approval-card {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--bg-elev); border: 1px solid var(--accent-line); border-radius: var(--radius);
+  border-left: 3px solid var(--accent); padding: 10px 12px;
+}
+.approval-head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-mut); }
+.approval-author { color: var(--text-dim); }
+.approval-subject { font-weight: 500; }
+.approval-details { font-size: var(--fs-sm); color: var(--text-dim); }
+.approval-task {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  background: none; border: none; padding: 0; font: inherit; font-size: var(--fs-xs); color: var(--accent);
+}
+.approval-note { font-size: var(--fs-sm); padding: 7px 10px; }
+.approval-actions { display: flex; gap: 6px; margin-top: 2px; }
+.approval-yes { background: var(--fill-ok); border-color: var(--fill-ok); color: var(--on-fill); }
+.approval-yes:hover:not(:disabled) { background: var(--ok); border-color: var(--ok); color: var(--on-ok); }

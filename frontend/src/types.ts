@@ -152,3 +152,20 @@ export interface SemanticHit {
   snippet: string;
   score: number;
 }
+
+/** Согласование: то, что ждёт ответа человека и не является задачей. */
+export interface Approval {
+  id: string;
+  kind: 'budget' | 'invoice' | 'vacation' | 'question' | 'other';
+  subject: string;
+  details: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  decision_note: string | null;
+  due_at: string | null;
+  created_at: string;
+  author_name: string | null;
+  approver_name: string | null;
+  task_id: string | null;
+  task_title: string | null;
+  project_id: string | null;
+}

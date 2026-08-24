@@ -1,4 +1,4 @@
-import type { AiAction, AuthResult, Board, Focus, Project, SearchResults, SemanticHit, Task } from '../types';
+import type { AiAction, Approval, AuthResult, Board, Focus, Project, SearchResults, SemanticHit, Task } from '../types';
 
 const ACCESS_KEY = 'teamcrm.access';
 const REFRESH_KEY = 'teamcrm.refresh';
@@ -518,6 +518,15 @@ export const api = {
   rejectMeetingDraft: (draftId: string) => request<any>('POST', `/meetings/drafts/${draftId}/reject`),
 
   /** Сквозные вкладки: мои задачи и порученные другим (по всем проектам). */
+  // согласования: вопросы, на которые нужен ответ «да» или «нет»
+  approvalsInbox: () => request<Approval[]>('GET', '/approvals'),
+  approvalsSent: (all = false) => request<Approval[]>('GET', `/approvals/sent${all ? '?all=1' : ''}`),
+  createApproval: (b: { approverId: string; subject: string; kind?: string; details?: string; taskId?: string }) =>
+    request<Approval>('POST', '/approvals', b),
+  decideApproval: (id: string, approve: boolean, note?: string) =>
+    request<Approval>('POST', `/approvals/${id}/decide`, { approve, note }),
+  cancelApproval: (id: string) => request<Approval>('POST', `/approvals/${id}/cancel`),
+
   /** План на день: дата ГГГГ-ММ-ДД или null, чтобы снять. Дату считаем по часам человека. */
   setFocusDate: (taskId: string, date: string | null) =>
     request<Task>('PATCH', `/tasks/${taskId}/focus-date`, { date }),

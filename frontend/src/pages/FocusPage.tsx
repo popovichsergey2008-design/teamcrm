@@ -6,7 +6,8 @@ import { api, ApiError } from '../lib/api';
 import { cached, dropCache } from '../lib/cache';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import { useAuth } from '../state/auth';
-import type { Task } from '../types';
+import type { Approval, Task } from '../types';
+import { ApprovalCard } from '../components/ApprovalCard';
 
 /** Задача из сквозной выборки — с именем проекта и колонки (доска не одна). */
 type CrossTask = Task & { project_name: string; column_name: string };
@@ -104,6 +105,7 @@ export function prefetchFocus() {
   cached('focus:mine', () => api.myTasks('mine', true));
   cached('focus:delegated', () => api.myTasks('delegated'));
   cached('focus:review', () => api.myTasks('review'));
+  cached('focus:approvals', () => api.approvalsInbox());
 }
 
 export function FocusPage({ onOpenTask, active = true }: {
@@ -115,6 +117,7 @@ export function FocusPage({ onOpenTask, active = true }: {
   const [mine, setMine] = useState<CrossTask[]>([]);
   const [delegated, setDelegated] = useState<CrossTask[]>([]);
   const [review, setReview] = useState<CrossTask[]>([]);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [showRest, setShowRest] = useState(false);
@@ -124,12 +127,13 @@ export function FocusPage({ onOpenTask, active = true }: {
     if (fresh) dropCache('focus:');
     try {
       // closed=1 в своей выборке: закрытые сегодня нужны для полосы прогресса дня
-      const [m, d, r] = await Promise.all([
+      const [m, d, r, a] = await Promise.all([
         cached('focus:mine', () => api.myTasks('mine', true)),
         cached('focus:delegated', () => api.myTasks('delegated')),
         cached('focus:review', () => api.myTasks('review')),
+        cached('focus:approvals', () => api.approvalsInbox()),
       ]);
-      setMine(m); setDelegated(d); setReview(r);
+      setMine(m); setDelegated(d); setReview(r); setApprovals(a);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить задачи');
     } finally {
@@ -208,17 +212,35 @@ export function FocusPage({ onOpenTask, active = true }: {
         <section className="focus-col">
           <h3 className="focus-col-head">
             <Icon name="alert" size={15} /> Требует моего решения
-            {review.length > 0 && <span className="focus-col-count">{review.length}</span>}
+            {review.length + approvals.length > 0 && (
+              <span className="focus-col-count">{review.length + approvals.length}</span>
+            )}
           </h3>
           {loading && <SkeletonList rows={3} />}
-          {!loading && review.length === 0 && (
+          {!loading && review.length + approvals.length === 0 && (
             <EmptyState
               icon="check-circle"
               compact
               title="Ничего не ждёт вас"
-              hint="Сюда попадают задачи, которые сдали на проверку, а поручали их вы."
+              hint="Сюда попадают сданные на проверку задачи и вопросы, на которые нужен ваш ответ."
             />
           )}
+
+          {/* Согласования выше сданных работ: это чистое «да/нет» на минуту,
+              а проверка результата требует времени и внимания. */}
+          {approvals.map((a) => (
+            <ApprovalCard
+              key={a.id}
+              approval={a}
+              onOpenTask={onOpenTask}
+              onDecided={(id) => {
+                setApprovals((prev) => prev.filter((x) => x.id !== id));
+                dropCache('focus:');
+                // счётчик раздела считает согласования — он обязан обновиться сразу
+                window.dispatchEvent(new Event('teamcrm:tasks-changed'));
+              }}
+            />
+          ))}
           {review.map((t) => <FocusCard key={t.id} task={t} side="assignee" onOpen={() => openTask(t)} />)}
         </section>
 

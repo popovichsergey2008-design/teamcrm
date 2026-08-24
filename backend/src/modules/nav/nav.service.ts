@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { NavRepository } from './nav.repository';
+import { ApprovalsRepository } from '../approvals/approvals.repository';
 import { endOfLocalDay } from '../../common/time/local-day';
 
 export type NavCounters = {
@@ -19,13 +20,21 @@ export type NavCounters = {
  */
 @Injectable()
 export class NavService {
-  constructor(private readonly repo: NavRepository) {}
+  constructor(
+    private readonly repo: NavRepository,
+    private readonly approvals: ApprovalsRepository,
+  ) {}
 
   async counters(tenantId: string, userId: string, role: string, tzOffsetMin: number): Promise<NavCounters> {
     const withRisks = role === 'owner' || role === 'manager';
-    const row = await this.repo.counts(tenantId, userId, endOfLocalDay(tzOffsetMin), withRisks);
+    // «Требует решения» — это и сданные работы, и согласования: для человека
+    // это один и тот же вопрос «что ждёт лично меня», разделять его в бейдже незачем.
+    const [row, approvals] = await Promise.all([
+      this.repo.counts(tenantId, userId, endOfLocalDay(tzOffsetMin), withRisks),
+      this.approvals.pendingCount(tenantId, userId),
+    ]);
     return {
-      focus: { decide: row?.decide ?? 0, today: row?.today ?? 0 },
+      focus: { decide: (row?.decide ?? 0) + (approvals?.n ?? 0), today: row?.today ?? 0 },
       radar: withRisks ? { risks: row?.risks ?? 0 } : null,
     };
   }
