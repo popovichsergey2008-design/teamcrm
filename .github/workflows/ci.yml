@@ -119,11 +119,14 @@ jobs:
         # --delete держит дерево сервера равным репозиторию: без него удалённый в git файл
         # остаётся на проде навсегда. Удаление работает только внутри backend/, frontend/
         # и nginx/ — .env, observability/, backups/, scripts/ лежат уровнем выше и не
-        # затрагиваются, а certs/ (самоподписанный сертификат edge-nginx) защищён исключением.
+        # затрагиваются. Два каталога внутри nginx/ живут на сервере и в git их нет:
+        # certs/ (самоподписанный сертификат edge-nginx, без него nginx не стартует) и
+        # html/.well-known/ (webroot ACME — снести его значит убить автопродление
+        # сертификата teamsmrt.com). Оба защищены исключениями.
         run: |
           rsync -az --delete \
             --exclude node_modules --exclude dist --exclude coverage \
-            --exclude .git --exclude '.env' --exclude certs \
+            --exclude .git --exclude '.env' --exclude certs --exclude '.well-known' \
             -e "ssh -i ~/.ssh/deploy_key" \
             backend frontend infra/docker-compose.yml infra/nginx \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/teamcrm/"
