@@ -6,7 +6,7 @@ import { BoardPage } from './pages/BoardPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { JoinOrgPage } from './pages/JoinOrgPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { MyTasksPage } from './pages/MyTasksPage';
+import { FocusPage } from './pages/FocusPage';
 import { MeetingsPage } from './pages/MeetingsPage';
 import { RadarPage } from './pages/RadarPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -216,9 +216,7 @@ export function App() {
 
       <main className="app-main">
         {route.section === 'focus' && (
-          <MyTasksPage
-            onOpenProject={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
-          />
+          <FocusPage onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })} />
         )}
         {route.section === 'projects' && (
           <BoardPage

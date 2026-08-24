@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { REVIEW_COLUMN_NAMES } from './task-columns';
 
 export interface TaskRow {
   id: string;
@@ -47,12 +48,17 @@ export class TasksRepository {
   listForUser(
     tenantId: string,
     userId: string,
-    scope: 'mine' | 'delegated',
+    scope: 'mine' | 'delegated' | 'review',
     includeClosed: boolean,
   ): Promise<(TaskRow & { project_name: string; column_name: string; assignee_name: string | null; manager_name: string | null })[]> {
+    // review — то, что уже сдали и ждут от меня решения: я постановщик, работал кто-то
+    // другой, и задача стоит в колонке проверки. Именно это считает бейдж «Фокуса дня».
     const scopeSql = scope === 'mine'
       ? `t.assignee_id = $2`
-      : `t.created_by = $2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)`;
+      : scope === 'review'
+        ? `t.created_by = $2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
+           AND t.closed_at IS NULL AND lower(bc.name) = ANY($4::text[])`
+        : `t.created_by = $2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)`;
     return this.db.many(
       `SELECT t.*, p.name AS project_name, bc.name AS column_name,
               ua.full_name AS assignee_name, um.full_name AS manager_name
@@ -68,7 +74,9 @@ export class TasksRepository {
                  t.deadline_at IS NULL, t.deadline_at ASC,
                  CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
                  t.created_at DESC`,
-      [tenantId, userId, includeClosed],
+      scope === 'review'
+        ? [tenantId, userId, includeClosed, REVIEW_COLUMN_NAMES]
+        : [tenantId, userId, includeClosed],
     );
   }
 

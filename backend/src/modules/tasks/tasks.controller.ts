@@ -13,7 +13,8 @@ export class TasksController {
   constructor(private readonly tasks: TasksService) {}
 
   /**
-   * Мои задачи (scope=mine) и порученные другим (scope=delegated) по всем проектам.
+   * Мои задачи (scope=mine), порученные другим (scope=delegated) и сданные мне
+   * на проверку (scope=review) — сквозной срез по всем проектам.
    * ?closed=1 — показать и завершённые.
    */
   @Get('my')
@@ -21,7 +22,7 @@ export class TasksController {
     return this.tasks.listForUser(
       user.tenantId,
       user.userId,
-      scope === 'delegated' ? 'delegated' : 'mine',
+      scope === 'delegated' ? 'delegated' : scope === 'review' ? 'review' : 'mine',
       closed === '1' || closed === 'true',
     );
   }

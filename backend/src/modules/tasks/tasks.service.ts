@@ -23,7 +23,7 @@ export class TasksService {
   ) {}
 
   /** Вкладки «Мои задачи» / «Порученные»: задачи по всем проектам, а не по одной доске. */
-  listForUser(tenantId: string, userId: string, scope: 'mine' | 'delegated', includeClosed: boolean) {
+  listForUser(tenantId: string, userId: string, scope: 'mine' | 'delegated' | 'review', includeClosed: boolean) {
     return this.repo.listForUser(tenantId, userId, scope, includeClosed);
   }
 

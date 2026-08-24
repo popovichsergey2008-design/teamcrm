@@ -94,6 +94,11 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
     c = await counters(tok);
     expect(c.focus.decide).toBe(1);
 
+    // та же задача попадает в сквозную выборку «сдано мне на проверку» —
+    // из неё собирается первая колонка «Фокуса дня»
+    const onReview = (await http.get('/api/tasks/my?scope=review').set(H(tok)).expect(200)).body.data;
+    expect(onReview.map((t: any) => String(t.id))).toContain(String(delegated.id));
+
     // 5. Принял работу → счётчик падает сразу, без ожидания кэша
     await http.post(`/api/tasks/${delegated.id}/move`).set(H(tok))
       .send({ columnId: cols['Готово'], position: 0 }).expect(201);
@@ -104,5 +109,19 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
     const memCounters = await counters(memTok);
     expect(memCounters.radar).toBeNull();
     expect(memCounters.focus.decide).toBe(0);
+
+    // 7. «Пульс команды» считает по фактическим данным, а не по обещаниям
+    const radar = (await http.get('/api/radar?tz=0').set(H(tok)).expect(200)).body.data;
+    const health = radar.projects.find((p: any) => String(p.id) === String(proj.id));
+    expect(health.total).toBe(3);
+    expect(health.closed).toBe(1);          // принятая задача
+    expect(radar.velocity.last7).toBeGreaterThanOrEqual(1);
+    // в загрузке видны оба человека организации
+    expect(radar.people.length).toBe(2);
+    // ничего не залежалось: задачу только что двигали
+    expect(radar.stuck).toEqual([]);
+
+    // экран руководителя рядовому сотруднику закрыт
+    await http.get('/api/radar').set(H(memTok)).expect(403);
   });
 });

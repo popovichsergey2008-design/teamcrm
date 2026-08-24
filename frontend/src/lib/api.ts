@@ -189,6 +189,15 @@ export const api = {
     ),
   secretaryLog: (limit = 50) => request<AiAction[]>('GET', `/secretary/log?limit=${limit}`),
 
+  /** Сводка «Пульса команды»: проекты, загрузка людей, узкие места, скорость. */
+  radar: () => request<{
+    projects: { id: string; name: string; total: number; closed: number; overdue: number; next_deadline: string | null }[];
+    people: { user_id: string; full_name: string; open: number; overdue: number; due_today: number }[];
+    stuck: { id: string; project_id: string; title: string; project_name: string; column_name: string; updated_at: string; assignee_name: string | null }[];
+    stuckHours: number;
+    velocity: { last7: number; prev7: number };
+  }>('GET', `/radar?tz=${new Date().getTimezoneOffset()}`),
+
   /**
    * Счётчики бейджей левой панели одним запросом.
    * Часовой пояс отдаём свой: «сегодня» у человека и на сервере — разные дни.
@@ -490,7 +499,7 @@ export const api = {
   rejectMeetingDraft: (draftId: string) => request<any>('POST', `/meetings/drafts/${draftId}/reject`),
 
   /** Сквозные вкладки: мои задачи и порученные другим (по всем проектам). */
-  myTasks: (scope: 'mine' | 'delegated', closed = false) =>
+  myTasks: (scope: 'mine' | 'delegated' | 'review', closed = false) =>
     request<any[]>('GET', `/tasks/my?scope=${scope}${closed ? '&closed=1' : ''}`),
   // архив проектов
   archiveProject: (id: string) => request<{ archived: boolean }>('POST', `/projects/${id}/archive`),

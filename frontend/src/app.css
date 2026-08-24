@@ -536,8 +536,6 @@
 .mytasks::-webkit-scrollbar-thumb:hover { background: var(--text-mut); background-clip: content-box; }
 /* внутренний список не скроллим отдельно — иначе на странице две полосы прокрутки */
 .mytasks .task-list { flex: none; overflow: visible; padding-right: 0; }
-.mytasks-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; flex-wrap: wrap; }
-.list-row.row-done .list-title { opacity: .6; text-decoration: line-through; }
 
 /* «Завершить задачу»: заметное зелёное действие + выбор целевой колонки */
 /* строка главного действия карточки — под заголовком, а не сбоку от него */
@@ -1002,3 +1000,70 @@
 .secretary-icon { color: var(--accent); padding-top: 2px; }
 .secretary-body { min-width: 0; }
 .secretary-meta { font-size: var(--fs-xs); color: var(--text-mut); margin-top: 2px; }
+
+/* ───── Фокус дня ───── */
+.focus-page { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: var(--sp-4) var(--sp-5); overflow: hidden; }
+.focus-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-4); }
+.focus-hello { font-size: var(--fs-lg); font-weight: 700; }
+.focus-progress-box { min-width: 220px; }
+.focus-progress-line { display: flex; justify-content: space-between; font-size: var(--fs-sm); margin-bottom: 4px; }
+.focus-progress { height: 6px; border-radius: 999px; background: var(--bg-elev-2); overflow: hidden; }
+.focus-progress span { display: block; height: 100%; background: var(--ok); transition: width .3s; }
+
+.focus-columns { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-4); }
+.focus-col { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.focus-col-head {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: var(--fs-sm);
+  text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); font-weight: 600;
+  position: sticky; top: 0; background: var(--bg); padding: 2px 0 6px; z-index: 1;
+}
+.focus-col-count {
+  margin-left: auto; background: var(--bg-elev-2); color: var(--text-dim);
+  border-radius: 999px; padding: 0 7px; font-size: var(--fs-xs); letter-spacing: 0;
+}
+.focus-card {
+  display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; cursor: pointer;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; font: inherit; color: var(--text);
+}
+.focus-card:hover { border-color: var(--accent-line); }
+.focus-card-late { border-left: 3px solid var(--danger); }
+.focus-card-title { font-weight: 500; }
+.focus-card-meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.focus-check { font-size: var(--fs-xs); color: var(--text-mut); display: inline-flex; align-items: center; gap: 3px; }
+.focus-card-who { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-mut); }
+.focus-more {
+  background: none; border: 1px dashed var(--border-2); border-radius: var(--radius-sm);
+  color: var(--text-dim); cursor: pointer; font: inherit; font-size: var(--fs-sm); padding: 7px;
+}
+.focus-more:hover { color: var(--text); border-color: var(--text-mut); }
+@media (max-width: 1000px) {
+  .focus-columns { grid-template-columns: 1fr; overflow-y: auto; }
+  .focus-col { overflow: visible; }
+}
+
+/* ───── Пульс команды ───── */
+.radar-grid {
+  flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-4) var(--sp-5);
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--sp-4); align-content: start;
+}
+.radar-block { padding: var(--sp-4); display: flex; flex-direction: column; gap: 4px; }
+.radar-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: var(--fs-md); font-weight: 700; }
+.radar-note { font-size: var(--fs-xs); color: var(--text-mut); margin-bottom: 8px; }
+.radar-row {
+  display: flex; align-items: center; gap: var(--sp-3); width: 100%; text-align: left; cursor: pointer;
+  background: none; border: none; font: inherit; color: var(--text); padding: 8px 6px; border-radius: var(--radius-sm);
+}
+.radar-row:hover { background: var(--bg-elev-2); }
+.radar-row-static { cursor: default; }
+.radar-row-static:hover { background: none; }
+.radar-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.radar-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radar-row-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: var(--fs-sm); }
+.radar-bar { display: block; height: 5px; border-radius: 999px; background: var(--bg-elev-2); overflow: hidden; }
+.radar-bar span { display: block; height: 100%; background: var(--ok); }
+.radar-bar span.late { background: var(--warn); }
+.radar-velocity { display: flex; gap: var(--sp-5); padding-top: 4px; }
+.radar-big { font-size: 24px; font-weight: 700; }
+.radar-up { color: var(--ok); }
+.radar-down { color: var(--danger); }
