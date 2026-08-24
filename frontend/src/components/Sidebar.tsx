@@ -118,11 +118,17 @@ export function Sidebar({
   // Фокус и сводка ассистента живут ровно здесь: больше их никто не показывает.
   // Обе выборки дешёвые, поэтому обновляем их вместе со счётчиками разделов.
   useEffect(() => {
-    api.getFocus().then(setFocus).catch(() => undefined);
+    const loadFocus = () => api.getFocus().then(setFocus).catch(() => undefined);
     const loadSummary = () => api.secretarySummary().then(setSecretary).catch(() => undefined);
+    loadFocus();
     loadSummary();
+    // фокус можно поставить и из командной строки — строка под именем обязана это показать
+    window.addEventListener('teamcrm:focus-changed', loadFocus);
     window.addEventListener('teamcrm:tasks-changed', loadSummary);
-    return () => window.removeEventListener('teamcrm:tasks-changed', loadSummary);
+    return () => {
+      window.removeEventListener('teamcrm:focus-changed', loadFocus);
+      window.removeEventListener('teamcrm:tasks-changed', loadSummary);
+    };
   }, []);
 
   const toggleCollapsed = () => {

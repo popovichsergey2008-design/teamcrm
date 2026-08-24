@@ -64,18 +64,24 @@ export function FocusMenu({ focus, onChange }: {
   const set = async (kind: Focus['kind'], preset?: string) => {
     setBusy(true);
     try {
-      onChange(await api.setFocus({
+      const next = await api.setFocus({
         kind,
         note: (note.trim() || preset || '').slice(0, 160) || undefined,
         minutes: DURATIONS[duration].minutes(),
-      }));
+      });
+      onChange(next);
+      window.dispatchEvent(new Event('teamcrm:focus-changed'));
     } catch { /* панель не место для разбора ошибок сети */ }
     finally { setBusy(false); }
   };
 
   const clear = async () => {
     setBusy(true);
-    try { await api.clearFocus(); onChange(null); }
+    try {
+      await api.clearFocus();
+      onChange(null);
+      window.dispatchEvent(new Event('teamcrm:focus-changed'));
+    }
     catch { /* см. выше */ }
     finally { setBusy(false); }
   };

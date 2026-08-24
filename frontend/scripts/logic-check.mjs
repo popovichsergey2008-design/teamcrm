@@ -95,6 +95,35 @@ test('совпадение в начале названия выше, чем в�
   assert.deepEqual(sorted, ['Маркетинг', 'Запуск маркетинга', 'Ремарки по договору']);
 });
 
+// ── быстрые команды ───────────────────────────────────────────────────────────
+test('команда находится по обрывку фразы и по синониму', async () => {
+  const { findCommands, matchCommand, COMMANDS } = await load('lib/commands.ts');
+  const byKind = (q, manager = true) => findCommands(q, manager).map((c) => c.kind);
+
+  assert.ok(byKind('не бесп').includes('focus-deep-hour'), 'обрывок фразы должен срабатывать');
+  assert.ok(byKind('dnd').includes('focus-deep-hour'), 'синоним тоже');
+  assert.ok(byKind('обед').includes('focus-break'));
+  assert.ok(byKind('созвон').includes('focus-call'));
+  assert.ok(byKind('кто свободен').includes('who-free'));
+  assert.ok(byKind('тёмная').includes('theme-dark'), 'ё в запросе не должна мешать');
+  assert.ok(byKind('темная').includes('theme-dark'), 'и её отсутствие тоже');
+  assert.ok(byKind('просроч').includes('my-overdue'));
+  assert.ok(byKind('сводка').includes('day-summary'));
+
+  assert.deepEqual(byKind('щщщ'), [], 'бессмыслица не должна что-то находить');
+  assert.deepEqual(byKind('а'), [], 'одна буква — это ещё не запрос');
+
+  // команда руководителя рядовому сотруднику не показывается
+  assert.ok(byKind('под риском', true).includes('at-risk'));
+  assert.ok(!byKind('под риском', false).includes('at-risk'), 'сотрудник не должен видеть чужой экран');
+
+  // у каждой команды есть слова-зацепки и она находится по собственному названию
+  for (const c of COMMANDS) {
+    assert.ok(c.words.length > 0, `у команды ${c.kind} нет слов-зацепок`);
+    assert.ok(matchCommand(c, c.title), `команда ${c.kind} не находится по своему названию`);
+  }
+});
+
 // ── кэш ───────────────────────────────────────────────────────────────────────
 test('кэш схлопывает одновременные запросы и уважает срок годности', async () => {
   const { cached, dropCache } = await load('lib/cache.ts');

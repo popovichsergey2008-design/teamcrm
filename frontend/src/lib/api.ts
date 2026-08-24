@@ -181,6 +181,8 @@ export const api = {
   setFocus: (b: { kind: string; note?: string; minutes?: number; taskId?: string }) =>
     request<Focus>('PUT', '/focus/me', b),
   clearFocus: () => request<{ cleared: boolean }>('DELETE', '/focus/me'),
+  /** Кто чем занят прямо сейчас: для ответа «кто свободен» без похода к людям. */
+  focusTeam: () => request<Focus[]>('GET', '/focus/team'),
 
   // AI Секретарь: что система сделала за людей сама
   secretarySummary: () =>

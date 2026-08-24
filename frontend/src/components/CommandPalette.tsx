@@ -3,6 +3,8 @@ import { Icon, IconName } from './Icon';
 import { api } from '../lib/api';
 import { navigate, Route } from '../lib/router';
 import { norm, score } from '../lib/palette-match';
+import { Command, findCommands } from '../lib/commands';
+import { setThemeChoice } from '../lib/theme';
 import type { SearchResults, SemanticHit } from '../types';
 
 /**
@@ -112,6 +114,8 @@ export function CommandPalette({ role, onClose, onCreate }: {
   const [semantic, setSemantic] = useState<SemanticHit[] | null>(null);
   const [answer, setAnswer] = useState<{ text: string; sources: string[] } | null>(null);
   const [thinking, setThinking] = useState<'search' | 'answer' | null>(null);
+  // результат команды, показанный прямо в строке: «мои просроченные», «кто свободен» и т.п.
+  const [inline, setInline] = useState<{ group: string; items: Item[] } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -149,6 +153,136 @@ export function CommandPalette({ role, onClose, onCreate }: {
     onClose();
   };
 
+  /**
+   * Выполнить команду. Меняющие состояние закрывают окно сразу — человек уже увидел,
+   * что выбрал; показывающие данные раскрываются прямо в списке, чтобы не уводить
+   * с экрана ради одного числа.
+   */
+  const runCommand = async (cmd: Command) => {
+    const overdue = (t: any) => t.deadline_at && !t.closed_at && new Date(t.deadline_at) < new Date();
+    const endOfDayMinutes = () => {
+      const end = new Date();
+      end.setHours(23, 59, 59, 999);
+      return Math.max(1, Math.round((end.getTime() - Date.now()) / 60_000));
+    };
+
+    switch (cmd.kind) {
+      case 'focus-deep-hour':
+      case 'focus-deep-day':
+      case 'focus-call':
+      case 'focus-break': {
+        const map = {
+          'focus-deep-hour': { kind: 'deep', minutes: 60 },
+          'focus-deep-day': { kind: 'deep', minutes: endOfDayMinutes() },
+          'focus-call': { kind: 'call', minutes: 30 },
+          'focus-break': { kind: 'break', minutes: 30 },
+        } as const;
+        const f = map[cmd.kind];
+        await api.setFocus({ kind: f.kind, minutes: f.minutes }).catch(() => undefined);
+        // панель показывает фокус и должна узнать о нём сразу, а не после перезагрузки
+        window.dispatchEvent(new Event('teamcrm:focus-changed'));
+        onClose();
+        return;
+      }
+      case 'focus-clear':
+        await api.clearFocus().catch(() => undefined);
+        window.dispatchEvent(new Event('teamcrm:focus-changed'));
+        onClose();
+        return;
+      case 'theme-dark': setThemeChoice('dark'); onClose(); return;
+      case 'theme-light': setThemeChoice('light'); onClose(); return;
+      case 'theme-system': setThemeChoice('system'); onClose(); return;
+
+      case 'my-overdue': {
+        setThinking('search');
+        const tasks = await api.myTasks('mine').catch(() => []);
+        const late = (tasks as any[]).filter(overdue);
+        setInline({
+          group: `Мои просроченные (${late.length})`,
+          items: late.slice(0, 8).map((t) => ({
+            key: `ov:${t.id}`, group: `Мои просроченные (${late.length})`, title: t.title,
+            hint: `${t.project_name} · срок ${new Date(t.deadline_at).toLocaleDateString('ru-RU')}`,
+            icon: 'alert' as IconName,
+            run: () => go({ section: 'projects', projectId: String(t.project_id), taskId: String(t.id) }),
+          })),
+        });
+        setThinking(null);
+        return;
+      }
+      case 'who-free': {
+        setThinking('search');
+        const [users, focuses] = await Promise.all([
+          api.listUsers().catch(() => []),
+          api.focusTeam().catch(() => []),
+        ]);
+        const busy = new Map((focuses as any[]).map((f) => [String(f.userId), f]));
+        const rows = (users as any[])
+          .filter((u) => u.role !== 'client')
+          .map((u) => {
+            const f = busy.get(String(u.id));
+            return {
+              key: `wf:${u.id}`, group: 'Кто чем занят', title: u.fullName ?? u.full_name ?? u.email,
+              hint: f ? (f.note || 'занят') + (f.until ? ` до ${new Date(f.until).getHours()}:${String(new Date(f.until).getMinutes()).padStart(2, '0')}` : '') : 'свободен',
+              icon: (f ? 'clock' : 'check-circle') as IconName,
+              run: () => go({ section: 'settings', tab: 'team' }),
+            };
+          })
+          // свободные сверху: за ними и приходят с этим вопросом
+          .sort((a, b) => Number(a.hint !== 'свободен') - Number(b.hint !== 'свободен'));
+        setInline({ group: 'Кто чем занят', items: rows.slice(0, 10) });
+        setThinking(null);
+        return;
+      }
+      case 'at-risk': {
+        setThinking('search');
+        const radar = await api.radar().catch(() => null);
+        const items: Item[] = [];
+        for (const p of radar?.projects.filter((x) => x.overdue > 0) ?? []) {
+          items.push({
+            key: `risk:p:${p.id}`, group: 'Под риском', title: p.name,
+            hint: `просрочено задач: ${p.overdue}`, icon: 'board',
+            run: () => go({ section: 'projects', projectId: String(p.id) }),
+          });
+        }
+        for (const t of radar?.stuck ?? []) {
+          items.push({
+            key: `risk:t:${t.id}`, group: 'Под риском', title: t.title,
+            hint: `${t.project_name} · лежит на проверке`, icon: 'clock',
+            run: () => go({ section: 'projects', projectId: String(t.project_id), taskId: String(t.id) }),
+          });
+        }
+        setInline({
+          group: 'Под риском',
+          items: items.length ? items.slice(0, 10) : [{
+            key: 'risk:none', group: 'Под риском', title: 'Ничего не горит',
+            hint: 'нет просрочки и залежавшегося на проверке', icon: 'check-circle', run: () => undefined,
+          }],
+        });
+        setThinking(null);
+        return;
+      }
+      case 'day-summary': {
+        setThinking('search');
+        const [counters, mine] = await Promise.all([
+          api.navCounters().catch(() => null),
+          api.myTasks('mine', true).catch(() => []),
+        ]);
+        const today = new Date().toDateString();
+        const closedToday = (mine as any[]).filter((t) => t.closed_at && new Date(t.closed_at).toDateString() === today).length;
+        const late = (mine as any[]).filter(overdue).length;
+        // Только посчитанное по данным: никаких «вы молодец» и придуманных процентов.
+        const rows: Item[] = [
+          { key: 'sum:done', group: 'Сводка дня', title: `Закрыто сегодня: ${closedToday}`, icon: 'check-circle', run: () => go({ section: 'focus' }) },
+          { key: 'sum:decide', group: 'Сводка дня', title: `Ждут вашего решения: ${counters?.focus.decide ?? 0}`, icon: 'alert', run: () => go({ section: 'focus' }) },
+          { key: 'sum:late', group: 'Сводка дня', title: `Просрочено у вас: ${late}`, icon: 'clock', run: () => go({ section: 'focus' }) },
+        ];
+        setInline({ group: 'Сводка дня', items: rows });
+        setThinking(null);
+        return;
+      }
+    }
+  };
+
   const askSemantic = async () => {
     setThinking('search');
     try { setSemantic(await api.semanticSearch(q.trim())); }
@@ -170,6 +304,16 @@ export function CommandPalette({ role, onClose, onCreate }: {
     const seen = new Set<string>();
     const out: Item[] = [];
     const add = (item: Item) => { if (!seen.has(item.key)) { seen.add(item.key); out.push(item); } };
+
+    if (inline) for (const it of inline.items) add(it);
+
+    // Команды — сразу после результата: «не беспокоить», «кто свободен», «тёмная тема».
+    for (const cmd of findCommands(q, role === 'owner' || role === 'manager')) {
+      add({
+        key: `cmd:${cmd.kind}`, group: 'Команды', title: cmd.title, hint: cmd.hint, icon: cmd.icon,
+        run: () => { if (!thinking) runCommand(cmd); },
+      });
+    }
 
     if (!query) {
       for (const r of readRecent()) {
@@ -317,7 +461,7 @@ export function CommandPalette({ role, onClose, onCreate }: {
     });
 
     return out;
-  }, [q, local, remote, role, semantic, answer, thinking]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, local, remote, role, semantic, answer, thinking, inline]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setActive(0);
@@ -325,6 +469,7 @@ export function CommandPalette({ role, onClose, onCreate }: {
     // результаты устаревают, и оставлять их под новым запросом — обман.
     setSemantic(null);
     setAnswer(null);
+    setInline(null);
   }, [q]);
 
 
