@@ -124,6 +124,47 @@ test('команда находится по обрывку фразы и по �
   }
 });
 
+// ── часовые пояса ─────────────────────────────────────────────────────────────
+test('пояса считаются и подписываются как в системных настройках', async () => {
+  const { offsetMinutes, formatOffset, listTimezones, browserTimezone } = await load('lib/timezones.ts');
+
+  // Москва круглый год +3: перевода часов там нет с 2014-го
+  assert.equal(offsetMinutes('Europe/Moscow', new Date('2026-01-15T12:00:00Z')), 180, 'зимой');
+  assert.equal(offsetMinutes('Europe/Moscow', new Date('2026-07-15T12:00:00Z')), 180, 'летом');
+  assert.equal(offsetMinutes('UTC', new Date('2026-01-15T12:00:00Z')), 0);
+
+  // А в Берлине перевод есть — и список обязан показывать действующее смещение
+  const winter = offsetMinutes('Europe/Berlin', new Date('2026-01-15T12:00:00Z'));
+  const summer = offsetMinutes('Europe/Berlin', new Date('2026-07-15T12:00:00Z'));
+  assert.equal(winter, 60);
+  assert.equal(summer, 120, 'летнее время в Европе должно учитываться');
+
+  // Индия и Непал — не целые часы; из-за них нельзя считать смещение в часах
+  assert.equal(offsetMinutes('Asia/Kolkata', new Date('2026-01-15T12:00:00Z')), 330);
+  assert.equal(offsetMinutes('Asia/Kathmandu', new Date('2026-01-15T12:00:00Z')), 345);
+
+  // Западное полушарие — отрицательное смещение с типографским минусом в подписи
+  assert.ok(offsetMinutes('America/New_York', new Date('2026-01-15T12:00:00Z')) < 0);
+  assert.equal(formatOffset(180), '+03:00');
+  assert.equal(formatOffset(0), '+00:00');
+  assert.equal(formatOffset(345), '+05:45');
+  assert.equal(formatOffset(-300), '−05:00');
+
+  // Неизвестный пояс не роняет экран настроек
+  assert.equal(offsetMinutes('Нет/Такого', new Date()), 0);
+
+  const list = listTimezones(new Date('2026-01-15T12:00:00Z'));
+  assert.ok(list.length > 20, 'список должен быть полным, а не из десятка городов');
+  assert.ok(list.some((z) => z.id === 'Europe/Moscow'), 'Москва обязана быть в списке');
+  assert.ok(list.find((z) => z.id === 'Europe/Moscow').label.startsWith('(UTC+03:00) Москва'),
+    'подпись — как в системных настройках');
+  // порядок по смещению: список читают сверху вниз и ищут глазами свой сдвиг
+  for (let i = 1; i < list.length; i++) {
+    assert.ok(list[i].offset >= list[i - 1].offset, 'список должен идти по возрастанию смещения');
+  }
+  assert.ok(typeof browserTimezone() === 'string' && browserTimezone().length > 0);
+});
+
 // ── кэш ───────────────────────────────────────────────────────────────────────
 test('кэш схлопывает одновременные запросы и уважает срок годности', async () => {
   const { cached, dropCache } = await load('lib/cache.ts');

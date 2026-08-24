@@ -1,50 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { browserTimezone, listTimezones } from '../lib/timezones';
 import { Avatar } from './Avatar';
 import { DatePicker } from './DatePicker';
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts';
 
-
-/**
- * Часовые пояса, которыми реально пользуется команда, плюс основные европейские.
- * Полный список IANA — несколько сотен строк, и человек в нём ищет дольше, чем нужно;
- * если чей-то пояс сюда не попал, он подставляется кнопкой «как на этом компьютере».
- */
-const TIMEZONES: { id: string; label: string }[] = [
-  { id: 'Europe/Kaliningrad', label: 'Калининград (UTC+2)' },
-  { id: 'Europe/Moscow', label: 'Москва (UTC+3)' },
-  { id: 'Europe/Samara', label: 'Самара (UTC+4)' },
-  { id: 'Asia/Yekaterinburg', label: 'Екатеринбург (UTC+5)' },
-  { id: 'Asia/Omsk', label: 'Омск (UTC+6)' },
-  { id: 'Asia/Krasnoyarsk', label: 'Красноярск (UTC+7)' },
-  { id: 'Asia/Irkutsk', label: 'Иркутск (UTC+8)' },
-  { id: 'Asia/Yakutsk', label: 'Якутск (UTC+9)' },
-  { id: 'Asia/Vladivostok', label: 'Владивосток (UTC+10)' },
-  { id: 'Asia/Magadan', label: 'Магадан (UTC+11)' },
-  { id: 'Asia/Kamchatka', label: 'Камчатка (UTC+12)' },
-  { id: 'Europe/Minsk', label: 'Минск (UTC+3)' },
-  { id: 'Europe/Kyiv', label: 'Киев (UTC+2/+3)' },
-  { id: 'Asia/Almaty', label: 'Алматы (UTC+5)' },
-  { id: 'Asia/Tbilisi', label: 'Тбилиси (UTC+4)' },
-  { id: 'Asia/Yerevan', label: 'Ереван (UTC+4)' },
-  { id: 'Asia/Baku', label: 'Баку (UTC+4)' },
-  { id: 'Asia/Tashkent', label: 'Ташкент (UTC+5)' },
-  { id: 'Europe/Belgrade', label: 'Белград (UTC+1/+2)' },
-  { id: 'Europe/Berlin', label: 'Берлин (UTC+1/+2)' },
-  { id: 'Europe/Lisbon', label: 'Лиссабон (UTC+0/+1)' },
-  { id: 'Europe/London', label: 'Лондон (UTC+0/+1)' },
-  { id: 'Asia/Dubai', label: 'Дубай (UTC+4)' },
-  { id: 'Asia/Bangkok', label: 'Бангкок (UTC+7)' },
-  { id: 'UTC', label: 'UTC' },
-];
-
-/** Пояс из настроек компьютера — им заполняем поле по кнопке. */
-function browserTimezone(): string {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
-}
 
 export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAvatar: (url: string | null) => void }) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -53,6 +16,9 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [mailPrefs, setMailPrefs] = useState<{ eventKey: string; title: string; enabled: boolean }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Список строится один раз: перебор четырёхсот поясов с форматированием заметен,
+  // если делать его на каждый ввод символа в соседнем поле.
+  const zones = useMemo(() => listTimezones(), []);
 
   const linkTelegram = async () => {
     try { const r = await api.telegramLinkCode(); setTgCode(r.code); }
@@ -154,9 +120,9 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 onChange={(e) => setMe({ ...me, timezone: e.target.value })}
               >
                 <option value="">Не выбран</option>
-                {TIMEZONES.map((tz) => <option key={tz.id} value={tz.id}>{tz.label}</option>)}
+                {zones.map((tz) => <option key={tz.id} value={tz.id}>{tz.label}</option>)}
                 {/* Пояс из профиля может отсутствовать в списке — не теряем его молча */}
-                {me.timezone && !TIMEZONES.some((t) => t.id === me.timezone) && (
+                {me.timezone && !zones.some((t) => t.id === me.timezone) && (
                   <option value={me.timezone}>{me.timezone}</option>
                 )}
               </select>
