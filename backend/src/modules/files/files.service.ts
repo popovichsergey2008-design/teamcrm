@@ -5,7 +5,7 @@ import { Readable } from 'stream';
 import { AppException } from '../../common/http/app-exception';
 import { S3Service } from './s3.client';
 import { FileRow, FilesRepository } from './files.repository';
-import { sanitizeFileName, validateUpload } from './files.validation';
+import { decodeUploadName, sanitizeFileName, validateUpload } from './files.validation';
 
 @Injectable()
 export class FilesService {
@@ -28,7 +28,7 @@ export class FilesService {
     const v = validateUpload(input.contentType, input.buffer.length, input.maxBytes);
     if (!v.ok) throw AppException.validation(v.reason);
 
-    const safeName = sanitizeFileName(input.fileName);
+    const safeName = sanitizeFileName(decodeUploadName(input.fileName));
     const objectKey = `${input.tenantId}/${randomUUID()}/${safeName}`;
 
     await this.s3.client.send(

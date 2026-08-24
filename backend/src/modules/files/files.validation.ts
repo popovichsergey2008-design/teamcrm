@@ -31,10 +31,32 @@ export function validateUpload(contentType: string, sizeBytes: number, maxBytes 
   return { ok: true };
 }
 
+/**
+ * Починка имени файла, приехавшего из multipart.
+ *
+ * Браузер шлёт имя в UTF-8, но multipart-разбор отдаёт его побайтово как latin1,
+ * и «условия.txt» превращается в «ÑÑÐ»Ð¾Ð²Ð¸Ñ.txt». До сих пор это никто не замечал,
+ * потому что в списке вложений имя показывалось таким же искажённым с обеих сторон,
+ * а всплыло, когда файлы попали в поиск.
+ *
+ * Трогаем только то, что похоже на такую подмену: строку без настоящих юникод-символов,
+ * но с байтами 0x80–0xFF. Правильное имя («Отчёт.docx») содержит символы выше 0x00FF
+ * и остаётся нетронутым — иначе мы бы ломали то, что и так верно.
+ */
+export function decodeUploadName(name: string): string {
+  if (!name) return name;
+  if (!/[-ÿ]/.test(name)) return name;   // чистый ASCII — чинить нечего
+  if (/[Ā-￿]/.test(name)) return name;    // есть настоящий юникод — имя уже верное
+  const decoded = Buffer.from(name, 'latin1').toString('utf8');
+  return decoded.includes('�') ? name : decoded; // не разобралось — оставляем как есть
+}
+
 /** Безопасное имя файла: убираем путь и опасные символы. */
 export function sanitizeFileName(name: string): string {
   const base = (name || 'file').split(/[\\/]/).pop() || 'file';
   // разрешаем Unicode-буквы/цифры (кириллица и т.п.), убираем только опасные символы
-  const cleaned = base.replace(/[^\p{L}\p{N}._\- ()]/gu, '_').replace(/\s+/g, ' ').trim();
+  // «№» разрешён намеренно: в русских документах он в каждом втором названии
+  // («Договор №415.pdf»), а опасности в имени файла не несёт.
+  const cleaned = base.replace(/[^\p{L}\p{N}._\-№ ()]/gu, '_').replace(/\s+/g, ' ').trim();
   return cleaned.slice(0, 180) || 'file';
 }

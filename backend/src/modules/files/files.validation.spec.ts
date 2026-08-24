@@ -1,4 +1,4 @@
-import { MAX_FILE_BYTES, sanitizeFileName, validateUpload } from './files.validation';
+import { decodeUploadName, MAX_FILE_BYTES, sanitizeFileName, validateUpload } from './files.validation';
 
 describe('validateUpload', () => {
   it('пропускает разрешённый тип в пределах размера', () => {
@@ -27,5 +27,29 @@ describe('sanitizeFileName', () => {
   });
   it('пустое имя → file', () => {
     expect(sanitizeFileName('')).toBe('file');
+  });
+});
+
+describe('имя файла из multipart', () => {
+  it('чинит кириллицу, приехавшую байтами latin1', () => {
+    const mangled = Buffer.from('условия поставки.txt', 'utf8').toString('latin1');
+    expect(mangled).not.toBe('условия поставки.txt'); // именно так приходит из формы
+    expect(decodeUploadName(mangled)).toBe('условия поставки.txt');
+  });
+
+  it('не трогает уже правильное имя', () => {
+    expect(decodeUploadName('Отчёт за квартал.docx')).toBe('Отчёт за квартал.docx');
+    expect(decodeUploadName('report.pdf')).toBe('report.pdf');
+    expect(decodeUploadName('')).toBe('');
+  });
+
+  it('не портит имя, которое не разбирается как UTF-8', () => {
+    const weird = 'café.txt'; // настоящая латиница с диакритикой, не мохибейк
+    expect(decodeUploadName(weird)).toBe(weird);
+  });
+
+  it('вместе с санитизацией даёт читаемое имя', () => {
+    const mangled = Buffer.from('Договор №415.pdf', 'utf8').toString('latin1');
+    expect(sanitizeFileName(decodeUploadName(mangled))).toBe('Договор №415.pdf');
   });
 });
