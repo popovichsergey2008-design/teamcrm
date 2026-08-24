@@ -49,6 +49,31 @@ export interface RecordedTrack {
  * восстановить, кто говорил, невозможно, а стенограмма без имён почти бесполезна —
  * непонятно, кому ставить задачу.
  */
+/**
+ * Аргументы записи одной дорожки.
+ *
+ * Вынесены отдельно, чтобы `-flush_packets 1` нельзя было потерять незаметно: это не
+ * настройка производительности, а условие работоспособности. Без него ffmpeg держит
+ * принятое в своём буфере и пишет на диск, только когда тот переполнится или когда
+ * процесс завершится по-хорошему. А по-хорошему он не завершается: после ухода человека
+ * RTP прекращается, ffmpeg замирает на приёме, SIGINT не обрабатывает — и его добивают
+ * SIGKILL вместе с буфером. На часовой планёрке это незаметно (буфер переполняется сам),
+ * а короткий созвон сохранялся нулём байт: ни стенограммы, ни сводки, ни задач.
+ *
+ * `-acodec copy` — перекодировать незачем, Opus и так родной формат для распознавания.
+ */
+export function ffmpegArgs(sdpPath: string, file: string): string[] {
+  return [
+    '-hide_banner', '-loglevel', 'error',
+    '-protocol_whitelist', 'file,udp,rtp',
+    '-use_wallclock_as_timestamps', '1',
+    '-i', sdpPath,
+    '-acodec', 'copy',
+    '-flush_packets', '1',
+    '-f', 'ogg', file,
+  ];
+}
+
 @Injectable()
 export class RecordingService {
   private readonly log = new Logger('Recording');
@@ -140,15 +165,7 @@ export class RecordingService {
       'a=recvonly',
     ].join('\n'));
 
-    // -acodec copy: перекодировать незачем, Opus и так родной формат для распознавания
-    const proc = spawn('ffmpeg', [
-      '-hide_banner', '-loglevel', 'error',
-      '-protocol_whitelist', 'file,udp,rtp',
-      '-use_wallclock_as_timestamps', '1',
-      '-i', sdpPath,
-      '-acodec', 'copy',
-      '-f', 'ogg', file,
-    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const proc = spawn('ffmpeg', ffmpegArgs(sdpPath, file), { stdio: ['ignore', 'ignore', 'pipe'] });
     proc.stderr?.on('data', (d) => this.log.warn(`ffmpeg ${participant.userId}: ${String(d).slice(0, 200)}`));
 
     await consumer.resume();
@@ -201,10 +218,19 @@ export class RecordingService {
     return out;
   }
 
+  /**
+   * Остановка ffmpeg.
+   *
+   * SIGINT — вежливая просьба дописать контейнер; она срабатывает, только если поток ещё
+   * идёт. После ухода человека пакетов нет, ffmpeg спит на приёме и просьбы не слышит,
+   * поэтому дальше SIGKILL. Раньше на ожидание уходило восемь секунд на дорожку — при
+   * двух участниках разбор встречи начинался почти на двадцать секунд позже, чем мог.
+   * Теперь данные уже на диске (см. -flush_packets), и ждать долго незачем.
+   */
   private finish(proc: ChildProcess): Promise<void> {
     return new Promise((resolve) => {
       if (proc.exitCode !== null || proc.signalCode) return resolve();
-      const timer = setTimeout(() => { proc.kill('SIGKILL'); resolve(); }, 8000);
+      const timer = setTimeout(() => { proc.kill('SIGKILL'); resolve(); }, 3000);
       proc.once('close', () => { clearTimeout(timer); resolve(); });
       proc.kill('SIGINT');
     });
