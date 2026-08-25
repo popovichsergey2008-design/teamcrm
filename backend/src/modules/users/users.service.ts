@@ -157,6 +157,8 @@ export class UsersService {
       isActive: u.is_active,
       positionId: u.position_id,
       positionName: u.position_name,
+      // человека узнают по лицу: где показываем имя — показываем и аватар
+      avatarUrl: u.avatar_file_id ? `/api/files/${u.avatar_file_id}` : null,
       groups: byUser.get(String(u.id)) ?? [],
     }));
   }

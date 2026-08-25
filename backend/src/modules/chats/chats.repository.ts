@@ -10,6 +10,7 @@ export interface ChatRow {
 export interface ChatListItem extends ChatRow {
   peer_id: string | null;        // собеседник в личном диалоге
   peer_name: string | null;
+  peer_avatar: string | null;
   project_name: string | null;
   unread: number;
   last_body: string | null;
@@ -48,6 +49,7 @@ export class ChatsRepository {
        SELECT mine.*,
               peer.id   AS peer_id,
               peer.full_name AS peer_name,
+              peer.avatar_file_id AS peer_avatar,
               p.name    AS project_name,
               (SELECT count(*)::int FROM chat_messages msg
                 WHERE msg.chat_id = mine.id AND msg.deleted_at IS NULL
@@ -188,8 +190,8 @@ export class ChatsRepository {
 
   /** Состав группы с именами — для окна управления участниками. */
   members(tenantId: string, chatId: string) {
-    return this.db.many<{ user_id: string; full_name: string; joined_at: Date }>(
-      `SELECT m.user_id, u.full_name, m.joined_at
+    return this.db.many<{ user_id: string; full_name: string; avatar_file_id: string | null; joined_at: Date }>(
+      `SELECT m.user_id, u.full_name, u.avatar_file_id, m.joined_at
          FROM chat_members m JOIN users u ON u.id = m.user_id
         WHERE m.tenant_id=$1 AND m.chat_id=$2 ORDER BY m.joined_at`,
       [tenantId, chatId],

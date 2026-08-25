@@ -45,7 +45,6 @@ const SECTIONS: { title: string; icon: IconName; route: Route; roles?: string[] 
   { title: 'Пульс команды', icon: 'chart', route: { section: 'radar' }, roles: ['owner', 'manager'] },
   { title: 'Встречи', icon: 'record', route: { section: 'chat', view: 'meetings' } },
   { title: 'Входящие', icon: 'inbox', route: { section: 'focus', view: 'inbox' }, roles: ['owner', 'manager'] },
-  { title: 'Клиенты и сделки', icon: 'handshake', route: { section: 'projects', view: 'clients' }, roles: ['owner', 'manager'] },
   { title: 'Настройки и интеграции', icon: 'settings', route: { section: 'settings' } },
   { title: 'Личный кабинет', icon: 'user', route: { section: 'profile' } },
 ];

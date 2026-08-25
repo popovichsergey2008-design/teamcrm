@@ -23,8 +23,12 @@ export class AccountService {
     const p: any = await this.users.getProfile(tenantId, userId);
     if (!p) throw AppException.notFound('User not found');
     const groups = await this.groups.groupsForUser(tenantId, userId);
+    const founderId = await this.users.founderId(tenantId);
     return {
       id: p.id,
+      // Клиенты и сделки — дело того, кто завёл компанию; приглашённым сотрудникам
+      // этот раздел не нужен и в меню только мешает
+      isFounder: !!founderId && String(founderId) === String(userId),
       tenantId,
       email: p.email,
       fullName: p.full_name,

@@ -9,6 +9,8 @@ export interface User {
   isActive: boolean;
   /** Отделы и группы человека. Приходят из GET /users; в токене авторизации их нет. */
   groups?: { id: string; name: string; kind: string }[];
+  /** Путь к аватару (`/api/files/:id`) — файл лежит за авторизацией, тянется через Avatar. */
+  avatarUrl?: string | null;
 }
 
 export interface OrgRef {

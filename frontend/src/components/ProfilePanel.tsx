@@ -1,12 +1,13 @@
 import { useEffect, useRef, useMemo, useState } from 'react';
 import { EmptyState } from './EmptyState';
+import { ClientsPanel } from './ClientsPanel';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { browserTimezone, listTimezones } from '../lib/timezones';
 import { Avatar } from './Avatar';
 import { DatePicker } from './DatePicker';
 
-type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts';
+type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients';
 
 
 export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAvatar: (url: string | null) => void }) {
@@ -93,11 +94,18 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
           <button className={tab === 'availability' ? 'active' : ''} onClick={() => setTab('availability')}>Доступность</button>
           <button className={tab === 'notify' ? 'active' : ''} onClick={() => setTab('notify')}>Уведомления</button>
           <button className={tab === 'prompts' ? 'active' : ''} onClick={() => setTab('prompts')}><Icon name="robot" size={14} /> Мои промпты</button>
+          {/* Клиентская база — дело владельца компании, а не каждого приглашённого */}
+          {me.isFounder && (
+            <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}>
+              <Icon name="handshake" size={14} /> Клиенты и сделки
+            </button>
+          )}
         </nav>
         <div className="profile-content">
           {msg && <div className="dim">{msg}</div>}
 
           {tab === 'prompts' && <PromptsLibrary />}
+          {tab === 'clients' && me.isFounder && <ClientsPanel embedded />}
 
         {tab === 'profile' && (
           <>

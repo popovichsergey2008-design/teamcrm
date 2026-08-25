@@ -47,7 +47,6 @@ export function parsePath(pathname: string): Route {
     case 'focus':
       return seg[1] === 'inbox' ? { section, view: 'inbox' } : { section };
     case 'projects': {
-      if (seg[1] === 'clients') return { section, view: 'clients' };
       if (!seg[1]) return { section };
       return seg[2] === 'task' && seg[3]
         ? { section, projectId: seg[1], taskId: seg[3] }
@@ -68,7 +67,6 @@ export function buildPath(r: Route): string {
     case 'focus':
       return r.view === 'inbox' ? '/focus/inbox' : '/focus';
     case 'projects':
-      if (r.view === 'clients') return '/projects/clients';
       if (!r.projectId) return '/projects';
       return r.taskId
         ? `/projects/${enc(r.projectId)}/task/${enc(r.taskId)}`

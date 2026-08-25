@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Avatar } from './Avatar';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
@@ -65,7 +66,7 @@ export function GroupChatModal({ users, meId, onClose, onCreated }: {
                   checked={!!picked[u.id]}
                   onChange={(e) => setPicked((s) => ({ ...s, [u.id]: e.target.checked }))}
                 />
-                <span className="avatar-xs avatar-ph">{u.fullName[0]?.toUpperCase()}</span>
+                <Avatar path={(u as any).avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
                 <span>{u.fullName}</span>
               </label>
             ))}

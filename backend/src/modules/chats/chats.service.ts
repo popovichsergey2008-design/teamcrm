@@ -33,6 +33,7 @@ export class ChatsService {
       title: c.kind === 'dm' ? c.peer_name : c.kind === 'project' ? c.project_name : c.title,
       peerId: c.peer_id,
       peerOnline: c.peer_id ? online.has(String(c.peer_id)) : false,
+      avatarUrl: c.peer_avatar ? `/api/files/${c.peer_avatar}` : null,
       projectId: c.project_id,
       unread: Number(c.unread ?? 0),
       lastBody: c.last_body,
@@ -141,7 +142,11 @@ export class ChatsService {
     return {
       canManage: chat.kind === 'group' && this.canManage(chat, user),
       createdBy: chat.created_by,
-      members: rows.map((r) => ({ userId: r.user_id, fullName: r.full_name })),
+      members: rows.map((r) => ({
+        userId: r.user_id,
+        fullName: r.full_name,
+        avatarUrl: r.avatar_file_id ? `/api/files/${r.avatar_file_id}` : null,
+      })),
     };
   }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Avatar } from './Avatar';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
@@ -75,7 +76,7 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
         <div className="group-members">
           {members.map((m) => (
             <div key={m.userId} className="notify-row">
-              <span className="avatar-xs avatar-ph">{m.fullName[0]?.toUpperCase()}</span>
+              <Avatar path={(m as any).avatarUrl ?? null} fallback={m.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
               <span style={{ flex: 1 }}>{m.fullName}{String(m.userId) === String(meId) && <span className="dim"> — вы</span>}</span>
               {canManage && String(m.userId) !== String(meId) && (
                 <button className="btn btn-ghost btn-sm" title="Убрать из группы" disabled={busy}
@@ -93,7 +94,7 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
                 <label key={u.id} className="notify-row" style={{ cursor: 'pointer' }}>
                   <input type="checkbox" checked={!!adding[u.id]}
                          onChange={(e) => setAdding((s) => ({ ...s, [u.id]: e.target.checked }))} />
-                  <span className="avatar-xs avatar-ph">{u.fullName[0]?.toUpperCase()}</span>
+                  <Avatar path={(u as any).avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
                   <span>{u.fullName}</span>
                 </label>
               ))}

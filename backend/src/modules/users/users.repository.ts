@@ -63,7 +63,7 @@ export class UsersRepository {
   /** Список с должностью (имя) — для экрана команды. */
   listEnriched(tenantId: string) {
     return this.db.many(
-      `SELECT u.id, u.email, u.full_name, u.is_active, u.position_id,
+      `SELECT u.id, u.email, u.full_name, u.is_active, u.position_id, u.avatar_file_id,
               r.code AS role_code, p.name AS position_name
          FROM users u
          JOIN roles r ON r.id = u.role_id
@@ -71,6 +71,23 @@ export class UsersRepository {
         WHERE u.tenant_id = $1 ORDER BY u.created_at ASC`,
       [tenantId],
     );
+  }
+
+  /**
+   * Кто завёл организацию — первый по времени владелец.
+   *
+   * Отдельного поля в tenants нет и заводить его ради одного признака не стоит:
+   * регистрация создаёт владельца одновременно с организацией, и «самый ранний
+   * владелец» — это ровно тот человек, который нажал «зарегистрироваться».
+   */
+  async founderId(tenantId: string): Promise<string | null> {
+    const row = await this.db.one<{ id: string }>(
+      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id
+        WHERE u.tenant_id = $1 AND r.code = 'owner'
+        ORDER BY u.created_at, u.id LIMIT 1`,
+      [tenantId],
+    );
+    return row?.id ?? null;
   }
 
   /** Полный профиль для личного кабинета. */

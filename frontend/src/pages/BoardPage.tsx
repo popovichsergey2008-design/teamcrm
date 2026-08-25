@@ -13,7 +13,8 @@ import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { CopilotPanel } from '../components/CopilotPanel';
 import { EmptyState } from '../components/EmptyState';
-import { SkeletonBoard, SkeletonList } from '../components/Skeleton';
+import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
+import { SkeletonBoard } from '../components/Skeleton';
 import { MONETIZATION_ENABLED } from '../config';
 
 type Action =
@@ -77,7 +78,6 @@ export function BoardPage({ initial, onNavigate }: {
   const [alert, setAlert] = useState<string | null>(null);
   const [activeTimerTask, setActiveTimerTask] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [newProject, setNewProject] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [createIn, setCreateIn] = useState<{ columnId: string; columnName: string } | null>(null);
@@ -85,25 +85,14 @@ export function BoardPage({ initial, onNavigate }: {
     localStorage.getItem('teamcrm.boardView') === 'list' ? 'list' : 'board',
   );
   const switchView = (v: 'board' | 'list') => { setView(v); localStorage.setItem('teamcrm.boardView', v); };
-  const [tab, setTab] = useState<'active' | 'archived'>('active');
   const [showTeam, setShowTeam] = useState(false);
   const [showCopilot, setShowCopilot] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
-  const [expandedConns, setExpandedConns] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('teamcrm.expandedBitrix') || '[]')); } catch { return new Set(); }
-  });
-  const toggleConn = (cid: string) => setExpandedConns((s) => {
-    const n = new Set(s);
-    if (n.has(cid)) n.delete(cid); else n.add(cid);
-    localStorage.setItem('teamcrm.expandedBitrix', JSON.stringify([...n]));
-    return n;
-  });
   // Ключ памяти о проекте — свой на каждую организацию: при переключении
   // компании возврат должен вести в её проект, а не в чужой.
   const lastProjectKey = `teamcrm.lastProject.${user?.tenantId ?? 'anon'}`;
   const subscribedRef = useRef<string | null>(null);
   // поле создания проекта живёт внизу сайдбара — с пустого экрана до него ведёт кнопка
-  const newProjectRef = useRef<HTMLInputElement>(null);
 
   const reloadBoard = useCallback(() => {
     if (!selected) return;
@@ -131,6 +120,14 @@ export function BoardPage({ initial, onNavigate }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, openTaskId, projectsLoading]);
 
+  // Проекты создают, архивируют и удаляют теперь в меню слева — доска обязана
+  // об этом узнать, иначе её заголовок и выбор живут в прошлом до перезагрузки.
+  useEffect(() => {
+    const refresh = () => api.listProjects(true).then(setProjects).catch(() => undefined);
+    window.addEventListener(PROJECTS_CHANGED, refresh);
+    return () => window.removeEventListener(PROJECTS_CHANGED, refresh);
+  }, []);
+
   useEffect(() => {
     // тянем сразу с архивом: он лежит на отдельной вкладке, второй запрос ради счётчика не нужен
     api
@@ -147,7 +144,6 @@ export function BoardPage({ initial, onNavigate }: {
           const restored = savedId ? ps.find((p) => String(p.id) === savedId) : undefined;
           const pick = restored ?? ps.find((p) => p.status !== 'archived') ?? null;
           setSelected(pick?.id ?? null);
-          if (pick?.status === 'archived') setTab('archived'); // иначе проект открыт, но в списке его не видно
         }
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : 'Ошибка загрузки проектов'))
@@ -235,49 +231,8 @@ export function BoardPage({ initial, onNavigate }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
-  const createProject = async () => {
-    if (!newProject.trim()) return;
-    try {
-      const p = await api.createProject({ name: newProject.trim() });
-      setProjects((prev) => [p, ...prev]);
-      setNewProject('');
-      setSelected(p.id);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Не удалось создать проект');
-    }
-  };
 
-  /** Архив: проект переезжает между вкладками «Проекты» и «Архив». Данные целы. */
-  const toggleArchive = async (p: Project) => {
-    const archived = p.status === 'archived';
-    if (!archived && !window.confirm(`Убрать проект «${p.name}» в архив? Он уйдёт на вкладку «Архив», данные сохранятся.`)) return;
-    try {
-      if (archived) await api.unarchiveProject(p.id); else await api.archiveProject(p.id);
-      const next = await api.listProjects(true);
-      setProjects(next);
-      // выбранный проект уехал на другую вкладку — переводим выбор на соседний из текущей
-      if (selected === p.id) {
-        const stay = tab === 'archived' ? next.filter((x) => x.status === 'archived') : next.filter((x) => x.status !== 'archived');
-        setSelected(stay[0]?.id ?? null);
-      }
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Не удалось изменить архив');
-    }
-  };
 
-  const deleteProject = async (id: string, name: string) => {
-    if (!window.confirm(`Удалить проект «${name}» со всеми задачами? Действие необратимо.`)) return;
-    try {
-      await api.deleteProject(id);
-      setProjects((prev) => {
-        const rest = prev.filter((p) => p.id !== id);
-        if (selected === id) setSelected(rest[0]?.id ?? null);
-        return rest;
-      });
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Не удалось удалить проект');
-    }
-  };
 
   const addColumn = async () => {
     if (!selected) return;
@@ -377,113 +332,9 @@ export function BoardPage({ initial, onNavigate }: {
 
   const openTask = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === openTaskId) ?? null;
 
-  // Сайдбар: локальные проекты — верхним уровнем; импортированные (Битрикс/YouGile) — свёрнуты под узлом-источником.
-  // Архив — отдельная вкладка: в работе он только мешает, но остаётся под рукой.
-  const providerLabel = (origin?: string) => (origin === 'yougile' ? 'YouGile' : 'Битрикс24');
-  const archivedCount = projects.filter((p) => p.status === 'archived').length;
-  const shown = projects.filter((p) => (tab === 'archived' ? p.status === 'archived' : p.status !== 'archived'));
-  const localProjects = shown.filter((p) => !p.origin_connection_id);
-  const importedGroups: [string, { label: string; origin: string; items: Project[] }][] = [];
-  {
-    const byConn = new Map<string, { label: string; origin: string; items: Project[] }>();
-    for (const p of shown) {
-      const cid = p.origin_connection_id;
-      if (!cid) continue;
-      let g = byConn.get(cid);
-      if (!g) { g = { label: p.origin_label || p.origin_portal || providerLabel(p.origin), origin: p.origin ?? 'bitrix', items: [] }; byConn.set(cid, g); importedGroups.push([cid, g]); }
-      g.items.push(p);
-    }
-  }
-  const renderProjectRow = (p: Project, nested = false) => (
-    <div key={p.id} className={`project-row ${p.id === selected ? 'active' : ''} ${p.status === 'archived' ? 'project-archived' : ''}`} style={nested ? { paddingLeft: 18 } : undefined}>
-      <button className="project-item" onClick={() => setSelected(p.id)}>
-        {p.name}
-        {/* значок «в архиве» не нужен: на вкладке «Архив» и так всё архивное */}
-        {(p.origin === 'bitrix' || p.origin === 'yougile') && !nested && <span className="project-src" title={`Импортировано из ${providerLabel(p.origin)}`}>⤓</span>}
-      </button>
-      {canManageProjects && (
-        <>
-          <button
-            className="project-del"
-            title={p.status === 'archived' ? 'Вернуть из архива' : 'Убрать в архив (данные сохранятся)'}
-            onClick={() => toggleArchive(p)}
-          >
-            <Icon name={p.status === 'archived' ? 'arrow-up' : 'archive'} size={13} />
-          </button>
-          <button className="project-del" title="Удалить проект" onClick={() => deleteProject(p.id, p.name)}><Icon name="close" size={13} /></button>
-        </>
-      )}
-    </div>
-  );
 
   return (
     <div className="board-layout">
-      <aside className="sidebar">
-        {archivedCount > 0 ? (
-          <div className="sidebar-tabs">
-            <button className={`sidebar-tab ${tab === 'active' ? 'active' : ''}`} onClick={() => setTab('active')}>
-              Проекты
-            </button>
-            <button className={`sidebar-tab ${tab === 'archived' ? 'active' : ''}`} onClick={() => setTab('archived')} title="Проекты в архиве — данные сохранены">
-              Архив <span className="sidebar-tab-count">{archivedCount}</span>
-            </button>
-          </div>
-        ) : (
-          <div className="sidebar-head">Проекты</div>
-        )}
-        <div className="project-list">
-          {localProjects.map((p) => renderProjectRow(p))}
-          {importedGroups.map(([cid, g]) => {
-            const isOpen = expandedConns.has(cid);
-            return (
-              <div key={cid} className="project-group">
-                <button
-                  className="project-group-head"
-                  onClick={() => toggleConn(cid)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px', color: 'inherit', font: 'inherit', textAlign: 'left' }}
-                  title={`Импортировано из ${providerLabel(g.origin)}: ${g.label}`}
-                >
-                  <span style={{ width: 10, opacity: 0.7 }}>{isOpen ? '▾' : '▸'}</span>
-                  <span>⤓</span>
-                  <span style={{ flex: 1, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.label}</span>
-                  <span style={{ opacity: 0.6, fontSize: 12 }}>{g.items.length}</span>
-                </button>
-                {isOpen && g.items.map((p) => renderProjectRow(p, true))}
-              </div>
-            );
-          })}
-          {projectsLoading && <div className="sidebar-empty"><SkeletonList rows={5} /></div>}
-          {!projectsLoading && shown.length === 0 && (
-            tab === 'archived' ? (
-              <EmptyState compact icon="archive" title="Архив пуст" hint="Сюда попадают проекты, которые вы завершили или отложили." />
-            ) : (
-              <EmptyState
-                compact
-                icon="folder"
-                title="Пока нет проектов"
-                hint={canManageProjects
-                  ? 'Создайте первый проект в поле ниже или подключите доски из YouGile в разделе «Интеграции».'
-                  : 'Вас пока не добавили ни в один проект. Попросите руководителя открыть доступ.'}
-              />
-            )
-          )}
-        </div>
-        {canManageProjects && tab === 'active' && (
-          <div className="new-project">
-            <input
-              ref={newProjectRef}
-              className="input"
-              placeholder="Новый проект"
-              value={newProject}
-              onChange={(e) => setNewProject(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && createProject()}
-            />
-            <button className="btn btn-primary btn-sm" onClick={createProject}>
-              +
-            </button>
-          </div>
-        )}
-      </aside>
 
       <main className="board-main">
         {error && <div className="error-text board-error">{error}</div>}
@@ -501,11 +352,12 @@ export function BoardPage({ initial, onNavigate }: {
                 ? 'Создайте проект — и сможете вести задачи по колонкам. Уже работаете в YouGile? Подключите импорт в «Интеграциях».'
                 : 'Как только вас добавят в проект, его доска откроется здесь.'}
               action={canManageProjects
-                ? { label: 'Создать проект', onClick: () => newProjectRef.current?.focus() }
+                // поле создания живёт в меню слева — просим его принять курсор
+                ? { label: 'Создать проект', onClick: () => window.dispatchEvent(new Event(NEW_PROJECT_FOCUS)) }
                 : undefined}
             />
           ) : (
-            <EmptyState icon="arrow-left" title="Выберите проект" hint="Список проектов — слева." />
+            <EmptyState icon="arrow-left" title="Выберите проект" hint="Список проектов — в меню слева, под разделом «Проекты и доски»." />
           )
         )}
         {board && (

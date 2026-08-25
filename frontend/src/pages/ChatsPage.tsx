@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
@@ -13,7 +14,7 @@ import type { User } from '../types';
 
 interface Chat {
   id: string; kind: 'dm' | 'group' | 'project'; title: string | null;
-  peerId: string | null; peerOnline: boolean; projectId: string | null;
+  peerId: string | null; peerOnline: boolean; projectId: string | null; avatarUrl?: string | null;
   unread: number; lastBody: string | null; lastAuthor: string | null; lastAt: string | null;
 }
 interface Message {
@@ -220,7 +221,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
         {others.filter((u) => match(u.fullName)).length > 0 && <div className="chat-group-head">Написать впервые</div>}
         {others.filter((u) => match(u.fullName)).map((u) => (
           <button key={u.id} className="chat-row" onClick={() => writeTo(u.id)}>
-            <span className="avatar-xs avatar-ph">{u.fullName[0]?.toUpperCase()}</span>
+            <Avatar path={u.avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
             <span className="chat-row-main">
               <span className="chat-row-title">
                 {u.fullName}
@@ -316,14 +317,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                 return (
                   <div key={m.id}>
                     {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
-                    <div className={`chat-msg ${mine ? 'mine' : ''}`}>
-                      {!mine && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
-                      {m.body && <div className="chat-body">{m.body}</div>}
-                      {m.file_id && (
-                        <a className="chat-file" href={`/api/files/${m.file_id}`} target="_blank" rel="noreferrer">
-                          <Icon name="paperclip" size={14} /> {m.file_name}
-                        </a>
-                      )}
+                    {/* Время — ПОД плашкой, а не внутри неё: серая строчка на цветном
+                        пузыре не читалась вовсе, а место в углу отъедала. */}
+                    <div className={`chat-line ${mine ? 'mine' : ''}`}>
+                      <div className={`chat-msg ${mine ? 'mine' : ''}`}>
+                        {!mine && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
+                        {m.body && <div className="chat-body">{m.body}</div>}
+                        {m.file_id && (
+                          <a className="chat-file" href={`/api/files/${m.file_id}`} target="_blank" rel="noreferrer">
+                            <Icon name="paperclip" size={14} /> {m.file_name}
+                          </a>
+                        )}
+                      </div>
                       <div className="chat-time">{timeOf(m.created_at)}</div>
                     </div>
                   </div>
@@ -387,7 +392,9 @@ function ChatRow({ chat, active, group, onClick }: { chat: Chat; active: boolean
   const icon = chat.kind === 'dm' ? (chat.title?.[0]?.toUpperCase() ?? '?') : '#';
   return (
     <button className={`chat-row ${active ? 'active' : ''}`} onClick={onClick}>
-      <span className="avatar-xs avatar-ph">{icon}</span>
+      {/* у личного диалога — лицо собеседника: по десятку одинаковых кружков с буквой
+          чат не находится взглядом, а по фотографии находится сразу */}
+      <Avatar path={chat.avatarUrl ?? null} fallback={icon} className="avatar-sm" />
       <span className="chat-row-main">
         <span className="chat-row-title">
           {chat.kind === 'dm' && <span className={`presence ${chat.peerOnline ? 'on' : ''}`} />}

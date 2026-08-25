@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
+import { ProjectsNav } from './ProjectsNav';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { buildPath, navigate, Route, Section } from '../lib/router';
@@ -57,14 +58,8 @@ const MENU: Item[] = [
     label: 'Проекты и доски',
     icon: 'board',
     hint: 'Пространства задач компании: списки и канбан',
-    subs: [
-      {
-        label: 'Клиенты и сделки',
-        icon: 'handshake',
-        route: { section: 'projects', view: 'clients' },
-        roles: ['owner', 'manager'],
-      },
-    ],
+    // «Клиенты и сделки» переехали в личный кабинет и видны только тому, кто завёл
+    // компанию: приглашённым сотрудникам этот раздел не нужен, а место в меню занимал
   },
   {
     section: 'chat',
@@ -273,6 +268,15 @@ export function Sidebar({
                     )}
                   </>
                 ))}
+                {/* Проекты раскрываются прямо под своим разделом, как в привычных
+                    таск-менеджерах: отдельная колонка слева отъедала место у доски
+                    и висела перед глазами даже тогда, когда переключать нечего. */}
+                {item.section === 'projects' && active && !collapsed && (
+                  <ProjectsNav
+                    currentId={route.projectId ?? null}
+                    canManage={user.role === 'owner' || user.role === 'manager'}
+                  />
+                )}
                 {/* подпункты — только у открытого раздела: панель должна оставаться короткой */}
                 {active && !collapsed && item.subs?.filter((s) => visible(s.roles, user.role)).map((sub) => (
                   <span key={sub.label}>

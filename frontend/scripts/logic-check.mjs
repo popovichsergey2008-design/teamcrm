@@ -45,7 +45,6 @@ test('разбор и сборка адреса совпадают в обе с�
     ['/focus', { section: 'focus' }],
     ['/focus/inbox', { section: 'focus', view: 'inbox' }],
     ['/projects', { section: 'projects' }],
-    ['/projects/clients', { section: 'projects', view: 'clients' }],
     ['/projects/p1', { section: 'projects', projectId: 'p1' }],
     ['/projects/p1/task/t2', { section: 'projects', projectId: 'p1', taskId: 't2' }],
     ['/chat', { section: 'chat' }],

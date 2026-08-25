@@ -19,7 +19,6 @@ import { useNavCounters } from './hooks/useNavCounters';
 import { Sidebar } from './components/Sidebar';
 import { Icon } from './components/Icon';
 import { ProfilePanel } from './components/ProfilePanel';
-import { ClientsPanel } from './components/ClientsPanel';
 import { NlCommandModal } from './components/NlCommandModal';
 import { CommandPalette } from './components/CommandPalette';
 import { SecretaryPanel } from './components/SecretaryPanel';
@@ -297,9 +296,6 @@ export function App() {
       {/* Подразделы, живущие поверх своего раздела: адрес у них свой, экран — родительский */}
       {route.section === 'focus' && route.view === 'inbox' && canManage && (
         <InboxPanel onClose={() => navigate({ section: 'focus' })} />
-      )}
-      {route.section === 'projects' && route.view === 'clients' && canManage && (
-        <ClientsPanel onClose={() => navigate({ section: 'projects' })} />
       )}
 
       <Toasts onOpenChat={(chatId) => navigate({ section: 'chat', chatId: chatId ?? undefined })} />

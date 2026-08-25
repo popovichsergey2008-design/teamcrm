@@ -155,13 +155,42 @@
   .profile-nav { width: auto; flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border); }
 }
 
-/* board layout */
+/* board layout. Второй колонки со списком проектов больше нет: список живёт в меню,
+   под своим разделом, и доска занимает всю ширину. */
 .board-layout { display: flex; flex: 1; min-height: 0; }
-.sidebar {
-  width: 240px; flex-shrink: 0; border-right: 1px solid var(--border);
-  background: var(--bg-elev); display: flex; flex-direction: column; padding: 16px 12px;
+
+/* ── проекты внутри меню ── */
+.nav-projects { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px; }
+.nav-projects-tabs { display: flex; gap: 4px; margin: 2px 8px 6px; border-bottom: 1px solid var(--border); }
+.nav-projects-tabs button {
+  flex: 1; background: none; border: none; cursor: pointer; padding: 4px 2px 6px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--text-mut); border-bottom: 2px solid transparent;
 }
-.sidebar-head { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-mut); margin: 0 6px 10px; }
+.nav-projects-tabs button:hover { color: var(--text-dim); }
+.nav-projects-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+/* Список ограничен по высоте: с тремя десятками импортированных досок меню иначе
+   выталкивает вниз всё остальное, включая «Пульс» и настройки. */
+.nav-projects-list {
+  max-height: 40vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1px;
+  scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; overscroll-behavior: contain;
+}
+.nav-projects-list::-webkit-scrollbar { width: 8px; }
+.nav-projects-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+.nav-projects .project-item { font-size: 13px; padding: 6px 10px 6px 30px; }
+.nav-projects .project-row.active { box-shadow: inset 2px 0 0 var(--accent); }
+.nav-projects-empty { padding: 4px 10px 4px 30px; font-size: 12px; }
+.nav-projects-new { display: flex; gap: 4px; padding: 6px 8px 2px 26px; }
+.nav-projects-new .input { font-size: 12px; padding: 5px 8px; min-width: 0; }
+.project-group-head {
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 8px 5px 22px;
+  background: none; border: none; cursor: pointer; color: inherit; font: inherit; text-align: left;
+}
+.project-group-head:hover { background: var(--bg-elev-2); border-radius: var(--radius-sm); }
+.project-group-caret { width: 10px; opacity: .7; }
+.project-group-name { flex: 1; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-group-count { opacity: .6; font-size: 12px; }
+
 /* вкладки сайдбара: «Проекты» и «Архив» (появляется, только когда в архиве что-то есть) */
 .sidebar-tabs { display: flex; gap: 4px; margin: 0 0 10px; border-bottom: 1px solid var(--border); }
 .sidebar-tab {
@@ -629,7 +658,11 @@
 .chat-author { font-size: 11px; color: var(--accent); margin-bottom: 2px; }
 .chat-body { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
 .chat-file { display: inline-block; font-size: 13px; margin-top: 4px; }
-.chat-time { font-size: 10px; color: var(--text-mut); text-align: right; margin-top: 2px; }
+/* Строка сообщения: плашка и под ней время. Внутри плашки время было серым по цветному
+   фону — не читалось вовсе и занимало угол; снаружи оно спокойно и видно. */
+.chat-line { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 6px; }
+.chat-line.mine { align-items: flex-end; }
+.chat-time { font-size: 11px; color: var(--text-dim); margin: 2px 4px 0; }
 .chat-input { display: flex; align-items: center; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--border); }
 .chat-call { display: flex; align-items: center; gap: 8px; }
 .chat-ai-toggle { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
@@ -854,7 +887,11 @@
 .risk-badge.risk-low { background: var(--fill-ok); border-color: transparent; }
 .blocked-on { color: var(--danger) !important; border-color: var(--danger-line) !important; background: var(--danger-soft) !important; }
 .avatar-lg { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; }
+/* Заглушка вместо фотографии — буква имени. flex: 0 0 auto обязателен: в строке рядом
+   с длинным именем кружок сжимался, буква съезжала за его край и читалась как мусор. */
 .avatar-ph { display: inline-grid; place-items: center; background: var(--accent-2); color: var(--on-accent); font-weight: 700; }
+.avatar-xs, .avatar-sm, .avatar-lg { flex: 0 0 auto; }
+.avatar-sm.avatar-ph { font-size: 12px; }
 .avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
 .notify-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
 
@@ -1139,6 +1176,7 @@
    карточки задач, строки пульса, элементы командной строки. Без него навигация
    табом идёт вслепую — человек не знает, где находится.
    Проверяется скриптом: npm run a11y. */
+.nav-projects-tabs button:focus-visible, .project-group-head:focus-visible,
 .nav-item:focus-visible, .nav-sub:focus-visible, .nav-search:focus-visible,
 .nav-secretary:focus-visible, .nav-user:focus-visible, .nav-collapse:focus-visible,
 .nav-org-select:focus-visible, .nav-open-btn:focus-visible,
@@ -1282,6 +1320,9 @@
   border-radius: var(--radius-sm); cursor: pointer; font-size: var(--fs-sm);
 }
 .call-starter-row:hover { background: var(--bg-elev-2); }
+.call-starter-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* «в чате» — подсказка, а не ярлык: тем, кто уже в переписке, галочка стоит сама */
+.call-starter-mark { font-size: 10px; color: var(--text-dim); flex: 0 0 auto; }
 .call-starter-ai {
   display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-dim);
   border-top: 1px solid var(--border); padding-top: 8px; cursor: pointer;
