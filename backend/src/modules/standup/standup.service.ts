@@ -11,6 +11,7 @@ import { EconomicsProducer } from '../economics/economics.producer';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { TelegramSender } from '../telegram/telegram.sender';
+import { SecretaryService } from '../secretary/secretary.service';
 import { StandupRepository, SubmissionRow } from './standup.repository';
 import { StandupMessage } from './standup.types';
 
@@ -32,6 +33,7 @@ export class StandupService {
     private readonly timelogs: TimeTrackingRepository,
     private readonly economics: EconomicsProducer,
     private readonly realtime: RealtimeService,
+    private readonly secretary: SecretaryService,
   ) {}
 
   // ---------- webhook ----------
@@ -158,6 +160,14 @@ export class StandupService {
     const projects = await this.applyActions(fresh);
 
     await this.repo.update(fresh.id, { status: 'applied', applied_at: new Date() });
+    // Журнал ассистента: голосовой дейлик разобран и разложен по доске — раньше это
+    // человек делал руками. Повторное применение сюда не доходит: выше стоит проверка
+    // статуса 'applied', поэтому строка в журнале одна на сабмишен.
+    const applied = validateStandupPackage(fresh.parsed_json).value?.actions.length ?? 0;
+    void this.secretary.record({
+      tenantId: fresh.tenant_id, userId: fresh.user_id, kind: 'standup',
+      summary: `Дейлик разобран, применено действий: ${applied}`,
+    });
     for (const projectId of projects) {
       this.realtime.emit(fresh.tenant_id, projectId, 'standup.applied', {
         submissionId: fresh.id,

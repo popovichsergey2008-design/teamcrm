@@ -9,6 +9,7 @@ import { ProjectsRepository } from '../projects/projects.repository';
 import { TaskCardService } from '../taskcard/taskcard.service';
 import { AgentsRepository } from './agents.repository';
 import { AgentPromptsService } from './agent-prompts.service';
+import { SecretaryService } from '../secretary/secretary.service';
 
 export interface AgentPromptOpts { presetId?: string; instruction?: string; model?: string }
 
@@ -70,6 +71,7 @@ export class AgentsService {
     private readonly ai: AiService,
     private readonly taskcard: TaskCardService,
     private readonly presets: AgentPromptsService,
+    private readonly secretary: SecretaryService,
   ) {}
 
   /** Собирает системный промпт: база + доп.инструкция (пресет или ad-hoc) и выбранную модель. */
@@ -249,6 +251,14 @@ export class AgentsService {
       const inputTokens = preOffline ? 0 : Math.ceil(userMsg.length / 4);
       const outputTokens = preOffline ? 0 : Math.ceil(answer.length / 4);
       await this.repo.finishRun(run.id, { result: answer, commentId: comment?.id ?? null, citations, inputTokens, outputTokens });
+
+      // Журнал ассистента: агент сделал работу за человека — это и есть сэкономленное время.
+      // Отказ («задача не автоматизируется») сюда не попадает выше по коду: за отказ засчитывать нечего.
+      void this.secretary.record({
+        tenantId, userId, kind: 'agent_run',
+        summary: `ИИ-агент: «${task.title}»${movedTo ? ` → ${movedTo}` : ''}`,
+        subjectType: 'task', subjectId: taskId,
+      });
 
       return { id: run.id, kind: opts.kind, status: 'done', declined: false, result: answer, commentId: comment?.id ?? null, citations, movedTo, fileName };
     } catch (e) {
