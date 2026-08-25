@@ -7,6 +7,7 @@ import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { JoinOrgPage } from './pages/JoinOrgPage';
 import { GuestMeetPage } from './pages/GuestMeetPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { CalendarPage } from './pages/CalendarPage';
 import { FocusPage } from './pages/FocusPage';
 import { MeetingsPage } from './pages/MeetingsPage';
 import { RadarPage } from './pages/RadarPage';
@@ -246,7 +247,7 @@ export function App() {
       */}
       <main className="app-main" key={user.tenantId}>
         {visited.has('focus') && (
-          <Pane active={route.section === 'focus'}>
+          <Pane active={route.section === 'focus' && route.view !== 'calendar'}>
             <FocusPage
               active={route.section === 'focus'}
               onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
@@ -285,6 +286,9 @@ export function App() {
         {/* Остальное открывают редко и ненадолго — держать это в памяти незачем */}
         {route.section === 'chat' && route.view === 'meetings' && (
           <MeetingsPage onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
+        )}
+        {route.section === 'focus' && route.view === 'calendar' && (
+          <CalendarPage onStartCall={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
         )}
         {route.section === 'radar' && canManage && <RadarPage />}
         {route.section === 'settings' && <SettingsPage route={route} role={user.role} />}

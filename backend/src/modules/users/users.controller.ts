@@ -60,6 +60,6 @@ export class UsersController {
       positionId: dto.positionId,
       groupIds: dto.groupIds,
       isActive: dto.isActive,
-    });
+    }, { actorId: user.userId, actorRole: user.role });
   }
 }

@@ -46,6 +46,7 @@ const MENU: Item[] = [
     icon: 'target',
     hint: 'Что делать сегодня, поручения другим и то, что ждёт вашего решения',
     subs: [
+      { label: 'Календарь', icon: 'calendar', route: { section: 'focus', view: 'calendar' } },
       {
         label: 'Входящие',
         icon: 'inbox',

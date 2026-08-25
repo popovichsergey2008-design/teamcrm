@@ -499,6 +499,20 @@ export const api = {
   startCall: (projectId?: string, withAi = false) =>
     request<{ id: string; projectId: string | null; aiEnabled: boolean }>('POST', '/media/rooms', { projectId, withAi }),
 
+  // календарь: события людей и компании
+  calendarRange: (from: string, to: string, withTasks = true) =>
+    request<{ events: any[]; tasks: any[]; work: { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] } }>(
+      'GET', `/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&tasks=${withTasks ? '1' : '0'}`),
+  calendarPending: () => request<{ count: number }>('GET', '/calendar/pending'),
+  calendarCreate: (b: Record<string, unknown>) => request<any>('POST', '/calendar/events', b),
+  calendarUpdate: (id: string, b: Record<string, unknown>) => request<any>('PATCH', `/calendar/events/${id}`, b),
+  calendarDelete: (id: string) => request<any>('DELETE', `/calendar/events/${id}`),
+  calendarRespond: (id: string, status: 'accepted' | 'declined') =>
+    request<any>('POST', `/calendar/events/${id}/respond`, { status }),
+  calendarWork: () => request<any>('GET', '/calendar/work'),
+  saveCalendarWork: (b: { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] }) =>
+    request<any>('POST', '/calendar/work', b),
+
   // гостевой доступ в созвон по ссылке
   createGuestLink: (b: { roomId?: string; projectId?: string; label?: string; ttlHours?: number }) =>
     request<{ id: string; roomId: string; url: string; expiresAt: string }>('POST', '/meet/guest-links', b),

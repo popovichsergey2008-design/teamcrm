@@ -113,12 +113,37 @@ export class UsersService {
     tenantId: string,
     id: string,
     patch: { roleCode?: Role; positionId?: string | null; groupIds?: string[]; isActive?: boolean },
+    actor?: { actorId: string; actorRole: string },
   ): Promise<PublicUser> {
     const target = await this.repo.findById(tenantId, id);
     if (!target) throw AppException.notFound('User not found');
 
     if (patch.roleCode !== undefined && !isAssignableTeamRole(patch.roleCode)) {
       throw AppException.validation('Недопустимая роль');
+    }
+
+    /**
+     * Роль меняет только владелец.
+     *
+     * Раньше это мог и руководитель — то есть выдать себе роль владельца и получить доступ
+     * к интеграциям (а там ключи чужих систем) и к расходам на ИИ. Заводить людей и править
+     * их данные руководитель по-прежнему может: опасна именно смена роли.
+     */
+    if (patch.roleCode !== undefined && actor && actor.actorRole !== 'owner') {
+      throw AppException.forbidden('Роль сотрудника меняет только владелец');
+    }
+
+    /**
+     * Основателя не понижает никто, включая других владельцев.
+     *
+     * Владельцев может быть несколько — это и есть «помощник владельца». Но тот, кто завёл
+     * компанию, не должен зависеть от того, кому он однажды выдал такие же права.
+     */
+    if (actor && (patch.roleCode !== undefined || patch.isActive === false)) {
+      const founderId = await this.repo.founderId(tenantId);
+      if (founderId && String(founderId) === String(id) && String(founderId) !== String(actor.actorId)) {
+        throw AppException.forbidden('Основателя компании понизить нельзя');
+      }
     }
     // инвариант последнего owner
     const activeOwners = await this.repo.countActiveOwners(tenantId);

@@ -159,6 +159,108 @@
    под своим разделом, и доска занимает всю ширину. */
 .board-layout { display: flex; flex: 1; min-height: 0; }
 
+/* ── Календарь ── */
+.calendar-page { display: flex; flex-direction: column; min-height: 0; padding: 16px 20px; gap: 10px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cal-nav { display: flex; align-items: center; gap: 6px; }
+.cal-title { font-size: var(--fs-lg); margin: 0 0 0 6px; }
+.cal-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cal-tasks-toggle { display: flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; }
+.cal-views { display: flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.cal-view {
+  background: none; border: none; cursor: pointer; padding: 5px 10px;
+  font-size: var(--fs-sm); color: var(--text-dim);
+}
+.cal-view:hover { background: var(--bg-elev-2); }
+.cal-view.active { background: var(--accent-2); color: var(--on-accent); }
+
+/* Сетка: строка заголовков, строка «весь день», прокручиваемое поле часов. */
+.cal-grid {
+  flex: 1; min-height: 0; display: grid; grid-template-columns: 56px repeat(var(--cal-days, 7), 1fr);
+  grid-template-rows: auto auto 1fr; border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; background: var(--bg-elev);
+}
+.cal-corner { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.cal-allday-label { font-size: 10px; color: var(--text-mut); padding: 4px; text-align: right; }
+.cal-dayhead {
+  display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 6px 4px;
+  border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+}
+.cal-dayhead.off { background: var(--bg-elev-2); }
+.cal-dayhead.today .cal-daynum { background: var(--accent-2); color: var(--on-accent); border-radius: 999px; padding: 1px 7px; }
+.cal-dayname { font-size: 11px; text-transform: uppercase; color: var(--text-mut); }
+.cal-daynum { font-weight: 600; }
+.cal-allday {
+  min-height: 26px; display: flex; flex-direction: column; gap: 2px; padding: 2px;
+  border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+}
+/* Поле часов прокручивается целиком: заголовки дней остаются на месте. */
+.cal-scroll {
+  grid-column: 1 / -1; display: grid; grid-template-columns: 56px repeat(var(--cal-days, 7), 1fr);
+  overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--border-2) transparent;
+}
+.cal-hours { border-right: 1px solid var(--border); }
+.cal-hour { height: 44px; position: relative; }
+.cal-hour span { position: absolute; top: -7px; right: 6px; font-size: 10px; color: var(--text-mut); }
+.cal-col { position: relative; border-right: 1px solid var(--border); }
+.cal-col.off { background: var(--bg-elev-2); }
+/* рабочие часы светлее нерабочих — так видно, куда встречу ставить прилично */
+.cal-worktime { position: absolute; left: 0; right: 0; background: var(--bg-elev); pointer-events: none; }
+.cal-slot { display: block; width: 100%; height: 44px; background: none; border: none; border-top: 1px solid var(--border); cursor: pointer; }
+.cal-slot:hover { background: var(--accent-soft); }
+
+.cal-event {
+  position: absolute; overflow: hidden; text-align: left; cursor: pointer;
+  border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-2); color: var(--on-accent);
+  padding: 2px 5px; font-size: 11px; line-height: 1.25; display: flex; flex-direction: column; gap: 1px;
+}
+.cal-event.company { background: var(--fill-info); border-color: var(--fill-info); color: var(--on-fill); }
+.cal-event.invited { border-style: dashed; }
+.cal-event.declined { opacity: .55; text-decoration: line-through; }
+.cal-event-time { font-size: 10px; opacity: .85; }
+.cal-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cal-chip {
+  display: block; width: 100%; text-align: left; font-size: 11px; padding: 2px 6px; border-radius: 4px;
+  background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cal-chip.company { background: var(--fill-info); border-color: var(--fill-info); color: var(--on-fill); }
+.cal-chip-task { background: var(--bg-elev-2); border-color: var(--border); color: var(--text-dim); cursor: default; }
+
+/* Месяц: клетки одинаковой высоты, иначе сетка «пляшет» от количества событий. */
+.cal-month {
+  flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+  background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: auto;
+}
+.cal-month-head { background: var(--bg-elev); text-align: center; font-size: 11px; text-transform: uppercase; color: var(--text-mut); padding: 4px; }
+.cal-month-cell { background: var(--bg-elev); min-height: 92px; padding: 4px; display: flex; flex-direction: column; gap: 2px; }
+.cal-month-cell.off { background: var(--bg-elev-2); }
+.cal-month-cell.other .cal-month-num { color: var(--text-mut); }
+.cal-month-cell.today .cal-month-num { background: var(--accent-2); color: var(--on-accent); border-radius: 999px; padding: 0 6px; }
+.cal-month-num { font-size: 12px; font-weight: 600; align-self: flex-start; }
+
+.cal-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.cal-list-day { display: flex; flex-direction: column; gap: 4px; }
+.cal-list-date { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); }
+.cal-list-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.cal-list-time { font-size: 12px; color: var(--text-dim); min-width: 104px; }
+.cal-list-title { flex: 1; background: none; border: none; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.cal-list-answer { display: flex; gap: 6px; }
+
+.cal-people { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.cal-participant { display: flex; align-items: center; gap: 8px; padding: 4px 6px; font-size: var(--fs-sm); }
+.cal-status { font-size: 11px; color: var(--text-mut); }
+.cal-status-accepted { color: var(--ok); }
+.cal-status-declined { color: var(--danger); }
+.cal-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+@media (max-width: 900px) {
+  .calendar-page { padding: 10px; }
+  .cal-grid, .cal-scroll { grid-template-columns: 40px repeat(var(--cal-days, 7), minmax(90px, 1fr)); }
+  .cal-grid { overflow-x: auto; }
+}
+
 /* ── проекты внутри меню ── */
 .nav-projects { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px; }
 .nav-projects-tabs { display: flex; gap: 4px; margin: 2px 8px 6px; border-bottom: 1px solid var(--border); }
@@ -1183,6 +1285,11 @@
    карточки задач, строки пульса, элементы командной строки. Без него навигация
    табом идёт вслепую — человек не знает, где находится.
    Проверяется скриптом: npm run a11y. */
+/* у переключателя «Задачи» фокус получает галочка внутри — подсвечиваем всю строку */
+.cal-tasks-toggle:focus-within,
+.cal-tasks-toggle:focus-visible,
+.cal-view:focus-visible, .cal-slot:focus-visible, .cal-event:focus-visible, .cal-chip:focus-visible,
+.cal-list-title:focus-visible,
 .nav-projects-tabs button:focus-visible, .project-group-head:focus-visible,
 .nav-item:focus-visible, .nav-sub:focus-visible, .nav-search:focus-visible,
 .nav-secretary:focus-visible, .nav-user:focus-visible, .nav-collapse:focus-visible,

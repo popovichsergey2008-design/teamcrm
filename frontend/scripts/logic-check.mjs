@@ -44,6 +44,7 @@ test('разбор и сборка адреса совпадают в обе с�
   const routes = [
     ['/focus', { section: 'focus' }],
     ['/focus/inbox', { section: 'focus', view: 'inbox' }],
+    ['/focus/calendar', { section: 'focus', view: 'calendar' }],
     ['/projects', { section: 'projects' }],
     ['/projects/p1', { section: 'projects', projectId: 'p1' }],
     ['/projects/p1/task/t2', { section: 'projects', projectId: 'p1', taskId: 't2' }],
@@ -254,6 +255,54 @@ test('звук молчит, когда его выключили или ког�
 
   delete globalThis.window;
   delete globalThis.localStorage;
+});
+
+test('календарь раскладывает события по дням и колонкам', async () => {
+  const g = await load('lib/calendar-grid.ts');
+
+  // неделя начинается с понедельника: у нас рабочая неделя, а не американская
+  const wed = new Date(2026, 7, 26, 15, 0); // среда, 26 августа 2026
+  assert.equal(g.startOfWeek(wed).getDay(), 1, 'неделя должна начинаться с понедельника');
+  assert.equal(g.daysOf('week', wed).length, 7);
+  assert.equal(g.daysOf('day', wed).length, 1);
+  assert.equal(g.daysOf('month', wed).length % 7, 0, 'месяц отдаёт целые недели, иначе сетка кривая');
+
+  const days = g.daysOf('week', wed);
+
+  // событие через полночь обязано быть видно в ОБОИХ днях, а не исчезнуть из вчерашнего
+  const overnight = { id: '1', title: 'ночная', startsAt: new Date(2026, 7, 26, 23, 0).toISOString(), endsAt: new Date(2026, 7, 27, 1, 0).toISOString() };
+  const parts = g.splitByDay(overnight, days);
+  assert.equal(parts.length, 2, 'событие через полночь режется на два дня');
+  assert.ok(parts[0].continuesTo && parts[1].continuesFrom, 'обе части знают о продолжении');
+  assert.ok(parts[0].top + parts[0].height <= 1.0001, 'первая часть не вылезает за сутки');
+  assert.ok(Math.abs(parts[1].top) < 1e-9, 'вторая часть начинается с полуночи');
+
+  // событие вне окна не показывается вовсе
+  const far = { id: '2', title: 'через месяц', startsAt: new Date(2026, 8, 26, 10, 0).toISOString(), endsAt: new Date(2026, 8, 26, 11, 0).toISOString() };
+  assert.equal(g.splitByDay(far, days).length, 0);
+
+  // пятиминутная встреча не должна стать невидимой полоской
+  const tiny = { id: '3', title: 'пять минут', startsAt: new Date(2026, 7, 26, 10, 0).toISOString(), endsAt: new Date(2026, 7, 26, 10, 5).toISOString() };
+  assert.ok(g.splitByDay(tiny, days)[0].height >= 0.02);
+
+  // два события на одно время встают рядом, а не друг на друга
+  const a = { id: 'a', title: 'A', startsAt: new Date(2026, 7, 26, 10, 0).toISOString(), endsAt: new Date(2026, 7, 26, 11, 0).toISOString() };
+  const b = { id: 'b', title: 'B', startsAt: new Date(2026, 7, 26, 10, 30).toISOString(), endsAt: new Date(2026, 7, 26, 11, 30).toISOString() };
+  const c = { id: 'c', title: 'C', startsAt: new Date(2026, 7, 26, 12, 0).toISOString(), endsAt: new Date(2026, 7, 26, 13, 0).toISOString() };
+  const laid = g.layoutDay([a, b, c].flatMap((e) => g.splitByDay(e, [days[2]])));
+  const byId = Object.fromEntries(laid.map((s) => [s.event.id, s]));
+  assert.equal(byId.a.columns, 2, 'пересекающиеся события делят день на две колонки');
+  assert.notEqual(byId.a.column, byId.b.column, 'наложенные события в разных колонках');
+  assert.equal(byId.c.columns, 1, 'непересекающееся событие занимает всю ширину');
+
+  // выходные и праздники — по настройке организации
+  const work = { weekendDays: [0, 6], holidays: ['2026-08-26'] };
+  assert.ok(g.isDayOff(new Date(2026, 7, 29), work), 'суббота — выходной');
+  assert.ok(g.isDayOff(new Date(2026, 7, 26), work), 'праздник — выходной, даже если это среда');
+  assert.ok(!g.isDayOff(new Date(2026, 7, 27), work), 'обычный четверг — рабочий');
+
+  assert.equal(g.timeToFraction('09:00'), 0.375);
+  assert.equal(g.timeToFraction('мусор'), 0);
 });
 
 // ── запуск ────────────────────────────────────────────────────────────────────
