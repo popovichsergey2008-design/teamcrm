@@ -128,4 +128,44 @@ describe('Лента компании (e2e)', () => {
     expect(after.some((p: any) => String(p.id) === String(pinned.id))).toBe(false);
     expect(after).toHaveLength(2);
   });
+
+  it('вложение видно в ленте, приложить его к чужому посту нельзя', async () => {
+    const owner = await org('Вложения');
+    const mate = await employee(owner.accessToken);
+
+    const post = (await http$.post('/api/feed').set(H(owner.accessToken))
+      .send({ body: 'Инструкция по пропускам' }).expect(201)).body.data;
+
+    await http$.post(`/api/feed/${post.id}/files`).set(H(owner.accessToken))
+      .attach('file', Buffer.from('порядок выдачи пропусков'), 'propuska.txt')
+      .expect(201);
+
+    const list = (await http$.get('/api/feed').set(H(mate.token)).expect(200)).body.data.items;
+    const mine = list.find((p: any) => String(p.id) === String(post.id));
+    expect(mine.files).toHaveLength(1);
+    expect(mine.files[0].name).toBe('propuska.txt');
+    expect(Number(mine.files[0].size)).toBeGreaterThan(0);
+
+    // чужая стена: дополнить чужое сообщение файлом рядовой сотрудник не может
+    await http$.post(`/api/feed/${post.id}/files`).set(H(mate.token))
+      .attach('file', Buffer.from('что-то своё'), 'chuzhoe.txt')
+      .expect(403);
+  });
+
+  it('упоминание чужого человека публикацию не ломает', async () => {
+    const a = await org('Упоминания А');
+    const b = await org('Упоминания Б');
+
+    // id из другой организации до рассылки не доходит, но и падать на нём нельзя:
+    // список упомянутых приходит от клиента, а клиенту верить нельзя ни в чём
+    const post = (await http$.post('/api/feed').set(H(a.accessToken))
+      .send({ body: `Вопрос к @${b.user.fullName}`, mentionIds: [String(b.user.id)] }).expect(201)).body.data;
+    expect(post.body).toContain('Вопрос к');
+
+    const mate = await employee(a.accessToken);
+    await http$.post(`/api/feed/${post.id}/comments`).set(H(a.accessToken))
+      .send({ body: `@${mate.user.fullName}, посмотрите`, mentionIds: [String(mate.user.id)] }).expect(201);
+    const comments = (await http$.get(`/api/feed/${post.id}/comments`).set(H(mate.token)).expect(200)).body.data;
+    expect(comments[0].body).toContain('посмотрите');
+  });
 });

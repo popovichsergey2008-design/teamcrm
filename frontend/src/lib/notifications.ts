@@ -40,7 +40,13 @@ export function showNotification(title: string, body: string, onClick?: () => vo
  * пока вкладка открыта. Слушатель живёт в App.
  */
 export const TOAST_EVENT = 'teamcrm:toast';
-export interface ToastPayload { title: string; body: string; chatId?: string }
+export interface ToastPayload {
+  title: string;
+  body: string;
+  chatId?: string;
+  /** Куда ведёт щелчок. По умолчанию — в чаты: с них уведомления и начинались. */
+  section?: 'chat' | 'feed';
+}
 export function showToast(payload: ToastPayload): void {
   window.dispatchEvent(new CustomEvent<ToastPayload>(TOAST_EVENT, { detail: payload }));
 }

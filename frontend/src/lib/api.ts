@@ -507,13 +507,26 @@ export const api = {
   feedList: (before?: string) =>
     request<{ items: any[] }>('GET', `/feed${before ? `?before=${before}` : ''}`),
   feedUnread: () => request<{ items: any[]; count: number }>('GET', '/feed/unread'),
-  feedCreate: (b: { body: string; isAnnouncement?: boolean; activeUntil?: string; groupIds?: string[] }) =>
+  feedCreate: (b: { body: string; isAnnouncement?: boolean; activeUntil?: string; groupIds?: string[]; mentionIds?: string[] }) =>
     request<any>('POST', '/feed', b),
+  /** Вложение прикладывается к УЖЕ опубликованному посту: сорвётся загрузка — текст не пропадёт. */
+  feedAttach: async (postId: string, file: File) => {
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`/api/feed/${postId}/files`, {
+      method: 'POST',
+      headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+      body: fd,
+    });
+    const env = await res.json();
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Не удалось приложить файл');
+    return env.data;
+  },
   feedRead: (id: string) => request<any>('POST', `/feed/${id}/read`),
   feedReaders: (id: string) =>
     request<{ read: { fullName: string }[]; pending: { fullName: string }[] }>('GET', `/feed/${id}/readers`),
   feedComments: (id: string) => request<any[]>('GET', `/feed/${id}/comments`),
-  feedComment: (id: string, body: string) => request<any[]>('POST', `/feed/${id}/comments`, { body }),
+  feedComment: (id: string, body: string, mentionIds?: string[]) =>
+    request<any[]>('POST', `/feed/${id}/comments`, { body, mentionIds }),
   feedPin: (id: string, pinned: boolean) => request<any>('POST', `/feed/${id}/pin`, { pinned }),
   feedDelete: (id: string) => request<any>('DELETE', `/feed/${id}`),
 

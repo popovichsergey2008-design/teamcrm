@@ -17,6 +17,14 @@ export interface PostRow {
   reads: number;
   comments: number;
   group_names: string[] | null;
+  files: FeedFile[] | null;
+}
+
+export interface FeedFile {
+  fileId: string;
+  name: string;
+  mime: string;
+  size: number;
 }
 
 @Injectable()
@@ -37,7 +45,12 @@ export class FeedRepository {
               (SELECT count(*)::int FROM feed_post_reads x WHERE x.post_id = p.id) AS reads,
               (SELECT count(*)::int FROM feed_comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comments,
               (SELECT array_agg(g.name ORDER BY g.name) FROM feed_post_groups pg
-                 JOIN groups g ON g.id = pg.group_id WHERE pg.post_id = p.id) AS group_names
+                 JOIN groups g ON g.id = pg.group_id WHERE pg.post_id = p.id) AS group_names,
+              (SELECT json_agg(json_build_object(
+                        'fileId', f.id::text, 'name', f.file_name,
+                        'mime', f.content_type, 'size', f.size_bytes) ORDER BY f.id)
+                 FROM feed_post_files pf JOIN files f ON f.id = pf.file_id
+                WHERE pf.post_id = p.id) AS files
          FROM feed_posts p
          JOIN users u ON u.id = p.author_id
          LEFT JOIN feed_post_reads r ON r.post_id = p.id AND r.user_id = $2
@@ -60,7 +73,8 @@ export class FeedRepository {
   byId(tenantId: string, id: string) {
     return this.db.one<PostRow>(
       `SELECT p.*, u.full_name AS author_name, u.avatar_file_id AS author_avatar,
-              NULL::timestamptz AS read_at, 0 AS reads, 0 AS comments, NULL::text[] AS group_names
+              NULL::timestamptz AS read_at, 0 AS reads, 0 AS comments, NULL::text[] AS group_names,
+              NULL::json AS files
          FROM feed_posts p JOIN users u ON u.id = p.author_id
         WHERE p.tenant_id = $1 AND p.id = $2 AND p.deleted_at IS NULL`,
       [tenantId, id],
@@ -144,7 +158,8 @@ export class FeedRepository {
   unreadAnnouncements(tenantId: string, userId: string) {
     return this.db.many<PostRow>(
       `SELECT p.*, u.full_name AS author_name, u.avatar_file_id AS author_avatar,
-              NULL::timestamptz AS read_at, 0 AS reads, 0 AS comments, NULL::text[] AS group_names
+              NULL::timestamptz AS read_at, 0 AS reads, 0 AS comments, NULL::text[] AS group_names,
+              NULL::json AS files
          FROM feed_posts p JOIN users u ON u.id = p.author_id
         WHERE p.tenant_id = $1 AND p.deleted_at IS NULL AND p.is_announcement
           AND (p.active_until IS NULL OR p.active_until > now())
@@ -192,5 +207,48 @@ export class FeedRepository {
       `UPDATE feed_posts SET deleted_at = now() WHERE tenant_id = $1 AND id = $2`,
       [tenantId, postId],
     );
+  }
+
+  /** Вложение к посту. Файл уже лежит в хранилище — здесь только связь. */
+  async addFile(tenantId: string, postId: string, fileId: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO feed_post_files (post_id, file_id, tenant_id) VALUES ($1,$2,$3)
+       ON CONFLICT DO NOTHING`,
+      [postId, fileId, tenantId],
+    );
+  }
+
+  files(tenantId: string, postId: string) {
+    return this.db.many<FeedFile>(
+      `SELECT f.id::text AS "fileId", f.file_name AS name, f.content_type AS mime, f.size_bytes AS size
+         FROM feed_post_files pf JOIN files f ON f.id = pf.file_id
+        WHERE pf.tenant_id = $1 AND pf.post_id = $2
+        ORDER BY f.id`,
+      [tenantId, postId],
+    );
+  }
+
+  /**
+   * Отсекаем чужих и несуществующих: список упомянутых приходит от клиента,
+   * а по нему потом уходят оповещения — принимать его на слово нельзя.
+   * Заказчиков (роль client) в ленте нет, значит и позвать их оттуда невозможно.
+   */
+  tenantUserIds(tenantId: string, ids: string[]) {
+    if (!ids.length) return Promise.resolve([] as { id: string; full_name: string }[]);
+    return this.db.many<{ id: string; full_name: string }>(
+      `SELECT u.id, u.full_name FROM users u
+         JOIN roles ro ON ro.id = u.role_id AND ro.code <> 'client'
+        WHERE u.tenant_id = $1 AND u.is_active AND u.id = ANY($2::bigint[])`,
+      [tenantId, ids.map(String)],
+    );
+  }
+
+  async addMentions(tenantId: string, postId: string, commentId: string | null, userIds: string[]): Promise<void> {
+    for (const userId of new Set(userIds.map(String))) {
+      await this.db.query(
+        `INSERT INTO feed_mentions (tenant_id, post_id, comment_id, user_id) VALUES ($1,$2,$3,$4)`,
+        [tenantId, postId, commentId, userId],
+      );
+    }
   }
 }

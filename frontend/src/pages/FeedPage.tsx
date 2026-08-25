@@ -3,6 +3,9 @@ import { Avatar } from '../components/Avatar';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { SkeletonList } from '../components/Skeleton';
+import { Lightbox } from '../components/Lightbox';
+import { MentionField } from '../components/MentionField';
+import { MentionUser, stillMentioned, withMentions } from '../lib/mentions';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../state/auth';
 
@@ -20,7 +23,15 @@ interface Post {
   reads: number;
   comments: number;
   groups: string[];
+  files: FeedFile[];
   canManage: boolean;
+}
+
+interface FeedFile {
+  fileId: string;
+  name: string;
+  mime: string;
+  size: number;
 }
 
 interface Comment {
@@ -58,6 +69,9 @@ export function FeedPage() {
   const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [mentionIds, setMentionIds] = useState<string[]>([]);
+  const [team, setTeam] = useState<MentionUser[]>([]);
 
   const reload = useCallback(
     () => api.feedList()
@@ -69,22 +83,40 @@ export function FeedPage() {
 
   useEffect(() => { void reload(); }, [reload]);
   useEffect(() => { api.listGroups().then(setGroups).catch(() => undefined); }, []);
+  // список сотрудников нужен и подсказке по @, и подсветке упоминаний в готовом тексте
+  useEffect(() => {
+    api.listUsers()
+      .then((list) => setTeam(list.filter((u: any) => u.isActive && u.role !== 'client')
+        .map((u: any) => ({ id: String(u.id), fullName: u.fullName, avatarUrl: u.avatarUrl }))))
+      .catch(() => undefined);
+  }, []);
 
   const publish = async () => {
     if (!body.trim()) return;
     setBusy(true);
     setErr('');
     try {
-      await api.feedCreate({
+      const post = await api.feedCreate({
         body: body.trim(),
         isAnnouncement: asAnnouncement,
         activeUntil: asAnnouncement && activeUntil ? new Date(activeUntil).toISOString() : undefined,
         groupIds,
+        // в тексте упоминание живёт именем, но позвали именно этих людей
+        mentionIds: stillMentioned(mentionIds, body, team),
       });
+      // Файлы прикладываем к уже опубликованному посту: если один не долетит,
+      // текст и остальные вложения останутся на месте.
+      const failed: string[] = [];
+      for (const f of files) {
+        try { await api.feedAttach(post.id, f); } catch { failed.push(f.name); }
+      }
+      if (failed.length) setErr(`Не удалось приложить: ${failed.join(', ')}`);
       setBody('');
       setAsAnnouncement(false);
       setActiveUntil('');
       setGroupIds([]);
+      setFiles([]);
+      setMentionIds([]);
       await reload();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось опубликовать');
@@ -98,12 +130,13 @@ export function FeedPage() {
       <div className="page-head"><h2>Лента компании</h2></div>
 
       <div className="card feed-composer">
-        <textarea
-          className="input"
+        <MentionField
           rows={3}
-          placeholder={asAnnouncement ? 'Что важно знать всем?' : 'Написать всей компании…'}
+          placeholder={asAnnouncement ? 'Что важно знать всем? Через @ можно позвать человека' : 'Написать всей компании…'}
           value={body}
-          onChange={(e) => setBody(e.target.value)}
+          users={team}
+          onChange={setBody}
+          onMention={(id) => setMentionIds((prev) => (prev.includes(id) ? prev : [...prev, id]))}
         />
 
         <div className="feed-composer-row">
@@ -139,10 +172,37 @@ export function FeedPage() {
               title="До какого числа объявление действует. Пусто — бессрочно"
             />
           )}
+          <label className="btn btn-sm feed-attach" title="Приложить файлы к сообщению">
+            <Icon name="paperclip" size={14} /> Файл
+            <input
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])].slice(0, 10));
+                e.target.value = ''; // иначе тот же файл второй раз не выбрать
+              }}
+            />
+          </label>
           <button className="btn btn-primary btn-sm" onClick={publish} disabled={busy || !body.trim()}>
             {busy ? 'Публикую…' : 'Опубликовать'}
           </button>
         </div>
+
+        {files.length > 0 && (
+          <div className="feed-chosen">
+            {files.map((f, i) => (
+              <button
+                key={`${f.name}-${i}`}
+                className="feed-chip"
+                title="Убрать файл"
+                onClick={() => setFiles(files.filter((_, x) => x !== i))}
+              >
+                <Icon name="paperclip" size={11} /> {f.name} <Icon name="close" size={11} />
+              </button>
+            ))}
+          </div>
+        )}
 
         {groupIds.length > 0 && (
           <div className="feed-chosen">
@@ -166,15 +226,17 @@ export function FeedPage() {
       )}
 
       <div className="feed-list">
-        {items.map((p) => <PostCard key={p.id} post={p} onChanged={reload} />)}
+        {items.map((p) => <PostCard key={p.id} post={p} team={team} onChanged={reload} />)}
       </div>
     </div>
   );
 }
 
-function PostCard({ post, onChanged }: { post: Post; onChanged: () => void }) {
+function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; onChanged: () => void }) {
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [text, setText] = useState('');
+  const [mentionIds, setMentionIds] = useState<string[]>([]);
+  const [preview, setPreview] = useState<FeedFile | null>(null);
   const [readers, setReaders] = useState<{ read: { fullName: string }[]; pending: { fullName: string }[] } | null>(null);
 
   const openComments = async () => {
@@ -184,8 +246,10 @@ function PostCard({ post, onChanged }: { post: Post; onChanged: () => void }) {
 
   const send = async () => {
     if (!text.trim()) return;
-    setComments(await api.feedComment(post.id, text.trim()).catch(() => comments ?? []));
+    const called = stillMentioned(mentionIds, text, team);
+    setComments(await api.feedComment(post.id, text.trim(), called).catch(() => comments ?? []));
     setText('');
+    setMentionIds([]);
     onChanged();
   };
 
@@ -224,7 +288,34 @@ function PostCard({ post, onChanged }: { post: Post; onChanged: () => void }) {
         </span>
       </header>
 
-      <div className="feed-body">{post.body}</div>
+      <div className="feed-body"><Body text={post.body} team={team} /></div>
+
+      {post.files.length > 0 && (
+        <div className="feed-files">
+          {post.files.map((f) => (
+            <button
+              key={f.fileId}
+              className="feed-file"
+              onClick={() => (f.mime.startsWith('image/')
+                ? setPreview(f)
+                : window.open(`/api/files/${f.fileId}`, '_blank', 'noopener'))}
+              title={f.mime.startsWith('image/') ? 'Посмотреть' : 'Скачать'}
+            >
+              <Icon name={f.mime.startsWith('image/') ? 'image' : 'file'} size={14} />
+              <span className="feed-file-name">{f.name}</span>
+              <span className="dim">{fileSize(f.size)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {preview && (
+        <Lightbox
+          url={`/api/files/${preview.fileId}`}
+          name={preview.name}
+          mime={preview.mime}
+          onClose={() => setPreview(null)}
+        />
+      )}
 
       <footer className="feed-post-foot">
         {/* Подтверждение прочтения — суть объявления: автор должен видеть, кто прочитал */}
@@ -260,22 +351,42 @@ function PostCard({ post, onChanged }: { post: Post; onChanged: () => void }) {
                 <div className="feed-comment-head">
                   <b>{c.fullName}</b> <span className="dim feed-time">{when(c.createdAt)}</span>
                 </div>
-                <div>{c.body}</div>
+                <div><Body text={c.body} team={team} /></div>
               </div>
             </div>
           ))}
           <div className="feed-comment-new">
-            <input
-              className="input"
-              placeholder="Ответить…"
+            <MentionField
+              placeholder="Ответить… через @ можно позвать человека"
               value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && send()}
+              users={team}
+              onChange={setText}
+              onMention={(id) => setMentionIds((prev) => (prev.includes(id) ? prev : [...prev, id]))}
+              onEnter={send}
             />
             <button className="btn btn-sm" onClick={send} disabled={!text.trim()}>Отправить</button>
           </div>
         </div>
       )}
     </article>
+  );
+}
+
+/** Размер файла человеческими словами: «2,4 МБ» вместо 2516582. */
+function fileSize(bytes: number): string {
+  if (!bytes) return '';
+  const mb = bytes / 1024 / 1024;
+  return mb >= 1 ? `${mb.toFixed(1).replace('.', ',')} МБ` : `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+}
+
+/** Текст сообщения: упомянутые имена выделяем, всё остальное — как написано. */
+function Body({ text, team }: { text: string; team: MentionUser[] }) {
+  return (
+    <>
+      {withMentions(text, team).map((part, i) =>
+        typeof part === 'string'
+          ? <span key={i}>{part}</span>
+          : <span key={i} className="mention">@{part.name}</span>)}
+    </>
   );
 }

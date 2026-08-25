@@ -1,8 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
+import { AppException } from '../../common/http/app-exception';
 import { FeedService } from './feed.service';
 
 class PostDto {
@@ -13,10 +15,13 @@ class PostDto {
   @IsOptional() @IsDateString() activeUntil?: string;
   /** Кому: подразделения. Пусто — всей компании. */
   @IsOptional() @IsArray() @ArrayMaxSize(30) groupIds?: string[];
+  /** Кого позвали через @ — их id собирает подсказка на клиенте. */
+  @IsOptional() @IsArray() @ArrayMaxSize(30) mentionIds?: string[];
 }
 
 class CommentDto {
   @IsString() @MinLength(1) @MaxLength(4000) body!: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(30) mentionIds?: string[];
 }
 
 class PinDto {
@@ -64,7 +69,16 @@ export class FeedController {
 
   @Post(':id/comments')
   comment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CommentDto) {
-    return this.feed.comment(u.tenantId, u.userId, id, dto.body);
+    return this.feed.comment(u.tenantId, u.userId, id, dto.body, dto.mentionIds);
+  }
+
+  /** Вложение к посту: файл прикладывают к уже опубликованному сообщению. */
+  @Post(':id/files')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  attach(@CurrentUser() u: AuthUser, @Param('id') id: string, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw AppException.validation('file is required');
+    return this.feed.attach(u.tenantId, u, id, file);
   }
 
   @Post(':id/pin')

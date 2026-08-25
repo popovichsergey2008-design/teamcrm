@@ -614,6 +614,32 @@
 }
 .overload-confirm { width: 100%; margin-top: 8px; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
+/* упоминания через @: подсказка и выделение в готовом тексте */
+.mention-wrap { position: relative; }
+.mention-list {
+  position: absolute; z-index: 40; left: 0; right: 0; top: 100%; margin: 4px 0 0; padding: 4px;
+  list-style: none; max-height: 240px; overflow-y: auto;
+  background: var(--bg-elev); border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+}
+.mention-option {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 6px 8px; border-radius: var(--radius-sm); font-size: var(--fs-sm);
+  background: transparent; border: none; color: var(--text); cursor: pointer;
+}
+.mention-option:hover, .mention-active { background: var(--bg-elev-2); }
+.mention { color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 3px; }
+/* вложения к посту */
+.feed-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.feed-file {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 5px 9px; font-size: var(--fs-xs); color: var(--text); cursor: pointer;
+  background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.feed-file:hover { border-color: var(--accent-line); }
+.feed-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+.feed-attach { cursor: pointer; }
+
 /* приёмка работы: что мешает сдать задачу */
 .gate-card { width: 460px; }
 .gate-title { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; color: var(--warn); }
@@ -1376,6 +1402,9 @@
    Проверяется скриптом: npm run a11y. */
 /* у переключателя «Задачи» фокус получает галочка внутри — подсвечиваем всю строку */
 .feed-chip:focus-visible, .feed-flag:focus-within,
+.mention-option:focus-visible, .feed-file:focus-visible,
+/* «Файл» — это label со скрытым input: фокус получает input внутри */
+.feed-attach:focus-within,
 /* условия приёмки: фокус получает галочка внутри строки — подсвечиваем строку целиком */
 .gate-item:focus-within,
 .cal-reminder:focus-within,

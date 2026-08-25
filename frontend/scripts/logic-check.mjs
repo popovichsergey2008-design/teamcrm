@@ -305,6 +305,32 @@ test('календарь раскладывает события по дням �
   assert.equal(g.timeToFraction('мусор'), 0);
 });
 
+test('упоминания: подсказка открывается по делу, а разбор не выдумывает людей', async () => {
+  const m = await load('lib/mentions.ts');
+  const team = [
+    { id: '1', fullName: 'Иван Петров' },
+    { id: '2', fullName: 'Иван' },
+    { id: '3', fullName: 'Ольга Ким' },
+  ];
+
+  // подсказка: @ в начале слова — да, внутри адреса почты — нет
+  assert.deepEqual(m.activeQuery('привет @Ив', 10), { start: 7, query: 'Ив' });
+  assert.equal(m.activeQuery('mail@teamsmrt.com', 17), null, 'адрес почты не упоминание');
+  assert.equal(m.activeQuery('@Иван Петров сделал всё и ушёл', 30), null, 'предложение — уже не поиск');
+
+  // ищем по любой части имени, а не только по началу
+  assert.deepEqual(m.suggest(team, 'петров').map((u) => u.id), ['1']);
+  assert.equal(m.suggest(team, '').length, 3, 'пустой запрос — вся команда');
+
+  // разбор: длинное имя выигрывает у короткого, посторонний @ остаётся текстом
+  const parts = m.withMentions('@Иван Петров, посмотрите. Цена @2000', team);
+  assert.deepEqual(parts[0], { name: 'Иван Петров' }, 'совпасть должно длинное имя');
+  assert.ok(parts.slice(1).every((p) => typeof p === 'string'), '@2000 — не человек');
+
+  // стёртое имя не зовёт: человек передумал
+  assert.deepEqual(m.stillMentioned(['1', '3'], 'спасибо, @Иван Петров', team), ['1']);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

@@ -13,7 +13,10 @@ const MAX_VISIBLE = 3;
  * браузера — а его разрешение обычно не выдают, и человек не узнавал ни о чём.
  * Это видно всегда: клик открывает чаты.
  */
-export function Toasts({ onOpenChat }: { onOpenChat: (chatId?: string) => void }) {
+export function Toasts({ onOpenChat, onOpenFeed }: {
+  onOpenChat: (chatId?: string) => void;
+  onOpenFeed?: () => void;
+}) {
   const [items, setItems] = useState<Toast[]>([]);
 
   useEffect(() => {
@@ -37,10 +40,13 @@ export function Toasts({ onOpenChat }: { onOpenChat: (chatId?: string) => void }
         <button
           key={t.id}
           className="toast"
-          onClick={() => { onOpenChat(t.chatId); setItems((prev) => prev.filter((x) => x.id !== t.id)); }}
-          title="Открыть чаты"
+          onClick={() => {
+            if (t.section === 'feed') onOpenFeed?.(); else onOpenChat(t.chatId);
+            setItems((prev) => prev.filter((x) => x.id !== t.id));
+          }}
+          title={t.section === 'feed' ? 'Открыть ленту' : 'Открыть чаты'}
         >
-          <Icon name="chat" size={16} />
+          <Icon name={t.section === 'feed' ? 'bell' : 'chat'} size={16} />
           <span className="toast-text">
             <span className="toast-title">{t.title}</span>
             <span className="toast-body">{t.body}</span>

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
+import { FilesService } from '../files/files.service';
 import { FeedRepository, PostRow } from './feed.repository';
 
 @Injectable()
@@ -8,6 +9,7 @@ export class FeedService {
   constructor(
     private readonly repo: FeedRepository,
     private readonly realtime: RealtimeService,
+    private readonly files: FilesService,
   ) {}
 
   async list(tenantId: string, userId: string, limit = 20, before?: string) {
@@ -30,6 +32,7 @@ export class FeedService {
    */
   async create(tenantId: string, user: { userId: string; role: string }, dto: {
     body: string; isAnnouncement?: boolean; activeUntil?: string | null; groupIds?: string[];
+    mentionIds?: string[];
   }) {
     const body = dto.body?.trim();
     if (!body) throw AppException.validation('Пустое сообщение отправить нельзя');
@@ -46,6 +49,8 @@ export class FeedService {
       groupIds: dto.groupIds ?? [],
     });
 
+    await this.mention(tenantId, post.id, null, dto.mentionIds, user.userId, body);
+
     // Объявление — единственное, о чём стоит сообщать сразу: обычный пост подождёт,
     // пока человек сам откроет ленту. Иначе лента станет вторым источником шума.
     // Шлём ровно тем, кому оно адресовано и кто его ещё не читал.
@@ -57,7 +62,7 @@ export class FeedService {
         body: body.slice(0, 160),
       });
     }
-    return this.view({ ...post, author_name: null, author_avatar: null, reads: 1, comments: 0, read_at: new Date(), group_names: null }, user.userId);
+    return this.view({ ...post, author_name: null, author_avatar: null, reads: 1, comments: 0, read_at: new Date(), group_names: null, files: null }, user.userId);
   }
 
   async read(tenantId: string, userId: string, postId: string) {
@@ -96,12 +101,13 @@ export class FeedService {
     })));
   }
 
-  async comment(tenantId: string, userId: string, postId: string, body: string) {
+  async comment(tenantId: string, userId: string, postId: string, body: string, mentionIds?: string[]) {
     const text = body?.trim();
     if (!text) throw AppException.validation('Пустой комментарий');
     const post = await this.repo.byId(tenantId, postId);
     if (!post) throw AppException.notFound('Сообщение не найдено');
-    await this.repo.addComment(tenantId, postId, userId, text.slice(0, 4000));
+    const added = await this.repo.addComment(tenantId, postId, userId, text.slice(0, 4000));
+    await this.mention(tenantId, postId, added?.id ?? null, mentionIds, userId, text);
     // комментарий к объявлению — это вопрос по нему; считаем, что человек его прочитал
     await this.repo.markRead(tenantId, postId, userId);
     return this.comments(tenantId, postId);
@@ -146,7 +152,48 @@ export class FeedService {
       reads: Number(r.reads ?? 0),
       comments: Number(r.comments ?? 0),
       groups: r.group_names ?? [],
+      files: r.files ?? [],
       canManage: String(r.author_id) === String(userId),
     };
+  }
+
+  /**
+   * Упоминание: позвали конкретного человека.
+   *
+   * Список приходит от клиента (его собирает подсказка по @), поэтому проверяем,
+   * что это вообще сотрудники этой компании. Себя упомянуть можно — но звать себя
+   * оповещением незачем, поэтому автор из рассылки выпадает.
+   */
+  private async mention(
+    tenantId: string, postId: string, commentId: string | null,
+    ids: string[] | undefined, actorId: string, body: string,
+  ): Promise<void> {
+    const wanted = (ids ?? []).map(String).filter((id) => id !== String(actorId)).slice(0, 30);
+    if (!wanted.length) return;
+    const users = await this.repo.tenantUserIds(tenantId, wanted);
+    if (!users.length) return;
+    await this.repo.addMentions(tenantId, postId, commentId, users.map((u) => u.id));
+    this.realtime.emitToUsers(tenantId, users.map((u) => String(u.id)), 'feed.mention', {
+      postId: String(postId),
+      commentId: commentId ? String(commentId) : null,
+      body: body.slice(0, 160),
+    });
+  }
+
+  /**
+   * Вложение к посту. Файл прикладывают уже к опубликованному сообщению: пост
+   * появляется первым, и если загрузка второго файла сорвётся, текст не пропадёт.
+   */
+  async attach(tenantId: string, user: { userId: string; role: string }, postId: string, file: {
+    buffer: Buffer; originalname: string; mimetype: string;
+  }) {
+    await this.owned(tenantId, user, postId); // прикладывает автор (или руководство)
+    const f = await this.files.upload({
+      tenantId, userId: user.userId, buffer: file.buffer,
+      fileName: file.originalname, contentType: file.mimetype,
+      ownerKind: 'feed_post', ownerId: postId,
+    });
+    await this.repo.addFile(tenantId, postId, f.id);
+    return { fileId: f.id, name: f.file_name, mime: f.content_type, size: Number(f.size_bytes) };
   }
 }
