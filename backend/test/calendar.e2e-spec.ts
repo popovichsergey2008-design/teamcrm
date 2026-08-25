@@ -19,7 +19,12 @@ describe('Календарь (e2e)', () => {
   let http$: any;
   const uniq = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
   const H = (t: string) => ({ Authorization: `Bearer ${t}` });
-  const iso = (h: number, day = 0) => {
+  /**
+   * Время события. По умолчанию ЗАВТРА, а не сегодня, и это важно: счётчик приглашений
+   * считает только незакончившиеся события. С «сегодня в 10:00» тест проходил до обеда
+   * и падал после — CI, запустившийся в 11:51 UTC, это и поймал.
+   */
+  const iso = (h: number, day = 1) => {
     const d = new Date();
     d.setDate(d.getDate() + day);
     d.setHours(h, 0, 0, 0);
