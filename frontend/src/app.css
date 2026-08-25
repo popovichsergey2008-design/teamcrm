@@ -259,6 +259,14 @@
 .cal-organizer { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 6px; }
 .cal-list-answer { display: flex; gap: 6px; }
 
+/* Занятость коллеги видно прямо в списке — до сохранения, а не после отказа. */
+.cal-busy { font-size: 11px; color: var(--warn); flex: 0 0 auto; }
+.cal-busy-warn {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 8px 10px;
+  border-radius: var(--radius-sm); font-size: 12px;
+  background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--warn);
+}
+
 /* Напоминания — плашками в строку: выбор из пяти вариантов не заслуживает списка. */
 .cal-reminders { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .cal-reminder {

@@ -121,6 +121,49 @@ describe('Календарь (e2e)', () => {
     await http$.get(`/api/calendar/events/${event.id}/ics`).set(H(stranger.accessToken)).expect(404);
   });
 
+  it('на занятое время встречу не поставить, а отказ объясняет кто и когда занят', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Пересечения', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .expect(201)).body.data;
+    const mateEmail = `mate_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Занятой Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const mateToken = (await http$.post('/api/auth/login')
+      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken;
+
+    await http$.post('/api/calendar/events').set(H(owner.accessToken)).send({
+      title: 'Первая встреча', startsAt: iso(11), endsAt: iso(12), participantIds: [String(mate.id)],
+    }).expect(201);
+
+    // занятость видна ДО сохранения — и без названия чужой встречи
+    const busy = (await http$.get(
+      `/api/calendar/busy?from=${encodeURIComponent(iso(11))}&to=${encodeURIComponent(iso(12))}&userIds=${mate.id}`,
+    ).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(busy.busy[String(mate.id)].length).toBe(1);
+    expect(JSON.stringify(busy)).not.toContain('Первая встреча');
+
+    // вторая встреча на то же время не проходит, и отказ называет человека
+    const denied = await http$.post('/api/calendar/events').set(H(owner.accessToken)).send({
+      title: 'Вторая на то же время', startsAt: iso(11), endsAt: iso(12), participantIds: [String(mate.id)],
+    }).expect(409);
+    expect(denied.body.error.message).toContain('Занятой Коллега');
+
+    // соседнее время свободно
+    await http$.post('/api/calendar/events').set(H(owner.accessToken)).send({
+      title: 'Позже', startsAt: iso(13), endsAt: iso(14), participantIds: [String(mate.id)],
+    }).expect(201);
+
+    // человек снял у себя запрет — и его снова можно звать внахлёст
+    await http$.patch('/api/me').set(H(mateToken)).send({ calendarBlockOverlap: false }).expect(200);
+    await http$.post('/api/calendar/events').set(H(owner.accessToken)).send({
+      title: 'Внахлёст по согласию', startsAt: iso(11), endsAt: iso(12), participantIds: [String(mate.id)],
+    }).expect(201);
+
+    // и настройка видна в профиле
+    const me = (await http$.get('/api/me').set(H(mateToken)).expect(200)).body.data;
+    expect(me.calendarBlockOverlap).toBe(false);
+  });
+
   it('приватное чужое событие видно как занятость без названия', async () => {
     const owner = (await http$.post('/api/auth/register')
       .send({ tenantName: 'Приват', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })

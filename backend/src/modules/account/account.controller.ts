@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { IsDateString, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { CurrentUser } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
@@ -25,6 +25,8 @@ class UpdateProfileDto {
   @IsOptional() @IsString() @MaxLength(8) locale?: string;
   /** Через сколько часов на проверке задача считается зависшей. null — вернуть значение по умолчанию. */
   @IsOptional() @IsInt() @Min(1) @Max(168) radarStuckHours?: number | null;
+  /** Не ставить мне встречи на время, где уже что-то стоит. */
+  @IsOptional() @IsBoolean() calendarBlockOverlap?: boolean;
 }
 class PasswordDto {
   @IsString() currentPassword!: string;

@@ -94,6 +94,24 @@ export class CalendarService {
     return this.work(tenantId);
   }
 
+  /**
+   * Занятость людей в промежутке — для подсказки при выборе участников.
+   *
+   * Отдаём только интервалы и вид занятости, без названий встреч: организатору нужно
+   * знать, что человек занят, а чем именно — его дело. Иначе через эту ручку читался
+   * бы чужой календарь целиком.
+   */
+  async busy(tenantId: string, userIds: string[], from: string, to: string) {
+    const ids = [...new Set(userIds.map(String))].slice(0, 100);
+    const rows = await this.repo.busyOf(tenantId, ids, from, to);
+    const byUser: Record<string, { startsAt: Date; endsAt: Date; kind: string }[]> = {};
+    for (const id of ids) byUser[id] = [];
+    for (const r of rows) {
+      (byUser[String(r.user_id)] ??= []).push({ startsAt: r.starts_at, endsAt: r.ends_at, kind: r.kind });
+    }
+    return { busy: byUser };
+  }
+
   pending(tenantId: string, userId: string) {
     return this.repo.pendingCount(tenantId, userId).then((count) => ({ count }));
   }
@@ -105,6 +123,7 @@ export class CalendarService {
       throw AppException.forbidden('Событие компании создаёт владелец или руководитель');
     }
     this.checkTime(dto);
+    await this.assertFree(tenantId, [user.userId, ...(dto.participantIds ?? [])], dto.startsAt, dto.endsAt);
     const row = await this.repo.create({
       tenantId,
       scope,
@@ -130,6 +149,13 @@ export class CalendarService {
   async update(tenantId: string, user: { userId: string; role: string }, id: string, dto: Partial<EventDto>) {
     const event = await this.mine(tenantId, user, id);
     if (dto.startsAt && dto.endsAt) this.checkTime({ startsAt: dto.startsAt, endsAt: dto.endsAt } as EventDto);
+    // переносим время или зовём новых людей — проверяем занятость заново, себя исключая
+    const startsAt = dto.startsAt ?? event.starts_at.toISOString();
+    const endsAt = dto.endsAt ?? event.ends_at.toISOString();
+    const checkIds = dto.participantIds ?? [];
+    if (dto.startsAt || dto.endsAt || dto.participantIds) {
+      await this.assertFree(tenantId, [event.owner_id, ...checkIds], startsAt, endsAt, id);
+    }
     await this.repo.update(tenantId, id, {
       title: dto.title?.trim()?.slice(0, 255),
       description: dto.description === undefined ? undefined : (dto.description?.trim() || null),
@@ -191,6 +217,30 @@ export class CalendarService {
       method: 'PUBLISH',
       reminders: (await this.repo.remindersOf([id])).get(String(id)) ?? [],
     });
+  }
+
+  /**
+   * Никого не ставим на занятое время, если человек это запретил.
+   *
+   * Отказ должен быть объясним: кто именно занят и чем занято время. «Нельзя» без
+   * причины заставляет человека тыкать наугад и в итоге заводить встречу мимо системы.
+   */
+  private async assertFree(tenantId: string, userIds: string[], startsAt: string, endsAt: string, exceptEventId?: string) {
+    const ids = [...new Set(userIds.map(String))];
+    const conflicts = await this.repo.conflictsFor(tenantId, ids, startsAt, endsAt, exceptEventId);
+    if (!conflicts.length) return;
+
+    const when = (d: Date) => new Date(d).toLocaleString('ru-RU', {
+      day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+    });
+    const byUser = new Map<string, { name: string; from: Date; to: Date }>();
+    for (const c of conflicts) if (!byUser.has(String(c.user_id))) {
+      byUser.set(String(c.user_id), { name: c.full_name, from: c.starts_at, to: c.ends_at });
+    }
+    const list = [...byUser.values()]
+      .map((c) => `${c.name} — занят ${when(c.from)}`)
+      .join('; ');
+    throw AppException.conflict(`На это время уже назначено: ${list}. Выберите другое время или снимите этих участников.`);
   }
 
   /** Напоминания приводим к разумному: без отрицательных, дублей и десятка штук на встречу. */

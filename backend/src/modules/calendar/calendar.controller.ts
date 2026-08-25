@@ -71,6 +71,18 @@ export class CalendarController {
     return this.calendar.range(user.tenantId, user, from, to, tasks !== '0');
   }
 
+  /** Занятость людей: только интервалы, без названий чужих встреч. */
+  @Get('busy')
+  busy(
+    @CurrentUser() user: AuthUser,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('userIds') userIds?: string,
+  ) {
+    const ids = (userIds ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    return this.calendar.busy(user.tenantId, ids, from, to);
+  }
+
   @Get('pending')
   pending(@CurrentUser() user: AuthUser) {
     return this.calendar.pending(user.tenantId, user.userId);

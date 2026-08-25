@@ -495,8 +495,40 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  /** Кто из команды занят в выбранное время: имя → «занят» или «в отпуске». */
+  const [busyPeople, setBusyPeople] = useState<Record<string, string>>({});
   const isNew = !value.id;
   const canEdit = isNew || !!value.canEdit;
+
+  /**
+   * Занятость коллег на выбранное время.
+   *
+   * Спрашиваем с задержкой: человек крутит время туда-сюда, и запрос на каждое движение
+   * — это лишний десяток походов в сеть. Показываем ДО сохранения, чтобы отказ «занят»
+   * не оказался неожиданностью уже после нажатия кнопки.
+   */
+  useEffect(() => {
+    if (!canEdit || !people.length) return;
+    const ids = people.filter((u) => u.role !== 'client' && u.isActive !== false).map((u) => String(u.id));
+    if (!ids.length) return;
+    const t = setTimeout(() => {
+      const from = new Date(form.startsAt);
+      const to = new Date(form.endsAt);
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to <= from) return;
+      api.calendarBusy(from.toISOString(), to.toISOString(), ids)
+        .then((r) => {
+          const map: Record<string, string> = {};
+          for (const [id, spans] of Object.entries(r.busy ?? {})) {
+            if (!spans.length) continue;
+            const away = spans.find((sp) => sp.kind === 'vacation' || sp.kind === 'sick');
+            map[id] = away ? (away.kind === 'sick' ? 'на больничном' : 'в отпуске') : 'занят';
+          }
+          setBusyPeople(map);
+        })
+        .catch(() => setBusyPeople({}));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [form.startsAt, form.endsAt, people, canEdit]);
 
   const save = async () => {
     if (!form.title.trim()) return setErr('Назовите событие');
@@ -643,6 +675,12 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
         {canEdit && (
           <>
             <div className="drawer-section-title">Участники</div>
+            {form.participantIds.some((id) => busyPeople[id]) && (
+              <div className="cal-busy-warn">
+                <Icon name="alert" size={14} /> Кто-то из выбранных занят в это время. Если у человека
+                включён запрет на пересечения, встречу сохранить не удастся — выберите другое время.
+              </div>
+            )}
             <div className="cal-people">
               {people.filter((u) => u.role !== 'client' && u.isActive !== false).map((u) => (
                 <label key={u.id} className="call-starter-row">
@@ -650,6 +688,12 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
                          onChange={() => toggleParticipant(String(u.id))} />
                   <Avatar path={u.avatarUrl ?? null} fallback={u.fullName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
                   <span className="call-starter-name">{u.fullName}</span>
+                  {/* занятость видно до сохранения — иначе отказ «занят» будет неожиданностью */}
+                  {busyPeople[String(u.id)] && (
+                    <span className="cal-busy" title="В это время у человека уже есть событие">
+                      {busyPeople[String(u.id)]}
+                    </span>
+                  )}
                 </label>
               ))}
             </div>

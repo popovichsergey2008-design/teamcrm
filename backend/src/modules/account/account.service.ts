@@ -46,6 +46,8 @@ export class AccountService {
       // null — «как по умолчанию», значение по умолчанию живёт в RadarService
       radarStuckHours: p.radar_stuck_hours === null || p.radar_stuck_hours === undefined
         ? null : Number(p.radar_stuck_hours),
+      // не ставить мне встречи на занятое время
+      calendarBlockOverlap: p.calendar_block_overlap !== false,
       groups,
     };
   }
@@ -55,7 +57,7 @@ export class AccountService {
     userId: string,
     dto: {
       fullName?: string; phone?: string | null; timezone?: string; locale?: string;
-      radarStuckHours?: number | null;
+      radarStuckHours?: number | null; calendarBlockOverlap?: boolean;
     },
   ) {
     return this.users.updateProfile(tenantId, userId, {
@@ -64,6 +66,7 @@ export class AccountService {
       timezone: dto.timezone,
       locale: dto.locale,
       radar_stuck_hours: dto.radarStuckHours,
+      calendar_block_overlap: dto.calendarBlockOverlap,
     });
   }
 

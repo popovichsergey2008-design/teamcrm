@@ -49,6 +49,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
         // пустое поле — «как по умолчанию», а не ноль: ноль означал бы «считать зависшим сразу»
         radarStuckHours: me.radarStuckHours === '' || me.radarStuckHours === null || me.radarStuckHours === undefined
           ? null : Number(me.radarStuckHours),
+        calendarBlockOverlap: me.calendarBlockOverlap !== false,
       });
       flash('Профиль сохранён'); loadMe();
     } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
@@ -177,6 +178,15 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 </span>
               </div>
             )}
+
+            <label className="notify-row" title="Если время уже занято, коллега не сможет назначить вам встречу на него">
+              <input
+                type="checkbox"
+                checked={me.calendarBlockOverlap !== false}
+                onChange={() => setMe({ ...me, calendarBlockOverlap: me.calendarBlockOverlap === false })}
+              />
+              Не ставить мне встречи на занятое время
+            </label>
 
             <button className="btn btn-primary" style={{ width: '100%' }} onClick={saveProfile}>Сохранить</button>
 

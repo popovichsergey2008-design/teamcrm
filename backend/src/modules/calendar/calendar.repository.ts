@@ -163,6 +163,53 @@ export class CalendarRepository {
     );
   }
 
+  /**
+   * Занятость людей в промежутке: события и отпуска, без названий.
+   *
+   * Именно интервалы, а не события: коллеге при выборе времени нужно знать, что человек
+   * занят, а не чем именно. Отказавшиеся от встречи свободны — они на неё не идут.
+   */
+  busyOf(tenantId: string, userIds: string[], from: string, to: string) {
+    if (!userIds.length) return Promise.resolve([] as { user_id: string; starts_at: Date; ends_at: Date; kind: string }[]);
+    return this.db.many<{ user_id: string; starts_at: Date; ends_at: Date; kind: string }>(
+      `SELECT p.user_id, e.starts_at, e.ends_at, 'event' AS kind
+         FROM calendar_participants p
+         JOIN calendar_events e ON e.id = p.event_id
+        WHERE p.tenant_id = $1 AND p.user_id = ANY($2::bigint[]) AND p.status <> 'declined'
+          AND e.starts_at < $4::timestamptz AND e.ends_at > $3::timestamptz
+       UNION ALL
+       -- отпуск и больничный — это тоже «занят», просто на целые дни
+       SELECT a.user_id, a.from_date::timestamptz, (a.to_date + 1)::timestamptz, a.kind
+         FROM user_availability a
+        WHERE a.tenant_id = $1 AND a.user_id = ANY($2::bigint[])
+          AND a.from_date::timestamptz < $4::timestamptz AND (a.to_date + 1)::timestamptz > $3::timestamptz
+        ORDER BY 2`,
+      [tenantId, userIds, from, to],
+    );
+  }
+
+  /**
+   * Кто из этих людей занят в это время И запретил ставить себе встречи внахлёст.
+   *
+   * Проверяем только тех, кто сам включил запрет: чужой календарь — не наше дело,
+   * пока человек не попросил его беречь.
+   */
+  conflictsFor(tenantId: string, userIds: string[], startsAt: string, endsAt: string, exceptEventId?: string) {
+    if (!userIds.length) return Promise.resolve([] as { user_id: string; full_name: string; starts_at: Date; ends_at: Date; title: string }[]);
+    return this.db.many<{ user_id: string; full_name: string; starts_at: Date; ends_at: Date; title: string }>(
+      `SELECT p.user_id, u.full_name, e.starts_at, e.ends_at, e.title
+         FROM calendar_participants p
+         JOIN calendar_events e ON e.id = p.event_id
+         JOIN users u ON u.id = p.user_id
+        WHERE p.tenant_id = $1 AND p.user_id = ANY($2::bigint[]) AND p.status <> 'declined'
+          AND u.calendar_block_overlap AND u.is_active
+          AND e.starts_at < $4::timestamptz AND e.ends_at > $3::timestamptz
+          AND ($5::bigint IS NULL OR e.id <> $5::bigint)
+        ORDER BY u.full_name`,
+      [tenantId, userIds, startsAt, endsAt, exceptEventId ?? null],
+    );
+  }
+
   /** Напоминания события: «за 15 минут», «за день». Хранятся минутами до начала. */
   async remindersOf(eventIds: string[]): Promise<Map<string, number[]>> {
     const out = new Map<string, number[]>();

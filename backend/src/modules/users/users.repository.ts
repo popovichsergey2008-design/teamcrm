@@ -95,7 +95,7 @@ export class UsersRepository {
     return this.db.one(
       `SELECT u.id, u.email, u.full_name, u.phone, u.timezone, u.locale,
               u.notify_prefs, u.avatar_file_id, u.weekly_capacity_hours, u.is_active,
-              u.radar_stuck_hours,
+              u.radar_stuck_hours, u.calendar_block_overlap,
               r.code AS role_code, p.name AS position_name, u.position_id
          FROM users u
          JOIN roles r ON r.id = u.role_id
@@ -110,7 +110,7 @@ export class UsersRepository {
     id: string,
     patch: {
       full_name?: string; phone?: string | null; timezone?: string; locale?: string;
-      radar_stuck_hours?: number | null;
+      radar_stuck_hours?: number | null; calendar_block_overlap?: boolean;
     },
   ) {
     const sets: string[] = [];
