@@ -88,8 +88,9 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
     expect(c.focus.decide).toBe(0);
 
     // 4. Сотрудник сдал работу — задача уехала на проверку → теперь она ждёт меня
+    // confirmGate: приёмка работы здесь ни при чём — проверяем счётчики, а не отчёт исполнителя
     await http.post(`/api/tasks/${delegated.id}/move`).set(H(memTok))
-      .send({ columnId: cols['На тестировании'], position: 0 }).expect(201);
+      .send({ columnId: cols['На тестировании'], position: 0, confirmGate: true }).expect(201);
 
     c = await counters(tok);
     expect(c.focus.decide).toBe(1);

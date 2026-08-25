@@ -83,7 +83,8 @@ describe('TEAMCRM Этап 4 — Load Balancer (e2e)', () => {
     await http.post(`/api/tasks/${t}/timer/start`).set(auth()).expect(201);
     await sleep(1200);
     await http.post(`/api/tasks/${t}/timer/stop`).set(auth()).expect(201);
-    await http.post(`/api/tasks/${t}/move`).set(auth()).send({ columnId: await doneColumnId(), position: 0 }).expect(201);
+    // confirmGate: задача на себе, сдаём без отчёта — здесь считается Velocity, а не качество сдачи
+    await http.post(`/api/tasks/${t}/move`).set(auth()).send({ columnId: await doneColumnId(), position: 0, confirmGate: true }).expect(201);
 
     const v = (await http.get(`/api/users/${ownerId}/velocity`).set(auth()).expect(200)).body.data;
     expect(v.closedTasks).toBeGreaterThanOrEqual(1);

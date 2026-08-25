@@ -1376,6 +1376,8 @@
    Проверяется скриптом: npm run a11y. */
 /* у переключателя «Задачи» фокус получает галочка внутри — подсвечиваем всю строку */
 .feed-chip:focus-visible, .feed-flag:focus-within,
+/* условия приёмки: фокус получает галочка внутри строки — подсвечиваем строку целиком */
+.gate-item:focus-within,
 .cal-reminder:focus-within,
 .cal-tasks-toggle:focus-within,
 .cal-tasks-toggle:focus-visible,

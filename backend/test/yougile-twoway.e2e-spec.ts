@@ -138,7 +138,8 @@ describe('YouGile двусторонняя синхронизация (e2e)', ()
 
     // выгрузка выключена по умолчанию: перенос в CRM ничего не шлёт
     calls = [];
-    await http$.post(`/api/tasks/${task.id}/move`).set(H(tok)).send({ columnId: done.id, position: 0 }).expect(201);
+    // confirmGate: проверяем выгрузку в YouGile, а не приёмку работы
+    await http$.post(`/api/tasks/${task.id}/move`).set(H(tok)).send({ columnId: done.id, position: 0, confirmGate: true }).expect(201);
     await http$.post(`/api/integrations/yougile/connections/${conn.id}/push/flush`).set(H(tok)).expect(201);
     expect(findCall('PUT', /^\/tasks\//)).toHaveLength(0);
 
