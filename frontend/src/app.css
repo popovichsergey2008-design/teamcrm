@@ -298,6 +298,8 @@
 
 /* Занятость коллеги видно прямо в списке — до сохранения, а не после отказа. */
 .cal-busy { font-size: 11px; color: var(--warn); flex: 0 0 auto; }
+/* «весь день» встречу не запрещает — и цветом не пугает */
+.cal-busy.soft { color: var(--text-mut); }
 .cal-busy-warn {
   display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 8px 10px;
   border-radius: var(--radius-sm); font-size: 12px;

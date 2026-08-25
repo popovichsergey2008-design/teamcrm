@@ -168,6 +168,40 @@ describe('Календарь (e2e)', () => {
     expect(me.calendarBlockOverlap).toBe(false);
   });
 
+  it('событие на весь день не запирает сутки, а правка не конфликтует сама с собой', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Весь день', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .expect(201)).body.data;
+    const mateEmail = `mate_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
+
+    // «весь день» — это пометка на сутки, а не занятое время: встречи в этот день можно ставить
+    const allDay = (await http$.post('/api/calendar/events').set(H(owner.accessToken)).send({
+      title: 'Выезд на объект', startsAt: iso(0), endsAt: iso(23), allDay: true, participantIds: [String(mate.id)],
+    }).expect(201)).body.data;
+
+    await http$.post('/api/calendar/events').set(H(owner.accessToken)).send({
+      title: 'Планёрка внутри дня', startsAt: iso(10), endsAt: iso(11), participantIds: [String(mate.id)],
+    }).expect(201);
+
+    // в занятости оно видно, но отдельным видом — экран не должен пугать им как конфликтом
+    const busy = (await http$.get(
+      `/api/calendar/busy?from=${encodeURIComponent(iso(9))}&to=${encodeURIComponent(iso(10))}&userIds=${mate.id}`,
+    ).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(busy.busy[String(mate.id)].some((b: any) => b.kind === 'all_day')).toBe(true);
+
+    // правка собственного события не должна конфликтовать с ним же
+    await http$.patch(`/api/calendar/events/${allDay.id}`).set(H(owner.accessToken))
+      .send({ title: 'Выезд на объект (перенос)', startsAt: iso(0), endsAt: iso(23) }).expect(200);
+
+    // и занятость при правке считается без него самого
+    const withoutSelf = (await http$.get(
+      `/api/calendar/busy?from=${encodeURIComponent(iso(9))}&to=${encodeURIComponent(iso(10))}&userIds=${mate.id}&exceptEventId=${allDay.id}`,
+    ).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(withoutSelf.busy[String(mate.id)].some((b: any) => b.kind === 'all_day')).toBe(false);
+  });
+
   it('приватное чужое событие видно как занятость без названия', async () => {
     const owner = (await http$.post('/api/auth/register')
       .send({ tenantName: 'Приват', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })

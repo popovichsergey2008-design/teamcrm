@@ -101,9 +101,11 @@ export class CalendarService {
    * знать, что человек занят, а чем именно — его дело. Иначе через эту ручку читался
    * бы чужой календарь целиком.
    */
-  async busy(tenantId: string, userIds: string[], from: string, to: string) {
+  async busy(tenantId: string, userIds: string[], from: string, to: string, exceptEventId?: string) {
     const ids = [...new Set(userIds.map(String))].slice(0, 100);
-    const rows = await this.repo.busyOf(tenantId, ids, from, to);
+    // при правке события его самого в занятости быть не должно: иначе участники
+    // собственной встречи показываются занятыми на ней же
+    const rows = await this.repo.busyOf(tenantId, ids, from, to, exceptEventId);
     const byUser: Record<string, { startsAt: Date; endsAt: Date; kind: string }[]> = {};
     for (const id of ids) byUser[id] = [];
     for (const r of rows) {
@@ -123,7 +125,7 @@ export class CalendarService {
       throw AppException.forbidden('Событие компании создаёт владелец или руководитель');
     }
     this.checkTime(dto);
-    await this.assertFree(tenantId, dto.participantIds ?? [], dto.startsAt, dto.endsAt);
+    await this.assertFree(tenantId, dto.participantIds ?? [], dto.startsAt, dto.endsAt, undefined, !!dto.allDay);
     const row = await this.repo.create({
       tenantId,
       scope,
@@ -154,7 +156,7 @@ export class CalendarService {
     const endsAt = dto.endsAt ?? event.ends_at.toISOString();
     const checkIds = dto.participantIds ?? [];
     if (dto.startsAt || dto.endsAt || dto.participantIds) {
-      await this.assertFree(tenantId, checkIds, startsAt, endsAt, id);
+      await this.assertFree(tenantId, checkIds, startsAt, endsAt, id, dto.allDay ?? event.all_day);
     }
     await this.repo.update(tenantId, id, {
       title: dto.title?.trim()?.slice(0, 255),
@@ -230,7 +232,9 @@ export class CalendarService {
    * Отказ должен быть объясним: кто именно занят и чем занято время. «Нельзя» без
    * причины заставляет человека тыкать наугад и в итоге заводить встречу мимо системы.
    */
-  private async assertFree(tenantId: string, userIds: string[], startsAt: string, endsAt: string, exceptEventId?: string) {
+  private async assertFree(tenantId: string, userIds: string[], startsAt: string, endsAt: string, exceptEventId?: string, allDay?: boolean) {
+    // событие на весь день никого не блокирует — и само не проверяется на пересечения
+    if (allDay) return;
     const ids = [...new Set(userIds.map(String))];
     const conflicts = await this.repo.conflictsFor(tenantId, ids, startsAt, endsAt, exceptEventId);
     if (!conflicts.length) return;

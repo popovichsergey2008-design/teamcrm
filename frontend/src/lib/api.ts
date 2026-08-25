@@ -519,9 +519,10 @@ export const api = {
       'GET', `/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&tasks=${withTasks ? '1' : '0'}`),
   calendarPending: () => request<{ count: number }>('GET', '/calendar/pending'),
   /** Занятость людей: только интервалы, без названий чужих встреч. */
-  calendarBusy: (from: string, to: string, userIds: string[]) =>
+  calendarBusy: (from: string, to: string, userIds: string[], exceptEventId?: string) =>
     request<{ busy: Record<string, { startsAt: string; endsAt: string; kind: string }[]> }>(
-      'GET', `/calendar/busy?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&userIds=${userIds.join(',')}`),
+      'GET', `/calendar/busy?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&userIds=${userIds.join(',')}`
+        + (exceptEventId ? `&exceptEventId=${exceptEventId}` : '')),
   calendarCreate: (b: Record<string, unknown>) => request<any>('POST', '/calendar/events', b),
   calendarUpdate: (id: string, b: Record<string, unknown>) => request<any>('PATCH', `/calendar/events/${id}`, b),
   calendarDelete: (id: string) => request<any>('DELETE', `/calendar/events/${id}`),

@@ -78,9 +78,10 @@ export class CalendarController {
     @Query('from') from: string,
     @Query('to') to: string,
     @Query('userIds') userIds?: string,
+    @Query('exceptEventId') exceptEventId?: string,
   ) {
     const ids = (userIds ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-    return this.calendar.busy(user.tenantId, ids, from, to);
+    return this.calendar.busy(user.tenantId, ids, from, to, exceptEventId);
   }
 
   @Get('pending')

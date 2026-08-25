@@ -495,8 +495,8 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  /** Кто из команды занят в выбранное время: имя → «занят» или «в отпуске». */
-  const [busyPeople, setBusyPeople] = useState<Record<string, string>>({});
+  /** Кто из команды занят в выбранное время и мешает ли это сохранить встречу. */
+  const [busyPeople, setBusyPeople] = useState<Record<string, { text: string; blocking: boolean }>>({});
   const isNew = !value.id;
   const canEdit = isNew || !!value.canEdit;
 
@@ -515,20 +515,26 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
       const from = new Date(form.startsAt);
       const to = new Date(form.endsAt);
       if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to <= from) return;
-      api.calendarBusy(from.toISOString(), to.toISOString(), ids)
+      // само редактируемое событие из занятости исключаем: иначе его участники
+      // показываются занятыми на нём же
+      api.calendarBusy(from.toISOString(), to.toISOString(), ids, value.id ? String(value.id) : undefined)
         .then((r) => {
-          const map: Record<string, string> = {};
+          const map: Record<string, { text: string; blocking: boolean }> = {};
           for (const [id, spans] of Object.entries(r.busy ?? {})) {
             if (!spans.length) continue;
             const away = spans.find((sp) => sp.kind === 'vacation' || sp.kind === 'sick');
-            map[id] = away ? (away.kind === 'sick' ? 'на больничном' : 'в отпуске') : 'занят';
+            const meeting = spans.find((sp) => sp.kind === 'event');
+            if (away) map[id] = { text: away.kind === 'sick' ? 'на больничном' : 'в отпуске', blocking: true };
+            else if (meeting) map[id] = { text: 'занят', blocking: true };
+            // «весь день» — это пометка на сутки (поездка, дежурство), а не занятое время
+            else map[id] = { text: 'весь день занят делами', blocking: false };
           }
           setBusyPeople(map);
         })
         .catch(() => setBusyPeople({}));
     }, 350);
     return () => clearTimeout(t);
-  }, [form.startsAt, form.endsAt, people, canEdit]);
+  }, [form.startsAt, form.endsAt, people, canEdit, value.id]);
 
   const save = async () => {
     if (!form.title.trim()) return setErr('Назовите событие');
@@ -675,7 +681,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
         {canEdit && (
           <>
             <div className="drawer-section-title">Участники</div>
-            {form.participantIds.some((id) => busyPeople[id]) && (
+            {form.participantIds.some((id) => busyPeople[id]?.blocking) && (
               <div className="cal-busy-warn">
                 <Icon name="alert" size={14} /> Кто-то из выбранных занят в это время. Если у человека
                 включён запрет на пересечения, встречу сохранить не удастся — выберите другое время.
@@ -690,8 +696,11 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
                   <span className="call-starter-name">{u.fullName}</span>
                   {/* занятость видно до сохранения — иначе отказ «занят» будет неожиданностью */}
                   {busyPeople[String(u.id)] && (
-                    <span className="cal-busy" title="В это время у человека уже есть событие">
-                      {busyPeople[String(u.id)]}
+                    <span
+                      className={`cal-busy ${busyPeople[String(u.id)].blocking ? '' : 'soft'}`}
+                      title="В это время у человека уже есть событие"
+                    >
+                      {busyPeople[String(u.id)].text}
                     </span>
                   )}
                 </label>

@@ -169,14 +169,18 @@ export class CalendarRepository {
    * Именно интервалы, а не события: коллеге при выборе времени нужно знать, что человек
    * занят, а не чем именно. Отказавшиеся от встречи свободны — они на неё не идут.
    */
-  busyOf(tenantId: string, userIds: string[], from: string, to: string) {
+  busyOf(tenantId: string, userIds: string[], from: string, to: string, exceptEventId?: string) {
     if (!userIds.length) return Promise.resolve([] as { user_id: string; starts_at: Date; ends_at: Date; kind: string }[]);
     return this.db.many<{ user_id: string; starts_at: Date; ends_at: Date; kind: string }>(
-      `SELECT p.user_id, e.starts_at, e.ends_at, 'event' AS kind
+      // Событие «весь день» помечаем отдельно: это заметка на сутки (поездка, дежурство),
+      // а не занятое время. Считать его занятостью значит запретить на этот день любые встречи.
+      `SELECT p.user_id, e.starts_at, e.ends_at,
+              CASE WHEN e.all_day THEN 'all_day' ELSE 'event' END AS kind
          FROM calendar_participants p
          JOIN calendar_events e ON e.id = p.event_id
         WHERE p.tenant_id = $1 AND p.user_id = ANY($2::bigint[]) AND p.status <> 'declined'
           AND e.starts_at < $4::timestamptz AND e.ends_at > $3::timestamptz
+          AND ($5::bigint IS NULL OR e.id <> $5::bigint)
        UNION ALL
        -- отпуск и больничный — это тоже «занят», просто на целые дни
        SELECT a.user_id, a.from_date::timestamptz, (a.to_date + 1)::timestamptz, a.kind
@@ -184,7 +188,7 @@ export class CalendarRepository {
         WHERE a.tenant_id = $1 AND a.user_id = ANY($2::bigint[])
           AND a.from_date::timestamptz < $4::timestamptz AND (a.to_date + 1)::timestamptz > $3::timestamptz
         ORDER BY 2`,
-      [tenantId, userIds, from, to],
+      [tenantId, userIds, from, to, exceptEventId ?? null],
     );
   }
 
@@ -203,6 +207,8 @@ export class CalendarRepository {
          JOIN users u ON u.id = p.user_id
         WHERE p.tenant_id = $1 AND p.user_id = ANY($2::bigint[]) AND p.status <> 'declined'
           AND u.calendar_block_overlap AND u.is_active
+          -- «весь день» не запрещает встречи: это пометка на сутки, а не занятое время
+          AND NOT e.all_day
           AND e.starts_at < $4::timestamptz AND e.ends_at > $3::timestamptz
           AND ($5::bigint IS NULL OR e.id <> $5::bigint)
         ORDER BY u.full_name`,
