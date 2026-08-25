@@ -4,6 +4,7 @@ import { DatePicker } from '../components/DatePicker';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
+import { navigate } from '../lib/router';
 import {
   addDays, daysOf, DaySegment, isDayOff, layoutDay, rangeTitle, splitByDay, startOfDay, timeToFraction,
 } from '../lib/calendar-grid';
@@ -80,6 +81,16 @@ async function downloadIcs(id: string): Promise<void> {
     a.click();
     URL.revokeObjectURL(url);
   } catch { /* кнопка — удобство; молчаливый отказ лучше пугающей ошибки поверх формы */ }
+}
+
+/**
+ * Щелчок по сроку задачи открывает саму задачу.
+ *
+ * Календарь показывает срок, но работа идёт в карточке: без перехода человек видит
+ * напоминание и не может ничего с ним сделать, кроме как искать задачу руками.
+ */
+function openTask(t: { id: string; project_id: string }): void {
+  navigate({ section: 'projects', projectId: String(t.project_id), taskId: String(t.id) });
 }
 
 /** Имя организатора — то, что человек ищет глазами первым: кто зовёт. */
@@ -314,9 +325,14 @@ function TimeGrid({ days, work, segments, allDayOf, tasksOfDay, onOpen, onCreate
           {days.map((d) => (
             <div key={`t${d.getTime()}`} className="cal-allday cal-deadlines">
               {tasksOfDay(d).map((t) => (
-                <span key={t.id} className="cal-chip cal-chip-task" title={`Срок задачи: ${t.title}`}>
+                <button
+                  key={t.id}
+                  className="cal-chip cal-chip-task"
+                  onClick={() => openTask(t)}
+                  title={`Срок задачи: ${t.title} — открыть карточку`}
+                >
                   <Icon name="flag" size={11} /> {t.title}
-                </span>
+                </button>
               ))}
             </div>
           ))}
@@ -390,7 +406,9 @@ function MonthGrid({ days, events, tasks, work, anchor, onOpen, onCreate }: {
               </button>
             ))}
             {dayTasks.slice(0, 2).map((t) => (
-              <span key={t.id} className="cal-chip cal-chip-task">{t.title}</span>
+              <button key={t.id} className="cal-chip cal-chip-task" onClick={() => openTask(t)} title={`Срок задачи: ${t.title} — открыть карточку`}>
+                {t.title}
+              </button>
             ))}
             {dayEvents.length + dayTasks.length > 5 && (
               <span className="dim" style={{ fontSize: 11 }}>ещё {dayEvents.length + dayTasks.length - 5}</span>
@@ -445,7 +463,9 @@ function ListView({ days, events, tasks, onOpen, onRespond }: {
           {r.tasks.map((t) => (
             <div key={t.id} className="cal-list-row">
               <span className="cal-list-time dim">срок</span>
-              <span className="cal-list-title dim">{t.title}</span>
+              <button className="cal-list-title" onClick={() => openTask(t)} title="Открыть карточку задачи">
+                <span>{t.title}</span>
+              </button>
             </div>
           ))}
         </div>

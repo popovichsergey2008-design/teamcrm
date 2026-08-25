@@ -269,7 +269,10 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .cal-chip.company { background: var(--fill-info); border-color: var(--fill-info); color: var(--on-fill); }
-.cal-chip-task { background: var(--bg-elev-2); border-color: var(--border); color: var(--text-dim); cursor: default; }
+/* Срок задачи — тоже кнопка: щелчок ведёт в карточку, иначе календарь показывает
+   напоминание, с которым ничего нельзя сделать. */
+.cal-chip-task { background: var(--bg-elev-2); border-color: var(--border); color: var(--text-dim); }
+.cal-chip-task:hover { color: var(--text); border-color: var(--border-2); }
 
 /* Месяц: клетки одинаковой высоты, иначе сетка «пляшет» от количества событий. */
 .cal-month {
