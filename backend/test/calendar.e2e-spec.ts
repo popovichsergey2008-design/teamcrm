@@ -153,6 +153,10 @@ describe('Календарь (e2e)', () => {
       title: 'Позже', startsAt: iso(13), endsAt: iso(14), participantIds: [String(mate.id)],
     }).expect(201);
 
+    // сам организатор себе не мешает: своё событие поверх своего — его осознанный выбор
+    await http$.post('/api/calendar/events').set(H(owner.accessToken))
+      .send({ title: 'Своё поверх своего', startsAt: iso(11), endsAt: iso(12) }).expect(201);
+
     // человек снял у себя запрет — и его снова можно звать внахлёст
     await http$.patch('/api/me').set(H(mateToken)).send({ calendarBlockOverlap: false }).expect(200);
     await http$.post('/api/calendar/events').set(H(owner.accessToken)).send({

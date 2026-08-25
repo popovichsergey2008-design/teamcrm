@@ -123,7 +123,7 @@ export class CalendarService {
       throw AppException.forbidden('Событие компании создаёт владелец или руководитель');
     }
     this.checkTime(dto);
-    await this.assertFree(tenantId, [user.userId, ...(dto.participantIds ?? [])], dto.startsAt, dto.endsAt);
+    await this.assertFree(tenantId, dto.participantIds ?? [], dto.startsAt, dto.endsAt);
     const row = await this.repo.create({
       tenantId,
       scope,
@@ -154,7 +154,7 @@ export class CalendarService {
     const endsAt = dto.endsAt ?? event.ends_at.toISOString();
     const checkIds = dto.participantIds ?? [];
     if (dto.startsAt || dto.endsAt || dto.participantIds) {
-      await this.assertFree(tenantId, [event.owner_id, ...checkIds], startsAt, endsAt, id);
+      await this.assertFree(tenantId, checkIds, startsAt, endsAt, id);
     }
     await this.repo.update(tenantId, id, {
       title: dto.title?.trim()?.slice(0, 255),
@@ -220,7 +220,12 @@ export class CalendarService {
   }
 
   /**
-   * Никого не ставим на занятое время, если человек это запретил.
+   * Не ставим на занятое время тех, кто это запретил.
+   *
+   * Правило защищает ПРИГЛАШЁННОГО, а не организатора: тот создаёт событие осознанно и
+   * видит занятость на экране до сохранения. Запрещать ему накладывать своё событие на
+   * своё же значило бы ломать законный случай — личную встречу поверх общего события
+   * компании, куда человек всё равно не идёт.
    *
    * Отказ должен быть объясним: кто именно занят и чем занято время. «Нельзя» без
    * причины заставляет человека тыкать наугад и в итоге заводить встречу мимо системы.
