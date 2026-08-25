@@ -8,7 +8,8 @@ export type AiActionKind =
   | 'standup'
   | 'agent_run'
   | 'inbox_draft'
-  | 'nl_task';
+  | 'nl_task'
+  | 'ping';
 
 /**
  * Сколько ручной работы заменяет одно действие, в минутах.
@@ -24,6 +25,8 @@ const SAVED_MINUTES: Record<AiActionKind, number> = {
   meeting_task: 3,
   inbox_draft: 3,
   nl_task: 2,
+  // напоминание ≈ 3 минуты по ТЗ: столько занимает вспомнить, найти задачу и написать человеку
+  ping: 3,
 };
 
 export type AiAction = {

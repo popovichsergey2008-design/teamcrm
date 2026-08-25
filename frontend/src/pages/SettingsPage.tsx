@@ -1,5 +1,6 @@
 import { Icon, IconName } from '../components/Icon';
 import { IntegrationsPanel } from '../components/IntegrationsPanel';
+import { AssistantPanel } from '../components/AssistantPanel';
 import { HandoffGatePanel } from '../components/HandoffGatePanel';
 import { KnowledgePanel } from '../components/KnowledgePanel';
 import { TeamPanel } from '../components/TeamPanel';
@@ -50,6 +51,12 @@ const CARDS: Card[] = [
     icon: 'check',
   },
   {
+    tab: 'assistant',
+    title: 'Напоминания ассистента',
+    hint: 'О чём AI Секретарь напоминает сам, а о чём спрашивает разрешения',
+    icon: 'sparkles',
+  },
+  {
     tab: 'account',
     title: 'Личный кабинет',
     hint: 'Профиль, пароль, аватар, уведомления, доступность, сессии',
@@ -87,6 +94,7 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'integrations' && role === 'owner' && <IntegrationsPanel onClose={close} />}
       {route.tab === 'knowledge' && <KnowledgePanel canManage={canManage} onClose={close} />}
       {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}
+      {route.tab === 'assistant' && <AssistantPanel canManage={role === 'owner'} onClose={close} />}
     </div>
   );
 }

@@ -178,3 +178,20 @@ export interface GateSettings {
   comment: boolean;
   attachment: boolean;
 }
+
+/** Режим автономности ассистента: молчит / предлагает / напоминает сам. */
+export type AssistantMode = 'off' | 'copilot' | 'autopilot';
+
+/** Напоминание ассистента о зависшей работе. */
+export interface Ping {
+  id: string;
+  kind: 'overdue' | 'due_soon' | 'stuck_review' | 'silent';
+  taskId: string | null;
+  projectId: string | null;
+  text: string;
+  status: 'proposed' | 'sent' | 'dismissed';
+  createdAt: string;
+  /** Кому адресовано — нужно постановщику в списке предложений. */
+  toName: string | null;
+  assigneeName: string | null;
+}

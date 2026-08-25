@@ -3,7 +3,7 @@ import { Icon, IconName } from './Icon';
 import { api } from '../lib/api';
 import { EmptyState } from './EmptyState';
 import { SkeletonList } from './Skeleton';
-import type { AiAction } from '../types';
+import type { AiAction, Ping } from '../types';
 import { useEscape } from '../hooks/useEscape';
 
 /**
@@ -21,6 +21,7 @@ const KIND_ICON: Record<string, IconName> = {
   agent_run: 'robot',
   inbox_draft: 'inbox',
   nl_task: 'zap',
+  ping: 'bell',
 };
 
 /** «2 ч 15 мин» читается быстрее, чем «135 минут». */
@@ -69,6 +70,8 @@ export function SecretaryPanel({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
+        <Proposed />
+
         {items === null && <SkeletonList rows={6} />}
         {items !== null && items.length === 0 && (
           <EmptyState
@@ -98,6 +101,48 @@ export function SecretaryPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
       </aside>
+    </div>
+  );
+}
+
+/**
+ * «Предлагаю напомнить» — режим копилота.
+ *
+ * Ассистент нашёл повод, но писать человеку от своего имени не стал: решает тот, кто
+ * задачу поручил. Ему же и видно, кого именно собираются дёрнуть, — иначе кнопка
+ * «отправить» превращается в лотерею.
+ */
+function Proposed() {
+  const [items, setItems] = useState<Ping[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => { api.assistantProposed().then(setItems).catch(() => setItems([])); }, []);
+
+  const act = async (p: Ping, send: boolean) => {
+    setItems((prev) => (prev ?? []).filter((x) => x.id !== p.id));
+    setBusy(p.id);
+    try { await (send ? api.sendPing(p.id) : api.dismissPing(p.id)); }
+    catch { api.assistantProposed().then(setItems).catch(() => undefined); }
+    finally { setBusy(null); }
+  };
+
+  if (!items || !items.length) return null;
+
+  return (
+    <div className="secretary-proposed">
+      <div className="drawer-section-title"><Icon name="bell" size={14} /> Предлагаю напомнить</div>
+      {items.map((p) => (
+        <div key={p.id} className="ping-row">
+          <span className="ping-text-static">
+            {p.text}
+            {p.toName && <span className="dim"> · {p.toName}</span>}
+          </span>
+          <span className="ping-actions">
+            <button className="btn btn-sm" disabled={busy === p.id} onClick={() => act(p, true)}>Напомнить</button>
+            <button className="btn btn-ghost btn-sm" disabled={busy === p.id} onClick={() => act(p, false)}>Не надо</button>
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

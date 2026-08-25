@@ -614,6 +614,32 @@
 }
 .overload-confirm { width: 100%; margin-top: 8px; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
+/* напоминания ассистента */
+.ping-box { margin-bottom: 14px; padding: 14px 16px; }
+.ping-head { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: var(--fs-sm); }
+.ping-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0; border-top: 1px solid var(--border);
+}
+.ping-text, .ping-text-static {
+  flex: 1; min-width: 220px; text-align: left; font-size: var(--fs-sm); color: var(--text);
+}
+.ping-text { background: transparent; border: none; padding: 0; cursor: pointer; }
+.ping-text:hover { color: var(--accent); }
+.ping-actions { display: flex; gap: 6px; margin-left: auto; }
+.secretary-proposed { margin-bottom: 14px; }
+/* выбор режима ассистента */
+.mode-row {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left;
+  padding: 12px; margin-bottom: 8px; cursor: pointer;
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+}
+.mode-row-on { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+.mode-row:disabled { cursor: default; opacity: .75; }
+.mode-title { display: block; font-size: var(--fs-sm); }
+.mode-hint { display: block; font-size: var(--fs-xs); margin-top: 3px; }
+
 /* упоминания через @: подсказка и выделение в готовом тексте */
 .mention-wrap { position: relative; }
 .mention-list {
@@ -1403,6 +1429,7 @@
 /* у переключателя «Задачи» фокус получает галочка внутри — подсвечиваем всю строку */
 .feed-chip:focus-visible, .feed-flag:focus-within,
 .mention-option:focus-visible, .feed-file:focus-visible,
+.ping-text:focus-visible, .mode-row:focus-visible,
 /* «Файл» — это label со скрытым input: фокус получает input внутри */
 .feed-attach:focus-within,
 /* условия приёмки: фокус получает галочка внутри строки — подсвечиваем строку целиком */

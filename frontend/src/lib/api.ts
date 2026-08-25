@@ -1,4 +1,7 @@
-import type { AiAction, Approval, AuthResult, Board, Focus, GateSettings, Project, SearchResults, SemanticHit, Task } from '../types';
+import type {
+  AiAction, Approval, AssistantMode, AuthResult, Board, Focus, GateSettings, Ping,
+  Project, SearchResults, SemanticHit, Task,
+} from '../types';
 
 const ACCESS_KEY = 'teamcrm.access';
 const REFRESH_KEY = 'teamcrm.refresh';
@@ -522,6 +525,14 @@ export const api = {
     return env.data;
   },
   feedRead: (id: string) => request<any>('POST', `/feed/${id}/read`),
+
+  // смарт-пинги ассистента
+  assistantMode: () => request<{ mode: AssistantMode }>('GET', '/assistant/mode'),
+  setAssistantMode: (mode: AssistantMode) => request<{ mode: AssistantMode }>('PUT', '/assistant/mode', { mode }),
+  assistantPings: () => request<Ping[]>('GET', '/assistant/pings'),
+  assistantProposed: () => request<Ping[]>('GET', '/assistant/pings/proposed'),
+  sendPing: (id: string) => request<any>('POST', `/assistant/pings/${id}/send`),
+  dismissPing: (id: string) => request<any>('POST', `/assistant/pings/${id}/dismiss`),
   feedReaders: (id: string) =>
     request<{ read: { fullName: string }[]; pending: { fullName: string }[] }>('GET', `/feed/${id}/readers`),
   feedComments: (id: string) => request<any[]>('GET', `/feed/${id}/comments`),

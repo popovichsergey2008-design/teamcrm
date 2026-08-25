@@ -54,6 +54,7 @@ import { RadarModule } from './modules/radar/radar.module';
 import { SearchModule } from './modules/search/search.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { SecretaryModule } from './modules/secretary/secretary.module';
+import { AssistantModule } from './modules/assistant/assistant.module';
 import { ChatsModule } from './modules/chats/chats.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { FeedModule } from './modules/feed/feed.module';
@@ -117,6 +118,7 @@ import { FeedModule } from './modules/feed/feed.module';
     SearchModule,
     ApprovalsModule,
     SecretaryModule,
+    AssistantModule,
     ChatsModule,
   ],
   providers: [

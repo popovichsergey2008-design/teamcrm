@@ -9,6 +9,7 @@ import { useAuth } from '../state/auth';
 import type { Approval, Task } from '../types';
 import { ApprovalCard } from '../components/ApprovalCard';
 import { LeftoversDialog, leftoversSeenToday } from '../components/LeftoversDialog';
+import { AssistantPings } from '../components/AssistantPings';
 
 /** Задача из сквозной выборки — с именем проекта и колонки (доска не одна). */
 type CrossTask = Task & { project_name: string; column_name: string };
@@ -219,6 +220,14 @@ export function FocusPage({ onOpenTask, active = true }: {
       </div>
 
       {err && <div className="error-text">{err}</div>}
+
+      {/* Напоминания ассистента выше списков: это то, что уже просрочено или зависло,
+          и смотреть на них после плана на день поздно. */}
+      <AssistantPings
+        today={day}
+        onOpenTask={onOpenTask}
+        onPlanned={() => load(true)}
+      />
 
       {tails && tails.length > 0 && (
         <LeftoversDialog

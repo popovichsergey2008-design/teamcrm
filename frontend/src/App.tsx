@@ -19,6 +19,7 @@ import { IncomingCallDialog, useIncomingCalls } from './components/IncomingCall'
 import { useCalendarReminders } from './hooks/useCalendarReminders';
 import { useChatNotifications } from './hooks/useChatNotifications';
 import { useFeedMentions } from './hooks/useFeedMentions';
+import { useAssistantPings } from './hooks/useAssistantPings';
 import { useNavCounters } from './hooks/useNavCounters';
 import { Sidebar } from './components/Sidebar';
 import { Icon } from './components/Icon';
@@ -193,6 +194,8 @@ export function App() {
   useCalendarReminders(!!user && user.role !== 'client');
   // позвали через @ в ленте — узнать об этом человек должен из любого раздела
   useFeedMentions(!!user && user.role !== 'client', () => navigate({ section: 'chat', view: 'feed' }));
+  // напоминание о просроченном должно догонять человека в любом разделе
+  useAssistantPings(!!user && user.role !== 'client', () => navigate({ section: 'focus' }));
   const { unread } = useChatNotifications(
     !!user && user.role !== 'client',
     route.section === 'chat' && !route.view ? openChatId : null,
@@ -313,6 +316,7 @@ export function App() {
       <Toasts
         onOpenChat={(chatId) => navigate({ section: 'chat', chatId: chatId ?? undefined })}
         onOpenFeed={() => navigate({ section: 'chat', view: 'feed' })}
+        onOpenFocus={() => navigate({ section: 'focus' })}
       />
       {callId && <CallPanel meetingId={callId} inviteUserIds={callInvite} onClose={() => { setCallId(null); setCallInvite([]); }} />}
       {incoming && !callId && (
