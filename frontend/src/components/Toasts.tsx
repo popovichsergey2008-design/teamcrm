@@ -13,10 +13,11 @@ const MAX_VISIBLE = 3;
  * браузера — а его разрешение обычно не выдают, и человек не узнавал ни о чём.
  * Это видно всегда: клик открывает чаты.
  */
-export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus }: {
+export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings }: {
   onOpenChat: (chatId?: string) => void;
   onOpenFeed?: () => void;
   onOpenFocus?: () => void;
+  onOpenMeetings?: () => void;
 }) {
   const [items, setItems] = useState<Toast[]>([]);
 
@@ -44,10 +45,13 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus }: {
           onClick={() => {
             if (t.section === 'feed') onOpenFeed?.();
             else if (t.section === 'focus') onOpenFocus?.();
+            else if (t.section === 'meetings') onOpenMeetings?.();
             else onOpenChat(t.chatId);
             setItems((prev) => prev.filter((x) => x.id !== t.id));
           }}
-          title={t.section === 'feed' ? 'Открыть ленту' : t.section === 'focus' ? 'Открыть фокус дня' : 'Открыть чаты'}
+          title={t.section === 'feed' ? 'Открыть ленту'
+            : t.section === 'focus' ? 'Открыть фокус дня'
+              : t.section === 'meetings' ? 'Открыть встречи' : 'Открыть чаты'}
         >
           <Icon name={t.section === 'chat' || !t.section ? 'chat' : 'bell'} size={16} />
           <span className="toast-text">

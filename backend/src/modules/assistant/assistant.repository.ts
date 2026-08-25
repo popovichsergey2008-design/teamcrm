@@ -43,6 +43,19 @@ export class AssistantRepository {
     return mode;
   }
 
+  /** Создавать ли задачи со встречи сразу — настройка компании, рядом с режимом. */
+  async autoTasks(tenantId: string): Promise<boolean> {
+    const row = await this.db.one<{ meeting_auto_tasks: boolean }>(
+      `SELECT meeting_auto_tasks FROM tenants WHERE id = $1`, [tenantId],
+    );
+    return row?.meeting_auto_tasks !== false;
+  }
+
+  async setAutoTasks(tenantId: string, enabled: boolean): Promise<boolean> {
+    await this.db.query(`UPDATE tenants SET meeting_auto_tasks = $2 WHERE id = $1`, [tenantId, enabled]);
+    return enabled;
+  }
+
   async workHours(tenantId: string): Promise<WorkHours> {
     // holidays — к тексту прямо в запросе: как DATE[] драйвер отдаёт JS-даты в поясе
     // процесса, и «1 января» на сервере +3 стало бы «31 декабря»

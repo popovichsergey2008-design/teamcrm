@@ -114,6 +114,19 @@ function mockMeetingAnalysis(transcript: string): string {
   });
 }
 
+/**
+ * Повестка без LLM: берём факты из материала и подаём их пунктами.
+ *
+ * Ничего не выдумываем — как и настоящая модель по своей инструкции. Разница только
+ * в том, что живая модель переформулирует факт в вопрос, а здесь он остаётся фактом.
+ */
+function mockAgenda(user: string): string {
+  const facts = user.split('\n')
+    .filter((line) => line.trim().startsWith('•'))
+    .map((line) => line.trim().replace(/^•\s*/, '— '));
+  return facts.length ? facts.join('\n') : '— Обсудить текущие дела';
+}
+
 export class MockAiProvider implements AiProvider {
   name = 'mock';
   async transcribe(audioRefOrText: string): Promise<string> {
@@ -143,6 +156,9 @@ export class MockAiProvider implements AiProvider {
     // берём реплики с явной договорённостью. Это делает путь «встреча → задача»
     // проверяемым на CI, где ключей ИИ нет.
     if (/стенограмму рабочей встречи/.test(_system)) return mockMeetingAnalysis(user);
+    // Повестка встречи: факты уже собраны правилами, «формулировка» без LLM —
+    // это те же факты пунктами. Путь «встреча → повестка» остаётся проверяемым на CI.
+    if (/секретарь встречи/i.test(_system)) return mockAgenda(user);
     const hasCtx = /\[\d+\]/.test(user);
     return hasCtx
       ? 'На основе найденных материалов из архива компании (см. источники ниже). [1]\n\n(Демо-ответ: подключите OPENAI_API_KEY или ANTHROPIC_API_KEY для реальной генерации.)'

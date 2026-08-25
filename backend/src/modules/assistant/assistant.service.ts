@@ -26,14 +26,28 @@ export class AssistantService {
 
   // ---------- режим ----------
 
-  mode(tenantId: string) {
-    return this.repo.mode(tenantId).then((mode) => ({ mode }));
+  async mode(tenantId: string) {
+    const [mode, autoTasks] = await Promise.all([this.repo.mode(tenantId), this.repo.autoTasks(tenantId)]);
+    return { mode, autoTasks };
+  }
+
+  /**
+   * Создавать ли задачи со встречи сразу.
+   *
+   * Отдельно от режима: разбор встречи может создавать задачи и в копилоте — там
+   * решение уже принято людьми вслух, а вот дёргать человека напоминанием без
+   * подтверждения это другое дело.
+   */
+  async setAutoTasks(tenantId: string, role: string, enabled: boolean) {
+    if (role !== 'owner') throw AppException.forbidden('Настройку задаёт владелец');
+    return { autoTasks: await this.repo.setAutoTasks(tenantId, enabled) };
   }
 
   async setMode(tenantId: string, role: string, mode: string) {
     if (role !== 'owner') throw AppException.forbidden('Режим ассистента задаёт владелец');
     if (!MODES.includes(mode as AssistantMode)) throw AppException.validation('Неизвестный режим');
-    return { mode: await this.repo.setMode(tenantId, mode as AssistantMode) };
+    await this.repo.setMode(tenantId, mode as AssistantMode);
+    return this.mode(tenantId);
   }
 
   // ---------- чтение ----------

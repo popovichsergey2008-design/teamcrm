@@ -150,4 +150,61 @@ export class MeetingsRepository {
     return this.db.many<{ id: string; full_name: string; email: string | null }>(
       `SELECT id, full_name, email FROM users WHERE tenant_id=$1 AND is_active=TRUE`, [tenantId]);
   }
+
+  // ---------- модератор встреч ----------
+
+  /**
+   * Из какого события календаря вырос созвон.
+   *
+   * Ищем по комнате: кнопка «Начать созвон» в событии ведёт именно в неё. Берём
+   * ближайшее по времени событие с этой комнатой — комнату могут переиспользовать
+   * из недели в неделю, и привязаться к прошлогодней планёрке было бы неверно.
+   */
+  eventByRoom(tenantId: string, roomId: string) {
+    return this.db.one<{ id: string }>(
+      `SELECT id FROM calendar_events
+        WHERE tenant_id = $1 AND meet_room_id = $2
+        ORDER BY abs(EXTRACT(EPOCH FROM (starts_at - now())))
+        LIMIT 1`,
+      [tenantId, roomId],
+    );
+  }
+
+  async linkEvent(meetingId: string, eventId: string): Promise<void> {
+    await this.db.query(`UPDATE meetings SET event_id=$2 WHERE id=$1`, [meetingId, eventId]);
+  }
+
+  /**
+   * Кому рассылать итог: те, кто говорил на встрече, автор разбора и приглашённые
+   * на событие. Молчавший участник — тоже участник, поэтому одних говоривших мало.
+   */
+  audience(tenantId: string, meetingId: string): Promise<{ user_id: string }[]> {
+    return this.db.many<{ user_id: string }>(
+      `SELECT DISTINCT u.id AS user_id
+         FROM users u
+        WHERE u.tenant_id = $1 AND u.is_active
+          AND (
+            u.id IN (SELECT s.speaker_user_id FROM meeting_segments s
+                      WHERE s.meeting_id = $2 AND s.speaker_user_id IS NOT NULL)
+            OR u.id = (SELECT m.created_by FROM meetings m WHERE m.id = $2)
+            OR u.id IN (SELECT p.user_id FROM calendar_participants p
+                         JOIN meetings m ON m.event_id = p.event_id
+                        WHERE m.id = $2 AND p.status <> 'declined')
+          )`,
+      [tenantId, meetingId],
+    );
+  }
+
+  /** Настройки компании, от которых зависит разбор: автосоздание и режим ассистента. */
+  async meetingSettings(tenantId: string): Promise<{ autoTasks: boolean; mode: string }> {
+    const row = await this.db.one<{ meeting_auto_tasks: boolean; assistant_mode: string }>(
+      `SELECT meeting_auto_tasks, assistant_mode FROM tenants WHERE id = $1`, [tenantId],
+    );
+    return { autoTasks: row?.meeting_auto_tasks !== false, mode: row?.assistant_mode ?? 'copilot' };
+  }
+
+  async setAutoTasks(tenantId: string, enabled: boolean): Promise<boolean> {
+    await this.db.query(`UPDATE tenants SET meeting_auto_tasks = $2 WHERE id = $1`, [tenantId, enabled]);
+    return enabled;
+  }
 }

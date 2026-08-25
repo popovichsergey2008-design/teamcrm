@@ -10,6 +10,7 @@ import type { Approval, Task } from '../types';
 import { ApprovalCard } from '../components/ApprovalCard';
 import { LeftoversDialog, leftoversSeenToday } from '../components/LeftoversDialog';
 import { AssistantPings } from '../components/AssistantPings';
+import { MeetingAgenda } from '../components/MeetingAgenda';
 
 /** Задача из сквозной выборки — с именем проекта и колонки (доска не одна). */
 type CrossTask = Task & { project_name: string; column_name: string };
@@ -110,8 +111,10 @@ export function prefetchFocus() {
   cached('focus:approvals', () => api.approvalsInbox());
 }
 
-export function FocusPage({ onOpenTask, active = true }: {
+export function FocusPage({ onOpenTask, onJoinCall, active = true }: {
   onOpenTask: (projectId: string, taskId: string) => void;
+  /** войти в созвон встречи прямо из повестки */
+  onJoinCall: (roomId: string) => void;
   /** экран остаётся смонтированным в фоне — в это время он не ходит в сеть */
   active?: boolean;
 }) {
@@ -220,6 +223,9 @@ export function FocusPage({ onOpenTask, active = true }: {
       </div>
 
       {err && <div className="error-text">{err}</div>}
+
+      {/* Повестка — первой: встреча начнётся через пять минут, а списки подождут */}
+      <MeetingAgenda onJoin={onJoinCall} />
 
       {/* Напоминания ассистента выше списков: это то, что уже просрочено или зависло,
           и смотреть на них после плана на день поздно. */}

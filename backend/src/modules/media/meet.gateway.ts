@@ -662,7 +662,8 @@ export class MeetGateway implements OnModuleInit {
       const when = new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
       await this.meetings.ingestCallRecording({
         tenantId: room.tenantId, actorId: author, projectId: room.projectId,
-        title: `Созвон ${when}`, tracks,
+        // комната = событие календаря, если созвон начали из встречи
+        roomId: room.id, title: `Созвон ${when}`, tracks,
       });
     } catch (e) {
       this.log.warn(`обработка записи ${room.id}: ${(e as Error).message}`);

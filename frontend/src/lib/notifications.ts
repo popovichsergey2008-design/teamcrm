@@ -45,7 +45,7 @@ export interface ToastPayload {
   body: string;
   chatId?: string;
   /** Куда ведёт щелчок. По умолчанию — в чаты: с них уведомления и начинались. */
-  section?: 'chat' | 'feed' | 'focus';
+  section?: 'chat' | 'feed' | 'focus' | 'meetings';
 }
 export function showToast(payload: ToastPayload): void {
   window.dispatchEvent(new CustomEvent<ToastPayload>(TOAST_EVENT, { detail: payload }));

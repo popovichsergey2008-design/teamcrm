@@ -4,6 +4,7 @@ import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
 import { FilesService } from '../files/files.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { TasksService } from '../tasks/tasks.service';
 import { describeFfmpegError, extractAudioChunks } from './audio.util';
@@ -27,6 +28,9 @@ async function toBuffer(stream: Readable): Promise<Buffer> {
  * Задачи создаются ТОЛЬКО после подтверждения человеком и через обычный TasksService —
  * у ИИ нет отдельного входа в домен. Обработка идёт фоном: час записи — это минуты работы.
  */
+/** Больше десяти задач с одной встречи — уже не разбор, а засорение доски. */
+const MAX_AUTO_TASKS = 10;
+
 @Injectable()
 export class MeetingsService {
   private readonly log = new Logger('Meetings');
@@ -38,6 +42,7 @@ export class MeetingsService {
     private readonly tasks: TasksService,
     private readonly knowledge: KnowledgeService,
     private readonly secretary: SecretaryService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   list(tenantId: string) {
@@ -89,6 +94,8 @@ export class MeetingsService {
     actorId: string | null;
     projectId: string | null;
     title: string;
+    /** Комната созвона: по ней встреча связывается с событием календаря. */
+    roomId?: string | null;
     tracks: { userId: string; displayName: string; buffer: Buffer; fileName: string; offsetSec: number }[];
   }): Promise<string | null> {
     if (!input.tracks.length) return null;
@@ -97,6 +104,13 @@ export class MeetingsService {
       tenantId: input.tenantId, projectId: input.projectId, title: input.title.slice(0, 255),
       happenedAt: new Date().toISOString(), source: 'call', fileId: null, createdBy: input.actorId,
     });
+
+    // Созвон шёл в комнате события — свяжем: итог уйдёт приглашённым, а следующая
+    // повестка этой серии узнает, чем закончилась прошлая встреча.
+    if (input.roomId) {
+      const event = await this.repo.eventByRoom(input.tenantId, input.roomId).catch(() => null);
+      if (event) await this.repo.linkEvent(meeting.id, event.id).catch(() => undefined);
+    }
 
     void (async () => {
       try {
@@ -291,6 +305,62 @@ export class MeetingsService {
         quote: t.quote,
       };
     }));
+
+    await this.afterMeeting(tenantId, meetingId, value.summary, value.decisions.length);
+  }
+
+  /**
+   * Что происходит ПОСЛЕ разбора: задачи и рассылка итога.
+   *
+   * Раньше разбор заканчивался строкой в базе, и о нём знал только тот, кто сам
+   * открыл страницу встречи. Теперь итог доходит до всех, кто на встрече был.
+   *
+   * Задачи создаются сами ТОЛЬКО там, где модель уверенно назвала и исполнителя,
+   * и проект. Остальное остаётся черновиком: «ИИ ничего не создаёт молча» — правило,
+   * которое дорого нарушать целиком, а ошибается модель именно в исполнителях.
+   * Выключается тумблером «создавать задачи со встречи сразу».
+   */
+  private async afterMeeting(tenantId: string, meetingId: string, summary: string, decisions: number): Promise<void> {
+    try {
+      const [settings, meeting] = await Promise.all([
+        this.repo.meetingSettings(tenantId),
+        this.repo.get(tenantId, meetingId),
+      ]);
+      if (settings.mode === 'off') return; // ассистент выключен — молчим и ничего не создаём
+
+      const created: { title: string; assigneeId: string | null }[] = [];
+      if (settings.autoTasks) {
+        const actor = meeting?.created_by ?? null;
+        for (const d of await this.repo.drafts(tenantId, meetingId)) {
+          if (d.status !== 'pending' || !d.assignee_id || !d.project_id) continue;
+          if (created.length >= MAX_AUTO_TASKS) break; // на всякий случай: разбор мог насчитать десятки
+          try {
+            // тем же путём, что и руками: постановщик — тот, кто поручил на встрече
+            await this.applyDraft(tenantId, String(actor ?? d.assignee_id), d.id);
+            created.push({ title: d.title, assigneeId: d.assignee_id });
+          } catch (e) {
+            this.log.warn(`встреча ${meetingId}: черновик ${d.id} не применён — ${(e as Error).message}`);
+          }
+        }
+      }
+
+      const pending = (await this.repo.drafts(tenantId, meetingId)).filter((d) => d.status === 'pending').length;
+      for (const person of await this.repo.audience(tenantId, meetingId)) {
+        const mine = created.filter((t) => String(t.assigneeId) === String(person.user_id)).map((t) => t.title);
+        this.realtime.emitToUsers(tenantId, [String(person.user_id)], 'assistant.meeting-result', {
+          meetingId: String(meetingId),
+          title: meeting?.title ?? 'Встреча',
+          summary: summary.slice(0, 400),
+          decisions,
+          created: created.length,
+          pending,
+          mine,
+        });
+      }
+    } catch (e) {
+      // итог — не причина ронять разбор: стенограмма и сводка уже сохранены
+      this.log.warn(`итог встречи ${meetingId}: ${(e as Error).message}`);
+    }
   }
 
   /** Подтверждение черновика: создаём обычную задачу тем же путём, что и руками. */

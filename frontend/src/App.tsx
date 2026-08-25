@@ -20,6 +20,7 @@ import { useCalendarReminders } from './hooks/useCalendarReminders';
 import { useChatNotifications } from './hooks/useChatNotifications';
 import { useFeedMentions } from './hooks/useFeedMentions';
 import { useAssistantPings } from './hooks/useAssistantPings';
+import { useMeetingModerator } from './hooks/useMeetingModerator';
 import { useNavCounters } from './hooks/useNavCounters';
 import { Sidebar } from './components/Sidebar';
 import { Icon } from './components/Icon';
@@ -196,6 +197,12 @@ export function App() {
   useFeedMentions(!!user && user.role !== 'client', () => navigate({ section: 'chat', view: 'feed' }));
   // напоминание о просроченном должно догонять человека в любом разделе
   useAssistantPings(!!user && user.role !== 'client', () => navigate({ section: 'focus' }));
+  // повестка встречи и итог её разбора приходят в любой раздел
+  useMeetingModerator(
+    !!user && user.role !== 'client',
+    () => navigate({ section: 'focus' }),
+    () => navigate({ section: 'chat', view: 'meetings' }),
+  );
   const { unread } = useChatNotifications(
     !!user && user.role !== 'client',
     route.section === 'chat' && !route.view ? openChatId : null,
@@ -261,6 +268,7 @@ export function App() {
             <FocusPage
               active={route.section === 'focus'}
               onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
+              onJoinCall={(roomId) => { setCallInvite([]); setCallId(roomId); }}
             />
           </Pane>
         )}
@@ -317,6 +325,7 @@ export function App() {
         onOpenChat={(chatId) => navigate({ section: 'chat', chatId: chatId ?? undefined })}
         onOpenFeed={() => navigate({ section: 'chat', view: 'feed' })}
         onOpenFocus={() => navigate({ section: 'focus' })}
+        onOpenMeetings={() => navigate({ section: 'chat', view: 'meetings' })}
       />
       {callId && <CallPanel meetingId={callId} inviteUserIds={callInvite} onClose={() => { setCallId(null); setCallInvite([]); }} />}
       {incoming && !callId && (

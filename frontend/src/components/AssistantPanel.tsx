@@ -40,12 +40,26 @@ const MODES: { key: AssistantMode; title: string; hint: string; icon: 'moon' | '
 export function AssistantPanel({ canManage, onClose }: { canManage: boolean; onClose: () => void }) {
   useEscape(onClose);
   const [mode, setMode] = useState<AssistantMode | null>(null);
+  const [autoTasks, setAutoTasks] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    api.assistantMode().then((r) => setMode(r.mode)).catch(() => setErr('Не удалось загрузить режим'));
+    api.assistantMode()
+      .then((r) => { setMode(r.mode); setAutoTasks(r.autoTasks); })
+      .catch(() => setErr('Не удалось загрузить режим'));
   }, []);
+
+  const toggleTasks = async () => {
+    if (!canManage || saving) return;
+    const next = !autoTasks;
+    setAutoTasks(next);
+    setSaving(true);
+    setErr('');
+    try { setAutoTasks((await api.setMeetingAutoTasks(next)).autoTasks); }
+    catch { setAutoTasks(!next); setErr('Не удалось сохранить'); }
+    finally { setSaving(false); }
+  };
 
   const choose = async (next: AssistantMode) => {
     if (!canManage || saving || next === mode) return;
@@ -88,6 +102,25 @@ export function AssistantPanel({ canManage, onClose }: { canManage: boolean; onC
             {mode === m.key && <Icon name="check" size={15} />}
           </button>
         ))}
+
+        <div className="drawer-section-title" style={{ marginTop: 18 }}>
+          <Icon name="calendar" size={14} /> Модератор встреч
+        </div>
+        <div className="dim gate-panel-hint">
+          За пять минут до встречи участники получают повестку: зачем собрались, о чём
+          договорились в прошлый раз и что висит между ними. После встречи ассистент
+          рассылает итог разбора всем, кто на ней был.
+        </div>
+        <label className={`gate-item${canManage ? '' : ' gate-item-ro'}`}>
+          <input type="checkbox" checked={autoTasks} disabled={!canManage || saving} onChange={toggleTasks} />
+          <span>
+            <span className="gate-item-title">Создавать задачи со встречи сразу</span>
+            <span className="dim gate-item-hint">
+              Сами создаются только те, где ИИ уверенно назвал и исполнителя, и проект —
+              остальное остаётся черновиком на подтверждение. Выключено — черновиками станут все.
+            </span>
+          </span>
+        </label>
 
         {!canManage && <div className="dim gate-panel-hint">Режим ассистента задаёт владелец компании.</div>}
       </aside>

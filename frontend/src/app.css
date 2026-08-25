@@ -614,6 +614,10 @@
 }
 .overload-confirm { width: 100%; margin-top: 8px; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
+/* повестка встречи */
+.agenda-box { margin-bottom: 14px; padding: 14px 16px; border-left: 3px solid var(--accent); }
+.agenda-body { white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text); }
+
 /* напоминания ассистента */
 .ping-box { margin-bottom: 14px; padding: 14px 16px; }
 .ping-head { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: var(--fs-sm); }

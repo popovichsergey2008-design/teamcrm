@@ -195,3 +195,12 @@ export interface Ping {
   toName: string | null;
   assigneeName: string | null;
 }
+
+/** Повестка встречи, собранная модератором за пять минут до начала. */
+export interface Agenda {
+  eventId: string;
+  title: string;
+  startsAt: string;
+  body: string;
+  meetRoomId: string | null;
+}
