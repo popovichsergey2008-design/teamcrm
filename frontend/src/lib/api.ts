@@ -499,6 +499,20 @@ export const api = {
   startCall: (projectId?: string, withAi = false) =>
     request<{ id: string; projectId: string | null; aiEnabled: boolean }>('POST', '/media/rooms', { projectId, withAi }),
 
+  // лента компании: сообщения и объявления
+  feedList: (before?: string) =>
+    request<{ items: any[] }>('GET', `/feed${before ? `?before=${before}` : ''}`),
+  feedUnread: () => request<{ items: any[]; count: number }>('GET', '/feed/unread'),
+  feedCreate: (b: { body: string; isAnnouncement?: boolean; activeUntil?: string; groupIds?: string[] }) =>
+    request<any>('POST', '/feed', b),
+  feedRead: (id: string) => request<any>('POST', `/feed/${id}/read`),
+  feedReaders: (id: string) =>
+    request<{ read: { fullName: string }[]; pending: { fullName: string }[] }>('GET', `/feed/${id}/readers`),
+  feedComments: (id: string) => request<any[]>('GET', `/feed/${id}/comments`),
+  feedComment: (id: string, body: string) => request<any[]>('POST', `/feed/${id}/comments`, { body }),
+  feedPin: (id: string, pinned: boolean) => request<any>('POST', `/feed/${id}/pin`, { pinned }),
+  feedDelete: (id: string) => request<any>('DELETE', `/feed/${id}`),
+
   // календарь: события людей и компании
   calendarRange: (from: string, to: string, withTasks = true) =>
     request<{ events: any[]; tasks: any[]; work: { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] } }>(

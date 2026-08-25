@@ -69,6 +69,7 @@ const MENU: Item[] = [
     icon: 'chat',
     hint: 'Личные, групповые и проектные обсуждения, созвоны',
     subs: [
+      { label: 'Лента компании', icon: 'list', route: { section: 'chat', view: 'feed' } },
       { label: 'Встречи', icon: 'record', route: { section: 'chat', view: 'meetings' } },
     ],
   },

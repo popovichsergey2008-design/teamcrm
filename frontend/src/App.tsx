@@ -8,6 +8,7 @@ import { JoinOrgPage } from './pages/JoinOrgPage';
 import { GuestMeetPage } from './pages/GuestMeetPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { CalendarPage } from './pages/CalendarPage';
+import { FeedPage } from './pages/FeedPage';
 import { FocusPage } from './pages/FocusPage';
 import { MeetingsPage } from './pages/MeetingsPage';
 import { RadarPage } from './pages/RadarPage';
@@ -287,6 +288,7 @@ export function App() {
           </Pane>
         )}
         {/* Остальное открывают редко и ненадолго — держать это в памяти незачем */}
+        {route.section === 'chat' && route.view === 'feed' && <FeedPage />}
         {route.section === 'chat' && route.view === 'meetings' && (
           <MeetingsPage onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
         )}

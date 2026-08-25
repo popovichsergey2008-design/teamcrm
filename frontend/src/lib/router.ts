@@ -56,6 +56,7 @@ export function parsePath(pathname: string): Route {
     }
     case 'chat':
       if (seg[1] === 'meetings') return { section, view: 'meetings' };
+      if (seg[1] === 'feed') return { section, view: 'feed' };
       return seg[1] ? { section, chatId: seg[1] } : { section };
     case 'settings':
       return seg[1] ? { section, tab: seg[1] } : { section };
@@ -77,6 +78,7 @@ export function buildPath(r: Route): string {
         : `/projects/${enc(r.projectId)}`;
     case 'chat':
       if (r.view === 'meetings') return '/chat/meetings';
+      if (r.view === 'feed') return '/chat/feed';
       return r.chatId ? `/chat/${enc(r.chatId)}` : '/chat';
     case 'settings':
       return r.tab ? `/settings/${enc(r.tab)}` : '/settings';

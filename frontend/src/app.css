@@ -159,6 +159,43 @@
    под своим разделом, и доска занимает всю ширину. */
 .board-layout { display: flex; flex: 1; min-height: 0; }
 
+/* ── Лента компании ── */
+.feed-page { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; max-width: 820px; }
+.feed-composer { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.feed-composer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.feed-flag { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; }
+.feed-groups, .feed-until { max-width: 220px; font-size: var(--fs-sm); }
+.feed-composer-row .btn { margin-left: auto; }
+.feed-chosen { display: flex; flex-wrap: wrap; gap: 6px; }
+.feed-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; cursor: pointer;
+  border-radius: 999px; font-size: 12px;
+  background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent);
+}
+
+.feed-list { display: flex; flex-direction: column; gap: 10px; }
+.feed-post { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+/* Объявление выделено рамкой и подложкой — оно требует действия, а не просто читается. */
+.feed-post.announcement { background: var(--warn-soft); border-color: var(--warn-line); }
+.feed-post.pinned { box-shadow: inset 3px 0 0 var(--accent); }
+.feed-post-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.feed-author { font-weight: 600; }
+.feed-time { font-size: 12px; }
+.feed-badge {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em; padding: 1px 7px;
+  /* плотная заливка, а не пастельный --warn: белым по пастели в тёмной теме не читается */
+  border-radius: 999px; background: var(--fill-warn); color: var(--on-fill);
+}
+.feed-post-actions { margin-left: auto; display: flex; gap: 4px; }
+.feed-body { white-space: pre-wrap; word-break: break-word; }
+.feed-post-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.feed-readers { font-size: 12px; display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: var(--radius-sm); background: var(--bg-elev-2); }
+.feed-comments { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+.feed-comment { display: flex; gap: 8px; font-size: var(--fs-sm); }
+.feed-comment-head { display: flex; gap: 6px; align-items: baseline; }
+.feed-comment-new { display: flex; gap: 6px; }
+.feed-comment-new .input { flex: 1; }
+
 /* ── Календарь ── */
 .calendar-page { display: flex; flex-direction: column; min-height: 0; padding: 16px 20px; gap: 10px; }
 .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -1314,6 +1351,7 @@
    табом идёт вслепую — человек не знает, где находится.
    Проверяется скриптом: npm run a11y. */
 /* у переключателя «Задачи» фокус получает галочка внутри — подсвечиваем всю строку */
+.feed-chip:focus-visible, .feed-flag:focus-within,
 .cal-reminder:focus-within,
 .cal-tasks-toggle:focus-within,
 .cal-tasks-toggle:focus-visible,

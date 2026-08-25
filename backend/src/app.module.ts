@@ -56,6 +56,7 @@ import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { SecretaryModule } from './modules/secretary/secretary.module';
 import { ChatsModule } from './modules/chats/chats.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
+import { FeedModule } from './modules/feed/feed.module';
 
 @Module({
   imports: [
@@ -109,6 +110,7 @@ import { CalendarModule } from './modules/calendar/calendar.module';
     MeetingsModule,
     MediaModule,
     CalendarModule,
+    FeedModule,
     NavModule,
     FocusModule,
     RadarModule,
