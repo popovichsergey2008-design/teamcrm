@@ -889,7 +889,14 @@
 .avatar-lg { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; }
 /* Заглушка вместо фотографии — буква имени. flex: 0 0 auto обязателен: в строке рядом
    с длинным именем кружок сжимался, буква съезжала за его край и читалась как мусор. */
-.avatar-ph { display: inline-grid; place-items: center; background: var(--accent-2); color: var(--on-accent); font-weight: 700; }
+/* Буква центрируется flex'ом, а не place-items.
+   В grid-контейнере текст без обёртки становится анонимным блоком во всю ширину ячейки,
+   и внутри него буква выравнивается уже по text-align — а он наследуется от строки чата
+   или кнопки, то есть влево. Буква прилипала к краю кружка. */
+.avatar-ph {
+  display: inline-flex; align-items: center; justify-content: center; text-align: center;
+  line-height: 1; background: var(--accent-2); color: var(--on-accent); font-weight: 700;
+}
 .avatar-xs, .avatar-sm, .avatar-lg { flex: 0 0 auto; }
 .avatar-sm.avatar-ph { font-size: 12px; }
 .avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
