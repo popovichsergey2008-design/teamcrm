@@ -614,6 +614,13 @@
 }
 .overload-confirm { width: 100%; margin-top: 8px; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
+/* рабочее время компании */
+.work-hours { display: flex; gap: 12px; margin-bottom: 4px; }
+.work-hours label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); }
+.work-hours input { width: 120px; }
+.work-holiday-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 4px; }
+.work-saved { display: flex; align-items: center; gap: 6px; color: var(--ok); font-size: var(--fs-xs); margin-bottom: 8px; }
+
 /* повестка встречи */
 .agenda-box { margin-bottom: 14px; padding: 14px 16px; border-left: 3px solid var(--accent); }
 .agenda-body { white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text); }

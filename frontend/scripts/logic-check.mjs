@@ -331,6 +331,32 @@ test('упоминания: подсказка открывается по де�
   assert.deepEqual(m.stillMentioned(['1', '3'], 'спасибо, @Иван Петров', team), ['1']);
 });
 
+test('праздники: фиксированные даты по ТК, без переносов и без дублей', async () => {
+  const h = await load('lib/holidays.ts');
+
+  const y = h.ruHolidays(2026);
+  const dates = y.map((x) => x.date);
+  assert.equal(dates.length, 14, 'нерабочих праздничных дней по статье 112 — четырнадцать');
+  assert.ok(dates.includes('2026-01-07'), 'Рождество');
+  assert.ok(dates.includes('2026-02-23'), 'День защитника Отечества');
+  assert.ok(dates.includes('2026-11-04'), 'День народного единства');
+  assert.equal(new Set(dates).size, dates.length, 'дублей быть не должно');
+  // переносы не выдумываем: их правительство утверждает отдельно на каждый год
+  assert.ok(!dates.includes('2026-01-09'), 'перенесённых дней в списке нет');
+
+  // подстановка не вытирает то, что владелец внёс руками
+  const merged = h.mergeHolidays(['2026-05-04', '2026-01-01'], dates);
+  assert.ok(merged.includes('2026-05-04'), 'ручной перенос остался');
+  assert.equal(merged.filter((d) => d === '2026-01-01').length, 1, 'повтор не задвоился');
+  assert.deepEqual(merged, [...merged].sort(), 'список отсортирован');
+
+  assert.equal(h.humanDate('2026-01-01'), '1 января 2026');
+  assert.equal(h.humanDate('мусор'), 'мусор');
+
+  // неделя начинается с понедельника, воскресенье — последнее
+  assert.deepEqual(h.WEEK_DAYS.map((d) => d.value), [1, 2, 3, 4, 5, 6, 0]);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

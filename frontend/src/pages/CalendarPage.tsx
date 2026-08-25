@@ -3,6 +3,8 @@ import { Avatar } from '../components/Avatar';
 import { DatePicker } from '../components/DatePicker';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
+import { useAuth } from '../state/auth';
+import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import {
@@ -120,6 +122,9 @@ function hint(e: CalEvent): string {
  * подряд, не разбирая сетку.
  */
 export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) => void }) {
+  const { user } = useAuth();
+  // настройка рабочего времени живёт рядом с сеткой, на которую влияет
+  const [workOpen, setWorkOpen] = useState(false);
   const [view, setView] = useState<View>(() => (localStorage.getItem('teamcrm.calendarView') as View) || 'week');
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [events, setEvents] = useState<CalEvent[]>([]);
@@ -223,6 +228,13 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
               </button>
             ))}
           </div>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setWorkOpen(true)}
+            title="Рабочие часы, выходные и праздники компании"
+          >
+            <Icon name="clock" size={15} />
+          </button>
           <button className="btn btn-primary btn-sm" onClick={() => createNow()}>
             <Icon name="plus" size={15} /> Событие
           </button>
@@ -230,6 +242,13 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
       </div>
 
       {err && <div className="error-text">{err}</div>}
+
+      {workOpen && (
+        <WorkSettingsPanel
+          canManage={user?.role === 'owner'}
+          onClose={() => { setWorkOpen(false); reload(); }}
+        />
+      )}
 
       {view === 'list' ? (
         <ListView days={days} events={events} tasks={showTasks ? tasks : []} onOpen={setEditing} onRespond={respond} />
