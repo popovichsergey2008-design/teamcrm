@@ -181,8 +181,11 @@ export class AssistantRepository {
 
   async setStatus(tenantId: string, id: string, status: 'sent' | 'dismissed'): Promise<void> {
     await this.db.query(
+      // тип параметра задаём явно: один и тот же $3 стоит и справа от status (varchar),
+      // и в сравнении — без приведения Postgres выводит для него два разных типа и падает
       `UPDATE assistant_pings
-          SET status = $3, resolved_at = CASE WHEN $3 = 'dismissed' THEN now() ELSE resolved_at END
+          SET status = $3::text,
+              resolved_at = CASE WHEN $3::text = 'dismissed' THEN now() ELSE resolved_at END
         WHERE tenant_id = $1 AND id = $2`,
       [tenantId, id, status],
     );
