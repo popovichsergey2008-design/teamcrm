@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { CalendarController } from './calendar.controller';
+import { CalendarMailService } from './calendar-mail.service';
 import { CalendarRepository } from './calendar.repository';
+import { CalendarScheduler } from './calendar.scheduler';
 import { CalendarService } from './calendar.service';
 
 /**
@@ -9,7 +11,7 @@ import { CalendarService } from './calendar.service';
  */
 @Module({
   controllers: [CalendarController],
-  providers: [CalendarService, CalendarRepository],
+  providers: [CalendarService, CalendarRepository, CalendarMailService, CalendarScheduler],
   exports: [CalendarService],
 })
 export class CalendarModule {}

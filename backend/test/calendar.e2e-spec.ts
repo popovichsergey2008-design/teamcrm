@@ -83,6 +83,44 @@ describe('Календарь (e2e)', () => {
     await http$.delete(`/api/calendar/events/${event.id}`).set(H(mateToken)).expect(403);
   });
 
+  it('напоминания сохраняются, а файл встречи отдаётся календарём, а не конвертом', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Напоминания', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .expect(201)).body.data;
+
+    // по умолчанию — одно напоминание за 15 минут
+    const byDefault = (await http$.post('/api/calendar/events').set(H(owner.accessToken))
+      .send({ title: 'Без уточнений', startsAt: iso(12), endsAt: iso(13) }).expect(201)).body.data;
+    const listed = (await http$.get(`/api/calendar?${WINDOW()}`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(listed.events.find((e: any) => String(e.id) === String(byDefault.id)).reminders).toEqual([15]);
+
+    // заданные напоминания чистятся от дублей и сортируются
+    const event = (await http$.post('/api/calendar/events').set(H(owner.accessToken)).send({
+      title: 'Созвон с клиентом', startsAt: iso(15), endsAt: iso(16), reminders: [60, 15, 15],
+    }).expect(201)).body.data;
+    const again = (await http$.get(`/api/calendar?${WINDOW()}`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(again.events.find((e: any) => String(e.id) === String(event.id)).reminders).toEqual([15, 60]);
+
+    // пустой список — это осознанное «не напоминать», а не «поставь по умолчанию»
+    await http$.patch(`/api/calendar/events/${event.id}`).set(H(owner.accessToken))
+      .send({ reminders: [] }).expect(200);
+    const silent = (await http$.get(`/api/calendar?${WINDOW()}`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(silent.events.find((e: any) => String(e.id) === String(event.id)).reminders).toEqual([]);
+
+    // файл встречи: настоящий text/calendar, а не поле JSON
+    const ics = await http$.get(`/api/calendar/events/${event.id}/ics`).set(H(owner.accessToken)).expect(200);
+    expect(ics.headers['content-type']).toContain('text/calendar');
+    expect(ics.text.startsWith('BEGIN:VCALENDAR')).toBe(true);
+    expect(ics.text).toContain('SUMMARY:Созвон с клиентом');
+    expect(ics.text).toContain('DTSTART:');
+
+    // чужому файл не отдаём
+    const stranger = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Мимо', email: `x_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' })
+      .expect(201)).body.data;
+    await http$.get(`/api/calendar/events/${event.id}/ics`).set(H(stranger.accessToken)).expect(404);
+  });
+
   it('приватное чужое событие видно как занятость без названия', async () => {
     const owner = (await http$.post('/api/auth/register')
       .send({ tenantName: 'Приват', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })

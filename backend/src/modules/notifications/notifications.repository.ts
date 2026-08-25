@@ -7,6 +7,8 @@ export interface MailRow {
   id: string; tenant_id: string; user_id: string | null; to_email: string;
   subject: string; body_text: string; body_html: string | null;
   event_key: string; attempts: number;
+  /** Вложения письма: приглашение календаря возит с собой .ics. */
+  attachments: { name: string; content: string }[] | null;
 }
 
 /** Кому и куда слать: адрес нужен внешний, отписка — по личному токену. */

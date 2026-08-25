@@ -15,6 +15,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { CallPanel } from './components/CallPanel';
 import { ChatsPage } from './pages/ChatsPage';
 import { IncomingCallDialog, useIncomingCalls } from './components/IncomingCall';
+import { useCalendarReminders } from './hooks/useCalendarReminders';
 import { useChatNotifications } from './hooks/useChatNotifications';
 import { useNavCounters } from './hooks/useNavCounters';
 import { Sidebar } from './components/Sidebar';
@@ -186,6 +187,8 @@ export function App() {
 
   const counters = useNavCounters(!!user && user.role !== 'client', route.section);
   const { incoming, accept, decline } = useIncomingCalls(!!user && user.role !== 'client');
+  // напоминания о встречах приходят в любой раздел: календарь для этого открывать не нужно
+  useCalendarReminders(!!user && user.role !== 'client');
   const { unread } = useChatNotifications(
     !!user && user.role !== 'client',
     route.section === 'chat' && !route.view ? openChatId : null,

@@ -44,6 +44,7 @@ export class MailWorker implements OnModuleInit, OnModuleDestroy {
         try {
           await this.transport.send({
             to: row.to_email, subject: row.subject, text: row.body_text, html: row.body_html,
+            attachments: row.attachments ?? null,
           });
           await this.repo.done(row.id);
           sent++;

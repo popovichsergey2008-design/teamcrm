@@ -259,6 +259,15 @@
 .cal-organizer { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 6px; }
 .cal-list-answer { display: flex; gap: 6px; }
 
+/* Напоминания — плашками в строку: выбор из пяти вариантов не заслуживает списка. */
+.cal-reminders { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.cal-reminder {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 999px; font-size: var(--fs-sm); color: var(--text-dim);
+}
+.cal-reminder:hover { background: var(--bg-elev-2); }
+.cal-reminder.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+
 .cal-people { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .cal-participant { display: flex; align-items: center; gap: 8px; padding: 4px 6px; font-size: var(--fs-sm); }
 .cal-status { font-size: 11px; color: var(--text-mut); }
@@ -1297,6 +1306,7 @@
    табом идёт вслепую — человек не знает, где находится.
    Проверяется скриптом: npm run a11y. */
 /* у переключателя «Задачи» фокус получает галочка внутри — подсвечиваем всю строку */
+.cal-reminder:focus-within,
 .cal-tasks-toggle:focus-within,
 .cal-tasks-toggle:focus-visible,
 .cal-view:focus-visible, .cal-slot:focus-visible, .cal-event:focus-visible, .cal-chip:focus-visible,

@@ -5,6 +5,8 @@ export interface MailMessage {
   subject: string;
   text: string;
   html?: string | null;
+  /** Вложения: [{name, content}] с содержимым в base64 — приглашение возит с собой .ics. */
+  attachments?: { name: string; content: string }[] | null;
 }
 
 /** Постоянная ошибка отправки: повторять бессмысленно (плохой адрес, отказ сервиса). */
@@ -40,6 +42,7 @@ export class BrevoTransport implements MailTransport {
         subject: msg.subject,
         textContent: msg.text,
         ...(msg.html ? { htmlContent: msg.html } : {}),
+        ...(msg.attachments?.length ? { attachment: msg.attachments } : {}),
       }),
     });
     if (res.ok) return;
@@ -65,7 +68,8 @@ export class LogTransport implements MailTransport {
   readonly name = 'log';
   private readonly log = new Logger('Mail');
   async send(msg: MailMessage): Promise<void> {
-    this.log.log(`[не отправлено, нет ключа] → ${msg.to} · ${msg.subject}`);
+    const files = msg.attachments?.length ? ` (+${msg.attachments.length} вложение)` : '';
+    this.log.log(`[не отправлено, нет ключа] → ${msg.to} · ${msg.subject}${files}`);
   }
 }
 

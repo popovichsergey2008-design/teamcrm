@@ -510,6 +510,14 @@ export const api = {
   calendarRespond: (id: string, status: 'accepted' | 'declined') =>
     request<any>('POST', `/calendar/events/${id}/respond`, { status }),
   calendarWork: () => request<any>('GET', '/calendar/work'),
+  /** Файл встречи: за авторизацией, поэтому тянем с токеном и отдаём как blob. */
+  calendarIcs: async (id: string) => {
+    const res = await fetch(`/api/calendar/events/${id}/ics`, {
+      headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+    });
+    if (!res.ok) throw new ApiError('INTERNAL', 'Не удалось получить файл встречи');
+    return res.blob();
+  },
   saveCalendarWork: (b: { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] }) =>
     request<any>('POST', '/calendar/work', b),
 

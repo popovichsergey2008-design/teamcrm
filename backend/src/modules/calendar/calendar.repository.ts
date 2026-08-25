@@ -163,6 +163,85 @@ export class CalendarRepository {
     );
   }
 
+  /** Напоминания события: «за 15 минут», «за день». Хранятся минутами до начала. */
+  async remindersOf(eventIds: string[]): Promise<Map<string, number[]>> {
+    const out = new Map<string, number[]>();
+    if (!eventIds.length) return out;
+    const rows = await this.db.many<{ event_id: string; minutes_before: number }>(
+      `SELECT event_id, minutes_before FROM calendar_reminders
+        WHERE event_id = ANY($1::bigint[]) ORDER BY minutes_before`,
+      [eventIds],
+    );
+    for (const r of rows) {
+      const list = out.get(String(r.event_id)) ?? [];
+      list.push(Number(r.minutes_before));
+      out.set(String(r.event_id), list);
+    }
+    return out;
+  }
+
+  async setReminders(eventId: string, minutes: number[]): Promise<void> {
+    await this.db.withTransaction(async (c) => {
+      await c.query(`DELETE FROM calendar_reminders WHERE event_id = $1`, [eventId]);
+      for (const m of new Set(minutes)) {
+        await c.query(
+          `INSERT INTO calendar_reminders (event_id, minutes_before) VALUES ($1,$2)
+           ON CONFLICT DO NOTHING`,
+          [eventId, m],
+        );
+      }
+    });
+  }
+
+  /**
+   * Напоминания, которым пора уйти.
+   *
+   * Берём окно «уже пора, но не раньше чем полчаса назад»: если сервис лежал, устаревшее
+   * напоминание о встрече, которая давно идёт, человеку не нужно — оно только сбивает.
+   * Отказавшихся не тревожим, отправленное отсеиваем по журналу.
+   */
+  dueReminders(windowMinutes = 30) {
+    return this.db.many<{
+      event_id: string; tenant_id: string; user_id: string; minutes_before: number;
+      title: string; starts_at: Date; ends_at: Date; location: string | null; all_day: boolean;
+      email: string; full_name: string; owner_id: string;
+    }>(
+      `SELECT e.id AS event_id, e.tenant_id, p.user_id, r.minutes_before,
+              e.title, e.starts_at, e.ends_at, e.location, e.all_day, e.owner_id,
+              u.email, u.full_name
+         FROM calendar_reminders r
+         JOIN calendar_events e ON e.id = r.event_id
+         JOIN calendar_participants p ON p.event_id = e.id AND p.status <> 'declined'
+         JOIN users u ON u.id = p.user_id AND u.is_active
+        WHERE e.starts_at - make_interval(mins => r.minutes_before) <= now()
+          AND e.starts_at > now() - make_interval(mins => $1::int)
+          AND NOT EXISTS (
+            SELECT 1 FROM calendar_reminder_log l
+             WHERE l.event_id = e.id AND l.user_id = p.user_id
+               AND l.minutes_before = r.minutes_before AND l.starts_at = e.starts_at)
+        LIMIT 200`,
+      [windowMinutes],
+    );
+  }
+
+  async markReminderSent(eventId: string, userId: string, minutes: number, startsAt: Date): Promise<void> {
+    await this.db.query(
+      `INSERT INTO calendar_reminder_log (event_id, user_id, minutes_before, starts_at)
+       VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+      [eventId, userId, minutes, startsAt],
+    );
+  }
+
+  /** Почты участников — для приглашения с .ics. */
+  participantContacts(tenantId: string, eventId: string) {
+    return this.db.many<{ user_id: string; email: string; full_name: string; is_organizer: boolean; status: string }>(
+      `SELECT p.user_id, u.email, u.full_name, p.is_organizer, p.status
+         FROM calendar_participants p JOIN users u ON u.id = p.user_id
+        WHERE p.tenant_id = $1 AND p.event_id = $2 AND u.is_active`,
+      [tenantId, eventId],
+    );
+  }
+
   async workSettings(tenantId: string): Promise<WorkSettingsRow | null> {
     return this.db.one<WorkSettingsRow>(
       // holidays приводим к тексту прямо в запросе: как DATE[] драйвер отдаёт JS-даты в

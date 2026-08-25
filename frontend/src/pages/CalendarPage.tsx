@@ -26,6 +26,8 @@ export interface CalEvent {
   ownerId: string;
   canEdit: boolean;
   myStatus: 'invited' | 'accepted' | 'declined' | null;
+  /** Напоминания в минутах до начала. */
+  reminders?: number[];
   participants: { userId: string; fullName: string | null; status: string; isOrganizer: boolean; avatarUrl: string | null }[];
 }
 
@@ -33,6 +35,14 @@ interface CalTask { id: string; title: string; deadline_at: string; project_id: 
 interface Work { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] }
 
 const VIEW_LABEL: Record<View, string> = { day: 'День', week: 'Неделя', month: 'Месяц', list: 'Список' };
+/** Напоминания, которые предлагаем. Больше вариантов — дольше выбирать, а нужны эти пять. */
+const REMINDER_CHOICES: { minutes: number; label: string }[] = [
+  { minutes: 0, label: 'в момент начала' },
+  { minutes: 5, label: 'за 5 минут' },
+  { minutes: 15, label: 'за 15 минут' },
+  { minutes: 60, label: 'за час' },
+  { minutes: 1440, label: 'за день' },
+];
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const HOUR_HEIGHT = 44; // высота часа в сетке, совпадает с .cal-hour в стилях
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -52,6 +62,24 @@ function nextHalfHour(): Date {
   d.setSeconds(0, 0);
   d.setMinutes(d.getMinutes() > 30 ? 60 : 30);
   return d;
+}
+
+/**
+ * Файл встречи → в календарь человека.
+ *
+ * Через blob, а не прямой ссылкой: файл лежит за авторизацией, и <a href> дал бы 401
+ * без единого объяснения — браузер просто открыл бы пустую страницу.
+ */
+async function downloadIcs(id: string): Promise<void> {
+  try {
+    const blob = await api.calendarIcs(id);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'meeting.ics';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch { /* кнопка — удобство; молчаливый отказ лучше пугающей ошибки поверх формы */ }
 }
 
 /** Имя организатора — то, что человек ищет глазами первым: кто зовёт. */
@@ -461,6 +489,9 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
     isPrivate: !!value.isPrivate,
     scope: (value.scope ?? 'personal') as 'personal' | 'company',
     participantIds: (value.participants ?? []).filter((p) => !p.isOrganizer).map((p) => String(p.userId)),
+    // у новой встречи напоминание за 15 минут стоит сразу: это привычная норма,
+    // а «ни одного напоминания» человек выбирает осознанно
+    reminders: value.id ? (value.reminders ?? []) : [15],
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -482,6 +513,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
         isPrivate: form.isPrivate,
         scope: form.scope,
         participantIds: form.participantIds,
+        reminders: form.reminders,
       };
       if (isNew) await api.calendarCreate(body);
       else await api.calendarUpdate(String(value.id), body);
@@ -585,6 +617,29 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
                     onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </div>
 
+        <div className="drawer-section-title">Напоминания</div>
+        <div className="cal-reminders">
+          {REMINDER_CHOICES.map((r) => (
+            <label key={r.minutes} className={`cal-reminder ${form.reminders.includes(r.minutes) ? 'on' : ''}`}>
+              <input
+                type="checkbox"
+                checked={form.reminders.includes(r.minutes)}
+                disabled={!canEdit}
+                onChange={() => setForm((prev) => ({
+                  ...prev,
+                  reminders: prev.reminders.includes(r.minutes)
+                    ? prev.reminders.filter((m) => m !== r.minutes)
+                    : [...prev.reminders, r.minutes].sort((a, b) => a - b),
+                }))}
+              />
+              {r.label}
+            </label>
+          ))}
+        </div>
+        <div className="dim" style={{ fontSize: 12 }}>
+          Придёт письмом и всплывёт в приложении. Участникам — тоже.
+        </div>
+
         {canEdit && (
           <>
             <div className="drawer-section-title">Участники</div>
@@ -629,6 +684,12 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
           {value.meetRoomId && (
             <button className="btn btn-sm" onClick={() => { onStartCall(String(value.meetRoomId)); onClose(); }}>
               <Icon name="phone" size={14} /> Войти в созвон
+            </button>
+          )}
+          {/* Файл встречи: кладётся в Google, Outlook или календарь телефона одним щелчком */}
+          {!isNew && (
+            <button className="btn btn-sm" onClick={() => downloadIcs(String(value.id))} title="Добавить встречу в свой календарь — Google, Outlook, телефон">
+              <Icon name="download" size={14} /> В свой календарь
             </button>
           )}
           {canEdit && <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Сохраняю…' : 'Сохранить'}</button>}

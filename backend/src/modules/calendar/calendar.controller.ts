@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength,
@@ -20,6 +21,9 @@ class EventDto {
   @IsOptional() @IsArray() @ArrayMaxSize(100) participantIds?: string[];
   /** Комната нашего созвона: кнопка «Начать созвон» у события. */
   @IsOptional() @IsString() @MaxLength(64) meetRoomId?: string;
+  /** Напоминания в минутах до начала. Пусто — без напоминаний, не указано — за 15 минут. */
+  @IsOptional() @IsArray() @ArrayMaxSize(5) @IsInt({ each: true }) @Min(0, { each: true }) @Max(20160, { each: true })
+  reminders?: number[];
 }
 
 class EventPatchDto {
@@ -33,6 +37,8 @@ class EventPatchDto {
   @IsOptional() @IsBoolean() isPrivate?: boolean;
   @IsOptional() @IsArray() @ArrayMaxSize(100) participantIds?: string[];
   @IsOptional() @IsString() @MaxLength(64) meetRoomId?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(5) @IsInt({ each: true }) @Min(0, { each: true }) @Max(20160, { each: true })
+  reminders?: number[];
 }
 
 class RespondDto {
@@ -83,6 +89,21 @@ export class CalendarController {
   @Get('events/:id')
   details(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.calendar.details(user.tenantId, user, id);
+  }
+
+  /**
+   * Файл встречи для внешнего календаря — Google, Outlook, календарь телефона.
+   *
+   * Отвечаем напрямую через Response, минуя общий конверт {ok,data}: календарь ждёт
+   * text/calendar и разбирает файл построчно, а обёртка превратила бы его в поле JSON,
+   * и «добавить в календарь» перестало бы работать без единой ошибки на экране.
+   */
+  @Get('events/:id/ics')
+  async ics(@CurrentUser() user: AuthUser, @Param('id') id: string, @Res() res: Response) {
+    const body = await this.calendar.ics(user.tenantId, user, id);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="meeting.ics"');
+    res.send(body);
   }
 
   @Post('events')

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
+import { CalendarMailService } from './calendar-mail.service';
 import { CalendarRepository, EventRow } from './calendar.repository';
+import { buildIcs, icsUid } from './ics';
 
 const DEFAULT_WORK = { workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] as string[] };
 const MAX_RANGE_DAYS = 62; // два месяца: больше одного экрана календаря не показывает
@@ -17,11 +19,20 @@ export interface EventDto {
   scope?: 'personal' | 'company';
   participantIds?: string[];
   meetRoomId?: string | null;
+  /** Напоминания в минутах до начала: 15 — «за пятнадцать минут». */
+  reminders?: number[];
 }
+
+/** Что предлагаем по умолчанию: одно напоминание за 15 минут — привычная норма. */
+const DEFAULT_REMINDERS = [15];
+const MAX_REMINDERS = 5;
 
 @Injectable()
 export class CalendarService {
-  constructor(private readonly repo: CalendarRepository) {}
+  constructor(
+    private readonly repo: CalendarRepository,
+    private readonly mail: CalendarMailService,
+  ) {}
 
   /**
    * Всё, что нужно экрану за один запрос: события, задачи со сроком и рабочее время.
@@ -48,7 +59,11 @@ export class CalendarService {
       byEvent.set(String(p.event_id), list);
     }
 
-    const events = rows.map((r) => this.view(r, user.userId, byEvent.get(String(r.id)) ?? []));
+    const reminders = await this.repo.remindersOf(rows.map((r) => r.id));
+    const events = rows.map((r) => ({
+      ...this.view(r, user.userId, byEvent.get(String(r.id)) ?? []),
+      reminders: reminders.get(String(r.id)) ?? [],
+    }));
     const tasks = withTasks ? await this.repo.tasksInRange(tenantId, user.userId, from, to) : [];
     return { events, tasks, work: await this.work(tenantId) };
   }
@@ -106,6 +121,9 @@ export class CalendarService {
       createdBy: user.userId,
       participantIds: dto.participantIds ?? [],
     });
+    await this.repo.setReminders(row.id, this.cleanReminders(dto.reminders));
+    // письма не ждём: встреча уже создана и видна на экране, почта догонит
+    void this.mail.sendInvites(row);
     return this.details(tenantId, user, row.id);
   }
 
@@ -123,13 +141,65 @@ export class CalendarService {
       color: dto.color === undefined ? undefined : (dto.color || null),
       is_private: dto.isPrivate,
     }, dto.participantIds, event.owner_id);
+    if (dto.reminders !== undefined) await this.repo.setReminders(id, this.cleanReminders(dto.reminders));
+
+    const updated = await this.repo.byId(tenantId, id);
+    // Время сдвинули — участники обязаны узнать. Письмо с тем же UID заменит встречу
+    // в их календаре, а не заведёт вторую.
+    const timeChanged = !!updated && (
+      new Date(updated.starts_at).getTime() !== new Date(event.starts_at).getTime()
+      || new Date(updated.ends_at).getTime() !== new Date(event.ends_at).getTime()
+    );
+    if (updated && (timeChanged || dto.participantIds)) void this.mail.sendInvites(updated);
     return this.details(tenantId, user, id);
   }
 
   async remove(tenantId: string, user: { userId: string; role: string }, id: string) {
-    await this.mine(tenantId, user, id);
+    const event = await this.mine(tenantId, user, id);
+    // письмо об отмене собираем ДО удаления: после него список участников уже не прочитать
+    await this.mail.sendCancel(event);
     await this.repo.remove(tenantId, id);
     return { deleted: true };
+  }
+
+  /**
+   * Файл встречи для внешнего календаря.
+   *
+   * Отдаём по кнопке «Добавить в свой календарь» — тому, кто и так видит событие.
+   * Приватное чужое событие не отдаём вовсе: в файле пришлось бы раскрыть название.
+   */
+  async ics(tenantId: string, user: { userId: string; role: string }, id: string): Promise<string> {
+    const event = await this.repo.byId(tenantId, id);
+    if (!event) throw AppException.notFound('Событие не найдено');
+    const people = await this.repo.participantContacts(tenantId, id);
+    const mine = String(event.owner_id) === String(user.userId)
+      || people.some((p) => String(p.user_id) === String(user.userId));
+    if (!mine && (event.is_private || event.scope !== 'company')) {
+      throw AppException.notFound('Событие не найдено');
+    }
+    const organizer = people.find((p) => p.is_organizer);
+    return buildIcs({
+      uid: icsUid(tenantId, id),
+      title: event.title,
+      description: event.description,
+      location: event.location,
+      startsAt: event.starts_at,
+      endsAt: event.ends_at,
+      allDay: event.all_day,
+      organizer: organizer ? { name: organizer.full_name, email: organizer.email } : null,
+      attendees: people.filter((p) => !p.is_organizer).map((p) => ({ name: p.full_name, email: p.email })),
+      method: 'PUBLISH',
+      reminders: (await this.repo.remindersOf([id])).get(String(id)) ?? [],
+    });
+  }
+
+  /** Напоминания приводим к разумному: без отрицательных, дублей и десятка штук на встречу. */
+  private cleanReminders(list: number[] | undefined): number[] {
+    const source = list === undefined ? DEFAULT_REMINDERS : list;
+    return [...new Set(source.map((m) => Math.round(Number(m))))]
+      .filter((m) => Number.isFinite(m) && m >= 0 && m <= 20160)
+      .sort((a, b) => a - b)
+      .slice(0, MAX_REMINDERS);
   }
 
   /** Ответ на приглашение. Отвечать может только приглашённый — за других не решают. */
