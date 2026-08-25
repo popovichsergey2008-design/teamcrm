@@ -157,7 +157,7 @@ export class CalendarRepository {
          FROM tasks t
         WHERE t.tenant_id = $1 AND t.deadline_at IS NOT NULL
           AND t.deadline_at >= $3::timestamptz AND t.deadline_at < $4::timestamptz
-          AND (t.assignee_id = $2 OR t.creator_id = $2)
+          AND (t.assignee_id = $2 OR t.created_by = $2)
         ORDER BY t.deadline_at`,
       [tenantId, userId, from, to],
     );
@@ -165,7 +165,10 @@ export class CalendarRepository {
 
   async workSettings(tenantId: string): Promise<WorkSettingsRow | null> {
     return this.db.one<WorkSettingsRow>(
-      `SELECT work_start::text, work_end::text, weekend_days, holidays
+      // holidays приводим к тексту прямо в запросе: как DATE[] драйвер отдаёт JS-даты в
+      // локальном поясе процесса, и «1 января» на сервере с поясом +3 превращалось бы
+      // в «31 декабря» — праздник тихо съезжал бы на день
+      `SELECT work_start::text, work_end::text, weekend_days, holidays::text[] AS holidays
          FROM org_work_settings WHERE tenant_id = $1`,
       [tenantId],
     );
