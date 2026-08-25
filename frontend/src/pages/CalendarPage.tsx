@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Avatar } from '../components/Avatar';
+import { DatePicker } from '../components/DatePicker';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
@@ -33,8 +34,44 @@ interface Work { workStart: string; workEnd: string; weekendDays: number[]; holi
 
 const VIEW_LABEL: Record<View, string> = { day: 'День', week: 'Неделя', month: 'Месяц', list: 'Список' };
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
+const HOUR_HEIGHT = 44; // высота часа в сетке, совпадает с .cal-hour в стилях
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-const isoLocal = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+const pad = (n: number) => String(n).padStart(2, '0');
+/** Локальное значение для DatePicker. Через toISOString нельзя — он уводит в UTC и сдвигает день. */
+const isoLocal = (d: Date) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+/**
+ * Ближайшие полчаса от текущего момента.
+ *
+ * Кнопка «Событие» раньше брала «следующий час», и в 23:30 это уезжало на завтрашнюю
+ * полночь: человек жал «создать», а событие оказывалось в другом дне с временем 00:00.
+ */
+function nextHalfHour(): Date {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  d.setMinutes(d.getMinutes() > 30 ? 60 : 30);
+  return d;
+}
+
+/** Имя организатора — то, что человек ищет глазами первым: кто зовёт. */
+function organizerOf(e: CalEvent): string | null {
+  return e.participants.find((p) => p.isOrganizer)?.fullName ?? null;
+}
+
+/** Подсказка при наведении: время, кто зовёт, кто приглашён и о чём встреча. */
+function hint(e: CalEvent): string {
+  const lines = [`${e.allDay ? 'Весь день' : `${hhmm(e.startsAt)}–${hhmm(e.endsAt)}`} · ${e.title}`];
+  const org = organizerOf(e);
+  if (org) lines.push(`Создал: ${org}`);
+  const guests = e.participants.filter((p) => !p.isOrganizer);
+  if (guests.length) {
+    lines.push(`Приглашены: ${guests.map((p) => `${p.fullName}${p.status === 'declined' ? ' (отказался)' : p.status === 'invited' ? ' (не ответил)' : ''}`).join(', ')}`);
+  }
+  if (e.location) lines.push(`Место: ${e.location}`);
+  if (e.description) lines.push(e.description.slice(0, 200));
+  return lines.join(String.fromCharCode(10));
+}
 
 /**
  * Календарь: события людей и компании, задачи со сроком отдельным слоем.
@@ -94,8 +131,14 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const createAt = (day: Date, hour: number) => {
     const start = new Date(day);
     start.setHours(hour, 0, 0, 0);
-    const end = new Date(start);
-    end.setHours(hour + 1);
+    openNew(start);
+  };
+
+  /** Кнопка «Событие»: ближайшие полчаса, а не полночь и не завтрашний день. */
+  const createNow = () => openNew(nextHalfHour());
+
+  const openNew = (start: Date) => {
+    const end = new Date(start.getTime() + 3600_000);
     setEditing({ startsAt: start.toISOString(), endsAt: end.toISOString(), scope: 'personal', participants: [] });
   };
 
@@ -141,7 +184,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
               </button>
             ))}
           </div>
-          <button className="btn btn-primary btn-sm" onClick={() => createAt(new Date(), new Date().getHours() + 1)}>
+          <button className="btn btn-primary btn-sm" onClick={() => createNow()}>
             <Icon name="plus" size={15} /> Событие
           </button>
         </div>
@@ -194,6 +237,21 @@ function TimeGrid({ days, work, segments, allDayOf, tasksOfDay, onOpen, onCreate
   const today = startOfDay(new Date()).getTime();
   const workTop = timeToFraction(work.workStart);
   const workHeight = Math.max(timeToFraction(work.workEnd) - workTop, 0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const hasTasks = days.some((d) => tasksOfDay(d).length > 0);
+
+  /**
+   * Прокрутка к началу рабочего дня.
+   *
+   * Сетка открывалась на полуночи, и человек видел пустую ночь, а щелчок «по первому
+   * свободному месту» создавал событие в 00:00. Показываем час до начала работы —
+   * чтобы было видно, что выше тоже есть время.
+   */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = Math.max(0, (timeToFraction(work.workStart) * 24 - 1) * HOUR_HEIGHT);
+  }, [work.workStart, days.length]);
 
   // колонок ровно столько, сколько дней в виде: одна в дне, семь в неделе
   const columns = { ['--cal-days' as string]: String(days.length) } as React.CSSProperties;
@@ -208,24 +266,36 @@ function TimeGrid({ days, work, segments, allDayOf, tasksOfDay, onOpen, onCreate
         </div>
       ))}
 
-      {/* Полоса «весь день» и сроки задач — над сеткой часов: у них нет времени внутри суток */}
+      {/* События «весь день» — своей строкой. У них нет времени внутри суток, в сетке им не место */}
       <div className="cal-corner cal-allday-label">весь день</div>
       {days.map((d) => (
         <div key={`a${d.getTime()}`} className="cal-allday">
           {allDayOf(d).map((e) => (
-            <button key={e.id} className={`cal-chip ${e.scope === 'company' ? 'company' : ''}`} onClick={() => onOpen(e)}>
+            <button key={e.id} className={`cal-chip ${e.scope === 'company' ? 'company' : ''}`} onClick={() => onOpen(e)} title={hint(e)}>
               {e.title}
             </button>
-          ))}
-          {tasksOfDay(d).map((t) => (
-            <span key={t.id} className="cal-chip cal-chip-task" title={`Срок задачи: ${t.title}`}>
-              <Icon name="check" size={12} /> {t.title}
-            </span>
           ))}
         </div>
       ))}
 
-      <div className="cal-scroll" style={columns}>
+      {/* Сроки задач — ОТДЕЛЬНОЙ строкой со своей подписью. В одной полосе с событиями
+          «весь день» они читались как чужой мусор: непонятно, встреча это или задача. */}
+      {hasTasks && (
+        <>
+          <div className="cal-corner cal-allday-label">сроки</div>
+          {days.map((d) => (
+            <div key={`t${d.getTime()}`} className="cal-allday cal-deadlines">
+              {tasksOfDay(d).map((t) => (
+                <span key={t.id} className="cal-chip cal-chip-task" title={`Срок задачи: ${t.title}`}>
+                  <Icon name="flag" size={11} /> {t.title}
+                </span>
+              ))}
+            </div>
+          ))}
+        </>
+      )}
+
+      <div className="cal-scroll" style={columns} ref={scrollRef}>
         <div className="cal-hours">
           {HOURS.map((h) => <div key={h} className="cal-hour"><span>{String(h).padStart(2, '0')}:00</span></div>)}
         </div>
@@ -247,10 +317,17 @@ function TimeGrid({ days, work, segments, allDayOf, tasksOfDay, onOpen, onCreate
                   width: `${(1 / seg.columns) * 100}%`,
                 }}
                 onClick={() => onOpen(seg.event)}
-                title={`${seg.event.title} · ${hhmm(seg.event.startsAt)}–${hhmm(seg.event.endsAt)}`}
+                title={hint(seg.event)}
               >
-                <span className="cal-event-time">{seg.continuesFrom ? '↑ ' : ''}{hhmm(seg.event.startsAt)}</span>
+                <span className="cal-event-time">
+                  {seg.continuesFrom ? '↑ ' : ''}{hhmm(seg.event.startsAt)}
+                  {seg.event.participants.length > 1 && (
+                    <span className="cal-event-people"><Icon name="users" size={11} /> {seg.event.participants.length}</span>
+                  )}
+                </span>
                 <span className="cal-event-title">{seg.event.title}</span>
+                {/* организатор виден прямо на плитке: «кто зовёт» — первый вопрос к встрече */}
+                {organizerOf(seg.event) && <span className="cal-event-who">{organizerOf(seg.event)}</span>}
               </button>
             ))}
           </div>
@@ -320,7 +397,15 @@ function ListView({ days, events, tasks, onOpen, onRespond }: {
           {r.events.map((e) => (
             <div key={e.id} className="cal-list-row">
               <span className="cal-list-time">{e.allDay ? 'весь день' : `${hhmm(e.startsAt)}–${hhmm(e.endsAt)}`}</span>
-              <button className="cal-list-title" onClick={() => onOpen(e)}>{e.title}</button>
+              <button className="cal-list-title" onClick={() => onOpen(e)}>
+                <span>{e.title}</span>
+                {/* кто зовёт и о чём — прямо в списке: ради этого не должно приходиться открывать событие */}
+                <span className="cal-list-sub dim">
+                  {organizerOf(e) ? `Создал: ${organizerOf(e)}` : ''}
+                  {e.participants.length > 1 ? ` · участников: ${e.participants.length}` : ''}
+                  {e.description ? ` · ${e.description.slice(0, 90)}` : ''}
+                </span>
+              </button>
               {e.myStatus === 'invited' && (
                 <span className="cal-list-answer">
                   <button className="btn btn-sm" onClick={() => onRespond(e.id, 'accepted')}>Принять</button>
@@ -339,6 +424,22 @@ function ListView({ days, events, tasks, onOpen, onRespond }: {
       ))}
     </div>
   );
+}
+
+/**
+ * Сдвиг конца вслед за началом.
+ *
+ * Человек меняет время начала — и ждёт, что встреча просто переедет, сохранив длительность.
+ * Без этого он каждый раз правит два поля, а забыв второе, получает событие «с 15:00 до 11:00».
+ */
+function shiftEnd(nextStart: string, prevStart: string, prevEnd: string): string {
+  const a = new Date(prevStart);
+  const b = new Date(prevEnd);
+  const next = new Date(nextStart);
+  if ([a, b, next].some((d) => Number.isNaN(d.getTime()))) return prevEnd;
+  const moved = new Date(next.getTime() + Math.max(b.getTime() - a.getTime(), 0));
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  return `${moved.getFullYear()}-${pad2(moved.getMonth() + 1)}-${pad2(moved.getDate())}T${pad2(moved.getHours())}:${pad2(moved.getMinutes())}`;
 }
 
 /** Создание и правка события. Одна форма на оба случая: разница только в кнопках снизу. */
@@ -417,6 +518,11 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
           <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
 
+        {!isNew && organizerOf(value as CalEvent) && (
+          <div className="cal-organizer">
+            <Icon name="user" size={14} /> Создал: <b>{organizerOf(value as CalEvent)}</b>
+          </div>
+        )}
         {!canEdit && (
           <div className="dim" style={{ fontSize: 12 }}>
             Событие создал другой человек — вы можете только ответить на приглашение.
@@ -432,13 +538,25 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
         <div className="drawer-grid2">
           <div className="field">
             <label>Начало</label>
-            <input className="input" type="datetime-local" value={form.startsAt} disabled={!canEdit}
-                   onChange={(e) => setForm({ ...form, startsAt: e.target.value })} />
+            {/* Наш календарь вместо datetime-local: тот в тёмной теме выглядит чужеродно
+                и в каждом браузере по-своему. У «весь день» время не спрашиваем вовсе. */}
+            <DatePicker
+              value={form.startsAt}
+              withTime={!form.allDay}
+              disabled={!canEdit}
+              placeholder="когда начинаем"
+              onChange={(v) => setForm((f) => ({ ...f, startsAt: v, endsAt: shiftEnd(v, f.startsAt, f.endsAt) }))}
+            />
           </div>
           <div className="field">
             <label>Конец</label>
-            <input className="input" type="datetime-local" value={form.endsAt} disabled={!canEdit}
-                   onChange={(e) => setForm({ ...form, endsAt: e.target.value })} />
+            <DatePicker
+              value={form.endsAt}
+              withTime={!form.allDay}
+              disabled={!canEdit}
+              placeholder="когда заканчиваем"
+              onChange={(v) => setForm({ ...form, endsAt: v })}
+            />
           </div>
         </div>
 

@@ -177,9 +177,12 @@
 /* Сетка: строка заголовков, строка «весь день», прокручиваемое поле часов. */
 .cal-grid {
   flex: 1; min-height: 0; display: grid; grid-template-columns: 56px repeat(var(--cal-days, 7), 1fr);
-  grid-template-rows: auto auto 1fr; border: 1px solid var(--border); border-radius: var(--radius);
+  /* строки: дни · «весь день» · сроки задач (может не быть) · часы */
+  grid-template-rows: auto auto auto 1fr; border: 1px solid var(--border); border-radius: var(--radius);
   overflow: hidden; background: var(--bg-elev);
 }
+/* сроки отделены от событий и приглушены: это не встреча, а отметка «сегодня надо сдать» */
+.cal-deadlines { background: var(--bg-elev-2); }
 .cal-corner { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .cal-allday-label { font-size: 10px; color: var(--text-mut); padding: 4px; text-align: right; }
 .cal-dayhead {
@@ -217,8 +220,11 @@
 .cal-event.company { background: var(--fill-info); border-color: var(--fill-info); color: var(--on-fill); }
 .cal-event.invited { border-style: dashed; }
 .cal-event.declined { opacity: .55; text-decoration: line-through; }
-.cal-event-time { font-size: 10px; opacity: .85; }
+.cal-event-time { font-size: 10px; opacity: .85; display: flex; align-items: center; gap: 6px; }
+.cal-event-people { display: inline-flex; align-items: center; gap: 2px; }
 .cal-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* имя организатора мельче названия: важен сам факт «кто зовёт», а не размер подписи */
+.cal-event-who { font-size: 10px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .cal-chip {
   display: block; width: 100%; text-align: left; font-size: 11px; padding: 2px 6px; border-radius: 4px;
@@ -245,7 +251,12 @@
 .cal-list-date { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); }
 .cal-list-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .cal-list-time { font-size: 12px; color: var(--text-dim); min-width: 104px; }
-.cal-list-title { flex: 1; background: none; border: none; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.cal-list-title {
+  flex: 1; background: none; border: none; text-align: left; color: inherit; font: inherit; cursor: pointer;
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.cal-list-sub { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-organizer { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 6px; }
 .cal-list-answer { display: flex; gap: 6px; }
 
 .cal-people { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
