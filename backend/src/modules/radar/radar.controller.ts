@@ -15,6 +15,6 @@ export class RadarController {
   /** @param tz смещение часового пояса в минутах (Date#getTimezoneOffset) */
   @Get()
   overview(@CurrentUser() user: AuthUser, @Query('tz') tz?: string) {
-    return this.radar.overview(user.tenantId, Number.parseInt(tz ?? '0', 10) || 0);
+    return this.radar.overview(user.tenantId, user.userId, Number.parseInt(tz ?? '0', 10) || 0);
   }
 }

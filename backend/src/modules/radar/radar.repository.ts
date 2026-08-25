@@ -108,6 +108,15 @@ export class RadarRepository {
     );
   }
 
+  /** Личный порог «зависшего на проверке»; NULL — человек его не трогал. */
+  async stuckHoursOf(tenantId: string, userId: string): Promise<number | null> {
+    const row = await this.db.one<{ radar_stuck_hours: number | null }>(
+      `SELECT radar_stuck_hours FROM users WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, userId],
+    );
+    return row?.radar_stuck_hours ?? null;
+  }
+
   /** Скорость: сколько задач закрыто за последние 7 дней и за предыдущие 7 — для сравнения. */
   velocity(tenantId: string): Promise<{ last7: number; prev7: number } | null> {
     return this.db.one(

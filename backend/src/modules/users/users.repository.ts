@@ -95,6 +95,7 @@ export class UsersRepository {
     return this.db.one(
       `SELECT u.id, u.email, u.full_name, u.phone, u.timezone, u.locale,
               u.notify_prefs, u.avatar_file_id, u.weekly_capacity_hours, u.is_active,
+              u.radar_stuck_hours,
               r.code AS role_code, p.name AS position_name, u.position_id
          FROM users u
          JOIN roles r ON r.id = u.role_id
@@ -107,7 +108,10 @@ export class UsersRepository {
   updateProfile(
     tenantId: string,
     id: string,
-    patch: { full_name?: string; phone?: string | null; timezone?: string; locale?: string },
+    patch: {
+      full_name?: string; phone?: string | null; timezone?: string; locale?: string;
+      radar_stuck_hours?: number | null;
+    },
   ) {
     const sets: string[] = [];
     const vals: any[] = [];

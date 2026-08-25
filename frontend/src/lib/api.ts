@@ -152,7 +152,7 @@ export const api = {
   taskActivity: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/activity`),
 
   // Этап C — личный кабинет
-  updateProfile: (b: { fullName?: string; phone?: string; timezone?: string; locale?: string }) =>
+  updateProfile: (b: { fullName?: string; phone?: string; timezone?: string; locale?: string; radarStuckHours?: number | null }) =>
     request<any>('PATCH', '/me', b),
   changePassword: (b: { currentPassword: string; newPassword: string }) =>
     request<any>('POST', '/me/password', b),

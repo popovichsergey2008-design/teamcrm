@@ -35,7 +35,14 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   // profile
   const saveProfile = async () => {
     try {
-      await api.updateProfile({ fullName: me.fullName, phone: me.phone ?? '', timezone: me.timezone });
+      await api.updateProfile({
+        fullName: me.fullName,
+        phone: me.phone ?? '',
+        timezone: me.timezone,
+        // пустое поле — «как по умолчанию», а не ноль: ноль означал бы «считать зависшим сразу»
+        radarStuckHours: me.radarStuckHours === '' || me.radarStuckHours === null || me.radarStuckHours === undefined
+          ? null : Number(me.radarStuckHours),
+      });
       flash('Профиль сохранён'); loadMe();
     } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
@@ -143,6 +150,27 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 <Icon name="refresh" size={13} /> Как на этом компьютере
               </button>
             </div>
+            {/* Порог «зависшего» — настройка того, кто смотрит «Пульс команды».
+                Рядовому сотруднику этот экран не показывается, поэтому и поле ему не нужно. */}
+            {(me.role === 'owner' || me.role === 'manager') && (
+              <div className="field">
+                <label>Считать зависшим на проверке через, часов</label>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={168}
+                  placeholder="24 — по умолчанию"
+                  value={me.radarStuckHours ?? ''}
+                  onChange={(e) => setMe({ ...me, radarStuckHours: e.target.value === '' ? null : Number(e.target.value) })}
+                />
+                <span className="dim" style={{ fontSize: 12 }}>
+                  Столько задача может простоять на проверке, прежде чем попадёт в «Узкие места»
+                  на «Пульсе команды». Пусто — сутки.
+                </span>
+              </div>
+            )}
+
             <button className="btn btn-primary" style={{ width: '100%' }} onClick={saveProfile}>Сохранить</button>
 
             <div className="drawer-section">

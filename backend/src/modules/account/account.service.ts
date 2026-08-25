@@ -42,6 +42,10 @@ export class AccountService {
       avatarFileId: p.avatar_file_id,
       avatarUrl: p.avatar_file_id ? `/api/files/${p.avatar_file_id}` : null,
       weeklyCapacityHours: Number(p.weekly_capacity_hours),
+      // через сколько часов на проверке задача считается зависшей в «Пульсе команды»;
+      // null — «как по умолчанию», значение по умолчанию живёт в RadarService
+      radarStuckHours: p.radar_stuck_hours === null || p.radar_stuck_hours === undefined
+        ? null : Number(p.radar_stuck_hours),
       groups,
     };
   }
@@ -49,13 +53,17 @@ export class AccountService {
   updateProfile(
     tenantId: string,
     userId: string,
-    dto: { fullName?: string; phone?: string | null; timezone?: string; locale?: string },
+    dto: {
+      fullName?: string; phone?: string | null; timezone?: string; locale?: string;
+      radarStuckHours?: number | null;
+    },
   ) {
     return this.users.updateProfile(tenantId, userId, {
       full_name: dto.fullName,
       phone: dto.phone,
       timezone: dto.timezone,
       locale: dto.locale,
+      radar_stuck_hours: dto.radarStuckHours,
     });
   }
 
