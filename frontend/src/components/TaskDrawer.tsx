@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
+import { GateBlock, HandoffGateDialog, gateFromError } from './HandoffGateDialog';
 import { api, ApiError } from '../lib/api';
 import type { Task, User } from '../types';
 import { Lightbox } from './Lightbox';
@@ -82,11 +83,17 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
   const toggleBlocked = async () => { await api.updateTask(task.id, { isBlocked: !task.is_blocked }); onRefresh(); };
   // сменить статус = переместить в колонку доски (наверх колонки)
   const [moving, setMoving] = useState(false);
-  const moveToColumn = async (columnId: string) => {
+  // приёмка работы: сдаём не полностью — сначала показываем, чего не хватает
+  const [gate, setGate] = useState<{ block: GateBlock; columnId: string } | null>(null);
+  const moveToColumn = async (columnId: string, confirmGate = false) => {
     if (columnId === task.column_id || moving) return;
     setErr(''); setMoving(true);
-    try { await api.moveTask(task.id, { columnId, position: 0 }); onRefresh(); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось сменить статус'); }
+    try { await api.moveTask(task.id, { columnId, position: 0, confirmGate }); setGate(null); onRefresh(); }
+    catch (e) {
+      const block = e instanceof ApiError ? gateFromError(e.details) : null;
+      if (block) setGate({ block, columnId });
+      else setErr(e instanceof ApiError ? e.message : 'Не удалось сменить статус');
+    }
     finally { setMoving(false); }
   };
 
@@ -116,6 +123,14 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
+        {gate && (
+          <HandoffGateDialog
+            block={gate.block}
+            busy={moving}
+            onCancel={() => setGate(null)}
+            onForce={() => moveToColumn(gate.columnId, true)}
+          />
+        )}
         <div className="drawer-head">
           <h3>{task.title}</h3>
           <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
@@ -611,8 +626,32 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
       </div>
       <div className="drawer-section-title" style={{ marginTop: 16 }}>История</div>
       {activity.map((a) => (
-        <div key={a.id} className="dim activity-row">{new Date(a.created_at).toLocaleString('ru-RU')} · {a.actor_name ?? 'система'} · {a.kind}</div>
+        <div key={a.id} className="dim activity-row">
+          {new Date(a.created_at).toLocaleString('ru-RU')} · {a.actor_name ?? 'система'} · {activityText(a)}
+        </div>
       ))}
     </>
   );
+}
+
+/** Событие истории по-русски: строка вида «moved» проверяющему ничего не говорит. */
+const ACTIVITY_LABEL: Record<string, string> = {
+  created: 'создал задачу',
+  updated: 'изменил поля',
+  moved: 'перенёс',
+  commented: 'написал комментарий',
+  attached: 'приложил файл',
+  checklist: 'правил чек-лист',
+  label: 'менял метки',
+  handoff_forced: 'сдал работу без полной готовности',
+};
+
+function activityText(a: { kind: string; detail?: Record<string, any> }): string {
+  const label = ACTIVITY_LABEL[a.kind] ?? a.kind;
+  if (a.kind === 'moved' && a.detail?.to) return `${label} в «${a.detail.to}»`;
+  // обход приёмки без списка нехваток бесполезен: ради этого списка запись и делается
+  if (a.kind === 'handoff_forced' && Array.isArray(a.detail?.missing)) {
+    return `${label}: ${a.detail.missing.join('; ')}`;
+  }
+  return label;
 }

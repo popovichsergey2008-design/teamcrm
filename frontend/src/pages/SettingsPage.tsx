@@ -1,5 +1,6 @@
 import { Icon, IconName } from '../components/Icon';
 import { IntegrationsPanel } from '../components/IntegrationsPanel';
+import { HandoffGatePanel } from '../components/HandoffGatePanel';
 import { KnowledgePanel } from '../components/KnowledgePanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { navigate, Route } from '../lib/router';
@@ -43,6 +44,12 @@ const CARDS: Card[] = [
     icon: 'book',
   },
   {
+    tab: 'handoff',
+    title: 'Приёмка работы',
+    hint: 'Что спросить у исполнителя, когда он сдаёт задачу: чек-лист, отчёт, результат',
+    icon: 'check',
+  },
+  {
     tab: 'account',
     title: 'Личный кабинет',
     hint: 'Профиль, пароль, аватар, уведомления, доступность, сессии',
@@ -79,6 +86,7 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'team' && canManage && <TeamPanel onClose={close} />}
       {route.tab === 'integrations' && role === 'owner' && <IntegrationsPanel onClose={close} />}
       {route.tab === 'knowledge' && <KnowledgePanel canManage={canManage} onClose={close} />}
+      {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { AiAction, Approval, AuthResult, Board, Focus, Project, SearchResults, SemanticHit, Task } from '../types';
+import type { AiAction, Approval, AuthResult, Board, Focus, GateSettings, Project, SearchResults, SemanticHit, Task } from '../types';
 
 const ACCESS_KEY = 'teamcrm.access';
 const REFRESH_KEY = 'teamcrm.refresh';
@@ -248,8 +248,12 @@ export const api = {
     request<Task>('POST', '/tasks', b),
   updateTask: (id: string, b: Partial<{ title: string; description: string; isBlocked: boolean; priority: string; managerId: string | null }>) =>
     request<Task>('PATCH', `/tasks/${id}`, b),
-  moveTask: (id: string, b: { columnId: string; position: number }) =>
+  moveTask: (id: string, b: { columnId: string; position: number; confirmGate?: boolean }) =>
     request<Task>('POST', `/tasks/${id}/move`, b),
+
+  // условия приёмки работы: читают все, меняет владелец
+  handoffGate: () => request<GateSettings>('GET', '/handoff-gate'),
+  saveHandoffGate: (b: GateSettings) => request<GateSettings>('PUT', '/handoff-gate', b),
 
   // клиентский портал (Этап 5)
   portalProjects: () => request<any[]>('GET', '/portal/projects'),

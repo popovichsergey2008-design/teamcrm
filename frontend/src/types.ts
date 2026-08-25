@@ -171,3 +171,10 @@ export interface Approval {
   task_title: string | null;
   project_id: string | null;
 }
+
+/** Условия приёмки работы — общие для компании (меняет владелец). */
+export interface GateSettings {
+  checklist: boolean;
+  comment: boolean;
+  attachment: boolean;
+}

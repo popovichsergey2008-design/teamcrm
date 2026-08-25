@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { REVIEW_COLUMN_NAMES } from './task-columns';
+import { GateFacts, GateRequirements } from './handoff-gate';
 
 export interface TaskRow {
   id: string;
@@ -321,5 +322,46 @@ export class TasksRepository {
       );
       return res.rows[0];
     });
+  }
+
+  /**
+   * Факты для приёмки работы — одним запросом.
+   *
+   * Комментарии считаем только авторства исполнителя: вопрос постановщика в карточке
+   * отчётом о работе не является, а иначе гейт «есть комментарий» проходил бы сам собой.
+   */
+  async handoffFacts(tenantId: string, taskId: string, assigneeId: string): Promise<GateFacts> {
+    const row = await this.db.one<{ cl_total: string; cl_done: string; own_comments: string; attachments: string }>(
+      `SELECT (SELECT COUNT(*) FROM task_checklist_items ci WHERE ci.tenant_id=$1 AND ci.task_id=$2) AS cl_total,
+              (SELECT COUNT(*) FROM task_checklist_items ci WHERE ci.tenant_id=$1 AND ci.task_id=$2 AND ci.is_done) AS cl_done,
+              (SELECT COUNT(*) FROM task_comments c WHERE c.tenant_id=$1 AND c.task_id=$2 AND c.author_id=$3) AS own_comments,
+              (SELECT COUNT(*) FROM task_attachments a WHERE a.tenant_id=$1 AND a.task_id=$2) AS attachments`,
+      [tenantId, taskId, assigneeId],
+    );
+    return {
+      checklistTotal: Number(row?.cl_total ?? 0),
+      checklistDone: Number(row?.cl_done ?? 0),
+      ownComments: Number(row?.own_comments ?? 0),
+      attachments: Number(row?.attachments ?? 0),
+    };
+  }
+
+  /** Условия приёмки компании. Строки нет быть не может — колонки живут в tenants. */
+  async gateSettings(tenantId: string): Promise<GateRequirements> {
+    const row = await this.db.one<{ c: boolean; m: boolean; a: boolean }>(
+      `SELECT gate_require_checklist AS c, gate_require_comment AS m, gate_require_attachment AS a
+         FROM tenants WHERE id = $1`,
+      [tenantId],
+    );
+    return { checklist: row?.c !== false, comment: row?.m !== false, attachment: row?.a !== false };
+  }
+
+  async saveGateSettings(tenantId: string, req: GateRequirements): Promise<GateRequirements> {
+    await this.db.query(
+      `UPDATE tenants SET gate_require_checklist=$2, gate_require_comment=$3, gate_require_attachment=$4
+        WHERE id=$1`,
+      [tenantId, req.checklist, req.comment, req.attachment],
+    );
+    return req;
   }
 }

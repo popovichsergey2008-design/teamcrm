@@ -26,7 +26,7 @@ export class AppException extends HttpException {
   static notFound(message = 'Not found') {
     return new AppException('NOT_FOUND', message);
   }
-  static conflict(message = 'Conflict') {
-    return new AppException('CONFLICT', message);
+  static conflict(message = 'Conflict', details?: Record<string, unknown>) {
+    return new AppException('CONFLICT', message, details);
   }
 }

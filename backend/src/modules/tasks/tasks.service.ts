@@ -7,7 +7,8 @@ import { TaskActivityRepository } from './task-activity.repository';
 import { CreateTaskDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
-import { isDoneColumn } from './task-columns';
+import { isDoneColumn, isReviewColumn } from './task-columns';
+import { handoffGate } from './handoff-gate';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
@@ -135,6 +136,14 @@ export class TasksService {
     const column = await this.projects.findColumn(tenantId, task.project_id, dto.columnId);
     if (!column) throw AppException.notFound('Target column not found');
 
+    const missing = await this.handoffMissing(tenantId, task, column.name, actorId);
+    if (missing.length && !dto.confirmGate) {
+      throw AppException.conflict('Работа сдаётся не полностью', {
+        gate: { column: column.name, missing },
+        hint: 'передайте confirmGate=true, чтобы сдать всё равно',
+      });
+    }
+
     const moved = await this.repo.move(tenantId, id, dto.columnId, dto.position, column.name);
     // перенос в Done закрывает задачу (источник для Velocity/эмбеддингов); вынос — переоткрывает
     if (isDoneColumn(column.name)) {
@@ -143,9 +152,44 @@ export class TasksService {
     } else if (task.closed_at) await this.repo.reopenTask(tenantId, id);
     this.realtime.emit(tenantId, moved.project_id, 'task.moved', moved as any);
     await this.activity.log(tenantId, id, actorId, 'moved', { to: column.name });
+    // Обход гейта — не молчаливый: проверяющий должен видеть, чего в работе не хватало.
+    if (missing.length) {
+      await this.activity.log(tenantId, id, actorId, 'handoff_forced', {
+        to: column.name, missing: missing.map((m) => m.text),
+      });
+    }
     await this.outbox.enqueue(tenantId, moved.project_id, 'task.move', id);
     // смена статуса = перенос в другую колонку; о своём же переносе человеку не пишем
     void this.notify.taskStatusChanged(tenantId, id, actorId, column.name, isDoneColumn(column.name));
     return moved;
+  }
+
+  /**
+   * Приёмка работы: чего не хватает, чтобы сдавать.
+   *
+   * Спрашиваем только того, кто СДАЁТ свою работу, — исполнителя. Постановщик,
+   * двигающий задачу в «Готово», как раз и есть проверяющий: ему этот диалог
+   * показывал бы список претензий к чужой работе в момент, когда он её принимает.
+   * Машинные переносы (агент, разбор дейлика) сюда не попадают: они идут без актора
+   * или с confirmGate — диалог показывать некому.
+   */
+  private async handoffMissing(tenantId: string, task: TaskRow, columnName: string, actorId: string | null) {
+    const handingOver = isReviewColumn(columnName) || isDoneColumn(columnName);
+    if (!handingOver || !actorId || String(task.assignee_id ?? '') !== String(actorId)) return [];
+    const [req, facts] = await Promise.all([
+      this.repo.gateSettings(tenantId),
+      this.repo.handoffFacts(tenantId, task.id, actorId),
+    ]);
+    return handoffGate(req, facts);
+  }
+
+  /** Условия приёмки компании: читают все, меняет владелец. */
+  gateSettings(tenantId: string) {
+    return this.repo.gateSettings(tenantId);
+  }
+
+  saveGateSettings(tenantId: string, role: string, req: { checklist: boolean; comment: boolean; attachment: boolean }) {
+    if (role !== 'owner') throw AppException.forbidden('Условия приёмки задаёт владелец');
+    return this.repo.saveGateSettings(tenantId, req);
   }
 }

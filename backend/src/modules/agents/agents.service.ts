@@ -232,7 +232,9 @@ export class AgentsService {
       if (opts.moveToTesting) {
         const col = await this.projects.findTestingColumn(tenantId, task.project_id);
         if (col && col.id !== task.column_id) {
-          await this.tasksService.move(tenantId, taskId, { columnId: col.id, position: 0 }, userId);
+          // confirmGate: результат агента и есть отчёт (комментарий + .docx во вложениях),
+          // а диалог «чего не хватает» показывать здесь некому — переносит машина
+          await this.tasksService.move(tenantId, taskId, { columnId: col.id, position: 0, confirmGate: true }, userId);
           movedTo = col.name;
         }
         // готовый результат прикрепляем файлом .docx во вкладку «Файлы» (best-effort — не роняем запуск)

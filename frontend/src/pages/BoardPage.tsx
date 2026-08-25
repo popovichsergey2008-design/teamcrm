@@ -7,6 +7,7 @@ import type { Board, BoardColumn, CostOfWork, Pnl, Project, Task, User } from '.
 import { ColumnView } from '../components/ColumnView';
 import { PnlPanel } from '../components/PnlPanel';
 import { TaskDrawer } from '../components/TaskDrawer';
+import { GateBlock, HandoffGateDialog, gateFromError } from '../components/HandoffGateDialog';
 import { TaskCreateModal } from '../components/TaskCreateModal';
 import { TaskListView } from '../components/TaskListView';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
@@ -80,6 +81,9 @@ export function BoardPage({ initial, onNavigate }: {
   const [error, setError] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // задача сдаётся не полностью: помним, что именно человек пытался сделать,
+  // чтобы «Сдать всё равно» повторило ровно тот же перенос
+  const [gate, setGate] = useState<{ block: GateBlock; taskId: string; columnId: string; position: number } | null>(null);
   const [createIn, setCreateIn] = useState<{ columnId: string; columnName: string } | null>(null);
   const [view, setView] = useState<'board' | 'list'>(() =>
     localStorage.getItem('teamcrm.boardView') === 'list' ? 'list' : 'board',
@@ -299,14 +303,19 @@ export function BoardPage({ initial, onNavigate }: {
   };
 
   const moveTask = useCallback(
-    async (taskId: string, columnId: string, position: number) => {
+    async (taskId: string, columnId: string, position: number, confirmGate = false) => {
       const current = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === taskId);
       if (current) dispatch({ type: 'UPSERT_TASK', task: { ...current, column_id: columnId, position } });
       try {
-        const server = await api.moveTask(taskId, { columnId, position });
+        const server = await api.moveTask(taskId, { columnId, position, confirmGate });
         dispatch({ type: 'UPSERT_TASK', task: server });
+        setGate(null);
       } catch (e) {
-        setError(e instanceof ApiError ? e.message : 'Не удалось перенести задачу');
+        // приёмка работы: не ошибка, а вопрос — показываем, чего не хватает, и даём решить
+        const block = e instanceof ApiError ? gateFromError(e.details) : null;
+        if (block) setGate({ block, taskId, columnId, position });
+        else setError(e instanceof ApiError ? e.message : 'Не удалось перенести задачу');
+        // карточка уже уехала оптимистично — возвращаем доску к тому, что на сервере
         if (selected) api.getBoard(selected).then((b) => dispatch({ type: 'SET', board: b }));
       }
     },
@@ -338,6 +347,13 @@ export function BoardPage({ initial, onNavigate }: {
 
       <main className="board-main">
         {error && <div className="error-text board-error">{error}</div>}
+        {gate && (
+          <HandoffGateDialog
+            block={gate.block}
+            onCancel={() => setGate(null)}
+            onForce={() => moveTask(gate.taskId, gate.columnId, gate.position, true)}
+          />
+        )}
         {/* Пока проект не выбран или доска ещё едет — разные состояния, а не одна надпись:
             «выберите проект» на пустом аккаунте выглядит как тупик. */}
         {!board && (

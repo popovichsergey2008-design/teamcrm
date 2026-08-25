@@ -97,4 +97,9 @@ export class MoveTaskDto {
   @IsInt()
   @Min(0)
   position!: number;
+
+  /** «Сдать всё равно»: человек увидел, чего не хватает, и решил сдавать. */
+  @IsOptional()
+  @IsBoolean()
+  confirmGate?: boolean;
 }
