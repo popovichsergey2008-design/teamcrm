@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { tokens } from '../lib/api';
+import { startRingtone, stopRingtone } from '../lib/sound';
 
 export interface Incoming {
   meetingId: string;
@@ -36,9 +37,11 @@ export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null;
             callerName: msg.payload?.caller_name ?? 'Коллега',
             callerId: msg.payload?.caller_id,
           });
+          // звонок слышно, даже когда вкладка свёрнута: окно вызова человек попросту не увидит
+          startRingtone();
         }
         // ответили с другого устройства — гасим окно здесь
-        if (msg.type === 'meet.call-answered-elsewhere') setIncoming(null);
+        if (msg.type === 'meet.call-answered-elsewhere') { setIncoming(null); stopRingtone(); }
       };
       // сеть моргнула — переподключаемся, иначе звонки перестанут доходить молча
       socket.onclose = () => { if (!closed) retry = setTimeout(connect, 3000); };
@@ -50,15 +53,18 @@ export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null;
       if (retry) clearTimeout(retry);
       ws.current?.close();
       ws.current = null;
+      stopRingtone(); // ушли со страницы или разлогинились — звонить некому
     };
   }, [enabled]);
 
   const accept = () => {
     const id = incoming?.meetingId ?? null;
+    stopRingtone();
     setIncoming(null);
     return id;
   };
   const decline = () => {
+    stopRingtone();
     if (incoming && ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({
         type: 'meet.decline',

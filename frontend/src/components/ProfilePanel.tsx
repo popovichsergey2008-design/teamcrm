@@ -1,6 +1,7 @@
 import { useEffect, useRef, useMemo, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { ClientsPanel } from './ClientsPanel';
+import { previewSound, setSoundPref, soundPrefs } from '../lib/sound';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { browserTimezone, listTimezones } from '../lib/timezones';
@@ -12,6 +13,12 @@ type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'cli
 
 export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAvatar: (url: string | null) => void }) {
   const [tab, setTab] = useState<Tab>('profile');
+  const [sound, setSound] = useState(soundPrefs);
+  const toggleSound = (kind: 'messages' | 'calls') => {
+    const next = { ...sound, [kind]: !sound[kind] };
+    setSoundPref(kind, next[kind]);
+    setSound(next);
+  };
   const [me, setMe] = useState<any>(null);
   const [msg, setMsg] = useState('');
   const [tgCode, setTgCode] = useState<string | null>(null);
@@ -248,12 +255,34 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
 
         {tab === 'notify' && (
           <>
+            <div className="drawer-section-title">Письма</div>
             {NOTIFY_KEYS.map(([k, label]) => (
               <label key={k} className="notify-row">
                 <input type="checkbox" checked={!!me.notifyPrefs?.[k]} onChange={() => toggleNotify(k)} />
                 {label}
               </label>
             ))}
+
+            {/* Звук — свойство места, а не человека: в опенспейсе его выключают,
+                дома на том же аккаунте оставляют. Поэтому настройка на устройстве. */}
+            <div className="drawer-section-title" style={{ marginTop: 18 }}>Звук на этом устройстве</div>
+            <label className="notify-row">
+              <input type="checkbox" checked={sound.messages} onChange={() => toggleSound('messages')} />
+              Сигнал о новом сообщении
+              <button className="btn btn-ghost btn-sm" onClick={(e) => { e.preventDefault(); previewSound('messages'); }}>
+                Послушать
+              </button>
+            </label>
+            <label className="notify-row">
+              <input type="checkbox" checked={sound.calls} onChange={() => toggleSound('calls')} />
+              Звонок при входящем вызове
+              <button className="btn btn-ghost btn-sm" onClick={(e) => { e.preventDefault(); previewSound('calls'); }}>
+                Послушать
+              </button>
+            </label>
+            <div className="dim" style={{ fontSize: 12 }}>
+              Пока включён режим «Не беспокоить», звуков нет вовсе — ни сигналов, ни звонка.
+            </div>
           </>
         )}
         </div>

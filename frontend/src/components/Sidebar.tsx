@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { ProjectsNav } from './ProjectsNav';
+import { setDoNotDisturb } from '../lib/sound';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { buildPath, navigate, Route, Section } from '../lib/router';
@@ -125,6 +126,9 @@ export function Sidebar({
       window.removeEventListener('teamcrm:tasks-changed', loadSummary);
     };
   }, []);
+
+  // «Не беспокоить» — это в том числе тишина: глубокий фокус глушит и сигналы, и звонок
+  useEffect(() => { setDoNotDisturb(focus?.kind === 'deep'); }, [focus]);
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {

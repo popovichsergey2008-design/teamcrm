@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { getSocket } from '../lib/socket';
-import { CHATS_CHANGED, playChime, setTitleUnread, showNotification, showToast } from '../lib/notifications';
+import { CHATS_CHANGED, setTitleUnread, showNotification, showToast } from '../lib/notifications';
+import { playMessageChime } from '../lib/sound';
 
 /**
  * Непрочитанные сообщения на уровне всего приложения.
@@ -44,7 +45,7 @@ export function useChatNotifications(enabled: boolean, openChatId: string | null
       // окне, но требует разрешения; своё — работает всегда, пока вкладка открыта.
       showNotification(title, body, () => openChats.current());
       showToast({ title, body, chatId: String(p.chatId) });
-      playChime();
+      playMessageChime();
     };
 
     socket.on('chat.message', onMessage);

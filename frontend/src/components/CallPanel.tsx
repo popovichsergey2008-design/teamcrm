@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { api, ApiError, tokens } from '../lib/api';
 import { Knock, MeetClient, Peer, RemoteTrack } from '../lib/meet-client';
 import { diag } from '../lib/diag';
+import { playKnock } from '../lib/sound';
 import { useAuth } from '../state/auth';
 
 const STATE_LABEL: Record<string, string> = {
@@ -84,7 +85,10 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
           onState: setState,
           onRecording: setRecording,
           onAiInvited: () => setAiInvited(true),
-          onKnocks: setKnocks,
+          onKnocks: (list) => {
+            // звук только на прибавление: список приходит и когда гость ушёл сам
+            setKnocks((prev) => { if (list.length > prev.length) playKnock(); return list; });
+          },
           onGuestWaiting: (hostPresent) => {
             setGuestState('waiting');
             setGuestNote(hostPresent

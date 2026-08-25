@@ -203,6 +203,59 @@ test('неудачный запрос не кэшируется', async () => {
   assert.equal(fails, 2, 'иначе одна сетевая ошибка залипала бы на весь срок годности');
 });
 
+test('звук молчит, когда его выключили или когда «не беспокоить»', async () => {
+  // Браузера здесь нет: подменяем ровно то, чем пользуется модуль, и считаем ноты.
+  let notes = 0;
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+  };
+  class FakeCtx {
+    state = 'running';
+    currentTime = 0;
+    resume() {}
+    createGain() { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }; }
+    createOscillator() {
+      notes++;
+      return { type: '', frequency: { setValueAtTime() {} }, connect() {}, start() {}, stop() {} };
+    }
+    get destination() { return {}; }
+  }
+  globalThis.window = { AudioContext: FakeCtx, addEventListener() {}, removeEventListener() {} };
+
+  const sound = await load('lib/sound.ts');
+
+  assert.deepEqual(sound.soundPrefs(), { messages: true, calls: true }, 'по умолчанию звук включён');
+
+  sound.playMessageChime();
+  assert.equal(notes, 2, 'сигнал о сообщении — две ноты');
+
+  sound.setSoundPref('messages', false);
+  notes = 0;
+  sound.playMessageChime();
+  assert.equal(notes, 0, 'выключенный сигнал не звучит');
+
+  sound.setSoundPref('messages', true);
+  sound.setDoNotDisturb(true);
+  notes = 0;
+  sound.playMessageChime();
+  sound.startRingtone();
+  assert.equal(notes, 0, '«не беспокоить» глушит и сигнал, и звонок');
+
+  sound.setDoNotDisturb(false);
+  notes = 0;
+  sound.startRingtone();
+  const afterFirst = notes;
+  assert.ok(afterFirst > 0, 'звонок звучит сразу, а не через период повтора');
+  sound.startRingtone(); // второй вызов не должен наслаивать второй звонок поверх первого
+  assert.equal(notes, afterFirst, 'повторный старт звонка ничего не добавляет');
+  sound.stopRingtone();
+
+  delete globalThis.window;
+  delete globalThis.localStorage;
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
