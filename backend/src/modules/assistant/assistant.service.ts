@@ -27,8 +27,10 @@ export class AssistantService {
   // ---------- режим ----------
 
   async mode(tenantId: string) {
-    const [mode, autoTasks] = await Promise.all([this.repo.mode(tenantId), this.repo.autoTasks(tenantId)]);
-    return { mode, autoTasks };
+    const [mode, autoTasks, maintenance] = await Promise.all([
+      this.repo.mode(tenantId), this.repo.autoTasks(tenantId), this.repo.maintenance(tenantId),
+    ]);
+    return { mode, autoTasks, maintenance };
   }
 
   /**

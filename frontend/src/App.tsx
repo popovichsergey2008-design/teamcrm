@@ -348,7 +348,12 @@ export function App() {
           onCreate={(opts) => setNl(opts)}
         />
       )}
-      {secretaryOpen && <SecretaryPanel onClose={() => setSecretaryOpen(false)} />}
+      {secretaryOpen && (
+        <SecretaryPanel
+          canManage={user.role === 'owner' || user.role === 'manager'}
+          onClose={() => setSecretaryOpen(false)}
+        />
+      )}
       {helpOpen && <ShortcutsHelp onClose={() => setHelpOpen(false)} />}
       {nl && <NlCommandModal onClose={() => setNl(null)} initialText={nl.text} autoRecord={nl.voice} />}
     </div>

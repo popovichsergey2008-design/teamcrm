@@ -1,6 +1,6 @@
 import type {
   Agenda, AiAction, Approval, AssistantMode, AuthResult, Board, Focus, GateSettings, Ping,
-  Project, SearchResults, SemanticHit, Task,
+  Project, Proposal, SearchResults, SemanticHit, Task,
 } from '../types';
 
 const ACCESS_KEY = 'teamcrm.access';
@@ -527,10 +527,19 @@ export const api = {
   feedRead: (id: string) => request<any>('POST', `/feed/${id}/read`),
 
   // смарт-пинги ассистента
-  assistantMode: () => request<{ mode: AssistantMode; autoTasks: boolean }>('GET', '/assistant/mode'),
+  assistantMode: () =>
+    request<{ mode: AssistantMode; autoTasks: boolean; maintenance: boolean }>('GET', '/assistant/mode'),
   setAssistantMode: (mode: AssistantMode) =>
-    request<{ mode: AssistantMode; autoTasks: boolean }>('PUT', '/assistant/mode', { mode }),
+    request<{ mode: AssistantMode; autoTasks: boolean; maintenance: boolean }>('PUT', '/assistant/mode', { mode }),
   assistantPings: () => request<Ping[]>('GET', '/assistant/pings'),
+  // уборка брошенного (Zero-Maintenance)
+  maintenanceList: () => request<Proposal[]>('GET', '/assistant/maintenance'),
+  applyMaintenance: (id: string) => request<any>('POST', `/assistant/maintenance/${id}/apply`),
+  dismissMaintenance: (id: string) => request<any>('POST', `/assistant/maintenance/${id}/dismiss`),
+  undoMaintenance: (id: string) => request<any>('POST', `/assistant/maintenance/${id}/undo`),
+  setMaintenanceEnabled: (enabled: boolean) =>
+    request<{ maintenance: boolean }>('PUT', '/assistant/maintenance-enabled', { enabled }),
+
   // модератор встреч
   assistantAgendas: () => request<Agenda[]>('GET', '/assistant/agendas'),
   assistantAgenda: (eventId: string) => request<Agenda & { facts: unknown }>('GET', `/assistant/agendas/${eventId}`),

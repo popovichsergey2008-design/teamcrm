@@ -204,3 +204,17 @@ export interface Agenda {
   body: string;
   meetRoomId: string | null;
 }
+
+/** Предложение ассистента прибрать брошенное. Выполняется только человеком и обратимо. */
+export interface Proposal {
+  id: string;
+  kind: 'task_stale' | 'project_idle' | 'draft_stale';
+  subjectType: 'task' | 'project' | 'draft';
+  subjectId: string;
+  title: string;
+  text: string;
+  status: 'pending' | 'applied' | 'dismissed' | 'reverted';
+  createdAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+}

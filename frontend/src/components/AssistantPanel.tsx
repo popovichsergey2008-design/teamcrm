@@ -41,12 +41,13 @@ export function AssistantPanel({ canManage, onClose }: { canManage: boolean; onC
   useEscape(onClose);
   const [mode, setMode] = useState<AssistantMode | null>(null);
   const [autoTasks, setAutoTasks] = useState(true);
+  const [maintenance, setMaintenance] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     api.assistantMode()
-      .then((r) => { setMode(r.mode); setAutoTasks(r.autoTasks); })
+      .then((r) => { setMode(r.mode); setAutoTasks(r.autoTasks); setMaintenance(r.maintenance); })
       .catch(() => setErr('Не удалось загрузить режим'));
   }, []);
 
@@ -58,6 +59,17 @@ export function AssistantPanel({ canManage, onClose }: { canManage: boolean; onC
     setErr('');
     try { setAutoTasks((await api.setMeetingAutoTasks(next)).autoTasks); }
     catch { setAutoTasks(!next); setErr('Не удалось сохранить'); }
+    finally { setSaving(false); }
+  };
+
+  const toggleMaintenance = async () => {
+    if (!canManage || saving) return;
+    const next = !maintenance;
+    setMaintenance(next);
+    setSaving(true);
+    setErr('');
+    try { setMaintenance((await api.setMaintenanceEnabled(next)).maintenance); }
+    catch { setMaintenance(!next); setErr('Не удалось сохранить'); }
     finally { setSaving(false); }
   };
 
@@ -118,6 +130,26 @@ export function AssistantPanel({ canManage, onClose }: { canManage: boolean; onC
             <span className="dim gate-item-hint">
               Сами создаются только те, где ИИ уверенно назвал и исполнителя, и проект —
               остальное остаётся черновиком на подтверждение. Выключено — черновиками станут все.
+            </span>
+          </span>
+        </label>
+
+        <div className="drawer-section-title" style={{ marginTop: 18 }}>
+          <Icon name="archive" size={14} /> Уборка брошенного
+        </div>
+        <div className="dim gate-panel-hint">
+          Ассистент замечает, что все давно бросили: задачи без движения два месяца,
+          проекты, где всё закрыто и тихо месяц, черновики со встреч, которых никто
+          не подтвердил. Сам он не убирает ничего — только предлагает, и всё убранное
+          возвращается кнопкой «Вернуть» в панели секретаря.
+        </div>
+        <label className={`gate-item${canManage ? '' : ' gate-item-ro'}`}>
+          <input type="checkbox" checked={maintenance} disabled={!canManage || saving} onChange={toggleMaintenance} />
+          <span>
+            <span className="gate-item-title">Предлагать уборку</span>
+            <span className="dim gate-item-hint">
+              Решение всегда за человеком: владелец или руководитель нажимает «Убрать» или «Не надо».
+              Сказали «не надо» — про этот объект больше не спросим.
             </span>
           </span>
         </label>

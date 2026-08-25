@@ -3,7 +3,7 @@ import { Icon, IconName } from './Icon';
 import { api } from '../lib/api';
 import { EmptyState } from './EmptyState';
 import { SkeletonList } from './Skeleton';
-import type { AiAction, Ping } from '../types';
+import type { AiAction, Ping, Proposal } from '../types';
 import { useEscape } from '../hooks/useEscape';
 
 /**
@@ -41,7 +41,7 @@ function when(iso: string): string {
   return sameDay ? time : `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')} ${time}`;
 }
 
-export function SecretaryPanel({ onClose }: { onClose: () => void }) {
+export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boolean; onClose: () => void }) {
   useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   const [items, setItems] = useState<AiAction[] | null>(null);
   const [summary, setSummary] = useState<{ actions: number; savedMinutes: number } | null>(null);
@@ -71,6 +71,7 @@ export function SecretaryPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <Proposed />
+        <Maintenance canManage={canManage} />
 
         {items === null && <SkeletonList rows={6} />}
         {items !== null && items.length === 0 && (
@@ -143,6 +144,84 @@ function Proposed() {
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * «Предлагаю прибрать» — Zero-Maintenance.
+ *
+ * Единственное место ассистента, где он ничего не делает сам даже в автопилоте:
+ * напоминание можно проигнорировать, а закрытую без спроса задачу человек может
+ * не заметить вовсе. Поэтому здесь только предложения — и кнопка «Вернуть» рядом
+ * с уже сделанным, а не в глубине настроек.
+ */
+function Maintenance({ canManage }: { canManage: boolean }) {
+  const [items, setItems] = useState<Proposal[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = () => { api.maintenanceList().then(setItems).catch(() => setItems([])); };
+  useEffect(load, []);
+
+  const act = async (p: Proposal, what: 'apply' | 'dismiss' | 'undo') => {
+    setBusy(p.id);
+    try {
+      if (what === 'apply') await api.applyMaintenance(p.id);
+      else if (what === 'dismiss') await api.dismissMaintenance(p.id);
+      else await api.undoMaintenance(p.id);
+      // доска изменилась — экраны задач должны это увидеть
+      window.dispatchEvent(new Event('teamcrm:tasks-changed'));
+      load();
+    } catch { load(); } finally { setBusy(null); }
+  };
+
+  if (!items || !items.length) return null;
+  const pending = items.filter((p) => p.status === 'pending');
+  const done = items.filter((p) => p.status === 'applied');
+
+  return (
+    <div className="secretary-proposed">
+      {pending.length > 0 && (
+        <>
+          <div className="drawer-section-title"><Icon name="archive" size={14} /> Предлагаю прибрать</div>
+          {pending.map((p) => (
+            <div key={p.id} className="ping-row">
+              <span className="ping-text-static">{p.text}</span>
+              {canManage && (
+                <span className="ping-actions">
+                  <button className="btn btn-sm" disabled={busy === p.id} onClick={() => act(p, 'apply')}>Убрать</button>
+                  <button className="btn btn-ghost btn-sm" disabled={busy === p.id} onClick={() => act(p, 'dismiss')}>
+                    Не надо
+                  </button>
+                </span>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+
+      {done.length > 0 && (
+        <>
+          <div className="drawer-section-title" style={{ marginTop: 14 }}>
+            <Icon name="reply" size={14} /> Недавно прибрано
+          </div>
+          {done.map((p) => (
+            <div key={p.id} className="ping-row">
+              <span className="ping-text-static">
+                {p.title}
+                <span className="dim">{p.decidedBy ? ` · ${p.decidedBy}` : ''}{p.decidedAt ? ` · ${when(p.decidedAt)}` : ''}</span>
+              </span>
+              {canManage && (
+                <span className="ping-actions">
+                  <button className="btn btn-ghost btn-sm" disabled={busy === p.id} onClick={() => act(p, 'undo')}>
+                    Вернуть
+                  </button>
+                </span>
+              )}
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }

@@ -56,6 +56,14 @@ export class AssistantRepository {
     return enabled;
   }
 
+  /** Предлагать ли уборку — показываем рядом с режимом, чтобы настройки жили в одном месте. */
+  async maintenance(tenantId: string): Promise<boolean> {
+    const row = await this.db.one<{ maintenance_enabled: boolean }>(
+      `SELECT maintenance_enabled FROM tenants WHERE id = $1`, [tenantId],
+    );
+    return row?.maintenance_enabled !== false;
+  }
+
   async workHours(tenantId: string): Promise<WorkHours> {
     // holidays — к тексту прямо в запросе: как DATE[] драйвер отдаёт JS-даты в поясе
     // процесса, и «1 января» на сервере +3 стало бы «31 декабря»

@@ -10,7 +10,8 @@ export type AiActionKind =
   | 'inbox_draft'
   | 'nl_task'
   | 'ping'
-  | 'agenda';
+  | 'agenda'
+  | 'maintenance';
 
 /**
  * Сколько ручной работы заменяет одно действие, в минутах.
@@ -30,6 +31,8 @@ const SAVED_MINUTES: Record<AiActionKind, number> = {
   ping: 3,
   // повестка ≈ 5 минут: столько уходит на «так, о чём мы хотели поговорить» в начале встречи
   agenda: 5,
+  // уборка ≈ 2 минуты: найти забытое, вспомнить контекст и решить, что с ним делать
+  maintenance: 2,
 };
 
 export type AiAction = {

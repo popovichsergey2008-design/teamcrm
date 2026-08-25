@@ -11,6 +11,6 @@ import { MeetingsService } from './meetings.service';
   imports: [AiModule, TasksModule, KnowledgeModule],
   controllers: [MeetingsController],
   providers: [MeetingsService, MeetingsRepository],
-  exports: [MeetingsService],
+  exports: [MeetingsService, MeetingsRepository], // репозиторий нужен уборке: черновики со встреч
 })
 export class MeetingsModule {}

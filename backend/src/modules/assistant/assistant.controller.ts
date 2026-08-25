@@ -4,6 +4,7 @@ import { IsBoolean, IsIn, IsString } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AssistantService } from './assistant.service';
+import { MaintenanceService } from './maintenance.service';
 import { ModeratorService } from './moderator.service';
 
 class ModeDto {
@@ -11,6 +12,10 @@ class ModeDto {
 }
 
 class AutoTasksDto {
+  @IsBoolean() enabled!: boolean;
+}
+
+class EnabledDto {
   @IsBoolean() enabled!: boolean;
 }
 
@@ -28,6 +33,7 @@ export class AssistantController {
   constructor(
     private readonly assistant: AssistantService,
     private readonly moderator: ModeratorService,
+    private readonly maintenance: MaintenanceService,
   ) {}
 
   @Get('mode')
@@ -61,6 +67,40 @@ export class AssistantController {
   @Put('meeting-tasks')
   setAutoTasks(@CurrentUser() u: AuthUser, @Body() dto: AutoTasksDto) {
     return this.assistant.setAutoTasks(u.tenantId, u.role, dto.enabled);
+  }
+
+  // ---------- уборка брошенного ----------
+
+  /**
+   * Что ассистент предлагает прибрать и что недавно прибрали.
+   *
+   * Читают все: список показывает, что происходит с доской. Решают — владелец
+   * и руководитель, это проверяется в сервисе.
+   */
+  @Get('maintenance')
+  maintenanceList(@CurrentUser() u: AuthUser) {
+    return this.maintenance.list(u.tenantId);
+  }
+
+  @Put('maintenance-enabled')
+  setMaintenance(@CurrentUser() u: AuthUser, @Body() dto: EnabledDto) {
+    return this.maintenance.setEnabled(u.tenantId, u.role, dto.enabled);
+  }
+
+  @Post('maintenance/:id/apply')
+  applyMaintenance(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.maintenance.apply(u.tenantId, u, id);
+  }
+
+  @Post('maintenance/:id/dismiss')
+  dismissMaintenance(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.maintenance.dismiss(u.tenantId, u, id);
+  }
+
+  /** Вернуть как было. Ради этой кнопки уборка вообще возможна. */
+  @Post('maintenance/:id/undo')
+  undoMaintenance(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.maintenance.undo(u.tenantId, u, id);
   }
 
   /** Мои ближайшие повестки — то, что начинается в пределах получаса. */

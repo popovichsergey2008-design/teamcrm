@@ -141,6 +141,11 @@ export class MeetingsRepository {
   async markDraftApplied(id: string, taskId: string): Promise<void> {
     await this.db.query(`UPDATE meeting_task_drafts SET status='applied', task_id=$2 WHERE id=$1`, [id, taskId]);
   }
+  /** Вернуть отклонённый черновик в ожидание — путь назад для уборки. */
+  async restoreDraft(id: string): Promise<void> {
+    await this.db.query(`UPDATE meeting_task_drafts SET status='pending' WHERE id=$1 AND task_id IS NULL`, [id]);
+  }
+
   async markDraftRejected(id: string): Promise<void> {
     await this.db.query(`UPDATE meeting_task_drafts SET status='rejected' WHERE id=$1`, [id]);
   }
