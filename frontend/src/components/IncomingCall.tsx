@@ -17,6 +17,10 @@ export interface Incoming {
 export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null; accept: () => string | null; decline: () => void } {
   const [incoming, setIncoming] = useState<Incoming | null>(null);
   const ws = useRef<WebSocket | null>(null);
+  // что показано прямо сейчас: обработчик сокета живёт в замыкании и состояния не видит,
+  // а погасить нужно ИМЕННО тот звонок, который отменили, а не любой
+  const shown = useRef<Incoming | null>(null);
+  const show = (call: Incoming | null) => { shown.current = call; setIncoming(call); };
 
   useEffect(() => {
     if (!enabled || !tokens.access) return;
@@ -32,8 +36,8 @@ export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null;
         let msg: any;
         try { msg = JSON.parse(e.data); } catch { return; }
         if (msg.type === 'meet.incoming-call') {
-          setIncoming({
-            meetingId: msg.payload?.meeting_id,
+          show({
+            meetingId: String(msg.payload?.meeting_id),
             callerName: msg.payload?.caller_name ?? 'Коллега',
             callerId: msg.payload?.caller_id,
           });
@@ -41,7 +45,12 @@ export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null;
           startRingtone();
         }
         // ответили с другого устройства — гасим окно здесь
-        if (msg.type === 'meet.call-answered-elsewhere') { setIncoming(null); stopRingtone(); }
+        if (msg.type === 'meet.call-answered-elsewhere') { show(null); stopRingtone(); }
+        // звонящий передумал и вышел: окно должно закрыться само, а не звенеть в пустоту
+        if (msg.type === 'meet.call-cancelled' && shown.current?.meetingId === String(msg.payload?.meeting_id)) {
+          show(null);
+          stopRingtone();
+        }
       };
       // сеть моргнула — переподключаемся, иначе звонки перестанут доходить молча
       socket.onclose = () => { if (!closed) retry = setTimeout(connect, 3000); };
@@ -60,7 +69,7 @@ export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null;
   const accept = () => {
     const id = incoming?.meetingId ?? null;
     stopRingtone();
-    setIncoming(null);
+    show(null);
     return id;
   };
   const decline = () => {
@@ -71,7 +80,7 @@ export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null;
         payload: { meeting_id: incoming.meetingId, caller_id: incoming.callerId },
       }));
     }
-    setIncoming(null);
+    show(null);
   };
 
   return { incoming, accept, decline };

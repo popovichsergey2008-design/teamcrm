@@ -13,6 +13,7 @@ import { RecordingService } from './recording.service';
 import { DiagService } from '../diagnostics/diag.service';
 import { AI_PARTICIPANT, MeetingRoom } from './media.types';
 import { GuestLinksService, GuestTokenPayload } from './guest-links.service';
+import { Ringing } from './ringing';
 
 const PATH = '/ws/meet';
 
@@ -74,6 +75,14 @@ export class MeetGateway implements OnModuleInit {
    * ни транспортов, ни потоков — он не участник, а звонок в дверь.
    */
   private readonly lobby = new Map<string, Map<string, Client>>();
+
+  /**
+   * Идущие вызовы: кому звонят из какой комнаты.
+   *
+   * Без этого учёта отменить звонок невозможно — звонящий выходит, а у вызываемого
+   * окно висит и звенит свою минуту в пустоту.
+   */
+  private readonly ringing = new Ringing();
 
   /** Короткая запись в диагностический журнал: без await, ошибки внутри проглатываются. */
   private trace(c: Client, event: string, data?: unknown): void {
@@ -455,6 +464,7 @@ export class MeetGateway implements OnModuleInit {
             this.send(c.ws, 'meet.peer-busy', { meeting_id: room.id, user_id: String(target) });
             continue;
           }
+          this.ringing.add(room.id, String(target));
           this.toUser(c.tenantId, String(target), 'meet.incoming-call', {
             meeting_id: room.id, project_id: room.projectId,
             caller_id: c.userId, caller_name: c.displayName,
@@ -465,6 +475,7 @@ export class MeetGateway implements OnModuleInit {
 
       case 'meet.decline': {
         if (!room || typeof p.caller_id !== 'string') return;
+        this.ringing.stop(room.id, c.userId);
         this.toUser(c.tenantId, p.caller_id, 'meet.declined', { meeting_id: room.id, user_id: c.userId });
         return;
       }
@@ -505,6 +516,7 @@ export class MeetGateway implements OnModuleInit {
       this.media.removeParticipant(room, c.userId);
       this.broadcast(room, 'meet.peer-left', { meeting_id: room.id, user_id: c.userId });
     }
+    this.ringing.stop(room.id, c.userId); // вошёл — звонить ему больше не о чем
     this.media.addParticipant(room, c.userId, c.displayName);
     // комнату по гостевой ссылке поднимает тот, кто вошёл первым; хозяином становится
     // первый сотрудник — гость на эту роль не годится, у него нет учётной записи
@@ -705,6 +717,12 @@ export class MeetGateway implements OnModuleInit {
 
     this.broadcast(room, 'meet.peer-left', { meeting_id: room.id, user_id: c.userId });
     if (room.participants.size === 0) {
+      // Звонящий передумал и вышел — у вызываемого окно вызова должно погаснуть само.
+      // Гасим именно на ПУСТОЙ комнате: если позвавший вышел, а разговор продолжается,
+      // приглашение остаётся в силе — человека ждут на живой встрече.
+      for (const userId of this.ringing.clear(room.id)) {
+        this.toUser(room.tenantId, userId, 'meet.call-cancelled', { meeting_id: room.id });
+      }
       // все разошлись, кнопку «стоп» никто не нажал — дописываем сами,
       // иначе ffmpeg остался бы висеть, а запись пропала
       await this.finishRecording(room, c.isGuest ? null : c.userId);
