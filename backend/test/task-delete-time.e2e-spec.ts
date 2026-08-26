@@ -101,9 +101,12 @@ describe('Удаление задачи с учтённым временем (e2
     const taskCost = await pollCost(task.id);
     expect(taskCost).toBeGreaterThan(0);
     const costBefore = await pollProjectCost(taskCost);
-    const hoursBefore = Number((await http.get(`/api/projects/${projectId}/cost-of-work`).set(H(ownerToken))
-      .expect(200)).body.data.laborHours);
-    expect(hoursBefore).toBeGreaterThan(0);
+    // отчёт «стоимость работы» округляет часы до сотых, а полторы секунды в них не видны —
+    // поэтому смотрим на деньги и на таймлайн, где каждая запись времени учтена как есть
+    const pointsBefore = (await http.get(`/api/projects/${projectId}/economics/timeline`).set(H(ownerToken))
+      .expect(200)).body.data.points.length;
+    expect(pointsBefore).toBeGreaterThan(0);
+    expect(costBefore).toBeGreaterThan(0);
 
     // 1. Руководителю такое удаление недоступно — решение о себестоимости принимает владелец
     await http.delete(`/api/tasks/${task.id}`).set(H(bossToken)).expect(403);
@@ -118,10 +121,10 @@ describe('Удаление задачи с учтённым временем (e2
     const board = (await http.get(`/api/projects/${projectId}/board`).set(H(ownerToken)).expect(200)).body.data;
     expect(board.columns.flatMap((c: any) => c.tasks).some((t: any) => String(t.id) === String(task.id))).toBe(false);
 
-    // 4. Главное: часы проекта на месте
-    const hoursAfter = Number((await http.get(`/api/projects/${projectId}/cost-of-work`).set(H(ownerToken))
-      .expect(200)).body.data.laborHours);
-    expect(hoursAfter).toBeCloseTo(hoursBefore, 2);
+    // 4. Главное: отработанное время из проекта не исчезло вместе с задачей
+    const timelineAfter = (await http.get(`/api/projects/${projectId}/economics/timeline`).set(H(ownerToken))
+      .expect(200)).body.data;
+    expect(timelineAfter.points.length).toBe(pointsBefore);
 
     // 5. И себестоимость не падает при СЛЕДУЮЩЕМ пересчёте, когда по проекту снова поработают
     const next = (await http.post('/api/tasks').set(H(ownerToken))
