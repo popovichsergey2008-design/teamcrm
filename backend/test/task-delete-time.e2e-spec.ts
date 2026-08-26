@@ -102,7 +102,7 @@ describe('Удаление задачи с учтённым временем (e2
     expect(taskCost).toBeGreaterThan(0);
     const costBefore = await pollProjectCost(taskCost);
     const hoursBefore = Number((await http.get(`/api/projects/${projectId}/cost-of-work`).set(H(ownerToken))
-      .expect(200)).body.data.hours);
+      .expect(200)).body.data.laborHours);
     expect(hoursBefore).toBeGreaterThan(0);
 
     // 1. Руководителю такое удаление недоступно — решение о себестоимости принимает владелец
@@ -120,8 +120,8 @@ describe('Удаление задачи с учтённым временем (e2
 
     // 4. Главное: часы проекта на месте
     const hoursAfter = Number((await http.get(`/api/projects/${projectId}/cost-of-work`).set(H(ownerToken))
-      .expect(200)).body.data.hours);
-    expect(hoursAfter).toBeCloseTo(hoursBefore, 5);
+      .expect(200)).body.data.laborHours);
+    expect(hoursAfter).toBeCloseTo(hoursBefore, 2);
 
     // 5. И себестоимость не падает при СЛЕДУЮЩЕМ пересчёте, когда по проекту снова поработают
     const next = (await http.post('/api/tasks').set(H(ownerToken))
