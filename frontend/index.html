@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TEAMCRM</title>
+
+    <!-- Знак вкладки: svg там, где его понимают, png — везде остальном.
+         apple-touch-icon нужен отдельно: iOS не берёт ни svg, ни манифест. -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <!-- цвет строки браузера на телефоне: в тёмной теме фирменный синий слишком яркий -->
+    <meta name="theme-color" content="#1e57e6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f1420" media="(prefers-color-scheme: dark)" />
   </head>
   <body>
     <div id="root"></div>
