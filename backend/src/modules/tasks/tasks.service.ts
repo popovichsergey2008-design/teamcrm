@@ -136,7 +136,12 @@ export class TasksService {
         throw AppException.conflict(
           `По задаче учтено ${formatHours(hours)} рабочего времени. Задача исчезнет с доски, `
           + 'но часы и их стоимость останутся в себестоимости проекта.',
-          { timeLoss: { hours: Math.round(hours * 100) / 100 }, hint: 'передайте confirmTimeLoss=true' },
+          // секунды, а не часы: полторы секунды случайного таймера в часах округляются
+          // в ноль, и деталь отказа переставала что-либо значить
+          {
+            timeLoss: { seconds: Math.round(hours * 3600), text: formatHours(hours) },
+            hint: 'передайте confirmTimeLoss=true',
+          },
         );
       }
     }

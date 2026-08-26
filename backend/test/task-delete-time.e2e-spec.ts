@@ -113,7 +113,8 @@ describe('Удаление задачи с учтённым временем (e2
 
     // 2. Владельцу сначала говорят, сколько по задаче учтено
     const asked = await http.delete(`/api/tasks/${task.id}`).set(H(ownerToken)).expect(409);
-    expect(asked.body.error.details.timeLoss.hours).toBeGreaterThan(0);
+    expect(asked.body.error.details.timeLoss.seconds).toBeGreaterThan(0);
+    expect(asked.body.error.details.timeLoss.text).toBeTruthy();
     expect(asked.body.error.message).toContain('себестоимости проекта');
 
     // 3. С подтверждением задача уходит

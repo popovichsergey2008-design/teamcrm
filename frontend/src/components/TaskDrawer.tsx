@@ -114,7 +114,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
       onClose();
     } catch (e) {
       const timeLoss = e instanceof ApiError
-        ? (e.details as { timeLoss?: { hours: number } } | undefined)?.timeLoss
+        ? (e.details as { timeLoss?: { seconds: number; text: string } } | undefined)?.timeLoss
         : undefined;
       if (timeLoss && !confirmTimeLoss) {
         setMoving(false);
