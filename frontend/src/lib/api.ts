@@ -656,7 +656,9 @@ export const api = {
   // Этап 4 — forecast, assignment, velocity, copilot
   assignTask: (id: string, b: { assigneeId: string; confirmOverload?: boolean; estimateHours?: number; deadlineAt?: string }) =>
     request<any>('POST', `/tasks/${id}/assign`, b),
-  deleteTask: (id: string) => request<{ deleted: true }>('DELETE', `/tasks/${id}`),
+  /** confirmTimeLoss — второе подтверждение для задачи с учтённым временем (только владельцу). */
+  deleteTask: (id: string, confirmTimeLoss = false) =>
+    request<{ deleted: true }>('DELETE', `/tasks/${id}${confirmTimeLoss ? '?confirmTimeLoss=1' : ''}`),
   getForecast: (id: string) => request<any>('GET', `/tasks/${id}/forecast`),
   getVelocity: (userId: string) => request<any>('GET', `/users/${userId}/velocity`),
   getLoad: (userId: string) => request<any>('GET', `/users/${userId}/load`),

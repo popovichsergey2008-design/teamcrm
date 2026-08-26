@@ -106,9 +106,13 @@ export class EconomicsRepository {
       )
     ).rows[0];
 
+    // Себестоимость = живые задачи ПЛЮС удалённые: их часы уже оплачены людям,
+    // и исчезновение задачи с доски не должно менять P&L задним числом.
     const sum = (
       await client.query<{ cost: string }>(
-        `SELECT COALESCE(SUM(cost_current),0) AS cost FROM tasks WHERE tenant_id=$1 AND project_id=$2`,
+        `SELECT (SELECT COALESCE(SUM(cost_current),0) FROM tasks WHERE tenant_id=$1 AND project_id=$2)
+              + (SELECT COALESCE(SUM(cost),0) FROM deleted_task_costs WHERE tenant_id=$1 AND project_id=$2)
+              AS cost`,
         [tenantId, projectId],
       )
     ).rows[0];
@@ -182,7 +186,11 @@ export class EconomicsRepository {
     const rows = await this.db.many<{ user_id: string; timestamp_start: Date; timestamp_end: Date | null }>(
       `SELECT tl.user_id, tl.timestamp_start, tl.timestamp_end
          FROM time_logs tl
-        WHERE tl.tenant_id=$1 AND tl.task_id IN (SELECT id FROM tasks WHERE tenant_id=$1 AND project_id=$2)`,
+        WHERE tl.tenant_id=$1 AND tl.task_id IN (SELECT id FROM tasks WHERE tenant_id=$1 AND project_id=$2)
+        UNION ALL
+       SELECT d.user_id, d.timestamp_start, d.timestamp_end
+         FROM deleted_time_logs d
+        WHERE d.tenant_id=$1 AND d.project_id=$2`,
       [tenantId, projectId],
     );
     return rows.map((r) => ({ userId: r.user_id, start: r.timestamp_start, end: r.timestamp_end }));
@@ -202,10 +210,17 @@ export class EconomicsRepository {
     return Number(r?.hours ?? 0);
   }
   async projectHours(tenantId: string, projectId: string): Promise<number> {
+    // и здесь удалённые задачи считаются наравне с живыми: работа была сделана,
+    // а «стоимость работы» без неё показывала бы проект дешевле, чем он есть
     const r = await this.db.one<{ hours: string }>(
-      `SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (timestamp_end - timestamp_start))),0)/3600.0 AS hours
-         FROM time_logs WHERE tenant_id=$1 AND timestamp_end IS NOT NULL
-          AND task_id IN (SELECT id FROM tasks WHERE tenant_id=$1 AND project_id=$2)`,
+      `SELECT ((SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (timestamp_end - timestamp_start))),0)
+                 FROM time_logs
+                WHERE tenant_id=$1 AND timestamp_end IS NOT NULL
+                  AND task_id IN (SELECT id FROM tasks WHERE tenant_id=$1 AND project_id=$2))
+            + (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (timestamp_end - timestamp_start))),0)
+                 FROM deleted_time_logs
+                WHERE tenant_id=$1 AND project_id=$2 AND timestamp_end IS NOT NULL)
+            ) / 3600.0 AS hours`,
       [tenantId, projectId],
     );
     return Number(r?.hours ?? 0);

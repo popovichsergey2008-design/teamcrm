@@ -98,12 +98,37 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
   };
 
   // Удаление безвозвратно и уносит комментарии с чек-листом, поэтому спрашиваем прямо.
-  const removeTask = async () => {
-    if (!window.confirm(`Удалить задачу «${task.title}»? Вместе с ней исчезнут комментарии, чек-лист и вложения. Отменить это будет нельзя.`)) return;
+  /**
+   * Удаление. Второй вопрос задаётся только там, где он действительно нужен:
+   * если по задаче учтено рабочее время, сервер отвечает отказом и говорит, сколько
+   * именно. Тогда спрашиваем ещё раз — и повторяем удаление с подтверждением.
+   * Часы при этом не пропадают: они остаются в себестоимости проекта.
+   */
+  const removeTask = async (confirmTimeLoss = false) => {
+    if (!confirmTimeLoss
+      && !window.confirm(`Удалить задачу «${task.title}»? Вместе с ней исчезнут комментарии, чек-лист и вложения. Отменить это будет нельзя.`)) return;
     setErr(''); setMoving(true);
-    try { await api.deleteTask(task.id); onRefresh(); onClose(); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось удалить задачу'); }
-    finally { setMoving(false); }
+    try {
+      await api.deleteTask(task.id, confirmTimeLoss);
+      onRefresh();
+      onClose();
+    } catch (e) {
+      const timeLoss = e instanceof ApiError
+        ? (e.details as { timeLoss?: { hours: number } } | undefined)?.timeLoss
+        : undefined;
+      if (timeLoss && !confirmTimeLoss) {
+        setMoving(false);
+        if (window.confirm(`${e instanceof ApiError ? e.message : ''}
+
+Удалить задачу?`)) {
+          await removeTask(true);
+        }
+        return;
+      }
+      setErr(e instanceof ApiError ? e.message : 'Не удалось удалить задачу');
+    } finally {
+      setMoving(false);
+    }
   };
 
   const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
@@ -169,7 +194,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
             )}
             {isDone && <span className="badge badge-ok" title="Задача закрыта"><Icon name="check" size={12} /> завершена</span>}
             {canManage && (
-              <button className="btn btn-ghost btn-sm btn-delete" onClick={removeTask} disabled={moving} title="Удалить задачу без возможности восстановления">
+              <button className="btn btn-ghost btn-sm btn-delete" onClick={() => removeTask()} disabled={moving} title="Удалить задачу без возможности восстановления">
                 <Icon name="trash" size={14} /> Удалить
               </button>
             )}

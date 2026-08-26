@@ -109,21 +109,39 @@ export class TasksService {
   /**
    * Удаление задачи.
    *
-   * Задачу с учтённым временем не трогаем: по ней уже посчитана себестоимость,
-   * и молча стереть её значит испортить P&L проекта. Такие закрывают, а не удаляют.
+   * Задача с учтённым временем — особый случай. Раньше её нельзя было удалить вовсе:
+   * часы попали в себестоимость проекта, и стереть их значит изменить P&L задним числом.
+   * Но в тот же запрет попадали и явные ошибки — случайный запуск таймера на две секунды
+   * запирал задачу навсегда, а убрать лишнюю запись из интерфейса нельзя.
+   *
+   * Теперь такую задачу удаляет ВЛАДЕЛЕЦ и только осознанно: сначала он видит, сколько
+   * по ней учтено, и подтверждает. Часы и стоимость при удалении не пропадают —
+   * они переезжают в архив и продолжают считаться в себестоимости проекта.
    */
-  async remove(tenantId: string, id: string, actorId: string | null = null): Promise<{ deleted: true }> {
+  async remove(
+    tenantId: string, id: string, actorId: string | null = null,
+    actor?: { role: string; confirmTimeLoss?: boolean },
+  ): Promise<{ deleted: true }> {
     const task = await this.repo.findById(tenantId, id);
     if (!task) throw AppException.notFound('Task not found');
 
-    const logged = await this.repo.loggedSeconds(tenantId, id);
-    if (logged > 0) {
-      throw AppException.conflict(
-        'По задаче есть учтённое время — она уже попала в себестоимость проекта. Такую задачу закрывают, а не удаляют.',
-      );
+    const hours = await this.repo.loggedHours(tenantId, id);
+    if (hours > 0) {
+      if (actor && actor.role !== 'owner') {
+        throw AppException.forbidden(
+          'По задаче учтено рабочее время — такую задачу удаляет только владелец компании.',
+        );
+      }
+      if (!actor?.confirmTimeLoss) {
+        throw AppException.conflict(
+          `По задаче учтено ${formatHours(hours)} рабочего времени. Задача исчезнет с доски, `
+          + 'но часы и их стоимость останутся в себестоимости проекта.',
+          { timeLoss: { hours: Math.round(hours * 100) / 100 }, hint: 'передайте confirmTimeLoss=true' },
+        );
+      }
     }
 
-    await this.repo.remove(tenantId, id);
+    await this.repo.remove(tenantId, id, actorId);
     this.realtime.emit(tenantId, task.project_id, 'task.deleted', { id, project_id: task.project_id } as any);
     void actorId; // историю задачи удалили вместе с ней — писать в неё запись не во что
     return { deleted: true };
@@ -192,4 +210,14 @@ export class TasksService {
     if (role !== 'owner') throw AppException.forbidden('Условия приёмки задаёт владелец');
     return this.repo.saveGateSettings(tenantId, req);
   }
+}
+
+/** «2 ч 15 мин» / «40 сек» — человек должен сразу понять, о каком объёме речь. */
+function formatHours(hours: number): string {
+  const minutes = Math.round(hours * 60);
+  if (minutes < 1) return `${Math.max(1, Math.round(hours * 3600))} сек`;
+  if (minutes < 60) return `${minutes} мин`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h} ч ${m} мин` : `${h} ч`;
 }

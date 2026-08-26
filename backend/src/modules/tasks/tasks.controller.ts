@@ -65,11 +65,21 @@ export class TasksController {
     return this.tasks.update(user.tenantId, id, dto, user.userId);
   }
 
-  /** Удаление задачи целиком. Рядовому сотруднику недоступно: чистка доски — дело ведущего. */
+  /**
+   * Удаление задачи целиком. Рядовому сотруднику недоступно: чистка доски — дело ведущего.
+   * Задачу с учтённым временем удаляет только владелец и только с подтверждением.
+   */
   @Delete(':id')
   @Roles('owner', 'manager')
-  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.tasks.remove(user.tenantId, id, user.userId);
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('confirmTimeLoss') confirmTimeLoss?: string,
+  ) {
+    return this.tasks.remove(user.tenantId, id, user.userId, {
+      role: user.role,
+      confirmTimeLoss: confirmTimeLoss === '1' || confirmTimeLoss === 'true',
+    });
   }
 
   @Post(':id/move')

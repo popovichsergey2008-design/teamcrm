@@ -178,12 +178,21 @@ export class TasksRepository {
   }
 
   /** Учтённое время по задаче: удалять такую нельзя — это финансовая история проекта. */
-  async loggedSeconds(tenantId: string, taskId: string): Promise<number> {
-    const row = await this.db.one<{ n: string }>(
-      `SELECT COUNT(*)::text AS n FROM time_logs WHERE tenant_id=$1 AND task_id=$2`,
+  /**
+   * Сколько по задаче реально наработано, в часах.
+   *
+   * Считаем время, а не количество записей: раньше здесь стоял COUNT, и случайный
+   * запуск таймера на две секунды выглядел так же, как три дня работы.
+   * Незакрытая запись (таймер идёт прямо сейчас) считается до текущего момента —
+   * она тоже станет часами, как только человек нажмёт «стоп».
+   */
+  async loggedHours(tenantId: string, taskId: string): Promise<number> {
+    const row = await this.db.one<{ hours: string }>(
+      `SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(timestamp_end, now()) - timestamp_start))), 0) / 3600.0 AS hours
+         FROM time_logs WHERE tenant_id=$1 AND task_id=$2`,
       [tenantId, taskId],
     );
-    return Number(row?.n ?? 0);
+    return Number(row?.hours ?? 0);
   }
 
   /**
@@ -194,9 +203,28 @@ export class TasksRepository {
    * транзакции. Ссылки, где задача необязательна (алерты, рекомендации,
    * черновики со встреч, разборы стендапов), обнуляем: сами записи осмысленны
    * и без задачи, терять их незачем.
+   *
+   * Учтённое время НЕ УДАЛЯЕТСЯ, а переезжает в архив вместе со стоимостью задачи:
+   * часы уже оплачены людям и посчитаны в себестоимости проекта, и стереть их значило
+   * бы изменить P&L задним числом. Задача уходит с доски, деньги остаются на месте.
    */
-  async remove(tenantId: string, taskId: string): Promise<void> {
+  async remove(tenantId: string, taskId: string, actorId: string | null = null): Promise<void> {
     await this.db.withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO deleted_task_costs (tenant_id, project_id, task_id, task_title, cost, deleted_by)
+         SELECT t.tenant_id, t.project_id, t.id, t.title, t.cost_current, $3
+           FROM tasks t WHERE t.tenant_id=$2 AND t.id=$1`,
+        [taskId, tenantId, actorId],
+      );
+      await client.query(
+        `INSERT INTO deleted_time_logs (tenant_id, project_id, task_id, user_id, timestamp_start, timestamp_end)
+         SELECT tl.tenant_id, t.project_id, tl.task_id, tl.user_id, tl.timestamp_start, tl.timestamp_end
+           FROM time_logs tl JOIN tasks t ON t.id = tl.task_id
+          WHERE tl.tenant_id=$2 AND tl.task_id=$1`,
+        [taskId, tenantId],
+      );
+      await client.query(`DELETE FROM time_logs WHERE tenant_id=$2 AND task_id=$1`, [taskId, tenantId]);
+
       for (const sql of [
         `DELETE FROM task_labels WHERE task_id=$1`,
         `DELETE FROM task_watchers WHERE task_id=$1`,
