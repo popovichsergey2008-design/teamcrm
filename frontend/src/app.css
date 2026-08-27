@@ -614,6 +614,14 @@
 }
 .overload-confirm { width: 100%; margin-top: 8px; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
+/* счётчик своих задач в переключателе вида доски */
+.view-count {
+  margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+  font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+  background: var(--accent-soft); color: var(--accent);
+}
+.view-btn.active .view-count { background: var(--bg-elev); }
+
 /* своё время напоминания */
 .cal-reminder-own { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
 .cal-reminder-own input[type="number"] { width: 84px; }

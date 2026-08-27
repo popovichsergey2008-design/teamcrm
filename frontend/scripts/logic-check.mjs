@@ -390,6 +390,27 @@ test('напоминания: подписи, своё время и защит�
   assert.equal(rows.find((x) => x.minutes === 15).custom, false);
 });
 
+test('«мои задачи» в проекте: только свои и без пустых колонок', async () => {
+  const { onlyMine, countMine } = await load('lib/board-filter.ts');
+  const columns = [
+    { id: 'c1', name: 'В работе', tasks: [{ id: 't1', assignee_id: '7' }, { id: 't2', assignee_id: '9' }] },
+    { id: 'c2', name: 'Проверка', tasks: [{ id: 't3', assignee_id: '9' }] },
+    { id: 'c3', name: 'Готово', tasks: [{ id: 't4', assignee_id: '7' }] },
+  ];
+
+  const mine = onlyMine(columns, '7');
+  assert.deepEqual(mine.map((c) => c.id), ['c1', 'c3'], 'колонка без своих задач не показывается');
+  assert.deepEqual(mine[0].tasks.map((t) => t.id), ['t1']);
+  assert.equal(countMine(columns, '7'), 2);
+  assert.equal(countMine(columns, '9'), 2);
+  assert.equal(countMine(columns, '42'), 0, 'чужой человек не находит своих задач');
+
+  // id приходят и строкой, и числом — сравнение не должно от этого зависеть
+  assert.equal(countMine([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: 7 }] }], '7'), 1);
+  // задача без исполнителя ничья
+  assert.equal(countMine([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: null }] }], '7'), 0);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
