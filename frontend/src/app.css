@@ -84,12 +84,29 @@
   text-decoration: none;
 }
 .nav-item:hover { background: var(--bg-elev-2); color: var(--text); }
-/* созвон из панели: «начать» и «позвать» — две кнопки, слитые в одну группу */
+/* созвон из панели — одна кнопка во всю ширину; приглашение живёт внутри созвона */
 .nav-call-row { display: flex; }
-.nav-call-row .call-starter { display: flex; width: 100%; gap: 0; }
-.nav-call-row .call-starter-call { flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.nav-call-row .call-starter-pick { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none; }
-.call-starter-pick { padding-left: 9px; padding-right: 9px; }
+.nav-call-row .call-starter, .nav-call-row .call-starter-call { display: flex; width: 100%; justify-content: center; }
+
+/* приглашение сотрудника и ссылка для гостя — в шапке созвона */
+.call-invite { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.call-invite-note { font-size: var(--fs-xs); }
+.call-invite-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 90; width: 300px;
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  background: var(--bg-elev); border: 1px solid var(--border-2);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+
+/* свёрнутый созвон: разговор идёт, окно ужимается в плашку у нижнего края */
+.call-overlay-mini { background: none; pointer-events: none; align-items: flex-end; justify-content: flex-end; }
+.call-overlay-mini .call-window { pointer-events: auto; }
+.call-window-mini {
+  width: min(360px, calc(100vw - 32px)); height: auto; margin: 0 16px 16px 0;
+  box-shadow: var(--shadow);
+}
+.call-controls-mini { justify-content: space-between; gap: 8px; }
+.call-mini-note { font-size: var(--fs-xs); }
 
 /* стрелка состояния внутри самого пункта: содержимое сворачивает повторный клик */
 .nav-item > .icon:last-child { margin-left: auto; opacity: .7; }

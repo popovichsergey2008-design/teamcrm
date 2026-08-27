@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { CallInvite } from './CallInvite';
 import { api, ApiError, tokens } from '../lib/api';
 import { Knock, MeetClient, Peer, RemoteTrack } from '../lib/meet-client';
 import { diag } from '../lib/diag';
@@ -56,6 +57,14 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
   const [selfVideo, setSelfVideo] = useState<MediaStreamTrack | null>(null);
   const windowRef = useRef<HTMLDivElement | null>(null);
   const [full, setFull] = useState(false);
+  /**
+   * Свёрнутый созвон.
+   *
+   * Разговор продолжается: соединение, звук и запись не трогаем, меняется только
+   * размер окна. Ради этого компонент и не размонтируется — иначе «свернуть» означало бы
+   * «положить трубку», а человеку нужно посмотреть задачу, не выходя из разговора.
+   */
+  const [mini, setMini] = useState(false);
 
   // Полноэкранный режим: следим за системным событием, а не за своей кнопкой —
   // выйти можно и клавишей Esc, кнопка обязана это отражать.
@@ -221,8 +230,8 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
   const tiles = peers.map((p) => ({ peer: p, track: camByUser.get(String(p.userId)) ?? null }));
 
   return (
-    <div className="call-overlay">
-      <div className="call-window" ref={windowRef}>
+    <div className={`call-overlay${mini ? ' call-overlay-mini' : ''}`}>
+      <div className={`call-window${mini ? ' call-window-mini' : ''}`} ref={windowRef}>
         <div className="call-head">
           <span>
             <Icon name="phone" size={16} /> Созвон · <span className="dim">{STATE_LABEL[state]}</span>
@@ -238,10 +247,38 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
             </span>
           </span>
           <span className="call-head-actions">
-            <button className="btn btn-ghost btn-sm" onClick={toggleFull} title={full ? 'Свернуть из полного экрана' : 'Развернуть на весь экран'}>
-              <Icon name={full ? 'minimize' : 'maximize'} size={15} />
+            {/* Позвать человека можно двумя способами, и оба стоят здесь: сотрудника —
+                звонком, внешнего гостя — ссылкой. Раньше состав собирали до звонка,
+                а нужный человек вспоминается по ходу разговора. */}
+            {!isGuest && !mini && (
+              <>
+                <CallInvite
+                  present={peers.map((p) => String(p.userId))}
+                  onInvite={(ids) => client.current?.invite(ids)}
+                />
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={copyGuestLink}
+                  title="Скопировать ссылку для внешнего гостя — он войдёт из браузера, без регистрации"
+                >
+                  <Icon name="link" size={15} /> Ссылка для гостя
+                </button>
+              </>
+            )}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => { if (full) void toggleFull(); setMini((v) => !v); }}
+              title={mini ? 'Развернуть созвон' : 'Свернуть — разговор продолжится'}
+              aria-label={mini ? 'Развернуть созвон' : 'Свернуть созвон'}
+            >
+              <Icon name={mini ? 'chevron-up' : 'minimize'} size={15} />
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={leave} title="Закрыть"><Icon name="close" /></button>
+            {!mini && (
+              <button className="btn btn-ghost btn-sm" onClick={toggleFull} title={full ? 'Свернуть из полного экрана' : 'Развернуть на весь экран'}>
+                <Icon name={full ? 'minimize' : 'maximize'} size={15} />
+              </button>
+            )}
+            <button className="btn btn-ghost btn-sm" onClick={leave} title="Выйти из созвона"><Icon name="close" /></button>
           </span>
         </div>
 
@@ -293,7 +330,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
 
         {/* Показ экрана занимает сцену целиком, люди уезжают в полосу снизу:
             в общей сетке демонстрация выходила мелкой и нечитаемой. */}
-        {(!isGuest || guestState === 'in') && (
+        {(!isGuest || guestState === 'in') && !mini && (
         <div className="call-stage">
           {screenTrack && (
             <div className="call-spotlight">
@@ -318,6 +355,22 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
         {/* Звук воспроизводится скрытыми элементами: на сцене ему делать нечего */}
         {audios.map((t) => <RemoteAudio key={t.consumerId} track={t.track} />)}
 
+        {/* Свёрнутый созвон: разговор идёт, поэтому оставляем то, что нужно на ходу —
+            выключить микрофон и выйти. Остальное — после разворачивания. */}
+        {mini && (
+          <div className="call-controls call-controls-mini">
+            <button className={`btn btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic} title="Микрофон">
+              <Icon name={micOn ? 'mic' : 'mic-off'} size={15} />
+            </button>
+            <span className="dim call-mini-note">
+              {peers.length > 1 ? `на связи: ${peers.length}` : 'вы одни'}
+              {recording && ' · идёт запись'}
+            </span>
+            <button className="btn btn-sm call-leave" onClick={leave}>Выйти</button>
+          </div>
+        )}
+
+        {!mini && (
         <div className="call-controls">
           <button className={`btn btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic}>
             <Icon name={micOn ? 'mic' : 'mic-off'} size={15} />{micOn ? 'Микрофон' : 'Включить микрофон'}
@@ -341,13 +394,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
               <Icon name={recording ? 'stop' : 'record'} size={15} />AI-запись: {recording ? 'вкл' : 'выкл'}
             </button>
           )}
-          {!isGuest && (
-            <button className="btn btn-sm call-off" onClick={copyGuestLink} title="Скопировать ссылку для внешнего гостя — он войдёт из браузера, без регистрации">
-              <Icon name="link" size={15} /> Ссылка для гостя
-            </button>
-          )}
           <button className="btn btn-sm call-leave" onClick={leave}>Выйти</button>
         </div>
+        )}
       </div>
     </div>
   );
