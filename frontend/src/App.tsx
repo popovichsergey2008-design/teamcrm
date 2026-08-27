@@ -264,7 +264,7 @@ export function App() {
       */}
       <main className="app-main" key={user.tenantId}>
         {visited.has('focus') && (
-          <Pane active={route.section === 'focus' && route.view !== 'calendar'}>
+          <Pane active={route.section === 'focus'}>
             <FocusPage
               active={route.section === 'focus'}
               onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
@@ -306,7 +306,7 @@ export function App() {
         {route.section === 'chat' && route.view === 'meetings' && (
           <MeetingsPage onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
         )}
-        {route.section === 'focus' && route.view === 'calendar' && (
+        {route.section === 'calendar' && (
           <CalendarPage onStartCall={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
         )}
         {route.section === 'radar' && canManage && <RadarPage />}

@@ -46,7 +46,6 @@ const MENU: Item[] = [
     icon: 'target',
     hint: 'Что делать сегодня, поручения другим и то, что ждёт вашего решения',
     subs: [
-      { label: 'Календарь', icon: 'calendar', route: { section: 'focus', view: 'calendar' } },
       {
         label: 'Входящие',
         icon: 'inbox',
@@ -54,6 +53,15 @@ const MENU: Item[] = [
         roles: ['owner', 'manager'],
       },
     ],
+  },
+  {
+    // Календарь был подпунктом «Фокуса дня» — сразу под ним и остался, но теперь
+    // разделом: в него заходят не «из сегодняшнего дня», а планировать неделю,
+    // и прятать его внутрь чужого раздела значит прятать половину сценариев.
+    section: 'calendar',
+    label: 'Календарь',
+    icon: 'calendar',
+    hint: 'Встречи, приглашения и сроки задач — неделей, днём, месяцем или списком',
   },
   {
     section: 'projects',
@@ -253,9 +261,11 @@ export function Sidebar({
             // ничего не требуется. Пустой кружок читался бы как «что-то есть».
             const badge = item.section === 'chat' ? unread
               : item.section === 'focus' ? counters.focus.decide
+              : item.section === 'calendar' ? counters.calendar?.pending ?? 0
               : item.section === 'radar' ? counters.radar?.risks ?? 0
               : 0;
             const badgeTitle = item.section === 'focus' ? 'ждут вашего решения'
+              : item.section === 'calendar' ? 'приглашений без ответа'
               : item.section === 'radar' ? 'задач просрочено' : undefined;
             return (
               <div key={item.section} className="nav-group" onMouseEnter={() => onHoverSection(item.section)}>

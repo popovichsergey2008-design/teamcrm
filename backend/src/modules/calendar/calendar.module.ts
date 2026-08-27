@@ -12,6 +12,6 @@ import { CalendarService } from './calendar.service';
 @Module({
   controllers: [CalendarController],
   providers: [CalendarService, CalendarRepository, CalendarMailService, CalendarScheduler],
-  exports: [CalendarService],
+  exports: [CalendarService, CalendarRepository], // репозиторий нужен счётчикам панели
 })
 export class CalendarModule {}

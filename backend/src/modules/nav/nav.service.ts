@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { NavRepository } from './nav.repository';
 import { ApprovalsRepository } from '../approvals/approvals.repository';
+import { CalendarRepository } from '../calendar/calendar.repository';
 import { endOfLocalDay } from '../../common/time/local-day';
 
 export type NavCounters = {
   focus: { decide: number; today: number };
+  /** Приглашения на встречи, на которые человек ещё не ответил. */
+  calendar: { pending: number };
   /** null у тех, кому «Пульс команды» не показывается: считать общий счётчик незачем */
   radar: { risks: number } | null;
 };
@@ -23,18 +26,23 @@ export class NavService {
   constructor(
     private readonly repo: NavRepository,
     private readonly approvals: ApprovalsRepository,
+    private readonly calendar: CalendarRepository,
   ) {}
 
   async counters(tenantId: string, userId: string, role: string, tzOffsetMin: number): Promise<NavCounters> {
     const withRisks = role === 'owner' || role === 'manager';
     // «Требует решения» — это и сданные работы, и согласования: для человека
     // это один и тот же вопрос «что ждёт лично меня», разделять его в бейдже незачем.
-    const [row, approvals] = await Promise.all([
+    const [row, approvals, invites] = await Promise.all([
       this.repo.counts(tenantId, userId, endOfLocalDay(tzOffsetMin), withRisks),
       this.approvals.pendingCount(tenantId, userId),
+      // календарь стал разделом панели: неотвеченное приглашение должно быть видно
+      // там же, где всё остальное, а не только внутри самого календаря
+      this.calendar.pendingCount(tenantId, userId).catch(() => 0),
     ]);
     return {
       focus: { decide: (row?.decide ?? 0) + (approvals?.n ?? 0), today: row?.today ?? 0 },
+      calendar: { pending: invites },
       radar: withRisks ? { risks: row?.risks ?? 0 } : null,
     };
   }

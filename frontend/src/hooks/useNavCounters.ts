@@ -3,10 +3,12 @@ import { api } from '../lib/api';
 
 export type NavCounters = {
   focus: { decide: number; today: number };
+  /** приглашения на встречи без ответа */
+  calendar?: { pending: number };
   radar: { risks: number } | null;
 };
 
-const EMPTY: NavCounters = { focus: { decide: 0, today: 0 }, radar: null };
+const EMPTY: NavCounters = { focus: { decide: 0, today: 0 }, calendar: { pending: 0 }, radar: null };
 /** Чаще этого за счётчиками не ходим: перещёлкивание разделов не должно долбить сервер. */
 const MIN_INTERVAL_MS = 10_000;
 const POLL_MS = 60_000;

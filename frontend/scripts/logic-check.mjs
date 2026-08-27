@@ -44,7 +44,7 @@ test('разбор и сборка адреса совпадают в обе с�
   const routes = [
     ['/focus', { section: 'focus' }],
     ['/focus/inbox', { section: 'focus', view: 'inbox' }],
-    ['/focus/calendar', { section: 'focus', view: 'calendar' }],
+    ['/calendar', { section: 'calendar' }],
     ['/projects', { section: 'projects' }],
     ['/projects/p1', { section: 'projects', projectId: 'p1' }],
     ['/projects/p1/task/t2', { section: 'projects', projectId: 'p1', taskId: 't2' }],
@@ -60,6 +60,11 @@ test('разбор и сборка адреса совпадают в обе с�
     assert.deepEqual(parsePath(path), expected, `разбор ${path}`);
     assert.equal(buildPath(parsePath(path)), path, `сборка ${path}`);
   }
+
+  // старый адрес календаря разослан в письмах-приглашениях и лежит в закладках:
+  // он обязан открывать новый раздел, а не выкидывать в «Фокус дня»
+  assert.deepEqual(parsePath('/focus/calendar'), { section: 'calendar' }, 'старая ссылка на календарь');
+  assert.equal(buildPath({ section: 'calendar' }), '/calendar');
 });
 
 test('мусорный адрес не роняет приложение, а открывает фокус', async () => {
