@@ -46,7 +46,11 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
 
     // пустая организация — все счётчики нули, а не отсутствующие поля
     const empty = await counters(tok);
-    expect(empty).toEqual({ focus: { decide: 0, today: 0 }, radar: { risks: 0 } });
+    expect(empty).toEqual({
+      focus: { decide: 0, today: 0 },
+      calendar: { pending: 0 },
+      radar: { risks: 0 },
+    });
 
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Счётчики' }).expect(201)).body.data;
     const board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
