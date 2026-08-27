@@ -91,6 +91,10 @@ function announceTaskChange(method: string, path: string) {
   if (method === 'GET') return;
   if (!path.startsWith('/tasks')) return;
   window.dispatchEvent(new Event('teamcrm:tasks-changed'));
+  // Таймер сам ставит и снимает статус «занят задачей». Панель об этом узнавала
+  // только после перезагрузки страницы — под именем месяцами висело «Фокус не задан»,
+  // хотя человек работал.
+  if (/\/timer\/(start|stop)$/.test(path)) window.dispatchEvent(new Event('teamcrm:focus-changed'));
 }
 
 /** Запрос с авто-обновлением access-токена при 401/UNAUTHORIZED. */

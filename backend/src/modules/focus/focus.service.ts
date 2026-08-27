@@ -88,6 +88,25 @@ export class FocusService {
    * директоров», подменять это названием задачи нельзя. И падать здесь нельзя тоже —
    * таймер важнее статуса.
    */
+  /**
+   * Работу по задаче остановили — снимаем статус, который поставил таймер.
+   *
+   * Трогаем только автоматический статус этой самой задачи: если человек за это время
+   * написал свой («готовлю отчёт»), стирать его нельзя. Без этого «работаю над X»
+   * висело под именем и через сутки после остановки.
+   */
+  async fromTaskStop(tenantId: string, userId: string, taskId: string): Promise<void> {
+    try {
+      await this.db.query(
+        `DELETE FROM user_focus
+          WHERE tenant_id = $1 AND user_id = $2 AND kind = 'task' AND task_id = $3`,
+        [tenantId, userId, taskId],
+      );
+    } catch (e) {
+      this.logger.warn(`автофокус не снят: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
   async fromTaskStart(tenantId: string, userId: string, taskId: string, taskTitle: string): Promise<void> {
     try {
       await this.db.query(

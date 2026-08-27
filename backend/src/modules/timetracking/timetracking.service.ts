@@ -64,6 +64,9 @@ export class TimeTrackingService {
         stoppedAt: stopped.timestamp_end,
       });
     }
+    // работу остановили — статус «занят задачей» снимаем сразу, как и ставили
+    await this.focus.fromTaskStop(tenantId, userId, taskId);
+
     // закрытие записи → пересчёт себестоимости (Шаг 2.1/2.2)
     await this.enqueueRecompute(tenantId, taskId);
     return this.view(stopped);

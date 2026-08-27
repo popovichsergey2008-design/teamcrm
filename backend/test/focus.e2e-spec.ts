@@ -90,6 +90,11 @@ describe('ТЗ-2 — фокус и AI Секретарь (e2e)', () => {
     expect(auto.kind).toBe('task');
     expect(auto.note).toBe('Вёрстка каталога');
 
+    // работу остановили — автоматический статус снимается сам, а не висит сутками
+    await http.post(`/api/tasks/${task.id}/timer/stop`).set(H(tok)).expect(201);
+    expect((await http.get('/api/focus/me').set(H(tok)).expect(200)).body.data).toBeNull();
+    await http.post(`/api/tasks/${task.id}/timer/start`).set(H(tok)).expect(201);
+
     // человек сказал, чем занят, — второй старт таймера не должен это переписывать
     await http.put('/api/focus/me').set(H(tok))
       .send({ kind: 'deep', note: 'Готовлю отчёт совету директоров', minutes: 60 }).expect(200);
