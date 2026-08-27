@@ -390,25 +390,42 @@ test('напоминания: подписи, своё время и защит�
   assert.equal(rows.find((x) => x.minutes === 15).custom, false);
 });
 
-test('«мои задачи» в проекте: только свои и без пустых колонок', async () => {
-  const { onlyMine, countMine } = await load('lib/board-filter.ts');
+test('«мои задачи»: фильтр по доске, списку и честная позиция при переносе', async () => {
+  const { onlyMine, countMine, realPosition } = await load('lib/board-filter.ts');
   const columns = [
     { id: 'c1', name: 'В работе', tasks: [{ id: 't1', assignee_id: '7' }, { id: 't2', assignee_id: '9' }] },
     { id: 'c2', name: 'Проверка', tasks: [{ id: 't3', assignee_id: '9' }] },
     { id: 'c3', name: 'Готово', tasks: [{ id: 't4', assignee_id: '7' }] },
   ];
 
-  const mine = onlyMine(columns, '7');
-  assert.deepEqual(mine.map((c) => c.id), ['c1', 'c3'], 'колонка без своих задач не показывается');
-  assert.deepEqual(mine[0].tasks.map((t) => t.id), ['t1']);
-  assert.equal(countMine(columns, '7'), 2);
-  assert.equal(countMine(columns, '9'), 2);
-  assert.equal(countMine(columns, '42'), 0, 'чужой человек не находит своих задач');
+  // список: пустые колонки не показываем
+  const forList = onlyMine(columns, '7');
+  assert.deepEqual(forList.map((c) => c.id), ['c1', 'c3']);
+  assert.deepEqual(forList[0].tasks.map((t) => t.id), ['t1']);
 
-  // id приходят и строкой, и числом — сравнение не должно от этого зависеть
+  // доска: колонки остаются на месте, даже пустые — иначе бросать задачу некуда
+  const forBoard = onlyMine(columns, '7', true);
+  assert.deepEqual(forBoard.map((c) => c.id), ['c1', 'c2', 'c3']);
+  assert.equal(forBoard[1].tasks.length, 0);
+
+  assert.equal(countMine(columns, '7'), 2);
+  assert.equal(countMine(columns, '42'), 0, 'чужой человек не находит своих задач');
+  // id приходят и строкой, и числом; задача без исполнителя ничья
   assert.equal(countMine([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: 7 }] }], '7'), 1);
-  // задача без исполнителя ничья
   assert.equal(countMine([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: null }] }], '7'), 0);
+
+  // перенос при фильтре: индекс среди видимых → настоящее место в полной колонке
+  const full = [
+    { id: 'a', assignee_id: '9' },
+    { id: 'b', assignee_id: '7' },
+    { id: 'c', assignee_id: '9' },
+    { id: 'd', assignee_id: '7' },
+  ];
+  assert.equal(realPosition(full, '7', 0), 1, 'выше своей первой — на её место');
+  assert.equal(realPosition(full, '7', 1), 3, 'между своими — на место второй своей, а не в начало');
+  assert.equal(realPosition(full, '7', 2), 4, 'ниже последней своей — в конец колонки');
+  assert.equal(realPosition([], '7', 0), 0, 'пустая колонка');
+  assert.equal(realPosition([{ id: 'x', assignee_id: '9' }], '7', 0), 1, 'своих нет — в конец');
 });
 
 // ── запуск ────────────────────────────────────────────────────────────────────

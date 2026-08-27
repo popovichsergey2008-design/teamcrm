@@ -614,6 +614,8 @@
 }
 .overload-confirm { width: 100%; margin-top: 8px; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
+/* «Мои задачи» — фильтр рядом с переключателем вида, а не третий вид */
+.mine-toggle { margin-left: var(--sp-2); border-radius: var(--radius-sm); }
 /* счётчик своих задач в переключателе вида доски */
 .view-count {
   margin-left: 6px; padding: 1px 6px; border-radius: 999px;

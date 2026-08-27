@@ -10,7 +10,7 @@ import { TaskDrawer } from '../components/TaskDrawer';
 import { GateBlock, HandoffGateDialog, gateFromError } from '../components/HandoffGateDialog';
 import { TaskCreateModal } from '../components/TaskCreateModal';
 import { TaskListView } from '../components/TaskListView';
-import { countMine, onlyMine } from '../lib/board-filter';
+import { countMine, onlyMine, realPosition } from '../lib/board-filter';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { CopilotPanel } from '../components/CopilotPanel';
@@ -86,12 +86,19 @@ export function BoardPage({ initial, onNavigate }: {
   // чтобы «Сдать всё равно» повторило ровно тот же перенос
   const [gate, setGate] = useState<{ block: GateBlock; taskId: string; columnId: string; position: number } | null>(null);
   const [createIn, setCreateIn] = useState<{ columnId: string; columnName: string } | null>(null);
-  /** Вид доски: канбан, общий список и «мои задачи» — только назначенное на меня. */
-  const [view, setView] = useState<'board' | 'list' | 'mine'>(() => {
-    const saved = localStorage.getItem('teamcrm.boardView');
-    return saved === 'list' || saved === 'mine' ? saved : 'board';
+  const [view, setView] = useState<'board' | 'list'>(() =>
+    localStorage.getItem('teamcrm.boardView') === 'list' ? 'list' : 'board',
+  );
+  const switchView = (v: 'board' | 'list') => { setView(v); localStorage.setItem('teamcrm.boardView', v); };
+  /**
+   * «Мои задачи» — фильтр, а не отдельный вид: человек остаётся там, где работал,
+   * и просто перестаёт видеть чужое. На доске это доска, в списке — список.
+   */
+  const [mineOnly, setMineOnly] = useState(() => localStorage.getItem('teamcrm.boardMine') === '1');
+  const toggleMine = () => setMineOnly((prev) => {
+    localStorage.setItem('teamcrm.boardMine', prev ? '0' : '1');
+    return !prev;
   });
-  const switchView = (v: 'board' | 'list' | 'mine') => { setView(v); localStorage.setItem('teamcrm.boardView', v); };
   const [showTeam, setShowTeam] = useState(false);
   const [showCopilot, setShowCopilot] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
@@ -306,8 +313,15 @@ export function BoardPage({ initial, onNavigate }: {
   };
 
   const moveTask = useCallback(
-    async (taskId: string, columnId: string, position: number, confirmGate = false) => {
+    async (taskId: string, columnId: string, visibleIndex: number, confirmGate = false) => {
       const current = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === taskId);
+      // Перетаскивание сообщает место среди ВИДИМЫХ карточек. При включённом фильтре
+      // это не настоящая позиция: между двумя своими задачами могут стоять чужие,
+      // и без пересчёта задача уехала бы в начало колонки.
+      const target = board?.columns.find((c) => c.id === columnId);
+      const position = mineOnly && user && target
+        ? realPosition(target.tasks, String(user.id), visibleIndex)
+        : visibleIndex;
       if (current) dispatch({ type: 'UPSERT_TASK', task: { ...current, column_id: columnId, position } });
       try {
         const server = await api.moveTask(taskId, { columnId, position, confirmGate });
@@ -322,7 +336,7 @@ export function BoardPage({ initial, onNavigate }: {
         if (selected) api.getBoard(selected).then((b) => dispatch({ type: 'SET', board: b }));
       }
     },
-    [board, selected],
+    [board, selected, mineOnly, user],
   );
 
   const toggleTimer = useCallback(
@@ -346,6 +360,11 @@ export function BoardPage({ initial, onNavigate }: {
   // число рядом с «Моими задачами»: видно, есть ли по проекту работа лично на мне,
   // не переключаясь на эту вкладку
   const myCount = board && user ? countMine(board.columns, String(user.id)) : 0;
+  // Доске оставляем все колонки даже пустыми — иначе бросать задачу становится некуда;
+  // в списке пустые заголовки только мешают.
+  const shownBoard = board && mineOnly && user
+    ? { ...board, columns: onlyMine(board.columns, String(user.id), view === 'board') }
+    : board;
 
 
   return (
@@ -390,17 +409,18 @@ export function BoardPage({ initial, onNavigate }: {
                 <span className="view-switch" role="tablist" aria-label="Вид доски">
                   <button className={`view-btn ${view === 'board' ? 'active' : ''}`} onClick={() => switchView('board')} title="Канбан-доска"><Icon name="board" size={14} /> Доска</button>
                   <button className={`view-btn ${view === 'list' ? 'active' : ''}`} onClick={() => switchView('list')} title="Список"><Icon name="list" size={14} /> Список</button>
-                  {!isClient && (
-                    <button
-                      className={`view-btn ${view === 'mine' ? 'active' : ''}`}
-                      onClick={() => switchView('mine')}
-                      title="Только задачи, назначенные на меня"
-                    >
-                      <Icon name="user" size={14} /> Мои задачи
-                      {myCount > 0 && <span className="view-count">{myCount}</span>}
-                    </button>
-                  )}
                 </span>
+                {!isClient && (
+                  <button
+                    className={`view-btn mine-toggle ${mineOnly ? 'active' : ''}`}
+                    onClick={toggleMine}
+                    aria-pressed={mineOnly}
+                    title={mineOnly ? 'Показать задачи всей команды' : 'Оставить только назначенное на меня'}
+                  >
+                    <Icon name="user" size={14} /> Мои задачи
+                    {myCount > 0 && <span className="view-count">{myCount}</span>}
+                  </button>
+                )}
                 {!isClient && (
                   <span className="board-actions">
                     <button className="btn btn-ghost btn-sm" onClick={() => setShowTeam(true)} title="Сотрудники, должности, группы, приглашения"><Icon name="users" size={15} /> Команда</button>
@@ -413,31 +433,22 @@ export function BoardPage({ initial, onNavigate }: {
               </div>
               {showFinance && <PnlPanel pnl={pnl} alert={alert} cow={cow} />}
             </div>
-            {view === 'mine' ? (
-              myCount === 0 ? (
-                <EmptyState
-                  icon="user"
-                  title="В этом проекте на вас ничего не назначено"
-                  hint="Здесь появятся задачи проекта, где исполнителем указаны вы. Общий список — на соседней вкладке."
-                />
-              ) : (
-                <TaskListView
-                  board={{ ...board, columns: onlyMine(board.columns, String(user?.id ?? '')) }}
-                  users={users}
-                  activeTimerTask={activeTimerTask}
-                  onOpenTask={(t) => setOpenTaskId(t.id)}
-                />
-              )
+            {mineOnly && myCount === 0 ? (
+              <EmptyState
+                icon="user"
+                title="В этом проекте на вас ничего не назначено"
+                hint="Снимите «Мои задачи», чтобы увидеть работу всей команды."
+              />
             ) : view === 'list' ? (
               <TaskListView
-                board={board}
+                board={shownBoard!}
                 users={users}
                 activeTimerTask={activeTimerTask}
                 onOpenTask={(t) => setOpenTaskId(t.id)}
               />
             ) : (
               <div className="board-columns">
-                {board.columns.map((col, idx) => (
+                {(shownBoard ?? board).columns.map((col, idx) => (
                   <ColumnView
                     key={col.id}
                     column={col}
