@@ -25,7 +25,7 @@ export interface AiProvider {
   name: string;
   transcribe(audioRefOrText: string): Promise<string>;
   /** Транскрипция загруженного аудио-буфера (веб-запись голоса) → текст. '' если реальный Whisper недоступен. */
-  transcribeAudio(audio: Buffer, filename: string): Promise<string>;
+  transcribeAudio(audio: Buffer, filename: string, hint?: string): Promise<string>;
   /**
    * Транскрипция С ТАЙМКОДАМИ (стенограмма встречи). Куски длинной записи нарезает
    * вызывающий: у Whisper лимит 25 МБ на запрос. [] — распознавание недоступно.
@@ -135,8 +135,8 @@ export class MockAiProvider implements AiProvider {
     // голос без реального Whisper — канонический заглушечный транскрипт
     return audioRefOrText;
   }
-  async transcribeAudio(_audio: Buffer, _filename: string): Promise<string> {
-    void _audio; void _filename; // без ключа OpenAI распознать запись нельзя — пусто (UI подскажет)
+  async transcribeAudio(_audio: Buffer, _filename: string, _hint?: string): Promise<string> {
+    void _audio; void _filename; void _hint; // без ключа OpenAI распознать запись нельзя — пусто (UI подскажет)
     return '';
   }
   async transcribeSegments(_audio: Buffer, _filename: string): Promise<TranscriptSegment[]> {
@@ -221,9 +221,11 @@ export class RealAiProvider implements AiProvider {
     return this.whisper(Buffer.from(audio), 'audio.ogg');
   }
 
-  async transcribeAudio(audio: Buffer, filename: string): Promise<string> {
+  async transcribeAudio(audio: Buffer, filename: string, hint?: string): Promise<string> {
     if (!this.openaiKey) return '';
-    return this.whisper(audio, filename || 'audio.webm');
+    // словарь нужен и короткой команде: без него «TeamCRM» слышится как «Тим Сирей»,
+    // а сотрудник, записанный в базе латиницей, превращается в кого-то другого
+    return this.whisper(audio, filename || 'audio.webm', hint);
   }
 
   async transcribeSegments(audio: Buffer, filename: string, hint?: string): Promise<TranscriptSegment[]> {
@@ -236,8 +238,8 @@ export class RealAiProvider implements AiProvider {
   }
 
   /** OpenAI Whisper: аудио-буфер → распознанный текст. */
-  private async whisper(audio: Buffer, filename: string): Promise<string> {
-    const json = await this.whisperRaw(audio, filename, 'json');
+  private async whisper(audio: Buffer, filename: string, hint?: string): Promise<string> {
+    const json = await this.whisperRaw(audio, filename, 'json', hint);
     return json?.text ?? '';
   }
 

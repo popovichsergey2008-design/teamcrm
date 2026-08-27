@@ -57,6 +57,32 @@ export class NlService {
 
 
   /**
+   * Словарь для распознавания короткой команды.
+   *
+   * Whisper пишет то, что слышит: без словаря «TeamCRM» превращается в «Тим Сирей»,
+   * а сотрудник, записанный в базе латиницей, — в постороннее слово. Даём ему имена
+   * сотрудников (как они записаны), названия проектов и рабочие термины.
+   */
+  async speechHint(tenantId: string): Promise<string> {
+    const [users, projects] = await Promise.all([
+      this.db.many<{ name: string }>(
+        `SELECT full_name AS name FROM users WHERE tenant_id=$1 AND is_active=TRUE ORDER BY full_name LIMIT 40`,
+        [tenantId],
+      ).catch(() => []),
+      this.db.many<{ name: string }>(
+        `SELECT name FROM projects WHERE tenant_id=$1 AND status <> 'archived' ORDER BY created_at DESC LIMIT 20`,
+        [tenantId],
+      ).catch(() => []),
+    ]);
+    return [
+      'Рабочая команда в TeamCRM.',
+      users.length ? `Сотрудники: ${users.map((u) => u.name).join(', ')}.` : '',
+      projects.length ? `Проекты: ${projects.map((p) => p.name).join(', ')}.` : '',
+      'Термины: задача, созвон, встреча, планёрка, проект, доска, срок, доработка, функционал.',
+    ].filter(Boolean).join(' ');
+  }
+
+  /**
    * Надиктованная встреча → черновик события.
    *
    * Форму заполняет разбор, а не человек: он уже всё сказал вслух. Время и участников
@@ -67,6 +93,7 @@ export class NlService {
    * а сервер живёт в своём поясе.
    */
   async parseEvent(tenantId: string, text: string, nowLocal?: string): Promise<EventDraft & {
+    source: string;
     warnings: string[];
     context: { users: { id: string; name: string }[] };
   }> {
@@ -90,9 +117,11 @@ export class NlService {
 
     const draft = buildEventDraft(clean, now, users, model);
     const warnings: string[] = [];
+    // отдаём и саму фразу: человек должен видеть, что услышала система, иначе
+    // «поставил не то время» невозможно ни объяснить, ни поправить
     if (!draft.startsAt) warnings.push('Время не прозвучало — проверьте дату и час');
     if (!draft.participantIds.length) warnings.push('Участники не названы — добавьте вручную, если нужны');
-    return { ...draft, warnings, context: { users } };
+    return { ...draft, source: clean, warnings, context: { users } };
   }
 
   /** NL → черновик сущности (ничего не создаёт). Имена сопоставляются с id из контекста арендатора. */

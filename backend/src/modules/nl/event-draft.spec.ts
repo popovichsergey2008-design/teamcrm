@@ -97,4 +97,45 @@ describe('Надиктованная встреча — разбор', () => {
     expect(parseLocalInput('2026-01-03T09:05')?.getTime()).toBe(d.getTime());
     expect(parseLocalInput('мусор')).toBeNull();
   });
+
+  it('время словами: Whisper пишет числительные прописью', () => {
+    // именно на этом человек потерял назначенное время: «в десять» не ловилось цифрами
+    expect(draft('созвон с Борисом в десять часов').startsAt).toBe('2026-08-27T10:00');
+    expect(draft('созвон завтра в десять тридцать').startsAt).toBe('2026-08-27T10:30');
+    expect(draft('планёрка завтра в девять утра').startsAt).toBe('2026-08-27T09:00');
+    expect(draft('встреча завтра в два часа дня').startsAt).toBe('2026-08-27T14:00');
+  });
+
+  it('«10 часов» без предлога — время, «на 2 часа» — длительность', () => {
+    expect(draft('созвон завтра 10 часов').startsAt).toBe('2026-08-27T10:00');
+    const d = draft('созвон завтра в 10 часов на 2 часа');
+    expect(d.startsAt).toBe('2026-08-27T10:00');
+    expect(d.endsAt).toBe('2026-08-27T12:00');
+    // «на два часа» словами — тоже длительность, а не время начала
+    const words = draft('созвон завтра в 10 на два часа');
+    expect(words.endsAt).toBe('2026-08-27T12:00');
+  });
+
+  it('«к 15» — то же самое, что «в 15»', () => {
+    expect(draft('подъехать к 15 завтра').startsAt).toBe('2026-08-27T15:00');
+  });
+
+  it('человек находится, даже если в базе он записан латиницей', () => {
+    const mixed = [{ id: '9', name: 'Boris Petrov' }, { id: '8', name: 'Юрий Про' }];
+    expect(matchPeople('созвон с Борисом по TeamCRM', mixed).ids).toEqual(['9']);
+    expect(matchPeople('созвон с Boris', mixed).ids).toEqual(['9']);
+  });
+
+  it('короткая фамилия не ловит обычные слова', () => {
+    const mixed = [{ id: '8', name: 'Юрий Про' }];
+    // «Проект» — не Юрий Про: на этом живой пользователь получил постороннего участника
+    expect(matchPeople('созвон с Борисом по TeamCRM. Проект TeamCRM. Доработка функционала.', mixed).ids)
+      .toEqual([]);
+    expect(matchPeople('позвать Юрия', mixed).ids).toEqual(['8']);
+    expect(matchPeople('позвать Про', mixed).ids).toEqual(['8']);
+  });
+
+  it('похожее слово не выдаёт себя за имя', () => {
+    expect(matchPeople('идём по бороде проекта', users).ids).toEqual([]);
+  });
 });

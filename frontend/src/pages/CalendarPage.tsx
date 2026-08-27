@@ -190,11 +190,16 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
    * остаётся значением по умолчанию: пустая форма после диктовки выглядит как поломка.
    */
   const [voiceErr, setVoiceErr] = useState('');
+  // что услышала система и что не смогла разобрать — человек должен это видеть,
+  // иначе «поставил не то время» невозможно ни объяснить, ни поправить
+  const [heard, setHeard] = useState<{ text: string; warnings: string[] } | null>(null);
   const voice = useVoiceInput(async (text) => {
     setVoiceErr('');
+    setHeard(null);
     try {
       // «завтра в 15» — это местное завтра человека, поэтому «сейчас» присылаем своё
       const draft = await api.nlParseEvent(text, isoLocal(new Date()));
+      setHeard({ text: draft.source || text, warnings: draft.warnings ?? [] });
       const start = draft.startsAt ? new Date(draft.startsAt) : nextHalfHour();
       const end = draft.endsAt ? new Date(draft.endsAt) : new Date(start.getTime() + 3600_000);
       setEditing({
@@ -285,6 +290,15 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
 
       {err && <div className="error-text">{err}</div>}
       {(voice.error || voiceErr) && <div className="error-text">{voice.error || voiceErr}</div>}
+      {heard && (
+        <div className="cal-heard">
+          <span className="dim">Услышано:</span> «{heard.text}»
+          {heard.warnings.length > 0 && <span className="cal-heard-warn"> · {heard.warnings.join(' · ')}</span>}
+          <button className="btn btn-ghost btn-sm" onClick={() => setHeard(null)} title="Скрыть">
+            <Icon name="close" size={12} />
+          </button>
+        </div>
+      )}
       {voice.recording && (
         <div className="dim cal-voice-hint">
           Говорите: «созвон с Петром завтра в 15 на час в переговорной». Нажмите ещё раз, чтобы закончить.

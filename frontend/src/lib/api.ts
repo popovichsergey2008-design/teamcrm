@@ -584,7 +584,9 @@ export const api = {
   nlParseEvent: (text: string, now: string) =>
     request<{
       title: string; description: string | null; startsAt: string | null; endsAt: string | null;
-      allDay: boolean; location: string | null; participantIds: string[]; warnings: string[];
+      allDay: boolean; location: string | null; participantIds: string[];
+      /** Распознанная фраза — показываем человеку: он должен видеть, что услышала система. */
+      source: string; warnings: string[];
     }>('POST', '/nl/parse-event', { text, now }),
 
   saveCalendarWork: (b: { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] }) =>

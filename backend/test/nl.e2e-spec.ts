@@ -105,6 +105,16 @@ describe('NL-команда (e2e)', () => {
     expect(vague.startsAt).toBeNull();
     expect(vague.warnings.length).toBeGreaterThan(0);
 
+    // распознанная фраза возвращается: человек должен видеть, что услышала система
+    expect(draft.source).toContain('Петром');
+
+    // время словами — так его и пишет распознавание речи
+    const spoken = (await http$.post('/api/nl/parse-event').set(H(tok)).send({
+      text: 'созвон с Петром завтра в десять часов',
+      now: '2026-08-26T11:00',
+    }).expect(201)).body.data;
+    expect(spoken.startsAt).toBe('2026-08-27T10:00');
+
     // слишком короткая команда — отказ, а не пустой черновик
     await http$.post('/api/nl/parse-event').set(H(tok)).send({ text: 'ок' }).expect(400);
   });

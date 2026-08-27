@@ -53,8 +53,8 @@ export class AiService {
   }
 
   /** Веб-запись голоса (аудио-буфер) → текст через Whisper (mock → '' при отсутствии ключа). */
-  transcribeAudio(tenantId: string, audio: Buffer, filename: string): Promise<string> {
-    return this.providerFor(tenantId).then((p) => p.provider.transcribeAudio(audio, filename));
+  transcribeAudio(tenantId: string, audio: Buffer, filename: string, hint?: string): Promise<string> {
+    return this.providerFor(tenantId).then((p) => p.provider.transcribeAudio(audio, filename, hint));
   }
 
   /**
