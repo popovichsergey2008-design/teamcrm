@@ -22,7 +22,7 @@ class EventDto {
   /** Комната нашего созвона: кнопка «Начать созвон» у события. */
   @IsOptional() @IsString() @MaxLength(64) meetRoomId?: string;
   /** Напоминания в минутах до начала. Пусто — без напоминаний, не указано — за 15 минут. */
-  @IsOptional() @IsArray() @ArrayMaxSize(5) @IsInt({ each: true }) @Min(0, { each: true }) @Max(20160, { each: true })
+  @IsOptional() @IsArray() @ArrayMaxSize(6) @IsInt({ each: true }) @Min(0, { each: true }) @Max(20160, { each: true })
   reminders?: number[];
 }
 
@@ -39,7 +39,7 @@ class EventPatchDto {
   @IsOptional() @IsBoolean() isPrivate?: boolean;
   @IsOptional() @IsArray() @ArrayMaxSize(100) participantIds?: string[];
   @IsOptional() @IsString() @MaxLength(64) meetRoomId?: string;
-  @IsOptional() @IsArray() @ArrayMaxSize(5) @IsInt({ each: true }) @Min(0, { each: true }) @Max(20160, { each: true })
+  @IsOptional() @IsArray() @ArrayMaxSize(6) @IsInt({ each: true }) @Min(0, { each: true }) @Max(20160, { each: true })
   reminders?: number[];
 }
 

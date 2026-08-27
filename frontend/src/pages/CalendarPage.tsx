@@ -5,6 +5,7 @@ import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { useAuth } from '../state/auth';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { addReminder, MAX_REMINDERS, reminderRows, ReminderUnit, toMinutes } from '../lib/reminders';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
@@ -39,14 +40,16 @@ interface CalTask { id: string; title: string; deadline_at: string; project_id: 
 interface Work { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] }
 
 const VIEW_LABEL: Record<View, string> = { day: 'День', week: 'Неделя', month: 'Месяц', list: 'Список' };
-/** Напоминания, которые предлагаем. Больше вариантов — дольше выбирать, а нужны эти пять. */
-const REMINDER_CHOICES: { minutes: number; label: string }[] = [
-  { minutes: 0, label: 'в момент начала' },
-  { minutes: 5, label: 'за 5 минут' },
-  { minutes: 15, label: 'за 15 минут' },
-  { minutes: 60, label: 'за час' },
-  { minutes: 1440, label: 'за день' },
-];
+/** Напоминания, которые предлагаем галочками. Своё время добавляется полем рядом. */
+const REMINDER_CHOICES = [0, 5, 15, 60, 1440];
+/**
+ * Что отмечено у новой встречи.
+ *
+ * Три напоминания, а не одно: за час — чтобы успеть подготовиться, за 15 минут —
+ * чтобы закончить текущее дело, за 5 — чтобы дойти. Каждое из них человек и так
+ * ставил руками, а забытое напоминание стоит пропущенной встречи.
+ */
+const DEFAULT_REMINDERS = [5, 15, 60];
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const HOUR_HEIGHT = 44; // высота часа в сетке, совпадает с .cal-hour в стилях
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -590,12 +593,22 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
     isPrivate: !!value.isPrivate,
     scope: (value.scope ?? 'personal') as 'personal' | 'company',
     participantIds: (value.participants ?? []).filter((p) => !p.isOrganizer).map((p) => String(p.userId)),
-    // у новой встречи напоминание за 15 минут стоит сразу: это привычная норма,
-    // а «ни одного напоминания» человек выбирает осознанно
-    reminders: value.id ? (value.reminders ?? []) : [15],
+    // у новой встречи напоминания стоят сразу — за час, за 15 и за 5 минут;
+    // «ни одного» человек выбирает осознанно, сняв галочки
+    reminders: value.id ? (value.reminders ?? []) : DEFAULT_REMINDERS,
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // своё время напоминания: число и единица рядом, чтобы не считать минуты в уме
+  const [ownValue, setOwnValue] = useState('');
+  const [ownUnit, setOwnUnit] = useState<ReminderUnit>('minutes');
+
+  const addOwn = () => {
+    const minutes = toMinutes(Number(ownValue), ownUnit);
+    if (!Number.isFinite(minutes)) return;
+    setForm((prev) => ({ ...prev, reminders: addReminder(prev.reminders, minutes) }));
+    setOwnValue('');
+  };
   /** Кто из команды занят в выбранное время и мешает ли это сохранить встречу. */
   const [busyPeople, setBusyPeople] = useState<Record<string, { text: string; blocking: boolean }>>({});
   const isNew = !value.id;
@@ -758,7 +771,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
 
         <div className="drawer-section-title">Напоминания</div>
         <div className="cal-reminders">
-          {REMINDER_CHOICES.map((r) => (
+          {reminderRows(form.reminders, REMINDER_CHOICES).map((r) => (
             <label key={r.minutes} className={`cal-reminder ${form.reminders.includes(r.minutes) ? 'on' : ''}`}>
               <input
                 type="checkbox"
@@ -768,15 +781,45 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
                   ...prev,
                   reminders: prev.reminders.includes(r.minutes)
                     ? prev.reminders.filter((m) => m !== r.minutes)
-                    : [...prev.reminders, r.minutes].sort((a, b) => a - b),
+                    : addReminder(prev.reminders, r.minutes),
                 }))}
               />
               {r.label}
             </label>
           ))}
         </div>
+
+        {canEdit && (
+          <div className="cal-reminder-own">
+            <span className="dim">Своё время:</span>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              max={20160}
+              placeholder="30"
+              value={ownValue}
+              onChange={(e) => setOwnValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOwn(); } }}
+            />
+            <select className="input" value={ownUnit} onChange={(e) => setOwnUnit(e.target.value as ReminderUnit)}>
+              <option value="minutes">минут</option>
+              <option value="hours">часов</option>
+              <option value="days">дней</option>
+            </select>
+            <button
+              className="btn btn-sm"
+              type="button"
+              onClick={addOwn}
+              disabled={!ownValue || form.reminders.length >= MAX_REMINDERS}
+            >
+              Добавить
+            </button>
+          </div>
+        )}
         <div className="dim" style={{ fontSize: 12 }}>
           Придёт письмом и всплывёт в приложении. Участникам — тоже.
+          {form.reminders.length >= MAX_REMINDERS && ' Больше шести напоминаний на встречу не ставим.'}
         </div>
 
         {canEdit && (

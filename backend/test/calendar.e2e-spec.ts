@@ -93,11 +93,18 @@ describe('Календарь (e2e)', () => {
       .send({ tenantName: 'Напоминания', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
 
-    // по умолчанию — одно напоминание за 15 минут
+    // по умолчанию — три напоминания: за 5 минут, за 15 и за час
     const byDefault = (await http$.post('/api/calendar/events').set(H(owner.accessToken))
       .send({ title: 'Без уточнений', startsAt: iso(12), endsAt: iso(13) }).expect(201)).body.data;
     const listed = (await http$.get(`/api/calendar?${WINDOW()}`).set(H(owner.accessToken)).expect(200)).body.data;
-    expect(listed.events.find((e: any) => String(e.id) === String(byDefault.id)).reminders).toEqual([15]);
+    expect(listed.events.find((e: any) => String(e.id) === String(byDefault.id)).reminders).toEqual([5, 15, 60]);
+
+    // своё время принимается наравне со стандартным, дубли схлопываются
+    const own = (await http$.post('/api/calendar/events').set(H(owner.accessToken)).send({
+      title: 'Со своим напоминанием', startsAt: iso(17), endsAt: iso(18), reminders: [45, 45, 90, 5],
+    }).expect(201)).body.data;
+    const withOwn = (await http$.get(`/api/calendar?${WINDOW()}`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(withOwn.events.find((e: any) => String(e.id) === String(own.id)).reminders).toEqual([5, 45, 90]);
 
     // заданные напоминания чистятся от дублей и сортируются
     const event = (await http$.post('/api/calendar/events').set(H(owner.accessToken)).send({

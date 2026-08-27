@@ -614,6 +614,11 @@
 }
 .overload-confirm { width: 100%; margin-top: 8px; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
+/* своё время напоминания */
+.cal-reminder-own { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.cal-reminder-own input[type="number"] { width: 84px; }
+.cal-reminder-own select { width: auto; }
+
 /* что услышала система при диктовке */
 .cal-heard {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;

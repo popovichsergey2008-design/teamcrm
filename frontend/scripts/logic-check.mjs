@@ -357,6 +357,34 @@ test('праздники: фиксированные даты по ТК, без 
   assert.deepEqual(h.WEEK_DAYS.map((d) => d.value), [1, 2, 3, 4, 5, 6, 0]);
 });
 
+test('напоминания: подписи, своё время и защита от дублей', async () => {
+  const r = await load('lib/reminders.ts');
+
+  assert.equal(r.reminderLabel(0), 'в момент начала', 'ноль — это начало, а не «за 0 минут»');
+  assert.equal(r.reminderLabel(5), 'за 5 мин');
+  assert.equal(r.reminderLabel(60), 'за 1 ч');
+  assert.equal(r.reminderLabel(90), 'за 1 ч 30 мин');
+  assert.equal(r.reminderLabel(1440), 'за 1 дн.');
+  assert.equal(r.reminderLabel(1500), 'за 1 дн. 1 ч');
+
+  assert.equal(r.toMinutes(2, 'hours'), 120);
+  assert.equal(r.toMinutes(1, 'days'), 1440);
+  assert.ok(Number.isNaN(r.toMinutes(-5, 'minutes')), 'отрицательное время не принимаем');
+
+  // добавление своего значения
+  assert.deepEqual(r.addReminder([15, 60], 45), [15, 45, 60], 'встаёт по возрастанию');
+  assert.deepEqual(r.addReminder([15, 60], 15), [15, 60], 'дубль не добавляется');
+  assert.deepEqual(r.addReminder([15], 99999), [15], 'дальше двух недель не напоминаем');
+  const full = [0, 5, 15, 60, 120, 1440];
+  assert.deepEqual(r.addReminder(full, 30), full, 'больше шести напоминаний не набирается');
+
+  // в форме своё значение показывается наравне со стандартными
+  const rows = r.reminderRows([5, 45, 60], [0, 5, 15, 60, 1440]);
+  assert.deepEqual(rows.map((x) => x.minutes), [0, 5, 15, 45, 60, 1440]);
+  assert.equal(rows.find((x) => x.minutes === 45).custom, true);
+  assert.equal(rows.find((x) => x.minutes === 15).custom, false);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
