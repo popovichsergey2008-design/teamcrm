@@ -22,7 +22,11 @@ export class TimeTrackingService {
 
     // Взял задачу в работу — статус в профиле ставится сам. По ТЗ это Zero-Click:
     // руками статус не меняет почти никто, и коллеги всё равно спрашивают «ты занят?».
-    void this.focus.fromTaskStart(tenantId, userId, taskId, tp.title);
+    //
+    // Ждём завершения, а не отпускаем в фон: интерфейс читает статус сразу после
+    // старта таймера, и в гонке человек видел прежний статус — «нажал, а не встало».
+    // Ошибку метод глотает сам, так что задержать старт таймера это не может.
+    await this.focus.fromTaskStart(tenantId, userId, taskId, tp.title);
 
     // событие старта (нефинансовое) в комнату проекта
     this.realtime.emit(tenantId, tp.project_id, 'time.started', {
