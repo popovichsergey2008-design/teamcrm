@@ -304,4 +304,34 @@ describe('Календарь (e2e)', () => {
       .send({ email: bossEmail, password: 'password123' }).expect(201)).body.data.accessToken;
     await http$.patch(`/api/users/${founderId}`).set(H(promotedToken)).send({ role: 'member' }).expect(403);
   });
+
+  it('область видимости меняется при правке — и только тем, кому положено', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Видимость', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .expect(201)).body.data;
+    const memberEmail = `mem_${uniq()}@t.test`;
+    await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: memberEmail, fullName: 'Сотрудник', password: 'password123', role: 'member' }).expect(201);
+    const memberToken = (await http$.post('/api/auth/login')
+      .send({ email: memberEmail, password: 'password123' }).expect(201)).body.data.accessToken;
+
+    // личное событие владельца → делаем общим: раньше правка область видимости
+    // не принимала вовсе и падала с ошибкой про лишнее поле
+    const ev = (await http$.post('/api/calendar/events').set(H(owner.accessToken))
+      .send({ title: 'Планёрка', startsAt: iso(10), endsAt: iso(11) }).expect(201)).body.data;
+    expect(ev.scope).toBe('personal');
+
+    const updated = (await http$.patch(`/api/calendar/events/${ev.id}`).set(H(owner.accessToken))
+      .send({ title: 'Планёрка', scope: 'company' }).expect(200)).body.data;
+    expect(updated.scope).toBe('company');
+
+    // рядовой сотрудник своё событие общим не сделает
+    const own = (await http$.post('/api/calendar/events').set(H(memberToken))
+      .send({ title: 'Своё', startsAt: iso(12), endsAt: iso(13) }).expect(201)).body.data;
+    await http$.patch(`/api/calendar/events/${own.id}`).set(H(memberToken))
+      .send({ scope: 'company' }).expect(403);
+    // а вот вернуть общее в личное владельцу никто не мешает
+    await http$.patch(`/api/calendar/events/${ev.id}`).set(H(owner.accessToken))
+      .send({ scope: 'personal' }).expect(200);
+  });
 });

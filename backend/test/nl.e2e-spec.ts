@@ -74,4 +74,38 @@ describe('NL-команда (e2e)', () => {
     // без файла → 400 (валидация)
     await http$.post('/api/nl/transcribe').set(H(tok)).expect(400);
   });
+
+  it('надиктованная встреча превращается в заполненный черновик', async () => {
+    const email = `nle_${uniq()}@t.test`;
+    const reg = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'NLE', email, password: 'password123', fullName: 'Ольга Ким' }).expect(201)).body.data;
+    const tok = reg.accessToken;
+    const mateEmail = `nle_m_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(H(tok))
+      .send({ email: mateEmail, fullName: 'Пётр Иванов', password: 'password123', role: 'member' }).expect(201)).body.data;
+
+    // «сейчас» присылает клиент: разбор идёт в ЕГО местном времени, а не серверном
+    const draft = (await http$.post('/api/nl/parse-event').set(H(tok)).send({
+      text: 'созвон с Петром завтра в 15 на час в переговорной',
+      now: '2026-08-26T11:00',
+    }).expect(201)).body.data;
+
+    expect(draft.startsAt).toBe('2026-08-27T15:00');
+    expect(draft.endsAt).toBe('2026-08-27T16:00');
+    expect(draft.allDay).toBe(false);
+    expect(draft.location).toContain('переговорной');
+    expect(draft.participantIds).toContain(String(mate.id));
+    // название очищено от времени, но осталось словами человека
+    expect(draft.title).toContain('созвон');
+    expect(draft.title).not.toContain('завтра');
+
+    // без единого признака времени даты не выдумываются, а человека предупреждают
+    const vague = (await http$.post('/api/nl/parse-event').set(H(tok))
+      .send({ text: 'обсудить смету с подрядчиком', now: '2026-08-26T11:00' }).expect(201)).body.data;
+    expect(vague.startsAt).toBeNull();
+    expect(vague.warnings.length).toBeGreaterThan(0);
+
+    // слишком короткая команда — отказ, а не пустой черновик
+    await http$.post('/api/nl/parse-event').set(H(tok)).send({ text: 'ок' }).expect(400);
+  });
 });

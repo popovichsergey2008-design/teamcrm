@@ -11,6 +11,11 @@ import { NlService } from './nl.service';
 class ParseDto {
   @IsString() @MaxLength(2000) text!: string;
 }
+class ParseEventDto {
+  @IsString() @MaxLength(2000) text!: string;
+  /** Местное «сейчас» клиента: «завтра в 15» — это его завтра, а не серверное. */
+  @IsOptional() @IsString() @MaxLength(32) now?: string;
+}
 class ApplyDto {
   @IsIn(['create_task', 'create_deal', 'none']) intent!: 'create_task' | 'create_deal' | 'none';
   @IsOptional() @IsObject() task?: Record<string, unknown>;
@@ -40,6 +45,12 @@ export class NlController {
   @Post('parse')
   parse(@CurrentUser() u: AuthUser, @Body() dto: ParseDto) {
     return this.nl.parse(u.tenantId, u.userId, dto.text);
+  }
+
+  /** Надиктованная встреча → заполненный черновик события (ничего не создаёт). */
+  @Post('parse-event')
+  parseEvent(@CurrentUser() u: AuthUser, @Body() dto: ParseEventDto) {
+    return this.nl.parseEvent(u.tenantId, dto.text, dto.now);
   }
 
   @Post('apply')

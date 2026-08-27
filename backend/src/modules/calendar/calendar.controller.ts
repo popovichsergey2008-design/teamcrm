@@ -28,6 +28,8 @@ class EventDto {
 
 class EventPatchDto {
   @IsOptional() @IsString() @MaxLength(255) title?: string;
+  /** Личное событие или общее для компании — переключатель есть и при правке. */
+  @IsOptional() @IsIn(['personal', 'company']) scope?: 'personal' | 'company';
   @IsOptional() @IsString() @MaxLength(4000) description?: string;
   @IsOptional() @IsString() @MaxLength(255) location?: string;
   @IsOptional() @IsDateString() startsAt?: string;

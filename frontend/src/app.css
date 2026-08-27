@@ -614,6 +614,13 @@
 }
 .overload-confirm { width: 100%; margin-top: 8px; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
+/* «Событие» и диктовка рядом — как «Новая задача» и микрофон в панели */
+.cal-new-row { display: flex; gap: var(--sp-1); }
+.cal-new-mic { flex-shrink: 0; padding-left: 8px; padding-right: 8px; }
+/* идёт запись: кнопка видна издалека, но не мигает — мигание в интерфейсе утомляет */
+.cal-mic-on { background: var(--danger); border-color: var(--danger); }
+.cal-voice-hint { font-size: var(--fs-xs); margin-bottom: 8px; }
+
 /* рабочее время компании */
 .work-hours { display: flex; gap: 12px; margin-bottom: 4px; }
 .work-hours label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); }

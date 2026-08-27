@@ -150,6 +150,13 @@ export class CalendarService {
 
   async update(tenantId: string, user: { userId: string; role: string }, id: string, dto: Partial<EventDto>) {
     const event = await this.mine(tenantId, user, id);
+    // Правило то же, что при создании: общее событие касается всех, и распоряжается им
+    // тот, кто отвечает за общее. Раньше правка область видимости не принимала вовсе —
+    // форма её присылала, и сохранение падало с ошибкой про лишнее поле.
+    if (dto.scope && dto.scope !== event.scope
+      && dto.scope === 'company' && user.role !== 'owner' && user.role !== 'manager') {
+      throw AppException.forbidden('Событие компании создаёт владелец или руководитель');
+    }
     if (dto.startsAt && dto.endsAt) this.checkTime({ startsAt: dto.startsAt, endsAt: dto.endsAt } as EventDto);
     // переносим время или зовём новых людей — проверяем занятость заново, себя исключая
     const startsAt = dto.startsAt ?? event.starts_at.toISOString();
@@ -168,6 +175,7 @@ export class CalendarService {
       all_day: dto.allDay,
       color: dto.color === undefined ? undefined : (dto.color || null),
       is_private: dto.isPrivate,
+      scope: dto.scope,
     }, dto.participantIds, event.owner_id);
     if (dto.reminders !== undefined) await this.repo.setReminders(id, this.cleanReminders(dto.reminders));
 

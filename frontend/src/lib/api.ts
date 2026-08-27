@@ -580,6 +580,13 @@ export const api = {
     if (!res.ok) throw new ApiError('INTERNAL', 'Не удалось получить файл встречи');
     return res.blob();
   },
+  /** Надиктованная встреча → заполненный черновик события. `now` — местное время клиента. */
+  nlParseEvent: (text: string, now: string) =>
+    request<{
+      title: string; description: string | null; startsAt: string | null; endsAt: string | null;
+      allDay: boolean; location: string | null; participantIds: string[]; warnings: string[];
+    }>('POST', '/nl/parse-event', { text, now }),
+
   saveCalendarWork: (b: { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] }) =>
     request<any>('POST', '/calendar/work', b),
 

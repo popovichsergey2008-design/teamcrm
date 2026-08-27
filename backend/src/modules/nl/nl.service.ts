@@ -7,6 +7,7 @@ import { TasksService } from '../tasks/tasks.service';
 import { DealsService } from '../deals/deals.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { matchUserInText, normalizeDeadline } from './nl.match';
+import { buildEventDraft, EventDraft } from './event-draft';
 
 type Intent = 'create_task' | 'create_deal' | 'none';
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -52,6 +53,46 @@ export class NlService {
     const clients = await this.db.many<{ id: string; name: string }>(
       `SELECT id, name FROM clients WHERE tenant_id=$1 ORDER BY created_at DESC`, [tenantId]).catch(() => []);
     return { users, projects, clients };
+  }
+
+
+  /**
+   * Надиктованная встреча → черновик события.
+   *
+   * Форму заполняет разбор, а не человек: он уже всё сказал вслух. Время и участников
+   * считают правила (модель ошибается в датах и выдумывает людей), модель уточняет
+   * название и описание — и если она недоступна, черновик всё равно приходит заполненным.
+   *
+   * `now` присылает клиент: «завтра в 15» — это его завтра и его пятнадцать часов,
+   * а сервер живёт в своём поясе.
+   */
+  async parseEvent(tenantId: string, text: string, nowLocal?: string): Promise<EventDraft & {
+    warnings: string[];
+    context: { users: { id: string; name: string }[] };
+  }> {
+    const clean = (text ?? '').trim();
+    if (clean.length < 3) throw AppException.validation('Слишком короткая команда');
+
+    const users = await this.db.many<{ id: string; name: string }>(
+      `SELECT id, full_name AS name FROM users WHERE tenant_id=$1 AND is_active=TRUE ORDER BY full_name`,
+      [tenantId],
+    );
+    const now = parseClientNow(nowLocal);
+
+    let model: Record<string, unknown> | null = null;
+    try {
+      const raw = await this.ai.generate(tenantId, EVENT_SYSTEM, JSON.stringify({ text: clean }), 'nl_event');
+      model = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+    } catch (e) {
+      // молчание модели — не повод отдавать пустую форму: дальше работают правила
+      this.log.warn(`разбор встречи без модели: ${(e as Error).message}`);
+    }
+
+    const draft = buildEventDraft(clean, now, users, model);
+    const warnings: string[] = [];
+    if (!draft.startsAt) warnings.push('Время не прозвучало — проверьте дату и час');
+    if (!draft.participantIds.length) warnings.push('Участники не названы — добавьте вручную, если нужны');
+    return { ...draft, warnings, context: { users } };
   }
 
   /** NL → черновик сущности (ничего не создаёт). Имена сопоставляются с id из контекста арендатора. */
@@ -166,4 +207,31 @@ export class NlService {
     }
     throw AppException.validation('Неизвестное намерение');
   }
+}
+
+/**
+ * Модели достаётся только словесная часть: название и описание.
+ *
+ * Дат в задании нет намеренно — считать их будут правила. Модель, которой дали
+ * «сегодня», исправно ошибается на день в конце месяца и в декабре, и эта ошибка
+ * выглядит как назначенная не на тот день встреча.
+ */
+const EVENT_SYSTEM = [
+  'Ты — парсер календаря. По фразе человека выдели название встречи и, если есть, описание и место.',
+  'title — формулировка человека без служебной обёртки («поставь встречу», «созвон в 15»), в именительном виде.',
+  'location — место, если названо словами (переговорная, офис, адрес). Ссылку на созвон местом не считай.',
+  'Даты, время и участников НЕ извлекай — их разбирает система.',
+  'Верни СТРОГО JSON: {"title":"","description":null,"location":null,"allDay":false}',
+].join(' ');
+
+/**
+ * «Сейчас» глазами клиента. Формат — местное время без зоны (2026-08-27T11:00),
+ * потому что весь разбор идёт в местном времени человека. Пусто или мусор —
+ * считаем по серверу: это хуже, но лучше, чем отказ.
+ */
+function parseClientNow(value?: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(String(value ?? ''));
+  if (!m) return new Date();
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  return Number.isNaN(d.getTime()) ? new Date() : d;
 }

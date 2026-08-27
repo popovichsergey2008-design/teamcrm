@@ -4,6 +4,7 @@ import { DatePicker } from '../components/DatePicker';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { useAuth } from '../state/auth';
+import { useVoiceInput } from '../hooks/useVoiceInput';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
@@ -181,6 +182,36 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   /** Кнопка «Событие»: ближайшие полчаса, а не полночь и не завтрашний день. */
   const createNow = () => openNew(nextHalfHour());
 
+  /**
+   * Надиктованная встреча.
+   *
+   * Человек уже сказал вслух и время, и участников — форма должна открыться заполненной,
+   * иначе голос экономит одно нажатие и добавляет пять. Что разобрать не удалось,
+   * остаётся значением по умолчанию: пустая форма после диктовки выглядит как поломка.
+   */
+  const [voiceErr, setVoiceErr] = useState('');
+  const voice = useVoiceInput(async (text) => {
+    setVoiceErr('');
+    try {
+      // «завтра в 15» — это местное завтра человека, поэтому «сейчас» присылаем своё
+      const draft = await api.nlParseEvent(text, isoLocal(new Date()));
+      const start = draft.startsAt ? new Date(draft.startsAt) : nextHalfHour();
+      const end = draft.endsAt ? new Date(draft.endsAt) : new Date(start.getTime() + 3600_000);
+      setEditing({
+        title: draft.title,
+        description: draft.description ?? undefined,
+        location: draft.location ?? undefined,
+        startsAt: start.toISOString(),
+        endsAt: end.toISOString(),
+        allDay: draft.allDay,
+        scope: 'personal',
+        participants: draft.participantIds.map((id) => ({ userId: id, isOrganizer: false })) as any,
+      });
+    } catch (e) {
+      setVoiceErr(e instanceof ApiError ? e.message : 'Не удалось разобрать встречу');
+    }
+  });
+
   const openNew = (start: Date) => {
     const end = new Date(start.getTime() + 3600_000);
     setEditing({ startsAt: start.toISOString(), endsAt: end.toISOString(), scope: 'personal', participants: [] });
@@ -235,13 +266,30 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           >
             <Icon name="clock" size={15} />
           </button>
-          <button className="btn btn-primary btn-sm" onClick={() => createNow()}>
-            <Icon name="plus" size={15} /> Событие
-          </button>
+          <div className="cal-new-row">
+            <button className="btn btn-primary btn-sm" onClick={() => createNow()}>
+              <Icon name="plus" size={15} /> Событие
+            </button>
+            <button
+              className={`btn btn-primary btn-sm cal-new-mic${voice.recording ? ' cal-mic-on' : ''}`}
+              onClick={voice.toggle}
+              disabled={voice.transcribing}
+              title={voice.recording ? 'Остановить запись' : 'Продиктовать встречу голосом'}
+              aria-label={voice.recording ? 'Остановить запись' : 'Продиктовать встречу голосом'}
+            >
+              <Icon name={voice.transcribing ? 'clock' : 'mic'} size={15} />
+            </button>
+          </div>
         </div>
       </div>
 
       {err && <div className="error-text">{err}</div>}
+      {(voice.error || voiceErr) && <div className="error-text">{voice.error || voiceErr}</div>}
+      {voice.recording && (
+        <div className="dim cal-voice-hint">
+          Говорите: «созвон с Петром завтра в 15 на час в переговорной». Нажмите ещё раз, чтобы закончить.
+        </div>
+      )}
 
       {workOpen && (
         <WorkSettingsPanel
