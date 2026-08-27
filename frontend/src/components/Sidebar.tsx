@@ -188,7 +188,11 @@ export function Sidebar({
   // переход по разделу закрывает выехавшую панель — иначе она перекрывает то, куда шли
   const go = (to: Route) => { navigate(to); setOpen(false); };
 
-  const link = (to: Route, active: boolean, cls: string, title: string, children: ReactNode) => (
+  const link = (
+    to: Route, active: boolean, cls: string, title: string, children: ReactNode,
+    /** Повторный клик по уже открытому разделу — сворачивает его содержимое. */
+    onRepeat?: () => void,
+  ) => (
     <a
       className={`${cls}${active ? ' active' : ''}`}
       href={buildPath(to)}
@@ -198,6 +202,8 @@ export function Sidebar({
         // Ctrl/Cmd-клик и средняя кнопка должны открывать в новой вкладке как обычная ссылка
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
         e.preventDefault();
+        // Мы уже в этом разделе — переходить некуда, и клик работает переключателем
+        if (active && onRepeat) return onRepeat();
         go(to);
       }}
     >
@@ -290,7 +296,6 @@ export function Sidebar({
             const unfolded = active && !collapsed && !folded.has(item.section);
             return (
               <div key={item.section} className="nav-group" onMouseEnter={() => onHoverSection(item.section)}>
-                <div className="nav-row">
                 {link({ section: item.section }, active, 'nav-item', item.label, (
                   <>
                     <Icon name={item.icon} size={18} />
@@ -304,22 +309,13 @@ export function Sidebar({
                         {badge > 99 ? '99+' : badge}
                       </span>
                     )}
+                    {/* Стрелка — часть самого пункта и только показывает состояние:
+                        сворачивает повторное нажатие на пункт, отдельной кнопки нет. */}
+                    {hasChildren && active && !collapsed && (
+                      <Icon name={unfolded ? 'chevron-down' : 'chevron-right'} size={14} />
+                    )}
                   </>
-                ))}
-                {/* Свернуть содержимое раздела, не уходя из него: с тремя десятками
-                    досок список превращал панель в прокрутку внутри прокрутки. */}
-                {hasChildren && active && !collapsed && (
-                  <button
-                    className="nav-fold"
-                    onClick={() => toggleFold(item.section)}
-                    aria-expanded={unfolded}
-                    aria-label={unfolded ? `Свернуть «${item.label}»` : `Развернуть «${item.label}»`}
-                    title={unfolded ? 'Свернуть список' : 'Развернуть список'}
-                  >
-                    <Icon name={unfolded ? 'chevron-down' : 'chevron-right'} size={14} />
-                  </button>
-                )}
-                </div>
+                ), hasChildren ? () => toggleFold(item.section) : undefined)}
                 {/* Проекты раскрываются прямо под своим разделом, как в привычных
                     таск-менеджерах: отдельная колонка слева отъедала место у доски
                     и висела перед глазами даже тогда, когда переключать нечего. */}
