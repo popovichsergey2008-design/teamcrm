@@ -84,6 +84,13 @@
   text-decoration: none;
 }
 .nav-item:hover { background: var(--bg-elev-2); color: var(--text); }
+/* созвон из панели: «начать» и «позвать» — две кнопки, слитые в одну группу */
+.nav-call-row { display: flex; }
+.nav-call-row .call-starter { display: flex; width: 100%; gap: 0; }
+.nav-call-row .call-starter-call { flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.nav-call-row .call-starter-pick { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none; }
+.call-starter-pick { padding-left: 9px; padding-right: 9px; }
+
 /* стрелка состояния внутри самого пункта: содержимое сворачивает повторный клик */
 .nav-item > .icon:last-child { margin-left: auto; opacity: .7; }
 /* счётчик и стрелка не должны драться за правый край */

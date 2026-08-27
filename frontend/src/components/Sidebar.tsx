@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { ProjectsNav } from './ProjectsNav';
+import { CallStarter } from './CallStarter';
 import { setDoNotDisturb } from '../lib/sound';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
@@ -102,7 +103,7 @@ function readFolded(): Set<string> {
 
 export function Sidebar({
   route, user, organizations, avatarPath, unread, counters, activeCall,
-  onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onOpenSecretary, onHoverSection, onLogout,
+  onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onStartCall, onOpenSecretary, onHoverSection, onLogout,
 }: {
   route: Route;
   user: { role: string; fullName: string; tenantId: string };
@@ -116,6 +117,8 @@ export function Sidebar({
   onVoiceTask: () => void;
   onSearch: () => void;
   onJoinCall: () => void;
+  /** Начать созвон из любого раздела — панель видна везде. */
+  onStartCall: (opts: { memberIds: string[]; withAi: boolean }) => void;
   onOpenSecretary: () => void;
   /** наведение на пункт меню — повод прогреть данные раздела заранее */
   onHoverSection: (section: Section) => void;
@@ -273,6 +276,13 @@ export function Sidebar({
               <Icon name="mic" size={16} />
             </button>
           </div>
+          {/* Созвон нужен из любого места, а не только из переписки: разговор
+              начинают, когда упёрлись в вопрос, а не когда открыли чат. */}
+          {user.role !== 'client' && !collapsed && (
+            <div className="nav-call-row">
+              <CallStarter disabled={!!activeCall} onStart={onStartCall} />
+            </div>
+          )}
         </div>
 
         {/* ── основное меню: ровно 4 раздела ── */}

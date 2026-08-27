@@ -24,10 +24,11 @@ interface Person {
  * Запись с ИИ живёт здесь же: это решение принимается один раз, до начала разговора.
  */
 export function CallStarter({ chatId, kind, peerId, disabled, onStart }: {
-  chatId: string;
-  kind: string;
+  /** Чат, из которого звонят. Пусто — звонок из панели, вне переписки. */
+  chatId?: string | null;
+  kind?: string;
   /** собеседник личного диалога — его зовём по умолчанию */
-  peerId: string | null;
+  peerId?: string | null;
   disabled: boolean;
   onStart: (opts: { memberIds: string[]; withAi: boolean }) => void;
 }) {
@@ -55,9 +56,13 @@ export function CallStarter({ chatId, kind, peerId, disabled, onStart }: {
     (async () => {
       const [team, inChat] = await Promise.all([
         api.listUsers().catch(() => []),
-        kind === 'dm'
-          ? Promise.resolve(peerId ? [String(peerId)] : [])
-          : api.chatMembers(chatId).then((r) => r.members.map((m: any) => String(m.userId))).catch(() => []),
+        // Из панели звонят вне переписки: по умолчанию не отмечен никто — человек
+        // сам решает, кого позвать, а «все подряд» здесь были бы худшим умолчанием.
+        !chatId
+          ? Promise.resolve([] as string[])
+          : kind === 'dm'
+            ? Promise.resolve(peerId ? [String(peerId)] : [])
+            : api.chatMembers(chatId).then((r) => r.members.map((m: any) => String(m.userId))).catch(() => []),
       ]);
       if (!alive) return;
 
@@ -99,15 +104,44 @@ export function CallStarter({ chatId, kind, peerId, disabled, onStart }: {
     onStart({ memberIds: [...chosen], withAi });
   };
 
+  /**
+   * Быстрый старт кнопкой «Созвон» — без выбора участников.
+   *
+   * В переписке зовём тех, с кем и так говорим: собеседника личного диалога или
+   * участников группы. Из панели — никого: комната поднимается пустой, позвать
+   * можно следом. Кому нужен другой состав, жмёт соседнюю кнопку со списком.
+   */
+  const startDefault = async () => {
+    if (disabled) return;
+    if (!chatId) return onStart({ memberIds: [], withAi: false });
+    if (kind === 'dm') return onStart({ memberIds: peerId ? [String(peerId)] : [], withAi: false });
+    const members = await api.chatMembers(chatId)
+      .then((r) => r.members.map((m: any) => String(m.userId)).filter((id: string) => id !== String(user?.id ?? '')))
+      .catch(() => []);
+    onStart({ memberIds: members, withAi: false });
+  };
+
   return (
     <span className="call-starter" ref={boxRef}>
       <button
-        className="btn btn-sm"
+        className="btn btn-sm call-starter-call"
         disabled={disabled}
-        title={disabled ? 'Вы уже в созвоне' : 'Созвон: выбрать участников и начать'}
+        title={disabled ? 'Вы уже в созвоне' : 'Начать созвон'}
+        onClick={startDefault}
+      >
+        <Icon name="phone" size={15} /> Созвон
+      </button>
+      {/* Выбор участников — отдельной кнопкой: «начать» и «позвать» это разные
+          решения, и человеку не должно приходиться открывать список ради звонка. */}
+      <button
+        className="btn btn-sm call-starter-pick"
+        disabled={disabled}
+        aria-expanded={open}
+        title={disabled ? 'Вы уже в созвоне' : 'Кого позвать на созвон'}
+        aria-label="Кого позвать на созвон"
         onClick={() => setOpen((v) => !v)}
       >
-        <Icon name="user-plus" size={15} /> Созвон
+        <Icon name="user-plus" size={15} />
       </button>
 
       {open && (
