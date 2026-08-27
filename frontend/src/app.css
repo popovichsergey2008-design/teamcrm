@@ -41,6 +41,7 @@
 .nav-collapsed .nav-label, .nav-collapsed .nav-kbd, .nav-collapsed .nav-user-text { display: none; }
 .nav-collapsed .nav-org-select { opacity: 0; pointer-events: none; }
 .nav-collapsed .nav-item, .nav-collapsed .nav-search, .nav-collapsed .nav-new, .nav-collapsed .nav-user { justify-content: center; }
+.nav-collapsed .nav-fold { display: none; } /* в узкой панели раскрывать нечего */
 
 .nav-top { display: flex; flex-direction: column; gap: var(--sp-2); padding-bottom: var(--sp-3); }
 .nav-org { display: flex; align-items: center; gap: var(--sp-2); position: relative; }
@@ -84,6 +85,15 @@
   text-decoration: none;
 }
 .nav-item:hover { background: var(--bg-elev-2); color: var(--text); }
+/* строка меню: сам пункт плюс кнопка сворачивания справа */
+.nav-row { display: flex; align-items: center; gap: 2px; }
+.nav-row .nav-item { flex: 1; min-width: 0; }
+.nav-fold {
+  display: grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0;
+  background: none; border: none; border-radius: var(--radius-sm);
+  color: var(--text-mut); cursor: pointer;
+}
+.nav-fold:hover { background: var(--bg-elev-2); color: var(--text); }
 .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
 .nav-count {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
@@ -1470,7 +1480,7 @@
    Проверяется скриптом: npm run a11y. */
 /* у переключателя «Задачи» фокус получает галочка внутри — подсвечиваем всю строку */
 .feed-chip:focus-visible, .feed-flag:focus-within,
-.mention-option:focus-visible, .feed-file:focus-visible,
+.mention-option:focus-visible, .feed-file:focus-visible, .nav-fold:focus-visible,
 .ping-text:focus-visible, .mode-row:focus-visible,
 /* «Файл» — это label со скрытым input: фокус получает input внутри */
 .feed-attach:focus-within,

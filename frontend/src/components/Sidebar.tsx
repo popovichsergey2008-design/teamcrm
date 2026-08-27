@@ -87,6 +87,19 @@ const MENU: Item[] = [
 
 const visible = (roles: Role[] | undefined, role: Role) => !roles || roles.includes(role);
 
+/**
+ * Какие разделы человек свернул.
+ *
+ * Список проектов у активного раздела раскрывался всегда, и при трёх десятках досок
+ * панель превращалась в прокрутку внутри прокрутки. Теперь список можно убрать,
+ * оставаясь в разделе, и выбор запоминается: свернул однажды — больше не мешает.
+ */
+const FOLDED_KEY = 'teamcrm.navFolded';
+
+function readFolded(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(FOLDED_KEY) || '[]')); } catch { return new Set(); }
+}
+
 export function Sidebar({
   route, user, organizations, avatarPath, unread, counters, activeCall,
   onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onOpenSecretary, onHoverSection, onLogout,
@@ -112,6 +125,14 @@ export function Sidebar({
   // на узком экране панель выезжает поверх содержимого, а не сжимает его
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [folded, setFolded] = useState<Set<string>>(readFolded);
+
+  const toggleFold = (section: string) => setFolded((prev) => {
+    const next = new Set(prev);
+    if (next.has(section)) next.delete(section); else next.add(section);
+    localStorage.setItem(FOLDED_KEY, JSON.stringify([...next]));
+    return next;
+  });
   const [focus, setFocus] = useState<Focus | null>(null);
   const [secretary, setSecretary] = useState<{ actions: number; savedMinutes: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -262,8 +283,14 @@ export function Sidebar({
             const badgeTitle = item.section === 'focus' ? 'ждут вашего решения'
               : item.section === 'calendar' ? 'приглашений без ответа'
               : item.section === 'radar' ? 'задач просрочено' : undefined;
+            // Разворачивать нечего, если у раздела нет ни проектов, ни подпунктов —
+            // шеврон в таком месте обещает содержимое, которого не существует.
+            const subs = item.subs?.filter((sub) => visible(sub.roles, user.role)) ?? [];
+            const hasChildren = item.section === 'projects' || subs.length > 0;
+            const unfolded = active && !collapsed && !folded.has(item.section);
             return (
               <div key={item.section} className="nav-group" onMouseEnter={() => onHoverSection(item.section)}>
+                <div className="nav-row">
                 {link({ section: item.section }, active, 'nav-item', item.label, (
                   <>
                     <Icon name={item.icon} size={18} />
@@ -279,17 +306,31 @@ export function Sidebar({
                     )}
                   </>
                 ))}
+                {/* Свернуть содержимое раздела, не уходя из него: с тремя десятками
+                    досок список превращал панель в прокрутку внутри прокрутки. */}
+                {hasChildren && active && !collapsed && (
+                  <button
+                    className="nav-fold"
+                    onClick={() => toggleFold(item.section)}
+                    aria-expanded={unfolded}
+                    aria-label={unfolded ? `Свернуть «${item.label}»` : `Развернуть «${item.label}»`}
+                    title={unfolded ? 'Свернуть список' : 'Развернуть список'}
+                  >
+                    <Icon name={unfolded ? 'chevron-down' : 'chevron-right'} size={14} />
+                  </button>
+                )}
+                </div>
                 {/* Проекты раскрываются прямо под своим разделом, как в привычных
                     таск-менеджерах: отдельная колонка слева отъедала место у доски
                     и висела перед глазами даже тогда, когда переключать нечего. */}
-                {item.section === 'projects' && active && !collapsed && (
+                {item.section === 'projects' && unfolded && (
                   <ProjectsNav
                     currentId={route.projectId ?? null}
                     canManage={user.role === 'owner' || user.role === 'manager'}
                   />
                 )}
                 {/* подпункты — только у открытого раздела: панель должна оставаться короткой */}
-                {active && !collapsed && item.subs?.filter((s) => visible(s.roles, user.role)).map((sub) => (
+                {unfolded && subs.map((sub) => (
                   <span key={sub.label}>
                     {link(sub.route, route.view === sub.route.view, 'nav-sub', sub.label, (
                       <>
