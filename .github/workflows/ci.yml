@@ -140,4 +140,8 @@ jobs:
             docker compose up -d           # поднимает весь стек, включая новые сервисы (crm-minio)
             docker compose restart crm-edge
             docker compose ps
+            # знак приложения должен быть В ОБРАЗЕ: сборка проходит и без него,
+            # а на сайте по адресу иконки молча отдаётся оболочка приложения
+            docker compose exec -T crm-web test -f /usr/share/nginx/html/favicon.svg
+            docker compose exec -T crm-web test -f /usr/share/nginx/html/apple-touch-icon.png
           '
