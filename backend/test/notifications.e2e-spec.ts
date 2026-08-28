@@ -102,6 +102,15 @@ describe('Почтовые уведомления (e2e)', () => {
       await new Promise((r) => setTimeout(r, 500)); // дали шанс появиться лишнему письму
       const again = await readMail(execEmail);
       expect(again.filter((m) => m.event_key === 'task.status').length).toBe(1);
+
+      // Вернули в работу и закрыли снова — это новое событие, а не повтор старого.
+      // Раньше ключ повтора состоял из колонки, и о повторной сдаче работы никто
+      // не узнавал: второе «готово» уходило в тишину.
+      const back = board.columns[0].id;
+      await http.post(`/api/tasks/${task.id}/move`).set(H(tok)).send({ columnId: back, position: 0 }).expect(201);
+      await http.post(`/api/tasks/${task.id}/move`).set(H(tok)).send({ columnId: target, position: 0 }).expect(201);
+      const cycled = await mailFor(execEmail, { event: 'task.status', count: 3 });
+      expect(cycled.filter((m) => m.event_key === 'task.status').length).toBe(3);
     }
   });
 

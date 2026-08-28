@@ -84,12 +84,17 @@ export class NotificationsService {
       (ctx, unsub) => taskCommentedLetter({ ...ctx, comment }, unsub));
   }
 
-  /** Ключ повтора — колонка: перенос туда-обратно даёт письма, повтор одного и того же — нет. */
+  /**
+   * Ключ повтора — номер записи о переносе, а не название колонки. По колонке выходило,
+   * что повторное закрытие задачи проходит молча: ключ «эта задача, эта колонка» был
+   * занят первым закрытием, и вернувшуюся в работу и снова сданную работу никто не видел.
+   * Один перенос — одна запись в ленте — одно уведомление.
+   */
   taskStatusChanged(
     tenantId: string, taskId: string, actorId: string | null,
-    to: string, closed: boolean,
+    to: string, closed: boolean, moveId: string,
   ): Promise<void> {
-    return this.fanout(tenantId, taskId, 'task.status', actorId, `s${to}`,
+    return this.fanout(tenantId, taskId, 'task.status', actorId, `m${moveId}`,
       (ctx, unsub) => taskStatusLetter({ ...ctx, to, closed }, unsub));
   }
 }

@@ -102,7 +102,7 @@ function readFolded(): Set<string> {
 }
 
 export function Sidebar({
-  route, user, organizations, avatarPath, unread, counters, activeCall,
+  route, user, organizations, avatarPath, unread, counters, activeCall, inCall,
   onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onStartCall, onOpenSecretary, onHoverSection, onLogout,
 }: {
   route: Route;
@@ -111,7 +111,10 @@ export function Sidebar({
   avatarPath: string | null;
   unread: number;
   counters: NavCounters;
+  /** Идёт созвон в компании — можно присоединиться. Не повод запрещать свой звонок. */
   activeCall: { participants: number } | null;
+  /** Я сам сейчас в разговоре: только это мешает начать новый. */
+  inCall: boolean;
   onSwitchOrg: (tenantId: string) => void;
   onNewTask: () => void;
   onVoiceTask: () => void;
@@ -280,7 +283,11 @@ export function Sidebar({
               начинают, когда упёрлись в вопрос, а не когда открыли чат. */}
           {user.role !== 'client' && !collapsed && (
             <div className="nav-call-row">
-              <CallStarter disabled={!!activeCall} onStart={onStartCall} />
+              {/* Раньше кнопка гасла от ЛЮБОГО созвона в компании: пока чужой разговор
+                  идёт, позвонить третьему человеку было нельзя, а вышедший из комнаты
+                  оставался заблокированным, пока её не закроет создатель. Мешать может
+                  только собственный разговор. */}
+              <CallStarter disabled={inCall} onStart={onStartCall} />
             </div>
           )}
         </div>
@@ -351,7 +358,7 @@ export function Sidebar({
           })}
 
           {/* Созвон уже идёт — вход в него, иначе к разговору не присоединиться тому, кого не позвали */}
-          {activeCall && (
+          {activeCall && !inCall && (
             <button className="nav-item nav-call" onClick={onJoinCall} title="Идёт созвон — присоединиться">
               <Icon name="phone" size={18} />
               <span className="nav-label">Идёт созвон · {activeCall.participants}</span>

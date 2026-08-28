@@ -174,7 +174,7 @@ export class TasksService {
       this.knowledge.enqueue(tenantId, 'task', id); // закрытая задача → в базу знаний
     } else if (task.closed_at) await this.repo.reopenTask(tenantId, id);
     this.realtime.emit(tenantId, moved.project_id, 'task.moved', moved as any);
-    await this.activity.log(tenantId, id, actorId, 'moved', { to: column.name });
+    const moveId = await this.activity.log(tenantId, id, actorId, 'moved', { to: column.name });
     // Обход гейта — не молчаливый: проверяющий должен видеть, чего в работе не хватало.
     if (missing.length) {
       await this.activity.log(tenantId, id, actorId, 'handoff_forced', {
@@ -182,8 +182,15 @@ export class TasksService {
       });
     }
     await this.outbox.enqueue(tenantId, moved.project_id, 'task.move', id);
-    // смена статуса = перенос в другую колонку; о своём же переносе человеку не пишем
-    void this.notify.taskStatusChanged(tenantId, id, actorId, column.name, isDoneColumn(column.name));
+    // Смена статуса = перенос именно В ДРУГУЮ колонку: перетаскивание внутри одной
+    // меняет порядок, а не статус, и уведомлять о нём не о чем.
+    //
+    // Номер записи в ленте идёт в ключ повтора: без него задача, возвращённая в работу
+    // и закрытая снова, второго уведомления не давала — ключ «эта задача, эта колонка»
+    // уже был занят первым закрытием, и человек о повторной сдаче не узнавал.
+    if (String(task.column_id) !== String(dto.columnId)) {
+      void this.notify.taskStatusChanged(tenantId, id, actorId, column.name, isDoneColumn(column.name), moveId);
+    }
     return moved;
   }
 

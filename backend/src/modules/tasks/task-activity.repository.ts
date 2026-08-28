@@ -6,18 +6,24 @@ import { DbService } from '../../database/db.service';
 export class TaskActivityRepository {
   constructor(private readonly db: DbService) {}
 
-  log(
+  /**
+   * Запись в ленту. Возвращает её номер: он же отличает одно событие от другого
+   * там, где важен КАЖДЫЙ повтор. Задачу закрывают, возвращают и закрывают снова —
+   * это три разных события, а не одно повторившееся.
+   */
+  async log(
     tenantId: string,
     taskId: string,
     actorId: string | null,
     kind: string,
     detail: Record<string, unknown> = {},
-  ) {
-    return this.db.query(
+  ): Promise<string> {
+    const row = await this.db.one<{ id: string }>(
       `INSERT INTO task_activity (tenant_id, task_id, actor_id, kind, detail)
-       VALUES ($1,$2,$3,$4,$5::jsonb)`,
+       VALUES ($1,$2,$3,$4,$5::jsonb) RETURNING id`,
       [tenantId, taskId, actorId, kind, JSON.stringify(detail)],
     );
+    return String(row?.id ?? '');
   }
 
   list(tenantId: string, taskId: string) {

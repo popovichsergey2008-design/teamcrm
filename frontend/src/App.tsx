@@ -252,6 +252,7 @@ export function App() {
         unread={unread}
         counters={counters}
         activeCall={activeCalls.length > 0 ? { participants: activeCalls[0].participants.length } : null}
+        inCall={!!callId}
         onSwitchOrg={onSwitchOrg}
         onNewTask={() => setNl({})}
         onVoiceTask={() => setNl({ voice: true })}
