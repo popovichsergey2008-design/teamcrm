@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { AssistantRepository } from './assistant.repository';
 import { AssistantService } from './assistant.service';
+import { EveningService } from './evening.service';
 
 /**
  * Раз в 15 минут — не чаще: поводы для напоминания меняются часами, а не секундами,
@@ -25,6 +26,7 @@ export class AssistantScheduler implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly repo: AssistantRepository,
     private readonly assistant: AssistantService,
+    private readonly evening: EveningService,
   ) {}
 
   onModuleInit(): void {
@@ -45,6 +47,9 @@ export class AssistantScheduler implements OnModuleInit, OnModuleDestroy {
       for (const t of await this.repo.activeTenants()) {
         try {
           created += await this.assistant.runTenant(String(t.id), t.assistant_mode);
+          // Свод руководителю идёт и в копилоте: это не напоминание сотруднику,
+          // а картина дня для того, кто за него отвечает.
+          created += await this.evening.runTenant(String(t.id));
         } catch (e) {
           // одна организация не должна останавливать остальные
           this.log.warn(`пинги для организации ${t.id}: ${(e as Error).message}`);

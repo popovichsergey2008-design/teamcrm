@@ -165,6 +165,11 @@ describe('Смарт-пинги ассистента (e2e)', () => {
     const again = (await http.get('/api/assistant/gaps').set(H(s.owner.accessToken)).expect(200)).body.data;
     expect(again.noAssignee.some((g: any) => String(g.taskId) === String(other.id))).toBe(false);
 
+    // вечерний свод руководителю: собирается из фактов дня, а не из напоминаний
+    const evening = (await http.get('/api/assistant/evening/preview').set(H(s.owner.accessToken)).expect(200)).body.data;
+    expect(evening.facts.overdue.tasks).toBeGreaterThan(0); // просроченная задача из setup
+    expect(evening.text).toContain('Итоги дня');
+
     // рядовой сотрудник список видит, но раздавать работу не может
     await http.post('/api/assistant/gaps/apply').set(H(s.mateToken))
       .send({ taskId: String(other.id), assigneeId: String(s.mate.id) }).expect(403);

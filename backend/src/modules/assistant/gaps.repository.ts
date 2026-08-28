@@ -78,16 +78,18 @@ export class GapsRepository {
    */
   workers(tenantId: string, projectId: string): Promise<Worker[]> {
     return this.db.many<Worker>(
+      // Два счётчика — подзапросами, а не соединениями: два LEFT JOIN к одной таблице
+      // перемножают строки, и «сделал 3 задачи» превращается в «сделал 15».
       `SELECT u.id::text AS "userId", u.full_name AS "fullName",
-              COUNT(*) FILTER (WHERE d.id IS NOT NULL)::int AS "doneInProject",
-              COUNT(*) FILTER (WHERE o.id IS NOT NULL)::int AS "openTasks"
+              (SELECT COUNT(*) FROM tasks d
+                WHERE d.tenant_id = u.tenant_id AND d.assignee_id = u.id
+                  AND d.project_id = $2 AND d.closed_at IS NOT NULL)::int AS "doneInProject",
+              (SELECT COUNT(*) FROM tasks o
+                WHERE o.tenant_id = u.tenant_id AND o.assignee_id = u.id
+                  AND o.closed_at IS NULL)::int AS "openTasks"
          FROM users u
-    LEFT JOIN tasks d ON d.tenant_id = u.tenant_id AND d.assignee_id = u.id
-                     AND d.project_id = $2 AND d.closed_at IS NOT NULL
-    LEFT JOIN tasks o ON o.tenant_id = u.tenant_id AND o.assignee_id = u.id
-                     AND o.closed_at IS NULL
-        WHERE u.tenant_id = $1 AND u.is_active AND u.role <> 'client'
-        GROUP BY u.id, u.full_name`,
+         JOIN roles r ON r.id = u.role_id
+        WHERE u.tenant_id = $1 AND u.is_active AND r.code <> 'client'`,
       [tenantId, projectId],
     );
   }

@@ -4,6 +4,7 @@ import { IsBoolean, IsIn, IsOptional, IsString, Matches, MaxLength } from 'class
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AssistantService } from './assistant.service';
+import { EveningService } from './evening.service';
 import { GapsService } from './gaps.service';
 import { MaintenanceService } from './maintenance.service';
 import { ModeratorService } from './moderator.service';
@@ -49,6 +50,7 @@ export class AssistantController {
     private readonly moderator: ModeratorService,
     private readonly maintenance: MaintenanceService,
     private readonly gaps: GapsService,
+    private readonly evening: EveningService,
   ) {}
 
   @Get('mode')
@@ -148,6 +150,14 @@ export class AssistantController {
   @Post('gaps/apply')
   applyGap(@CurrentUser() u: AuthUser, @Body() dto: GapApplyDto) {
     return this.gaps.apply(u.tenantId, u.userId, u.role, dto);
+  }
+
+  /** Итоги дня прямо сейчас: то же, что придёт вечером, но по требованию. */
+  @Get('evening/preview')
+  eveningPreview(@CurrentUser() u: AuthUser) {
+    // Пояс берём из профиля внутри сервиса: в токене его нет, а «сегодня»
+    // у людей в разных поясах разное.
+    return this.evening.preview(u.tenantId, null);
   }
 
   @Post('gaps/skip')
