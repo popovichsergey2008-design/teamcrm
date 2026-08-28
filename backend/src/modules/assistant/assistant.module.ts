@@ -11,6 +11,7 @@ import { AssistantService } from './assistant.service';
 import { ModeratorRepository } from './moderator.repository';
 import { ModeratorScheduler } from './moderator.scheduler';
 import { ModeratorService } from './moderator.service';
+import { AskService } from './ask.service';
 import { EveningService } from './evening.service';
 import { GapsRepository } from './gaps.repository';
 import { GapsService } from './gaps.service';
@@ -38,7 +39,7 @@ import { MaintenanceService } from './maintenance.service';
     AssistantService, AssistantRepository, AssistantScheduler,
     ModeratorService, ModeratorRepository, ModeratorScheduler,
     MaintenanceService, MaintenanceRepository, MaintenanceScheduler,
-    GapsService, GapsRepository, EveningService,
+    GapsService, GapsRepository, EveningService, AskService,
   ],
   exports: [AssistantService, ModeratorService, MaintenanceService, GapsService],
 })

@@ -441,6 +441,12 @@ export const api = {
 
   // Этап 3 — Telegram binding & standup
   telegramLinkCode: () => request<{ code: string; expiresAt: string }>('POST', '/me/telegram/link-code'),
+  // Спросить секретаря о текущих делах обычным языком
+  assistantAsk: (question: string) =>
+    request<{ kind: string; answer: string }>('POST', '/assistant/ask', { question }),
+  assistantEvening: () =>
+    request<{ text: string; facts: any }>('GET', '/assistant/evening/preview'),
+
   // Дыры в данных: задачи без исполнителя и срока — с готовыми предложениями
   assistantGaps: () => request<{
     noAssignee: { taskId: string; title: string; projectId: string; projectName: string;

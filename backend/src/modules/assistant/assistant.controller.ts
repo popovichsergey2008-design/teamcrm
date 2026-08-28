@@ -4,6 +4,7 @@ import { IsBoolean, IsIn, IsOptional, IsString, Matches, MaxLength } from 'class
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AssistantService } from './assistant.service';
+import { AskService } from './ask.service';
 import { EveningService } from './evening.service';
 import { GapsService } from './gaps.service';
 import { MaintenanceService } from './maintenance.service';
@@ -29,6 +30,10 @@ class GapApplyDto {
   @IsOptional() @IsBoolean() confirmOverload?: boolean;
 }
 
+class AskDto {
+  @IsString() @MaxLength(300) question!: string;
+}
+
 class GapSkipDto {
   @IsString() @MaxLength(32) taskId!: string;
   @IsIn(['assignee', 'deadline']) kind!: 'assignee' | 'deadline';
@@ -51,6 +56,7 @@ export class AssistantController {
     private readonly maintenance: MaintenanceService,
     private readonly gaps: GapsService,
     private readonly evening: EveningService,
+    private readonly ask: AskService,
   ) {}
 
   @Get('mode')
@@ -150,6 +156,17 @@ export class AssistantController {
   @Post('gaps/apply')
   applyGap(@CurrentUser() u: AuthUser, @Body() dto: GapApplyDto) {
     return this.gaps.apply(u.tenantId, u.userId, u.role, dto);
+  }
+
+  /**
+   * Спросить о делах обычным языком: «что с проектом Сайт», «кто свободен», «что горит».
+   *
+   * Отвечаем цифрами из базы, а не моделью: такие вопросы про сейчас, и придуманный
+   * ответ здесь опаснее отсутствия ответа.
+   */
+  @Post('ask')
+  askAssistant(@CurrentUser() u: AuthUser, @Body() dto: AskDto) {
+    return this.ask.ask(u.tenantId, u.userId, dto.question);
   }
 
   /** Итоги дня прямо сейчас: то же, что придёт вечером, но по требованию. */

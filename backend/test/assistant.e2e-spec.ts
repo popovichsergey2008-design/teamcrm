@@ -170,6 +170,23 @@ describe('Смарт-пинги ассистента (e2e)', () => {
     expect(evening.facts.overdue.tasks).toBeGreaterThan(0); // просроченная задача из setup
     expect(evening.text).toContain('Итоги дня');
 
+    // секретарь отвечает на вопросы о делах — цифрами из базы, а не моделью
+    const hot = (await http.post('/api/assistant/ask').set(H(s.owner.accessToken))
+      .send({ question: 'что горит' }).expect(201)).body.data;
+    expect(hot.kind).toBe('hot');
+    expect(hot.answer).toContain('Просроченная задача');
+
+    const about = (await http.post('/api/assistant/ask').set(H(s.owner.accessToken))
+      .send({ question: `что у нас с проектом ${s.project.name}` }).expect(201)).body.data;
+    expect(about.kind).toBe('project');
+    expect(about.answer).toContain('открытых задач');
+
+    // непонятный вопрос не превращается в выдумку
+    const dunno = (await http.post('/api/assistant/ask').set(H(s.owner.accessToken))
+      .send({ question: 'погода в Сочи' }).expect(201)).body.data;
+    expect(dunno.kind).toBe('unknown');
+    expect(dunno.answer).toContain('Не понял вопрос');
+
     // рядовой сотрудник список видит, но раздавать работу не может
     await http.post('/api/assistant/gaps/apply').set(H(s.mateToken))
       .send({ taskId: String(other.id), assigneeId: String(s.mate.id) }).expect(403);

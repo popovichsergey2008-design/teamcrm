@@ -641,6 +641,17 @@
 .timer-pause:not(:disabled) { background: var(--warn); border-color: var(--warn); color: var(--on-warn); font-weight: 600; }
 .timer-actions .btn:disabled { opacity: .45; }
 @media (prefers-reduced-motion: reduce) { .timer-panel.is-running .timer-dot { animation: none; } }
+/* Спросить секретаря: строка вопроса, подсказки и ответ фактами. */
+.secretary-ask { margin-bottom: 14px; }
+.ask-row { display: flex; gap: 6px; }
+.ask-row .input { flex: 1 1 auto; min-width: 0; }
+.ask-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ask-answer {
+  margin-top: 8px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+  white-space: pre-line; font-size: 14px; line-height: 1.5;
+}
+
 /* Дыры в данных: строка = задача + готовое предложение + два решения. */
 .gap-row {
   display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap;

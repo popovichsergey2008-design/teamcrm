@@ -72,6 +72,7 @@ export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boo
           </div>
         </div>
 
+        <Ask />
         <Gaps canManage={canManage} />
         <Proposed />
         <Maintenance canManage={canManage} />
@@ -105,6 +106,57 @@ export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boo
           </div>
         )}
       </aside>
+    </div>
+  );
+}
+
+/**
+ * «Спросите о делах» — секретарь как собеседник, а не вестник.
+ *
+ * Вопросы вроде «что с проектом Сайт» и «кто свободен» задают вслух коллеге по
+ * десять раз в неделю, и каждый раз кто-то идёт смотреть доски. Отвечаем цифрами
+ * из базы: придуманный ответ про текущие дела опаснее отсутствия ответа.
+ */
+function Ask() {
+  const [q, setQ] = useState('');
+  const [answer, setAnswer] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const ask = async (text?: string) => {
+    const question = (text ?? q).trim();
+    if (question.length < 3) return;
+    setQ(question);
+    setBusy(true);
+    try { setAnswer((await api.assistantAsk(question)).answer); }
+    catch { setAnswer('Не получилось спросить — попробуйте ещё раз.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="secretary-ask">
+      <div className="drawer-section-title"><Icon name="sparkles" size={14} /> Спросите о делах</div>
+      <div className="ask-row">
+        <input
+          className="input"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void ask(); }}
+          placeholder="что с проектом Сайт · кто свободен · что горит"
+          aria-label="Вопрос секретарю"
+        />
+        <button className="btn btn-primary btn-sm" onClick={() => void ask()} disabled={busy}>
+          {busy ? 'Смотрю…' : 'Спросить'}
+        </button>
+      </div>
+      {/* Подсказки-кнопки: с ними видно, что спрашивать можно, — пустое поле молчит. */}
+      {!answer && (
+        <div className="ask-chips">
+          {['что горит', 'кто свободен', 'что на мне'].map((hint) => (
+            <button key={hint} className="btn btn-ghost btn-sm" onClick={() => void ask(hint)}>{hint}</button>
+          ))}
+        </div>
+      )}
+      {answer && <div className="ask-answer">{answer}</div>}
     </div>
   );
 }
