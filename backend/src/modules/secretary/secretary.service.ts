@@ -12,7 +12,8 @@ export type AiActionKind =
   | 'ping'
   | 'agenda'
   | 'maintenance'
-  | 'digest';
+  | 'digest'
+  | 'gap_fix';
 
 /**
  * Сколько ручной работы заменяет одно действие, в минутах.
@@ -36,6 +37,8 @@ const SAVED_MINUTES: Record<AiActionKind, number> = {
   maintenance: 2,
   // сводка дня ≈ 5 минут: столько занимает утренний обход досок «что у меня горит»
   digest: 5,
+  // заполненное поле ≈ 4 минуты: понять, кому отдать, свериться с загрузкой, открыть задачу
+  gap_fix: 4,
 };
 
 export type AiAction = {

@@ -641,6 +641,17 @@
 .timer-pause:not(:disabled) { background: var(--warn); border-color: var(--warn); color: var(--on-warn); font-weight: 600; }
 .timer-actions .btn:disabled { opacity: .45; }
 @media (prefers-reduced-motion: reduce) { .timer-panel.is-running .timer-dot { animation: none; } }
+/* Дыры в данных: строка = задача + готовое предложение + два решения. */
+.gap-row {
+  display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.gap-body { flex: 1 1 220px; min-width: 0; }
+.gap-title { font-weight: 600; font-size: 14px; }
+.gap-meta { font-size: 12px; margin-top: 2px; }
+.gap-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.gap-note { font-size: 12px; margin: 6px 0; }
+
 /* Быстрая команда: голос и разбор стоят рядом — это два способа сделать одно. */
 .nl-actions { display: flex; gap: 6px; margin-top: 6px; }
 .nl-actions .nl-parse { flex: 1 1 auto; }

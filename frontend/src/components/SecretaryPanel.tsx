@@ -22,6 +22,8 @@ const KIND_ICON: Record<string, IconName> = {
   inbox_draft: 'inbox',
   nl_task: 'zap',
   ping: 'bell',
+  digest: 'bell',
+  gap_fix: 'check',
 };
 
 /** «2 ч 15 мин» читается быстрее, чем «135 минут». */
@@ -70,6 +72,7 @@ export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boo
           </div>
         </div>
 
+        <Gaps canManage={canManage} />
         <Proposed />
         <Maintenance canManage={canManage} />
 
@@ -102,6 +105,112 @@ export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boo
           </div>
         )}
       </aside>
+    </div>
+  );
+}
+
+/**
+ * «Не хватает данных» — работа, а не жалоба.
+ *
+ * Сообщить «у вас 45 задач без срока» бесполезно: от этого ничего не меняется, а идти
+ * заполнять полсотни полей руками никто не сядет. Поэтому здесь готовые ответы — кого
+ * поставить и на когда, с причиной. Руководителю остаётся согласиться, поправить или
+ * сказать «не этой»; сказанное «не этой» больше не спрашивают.
+ *
+ * Пустые поля — не мелочь: из-за них молчит секретарь, не работает светофор рисков
+ * и не считается загрузка команды.
+ */
+function Gaps({ canManage }: { canManage: boolean }) {
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.assistantGaps>> | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+
+  const load = () => api.assistantGaps().then(setData).catch(() => undefined);
+  useEffect(() => { void load(); }, []);
+
+  if (!canManage || !data) return null;
+  const { noAssignee, noDeadline } = data;
+  if (!noAssignee.length && !noDeadline.length) return null;
+
+  const apply = async (row: { taskId: string }, body: Record<string, unknown>, confirmOverload = false) => {
+    setBusy(row.taskId); setNote('');
+    try {
+      const res = await api.applyGap({ taskId: row.taskId, ...body, confirmOverload });
+      // Человек уже перегружен — прогноз предупреждает ровно так же, как при
+      // назначении руками. Решает руководитель, а не секретарь.
+      if (res?.applied === false && res?.warning) {
+        setNote(`У человека уже ${Math.round(res.projectedHours)} ч работы при норме ${Math.round(res.capacityHours)} ч.`);
+        if (window.confirm('Человек перегружен. Всё равно назначить?')) return apply(row, body, true);
+        return;
+      }
+      await load();
+    } catch { setNote('Не получилось — попробуйте из карточки задачи'); }
+    finally { setBusy(null); }
+  };
+
+  const skip = async (taskId: string, kind: 'assignee' | 'deadline') => {
+    setBusy(taskId);
+    try { await api.skipGap(taskId, kind); await load(); }
+    catch { /* следующий заход покажет строку снова — это не потеря */ }
+    finally { setBusy(null); }
+  };
+
+  return (
+    <div className="secretary-proposed">
+      <div className="drawer-section-title"><Icon name="alert" size={14} /> Не хватает данных</div>
+      {note && <div className="dim gap-note">{note}</div>}
+
+      {noAssignee.map((r) => (
+        <div key={`a${r.taskId}`} className="gap-row">
+          <div className="gap-body">
+            <div className="gap-title">{r.title}</div>
+            <div className="dim gap-meta">
+              {r.projectName} · без исполнителя · предлагаю <b>{r.assignee?.fullName}</b>: {r.assignee?.reason}
+            </div>
+          </div>
+          <span className="gap-actions">
+            <button
+              className="btn btn-sm"
+              disabled={busy === r.taskId}
+              onClick={() => apply(r, { assigneeId: r.assignee?.userId })}
+            >
+              Назначить
+            </button>
+            <button className="btn btn-ghost btn-sm" disabled={busy === r.taskId} onClick={() => skip(r.taskId, 'assignee')}>
+              Не этой
+            </button>
+          </span>
+        </div>
+      ))}
+
+      {noDeadline.map((r) => (
+        <div key={`d${r.taskId}`} className="gap-row">
+          <div className="gap-body">
+            <div className="gap-title">{r.title}</div>
+            <div className="dim gap-meta">
+              {r.projectName} · без срока · предлагаю <b>{r.deadline?.date}</b>: {r.deadline?.reason}
+            </div>
+          </div>
+          <span className="gap-actions">
+            <button
+              className="btn btn-sm"
+              disabled={busy === r.taskId}
+              onClick={() => apply(r, { deadline: r.deadline?.date })}
+            >
+              Поставить срок
+            </button>
+            <button className="btn btn-ghost btn-sm" disabled={busy === r.taskId} onClick={() => skip(r.taskId, 'deadline')}>
+              Не этой
+            </button>
+          </span>
+        </div>
+      ))}
+
+      {(data.counts.noAssignee > noAssignee.length || data.counts.noDeadline > noDeadline.length) && (
+        <div className="dim gap-note">
+          Показано первое; всего без исполнителя — {data.counts.noAssignee}, без срока — {data.counts.noDeadline}.
+        </div>
+      )}
     </div>
   );
 }

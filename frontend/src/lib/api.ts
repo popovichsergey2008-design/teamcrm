@@ -441,6 +441,19 @@ export const api = {
 
   // Этап 3 — Telegram binding & standup
   telegramLinkCode: () => request<{ code: string; expiresAt: string }>('POST', '/me/telegram/link-code'),
+  // Дыры в данных: задачи без исполнителя и срока — с готовыми предложениями
+  assistantGaps: () => request<{
+    noAssignee: { taskId: string; title: string; projectId: string; projectName: string;
+      assignee?: { userId: string; fullName: string; reason: string } }[];
+    noDeadline: { taskId: string; title: string; projectId: string; projectName: string;
+      deadline?: { date: string; reason: string } }[];
+    counts: { noAssignee: number; noDeadline: number };
+  }>('GET', '/assistant/gaps'),
+  applyGap: (body: { taskId: string; assigneeId?: string; deadline?: string; confirmOverload?: boolean }) =>
+    request<any>('POST', '/assistant/gaps/apply', body),
+  skipGap: (taskId: string, kind: 'assignee' | 'deadline') =>
+    request<{ skipped: true }>('POST', '/assistant/gaps/skip', { taskId, kind }),
+
   telegramStatus: () => request<{ linked: boolean; botUrl: string | null }>('GET', '/me/telegram/status'),
   telegramUnlink: () => request<{ ok: true }>('DELETE', '/me/telegram/link'),
   listStandups: () => request<any[]>('GET', '/standup/submissions'),

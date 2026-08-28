@@ -1,9 +1,10 @@
 import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AssistantService } from './assistant.service';
+import { GapsService } from './gaps.service';
 import { MaintenanceService } from './maintenance.service';
 import { ModeratorService } from './moderator.service';
 
@@ -17,6 +18,19 @@ class AutoTasksDto {
 
 class EnabledDto {
   @IsBoolean() enabled!: boolean;
+}
+
+class GapApplyDto {
+  @IsString() @MaxLength(32) taskId!: string;
+  @IsOptional() @IsString() @MaxLength(32) assigneeId?: string;
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Срок в формате ГГГГ-ММ-ДД' }) deadline?: string;
+  /** Человек перегружен, и руководитель это видит и всё равно назначает. */
+  @IsOptional() @IsBoolean() confirmOverload?: boolean;
+}
+
+class GapSkipDto {
+  @IsString() @MaxLength(32) taskId!: string;
+  @IsIn(['assignee', 'deadline']) kind!: 'assignee' | 'deadline';
 }
 
 /**
@@ -34,6 +48,7 @@ export class AssistantController {
     private readonly assistant: AssistantService,
     private readonly moderator: ModeratorService,
     private readonly maintenance: MaintenanceService,
+    private readonly gaps: GapsService,
   ) {}
 
   @Get('mode')
@@ -117,5 +132,26 @@ export class AssistantController {
   @Post('pings/:id/dismiss')
   dismiss(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.assistant.dismiss(u.tenantId, u.userId, id);
+  }
+
+  /**
+   * Дыры в данных: задачи без исполнителя и без срока — с готовыми предложениями.
+   *
+   * Смотреть может любой сотрудник (это состояние его же работы), а заполнять —
+   * руководитель: раздача задач и сроков решается не тем, кто их выполняет.
+   */
+  @Get('gaps')
+  listGaps(@CurrentUser() u: AuthUser) {
+    return this.gaps.list(u.tenantId);
+  }
+
+  @Post('gaps/apply')
+  applyGap(@CurrentUser() u: AuthUser, @Body() dto: GapApplyDto) {
+    return this.gaps.apply(u.tenantId, u.userId, u.role, dto);
+  }
+
+  @Post('gaps/skip')
+  skipGap(@CurrentUser() u: AuthUser, @Body() dto: GapSkipDto) {
+    return this.gaps.skip(u.tenantId, u.userId, u.role, dto.taskId, dto.kind);
   }
 }

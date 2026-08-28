@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ForecastModule } from '../forecast/forecast.module';
 import { MeetingsModule } from '../meetings/meetings.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ProjectsModule } from '../projects/projects.module';
@@ -10,6 +11,8 @@ import { AssistantService } from './assistant.service';
 import { ModeratorRepository } from './moderator.repository';
 import { ModeratorScheduler } from './moderator.scheduler';
 import { ModeratorService } from './moderator.service';
+import { GapsRepository } from './gaps.repository';
+import { GapsService } from './gaps.service';
 import { MaintenanceRepository } from './maintenance.repository';
 import { MaintenanceScheduler } from './maintenance.scheduler';
 import { MaintenanceService } from './maintenance.service';
@@ -26,13 +29,16 @@ import { MaintenanceService } from './maintenance.service';
   // отклонение черновика — поэтому берёт готовые сервисы, а не пишет в базу сама
   // NotificationsModule — ради канала в Telegram: сводка приходит туда же, куда
   // остальные уведомления, и слушается той же настройки человека
-  imports: [TasksModule, ProjectsModule, MeetingsModule, NotificationsModule],
+  // ForecastModule — чтобы секретарь назначал исполнителя тем же путём, что и человек:
+  // с предупреждением о перегрузе, а не прямым UPDATE в обход правил
+  imports: [TasksModule, ProjectsModule, MeetingsModule, NotificationsModule, ForecastModule],
   controllers: [AssistantController],
   providers: [
     AssistantService, AssistantRepository, AssistantScheduler,
     ModeratorService, ModeratorRepository, ModeratorScheduler,
     MaintenanceService, MaintenanceRepository, MaintenanceScheduler,
+    GapsService, GapsRepository,
   ],
-  exports: [AssistantService, ModeratorService, MaintenanceService],
+  exports: [AssistantService, ModeratorService, MaintenanceService, GapsService],
 })
 export class AssistantModule {}

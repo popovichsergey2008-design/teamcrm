@@ -140,12 +140,16 @@ export class AssistantRepository {
     tenantId: string; userId: string; kind: string; taskId: string | null; text: string;
     status: 'proposed' | 'sent'; dedupKey: string;
   }): Promise<{ id: string } | null> {
+    // Время отправки считаем здесь, а не в SQL: тот же параметр в роли значения
+    // колонки И в сравнении внутри CASE Postgres отказывается типизировать —
+    // «inconsistent types deduced for parameter», и весь проход планировщика падал.
+    const sentAt = input.status === 'sent' ? new Date() : null;
     return this.db.one<{ id: string }>(
       `INSERT INTO assistant_pings (tenant_id, user_id, kind, task_id, text, status, dedup_key, last_sent_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $6 = 'sent' THEN now() ELSE NULL END)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT (tenant_id, dedup_key) DO NOTHING
        RETURNING id`,
-      [input.tenantId, input.userId, input.kind, input.taskId, input.text, input.status, input.dedupKey],
+      [input.tenantId, input.userId, input.kind, input.taskId, input.text, input.status, input.dedupKey, sentAt],
     );
   }
 
@@ -165,30 +169,15 @@ export class AssistantRepository {
    * поэтому переписываем его целиком и поднимаем счётчик повторов.
    */
   async repeat(tenantId: string, id: string, text: string, status: 'proposed' | 'sent'): Promise<void> {
+    const sentAt = status === 'sent' ? new Date() : null;
     await this.db.query(
       `UPDATE assistant_pings
           SET text=$3, status=$4, repeats=repeats+1, resolved_at=NULL,
-              last_sent_at = CASE WHEN $4 = 'sent' THEN now() ELSE last_sent_at END,
+              last_sent_at = COALESCE($5::timestamptz, last_sent_at),
               created_at=now()
         WHERE tenant_id=$1 AND id=$2`,
-      [tenantId, id, text.slice(0, 300), status],
+      [tenantId, id, text.slice(0, 300), status, sentAt],
     );
-  }
-
-  /**
-   * Кому и что можно сказать утром: получатели с накопившимися поводами.
-   *
-   * Отдельно от `candidates` не собираем — берём те же поводы и раскладываем по людям
-   * в сервисе. Здесь только список тех, кто сегодня уже получил сводку, чтобы
-   * частые проходы планировщика не прислали её дважды.
-   */
-  async digestSent(tenantId: string, keys: string[]): Promise<Set<string>> {
-    if (!keys.length) return new Set();
-    const rows = await this.db.many<{ dedup_key: string }>(
-      `SELECT dedup_key FROM assistant_pings WHERE tenant_id=$1 AND dedup_key = ANY($2::text[])`,
-      [tenantId, keys],
-    );
-    return new Set(rows.map((r) => r.dedup_key));
   }
 
   /**

@@ -130,6 +130,46 @@ describe('Смарт-пинги ассистента (e2e)', () => {
     expect(log.some((a: any) => a.kind === 'digest')).toBe(true);
   });
 
+  it('дыры в данных: секретарь предлагает исполнителя и срок, а не жалуется на пустоту', async () => {
+    const s = await setup('Дыры');
+    // задача без исполнителя и без срока — та самая «45 из 61» с прода
+    const bare = (await http.post('/api/tasks').set(H(s.owner.accessToken)).send({
+      projectId: s.project.id, title: 'Ничья задача',
+    }).expect(201)).body.data;
+
+    const gaps = (await http.get('/api/assistant/gaps').set(H(s.owner.accessToken)).expect(200)).body.data;
+    const noAssignee = gaps.noAssignee.find((g: any) => String(g.taskId) === String(bare.id));
+    const noDeadline = gaps.noDeadline.find((g: any) => String(g.taskId) === String(bare.id));
+
+    // предложение приходит с причиной: молча подставленный исполнитель — лотерея
+    expect(noAssignee.assignee.userId).toBeTruthy();
+    expect(noAssignee.assignee.reason).toBeTruthy();
+    expect(noDeadline.deadline.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    // применяем — поля заполняются настоящим путём, через прогноз
+    await http.post('/api/assistant/gaps/apply').set(H(s.owner.accessToken)).send({
+      taskId: String(bare.id), assigneeId: String(s.mate.id), deadline: noDeadline.deadline.date, confirmOverload: true,
+    }).expect(201);
+
+    const board = (await http.get(`/api/projects/${s.project.id}/board`).set(H(s.owner.accessToken)).expect(200)).body.data;
+    const after = board.columns.flatMap((c: any) => c.tasks).find((t: any) => String(t.id) === String(bare.id));
+    expect(String(after.assignee_id)).toBe(String(s.mate.id));
+    expect(after.deadline_at).toBeTruthy();
+
+    // «не этой» — навсегда: предложение, возвращающееся каждую неделю, это тот же шум
+    const other = (await http.post('/api/tasks').set(H(s.owner.accessToken)).send({
+      projectId: s.project.id, title: 'Задача-контейнер',
+    }).expect(201)).body.data;
+    await http.post('/api/assistant/gaps/skip').set(H(s.owner.accessToken))
+      .send({ taskId: String(other.id), kind: 'assignee' }).expect(201);
+    const again = (await http.get('/api/assistant/gaps').set(H(s.owner.accessToken)).expect(200)).body.data;
+    expect(again.noAssignee.some((g: any) => String(g.taskId) === String(other.id))).toBe(false);
+
+    // рядовой сотрудник список видит, но раздавать работу не может
+    await http.post('/api/assistant/gaps/apply').set(H(s.mateToken))
+      .send({ taskId: String(other.id), assigneeId: String(s.mate.id) }).expect(403);
+  });
+
   it('выключенный ассистент молчит совсем', async () => {
     const s = await setup('Тишина');
     await http.put('/api/assistant/mode').set(H(s.owner.accessToken)).send({ mode: 'off' }).expect(200);
