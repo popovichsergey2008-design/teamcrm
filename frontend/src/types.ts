@@ -185,7 +185,7 @@ export type AssistantMode = 'off' | 'copilot' | 'autopilot';
 /** Напоминание ассистента о зависшей работе. */
 export interface Ping {
   id: string;
-  kind: 'overdue' | 'due_soon' | 'stuck_review' | 'silent';
+  kind: 'overdue' | 'due_soon' | 'stuck_review' | 'silent' | 'digest';
   taskId: string | null;
   projectId: string | null;
   text: string;
