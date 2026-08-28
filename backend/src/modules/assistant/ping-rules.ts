@@ -10,6 +10,15 @@
 
 export type PingKind = 'overdue' | 'due_soon' | 'stuck_review' | 'silent';
 
+/**
+ * Поводы, которые терпят до утра, и повод, который не терпит.
+ *
+ * Просрочка, зависшая проверка и молчащая задача копятся днями — их место в утренней
+ * сводке. «Срок сегодня» — единственное, что имеет смысл сказать в момент, когда это
+ * ещё можно успеть сделать.
+ */
+export const INSTANT_KINDS: PingKind[] = ['due_soon'];
+
 /** Кандидат из базы: задача, у которой есть повод для напоминания. */
 export interface PingCandidate {
   kind: PingKind;
@@ -79,6 +88,20 @@ export function withinWorkHours(now: Date, timezone: string | null, work: WorkHo
   return at >= toMinutes(work.workStart) && at < toMinutes(work.workEnd);
 }
 
+/**
+ * Приветствие по местному времени получателя.
+ *
+ * Сводку человек чаще всего читает утром, но не всегда: кто-то открывает CRM после
+ * обеда, кто-то работает вечером. «Доброе утро» в семь вечера читается как машинная
+ * рассылка — а мы весь смысл сводки строим на том, что это разговор.
+ */
+export function greetingFor(now: Date, timezone: string | null): string {
+  const { hour } = localParts(now, timezone);
+  if (hour < 12) return 'Доброе утро';
+  if (hour < 18) return 'Добрый день';
+  return 'Добрый вечер';
+}
+
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':');
   return Number(h) * 60 + Number(m || 0);
@@ -117,11 +140,64 @@ export function pingText(c: PingCandidate): string {
 }
 
 /**
- * Ключ повтора: один повод по одной задаче — раз в сутки.
+ * Ключ повода: одна строка на «этот повод по этой задаче» — навсегда, без даты.
  *
- * Дата берётся местная у получателя: иначе у людей в разных поясах сутки кончались бы
- * в чужую полночь, и кому-то приходило бы по два напоминания подряд.
+ * Раньше в ключ входила дата, и каждое утро повод заводился заново: человек получал
+ * «срок прошёл» по одной и той же задаче каждый день, пока её не закроют. Теперь
+ * строка одна, а частоту повторов решает `repeatDue`.
  */
-export function dedupKey(c: PingCandidate, now: Date): string {
-  return `${c.kind}:${c.taskId}:${localParts(now, c.timezone).date}`;
+export function pingKey(c: Pick<PingCandidate, 'kind' | 'taskId'>): string {
+  return `${c.kind}:${c.taskId}`;
+}
+
+/** Ключ сводки: одна на человека в день, дата — местная у него. */
+export function digestKey(userId: string, now: Date, timezone: string | null): string {
+  return `digest:${userId}:${localParts(now, timezone).date}`;
+}
+
+/**
+ * Паузы между повторами одного повода, в днях.
+ *
+ * Первое напоминание — сразу, второе — через день, дальше всё реже. Смысл в том, что
+ * человек уже знает: если он не двигает задачу третью неделю, это не забывчивость,
+ * а решение. Напоминать о нём ежедневно — спорить с чужим решением голосом системы.
+ */
+const REPEAT_DAYS = [0, 1, 3, 7, 14];
+
+/** Пора ли напомнить снова: повод не менялся, но и не решён. */
+export function repeatDue(repeats: number, lastSentAt: Date | null, now: Date): boolean {
+  if (!lastSentAt) return true;
+  // Сказали один раз — ждём день; два — три дня; и так до потолка в две недели.
+  const wait = REPEAT_DAYS[Math.min(Math.max(repeats, 0), REPEAT_DAYS.length - 1)];
+  const passed = (now.getTime() - lastSentAt.getTime()) / 86_400_000;
+  return passed >= wait;
+}
+
+const DIGEST_TITLE: Record<PingKind, string> = {
+  overdue: 'Просрочено',
+  due_soon: 'Срок сегодня',
+  stuck_review: 'Ждёт вашей проверки',
+  silent: 'Без движения',
+};
+
+/**
+ * Утренняя сводка: всё, что накопилось, одним сообщением.
+ *
+ * Порядок — по срочности, а не по алфавиту: первым идёт то, что уже сорвано.
+ * Больше трёх задач в строке не перечисляем — сводку читают за десять секунд,
+ * и длинный список превращает её в ту же простыню, от которой уходим.
+ */
+export function digestText(items: PingCandidate[], greeting = 'Доброе утро'): string {
+  const order: PingKind[] = ['overdue', 'due_soon', 'stuck_review', 'silent'];
+  const lines: string[] = [];
+  for (const kind of order) {
+    const group = items.filter((i) => i.kind === kind);
+    if (!group.length) continue;
+    const shown = group.slice(0, 3).map((i) => `«${i.title}»`).join(', ');
+    const rest = group.length > 3 ? ` и ещё ${group.length - 3}` : '';
+    lines.push(`${DIGEST_TITLE[kind]} (${group.length}): ${shown}${rest}`);
+  }
+  if (!lines.length) return '';
+  const body = lines.map((l) => `• ${l}`).join('\n');
+  return `${greeting}! Коротко о делах:\n${body}`;
 }

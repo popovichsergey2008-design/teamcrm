@@ -113,9 +113,21 @@ describe('Смарт-пинги ассистента (e2e)', () => {
     expect(inbox.length).toBeGreaterThan(0);
     expect(inbox[0].text).toContain('Просроченная задача');
 
+    // Накопившееся приходит ОДНОЙ сводкой, а не россыпью уколов: живая проверка
+    // показала 190 напоминаний за четыре дня и реакцию в 14 нажатий «скрыть».
+    const digest = inbox.find((p: any) => p.kind === 'digest');
+    expect(digest).toBeTruthy();
+    expect(digest.text).toContain('Коротко о делах');
+    expect(digest.text).toContain('Просроченная задача');
+
+    // Второй проход сводку не повторяет: одна на человека в день.
+    await scheduler.tick();
+    const after = (await http.get('/api/assistant/pings').set(H(s.mateToken)).expect(200)).body.data;
+    expect(after.filter((p: any) => p.kind === 'digest')).toHaveLength(1);
+
     // журнал секретаря перестал быть пустым — счётчик показывает настоящую работу
     const log = (await http.get('/api/secretary/log').set(H(s.owner.accessToken)).expect(200)).body.data;
-    expect(log.some((a: any) => a.kind === 'ping')).toBe(true);
+    expect(log.some((a: any) => a.kind === 'digest')).toBe(true);
   });
 
   it('выключенный ассистент молчит совсем', async () => {

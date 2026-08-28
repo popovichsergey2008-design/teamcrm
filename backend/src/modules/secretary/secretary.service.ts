@@ -11,7 +11,8 @@ export type AiActionKind =
   | 'nl_task'
   | 'ping'
   | 'agenda'
-  | 'maintenance';
+  | 'maintenance'
+  | 'digest';
 
 /**
  * Сколько ручной работы заменяет одно действие, в минутах.
@@ -33,6 +34,8 @@ const SAVED_MINUTES: Record<AiActionKind, number> = {
   agenda: 5,
   // уборка ≈ 2 минуты: найти забытое, вспомнить контекст и решить, что с ним делать
   maintenance: 2,
+  // сводка дня ≈ 5 минут: столько занимает утренний обход досок «что у меня горит»
+  digest: 5,
 };
 
 export type AiAction = {

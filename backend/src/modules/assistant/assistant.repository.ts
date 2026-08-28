@@ -133,20 +133,62 @@ export class AssistantRepository {
   }
 
   /**
-   * Записать пинг. Ключ повтора уникален — второй раз за сутки по тому же поводу
-   * запрос просто ничего не сделает и вернёт null.
+   * Записать пинг. Ключ повода уникален — повторное появление того же повода
+   * обновляет ту же строку, а не заводит новую.
    */
   create(input: {
-    tenantId: string; userId: string; kind: string; taskId: string; text: string;
+    tenantId: string; userId: string; kind: string; taskId: string | null; text: string;
     status: 'proposed' | 'sent'; dedupKey: string;
   }): Promise<{ id: string } | null> {
     return this.db.one<{ id: string }>(
-      `INSERT INTO assistant_pings (tenant_id, user_id, kind, task_id, text, status, dedup_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO assistant_pings (tenant_id, user_id, kind, task_id, text, status, dedup_key, last_sent_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $6 = 'sent' THEN now() ELSE NULL END)
        ON CONFLICT (tenant_id, dedup_key) DO NOTHING
        RETURNING id`,
       [input.tenantId, input.userId, input.kind, input.taskId, input.text, input.status, input.dedupKey],
     );
+  }
+
+  /** Строка повода, если он уже заводился: по ней решаем, пора ли повторять. */
+  byKey(tenantId: string, dedupKey: string): Promise<{
+    id: string; status: string; repeats: number; last_sent_at: Date | null;
+  } | null> {
+    return this.db.one(
+      `SELECT id, status, repeats, last_sent_at FROM assistant_pings
+        WHERE tenant_id=$1 AND dedup_key=$2`,
+      [tenantId, dedupKey],
+    );
+  }
+
+  /**
+   * Повторить повод: тот же текст мог устареть («срок прошёл 2 дня» → «5 дней»),
+   * поэтому переписываем его целиком и поднимаем счётчик повторов.
+   */
+  async repeat(tenantId: string, id: string, text: string, status: 'proposed' | 'sent'): Promise<void> {
+    await this.db.query(
+      `UPDATE assistant_pings
+          SET text=$3, status=$4, repeats=repeats+1, resolved_at=NULL,
+              last_sent_at = CASE WHEN $4 = 'sent' THEN now() ELSE last_sent_at END,
+              created_at=now()
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id, text.slice(0, 300), status],
+    );
+  }
+
+  /**
+   * Кому и что можно сказать утром: получатели с накопившимися поводами.
+   *
+   * Отдельно от `candidates` не собираем — берём те же поводы и раскладываем по людям
+   * в сервисе. Здесь только список тех, кто сегодня уже получил сводку, чтобы
+   * частые проходы планировщика не прислали её дважды.
+   */
+  async digestSent(tenantId: string, keys: string[]): Promise<Set<string>> {
+    if (!keys.length) return new Set();
+    const rows = await this.db.many<{ dedup_key: string }>(
+      `SELECT dedup_key FROM assistant_pings WHERE tenant_id=$1 AND dedup_key = ANY($2::text[])`,
+      [tenantId, keys],
+    );
+    return new Set(rows.map((r) => r.dedup_key));
   }
 
   /**

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MeetingsModule } from '../meetings/meetings.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { AssistantController } from './assistant.controller';
@@ -23,7 +24,9 @@ import { MaintenanceService } from './maintenance.service';
 @Module({
   // уборка ходит теми же путями, что и человек: перенос задачи, архивация проекта,
   // отклонение черновика — поэтому берёт готовые сервисы, а не пишет в базу сама
-  imports: [TasksModule, ProjectsModule, MeetingsModule],
+  // NotificationsModule — ради канала в Telegram: сводка приходит туда же, куда
+  // остальные уведомления, и слушается той же настройки человека
+  imports: [TasksModule, ProjectsModule, MeetingsModule, NotificationsModule],
   controllers: [AssistantController],
   providers: [
     AssistantService, AssistantRepository, AssistantScheduler,

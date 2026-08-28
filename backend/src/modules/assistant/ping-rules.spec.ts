@@ -1,4 +1,7 @@
-import { dedupKey, humanHours, localParts, PingCandidate, pingText, withinWorkHours, WorkHours } from './ping-rules';
+import {
+  digestKey, digestText, greetingFor, humanHours, localParts, PingCandidate, pingKey, pingText,
+  repeatDue, withinWorkHours, WorkHours,
+} from './ping-rules';
 
 const work: WorkHours = {
   workStart: '09:00',
@@ -71,12 +74,75 @@ describe('Смарт-пинги — правила', () => {
     expect(pingText(candidate({ projectName: null }))).toBe('Срок прошёл 1 день назад: «Договор с подрядчиком»');
   });
 
-  it('ключ повтора держит один повод в сутки и различает поводы', () => {
-    expect(dedupKey(candidate(), noonUtc)).toBe('overdue:10:2026-08-26');
-    expect(dedupKey(candidate({ kind: 'silent' }), noonUtc)).toBe('silent:10:2026-08-26');
+  it('повод живёт одной строкой: даты в ключе больше нет', () => {
+    // С датой в ключе повод заводился заново каждое утро — отсюда и брались
+    // 35 сообщений «срок прошёл» одному человеку за три дня.
+    expect(pingKey(candidate())).toBe('overdue:10');
+    expect(pingKey(candidate({ kind: 'silent' }))).toBe('silent:10');
+  });
+
+  it('сводка — одна на человека в день, по его местным суткам', () => {
+    expect(digestKey('7', noonUtc, 'Europe/Moscow')).toBe('digest:7:2026-08-26');
     // 23:30 по Москве и 00:30 следующего дня в Новосибирске — разные сутки у разных людей
     const late = new Date('2026-08-26T20:30:00Z');
-    expect(dedupKey(candidate(), late)).toBe('overdue:10:2026-08-26');
-    expect(dedupKey(candidate({ timezone: 'Asia/Novosibirsk' }), late)).toBe('overdue:10:2026-08-27');
+    expect(digestKey('7', late, 'Europe/Moscow')).toBe('digest:7:2026-08-26');
+    expect(digestKey('7', late, 'Asia/Novosibirsk')).toBe('digest:7:2026-08-27');
+  });
+});
+
+describe('Затухающие повторы', () => {
+  const at = (days: number) => new Date(noonUtc.getTime() + days * 86_400_000);
+
+  it('о новом поводе говорим сразу', () => {
+    expect(repeatDue(1, null, noonUtc)).toBe(true);
+  });
+
+  it('второй раз — через сутки, третий — через три дня, дальше реже', () => {
+    expect(repeatDue(1, noonUtc, at(0.5))).toBe(false);
+    expect(repeatDue(1, noonUtc, at(1))).toBe(true);
+    expect(repeatDue(2, noonUtc, at(2))).toBe(false);
+    expect(repeatDue(2, noonUtc, at(3))).toBe(true);
+    expect(repeatDue(3, noonUtc, at(6))).toBe(false);
+    expect(repeatDue(3, noonUtc, at(7))).toBe(true);
+  });
+
+  it('дальше пятого раза пауза не растёт бесконечно — две недели', () => {
+    expect(repeatDue(9, noonUtc, at(13))).toBe(false);
+    expect(repeatDue(9, noonUtc, at(14))).toBe(true);
+  });
+});
+
+describe('Утренняя сводка', () => {
+  it('собирается по срочности и не превращается в простыню', () => {
+    const items = [
+      candidate({ title: 'Договор' }),
+      candidate({ kind: 'overdue', title: 'Смета', taskId: '11' }),
+      candidate({ kind: 'silent', title: 'Лендинг', taskId: '12' }),
+      candidate({ kind: 'stuck_review', title: 'Макеты', taskId: '13' }),
+      candidate({ kind: 'overdue', title: 'Отчёт', taskId: '14' }),
+      candidate({ kind: 'overdue', title: 'Прайс', taskId: '15' }),
+    ];
+    const text = digestText(items);
+
+    expect(text.startsWith('Доброе утро! Коротко о делах:')).toBe(true);
+    // просрочка первой строкой: то, что уже сорвано, важнее остального
+    expect(text.indexOf('Просрочено (4)')).toBeLessThan(text.indexOf('Ждёт вашей проверки'));
+    expect(text).toContain('и ещё 1'); // четыре задачи, перечислены три
+    expect(text).toContain('Без движения (1): «Лендинг»');
+    expect(text.split('\n').length).toBe(4); // приветствие + три группы
+  });
+
+  it('без поводов сводки нет вовсе: «у вас всё хорошо» — это тоже шум', () => {
+    expect(digestText([])).toBe('');
+  });
+});
+
+describe('Приветствие сводки', () => {
+  it('зависит от местного времени получателя, а не сервера', () => {
+    // 06:10 UTC — утро в Москве и уже день в Новосибирске
+    const morning = new Date('2026-08-26T06:10:00Z');
+    expect(greetingFor(morning, 'Europe/Moscow')).toBe('Доброе утро');
+    expect(greetingFor(morning, 'Asia/Novosibirsk')).toBe('Добрый день');
+    expect(greetingFor(new Date('2026-08-26T16:00:00Z'), 'Europe/Moscow')).toBe('Добрый вечер');
   });
 });

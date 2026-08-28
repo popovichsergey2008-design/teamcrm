@@ -12,6 +12,6 @@ import { TelegramModule } from '../telegram/telegram.module';
   imports: [DatabaseModule, TelegramModule],
   controllers: [NotificationsController],
   providers: [NotificationsRepository, NotificationsService, MailWorker, TelegramMirror],
-  exports: [NotificationsService],
+  exports: [NotificationsService, TelegramMirror],
 })
 export class NotificationsModule {}

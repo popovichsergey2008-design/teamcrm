@@ -69,11 +69,14 @@ export function AssistantPings({ today, onOpenTask, onPlanned }: {
     <section className="card ping-box">
       <h3 className="ping-head"><Icon name="bell" size={15} /> Секретарь напоминает</h3>
       {items.map((p) => (
-        <div key={p.id} className="ping-row">
+        <div key={p.id} className={`ping-row${p.kind === 'digest' ? ' ping-digest' : ''}`}>
+          {/* Сводка дня — не строка про одну задачу, а несколько пунктов:
+              переносы в ней несут смысл и обязаны сохраниться. */}
           <button
             className="ping-text"
             onClick={() => (p.projectId && p.taskId ? onOpenTask(p.projectId, p.taskId) : undefined)}
             title={p.taskId ? 'Открыть задачу' : undefined}
+            style={p.kind === 'digest' ? { whiteSpace: 'pre-line', cursor: 'default' } : undefined}
           >
             {p.text}
           </button>

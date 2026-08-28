@@ -3,14 +3,16 @@ import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { AssistantMode, AssistantRepository, PingRow } from './assistant.repository';
-import { dedupKey, PingCandidate, pingText, withinWorkHours } from './ping-rules';
+import {
+  digestKey, digestText, greetingFor, INSTANT_KINDS, PingCandidate, pingKey, pingText,
+  repeatDue, withinWorkHours,
+} from './ping-rules';
+import { TelegramMirror } from '../notifications/telegram-mirror.service';
 
 /** Через сколько часов на проверке работа считается зависшей — как в «Пульсе команды». */
 const STUCK_HOURS = 24;
 /** Сколько дней задача без срока может стоять молча, прежде чем о ней спросят. */
 const SILENT_DAYS = 5;
-/** Больше — это уже не помощь: столько напоминаний за один проход на человека. */
-const MAX_PER_USER = 3;
 
 const MODES: AssistantMode[] = ['off', 'copilot', 'autopilot'];
 
@@ -22,6 +24,7 @@ export class AssistantService {
     private readonly repo: AssistantRepository,
     private readonly realtime: RealtimeService,
     private readonly secretary: SecretaryService,
+    private readonly telegram: TelegramMirror,
   ) {}
 
   // ---------- режим ----------
@@ -74,7 +77,7 @@ export class AssistantService {
     const ping = await this.gate(tenantId, userId, id);
     if (ping.status !== 'proposed') throw AppException.conflict('Это напоминание уже отправлено');
     await this.repo.setStatus(tenantId, id, 'sent');
-    this.deliver(tenantId, String(ping.user_id), id, ping.text, ping.task_id);
+    this.announce(tenantId, String(ping.user_id), id, ping.text, ping.task_id);
     void this.secretary.record({
       tenantId, userId: String(ping.user_id), kind: 'ping',
       summary: ping.text, subjectType: 'task', subjectId: ping.task_id,
@@ -101,11 +104,20 @@ export class AssistantService {
   // ---------- проход планировщика ----------
 
   /**
-   * Один проход по организации: найти поводы и разложить их по людям.
+   * Один проход по организации.
    *
-   * Тихие часы проверяются по поясу ПОЛУЧАТЕЛЯ, а не сервера. В режиме «копилот»
-   * ничего не рассылается — ассистент только предлагает, и предложение ждёт человека
-   * столько, сколько нужно: у предложения тихих часов нет, у отправки есть.
+   * Устройство прохода — прямое следствие живой проверки: 190 напоминаний за четыре
+   * дня и реакция в 14 нажатий «скрыть». Поэтому теперь так:
+   *
+   * — накопительные поводы (просрочка, зависшая проверка, молчащая задача) НЕ летят
+   *   поодиночке. Они собираются в одну утреннюю сводку — по рабочему календарю и
+   *   поясу получателя, один раз в день;
+   * — мгновенно уходит только «срок сегодня»: сказать об этом в обед бессмысленно;
+   * — повод, о котором уже говорили, повторяется по нарастающей паузе, а не каждое
+   *   утро. Человек, третью неделю не двигающий задачу, принял решение, а не забыл.
+   *
+   * В режиме «копилот» рассылки нет вовсе: поводы копятся предложениями и ждут
+   * решения постановщика — там шум создать невозможно.
    */
   async runTenant(tenantId: string, mode: AssistantMode, now = new Date()): Promise<number> {
     if (mode === 'off') return 0;
@@ -113,41 +125,99 @@ export class AssistantService {
       this.repo.workHours(tenantId),
       this.repo.candidates(tenantId, STUCK_HOURS, SILENT_DAYS),
     ]);
+    const autopilot = mode === 'autopilot';
 
-    const perUser = new Map<string, number>();
-    let created = 0;
-
+    const byUser = new Map<string, PingCandidate[]>();
     for (const c of candidates) {
       if (!c.userId || !c.taskId) continue;
-      const sent = mode === 'autopilot';
-      // молчим только когда СОБИРАЕМСЯ ПИСАТЬ: предложение полежит до утра само
-      if (sent && !withinWorkHours(now, c.timezone, work)) continue;
-      const already = perUser.get(c.userId) ?? 0;
-      if (already >= MAX_PER_USER) continue;
+      const list = byUser.get(c.userId) ?? [];
+      list.push(c as PingCandidate);
+      byUser.set(c.userId, list);
+    }
 
-      const text = pingText(c as PingCandidate);
-      const row = await this.repo.create({
-        tenantId, userId: c.userId, kind: c.kind, taskId: c.taskId, text,
-        status: sent ? 'sent' : 'proposed',
-        dedupKey: dedupKey(c as PingCandidate, now),
-      });
-      if (!row) continue; // сегодня об этом уже напоминали
+    let created = 0;
+    for (const [userId, items] of byUser) {
+      const tz = items[0].timezone;
+      // Сводку собираем в первый проход внутри рабочего дня человека — и только если
+      // сегодня её ещё не было. Не «ровно в девять»: кто-то начинает позже, кто-то
+      // включает ноутбук после обеда, а сервер вообще мог в это время перезапускаться.
+      const digestDue = withinWorkHours(now, tz, work)
+        && !(await this.repo.byKey(tenantId, digestKey(userId, now, tz)));
+      const forDigest: PingCandidate[] = [];
 
-      perUser.set(c.userId, already + 1);
-      created++;
-      if (sent) {
-        this.deliver(tenantId, c.userId, row.id, text, c.taskId);
-        void this.secretary.record({
-          tenantId, userId: c.userId, kind: 'ping',
-          summary: text, subjectType: 'task', subjectId: c.taskId,
-        });
+      for (const c of items) {
+        const instant = INSTANT_KINDS.includes(c.kind);
+        // Накопительные поводы трогаем только утром: иначе счётчик повторов
+        // прокрутится за день четырежды, и затухание перестанет работать.
+        if (!instant && !digestDue) continue;
+
+        const fresh = await this.touch(tenantId, c, autopilot, now);
+        if (!fresh) continue; // повод спит до следующего повтора
+        created++;
+
+        if (!autopilot) continue; // копилот: ждём решения постановщика
+        if (instant && withinWorkHours(now, tz, work)) this.announce(tenantId, userId, fresh.id, fresh.text, c.taskId);
+        if (!instant) forDigest.push(c);
+      }
+
+      if (autopilot && digestDue && forDigest.length) {
+        created += await this.sendDigest(tenantId, userId, tz, forDigest, now) ? 1 : 0;
       }
     }
     return created;
   }
 
+  /**
+   * Завести повод или повторить его, если пришло время.
+   *
+   * Возвращает null, когда повод уже известен и повторять рано, — это и есть тишина,
+   * ради которой всё затевалось.
+   */
+  private async touch(
+    tenantId: string, c: PingCandidate, autopilot: boolean, now: Date,
+  ): Promise<{ id: string; text: string } | null> {
+    const key = pingKey(c);
+    const text = pingText(c);
+    const status = autopilot ? 'sent' : 'proposed';
+
+    const existing = await this.repo.byKey(tenantId, key);
+    if (!existing) {
+      const row = await this.repo.create({
+        tenantId, userId: c.userId, kind: c.kind, taskId: c.taskId, text, status, dedupKey: key,
+      });
+      return row ? { id: row.id, text } : null;
+    }
+    // «Не надо» сказано однажды и навсегда: скрытый повод сам не воскресает.
+    if (existing.status === 'dismissed') return null;
+    // Предложение уже лежит у постановщика — до его решения повторять нечего.
+    if (existing.status === 'proposed') return null;
+    if (!repeatDue(existing.repeats, existing.last_sent_at, now)) return null;
+    await this.repo.repeat(tenantId, existing.id, text, status);
+    return { id: existing.id, text };
+  }
+
+  /** Сводка: одна на человека в день, в приложение и в Telegram. */
+  private async sendDigest(
+    tenantId: string, userId: string, tz: string | null, items: PingCandidate[], now: Date,
+  ): Promise<boolean> {
+    const key = digestKey(userId, now, tz);
+    const text = digestText(items, greetingFor(now, tz));
+    if (!text) return false;
+    const row = await this.repo.create({
+      tenantId, userId, kind: 'digest', taskId: null, text, status: 'sent', dedupKey: key,
+    });
+    if (!row) return false; // сводку сегодня уже присылали
+
+    this.announce(tenantId, userId, row.id, text, null);
+    void this.telegram.push(tenantId, userId, text);
+    void this.secretary.record({
+      tenantId, userId, kind: 'digest', summary: `Сводка дня: ${items.length} дел`,
+    });
+    return true;
+  }
+
   /** Доставка в открытое приложение. Почтой не шлём: напоминание — не письмо. */
-  private deliver(tenantId: string, userId: string, pingId: string, text: string, taskId: string | null): void {
+  private announce(tenantId: string, userId: string, pingId: string, text: string, taskId: string | null): void {
     this.realtime.emitToUsers(tenantId, [String(userId)], 'assistant.ping', {
       id: String(pingId), text, taskId: taskId ? String(taskId) : null,
     });

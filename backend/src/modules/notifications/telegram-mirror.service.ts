@@ -30,6 +30,28 @@ export class TelegramMirror {
   ) {}
 
   /**
+   * Сообщение сотруднику в его личный чат, без письма.
+   *
+   * Тем же каналом и с той же настройкой, что и дубли почты: человек один раз решил,
+   * писать ли ему в Telegram, и решение должно действовать для всего, что мы шлём.
+   * Возвращает, дошло ли, — зовущему это нужно, чтобы не считать доставленным то,
+   * чего не было.
+   */
+  async push(tenantId: string, userId: string, text: string): Promise<boolean> {
+    if (!this.sender.enabled || !userId || !text.trim()) return false;
+    try {
+      if (!(await this.repo.prefEnabled(tenantId, userId, MIRROR_EVENT_KEY))) return false;
+      const chatId = await this.telegram.chatIdOf(tenantId, userId);
+      if (!chatId) return false;
+      await this.sender.sendMessage(chatId, text);
+      return true;
+    } catch (e) {
+      this.log.warn(`сообщение в Telegram не ушло: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
    * Одно письмо — одно сообщение. Зовётся до попытки отправки почты намеренно:
    * если письмо не уйдёт (нет ключа, битый адрес, спам-фильтр), человек всё равно
    * узнает о событии. Ошибки глотаем — очередь писем из-за мессенджера стоять не должна.
