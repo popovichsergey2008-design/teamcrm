@@ -8,7 +8,11 @@
  * тестами, а не глазами.
  */
 
-export type PingKind = 'overdue' | 'due_soon' | 'stuck_review' | 'silent';
+export type PingKind =
+  | 'overdue' | 'due_soon' | 'stuck_review' | 'silent'
+  // Оборванные нитки: не про задачу, а про начатый и не законченный разговор.
+  // Забываются они чаще сроков — о сроке хотя бы напоминает календарь.
+  | 'approval_stuck' | 'mention_silent';
 
 /**
  * Поводы, которые терпят до утра, и повод, который не терпит.
@@ -19,11 +23,14 @@ export type PingKind = 'overdue' | 'due_soon' | 'stuck_review' | 'silent';
  */
 export const INSTANT_KINDS: PingKind[] = ['due_soon'];
 
-/** Кандидат из базы: задача, у которой есть повод для напоминания. */
+/** Кандидат из базы: то, о чём есть повод напомнить. */
 export interface PingCandidate {
   kind: PingKind;
   userId: string;
-  taskId: string;
+  /** Задача, если повод про неё: у согласования и упоминания задачи может не быть. */
+  taskId: string | null;
+  /** То, о чём речь: задача, согласование или упоминание. По нему и строится ключ. */
+  subjectId: string;
   title: string;
   projectName: string | null;
   /** Часы: просрочки, до срока или без движения — смотря по поводу. */
@@ -136,6 +143,10 @@ export function pingText(c: PingCandidate): string {
       return `Ждёт вашей проверки ${humanHours(c.hours)}: «${c.title}»${where}`;
     case 'silent':
       return `Без движения ${humanHours(c.hours)}: «${c.title}»${where}. Что со статусом?`;
+    case 'approval_stuck':
+      return `Ждёт вашего решения ${humanHours(c.hours)}: «${c.title}»`;
+    case 'mention_silent':
+      return `Вас позвали ${humanHours(c.hours)} назад и ждут ответа: «${c.title}»`;
   }
 }
 
@@ -146,8 +157,8 @@ export function pingText(c: PingCandidate): string {
  * «срок прошёл» по одной и той же задаче каждый день, пока её не закроют. Теперь
  * строка одна, а частоту повторов решает `repeatDue`.
  */
-export function pingKey(c: Pick<PingCandidate, 'kind' | 'taskId'>): string {
-  return `${c.kind}:${c.taskId}`;
+export function pingKey(c: Pick<PingCandidate, 'kind' | 'subjectId'>): string {
+  return `${c.kind}:${c.subjectId}`;
 }
 
 /** Ключ сводки: одна на человека в день, дата — местная у него. */
@@ -177,6 +188,8 @@ const DIGEST_TITLE: Record<PingKind, string> = {
   overdue: 'Просрочено',
   due_soon: 'Срок сегодня',
   stuck_review: 'Ждёт вашей проверки',
+  approval_stuck: 'Ждёт вашего решения',
+  mention_silent: 'Вас позвали и ждут',
   silent: 'Без движения',
 };
 
@@ -188,7 +201,9 @@ const DIGEST_TITLE: Record<PingKind, string> = {
  * и длинный список превращает её в ту же простыню, от которой уходим.
  */
 export function digestText(items: PingCandidate[], greeting = 'Доброе утро'): string {
-  const order: PingKind[] = ['overdue', 'due_soon', 'stuck_review', 'silent'];
+  // Порядок — по тому, кого держит промедление: сорванный срок, потом чужое ожидание
+  // вашего ответа, и только потом собственные молчащие задачи.
+  const order: PingKind[] = ['overdue', 'due_soon', 'approval_stuck', 'mention_silent', 'stuck_review', 'silent'];
   const lines: string[] = [];
   for (const kind of order) {
     const group = items.filter((i) => i.kind === kind);

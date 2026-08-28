@@ -102,29 +102,55 @@ export class AssistantRepository {
        )
        SELECT * FROM (
          SELECT 'overdue' AS kind, t.assignee_id::text AS "userId", t.id::text AS "taskId",
+                t.id::text AS "subjectId",
                 t.title, t.project_name AS "projectName",
                 EXTRACT(EPOCH FROM (now() - t.deadline_at)) / 3600 AS hours, u.timezone
            FROM live t JOIN users u ON u.id = t.assignee_id AND u.is_active
           WHERE t.deadline_at < now() AND lower(t.column_name) <> ALL($2::text[])
          UNION ALL
-         SELECT 'due_soon', t.assignee_id::text, t.id::text, t.title, t.project_name,
+         SELECT 'due_soon', t.assignee_id::text, t.id::text, t.id::text, t.title, t.project_name,
                 EXTRACT(EPOCH FROM (t.deadline_at - now())) / 3600, u.timezone
            FROM live t JOIN users u ON u.id = t.assignee_id AND u.is_active
           WHERE t.deadline_at BETWEEN now() AND now() + interval '24 hours'
             AND lower(t.column_name) <> ALL($2::text[])
          UNION ALL
-         SELECT 'stuck_review', t.created_by::text, t.id::text, t.title, t.project_name,
+         SELECT 'stuck_review', t.created_by::text, t.id::text, t.id::text, t.title, t.project_name,
                 EXTRACT(EPOCH FROM (now() - t.updated_at)) / 3600, u.timezone
            FROM live t JOIN users u ON u.id = t.created_by AND u.is_active
           WHERE lower(t.column_name) = ANY($2::text[])
             AND t.updated_at < now() - make_interval(hours => $3::int)
          UNION ALL
-         SELECT 'silent', t.assignee_id::text, t.id::text, t.title, t.project_name,
+         SELECT 'silent', t.assignee_id::text, t.id::text, t.id::text, t.title, t.project_name,
                 EXTRACT(EPOCH FROM (now() - t.updated_at)) / 3600, u.timezone
            FROM live t JOIN users u ON u.id = t.assignee_id AND u.is_active
           WHERE t.deadline_at IS NULL
             AND lower(t.column_name) <> ALL($2::text[])
             AND t.updated_at < now() - make_interval(days => $4::int)
+         UNION ALL
+         -- Согласование, которое ждёт решения. Забывается чаще срока: у задачи есть
+         -- доска и календарь, а у вопроса «подтверди» — только тот, кто его задал.
+         SELECT 'approval_stuck', a.approver_id::text, a.task_id::text, a.id::text,
+                a.subject, NULL,
+                EXTRACT(EPOCH FROM (now() - a.created_at)) / 3600, u.timezone
+           FROM approvals a JOIN users u ON u.id = a.approver_id AND u.is_active
+          WHERE a.tenant_id = $1 AND a.status = 'pending'
+            AND a.created_at < now() - make_interval(hours => $3::int)
+         UNION ALL
+         -- Позвали в ленте и не дождались ответа. Ответом считаем ЛЮБОЙ его комментарий
+         -- к этому посту после упоминания: «прочитал и промолчал» и «ответил» — разное.
+         SELECT 'mention_silent', m.user_id::text, NULL, m.id::text,
+                left(fp.body, 80), NULL,
+                EXTRACT(EPOCH FROM (now() - m.created_at)) / 3600, u.timezone
+           FROM feed_mentions m
+           JOIN feed_posts fp ON fp.id = m.post_id
+           JOIN users u ON u.id = m.user_id AND u.is_active
+          WHERE m.tenant_id = $1
+            AND m.created_at < now() - make_interval(hours => $3::int)
+            AND NOT EXISTS (
+              SELECT 1 FROM feed_comments fc
+               WHERE fc.post_id = m.post_id AND fc.author_id = m.user_id
+                 AND fc.created_at > m.created_at
+            )
        ) c
        ORDER BY hours DESC
        LIMIT 200`,

@@ -14,7 +14,7 @@ const work: WorkHours = {
 const noonUtc = new Date('2026-08-26T12:00:00Z');
 
 const candidate = (p: Partial<PingCandidate> = {}): PingCandidate => ({
-  kind: 'overdue', userId: '1', taskId: '10',
+  kind: 'overdue', userId: '1', taskId: '10', subjectId: '10',
   title: 'Договор с подрядчиком', projectName: 'Стройка', hours: 30, timezone: 'Europe/Moscow', ...p,
 });
 
@@ -79,6 +79,23 @@ describe('Смарт-пинги — правила', () => {
     // 35 сообщений «срок прошёл» одному человеку за три дня.
     expect(pingKey(candidate())).toBe('overdue:10');
     expect(pingKey(candidate({ kind: 'silent' }))).toBe('silent:10');
+  });
+
+  it('оборванные нитки зовут по имени того, кто держит очередь', () => {
+    expect(pingText(candidate({ kind: 'approval_stuck', title: 'Согласовать смету', hours: 30 })))
+      .toBe('Ждёт вашего решения 1 день: «Согласовать смету»');
+    expect(pingText(candidate({ kind: 'mention_silent', title: 'Кто возьмёт клиента?', hours: 26 })))
+      .toContain('Вас позвали 1 день назад и ждут ответа');
+  });
+
+  it('в сводке чужое ожидание идёт раньше собственных молчащих задач', () => {
+    const text = digestText([
+      candidate({ kind: 'silent', title: 'Лендинг', subjectId: '12' }),
+      candidate({ kind: 'approval_stuck', title: 'Смета', subjectId: 'a1' }),
+      candidate({ kind: 'mention_silent', title: 'Вопрос в ленте', subjectId: 'm1' }),
+    ]);
+    expect(text.indexOf('Ждёт вашего решения')).toBeLessThan(text.indexOf('Вас позвали'));
+    expect(text.indexOf('Вас позвали')).toBeLessThan(text.indexOf('Без движения'));
   });
 
   it('сводка — одна на человека в день, по его местным суткам', () => {

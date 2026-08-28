@@ -129,7 +129,7 @@ export class AssistantService {
 
     const byUser = new Map<string, PingCandidate[]>();
     for (const c of candidates) {
-      if (!c.userId || !c.taskId) continue;
+      if (!c.userId || !c.subjectId) continue;
       const list = byUser.get(c.userId) ?? [];
       list.push(c as PingCandidate);
       byUser.set(c.userId, list);
