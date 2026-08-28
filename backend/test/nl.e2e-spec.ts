@@ -41,6 +41,21 @@ describe('NL-команда (e2e)', () => {
     expect(parsed.context.projects.some((p: any) => p.name === 'Маркетинг')).toBe(true);
     expect(parsed.context.users.some((u: any) => u.name === 'Босс')).toBe(true);
 
+    // Проект из обстановки: человек стоит на доске и диктует задачу, не называя проект.
+    // Раньше здесь оставался пустой обязательный выбор — команда голосом упиралась в него.
+    const fromBoard = (await http$.post('/api/nl/parse').set(H(tok))
+      .send({ text: 'обновить баннер на главной', currentProjectId: String(proj.id) }).expect(201)).body.data;
+    expect(fromBoard.intent).toBe('create_task');
+    expect(String(fromBoard.task.projectId)).toBe(String(proj.id));
+    expect(fromBoard.task.projectHint).toBeTruthy(); // видно, откуда взялся проект
+
+    // Названный вслух проект сильнее открытой доски: сказанное человеком важнее обстановки.
+    const other = (await http$.post('/api/projects').set(H(tok)).send({ name: 'Сайт клиента' }).expect(201)).body.data;
+    const spoken = (await http$.post('/api/nl/parse').set(H(tok))
+      .send({ text: 'поправить форму по сайту клиента срочно', currentProjectId: String(proj.id) }).expect(201)).body.data;
+    expect(String(spoken.task.projectId)).toBe(String(other.id));
+    expect(spoken.task.priority).toBe('urgent'); // «срочно» слышно и без модели
+
     // apply: создать задачу из подтверждённого черновика (+ срок уходит в описание, приоритет применяется)
     const applied = (await http$.post('/api/nl/apply').set(H(tok))
       .send({ intent: 'create_task', task: { projectId: proj.id, title: 'Обновить баннер', description: 'детали', priority: 'high', deadline: '2026-08-01' } }).expect(201)).body.data;

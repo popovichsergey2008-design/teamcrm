@@ -382,7 +382,10 @@ export const api = {
   agentPromptUpdate: (id: string, b: { name?: string; instruction?: string; model?: string; isShared?: boolean }) => request<any>('PATCH', `/agents/prompts/${id}`, b),
   agentPromptDelete: (id: string) => request<any>('DELETE', `/agents/prompts/${id}`),
   // NL-команда / Zero-UI
-  nlParse: (text: string) => request<any>('POST', '/nl/parse', { text }),
+  // Открытая доска едет вместе с командой: задачу почти всегда ставят в проект,
+  // на который человек в этот момент смотрит.
+  nlParse: (text: string, currentProjectId?: string | null) =>
+    request<any>('POST', '/nl/parse', currentProjectId ? { text, currentProjectId } : { text }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),
   /** Голосовая команда: аудио-запись → Whisper → распознанный текст. */
   nlTranscribe: async (blob: Blob): Promise<{ text: string }> => {

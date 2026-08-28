@@ -641,6 +641,16 @@
 .timer-pause:not(:disabled) { background: var(--warn); border-color: var(--warn); color: var(--on-warn); font-weight: 600; }
 .timer-actions .btn:disabled { opacity: .45; }
 @media (prefers-reduced-motion: reduce) { .timer-panel.is-running .timer-dot { animation: none; } }
+/* Быстрая команда: голос и разбор стоят рядом — это два способа сделать одно. */
+.nl-actions { display: flex; gap: 6px; margin-top: 6px; }
+.nl-actions .nl-parse { flex: 1 1 auto; }
+.nl-heard {
+  margin-top: 8px; padding: 6px 8px; font-size: 12px; font-style: italic;
+  border-left: 2px solid var(--border-2); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--bg-elev-2);
+}
+.nl-hint { font-size: 11px; margin-top: 3px; }
+
 /* Ряд действий по Telegram: код, переход в сам чат, отвязка. Ссылка выглядит
    кнопкой, но ведёт наружу — подчёркивание здесь читалось бы как ошибка вёрстки. */
 .tg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }

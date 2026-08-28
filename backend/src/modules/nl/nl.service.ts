@@ -7,6 +7,9 @@ import { TasksService } from '../tasks/tasks.service';
 import { DealsService } from '../deals/deals.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { matchUserInText, normalizeDeadline } from './nl.match';
+import {
+  chooseProject, matchProjectInText, pickDeadline, pickPriority, PROJECT_HINT, taskTitleFrom,
+} from './task-draft';
 import { buildEventDraft, EventDraft } from './event-draft';
 
 type Intent = 'create_task' | 'create_deal' | 'none';
@@ -17,7 +20,14 @@ export interface NlDraft {
   confidence: number;
   note: string;
   warnings: string[];
-  task?: { title: string; description: string | null; projectId: string | null; projectName: string | null; assigneeId: string | null; assigneeName: string | null; priority: string; deadline: string | null };
+  task?: {
+    title: string; description: string | null;
+    projectId: string | null; projectName: string | null;
+    /** Почему выбран этот проект: человек должен видеть, откуда он взялся. */
+    projectHint: string;
+    assigneeId: string | null; assigneeName: string | null;
+    priority: string; deadline: string | null;
+  };
   deal?: { title: string; amount: number | null; plannedMargin: number | null; clientId: string | null; clientName: string | null; stage: string };
   context: { projects: { id: string; name: string }[]; users: { id: string; name: string }[]; clients: { id: string; name: string }[] };
 }
@@ -124,8 +134,14 @@ export class NlService {
     return { ...draft, source: clean, warnings, context: { users } };
   }
 
-  /** NL → черновик сущности (ничего не создаёт). Имена сопоставляются с id из контекста арендатора. */
-  async parse(tenantId: string, userId: string, text: string): Promise<NlDraft> {
+  /**
+   * NL → черновик сущности (ничего не создаёт). Имена сопоставляются с id из контекста арендатора.
+   *
+   * `currentProjectId` — доска, открытая у человека в момент команды. Это и есть тот
+   * контекст, из-за отсутствия которого голосовая постановка упиралась в пустой выбор
+   * проекта: продиктовал задачу, стоя на нужной доске, и всё равно выбирай руками.
+   */
+  async parse(tenantId: string, userId: string, text: string, currentProjectId?: string | null): Promise<NlDraft> {
     const clean = (text ?? '').trim();
     if (clean.length < 3) throw AppException.validation('Слишком короткая команда');
     const { users, projects, clients } = await this.context(tenantId);
@@ -136,13 +152,23 @@ export class NlService {
     const userMsg = JSON.stringify({ text: clean, projects, users, clients, today });
 
     let parsed: any = {};
+    let modelAnswered = false;
     try {
       const raw = await this.ai.generate(tenantId, system, userMsg, 'nl_command', {
         promptVersionId: prompt?.versionId, model: prompt?.model, params: prompt?.params,
       });
       parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+      modelAnswered = true;
     } catch (e) {
       this.log.warn(`parse failed: ${(e as Error).message}`);
+    }
+
+    // Модель не ответила (нет ключа, кончились деньги, вернула мусор) — человек всё
+    // равно должен получить заполненный черновик: он свою фразу уже произнёс.
+    // Раньше на этом месте показывалось «Не понял команду», и голосовая постановка
+    // целиком зависела от чужой доступности.
+    if (!modelAnswered) {
+      parsed = { intent: 'create_task', confidence: 0.4, task: { title: taskTitleFrom(clean) }, note: 'ИИ недоступен — собрал по вашей фразе' };
     }
 
     const warnings: string[] = [];
@@ -160,18 +186,28 @@ export class NlService {
       const t = parsed.task ?? {};
       const title = String(t.title ?? '').trim();
       if (!title) { base.intent = 'none'; warnings.push('Не понял, какую задачу создать'); return base; }
-      const projectId = idIn(t.projectId, projectSet);
-      if (t.projectId && !projectId) warnings.push('Проект не распознан — выберите вручную');
+      // Проект — по всей доступной обстановке, а не только по ответу модели.
+      const { projectId, source } = chooseProject({
+        spokenId: matchProjectInText(clean, projects),
+        modelId: idIn(t.projectId, projectSet),
+        currentId: currentProjectId ? String(currentProjectId) : null,
+        projects,
+      });
+      if (!projectId) warnings.push('Проект не распознан — выберите вручную');
       // Модель часто не возвращает исполнителя, хотя он назван прямым текстом,
       // — тогда ищем имя в команде сами.
       const assigneeId = idIn(t.assigneeId, userSet) ?? matchUserInText(clean, users);
       if (t.assigneeId && !assigneeId) warnings.push('Исполнитель не распознан');
-      const priority = PRIORITIES.includes(String(t.priority)) ? String(t.priority) : 'normal';
-      const deadline = normalizeDeadline(t.deadline, today);
+      // Срочность и срок модель нередко пропускает, хотя они сказаны прямым текстом
+      // («срочно», «к пятнице»), — то же самое разбирают правила.
+      const priority = PRIORITIES.includes(String(t.priority)) ? String(t.priority)
+        : pickPriority(clean) ?? 'normal';
+      const deadline = normalizeDeadline(t.deadline, today) ?? pickDeadline(clean, new Date());
       if (t.deadline && !deadline) warnings.push('Срок не подставил: дата в прошлом или не распознана — выберите вручную');
       base.task = {
         title: title.slice(0, 255), description: t.description ? String(t.description) : null,
         projectId, projectName: projectId ? projectSet.get(projectId)! : null,
+        projectHint: projectId ? PROJECT_HINT[source] : '',
         assigneeId, assigneeName: assigneeId ? userSet.get(assigneeId)! : null,
         priority, deadline,
       };

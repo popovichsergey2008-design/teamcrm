@@ -10,6 +10,8 @@ import { NlService } from './nl.service';
 
 class ParseDto {
   @IsString() @MaxLength(2000) text!: string;
+  /** Открытая доска: задачу почти всегда ставят в проект, на который человек смотрит. */
+  @IsOptional() @IsString() @MaxLength(32) currentProjectId?: string;
 }
 class ParseEventDto {
   @IsString() @MaxLength(2000) text!: string;
@@ -47,7 +49,7 @@ export class NlController {
 
   @Post('parse')
   parse(@CurrentUser() u: AuthUser, @Body() dto: ParseDto) {
-    return this.nl.parse(u.tenantId, u.userId, dto.text);
+    return this.nl.parse(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null);
   }
 
   /** Надиктованная встреча → заполненный черновик события (ничего не создаёт). */

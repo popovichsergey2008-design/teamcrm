@@ -367,7 +367,18 @@ export function App() {
         />
       )}
       {helpOpen && <ShortcutsHelp onClose={() => setHelpOpen(false)} />}
-      {nl && <NlCommandModal onClose={() => setNl(null)} initialText={nl.text} autoRecord={nl.voice} />}
+      {nl && (
+        <NlCommandModal
+          onClose={() => setNl(null)}
+          initialText={nl.text}
+          autoRecord={nl.voice}
+          /* Доска, на которой человек работает: диктуя задачу, он имеет в виду её,
+             а не «выберите проект из списка». Раздел мог смениться — тогда берём
+             последнюю открытую доску. */
+          currentProjectId={route.projectId ?? boardReported.current.projectId ?? null}
+          onCreated={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
+        />
+      )}
     </div>
   );
 }
