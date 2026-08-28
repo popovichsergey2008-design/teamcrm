@@ -111,6 +111,10 @@ describe('TEAMCRM Этап 3 — AI Standup (e2e)', () => {
     expect(await telegram.chatIdOf(tenantId, userId)).toBe(String(tgUser));
     // привязки нет — писать некуда, и это нормальный ответ, а не ошибка
     expect(await telegram.chatIdOf(tenantId, '999999999')).toBeNull();
+
+    // В кабинете видно состояние привязки: от него зависит, придут ли уведомления
+    // в чат, и без отметки человеку это неоткуда узнать.
+    expect((await http.get('/api/me/telegram/status').set(auth()).expect(200)).body.data.linked).toBe(true);
   });
 
   it('дейлик → awaiting_confirmation; PII в transcript_masked замаскирован', async () => {

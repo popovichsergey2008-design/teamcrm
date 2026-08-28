@@ -114,8 +114,14 @@ describe('Почтовые уведомления (e2e)', () => {
 
     const prefs = (await http.get('/api/notifications/prefs').set(H(tok)).expect(200)).body.data;
     expect(prefs.map((p: any) => p.eventKey).sort())
-      .toEqual(['task.commented', 'task.created', 'task.own', 'task.status']);
+      .toEqual(['task.commented', 'task.created', 'task.own', 'task.status', 'telegram.mirror']);
     expect(prefs.every((p: any) => p.enabled)).toBe(true); // по умолчанию письма приходят
+
+    // дубль в мессенджер выключается отдельно от самих поводов для письма
+    await http.put('/api/notifications/prefs').set(H(tok))
+      .send({ eventKey: 'telegram.mirror', enabled: false }).expect(200);
+    const tg = (await http.get('/api/notifications/prefs').set(H(tok)).expect(200)).body.data;
+    expect(tg.find((p: any) => p.eventKey === 'telegram.mirror').enabled).toBe(false);
 
     await http.put('/api/notifications/prefs').set(H(tok))
       .send({ eventKey: 'task.created', enabled: false }).expect(200);
