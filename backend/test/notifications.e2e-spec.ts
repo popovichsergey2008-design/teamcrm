@@ -79,6 +79,9 @@ describe('Почтовые уведомления (e2e)', () => {
     const created = await mailFor(execEmail, { event: 'task.created' });
     expect(created.some((m) => m.event_key === 'task.created')).toBe(true);
     expect(created[0].body_text).toContain('Обновить прайс');
+    // Ссылка обязана открывать саму задачу: старый формат со строкой запроса
+    // приложение молча уводило в «Фокус дня», и задача выглядела потерянной.
+    expect(created[0].body_text).toMatch(/\/projects\/\d+\/task\/\d+/);
     expect(created[0].body_text).toContain('Ольга Владелец'); // видно, кто поставил
     // автор действия тоже получает письмо: задача, поставленная себе, должна дойти
     const mine = await mailFor(ownerEmail, { event: 'task.created' });

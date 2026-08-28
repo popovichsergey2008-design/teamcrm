@@ -23,8 +23,16 @@ export class NotificationsService {
     return (process.env.APP_BASE_URL || 'https://teamsmrt.com').replace(/\/+$/, '');
   }
 
+  /**
+   * Адрес задачи ровно в том виде, в каком его понимает приложение.
+   *
+   * Раньше здесь стоял старый формат со знаками вопроса (`/?project=1&task=2`) —
+   * от прежнего роутера. Приложение давно читает путь, а не строку запроса, поэтому
+   * такая ссылка молча открывала «Фокус дня»: человек шёл из письма к задаче
+   * и попадал не туда, причём выглядело это как потерянная задача.
+   */
   private taskUrl(projectId: string, taskId: string): string {
-    return `${this.baseUrl()}/?project=${encodeURIComponent(projectId)}&task=${encodeURIComponent(taskId)}`;
+    return `${this.baseUrl()}/projects/${encodeURIComponent(projectId)}/task/${encodeURIComponent(taskId)}`;
   }
 
   private unsubscribeUrl(token: string): string {

@@ -3,7 +3,7 @@ import { taskCommentedLetter, taskCreatedLetter, taskStatusLetter, TaskCtx } fro
 const CTX: TaskCtx = {
   taskTitle: 'Обновить прайс',
   projectName: 'Сайт',
-  taskUrl: 'https://teamsmrt.com/?project=1&task=2',
+  taskUrl: 'https://teamsmrt.com/projects/1/task/2',
   actorName: 'Сергей Попович',
 };
 const UNSUB = 'https://teamsmrt.com/api/notifications/unsubscribe?token=abc';
