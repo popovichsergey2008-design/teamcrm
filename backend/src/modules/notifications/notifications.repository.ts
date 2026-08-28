@@ -7,6 +7,8 @@ export interface MailRow {
   id: string; tenant_id: string; user_id: string | null; to_email: string;
   subject: string; body_text: string; body_html: string | null;
   event_key: string; attempts: number;
+  /** Когда дубль ушёл в Telegram: повтор письма не должен слать второе сообщение. */
+  tg_sent_at: Date | null;
   /** Вложения письма: приглашение календаря возит с собой .ics. */
   attachments: { name: string; content: string }[] | null;
 }
@@ -132,6 +134,11 @@ export class NotificationsRepository {
     );
   }
 
+  /** Дубль ушёл в мессенджер. Отмечаем отдельно от письма: каналы независимы. */
+  async markTelegramSent(id: string): Promise<void> {
+    await this.db.query(`UPDATE mail_outbox SET tg_sent_at=now() WHERE id=$1`, [id]);
+  }
+
   /** Перезапуск на середине отправки: «в отправке» без ответа → снова в очередь. */
   async requeueStuck(): Promise<void> {
     await this.db.query(`UPDATE mail_outbox SET status='pending', updated_at=now() WHERE status='sending'`);
@@ -143,6 +150,15 @@ export class NotificationsRepository {
       `SELECT event_key, enabled FROM notification_prefs WHERE tenant_id=$1 AND user_id=$2`,
       [tenantId, userId],
     );
+  }
+
+  /** Настройка включена? Строки нет — значит, действует умолчание «да». */
+  async prefEnabled(tenantId: string, userId: string, eventKey: string): Promise<boolean> {
+    const row = await this.db.one<{ enabled: boolean }>(
+      `SELECT enabled FROM notification_prefs WHERE tenant_id=$1 AND user_id=$2 AND event_key=$3`,
+      [tenantId, userId, eventKey],
+    );
+    return row?.enabled ?? true;
   }
 
   async setPref(tenantId: string, userId: string, eventKey: string, enabled: boolean): Promise<void> {

@@ -28,6 +28,11 @@ export class TelegramService {
     return row?.telegram_user_id ? String(row.telegram_user_id) : null;
   }
 
+  /** Отвязка: с этого момента бот человеку не пишет и его сообщений не принимает. */
+  unlink(tenantId: string, userId: string): Promise<void> {
+    return this.repo.unlink(tenantId, userId);
+  }
+
   /** Личность актора определяется привязкой, НЕ содержимым голоса/LLM. */
   resolveActor(telegramUserId: string | number): Promise<TgAccount | null> {
     return this.repo.accountByTelegram(String(telegramUserId));

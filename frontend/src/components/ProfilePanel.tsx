@@ -11,6 +11,9 @@ import { DatePicker } from './DatePicker';
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients';
 
 
+/** Ключ настройки «дублировать в Telegram» — тот же, что в API уведомлений. */
+const TG_MIRROR = 'telegram.mirror';
+
 export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAvatar: (url: string | null) => void }) {
   const [tab, setTab] = useState<Tab>('profile');
   const [sound, setSound] = useState(soundPrefs);
@@ -23,6 +26,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   const [msg, setMsg] = useState('');
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [mailPrefs, setMailPrefs] = useState<{ eventKey: string; title: string; enabled: boolean }[]>([]);
+  const [tgLinked, setTgLinked] = useState<boolean | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // Список строится один раз: перебор четырёхсот поясов с форматированием заметен,
   // если делать его на каждый ввод символа в соседнем поле.
@@ -33,11 +37,23 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
     catch (e) { setTgCode(e instanceof ApiError ? e.message : 'ошибка'); }
   };
 
+  const setMailPref = async (eventKey: string, enabled: boolean) => {
+    setMailPrefs((prev) => prev.map((x) => (x.eventKey === eventKey ? { ...x, enabled } : x)));
+    try { await api.setNotificationPref(eventKey, enabled); }
+    catch { setMailPrefs((prev) => prev.map((x) => (x.eventKey === eventKey ? { ...x, enabled: !enabled } : x))); }
+  };
+
+  const unlinkTelegram = async () => {
+    try { await api.telegramUnlink(); setTgLinked(false); setTgCode(''); flash('Telegram отвязан'); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 2500); };
   const loadMe = () => api.me().then((m) => { setMe(m); onAvatar(m.avatarUrl); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadMe(); }, []);
   useEffect(() => { api.notificationPrefs().then(setMailPrefs).catch(() => undefined); }, []);
+  useEffect(() => { api.telegramStatus().then((r) => setTgLinked(r.linked)).catch(() => undefined); }, [tgCode]);
 
   // profile
   const saveProfile = async () => {
@@ -196,17 +212,12 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 Приходят на {me.email ?? 'вашу почту'} — по задачам, где вы исполнитель или постановщик.
                 О собственных действиях писем нет.
               </div>
-              {mailPrefs.map((p) => (
+              {mailPrefs.filter((p) => p.eventKey !== TG_MIRROR).map((p) => (
                 <label key={p.eventKey} className="notify-row" style={{ cursor: 'pointer' }}>
                   <input
                     type="checkbox"
                     checked={p.enabled}
-                    onChange={async (e) => {
-                      const enabled = e.target.checked;
-                      setMailPrefs((prev) => prev.map((x) => (x.eventKey === p.eventKey ? { ...x, enabled } : x)));
-                      try { await api.setNotificationPref(p.eventKey, enabled); }
-                      catch { setMailPrefs((prev) => prev.map((x) => (x.eventKey === p.eventKey ? { ...x, enabled: !enabled } : x))); }
-                    }}
+                    onChange={(e) => setMailPref(p.eventKey, e.target.checked)}
                   />
                   <span>{p.title}</span>
                 </label>
@@ -214,10 +225,33 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             </div>
 
             <div className="drawer-section">
-              <div className="drawer-section-title">Telegram</div>
-              <div className="dim" style={{ fontSize: 12, marginBottom: 6 }}>Привяжите Telegram, чтобы сдавать дейлики боту (голосом или текстом).</div>
-              <button className="btn btn-sm" onClick={linkTelegram}>Получить код привязки</button>
-              {tgCode && <div className="dim" style={{ marginTop: 6 }}>Код: <b>{tgCode}</b> — отправьте его нашему Telegram-боту.</div>}
+              <div className="drawer-section-title">
+                Telegram {tgLinked === true && <span className="badge pnl-good">привязан</span>}
+              </div>
+              <div className="dim" style={{ fontSize: 12, marginBottom: 6 }}>
+                {tgLinked
+                  ? 'Бот пишет вам в личный чат: те же уведомления, что и на почту, плюс дейлики голосом или текстом. Переписку видите только вы.'
+                  : 'Привяжите Telegram, чтобы сдавать дейлики боту (голосом или текстом) и получать уведомления в чат, не дожидаясь письма.'}
+              </div>
+
+              {/* Дубль уведомлений — свойство канала, поэтому переключатель стоит здесь,
+                  рядом с привязкой, а не в списке поводов для письма. */}
+              {tgLinked && mailPrefs.filter((p) => p.eventKey === TG_MIRROR).map((p) => (
+                <label key={p.eventKey} className="notify-row" style={{ cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={p.enabled}
+                    onChange={(e) => setMailPref(p.eventKey, e.target.checked)}
+                  />
+                  <span>{p.title}</span>
+                </label>
+              ))}
+
+              {!tgLinked && <button className="btn btn-sm" onClick={linkTelegram}>Получить код привязки</button>}
+              {tgLinked && <button className="btn btn-ghost btn-sm" onClick={unlinkTelegram}>Отвязать Telegram</button>}
+              {tgCode && !tgLinked && (
+                <div className="dim" style={{ marginTop: 6 }}>Код: <b>{tgCode}</b> — отправьте его нашему Telegram-боту.</div>
+              )}
             </div>
           </>
         )}

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { NotificationsRepository } from './notifications.repository';
 import { createTransport, MailPermanentError, MailTransport } from './mail.transport';
+import { TelegramMirror } from './telegram-mirror.service';
 
 const BATCH = 20;
 const MAX_ATTEMPTS = 6;
@@ -20,7 +21,10 @@ export class MailWorker implements OnModuleInit, OnModuleDestroy {
   private busy = false;
   private transport: MailTransport = createTransport(process.env);
 
-  constructor(private readonly repo: NotificationsRepository) {}
+  constructor(
+    private readonly repo: NotificationsRepository,
+    private readonly mirror: TelegramMirror,
+  ) {}
 
   onModuleInit() {
     if (process.env.MAIL_DISABLED === '1') return;
@@ -41,6 +45,9 @@ export class MailWorker implements OnModuleInit, OnModuleDestroy {
     let sent = 0;
     try {
       for (const row of await this.repo.claim(BATCH)) {
+        // Дубль в мессенджер — раньше письма и независимо от его судьбы: если почта
+        // не уйдёт вовсе, человек всё равно узнает о задаче или встрече.
+        await this.mirror.mirror(row);
         try {
           await this.transport.send({
             to: row.to_email, subject: row.subject, text: row.body_text, html: row.body_html,

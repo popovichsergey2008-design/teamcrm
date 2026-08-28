@@ -5,12 +5,23 @@ import type { Response } from 'express';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { NotificationsRepository } from './notifications.repository';
-import { EVENT_TITLE, EventKey, OWN_EVENT_KEY, OWN_EVENT_TITLE } from './mail.templates';
+import {
+  EVENT_TITLE, EventKey, MIRROR_EVENT_KEY, MIRROR_EVENT_TITLE, OWN_EVENT_KEY, OWN_EVENT_TITLE,
+} from './mail.templates';
 
-/** Виды писем в интерфейсе: три события плюс переключатель «и о моих действиях». */
+/**
+ * Виды писем в интерфейсе: три события, переключатель «и о моих действиях»
+ * и дубль в мессенджер. Последний живёт в этом же списке, потому что отписка
+ * по ссылке из письма обязана выключать все каналы разом — иначе человек нажал
+ * «отписаться», а сообщения продолжают приходить.
+ */
 const EVENT_KEYS = Object.keys(EVENT_TITLE) as EventKey[];
-const ALL_KEYS: string[] = [...EVENT_KEYS, OWN_EVENT_KEY];
-const TITLE: Record<string, string> = { ...EVENT_TITLE, [OWN_EVENT_KEY]: OWN_EVENT_TITLE };
+const ALL_KEYS: string[] = [...EVENT_KEYS, OWN_EVENT_KEY, MIRROR_EVENT_KEY];
+const TITLE: Record<string, string> = {
+  ...EVENT_TITLE,
+  [OWN_EVENT_KEY]: OWN_EVENT_TITLE,
+  [MIRROR_EVENT_KEY]: MIRROR_EVENT_TITLE,
+};
 
 class PrefDto {
   @IsString() @IsIn(ALL_KEYS) eventKey!: string;

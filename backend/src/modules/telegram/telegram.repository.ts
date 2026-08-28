@@ -47,6 +47,11 @@ export class TelegramRepository {
     );
   }
 
+  async unlink(tenantId: string, userId: string): Promise<void> {
+    await this.db.query(
+      `DELETE FROM telegram_accounts WHERE tenant_id=$1 AND user_id=$2`, [tenantId, userId]);
+  }
+
   accountByTelegram(telegramUserId: string): Promise<TgAccount | null> {
     return this.db.one<TgAccount>(
       `SELECT tenant_id, user_id, telegram_user_id FROM telegram_accounts WHERE telegram_user_id=$1`,

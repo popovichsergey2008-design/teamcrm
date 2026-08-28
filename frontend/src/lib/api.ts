@@ -438,6 +438,8 @@ export const api = {
 
   // Этап 3 — Telegram binding & standup
   telegramLinkCode: () => request<{ code: string; expiresAt: string }>('POST', '/me/telegram/link-code'),
+  telegramStatus: () => request<{ linked: boolean }>('GET', '/me/telegram/status'),
+  telegramUnlink: () => request<{ ok: true }>('DELETE', '/me/telegram/link'),
   listStandups: () => request<any[]>('GET', '/standup/submissions'),
 
   // users / team

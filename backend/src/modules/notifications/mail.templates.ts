@@ -22,6 +22,14 @@ export const EVENT_TITLE: Record<EventKey, string> = {
 export const OWN_EVENT_KEY = 'task.own';
 export const OWN_EVENT_TITLE = 'Письма о моих собственных действиях';
 
+/**
+ * Дубль тех же уведомлений в личный чат с ботом. Отдельный ключ, а не вид письма:
+ * это не «о чём писать», а «куда ещё продублировать». По умолчанию включён —
+ * привязавший Telegram сделал это, чтобы получать оттуда пользу, а не настраивать.
+ */
+export const MIRROR_EVENT_KEY = 'telegram.mirror';
+export const MIRROR_EVENT_TITLE = 'Дублировать уведомления в Telegram';
+
 const BRAND = {
   ink: '#101623',
   soft: '#4d5768',
