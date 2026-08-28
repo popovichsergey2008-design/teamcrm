@@ -84,6 +84,15 @@
   text-decoration: none;
 }
 .nav-item:hover { background: var(--bg-elev-2); color: var(--text); }
+/* номер задачи в шапке карточки: по нему её называют боту и в переписке */
+.task-num {
+  margin-left: 8px; padding: 2px 7px; border-radius: 6px; vertical-align: middle;
+  font-family: ui-monospace, "JetBrains Mono", monospace; font-size: var(--fs-xs);
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-mut);
+  cursor: pointer;
+}
+.task-num:hover { color: var(--accent); border-color: var(--accent-line); }
+
 /* созвон из панели — одна кнопка во всю ширину; приглашение живёт внутри созвона */
 .nav-call-row { display: flex; }
 .nav-call-row .call-starter, .nav-call-row .call-starter-call { display: flex; width: 100%; justify-content: center; }
@@ -1498,7 +1507,7 @@
    Проверяется скриптом: npm run a11y. */
 /* у переключателя «Задачи» фокус получает галочка внутри — подсвечиваем всю строку */
 .feed-chip:focus-visible, .feed-flag:focus-within,
-.mention-option:focus-visible, .feed-file:focus-visible,
+.mention-option:focus-visible, .feed-file:focus-visible, .task-num:focus-visible,
 .ping-text:focus-visible, .mode-row:focus-visible,
 /* «Файл» — это label со скрытым input: фокус получает input внутри */
 .feed-attach:focus-within,

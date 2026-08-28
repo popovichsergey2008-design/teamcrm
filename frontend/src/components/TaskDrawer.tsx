@@ -157,7 +157,19 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
           />
         )}
         <div className="drawer-head">
-          <h3>{task.title}</h3>
+          <h3>
+            {task.title}
+            {/* Номер нужен человеку, а не системе: по нему задачу называют боту
+                в ежедневном отчёте и в переписке. Клик копирует — переписывать
+                цифры с экрана руками никто не должен. */}
+            <button
+              className="task-num"
+              onClick={() => navigator.clipboard?.writeText(`#${task.id}`).catch(() => undefined)}
+              title="Номер задачи — скопировать. По нему задачу называют боту в отчёте"
+            >
+              #{task.id}
+            </button>
+          </h3>
           <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
 
