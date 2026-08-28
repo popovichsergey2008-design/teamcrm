@@ -1,6 +1,6 @@
 import {
-  digestKey, digestText, greetingFor, humanHours, localParts, PingCandidate, pingKey, pingText,
-  repeatDue, withinWorkHours, WorkHours,
+  digestKey, digestText, greetingFor, humanHours, KindStats, localParts, mutedKinds, PingCandidate,
+  pingKey, pingText, reactionRate, repeatDue, withinWorkHours, WorkHours,
 } from './ping-rules';
 
 const work: WorkHours = {
@@ -151,6 +151,35 @@ describe('Утренняя сводка', () => {
 
   it('без поводов сводки нет вовсе: «у вас всё хорошо» — это тоже шум', () => {
     expect(digestText([])).toBe('');
+  });
+});
+
+describe('Секретарь мерит себя откликом', () => {
+  const stats = (p: Partial<KindStats> = {}): KindStats => ({ kind: 'overdue', sent: 0, acted: 0, ...p });
+
+  it('повод, на который перестали отвечать, приглушается', () => {
+    const muted = mutedKinds([
+      stats({ kind: 'silent', sent: 40, acted: 1 }), // 2,5% — шум
+      stats({ kind: 'overdue', sent: 20, acted: 9 }), // 45% — работает
+    ]);
+    expect(muted).toEqual(['silent']);
+  });
+
+  it('на трёх отправках выводов не делаем', () => {
+    expect(mutedKinds([stats({ kind: 'due_soon', sent: 3, acted: 0 })])).toEqual([]);
+  });
+
+  it('приглушённый повод не исчезает, а ждёт неделю', () => {
+    const day = 86_400_000;
+    const sentAt = new Date(noonUtc.getTime() - 3 * day);
+    expect(repeatDue(2, sentAt, noonUtc)).toBe(true); // обычный — через три дня
+    expect(repeatDue(2, sentAt, noonUtc, true)).toBe(false); // приглушённый ещё молчит
+    expect(repeatDue(2, new Date(noonUtc.getTime() - 8 * day), noonUtc, true)).toBe(true);
+  });
+
+  it('доля ответов считается по всем поводам разом', () => {
+    expect(reactionRate([stats({ sent: 10, acted: 2 }), stats({ kind: 'silent', sent: 10, acted: 0 })])).toBe(10);
+    expect(reactionRate([])).toBe(0);
   });
 });
 

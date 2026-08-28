@@ -641,6 +641,9 @@
 .timer-pause:not(:disabled) { background: var(--warn); border-color: var(--warn); color: var(--on-warn); font-weight: 600; }
 .timer-actions .btn:disabled { opacity: .45; }
 @media (prefers-reduced-motion: reduce) { .timer-panel.is-running .timer-dot { animation: none; } }
+/* Отклик на напоминания: строка под счётчиками, а не отдельный экран статистики. */
+.secretary-reaction { font-size: 12px; margin: -4px 0 12px; line-height: 1.45; }
+
 /* Спросить секретаря: строка вопроса, подсказки и ответ фактами. */
 .secretary-ask { margin-bottom: 14px; }
 .ask-row { display: flex; gap: 6px; }

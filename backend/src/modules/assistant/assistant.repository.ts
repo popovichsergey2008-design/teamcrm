@@ -179,6 +179,26 @@ export class AssistantRepository {
     );
   }
 
+  /**
+   * Отклик по видам поводов за окно наблюдения.
+   *
+   * «Ответил делом» — это статус `done`: человек нажал «Сделаю сегодня». «Скрыть»
+   * сюда не идёт намеренно: закрыть надоевшее напоминание — не то же самое, что
+   * заняться работой, и считать это успехом значило бы обманывать себя.
+   */
+  reactionStats(tenantId: string, days: number): Promise<{ kind: string; sent: string; acted: string }[]> {
+    return this.db.many(
+      `SELECT kind,
+              COUNT(*) FILTER (WHERE status <> 'proposed') AS sent,
+              COUNT(*) FILTER (WHERE status = 'done') AS acted
+         FROM assistant_pings
+        WHERE tenant_id=$1 AND created_at > now() - make_interval(days => $2::int)
+          AND kind NOT IN ('digest','evening')
+        GROUP BY kind`,
+      [tenantId, days],
+    );
+  }
+
   /** Строка повода, если он уже заводился: по ней решаем, пора ли повторять. */
   byKey(tenantId: string, dedupKey: string): Promise<{
     id: string; status: string; repeats: number; last_sent_at: Date | null;
@@ -257,13 +277,13 @@ export class AssistantRepository {
     );
   }
 
-  async setStatus(tenantId: string, id: string, status: 'sent' | 'dismissed'): Promise<void> {
+  async setStatus(tenantId: string, id: string, status: 'sent' | 'dismissed' | 'done'): Promise<void> {
     await this.db.query(
       // тип параметра задаём явно: один и тот же $3 стоит и справа от status (varchar),
       // и в сравнении — без приведения Postgres выводит для него два разных типа и падает
       `UPDATE assistant_pings
           SET status = $3::text,
-              resolved_at = CASE WHEN $3::text = 'dismissed' THEN now() ELSE resolved_at END
+              resolved_at = CASE WHEN $3::text IN ('dismissed', 'done') THEN now() ELSE resolved_at END
         WHERE tenant_id = $1 AND id = $2`,
       [tenantId, id, status],
     );

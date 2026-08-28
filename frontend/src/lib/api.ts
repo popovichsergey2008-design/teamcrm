@@ -442,6 +442,10 @@ export const api = {
   // Этап 3 — Telegram binding & standup
   telegramLinkCode: () => request<{ code: string; expiresAt: string }>('POST', '/me/telegram/link-code'),
   // Спросить секретаря о текущих делах обычным языком
+  // «Сделаю сегодня» — ответ делом; по нему считается отклик на напоминания
+  actedPing: (id: string) => request<{ done: true }>('POST', `/assistant/pings/${id}/acted`),
+  assistantReaction: () => request<{ rate: number; sent: number; muted: string[] }>('GET', '/assistant/reaction'),
+
   assistantAsk: (question: string) =>
     request<{ kind: string; answer: string }>('POST', '/assistant/ask', { question }),
   assistantEvening: () =>

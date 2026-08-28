@@ -137,6 +137,18 @@ export class AssistantController {
     return this.moderator.agenda(u.tenantId, eventId);
   }
 
+  /** Отклик секретаря: доля напоминаний, после которых человек взялся за дело. */
+  @Get('reaction')
+  reaction(@CurrentUser() u: AuthUser) {
+    return this.assistant.reaction(u.tenantId);
+  }
+
+  /** «Сделаю сегодня» — ответ делом; именно он и считается откликом. */
+  @Post('pings/:id/acted')
+  acted(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.assistant.acted(u.tenantId, u.userId, id);
+  }
+
   @Post('pings/:id/dismiss')
   dismiss(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.assistant.dismiss(u.tenantId, u.userId, id);

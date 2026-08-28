@@ -4,8 +4,8 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { AssistantMode, AssistantRepository, PingRow } from './assistant.repository';
 import {
-  digestKey, digestText, greetingFor, INSTANT_KINDS, PingCandidate, pingKey, pingText,
-  repeatDue, withinWorkHours,
+  digestKey, digestText, greetingFor, INSTANT_KINDS, KindStats, mutedKinds, PingCandidate,
+  PingKind, pingKey, pingText, reactionRate, repeatDue, withinWorkHours,
 } from './ping-rules';
 import { TelegramMirror } from '../notifications/telegram-mirror.service';
 
@@ -121,11 +121,15 @@ export class AssistantService {
    */
   async runTenant(tenantId: string, mode: AssistantMode, now = new Date()): Promise<number> {
     if (mode === 'off') return 0;
-    const [work, candidates] = await Promise.all([
+    const [work, candidates, stats] = await Promise.all([
       this.repo.workHours(tenantId),
       this.repo.candidates(tenantId, STUCK_HOURS, SILENT_DAYS),
+      this.stats(tenantId),
     ]);
     const autopilot = mode === 'autopilot';
+    // Поводы, на которые в этой компании перестали отвечать: они не исчезают,
+    // но напоминают не чаще раза в неделю.
+    const muted = new Set(mutedKinds(stats));
 
     const byUser = new Map<string, PingCandidate[]>();
     for (const c of candidates) {
@@ -151,7 +155,7 @@ export class AssistantService {
         // прокрутится за день четырежды, и затухание перестанет работать.
         if (!instant && !digestDue) continue;
 
-        const fresh = await this.touch(tenantId, c, autopilot, now);
+        const fresh = await this.touch(tenantId, c, autopilot, now, muted.has(c.kind));
         if (!fresh) continue; // повод спит до следующего повтора
         created++;
 
@@ -174,7 +178,7 @@ export class AssistantService {
    * ради которой всё затевалось.
    */
   private async touch(
-    tenantId: string, c: PingCandidate, autopilot: boolean, now: Date,
+    tenantId: string, c: PingCandidate, autopilot: boolean, now: Date, muted = false,
   ): Promise<{ id: string; text: string } | null> {
     const key = pingKey(c);
     const text = pingText(c);
@@ -191,7 +195,7 @@ export class AssistantService {
     if (existing.status === 'dismissed') return null;
     // Предложение уже лежит у постановщика — до его решения повторять нечего.
     if (existing.status === 'proposed') return null;
-    if (!repeatDue(existing.repeats, existing.last_sent_at, now)) return null;
+    if (!repeatDue(existing.repeats, existing.last_sent_at, now, muted)) return null;
     await this.repo.repeat(tenantId, existing.id, text, status);
     return { id: existing.id, text };
   }
@@ -214,6 +218,35 @@ export class AssistantService {
       tenantId, userId, kind: 'digest', summary: `Сводка дня: ${items.length} дел`,
     });
     return true;
+  }
+
+  /** Статистика отклика за две недели: столько нужно, чтобы вывод не был случайным. */
+  private async stats(tenantId: string): Promise<KindStats[]> {
+    const rows = await this.repo.reactionStats(tenantId, 14).catch(() => []);
+    return rows.map((r) => ({ kind: r.kind as PingKind, sent: Number(r.sent), acted: Number(r.acted) }));
+  }
+
+  /**
+   * Отклик для панели секретаря: сколько напоминаний привели к делу.
+   *
+   * Показывать «сделано 190 действий» вместо этого — самообман: непрочитанное
+   * напоминание не экономит ни минуты.
+   */
+  async reaction(tenantId: string) {
+    const stats = await this.stats(tenantId);
+    return {
+      rate: reactionRate(stats),
+      sent: stats.reduce((n, s) => n + s.sent, 0),
+      muted: mutedKinds(stats),
+      byKind: stats,
+    };
+  }
+
+  /** Ответ делом: «Сделаю сегодня». Отличается от «Скрыть» — по нему и считается отклик. */
+  async acted(tenantId: string, userId: string, id: string) {
+    const ping = await this.gate(tenantId, userId, id);
+    await this.repo.setStatus(tenantId, String(ping.id), 'done');
+    return { done: true };
   }
 
   /** Доставка в открытое приложение. Почтой не шлём: напоминание — не письмо. */

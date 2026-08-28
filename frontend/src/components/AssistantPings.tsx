@@ -54,7 +54,9 @@ export function AssistantPings({ today, onOpenTask, onPlanned }: {
     setBusy(p.id);
     try {
       await api.setFocusDate(p.taskId, today);
-      await api.dismissPing(p.id); // ответ дан делом — напоминание больше не нужно
+      // Именно «сделаю», а не «скрыть»: по этой разнице секретарь считает, слушают ли
+      // его вообще, и сам приглушает поводы, на которые перестали отвечать.
+      await api.actedPing(p.id);
       onPlanned();
     } catch {
       load();

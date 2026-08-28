@@ -47,10 +47,12 @@ export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boo
   useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   const [items, setItems] = useState<AiAction[] | null>(null);
   const [summary, setSummary] = useState<{ actions: number; savedMinutes: number } | null>(null);
+  const [reaction, setReaction] = useState<{ rate: number; sent: number; muted: string[] } | null>(null);
 
   useEffect(() => {
     api.secretaryLog(100).then(setItems).catch(() => setItems([]));
     api.secretarySummary().then(setSummary).catch(() => undefined);
+    api.assistantReaction().then(setReaction).catch(() => undefined);
   }, []);
 
   return (
@@ -71,6 +73,15 @@ export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boo
             <div className="dim">примерно столько ручной работы это заменило</div>
           </div>
         </div>
+
+        {/* Честная мера рядом с «сэкономленным»: непрочитанное напоминание
+            не экономит ни минуты, и об этом лучше знать. */}
+        {reaction && reaction.sent > 0 && (
+          <div className="dim secretary-reaction">
+            Напоминания за две недели: {reaction.sent}, взялись за дело после {reaction.rate}%.
+            {reaction.muted.length > 0 && ' Поводы без отклика приглушены — напоминаю о них реже.'}
+          </div>
+        )}
 
         <Ask />
         <Gaps canManage={canManage} />

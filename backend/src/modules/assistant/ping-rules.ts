@@ -175,13 +175,54 @@ export function digestKey(userId: string, now: Date, timezone: string | null): s
  */
 const REPEAT_DAYS = [0, 1, 3, 7, 14];
 
+/** Приглушённый повод повторяется не чаще раза в неделю, но не исчезает совсем. */
+const MUTED_MIN_DAYS = 7;
+
 /** Пора ли напомнить снова: повод не менялся, но и не решён. */
-export function repeatDue(repeats: number, lastSentAt: Date | null, now: Date): boolean {
-  if (!lastSentAt) return true;
+export function repeatDue(repeats: number, lastSentAt: Date | null, now: Date, muted = false): boolean {
+  if (!lastSentAt) return !muted; // приглушённый повод не заводим даже впервые — он подождёт
   // Сказали один раз — ждём день; два — три дня; и так до потолка в две недели.
-  const wait = REPEAT_DAYS[Math.min(Math.max(repeats, 0), REPEAT_DAYS.length - 1)];
+  const base = REPEAT_DAYS[Math.min(Math.max(repeats, 0), REPEAT_DAYS.length - 1)];
+  const wait = muted ? Math.max(base, MUTED_MIN_DAYS) : base;
   const passed = (now.getTime() - lastSentAt.getTime()) / 86_400_000;
   return passed >= wait;
+}
+
+export interface KindStats {
+  kind: PingKind;
+  /** Сколько раз этот повод отправляли за окно наблюдения. */
+  sent: number;
+  /** Сколько раз человек ответил делом: «сделаю сегодня». */
+  acted: number;
+}
+
+/** Сколько отправок нужно, прежде чем судить о поводе: на трёх выводов не делают. */
+const MUTE_MIN_SENT = 8;
+/** Ниже этой доли ответов повод считается шумом. */
+const MUTE_RATE = 0.15;
+
+/**
+ * Поводы, на которые люди перестали отвечать.
+ *
+ * Панель секретаря считает «сделано действий» и «сэкономлено минут», но 190
+ * непрочитанных напоминаний не экономят ничего. Честная мера — доля тех, после
+ * которых человек что-то сделал; правило, на которое неделю не реагируют, должно
+ * приглушать себя само, а не ждать, пока ассистента выключат целиком.
+ *
+ * Насовсем не выключаем: молчание системы о просроченной работе — тоже ошибка,
+ * просто менее заметная.
+ */
+export function mutedKinds(stats: KindStats[]): PingKind[] {
+  return stats
+    .filter((s) => s.sent >= MUTE_MIN_SENT && s.acted / s.sent < MUTE_RATE)
+    .map((s) => s.kind);
+}
+
+/** Доля ответов в процентах — то, что показывается человеку вместо «действий». */
+export function reactionRate(stats: KindStats[]): number {
+  const sent = stats.reduce((n, s) => n + s.sent, 0);
+  if (!sent) return 0;
+  return Math.round((stats.reduce((n, s) => n + s.acted, 0) / sent) * 100);
 }
 
 const DIGEST_TITLE: Record<PingKind, string> = {
