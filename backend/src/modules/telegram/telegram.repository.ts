@@ -39,6 +39,14 @@ export class TelegramRepository {
     });
   }
 
+  /** Чат сотрудника в Telegram. Нет привязки — писать некуда, и это нормально. */
+  chatOf(tenantId: string, userId: string): Promise<{ telegram_user_id: string } | null> {
+    return this.db.one<{ telegram_user_id: string }>(
+      `SELECT telegram_user_id FROM telegram_accounts WHERE tenant_id=$1 AND user_id=$2`,
+      [tenantId, userId],
+    );
+  }
+
   accountByTelegram(telegramUserId: string): Promise<TgAccount | null> {
     return this.db.one<TgAccount>(
       `SELECT tenant_id, user_id, telegram_user_id FROM telegram_accounts WHERE telegram_user_id=$1`,

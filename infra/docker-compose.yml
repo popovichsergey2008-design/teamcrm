@@ -136,6 +136,10 @@ services:
       MAIL_FROM: ${MAIL_FROM:-noreply@teamsmrt.com}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-TEAMCRM}
       APP_BASE_URL: ${APP_BASE_URL:-https://teamsmrt.com}
+      # Телеграм-бот: без токена отправка молча ничего не делает — это рабочий режим
+      # для окружений без бота. Секрет проверяется на входящем вебхуке, если задан.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
     # RTP ходит мимо nginx — порты публикуем напрямую. Диапазон узкий намеренно:
     # docker поднимает по процессу-посреднику на каждый порт, и «на всякий случай»
     # тут стоило бы 10 тысяч процессов. 41 порта хватает на созвон вшестером.

@@ -10,6 +10,7 @@ import { AllExceptionsFilter } from '../src/common/http/all-exceptions.filter';
 import { ResponseInterceptor } from '../src/common/http/response.interceptor';
 import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
 import { AccessTokenPayload, RoleCode } from '../src/common/auth/jwt.types';
+import { TelegramService } from '../src/modules/telegram/telegram.service';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -103,6 +104,13 @@ describe('TEAMCRM Этап 3 — AI Standup (e2e)', () => {
     // код одноразовый: повторная привязка тем же кодом не сработает (уже used)
     const code2 = code;
     await http.post('/api/telegram/webhook').send(textUpdate(code2)).expect(201);
+
+    // Ответы бота уходят в ПРИВЯЗАННЫЙ чат. Раньше сюда подставлялся внутренний
+    // номер пользователя CRM, и человек не получал ни разбора дейлика, ни кнопок.
+    const telegram: any = app.get(TelegramService);
+    expect(await telegram.chatIdOf(tenantId, userId)).toBe(String(tgUser));
+    // привязки нет — писать некуда, и это нормальный ответ, а не ошибка
+    expect(await telegram.chatIdOf(tenantId, '999999999')).toBeNull();
   });
 
   it('дейлик → awaiting_confirmation; PII в transcript_masked замаскирован', async () => {

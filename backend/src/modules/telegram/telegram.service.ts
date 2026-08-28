@@ -16,6 +16,18 @@ export class TelegramService {
     return { code, expiresAt };
   }
 
+  /**
+   * Куда писать сотруднику.
+   *
+   * Раньше в качестве чата подставлялся ВНУТРЕННИЙ номер пользователя CRM («упрощение»
+   * в коде) — и ответы бота уходили в никуда: человек присылал дейлик и не получал
+   * ни разбора, ни кнопок подтверждения. Чат берётся из привязки; её нет — не пишем.
+   */
+  async chatIdOf(tenantId: string, userId: string): Promise<string | null> {
+    const row = await this.repo.chatOf(tenantId, userId);
+    return row?.telegram_user_id ? String(row.telegram_user_id) : null;
+  }
+
   /** Личность актора определяется привязкой, НЕ содержимым голоса/LLM. */
   resolveActor(telegramUserId: string | number): Promise<TgAccount | null> {
     return this.repo.accountByTelegram(String(telegramUserId));

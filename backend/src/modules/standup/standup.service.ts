@@ -112,7 +112,11 @@ export class StandupService {
   private async transcribe(sub: SubmissionRow): Promise<void> {
     if (sub.status !== 'received' && sub.status !== 'transcribing') return; // идемпотентность
     await this.repo.update(sub.id, { status: 'transcribing' });
-    const transcript = await this.ai.transcribe(sub.tenant_id, sub.audio_file_ref ?? '');
+    // В базе лежит идентификатор файла из Telegram, а распознаванию нужна ссылка:
+    // разрешаем её здесь, в момент обработки — ссылки живут около часа.
+    const ref = sub.audio_file_ref ?? '';
+    const source = ref.startsWith('text:') ? ref : (await this.sender.fileUrl(ref)) ?? ref;
+    const transcript = await this.ai.transcribe(sub.tenant_id, source);
     await this.repo.update(sub.id, { status: 'transcribed', transcript_raw: transcript });
     await this.enqueue('parse', sub.tenant_id, sub.id);
   }
@@ -340,10 +344,20 @@ export class StandupService {
         { text: '↩️ Отменить', callback_data: `cancel:${submissionId}` },
       ]],
     };
-    await this.sender.sendMessage(sub.user_id, text, markup); // user_id≈chat в привязке (упрощение)
+    const chatId = await this.telegram.chatIdOf(sub.tenant_id, sub.user_id);
+    if (!chatId) return; // привязки нет — писать некуда
+    await this.sender.sendMessage(chatId, text, markup);
   }
 
+  /**
+   * Ответ человеку в его чат.
+   *
+   * Адресат берётся из привязки: раньше сюда подставлялся внутренний номер
+   * пользователя CRM, и сообщения не доходили вовсе.
+   */
   private async notifyUser(sub: SubmissionRow, text: string) {
-    await this.sender.sendMessage(sub.user_id, text);
+    const chatId = await this.telegram.chatIdOf(sub.tenant_id, sub.user_id);
+    if (!chatId) return;
+    await this.sender.sendMessage(chatId, text);
   }
 }
