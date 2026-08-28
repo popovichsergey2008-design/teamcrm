@@ -1591,11 +1591,23 @@
 
 /* голос в командной строке: видно, что идёт запись, и слышно ли систему */
 .palette-mic.recording { background: var(--fill-danger); color: var(--on-fill); }
-.palette-voice {
-  display: flex; align-items: center; gap: 8px; padding: 8px var(--sp-4);
-  border-bottom: 1px solid var(--border); font-size: var(--fs-sm); color: var(--text-dim);
+/* Состояние микрофона — одно на все места диктовки; отличается только оправа. */
+.voice-status {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--fs-sm); color: var(--text-dim);
 }
-.palette-voice.error { color: var(--danger); }
+.voice-status.error { color: var(--danger); }
+.voice-status-main { font-weight: 600; color: var(--text); }
+/* Счётчик моноширинными цифрами: иначе строка дёргается на каждой секунде. */
+.voice-status-time { font-variant-numeric: tabular-nums; }
+.voice-status-hint { margin-left: auto; font-size: 12px; }
+
+.palette-voice { padding: 8px var(--sp-4); border-bottom: 1px solid var(--border); }
+.nl-voice {
+  margin-top: 6px; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--danger-soft); border: 1px solid var(--danger-line);
+}
+@media (max-width: 720px) { .voice-status-hint { display: none; } }
 /* «живая волна»: четыре полоски, а не картинка — тем же цветом, что и текст */
 .voice-wave { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
 .voice-wave i { width: 3px; background: var(--accent); border-radius: 2px; animation: voice-bar .9s ease-in-out infinite; }
@@ -1604,6 +1616,8 @@
 .voice-wave i:nth-child(3) { height: 9px; animation-delay: .3s; }
 .voice-wave i:nth-child(4) { height: 14px; animation-delay: .45s; }
 @keyframes voice-bar { 0%, 100% { transform: scaleY(.4); } 50% { transform: scaleY(1); } }
+/* Кому движение мешает — тому ровные полоски: запись видна и без пульсации. */
+@media (prefers-reduced-motion: reduce) { .voice-wave i { animation: none; } }
 
 /* кнопка диктовки под большим пальцем — только на узком экране */
 .voice-fab { display: none; }

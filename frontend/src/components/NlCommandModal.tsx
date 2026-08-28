@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { DatePicker } from './DatePicker';
+import { VoiceStatus } from './VoiceStatus';
 
 /**
  * NL-команда / Zero-UI: сказал или написал обычным языком → готовый черновик → подтвердил.
@@ -94,7 +95,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           Скажите или напишите обычным языком — черновик соберётся сам, вам останется подтвердить.
           Например: «Иванову обновить баннер на главной к пятнице, срочно».
         </div>
-        {(msg || voice.error) && <div className="error-text">{msg || voice.error}</div>}
+        {msg && <div className="error-text">{msg}</div>}
 
         <textarea
           className="input"
@@ -105,6 +106,14 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void parse(); }}
           style={{ marginTop: 6 }}
         />
+        <VoiceStatus
+          recording={recording}
+          transcribing={transcribing}
+          error={voice.error}
+          hint="нажмите «Остановить», когда закончите"
+          className="nl-voice"
+        />
+
         <div className="nl-actions">
           <button
             className={`btn btn-sm ${recording ? 'btn-primary' : 'btn-ghost'}`}

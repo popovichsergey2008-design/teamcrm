@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
+import { VoiceStatus } from './VoiceStatus';
 import { api } from '../lib/api';
 import { navigate, Route } from '../lib/router';
 import { norm, score } from '../lib/palette-match';
@@ -536,13 +537,13 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
           <kbd className="nav-kbd">Esc</kbd>
         </div>
 
-        {(voice.recording || voice.transcribing || voice.error) && (
-          <div className={`palette-voice${voice.error ? ' error' : ''}`}>
-            {voice.recording && <><span className="voice-wave"><i /><i /><i /><i /></span> Слушаю — отпустите пробел или нажмите «стоп»</>}
-            {voice.transcribing && 'Распознаю речь…'}
-            {voice.error && voice.error}
-          </div>
-        )}
+        <VoiceStatus
+          recording={voice.recording}
+          transcribing={voice.transcribing}
+          error={voice.error}
+          hint="отпустите пробел или нажмите «стоп»"
+          className="palette-voice"
+        />
 
         {answer && (
           <div className="palette-answer">
