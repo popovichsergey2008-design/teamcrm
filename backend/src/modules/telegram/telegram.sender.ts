@@ -16,6 +16,27 @@ export class TelegramSender {
   }
 
   /**
+   * Имя бота для ссылки «открыть чат». Спрашиваем у самого Telegram, а не держим
+   * в настройках: бот один раз меняют — и ссылка ведёт в чужой чат, чего никто
+   * не заметит. Ответ не меняется, поэтому запоминаем до перезапуска.
+   */
+  private cachedName?: string | null;
+
+  async username(): Promise<string | null> {
+    if (!this.token) return null;
+    if (this.cachedName !== undefined) return this.cachedName;
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/getMe`);
+      const json: any = await res.json();
+      this.cachedName = (json?.result?.username as string | undefined) ?? null;
+    } catch (e) {
+      this.logger.warn(`getMe failed: ${(e as Error).message}`);
+      return null; // не запоминаем: связь могла лечь на секунду
+    }
+    return this.cachedName ?? null;
+  }
+
+  /**
    * Прямая ссылка на присланный файл.
    *
    * Телеграм даёт только идентификатор файла — по нему сначала нужно спросить путь,

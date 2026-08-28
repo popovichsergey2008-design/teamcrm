@@ -641,6 +641,11 @@
 .timer-pause:not(:disabled) { background: var(--warn); border-color: var(--warn); color: var(--on-warn); font-weight: 600; }
 .timer-actions .btn:disabled { opacity: .45; }
 @media (prefers-reduced-motion: reduce) { .timer-panel.is-running .timer-dot { animation: none; } }
+/* Ряд действий по Telegram: код, переход в сам чат, отвязка. Ссылка выглядит
+   кнопкой, но ведёт наружу — подчёркивание здесь читалось бы как ошибка вёрстки. */
+.tg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tg-actions a.btn { text-decoration: none; }
+
 .drawer-section { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; }
 .drawer-section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-mut); margin-bottom: 10px; }
 .drawer-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

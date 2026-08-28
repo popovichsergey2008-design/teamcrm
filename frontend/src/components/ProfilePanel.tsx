@@ -27,6 +27,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [mailPrefs, setMailPrefs] = useState<{ eventKey: string; title: string; enabled: boolean }[]>([]);
   const [tgLinked, setTgLinked] = useState<boolean | null>(null);
+  const [tgBotUrl, setTgBotUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // Список строится один раз: перебор четырёхсот поясов с форматированием заметен,
   // если делать его на каждый ввод символа в соседнем поле.
@@ -53,7 +54,11 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadMe(); }, []);
   useEffect(() => { api.notificationPrefs().then(setMailPrefs).catch(() => undefined); }, []);
-  useEffect(() => { api.telegramStatus().then((r) => setTgLinked(r.linked)).catch(() => undefined); }, [tgCode]);
+  useEffect(() => {
+    api.telegramStatus()
+      .then((r) => { setTgLinked(r.linked); setTgBotUrl(r.botUrl); })
+      .catch(() => undefined);
+  }, [tgCode]);
 
   // profile
   const saveProfile = async () => {
@@ -247,10 +252,21 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 </label>
               ))}
 
-              {!tgLinked && <button className="btn btn-sm" onClick={linkTelegram}>Получить код привязки</button>}
-              {tgLinked && <button className="btn btn-ghost btn-sm" onClick={unlinkTelegram}>Отвязать Telegram</button>}
+              <div className="tg-actions">
+                {!tgLinked && <button className="btn btn-sm" onClick={linkTelegram}>Получить код привязки</button>}
+                {/* Ссылка на сам чат: с кодом на руках человек иначе ищет бота поиском
+                    по имени и натыкается на чужих похожих. */}
+                {tgBotUrl && (
+                  <a className="btn btn-sm" href={tgBotUrl} target="_blank" rel="noreferrer">
+                    <Icon name="link" size={14} /> {tgLinked ? 'Открыть чат с ботом' : 'Открыть бота'}
+                  </a>
+                )}
+                {tgLinked && <button className="btn btn-ghost btn-sm" onClick={unlinkTelegram}>Отвязать Telegram</button>}
+              </div>
               {tgCode && !tgLinked && (
-                <div className="dim" style={{ marginTop: 6 }}>Код: <b>{tgCode}</b> — отправьте его нашему Telegram-боту.</div>
+                <div className="dim" style={{ marginTop: 6 }}>
+                  Код: <b>{tgCode}</b> — откройте бота и отправьте ему этот код сообщением.
+                </div>
               )}
             </div>
           </>

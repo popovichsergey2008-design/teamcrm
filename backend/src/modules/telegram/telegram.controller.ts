@@ -2,13 +2,17 @@ import { Controller, Delete, Get, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
+import { TelegramSender } from './telegram.sender';
 import { TelegramService } from './telegram.service';
 
 @ApiTags('telegram')
 @ApiBearerAuth()
 @Controller('me/telegram')
 export class TelegramController {
-  constructor(private readonly telegram: TelegramService) {}
+  constructor(
+    private readonly telegram: TelegramService,
+    private readonly sender: TelegramSender,
+  ) {}
 
   /**
    * Привязан ли Telegram. Нужно самому человеку: в чат дублируются уведомления
@@ -16,8 +20,13 @@ export class TelegramController {
    */
   @Get('status')
   async status(@CurrentUser() user: AuthUser) {
-    const chatId = await this.telegram.chatIdOf(user.tenantId, user.userId);
-    return { linked: !!chatId };
+    const [chatId, botName] = await Promise.all([
+      this.telegram.chatIdOf(user.tenantId, user.userId),
+      this.sender.username(),
+    ]);
+    // Ссылка на сам чат с ботом: без неё человек с кодом на руках должен искать
+    // бота поиском по имени — и находит в том числе чужих похожих.
+    return { linked: !!chatId, botUrl: botName ? `https://t.me/${botName}` : null };
   }
 
   /** Выдать одноразовый код привязки (любая internal-роль для себя). */
