@@ -12,6 +12,11 @@ class AssignDto {
   @IsOptional() @IsString() deadlineAt?: string;
 }
 
+class PlanDto {
+  @IsOptional() @IsNumber() @Min(0) estimateHours?: number;
+  @IsOptional() @IsString() deadlineAt?: string;
+}
+
 @ApiTags('forecast')
 @ApiBearerAuth()
 @Controller('tasks')
@@ -22,6 +27,22 @@ export class ForecastController {
   @Get(':id/forecast')
   forecast(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.service.getForecast(user.tenantId, id, user.role);
+  }
+
+  /**
+   * Оценка и срок без назначения.
+   *
+   * Раньше их можно было сохранить только вместе с исполнителем — кнопка называлась
+   * «Назначить» и требовала выбрать человека. Из-за этого поставить срок задаче,
+   * которую ещё не на кого повесить, было нельзя: приходилось назначать кого попало.
+   */
+  @Post(':id/plan')
+  @Roles('owner', 'manager')
+  async plan(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: PlanDto) {
+    await this.service.setEstimateDeadline(
+      user.tenantId, id, dto.estimateHours ?? null, dto.deadlineAt ?? null,
+    );
+    return { saved: true };
   }
 
   /** Назначение/перенос с guard перегруза (internal-роли). */

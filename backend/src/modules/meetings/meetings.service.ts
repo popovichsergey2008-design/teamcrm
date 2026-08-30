@@ -398,6 +398,27 @@ export class MeetingsService {
     return task;
   }
 
+  /**
+   * Сохранить правку черновика, не создавая задачу.
+   *
+   * ИИ формулирует черновик, а не готовую задачу: имя расслышано неточно, поручение
+   * сжато до неузнаваемости, исполнитель определён по последней реплике. Дать
+   * исправить это ДО создания дешевле, чем потом чинить задачу на доске — и честнее
+   * по отношению к тому, кому она достанется.
+   */
+  async updateDraft(tenantId: string, draftId: string, patch: {
+    title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
+  }) {
+    const draft = await this.repo.draft(tenantId, draftId);
+    if (!draft) throw AppException.notFound('Черновик не найден');
+    if (draft.status !== 'pending') throw AppException.conflict('Черновик уже обработан');
+    if (patch.title !== undefined && !String(patch.title).trim()) {
+      throw AppException.validation('Название задачи не может быть пустым');
+    }
+    const updated = await this.repo.updateDraft(tenantId, draftId, patch);
+    return updated ?? draft;
+  }
+
   async rejectDraft(tenantId: string, draftId: string) {
     const draft = await this.repo.draft(tenantId, draftId);
     if (!draft) throw AppException.notFound('Черновик не найден');

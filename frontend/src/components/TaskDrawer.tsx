@@ -46,17 +46,25 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
   const [estimate, setEstimate] = useState(task.estimate_hours ?? '');
   // формат поля — локальное время; toISOString здесь давал сдвиг на часовой пояс и показывал чужой час
-  const [deadline, setDeadline] = useState(() => {
+  const initialDeadline = (() => {
     if (!task.deadline_at) return '';
     const d = new Date(task.deadline_at);
     const p = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-  });
+  })();
+  const [deadline, setDeadline] = useState(initialDeadline);
   const [warn, setWarn] = useState<any>(null);
   const [err, setErr] = useState('');
   const [desc, setDesc] = useState(task.description ?? '');
+  /** Название правится прямо в карточке: раньше его можно было изменить только заново создав задачу. */
+  const [title, setTitle] = useState(task.title ?? '');
   const [priority, setPriority] = useState(task.priority ?? 'normal');
   const [managerId, setManagerId] = useState(task.created_by ?? '');
+
+  /** Есть ли что сохранять в блоке назначения: кнопка не должна лгать о работе. */
+  const planChanged = String(assigneeId ?? '') !== String(task.assignee_id ?? '')
+    || String(estimate ?? '') !== String(task.estimate_hours ?? '')
+    || deadline !== initialDeadline;
 
   const userName = (id?: string | null) => users.find((u) => u.id === id)?.fullName ?? '—';
   const changeManager = async (id: string) => {
@@ -65,20 +73,45 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
     onRefresh();
   };
 
-  const assign = async (confirmOverload: boolean) => {
-    if (!assigneeId) return setErr('Выберите исполнителя');
+  /**
+   * Сохранить назначение и план.
+   *
+   * Раньше кнопка называлась «Назначить» и требовала исполнителя: поставить срок
+   * задаче, которую ещё не на кого повесить, было нельзя, а «сохранить» в карточке
+   * не находилось вовсе. Теперь сохраняется то, что человек изменил: план — всегда,
+   * исполнитель — если он выбран или снят.
+   */
+  const savePlan = async (confirmOverload: boolean) => {
     setErr('');
+    const estimateHours = estimate ? Number(estimate) : undefined;
+    const deadlineAt = deadline ? new Date(deadline).toISOString() : undefined;
+    const changedAssignee = String(assigneeId ?? '') !== String(task.assignee_id ?? '');
     try {
-      const res = await api.assignTask(task.id, {
-        assigneeId, confirmOverload,
-        estimateHours: estimate ? Number(estimate) : undefined,
-        deadlineAt: deadline ? new Date(deadline).toISOString() : undefined,
-      });
-      if (res.warning && !confirmOverload) setWarn(res);
-      else { setWarn(null); onRefresh(); }
+      if (assigneeId && (changedAssignee || confirmOverload)) {
+        // назначение идёт через прогноз — он и предупредит о перегрузе
+        const res = await api.assignTask(task.id, { assigneeId, confirmOverload, estimateHours, deadlineAt });
+        if (res.warning && !confirmOverload) return setWarn(res);
+        setWarn(null);
+      } else {
+        if (estimateHours !== undefined || deadlineAt !== undefined) {
+          await api.saveTaskPlan(task.id, { estimateHours, deadlineAt });
+        }
+        // исполнителя сняли — задача снова ничья, и это законное состояние
+        if (!assigneeId && task.assignee_id) await api.updateTask(task.id, { assigneeId: null });
+        setWarn(null);
+      }
+      onRefresh();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
-  const saveDesc = async () => { await api.updateTask(task.id, { description: desc }); onRefresh(); };
+  /** Название и описание — одна правка: их и меняют вместе. */
+  const saveText = async () => {
+    if (!title.trim()) return setErr('Название не может быть пустым');
+    setErr('');
+    try {
+      await api.updateTask(task.id, { title: title.trim(), description: desc });
+      onRefresh();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
   const changePriority = async (p: string) => { setPriority(p); await api.updateTask(task.id, { priority: p }); onRefresh(); };
   const toggleBlocked = async () => { await api.updateTask(task.id, { isBlocked: !task.is_blocked }); onRefresh(); };
   // сменить статус = переместить в колонку доски (наверх колонки)
@@ -302,9 +335,18 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
                 </button>
               </div>
             </div>
+            <div className="field"><label>Название</label>
+              <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
             <div className="field"><label>Описание (Markdown)</label>
               <textarea className="input" rows={5} value={desc} onChange={(e) => setDesc(e.target.value)} />
-              <button className="btn btn-sm" style={{ marginTop: 6 }} onClick={saveDesc}>Сохранить описание</button>
+              {/* Кнопка появляется, только когда есть что сохранять: постоянно висящее
+                  «Сохранить» не отвечает на вопрос «мои правки уже применились?». */}
+              {(title !== (task.title ?? '') || desc !== (task.description ?? '')) && (
+                <button className="btn btn-primary btn-sm" style={{ marginTop: 6 }} onClick={saveText}>
+                  Сохранить
+                </button>
+              )}
             </div>
             <div className="drawer-section">
               <div className="drawer-section-title">Назначение и план</div>
@@ -330,10 +372,12 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
               </div>
               {warn && (
                 <div className="overload-warn"><Icon name="alert" size={13} /> Перегруз: риск {warn.riskPct ?? '—'}%, {warn.projectedHours}ч &gt; {warn.capacityHours}ч/нед.
-                  <button className="btn btn-sm overload-confirm" onClick={() => assign(true)}>Всё равно назначить</button>
+                  <button className="btn btn-sm overload-confirm" onClick={() => savePlan(true)}>Всё равно назначить</button>
                 </div>
               )}
-              <button className="btn btn-primary drawer-assign" onClick={() => assign(false)}>Назначить</button>
+              <button className="btn btn-primary drawer-assign" onClick={() => savePlan(false)} disabled={!planChanged}>
+                {planChanged ? 'Сохранить' : 'Сохранено'}
+              </button>
             </div>
             <div className="drawer-section">
               <div className="drawer-section-title">Прогноз срока</div>

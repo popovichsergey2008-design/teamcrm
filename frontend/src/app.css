@@ -655,6 +655,13 @@
   white-space: pre-line; font-size: 14px; line-height: 1.5;
 }
 
+/* Черновик задачи со встречи: правится до создания, поэтому строка — почти форма. */
+.draft-row { margin-top: 6px; }
+.draft-quote {
+  font-size: 12px; font-style: italic; border-left: 2px solid var(--border-2);
+  padding-left: 8px; margin: 4px 0;
+}
+
 /* Дыры в данных: строка = задача + готовое предложение + два решения. */
 .gap-row {
   display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap;
@@ -703,8 +710,12 @@
   display: inline-flex; align-items: center; gap: 6px; margin-left: var(--sp-2);
   flex-wrap: nowrap; vertical-align: middle;
 }
-.mine-roles { margin-left: 0; }
-.mine-roles .view-btn { padding: 5px 10px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+/* Рамке нельзя сжиматься: во flex-строке она ужималась, и подпись обрезалась на «От мен». */
+.mine-roles { margin-left: 0; flex: 0 0 auto; }
+.mine-roles .view-btn {
+  padding: 5px 10px; display: inline-flex; align-items: center; gap: 5px;
+  white-space: nowrap; flex: 0 0 auto;
+}
 .mine-creator {
   height: 28px; padding: 2px 8px; font-size: var(--fs-sm);
   max-width: 150px; flex: 0 0 auto;

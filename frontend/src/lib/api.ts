@@ -253,7 +253,10 @@ export const api = {
     priority?: string; deadlineAt?: string; estimateHours?: number; labelIds?: string[];
   }) =>
     request<Task>('POST', '/tasks', b),
-  updateTask: (id: string, b: Partial<{ title: string; description: string; isBlocked: boolean; priority: string; managerId: string | null }>) =>
+  updateTask: (id: string, b: Partial<{
+    title: string; description: string; isBlocked: boolean; priority: string;
+    managerId: string | null; assigneeId: string | null;
+  }>) =>
     request<Task>('PATCH', `/tasks/${id}`, b),
   moveTask: (id: string, b: { columnId: string; position: number; confirmGate?: boolean }) =>
     request<Task>('POST', `/tasks/${id}/move`, b),
@@ -660,6 +663,10 @@ export const api = {
   retryMeeting: (id: string) => request<any>('POST', `/meetings/${id}/retry`),
   applyMeetingDraft: (draftId: string, b: { title?: string; assigneeId?: string; projectId?: string }) =>
     request<any>('POST', `/meetings/drafts/${draftId}/apply`, b),
+  /** Правка черновика ДО создания задачи — она переживает перезагрузку страницы. */
+  updateMeetingDraft: (draftId: string, b: {
+    title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
+  }) => request<any>('POST', `/meetings/drafts/${draftId}`, b),
   rejectMeetingDraft: (draftId: string) => request<any>('POST', `/meetings/drafts/${draftId}/reject`),
 
   /** Сквозные вкладки: мои задачи и порученные другим (по всем проектам). */
@@ -700,6 +707,9 @@ export const api = {
   /** confirmTimeLoss — второе подтверждение для задачи с учтённым временем (только владельцу). */
   deleteTask: (id: string, confirmTimeLoss = false) =>
     request<{ deleted: true }>('DELETE', `/tasks/${id}${confirmTimeLoss ? '?confirmTimeLoss=1' : ''}`),
+  /** Оценка и срок без назначения: задаче можно поставить дату, ещё не выбрав исполнителя. */
+  saveTaskPlan: (id: string, b: { estimateHours?: number; deadlineAt?: string }) =>
+    request<{ saved: true }>('POST', `/tasks/${id}/plan`, b),
   getForecast: (id: string) => request<any>('GET', `/tasks/${id}/forecast`),
   getVelocity: (userId: string) => request<any>('GET', `/users/${userId}/velocity`),
   getLoad: (userId: string) => request<any>('GET', `/users/${userId}/load`),

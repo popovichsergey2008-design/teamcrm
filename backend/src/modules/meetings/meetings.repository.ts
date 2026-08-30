@@ -138,6 +138,38 @@ export class MeetingsRepository {
     return this.db.one<DraftRow>(`SELECT * FROM meeting_task_drafts WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
   }
 
+  /**
+   * Правка черновика ДО создания задачи.
+   *
+   * Пишем в базу, а не держим в форме: человек проверяет список после встречи не за
+   * один присест — уходит уточнить, возвращается, обновляет страницу. Потерянные
+   * правки здесь означают «проще создать задачу и переписать её потом», то есть ровно
+   * ту работу, которую разбор встречи и должен был снять.
+   *
+   * Пустая строка — это осознанно стёртое описание, поэтому `undefined` (поле не
+   * трогали) и `null`/'' (очистили) различаются.
+   */
+  async updateDraft(tenantId: string, id: string, patch: {
+    title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
+  }): Promise<DraftRow | null> {
+    return this.db.one<DraftRow>(
+      `UPDATE meeting_task_drafts
+          SET title = COALESCE($3, title),
+              description = CASE WHEN $4::text IS NULL THEN description ELSE NULLIF($4::text, '') END,
+              assignee_id = CASE WHEN $5::text IS NULL THEN assignee_id ELSE NULLIF($5::text, '')::bigint END,
+              project_id = CASE WHEN $6::text IS NULL THEN project_id ELSE NULLIF($6::text, '')::bigint END
+        WHERE tenant_id=$1 AND id=$2 AND status='pending'
+        RETURNING *`,
+      [
+        tenantId, id,
+        patch.title ?? null,
+        patch.description === undefined ? null : String(patch.description ?? ''),
+        patch.assigneeId === undefined ? null : String(patch.assigneeId ?? ''),
+        patch.projectId === undefined ? null : String(patch.projectId ?? ''),
+      ],
+    );
+  }
+
   async markDraftApplied(id: string, taskId: string): Promise<void> {
     await this.db.query(`UPDATE meeting_task_drafts SET status='applied', task_id=$2 WHERE id=$1`, [id, taskId]);
   }

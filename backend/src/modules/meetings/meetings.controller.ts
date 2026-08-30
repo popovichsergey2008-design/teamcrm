@@ -57,6 +57,15 @@ export class MeetingsController {
     return this.meetings.applyDraft(u.tenantId, u.userId, draftId, dto);
   }
 
+  /**
+   * Правка черновика до создания задачи: название, описание, исполнитель, проект.
+   * Отдельно от «применить» — человек правит список в несколько заходов.
+   */
+  @Post('drafts/:draftId')
+  updateDraft(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string, @Body() dto: ApplyDraftDto) {
+    return this.meetings.updateDraft(u.tenantId, draftId, dto);
+  }
+
   @Post('drafts/:draftId/reject')
   reject(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string) {
     return this.meetings.rejectDraft(u.tenantId, draftId);
