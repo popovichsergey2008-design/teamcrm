@@ -10,7 +10,9 @@ import { TaskDrawer } from '../components/TaskDrawer';
 import { GateBlock, HandoffGateDialog, gateFromError } from '../components/HandoffGateDialog';
 import { TaskCreateModal } from '../components/TaskCreateModal';
 import { TaskListView } from '../components/TaskListView';
-import { countMine, onlyMine, realPosition } from '../lib/board-filter';
+import {
+  countMatching, filterActive, filterBoard, MineMode, realPosition,
+} from '../lib/board-filter';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { CopilotPanel } from '../components/CopilotPanel';
@@ -91,14 +93,38 @@ export function BoardPage({ initial, onNavigate }: {
   );
   const switchView = (v: 'board' | 'list') => { setView(v); localStorage.setItem('teamcrm.boardView', v); };
   /**
-   * «Мои задачи» — фильтр, а не отдельный вид: человек остаётся там, где работал,
-   * и просто перестаёт видеть чужое. На доске это доска, в списке — список.
+   * Чьи задачи показывать — фильтр, а не отдельный вид: человек остаётся там, где
+   * работал, и просто перестаёт видеть чужое. На доске это доска, в списке — список.
+   *
+   * «Назначены мне» и «Поставлены мной» разделены намеренно: это разные роли в работе.
+   * Первое — что мне делать, второе — что я жду от других и с чего спрошу.
    */
-  const [mineOnly, setMineOnly] = useState(() => localStorage.getItem('teamcrm.boardMine') === '1');
-  const toggleMine = () => setMineOnly((prev) => {
-    localStorage.setItem('teamcrm.boardMine', prev ? '0' : '1');
-    return !prev;
+  const [mineMode, setMineMode] = useState<MineMode>(() => {
+    const saved = localStorage.getItem('teamcrm.boardMine');
+    if (saved === 'assigned' || saved === 'created' || saved === 'both') return saved;
+    return saved === '1' ? 'assigned' : 'off'; // старая настройка «Мои задачи» = назначенные
   });
+  /** Постановщик из списка: работает независимо от «моих» — что человек раздал кому угодно. */
+  const [creatorId, setCreatorId] = useState<string>('');
+
+  /**
+   * Кнопки ролей — независимые тумблеры, а не радиокнопки.
+   *
+   * Нажатые вместе они дают «моя работа целиком»: и то, что я делаю, и то, что жду
+   * от других. Повторный клик по активной снимает её — как сворачивание разделов
+   * в меню. Так один переключатель отвечает на три разных вопроса без третьей кнопки.
+   */
+  const toggleRole = (role: 'assigned' | 'created') => {
+    const on = mineMode === role || mineMode === 'both';
+    const other = role === 'assigned' ? 'created' : 'assigned';
+    const otherOn = mineMode === other || mineMode === 'both';
+    const value: MineMode = on
+      ? (otherOn ? other : 'off')
+      : (otherOn ? 'both' : role);
+    setMineMode(value);
+    localStorage.setItem('teamcrm.boardMine', value);
+  };
+  const roleOn = (role: 'assigned' | 'created') => mineMode === role || mineMode === 'both';
   const [showTeam, setShowTeam] = useState(false);
   const [showCopilot, setShowCopilot] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
@@ -319,8 +345,9 @@ export function BoardPage({ initial, onNavigate }: {
       // это не настоящая позиция: между двумя своими задачами могут стоять чужие,
       // и без пересчёта задача уехала бы в начало колонки.
       const target = board?.columns.find((c) => c.id === columnId);
-      const position = mineOnly && user && target
-        ? realPosition(target.tasks, String(user.id), visibleIndex)
+      const opts = { userId: String(user?.id ?? ''), mode: mineMode, creatorId: creatorId || null };
+      const position = user && target && filterActive(opts)
+        ? realPosition(target.tasks, opts, visibleIndex)
         : visibleIndex;
       if (current) dispatch({ type: 'UPSERT_TASK', task: { ...current, column_id: columnId, position } });
       try {
@@ -336,7 +363,7 @@ export function BoardPage({ initial, onNavigate }: {
         if (selected) api.getBoard(selected).then((b) => dispatch({ type: 'SET', board: b }));
       }
     },
-    [board, selected, mineOnly, user],
+    [board, selected, mineMode, creatorId, user],
   );
 
   const toggleTimer = useCallback(
@@ -359,11 +386,33 @@ export function BoardPage({ initial, onNavigate }: {
   const openTask = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === openTaskId) ?? null;
   // число рядом с «Моими задачами»: видно, есть ли по проекту работа лично на мне,
   // не переключаясь на эту вкладку
-  const myCount = board && user ? countMine(board.columns, String(user.id)) : 0;
+  const filterOpts = { userId: String(user?.id ?? ''), mode: mineMode, creatorId: creatorId || null };
+  /**
+   * Кто вообще ставил задачи в этом проекте.
+   *
+   * Список строим по доске, а не по всей команде: выбирать из тридцати человек,
+   * двадцать восемь из которых сюда ничего не ставили, — значит гарантированно
+   * нарваться на пустой экран.
+   */
+  const creators = board
+    ? [...new Map(board.columns.flatMap((c) => c.tasks)
+      .filter((t) => t.created_by)
+      .map((t) => [String(t.created_by), t.manager_name
+        ?? users.find((u) => String(u.id) === String(t.created_by))?.fullName ?? 'Без имени']))
+      .entries()].sort((a, b) => a[1].localeCompare(b[1], 'ru'))
+    : [];
+  const shownCount = board && user ? countMatching(board.columns, filterOpts) : 0;
   // Доске оставляем все колонки даже пустыми — иначе бросать задачу становится некуда;
   // в списке пустые заголовки только мешают.
-  const shownBoard = board && mineOnly && user
-    ? { ...board, columns: onlyMine(board.columns, String(user.id), view === 'board') }
+  // Проект сменился, а выбранный постановщик в нём ничего не ставил — снимаем выбор,
+  // иначе человек видит пустую доску и не понимает, почему.
+  useEffect(() => {
+    if (creatorId && board && !creators.some(([id]) => id === creatorId)) setCreatorId('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, board?.columns.length]);
+
+  const shownBoard = board && user && filterActive(filterOpts)
+    ? { ...board, columns: filterBoard(board.columns, filterOpts, view === 'board') }
     : board;
 
 
@@ -411,15 +460,41 @@ export function BoardPage({ initial, onNavigate }: {
                   <button className={`view-btn ${view === 'list' ? 'active' : ''}`} onClick={() => switchView('list')} title="Список"><Icon name="list" size={14} /> Список</button>
                 </span>
                 {!isClient && (
-                  <button
-                    className={`view-btn mine-toggle ${mineOnly ? 'active' : ''}`}
-                    onClick={toggleMine}
-                    aria-pressed={mineOnly}
-                    title={mineOnly ? 'Показать задачи всей команды' : 'Оставить только назначенное на меня'}
-                  >
-                    <Icon name="user" size={14} /> Мои задачи
-                    {myCount > 0 && <span className="view-count">{myCount}</span>}
-                  </button>
+                  /* Две роли — две кнопки-тумблера. «Мои задачи» одной кнопкой смешивали
+                     «что мне делать» и «что я жду от других»; на доске это разные вопросы.
+                     Нажатые вместе кнопки дают прежнее «всё моё», нажатие на активную
+                     снимает её — как сворачивание разделов в меню. */
+                  <span className="mine-switch" role="group" aria-label="Чьи задачи показывать">
+                    <button
+                      className={`view-btn mine-toggle ${roleOn('assigned') ? 'active' : ''}`}
+                      onClick={() => toggleRole('assigned')}
+                      aria-pressed={roleOn('assigned')}
+                      title="Задачи, где исполнитель — вы"
+                    >
+                      <Icon name="user" size={14} /> Назначены мне
+                    </button>
+                    <button
+                      className={`view-btn mine-toggle ${roleOn('created') ? 'active' : ''}`}
+                      onClick={() => toggleRole('created')}
+                      aria-pressed={roleOn('created')}
+                      title="Задачи, которые поставили вы — кому бы то ни было"
+                    >
+                      <Icon name="send" size={14} /> Поставлены мной
+                    </button>
+                    {/* Постановщик отдельным списком: он про чужие раздачи, а не про мои,
+                        и сужает выбор вместе с кнопками, а не вместо них. */}
+                    <select
+                      className="input mine-creator"
+                      value={creatorId}
+                      onChange={(e) => setCreatorId(e.target.value)}
+                      title="Показать задачи, поставленные конкретным человеком"
+                      aria-label="Постановщик"
+                    >
+                      <option value="">Постановщик: любой</option>
+                      {creators.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                    </select>
+                    {filterActive(filterOpts) && <span className="view-count">{shownCount}</span>}
+                  </span>
                 )}
                 {!isClient && (
                   <span className="board-actions">
@@ -433,11 +508,13 @@ export function BoardPage({ initial, onNavigate }: {
               </div>
               {showFinance && <PnlPanel pnl={pnl} alert={alert} cow={cow} />}
             </div>
-            {mineOnly && myCount === 0 ? (
+            {filterActive(filterOpts) && shownCount === 0 ? (
               <EmptyState
                 icon="user"
-                title="В этом проекте на вас ничего не назначено"
-                hint="Снимите «Мои задачи», чтобы увидеть работу всей команды."
+                title={mineMode === 'created' ? 'В этом проекте вы ничего не поручали'
+                  : mineMode === 'assigned' ? 'В этом проекте на вас ничего не назначено'
+                    : 'Под выбранный фильтр ничего не подходит'}
+                hint="Снимите фильтр, чтобы увидеть работу всей команды."
               />
             ) : view === 'list' ? (
               <TaskListView

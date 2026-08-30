@@ -13,6 +13,8 @@ interface Props {
 /** Списочный вид доски: задачи сгруппированы по колонкам, компактные строки. */
 export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Props) {
   const nameOf = (t: Task) => t.assignee_name ?? users.find((u) => u.id === t.assignee_id)?.fullName ?? null;
+  /** Постановщик: в списке он нужен ровно затем же, зачем на доске — знать, с кого спросят. */
+  const managerOf = (t: Task) => t.manager_name ?? users.find((u) => u.id === t.created_by)?.fullName ?? null;
 
   return (
     <div className="task-list">
@@ -24,6 +26,7 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
           </div>
           {col.tasks.map((t) => {
             const assignee = nameOf(t);
+            const manager = managerOf(t);
             const cost = t.cost_current !== undefined ? Number(t.cost_current) : null;
             const prio = priorityBadge(t.priority);
             const due = deadlineBadge(t.deadline_at, !!t.closed_at);
@@ -54,6 +57,11 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
                     </span>
                   ) : (
                     <span className="dim list-noassignee">— не назначен —</span>
+                  )}
+                  {manager && manager !== assignee && (
+                    <span className="manager-chip" title={`Поставил: ${manager}`}>
+                      <Icon name="send" size={11} /> {manager}
+                    </span>
                   )}
                 </div>
               </div>

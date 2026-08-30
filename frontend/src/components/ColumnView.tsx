@@ -142,6 +142,7 @@ export function ColumnView({
             key={t.id}
             task={t}
             assigneeName={t.assignee_name ?? users?.find((u) => u.id === t.assignee_id)?.fullName ?? null}
+            managerName={t.manager_name ?? users?.find((u) => u.id === t.created_by)?.fullName ?? null}
             canEdit={canEdit}
             timerActive={activeTimerTask === t.id}
             onOpen={() => onOpenTask(t)}
@@ -162,6 +163,7 @@ export function ColumnView({
 function TaskCard({
   task,
   assigneeName,
+  managerName,
   canEdit,
   timerActive,
   onOpen,
@@ -169,6 +171,8 @@ function TaskCard({
 }: {
   task: Task;
   assigneeName: string | null;
+  /** Постановщик — тот, с кого спросят результат. На доске он не менее важен исполнителя. */
+  managerName: string | null;
   canEdit: boolean;
   timerActive: boolean;
   onOpen: () => void;
@@ -200,6 +204,14 @@ function TaskCard({
           <span className="assignee-chip" title={`Исполнитель: ${assigneeName}`}>
             <span className="avatar-xs avatar-ph">{assigneeName[0]?.toUpperCase()}</span>
             {assigneeName}
+          </span>
+        )}
+        {/* Постановщик — второй чип, но приглушённый: главный вопрос карточки
+            «кто делает», а «кто поручил» нужен, когда с работой что-то не так.
+            Своё же поручение не подписываем: чип с самим собой ничего не добавляет. */}
+        {managerName && managerName !== assigneeName && (
+          <span className="manager-chip" title={`Поставил: ${managerName}`}>
+            <Icon name="send" size={11} /> {managerName}
           </span>
         )}
         {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={12} /> ИИ-агент</span>}
