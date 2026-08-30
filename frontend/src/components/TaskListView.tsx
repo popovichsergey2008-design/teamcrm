@@ -58,9 +58,9 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
                   ) : (
                     <span className="dim list-noassignee">— не назначен —</span>
                   )}
-                  {manager && manager !== assignee && (
-                    <span className="manager-chip" title={`Поставил: ${manager}`}>
-                      <Icon name="send" size={11} /> {manager}
+                  {manager && (
+                    <span className="manager-chip" title={`Постановщик: ${manager}`}>
+                      <Icon name="send" size={11} /> от {manager}
                     </span>
                   )}
                 </div>

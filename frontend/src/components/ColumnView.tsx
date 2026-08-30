@@ -206,12 +206,13 @@ function TaskCard({
             {assigneeName}
           </span>
         )}
-        {/* Постановщик — второй чип, но приглушённый: главный вопрос карточки
-            «кто делает», а «кто поручил» нужен, когда с работой что-то не так.
-            Своё же поручение не подписываем: чип с самим собой ничего не добавляет. */}
-        {managerName && managerName !== assigneeName && (
-          <span className="manager-chip" title={`Поставил: ${managerName}`}>
-            <Icon name="send" size={11} /> {managerName}
+        {/* Постановщик — второй чип, приглушённый: главный вопрос карточки «кто делает»,
+            а «кто поручил» нужен, когда с работой что-то не так. Показываем всегда,
+            когда он известен, даже если человек поставил задачу себе: два пустых
+            места в карточке хуже одного повтора имени. */}
+        {managerName && (
+          <span className="manager-chip" title={`Постановщик: ${managerName}`}>
+            <Icon name="send" size={11} /> от {managerName}
           </span>
         )}
         {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={12} /> ИИ-агент</span>}

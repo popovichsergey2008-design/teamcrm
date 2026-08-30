@@ -692,10 +692,28 @@
 .overload-confirm { width: 100%; margin-top: 8px; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
 /* «Мои задачи» — фильтр рядом с переключателем вида, а не третий вид */
-/* Две роли в работе — две кнопки рядом, между ними выбор чужого постановщика. */
-.mine-switch { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: var(--sp-2); }
-.mine-toggle { border-radius: var(--radius-sm); }
-.mine-creator { height: 28px; padding: 2px 8px; font-size: var(--fs-sm); max-width: 190px; }
+/*
+ * Две роли в работе — две кнопки в одной рамке, рядом выбор чужого постановщика.
+ *
+ * Всё внутри с фиксированной высотой и без переносов: панель стоит в шапке доски,
+ * и переключение фильтра не должно двигать соседние элементы. Прыгало именно из-за
+ * этого — появлялся счётчик и строка перекомпоновывалась.
+ */
+.mine-switch {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: var(--sp-2);
+  flex-wrap: nowrap; vertical-align: middle;
+}
+.mine-roles { margin-left: 0; }
+.mine-roles .view-btn { padding: 5px 10px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.mine-creator {
+  height: 28px; padding: 2px 8px; font-size: var(--fs-sm);
+  max-width: 150px; flex: 0 0 auto;
+}
+/* Слот счётчика занят всегда — пустой он просто не виден, но место держит. */
+.mine-count {
+  min-width: 26px; text-align: center; font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums; color: var(--accent);
+}
 /* счётчик своих задач в переключателе вида доски */
 .view-count {
   margin-left: 6px; padding: 1px 6px; border-radius: 999px;

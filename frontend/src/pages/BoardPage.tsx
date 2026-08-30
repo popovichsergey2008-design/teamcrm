@@ -465,22 +465,26 @@ export function BoardPage({ initial, onNavigate }: {
                      Нажатые вместе кнопки дают прежнее «всё моё», нажатие на активную
                      снимает её — как сворачивание разделов в меню. */
                   <span className="mine-switch" role="group" aria-label="Чьи задачи показывать">
-                    <button
-                      className={`view-btn mine-toggle ${roleOn('assigned') ? 'active' : ''}`}
-                      onClick={() => toggleRole('assigned')}
-                      aria-pressed={roleOn('assigned')}
-                      title="Задачи, где исполнитель — вы"
-                    >
-                      <Icon name="user" size={14} /> Назначены мне
-                    </button>
-                    <button
-                      className={`view-btn mine-toggle ${roleOn('created') ? 'active' : ''}`}
-                      onClick={() => toggleRole('created')}
-                      aria-pressed={roleOn('created')}
-                      title="Задачи, которые поставили вы — кому бы то ни было"
-                    >
-                      <Icon name="send" size={14} /> Поставлены мной
-                    </button>
+                    {/* Обе кнопки в одной рамке, как «Доска/Список»: два переключателя
+                        одного вопроса не должны выглядеть как два разных элемента. */}
+                    <span className="view-switch mine-roles">
+                      <button
+                        className={`view-btn ${roleOn('assigned') ? 'active' : ''}`}
+                        onClick={() => toggleRole('assigned')}
+                        aria-pressed={roleOn('assigned')}
+                        title="Назначены мне: задачи, где исполнитель — вы"
+                      >
+                        <Icon name="user" size={14} /> Мне
+                      </button>
+                      <button
+                        className={`view-btn ${roleOn('created') ? 'active' : ''}`}
+                        onClick={() => toggleRole('created')}
+                        aria-pressed={roleOn('created')}
+                        title="Поставлены мной: задачи, которые вы поручили кому угодно"
+                      >
+                        <Icon name="send" size={14} /> От меня
+                      </button>
+                    </span>
                     {/* Постановщик отдельным списком: он про чужие раздачи, а не про мои,
                         и сужает выбор вместе с кнопками, а не вместо них. */}
                     <select
@@ -490,10 +494,14 @@ export function BoardPage({ initial, onNavigate }: {
                       title="Показать задачи, поставленные конкретным человеком"
                       aria-label="Постановщик"
                     >
-                      <option value="">Постановщик: любой</option>
+                      <option value="">Кто поставил</option>
                       {creators.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
                     </select>
-                    {filterActive(filterOpts) && <span className="view-count">{shownCount}</span>}
+                    {/* Место под счётчик занято всегда: иначе его появление сдвигало бы
+                        соседние кнопки, и панель «прыгала» на каждое переключение. */}
+                    <span className="mine-count">
+                      {filterActive(filterOpts) ? shownCount : ''}
+                    </span>
                   </span>
                 )}
                 {!isClient && (
