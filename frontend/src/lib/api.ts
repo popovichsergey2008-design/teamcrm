@@ -251,6 +251,7 @@ export const api = {
     projectId: string; title: string; columnId?: string; description?: string;
     assigneeId?: string; managerId?: string;
     priority?: string; deadlineAt?: string; estimateHours?: number; labelIds?: string[];
+    requiresApproval?: boolean; checklist?: string[];
   }) =>
     request<Task>('POST', '/tasks', b),
   updateTask: (id: string, b: Partial<{
@@ -708,6 +709,18 @@ export const api = {
   deleteTask: (id: string, confirmTimeLoss = false) =>
     request<{ deleted: true }>('DELETE', `/tasks/${id}${confirmTimeLoss ? '?confirmTimeLoss=1' : ''}`),
   /** Оценка и срок без назначения: задаче можно поставить дату, ещё не выбрав исполнителя. */
+  /** Постановщик принял работу — задача завершается по-настоящему. */
+  approveTask: (id: string) => request<Task>('POST', `/tasks/${id}/approve`, {}),
+  /** Вернуть в работу: причина обязательна и попадает в историю задачи. */
+  returnTask: (id: string, reason: string) => request<Task>('POST', `/tasks/${id}/return`, { reason }),
+  /** Включить или снять согласование по задаче. */
+  setTaskApproval: (id: string, enabled: boolean) =>
+    request<Task>('POST', `/tasks/${id}/approval-required`, { enabled }),
+  /** Из какой встречи выросла задача (null — задача заведена руками). */
+  meetingOfTask: (taskId: string) =>
+    request<{ meeting_id: string; title: string | null; happened_at: string | null } | null>(
+      'GET', `/meetings/of-task/${taskId}`),
+
   saveTaskPlan: (id: string, b: { estimateHours?: number; deadlineAt?: string }) =>
     request<{ saved: true }>('POST', `/tasks/${id}/plan`, b),
   getForecast: (id: string) => request<any>('GET', `/tasks/${id}/forecast`),

@@ -52,12 +52,19 @@ export class MeetingsService {
   async details(tenantId: string, id: string) {
     const meeting = await this.repo.get(tenantId, id);
     if (!meeting) throw AppException.notFound('Встреча не найдена');
-    const [segments, summary, drafts] = await Promise.all([
+    const [segments, summary, drafts, tasks] = await Promise.all([
       this.repo.segments(tenantId, id),
       this.repo.summary(tenantId, id),
       this.repo.drafts(tenantId, id),
+      // что из предложенного стало настоящими задачами — со ссылкой и текущим статусом
+      this.repo.linkedTasks(tenantId, id),
     ]);
-    return { meeting, segments, summary, drafts };
+    return { meeting, segments, summary, drafts, tasks };
+  }
+
+  /** Встреча, из которой выросла задача: обратный переход из карточки в Summary. */
+  meetingOfTask(tenantId: string, taskId: string) {
+    return this.repo.meetingOfTask(tenantId, taskId);
   }
 
   /** Загрузка записи или готовых субтитров. Обработку запускаем фоном и сразу отвечаем. */

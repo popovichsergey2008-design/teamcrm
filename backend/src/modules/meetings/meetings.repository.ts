@@ -134,6 +134,49 @@ export class MeetingsRepository {
     );
   }
 
+  /**
+   * Судьба созданных по встрече задач: жива ли, кто делает, где стоит.
+   *
+   * LEFT JOIN, а не INNER: задачу могли удалить, и Summary не должен вести человека
+   * на несуществующую страницу — «задача удалена» честнее пустой ссылки.
+   */
+  linkedTasks(tenantId: string, meetingId: string) {
+    return this.db.many<{
+      draft_id: string; task_id: string; title: string | null; project_id: string | null;
+      column_name: string | null; closed: boolean; assignee_name: string | null; manager_name: string | null;
+    }>(
+      `SELECT d.id::text AS draft_id, d.task_id::text AS task_id,
+              t.title, t.project_id::text AS project_id, c.name AS column_name,
+              (t.closed_at IS NOT NULL) AS closed,
+              ua.full_name AS assignee_name, um.full_name AS manager_name
+         FROM meeting_task_drafts d
+    LEFT JOIN tasks t ON t.id = d.task_id AND t.tenant_id = d.tenant_id
+    LEFT JOIN board_columns c ON c.id = t.column_id
+    LEFT JOIN users ua ON ua.id = t.assignee_id
+    LEFT JOIN users um ON um.id = t.created_by
+        WHERE d.tenant_id = $1 AND d.meeting_id = $2 AND d.task_id IS NOT NULL
+        ORDER BY d.id`,
+      [tenantId, meetingId],
+    );
+  }
+
+  /**
+   * Из какой встречи выросла задача — обратная ссылка в карточке.
+   *
+   * Через ту же таблицу черновиков: отдельного поля у задачи нет и не нужно, связь
+   * уже есть, ей просто никто не пользовался.
+   */
+  meetingOfTask(tenantId: string, taskId: string) {
+    return this.db.one<{ meeting_id: string; title: string | null; happened_at: Date | null }>(
+      `SELECT m.id::text AS meeting_id, m.title, m.happened_at
+         FROM meeting_task_drafts d
+         JOIN meetings m ON m.id = d.meeting_id
+        WHERE d.tenant_id = $1 AND d.task_id = $2
+        ORDER BY d.id LIMIT 1`,
+      [tenantId, taskId],
+    );
+  }
+
   draft(tenantId: string, id: string) {
     return this.db.one<DraftRow>(`SELECT * FROM meeting_task_drafts WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
   }

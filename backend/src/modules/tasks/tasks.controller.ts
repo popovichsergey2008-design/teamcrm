@@ -3,7 +3,9 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { TasksService } from './tasks.service';
-import { CreateTaskDto, FocusDateDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
+import {
+  ApprovalRequiredDto, CreateTaskDto, FocusDateDto, MoveTaskDto, ReturnTaskDto, UpdateTaskDto,
+} from './tasks.dto';
 
 /** Пустую или кривую дату не подставляем молча: считаем, что клиент имел в виду сегодня. */
 function isoDate(value?: string): string {
@@ -89,5 +91,28 @@ export class TasksController {
     @Body() dto: MoveTaskDto,
   ) {
     return this.tasks.move(user.tenantId, id, dto, user.userId);
+  }
+
+  /**
+   * Постановщик принял работу — задача завершена по-настоящему.
+   *
+   * Отдельной ручкой, а не переносом в «Готово»: перенос делает исполнитель,
+   * а это решение принимает другой человек, и путать их нельзя.
+   */
+  @Post(':id/approve')
+  approve(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.tasks.approve(user.tenantId, id, user);
+  }
+
+  /** Вернуть в работу с объяснением: «переделай» без причины бесполезно. */
+  @Post(':id/return')
+  returnTask(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ReturnTaskDto) {
+    return this.tasks.returnForRework(user.tenantId, id, user, dto.reason);
+  }
+
+  /** Включить или снять согласование по этой задаче. */
+  @Post(':id/approval-required')
+  setApproval(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ApprovalRequiredDto) {
+    return this.tasks.setApprovalRequired(user.tenantId, id, user, dto.enabled);
   }
 }

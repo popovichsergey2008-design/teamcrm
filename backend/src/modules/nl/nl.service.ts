@@ -8,7 +8,7 @@ import { DealsService } from '../deals/deals.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { matchUserInText, normalizeDeadline } from './nl.match';
 import {
-  chooseProject, matchProjectInText, pickDeadline, pickPriority, PROJECT_HINT, taskTitleFrom,
+  chooseProject, matchProjectInText, pickApproval, pickDeadline, pickPriority, PROJECT_HINT, taskTitleFrom,
 } from './task-draft';
 import { buildEventDraft, EventDraft } from './event-draft';
 
@@ -27,19 +27,50 @@ export interface NlDraft {
     projectHint: string;
     assigneeId: string | null; assigneeName: string | null;
     priority: string; deadline: string | null;
+    /** Завершать только с согласия постановщика. Умолчание — да. */
+    requiresApproval: boolean;
+    /** Шаги выполнения: ИИ разбивает работу, человек правит перед созданием. */
+    checklist: string[];
   };
   deal?: { title: string; amount: number | null; plannedMargin: number | null; clientId: string | null; clientName: string | null; stage: string };
   context: { projects: { id: string; name: string }[]; users: { id: string; name: string }[]; clients: { id: string; name: string }[] };
 }
 
+/**
+ * Задание модели: не пересказ, а постановка задачи.
+ *
+ * Раньше здесь стояло «title — формулировка человека дословно», и результат выглядел
+ * как расшифровка диктофона: «надо посмотреть там эту страницу, мы вчера обсуждали».
+ * Такую задачу исполнитель читает дважды и всё равно идёт переспрашивать.
+ *
+ * Теперь модель работает как менеджер, оформляющий поручение: понимает намерение,
+ * отбрасывает разговорный шум, но НЕ выбрасывает требования и НЕ придумывает своих.
+ * Граница между «улучшить форму» и «поменять содержание» — главное в этом задании,
+ * поэтому она прописана явно и с примером.
+ */
 const FALLBACK_SYSTEM = [
-  'Ты — парсер команд CRM. По сообщению определи намерение (create_task | create_deal | none) и извлеки поля.',
-  'В JSON-входе: text, projects[{id,name}], users[{id,name}], clients[{id,name}], today. Сопоставляй имена с id ТОЛЬКО из списков (иначе null, не выдумывай).',
-  'title — формулировка человека дословно, без пересказа: сохраняй наклонение и залог, убирай лишь служебную обёртку команды («поставь задачу», «на Ивана»).',
+  'Ты — постановщик задач в CRM, а не расшифровщик речи. По сообщению определи намерение',
+  '(create_task | create_deal | none) и оформи нормальную задачу.',
+  'В JSON-входе: text, projects[{id,name}], users[{id,name}], clients[{id,name}], today.',
+  'Сопоставляй имена с id ТОЛЬКО из списков (иначе null, не выдумывай).',
+  'title — короткий заголовок с глагола, до 70 символов, без разговорных слов и без пересказа описания.',
+  'Пример: из «Глеб, надо посмотреть там эту страницу, кнопка вроде неправильно работает, особенно на телефоне»',
+  'следует title «Исправить работу кнопки на мобильных устройствах».',
+  'description — деловое описание: что сделать, где, в чём проблема, какой результат ожидается,',
+  'плюс условия, которые человек назвал. Разговорный шум, повторы и незаконченные фразы убирай.',
+  'checklist — 3–7 конкретных шагов ИМЕННО этой задачи (не шаблонных), каждый начинается с глагола.',
+  'Если из речи шаги не следуют — пустой массив, выдумывать не надо.',
+  'ЗАПРЕЩЕНО: добавлять требования, которых не было; менять срок, приоритет или исполнителя по своему усмотрению;',
+  'терять названные пользователем условия. РАЗРЕШЕНО: сокращать, структурировать, править грамматику,',
+  'объединять повторы, делать формулировки профессиональнее.',
   'Исполнитель называется после «на», «для», «поручи», «назначь»; имя обычно в косвенном падеже — это тот же человек.',
   'deadline — срок выполнения задачи, а не любая дата в тексте: если дата часть содержания задачи, ставь null.',
   'Относительные сроки переводи в YYYY-MM-DD относительно today. priority: low|normal|high|urgent.',
-  'Верни СТРОГО JSON: {"intent":"","confidence":0,"task":{"title":"","description":null,"projectId":null,"assigneeId":null,"priority":"normal","deadline":null},"deal":{"title":"","amount":null,"plannedMargin":null,"clientId":null,"stage":"new"},"note":""}',
+  'requiresApproval — завершать ли задачу только с согласия постановщика. По умолчанию true.',
+  'false ставь, если сказано «можно закрывать без меня», «без согласования», «проверять не надо».',
+  'Верни СТРОГО JSON: {"intent":"","confidence":0,"task":{"title":"","description":null,"projectId":null,',
+  '"assigneeId":null,"priority":"normal","deadline":null,"requiresApproval":true,"checklist":[]},',
+  '"deal":{"title":"","amount":null,"plannedMargin":null,"clientId":null,"stage":"new"},"note":""}',
 ].join(' ');
 
 @Injectable()
@@ -204,12 +235,18 @@ export class NlService {
         : pickPriority(clean) ?? 'normal';
       const deadline = normalizeDeadline(t.deadline, today) ?? pickDeadline(clean, new Date());
       if (t.deadline && !deadline) warnings.push('Срок не подставил: дата в прошлом или не распознана — выберите вручную');
+      // Согласование считаем правилами: это переключатель права закрыть задачу,
+      // и ошибка модели тут стоит дорого в обе стороны.
+      const requiresApproval = pickApproval(clean);
+      const checklist = Array.isArray(t.checklist)
+        ? t.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 12)
+        : [];
       base.task = {
         title: title.slice(0, 255), description: t.description ? String(t.description) : null,
         projectId, projectName: projectId ? projectSet.get(projectId)! : null,
         projectHint: projectId ? PROJECT_HINT[source] : '',
         assigneeId, assigneeName: assigneeId ? userSet.get(assigneeId)! : null,
-        priority, deadline,
+        priority, deadline, requiresApproval, checklist,
       };
     } else if (intent === 'create_deal') {
       const d = parsed.deal ?? {};
@@ -247,6 +284,11 @@ export class NlService {
         managerId: userId,
         priority: PRIORITIES.includes(String(t.priority)) ? String(t.priority) : undefined,
         deadlineAt,
+        // человек мог снять галочку в предпросмотре — уважаем именно её, а не разбор
+        requiresApproval: t.requiresApproval !== false,
+        checklist: Array.isArray(t.checklist)
+          ? t.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean)
+          : undefined,
       } as any, userId);
       void this.secretary.record({
         tenantId, userId, kind: 'nl_task',

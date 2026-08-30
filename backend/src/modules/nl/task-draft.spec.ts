@@ -1,5 +1,5 @@
 import {
-  chooseProject, matchProjectInText, pickDeadline, pickPriority, taskTitleFrom,
+  chooseProject, matchProjectInText, pickApproval, pickDeadline, pickPriority, taskTitleFrom,
 } from './task-draft';
 
 const PROJECTS = [
@@ -90,5 +90,29 @@ describe('название задачи', () => {
   it('фраза без обёртки не превращается в пустоту', () => {
     expect(taskTitleFrom('обновить прайс')).toBe('обновить прайс');
     expect(taskTitleFrom('создай задачу')).toBe('создай задачу');
+  });
+});
+
+describe('Согласование с постановщиком', () => {
+  it('по умолчанию включено: молчание — это договорённость, а не отказ от неё', () => {
+    expect(pickApproval('поставь Глебу задачу поправить форму')).toBe(true);
+    expect(pickApproval('')).toBe(true);
+  });
+
+  it('снимается, когда человек прямо это говорит', () => {
+    expect(pickApproval('создай задачу Алине, можно закрывать без согласования')).toBe(false);
+    expect(pickApproval('задача Юрию, проверять выполнение не надо')).toBe(false);
+    expect(pickApproval('сними согласование с постановщиком для этой задачи')).toBe(false);
+    expect(pickApproval('поставь задачу, закрывать без меня')).toBe(false);
+  });
+
+  it('остаётся включённым, когда его подтверждают словами', () => {
+    expect(pickApproval('поставь задачу Юрию, завершение только после моего подтверждения')).toBe(true);
+    expect(pickApproval('создай задачу Глебу и не закрывать без моего согласования')).toBe(true);
+    expect(pickApproval('после выполнения согласовать со мной')).toBe(true);
+  });
+
+  it('при противоречии верим требованию согласования: человек уточняет, а не отменяет', () => {
+    expect(pickApproval('без лишних вопросов, но не закрывать без моего подтверждения')).toBe(true);
   });
 });

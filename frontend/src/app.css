@@ -655,6 +655,23 @@
   white-space: pre-line; font-size: 14px; line-height: 1.5;
 }
 
+/* Работа сдана и ждёт постановщика — главное, что сейчас происходит с задачей. */
+.approval-box {
+  margin-bottom: 12px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--warn-soft, var(--bg-elev-2)); border: 1px solid var(--warn, var(--border-2));
+}
+.approval-head { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.task-origin { font-size: 12px; margin-bottom: 10px; display: flex; align-items: center; gap: 5px; }
+
+/* Задачи по итогам встречи: список со ссылками, а не счётчик. */
+.meeting-task { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.meeting-task-title { font-weight: 600; font-size: 14px; text-align: left; }
+.meeting-task-meta { font-size: 12px; margin-top: 2px; }
+
+/* Шаг чек-листа в предпросмотре голосовой задачи. */
+.nl-step { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+.nl-step .input { flex: 1 1 auto; min-width: 0; }
+
 /* Черновик задачи со встречи: правится до создания, поэтому строка — почти форма. */
 .draft-row { margin-top: 6px; }
 .draft-quote {

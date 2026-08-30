@@ -77,7 +77,12 @@ export class TasksService {
       deadlineAt: dto.deadlineAt ?? null,
       estimateHours: dto.estimateHours ?? null,
       labelIds: dto.labelIds,
+      // умолчание — «с согласованием»: явно снять его должен человек, а не забывчивость
+      requiresApproval: dto.requiresApproval !== false,
     });
+    // Чек-лист, если задачу собрали заранее — голосом или из встречи.
+    if (dto.checklist?.length) await this.repo.addChecklist(tenantId, task.id, dto.checklist);
+
     this.realtime.emit(tenantId, task.project_id, 'task.created', task as any);
     await this.activity.log(tenantId, task.id, actorId, 'created', { title: task.title });
     this.knowledge.enqueue(tenantId, 'task', task.id); // в базу знаний (открытые проекты тоже)
@@ -168,11 +173,32 @@ export class TasksService {
     }
 
     const moved = await this.repo.move(tenantId, id, dto.columnId, dto.position, column.name);
-    // перенос в Done закрывает задачу (источник для Velocity/эмбеддингов); вынос — переоткрывает
-    if (isDoneColumn(column.name)) {
+
+    /*
+     * Перенос в Done закрывает задачу — но только если её некому принимать.
+     *
+     * «Сделал» и «принято» — разные события. Когда у задачи включено согласование,
+     * а двигает её не постановщик, работа СДАЁТСЯ: карточка встаёт в «Готово», но
+     * задача не закрывается и ждёт ответа. Иначе исполнитель закрывал бы задачу сам,
+     * а постановщик узнавал об этом из отчётов — если вообще узнавал.
+     */
+    const needsApproval = isDoneColumn(column.name)
+      && task.requires_approval
+      && !!task.created_by
+      && String(task.created_by) !== String(actorId ?? '');
+
+    if (isDoneColumn(column.name) && !needsApproval) {
       await this.repo.closeTask(tenantId, id);
+      if (task.approval_state === 'pending') await this.repo.clearApproval(tenantId, id);
       this.knowledge.enqueue(tenantId, 'task', id); // закрытая задача → в базу знаний
-    } else if (task.closed_at) await this.repo.reopenTask(tenantId, id);
+    } else if (needsApproval) {
+      await this.repo.requestApproval(tenantId, id, actorId);
+      await this.activity.log(tenantId, id, actorId, 'approval_requested', { to: column.name });
+      void this.notify.approvalRequested(tenantId, id, actorId);
+    } else if (task.closed_at) {
+      await this.repo.reopenTask(tenantId, id);
+      if (task.approval_state === 'pending') await this.repo.clearApproval(tenantId, id);
+    }
     this.realtime.emit(tenantId, moved.project_id, 'task.moved', moved as any);
     const moveId = await this.activity.log(tenantId, id, actorId, 'moved', { to: column.name });
     // Обход гейта — не молчаливый: проверяющий должен видеть, чего в работе не хватало.
@@ -192,6 +218,100 @@ export class TasksService {
       void this.notify.taskStatusChanged(tenantId, id, actorId, column.name, isDoneColumn(column.name), moveId);
     }
     return moved;
+  }
+
+  /**
+   * Постановщик принял работу.
+   *
+   * Только он: подтвердить свою же сдачу исполнитель не должен — иначе согласование
+   * превращается в лишний клик. Владельцу разрешаем как последней инстанции: он
+   * отвечает за компанию, и заблокированная задача уволившегося постановщика не должна
+   * висеть вечно.
+   */
+  async approve(tenantId: string, id: string, actor: { userId: string; role: string }): Promise<TaskRow> {
+    const task = await this.gateApproval(tenantId, id, actor);
+    const columns = await this.projects.listColumns(tenantId, task.project_id);
+    const done = columns.find((c) => isDoneColumn(c.name));
+
+    if (done && task.column_id !== done.id) {
+      await this.repo.move(tenantId, id, done.id, 0, done.name);
+    }
+    await this.repo.closeTask(tenantId, id);
+    await this.repo.clearApproval(tenantId, id);
+    await this.activity.log(tenantId, id, actor.userId, 'approval_confirmed', {});
+    this.knowledge.enqueue(tenantId, 'task', id);
+
+    const updated = (await this.repo.findById(tenantId, id))!;
+    this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
+    void this.notify.taskStatusChanged(
+      tenantId, id, actor.userId, done?.name ?? 'Готово', true,
+      await this.activity.log(tenantId, id, actor.userId, 'moved', { to: done?.name ?? 'Готово' }),
+    );
+    return updated;
+  }
+
+  /**
+   * Постановщик вернул работу в дело.
+   *
+   * Причина обязательна не из вредности: «верните и переделайте» без объяснения —
+   * самый частый способ поссорить команду, а исполнителю всё равно придётся идти
+   * и спрашивать, что не так.
+   */
+  async returnForRework(
+    tenantId: string, id: string, actor: { userId: string; role: string }, reason: string,
+  ): Promise<TaskRow> {
+    const task = await this.gateApproval(tenantId, id, actor);
+    const note = String(reason ?? '').trim();
+    if (!note) throw AppException.validation('Напишите, что доработать');
+
+    const columns = await this.projects.listColumns(tenantId, task.project_id);
+    // возвращаем в первую рабочую колонку — не в «Готово» и не в «Проверку»
+    const back = columns.find((c) => !isDoneColumn(c.name)) ?? columns[0];
+    if (back && task.column_id !== back.id) {
+      await this.repo.move(tenantId, id, back.id, 0, back.name);
+    }
+    if (task.closed_at) await this.repo.reopenTask(tenantId, id);
+    await this.repo.clearApproval(tenantId, id);
+    // Причина живёт в истории задачи: там её видно рядом с самим возвратом,
+    // а не отдельным комментарием, который потеряется в переписке.
+    await this.activity.log(tenantId, id, actor.userId, 'approval_returned', { reason: note.slice(0, 300) });
+
+    const updated = (await this.repo.findById(tenantId, id))!;
+    this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
+    void this.notify.approvalReturned(tenantId, id, actor.userId, note);
+    return updated;
+  }
+
+  /** Включить или снять согласование — право постановщика (и владельца). */
+  async setApprovalRequired(
+    tenantId: string, id: string, actor: { userId: string; role: string }, value: boolean,
+  ): Promise<TaskRow> {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    this.assertCanDecide(task, actor);
+    await this.repo.setRequiresApproval(tenantId, id, value);
+    // снятое согласование освобождает уже сданную работу: держать её в ожидании
+    // после «согласование больше не нужно» было бы издевательством
+    if (!value && task.approval_state === 'pending') await this.repo.clearApproval(tenantId, id);
+    await this.activity.log(tenantId, id, actor.userId, 'approval_setting', { requiresApproval: value });
+    const updated = (await this.repo.findById(tenantId, id))!;
+    this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
+    return updated;
+  }
+
+  private async gateApproval(tenantId: string, id: string, actor: { userId: string; role: string }) {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    if (task.approval_state !== 'pending') throw AppException.conflict('Эта задача не ждёт подтверждения');
+    this.assertCanDecide(task, actor);
+    return task;
+  }
+
+  private assertCanDecide(task: TaskRow, actor: { userId: string; role: string }): void {
+    const isManager = task.created_by && String(task.created_by) === String(actor.userId);
+    if (!isManager && actor.role !== 'owner') {
+      throw AppException.forbidden('Решение принимает постановщик задачи');
+    }
   }
 
   /**

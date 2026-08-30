@@ -51,6 +51,10 @@ export interface Task {
   assignee_name?: string | null;
   created_by?: string | null;
   manager_name?: string | null;
+  /** Завершать только с согласия постановщика. */
+  requires_approval?: boolean;
+  /** none | pending — работа сдана и ждёт ответа постановщика. */
+  approval_state?: string;
   status: string;
   is_blocked: boolean;
   agent_assigned?: boolean;

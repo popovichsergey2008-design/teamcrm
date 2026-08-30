@@ -216,6 +216,11 @@ function TaskCard({
           </span>
         )}
         {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={12} /> ИИ-агент</span>}
+        {/* Сдано и ждёт постановщика: по доске должно быть видно, что работа
+            сделана, но задача ещё не закрыта — иначе «Готово» врёт. */}
+        {task.approval_state === 'pending' && (
+          <span className="badge badge-warn" title="Работа сдана, ждёт решения постановщика">На согласовании</span>
+        )}
         {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
         {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
         {due && <span className={due.cls} title={due.title}>{due.text}</span>}

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { navigate } from '../lib/router';
+import { useAuth } from '../state/auth';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { GateBlock, HandoffGateDialog, gateFromError } from './HandoffGateDialog';
@@ -59,6 +61,14 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
   /** Название правится прямо в карточке: раньше его можно было изменить только заново создав задачу. */
   const [title, setTitle] = useState(task.title ?? '');
   const [priority, setPriority] = useState(task.priority ?? 'normal');
+  const { user } = useAuth();
+  /** Решение принимает постановщик; владельцу тоже даём — он последняя инстанция. */
+  const isManager = String(task.created_by ?? '') === String(user?.id ?? '') || user?.role === 'owner';
+  /** Встреча, из которой выросла задача: обратный переход в её Summary. */
+  const [meeting, setMeeting] = useState<{ meeting_id: string; title: string | null } | null>(null);
+  useEffect(() => {
+    api.meetingOfTask(task.id).then(setMeeting).catch(() => setMeeting(null));
+  }, [task.id]);
   const [managerId, setManagerId] = useState(task.created_by ?? '');
 
   /** Есть ли что сохранять в блоке назначения: кнопка не должна лгать о работе. */
@@ -103,6 +113,31 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
       onRefresh();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
+  /**
+   * Решение постановщика по сданной работе.
+   *
+   * Обе кнопки живут в карточке, а не на доске: чтобы принять работу, надо сначала
+   * её посмотреть, а «принять не глядя» — способ обесценить всю затею.
+   */
+  const decide = async (accept: boolean) => {
+    setErr('');
+    try {
+      if (accept) await api.approveTask(task.id);
+      else {
+        const reason = window.prompt('Что доработать? Причина уйдёт исполнителю и останется в истории задачи.');
+        if (!reason?.trim()) return; // молча вернуть работу нельзя — это ссора на ровном месте
+        await api.returnTask(task.id, reason.trim());
+      }
+      onRefresh();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+
+  const toggleApproval = async (enabled: boolean) => {
+    setErr('');
+    try { await api.setTaskApproval(task.id, enabled); onRefresh(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+
   /** Название и описание — одна правка: их и меняют вместе. */
   const saveText = async () => {
     if (!title.trim()) return setErr('Название не может быть пустым');
@@ -335,6 +370,36 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
                 </button>
               </div>
             </div>
+            {/* Работа сдана и ждёт решения: блок стоит первым — это главное, что
+                сейчас происходит с задачей, и адресован он конкретному человеку. */}
+            {task.approval_state === 'pending' && (
+              <div className="approval-box">
+                <div className="approval-head">
+                  <Icon name="alert" size={15} /> Работа сдана и ждёт решения постановщика
+                </div>
+                {isManager ? (
+                  <div className="team-rate">
+                    <button className="btn btn-primary btn-sm" onClick={() => decide(true)}>Принять работу</button>
+                    <button className="btn btn-sm" onClick={() => decide(false)}>Вернуть в работу</button>
+                  </div>
+                ) : (
+                  <div className="dim" style={{ fontSize: 12 }}>
+                    Решает {userName(task.created_by ?? null)} — задача завершится после подтверждения.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {meeting && (
+              // Обратная ссылка: из задачи видно, на какой встрече её поручили
+              <div className="dim task-origin">
+                <Icon name="record" size={12} /> Создано по итогам встречи:{' '}
+                <button className="link-btn" onClick={() => navigate({ section: 'chat', view: 'meetings' })}>
+                  {meeting.title || 'встреча'}
+                </button>
+              </div>
+            )}
+
             <div className="field"><label>Название</label>
               <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
             </div>
@@ -375,6 +440,16 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
                   <button className="btn btn-sm overload-confirm" onClick={() => savePlan(true)}>Всё равно назначить</button>
                 </div>
               )}
+              {/* Переключатель согласования — право постановщика, пока задача жива. */}
+              <label className="notify-row" title="Исполнитель сдаёт работу, завершаете её вы">
+                <input
+                  type="checkbox"
+                  checked={task.requires_approval !== false}
+                  disabled={!isManager || !!task.closed_at}
+                  onChange={(e) => toggleApproval(e.target.checked)}
+                />
+                Не завершать без согласования с постановщиком
+              </label>
               <button className="btn btn-primary drawer-assign" onClick={() => savePlan(false)} disabled={!planChanged}>
                 {planChanged ? 'Сохранить' : 'Сохранено'}
               </button>

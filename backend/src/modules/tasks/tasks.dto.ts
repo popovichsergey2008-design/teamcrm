@@ -54,12 +54,31 @@ export class CreateTaskDto {
   @IsArray()
   @IsString({ each: true })
   labelIds?: string[];
+
+  /**
+   * Не завершать без согласования с постановщиком. Умолчание — включено:
+   * это поведение, которое команды и так имитируют вручную («напиши, когда закончишь»).
+   */
+  @IsOptional()
+  @IsBoolean()
+  requiresApproval?: boolean;
+
+  /** Пункты чек-листа, если задачу собрали заранее — голосом или из встречи. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  checklist?: string[];
 }
 
 export class UpdateTaskDto {
   @IsOptional()
   @IsString()
   managerId?: string | null;
+
+  /** Постановщик может включить или снять согласование, пока задача не завершена. */
+  @IsOptional()
+  @IsBoolean()
+  requiresApproval?: boolean;
 
   @IsOptional()
   @IsString()
@@ -102,4 +121,16 @@ export class MoveTaskDto {
   @IsOptional()
   @IsBoolean()
   confirmGate?: boolean;
+}
+
+/** Возврат в работу: причина обязательна — «переделай» без объяснения бесполезно. */
+export class ReturnTaskDto {
+  @IsString()
+  @MaxLength(500)
+  reason!: string;
+}
+
+export class ApprovalRequiredDto {
+  @IsBoolean()
+  enabled!: boolean;
 }

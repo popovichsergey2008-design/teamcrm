@@ -67,7 +67,14 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     setBusy(true); setMsg('');
     try {
       const body = draft.intent === 'create_task'
-        ? { intent: 'create_task', task: draft.task }
+        ? {
+          intent: 'create_task',
+          task: {
+            ...draft.task,
+            // пустые строки в шагах — след правки, а не шаг: до задачи они не доходят
+            checklist: (draft.task.checklist ?? []).map((x: string) => x.trim()).filter(Boolean),
+          },
+        }
         : { intent: 'create_deal', deal: draft.deal };
       const res: any = await api.nlApply(body);
       // Раньше здесь перезагружалась вся страница: человек терял открытый раздел
@@ -161,6 +168,46 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
               </select>
               <DatePicker value={draft.task.deadline ?? ''} onChange={(v) => setTask({ deadline: v || null })} placeholder="срок не задан" />
             </div>
+
+            <label className="notify-row" title="Исполнитель сдаст работу, а завершите её вы">
+              <input
+                type="checkbox"
+                checked={draft.task.requiresApproval !== false}
+                onChange={(e) => setTask({ requiresApproval: e.target.checked })}
+              />
+              Не завершать без согласования с постановщиком
+            </label>
+
+            {/* Чек-лист приходит из разбора и правится здесь же: шаги, придуманные
+                моделью, человек читает первым — и половину обычно переписывает. */}
+            <div className="drawer-section-title" style={{ marginTop: 8 }}>Шаги выполнения</div>
+            {(draft.task.checklist ?? []).map((step: string, i: number) => (
+              <div key={i} className="nl-step">
+                <input
+                  className="input"
+                  value={step}
+                  onChange={(e) => {
+                    const next = [...(draft.task.checklist ?? [])];
+                    next[i] = e.target.value;
+                    setTask({ checklist: next });
+                  }}
+                  aria-label={`Шаг ${i + 1}`}
+                />
+                <button
+                  className="btn btn-ghost btn-sm"
+                  title="Убрать шаг"
+                  onClick={() => setTask({ checklist: (draft.task.checklist ?? []).filter((_: string, j: number) => j !== i) })}
+                >
+                  <Icon name="close" size={13} />
+                </button>
+              </div>
+            ))}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setTask({ checklist: [...(draft.task.checklist ?? []), ''] })}
+            >
+              <Icon name="plus" size={13} /> Добавить шаг
+            </button>
             <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={apply} disabled={busy || !draft.task.projectId}>
               {draft.task.projectId ? 'Создать задачу' : 'Выберите проект'}
             </button>

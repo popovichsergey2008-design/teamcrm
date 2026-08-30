@@ -57,6 +57,12 @@ export class MeetingsController {
     return this.meetings.applyDraft(u.tenantId, u.userId, draftId, dto);
   }
 
+  /** Из какой встречи выросла задача — для обратной ссылки в её карточке. */
+  @Get('of-task/:taskId')
+  ofTask(@CurrentUser() u: AuthUser, @Param('taskId') taskId: string) {
+    return this.meetings.meetingOfTask(u.tenantId, taskId);
+  }
+
   /**
    * Правка черновика до создания задачи: название, описание, исполнитель, проект.
    * Отдельно от «применить» — человек правит список в несколько заходов.

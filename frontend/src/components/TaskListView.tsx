@@ -41,6 +41,9 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
                   {t.labels?.map((l) => <span key={l.id} className="label-chip" style={{ background: l.color, color: labelTextColor(l.color) }}>{l.name}</span>)}
                 </div>
                 <div className="list-side">
+                  {t.approval_state === 'pending' && (
+                    <span className="badge badge-warn" title="Работа сдана, ждёт решения постановщика">На согласовании</span>
+                  )}
                   {t.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
                   {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
                   {due && <span className={due.cls} title={due.title}>{due.text}</span>}

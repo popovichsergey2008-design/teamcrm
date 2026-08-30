@@ -4,6 +4,7 @@ import { GuestMeetsPanel } from '../components/GuestMeetsPanel';
 import { Icon } from '../components/Icon';
 import { SkeletonList } from '../components/Skeleton';
 import { api, ApiError } from '../lib/api';
+import { navigate } from '../lib/router';
 import type { Project, User } from '../types';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -141,7 +142,7 @@ function MeetingDetails({ id, projects, users, onChanged }: { id: string; projec
   useEffect(() => { load(); }, [load]);
 
   if (!data) return <div style={{ padding: 10 }}><SkeletonList rows={3} /></div>;
-  const { meeting, segments, summary, drafts } = data;
+  const { meeting, segments, summary, drafts, tasks = [] } = data;
   const pending = drafts.filter((d: any) => d.status === 'pending');
   // Готовы к созданию только те, у кого есть проект: без него задаче некуда лечь.
   const readyCount = pending.filter((d: any) => d.project_id).length;
@@ -237,10 +238,40 @@ function MeetingDetails({ id, projects, users, onChanged }: { id: string; projec
           )}
         </>
       )}
-      {drafts.some((d: any) => d.status === 'applied') && (
-        <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
-          <Icon name="check" size={13} /> Создано задач: {drafts.filter((d: any) => d.status === 'applied').length}
-        </div>
+      {/*
+        Задачи по итогам встречи.
+        Раньше здесь стояло только «создано задач: 3» — по этой строке нельзя было ни
+        понять, что именно поручили, ни дойти до задачи. Теперь список со ссылками:
+        через месяц человек открывает старую встречу и видит, чем она закончилась.
+      */}
+      {tasks.length > 0 && (
+        <>
+          <div className="drawer-section-title" style={{ marginTop: 10 }}>Задачи по итогам встречи ({tasks.length})</div>
+          {tasks.map((t: any) => (
+            <div key={t.draft_id} className="meeting-task">
+              {t.title ? (
+                <>
+                  <button
+                    className="link-btn meeting-task-title"
+                    onClick={() => navigate({ section: 'projects', projectId: t.project_id, taskId: t.task_id })}
+                    title="Открыть задачу"
+                  >
+                    {t.title}
+                  </button>
+                  <div className="dim meeting-task-meta">
+                    {t.assignee_name ? `Исполнитель: ${t.assignee_name}` : 'Исполнитель не назначен'}
+                    {t.manager_name ? ` · Поставил: ${t.manager_name}` : ''}
+                    {' · '}
+                    {t.closed ? 'Завершена' : t.column_name || 'В работе'}
+                  </div>
+                </>
+              ) : (
+                // задачу удалили — ведём человека в никуда только через собственную беспечность
+                <span className="dim">Задача удалена</span>
+              )}
+            </div>
+          ))}
+        </>
       )}
 
       <div className="drawer-section-title" style={{ marginTop: 10 }}>Стенограмма ({segments.length})</div>

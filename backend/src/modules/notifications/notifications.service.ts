@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { NotificationsRepository, Recipient } from './notifications.repository';
 import {
   EventKey, Letter, TaskCtx,
-  taskCommentedLetter, taskCreatedLetter, taskStatusLetter,
+  taskApprovalLetter, taskCommentedLetter, taskCreatedLetter, taskReturnedLetter, taskStatusLetter,
 } from './mail.templates';
 
 /**
@@ -90,6 +90,24 @@ export class NotificationsService {
   ): Promise<void> {
     return this.fanout(tenantId, taskId, 'task.commented', actorId, `c${commentId}`,
       (ctx, unsub) => taskCommentedLetter({ ...ctx, comment }, unsub));
+  }
+
+  /**
+   * Работа сдана и ждёт постановщика.
+   *
+   * Письмо адресовано именно ему: исполнитель своё дело сделал, а задача теперь стоит
+   * в чужой очереди. Без этого письма согласование превращается в тихую яму — работа
+   * сдана, но никто об этом не знает.
+   */
+  approvalRequested(tenantId: string, taskId: string, actorId: string | null): Promise<void> {
+    return this.fanout(tenantId, taskId, 'task.status', actorId, `ap${taskId}:${Date.now()}`,
+      (ctx, unsub) => taskApprovalLetter(ctx, unsub));
+  }
+
+  /** Работу вернули: исполнителю нужно знать не только «нет», но и почему. */
+  approvalReturned(tenantId: string, taskId: string, actorId: string | null, reason: string): Promise<void> {
+    return this.fanout(tenantId, taskId, 'task.status', actorId, `ar${taskId}:${Date.now()}`,
+      (ctx, unsub) => taskReturnedLetter({ ...ctx, reason }, unsub));
   }
 
   /**

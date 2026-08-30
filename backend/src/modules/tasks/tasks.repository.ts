@@ -22,6 +22,12 @@ export interface TaskRow {
   focus_date: string | null;
   updated_at: Date;
   closed_at: Date | null;
+  /** Нужно ли подтверждение постановщика, чтобы задача считалась завершённой. */
+  requires_approval: boolean;
+  /** none | pending — работа сдана и ждёт ответа постановщика. */
+  approval_state: string;
+  approval_requested_at: Date | null;
+  approval_requested_by: string | null;
 }
 
 @Injectable()
@@ -131,6 +137,8 @@ export class TasksRepository {
     deadlineAt?: string | null;
     estimateHours?: number | null;
     labelIds?: string[];
+    /** Нужно ли подтверждение постановщика при завершении. Умолчание — да. */
+    requiresApproval?: boolean;
   }): Promise<TaskRow> {
     return this.db.withTransaction(async (client) => {
       const posRes = await client.query<{ next: number }>(
@@ -142,9 +150,10 @@ export class TasksRepository {
       const res = await client.query<TaskRow>(
         `INSERT INTO tasks
            (tenant_id, project_id, column_id, position, title, description, assignee_id, status, created_by,
-            priority, deadline_at, estimate_hours)
+            priority, deadline_at, estimate_hours, requires_approval)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
-                 COALESCE($10::varchar, 'normal'), $11::timestamptz, $12::numeric) RETURNING *`,
+                 COALESCE($10::varchar, 'normal'), $11::timestamptz, $12::numeric,
+                 COALESCE($13::boolean, TRUE)) RETURNING *`,
         [
           input.tenantId,
           input.projectId,
@@ -158,6 +167,7 @@ export class TasksRepository {
           input.priority ?? null,
           input.deadlineAt ?? null,
           input.estimateHours ?? null,
+          input.requiresApproval ?? null,
         ],
       );
       const task = res.rows[0];
@@ -290,11 +300,61 @@ export class TasksRepository {
     return res;
   }
 
+  /**
+   * Пункты чек-листа пачкой — при создании задачи.
+   *
+   * Голосовая постановка и разбор встречи приносят задачу уже с шагами: заводить их
+   * по одному запросу значит превратить одно действие человека в десять походов в сеть.
+   */
+  async addChecklist(tenantId: string, taskId: string, items: string[]): Promise<void> {
+    const clean = items.map((t) => String(t ?? '').trim()).filter(Boolean).slice(0, 30);
+    if (!clean.length) return;
+    const values = clean.map((_, i) => `($1,$2,$${i + 3},${i})`).join(',');
+    await this.db.query(
+      `INSERT INTO task_checklist_items (tenant_id, task_id, text, position) VALUES ${values}`,
+      [tenantId, taskId, ...clean.map((t) => t.slice(0, 500))],
+    );
+  }
+
   async closeTask(tenantId: string, id: string): Promise<void> {
     await this.db.query(
       `UPDATE tasks SET closed_at = now(), updated_at = now()
         WHERE tenant_id = $1 AND id = $2 AND closed_at IS NULL`,
       [tenantId, id],
+    );
+  }
+
+  /**
+   * Работа сдана и ждёт постановщика.
+   *
+   * Задача НЕ закрывается: «сделал» и «принято» — разные события, и пока второго нет,
+   * задача не должна попадать в отчёты как завершённая.
+   */
+  async requestApproval(tenantId: string, id: string, actorId: string | null): Promise<void> {
+    await this.db.query(
+      `UPDATE tasks
+          SET approval_state='pending', approval_requested_at=now(), approval_requested_by=$3,
+              updated_at=now()
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id, actorId],
+    );
+  }
+
+  /** Ответ постановщика получен — снимаем ожидание (принял он или вернул). */
+  async clearApproval(tenantId: string, id: string): Promise<void> {
+    await this.db.query(
+      `UPDATE tasks SET approval_state='none', approval_requested_at=NULL,
+              approval_requested_by=NULL, updated_at=now()
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id],
+    );
+  }
+
+  /** Переключатель согласования — им управляет постановщик, пока задача жива. */
+  async setRequiresApproval(tenantId: string, id: string, value: boolean): Promise<void> {
+    await this.db.query(
+      `UPDATE tasks SET requires_approval=$3, updated_at=now() WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id, value],
     );
   }
 

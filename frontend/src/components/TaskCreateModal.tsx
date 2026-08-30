@@ -34,6 +34,14 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const [estimate, setEstimate] = useState('');
   const [labels, setLabels] = useState<any[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
+  /**
+   * «Не завершать без согласования» — по умолчанию включено.
+   *
+   * Это то, что команды и так делают на словах («напиши, когда закончишь»), только
+   * теперь договорённость видит система. Снимает галочку тот, кто задачу ставит, —
+   * заранее и осознанно, а не в момент, когда работа уже сдана.
+   */
+  const [requiresApproval, setRequiresApproval] = useState(true);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -59,6 +67,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         deadlineAt: deadline ? new Date(deadline).toISOString() : undefined,
         estimateHours: estimate ? Number(estimate) : undefined,
         labelIds: picked.length ? picked : undefined,
+        requiresApproval,
       });
       onCreated();
       onClose();
@@ -138,6 +147,15 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
             </div>
           </div>
         )}
+
+        <label className="notify-row" title="Исполнитель сдаст работу, а завершите её вы">
+          <input
+            type="checkbox"
+            checked={requiresApproval}
+            onChange={(e) => setRequiresApproval(e.target.checked)}
+          />
+          Не завершать задачу без согласования с постановщиком
+        </label>
 
         <div className="field"><label>Описание (необязательно)</label>
           <textarea className="input" rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />

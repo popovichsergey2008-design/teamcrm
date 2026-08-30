@@ -195,6 +195,46 @@ export function taskCommentedLetter(ctx: TaskCtx & { comment: string }, unsubscr
   };
 }
 
+/**
+ * Работа сдана и ждёт вашего решения.
+ *
+ * Письмо постановщику: исполнитель своё сделал, задача теперь в его очереди.
+ * Пишем фактом и зовём глаголом — «примите или верните», потому что от этого письма
+ * требуется именно действие, а не осведомлённость.
+ */
+export function taskApprovalLetter(ctx: TaskCtx, unsubscribeUrl: string): Letter {
+  const lead = `${ctx.actorName} сдал работу и ждёт вашего решения: принять или вернуть.`;
+  return {
+    subject: trim(`Ждёт вашего решения: ${ctx.taskTitle}`, 120),
+    text: plain(lead, ctx, unsubscribeUrl),
+    html: shell({
+      preheader: `${ctx.projectName} · сдано на проверку`,
+      lead: escape(lead),
+      ctx,
+      accent: BRAND.accent,
+      unsubscribeUrl,
+    }),
+  };
+}
+
+/** Работу вернули. Причина — в теле письма: «переделай» без объяснения бесполезно. */
+export function taskReturnedLetter(ctx: TaskCtx & { reason: string }, unsubscribeUrl: string): Letter {
+  const lead = `${ctx.actorName} вернул задачу в работу.`;
+  const quote = `Что доработать: ${ctx.reason}`;
+  return {
+    subject: trim(`Вернули в работу: ${ctx.taskTitle}`, 120),
+    text: plain(lead, ctx, unsubscribeUrl, quote),
+    html: shell({
+      preheader: `${ctx.projectName} · вернули в работу`,
+      lead: escape(lead),
+      ctx,
+      accent: BRAND.warn,
+      unsubscribeUrl,
+      extra: escape(quote),
+    }),
+  };
+}
+
 export function taskStatusLetter(ctx: TaskCtx & { to: string; closed: boolean }, unsubscribeUrl: string): Letter {
   const what = ctx.closed ? 'завершена' : `перенесена в «${ctx.to}»`;
   const lead = `${ctx.actorName} — задача ${what}.`;
