@@ -266,6 +266,59 @@ export class NlService {
     return base;
   }
 
+  /**
+   * Несколько задач из одной надиктовки.
+   *
+   * В длинной записи человек обычно раздаёт работу пачкой: «Глебу — форму до пятницы,
+   * Юрию — страницу услуги, и Алине проверить тексты». Разбирать это как одну задачу
+   * значит потерять две трети сказанного, а просить надиктовать заново по одной —
+   * издевательство над тем, кто только что говорил десять минут.
+   *
+   * Каждая задача проходит те же правила, что и одиночная: проект из обстановки,
+   * исполнитель по имени, срок и приоритет — правилами, согласование — правилами.
+   */
+  async parseMany(
+    tenantId: string, userId: string, text: string, currentProjectId?: string | null,
+  ): Promise<NlDraft[]> {
+    const clean = (text ?? '').trim();
+    if (clean.length < 3) throw AppException.validation('Слишком короткая команда');
+
+    const { users, projects, clients } = await this.context(tenantId);
+    const today = new Date().toISOString().slice(0, 10);
+    const userMsg = JSON.stringify({ text: clean, projects, users, clients, today });
+
+    let items: any[] = [];
+    try {
+      const raw = await this.ai.generate(tenantId, MANY_SYSTEM, userMsg, 'nl_command');
+      const parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+      items = Array.isArray(parsed?.tasks) ? parsed.tasks : [];
+    } catch (e) {
+      this.log.warn(`разбор пачки задач без модели: ${(e as Error).message}`);
+    }
+
+    // Модель промолчала или услышала одну задачу — идём обычным путём: он умеет
+    // собрать черновик правилами и без ИИ.
+    if (items.length < 2) return [await this.parse(tenantId, userId, clean, currentProjectId)];
+
+    const drafts: NlDraft[] = [];
+    for (const item of items.slice(0, 10)) {
+      const title = String(item?.title ?? '').trim();
+      if (!title) continue;
+      // Кусок исходной речи, из которого выросла задача: по нему человек проверяет,
+      // не выдумал ли ИИ, и правит формулировку осмысленно.
+      const source = String(item?.source ?? '').trim() || clean;
+      const draft = await this.parse(tenantId, userId, source, currentProjectId);
+      if (!draft.task) continue;
+      draft.task.title = title.slice(0, 255);
+      if (item?.description) draft.task.description = String(item.description);
+      if (Array.isArray(item?.checklist)) {
+        draft.task.checklist = item.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 12);
+      }
+      drafts.push(draft);
+    }
+    return drafts.length ? drafts : [await this.parse(tenantId, userId, clean, currentProjectId)];
+  }
+
   /** Применяет подтверждённый (возможно отредактированный) черновик — создаёт сущность. */
   async apply(tenantId: string, userId: string, body: { intent: Intent; task?: any; deal?: any }) {
     if (body.intent === 'create_task') {
@@ -315,6 +368,25 @@ export class NlService {
     throw AppException.validation('Неизвестное намерение');
   }
 }
+
+/**
+ * Задание для длинной надиктовки: разложить речь на отдельные задачи.
+ *
+ * Отдельно от одиночного разбора, потому что задача здесь другая — не «оформи
+ * поручение», а «пойми, сколько их». Границы те же: ничего не выдумывать и ничего
+ * не терять. `source` — кусок речи про эту задачу; по нему дальше работают правила
+ * (исполнитель, срок, приоритет, согласование), и он же показывается человеку.
+ */
+const MANY_SYSTEM = [
+  'Ты — постановщик задач. В сообщении человека может быть НЕСКОЛЬКО поручений разным людям.',
+  'Раздели их: одна мысль о работе — одна задача. Если поручение одно, верни одну задачу.',
+  'Для каждой: title — короткий заголовок с глагола (до 70 символов);',
+  'description — деловое описание без разговорного шума;',
+  'checklist — 3–7 конкретных шагов этой задачи или пустой массив;',
+  'source — дословный кусок исходной речи, относящийся ИМЕННО к этой задаче.',
+  'Ничего не выдумывай и не теряй названные условия. Не объединяй задачи разных людей.',
+  'Верни СТРОГО JSON: {"tasks":[{"title":"","description":"","checklist":[],"source":""}]}',
+].join(' ');
 
 /**
  * Модели достаётся только словесная часть: название и описание.

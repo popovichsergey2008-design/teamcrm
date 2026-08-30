@@ -56,6 +56,27 @@ describe('NL-команда (e2e)', () => {
     expect(String(spoken.task.projectId)).toBe(String(other.id));
     expect(spoken.task.priority).toBe('urgent'); // «срочно» слышно и без модели
 
+    // Длинная надиктовка: запись принимается отдельно от разбора и переживает ошибки.
+    // Проверяем сам конвейер приёма — распознавание на CI мокнуто и текста не даёт.
+    const started = (await http$.post('/api/nl/voice').set(H(tok))
+      .attach('audio', Buffer.from('fake-audio-bytes'), { filename: 'voice.webm', contentType: 'audio/webm' })
+      .expect(201)).body.data;
+    expect(started.id).toBeTruthy();
+    expect(['queued', 'transcribing', 'parsing', 'ready', 'error']).toContain(started.status);
+
+    // статус доступен по id — интерфейс на него и опирается, пока идёт обработка
+    const state = (await http$.get(`/api/nl/voice/${started.id}`).set(H(tok)).expect(200)).body.data;
+    expect(String(state.id)).toBe(String(started.id));
+
+    // повторный запуск возможен: исходное аудио сохранено, диктовать заново не нужно
+    await http$.post(`/api/nl/voice/${started.id}/retry`).set(H(tok)).expect(201);
+
+    // чужую запись не отдаём: надиктовка — это чужой разговор
+    const other = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Чужие', email: `nl2_${uniq()}@t.test`, password: 'password123', fullName: 'Сосед' })
+      .expect(201)).body.data;
+    await http$.get(`/api/nl/voice/${started.id}`).set(H(other.accessToken)).expect(404);
+
     // apply: создать задачу из подтверждённого черновика (+ срок уходит в описание, приоритет применяется)
     const applied = (await http$.post('/api/nl/apply').set(H(tok))
       .send({ intent: 'create_task', task: { projectId: proj.id, title: 'Обновить баннер', description: 'детали', priority: 'high', deadline: '2026-08-01' } }).expect(201)).body.data;

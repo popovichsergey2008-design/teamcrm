@@ -12,7 +12,7 @@ import { api, ApiError } from '../lib/api';
  * Распознавание не потоковое: Whisper работает по готовому файлу. «Слова появляются
  * во время речи» из ТЗ требует другого провайдера — записано в границы этапа.
  */
-export function useVoiceInput(onText: (text: string) => void) {
+export function useVoiceInput(onText: (text: string) => void, opts?: { onBlob?: (blob: Blob) => void }) {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [error, setError] = useState('');
@@ -21,6 +21,15 @@ export function useVoiceInput(onText: (text: string) => void) {
   // колбэк меняется на каждый рендер — держим в ссылке, иначе onstop поймает устаревший
   const sink = useRef(onText);
   sink.current = onText;
+  /**
+   * Кому отдать саму запись.
+   *
+   * Короткая фраза в командной строке распознаётся здесь же — ждать её нечего.
+   * Длинная надиктовка уходит на сервер целиком: расшифровка идёт минутами, и держать
+   * ради неё открытый запрос значит снова упереться в таймаут.
+   */
+  const blobSink = useRef(opts?.onBlob);
+  blobSink.current = opts?.onBlob;
 
   const start = useCallback(async () => {
     setError('');
@@ -40,6 +49,7 @@ export function useVoiceInput(onText: (text: string) => void) {
         setRecording(false);
         const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
         if (!blob.size) return;
+        if (blobSink.current) { blobSink.current(blob); return; }
         setTranscribing(true);
         try {
           const { text } = await api.nlTranscribe(blob);

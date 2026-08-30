@@ -5,7 +5,8 @@ export const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 МБ
 const ALLOWED = new Set([
   'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/tiff', 'image/heic',
   'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo', 'video/x-matroska', 'video/mpeg',
-  'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
+  // audio/webm — то, чем пишет браузер: без него не сохранялась собственная надиктовка
+  'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4', 'audio/webm', 'audio/x-m4a', 'audio/flac',
   'application/pdf', 'text/plain', 'text/csv', 'text/markdown',
   'application/zip', 'application/x-zip-compressed',
   'application/msword',

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IsIn, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -7,6 +7,7 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
 import { NlService } from './nl.service';
+import { VoiceService } from './voice.service';
 
 class ParseDto {
   @IsString() @MaxLength(2000) text!: string;
@@ -33,6 +34,7 @@ export class NlController {
   constructor(
     private readonly nl: NlService,
     private readonly ai: AiService,
+    private readonly voice: VoiceService,
   ) {}
 
   /** Голосовая команда: запись из браузера (multipart 'audio') → Whisper → текст (дальше обычный /parse). */
@@ -45,6 +47,39 @@ export class NlController {
     const hint = await this.nl.speechHint(u.tenantId).catch(() => undefined);
     const text = await this.ai.transcribeAudio(u.tenantId, file.buffer, file.originalname || 'audio.webm', hint);
     return { text: (text || '').trim() };
+  }
+
+  /**
+   * Длинная надиктовка: принимаем запись и разбираем в фоне.
+   *
+   * Отдельно от `transcribe`, который отвечает текстом сразу: короткую фразу ждать
+   * не надо, а пятиминутная запись не должна зависеть от таймаутов по пути.
+   */
+  @Post('voice')
+  @UseInterceptors(FileInterceptor('audio', { limits: { fileSize: 64 * 1024 * 1024 } }))
+  voiceStart(
+    @CurrentUser() u: AuthUser,
+    @UploadedFile() file?: Express.Multer.File,
+    @Body('currentProjectId') currentProjectId?: string,
+  ) {
+    if (!file) throw AppException.validation('Аудио не получено');
+    return this.voice.accept(u.tenantId, u.userId, file, currentProjectId ?? null);
+  }
+
+  /** Как идут дела с записью: расшифровка, разбор, готово или ошибка с причиной. */
+  @Get('voice/:id')
+  voiceStatus(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.voice.status(u.tenantId, u.userId, id);
+  }
+
+  /** Повторить обработку сохранённой записи — не заставляя диктовать заново. */
+  @Post('voice/:id/retry')
+  voiceRetry(
+    @CurrentUser() u: AuthUser,
+    @Param('id') id: string,
+    @Body('currentProjectId') currentProjectId?: string,
+  ) {
+    return this.voice.retry(u.tenantId, u.userId, id, currentProjectId ?? null);
   }
 
   @Post('parse')

@@ -23,6 +23,16 @@ export const tokens = {
   },
 };
 
+/** Состояние обработки надиктовки: аудио сохранено, разбор идёт в фоне. */
+export interface VoiceJob {
+  id: string;
+  status: 'queued' | 'transcribing' | 'parsing' | 'ready' | 'error';
+  transcript: string;
+  tasks: any[];
+  error: string | null;
+  durationSec: number | null;
+}
+
 export class ApiError extends Error {
   constructor(public code: string, message: string, public details?: unknown) {
     super(message);
@@ -428,6 +438,36 @@ export const api = {
     request<any>('POST', '/nl/parse', currentProjectId ? { text, currentProjectId } : { text }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),
   /** Голосовая команда: аудио-запись → Whisper → распознанный текст. */
+  /**
+   * Длинная надиктовка: отправляем запись и следим за обработкой.
+   *
+   * Не ждём ответа с задачами в том же запросе — расшифровка десяти минут звука идёт
+   * минутами и упирается в любой таймаут по пути. Сервер сохраняет аудио и отвечает
+   * сразу, а дальше мы спрашиваем, как дела.
+   */
+  voiceStart: async (blob: Blob, currentProjectId?: string | null): Promise<VoiceJob> => {
+    const fd = new FormData();
+    fd.append('audio', blob, 'voice.webm');
+    if (currentProjectId) fd.append('currentProjectId', String(currentProjectId));
+    const res = await fetch(`${BASE}/nl/voice`, {
+      method: 'POST',
+      headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+      body: fd,
+    });
+    const env = await res.json().catch(() => ({ ok: false }));
+    if (!env.ok) {
+      // 413 приходит от прокси без нашего конверта — переводим на человеческий
+      const message = res.status === 413
+        ? 'Запись слишком большая. Попробуйте продиктовать частями.'
+        : env.error?.message ?? 'Не удалось отправить запись';
+      throw new ApiError(env.error?.code ?? 'INTERNAL', message);
+    }
+    return env.data;
+  },
+  voiceStatus: (id: string) => request<VoiceJob>('GET', `/nl/voice/${id}`),
+  voiceRetry: (id: string, currentProjectId?: string | null) =>
+    request<VoiceJob>('POST', `/nl/voice/${id}/retry`, currentProjectId ? { currentProjectId } : {}),
+
   nlTranscribe: async (blob: Blob): Promise<{ text: string }> => {
     const fd = new FormData();
     fd.append('audio', blob, 'command.webm');

@@ -668,6 +668,23 @@
 .meeting-task-title { font-weight: 600; font-size: 14px; text-align: left; }
 .meeting-task-meta { font-size: 12px; margin-top: 2px; }
 
+/* Ход обработки записи: аудио уже на сервере, ждать приходится минуты. */
+.nl-job {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 8px; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+  font-size: var(--fs-sm); color: var(--text-dim);
+}
+.nl-job.error { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+
+/* Черновик задачи в списке: их может быть несколько из одной записи. */
+.nl-draft {
+  margin-top: 12px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.nl-draft.created { display: flex; align-items: center; gap: 6px; color: var(--ok); font-size: 14px; }
+.nl-draft-drop { float: right; }
+
 /* Шаг чек-листа в предпросмотре голосовой задачи. */
 .nl-step { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
 .nl-step .input { flex: 1 1 auto; min-width: 0; }
