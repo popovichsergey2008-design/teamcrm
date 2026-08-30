@@ -390,29 +390,74 @@ test('напоминания: подписи, своё время и защит�
   assert.equal(rows.find((x) => x.minutes === 15).custom, false);
 });
 
-test('«мои задачи»: фильтр по доске, списку и честная позиция при переносе', async () => {
-  const { onlyMine, countMine, realPosition } = await load('lib/board-filter.ts');
+test('фильтры доски: назначено мне, поставлено мной и выбор постановщика', async () => {
+  const { filterBoard, countMatching, realPosition, filterActive } = await load('lib/board-filter.ts');
+  // t1 — моя работа, t2 — я поставил другому, t3 — чужая целиком, t4 — я и поставил, и делаю
   const columns = [
-    { id: 'c1', name: 'В работе', tasks: [{ id: 't1', assignee_id: '7' }, { id: 't2', assignee_id: '9' }] },
-    { id: 'c2', name: 'Проверка', tasks: [{ id: 't3', assignee_id: '9' }] },
-    { id: 'c3', name: 'Готово', tasks: [{ id: 't4', assignee_id: '7' }] },
+    { id: 'c1', name: 'В работе', tasks: [
+      { id: 't1', assignee_id: '7', created_by: '9' },
+      { id: 't2', assignee_id: '9', created_by: '7' },
+    ] },
+    { id: 'c2', name: 'Проверка', tasks: [{ id: 't3', assignee_id: '9', created_by: '9' }] },
+    { id: 'c3', name: 'Готово', tasks: [{ id: 't4', assignee_id: '7', created_by: '7' }] },
   ];
+  const me = (mode, creatorId) => ({ userId: '7', mode, creatorId });
 
-  // список: пустые колонки не показываем
-  const forList = onlyMine(columns, '7');
-  assert.deepEqual(forList.map((c) => c.id), ['c1', 'c3']);
-  assert.deepEqual(forList[0].tasks.map((t) => t.id), ['t1']);
+  // «Назначены мне» и «Поставлены мной» — разные списки, и это главное различие
+  assert.deepEqual(
+    filterBoard(columns, me('assigned')).flatMap((c) => c.tasks.map((t) => t.id)),
+    ['t1', 't4'],
+  );
+  assert.deepEqual(
+    filterBoard(columns, me('created')).flatMap((c) => c.tasks.map((t) => t.id)),
+    ['t2', 't4'],
+  );
+  // «Мои задачи» — обе роли разом, без дублей
+  assert.deepEqual(
+    filterBoard(columns, me('both')).flatMap((c) => c.tasks.map((t) => t.id)),
+    ['t1', 't2', 't4'],
+  );
 
-  // доска: колонки остаются на месте, даже пустые — иначе бросать задачу некуда
-  const forBoard = onlyMine(columns, '7', true);
-  assert.deepEqual(forBoard.map((c) => c.id), ['c1', 'c2', 'c3']);
-  assert.equal(forBoard[1].tasks.length, 0);
+  // Постановщик работает независимо от исполнителя: всё, что человек раздал
+  assert.deepEqual(
+    filterBoard(columns, { userId: '7', mode: 'off', creatorId: '9' }).flatMap((c) => c.tasks.map((t) => t.id)),
+    ['t1', 't3'],
+  );
+  // ...и сужает выбор вместе с режимом, а не вместо него
+  assert.deepEqual(
+    filterBoard(columns, me('assigned', '9')).flatMap((c) => c.tasks.map((t) => t.id)),
+    ['t1'],
+  );
 
-  assert.equal(countMine(columns, '7'), 2);
-  assert.equal(countMine(columns, '42'), 0, 'чужой человек не находит своих задач');
+  // список: пустые колонки не показываем; доска: колонки остаются, иначе бросать некуда
+  assert.deepEqual(filterBoard(columns, me('assigned')).map((c) => c.id), ['c1', 'c3']);
+  assert.deepEqual(filterBoard(columns, me('assigned'), true).map((c) => c.id), ['c1', 'c2', 'c3']);
+
+  assert.equal(countMatching(columns, me('assigned')), 2);
+  assert.equal(countMatching(columns, me('created')), 2);
+  assert.equal(countMatching(columns, me('both')), 3, 'задача, где я и постановщик, и исполнитель, — одна');
+  assert.equal(countMatching(columns, { userId: '42', mode: 'both' }), 0, 'чужой человек не находит своих');
   // id приходят и строкой, и числом; задача без исполнителя ничья
-  assert.equal(countMine([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: 7 }] }], '7'), 1);
-  assert.equal(countMine([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: null }] }], '7'), 0);
+  assert.equal(countMatching([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: 7 }] }], me('assigned')), 1);
+  assert.equal(countMatching([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: null }] }], me('assigned')), 0);
+  assert.equal(countMatching([{ id: 'c', name: 'x', tasks: [{ id: 't', created_by: null }] }], me('created')), 0);
+
+  // Тумблеры ролей: нажатые вместе дают «всё моё», повторный клик снимает свою половину.
+  // Логика переключения живёт в BoardPage, здесь проверяем её таблицу переходов.
+  const toggle = (mode, role) => {
+    const on = mode === role || mode === 'both';
+    const other = role === 'assigned' ? 'created' : 'assigned';
+    const otherOn = mode === other || mode === 'both';
+    return on ? (otherOn ? other : 'off') : (otherOn ? 'both' : role);
+  };
+  assert.equal(toggle('off', 'assigned'), 'assigned');
+  assert.equal(toggle('assigned', 'created'), 'both', 'две роли разом — прежнее «мои задачи»');
+  assert.equal(toggle('both', 'assigned'), 'created', 'сняли свою половину — осталась чужая');
+  assert.equal(toggle('created', 'created'), 'off', 'повторный клик снимает фильтр');
+
+  assert.equal(filterActive({ mode: 'off' }), false);
+  assert.equal(filterActive({ mode: 'off', creatorId: '9' }), true, 'выбранный постановщик — тоже фильтр');
+  assert.equal(filterActive({ mode: 'created' }), true);
 
   // перенос при фильтре: индекс среди видимых → настоящее место в полной колонке
   const full = [
@@ -421,11 +466,12 @@ test('«мои задачи»: фильтр по доске, списку и ч�
     { id: 'c', assignee_id: '9' },
     { id: 'd', assignee_id: '7' },
   ];
-  assert.equal(realPosition(full, '7', 0), 1, 'выше своей первой — на её место');
-  assert.equal(realPosition(full, '7', 1), 3, 'между своими — на место второй своей, а не в начало');
-  assert.equal(realPosition(full, '7', 2), 4, 'ниже последней своей — в конец колонки');
-  assert.equal(realPosition([], '7', 0), 0, 'пустая колонка');
-  assert.equal(realPosition([{ id: 'x', assignee_id: '9' }], '7', 0), 1, 'своих нет — в конец');
+  const opts = { userId: '7', mode: 'assigned' };
+  assert.equal(realPosition(full, opts, 0), 1, 'выше своей первой — на её место');
+  assert.equal(realPosition(full, opts, 1), 3, 'между своими — на место второй своей, а не в начало');
+  assert.equal(realPosition(full, opts, 2), 4, 'ниже последней своей — в конец колонки');
+  assert.equal(realPosition([], opts, 0), 0, 'пустая колонка');
+  assert.equal(realPosition([{ id: 'x', assignee_id: '9' }], opts, 0), 1, 'видимых нет — в конец');
 });
 
 // ── запуск ────────────────────────────────────────────────────────────────────
