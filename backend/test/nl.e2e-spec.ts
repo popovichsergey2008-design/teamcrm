@@ -72,10 +72,10 @@ describe('NL-команда (e2e)', () => {
     await http$.post(`/api/nl/voice/${started.id}/retry`).set(H(tok)).expect(201);
 
     // чужую запись не отдаём: надиктовка — это чужой разговор
-    const other = (await http$.post('/api/auth/register')
+    const stranger = (await http$.post('/api/auth/register')
       .send({ tenantName: 'Чужие', email: `nl2_${uniq()}@t.test`, password: 'password123', fullName: 'Сосед' })
       .expect(201)).body.data;
-    await http$.get(`/api/nl/voice/${started.id}`).set(H(other.accessToken)).expect(404);
+    await http$.get(`/api/nl/voice/${started.id}`).set(H(stranger.accessToken)).expect(404);
 
     // apply: создать задачу из подтверждённого черновика (+ срок уходит в описание, приоритет применяется)
     const applied = (await http$.post('/api/nl/apply').set(H(tok))
