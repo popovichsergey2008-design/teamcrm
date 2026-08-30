@@ -66,18 +66,52 @@ async function rawRequest<T>(
 
 let refreshing: Promise<void> | null = null;
 
-async function tryRefresh(): Promise<void> {
-  if (!tokens.refresh) throw new ApiError('UNAUTHORIZED', 'No refresh token');
+/** Сессия кончилась совсем: приложение должно увести человека на вход, а не показывать 401. */
+export const SIGNED_OUT_EVENT = 'teamcrm:signed-out';
+
+/**
+ * Обновление access-токена.
+ *
+ * Две тонкости, обе выяснились живьём.
+ *
+ * Первая: refresh-токен на сервере ОДНОРАЗОВЫЙ — при обновлении старый отзывается.
+ * Две вкладки, начавшие обновление одновременно, дрались за него, и проигравшая
+ * получала «Invalid or expired token» на ровном месте. Поэтому перед запросом
+ * перечитываем токен из localStorage: если соседняя вкладка уже обновила его,
+ * обновляться второй раз не нужно.
+ *
+ * Вторая: если обновиться всё-таки нельзя, это конец сессии, а не ошибка запроса.
+ * Чистим токены и говорим об этом приложению — иначе человек смотрит на английскую
+ * ошибку поверх пустого экрана и не понимает, что делать.
+ */
+async function tryRefresh(previousAccess: string | null): Promise<void> {
+  // соседняя вкладка успела обновить токен — наш запрос просто повторится с новым
+  if (tokens.access && tokens.access !== previousAccess) return;
+  if (!tokens.refresh) return signOut();
+
   if (!refreshing) {
-    refreshing = rawRequest<AuthResult>('POST', '/auth/refresh', { refreshToken: tokens.refresh }, false)
+    const used = tokens.refresh;
+    refreshing = rawRequest<AuthResult>('POST', '/auth/refresh', { refreshToken: used }, false)
       .then((r) => {
         tokens.set(r.accessToken, r.refreshToken);
+      })
+      .catch((e) => {
+        // пока мы ходили за новым токеном, вкладка-сосед могла всё сделать за нас
+        if (tokens.refresh && tokens.refresh !== used) return;
+        signOut();
+        throw e;
       })
       .finally(() => {
         refreshing = null;
       });
   }
   return refreshing;
+}
+
+function signOut(): never {
+  tokens.clear();
+  window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
+  throw new ApiError('UNAUTHORIZED', 'Сессия истекла — войдите снова');
 }
 
 /**
@@ -99,13 +133,15 @@ function announceTaskChange(method: string, path: string) {
 
 /** Запрос с авто-обновлением access-токена при 401/UNAUTHORIZED. */
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // запоминаем, с каким токеном шли: по нему видно, обновил ли его кто-то параллельно
+  const access = tokens.access;
   try {
     const res = await rawRequest<T>(method, path, body);
     announceTaskChange(method, path);
     return res;
   } catch (e) {
-    if (e instanceof ApiError && e.code === 'UNAUTHORIZED' && tokens.refresh) {
-      await tryRefresh();
+    if (e instanceof ApiError && e.code === 'UNAUTHORIZED') {
+      await tryRefresh(access);
       const res = await rawRequest<T>(method, path, body);
       announceTaskChange(method, path);
       return res;

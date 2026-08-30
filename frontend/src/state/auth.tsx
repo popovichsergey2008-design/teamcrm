@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { api, tokens } from '../lib/api';
+import { api, SIGNED_OUT_EVENT, tokens } from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
 import type { OrgRef, User } from '../types';
 
@@ -40,6 +40,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
+  }, []);
+
+  /**
+   * Сессия кончилась во время работы.
+   *
+   * Раньше в этот момент человек видел поверх интерфейса английскую «Invalid or expired
+   * token» и оставался в приложении, где ничего не грузится. Возвращаем на экран входа:
+   * это единственное, что он может сделать.
+   */
+  useEffect(() => {
+    const onSignedOut = () => { setUser(null); setOrganizations([]); };
+    window.addEventListener(SIGNED_OUT_EVENT, onSignedOut);
+    return () => window.removeEventListener(SIGNED_OUT_EVENT, onSignedOut);
   }, []);
 
   const login = async (email: string, password: string) => {
