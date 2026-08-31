@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Query } from '@nestjs/common';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
@@ -28,6 +28,17 @@ export class AiUsageController {
   usage(@CurrentUser() u: AuthUser, @Query('days') days?: string) {
     const d = Math.min(Math.max(Number(days) || 30, 1), 365);
     return this.ai.usageStats(u.tenantId, d);
+  }
+
+  /**
+   * Проверить выбранную модель настоящим вызовом.
+   *
+   * «Есть в списке» и «отвечает» — разные вещи, и вторая выясняется только опытом.
+   */
+  @Post('settings/check')
+  @Roles('owner')
+  check(@CurrentUser() u: AuthUser) {
+    return this.ai.checkModel(u.tenantId);
   }
 
   // ── BYOK: ключи и модель (owner) ──

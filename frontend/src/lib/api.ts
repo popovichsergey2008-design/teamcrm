@@ -358,6 +358,11 @@ export const api = {
     return true;
   },
   /** Расход ИИ: токены, деньги, по дням и по возможностям (включая незапускавшиеся). */
+  /** Проверить выбранную модель настоящим вызовом: отвечает ли она и кто ответил. */
+  aiCheckModel: () => request<{
+    requested: string; answered: string | null; ok: boolean; fallback: boolean; error: string | null;
+  }>('POST', '/ai/settings/check', {}),
+
   aiUsage: (days = 30) => request<any>('GET', `/ai/usage?days=${days}`),
   aiSettingsGet: () => request<any>('GET', '/ai/settings'),
   aiSettingsSave: (b: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; brainModel?: string }) => request<any>('PUT', '/ai/settings', b),

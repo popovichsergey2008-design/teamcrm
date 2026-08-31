@@ -87,8 +87,12 @@ export class AiService {
     const model = opts?.model || brainModel;
     const maxTokens = typeof opts?.params?.max_tokens === 'number' ? (opts.params.max_tokens as number) : undefined;
     const text = await provider.generate(system, masked, { model: opts?.model || undefined, maxTokens });
+    // Пишем ту модель, которая ОТВЕТИЛА, а не ту, которую просили: при отказе
+    // выбранной модели включается фолбэк, и отчёт о расходе показывал бы красивую
+    // неправду — «работает gpt-5», хотя отвечала совсем другая.
     await this.recordUsage(
-      tenantId, feature, model, estimateTokens(system + masked), estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
+      tenantId, feature, provider.lastModel || model,
+      estimateTokens(system + masked), estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
     );
     return text;
   }
@@ -104,7 +108,8 @@ export class AiService {
     const maxTokens = typeof opts?.params?.max_tokens === 'number' ? (opts.params.max_tokens as number) : undefined;
     const text = await provider.generateStream(system, masked, { model: opts?.model || undefined, maxTokens }, onDelta);
     await this.recordUsage(
-      tenantId, feature, model, estimateTokens(system + masked), estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
+      tenantId, feature, provider.lastModel || model,
+      estimateTokens(system + masked), estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
     );
     return text;
   }
@@ -243,6 +248,37 @@ export class AiService {
         models: d.models ?? [],
       })),
     };
+  }
+
+  /**
+   * Пробный вызов выбранной модели.
+   *
+   * Список моделей в настройках приходит из API провайдера, но «модель есть в списке»
+   * и «модель отвечает на наши запросы» — разные вещи: часть моделей живёт в другом
+   * API, часть недоступна аккаунту. Раньше это выяснялось молча — запрос падал,
+   * включался фолбэк, и человек считал, что работает выбранная модель.
+   */
+  async checkModel(tenantId: string): Promise<{
+    requested: string; answered: string | null; ok: boolean; fallback: boolean; error: string | null;
+  }> {
+    const { provider, brainModel } = await this.providerFor(tenantId);
+    try {
+      const text = await provider.generate(
+        'Ответь одним словом: ок.', 'Проверка связи.', { maxTokens: 20 },
+      );
+      const answered = provider.lastModel ?? null;
+      const ok = !!text?.trim() && answered !== 'mock-llm';
+      return {
+        requested: brainModel,
+        answered,
+        ok,
+        // фолбэк: ответила не та модель, которую выбрали
+        fallback: ok && !!answered && answered !== brainModel,
+        error: ok ? null : 'Ни одна модель не ответила — работает встроенная заглушка.',
+      };
+    } catch (e) {
+      return { requested: brainModel, answered: null, ok: false, fallback: false, error: (e as Error).message };
+    }
   }
 
   /** Durable запись расхода ИИ (для метеринга/биллинга/наблюдаемости). promptVersionId — привязка к версии (PromptOps). */

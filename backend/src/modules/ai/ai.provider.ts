@@ -23,6 +23,8 @@ export interface TranscriptSegment {
 
 export interface AiProvider {
   name: string;
+  /** Какая модель ответила на самом деле — заполняется после generate. */
+  lastModel?: string;
   transcribe(audioRefOrText: string): Promise<string>;
   /** Транскрипция загруженного аудио-буфера (веб-запись голоса) → текст. '' если реальный Whisper недоступен. */
   transcribeAudio(audio: Buffer, filename: string, hint?: string): Promise<string>;
@@ -175,6 +177,15 @@ export class MockAiProvider implements AiProvider {
 /** Реальный провайдер (OpenAI Whisper + Anthropic) — активен только при наличии ключей. */
 export class RealAiProvider implements AiProvider {
   name = 'real';
+  /**
+   * Модель, которая ДЕЙСТВИТЕЛЬНО ответила.
+   *
+   * Выбранная модель может не принять запрос — устарела, недоступна аккаунту, живёт
+   * в другом API. Тогда срабатывает фолбэк, и раньше об этом никто не узнавал:
+   * в расход писалась запрошенная модель, а отвечала другая. Отчёт показывал красивую
+   * неправду, а «почему ответы не похожи на выбранную модель» оставалось загадкой.
+   */
+  lastModel?: string;
   constructor(
     private readonly openaiKey: string | undefined,
     private readonly anthropicKey: string | undefined,
@@ -309,24 +320,25 @@ export class RealAiProvider implements AiProvider {
 
     // Упорядоченные попытки: сначала выбранная модель/провайдер, затем ЛЮБОЙ рабочий бэкенд (чтобы
     // из-за неудачной free-модели не сваливаться в mock, когда есть рабочий ключ).
-    const attempts: { name: string; run: () => Promise<string> }[] = [];
-    if (isOpenRouter && this.openrouterKey) attempts.push({ name: `openrouter(${model})`, run: () => this.chatCompletion(OR_URL, this.openrouterKey!, model, system, user, maxTokens, ORH) });
-    if (this.anthropicKey && (!model || /^claude/i.test(model))) attempts.push({ name: `anthropic(${model || 'default'})`, run: () => this.anthropicChat(model || 'claude-3-5-sonnet-latest', system, user, maxTokens) });
-    if (this.openaiKey && !isOpenRouter) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens) });
+    const attempts: { name: string; usedModel: string; run: () => Promise<string> }[] = [];
+    if (isOpenRouter && this.openrouterKey) attempts.push({ name: `openrouter(${model})`, usedModel: model, run: () => this.chatCompletion(OR_URL, this.openrouterKey!, model, system, user, maxTokens, ORH) });
+    if (this.anthropicKey && (!model || /^claude/i.test(model))) attempts.push({ name: `anthropic(${model || 'default'})`, usedModel: model || 'claude-3-5-sonnet-latest', run: () => this.anthropicChat(model || 'claude-3-5-sonnet-latest', system, user, maxTokens) });
+    if (this.openaiKey && !isOpenRouter) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, usedModel: model || 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens) });
     // фолбэки на любой доступный ключ
-    if (this.openaiKey) attempts.push({ name: 'openai(fallback)', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens) });
-    if (this.anthropicKey) attempts.push({ name: 'anthropic(fallback)', run: () => this.anthropicChat('claude-3-5-sonnet-latest', system, user, maxTokens) });
-    if (this.openrouterKey) attempts.push({ name: 'openrouter(fallback)', run: () => this.chatCompletion(OR_URL, this.openrouterKey!, isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', system, user, maxTokens, ORH) });
+    if (this.openaiKey) attempts.push({ name: 'openai(fallback)', usedModel: 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens) });
+    if (this.anthropicKey) attempts.push({ name: 'anthropic(fallback)', usedModel: 'claude-3-5-sonnet-latest', run: () => this.anthropicChat('claude-3-5-sonnet-latest', system, user, maxTokens) });
+    if (this.openrouterKey) attempts.push({ name: 'openrouter(fallback)', usedModel: isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', run: () => this.chatCompletion(OR_URL, this.openrouterKey!, isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', system, user, maxTokens, ORH) });
 
     for (const a of attempts) {
       try {
         const t = await a.run();
-        if (t && t.trim()) return t;
+        if (t && t.trim()) { this.lastModel = a.usedModel; return t; }
         providerLog.warn(`generate: ${a.name} — пустой ответ`);
       } catch (e) {
         providerLog.warn(`generate: ${a.name} — ошибка: ${(e as Error).message}`);
       }
     }
+    this.lastModel = 'mock-llm'; // ни один бэкенд не ответил — работает заглушка
     return new MockAiProvider().generate(system, user, opts);
   }
 

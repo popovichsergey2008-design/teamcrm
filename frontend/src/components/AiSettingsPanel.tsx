@@ -10,6 +10,9 @@ export function AiSettingsSection() {
   const [brainModel, setBrainModel] = useState('');
   const [models, setModels] = useState<string[]>([]);
   const [msg, setMsg] = useState('');
+  /** Результат пробного вызова: отвечает ли выбранная модель и кто ответил на самом деле. */
+  const [check, setCheck] = useState<{ ok: boolean; answered: string | null; fallback: boolean; error: string | null } | null>(null);
+  const [checking, setChecking] = useState(false);
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3500); };
 
   const load = () => api.aiSettingsGet().then((r) => { setS(r); setBrainModel(r.brainModel ?? ''); }).catch(() => undefined);
@@ -66,6 +69,34 @@ export function AiSettingsSection() {
           </select>
           <button className="btn btn-sm" onClick={() => save({ brainModel })}>Применить</button>
         </div>
+
+        {/* «Есть в списке» и «отвечает» — разные вещи: часть моделей живёт в другом API
+            или недоступна аккаунту. Раньше это выяснялось молча — запрос падал,
+            включался запасной вариант, и человек считал, что работает выбранная. */}
+        <button
+          className="btn btn-ghost btn-sm"
+          style={{ marginTop: 6 }}
+          disabled={checking}
+          onClick={async () => {
+            setChecking(true); setCheck(null);
+            try { setCheck(await api.aiCheckModel()); }
+            catch (e) { flash(e instanceof ApiError ? e.message : 'Не удалось проверить'); }
+            finally { setChecking(false); }
+          }}
+        >
+          {checking ? 'Проверяю…' : 'Проверить модель'}
+        </button>
+
+        {check && (
+          <div className={check.ok && !check.fallback ? 'pnl-good' : 'error-text'} style={{ fontSize: 12, marginTop: 6 }}>
+            {check.ok && !check.fallback && `Модель ${check.answered} отвечает.`}
+            {check.ok && check.fallback && (
+              `Выбранная модель не ответила — вместо неё сработала ${check.answered}. `
+              + 'Проверьте название и доступ к ней в вашем аккаунте.'
+            )}
+            {!check.ok && (check.error ?? 'Модель не ответила.')}
+          </div>
+        )}
         <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>
           Модели по вашим ключам (обновляется после сохранения ключа). Модели с «:free» — бесплатные через OpenRouter.
           Это модель для ответов/чата; эмбеддинги поиска идут через OpenAI-совместимую модель (по вашему ключу OpenAI или OpenRouter).
