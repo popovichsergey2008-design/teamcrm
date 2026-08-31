@@ -195,14 +195,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           <input className="input chat-search" placeholder="Поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
           <button className="btn btn-ghost btn-sm" title="Создать группу" onClick={() => setGroupOpen(true)}><Icon name="plus" /></button>
         </div>
-        {/* Позвать человека со стороны — задача того же порядка, что написать коллеге,
-            поэтому кнопка стоит здесь, а не в глубине раздела встреч. */}
-        <div className="chat-list-guest">
-          <GuestLinkButton
-            chats={[...dms, ...groups].map((c) => ({ id: String(c.id), title: c.title ?? 'Чат' }))}
-            chatId={activeId ? String(activeId) : null}
-          />
-        </div>
 
         {/* Разрешение спрашиваем по кнопке: непрошеный запрос браузеры глушат,
             и человек больше не сможет его выдать. */}
@@ -256,6 +248,33 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       </aside>
 
       <section className="chat-view">
+        {/*
+          Созвон и внешняя ссылка — постоянно, а не только при открытом чате.
+          Человек заходит в раздел, чтобы поговорить; заставлять его сначала выбрать
+          собеседника в списке, чтобы появилась кнопка «Созвон», — лишний шаг ровно
+          там, где нужна скорость.
+        */}
+        <div className="chat-view-head">
+          <GuestLinkButton
+            chats={[...dms, ...groups].map((c) => ({ id: String(c.id), title: c.title ?? 'Чат' }))}
+            chatId={activeId ? String(activeId) : null}
+            compact
+          />
+          <CallStarter
+            chatId={active ? String(active.id) : null}
+            kind={active?.kind}
+            peerId={active?.peerId}
+            disabled={!!inCall}
+            onStart={({ memberIds, withAi: ai }) => onCall({
+              id: active?.id ?? '',
+              title: active?.title ?? 'Созвон',
+              memberIds,
+              projectId: active?.projectId,
+              withAi: ai,
+            })}
+          />
+        </div>
+
         {!active && (
           <div className="chat-empty">
             <EmptyState
@@ -280,22 +299,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                           onClick={() => setManageOpen(true)}><Icon name="settings" /></button>
                 )}
               </span>
-              <span className="chat-call">
-                <GuestLinkButton chatId={String(active.id)} compact />
-                <CallStarter
-                  chatId={String(active.id)}
-                  kind={active.kind}
-                  peerId={active.peerId}
-                  disabled={!!inCall}
-                  onStart={({ memberIds, withAi: ai }) => onCall({
-                    id: active.id,
-                    title: active.title ?? 'Чат',
-                    memberIds,
-                    projectId: active.projectId,
-                    withAi: ai,
-                  })}
-                />
-              </span>
+              {/* Кнопки созвона стоят в шапке раздела — одни на все чаты,
+                  чтобы не повторять их в каждой переписке. */}
             </div>
 
             {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
