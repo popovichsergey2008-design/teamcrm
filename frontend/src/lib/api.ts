@@ -795,6 +795,19 @@ export const api = {
   deleteTask: (id: string, confirmTimeLoss = false) =>
     request<{ deleted: true }>('DELETE', `/tasks/${id}${confirmTimeLoss ? '?confirmTimeLoss=1' : ''}`),
   /** Оценка и срок без назначения: задаче можно поставить дату, ещё не выбрав исполнителя. */
+  /**
+   * Спросить помощника по конкретной задаче: он уже знает постановку, участников,
+   * чек-лист, сроки, обсуждение и итог встречи, из которой задача выросла.
+   */
+  askTaskAssistant: (taskId: string, question: string) => request<{
+    answer: string;
+    checklist: string[];
+    suggestion: { field: string; value: string; label: string } | null;
+  }>('POST', `/tasks/${taskId}/assistant`, { question }),
+  /** Принять предложенный ИИ чек-лист — решение человека. */
+  applyAssistantChecklist: (taskId: string, items: string[]) =>
+    request<{ added: number }>('POST', `/tasks/${taskId}/assistant/checklist`, { items }),
+
   /** Кто ещё в задаче: соисполнители (делают работу) и наблюдатели (следят). */
   taskParticipants: (id: string) => request<{
     user_id: string; role: string; full_name: string; avatar_file_id: string | null;

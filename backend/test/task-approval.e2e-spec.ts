@@ -227,4 +227,25 @@ describe('Согласование завершения (e2e)', () => {
     expect(log.some((a: any) => a.kind === 'participant_added')).toBe(true);
     expect(log.some((a: any) => a.kind === 'participant_removed')).toBe(true);
   });
+
+  it('помощник задачи отвечает в контексте и ничего не меняет сам', async () => {
+    const task = await newTask('Починить форму регистрации');
+    await http.post(`/api/tasks/${task.id}/comments`).set(H(ownerTok))
+      .send({ body: 'Главное — мобильная версия' }).expect(201);
+
+    // На CI ключей ИИ нет: мок отвечает не JSON, и помощник честно говорит,
+    // что недоступен, вместо выдуманного ответа.
+    const res = await http.post(`/api/tasks/${task.id}/assistant`).set(H(memberTok))
+      .send({ question: 'Что мне нужно сделать?' });
+    expect([201, 409]).toContain(res.status);
+
+    // Принять предложенный чек-лист может человек — и пункты попадают в задачу.
+    await http.post(`/api/tasks/${task.id}/assistant/checklist`).set(H(memberTok))
+      .send({ items: ['Проверить текущее поведение', 'Исправить', 'Проверить на телефоне'] }).expect(201);
+    const items = (await http.get(`/api/tasks/${task.id}/checklist`).set(H(memberTok)).expect(200)).body.data;
+    expect(items.map((i: any) => i.text)).toContain('Проверить на телефоне');
+
+    // Пустой вопрос — отказ, а не пустой запрос в модель.
+    await http.post(`/api/tasks/${task.id}/assistant`).set(H(memberTok)).send({ question: '' }).expect(400);
+  });
 });

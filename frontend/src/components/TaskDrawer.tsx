@@ -8,6 +8,8 @@ import { api, ApiError } from '../lib/api';
 import type { Task, User } from '../types';
 import { Lightbox } from './Lightbox';
 import { DatePicker } from './DatePicker';
+import { useVoiceInput } from '../hooks/useVoiceInput';
+import { VoiceStatus } from './VoiceStatus';
 import { MONETIZATION_ENABLED } from '../config';
 import { labelTextColor } from '../lib/labels';
 
@@ -801,31 +803,158 @@ function FilesTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
   );
 }
 
+/** Готовые вопросы: их задают чаще всего, и набирать их руками каждый раз незачем. */
+const QUICK_ASKS: { label: string; ask: string }[] = [
+  { label: 'Объяснить задачу', ask: 'Объясни коротко и простыми словами, что от меня требуется по этой задаче.' },
+  { label: 'Составить план', ask: 'Предложи порядок действий по этой задаче.' },
+  { label: 'Что осталось', ask: 'Что по этой задаче ещё не сделано? Сверься с чек-листом и обсуждением.' },
+  { label: 'Резюме обсуждения', ask: 'Кратко подведи итог обсуждения: что решили, что изменилось, какие вопросы открыты.' },
+  { label: 'Отчёт постановщику', ask: 'Подготовь короткий отчёт о проделанной работе для постановщика.' },
+];
+
+/**
+ * Обсуждение задачи: переписка людей и помощник, который знает эту задачу.
+ *
+ * Главное отличие от обычного чата — исполнителю не нужно пересказывать постановку,
+ * чтобы спросить «что от меня хотят». Контекст (описание, участники, чек-лист, сроки,
+ * обсуждение, итог встречи) собирается на сервере.
+ *
+ * Ответы помощника видно как ответы помощника: спутать догадку с указанием
+ * постановщика — самая дорогая ошибка, какую здесь можно совершить.
+ */
 function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
   const [comments, setComments] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
   const [body, setBody] = useState('');
-  const reload = () => { api.listComments(taskId).then(setComments).catch(() => undefined); api.taskActivity(taskId).then(setActivity).catch(() => undefined); };
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  /** Последний ответ помощника: из него можно принять чек-лист или увидеть предложение. */
+  const [advice, setAdvice] = useState<{
+    answer: string; checklist: string[]; suggestion: { field: string; value: string; label: string } | null;
+  } | null>(null);
+
+  const reload = () => {
+    api.listComments(taskId).then(setComments).catch(() => undefined);
+    api.taskActivity(taskId).then(setActivity).catch(() => undefined);
+  };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reload(); }, [taskId]);
-  const send = async () => { if (!body.trim()) return; await api.addComment(taskId, body.trim()); setBody(''); reload(); onRefresh(); };
+
+  const ask = async (question: string) => {
+    if (!question.trim()) return;
+    setBusy(true); setErr(''); setAdvice(null);
+    try {
+      const res = await api.askTaskAssistant(taskId, question.trim());
+      setAdvice(res);
+      setBody('');
+      reload(); // ответ лёг в ленту обсуждения — он часть истории задачи
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Помощник не ответил'); }
+    finally { setBusy(false); }
+  };
+
+  const send = async () => {
+    const text = body.trim();
+    if (!text) return;
+    // Обращение к помощнику отличается от сообщения коллегам одним признаком —
+    // тем, что человек сам его пометил: «@AI» в начале строки.
+    if (/^@ai\b/i.test(text)) return ask(text.replace(/^@ai\b[,:\s]*/i, ''));
+    setBusy(true);
+    try { await api.addComment(taskId, text); setBody(''); reload(); onRefresh(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не отправилось'); }
+    finally { setBusy(false); }
+  };
+
+  // Голос: вопрос помощнику проще задать словами, чем набирать на телефоне.
+  const voice = useVoiceInput((text) => { setBody((prev) => (prev.trim() ? prev.trim() + ' ' + text : text)); });
+
+  const acceptChecklist = async () => {
+    if (!advice?.checklist.length) return;
+    setBusy(true);
+    try { await api.applyAssistantChecklist(taskId, advice.checklist); setAdvice(null); onRefresh(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не добавилось'); }
+    finally { setBusy(false); }
+  };
+
   return (
     <>
-      <div className="drawer-section-title">Комментарии</div>
+      <div className="drawer-section-title">Обсуждение</div>
       {comments.length === 0 && (
         <EmptyState compact icon="chat" title="Обсуждения ещё не было"
-          hint="Здесь остаётся история решений по задаче — почему сделали так, а не иначе." />
+          hint="Здесь остаётся история решений по задаче. Помощника можно спросить тут же: «@AI что от меня требуется?»" />
       )}
       {comments.map((c) => (
-        <div key={c.id} className="comment">
-          <div className="comment-head"><b>{c.author_name}</b> <span className="dim">{new Date(c.created_at).toLocaleString('ru-RU')}</span></div>
-          <div>{c.body}</div>
+        <div key={c.id} className={c.is_ai ? 'comment comment-ai' : 'comment'}>
+          <div className="comment-head">
+            <b>{c.is_ai ? 'AI-помощник' : c.author_name}</b>
+            {c.is_ai && <span className="badge badge-info">ИИ</span>}
+            <span className="dim">{new Date(c.created_at).toLocaleString('ru-RU')}</span>
+          </div>
+          <div className="comment-body">{c.body}</div>
         </div>
       ))}
-      <div className="comment-input">
-        <textarea className="input" rows={2} placeholder="Написать комментарий…" value={body} onChange={(e) => setBody(e.target.value)} />
-        <button className="btn btn-primary btn-sm" onClick={send}>Отправить</button>
+
+      {err && <div className="error-text">{err}</div>}
+
+      {/* Предложения помощника: применяет их человек, и это принципиально —
+          сам ИИ задачу не меняет. */}
+      {advice && (advice.checklist.length > 0 || advice.suggestion) && (
+        <div className="ai-advice">
+          {advice.checklist.length > 0 && (
+            <>
+              <div className="ai-advice-head">Предложенные шаги</div>
+              <ul className="ai-advice-list">
+                {advice.checklist.map((step, i) => <li key={i}>{step}</li>)}
+              </ul>
+              <button className="btn btn-sm" onClick={acceptChecklist} disabled={busy}>
+                <Icon name="check" size={13} /> Добавить в чек-лист
+              </button>
+            </>
+          )}
+          {advice.suggestion && (
+            <div className="ai-advice-suggest">
+              <Icon name="alert" size={13} /> {advice.suggestion.label || 'Помощник предлагает изменить задачу'} —
+              примените это сами во вкладке «Обзор»: менять задачу за вас он не станет.
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="ai-quick">
+        {QUICK_ASKS.map((q) => (
+          <button key={q.label} className="btn btn-ghost btn-sm" disabled={busy} onClick={() => ask(q.ask)}>
+            {q.label}
+          </button>
+        ))}
       </div>
+
+      <div className="comment-input">
+        <textarea
+          className="input"
+          rows={2}
+          placeholder="Сообщение команде или «@AI …» — помощник знает эту задачу"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send(); }}
+        />
+        <div className="comment-actions">
+          <button
+            className={voice.recording ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost'}
+            onClick={voice.toggle}
+            disabled={busy || voice.transcribing}
+            title="Задать вопрос голосом"
+          >
+            <Icon name={voice.recording ? 'stop' : 'mic'} size={14} />
+          </button>
+          <button className="btn btn-ghost btn-sm" disabled={busy || !body.trim()} onClick={() => ask(body)} title="Спросить помощника по этой задаче">
+            <Icon name="sparkles" size={14} /> Спросить ИИ
+          </button>
+          <button className="btn btn-primary btn-sm" disabled={busy || !body.trim()} onClick={send}>
+            {busy ? '…' : 'Отправить'}
+          </button>
+        </div>
+      </div>
+      <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="nl-voice" />
+
       <div className="drawer-section-title" style={{ marginTop: 16 }}>История</div>
       {activity.map((a) => (
         <div key={a.id} className="dim activity-row">

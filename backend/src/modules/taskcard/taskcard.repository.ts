@@ -15,7 +15,10 @@ export class TaskCardRepository {
   }
   listComments(tenantId: string, taskId: string, includePrivate: boolean) {
     return this.db.many(
-      `SELECT c.id, c.author_id, c.body, c.is_client_visible, c.created_at, c.edited_at, u.full_name AS author_name
+      // is_ai — чтобы в ленте было видно, кто говорит: ответ помощника нельзя
+      // спутать с указанием постановщика
+      `SELECT c.id, c.author_id, c.body, c.is_client_visible, c.is_ai, c.created_at, c.edited_at,
+              u.full_name AS author_name
          FROM task_comments c JOIN users u ON u.id=c.author_id
         WHERE c.tenant_id=$1 AND c.task_id=$2 AND ($3 OR c.is_client_visible=TRUE)
         ORDER BY c.created_at ASC`,

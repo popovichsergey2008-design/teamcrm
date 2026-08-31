@@ -681,6 +681,21 @@
 .meeting-task-title { font-weight: 600; font-size: 14px; text-align: left; }
 .meeting-task-meta { font-size: 12px; margin-top: 2px; }
 
+/* Ответ помощника в ленте обсуждения: его нельзя спутать с сообщением коллеги. */
+.comment-ai { border-left: 2px solid var(--accent); padding-left: 10px; background: var(--accent-soft); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.comment-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.comment-body { white-space: pre-line; }
+
+/* Предложения помощника — то, что применяет человек, а не он сам. */
+.ai-advice { margin: 10px 0; padding: 10px 12px; border: 1px dashed var(--accent-line); border-radius: var(--radius-sm); }
+.ai-advice-head { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.ai-advice-list { margin: 0 0 8px; padding-left: 18px; font-size: 13px; }
+.ai-advice-suggest { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+
+/* Быстрые вопросы: их задают чаще всего, набирать руками незачем. */
+.ai-quick { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.comment-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
+
 /* Настройка меню: перетаскивание пунктов и скрытие ненужных. */
 .nav-group-tuning { cursor: grab; border-radius: var(--radius-sm); }
 .nav-group-tuning:hover { background: var(--bg-elev-2); }

@@ -25,6 +25,7 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'agent_task_execute', title: 'ИИ-агент: выполнение задачи', where: 'Карточка задачи → ИИ-агент', group: 'tasks' },
   { key: 'agent_task_rework', title: 'ИИ-агент: доработка по замечаниям', where: 'Карточка задачи → ИИ-агент', group: 'tasks' },
   { key: 'inbox_draft', title: 'Черновик задачи из входящего письма', where: 'Входящие', group: 'tasks' },
+  { key: 'task_assistant', title: 'Помощник в обсуждении задачи', where: 'Карточка задачи → «Обсуждение»', group: 'tasks' },
 
   { key: 'meeting_transcribe', title: 'Расшифровка записи встречи', where: 'Встречи → загрузка записи', group: 'meetings' },
   { key: 'meeting_analyze', title: 'Разбор встречи: сводка и задачи', where: 'Встречи → после расшифровки', group: 'meetings' },

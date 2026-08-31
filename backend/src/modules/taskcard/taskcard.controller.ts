@@ -3,10 +3,11 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
+import { TaskAssistantService } from './task-assistant.service';
 import { TaskCardService } from './taskcard.service';
 
 class CommentDto {
@@ -18,6 +19,12 @@ class CommentEditDto {
 }
 class ChecklistDto {
   @IsString() @MinLength(1) @MaxLength(500) text!: string;
+}
+class AssistantAskDto {
+  @IsString() @MinLength(2) @MaxLength(2000) question!: string;
+}
+class AssistantChecklistDto {
+  @IsArray() @IsString({ each: true }) items!: string[];
 }
 class ChecklistPatchDto {
   @IsOptional() @IsString() @MaxLength(500) text?: string;
@@ -32,7 +39,10 @@ class WatcherDto {
 @Controller('tasks')
 @Roles('owner', 'manager', 'member')
 export class TaskCardController {
-  constructor(private readonly svc: TaskCardService) {}
+  constructor(
+    private readonly svc: TaskCardService,
+    private readonly assistant: TaskAssistantService,
+  ) {}
 
   // comments
   @Get(':id/comments')
@@ -85,6 +95,23 @@ export class TaskCardController {
   @Delete(':id/checklist/:iid')
   delChecklist(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('iid') iid: string) {
     return this.svc.deleteChecklist(u.tenantId, id, iid);
+  }
+
+  /**
+   * Спросить помощника по этой задаче.
+   *
+   * Контекст собирается на сервере: человек не должен пересказывать постановку,
+   * чтобы получить ответ по ней.
+   */
+  @Post(':id/assistant')
+  askAssistant(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AssistantAskDto) {
+    return this.assistant.ask(u.tenantId, id, u.userId, dto.question);
+  }
+
+  /** Принять предложенный ИИ чек-лист — решение человека, а не ИИ. */
+  @Post(':id/assistant/checklist')
+  applyAssistantChecklist(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AssistantChecklistDto) {
+    return this.assistant.applyChecklist(u.tenantId, id, u.userId, dto.items).then(() => ({ added: dto.items.length }));
   }
 
   // labels (assignment on task)
