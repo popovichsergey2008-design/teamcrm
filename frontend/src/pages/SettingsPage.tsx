@@ -3,6 +3,7 @@ import { IntegrationsPanel } from '../components/IntegrationsPanel';
 import { AssistantPanel } from '../components/AssistantPanel';
 import { HandoffGatePanel } from '../components/HandoffGatePanel';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
+import { AiUsagePanel } from '../components/AiUsagePanel';
 import { KnowledgePanel } from '../components/KnowledgePanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { navigate, Route } from '../lib/router';
@@ -38,6 +39,13 @@ const CARDS: Card[] = [
     hint: 'Битрикс24 и YouGile, ключи ИИ, библиотека промптов, Telegram',
     icon: 'plug',
     roles: ['owner'],
+  },
+  {
+    tab: 'ai-usage',
+    title: 'Расход ИИ',
+    hint: 'Сколько токенов ушло, на какие возможности и по дням — включая те, где ИИ не запускался',
+    icon: 'sparkles',
+    roles: ['owner', 'manager'],
   },
   {
     tab: 'knowledge',
@@ -99,6 +107,7 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
 
       {route.tab === 'team' && canManage && <TeamPanel onClose={close} />}
       {route.tab === 'integrations' && role === 'owner' && <IntegrationsPanel onClose={close} />}
+      {route.tab === 'ai-usage' && canManage && <AiUsagePanel onClose={close} />}
       {route.tab === 'knowledge' && <KnowledgePanel canManage={canManage} onClose={close} />}
       {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}
       {route.tab === 'assistant' && <AssistantPanel canManage={role === 'owner'} onClose={close} />}

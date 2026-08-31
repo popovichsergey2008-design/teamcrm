@@ -68,4 +68,24 @@ describe('AI settings BYOK (e2e)', () => {
     expect(Array.isArray(models)).toBe(true);
     expect(models.length).toBeGreaterThan(0);
   });
+  it('расход ИИ показывает и то, что запускалось, и то, что не запускалось ни разу', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'AI-Usage', email: `u_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .expect(201)).body.data;
+    const usage = (await http.get('/api/ai/usage?days=30').set(H(owner.accessToken)).expect(200)).body.data;
+
+    // Итоги — в токенах и деньгах: «сколько ушло» без цифры денег не ответ.
+    expect(typeof usage.totalTokens).toBe('number');
+    expect(typeof usage.totalCost).toBe('number');
+    expect(Array.isArray(usage.byDay)).toBe(true);
+
+    // Каталог возможностей приходит целиком, включая незапускавшиеся: ноль напротив
+    // строки — ровно тот ответ, ради которого экран и делался.
+    const keys = usage.byFeature.map((f: any) => f.feature);
+    expect(keys).toContain('nl_command');
+    expect(keys).toContain('meeting_analyze');
+    const idle = usage.byFeature.find((f: any) => f.calls === 0);
+    expect(idle.title.length).toBeGreaterThan(3); // человеческое название, а не ключ
+    expect(idle.where.length).toBeGreaterThan(0); // и место, где это запускается
+  });
 });

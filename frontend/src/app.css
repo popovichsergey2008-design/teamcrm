@@ -672,6 +672,29 @@
 .meeting-task-title { font-weight: 600; font-size: 14px; text-align: left; }
 .meeting-task-meta { font-size: 12px; margin-top: 2px; }
 
+/* Расход ИИ: итоги, столбики по дням и таблица возможностей. */
+.ai-usage-period { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 12px; }
+.ai-usage-sums { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 6px; }
+.ai-usage-note { font-size: 12px; margin-bottom: 8px; }
+.ai-usage-mock { font-size: 12px; display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+
+/* Столбики по дням: без библиотеки графиков — здесь важна форма, а не точность до пикселя. */
+.ai-usage-days { display: flex; align-items: flex-end; gap: 3px; height: 90px; overflow-x: auto; padding-bottom: 16px; }
+.ai-usage-day { position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; min-width: 14px; flex: 1 1 14px; }
+.ai-usage-bar { width: 100%; background: var(--accent); border-radius: 2px 2px 0 0; }
+.ai-usage-daylabel { position: absolute; bottom: -16px; font-size: 9px; color: var(--text-mut); white-space: nowrap; }
+
+.ai-usage-group { margin-top: 10px; }
+.ai-usage-group-head { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); margin-bottom: 4px; }
+.ai-usage-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+/* Незапускавшееся не прячем, но и не выпячиваем: это фон, а не событие. */
+.ai-usage-row.idle { opacity: .55; }
+.ai-usage-what { flex: 1 1 auto; min-width: 0; }
+.ai-usage-title { font-size: 14px; font-weight: 600; }
+.ai-usage-where { font-size: 11px; }
+.ai-usage-nums { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; font-size: 12px; }
+.ai-usage-tokens { font-variant-numeric: tabular-nums; font-weight: 600; }
+
 /* Шапка раздела чатов: созвон и внешняя ссылка видны всегда, без выбранного чата. */
 .chat-view-head {
   display: flex; align-items: center; justify-content: flex-end; gap: 8px;

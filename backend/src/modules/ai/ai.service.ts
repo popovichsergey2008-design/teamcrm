@@ -7,6 +7,7 @@ import { AiProvider, MockAiProvider, RealAiProvider, TranscriptSegment } from '.
 import { AiSettingsService } from './ai-settings.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { maskPII } from './pii';
+import { AI_FEATURES, describeFeature, estimateCost, isMockModel } from './usage-catalog';
 import { StandupPackage, validateStandupPackage } from './standup-schema';
 
 const CACHE_TTL = 3600;
@@ -118,20 +119,129 @@ export class AiService {
   }
 
   /** Агрегаты ИИ-расхода (мониторинг): вызовы, cache-hit, токены по фичам. */
+  /**
+   * Расход ИИ: сколько, на что и когда.
+   *
+   * Отчёт отвечает на три разных вопроса, и все три задавались вслух. «Сколько ушло» —
+   * токены и деньги. «На что» — по возможностям системы, включая те, которые за период
+   * НЕ сработали ни разу: ноль напротив строки объясняет ощущение «ИИ будто не
+   * вызывается» лучше любого объяснения. «Когда» — по дням, чтобы всплеск было видно
+   * глазами и можно было вспомнить, что в тот день делали.
+   *
+   * Деньги считаем здесь, а не берём из базы: `cost_estimate` заполняется только для
+   * расшифровки записей, у текстовых моделей там нули, и отчёт показывал бы «0 ₽»
+   * при миллионах токенов.
+   */
   async usageStats(tenantId: string, days = 30) {
-    const byFeature = await this.db.many<any>(
-      `SELECT feature, count(*)::int AS calls, sum((cache_hit)::int)::int AS hits,
-              sum(input_tokens)::int AS input_tokens, sum(output_tokens)::int AS output_tokens
+    const [rows, byDay] = await Promise.all([
+      this.db.many<{
+        feature: string; model: string; calls: string; hits: string;
+        input_tokens: string; output_tokens: string; stored_cost: string; last_at: Date;
+      }>(
+        `SELECT feature, model, count(*)::int AS calls, sum((cache_hit)::int)::int AS hits,
+                sum(input_tokens)::bigint AS input_tokens, sum(output_tokens)::bigint AS output_tokens,
+                sum(cost_estimate) AS stored_cost, max(created_at) AS last_at
+           FROM ai_usage
+          WHERE tenant_id=$1 AND created_at > now() - ($2 || ' days')::interval
+          GROUP BY feature, model`,
+        [tenantId, days],
+      ),
+      this.db.many<{ day: string; calls: string; tokens: string; models: string[] }>(
+        `SELECT to_char(created_at::date, 'YYYY-MM-DD') AS day,
+                count(*)::int AS calls,
+                sum(input_tokens + output_tokens)::bigint AS tokens,
+                array_agg(DISTINCT model) AS models
+           FROM ai_usage
+          WHERE tenant_id=$1 AND created_at > now() - ($2 || ' days')::interval
+          GROUP BY 1 ORDER BY 1`,
+        [tenantId, days],
+      ),
+    ]);
+
+    // Стоимость по дням считаем из тех же строк: отдельный запрос дал бы те же данные
+    // ценой второго прохода по таблице.
+    const costByDay = new Map<string, number>();
+    const byFeature = new Map<string, {
+      feature: string; title: string; where: string; group: string;
+      calls: number; hits: number; inputTokens: number; outputTokens: number;
+      cost: number; models: string[]; mockCalls: number; lastAt: Date | null;
+    }>();
+
+    for (const r of rows) {
+      const input = Number(r.input_tokens ?? 0);
+      const output = Number(r.output_tokens ?? 0);
+      const calls = Number(r.calls ?? 0);
+      // у расшифровки цена уже посчитана по минутам звука — её и берём
+      const cost = Number(r.stored_cost ?? 0) || estimateCost(r.model, input, output);
+      const info = describeFeature(r.feature);
+
+      const acc = byFeature.get(r.feature) ?? {
+        feature: r.feature, title: info.title, where: info.where, group: info.group,
+        calls: 0, hits: 0, inputTokens: 0, outputTokens: 0, cost: 0, models: [] as string[],
+        mockCalls: 0, lastAt: null as Date | null,
+      };
+      acc.calls += calls;
+      acc.hits += Number(r.hits ?? 0);
+      acc.inputTokens += input;
+      acc.outputTokens += output;
+      acc.cost += cost;
+      acc.models.push(r.model);
+      if (isMockModel(r.model)) acc.mockCalls += calls;
+      if (!acc.lastAt || (r.last_at && r.last_at > acc.lastAt)) acc.lastAt = r.last_at;
+      byFeature.set(r.feature, acc);
+    }
+
+    // Дневная стоимость: раскладываем расход строк по дням пропорционально нельзя,
+    // поэтому считаем отдельно — по тем же правилам, что и итог.
+    const dayCost = await this.db.many<{ day: string; cost: string }>(
+      `SELECT to_char(created_at::date, 'YYYY-MM-DD') AS day,
+              sum(CASE WHEN cost_estimate > 0 THEN cost_estimate ELSE 0 END) AS cost
          FROM ai_usage
         WHERE tenant_id=$1 AND created_at > now() - ($2 || ' days')::interval
-        GROUP BY feature ORDER BY feature`,
+        GROUP BY 1`,
       [tenantId, days],
     );
-    const totalCalls = byFeature.reduce((s, r) => s + Number(r.calls), 0);
-    const cacheHits = byFeature.reduce((s, r) => s + Number(r.hits), 0);
+    for (const d of dayCost) costByDay.set(d.day, Number(d.cost ?? 0));
+
+    const used = [...byFeature.values()].map((f) => ({
+      ...f,
+      models: [...new Set(f.models)],
+      cost: Number(f.cost.toFixed(4)),
+      tokens: f.inputTokens + f.outputTokens,
+    }));
+
+    // Возможности, которые за период не сработали ни разу. Показываем их наравне
+    // с остальными: пустая строка — это ответ, а не отсутствие ответа.
+    const idle = AI_FEATURES
+      .filter((f) => !byFeature.has(f.key))
+      .map((f) => ({
+        feature: f.key, title: f.title, where: f.where, group: f.group,
+        calls: 0, hits: 0, inputTokens: 0, outputTokens: 0, tokens: 0, cost: 0,
+        models: [] as string[], mockCalls: 0, lastAt: null as Date | null,
+      }));
+
+    const totalCalls = used.reduce((s, f) => s + f.calls, 0);
+    const cacheHits = used.reduce((s, f) => s + f.hits, 0);
+
     return {
-      periodDays: days, byFeature, totalCalls, cacheHits,
+      periodDays: days,
+      totalCalls,
+      cacheHits,
       cacheHitRatio: totalCalls ? Number((cacheHits / totalCalls).toFixed(3)) : 0,
+      totalTokens: used.reduce((s, f) => s + f.tokens, 0),
+      inputTokens: used.reduce((s, f) => s + f.inputTokens, 0),
+      outputTokens: used.reduce((s, f) => s + f.outputTokens, 0),
+      totalCost: Number(used.reduce((s, f) => s + f.cost, 0).toFixed(4)),
+      /** Вызовы, ушедшие в заглушку: конвейер сработал, но думала не модель. */
+      mockCalls: used.reduce((s, f) => s + f.mockCalls, 0),
+      byFeature: [...used, ...idle].sort((a, b) => b.tokens - a.tokens || a.title.localeCompare(b.title, 'ru')),
+      byDay: byDay.map((d) => ({
+        day: d.day,
+        calls: Number(d.calls ?? 0),
+        tokens: Number(d.tokens ?? 0),
+        cost: Number((costByDay.get(d.day) ?? 0).toFixed(4)),
+        models: d.models ?? [],
+      })),
     };
   }
 

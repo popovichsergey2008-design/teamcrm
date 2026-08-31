@@ -357,7 +357,8 @@ export const api = {
     }
     return true;
   },
-  aiUsage: () => request<{ totalCalls: number; cacheHits: number; cacheHitRatio: number; byFeature: any[] }>('GET', '/ai/usage'),
+  /** Расход ИИ: токены, деньги, по дням и по возможностям (включая незапускавшиеся). */
+  aiUsage: (days = 30) => request<any>('GET', `/ai/usage?days=${days}`),
   aiSettingsGet: () => request<any>('GET', '/ai/settings'),
   aiSettingsSave: (b: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; brainModel?: string }) => request<any>('PUT', '/ai/settings', b),
   aiSettingsModels: () => request<string[]>('GET', '/ai/settings/models'),
