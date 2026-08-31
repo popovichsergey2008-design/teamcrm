@@ -118,7 +118,7 @@ describe('Гостевой доступ в созвон (e2e)', () => {
     await http$.post('/api/meet/guest/definitely-not-a-token/join').send({ name: 'Кто-то' }).expect(401);
   });
   it('ссылка привязывается к чату и подписывается им в списке', async () => {
-    const owner = await register('Ссылка для чата');
+    const owner = await register('ГостиЧат');
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
       .send({ email: `gl_${Date.now()}@t.test`, fullName: 'Коллега', password: 'password123', role: 'member' })
       .expect(201)).body.data;
