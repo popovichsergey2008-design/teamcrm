@@ -117,4 +117,27 @@ describe('Гостевой доступ в созвон (e2e)', () => {
     expect(bogus).toEqual({ valid: false, reason: 'unknown' });
     await http$.post('/api/meet/guest/definitely-not-a-token/join').send({ name: 'Кто-то' }).expect(401);
   });
+  it('ссылка привязывается к чату и подписывается им в списке', async () => {
+    const owner = await register('Ссылка для чата');
+    const mate = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: `gl_${Date.now()}@t.test`, fullName: 'Коллега', password: 'password123', role: 'member' })
+      .expect(201)).body.data;
+    const chat = (await http$.post('/api/chats').set(H(owner.accessToken))
+      .send({ kind: 'group', title: 'Клиент Вектор', memberIds: [String(mate.id)] }).expect(201)).body.data;
+
+    const link = (await http$.post('/api/meet/guest-links').set(H(owner.accessToken))
+      .send({ label: 'ООО Вектор', chatId: String(chat.id), ttlHours: 72 }).expect(201)).body.data;
+    expect(link.url).toContain('/meet/');
+
+    // В списке видно, ради какого разговора ссылка: «для кого» без «для чего»
+    // через неделю превращается в загадку.
+    const list = (await http$.get('/api/meet/guest-links').set(H(owner.accessToken)).expect(200)).body.data;
+    const mine = list.find((l: any) => String(l.id) === String(link.id));
+    expect(mine.chat_title).toBe('Клиент Вектор');
+
+    // Срок действия — тот, что выбрали, а не всегда сутки.
+    const hours = (new Date(mine.expires_at).getTime() - Date.now()) / 3_600_000;
+    expect(hours).toBeGreaterThan(70);
+    expect(hours).toBeLessThan(74);
+  });
 });

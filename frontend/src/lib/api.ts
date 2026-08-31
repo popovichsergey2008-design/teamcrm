@@ -705,7 +705,7 @@ export const api = {
     request<any>('POST', '/calendar/work', b),
 
   // гостевой доступ в созвон по ссылке
-  createGuestLink: (b: { roomId?: string; projectId?: string; label?: string; ttlHours?: number }) =>
+  createGuestLink: (b: { roomId?: string; projectId?: string; label?: string; ttlHours?: number; chatId?: string }) =>
     request<{ id: string; roomId: string; url: string; expiresAt: string }>('POST', '/meet/guest-links', b),
   listGuestLinks: () => request<any[]>('GET', '/meet/guest-links'),
   /** Войти в комнату ранее выданной ссылки — гость ждёт именно её. */

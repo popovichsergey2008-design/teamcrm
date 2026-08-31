@@ -12,6 +12,8 @@ class CreateGuestLinkDto {
   @IsOptional() @IsString() projectId?: string;
   @IsOptional() @IsString() label?: string;
   @IsOptional() @IsInt() @Min(1) @Max(720) ttlHours?: number;
+  /** Разговор, ради которого ссылка выдана: по нему её потом и находят в чате. */
+  @IsOptional() @IsString() chatId?: string;
 }
 
 class GuestJoinDto {

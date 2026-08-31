@@ -668,6 +668,18 @@
 .meeting-task-title { font-weight: 600; font-size: 14px; text-align: left; }
 .meeting-task-meta { font-size: 12px; margin-top: 2px; }
 
+/* «Внешняя ссылка»: кнопка в шапке раздела и всплывающее окно создания. */
+.guest-link-btn { position: relative; display: inline-flex; }
+.guest-link-pop {
+  position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; width: 320px;
+  padding: 12px; border-radius: var(--radius-sm);
+  background: var(--bg-elev); border: 1px solid var(--border-2); box-shadow: var(--shadow-lg, 0 12px 30px rgba(0,0,0,.25));
+}
+.guest-link-go { width: 100%; margin-top: 8px; }
+.chat-list-guest { padding: 0 8px 8px; }
+.chat-list-guest .guest-link-btn { width: 100%; }
+.chat-list-guest .btn { width: 100%; justify-content: center; }
+
 /* Ход обработки записи: аудио уже на сервере, ждать приходится минуты. */
 .nl-job {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;

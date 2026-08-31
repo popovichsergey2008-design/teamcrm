@@ -23,13 +23,14 @@ export class GuestLinksRepository {
   create(input: {
     tenantId: string; roomId: string; projectId: string | null; label: string | null;
     tokenHash: string; createdBy: string; expiresAt: Date; maxUses: number | null;
+    chatId?: string | null;
   }): Promise<GuestLinkRow | null> {
     return this.db.one<GuestLinkRow>(
       `INSERT INTO meet_guest_links
-         (tenant_id, room_id, project_id, label, token_hash, created_by, expires_at, max_uses)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+         (tenant_id, room_id, project_id, label, token_hash, created_by, expires_at, max_uses, chat_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [input.tenantId, input.roomId, input.projectId, input.label, input.tokenHash,
-        input.createdBy, input.expiresAt, input.maxUses],
+        input.createdBy, input.expiresAt, input.maxUses, input.chatId ?? null],
     );
   }
 
@@ -67,10 +68,14 @@ export class GuestLinksRepository {
 
   list(tenantId: string) {
     return this.db.many<GuestLinkRow & { author: string | null }>(
+      // Название чата — рядом со ссылкой: «для кого» без «для какого разговора»
+      // через неделю превращается в загадку.
       `SELECT l.id, l.room_id, l.project_id, l.label, l.expires_at, l.revoked_at,
-              l.max_uses, l.uses, l.last_used_at, l.created_at, u.full_name AS author
+              l.max_uses, l.uses, l.last_used_at, l.created_at, u.full_name AS author,
+              l.chat_id, c.title AS chat_title, c.kind AS chat_kind
          FROM meet_guest_links l
          LEFT JOIN users u ON u.id = l.created_by
+         LEFT JOIN chats c ON c.id = l.chat_id
         WHERE l.tenant_id = $1 AND l.revoked_at IS NULL AND l.expires_at > now()
         ORDER BY l.created_at DESC`,
       [tenantId],

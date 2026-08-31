@@ -10,6 +10,8 @@ interface GuestLink {
   uses: number;
   last_used_at: string | null;
   author: string | null;
+  /** Разговор, ради которого ссылка выдана: через неделю «для кого» уже загадка. */
+  chat_title?: string | null;
 }
 
 const when = (iso: string) => new Date(iso).toLocaleString('ru-RU', {
@@ -35,6 +37,8 @@ export function GuestMeetsPanel({ onEnter }: { onEnter: (roomId: string) => void
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  /** Срок действия: клиенту ссылку шлют и на завтра, и на следующую неделю. */
+  const [ttl, setTtl] = useState('24');
 
   const reload = useCallback(
     () => api.listGuestLinks().then(setLinks).catch(() => undefined).finally(() => setLoaded(true)),
@@ -46,7 +50,10 @@ export function GuestMeetsPanel({ onEnter }: { onEnter: (roomId: string) => void
     setErr('');
     setBusy(true);
     try {
-      const r = await api.createGuestLink({ label: label.trim() || undefined });
+      const r = await api.createGuestLink({
+        label: label.trim() || undefined,
+        ttlHours: Number(ttl) || 24,
+      });
       setFresh({ id: r.id, url: r.url });
       setLabel('');
       setCopied(false);
@@ -97,6 +104,13 @@ export function GuestMeetsPanel({ onEnter }: { onEnter: (roomId: string) => void
           placeholder="Для кого — например, «ООО Вектор»"
           maxLength={120}
         />
+        <select className="input" value={ttl} onChange={(e) => setTtl(e.target.value)} aria-label="Срок действия">
+          <option value="4">4 часа</option>
+          <option value="24">Сутки</option>
+          <option value="72">3 дня</option>
+          <option value="168">Неделя</option>
+          <option value="720">30 дней</option>
+        </select>
         <button className="btn btn-primary btn-sm" onClick={create} disabled={busy}>
           <Icon name="plus" size={15} /> Создать ссылку
         </button>
@@ -124,6 +138,7 @@ export function GuestMeetsPanel({ onEnter }: { onEnter: (roomId: string) => void
               <span className="guest-links-who">
                 <b>{l.label || 'Без подписи'}</b>
                 <span className="dim">
+                  {l.chat_title ? `для чата «${l.chat_title}» · ` : ''}
                   до {when(l.expires_at)}
                   {l.uses > 0 ? ` · входов: ${l.uses}` : ' · ещё не входили'}
                   {l.author ? ` · ${l.author}` : ''}

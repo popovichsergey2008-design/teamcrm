@@ -44,7 +44,11 @@ export class GuestLinksService {
    */
   async create(
     tenantId: string, createdBy: string,
-    input: { roomId?: string; projectId?: string | null; label?: string | null; ttlHours?: number },
+    input: {
+      roomId?: string; projectId?: string | null; label?: string | null; ttlHours?: number;
+      /** Разговор, ради которого ссылка выдана: по нему её потом и находят. */
+      chatId?: string | null;
+    },
   ) {
     const roomId = input.roomId?.trim() || randomUUID();
     // чужую комнату в ссылку не заворачиваем: id угадать нельзя, но проверить дёшево
@@ -62,6 +66,7 @@ export class GuestLinksService {
       createdBy,
       expiresAt: new Date(Date.now() + hours * 3600_000),
       maxUses: null,
+      chatId: input.chatId ?? null,
     });
     if (!row) throw AppException.conflict('Не удалось создать ссылку');
     return { id: row.id, roomId, url: `${this.baseUrl()}/meet/${token}`, expiresAt: row.expires_at };
