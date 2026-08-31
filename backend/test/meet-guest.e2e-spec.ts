@@ -122,8 +122,8 @@ describe('Гостевой доступ в созвон (e2e)', () => {
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
       .send({ email: `gl_${Date.now()}@t.test`, fullName: 'Коллега', password: 'password123', role: 'member' })
       .expect(201)).body.data;
-    const chat = (await http$.post('/api/chats').set(H(owner.accessToken))
-      .send({ kind: 'group', title: 'Клиент Вектор', memberIds: [String(mate.id)] }).expect(201)).body.data;
+    const chat = (await http$.post('/api/chats/groups').set(H(owner.accessToken))
+      .send({ title: 'Клиент Вектор', userIds: [String(mate.id)] }).expect(201)).body.data;
 
     const link = (await http$.post('/api/meet/guest-links').set(H(owner.accessToken))
       .send({ label: 'ООО Вектор', chatId: String(chat.id), ttlHours: 72 }).expect(201)).body.data;
