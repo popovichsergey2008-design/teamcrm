@@ -793,7 +793,7 @@ export const api = {
   /** Оценка и срок без назначения: задаче можно поставить дату, ещё не выбрав исполнителя. */
   /** Кто ещё в задаче: соисполнители (делают работу) и наблюдатели (следят). */
   taskParticipants: (id: string) => request<{
-    user_id: string; role: string; full_name: string; avatar_url: string | null;
+    user_id: string; role: string; full_name: string; avatar_file_id: string | null;
   }[]>('GET', `/tasks/${id}/participants`),
   addTaskParticipant: (id: string, userId: string, role: 'co_assignee' | 'watcher') =>
     request<any[]>('POST', `/tasks/${id}/participants`, { userId, role }),

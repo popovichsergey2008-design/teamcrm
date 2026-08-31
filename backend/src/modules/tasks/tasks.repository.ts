@@ -330,10 +330,11 @@ export class TasksRepository {
    * с задачей», и разводить его по разным местам значит дублировать всю обвязку.
    */
   participants(tenantId: string, taskId: string): Promise<{
-    user_id: string; role: string; full_name: string; avatar_url: string | null;
+    user_id: string; role: string; full_name: string; avatar_file_id: string | null;
   }[]> {
     return this.db.many(
-      `SELECT tp.user_id::text, tp.role, u.full_name, u.avatar_url
+      // аватар лежит идентификатором файла, а не ссылкой: колонки avatar_url нет
+      `SELECT tp.user_id::text, tp.role, u.full_name, u.avatar_file_id::text
          FROM task_participants tp
          JOIN users u ON u.id = tp.user_id
         WHERE tp.tenant_id = $1 AND tp.task_id = $2
