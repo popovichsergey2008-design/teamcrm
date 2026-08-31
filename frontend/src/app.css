@@ -684,8 +684,29 @@
   background: var(--bg-elev); border: 1px solid var(--border-2);
   box-shadow: var(--shadow-lg, 0 12px 30px rgba(0,0,0,.25));
 }
-.call-starter { position: relative; display: inline-flex; gap: 6px; align-items: center; }
-.call-starter-add { padding: 5px 8px; }
+/*
+ * Созвон — один элемент с двумя половинами, а не две кнопки рядом.
+ *
+ * Действие одно («поговорить»), просто у него есть уточнение — с кем. Разнесённые
+ * кнопки читались как два разных инструмента; склеенные, они читаются как кнопка
+ * с выбором — то же, что «Завершить» с уточнением у задачи.
+ */
+.call-starter { position: relative; display: inline-flex; align-items: center; }
+.call-starter-add {
+  padding: 5px 9px; border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  border-right-color: transparent;
+}
+.call-starter-call { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin-left: -1px; }
+/* Половинки подсвечиваются вместе: наводишь на любую — видно, что элемент один. */
+.call-starter:hover .call-starter-add:not(:disabled),
+.call-starter:hover .call-starter-call:not(:disabled) { background: var(--border); }
+.call-starter-add .view-count { margin-left: 4px; }
+
+/* Строка «выбрать всех» отделена от людей: это действие, а не человек. */
+.call-starter-all {
+  border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 4px;
+  font-weight: 600;
+}
 .call-starter-guest { margin-bottom: 8px; }
 
 /* «Внешняя ссылка»: кнопка в шапке раздела и всплывающее окно создания. */

@@ -45,6 +45,13 @@ export function CallStarter({ chatId, kind, peerId, disabled, onStart }: {
     return next;
   });
 
+  /** Отметить или снять сразу всех: на планёрку зовут команду, а не по одному. */
+  const setAll = (ids: string[], selected: boolean) => setChosen((prev) => {
+    const next = new Set(prev);
+    for (const id of ids) { if (selected) next.add(id); else next.delete(id); }
+    return next;
+  });
+
   /** Кого зовём из чата: собеседника диалога или участников группы. */
   const membersOfChat = async (): Promise<string[]> => {
     if (!chatId) return [];
@@ -103,7 +110,12 @@ export function CallStarter({ chatId, kind, peerId, disabled, onStart }: {
             <GuestLinkButton chatId={chatId ?? null} compact />
           </div>
 
-          <PeoplePicker chosen={chosen} onToggle={toggle} emptyHint="В организации пока некого звать." />
+          <PeoplePicker
+            chosen={chosen}
+            onToggle={toggle}
+            onSetAll={setAll}
+            emptyHint="В организации пока некого звать."
+          />
 
           <button
             className="btn btn-primary btn-sm call-starter-go"

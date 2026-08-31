@@ -18,11 +18,13 @@ export interface Person {
  * поведения. Поле поиска появляется, только когда людей много: над списком из четырёх
  * человек оно выглядит издевательством.
  */
-export function PeoplePicker({ exclude = [], chosen, onToggle, emptyHint }: {
+export function PeoplePicker({ exclude = [], chosen, onToggle, onSetAll, emptyHint }: {
   /** Кого не показывать: себя и тех, кто уже в комнате. */
   exclude?: string[];
   chosen: Set<string>;
   onToggle: (userId: string) => void;
+  /** Отметить или снять сразу всех видимых — нужен на планёрках и общих созвонах. */
+  onSetAll?: (userIds: string[], selected: boolean) => void;
   emptyHint?: string;
 }) {
   const { user } = useAuth();
@@ -55,6 +57,9 @@ export function PeoplePicker({ exclude = [], chosen, onToggle, emptyHint }: {
       .filter((p) => !q || p.fullName.toLowerCase().includes(q));
   }, [people, exclude, query]);
 
+  const allShownChosen = shown.length > 0 && shown.every((p) => chosen.has(p.userId));
+  const someShownChosen = shown.some((p) => chosen.has(p.userId));
+
   return (
     <>
       {people.length > 7 && (
@@ -70,6 +75,27 @@ export function PeoplePicker({ exclude = [], chosen, onToggle, emptyHint }: {
       {loading && <div className="dim">Загружаю команду…</div>}
       {!loading && shown.length === 0 && (
         <div className="dim">{emptyHint ?? 'Звать больше некого.'}</div>
+      )}
+
+      {/*
+        «Выбрать всех» — про планёрку и общий созвон: отмечать команду по одному
+        человеку там, где зовут всех, занятие бессмысленное. Работает по ВИДИМЫМ:
+        если человек сузил список поиском, он имеет в виду именно найденных.
+      */}
+      {onSetAll && shown.length > 1 && (
+        <label className="call-starter-row call-starter-all">
+          <input
+            type="checkbox"
+            checked={allShownChosen}
+            ref={(el) => { if (el) el.indeterminate = someShownChosen && !allShownChosen; }}
+            onChange={() => onSetAll(shown.map((p) => p.userId), !allShownChosen)}
+          />
+          <span className="call-starter-name">
+            {allShownChosen ? 'Снять выбор' : 'Выбрать всех'}
+            {query.trim() ? ' из найденных' : ''}
+          </span>
+          <span className="dim">{shown.length}</span>
+        </label>
       )}
 
       <div className="call-starter-list">

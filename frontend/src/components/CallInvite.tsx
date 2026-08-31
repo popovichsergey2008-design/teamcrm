@@ -38,6 +38,13 @@ export function CallInvite({ present, onInvite }: {
     return next;
   });
 
+  /** Отметить или снять сразу всех: на планёрку зовут команду, а не по одному. */
+  const setAll = (ids: string[], selected: boolean) => setChosen((prev) => {
+    const next = new Set(prev);
+    for (const id of ids) { if (selected) next.add(id); else next.delete(id); }
+    return next;
+  });
+
   const send = () => {
     if (!chosen.size) return;
     onInvite([...chosen]);
@@ -68,6 +75,7 @@ export function CallInvite({ present, onInvite }: {
             exclude={present}
             chosen={chosen}
             onToggle={toggle}
+            onSetAll={setAll}
             emptyHint="Звать больше некого — вся команда уже на связи."
           />
 
