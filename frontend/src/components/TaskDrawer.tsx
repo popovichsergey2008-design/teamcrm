@@ -10,6 +10,7 @@ import { Lightbox } from './Lightbox';
 import { DatePicker } from './DatePicker';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { VoiceStatus } from './VoiceStatus';
+import { MentionField } from './MentionField';
 import { MONETIZATION_ENABLED } from '../config';
 import { labelTextColor } from '../lib/labels';
 
@@ -812,23 +813,31 @@ const QUICK_ASKS: { label: string; ask: string }[] = [
   { label: 'Отчёт постановщику', ask: 'Подготовь короткий отчёт о проделанной работе для постановщика.' },
 ];
 
+/** Реакции: ответить «ок» знаком, не засоряя обсуждение и не будя участников. */
+const REACTIONS = ['👍', '✅', '🔥', '❓'];
+
 /**
- * Обсуждение задачи: переписка людей и помощник, который знает эту задачу.
+ * Обсуждение задачи: чат команды и помощник, который знает эту задачу.
  *
- * Главное отличие от обычного чата — исполнителю не нужно пересказывать постановку,
- * чтобы спросить «что от меня хотят». Контекст (описание, участники, чек-лист, сроки,
- * обсуждение, итог встречи) собирается на сервере.
- *
+ * Здесь и переписка людей, и ИИ — намеренно в одной ленте: разговор о работе один,
+ * и разносить его по двум местам значит заставлять человека помнить, где что искать.
  * Ответы помощника видно как ответы помощника: спутать догадку с указанием
  * постановщика — самая дорогая ошибка, какую здесь можно совершить.
  */
 function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
+  const { user } = useAuth();
   const [comments, setComments] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
+  const [users, setUsers] = useState<{ id: string; fullName: string }[]>([]);
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  /** Последний ответ помощника: из него можно принять чек-лист или увидеть предложение. */
+  /** Поиск по обсуждению: в переписке на сотню сообщений нужное иначе не найти. */
+  const [query, setQuery] = useState('');
+  /** На какое сообщение отвечаем — цитата стоит над полем ввода. */
+  const [replyTo, setReplyTo] = useState<any | null>(null);
+  /** Правка своего сообщения: сказанное вслух не переписывают, написанное — да. */
+  const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   const [advice, setAdvice] = useState<{
     answer: string; checklist: string[]; suggestion: { field: string; value: string; label: string } | null;
   } | null>(null);
@@ -839,6 +848,11 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reload(); }, [taskId]);
+  useEffect(() => {
+    api.listUsers()
+      .then((team: any[]) => setUsers(team.map((u) => ({ id: String(u.id), fullName: u.fullName }))))
+      .catch(() => undefined);
+  }, []);
 
   const ask = async (question: string) => {
     if (!question.trim()) return;
@@ -855,13 +869,40 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
   const send = async () => {
     const text = body.trim();
     if (!text) return;
-    // Обращение к помощнику отличается от сообщения коллегам одним признаком —
-    // тем, что человек сам его пометил: «@AI» в начале строки.
+    // Обращение к помощнику человек помечает сам: «@AI» в начале строки.
     if (/^@ai\b/i.test(text)) return ask(text.replace(/^@ai\b[,:\s]*/i, ''));
     setBusy(true);
-    try { await api.addComment(taskId, text); setBody(''); reload(); onRefresh(); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не отправилось'); }
+    try {
+      if (editing) {
+        await api.editComment(taskId, editing.id, text);
+        setEditing(null);
+      } else {
+        await api.addComment(taskId, text, undefined, replyTo ? String(replyTo.id) : undefined);
+      }
+      setBody(''); setReplyTo(null); reload(); onRefresh();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не отправилось'); }
     finally { setBusy(false); }
+  };
+
+  const remove = async (id: string) => {
+    if (!window.confirm('Удалить сообщение? Восстановить его будет нельзя.')) return;
+    try { await api.deleteComment(taskId, id); reload(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалилось'); }
+  };
+
+  const react = async (id: string, emoji: string) => {
+    // Оптимистично: реакция должна ставиться мгновенно, это её единственная ценность.
+    setComments((prev) => prev.map((c) => {
+      if (String(c.id) !== String(id)) return c;
+      const list = [...(c.reactions ?? [])];
+      const found = list.find((r: any) => r.emoji === emoji);
+      if (found) {
+        found.mine ? (found.count -= 1) : (found.count += 1);
+        found.mine = !found.mine;
+      } else list.push({ emoji, count: 1, mine: true });
+      return { ...c, reactions: list.filter((r: any) => r.count > 0) };
+    }));
+    try { await api.reactToComment(taskId, id, emoji); } catch { reload(); }
   };
 
   // Голос: вопрос помощнику проще задать словами, чем набирать на телефоне.
@@ -875,21 +916,82 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
     finally { setBusy(false); }
   };
 
+  const q = query.trim().toLowerCase();
+  const shown = q ? comments.filter((c) => String(c.body ?? '').toLowerCase().includes(q)) : comments;
+
   return (
     <>
       <div className="drawer-section-title">Обсуждение</div>
+
+      {/* Поиск появляется, когда искать есть в чём: над тремя сообщениями он лишний. */}
+      {comments.length > 5 && (
+        <input
+          className="input chat-search-input"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Поиск по обсуждению"
+          aria-label="Поиск по обсуждению"
+        />
+      )}
+      {q && (
+        <div className="dim" style={{ fontSize: 12 }}>
+          {shown.length ? `Найдено сообщений: ${shown.length}` : 'Ничего не нашлось'}
+        </div>
+      )}
+
       {comments.length === 0 && (
         <EmptyState compact icon="chat" title="Обсуждения ещё не было"
           hint="Здесь остаётся история решений по задаче. Помощника можно спросить тут же: «@AI что от меня требуется?»" />
       )}
-      {comments.map((c) => (
+
+      {shown.map((c) => (
         <div key={c.id} className={c.is_ai ? 'comment comment-ai' : 'comment'}>
           <div className="comment-head">
             <b>{c.is_ai ? 'AI-помощник' : c.author_name}</b>
             {c.is_ai && <span className="badge badge-info">ИИ</span>}
             <span className="dim">{new Date(c.created_at).toLocaleString('ru-RU')}</span>
+            {c.edited_at && <span className="dim">· изменено</span>}
           </div>
+
+          {/* Цитата: без неё «да, согласен» через десять реплик — согласие неизвестно с чем. */}
+          {c.reply_to_id && c.reply_body && (
+            <div className="comment-quote">
+              <b>{c.reply_author}</b>: {String(c.reply_body).slice(0, 160)}
+            </div>
+          )}
+
           <div className="comment-body">{c.body}</div>
+
+          <div className="comment-tools">
+            {(c.reactions ?? []).map((r: any) => (
+              <button
+                key={r.emoji}
+                className={r.mine ? 'reaction mine' : 'reaction'}
+                onClick={() => react(String(c.id), r.emoji)}
+                title="Ваша реакция"
+              >
+                {r.emoji} {r.count}
+              </button>
+            ))}
+            <span className="comment-tools-add">
+              {REACTIONS.map((emoji) => (
+                <button key={emoji} className="reaction reaction-add" onClick={() => react(String(c.id), emoji)} title="Поставить реакцию">
+                  {emoji}
+                </button>
+              ))}
+            </span>
+            {!c.is_ai && (
+              <button className="comment-link" onClick={() => { setReplyTo(c); setEditing(null); }}>Ответить</button>
+            )}
+            {String(c.author_id) === String(user?.id ?? '') && !c.is_ai && (
+              <>
+                <button className="comment-link" onClick={() => { setEditing({ id: String(c.id), body: c.body }); setBody(c.body); setReplyTo(null); }}>
+                  Изменить
+                </button>
+                <button className="comment-link" onClick={() => remove(String(c.id))}>Удалить</button>
+              </>
+            )}
+          </div>
         </div>
       ))}
 
@@ -920,21 +1022,35 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
       )}
 
       <div className="ai-quick">
-        {QUICK_ASKS.map((q) => (
-          <button key={q.label} className="btn btn-ghost btn-sm" disabled={busy} onClick={() => ask(q.ask)}>
-            {q.label}
+        {QUICK_ASKS.map((qa) => (
+          <button key={qa.label} className="btn btn-ghost btn-sm" disabled={busy} onClick={() => ask(qa.ask)}>
+            {qa.label}
           </button>
         ))}
       </div>
 
+      {/* Кому отвечаем или что правим — видно прямо над полем, а не угадывается. */}
+      {(replyTo || editing) && (
+        <div className="comment-reply-to">
+          <Icon name={editing ? 'edit' : 'reply'} size={13} />
+          <span className="dim">
+            {editing ? 'Правите своё сообщение' : `В ответ ${replyTo.author_name}: ${String(replyTo.body).slice(0, 60)}`}
+          </span>
+          <button className="comment-link" onClick={() => { setReplyTo(null); setEditing(null); setBody(''); }}>Отмена</button>
+        </div>
+      )}
+
       <div className="comment-input">
-        <textarea
-          className="input"
-          rows={2}
-          placeholder="Сообщение команде или «@AI …» — помощник знает эту задачу"
+        <MentionField
           value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send(); }}
+          users={users}
+          onChange={setBody}
+          // Упомянутого нужно позвать: без этого «@Юрий, посмотри» он увидит,
+          // только если сам зайдёт в задачу.
+          onMention={(userId) => { void api.addTaskParticipant(taskId, userId, 'watcher').catch(() => undefined); }}
+          rows={2}
+          placeholder="Сообщение команде, @имя или «@AI …» — помощник знает эту задачу"
+          onEnter={send}
         />
         <div className="comment-actions">
           <button
@@ -949,7 +1065,7 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
             <Icon name="sparkles" size={14} /> Спросить ИИ
           </button>
           <button className="btn btn-primary btn-sm" disabled={busy || !body.trim()} onClick={send}>
-            {busy ? '…' : 'Отправить'}
+            {busy ? '…' : editing ? 'Сохранить' : 'Отправить'}
           </button>
         </div>
       </div>

@@ -248,4 +248,46 @@ describe('Согласование завершения (e2e)', () => {
     // Пустой вопрос — отказ, а не пустой запрос в модель.
     await http.post(`/api/tasks/${task.id}/assistant`).set(H(memberTok)).send({ question: '' }).expect(400);
   });
+
+  it('обсуждение работает как чат: ответы, реакции, правка и удаление', async () => {
+    const task = await newTask('Обсудить вдвоём');
+
+    const first = (await http.post(`/api/tasks/${task.id}/comments`).set(H(ownerTok))
+      .send({ body: 'Начинаем с мобильной версии' }).expect(201)).body.data;
+
+    // Ответ на конкретное сообщение: в длинной переписке «да, согласен» без цитаты —
+    // согласие неизвестно с чем.
+    await http.post(`/api/tasks/${task.id}/comments`).set(H(memberTok))
+      .send({ body: 'Согласен', replyToId: String(first.id) }).expect(201);
+
+    let list = (await http.get(`/api/tasks/${task.id}/comments`).set(H(memberTok)).expect(200)).body.data;
+    const answer = list.find((c: any) => c.body === 'Согласен');
+    expect(String(answer.reply_to_id)).toBe(String(first.id));
+    expect(answer.reply_body).toContain('мобильной');   // цитата приезжает вместе с сообщением
+    expect(answer.reply_author).toBeTruthy();
+
+    // Реакция — переключатель: ею отвечают «ок», не засоряя обсуждение.
+    await http.post(`/api/tasks/${task.id}/comments/${first.id}/reactions`).set(H(memberTok))
+      .send({ emoji: '👍' }).expect(201);
+    list = (await http.get(`/api/tasks/${task.id}/comments`).set(H(memberTok)).expect(200)).body.data;
+    let target = list.find((c: any) => String(c.id) === String(first.id));
+    expect(target.reactions[0]).toMatchObject({ emoji: '👍', count: 1, mine: true });
+
+    // ...а для другого человека та же реакция «не своя»
+    const asOwner = (await http.get(`/api/tasks/${task.id}/comments`).set(H(ownerTok)).expect(200)).body.data;
+    expect(asOwner.find((c: any) => String(c.id) === String(first.id)).reactions[0].mine).toBe(false);
+
+    await http.post(`/api/tasks/${task.id}/comments/${first.id}/reactions`).set(H(memberTok))
+      .send({ emoji: '👍' }).expect(201);
+    list = (await http.get(`/api/tasks/${task.id}/comments`).set(H(memberTok)).expect(200)).body.data;
+    target = list.find((c: any) => String(c.id) === String(first.id));
+    expect(target.reactions).toEqual([]); // повторное нажатие сняло свою
+
+    // Своё сообщение можно поправить и удалить, чужое — нет.
+    await http.patch(`/api/tasks/${task.id}/comments/${answer.id}`).set(H(ownerTok))
+      .send({ body: 'Чужое сообщение' }).expect(200); // владелец может — он администратор
+    await http.patch(`/api/tasks/${task.id}/comments/${first.id}`).set(H(memberTok))
+      .send({ body: 'Не моё' }).expect(403);
+    await http.delete(`/api/tasks/${task.id}/comments/${answer.id}`).set(H(ownerTok)).expect(200);
+  });
 });

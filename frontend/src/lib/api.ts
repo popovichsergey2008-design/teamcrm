@@ -182,7 +182,14 @@ export const api = {
 
   // Этап D — карточка задачи
   listComments: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/comments`),
-  addComment: (taskId: string, body: string, isClientVisible?: boolean) => request<any>('POST', `/tasks/${taskId}/comments`, { body, isClientVisible }),
+  addComment: (taskId: string, body: string, isClientVisible?: boolean, replyToId?: string) =>
+    request<any>('POST', `/tasks/${taskId}/comments`, { body, isClientVisible, replyToId }),
+  /** Реакция на сообщение: повторное нажатие снимает свою. */
+  reactToComment: (taskId: string, commentId: string, emoji: string) =>
+    request<{ ok: true }>('POST', `/tasks/${taskId}/comments/${commentId}/reactions`, { emoji }),
+  /** Правка своего сообщения: написанное, в отличие от сказанного, можно поправить. */
+  editComment: (taskId: string, cid: string, body: string) =>
+    request<any>('PATCH', `/tasks/${taskId}/comments/${cid}`, { body }),
   deleteComment: (taskId: string, cid: string) => request<any>('DELETE', `/tasks/${taskId}/comments/${cid}`),
   listAttachments: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/attachments`),
   deleteAttachment: (taskId: string, aid: string) => request<any>('DELETE', `/tasks/${taskId}/attachments/${aid}`),

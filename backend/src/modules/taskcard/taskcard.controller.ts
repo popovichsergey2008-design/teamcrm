@@ -13,6 +13,11 @@ import { TaskCardService } from './taskcard.service';
 class CommentDto {
   @IsString() @MinLength(1) @MaxLength(5000) body!: string;
   @IsOptional() @IsBoolean() isClientVisible?: boolean;
+  /** Ответ на конкретное сообщение: в длинной переписке без этого не разобраться. */
+  @IsOptional() @IsString() @MaxLength(32) replyToId?: string;
+}
+class ReactionDto {
+  @IsString() @MaxLength(16) emoji!: string;
 }
 class CommentEditDto {
   @IsString() @MinLength(1) @MaxLength(5000) body!: string;
@@ -51,12 +56,23 @@ export class TaskCardController {
   }
   @Post(':id/comments')
   addComment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CommentDto) {
-    return this.svc.addComment(u.tenantId, id, u.userId, dto.body, dto.isClientVisible === true);
+    return this.svc.addComment(u.tenantId, id, u.userId, dto.body, dto.isClientVisible === true, dto.replyToId);
   }
   @Patch(':id/comments/:cid')
   editComment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('cid') cid: string, @Body() dto: CommentEditDto) {
     return this.svc.editComment(u.tenantId, id, cid, u.userId, u.role, dto.body);
   }
+  /** Реакция на сообщение — переключатель: повторное нажатие снимает свою. */
+  @Post(':id/comments/:cid/reactions')
+  react(
+    @CurrentUser() u: AuthUser,
+    @Param('id') id: string,
+    @Param('cid') cid: string,
+    @Body() dto: ReactionDto,
+  ) {
+    return this.svc.toggleReaction(u.tenantId, id, cid, u.userId, dto.emoji);
+  }
+
   @Delete(':id/comments/:cid')
   delComment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('cid') cid: string) {
     return this.svc.deleteComment(u.tenantId, id, cid, u.userId, u.role);

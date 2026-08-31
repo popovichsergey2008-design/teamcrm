@@ -6,23 +6,44 @@ export class TaskCardRepository {
   constructor(private readonly db: DbService) {}
 
   // ---- comments ----
-  addComment(tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean) {
+  addComment(
+    tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean,
+    replyToId?: string | null,
+  ) {
     return this.db.one(
-      `INSERT INTO task_comments (tenant_id, task_id, author_id, body, is_client_visible)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [tenantId, taskId, authorId, body, clientVisible],
+      `INSERT INTO task_comments (tenant_id, task_id, author_id, body, is_client_visible, reply_to_id)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [tenantId, taskId, authorId, body, clientVisible, replyToId ?? null],
     );
   }
-  listComments(tenantId: string, taskId: string, includePrivate: boolean) {
+  listComments(tenantId: string, taskId: string, includePrivate: boolean, viewerId: string) {
     return this.db.many(
       // is_ai — чтобы в ленте было видно, кто говорит: ответ помощника нельзя
       // спутать с указанием постановщика
+      // Цитата приезжает вместе с сообщением: без неё «да, согласен» через десять
+      // реплик — согласие неизвестно с чем, и лезть за ним отдельным запросом
+      // на каждое сообщение слишком дорого.
       `SELECT c.id, c.author_id, c.body, c.is_client_visible, c.is_ai, c.created_at, c.edited_at,
+              c.reply_to_id,
+              r.body AS reply_body, ru.full_name AS reply_author,
+              COALESCE((
+                SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
+                  FROM (
+                    SELECT emoji, COUNT(*)::int AS n,
+                           BOOL_OR(user_id = $4::bigint) AS mine
+                      FROM task_comment_reactions
+                     WHERE tenant_id = c.tenant_id AND comment_id = c.id
+                     GROUP BY emoji
+                  ) x
+              ), '[]'::json) AS reactions,
               u.full_name AS author_name
-         FROM task_comments c JOIN users u ON u.id=c.author_id
+         FROM task_comments c
+         JOIN users u ON u.id=c.author_id
+    LEFT JOIN task_comments r ON r.id = c.reply_to_id
+    LEFT JOIN users ru ON ru.id = r.author_id
         WHERE c.tenant_id=$1 AND c.task_id=$2 AND ($3 OR c.is_client_visible=TRUE)
         ORDER BY c.created_at ASC`,
-      [tenantId, taskId, includePrivate],
+      [tenantId, taskId, includePrivate, viewerId],
     );
   }
   getComment(tenantId: string, id: string) {
@@ -65,6 +86,33 @@ export class TaskCardRepository {
   }
 
   // ---- checklist ----
+  /**
+   * Реакция-переключатель: повторное нажатие снимает свою.
+   *
+   * Реакция — способ ответить «ок», не засоряя обсуждение и не будя участников;
+   * поэтому она не создаёт ни записи в истории, ни уведомления.
+   */
+  async toggleReaction(tenantId: string, commentId: string, userId: string, emoji: string): Promise<void> {
+    const existing = await this.db.one(
+      `SELECT 1 FROM task_comment_reactions
+        WHERE tenant_id=$1 AND comment_id=$2 AND user_id=$3 AND emoji=$4`,
+      [tenantId, commentId, userId, emoji],
+    );
+    if (existing) {
+      await this.db.query(
+        `DELETE FROM task_comment_reactions
+          WHERE tenant_id=$1 AND comment_id=$2 AND user_id=$3 AND emoji=$4`,
+        [tenantId, commentId, userId, emoji],
+      );
+      return;
+    }
+    await this.db.query(
+      `INSERT INTO task_comment_reactions (tenant_id, comment_id, user_id, emoji)
+       VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+      [tenantId, commentId, userId, emoji],
+    );
+  }
+
   async addChecklistItem(tenantId: string, taskId: string, text: string) {
     const pos = await this.db.one<{ next: number }>(
       `SELECT COALESCE(MAX(position)+1,0) AS next FROM task_checklist_items WHERE tenant_id=$1 AND task_id=$2`,

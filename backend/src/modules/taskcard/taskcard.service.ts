@@ -29,19 +29,31 @@ export class TaskCardService {
   }
 
   // ---- comments ----
-  async addComment(tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean) {
+  async addComment(
+    tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean,
+    replyToId?: string | null,
+  ) {
     const task = await this.task(tenantId, taskId);
     await this.repo.addWatcher(tenantId, taskId, authorId); // автор — наблюдатель
-    const c: any = await this.repo.addComment(tenantId, taskId, authorId, body, clientVisible);
+    const c: any = await this.repo.addComment(tenantId, taskId, authorId, body, clientVisible, replyToId);
     await this.activity.log(tenantId, taskId, authorId, 'commented', { commentId: c.id });
     this.realtime.emitScoped(tenantId, task.project_id, 'task.comment_added', { taskId, commentId: c.id, authorId }, clientVisible);
     await this.outbox.enqueue(tenantId, task.project_id, 'comment.create', c.id, { taskId });
     void this.notify.taskCommented(tenantId, taskId, authorId, String(c.id), body); // письмо на почту
     return c;
   }
+  /** Реакция на сообщение: ни истории, ни уведомлений — это не событие, а знак. */
+  async toggleReaction(tenantId: string, taskId: string, commentId: string, userId: string, emoji: string) {
+    const c = await this.repo.getComment(tenantId, commentId);
+    if (!c || String(c.task_id) !== String(taskId)) throw AppException.notFound('Comment not found');
+    await this.repo.toggleReaction(tenantId, commentId, userId, emoji);
+    return { ok: true };
+  }
+
   listComments(tenantId: string, taskId: string, role: string, viewerId: string) {
-    void viewerId;
-    return this.repo.listComments(tenantId, taskId, role !== 'client'); // client — только публичные
+    // viewerId нужен, чтобы отметить СВОИ реакции: «нравится» и «я поставил нравится»
+    // выглядят по-разному, и без этого человек не может снять свою.
+    return this.repo.listComments(tenantId, taskId, role !== 'client', viewerId);
   }
   async editComment(tenantId: string, taskId: string, commentId: string, userId: string, role: string, body: string) {
     const c = await this.repo.getComment(tenantId, commentId);

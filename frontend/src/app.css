@@ -692,6 +692,33 @@
 .ai-advice-list { margin: 0 0 8px; padding-left: 18px; font-size: 13px; }
 .ai-advice-suggest { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
 
+/* Чат задачи: цитата, реакции, действия над сообщением, поиск. */
+.chat-search-input { margin-bottom: 8px; }
+.comment-quote {
+  border-left: 2px solid var(--border-2); padding: 2px 8px; margin: 4px 0;
+  font-size: 12px; color: var(--text-dim); background: var(--bg-elev-2);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.comment-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.reaction {
+  border: 1px solid var(--border); background: var(--bg-elev); border-radius: 999px;
+  padding: 1px 7px; font-size: 12px; cursor: pointer; color: var(--text-dim);
+}
+.reaction.mine { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+/* Набор реакций проявляется при наведении: постоянно висящие смайлы — визуальный шум. */
+.comment-tools-add { display: none; gap: 2px; }
+.comment:hover .comment-tools-add { display: inline-flex; }
+.reaction-add { border-color: transparent; background: none; }
+.comment-link {
+  border: none; background: none; color: var(--text-mut); cursor: pointer;
+  font-size: 12px; padding: 1px 4px;
+}
+.comment-link:hover { color: var(--accent); }
+.comment-reply-to {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px; margin-top: 6px;
+  background: var(--bg-elev-2); border-radius: var(--radius-sm); font-size: 12px;
+}
+
 /* Быстрые вопросы: их задают чаще всего, набирать руками незачем. */
 .ai-quick { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .comment-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
@@ -1797,6 +1824,7 @@
 .focus-card:focus-visible, .focus-more:focus-visible, .focus-chip:focus-visible,
 .mine-filter-item:focus-visible, .mine-filter-reset:focus-visible, .people-chip-x:focus-visible,
 .nav-tune-eye:focus-visible, .nav-tune-btn:focus-visible,
+.reaction:focus-visible, .comment-link:focus-visible,
 .focus-plan-btn:focus-visible, .approval-task:focus-visible, .call-starter-row:focus-visible,
 .call-starter-ai:focus-visible,
 .focus-template:focus-visible, .focus-clear:focus-visible,
