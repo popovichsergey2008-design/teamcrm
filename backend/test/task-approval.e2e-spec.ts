@@ -182,9 +182,15 @@ describe('Согласование завершения (e2e)', () => {
     ]);
   });
   it('соисполнитель видит задачу в своих, наблюдатель — только следит', async () => {
-    const task = await newTask('Работа вдвоём');
+    // Задачу заводим БЕЗ исполнителя: соисполнителем нельзя назначить того, кто
+    // и так её делает, — сервер справедливо отвечает отказом.
+    const task = (await http.post('/api/tasks').set(H(ownerTok))
+      .send({ projectId, title: 'Работа вдвоём' }).expect(201)).body.data;
 
-    // соисполнителя добавляем, и он попадает в «Мои задачи» — он делает ту же работу
+    await http.post(`/api/tasks/${task.id}/participants`).set(H(ownerTok))
+      .send({ userId: String(memberId), role: 'co_assignee' }).expect(201);
+
+    // и повтор той же роли не ошибка, а просто ничего
     await http.post(`/api/tasks/${task.id}/participants`).set(H(ownerTok))
       .send({ userId: String(memberId), role: 'co_assignee' }).expect(201);
 
@@ -206,6 +212,7 @@ describe('Согласование завершения (e2e)', () => {
 
     const mine = (await http.get('/api/tasks/my').set(H(memberTok)).expect(200)).body.data;
     expect(mine.some((t: any) => String(t.id) === String(foreign.id))).toBe(true);
+    expect(mine.some((t: any) => String(t.id) === String(task.id))).toBe(true);
 
     // Наблюдатель исполнителем не считается: в «своих» у него этой задачи нет.
     const watcherLogin = (await http.post('/api/auth/login')
