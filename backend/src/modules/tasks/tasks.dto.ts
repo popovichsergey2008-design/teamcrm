@@ -68,6 +68,18 @@ export class CreateTaskDto {
   @IsArray()
   @IsString({ each: true })
   checklist?: string[];
+
+  /** Кто делает работу вместе с исполнителем. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  coAssigneeIds?: string[];
+
+  /** Кто следит за задачей, но не выполняет её. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  watcherIds?: string[];
 }
 
 export class UpdateTaskDto {
@@ -133,4 +145,14 @@ export class ReturnTaskDto {
 export class ApprovalRequiredDto {
   @IsBoolean()
   enabled!: boolean;
+}
+
+/** Кого и кем добавляем к задаче. */
+export class ParticipantDto {
+  @IsString()
+  @MaxLength(32)
+  userId!: string;
+
+  @IsIn(['co_assignee', 'watcher'])
+  role!: 'co_assignee' | 'watcher';
 }

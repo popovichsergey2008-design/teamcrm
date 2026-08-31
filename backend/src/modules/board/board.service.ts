@@ -38,6 +38,15 @@ export class BoardService {
 
     // обогащение карточек: метки + счётчики (комментарии/вложения/чеклист)
     const { labels, counts } = await this.card.boardMeta(tenantId, projectId);
+    // Соисполнители и наблюдатели — одним запросом на доску: по запросу на карточку
+    // большой проект встал бы колом ради подписи «+2».
+    const parts = await this.tasks.participantsByProject(tenantId, projectId);
+    const partsByTask = new Map<string, { userId: string; role: string; fullName: string }[]>();
+    for (const p of parts) {
+      const arr = partsByTask.get(p.task_id) ?? [];
+      arr.push({ userId: p.user_id, role: p.role, fullName: p.full_name });
+      partsByTask.set(p.task_id, arr);
+    }
     const labelsByTask = new Map<string, any[]>();
     for (const l of labels) {
       const arr = labelsByTask.get(l.task_id) ?? [];
@@ -53,6 +62,10 @@ export class BoardService {
         ...t,
         assignee_name: nameOf(t.assignee_id),
         manager_name: nameOf(t.created_by),
+        // Фильтр «Мне» обязан учитывать соисполнителей — иначе человек не найдёт
+        // работу, которую фактически делает.
+        co_assignees: (partsByTask.get(String(t.id)) ?? []).filter((p) => p.role === 'co_assignee'),
+        watchers: (partsByTask.get(String(t.id)) ?? []).filter((p) => p.role === 'watcher'),
         labels: labelsByTask.get(t.id) ?? [],
         commentsCount: c ? Number(c.comments) : 0,
         attachmentsCount: c ? Number(c.attachments) : 0,

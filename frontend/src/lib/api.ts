@@ -791,6 +791,15 @@ export const api = {
   deleteTask: (id: string, confirmTimeLoss = false) =>
     request<{ deleted: true }>('DELETE', `/tasks/${id}${confirmTimeLoss ? '?confirmTimeLoss=1' : ''}`),
   /** Оценка и срок без назначения: задаче можно поставить дату, ещё не выбрав исполнителя. */
+  /** Кто ещё в задаче: соисполнители (делают работу) и наблюдатели (следят). */
+  taskParticipants: (id: string) => request<{
+    user_id: string; role: string; full_name: string; avatar_url: string | null;
+  }[]>('GET', `/tasks/${id}/participants`),
+  addTaskParticipant: (id: string, userId: string, role: 'co_assignee' | 'watcher') =>
+    request<any[]>('POST', `/tasks/${id}/participants`, { userId, role }),
+  removeTaskParticipant: (id: string, userId: string, role: 'co_assignee' | 'watcher') =>
+    request<any[]>('DELETE', `/tasks/${id}/participants`, { userId, role }),
+
   /** Постановщик принял работу — задача завершается по-настоящему. */
   approveTask: (id: string) => request<Task>('POST', `/tasks/${id}/approve`, {}),
   /** Вернуть в работу: причина обязательна и попадает в историю задачи. */

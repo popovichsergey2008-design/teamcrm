@@ -403,6 +403,11 @@ test('фильтры доски: назначено мне, поставлено
   ];
   const me = (mode, creatorId) => ({ userId: '7', mode, creatorId });
 
+  // Соисполнитель видит задачу в «Мне»: он делает ту же работу
+  const withCo = [{ id: 'c', name: 'x', tasks: [{ id: 't9', assignee_id: '9', created_by: '9', co_assignees: [{ userId: '7' }] }] }];
+  assert.equal(countMatching(withCo, me('assigned')), 1, 'соисполнитель находит свою работу');
+  assert.equal(countMatching(withCo, me('created')), 0, 'но постановщиком от этого не становится');
+
   // «Назначены мне» и «Поставлены мной» — разные списки, и это главное различие
   assert.deepEqual(
     filterBoard(columns, me('assigned')).flatMap((c) => c.tasks.map((t) => t.id)),

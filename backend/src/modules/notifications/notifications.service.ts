@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { NotificationsRepository, Recipient } from './notifications.repository';
 import {
   EventKey, Letter, TaskCtx,
-  taskApprovalLetter, taskCommentedLetter, taskCreatedLetter, taskReturnedLetter, taskStatusLetter,
+  taskApprovalLetter, taskCommentedLetter, taskCreatedLetter, taskParticipantLetter,
+  taskReturnedLetter, taskStatusLetter,
 } from './mail.templates';
 
 /**
@@ -90,6 +91,47 @@ export class NotificationsService {
   ): Promise<void> {
     return this.fanout(tenantId, taskId, 'task.commented', actorId, `c${commentId}`,
       (ctx, unsub) => taskCommentedLetter({ ...ctx, comment }, unsub));
+  }
+
+  /**
+   * Человека добавили к задаче — соисполнителем или наблюдателем.
+   *
+   * Письмо адресное: узнать, что тебя записали в чужую работу, из ленты изменений
+   * человек не может, а для наблюдателя это вообще единственный сигнал о задаче.
+   * Поэтому шлём напрямую, не полагаясь на общий список получателей по задаче.
+   */
+  async participantAdded(
+    tenantId: string, taskId: string, actorId: string | null,
+    userId: string, role: 'co_assignee' | 'watcher',
+  ): Promise<void> {
+    try {
+      const [card, person] = await Promise.all([
+        this.repo.taskCard(tenantId, taskId),
+        this.repo.recipientById(tenantId, userId),
+      ]);
+      if (!card || !person?.email) return;
+      const actorName = await this.repo.actorName(tenantId, actorId);
+      const token = await this.repo.ensureUnsubscribeToken(person.id, person.unsubscribe_token);
+      const ctx: TaskCtx = {
+        taskTitle: card.title,
+        projectName: card.project_name,
+        taskUrl: this.taskUrl(card.project_id, taskId),
+        actorName,
+        assigneeName: card.assignee_name,
+        columnName: card.column_name,
+        priority: card.priority,
+        deadlineAt: card.deadline_at,
+      };
+      const letter = taskParticipantLetter({ ...ctx, role }, this.unsubscribeUrl(token));
+      await this.repo.enqueue({
+        tenantId, userId: person.id, toEmail: person.email,
+        subject: letter.subject, text: letter.text, html: letter.html,
+        eventKey: 'task.created',
+        dedupKey: `part:${taskId}:${userId}:${role}`,
+      });
+    } catch (e) {
+      this.log.warn(`участник ${userId} задачи ${taskId}: ${(e as Error).message}`);
+    }
   }
 
   /**

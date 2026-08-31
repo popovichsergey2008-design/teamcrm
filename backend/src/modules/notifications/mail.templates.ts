@@ -235,6 +235,33 @@ export function taskReturnedLetter(ctx: TaskCtx & { reason: string }, unsubscrib
   };
 }
 
+/**
+ * Вас добавили к задаче.
+ *
+ * Соисполнителю говорим о работе, наблюдателю — что он в курсе, но не обязан делать.
+ * Смешивать эти два письма нельзя: первое требует действия, второе именно что не требует,
+ * и человек должен понять это с первой строки.
+ */
+export function taskParticipantLetter(
+  ctx: TaskCtx & { role: 'co_assignee' | 'watcher' }, unsubscribeUrl: string,
+): Letter {
+  const co = ctx.role === 'co_assignee';
+  const lead = co
+    ? `${ctx.actorName} добавил вас соисполнителем — работу делаете вместе с исполнителем.`
+    : `${ctx.actorName} добавил вас наблюдателем: вы будете видеть ход работы, делать ничего не нужно.`;
+  return {
+    subject: trim(`${co ? 'Вы соисполнитель' : 'Вы наблюдаете'}: ${ctx.taskTitle}`, 120),
+    text: plain(lead, ctx, unsubscribeUrl),
+    html: shell({
+      preheader: `${ctx.projectName} · ${co ? 'соисполнитель' : 'наблюдатель'}`,
+      lead: escape(lead),
+      ctx,
+      accent: co ? BRAND.accent : BRAND.mut,
+      unsubscribeUrl,
+    }),
+  };
+}
+
 export function taskStatusLetter(ctx: TaskCtx & { to: string; closed: boolean }, unsubscribeUrl: string): Letter {
   const what = ctx.closed ? 'завершена' : `перенесена в «${ctx.to}»`;
   const lead = `${ctx.actorName} — задача ${what}.`;

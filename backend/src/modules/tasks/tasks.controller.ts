@@ -4,7 +4,8 @@ import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { TasksService } from './tasks.service';
 import {
-  ApprovalRequiredDto, CreateTaskDto, FocusDateDto, MoveTaskDto, ReturnTaskDto, UpdateTaskDto,
+  ApprovalRequiredDto, CreateTaskDto, FocusDateDto, MoveTaskDto, ParticipantDto,
+  ReturnTaskDto, UpdateTaskDto,
 } from './tasks.dto';
 
 /** Пустую или кривую дату не подставляем молча: считаем, что клиент имел в виду сегодня. */
@@ -91,6 +92,22 @@ export class TasksController {
     @Body() dto: MoveTaskDto,
   ) {
     return this.tasks.move(user.tenantId, id, dto, user.userId);
+  }
+
+  /** Кто ещё в задаче: соисполнители и наблюдатели. */
+  @Get(':id/participants')
+  participants(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.tasks.listParticipants(u.tenantId, id);
+  }
+
+  @Post(':id/participants')
+  addParticipant(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ParticipantDto) {
+    return this.tasks.addParticipant(u.tenantId, id, u.userId, dto.userId, dto.role);
+  }
+
+  @Delete(':id/participants')
+  removeParticipant(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ParticipantDto) {
+    return this.tasks.removeParticipant(u.tenantId, id, u.userId, dto.userId, dto.role);
   }
 
   /**

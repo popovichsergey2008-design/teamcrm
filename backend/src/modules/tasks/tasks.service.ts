@@ -83,6 +83,19 @@ export class TasksService {
     // Чек-лист, если задачу собрали заранее — голосом или из встречи.
     if (dto.checklist?.length) await this.repo.addChecklist(tenantId, task.id, dto.checklist);
 
+    // Соисполнители и наблюдатели — с первой минуты: дописывать их потом руками
+    // значит забыть половину.
+    for (const id of dto.coAssigneeIds ?? []) {
+      if (String(id) !== String(task.assignee_id ?? '')) {
+        await this.repo.addParticipant(tenantId, task.id, String(id), 'co_assignee', actorId);
+        void this.notify.participantAdded(tenantId, task.id, actorId, String(id), 'co_assignee');
+      }
+    }
+    for (const id of dto.watcherIds ?? []) {
+      await this.repo.addParticipant(tenantId, task.id, String(id), 'watcher', actorId);
+      void this.notify.participantAdded(tenantId, task.id, actorId, String(id), 'watcher');
+    }
+
     this.realtime.emit(tenantId, task.project_id, 'task.created', task as any);
     await this.activity.log(tenantId, task.id, actorId, 'created', { title: task.title });
     this.knowledge.enqueue(tenantId, 'task', task.id); // в базу знаний (открытые проекты тоже)
@@ -218,6 +231,52 @@ export class TasksService {
       void this.notify.taskStatusChanged(tenantId, id, actorId, column.name, isDoneColumn(column.name), moveId);
     }
     return moved;
+  }
+
+  // ── соисполнители и наблюдатели ──
+
+  listParticipants(tenantId: string, taskId: string) {
+    return this.repo.participants(tenantId, taskId);
+  }
+
+  /**
+   * Добавить человека к задаче.
+   *
+   * Соисполнитель делает работу вместе с исполнителем и видит задачу в «Моих».
+   * Наблюдатель следит и получает уведомления, но исполнителем не считается: в отчётах
+   * и загрузке он не участвует, иначе цифры по команде поехали бы.
+   *
+   * Уведомляем добавленного: узнать, что тебя записали в задачу, из ленты изменений —
+   * не лучший способ, а для наблюдателя это вообще единственный сигнал.
+   */
+  async addParticipant(
+    tenantId: string, taskId: string, actorId: string, userId: string, role: 'co_assignee' | 'watcher',
+  ) {
+    const task = await this.repo.findById(tenantId, taskId);
+    if (!task) throw AppException.notFound('Task not found');
+    if (String(task.assignee_id ?? '') === String(userId) && role === 'co_assignee') {
+      throw AppException.validation('Этот человек и так исполнитель задачи');
+    }
+
+    const added = await this.repo.addParticipant(tenantId, taskId, userId, role, actorId);
+    if (!added) return this.repo.participants(tenantId, taskId); // уже был — молча
+
+    await this.activity.log(tenantId, taskId, actorId, 'participant_added', { userId, role });
+    void this.notify.participantAdded(tenantId, taskId, actorId, userId, role);
+    const updated = (await this.repo.findById(tenantId, taskId))!;
+    this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
+    return this.repo.participants(tenantId, taskId);
+  }
+
+  async removeParticipant(
+    tenantId: string, taskId: string, actorId: string, userId: string, role: 'co_assignee' | 'watcher',
+  ) {
+    const task = await this.repo.findById(tenantId, taskId);
+    if (!task) throw AppException.notFound('Task not found');
+    await this.repo.removeParticipant(tenantId, taskId, userId, role);
+    await this.activity.log(tenantId, taskId, actorId, 'participant_removed', { userId, role });
+    this.realtime.emit(tenantId, task.project_id, 'task.updated', task as any);
+    return this.repo.participants(tenantId, taskId);
   }
 
   /**

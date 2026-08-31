@@ -181,4 +181,43 @@ describe('Согласование завершения (e2e)', () => {
       'Проверить текущее поведение', 'Исправить проблему', 'Проверить на iPhone',
     ]);
   });
+  it('соисполнитель видит задачу в своих, наблюдатель — только следит', async () => {
+    const task = await newTask('Работа вдвоём');
+
+    // соисполнителя добавляем, и он попадает в «Мои задачи» — он делает ту же работу
+    await http.post(`/api/tasks/${task.id}/participants`).set(H(ownerTok))
+      .send({ userId: String(memberId), role: 'co_assignee' }).expect(201);
+
+    const other = (await http.post('/api/users').set(H(ownerTok))
+      .send({ email: `w_${uniq()}@t.test`, fullName: 'Наблюдатель', password: 'password123', role: 'member' })
+      .expect(201)).body.data;
+    await http.post(`/api/tasks/${task.id}/participants`).set(H(ownerTok))
+      .send({ userId: String(other.id), role: 'watcher' }).expect(201);
+
+    const list = (await http.get(`/api/tasks/${task.id}/participants`).set(H(ownerTok)).expect(200)).body.data;
+    expect(list.map((p: any) => p.role).sort()).toEqual(['co_assignee', 'watcher']);
+
+    // Задача создавалась на исполнителя memberId, поэтому проверяем на отдельной:
+    // соисполнитель должен видеть чужую по назначению работу как свою.
+    const foreign = (await http.post('/api/tasks').set(H(ownerTok))
+      .send({ projectId, title: 'Чужая по назначению' }).expect(201)).body.data;
+    await http.post(`/api/tasks/${foreign.id}/participants`).set(H(ownerTok))
+      .send({ userId: String(memberId), role: 'co_assignee' }).expect(201);
+
+    const mine = (await http.get('/api/tasks/my').set(H(memberTok)).expect(200)).body.data;
+    expect(mine.some((t: any) => String(t.id) === String(foreign.id))).toBe(true);
+
+    // Наблюдатель исполнителем не считается: в «своих» у него этой задачи нет.
+    const watcherLogin = (await http.post('/api/auth/login')
+      .send({ email: other.email, password: 'password123' }).expect(201)).body.data;
+    const theirs = (await http.get('/api/tasks/my').set(H(watcherLogin.accessToken)).expect(200)).body.data;
+    expect(theirs.some((t: any) => String(t.id) === String(task.id))).toBe(false);
+
+    // Добавление и удаление видно в истории задачи.
+    await http.delete(`/api/tasks/${task.id}/participants`).set(H(ownerTok))
+      .send({ userId: String(other.id), role: 'watcher' }).expect(200);
+    const log = (await http.get(`/api/tasks/${task.id}/activity`).set(H(ownerTok)).expect(200)).body.data;
+    expect(log.some((a: any) => a.kind === 'participant_added')).toBe(true);
+    expect(log.some((a: any) => a.kind === 'participant_removed')).toBe(true);
+  });
 });

@@ -75,6 +75,21 @@ export class NotificationsRepository {
     );
   }
 
+  /**
+   * Один получатель по id — для адресных писем.
+   *
+   * Общий список получателей по задаче здесь не годится: соисполнителя и наблюдателя
+   * в нём нет по определению, а письмо нужно именно им.
+   */
+  recipientById(tenantId: string, userId: string): Promise<Recipient | null> {
+    return this.db.one<Recipient>(
+      `SELECT id, email, full_name, unsubscribe_token
+         FROM users
+        WHERE tenant_id=$1 AND id=$2 AND is_active = TRUE AND email IS NOT NULL`,
+      [tenantId, userId],
+    );
+  }
+
   /** Токен отписки создаём при первой надобности — старым сотрудникам его никто не выдавал. */
   async ensureUnsubscribeToken(userId: string, existing: string | null): Promise<string> {
     if (existing) return existing;

@@ -16,6 +16,8 @@ interface TaskLike {
   assignee_id?: string | null;
   /** Постановщик задачи. В базе это `created_by` — тот, кто задачу завёл. */
   created_by?: string | null;
+  /** Кто делает работу вместе с исполнителем. */
+  co_assignees?: { userId: string }[];
 }
 
 interface ColumnLike<T> {
@@ -33,7 +35,16 @@ export type MineMode = 'off' | 'assigned' | 'created' | 'both';
 
 const eq = (a: unknown, b: unknown) => String(a ?? '') === String(b ?? '') && String(a ?? '') !== '';
 
-export const isAssignedTo = (task: TaskLike, userId: string) => eq(task.assignee_id, userId);
+/**
+ * Задача «на мне» — если я исполнитель ИЛИ соисполнитель.
+ *
+ * Соисполнитель делает ту же работу, и не показывать её ему в «Мне» значит заставлять
+ * искать собственные задачи по чужим доскам.
+ */
+export const isAssignedTo = (task: TaskLike, userId: string) => (
+  eq(task.assignee_id, userId)
+  || (task.co_assignees ?? []).some((p) => eq(p.userId, userId))
+);
 export const isCreatedBy = (task: TaskLike, userId: string) => eq(task.created_by, userId);
 
 /**

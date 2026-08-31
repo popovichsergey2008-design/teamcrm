@@ -62,8 +62,13 @@ export class TasksRepository {
   ): Promise<(TaskRow & { project_name: string; column_name: string; assignee_name: string | null; manager_name: string | null })[]> {
     // review — то, что уже сдали и ждут от меня решения: я постановщик, работал кто-то
     // другой, и задача стоит в колонке проверки. Именно это считает бейдж «Фокуса дня».
+    // «Мои» — это и то, что делаю сам, и то, где я соисполнитель: человек, который
+    // фактически делает работу, должен видеть её у себя, а не искать по чужим доскам.
     const scopeSql = scope === 'mine'
-      ? `t.assignee_id = $2`
+      ? `(t.assignee_id = $2 OR EXISTS (
+            SELECT 1 FROM task_participants tp
+             WHERE tp.tenant_id = t.tenant_id AND tp.task_id = t.id
+               AND tp.user_id = $2 AND tp.role = 'co_assignee'))`
       : scope === 'review'
         ? `t.created_by = $2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
            AND t.closed_at IS NULL AND lower(bc.name) = ANY($4::text[])`
@@ -313,6 +318,66 @@ export class TasksRepository {
     await this.db.query(
       `INSERT INTO task_checklist_items (tenant_id, task_id, text, position) VALUES ${values}`,
       [tenantId, taskId, ...clean.map((t) => t.slice(0, 500))],
+    );
+  }
+
+  // ── соисполнители и наблюдатели ──
+
+  /**
+   * Кто ещё в задаче.
+   *
+   * Роль хранится строкой, а не двумя таблицами: это один и тот же вопрос — «кто рядом
+   * с задачей», и разводить его по разным местам значит дублировать всю обвязку.
+   */
+  participants(tenantId: string, taskId: string): Promise<{
+    user_id: string; role: string; full_name: string; avatar_url: string | null;
+  }[]> {
+    return this.db.many(
+      `SELECT tp.user_id::text, tp.role, u.full_name, u.avatar_url
+         FROM task_participants tp
+         JOIN users u ON u.id = tp.user_id
+        WHERE tp.tenant_id = $1 AND tp.task_id = $2
+        ORDER BY tp.role, u.full_name`,
+      [tenantId, taskId],
+    );
+  }
+
+  /** Повторное добавление того же человека — не ошибка, а просто ничего. */
+  async addParticipant(
+    tenantId: string, taskId: string, userId: string, role: string, addedBy: string | null,
+  ): Promise<boolean> {
+    const row = await this.db.one<{ user_id: string }>(
+      `INSERT INTO task_participants (tenant_id, task_id, user_id, role, added_by)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING user_id::text`,
+      [tenantId, taskId, userId, role, addedBy],
+    );
+    return !!row;
+  }
+
+  async removeParticipant(tenantId: string, taskId: string, userId: string, role: string): Promise<void> {
+    await this.db.query(
+      `DELETE FROM task_participants
+        WHERE tenant_id=$1 AND task_id=$2 AND user_id=$3 AND role=$4`,
+      [tenantId, taskId, userId, role],
+    );
+  }
+
+  /**
+   * Участники всех задач проекта — одним запросом для доски.
+   *
+   * По одному запросу на карточку доска бы легла: на большом проекте это сотни
+   * обращений ради подписи «+2».
+   */
+  participantsByProject(tenantId: string, projectId: string): Promise<{
+    task_id: string; user_id: string; role: string; full_name: string;
+  }[]> {
+    return this.db.many(
+      `SELECT tp.task_id::text, tp.user_id::text, tp.role, u.full_name
+         FROM task_participants tp
+         JOIN tasks t ON t.id = tp.task_id
+         JOIN users u ON u.id = tp.user_id
+        WHERE tp.tenant_id = $1 AND t.project_id = $2`,
+      [tenantId, projectId],
     );
   }
 

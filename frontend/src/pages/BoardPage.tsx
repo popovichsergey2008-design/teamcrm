@@ -13,6 +13,7 @@ import { TaskListView } from '../components/TaskListView';
 import {
   countMatching, filterActive, filterBoard, MineMode, realPosition,
 } from '../lib/board-filter';
+import { MineFilter } from '../components/MineFilter';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { CopilotPanel } from '../components/CopilotPanel';
@@ -107,24 +108,7 @@ export function BoardPage({ initial, onNavigate }: {
   /** Постановщик из списка: работает независимо от «моих» — что человек раздал кому угодно. */
   const [creatorId, setCreatorId] = useState<string>('');
 
-  /**
-   * Кнопки ролей — независимые тумблеры, а не радиокнопки.
-   *
-   * Нажатые вместе они дают «моя работа целиком»: и то, что я делаю, и то, что жду
-   * от других. Повторный клик по активной снимает её — как сворачивание разделов
-   * в меню. Так один переключатель отвечает на три разных вопроса без третьей кнопки.
-   */
-  const toggleRole = (role: 'assigned' | 'created') => {
-    const on = mineMode === role || mineMode === 'both';
-    const other = role === 'assigned' ? 'created' : 'assigned';
-    const otherOn = mineMode === other || mineMode === 'both';
-    const value: MineMode = on
-      ? (otherOn ? other : 'off')
-      : (otherOn ? 'both' : role);
-    setMineMode(value);
-    localStorage.setItem('teamcrm.boardMine', value);
-  };
-  const roleOn = (role: 'assigned' | 'created') => mineMode === role || mineMode === 'both';
+
   const [showTeam, setShowTeam] = useState(false);
   const [showCopilot, setShowCopilot] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
@@ -460,49 +444,19 @@ export function BoardPage({ initial, onNavigate }: {
                   <button className={`view-btn ${view === 'list' ? 'active' : ''}`} onClick={() => switchView('list')} title="Список"><Icon name="list" size={14} /> Список</button>
                 </span>
                 {!isClient && (
-                  /* Две роли — две кнопки-тумблера. «Мои задачи» одной кнопкой смешивали
-                     «что мне делать» и «что я жду от других»; на доске это разные вопросы.
-                     Нажатые вместе кнопки дают прежнее «всё моё», нажатие на активную
-                     снимает её — как сворачивание разделов в меню. */
-                  <span className="mine-switch" role="group" aria-label="Чьи задачи показывать">
-                    {/* Обе кнопки в одной рамке, как «Доска/Список»: два переключателя
-                        одного вопроса не должны выглядеть как два разных элемента. */}
-                    <span className="view-switch mine-roles">
-                      <button
-                        className={`view-btn ${roleOn('assigned') ? 'active' : ''}`}
-                        onClick={() => toggleRole('assigned')}
-                        aria-pressed={roleOn('assigned')}
-                        title="Назначены мне: задачи, где исполнитель — вы"
-                      >
-                        <Icon name="user" size={14} /> Мне
-                      </button>
-                      <button
-                        className={`view-btn ${roleOn('created') ? 'active' : ''}`}
-                        onClick={() => toggleRole('created')}
-                        aria-pressed={roleOn('created')}
-                        title="Поставлены мной: задачи, которые вы поручили кому угодно"
-                      >
-                        <Icon name="send" size={14} /> От меня
-                      </button>
-                    </span>
-                    {/* Постановщик отдельным списком: он про чужие раздачи, а не про мои,
-                        и сужает выбор вместе с кнопками, а не вместо них. */}
-                    <select
-                      className="input mine-creator"
-                      value={creatorId}
-                      onChange={(e) => setCreatorId(e.target.value)}
-                      title="Показать задачи, поставленные конкретным человеком"
-                      aria-label="Постановщик"
-                    >
-                      <option value="">Кто поставил</option>
-                      {creators.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-                    </select>
-                    {/* Место под счётчик занято всегда: иначе его появление сдвигало бы
-                        соседние кнопки, и панель «прыгала» на каждое переключение. */}
-                    <span className="mine-count">
-                      {filterActive(filterOpts) ? shownCount : ''}
-                    </span>
-                  </span>
+                  /* Один фильтр вместо трёх элементов: «чьи задачи» — один вопрос,
+                     и в шапке доски ему хватает одной кнопки с выпадающим списком. */
+                  <MineFilter
+                    mode={mineMode}
+                    creatorId={creatorId}
+                    creators={creators}
+                    count={shownCount}
+                    onChange={({ mode, creatorId: creator }) => {
+                      setMineMode(mode);
+                      setCreatorId(creator);
+                      localStorage.setItem('teamcrm.boardMine', mode);
+                    }}
+                  />
                 )}
                 {!isClient && (
                   <span className="board-actions">

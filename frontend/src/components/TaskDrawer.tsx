@@ -64,6 +64,31 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
   const { user } = useAuth();
   /** Решение принимает постановщик; владельцу тоже даём — он последняя инстанция. */
   const isManager = String(task.created_by ?? '') === String(user?.id ?? '') || user?.role === 'owner';
+  /**
+   * Кто ещё в задаче: соисполнители делают работу вместе с исполнителем,
+   * наблюдатели только следят и получают уведомления.
+   */
+  const [participants, setParticipants] = useState<{ user_id: string; role: string; full_name: string }[]>([]);
+  const loadParticipants = () => api.taskParticipants(task.id).then(setParticipants).catch(() => undefined);
+  // Перечитываем только при смене задачи: список меняется нашими же действиями,
+  // и ответ сервера сразу кладётся в состояние.
+  useEffect(() => {
+    void loadParticipants();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id]);
+
+  const addPerson = async (userId: string, role: 'co_assignee' | 'watcher') => {
+    if (!userId) return;
+    setErr('');
+    try { setParticipants(await api.addTaskParticipant(task.id, userId, role)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось добавить'); }
+  };
+  const removePerson = async (userId: string, role: 'co_assignee' | 'watcher') => {
+    setErr('');
+    try { setParticipants(await api.removeTaskParticipant(task.id, userId, role)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось убрать'); }
+  };
+
   /** Встреча, из которой выросла задача: обратный переход в её Summary. */
   const [meeting, setMeeting] = useState<{ meeting_id: string; title: string | null } | null>(null);
   useEffect(() => {
@@ -429,6 +454,27 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
                   </select>
                 </div>
               </div>
+              {/* Соисполнители и наблюдатели — рядом с исполнителем и постановщиком:
+                  это ответ на тот же вопрос «кто в этой задаче». */}
+              <PeopleField
+                label="Соисполнители"
+                hint="Делают работу вместе с исполнителем и видят задачу в своих"
+                role="co_assignee"
+                people={participants}
+                users={users}
+                onAdd={addPerson}
+                onRemove={removePerson}
+              />
+              <PeopleField
+                label="Наблюдатели"
+                hint="Следят за ходом и получают уведомления, выполнять не обязаны"
+                role="watcher"
+                people={participants}
+                users={users}
+                onAdd={addPerson}
+                onRemove={removePerson}
+              />
+
               <div className="drawer-grid2">
                 <div className="field"><label>Оценка, ч</label><input className="input" type="number" min="0" step="0.5" value={estimate} onChange={(e) => setEstimate(e.target.value)} /></div>
                 <div className="field"><label>Дедлайн</label>
@@ -810,4 +856,56 @@ function activityText(a: { kind: string; detail?: Record<string, any> }): string
     return `${label}: ${a.detail.missing.join('; ')}`;
   }
   return label;
+}
+
+/**
+ * Список людей в задаче с добавлением и удалением.
+ *
+ * Одним компонентом для обеих ролей: соисполнители и наблюдатели отличаются смыслом,
+ * а не устройством, и два почти одинаковых блока разошлись бы на первой же правке.
+ */
+function PeopleField({ label, hint, role, people, users, onAdd, onRemove }: {
+  label: string;
+  hint: string;
+  role: 'co_assignee' | 'watcher';
+  people: { user_id: string; role: string; full_name: string }[];
+  users: { id: string; fullName: string }[];
+  onAdd: (userId: string, role: 'co_assignee' | 'watcher') => void;
+  onRemove: (userId: string, role: 'co_assignee' | 'watcher') => void;
+}) {
+  const mine = people.filter((p) => p.role === role);
+  const taken = new Set(mine.map((p) => String(p.user_id)));
+
+  return (
+    <div className="field">
+      <label title={hint}>{label}</label>
+      {mine.length > 0 && (
+        <div className="people-chips">
+          {mine.map((p) => (
+            <span key={p.user_id} className="people-chip">
+              {p.full_name}
+              <button
+                className="people-chip-x"
+                onClick={() => onRemove(String(p.user_id), role)}
+                title="Убрать из задачи"
+                aria-label={`Убрать ${p.full_name}`}
+              >
+                <Icon name="close" size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <select
+        className="input"
+        value=""
+        onChange={(e) => { onAdd(e.target.value, role); e.currentTarget.value = ''; }}
+      >
+        <option value="">+ добавить</option>
+        {users.filter((u) => !taken.has(String(u.id))).map((u) => (
+          <option key={u.id} value={u.id}>{u.fullName}</option>
+        ))}
+      </select>
+    </div>
+  );
 }
