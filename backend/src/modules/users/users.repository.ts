@@ -94,7 +94,7 @@ export class UsersRepository {
   getProfile(tenantId: string, id: string) {
     return this.db.one(
       `SELECT u.id, u.email, u.full_name, u.phone, u.timezone, u.locale,
-              u.notify_prefs, u.avatar_file_id, u.weekly_capacity_hours, u.is_active,
+              u.notify_prefs, u.ui_prefs, u.avatar_file_id, u.weekly_capacity_hours, u.is_active,
               u.radar_stuck_hours, u.calendar_block_overlap,
               r.code AS role_code, p.name AS position_name, u.position_id
          FROM users u
@@ -146,6 +146,19 @@ export class UsersRepository {
 
   async setNotifyPrefs(tenantId: string, id: string, prefs: unknown): Promise<void> {
     await this.db.query(`UPDATE users SET notify_prefs=$3::jsonb WHERE tenant_id=$1 AND id=$2`, [tenantId, id, JSON.stringify(prefs)]);
+  }
+
+  /**
+   * Настройка интерфейса человека — порядок и видимость пунктов меню.
+   *
+   * Хранится у пользователя, а не в браузере: он садится за другой компьютер, и меню
+   * должно остаться тем, которое он себе собрал.
+   */
+  async setUiPrefs(tenantId: string, id: string, prefs: Record<string, unknown>): Promise<void> {
+    await this.db.query(
+      `UPDATE users SET ui_prefs=$3::jsonb WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id, JSON.stringify(prefs)],
+    );
   }
 
   async countActiveOwners(tenantId: string): Promise<number> {

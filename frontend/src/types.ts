@@ -11,6 +11,8 @@ export interface User {
   groups?: { id: string; name: string; kind: string }[];
   /** Путь к аватару (`/api/files/:id`) — файл лежит за авторизацией, тянется через Avatar. */
   avatarUrl?: string | null;
+  /** Личное меню: порядок пунктов и скрытые разделы. Живёт у человека, не в браузере. */
+  uiPrefs?: { order?: string[]; hidden?: string[] };
 }
 
 export interface OrgRef {

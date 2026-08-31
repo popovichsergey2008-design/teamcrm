@@ -355,19 +355,38 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
         {/* Звук воспроизводится скрытыми элементами: на сцене ему делать нечего */}
         {audios.map((t) => <RemoteAudio key={t.consumerId} track={t.track} />)}
 
-        {/* Свёрнутый созвон: разговор идёт, поэтому оставляем то, что нужно на ходу —
-            выключить микрофон и выйти. Остальное — после разворачивания. */}
+        {/*
+          Свёрнутый созвон: разговор идёт, человек работает в CRM.
+          Оставляем то, ради чего люди и сворачивают окно, — видеть собеседника
+          и управлять собой: микрофон, камера, выход. Остальное после разворачивания.
+        */}
         {mini && (
-          <div className="call-controls call-controls-mini">
-            <button className={`btn btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic} title="Микрофон">
-              <Icon name={micOn ? 'mic' : 'mic-off'} size={15} />
-            </button>
-            <span className="dim call-mini-note">
-              {peers.length > 1 ? `на связи: ${peers.length}` : 'вы одни'}
-              {recording && ' · идёт запись'}
-            </span>
-            <button className="btn btn-sm call-leave" onClick={leave}>Выйти</button>
-          </div>
+          <>
+            {/* Одно видео: говорящий или первый, у кого включена камера. Пустой
+                прямоугольник вместо лица бесполезен, поэтому без камер блок не рисуем. */}
+            {(() => {
+              const face = tiles.find((t) => t.track) ?? null;
+              return face?.track ? (
+                <div className="call-mini-video">
+                  <RemoteMedia track={face.track.track} />
+                  <span className="call-mini-name">{face.peer.displayName}</span>
+                </div>
+              ) : null;
+            })()}
+            <div className="call-controls call-controls-mini">
+              <button className={`btn btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic} title="Микрофон">
+                <Icon name={micOn ? 'mic' : 'mic-off'} size={15} />
+              </button>
+              <button className={`btn btn-sm ${camOn ? '' : 'call-off'}`} onClick={toggleCam} title="Камера">
+                <Icon name={camOn ? 'video' : 'video-off'} size={15} />
+              </button>
+              <span className="dim call-mini-note">
+                {peers.length > 1 ? `на связи: ${peers.length}` : 'вы одни'}
+                {recording && ' · запись'}
+              </span>
+              <button className="btn btn-sm call-leave" onClick={leave}>Выйти</button>
+            </div>
+          </>
         )}
 
         {!mini && (

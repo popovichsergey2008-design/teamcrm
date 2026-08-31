@@ -37,6 +37,8 @@ export class AccountService {
       timezone: p.timezone,
       locale: p.locale,
       notifyPrefs: p.notify_prefs,
+      /** Личное меню: порядок пунктов и скрытые разделы. */
+      uiPrefs: p.ui_prefs ?? {},
       positionId: p.position_id,
       positionName: p.position_name,
       avatarFileId: p.avatar_file_id,
@@ -98,6 +100,12 @@ export class AccountService {
   async setNotifyPrefs(tenantId: string, userId: string, prefs: Record<string, unknown>) {
     await this.users.setNotifyPrefs(tenantId, userId, prefs);
     return { notifyPrefs: prefs };
+  }
+
+  /** Личная настройка меню: порядок и скрытые пункты. */
+  async setUiPrefs(tenantId: string, userId: string, prefs: Record<string, unknown>) {
+    await this.users.setUiPrefs(tenantId, userId, prefs);
+    return { uiPrefs: prefs };
   }
 
   // availability (self-service, влияет на ёмкость/прогноз — Этап 4)

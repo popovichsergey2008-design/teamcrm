@@ -99,7 +99,9 @@
 .nav-call-row .call-starter { display: flex; width: 100%; }
 .nav-call-row .call-starter-call { flex: 1 1 auto; justify-content: center; }
 /* Попап состава открывается влево: панель прижата к краю экрана. */
-.nav-call-row .call-starter-pop { right: auto; left: 0; }
+.nav-call-row .call-starter-pop, .nav-call-row .guest-link-pop { right: auto; left: 0; }
+.nav-call-row .guest-link-btn { width: 100%; }
+.nav-call-row .guest-link-btn > .btn { width: 100%; justify-content: center; }
 
 /* приглашение сотрудника и ссылка для гостя — в шапке созвона */
 .call-invite { position: relative; display: inline-flex; align-items: center; gap: 6px; }
@@ -118,7 +120,14 @@
   width: min(360px, calc(100vw - 32px)); height: auto; margin: 0 16px 16px 0;
   box-shadow: var(--shadow);
 }
-.call-controls-mini { justify-content: space-between; gap: 8px; }
+.call-controls-mini { justify-content: space-between; gap: 6px; }
+/* Видео в свёрнутом окне: невысокая полоса — она напоминает о разговоре, а не заменяет его. */
+.call-mini-video { position: relative; width: 100%; height: 150px; background: var(--video-bg); overflow: hidden; }
+.call-mini-video video { width: 100%; height: 100%; object-fit: cover; }
+.call-mini-name {
+  position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: #fff;
+  background: rgba(0, 0, 0, .55); padding: 1px 6px; border-radius: 999px;
+}
 .call-mini-note { font-size: var(--fs-xs); }
 
 /* стрелка состояния внутри самого пункта: содержимое сворачивает повторный клик */
@@ -671,6 +680,25 @@
 .meeting-task { padding: 6px 0; border-bottom: 1px solid var(--border); }
 .meeting-task-title { font-weight: 600; font-size: 14px; text-align: left; }
 .meeting-task-meta { font-size: 12px; margin-top: 2px; }
+
+/* Настройка меню: перетаскивание пунктов и скрытие ненужных. */
+.nav-group-tuning { cursor: grab; border-radius: var(--radius-sm); }
+.nav-group-tuning:hover { background: var(--bg-elev-2); }
+/* Спрятанный раздел в режиме настройки виден приглушённо — вернуть его иначе неоткуда. */
+.nav-group-hidden .nav-tune-row { opacity: .5; }
+.nav-tune-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: var(--fs-sm); }
+.nav-tune-eye {
+  margin-left: auto; display: inline-flex; border: none; background: none;
+  color: var(--text-mut); cursor: pointer; padding: 2px; border-radius: var(--radius-sm);
+}
+.nav-tune-eye:hover:not(:disabled) { color: var(--text); background: var(--bg-elev); }
+.nav-tune-eye:disabled { opacity: .35; cursor: default; }
+.nav-tune-bar { display: flex; gap: 8px; padding: 6px 10px; }
+.nav-tune-btn {
+  display: inline-flex; align-items: center; gap: 5px; border: none; background: none;
+  color: var(--text-mut); font-size: 12px; cursor: pointer; padding: 2px;
+}
+.nav-tune-btn:hover { color: var(--text); }
 
 /* Люди в задаче: соисполнители и наблюдатели — чипами, а не строкой через запятую. */
 .people-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }
@@ -1753,6 +1781,7 @@
 .nav-org-select:focus-visible, .nav-open-btn:focus-visible,
 .focus-card:focus-visible, .focus-more:focus-visible, .focus-chip:focus-visible,
 .mine-filter-item:focus-visible, .mine-filter-reset:focus-visible, .people-chip-x:focus-visible,
+.nav-tune-eye:focus-visible, .nav-tune-btn:focus-visible,
 .focus-plan-btn:focus-visible, .approval-task:focus-visible, .call-starter-row:focus-visible,
 .call-starter-ai:focus-visible,
 .focus-template:focus-visible, .focus-clear:focus-visible,

@@ -75,6 +75,17 @@ export class AccountController {
     return this.account.setNotifyPrefs(u.tenantId, u.userId, dto.prefs);
   }
 
+  /**
+   * Личное меню: порядок пунктов и скрытые разделы.
+   *
+   * Настройка человека, а не браузера: он открывает CRM с другого компьютера и ждёт
+   * то же меню, которое себе собрал.
+   */
+  @Put('ui-prefs')
+  uiPrefs(@CurrentUser() u: AuthUser, @Body() dto: NotifyDto) {
+    return this.account.setUiPrefs(u.tenantId, u.userId, dto.prefs);
+  }
+
   @Get('availability')
   listAvailability(@CurrentUser() u: AuthUser) {
     return this.account.listAvailability(u.tenantId, u.userId);

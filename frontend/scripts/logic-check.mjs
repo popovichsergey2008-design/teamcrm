@@ -479,6 +479,49 @@ test('фильтры доски: назначено мне, поставлено
   assert.equal(realPosition([{ id: 'x', assignee_id: '9' }], opts, 0), 1, 'видимых нет — в конец');
 });
 
+test('личный порядок меню: переставили, спрятали, пережили обновление системы', async () => {
+  const { applyOrder, applyHidden, isHidden, moveItem, toggleHidden, PROTECTED } = await load('lib/menu-order.ts');
+  const items = ['focus', 'calendar', 'projects', 'chat', 'radar', 'settings'].map((section) => ({ section }));
+  const keys = (list) => list.map((i) => i.section);
+
+  // без настройки — исходный порядок
+  assert.deepEqual(keys(applyOrder(items)), ['focus', 'calendar', 'projects', 'chat', 'radar', 'settings']);
+
+  // человек поставил переписку первой
+  const prefs = { order: ['chat', 'projects', 'focus'] };
+  assert.deepEqual(
+    keys(applyOrder(items, prefs)),
+    ['chat', 'projects', 'focus', 'calendar', 'radar', 'settings'],
+    'разделы, которых нет в сохранённом порядке, встают в конец, а не пропадают',
+  );
+
+  // в настройке остался раздел, которого больше нет в системе
+  assert.deepEqual(
+    keys(applyOrder(items, { order: ['inbox', 'chat'] })),
+    ['chat', 'focus', 'calendar', 'projects', 'radar', 'settings'],
+    'исчезнувший раздел не ломает список',
+  );
+
+  // скрытие
+  const hiddenPrefs = { hidden: ['radar'] };
+  assert.deepEqual(keys(applyHidden(items, hiddenPrefs)), ['focus', 'calendar', 'projects', 'chat', 'settings']);
+  assert.equal(isHidden('radar', hiddenPrefs), true);
+  assert.equal(isHidden('chat', hiddenPrefs), false);
+
+  // системный раздел спрятать нельзя — иначе из интерфейса не выбраться
+  assert.deepEqual(PROTECTED, ['settings']);
+  assert.deepEqual(toggleHidden([], 'settings'), []);
+  assert.deepEqual(keys(applyHidden(items, { hidden: ['settings'] })).includes('settings'), true);
+
+  // перестановка возвращает ПОЛНЫЙ порядок: сохранять «дельту» нельзя
+  assert.deepEqual(moveItem(['a', 'b', 'c'], 'c', 0), ['c', 'a', 'b']);
+  assert.deepEqual(moveItem(['a', 'b', 'c'], 'a', 2), ['b', 'c', 'a']);
+  assert.deepEqual(moveItem(['a', 'b', 'c'], 'a', 99), ['b', 'c', 'a'], 'за пределы списка не уезжает');
+  assert.deepEqual(moveItem(['a', 'b'], 'x', 0), ['a', 'b'], 'неизвестный пункт ничего не двигает');
+
+  assert.deepEqual(toggleHidden(['radar'], 'radar'), [], 'повторное нажатие возвращает раздел');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

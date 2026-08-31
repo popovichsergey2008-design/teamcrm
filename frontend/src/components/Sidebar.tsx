@@ -2,6 +2,8 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { ProjectsNav } from './ProjectsNav';
 import { CallStarter } from './CallStarter';
+import { applyHidden, applyOrder, isHidden, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
+import { GuestLinkButton } from './GuestLinkButton';
 import { setDoNotDisturb } from '../lib/sound';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
@@ -106,7 +108,7 @@ export function Sidebar({
   onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onStartCall, onOpenSecretary, onHoverSection, onLogout,
 }: {
   route: Route;
-  user: { role: string; fullName: string; tenantId: string };
+  user: { role: string; fullName: string; tenantId: string; uiPrefs?: MenuPrefs };
   organizations: { tenantId: string; name: string; role: string }[];
   avatarPath: string | null;
   unread: number;
@@ -142,6 +144,39 @@ export function Sidebar({
   const [focus, setFocus] = useState<Focus | null>(null);
   const [secretary, setSecretary] = useState<{ actions: number; savedMinutes: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Личное меню: порядок пунктов и скрытые разделы.
+   *
+   * Настройка приходит с сервера вместе с профилем — человек садится за другой
+   * компьютер и видит то же меню, которое себе собрал. В браузере такое «сбрасывалось
+   * само» при первой же смене устройства.
+   */
+  const [prefs, setPrefs] = useState<MenuPrefs>(user.uiPrefs ?? {});
+  const [tuning, setTuning] = useState(false);
+  const [dragged, setDragged] = useState<string | null>(null);
+  useEffect(() => { setPrefs(user.uiPrefs ?? {}); }, [user.uiPrefs]);
+
+  const allowed = MENU.filter((i) => visible(i.roles, user.role));
+  const ordered = applyOrder(allowed, prefs);
+  // В режиме настройки показываем и спрятанное — иначе вернуть его будет неоткуда.
+  const menuItems = tuning ? ordered : applyHidden(ordered, prefs);
+
+  const savePrefs = (next: MenuPrefs) => {
+    setPrefs(next);
+    // Не ждём ответа: перестановка должна ощущаться мгновенно, а неудача сохранения
+    // хуже всего лечится замиранием интерфейса.
+    void api.saveUiPrefs(next).catch(() => undefined);
+  };
+
+  const dropOn = (section: string) => {
+    if (!dragged || dragged === section) return;
+    const current = ordered.map((i) => String(i.section));
+    const to = current.indexOf(section);
+    savePrefs({ ...prefs, order: moveItem(current, dragged, to) });
+    setDragged(null);
+  };
+
 
   // Фокус и сводка ассистента живут ровно здесь: больше их никто не показывает.
   // Обе выборки дешёвые, поэтому обновляем их вместе со счётчиками разделов.
@@ -290,11 +325,18 @@ export function Sidebar({
               <CallStarter disabled={inCall} onStart={onStartCall} />
             </div>
           )}
+          {/* Мит для человека со стороны — рядом с созвоном: клиента зовут так же
+              часто, как коллегу, и искать эту кнопку в разделе встреч незачем. */}
+          {user.role !== 'client' && !collapsed && (
+            <div className="nav-call-row">
+              <GuestLinkButton />
+            </div>
+          )}
         </div>
 
-        {/* ── основное меню: ровно 4 раздела ── */}
+        {/* ── основное меню: порядок и состав человек настраивает под себя ── */}
         <nav className="nav-main" aria-label="Разделы">
-          {MENU.filter((i) => visible(i.roles, user.role)).map((item) => {
+          {menuItems.map((item) => {
             const active = route.section === item.section;
             // Ноль не показываем вовсе — по ТЗ панель молчит, пока от человека
             // ничего не требуется. Пустой кружок читался бы как «что-то есть».
@@ -311,8 +353,36 @@ export function Sidebar({
             const subs = item.subs?.filter((sub) => visible(sub.roles, user.role)) ?? [];
             const hasChildren = item.section === 'projects' || subs.length > 0;
             const unfolded = active && !collapsed && !folded.has(item.section);
+            const hiddenNow = isHidden(item.section, prefs);
             return (
-              <div key={item.section} className="nav-group" onMouseEnter={() => onHoverSection(item.section)}>
+              <div
+                key={item.section}
+                className={`nav-group${tuning ? ' nav-group-tuning' : ''}${hiddenNow ? ' nav-group-hidden' : ''}`}
+                onMouseEnter={() => onHoverSection(item.section)}
+                draggable={tuning}
+                onDragStart={() => setDragged(item.section)}
+                onDragOver={(e) => { if (tuning) e.preventDefault(); }}
+                onDrop={() => dropOn(item.section)}
+              >
+                {/* В режиме настройки пункт не открывается, а переставляется:
+                    случайный переход посреди перетаскивания сбивает всю затею. */}
+                {tuning && (
+                  <span className="nav-tune-row">
+                    <Icon name="list" size={14} />
+                    <span className="nav-label">{item.label}</span>
+                    <button
+                      className="nav-tune-eye"
+                      title={PROTECTED.includes(item.section)
+                        ? 'Этот раздел скрыть нельзя — из него настраивается всё остальное'
+                        : hiddenNow ? 'Вернуть в меню' : 'Убрать из меню'}
+                      disabled={PROTECTED.includes(item.section)}
+                      onClick={() => savePrefs({ ...prefs, hidden: toggleHidden(prefs.hidden ?? [], item.section) })}
+                    >
+                      <Icon name={hiddenNow ? 'eye-off' : 'eye'} size={15} />
+                    </button>
+                  </span>
+                )}
+                {!tuning && (<>
                 {link({ section: item.section }, active, 'nav-item', item.label, (
                   <>
                     <Icon name={item.icon} size={18} />
@@ -353,9 +423,27 @@ export function Sidebar({
                     ))}
                   </span>
                 ))}
+                </>
+                )}
               </div>
             );
           })}
+
+          {/* Настройка меню — внизу списка и мелко: ею пользуются один раз,
+              а место в панели занимают каждый день. */}
+          {!collapsed && (
+            <div className="nav-tune-bar">
+              <button className="nav-tune-btn" onClick={() => { setTuning((v) => !v); setDragged(null); }}>
+                <Icon name={tuning ? 'check' : 'settings'} size={13} />
+                {tuning ? 'Готово' : 'Настроить меню'}
+              </button>
+              {tuning && (prefs.order?.length || prefs.hidden?.length) && (
+                <button className="nav-tune-btn" onClick={() => savePrefs({})} title="Вернуть порядок и состав по умолчанию">
+                  Сбросить
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Созвон уже идёт — вход в него, иначе к разговору не присоединиться тому, кого не позвали */}
           {activeCall && !inCall && (

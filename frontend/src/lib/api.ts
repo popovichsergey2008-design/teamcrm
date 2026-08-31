@@ -209,6 +209,10 @@ export const api = {
     request<any>('PATCH', '/me', b),
   changePassword: (b: { currentPassword: string; newPassword: string }) =>
     request<any>('POST', '/me/password', b),
+  /** Личное меню: порядок и скрытые разделы. Настройка человека, а не браузера. */
+  saveUiPrefs: (prefs: { order?: string[]; hidden?: string[] }) =>
+    request<{ uiPrefs: any }>('PUT', '/me/ui-prefs', { prefs }),
+
   setNotifications: (prefs: Record<string, unknown>) => request<any>('PUT', '/me/notifications', { prefs }),
   myAvailability: () => request<any[]>('GET', '/me/availability'),
   addMyAvailability: (b: { kind: string; fromDate: string; toDate: string }) => request<any>('POST', '/me/availability', b),
