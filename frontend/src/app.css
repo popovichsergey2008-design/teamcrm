@@ -113,22 +113,91 @@
   border-radius: var(--radius); box-shadow: var(--shadow);
 }
 
-/* свёрнутый созвон: разговор идёт, окно ужимается в плашку у нижнего края */
-.call-overlay-mini { background: none; pointer-events: none; align-items: flex-end; justify-content: flex-end; }
-.call-overlay-mini .call-window { pointer-events: auto; }
-.call-window-mini {
-  width: min(360px, calc(100vw - 32px)); height: auto; margin: 0 16px 16px 0;
-  box-shadow: var(--shadow);
+/*
+  Свёрнутый созвон — маленькая встреча, а не панель с кнопками.
+
+  Лица участников, говорящий с рамкой, кнопки поверх видео. Там, где браузер умеет
+  окна поверх всех окон, этот же блок живёт в отдельном окне (.mini-call-pip) и
+  занимает его целиком; там, где не умеет, — плашкой в углу страницы, которую можно
+  перетащить.
+*/
+.call-dock {
+  position: fixed; z-index: 120; width: 320px; cursor: grab;
+  border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+  touch-action: none;
 }
-.call-controls-mini { justify-content: space-between; gap: 6px; }
-/* Видео в свёрнутом окне: невысокая полоса — она напоминает о разговоре, а не заменяет его. */
-.call-mini-video { position: relative; width: 100%; height: 150px; background: var(--video-bg); overflow: hidden; }
-.call-mini-video video { width: 100%; height: 100%; object-fit: cover; }
-.call-mini-name {
-  position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: #fff;
-  background: rgba(0, 0, 0, .55); padding: 1px 6px; border-radius: 999px;
+.call-dock:active { cursor: grabbing; }
+.mini-call { position: relative; background: var(--video-bg); overflow: hidden; }
+.mini-call-pip { position: fixed; inset: 0; }
+
+.mini-grid { display: grid; gap: 2px; width: 100%; height: 180px; }
+.mini-call-pip .mini-grid { height: 100%; }
+.mini-grid[data-count="2"] { grid-template-rows: 1fr 1fr; }
+.mini-grid[data-count="3"], .mini-grid[data-count="4"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+/* третий участник занимает нижнюю строку целиком: половина строки пустой смотрится поломкой */
+.mini-grid[data-count="3"] > .mini-tile:last-child { grid-column: span 2; }
+
+.mini-tile { position: relative; overflow: hidden; background: var(--video-bg); min-height: 0; }
+.mini-tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Говорящий обведён — в маленьком окне по губам не разобрать, кто из четверых сейчас говорит. */
+.mini-speaking { box-shadow: inset 0 0 0 2px var(--accent); }
+.mini-avatar {
+  display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
+  background: #2a2f3a; color: #fff; font-weight: 600; font-size: 20px; letter-spacing: .5px;
 }
-.call-mini-note { font-size: var(--fs-xs); }
+.mini-name {
+  position: absolute; left: 6px; bottom: 5px; max-width: calc(100% - 12px);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; color: #fff; background: rgba(10, 12, 16, .72);
+  padding: 1px 6px; border-radius: 999px;
+}
+
+.mini-rec {
+  position: absolute; top: 6px; left: 6px; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: #fff; background: rgba(10, 12, 16, .72); padding: 2px 7px; border-radius: 999px;
+}
+.mini-rec-dot { width: 7px; height: 7px; border-radius: 50%; background: #e5484d; }
+.mini-note {
+  position: absolute; top: 6px; right: 6px; font-size: 11px; color: #fff;
+  background: rgba(10, 12, 16, .72); padding: 2px 7px; border-radius: 999px;
+}
+
+/* Гость за дверью виден и в свёрнутом окне: иначе он стоит там, пока о нём не вспомнят. */
+.mini-knock {
+  position: absolute; left: 6px; right: 6px; top: 28px;
+  display: flex; align-items: center; gap: 6px; padding: 5px 7px;
+  font-size: var(--fs-xs); color: var(--text); background: var(--bg-elev);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+}
+.mini-knock-who { display: inline-flex; align-items: center; gap: 4px; flex: 1 1 auto; overflow: hidden; white-space: nowrap; }
+
+/*
+  Кнопки лежат поверх видео, как в привычных видеовстречах: место маленькое, и
+  отдавать его отдельной полосе под кнопки означало бы уменьшить лица.
+*/
+.mini-bar {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px;
+  background: linear-gradient(to top, rgba(10, 12, 16, .85), rgba(10, 12, 16, 0));
+  transition: opacity .15s ease;
+}
+.mini-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+  color: #fff; background: rgba(46, 52, 64, .92); border: 1px solid rgba(255, 255, 255, .18);
+}
+.mini-btn:hover { background: rgba(70, 78, 94, .95); }
+.mini-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Выключенное состояние — красным, как везде в созвоне: «микрофон выключен» надо видеть мгновенно. */
+.mini-btn-off { background: rgba(140, 30, 35, .92); }
+.mini-btn-leave { background: #c62828; border-color: rgba(255, 255, 255, .25); transform: rotate(135deg); }
+.mini-btn-leave:hover { background: #d43a3a; }
+
+/* Где есть мышь, кнопки не мозолят глаза: наводишь — появляются. На касании их не спрятать. */
+@media (hover: hover) {
+  .mini-bar { opacity: 0; }
+  .mini-call:hover .mini-bar, .mini-bar:focus-within { opacity: 1; }
+}
 
 /* стрелка состояния внутри самого пункта: содержимое сворачивает повторный клик */
 .nav-item > .icon:last-child { margin-left: auto; opacity: .7; }

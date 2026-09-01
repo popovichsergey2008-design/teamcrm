@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { CallInvite } from './CallInvite';
+import { CallMini } from './CallMini';
+import { RemoteAudio, RemoteMedia } from './CallMedia';
 import { api, ApiError, tokens } from '../lib/api';
 import { Knock, MeetClient, Peer, RemoteTrack } from '../lib/meet-client';
+import { MiniPerson } from '../lib/call-mini';
+import { openPipWindow, pipSupported } from '../lib/pip';
+import { watchSpeaking } from '../lib/speaking';
 import { diag } from '../lib/diag';
 import { playKnock } from '../lib/sound';
 import { useAuth } from '../state/auth';
+
+/** Размер окна поверх всех окон: чтобы влезли четыре лица и кнопки под ними. */
+const PIP_SIZE = { width: 380, height: 300 };
 
 const STATE_LABEL: Record<string, string> = {
   connecting: 'Подключаюсь…',
@@ -65,6 +74,21 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
    * «положить трубку», а человеку нужно посмотреть задачу, не выходя из разговора.
    */
   const [mini, setMini] = useState(false);
+  /**
+   * Окно поверх всех окон, если браузер его умеет.
+   *
+   * Плашка в углу страницы жила только на своей вкладке: человек уходил в почту
+   * или в соседний проект — и созвон пропадал с глаз. Отдельное окно остаётся
+   * поверх всего, как в Google Meet.
+   */
+  const [pipWin, setPipWin] = useState<Window | null>(null);
+  const pipRef = useRef<Window | null>(null);
+  /** Кто сейчас говорит: в свёрнутом окне видно три-четыре лица, и это должны быть нужные лица. */
+  const [speaking, setSpeaking] = useState<string | null>(null);
+  /** Куда человек перетащил плашку. Отсчёт от правого нижнего угла — она там и появляется. */
+  const [dock, setDock] = useState({ right: 16, bottom: 16 });
+  const dragFrom = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null);
+  const tracksRef = useRef<RemoteTrack[]>([]);
 
   // Полноэкранный режим: следим за системным событием, а не за своей кнопкой —
   // выйти можно и клавишей Esc, кнопка обязана это отражать.
@@ -79,6 +103,51 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
       else await windowRef.current?.requestFullscreen();
     } catch { setErr('Браузер не разрешил полноэкранный режим'); }
   };
+
+  /**
+   * Свернуть.
+   *
+   * Сначала пробуем настоящее окно поверх всех окон и только при отказе браузера
+   * оставляем плашку внутри страницы: Safari такого API не имеет, а разговор
+   * сворачивать умеет каждый.
+   */
+  const minimize = async () => {
+    if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch { /* уже вышли */ } }
+    const win = await openPipWindow(PIP_SIZE.width, PIP_SIZE.height);
+    if (win) { pipRef.current = win; setPipWin(win); }
+    setMini(true);
+  };
+
+  /** Вернуться к полному окну: отдельное окно при этом закрывается. */
+  const expand = useCallback(() => {
+    pipRef.current?.close();
+    pipRef.current = null;
+    setPipWin(null);
+    setMini(false);
+  }, []);
+
+  // Окно поверх всех окон человек может закрыть крестиком — для нас это «развернуть обратно»,
+  // а не «положить трубку»: разговор продолжается, менять надо только представление.
+  useEffect(() => {
+    if (!pipWin) return;
+    const onHide = () => { pipRef.current = null; setPipWin(null); setMini(false); };
+    pipWin.addEventListener('pagehide', onHide);
+    return () => pipWin.removeEventListener('pagehide', onHide);
+  }, [pipWin]);
+
+  // Созвон закончился, а окно осталось бы висеть поверх всего — закрываем вместе с панелью.
+  useEffect(() => () => { pipRef.current?.close(); pipRef.current = null; }, []);
+
+  // Кто говорит. Пересобираем анализаторы только при смене состава дорожек:
+  // на каждое обновление списка участников это открывало бы новый AudioContext.
+  tracksRef.current = tracks;
+  const audioKey = tracks.filter((t) => t.kind === 'audio').map((t) => t.consumerId).sort().join(',');
+  useEffect(() => {
+    const list = tracksRef.current
+      .filter((t) => t.kind === 'audio')
+      .map((t) => ({ userId: String(t.userId), track: t.track }));
+    return watchSpeaking(list, setSpeaking);
+  }, [audioKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -201,7 +270,40 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
     }
   }, [screenOn, meetingId]);
 
-  const leave = () => { client.current?.leave(); onClose(); };
+  const leave = () => {
+    pipRef.current?.close();
+    pipRef.current = null;
+    client.current?.leave();
+    onClose();
+  };
+
+  /** Впустить гостя или отказать — одинаково из полного окна и из свёрнутого. */
+  const answerKnock = (guestId: string, admit: boolean) => {
+    client.current?.answerKnock(guestId, admit);
+    setKnocks((x) => x.filter((i) => i.guestId !== guestId));
+  };
+
+  /**
+   * Перетаскивание плашки (там, где отдельного окна нет).
+   *
+   * Прижатая к правому нижнему углу плашка закрывает кнопки задач — человек
+   * должен иметь возможность её отодвинуть, а не терпеть.
+   */
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragFrom.current = { x: e.clientX, y: e.clientY, ...dock };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const from = dragFrom.current;
+    if (!from) return;
+    // держим плашку в пределах экрана: утащить её за край значит потерять созвон
+    setDock({
+      right: Math.max(8, Math.min(window.innerWidth - 140, from.right - (e.clientX - from.x))),
+      bottom: Math.max(8, Math.min(window.innerHeight - 120, from.bottom - (e.clientY - from.y))),
+    });
+  };
+  const endDrag = () => { dragFrom.current = null; };
 
   /**
    * Ссылка для внешнего гостя. Копируем сразу в буфер: её всё равно понесут в мессенджер,
@@ -229,9 +331,69 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
   const me = String(guest?.userId ?? user?.id ?? '');
   const tiles = peers.map((p) => ({ peer: p, track: camByUser.get(String(p.userId)) ?? null }));
 
+  const people: MiniPerson[] = tiles.map(({ peer, track }) => ({
+    id: String(peer.userId),
+    name: peer.displayName,
+    hasVideo: String(peer.userId) === me ? !!selfVideo : !!track,
+    isSelf: String(peer.userId) === me,
+    isAi: peer.isAi,
+  }));
+
+  /*
+    Звук стоит первым и вне окна созвона намеренно.
+
+    Свернув разговор, человек уносит окно в другое документное дерево (окно поверх
+    всех окон) — переезд пересоздал бы элементы <audio>, и на каждом сворачивании
+    собеседник пропадал бы на полсекунды. Здесь же элементы остаются на месте
+    независимо от того, как выглядит созвон.
+  */
+  const sound = <>{audios.map((t) => <RemoteAudio key={t.consumerId} track={t.track} />)}</>;
+
+  if (mini) {
+    const panel = (
+      <CallMini
+        people={people}
+        videoOf={(id) => (id === me ? selfVideo : camByUser.get(id)?.track ?? null)}
+        speaking={speaking}
+        micOn={micOn}
+        camOn={camOn}
+        recording={recording}
+        peerCount={peers.length}
+        detached={!!pipWin}
+        knocks={isGuest ? [] : knocks}
+        onKnock={answerKnock}
+        onMic={toggleMic}
+        onCam={toggleCam}
+        onExpand={expand}
+        onLeave={leave}
+      />
+    );
+    return (
+      <>
+        {sound}
+        {pipWin
+          ? createPortal(panel, pipWin.document.body)
+          : (
+            <div
+              className="call-dock"
+              style={{ right: dock.right, bottom: dock.bottom }}
+              onPointerDown={startDrag}
+              onPointerMove={onDrag}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+            >
+              {panel}
+            </div>
+          )}
+      </>
+    );
+  }
+
   return (
-    <div className={`call-overlay${mini ? ' call-overlay-mini' : ''}`}>
-      <div className={`call-window${mini ? ' call-window-mini' : ''}`} ref={windowRef}>
+    <>
+    {sound}
+    <div className="call-overlay">
+      <div className="call-window" ref={windowRef}>
         <div className="call-head">
           <span>
             <Icon name="phone" size={16} /> Созвон · <span className="dim">{STATE_LABEL[state]}</span>
@@ -250,7 +412,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
             {/* Позвать человека можно двумя способами, и оба стоят здесь: сотрудника —
                 звонком, внешнего гостя — ссылкой. Раньше состав собирали до звонка,
                 а нужный человек вспоминается по ходу разговора. */}
-            {!isGuest && !mini && (
+            {!isGuest && (
               <>
                 <CallInvite
                   present={peers.map((p) => String(p.userId))}
@@ -267,17 +429,17 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
             )}
             <button
               className="btn btn-ghost btn-sm"
-              onClick={() => { if (full) void toggleFull(); setMini((v) => !v); }}
-              title={mini ? 'Развернуть созвон' : 'Свернуть — разговор продолжится'}
-              aria-label={mini ? 'Развернуть созвон' : 'Свернуть созвон'}
+              onClick={() => void minimize()}
+              title={pipSupported()
+                ? 'Свернуть — созвон останется отдельным окном поверх других программ'
+                : 'Свернуть — разговор продолжится в углу страницы'}
+              aria-label="Свернуть созвон"
             >
-              <Icon name={mini ? 'chevron-up' : 'minimize'} size={15} />
+              <Icon name="minimize" size={15} />
             </button>
-            {!mini && (
-              <button className="btn btn-ghost btn-sm" onClick={toggleFull} title={full ? 'Свернуть из полного экрана' : 'Развернуть на весь экран'}>
-                <Icon name={full ? 'minimize' : 'maximize'} size={15} />
-              </button>
-            )}
+            <button className="btn btn-ghost btn-sm" onClick={toggleFull} title={full ? 'Свернуть из полного экрана' : 'Развернуть на весь экран'}>
+              <Icon name={full ? 'minimize' : 'maximize'} size={15} />
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={leave} title="Выйти из созвона"><Icon name="close" /></button>
           </span>
         </div>
@@ -301,12 +463,8 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
           <div className="call-knock" key={k.guestId}>
             <span><Icon name="user" size={15} /> <b>{k.name}</b> просится в созвон — это внешний гость</span>
             <span className="call-knock-actions">
-              <button className="btn btn-sm" onClick={() => { client.current?.answerKnock(k.guestId, true); setKnocks((x) => x.filter((i) => i.guestId !== k.guestId)); }}>
-                Впустить
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => { client.current?.answerKnock(k.guestId, false); setKnocks((x) => x.filter((i) => i.guestId !== k.guestId)); }}>
-                Отказать
-              </button>
+              <button className="btn btn-sm" onClick={() => answerKnock(k.guestId, true)}>Впустить</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => answerKnock(k.guestId, false)}>Отказать</button>
             </span>
           </div>
         ))}
@@ -330,7 +488,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
 
         {/* Показ экрана занимает сцену целиком, люди уезжают в полосу снизу:
             в общей сетке демонстрация выходила мелкой и нечитаемой. */}
-        {(!isGuest || guestState === 'in') && !mini && (
+        {(!isGuest || guestState === 'in') && (
         <div className="call-stage">
           {screenTrack && (
             <div className="call-spotlight">
@@ -352,44 +510,6 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
         </div>
         )}
 
-        {/* Звук воспроизводится скрытыми элементами: на сцене ему делать нечего */}
-        {audios.map((t) => <RemoteAudio key={t.consumerId} track={t.track} />)}
-
-        {/*
-          Свёрнутый созвон: разговор идёт, человек работает в CRM.
-          Оставляем то, ради чего люди и сворачивают окно, — видеть собеседника
-          и управлять собой: микрофон, камера, выход. Остальное после разворачивания.
-        */}
-        {mini && (
-          <>
-            {/* Одно видео: говорящий или первый, у кого включена камера. Пустой
-                прямоугольник вместо лица бесполезен, поэтому без камер блок не рисуем. */}
-            {(() => {
-              const face = tiles.find((t) => t.track) ?? null;
-              return face?.track ? (
-                <div className="call-mini-video">
-                  <RemoteMedia track={face.track.track} />
-                  <span className="call-mini-name">{face.peer.displayName}</span>
-                </div>
-              ) : null;
-            })()}
-            <div className="call-controls call-controls-mini">
-              <button className={`btn btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic} title="Микрофон">
-                <Icon name={micOn ? 'mic' : 'mic-off'} size={15} />
-              </button>
-              <button className={`btn btn-sm ${camOn ? '' : 'call-off'}`} onClick={toggleCam} title="Камера">
-                <Icon name={camOn ? 'video' : 'video-off'} size={15} />
-              </button>
-              <span className="dim call-mini-note">
-                {peers.length > 1 ? `на связи: ${peers.length}` : 'вы одни'}
-                {recording && ' · запись'}
-              </span>
-              <button className="btn btn-sm call-leave" onClick={leave}>Выйти</button>
-            </div>
-          </>
-        )}
-
-        {!mini && (
         <div className="call-controls">
           <button className={`btn btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic}>
             <Icon name={micOn ? 'mic' : 'mic-off'} size={15} />{micOn ? 'Микрофон' : 'Включить микрофон'}
@@ -415,9 +535,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
           )}
           <button className="btn btn-sm call-leave" onClick={leave}>Выйти</button>
         </div>
-        )}
       </div>
     </div>
+    </>
   );
 }
 
@@ -455,23 +575,3 @@ function ParticipantTile({ peer, track, self, selfTrack, selfMicOn }: {
   );
 }
 
-/**
- * Видеодорожка в элемент: srcObject нельзя задать разметкой, только из кода,
- * и делать это надо после появления элемента — отсюда эффект.
- * Своё видео обязательно без звука, иначе слышишь сам себя.
- */
-function RemoteMedia({ track, muted = false }: { track: MediaStreamTrack; muted?: boolean }) {
-  const ref = useRef<HTMLVideoElement | null>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.srcObject = new MediaStream([track]);
-  }, [track]);
-  return <video ref={ref} autoPlay playsInline muted={muted} />;
-}
-
-function RemoteAudio({ track }: { track: MediaStreamTrack }) {
-  const ref = useRef<HTMLAudioElement | null>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.srcObject = new MediaStream([track]);
-  }, [track]);
-  return <audio ref={ref} autoPlay />;
-}

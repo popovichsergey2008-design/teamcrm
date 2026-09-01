@@ -522,6 +522,38 @@ test('личный порядок меню: переставили, спрята
   assert.deepEqual(toggleHidden(['radar'], 'radar'), [], 'повторное нажатие возвращает раздел');
 });
 
+// ── свёрнутый созвон ──────────────────────────────────────────────────────────
+test('в свёрнутом окне видно того, кто говорит', async () => {
+  const { miniOrder, initials, loudest, miniNote } = await load('lib/call-mini.ts');
+  const p = (id, over = {}) => ({ id, name: id, hasVideo: false, isSelf: false, ...over });
+
+  const people = [p('me', { isSelf: true, hasVideo: true }), p('a'), p('b', { hasVideo: true }), p('ai', { isAi: true })];
+  // говорящий впереди всех, своё лицо — последним: место тратится на собеседников
+  assert.deepEqual(miniOrder(people, 'a').map((x) => x.id), ['a', 'b', 'ai', 'me']);
+  // без говорящего вперёд выходит тот, у кого включена камера
+  assert.deepEqual(miniOrder(people, null).map((x) => x.id), ['b', 'a', 'ai', 'me']);
+  // «говорю я» окно не переворачивает: смотреть на себя незачем
+  assert.deepEqual(miniOrder(people, 'me')[0].id, 'b');
+  assert.equal(miniOrder(people, null, 2).length, 2, 'больше плиток, чем влезает, не отдаём');
+  assert.equal(miniOrder([p('one')], null).length, 1);
+
+  assert.equal(initials('Сергей Попович'), 'СП');
+  assert.equal(initials('Борис'), 'Б');
+  assert.equal(initials('Иван Петров (гость)'), 'ИП', 'пометка в скобках в инициалы не идёт');
+  assert.equal(initials('  '), '?', 'пустое имя не должно рисовать пустой кружок');
+
+  // порог отсекает шум, иначе «говорящим» становится вентилятор
+  assert.equal(loudest({ a: 0.01, b: 0.02 }, 0.045), null);
+  assert.equal(loudest({ a: 0.01, b: 0.2 }, 0.045), 'b');
+  // прежний говорящий держится на стыке фраз: иначе плитки мигают
+  assert.equal(loudest({ a: 0.19, b: 0.2 }, 0.045, 'a'), 'a');
+  assert.equal(loudest({ a: 0.05, b: 0.3 }, 0.045, 'a'), 'b', 'заметно громче — переключаемся');
+  assert.equal(loudest({ a: 0.01 }, 0.045, 'a'), null, 'замолчавший говорящим не остаётся');
+
+  assert.equal(miniNote(1, false), 'вы одни');
+  assert.equal(miniNote(3, true), 'на связи: 3 · идёт запись');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
