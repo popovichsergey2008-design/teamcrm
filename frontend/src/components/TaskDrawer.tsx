@@ -25,7 +25,8 @@ interface Props {
   onRefresh: () => void;
 }
 
-type Tab = 'overview' | 'checklist' | 'files' | 'discussion' | 'agent';
+// Обсуждения среди вкладок больше нет: чат стоит справа и виден всегда.
+type Tab = 'overview' | 'checklist' | 'files' | 'agent';
 const PRIORITIES = [['low', 'низкий'], ['normal', 'обычный'], ['high', 'высокий'], ['urgent', 'срочно']];
 
 /** Колонки, означающие закрытие задачи (совпадает с логикой закрытия на бэкенде). */
@@ -243,13 +244,14 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
-      {/* В обсуждении карточка раскрывается на две колонки: слева задача, справа чат.
-          Разговор о задаче без самой задачи перед глазами заставляет прыгать по
-          вкладкам и держать условия в голове — ровно то, от чего чат и должен избавить. */}
-      <aside
-        className={`drawer drawer-wide${tab === 'discussion' ? ' drawer-split' : ''}`}
-        onClick={(e) => e.stopPropagation()}
-      >
+      {/*
+        Карточка и чат стоят рядом постоянно, как в Битриксе: слева задача целиком —
+        со всеми полями, статусами и вкладками, справа разговор по ней.
+        Чат вкладкой не работает: обсуждать задачу, не видя её условий, значит держать
+        их в голове и прыгать туда-обратно. Окно от этого шире обычного — и должно быть.
+      */}
+      <aside className="drawer drawer-task" onClick={(e) => e.stopPropagation()}>
+        <div className="task-main">
         {gate && (
           <HandoffGateDialog
             block={gate.block}
@@ -370,7 +372,6 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
           <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Обзор</button>
           <button className={`tab ${tab === 'checklist' ? 'active' : ''}`} onClick={() => setTab('checklist')}>Чеклист</button>
           <button className={`tab ${tab === 'files' ? 'active' : ''}`} onClick={() => setTab('files')}>Файлы</button>
-          <button className={`tab ${tab === 'discussion' ? 'active' : ''}`} onClick={() => setTab('discussion')}>Обсуждение</button>
           {canManage && <button className={`tab ${tab === 'agent' ? 'active' : ''}`} onClick={() => setTab('agent')}><Icon name="robot" size={14} /> Агент</button>}
         </div>
 
@@ -523,46 +524,13 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
 
         {tab === 'checklist' && <ChecklistTab taskId={task.id} onRefresh={onRefresh} />}
         {tab === 'files' && <FilesTab taskId={task.id} onRefresh={onRefresh} />}
-        {tab === 'discussion' && (
-          <div className="task-split">
-            {/* Слева — краткая карточка: то, что нужно, чтобы понимать, о чём речь. */}
-            <div className="task-split-info">
-              <div className="drawer-section-title">Задача</div>
-              <div className="task-brief">
-                <div className="task-brief-row"><span className="dim">Постановщик</span><span>{userName(task.created_by ?? null)}</span></div>
-                <div className="task-brief-row"><span className="dim">Исполнитель</span><span>{userName(task.assignee_id ?? null)}</span></div>
-                {participants.filter((p) => p.role === 'co_assignee').length > 0 && (
-                  <div className="task-brief-row">
-                    <span className="dim">Соисполнители</span>
-                    <span>{participants.filter((p) => p.role === 'co_assignee').map((p) => p.full_name).join(', ')}</span>
-                  </div>
-                )}
-                {participants.filter((p) => p.role === 'watcher').length > 0 && (
-                  <div className="task-brief-row">
-                    <span className="dim">Наблюдатели</span>
-                    <span>{participants.filter((p) => p.role === 'watcher').map((p) => p.full_name).join(', ')}</span>
-                  </div>
-                )}
-                <div className="task-brief-row"><span className="dim">Статус</span><span>{task.closed_at ? 'Завершена' : task.status || '—'}</span></div>
-                <div className="task-brief-row">
-                  <span className="dim">Срок</span>
-                  <span>{task.deadline_at ? new Date(task.deadline_at).toLocaleString('ru-RU') : 'не задан'}</span>
-                </div>
-                <div className="task-brief-row"><span className="dim">Приоритет</span><span>{priority}</span></div>
-              </div>
-              {task.description && (
-                <>
-                  <div className="drawer-section-title" style={{ marginTop: 12 }}>Описание</div>
-                  <div className="task-brief-desc">{task.description}</div>
-                </>
-              )}
-            </div>
+        </div>
 
-            <div className="task-split-chat">
-              <DiscussionTab taskId={task.id} onRefresh={onRefresh} />
-            </div>
-          </div>
-        )}
+        {/* Правая колонка — чат задачи. Он на виду всегда: обсуждение и есть работа
+            по задаче, а не отдельный раздел, в который надо переключаться. */}
+        <div className="task-chat">
+          <DiscussionTab taskId={task.id} onRefresh={onRefresh} />
+        </div>
       </aside>
     </div>
   );
@@ -988,7 +956,9 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
 
   return (
     <>
-      <div className="drawer-section-title">Обсуждение</div>
+      <div className="drawer-section-title">
+        <Icon name="chat" size={14} /> Чат задачи
+      </div>
 
       {/* Поиск появляется, когда искать есть в чём: над тремя сообщениями он лишний. */}
       {comments.length > 5 && (

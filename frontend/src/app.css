@@ -693,25 +693,31 @@
 .ai-advice-suggest { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
 
 /*
- * Обсуждение в две колонки: слева задача, справа чат.
+ * Карточка задачи и чат рядом — постоянно.
  *
- * Разговор о задаче без самой задачи перед глазами заставляет прыгать по вкладкам
- * и держать условия в голове. Панель в этом режиме шире обычной — иначе колонки
- * получаются по двадцать символов и читать нечего.
+ * Слева задача целиком (поля, вкладки, кнопки), справа разговор по ней. Окно шире
+ * обычного окна карточки: иначе колонки становятся по двадцать символов и читать
+ * нечего. Каждая колонка прокручивается сама — длинная переписка не должна утаскивать
+ * вниз поля задачи, и наоборот.
  */
-.drawer-split { width: min(1100px, 96vw); }
-.task-split { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: 16px; align-items: start; }
-.task-split-info { border-right: 1px solid var(--border); padding-right: 14px; }
-.task-split-chat { min-width: 0; }
-.task-brief { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.task-brief-row { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; }
-.task-brief-row .dim { flex: 0 0 auto; }
-.task-brief-row > span:last-child { text-align: right; }
-.task-brief-desc { font-size: 13px; white-space: pre-line; color: var(--text-dim); max-height: 260px; overflow-y: auto; }
+.drawer-task {
+  width: min(1240px, 97vw); max-width: 97vw;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.task-main { min-width: 0; overflow-y: auto; padding: 20px; }
+.task-chat {
+  min-width: 0; overflow-y: auto; padding: 20px;
+  border-left: 1px solid var(--border); background: var(--bg-elev-2);
+}
 /* На узком экране колонки складываются: задача сверху, разговор под ней. */
-@media (max-width: 900px) {
-  .task-split { grid-template-columns: 1fr; }
-  .task-split-info { border-right: none; border-bottom: 1px solid var(--border); padding: 0 0 12px; }
+@media (max-width: 1000px) {
+  .drawer-task { grid-template-columns: 1fr; grid-template-rows: auto auto; overflow-y: auto; }
+  .task-chat { border-left: none; border-top: 1px solid var(--border); }
+  .task-main, .task-chat { overflow: visible; }
 }
 
 /* Чат задачи: цитата, реакции, действия над сообщением, поиск. */
@@ -742,7 +748,10 @@
 }
 
 /* Быстрые вопросы: их задают чаще всего, набирать руками незачем. */
-.ai-quick { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+/* Быстрые вопросы в узкой колонке: мелко и в строку — иначе пять кнопок во всю
+   ширину занимают полэкрана и выглядят как меню, а не как подсказки. */
+.ai-quick { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.ai-quick .btn { padding: 3px 8px; font-size: 12px; }
 .comment-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 
 /* Настройка меню: перетаскивание пунктов и скрытие ненужных. */
