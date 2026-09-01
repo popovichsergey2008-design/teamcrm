@@ -133,27 +133,11 @@ describe('TEAMCRM Этап 4 — Load Balancer (e2e)', () => {
     expect(forced.overloadConfirmed).toBe(true);
   }, 30000);
 
-  it('Co-pilot: red-задача → reassign-рекомендация; accept выполняет через guarded-путь', async () => {
-    const created = (await http.post('/api/copilot/scan').set(auth()).expect(201)).body.data;
-    expect(Array.isArray(created)).toBe(true);
-    const recs = (await http.get('/api/recommendations').set(auth()).expect(200)).body.data;
-    const reassign = recs.find((r: any) => r.type === 'reassign');
-    expect(reassign).toBeTruthy();
-    const targetTask = reassign.task_id;
-
-    await http.post(`/api/recommendations/${reassign.id}/accept`).set(auth()).expect(201);
-
-    const board = (await http.get(`/api/projects/${projectId}/board`).set(auth()).expect(200)).body.data;
-    const task = board.columns.flatMap((c: any) => c.tasks).find((t: any) => t.id === targetTask);
-    expect(String(task.assignee_id)).toBe(String(reassign.payload.toAssigneeId));
-  }, 30000);
-
-  it('Видимость: client не получает velocity/load/recommendations; forecast — без risk_pct', async () => {
+  it('Видимость: client не получает velocity/load; forecast — без risk_pct', async () => {
     const ct = clientToken();
     const ch = (p: string) => http.get(p).set({ Authorization: `Bearer ${ct}` });
     expect((await ch(`/api/users/${ownerId}/velocity`)).status).toBe(403);
     expect((await ch(`/api/users/${ownerId}/load`)).status).toBe(403);
-    expect((await ch('/api/recommendations')).status).toBe(403);
 
     const green = (await http.get(`/api/projects/${projectId}/board`).set(auth())).body.data.columns
       .flatMap((c: any) => c.tasks)[0];

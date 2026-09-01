@@ -28,7 +28,6 @@ import { TelegramModule } from './modules/telegram/telegram.module';
 import { StandupModule } from './modules/standup/standup.module';
 import { VelocityModule } from './modules/velocity/velocity.module';
 import { ForecastModule } from './modules/forecast/forecast.module';
-import { CopilotModule } from './modules/copilot/copilot.module';
 import { FilesModule } from './modules/files/files.module';
 import { TeamModule } from './modules/team/team.module';
 import { InvitesModule } from './modules/team/invites.module';
@@ -92,7 +91,6 @@ import { FeedModule } from './modules/feed/feed.module';
     StandupModule,
     VelocityModule,
     ForecastModule,
-    CopilotModule,
     FilesModule,
     TeamModule,
     InvitesModule,

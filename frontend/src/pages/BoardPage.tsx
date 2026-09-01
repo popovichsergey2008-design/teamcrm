@@ -16,7 +16,6 @@ import {
 import { MineFilter } from '../components/MineFilter';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { TeamPanel } from '../components/TeamPanel';
-import { CopilotPanel } from '../components/CopilotPanel';
 import { EmptyState } from '../components/EmptyState';
 import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
 import { SkeletonBoard } from '../components/Skeleton';
@@ -110,7 +109,6 @@ export function BoardPage({ initial, onNavigate }: {
 
 
   const [showTeam, setShowTeam] = useState(false);
-  const [showCopilot, setShowCopilot] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
   // Ключ памяти о проекте — свой на каждую организацию: при переключении
   // компании возврат должен вести в её проект, а не в чужой.
@@ -461,7 +459,6 @@ export function BoardPage({ initial, onNavigate }: {
                 {!isClient && (
                   <span className="board-actions">
                     <button className="btn btn-ghost btn-sm" onClick={() => setShowTeam(true)} title="Сотрудники, должности, группы, приглашения"><Icon name="users" size={15} /> Команда</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setShowCopilot(true)} title="ИИ-рекомендации по проекту"><Icon name="sparkles" size={15} /> Co-pilot</button>
                     {board.project.origin === 'bitrix' && (
                       <button className="btn btn-ghost btn-sm" onClick={() => setShowFeed(true)} title="Живая лента импортированного проекта"><Icon name="list" size={15} /> Лента</button>
                     )}
@@ -541,7 +538,6 @@ export function BoardPage({ initial, onNavigate }: {
         />
       )}
       {showTeam && <TeamPanel onClose={() => setShowTeam(false)} />}
-      {showCopilot && <CopilotPanel onClose={() => setShowCopilot(false)} onRefresh={reloadBoard} />}
       {showFeed && selected && <ImportedFeedPanel projectId={selected} onClose={() => setShowFeed(false)} />}
     </div>
   );

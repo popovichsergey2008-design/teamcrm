@@ -26,8 +26,7 @@ export type FinancialEvent =
   | 'alert.raised'
   | 'alert.resolved'
   | 'task.risk_changed'
-  | 'overload.warned'
-  | 'recommendation.raised';
+  | 'overload.warned';
 
 /**
  * Поля, которые НИКОГДА не уходят в клиентскую комнату (фича №9 «маржа-сейф»).

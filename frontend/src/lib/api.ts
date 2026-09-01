@@ -795,7 +795,7 @@ export const api = {
   resetPassword: (b: { token: string; password: string }) =>
     rawRequest<{ reset: boolean; email: string }>('POST', '/auth/password/reset', b, false),
 
-  // Этап 4 — forecast, assignment, velocity, copilot
+  // Этап 4 — прогноз срока, назначение с проверкой перегруза, velocity
   assignTask: (id: string, b: { assigneeId: string; confirmOverload?: boolean; estimateHours?: number; deadlineAt?: string }) =>
     request<any>('POST', `/tasks/${id}/assign`, b),
   /** confirmTimeLoss — второе подтверждение для задачи с учтённым временем (только владельцу). */
@@ -841,8 +841,4 @@ export const api = {
   getForecast: (id: string) => request<any>('GET', `/tasks/${id}/forecast`),
   getVelocity: (userId: string) => request<any>('GET', `/users/${userId}/velocity`),
   getLoad: (userId: string) => request<any>('GET', `/users/${userId}/load`),
-  copilotScan: () => request<any[]>('POST', '/copilot/scan'),
-  listRecommendations: () => request<any[]>('GET', '/recommendations'),
-  acceptRecommendation: (id: string) => request<any>('POST', `/recommendations/${id}/accept`),
-  dismissRecommendation: (id: string) => request<any>('POST', `/recommendations/${id}/dismiss`),
 };
