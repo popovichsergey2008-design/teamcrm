@@ -1,5 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { AddressInfo } from 'net';
 import request from 'supertest';
 
@@ -7,6 +9,7 @@ import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/http/all-exceptions.filter';
 import { ResponseInterceptor } from '../src/common/http/response.interceptor';
 import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
+import { AccessTokenPayload, RoleCode } from '../src/common/auth/jwt.types';
 
 /**
  * Кто может назначать исполнителя и ставить срок.
@@ -21,6 +24,8 @@ import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
 describe('планирование задачи: назначение и срок (e2e)', () => {
   let app: INestApplication;
   let http: any;
+  let jwt: JwtService;
+  let accessSecret: string;
   const uniq = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
   const H = (t: string) => ({ Authorization: `Bearer ${t}` });
 
@@ -34,28 +39,37 @@ describe('планирование задачи: назначение и сро�
     app.useWebSocketAdapter(new RedisIoAdapter(app));
     await app.listen(0, '0.0.0.0');
     http = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
+    jwt = app.get(JwtService);
+    accessSecret = app.get(ConfigService).getOrThrow<string>('JWT_ACCESS_SECRET');
   });
   afterAll(async () => app?.close());
 
-  /** Владелец, сотрудник и клиент в одной организации. */
+  /**
+   * Владелец и сотрудник в одной организации.
+   *
+   * Клиента приглашением не завести — роль client в приглашениях запрещена намеренно
+   * (он попадает в систему через портал). Для проверки запрета подписываем ему токен
+   * напрямую: нам нужна только роль, ничего больше он не делает.
+   */
   const team = async () => {
     const owner = (await http.post('/api/auth/register')
       .send({ tenantName: 'Plan', email: `pl_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
 
-    const join = async (role: string, fullName: string, password: string) => {
-      const email = `pl_${role}_${uniq()}@t.test`;
-      const inv = (await http.post('/api/invites').set(H(owner.accessToken))
-        .send({ email, role }).expect(201)).body.data;
-      await http.post('/api/invites/accept').send({ token: inv.token, fullName, password }).expect(201);
-      return (await http.post('/api/auth/login').send({ email, password }).expect(201)).body.data;
-    };
+    const email = `pl_m_${uniq()}@t.test`;
+    const inv = (await http.post('/api/invites').set(H(owner.accessToken))
+      .send({ email, role: 'member' }).expect(201)).body.data;
+    await http.post('/api/invites/accept')
+      .send({ token: inv.token, fullName: 'Пётр Сотрудник', password: 'memberpass1' }).expect(201);
+    const member = (await http.post('/api/auth/login')
+      .send({ email, password: 'memberpass1' }).expect(201)).body.data;
 
-    return {
-      owner,
-      member: await join('member', 'Пётр Сотрудник', 'memberpass1'),
-      client: await join('client', 'Клиент Иванов', 'clientpass1'),
-    };
+    const clientToken = jwt.sign(
+      { sub: '0', tenantId: owner.user.tenantId, role: 'client' as RoleCode, email: 'c@x.io' } as AccessTokenPayload,
+      { secret: accessSecret, expiresIn: 300 },
+    );
+
+    return { owner, member, clientToken };
   };
 
   it('сотрудник ставит срок и назначает исполнителя на своей задаче', async () => {
@@ -82,15 +96,15 @@ describe('планирование задачи: назначение и сро�
   }, 30000);
 
   it('клиент не планирует и не назначает', async () => {
-    const { owner, member, client } = await team();
+    const { owner, member, clientToken } = await team();
     const proj = (await http.post('/api/projects').set(H(owner.accessToken))
       .send({ name: 'Клиентский' }).expect(201)).body.data;
     const task = (await http.post('/api/tasks').set(H(owner.accessToken))
       .send({ projectId: proj.id, title: 'Не для клиента' }).expect(201)).body.data;
 
-    await http.post(`/api/tasks/${task.id}/plan`).set(H(client.accessToken))
+    await http.post(`/api/tasks/${task.id}/plan`).set(H(clientToken))
       .send({ estimateHours: 1 }).expect(403);
-    await http.post(`/api/tasks/${task.id}/assign`).set(H(client.accessToken))
+    await http.post(`/api/tasks/${task.id}/assign`).set(H(clientToken))
       .send({ assigneeId: member.user.id }).expect(403);
   }, 30000);
 });
