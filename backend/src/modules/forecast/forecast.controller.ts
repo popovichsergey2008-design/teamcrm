@@ -35,9 +35,12 @@ export class ForecastController {
    * Раньше их можно было сохранить только вместе с исполнителем — кнопка называлась
    * «Назначить» и требовала выбрать человека. Из-за этого поставить срок задаче,
    * которую ещё не на кого повесить, было нельзя: приходилось назначать кого попало.
+   *
+   * Роль member здесь обязательна: срок сотрудник задаёт уже при создании задачи,
+   * и запрет на его правку означал бы «завести можно, исправить нельзя».
    */
   @Post(':id/plan')
-  @Roles('owner', 'manager')
+  @Roles('owner', 'manager', 'member')
   async plan(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: PlanDto) {
     await this.service.setEstimateDeadline(
       user.tenantId, id, dto.estimateHours ?? null, dto.deadlineAt ?? null,
@@ -45,9 +48,19 @@ export class ForecastController {
     return { saved: true };
   }
 
-  /** Назначение/перенос с guard перегруза (internal-роли). */
+  /**
+   * Назначение/перенос с guard перегруза.
+   *
+   * Сотруднику это тоже можно, и вот почему: задачу он завести МОЖЕТ — сразу с
+   * исполнителем и сроком (`POST /tasks`). А поправить их в карточке не мог: две
+   * ручки ниже были закрыты для роли member, и человек получал «Insufficient role»
+   * на собственной задаче. Права должны совпадать с тем, что уже разрешено при
+   * создании, иначе задачу приходится заводить заново вместо правки.
+   *
+   * Клиент по-прежнему отрезан: он в списке ролей не значится.
+   */
   @Post(':id/assign')
-  @Roles('owner', 'manager')
+  @Roles('owner', 'manager', 'member')
   async assign(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: AssignDto) {
     if (dto.estimateHours !== undefined || dto.deadlineAt !== undefined) {
       await this.service.setEstimateDeadline(user.tenantId, id, dto.estimateHours ?? null, dto.deadlineAt ?? null);
