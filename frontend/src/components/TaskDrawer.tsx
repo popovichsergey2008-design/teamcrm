@@ -243,7 +243,13 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
-      <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
+      {/* В обсуждении карточка раскрывается на две колонки: слева задача, справа чат.
+          Разговор о задаче без самой задачи перед глазами заставляет прыгать по
+          вкладкам и держать условия в голове — ровно то, от чего чат и должен избавить. */}
+      <aside
+        className={`drawer drawer-wide${tab === 'discussion' ? ' drawer-split' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         {gate && (
           <HandoffGateDialog
             block={gate.block}
@@ -517,7 +523,46 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
 
         {tab === 'checklist' && <ChecklistTab taskId={task.id} onRefresh={onRefresh} />}
         {tab === 'files' && <FilesTab taskId={task.id} onRefresh={onRefresh} />}
-        {tab === 'discussion' && <DiscussionTab taskId={task.id} onRefresh={onRefresh} />}
+        {tab === 'discussion' && (
+          <div className="task-split">
+            {/* Слева — краткая карточка: то, что нужно, чтобы понимать, о чём речь. */}
+            <div className="task-split-info">
+              <div className="drawer-section-title">Задача</div>
+              <div className="task-brief">
+                <div className="task-brief-row"><span className="dim">Постановщик</span><span>{userName(task.created_by ?? null)}</span></div>
+                <div className="task-brief-row"><span className="dim">Исполнитель</span><span>{userName(task.assignee_id ?? null)}</span></div>
+                {participants.filter((p) => p.role === 'co_assignee').length > 0 && (
+                  <div className="task-brief-row">
+                    <span className="dim">Соисполнители</span>
+                    <span>{participants.filter((p) => p.role === 'co_assignee').map((p) => p.full_name).join(', ')}</span>
+                  </div>
+                )}
+                {participants.filter((p) => p.role === 'watcher').length > 0 && (
+                  <div className="task-brief-row">
+                    <span className="dim">Наблюдатели</span>
+                    <span>{participants.filter((p) => p.role === 'watcher').map((p) => p.full_name).join(', ')}</span>
+                  </div>
+                )}
+                <div className="task-brief-row"><span className="dim">Статус</span><span>{task.closed_at ? 'Завершена' : task.status || '—'}</span></div>
+                <div className="task-brief-row">
+                  <span className="dim">Срок</span>
+                  <span>{task.deadline_at ? new Date(task.deadline_at).toLocaleString('ru-RU') : 'не задан'}</span>
+                </div>
+                <div className="task-brief-row"><span className="dim">Приоритет</span><span>{priority}</span></div>
+              </div>
+              {task.description && (
+                <>
+                  <div className="drawer-section-title" style={{ marginTop: 12 }}>Описание</div>
+                  <div className="task-brief-desc">{task.description}</div>
+                </>
+              )}
+            </div>
+
+            <div className="task-split-chat">
+              <DiscussionTab taskId={task.id} onRefresh={onRefresh} />
+            </div>
+          </div>
+        )}
       </aside>
     </div>
   );
@@ -813,6 +858,17 @@ const QUICK_ASKS: { label: string; ask: string }[] = [
   { label: 'Отчёт постановщику', ask: 'Подготовь короткий отчёт о проделанной работе для постановщика.' },
 ];
 
+/**
+ * Помощник в списке упоминаний.
+ *
+ * Зовут его так же, как коллегу, — через «@». Отдельная кнопка делала из ИИ
+ * инструмент в стороне от разговора, хотя он участник этого разговора.
+ */
+const AI_MENTION_ID = 'ai';
+const AI_MENTION_NAME = 'AI-помощник';
+/** «@AI», «@AI-помощник», «@ai,» — человек пишет как придётся. */
+const MENTIONS_AI = /@(ai|ии|ai-помощник)\b/gi;
+
 /** Реакции: ответить «ок» знаком, не засоряя обсуждение и не будя участников. */
 const REACTIONS = ['👍', '✅', '🔥', '❓'];
 
@@ -854,6 +910,15 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
       .catch(() => undefined);
   }, []);
 
+  /**
+   * Помощник стоит в том же списке, что и люди.
+   *
+   * Отдельная кнопка «Спросить ИИ» делала из него инструмент, к которому надо
+   * тянуться; в разговоре же его зовут так же, как коллегу, — через «@». Поэтому
+   * он просто первый в списке упоминаний.
+   */
+  const mentionUsers = [{ id: AI_MENTION_ID, fullName: AI_MENTION_NAME }, ...users];
+
   const ask = async (question: string) => {
     if (!question.trim()) return;
     setBusy(true); setErr(''); setAdvice(null);
@@ -869,8 +934,10 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
   const send = async () => {
     const text = body.trim();
     if (!text) return;
-    // Обращение к помощнику человек помечает сам: «@AI» в начале строки.
-    if (/^@ai\b/i.test(text)) return ask(text.replace(/^@ai\b[,:\s]*/i, ''));
+    // Помощника зовут упоминанием, как коллегу: «@AI-помощник, что тут по срокам».
+    // Проверяем в любом месте строки, а не только в начале, — в живой переписке
+    // обращение часто идёт после слов «Борис, глянь, и @AI тоже».
+    if (MENTIONS_AI.test(text)) return ask(text.replace(MENTIONS_AI, ' ').trim() || text);
     setBusy(true);
     try {
       if (editing) {
@@ -1043,13 +1110,17 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
       <div className="comment-input">
         <MentionField
           value={body}
-          users={users}
+          users={mentionUsers}
           onChange={setBody}
           // Упомянутого нужно позвать: без этого «@Юрий, посмотри» он увидит,
           // только если сам зайдёт в задачу.
-          onMention={(userId) => { void api.addTaskParticipant(taskId, userId, 'watcher').catch(() => undefined); }}
+          onMention={(userId) => {
+            // помощник участником задачи не становится — он не человек
+            if (userId === AI_MENTION_ID) return;
+            void api.addTaskParticipant(taskId, userId, 'watcher').catch(() => undefined);
+          }}
           rows={2}
-          placeholder="Сообщение команде, @имя или «@AI …» — помощник знает эту задачу"
+          placeholder="Нажмите @, чтобы позвать человека или помощника"
           onEnter={send}
         />
         <div className="comment-actions">
@@ -1060,9 +1131,6 @@ function DiscussionTab({ taskId, onRefresh }: { taskId: string; onRefresh: () =>
             title="Задать вопрос голосом"
           >
             <Icon name={voice.recording ? 'stop' : 'mic'} size={14} />
-          </button>
-          <button className="btn btn-ghost btn-sm" disabled={busy || !body.trim()} onClick={() => ask(body)} title="Спросить помощника по этой задаче">
-            <Icon name="sparkles" size={14} /> Спросить ИИ
           </button>
           <button className="btn btn-primary btn-sm" disabled={busy || !body.trim()} onClick={send}>
             {busy ? '…' : editing ? 'Сохранить' : 'Отправить'}

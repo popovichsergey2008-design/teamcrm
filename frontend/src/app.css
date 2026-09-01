@@ -692,6 +692,28 @@
 .ai-advice-list { margin: 0 0 8px; padding-left: 18px; font-size: 13px; }
 .ai-advice-suggest { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
 
+/*
+ * Обсуждение в две колонки: слева задача, справа чат.
+ *
+ * Разговор о задаче без самой задачи перед глазами заставляет прыгать по вкладкам
+ * и держать условия в голове. Панель в этом режиме шире обычной — иначе колонки
+ * получаются по двадцать символов и читать нечего.
+ */
+.drawer-split { width: min(1100px, 96vw); }
+.task-split { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: 16px; align-items: start; }
+.task-split-info { border-right: 1px solid var(--border); padding-right: 14px; }
+.task-split-chat { min-width: 0; }
+.task-brief { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.task-brief-row { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; }
+.task-brief-row .dim { flex: 0 0 auto; }
+.task-brief-row > span:last-child { text-align: right; }
+.task-brief-desc { font-size: 13px; white-space: pre-line; color: var(--text-dim); max-height: 260px; overflow-y: auto; }
+/* На узком экране колонки складываются: задача сверху, разговор под ней. */
+@media (max-width: 900px) {
+  .task-split { grid-template-columns: 1fr; }
+  .task-split-info { border-right: none; border-bottom: 1px solid var(--border); padding: 0 0 12px; }
+}
+
 /* Чат задачи: цитата, реакции, действия над сообщением, поиск. */
 .chat-search-input { margin-bottom: 8px; }
 .comment-quote {
