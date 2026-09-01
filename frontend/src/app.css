@@ -67,6 +67,19 @@
   font: inherit; text-align: left;
 }
 .nav-search:hover { border-color: var(--border-2); color: var(--text); }
+/* Диктовать можно прямо отсюда: искать и ставить задачи голосом — одно движение,
+   а не «открой окно, найди микрофон, нажми». Кнопка отдельная, потому что кнопку
+   внутрь кнопки не вложить. */
+.nav-search-row { display: flex; gap: var(--sp-1); }
+.nav-search-row .nav-search { flex: 1; min-width: 0; }
+.nav-search-mic {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 10px; border-radius: var(--radius-sm); cursor: pointer;
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.nav-search-mic:hover { border-color: var(--border-2); color: var(--text); }
+.nav-search-mic:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.nav-collapsed .nav-search-mic { display: none; }
 .nav-search .nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-kbd {
   font-size: 10px; letter-spacing: .04em; color: var(--text-mut);
@@ -96,7 +109,7 @@
 /* созвон из панели — одна кнопка во всю ширину; приглашение живёт внутри созвона */
 .nav-call-row { display: flex; }
 /* В панели кнопка растянута на всю ширину; «человек +» рядом остаётся по размеру. */
-.nav-call-row .call-starter { display: flex; width: 100%; }
+.nav-call-row .call-starter { display: flex; width: 100%; align-items: stretch; }
 .nav-call-row .call-starter-call { flex: 1 1 auto; justify-content: center; }
 /* Попап состава открывается влево: панель прижата к краю экрана. */
 .nav-call-row .call-starter-pop, .nav-call-row .guest-link-pop { right: auto; left: 0; }
@@ -926,7 +939,9 @@
  * кнопки читались как два разных инструмента; склеенные, они читаются как кнопка
  * с выбором — то же, что «Завершить» с уточнением у задачи.
  */
-.call-starter { position: relative; display: inline-flex; align-items: center; }
+/* Половинки тянутся до общей высоты: у одной внутри текст, у другой только значок,
+   и по своим размерам они расходились на пиксель — склейка выглядела кривой. */
+.call-starter { position: relative; display: inline-flex; align-items: stretch; }
 .call-starter-add {
   padding: 5px 9px; border-radius: var(--radius-sm) 0 0 var(--radius-sm);
   border-right-color: transparent;

@@ -120,7 +120,8 @@ export function Sidebar({
   onSwitchOrg: (tenantId: string) => void;
   onNewTask: () => void;
   onVoiceTask: () => void;
-  onSearch: () => void;
+  /** voice — открыть окно поиска сразу со включённым микрофоном. */
+  onSearch: (voice?: boolean) => void;
   onJoinCall: () => void;
   /** Начать созвон из любого раздела — панель видна везде. */
   onStartCall: (opts: { memberIds: string[]; withAi: boolean }) => void;
@@ -297,11 +298,21 @@ export function Sidebar({
             </button>
           </div>
 
-          <button className="nav-search" onClick={onSearch} title="Поиск и команды (Ctrl+K)">
-            <Icon name="search" size={16} />
-            <span className="nav-label">Найти или сказать…</span>
-            <kbd className="nav-kbd">Ctrl K</kbd>
-          </button>
+          <div className="nav-search-row">
+            <button className="nav-search" onClick={() => onSearch()} title="Поиск и команды (Ctrl+K)">
+              <Icon name="search" size={16} />
+              <span className="nav-label">Поиск…</span>
+              <kbd className="nav-kbd">Ctrl K</kbd>
+            </button>
+            <button
+              className="nav-search-mic"
+              onClick={() => onSearch(true)}
+              title="Сказать, что найти или что сделать"
+              aria-label="Голосовой поиск"
+            >
+              <Icon name="mic" size={16} />
+            </button>
+          </div>
 
           {/* Голос — отдельной кнопкой, а не режимом внутри окна: по ТЗ надиктовать
               задачу нужно одним движением, а не «открыть, найти микрофон, нажать». */}

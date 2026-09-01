@@ -256,7 +256,7 @@ export function App() {
         onSwitchOrg={onSwitchOrg}
         onNewTask={() => setNl({})}
         onVoiceTask={() => setNl({ voice: true })}
-        onSearch={() => setPaletteOpen({})}
+        onSearch={(voice) => setPaletteOpen({ voice })}
         onHoverSection={(section) => {
           if (section === 'focus') prefetchFocus();
           if (section === 'radar' && canManage) prefetchRadar();
