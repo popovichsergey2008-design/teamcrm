@@ -50,6 +50,8 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
       focus: { decide: 0, today: 0 },
       calendar: { pending: 0 },
       radar: { risks: 0 },
+      // «новое в моих задачах» — такой же счётчик панели, как остальные
+      tasks: { unread: 0 },
     });
 
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Счётчики' }).expect(201)).body.data;
