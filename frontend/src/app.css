@@ -42,16 +42,31 @@
 .nav-collapsed .nav-org-select { opacity: 0; pointer-events: none; }
 .nav-collapsed .nav-item, .nav-collapsed .nav-search, .nav-collapsed .nav-new, .nav-collapsed .nav-user { justify-content: center; }
 
+/*
+  Верх панели: организация, поиск, создание, разговор — четыре ровные строки.
+
+  Высоту каждая считала по своему содержимому (у поиска отступы, у «Новой задачи»
+  свои, у созвона третьи), и строки шли лесенкой с разной шириной краёв. Одна
+  высота на всех: взгляд идёт по прямой, а не по ступенькам.
+*/
 .nav-top { display: flex; flex-direction: column; gap: var(--sp-2); padding-bottom: var(--sp-3); }
-.nav-org { display: flex; align-items: center; gap: var(--sp-2); position: relative; }
+.nav-top .nav-search, .nav-top .nav-search-mic, .nav-top .nav-new, .nav-top .nav-new-mic,
+.nav-call-row .btn {
+  height: 34px; padding-top: 0; padding-bottom: 0;
+}
+.nav-org { display: flex; align-items: center; gap: var(--sp-2); position: relative; height: 34px; }
 .nav-org-mark {
   width: 28px; height: 28px; flex-shrink: 0; border-radius: 8px;
   background: var(--accent-2); color: var(--on-accent);
   display: grid; place-items: center; font-weight: 700; font-size: var(--fs-sm);
 }
+/* Название организации читается заголовком панели: рамки и фона у него нет,
+   но стрелка остаётся — по ней видно, что организацию можно сменить. */
 .nav-org-select {
   flex: 1; min-width: 0; background: none; border: none; color: var(--text);
-  font-weight: 600; padding: 4px 2px; border-radius: var(--radius-sm); cursor: pointer;
+  font-weight: 600; font-size: var(--fs-sm); padding: 4px 2px;
+  border-radius: var(--radius-sm); cursor: pointer;
+  text-overflow: ellipsis;
 }
 .nav-org-select:hover { background: var(--bg-elev-2); }
 .nav-collapse {
@@ -62,7 +77,7 @@
 
 .nav-search {
   display: flex; align-items: center; gap: var(--sp-2); width: 100%;
-  padding: var(--sp-2) 10px; border-radius: var(--radius-sm); cursor: pointer;
+  padding: 0 10px; border-radius: var(--radius-sm); cursor: pointer;
   background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
   font: inherit; text-align: left;
 }
@@ -85,7 +100,7 @@
   font-size: 10px; letter-spacing: .04em; color: var(--text-mut);
   border: 1px solid var(--border-2); border-radius: 5px; padding: 1px 5px; white-space: nowrap;
 }
-.nav-new { width: 100%; padding: 10px 12px; font-weight: 600; }
+.nav-new { width: 100%; padding: 0 12px; font-weight: 600; }
 
 /* основное меню */
 .nav-main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding-top: var(--sp-2); border-top: 1px solid var(--border); }
@@ -107,14 +122,16 @@
 .task-num:hover { color: var(--accent); border-color: var(--accent-line); }
 
 /* созвон из панели — одна кнопка во всю ширину; приглашение живёт внутри созвона */
-.nav-call-row { display: flex; }
-/* В панели кнопка растянута на всю ширину; «человек +» рядом остаётся по размеру. */
-.nav-call-row .call-starter { display: flex; width: 100%; align-items: stretch; }
+/* Созвон и гость — одна строка: выбор между ними лишь «свой или со стороны». */
+.nav-call-row { display: flex; gap: var(--sp-1); position: relative; }
+.nav-call-row .call-starter { display: flex; flex: 1 1 auto; min-width: 0; align-items: stretch; }
 .nav-call-row .call-starter-call { flex: 1 1 auto; justify-content: center; }
-/* Попап состава открывается влево: панель прижата к краю экрана. */
+.nav-call-row .guest-link-btn { flex: 0 0 auto; }
+/* Всплывающие окна открываются от ЛЕВОГО края панели, а не от своей кнопки:
+   у прижатой к краю экрана панели вправо места нет, а от кнопки справа окно
+   уехало бы за экран. */
+.nav-call-row .guest-link-btn { position: static; }
 .nav-call-row .call-starter-pop, .nav-call-row .guest-link-pop { right: auto; left: 0; }
-.nav-call-row .guest-link-btn { width: 100%; }
-.nav-call-row .guest-link-btn > .btn { width: 100%; justify-content: center; }
 
 /* приглашение сотрудника и ссылка для гостя — в шапке созвона */
 .call-invite { position: relative; display: inline-flex; align-items: center; gap: 6px; }
@@ -1795,7 +1812,7 @@
 /* «Новая задача» + микрофон одной строкой */
 .nav-new-row { display: flex; gap: var(--sp-1); }
 .nav-new-row .nav-new { flex: 1; min-width: 0; }
-.nav-new-mic { flex-shrink: 0; padding: 10px; }
+.nav-new-mic { flex-shrink: 0; padding: 0 10px; }
 .nav-collapsed .nav-new-mic { display: none; }
 
 /* риск-счётчик отличается от непрочитанного: это не «новое», а «горит» */

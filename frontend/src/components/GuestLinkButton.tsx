@@ -19,12 +19,14 @@ interface ChatOption {
  * записи, ни доступа к проектам, ни к остальной переписке. Он ждёт в комнате ожидания,
  * пока его не впустят, а отзыв ссылки выводит его немедленно.
  */
-export function GuestLinkButton({ chats = [], chatId, compact }: {
+export function GuestLinkButton({ chats = [], chatId, compact, label: caption }: {
   /** Чаты для выбора: ссылка подписывается разговором, ради которого выдана. */
   chats?: ChatOption[];
   /** Открыли из конкретного чата — он и предлагается по умолчанию. */
   chatId?: string | null;
   compact?: boolean;
+  /** Подпись задаёт место: в тесной панели рядом с «Созвоном» хватает одного слова. */
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState('');
@@ -77,7 +79,7 @@ export function GuestLinkButton({ chats = [], chatId, compact }: {
         aria-expanded={open}
         title="Ссылка для человека со стороны: он войдёт в браузере, без регистрации"
       >
-        <Icon name="link" size={15} /> {compact ? 'Ссылка' : 'Внешняя ссылка'}
+        <Icon name="link" size={15} /> {caption ?? (compact ? 'Ссылка' : 'Внешняя ссылка')}
       </button>
 
       {open && (
