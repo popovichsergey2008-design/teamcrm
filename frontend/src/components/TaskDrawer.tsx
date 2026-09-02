@@ -18,8 +18,10 @@ interface Props {
   task: Task;
   users: User[];
   columns?: { id: string; name: string }[];
-  canManage?: boolean;
-  /** Удаление задачи — у всех сотрудников; вкладка «Агент» и прочее остаётся за canManage. */
+  /**
+   * Удаление задачи. Отдельным правом, а не общим «управлением»: раньше одна галка
+   * прятала и удаление, и ИИ-агента, и человек не понимал, чего именно ему не хватает.
+   */
   canDelete?: boolean;
   timerActive: boolean;
   onToggleTimer: (taskId: string) => void;
@@ -49,7 +51,7 @@ function orderColumns(columns: { id: string; name: string }[], mode: 'finish' | 
     .sort((a, b) => (mode === 'finish' ? a.rank - b.rank : b.rank - a.rank));
 }
 
-export function TaskDrawer({ task, users, columns = [], canManage, canDelete, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
+export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
   const [estimate, setEstimate] = useState(task.estimate_hours ?? '');
@@ -390,10 +392,13 @@ export function TaskDrawer({ task, users, columns = [], canManage, canDelete, ti
           <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Обзор</button>
           <button className={`tab ${tab === 'checklist' ? 'active' : ''}`} onClick={() => setTab('checklist')}>Чеклист</button>
           <button className={`tab ${tab === 'files' ? 'active' : ''}`} onClick={() => setTab('files')}>Файлы</button>
-          {canManage && <button className={`tab ${tab === 'agent' ? 'active' : ''}`} onClick={() => setTab('agent')}><Icon name="robot" size={14} /> Агент</button>}
+          {/* ИИ-агент доступен всем сотрудникам: сервер их и так пускал, пряталась
+              только вкладка — человек видел у руководителя возможность, которой у него
+              «нет», хотя на деле она была. */}
+          <button className={`tab ${tab === 'agent' ? 'active' : ''}`} onClick={() => setTab('agent')}><Icon name="robot" size={14} /> Агент</button>
         </div>
 
-        {tab === 'agent' && canManage && <AgentTab taskId={task.id} assigned={!!task.agent_assigned} onRefresh={onRefresh} />}
+        {tab === 'agent' && <AgentTab taskId={task.id} assigned={!!task.agent_assigned} onRefresh={onRefresh} />}
 
         {tab === 'overview' && (
           <>

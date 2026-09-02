@@ -78,14 +78,12 @@ export function BoardPage({ initial, onNavigate }: {
     рисовались, и понять, почему у коллеги они есть, а у тебя нет, было невозможно.
 
     Доской управляют все, кто по ней работает: порядок и названия колонок, добавление,
-    архив, создание проекта — и удаление тоже. Удаление сотрудникам открыл заказчик
-    отдельным решением; удерживает от случайности подтверждение, а не роль.
+    архив, создание и удаление проекта, удаление задач и ИИ-агент в карточке. От
+    случайного нажатия удерживает подтверждение, а не роль.
 
-    За ролью остаётся ИИ-агент в карточке — это не про доску, а про то, кто распоряжается
-    расходом на модель.
+    Клиент сюда не попадает вовсе — у него свой портал.
   */
   const canManageBoard = !isClient;
-  const canManageProjects = user?.role === 'owner' || user?.role === 'manager';
   const showFinance = !isClient && MONETIZATION_ENABLED;
 
   const [projects, setProjects] = useState<Project[]>([]);
@@ -535,7 +533,6 @@ export function BoardPage({ initial, onNavigate }: {
           task={openTask}
           users={users}
           columns={board?.columns.map((c) => ({ id: c.id, name: c.name })) ?? []}
-          canManage={canManageProjects}
           canDelete={canManageBoard}
           timerActive={activeTimerTask === openTask.id}
           onToggleTimer={toggleTimer}
