@@ -771,8 +771,17 @@
   background: var(--bg-elev); border-left: 1px solid var(--border);
   padding: 20px; box-shadow: var(--shadow-lg);
 }
-.drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .drawer-head h3 { margin: 0; font-size: 18px; }
+/* Крестик крупнее рядовой кнопки: карточка занимает пол-экрана, и выход из неё
+   не должен требовать прицеливания. */
+.drawer-close {
+  flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px;
+  border-radius: var(--radius-sm); cursor: pointer;
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.drawer-close:hover { background: var(--hover); border-color: var(--border-2); color: var(--text); }
+.drawer-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .drawer-desc { margin: 0 0 14px; }
 .drawer-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
 /* Панель таймера в задаче: слева — состояние, справа — обе кнопки сразу,
@@ -1418,8 +1427,15 @@
 /* «Завершить задачу»: заметное зелёное действие + выбор целевой колонки */
 /* строка главного действия карточки — под заголовком, а не сбоку от него */
 .task-actions-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-/* удаление стоит с краю и не окрашено до наведения: это не рядовое действие */
-.btn-delete { margin-left: auto; color: var(--text-dim); }
+/*
+  «Удалить» стоит рядом с «Завершить», а не у противоположного края.
+
+  Раньше кнопку отбрасывало вправо (margin-left: auto), и на широкой карточке она
+  оказывалась в другом конце строки — глазами её искали. Оба действия закрывают работу
+  с задачей, и место у них одно. Цветом до наведения по-прежнему не выделяется: рядовым
+  действием удаление от соседства не становится.
+*/
+.btn-delete { color: var(--text-dim); }
 .btn-delete:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
 /* «Завершить» и «…» — одно действие с уточнением, поэтому склеены в одну кнопку */
 .finish-group { display: inline-flex; }

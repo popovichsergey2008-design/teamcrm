@@ -292,7 +292,11 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               #{task.id}
             </button>
           </h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+          {/* Закрытие — крупной кнопкой: карточка на пол-экрана, и уходить из неё
+              человек должен уверенным движением, а не целясь в мелкий значок. */}
+          <button className="drawer-close" onClick={onClose} title="Закрыть карточку" aria-label="Закрыть карточку">
+            <Icon name="close" size={20} />
+          </button>
         </div>
 
         {/* Завершение — отдельной строкой под заголовком. Сбоку от названия кнопка
