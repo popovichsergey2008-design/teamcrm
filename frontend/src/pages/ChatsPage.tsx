@@ -11,6 +11,9 @@ import { GroupChatModal } from '../components/GroupChatModal';
 import { CallStarter } from '../components/CallStarter';
 import { GuestLinkButton } from '../components/GuestLinkButton';
 import { GroupManageModal } from '../components/GroupManageModal';
+import { ChatAttachment } from '../components/ChatAttachment';
+import { Lightbox } from '../components/Lightbox';
+import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import type { User } from '../types';
 
 interface Chat {
@@ -54,6 +57,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const [manageOpen, setManageOpen] = useState(false);
   const [perm, setPerm] = useState(notificationPermission());
   const [err, setErr] = useState('');
+  /** Файл, выбранный или вставленный, но ещё не отправленный: его видно и можно подписать. */
+  const [pending, setPending] = useState<{ file: File; url: string } | null>(null);
+  const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
 
   const reload = useCallback(
@@ -125,35 +131,86 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     return () => onActiveChat?.(null); // ушли из раздела — уведомления снова нужны
   }, [activeId, onActiveChat]);
 
+  /**
+   * Скриншот из буфера — как в мессенджерах: Ctrl+V, и картинка в переписке.
+   *
+   * Слушаем всё окно, а не поле ввода: снимок делают, возвращаются в чат и жмут
+   * Ctrl+V, не целясь курсором в строку сообщения. Вставку текста это не задевает —
+   * реагируем, только если в буфере действительно файл-картинка.
+   */
+  useEffect(() => {
+    if (!activeId) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const file = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'));
+      if (!file) return;
+      e.preventDefault();
+      attach(file);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  // сменили чат — недоотправленное вложение к новому собеседнику отношения не имеет
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => clearPending, [activeId]);
+
   // лента всегда прокручена вниз: читают последнее, а не начало переписки
   useEffect(() => {
     const el = feedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  /**
+   * Отправка.
+   *
+   * Одно действие на оба случая: есть вложение — уходит файл с подписью, нет —
+   * обычное сообщение. Иначе человеку приходится помнить, какой кнопкой отправлять
+   * картинку, а какой текст.
+   */
   const send = async () => {
     const text = draft.trim();
-    if (!text || !activeId) return;
+    if (!activeId || (!text && !pending)) return;
+    const file = pending?.file ?? null;
     setDraft('');
+    clearPending();
     try {
-      const message = await api.sendChatMessage(activeId, text);
+      const message = file
+        ? await api.sendChatFile(activeId, file, text)
+        : await api.sendChatMessage(activeId, text);
       appendMessage(message);
       reload();
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Сообщение не отправлено');
+      setErr(e instanceof ApiError ? e.message : file ? 'Файл не отправлен' : 'Сообщение не отправлено');
       setDraft(text); // не теряем набранное
+      if (file) attach(file); // и вложение возвращаем в очередь — переснимать экран обидно
     }
   };
 
-  const attach = async (file: File) => {
-    if (!activeId) return;
-    try {
-      const message = await api.sendChatFile(activeId, file, draft.trim());
-      setDraft('');
-      appendMessage(message);
-      reload();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Файл не отправлен'); }
+  /**
+   * Взять файл к отправке.
+   *
+   * Показываем его человеку и ждём — как в мессенджерах: скриншот вставляют, потом
+   * подписывают, и только потом отправляют. Раньше файл улетал сразу по выбору, и
+   * подписать его было нечем.
+   *
+   * Скриншот из буфера приходит без имени («image.png») — даём ему дату и время,
+   * иначе в списке файлов копится десяток одинаковых.
+   */
+  const attach = (file: File) => {
+    const named = isAnonymousClipboardName(file.name) && file.type.startsWith('image/')
+      ? new File([file], screenshotName(new Date(), file.type), { type: file.type })
+      : file;
+    setPending((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return { file: named, url: isImageName(named.name) ? URL.createObjectURL(named) : '' };
+    });
   };
+
+  const clearPending = () => setPending((prev) => {
+    if (prev?.url) URL.revokeObjectURL(prev.url);
+    return null;
+  });
 
   const writeTo = async (userId: string) => {
     try {
@@ -338,10 +395,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                       <div className={`chat-msg ${mine ? 'mine' : ''}`}>
                         {!mine && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
                         {m.body && <div className="chat-body">{m.body}</div>}
+                        {/* Ссылкой файл открыть было нельзя: он за авторизацией и отдавал 401.
+                            Картинка теперь видна сразу, остальное скачивается по нажатию. */}
                         {m.file_id && (
-                          <a className="chat-file" href={`/api/files/${m.file_id}`} target="_blank" rel="noreferrer">
-                            <Icon name="paperclip" size={14} /> {m.file_name}
-                          </a>
+                          <ChatAttachment
+                            fileId={m.file_id}
+                            fileName={m.file_name ?? 'файл'}
+                            onOpen={(url, name, mime) => setPreview({ url, name, mime })}
+                          />
                         )}
                       </div>
                       <div className="chat-time">{timeOf(m.created_at)}</div>
@@ -351,19 +412,47 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               })}
             </div>
 
-            <div className="chat-input">
+            {/* Вложение перед отправкой: видно, что именно уйдёт, и можно подписать.
+                Отправлять вслепую — верный способ прислать не тот скриншот. */}
+            {pending && (
+              <div className="chat-pending">
+                {pending.url
+                  ? <img className="chat-pending-img" src={pending.url} alt={pending.file.name} />
+                  : <Icon name="paperclip" size={16} />}
+                <span className="chat-pending-name">
+                  {pending.file.name} <span className="dim">· {humanSize(pending.file.size)}</span>
+                </span>
+                <button className="btn btn-ghost btn-sm" onClick={clearPending} title="Убрать вложение" aria-label="Убрать вложение">
+                  <Icon name="close" size={14} />
+                </button>
+              </div>
+            )}
+
+            <div
+              className="chat-input"
+              // Файл можно и перетащить — то же действие, что и вставка из буфера.
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); attach(f); } }}
+            >
               <label className="btn btn-ghost btn-sm" title="Прикрепить файл" style={{ cursor: 'pointer' }}>
                 <Icon name="paperclip" size={16} />
                 <input type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) attach(f); e.currentTarget.value = ''; }} />
               </label>
               <input
                 className="input"
-                placeholder="Сообщение…"
+                placeholder={pending ? 'Подпись к вложению…' : 'Сообщение…'}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
               />
-              <button className="btn btn-primary btn-sm" onClick={send} disabled={!draft.trim()} title="Отправить"><Icon name="send" /></button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={send}
+                disabled={!draft.trim() && !pending}
+                title="Отправить"
+              >
+                <Icon name="send" />
+              </button>
             </div>
           </>
         )}
@@ -398,6 +487,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
             openChat(chatId); // сразу открываем созданную группу — иначе её надо искать в списке
           }}
         />
+      )}
+
+      {/* Картинку смотрят целиком, не уходя из переписки. Блоб уже загружен лентой —
+          повторно за ним не ходим, поэтому просмотр открывается мгновенно. */}
+      {preview && (
+        <Lightbox url={preview.url} name={preview.name} mime={preview.mime} onClose={() => setPreview(null)} />
       )}
     </div>
   );

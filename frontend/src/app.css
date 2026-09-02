@@ -1388,7 +1388,31 @@
 .chat-msg.mine { margin-left: auto; background: var(--accent-2); border-color: var(--accent); }
 .chat-author { font-size: 11px; color: var(--accent); margin-bottom: 2px; }
 .chat-body { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
-.chat-file { display: inline-block; font-size: 13px; margin-top: 4px; }
+/* Файл больше не ссылка, а кнопка: он лежит за авторизацией и по прямому адресу
+   отдавал 401 — скачиваем с токеном. Цвет берём у плашки, чтобы читалось на обеих. */
+.chat-file {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; padding: 0;
+  font-size: 13px; background: none; border: none; color: inherit;
+  text-decoration: underline; cursor: pointer;
+}
+.chat-file:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Картинка видна прямо в переписке — обсуждают то, что на ней, а не имя файла. */
+.chat-img {
+  display: block; margin-top: 4px; padding: 0; border: none; background: none;
+  border-radius: 10px; overflow: hidden; line-height: 0; cursor: pointer;
+}
+.chat-img img { display: block; max-width: 320px; max-height: 320px; border-radius: 10px; }
+.chat-img:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Место под картинку занято, пока она грузится: иначе лента прыгает под курсором. */
+.chat-img-wait { width: 200px; height: 120px; background: var(--bg-elev-2); }
+
+/* Вложение до отправки: что уйдёт, видно заранее, и к нему можно написать подпись. */
+.chat-pending {
+  display: flex; align-items: center; gap: 10px; margin: 0 16px; padding: 8px 10px;
+  background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.chat-pending-img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; }
+.chat-pending-name { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Строка сообщения: плашка и под ней время. Внутри плашки время было серым по цветному
    фону — не читалось вовсе и занимало угол; снаружи оно спокойно и видно. */
 .chat-line { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 6px; }

@@ -554,6 +554,30 @@ test('в свёрнутом окне видно того, кто говорит'
   assert.equal(miniNote(3, true), 'на связи: 3 · идёт запись');
 });
 
+// ── вложения в переписке ──────────────────────────────────────────────────────
+test('скриншот из буфера получает имя с датой, картинка узнаётся по расширению', async () => {
+  const { screenshotName, isAnonymousClipboardName, isImageName, humanSize } = await load('lib/attachments.ts');
+
+  assert.equal(screenshotName(new Date(2026, 8, 2, 14, 33, 7), 'image/png'), 'Снимок 2026-09-02 14-33-07.png');
+  assert.equal(screenshotName(new Date(2026, 0, 5, 9, 4, 1), 'image/jpeg'), 'Снимок 2026-01-05 09-04-01.jpg');
+  assert.equal(screenshotName(new Date(2026, 0, 5, 9, 4, 1), 'image/непонятно').endsWith('.png'), true);
+
+  // переименовываем только безымянное из буфера
+  assert.equal(isAnonymousClipboardName('image.png'), true);
+  assert.equal(isAnonymousClipboardName(''), true);
+  assert.equal(isAnonymousClipboardName(null), true);
+  assert.equal(isAnonymousClipboardName('смета за август.pdf'), false);
+  assert.equal(isAnonymousClipboardName('Снимок экрана 2026-09-01.png'), false, 'своё имя не трогаем');
+
+  assert.equal(isImageName('a.PNG'), true);
+  assert.equal(isImageName('отчёт.pdf'), false);
+  assert.equal(isImageName('без-расширения'), false);
+
+  assert.equal(humanSize(900), '900 Б');
+  assert.equal(humanSize(348 * 1024), '348 КБ');
+  assert.equal(humanSize(3 * 1024 * 1024), '3.0 МБ');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
