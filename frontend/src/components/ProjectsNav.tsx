@@ -27,7 +27,7 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
   currentId: string | null;
   /** Архив и создание проекта: обратимые действия — работа всех, кто ведёт проекты. */
   canManage: boolean;
-  /** Удаление проекта не отменишь — только владелец и руководитель. */
+  /** Удаление проекта: открыто сотрудникам по решению заказчика, удерживает подтверждение. */
   canDelete?: boolean;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);

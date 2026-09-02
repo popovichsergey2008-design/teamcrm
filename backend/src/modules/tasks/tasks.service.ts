@@ -150,18 +150,16 @@ export class TasksService {
    */
   async remove(
     tenantId: string, id: string, actorId: string | null = null,
-    actor?: { role: string; confirmTimeLoss?: boolean },
+    actor?: { confirmTimeLoss?: boolean },
   ): Promise<{ deleted: true }> {
     const task = await this.repo.findById(tenantId, id);
     if (!task) throw AppException.notFound('Task not found');
 
+    // Учтённое время больше не запрещает удаление никому: заказчик решил, что задачи
+    // удаляют все сотрудники. Осталось предупреждение в два шага — оно не про права,
+    // а про то, что задача исчезнет навсегда, тогда как часы останутся в себестоимости.
     const hours = await this.repo.loggedHours(tenantId, id);
     if (hours > 0) {
-      if (actor && actor.role !== 'owner') {
-        throw AppException.forbidden(
-          'По задаче учтено рабочее время — такую задачу удаляет только владелец компании.',
-        );
-      }
       if (!actor?.confirmTimeLoss) {
         throw AppException.conflict(
           `По задаче учтено ${formatHours(hours)} рабочего времени. Задача исчезнет с доски, `

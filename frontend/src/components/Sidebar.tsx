@@ -429,7 +429,7 @@ export function Sidebar({
                   <ProjectsNav
                     currentId={route.projectId ?? null}
                     canManage={user.role !== 'client'}
-                    canDelete={user.role === 'owner' || user.role === 'manager'}
+                    canDelete={user.role !== 'client'}
                   />
                 )}
                 {/* подпункты — только у открытого раздела: панель должна оставаться короткой */}

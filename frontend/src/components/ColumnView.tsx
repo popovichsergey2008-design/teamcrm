@@ -9,7 +9,7 @@ interface Props {
   users?: User[];
   canEdit: boolean;
   canManage?: boolean;
-  /** Удаление колонки не отменишь — оно остаётся за владельцем и руководителем. */
+  /** Удаление колонки: у всех, кто ведёт доску. Удерживает подтверждение в интерфейсе. */
   canDelete?: boolean;
   isFirst?: boolean;
   isLast?: boolean;

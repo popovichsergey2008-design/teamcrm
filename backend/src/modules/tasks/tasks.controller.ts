@@ -79,15 +79,20 @@ export class TasksController {
    * Удаление задачи целиком. Рядовому сотруднику недоступно: чистка доски — дело ведущего.
    * Задачу с учтённым временем удаляет только владелец и только с подтверждением.
    */
+  /**
+   * Удаление задачи. Доступно любому сотруднику — решение заказчика.
+   *
+   * Подтверждение при учтённом времени осталось: это не ограничение прав, а вопрос
+   * «вы уверены» — часы и их стоимость остаются в себестоимости проекта, но задача
+   * с доски исчезает навсегда, и знать об этом человек должен ДО нажатия.
+   */
   @Delete(':id')
-  @Roles('owner', 'manager')
   remove(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Query('confirmTimeLoss') confirmTimeLoss?: string,
   ) {
     return this.tasks.remove(user.tenantId, id, user.userId, {
-      role: user.role,
       confirmTimeLoss: confirmTimeLoss === '1' || confirmTimeLoss === 'true',
     });
   }

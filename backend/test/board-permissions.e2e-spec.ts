@@ -15,10 +15,11 @@ import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
  * проекта — кнопки просто не рисовались, и понять, почему у коллеги они есть, а у
  * тебя нет, было невозможно.
  *
- * Граница проведена по обратимости: порядок колонок, их названия, добавление колонки,
- * создание проекта и архив — работа тех, кто по доске работает. Удаление колонки и
- * проекта не отменишь, и оно остаётся за владельцем и руководителем. Проверяем обе
- * стороны границы: молчаливое расширение прав опаснее их нехватки.
+ * Решение заказчика: доской управляют все, кто по ней работает, — вплоть до удаления.
+ * От случайного нажатия удерживает подтверждение в интерфейсе, а не роль. Проверка
+ * закрепляет именно это: пройден весь путь сотрудника от переноса колонки до удаления
+ * задачи и проекта. Снаружи организации по-прежнему не видно ничего — это не про
+ * роли, а про изоляцию, и её проверяем отдельно (projects.e2e-spec).
  */
 describe('права сотрудника на доске (e2e)', () => {
   let app: INestApplication;
@@ -39,7 +40,7 @@ describe('права сотрудника на доске (e2e)', () => {
   });
   afterAll(async () => app?.close());
 
-  it('сотрудник ведёт доску, но не удаляет колонки и проекты', async () => {
+  it('сотрудник ведёт доску целиком: колонки, проект, удаление задачи', async () => {
     const owner = (await http.post('/api/auth/register')
       .send({ tenantName: 'Board', email: `bp_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
@@ -57,25 +58,31 @@ describe('права сотрудника на доске (e2e)', () => {
     const board = (await http.get(`/api/projects/${proj.id}/board`).set(M).expect(200)).body.data;
     const first = board.columns[0];
 
-    // порядок колонок: сотрудник двигает
+    // порядок колонок
     await http.post(`/api/projects/${proj.id}/columns/${first.id}/move`).set(M)
       .send({ direction: 'right' }).expect(201);
     const moved = (await http.get(`/api/projects/${proj.id}/board`).set(M).expect(200)).body.data;
     expect(String(moved.columns[0].id)).not.toBe(String(first.id));
 
-    // добавление и переименование — тоже
+    // добавление, переименование и удаление колонки
     const added = (await http.post(`/api/projects/${proj.id}/columns`).set(M)
       .send({ name: 'Проверка' }).expect(201)).body.data;
     await http.patch(`/api/projects/${proj.id}/columns/${added.id}`).set(M)
       .send({ name: 'На проверке' }).expect(200);
+    await http.delete(`/api/projects/${proj.id}/columns/${added.id}`).set(M).expect(200);
 
-    // свой проект и архив — обратимые действия
+    // задача: завёл и удалил
+    const task = (await http.post('/api/tasks').set(M)
+      .send({ projectId: proj.id, title: 'Разовая' }).expect(201)).body.data;
+    await http.delete(`/api/tasks/${task.id}`).set(M).expect(200);
+
+    // свой проект: архив, возврат и удаление
     const own = (await http.post('/api/projects').set(M).send({ name: 'Мой проект' }).expect(201)).body.data;
     await http.post(`/api/projects/${own.id}/archive`).set(M).expect(201);
     await http.post(`/api/projects/${own.id}/unarchive`).set(M).expect(201);
+    await http.delete(`/api/projects/${own.id}`).set(M).expect(200);
 
-    // а необратимое — нет
-    await http.delete(`/api/projects/${proj.id}/columns/${first.id}`).set(M).expect(403);
-    await http.delete(`/api/projects/${own.id}`).set(M).expect(403);
+    const left = (await http.get('/api/projects').set(M).expect(200)).body.data;
+    expect(left.find((p: any) => String(p.id) === String(own.id))).toBeUndefined();
   }, 40000);
 });

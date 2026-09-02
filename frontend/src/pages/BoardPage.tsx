@@ -77,9 +77,12 @@ export function BoardPage({ initial, onNavigate }: {
     не видел ни стрелок переноса колонок, ни архивации проекта — кнопки просто не
     рисовались, и понять, почему у коллеги они есть, а у тебя нет, было невозможно.
 
-    Граница проходит по обратимости: порядок колонок, их названия и архив проекта —
-    работа тех, кто по доске работает. Удаление колонки и проекта не отменишь, оно
-    остаётся за руководителем.
+    Доской управляют все, кто по ней работает: порядок и названия колонок, добавление,
+    архив, создание проекта — и удаление тоже. Удаление сотрудникам открыл заказчик
+    отдельным решением; удерживает от случайности подтверждение, а не роль.
+
+    За ролью остаётся ИИ-агент в карточке — это не про доску, а про то, кто распоряжается
+    расходом на модель.
   */
   const canManageBoard = !isClient;
   const canManageProjects = user?.role === 'owner' || user?.role === 'manager';
@@ -503,7 +506,7 @@ export function BoardPage({ initial, onNavigate }: {
                     users={users}
                     canEdit={!isClient}
                     canManage={canManageBoard}
-                    canDelete={canManageProjects}
+                    canDelete={canManageBoard}
                     isFirst={idx === 0}
                     isLast={idx === board.columns.length - 1}
                     activeTimerTask={activeTimerTask}
@@ -533,6 +536,7 @@ export function BoardPage({ initial, onNavigate }: {
           users={users}
           columns={board?.columns.map((c) => ({ id: c.id, name: c.name })) ?? []}
           canManage={canManageProjects}
+          canDelete={canManageBoard}
           timerActive={activeTimerTask === openTask.id}
           onToggleTimer={toggleTimer}
           onClose={() => setOpenTaskId(null)}

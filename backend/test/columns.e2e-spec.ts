@@ -80,7 +80,7 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
     await http.post(`/api/projects/${proj.id}/columns/reorder`).set(H(tok)).send({ orderedIds: [d, c, b, a, '999999'] }).expect(400);
   });
 
-  it('нельзя удалить последнюю колонку; сотрудник добавляет, но не удаляет', async () => {
+  it('нельзя удалить последнюю колонку; остальным доска доступна сотруднику целиком', async () => {
     const reg = (await http.post('/api/auth/register').send({ tenantName: 'Cols2', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'Б' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Доска2' }).expect(201)).body.data;
@@ -97,14 +97,18 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
 
     // Правило изменилось по живому замечанию: сотрудник не видел ни стрелок переноса
     // колонок, ни архивации проекта — и не мог понять, почему у коллеги они есть.
-    // Граница теперь по обратимости: колонку добавить и переставить можно, удалить —
-    // нет, колонку с задачами не вернёшь.
+    // Доской теперь управляют все, кто по ней работает, удаление колонки в том числе:
+    // держать её запертой рядом с кнопкой удаления всего проекта было бы защитой от ничего.
     const mEmail = `m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(tok)).send({ email: mEmail, role: 'member' }).expect(201)).body.data;
     await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Петя', password: 'memberpass1' }).expect(201);
     const mLogin = (await http.post('/api/auth/login').send({ email: mEmail, password: 'memberpass1' }).expect(201)).body.data;
     const mine = (await http.post(`/api/projects/${proj.id}/columns`).set(H(mLogin.accessToken))
       .send({ name: 'X' }).expect(201)).body.data;
-    await http.delete(`/api/projects/${proj.id}/columns/${mine.id}`).set(H(mLogin.accessToken)).expect(403);
+    await http.delete(`/api/projects/${proj.id}/columns/${mine.id}`).set(H(mLogin.accessToken)).expect(200);
+    // а вот запрет на удаление ПОСЛЕДНЕЙ колонки — не про права, он держится для всех
+    const left = (await http.get(`/api/projects/${proj.id}/board`).set(H(mLogin.accessToken)).expect(200)).body.data;
+    expect(left.columns.length).toBe(1);
+    await http.delete(`/api/projects/${proj.id}/columns/${left.columns[0].id}`).set(H(mLogin.accessToken)).expect(409);
   });
 });

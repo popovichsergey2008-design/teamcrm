@@ -108,10 +108,11 @@ describe('Удаление задачи с учтённым временем (e2
     expect(pointsBefore).toBeGreaterThan(0);
     expect(costBefore).toBeGreaterThan(0);
 
-    // 1. Руководителю такое удаление недоступно — решение о себестоимости принимает владелец
-    await http.delete(`/api/tasks/${task.id}`).set(H(bossToken)).expect(403);
+    // 1. Учтённое время больше не запирает задачу за владельцем: удалять их могут все
+    //    сотрудники. Но предупреждение получает каждый — и руководитель тоже.
+    await http.delete(`/api/tasks/${task.id}`).set(H(bossToken)).expect(409);
 
-    // 2. Владельцу сначала говорят, сколько по задаче учтено
+    // 2. И владельцу сначала говорят, сколько по задаче учтено
     const asked = await http.delete(`/api/tasks/${task.id}`).set(H(ownerToken)).expect(409);
     expect(asked.body.error.details.timeLoss.seconds).toBeGreaterThan(0);
     expect(asked.body.error.details.timeLoss.text).toBeTruthy();

@@ -48,7 +48,7 @@ describe('Enhancements v1 — Project delete (e2e)', () => {
     await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(404);
   });
 
-  it('member не может удалить проект (403); чужой/несуществующий — 404', async () => {
+  it('проект удаляет и сотрудник; чужой/несуществующий — 404', async () => {
     const reg = (await http.post('/api/auth/register').send({ tenantName: 'Del2', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Защищённый' }).expect(201)).body.data;
@@ -58,14 +58,15 @@ describe('Enhancements v1 — Project delete (e2e)', () => {
     const inv = (await http.post('/api/invites').set(H(tok)).send({ email: memberEmail, role: 'member' }).expect(201)).body.data;
     await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Петя', password: 'memberpass1' }).expect(201);
     const mLogin = (await http.post('/api/auth/login').send({ email: memberEmail, password: 'memberpass1' }).expect(201)).body.data;
-    await http.delete(`/api/projects/${proj.id}`).set(H(mLogin.accessToken)).expect(403);
 
-    // другая организация не видит проект → 404
+    // другая организация не видит проект → 404, и это важнее любых ролей внутри своей
     const other = (await http.post('/api/auth/register').send({ tenantName: 'Other', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
     await http.delete(`/api/projects/${proj.id}`).set(H(other.accessToken)).expect(404);
 
-    // проект всё ещё на месте у владельца
+    // Удаление проекта открыто сотрудникам — решение заказчика. От случайности
+    // удерживает подтверждение в интерфейсе, а не роль.
+    await http.delete(`/api/projects/${proj.id}`).set(H(mLogin.accessToken)).expect(200);
     const list = (await http.get('/api/projects').set(H(tok)).expect(200)).body.data;
-    expect(list.find((p: any) => String(p.id) === String(proj.id))).toBeDefined();
+    expect(list.find((p: any) => String(p.id) === String(proj.id))).toBeUndefined();
   });
 });

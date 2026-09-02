@@ -46,8 +46,13 @@ export class ProjectsController {
     return this.projects.create(user.tenantId, dto);
   }
 
+  /**
+   * Удаление проекта — тоже любому сотруднику, по решению заказчика.
+   *
+   * Действие необратимое: вместе с проектом уходят задачи, обсуждения и вложения.
+   * Единственное, что его сдерживает, — подтверждение в интерфейсе.
+   */
   @Delete(':id')
-  @Roles('owner', 'manager')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.projects.remove(user.tenantId, id);
   }
@@ -91,8 +96,9 @@ export class ProjectsController {
     return this.projects.moveColumn(user.tenantId, id, colId, dto.direction);
   }
 
+  /* Колонку тоже: держать её запертой, когда рядом можно удалить весь проект
+     вместе со всеми колонками, было бы защитой от ничего. */
   @Delete(':id/columns/:colId')
-  @Roles('owner', 'manager')
   deleteColumn(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('colId') colId: string) {
     return this.projects.deleteColumn(user.tenantId, id, colId);
   }

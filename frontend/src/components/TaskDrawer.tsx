@@ -19,6 +19,8 @@ interface Props {
   users: User[];
   columns?: { id: string; name: string }[];
   canManage?: boolean;
+  /** Удаление задачи — у всех сотрудников; вкладка «Агент» и прочее остаётся за canManage. */
+  canDelete?: boolean;
   timerActive: boolean;
   onToggleTimer: (taskId: string) => void;
   onClose: () => void;
@@ -47,7 +49,7 @@ function orderColumns(columns: { id: string; name: string }[], mode: 'finish' | 
     .sort((a, b) => (mode === 'finish' ? a.rank - b.rank : b.rank - a.rank));
 }
 
-export function TaskDrawer({ task, users, columns = [], canManage, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
+export function TaskDrawer({ task, users, columns = [], canManage, canDelete, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
   const [estimate, setEstimate] = useState(task.estimate_hours ?? '');
@@ -295,7 +297,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
 
         {/* Завершение — отдельной строкой под заголовком. Сбоку от названия кнопка
             жалась к «закрыть» и терялась тем сильнее, чем длиннее название задачи. */}
-        {(isDone || targets.length > 0 || canManage) && (
+        {(isDone || targets.length > 0 || canDelete) && (
           <div className="task-actions-row">
             {targets.length > 0 && (
               <div className="finish-group">
@@ -325,7 +327,7 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
               </div>
             )}
             {isDone && <span className="badge badge-ok" title="Задача закрыта"><Icon name="check" size={12} /> завершена</span>}
-            {canManage && (
+            {canDelete && (
               <button className="btn btn-ghost btn-sm btn-delete" onClick={() => removeTask()} disabled={moving} title="Удалить задачу без возможности восстановления">
                 <Icon name="trash" size={14} /> Удалить
               </button>
