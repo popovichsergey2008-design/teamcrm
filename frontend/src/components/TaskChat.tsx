@@ -1,0 +1,522 @@
+import { useEffect, useRef, useState } from 'react';
+import { EmptyState } from './EmptyState';
+import { Icon } from './Icon';
+import { MentionField } from './MentionField';
+import { VoiceStatus } from './VoiceStatus';
+import { ChatAttachment } from './ChatAttachment';
+import { Lightbox } from './Lightbox';
+import { api, ApiError } from '../lib/api';
+import { dayLabel, sameGroup, splitMessage } from '../lib/chat-text';
+import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
+import { useVoiceInput } from '../hooks/useVoiceInput';
+import { useAuth } from '../state/auth';
+
+/** Реакции: ответить «ок» знаком, не засоряя обсуждение и не будя участников. */
+const REACTIONS = ['👍', '✅', '🔥', '❓', '👀', '🙏'];
+
+/**
+ * Помощник в списке упоминаний.
+ *
+ * Зовут его так же, как коллегу, — через «@». Отдельная кнопка делала из ИИ
+ * инструмент в стороне от разговора, хотя он участник этого разговора.
+ */
+const AI_MENTION_ID = 'ai';
+const AI_MENTION_NAME = 'AI-помощник';
+/** «@AI», «@AI-помощник», «@ai,» — человек пишет как придётся. */
+const MENTIONS_AI = /@(ai|ии|ai-помощник)\b/gi;
+
+/** Частые вопросы помощнику — чтобы не формулировать заново то, что спрашивают всегда. */
+const QUICK_ASKS: { label: string; ask: string }[] = [
+  { label: 'Объяснить задачу', ask: 'Объясни коротко и простыми словами, что от меня требуется по этой задаче.' },
+  { label: 'Составить план', ask: 'Предложи порядок действий по этой задаче.' },
+  { label: 'Что осталось', ask: 'Что по этой задаче ещё не сделано? Сверься с чек-листом и обсуждением.' },
+  { label: 'Резюме обсуждения', ask: 'Кратко подведи итог обсуждения: что решили, что изменилось, какие вопросы открыты.' },
+  { label: 'Отчёт постановщику', ask: 'Подготовь короткий отчёт о проделанной работе для постановщика.' },
+];
+
+/** Событие истории по-русски: строка вида «participant_added» человеку ничего не говорит. */
+const ACTIVITY_LABEL: Record<string, string> = {
+  created: 'создал задачу',
+  updated: 'изменил поля',
+  moved: 'перенёс',
+  commented: 'написал сообщение',
+  attached: 'приложил файл',
+  checklist: 'правил чек-лист',
+  label: 'менял метки',
+  handoff_forced: 'сдал работу без полной готовности',
+  participant_added: 'добавил участника',
+  participant_removed: 'убрал участника',
+  approval_requested: 'сдал работу на согласование',
+  approval_confirmed: 'принял работу',
+  approval_returned: 'вернул на доработку',
+  approval_setting: 'изменил правило согласования',
+};
+
+function activityText(a: { kind: string; detail?: Record<string, any> }): string {
+  const label = ACTIVITY_LABEL[a.kind] ?? a.kind;
+  if (a.kind === 'moved' && a.detail?.to) return `${label} в «${a.detail.to}»`;
+  if (a.kind === 'approval_returned' && a.detail?.reason) return `${label}: ${a.detail.reason}`;
+  // обход приёмки без списка нехваток бесполезен: ради этого списка запись и делается
+  if (a.kind === 'handoff_forced' && Array.isArray(a.detail?.missing)) {
+    return `${label}: ${a.detail.missing.join('; ')}`;
+  }
+  return label;
+}
+
+const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+const initials = (name: string) => (name?.trim()?.[0] ?? '?').toUpperCase();
+
+/**
+ * Чат задачи: разговор команды и помощник, который знает эту задачу.
+ *
+ * Устроен как переписка, а не как список комментариев: сообщения одного человека
+ * подряд склеиваются, дни разделены, картинки видны сразу, ответить можно на
+ * выделенный кусок. Разница не косметическая — по задаче спорят, договариваются и
+ * возвращаются к сказанному через неделю, и «кто, когда и о чём» должно читаться
+ * взглядом, а не восстанавливаться по датам.
+ *
+ * История задачи внизу — не украшение: строка «написал сообщение» ведёт к самому
+ * сообщению. Без этого история отсылает в никуда.
+ */
+export function TaskChat({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
+  const { user } = useAuth();
+  const [comments, setComments] = useState<any[]>([]);
+  const [activity, setActivity] = useState<any[]>([]);
+  const [users, setUsers] = useState<{ id: string; fullName: string }[]>([]);
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  /** Поиск по обсуждению: в переписке на сотню сообщений нужное иначе не найти. */
+  const [query, setQuery] = useState('');
+  /** Кому отвечаем и на какой именно кусок его сообщения. */
+  const [replyTo, setReplyTo] = useState<{ id: string; author: string; excerpt: string } | null>(null);
+  /** Правка своего сообщения: сказанное вслух не переписывают, написанное — да. */
+  const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
+  /** Файл, выбранный или вставленный, но ещё не отправленный. */
+  const [pending, setPending] = useState<{ file: File; url: string } | null>(null);
+  /** Куда прокрутили из истории — подсвечиваем, иначе непонятно, что именно нашли. */
+  const [highlight, setHighlight] = useState<string | null>(null);
+  /** У какого сообщения открыт выбор реакции: набор из шести эмодзи в каждой строке — мусор. */
+  const [reactFor, setReactFor] = useState<string | null>(null);
+  const [allHistory, setAllHistory] = useState(false);
+  const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
+  const [advice, setAdvice] = useState<{
+    answer: string; checklist: string[]; suggestion: { field: string; value: string; label: string } | null;
+  } | null>(null);
+  const feedRef = useRef<HTMLDivElement | null>(null);
+
+  const reload = () => {
+    api.listComments(taskId).then(setComments).catch(() => undefined);
+    api.taskActivity(taskId).then(setActivity).catch(() => undefined);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload(); }, [taskId]);
+  useEffect(() => {
+    api.listUsers()
+      .then((team: any[]) => setUsers(team.map((u) => ({ id: String(u.id), fullName: u.fullName }))))
+      .catch(() => undefined);
+  }, []);
+
+  /**
+   * Скриншот из буфера — как в мессенджерах: Ctrl+V, и он в обсуждении.
+   *
+   * Слушаем окно, пока карточка открыта: человек снимает экран, возвращается в задачу
+   * и жмёт вставку, не целясь в поле ввода. Текстовую вставку это не задевает —
+   * реагируем, только если в буфере действительно файл-картинка.
+   */
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const file = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'));
+      if (!file) return;
+      e.preventDefault();
+      attach(file);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
+
+  const mentionUsers = [{ id: AI_MENTION_ID, fullName: AI_MENTION_NAME }, ...users];
+
+  /** Скриншот приходит без имени — даём ему дату, иначе в файлах десяток «image.png». */
+  const attach = (file: File) => {
+    const named = isAnonymousClipboardName(file.name) && file.type.startsWith('image/')
+      ? new File([file], screenshotName(new Date(), file.type), { type: file.type })
+      : file;
+    setPending((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return { file: named, url: isImageName(named.name) ? URL.createObjectURL(named) : '' };
+    });
+  };
+  const clearPending = () => setPending((prev) => {
+    if (prev?.url) URL.revokeObjectURL(prev.url);
+    return null;
+  });
+
+  const ask = async (question: string) => {
+    if (!question.trim()) return;
+    setBusy(true); setErr(''); setAdvice(null);
+    try {
+      const res = await api.askTaskAssistant(taskId, question.trim());
+      setAdvice(res);
+      setBody('');
+      reload(); // ответ лёг в ленту обсуждения — он часть истории задачи
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Помощник не ответил'); }
+    finally { setBusy(false); }
+  };
+
+  const send = async () => {
+    const text = body.trim();
+    if (!text && !pending) return;
+    // Помощника зовут упоминанием, как коллегу: «@AI-помощник, что тут по срокам».
+    // Ищем в любом месте строки: в живой переписке обращение идёт после слов
+    // «Борис, глянь, и @AI тоже».
+    if (!pending && MENTIONS_AI.test(text)) return ask(text.replace(MENTIONS_AI, ' ').trim() || text);
+    setBusy(true);
+    try {
+      if (editing) {
+        await api.editComment(taskId, editing.id, text);
+        setEditing(null);
+      } else if (pending) {
+        await api.addCommentFile(taskId, pending.file, text, replyTo?.id, replyTo?.excerpt);
+        clearPending();
+      } else {
+        await api.addComment(taskId, text, undefined, replyTo?.id, replyTo?.excerpt);
+      }
+      setBody(''); setReplyTo(null); reload(); onRefresh();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не отправилось'); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async (id: string) => {
+    if (!window.confirm('Удалить сообщение? Восстановить его будет нельзя.')) return;
+    try { await api.deleteComment(taskId, id); reload(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалилось'); }
+  };
+
+  const react = async (id: string, emoji: string) => {
+    setReactFor(null);
+    // Оптимистично: реакция должна ставиться мгновенно, это её единственная ценность.
+    setComments((prev) => prev.map((c) => {
+      if (String(c.id) !== String(id)) return c;
+      const list = [...(c.reactions ?? [])];
+      const found = list.find((r: any) => r.emoji === emoji);
+      if (found) {
+        found.mine ? (found.count -= 1) : (found.count += 1);
+        found.mine = !found.mine;
+      } else list.push({ emoji, count: 1, mine: true });
+      return { ...c, reactions: list.filter((r: any) => r.count > 0) };
+    }));
+    try { await api.reactToComment(taskId, id, emoji); } catch { reload(); }
+  };
+
+  // Голос: продиктовать замечание проще, чем набирать его на телефоне.
+  const voice = useVoiceInput((text) => { setBody((prev) => (prev.trim() ? prev.trim() + ' ' + text : text)); });
+
+  /**
+   * Ответить — и, если человек выделил кусок, ответить именно на него.
+   *
+   * В длинном сообщении спорят об одном абзаце, а цитата целиком («да, согласен» под
+   * простынёй текста) не отвечает, с чем именно согласны. Выделение берём только внутри
+   * этого сообщения: случайный текст со стороны в цитату попасть не должен.
+   */
+  const startReply = (c: any, node: Element | null) => {
+    const sel = window.getSelection();
+    const picked = sel && !sel.isCollapsed && node && sel.anchorNode && node.contains(sel.anchorNode)
+      ? sel.toString().trim().slice(0, 600)
+      : '';
+    setReplyTo({
+      id: String(c.id),
+      author: c.is_ai ? AI_MENTION_NAME : c.author_name,
+      excerpt: picked || String(c.body ?? '').slice(0, 300),
+    });
+    setEditing(null);
+  };
+
+  /** Переход из истории к самому сообщению. */
+  const goToMessage = (id: string) => {
+    const el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setHighlight(String(id));
+    window.setTimeout(() => setHighlight(null), 2200);
+  };
+
+  const acceptChecklist = async () => {
+    if (!advice?.checklist.length) return;
+    setBusy(true);
+    try { await api.applyAssistantChecklist(taskId, advice.checklist); setAdvice(null); onRefresh(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не добавилось'); }
+    finally { setBusy(false); }
+  };
+
+  const q = query.trim().toLowerCase();
+  const shown = q ? comments.filter((c) => String(c.body ?? '').toLowerCase().includes(q)) : comments;
+  const history = allHistory ? activity : activity.slice(0, 5);
+
+  return (
+    <>
+      <div className="drawer-section-title">
+        <Icon name="chat" size={14} /> Чат задачи
+        {comments.length > 0 && <span className="dim chat-count">{comments.length}</span>}
+      </div>
+
+      {/* Поиск появляется, когда искать есть в чём: над тремя сообщениями он лишний. */}
+      {comments.length > 5 && (
+        <input
+          className="input chat-search-input"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Поиск по обсуждению"
+          aria-label="Поиск по обсуждению"
+        />
+      )}
+      {q && (
+        <div className="dim chat-found">
+          {shown.length ? `Найдено сообщений: ${shown.length}` : 'Ничего не нашлось'}
+        </div>
+      )}
+
+      {comments.length === 0 && (
+        <EmptyState compact icon="chat" title="Обсуждения ещё не было"
+          hint="Здесь остаётся история решений по задаче. Помощника можно спросить тут же: «@AI что от меня требуется?»" />
+      )}
+
+      <div
+        className="msg-feed"
+        ref={feedRef}
+        // Файл можно перетащить прямо в переписку — то же, что вставка из буфера.
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); attach(f); } }}
+      >
+        {shown.map((c, i) => {
+          const prev = shown[i - 1];
+          const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(c.created_at).toDateString();
+          const grouped = !newDay && !q && sameGroup(prev, c);
+          const mine = String(c.author_id) === String(user?.id ?? '') && !c.is_ai;
+          const name = c.is_ai ? AI_MENTION_NAME : c.author_name;
+          return (
+            <div key={c.id}>
+              {newDay && <div className="chat-day">{dayLabel(c.created_at)}</div>}
+              <div
+                data-msg={String(c.id)}
+                className={`msg${mine ? ' msg-mine' : ''}${c.is_ai ? ' msg-ai' : ''}`
+                  + `${grouped ? ' msg-grouped' : ''}${highlight === String(c.id) ? ' msg-found' : ''}`}
+              >
+                <div className="msg-avatar" aria-hidden="true">
+                  {grouped ? '' : c.is_ai ? <Icon name="robot" size={14} /> : initials(name)}
+                </div>
+                <div className="msg-main">
+                  {!grouped && (
+                    <div className="msg-head">
+                      <b className="msg-name">{name}</b>
+                      <span className="msg-time">{timeOf(c.created_at)}</span>
+                      {c.edited_at && <span className="msg-time">· изменено</span>}
+                    </div>
+                  )}
+
+                  {/* Цитата: без неё «да, согласен» через десять реплик — согласие
+                      неизвестно с чем. Клик ведёт к исходному сообщению. */}
+                  {c.reply_to_id && c.reply_body && (
+                    <button className="msg-quote" onClick={() => goToMessage(String(c.reply_to_id))} title="Перейти к сообщению">
+                      <b>{c.reply_author}</b>: {String(c.reply_body).slice(0, 200)}
+                    </button>
+                  )}
+
+                  {c.body && (
+                    <div className="msg-text">
+                      {splitMessage(c.body).map((p, k) => (
+                        p.kind === 'mention' ? <span key={k} className="msg-mention">{p.value}</span>
+                          : p.kind === 'link' ? <a key={k} href={p.value} target="_blank" rel="noreferrer">{p.value}</a>
+                            : <span key={k}>{p.value}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  {c.file_id && (
+                    <ChatAttachment
+                      fileId={String(c.file_id)}
+                      fileName={c.file_name ?? 'файл'}
+                      onOpen={(url, fname, mime) => setPreview({ url, name: fname, mime })}
+                    />
+                  )}
+
+                  <div className="msg-foot">
+                    {(c.reactions ?? []).map((r: any) => (
+                      <button
+                        key={r.emoji}
+                        className={r.mine ? 'reaction mine' : 'reaction'}
+                        onClick={() => react(String(c.id), r.emoji)}
+                        title={r.mine ? 'Снять свою реакцию' : 'Поддержать'}
+                      >
+                        {r.emoji} {r.count}
+                      </button>
+                    ))}
+                    {reactFor === String(c.id) ? (
+                      <span className="msg-react-pick">
+                        {REACTIONS.map((emoji) => (
+                          <button key={emoji} className="reaction reaction-add" onClick={() => react(String(c.id), emoji)}>
+                            {emoji}
+                          </button>
+                        ))}
+                      </span>
+                    ) : (
+                      <button
+                        className="msg-act"
+                        onClick={() => setReactFor(String(c.id))}
+                        title="Поставить реакцию"
+                        aria-label="Поставить реакцию"
+                      >
+                        <Icon name="plus" size={12} /> реакция
+                      </button>
+                    )}
+                    {!c.is_ai && (
+                      <button
+                        className="msg-act"
+                        onClick={(e) => startReply(c, (e.currentTarget as HTMLElement).closest('.msg'))}
+                        title="Ответить. Если выделить кусок текста — ответ будет на него"
+                      >
+                        Ответить
+                      </button>
+                    )}
+                    {mine && (
+                      <>
+                        <button
+                          className="msg-act"
+                          onClick={() => { setEditing({ id: String(c.id), body: c.body }); setBody(c.body); setReplyTo(null); }}
+                        >
+                          Изменить
+                        </button>
+                        <button className="msg-act msg-act-danger" onClick={() => remove(String(c.id))}>Удалить</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {err && <div className="error-text">{err}</div>}
+
+      {/* Предложения помощника: применяет их человек, и это принципиально —
+          сам ИИ задачу не меняет. */}
+      {advice && (advice.checklist.length > 0 || advice.suggestion) && (
+        <div className="ai-advice">
+          {advice.checklist.length > 0 && (
+            <>
+              <div className="ai-advice-head">Предложенные шаги</div>
+              <ul className="ai-advice-list">
+                {advice.checklist.map((step, i) => <li key={i}>{step}</li>)}
+              </ul>
+              <button className="btn btn-sm" onClick={acceptChecklist} disabled={busy}>
+                <Icon name="check" size={13} /> Добавить в чек-лист
+              </button>
+            </>
+          )}
+          {advice.suggestion && (
+            <div className="ai-advice-suggest">
+              <Icon name="alert" size={13} /> {advice.suggestion.label || 'Помощник предлагает изменить задачу'} —
+              примените это сами во вкладке «Обзор»: менять задачу за вас он не станет.
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="ai-quick">
+        {QUICK_ASKS.map((qa) => (
+          <button key={qa.label} className="btn btn-ghost btn-sm" disabled={busy} onClick={() => ask(qa.ask)}>
+            {qa.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Кому отвечаем или что правим — видно прямо над полем, а не угадывается. */}
+      {(replyTo || editing) && (
+        <div className="comment-reply-to">
+          <Icon name={editing ? 'edit' : 'reply'} size={13} />
+          <span className="dim">
+            {editing ? 'Правите своё сообщение' : `В ответ ${replyTo?.author}: ${replyTo?.excerpt.slice(0, 80)}`}
+          </span>
+          <button className="msg-act" onClick={() => { setReplyTo(null); setEditing(null); setBody(''); }}>Отмена</button>
+        </div>
+      )}
+
+      {/* Вложение перед отправкой: видно, что уйдёт, и можно подписать. */}
+      {pending && (
+        <div className="chat-pending">
+          {pending.url
+            ? <img className="chat-pending-img" src={pending.url} alt={pending.file.name} />
+            : <Icon name="paperclip" size={16} />}
+          <span className="chat-pending-name">
+            {pending.file.name} <span className="dim">· {humanSize(pending.file.size)}</span>
+          </span>
+          <button className="btn btn-ghost btn-sm" onClick={clearPending} title="Убрать вложение" aria-label="Убрать вложение">
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+      )}
+
+      <div className="comment-input">
+        <MentionField
+          value={body}
+          users={mentionUsers}
+          onChange={setBody}
+          // Упомянутого нужно позвать: без этого «@Юрий, посмотри» он увидит,
+          // только если сам зайдёт в задачу.
+          onMention={(userId) => {
+            // помощник участником задачи не становится — он не человек
+            if (userId === AI_MENTION_ID) return;
+            void api.addTaskParticipant(taskId, userId, 'watcher').catch(() => undefined);
+          }}
+          rows={2}
+          placeholder={pending ? 'Подпись к вложению…' : 'Нажмите @, чтобы позвать человека или помощника'}
+          onEnter={send}
+        />
+        <div className="comment-actions">
+          <label className="btn btn-sm btn-ghost" title="Прикрепить файл — или просто вставьте скриншот через Ctrl+V">
+            <Icon name="paperclip" size={14} />
+            <input
+              type="file"
+              hidden
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) attach(f); e.currentTarget.value = ''; }}
+            />
+          </label>
+          <button
+            className={voice.recording ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost'}
+            onClick={voice.toggle}
+            disabled={busy || voice.transcribing}
+            title="Написать голосом"
+          >
+            <Icon name={voice.recording ? 'stop' : 'mic'} size={14} />
+          </button>
+          <button className="btn btn-primary btn-sm" disabled={busy || (!body.trim() && !pending)} onClick={send}>
+            {busy ? '…' : editing ? 'Сохранить' : 'Отправить'}
+          </button>
+        </div>
+      </div>
+      <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="nl-voice" />
+
+      <div className="drawer-section-title chat-history-head">
+        <Icon name="clock" size={13} /> История
+      </div>
+      {history.map((a: any) => {
+        const to = a.kind === 'commented' && a.detail?.commentId ? String(a.detail.commentId) : null;
+        const line = `${new Date(a.created_at).toLocaleString('ru-RU')} · ${a.actor_name ?? 'система'} · ${activityText(a)}`;
+        // Строка про сообщение ведёт к самому сообщению: история, из которой нельзя
+        // попасть в то, о чём она говорит, отсылает в никуда.
+        return to
+          ? <button key={a.id} className="activity-row activity-link" onClick={() => goToMessage(to)} title="Перейти к сообщению">{line}</button>
+          : <div key={a.id} className="dim activity-row">{line}</div>;
+      })}
+      {activity.length > 5 && (
+        <button className="msg-act" onClick={() => setAllHistory((v) => !v)}>
+          {allHistory ? 'Свернуть историю' : `Показать всю историю (${activity.length})`}
+        </button>
+      )}
+
+      {preview && <Lightbox url={preview.url} name={preview.name} mime={preview.mime} onClose={() => setPreview(null)} />}
+    </>
+  );
+}

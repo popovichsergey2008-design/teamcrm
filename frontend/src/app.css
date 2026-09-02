@@ -862,26 +862,84 @@
 
 /* Чат задачи: цитата, реакции, действия над сообщением, поиск. */
 .chat-search-input { margin-bottom: 8px; }
-.comment-quote {
-  border-left: 2px solid var(--border-2); padding: 2px 8px; margin: 4px 0;
-  font-size: 12px; color: var(--text-dim); background: var(--bg-elev-2);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-}
-.comment-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
 .reaction {
   border: 1px solid var(--border); background: var(--bg-elev); border-radius: 999px;
   padding: 1px 7px; font-size: 12px; cursor: pointer; color: var(--text-dim);
 }
 .reaction.mine { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-/* Набор реакций проявляется при наведении: постоянно висящие смайлы — визуальный шум. */
-.comment-tools-add { display: none; gap: 2px; }
-.comment:hover .comment-tools-add { display: inline-flex; }
 .reaction-add { border-color: transparent; background: none; }
-.comment-link {
-  border: none; background: none; color: var(--text-mut); cursor: pointer;
-  font-size: 12px; padding: 1px 4px;
+
+/*
+  ───── Чат задачи ─────
+
+  Переписка, а не список комментариев. По задаче спорят, договариваются и возвращаются
+  к сказанному через неделю, поэтому «кто, когда и о чём» должно читаться взглядом:
+  сообщения одного человека подряд склеиваются в блок, дни разделены, картинки видны
+  сразу, ответ на выделенный кусок цитируется этим куском.
+
+  Действия сообщения не прячутся до наведения: на этом мы уже обожглись с управлением
+  колонками — кто не знает, что кнопка там есть, не найдёт её никогда, а на касании
+  наведения не бывает вовсе.
+*/
+.msg-feed { display: flex; flex-direction: column; gap: 1px; }
+.msg {
+  display: flex; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm);
+  transition: background .25s;
 }
-.comment-link:hover { color: var(--accent); }
+.msg-avatar {
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 600;
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
+}
+/* У склеенного сообщения кружок пустой: он держит отступ, но не повторяет буквы. */
+.msg-grouped .msg-avatar { background: none; border-color: transparent; }
+.msg-main { flex: 1; min-width: 0; }
+.msg-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.msg-name { font-size: 13px; }
+.msg-time { font-size: 11px; color: var(--text-mut); }
+.msg-text { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+/* Упоминание — самое важное в сообщении: его ищут глазами, а серой стеной оно не видно. */
+.msg-mention { color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 3px; }
+/* Своё сообщение и ответ помощника отличаются подложкой, а не выравниванием:
+   в узкой колонке карточки правый край съел бы половину ширины текста. */
+.msg-mine { background: var(--bg-elev-2); }
+.msg-ai { background: var(--accent-soft); }
+.msg-ai .msg-avatar { border-color: var(--accent-line); color: var(--accent); }
+/* Пришли из истории — сообщение подсвечено, иначе непонятно, куда именно прокрутили. */
+.msg-found { background: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn-line); }
+
+.msg-quote {
+  display: block; width: 100%; text-align: left; margin: 2px 0 4px; padding: 3px 8px;
+  max-height: 42px; overflow: hidden;
+  border: none; border-left: 3px solid var(--accent-line); border-radius: 0 6px 6px 0;
+  background: var(--bg-elev-2); color: var(--text-dim); font: inherit; font-size: 12px;
+  cursor: pointer;
+}
+.msg-quote:hover { border-left-color: var(--accent); color: var(--text); }
+.msg-quote:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.msg-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.msg-act {
+  border: none; background: none; color: var(--text-mut); cursor: pointer;
+  font: inherit; font-size: 11px; padding: 1px 5px; border-radius: 5px;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.msg-act:hover { background: var(--hover); color: var(--text); }
+.msg-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.msg-act-danger:hover { color: var(--danger); }
+.msg-react-pick { display: inline-flex; gap: 2px; }
+
+.chat-count { font-size: 11px; margin-left: 4px; }
+.chat-found { font-size: 12px; margin: 4px 0; }
+.chat-history-head { margin-top: 16px; }
+/* Строка истории про сообщение ведёт к самому сообщению. */
+.activity-link {
+  display: block; width: 100%; text-align: left; border: none; background: none;
+  color: var(--text-mut); font: inherit; font-size: 12px; padding: 4px 0;
+  border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.activity-link:hover { color: var(--accent); }
+.activity-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .comment-reply-to {
   display: flex; align-items: center; gap: 6px; padding: 6px 8px; margin-top: 6px;
   background: var(--bg-elev-2); border-radius: var(--radius-sm); font-size: 12px;
@@ -2026,7 +2084,7 @@
 .focus-card:focus-visible, .focus-more:focus-visible, .focus-chip:focus-visible,
 .mine-filter-item:focus-visible, .mine-filter-reset:focus-visible, .people-chip-x:focus-visible,
 .nav-tune-eye:focus-visible, .nav-tune-btn:focus-visible,
-.reaction:focus-visible, .comment-link:focus-visible,
+.reaction:focus-visible,
 .focus-plan-btn:focus-visible, .approval-task:focus-visible, .call-starter-row:focus-visible,
 .call-starter-ai:focus-visible,
 .focus-template:focus-visible, .focus-clear:focus-visible,

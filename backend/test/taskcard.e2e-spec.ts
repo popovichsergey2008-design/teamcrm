@@ -111,4 +111,43 @@ describe('Enhancements v1 — Task card (e2e)', () => {
     expect((await http.get(`/api/tasks/${taskId}/comments`).set({ Authorization: `Bearer ${c}` })).status).toBe(403);
     expect((await http.get('/api/labels').set({ Authorization: `Bearer ${c}` })).status).toBe(403);
   });
+
+  /**
+   * Файл сообщением и ответ на выделенный кусок.
+   *
+   * Раньше, чтобы показать скриншот в обсуждении, надо было уйти во «Файлы», загрузить,
+   * вернуться и написать «см. вложение». А ответ цитировал сообщение целиком, и под
+   * простынёй текста «да, согласен» не отвечало, с чем именно согласны.
+   */
+  it('файл уходит сообщением и остаётся вложением; цитируется выделенный кусок', async () => {
+    const before = (await http.get(`/api/tasks/${taskId}/activity`).set(A()).expect(200)).body.data.length;
+
+    const msg = (await http.post(`/api/tasks/${taskId}/comments/file`).set(A())
+      .field('body', 'вот как это выглядит')
+      .attach('file', png, { filename: 'screen.png', contentType: 'image/png' })
+      .expect(201)).body.data;
+    expect(msg.file_id).toBeTruthy();
+
+    const list = (await http.get(`/api/tasks/${taskId}/comments`).set(A()).expect(200)).body.data;
+    const withFile = list.find((c: any) => String(c.id) === String(msg.id));
+    expect(withFile.file_name).toBe('screen.png');
+
+    // файл виден и во вкладке «Файлы»: она отвечает на вопрос «что вообще есть по задаче»
+    const files = (await http.get(`/api/tasks/${taskId}/attachments`).set(A()).expect(200)).body.data;
+    expect(files.some((f: any) => f.file_name === 'screen.png')).toBe(true);
+
+    // в истории ОДНА новая запись — про сообщение, и по её commentId строится ссылка
+    const after = (await http.get(`/api/tasks/${taskId}/activity`).set(A()).expect(200)).body.data;
+    expect(after.length).toBe(before + 1);
+    expect(after[0].kind).toBe('commented');
+    expect(String(after[0].detail.commentId)).toBe(String(msg.id));
+
+    // ответ на выделенный кусок цитирует именно его, а не всё сообщение
+    const reply = (await http.post(`/api/tasks/${taskId}/comments`).set(A())
+      .send({ body: 'да, согласен', replyToId: String(msg.id), replyExcerpt: 'как это выглядит' })
+      .expect(201)).body.data;
+    const list2 = (await http.get(`/api/tasks/${taskId}/comments`).set(A()).expect(200)).body.data;
+    const shown = list2.find((c: any) => String(c.id) === String(reply.id));
+    expect(shown.reply_body).toBe('как это выглядит');
+  });
 });

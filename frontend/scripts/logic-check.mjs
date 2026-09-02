@@ -578,6 +578,33 @@ test('скриншот из буфера получает имя с датой, 
   assert.equal(humanSize(3 * 1024 * 1024), '3.0 МБ');
 });
 
+// ── текст сообщения ───────────────────────────────────────────────────────────
+test('разбор сообщения: упоминания, ссылки, склейка подряд идущих', async () => {
+  const { splitMessage, dayLabel, sameGroup } = await load('lib/chat-text.ts');
+
+  const kinds = (t) => splitMessage(t).map((p) => `${p.kind}:${p.value}`);
+  assert.deepEqual(kinds('@Сергей Попович глянь'), ['mention:@Сергей Попович', 'text: глянь']);
+  assert.deepEqual(kinds('@Сергей глянь'), ['mention:@Сергей', 'text: глянь'], 'вторым словом со строчной имя не продолжается');
+  assert.deepEqual(kinds('см. https://teamsmrt.com/x.'), ['text:см. ', 'link:https://teamsmrt.com/x', 'text:.'],
+    'точка в конце принадлежит фразе, а не адресу');
+  assert.deepEqual(kinds('без ничего'), ['text:без ничего']);
+  assert.deepEqual(kinds(''), []);
+  assert.deepEqual(kinds('почта a@b.ru'), ['text:почта a@b.ru'], 'адрес почты упоминанием не считается');
+
+  const now = new Date(2026, 8, 2, 12, 0);
+  assert.equal(dayLabel(new Date(2026, 8, 2, 9, 0).toISOString(), now), 'Сегодня');
+  assert.equal(dayLabel(new Date(2026, 8, 1, 9, 0).toISOString(), now), 'Вчера');
+  assert.equal(dayLabel(new Date(2026, 7, 20, 9, 0).toISOString(), now), '20 августа');
+
+  const at = (h, m) => new Date(2026, 8, 2, h, m).toISOString();
+  assert.equal(sameGroup({ author_id: 1, created_at: at(10, 0) }, { author_id: 1, created_at: at(10, 5) }), true);
+  assert.equal(sameGroup({ author_id: 1, created_at: at(10, 0) }, { author_id: 1, created_at: at(10, 30) }), false, 'через полчаса — другой заход');
+  assert.equal(sameGroup({ author_id: 1, created_at: at(10, 0) }, { author_id: 2, created_at: at(10, 1) }), false);
+  assert.equal(sameGroup({ author_id: 1, is_ai: true, created_at: at(10, 0) }, { author_id: 1, created_at: at(10, 1) }), false,
+    'ответ ИИ с сообщением человека не склеивается, даже если автор записан тот же');
+  assert.equal(sameGroup(undefined, { author_id: 1, created_at: at(10, 0) }), false);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

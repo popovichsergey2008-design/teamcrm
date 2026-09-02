@@ -32,14 +32,19 @@ export class TaskCardService {
   async addComment(
     tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean,
     replyToId?: string | null,
+    extra?: { fileId?: string | null; replyExcerpt?: string | null },
   ) {
     const task = await this.task(tenantId, taskId);
     await this.repo.addWatcher(tenantId, taskId, authorId); // автор — наблюдатель
-    const c: any = await this.repo.addComment(tenantId, taskId, authorId, body, clientVisible, replyToId);
+    const c: any = await this.repo.addComment(tenantId, taskId, authorId, body, clientVisible, replyToId, extra);
+    // commentId в записи истории — не для отладки: по нему строка «написал сообщение»
+    // становится ссылкой на само сообщение, иначе история отсылает в никуда
     await this.activity.log(tenantId, taskId, authorId, 'commented', { commentId: c.id });
     this.realtime.emitScoped(tenantId, task.project_id, 'task.comment_added', { taskId, commentId: c.id, authorId }, clientVisible);
     await this.outbox.enqueue(tenantId, task.project_id, 'comment.create', c.id, { taskId });
-    void this.notify.taskCommented(tenantId, taskId, authorId, String(c.id), body); // письмо на почту
+    // у сообщения с файлом подписи может не быть вовсе — в письме тогда пусто,
+    // и человек не понимает, ради чего его позвали
+    void this.notify.taskCommented(tenantId, taskId, authorId, String(c.id), body.trim() || 'прислал файл в обсуждение');
     return c;
   }
   /** Реакция на сообщение: ни истории, ни уведомлений — это не событие, а знак. */
@@ -70,14 +75,41 @@ export class TaskCardService {
   }
 
   // ---- attachments ----
-  async attachUploaded(tenantId: string, taskId: string, userId: string, file: { buffer: Buffer; originalname: string; mimetype: string }) {
+  /**
+   * Файл, отправленный в чат задачи.
+   *
+   * Он и сообщение, и вложение сразу: показывается в переписке (картинка — прямо
+   * в ленте) и остаётся в списке файлов задачи, чтобы вкладка «Файлы» по-прежнему
+   * отвечала на вопрос «что вообще есть по задаче».
+   *
+   * В историю пишем ОДНУ запись — про сообщение: для человека это одно действие,
+   * а не «приложил файл» плюс «написал». Поэтому загрузка идёт тихой.
+   */
+  async addCommentWithFile(
+    tenantId: string, taskId: string, userId: string,
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+    body: string, replyToId?: string | null, replyExcerpt?: string | null,
+  ) {
+    const uploaded = await this.attachUploaded(tenantId, taskId, userId, file, { silent: true });
+    return this.addComment(tenantId, taskId, userId, body, false, replyToId, {
+      fileId: String(uploaded.fileId), replyExcerpt: replyExcerpt ?? null,
+    });
+  }
+
+  async attachUploaded(
+    tenantId: string, taskId: string, userId: string,
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+    opts?: { silent?: boolean },
+  ) {
     const task = await this.task(tenantId, taskId);
     const f = await this.files.upload({
       tenantId, userId, buffer: file.buffer, fileName: file.originalname, contentType: file.mimetype,
       ownerKind: 'task_attachment', ownerId: taskId,
     });
     const a = await this.repo.addAttachment(tenantId, taskId, f.id);
-    await this.activity.log(tenantId, taskId, userId, 'attached', { fileName: f.file_name });
+    // при отправке файла сообщением запись сделает сам комментарий — двух строк
+    // в истории на одно действие человека быть не должно
+    if (!opts?.silent) await this.activity.log(tenantId, taskId, userId, 'attached', { fileName: f.file_name });
     this.realtime.emitScoped(tenantId, task.project_id, 'task.attachment_added', { taskId, fileId: f.id }, false);
     await this.outbox.enqueue(tenantId, task.project_id, 'attachment.create', f.id, { taskId });
     // содержимое файла — в корпоративную память: искать нужно по тексту договора, а не по имени

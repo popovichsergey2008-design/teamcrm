@@ -15,6 +15,8 @@ class CommentDto {
   @IsOptional() @IsBoolean() isClientVisible?: boolean;
   /** Ответ на конкретное сообщение: в длинной переписке без этого не разобраться. */
   @IsOptional() @IsString() @MaxLength(32) replyToId?: string;
+  /** Выделенный кусок, на который отвечают: в длинном сообщении спорят об одном абзаце. */
+  @IsOptional() @IsString() @MaxLength(600) replyExcerpt?: string;
 }
 class ReactionDto {
   @IsString() @MaxLength(16) emoji!: string;
@@ -56,7 +58,32 @@ export class TaskCardController {
   }
   @Post(':id/comments')
   addComment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CommentDto) {
-    return this.svc.addComment(u.tenantId, id, u.userId, dto.body, dto.isClientVisible === true, dto.replyToId);
+    return this.svc.addComment(u.tenantId, id, u.userId, dto.body, dto.isClientVisible === true, dto.replyToId, {
+      replyExcerpt: dto.replyExcerpt ?? null,
+    });
+  }
+
+  /**
+   * Файл сообщением: скриншот показывают в разговоре, а не «см. вложение».
+   *
+   * Подпись необязательна — картинка часто говорит сама за себя.
+   */
+  @Post(':id/comments/file')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  addCommentFile(
+    @CurrentUser() u: AuthUser,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { body?: string; replyToId?: string; replyExcerpt?: string },
+  ) {
+    if (!file) throw AppException.validation('file is required');
+    return this.svc.addCommentWithFile(
+      u.tenantId, id, u.userId, file,
+      String(body?.body ?? '').slice(0, 5000),
+      body?.replyToId ?? null,
+      body?.replyExcerpt ?? null,
+    );
   }
   @Patch(':id/comments/:cid')
   editComment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('cid') cid: string, @Body() dto: CommentEditDto) {

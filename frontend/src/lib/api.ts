@@ -182,8 +182,8 @@ export const api = {
 
   // Этап D — карточка задачи
   listComments: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/comments`),
-  addComment: (taskId: string, body: string, isClientVisible?: boolean, replyToId?: string) =>
-    request<any>('POST', `/tasks/${taskId}/comments`, { body, isClientVisible, replyToId }),
+  addComment: (taskId: string, body: string, isClientVisible?: boolean, replyToId?: string, replyExcerpt?: string) =>
+    request<any>('POST', `/tasks/${taskId}/comments`, { body, isClientVisible, replyToId, replyExcerpt }),
   /** Реакция на сообщение: повторное нажатие снимает свою. */
   reactToComment: (taskId: string, commentId: string, emoji: string) =>
     request<{ ok: true }>('POST', `/tasks/${taskId}/comments/${commentId}/reactions`, { emoji }),
@@ -838,6 +838,21 @@ export const api = {
 
   /** Карточку открыли — изменения по ней перестают быть новыми. */
   markTaskRead: (id: string) => request<{ read: true }>('POST', `/tasks/${id}/read`, {}),
+
+  /** Файл сообщением в чат задачи: скриншот показывают в разговоре, а не «см. вложение». */
+  addCommentFile: async (taskId: string, file: File, body: string, replyToId?: string, replyExcerpt?: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (body) fd.append('body', body);
+    if (replyToId) fd.append('replyToId', replyToId);
+    if (replyExcerpt) fd.append('replyExcerpt', replyExcerpt);
+    const res = await fetch(`/api/tasks/${taskId}/comments/file`, {
+      method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
+    });
+    const env = await res.json();
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Файл не отправлен');
+    return env.data;
+  },
 
   saveTaskPlan: (id: string, b: { estimateHours?: number; deadlineAt?: string }) =>
     request<{ saved: true }>('POST', `/tasks/${id}/plan`, b),

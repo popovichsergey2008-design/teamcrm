@@ -9,11 +9,15 @@ export class TaskCardRepository {
   addComment(
     tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean,
     replyToId?: string | null,
+    extra?: { fileId?: string | null; replyExcerpt?: string | null },
   ) {
     return this.db.one(
-      `INSERT INTO task_comments (tenant_id, task_id, author_id, body, is_client_visible, reply_to_id)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [tenantId, taskId, authorId, body, clientVisible, replyToId ?? null],
+      `INSERT INTO task_comments (tenant_id, task_id, author_id, body, is_client_visible, reply_to_id, file_id, reply_excerpt)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [
+        tenantId, taskId, authorId, body, clientVisible, replyToId ?? null,
+        extra?.fileId ?? null, extra?.replyExcerpt ?? null,
+      ],
     );
   }
   listComments(tenantId: string, taskId: string, includePrivate: boolean, viewerId: string) {
@@ -24,8 +28,9 @@ export class TaskCardRepository {
       // реплик — согласие неизвестно с чем, и лезть за ним отдельным запросом
       // на каждое сообщение слишком дорого.
       `SELECT c.id, c.author_id, c.body, c.is_client_visible, c.is_ai, c.created_at, c.edited_at,
-              c.reply_to_id,
-              r.body AS reply_body, ru.full_name AS reply_author,
+              c.reply_to_id, c.file_id, f.file_name,
+              -- цитируем выделенный человеком кусок, а если его нет — начало сообщения
+              COALESCE(c.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -41,6 +46,7 @@ export class TaskCardRepository {
          JOIN users u ON u.id=c.author_id
     LEFT JOIN task_comments r ON r.id = c.reply_to_id
     LEFT JOIN users ru ON ru.id = r.author_id
+    LEFT JOIN files f ON f.id = c.file_id
         WHERE c.tenant_id=$1 AND c.task_id=$2 AND ($3 OR c.is_client_visible=TRUE)
         ORDER BY c.created_at ASC`,
       [tenantId, taskId, includePrivate, viewerId],
