@@ -388,8 +388,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
         <div className="tabs">
           <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Обзор</button>
-          <button className={`tab ${tab === 'checklist' ? 'active' : ''}`} onClick={() => setTab('checklist')}>Чеклист</button>
           <button className={`tab ${tab === 'files' ? 'active' : ''}`} onClick={() => setTab('files')}>Файлы</button>
+          <button className={`tab ${tab === 'checklist' ? 'active' : ''}`} onClick={() => setTab('checklist')}>Чеклист</button>
           {/* ИИ-агент доступен всем сотрудникам: сервер их и так пускал, пряталась
               только вкладка — человек видел у руководителя возможность, которой у него
               «нет», хотя на деле она была. */}
@@ -543,8 +543,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           </>
         )}
 
-        {tab === 'checklist' && <ChecklistTab taskId={task.id} onRefresh={onRefresh} />}
         {tab === 'files' && <FilesTab taskId={task.id} onRefresh={onRefresh} />}
+        {tab === 'checklist' && <ChecklistTab taskId={task.id} onRefresh={onRefresh} />}
         </div>
 
         {/* Правая колонка — чат задачи. Он на виду всегда: обсуждение и есть работа
