@@ -215,6 +215,7 @@ export function App() {
   );
   const { unread } = useChatNotifications(
     !!user && user.role !== 'client',
+    user?.id ? String(user.id) : null,
     route.section === 'chat' && !route.view ? openChatId : null,
     () => navigate({ section: 'chat' }),
   );

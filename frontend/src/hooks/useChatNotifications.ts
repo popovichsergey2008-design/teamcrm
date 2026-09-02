@@ -10,14 +10,17 @@ import { playMessageChime } from '../lib/sound';
  * Живёт в App, а не на странице чатов: иначе о сообщении узнавали бы, только пока
  * раздел «Чаты» открыт, — то есть ровно тогда, когда уведомление и не нужно.
  *
+ * @param meId кто я — о собственных сообщениях не уведомляем
  * @param openChatId чат, открытый прямо сейчас — по нему уведомление не показываем
  */
-export function useChatNotifications(enabled: boolean, openChatId: string | null, onOpenChats: () => void) {
+export function useChatNotifications(enabled: boolean, meId: string | null, openChatId: string | null, onOpenChats: () => void) {
   const [unread, setUnread] = useState(0);
   // в колбэке сокета нужны свежие значения, но пересоздавать подписку на каждый чат не хочется
   const openRef = useRef(openChatId);
+  const meRef = useRef(meId);
   const openChats = useRef(onOpenChats);
   useEffect(() => { openRef.current = openChatId; }, [openChatId]);
+  useEffect(() => { meRef.current = meId; }, [meId]);
   useEffect(() => { openChats.current = onOpenChats; }, [onOpenChats]);
 
   const refresh = useCallback(async () => {
@@ -36,8 +39,16 @@ export function useChatNotifications(enabled: boolean, openChatId: string | null
     const onMessage = (p: { chatId: string; message: { author_id: string | null; author_name: string | null; body: string; file_name?: string | null } }) => {
       refresh();
       const m = p.message;
-      // системные строки и открытый чат не тревожим; свои сообщения — тем более
-      if (!m.author_id) return;
+      if (!m.author_id) return; // системные строки — не сообщение, тревожить нечем
+      /*
+        Своё сообщение уведомлением не возвращается.
+        
+        Событие приходит всем участникам чата, отправителю в том числе, и проверки
+        «чат открыт» не хватало: стоило после отправки уйти в другую вкладку или
+        свернуть окно (`document.hidden`), и человек получал звонок о собственном
+        сообщении.
+      */
+      if (meRef.current && String(m.author_id) === String(meRef.current)) return;
       if (String(p.chatId) === String(openRef.current) && !document.hidden) return;
       const title = m.author_name ?? 'Новое сообщение';
       const body = m.body?.trim() || (m.file_name ? `Файл: ${m.file_name}` : 'Вложение');
