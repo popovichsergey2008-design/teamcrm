@@ -4,6 +4,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { ProjectRow, ProjectsRepository } from './projects.repository';
 import { CreateProjectDto } from './projects.dto';
 import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
+import { TaskReadsRepository } from '../tasks/task-reads.repository';
 
 /** client-представление проекта — без budget (фича №9). */
 function toClientProject(row: ProjectRow) {
@@ -18,11 +19,25 @@ export class ProjectsService {
     private readonly repo: ProjectsRepository,
     private readonly realtime: RealtimeService,
     private readonly outbox: IntegrationOutboxService,
+    private readonly reads: TaskReadsRepository,
   ) {}
 
-  async list(tenantId: string, role: string, includeArchived = false) {
+  /**
+   * Список проектов с числом новых событий в МОИХ задачах.
+   *
+   * Цифра рядом с проектом отвечает на вопрос «где искать»: не открывая доски,
+   * видно, в каком проекте что-то произошло. Клиенту её не считаем — у него свой
+   * портал и чужие задачи он не ведёт.
+   */
+  async list(tenantId: string, role: string, includeArchived = false, userId?: string) {
     const rows = await this.repo.list(tenantId, includeArchived);
-    return role === 'client' ? rows.map(toClientProject) : rows;
+    if (role === 'client') return rows.map(toClientProject);
+    if (!userId) return rows;
+    const unread = new Map<string, number>();
+    for (const u of await this.reads.byProjects(tenantId, userId)) {
+      unread.set(String(u.project_id), Number(u.n));
+    }
+    return rows.map((r) => ({ ...r, unread: unread.get(String(r.id)) ?? 0 }));
   }
 
   /**

@@ -247,6 +247,7 @@ export class TasksRepository {
         `DELETE FROM task_comments WHERE task_id=$1`,
         `DELETE FROM task_attachments WHERE task_id=$1`,
         `DELETE FROM task_activity WHERE task_id=$1`,
+        `DELETE FROM task_reads WHERE task_id=$1`,
         `DELETE FROM task_embeddings WHERE task_id=$1`,
         `DELETE FROM assignment_audit WHERE task_id=$1`,
       ]) {

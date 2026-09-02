@@ -76,7 +76,7 @@ export class YougileRepository {
       await c.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='comment' AND local_id IN (SELECT id FROM task_comments WHERE tenant_id=$2 AND task_id=$3)`, [connectionId, tenantId, localId]);
       await c.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='file' AND local_id IN (SELECT file_id FROM task_attachments WHERE tenant_id=$2 AND task_id=$3)`, [connectionId, tenantId, localId]);
       await c.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='chat_echo' AND local_id=$2`, [connectionId, localId]);
-      for (const tbl of ['task_comments', 'task_attachments', 'task_labels', 'task_watchers', 'task_checklist_items', 'task_activity', 'time_logs']) {
+      for (const tbl of ['task_comments', 'task_attachments', 'task_labels', 'task_watchers', 'task_checklist_items', 'task_activity', 'task_reads', 'time_logs']) {
         await c.query(`DELETE FROM ${tbl} WHERE tenant_id=$1 AND task_id=$2`, t);
       }
       await c.query(`DELETE FROM external_refs WHERE connection_id=$1 AND entity_type='task' AND external_id=$2`, [connectionId, externalTaskId]);

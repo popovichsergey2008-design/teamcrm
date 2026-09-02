@@ -541,8 +541,16 @@
 .project-row:hover { background: var(--bg-elev-2); }
 .project-row.active { background: var(--bg-elev-2); box-shadow: inset 2px 0 0 var(--accent); }
 .project-item {
-  flex: 1; text-align: left; padding: 8px 10px; border-radius: var(--radius-sm);
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+  text-align: left; padding: 8px 10px; border-radius: var(--radius-sm);
   background: transparent; border: none; color: var(--text-dim); cursor: pointer;
+}
+/* Цифра у проекта отвечает на вопрос «где искать», не открывая доску. */
+.project-unread {
+  margin-left: auto; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--fill-danger); color: var(--on-fill); font-size: 11px; font-weight: 700;
 }
 .project-row:hover .project-item, .project-row.active .project-item { color: var(--text); }
 .project-del {
@@ -642,6 +650,25 @@
   padding: 10px 12px; cursor: grab; transition: border-color .15s, transform .05s;
 }
 .task-card:hover { border-color: var(--accent); }
+/*
+  Что нового в задаче лично для меня.
+
+  Значки внизу карточки («💬 3», «📎 2») показывают, сколько ВСЕГО, — и задача с тремя
+  вчерашними комментариями выглядела так же, как задача с тремя сегодняшними. Эта
+  отметка про другое: сколько чужих изменений случилось после того, как я последний раз
+  открывал карточку. Поэтому она стоит у заголовка и красная — это повод открыть, а не
+  свойство задачи.
+
+  Краснеют только МОИ задачи (исполнитель, соисполнитель, наблюдатель, постановщик):
+  когда краснеет вся доска, смотреть на это перестают.
+*/
+.task-unread {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px;
+  background: var(--fill-danger); color: var(--on-fill);
+  font-size: 11px; font-weight: 700; vertical-align: middle;
+}
+.task-card-new { box-shadow: inset 3px 0 0 var(--fill-danger); }
 .task-card:active { cursor: grabbing; transform: scale(.99); }
 .task-title { font-size: 14px; }
 .risk-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: middle; }

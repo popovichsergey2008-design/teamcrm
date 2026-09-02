@@ -359,9 +359,13 @@ export function Sidebar({
               : item.section === 'focus' ? counters.focus.decide
               : item.section === 'calendar' ? counters.calendar?.pending ?? 0
               : item.section === 'radar' ? counters.radar?.risks ?? 0
+              // «В проектах что-то произошло»: чужие изменения в моих задачах, до
+              // которых я ещё не дошёл. То же самое, что непрочитанное в чатах.
+              : item.section === 'projects' ? counters.tasks?.unread ?? 0
               : 0;
             const badgeTitle = item.section === 'focus' ? 'ждут вашего решения'
               : item.section === 'calendar' ? 'приглашений без ответа'
+              : item.section === 'projects' ? 'новых изменений в ваших задачах'
               : item.section === 'radar' ? 'задач просрочено' : undefined;
             // Разворачивать нечего, если у раздела нет ни проектов, ни подпунктов —
             // шеврон в таком месте обещает содержимое, которого не существует.

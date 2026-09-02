@@ -6,9 +6,11 @@ export type NavCounters = {
   /** приглашения на встречи без ответа */
   calendar?: { pending: number };
   radar: { risks: number } | null;
+  /** Новое в моих задачах: чужие изменения, которых я ещё не видел. */
+  tasks?: { unread: number };
 };
 
-const EMPTY: NavCounters = { focus: { decide: 0, today: 0 }, calendar: { pending: 0 }, radar: null };
+const EMPTY: NavCounters = { focus: { decide: 0, today: 0 }, calendar: { pending: 0 }, radar: null, tasks: { unread: 0 } };
 /** Чаще этого за счётчиками не ходим: перещёлкивание разделов не должно долбить сервер. */
 const MIN_INTERVAL_MS = 10_000;
 const POLL_MS = 60_000;

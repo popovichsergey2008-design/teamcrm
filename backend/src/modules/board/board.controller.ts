@@ -13,6 +13,6 @@ export class BoardController {
 
   @Get(':id/board')
   getBoard(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.board.getBoard(user.tenantId, id, user.role);
+    return this.board.getBoard(user.tenantId, id, user.role, user.userId);
   }
 }

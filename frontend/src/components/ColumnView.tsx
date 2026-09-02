@@ -183,7 +183,7 @@ function TaskCard({
   const due = deadlineBadge(task.deadline_at, !!task.closed_at);
   return (
     <div
-      className={`task-card ${timerActive ? 'task-tracking' : ''}`}
+      className={`task-card ${timerActive ? 'task-tracking' : ''}${task.unread ? ' task-card-new' : ''}`}
       draggable={canEdit}
       onClick={onOpen}
       onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
@@ -198,6 +198,14 @@ function TaskCard({
       <div className="task-title">
         {task.risk_level && <span className={`risk-dot risk-${task.risk_level}`} title={`Риск срока: ${task.risk_level}`} />}
         {task.title}
+        {/* Сколько по задаче нового ЛИЧНО ДЛЯ МЕНЯ: чужие изменения после того, как
+            я последний раз открывал карточку. Стоит у заголовка, а не среди значков
+            внизу: это не свойство задачи, а повод её открыть. */}
+        {!!task.unread && (
+          <span className="task-unread" title={`${task.unread} новых изменений с вашего последнего просмотра`}>
+            {task.unread > 99 ? '99+' : task.unread}
+          </span>
+        )}
       </div>
       <div className="task-meta">
         {assigneeName && (

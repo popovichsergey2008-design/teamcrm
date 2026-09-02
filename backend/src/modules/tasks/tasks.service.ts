@@ -4,6 +4,7 @@ import { ProjectsRepository } from '../projects/projects.repository';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TaskRow, TasksRepository } from './tasks.repository';
 import { TaskActivityRepository } from './task-activity.repository';
+import { TaskReadsRepository } from './task-reads.repository';
 import { CreateTaskDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
@@ -18,10 +19,21 @@ export class TasksService {
     private readonly projects: ProjectsRepository,
     private readonly realtime: RealtimeService,
     private readonly activity: TaskActivityRepository,
+    private readonly reads: TaskReadsRepository,
     private readonly knowledge: KnowledgeService,
     private readonly outbox: IntegrationOutboxService,
     private readonly notify: NotificationsService,
   ) {}
+
+  /**
+   * «Я это видел».
+   *
+   * Ставится по открытию карточки: увидеть изменение можно, только открыв задачу.
+   * Гасить счётчик прокруткой доски нельзя — он погас бы сам собой, ничего не показав.
+   */
+  markRead(tenantId: string, taskId: string, userId: string): Promise<void> {
+    return this.reads.markRead(tenantId, taskId, userId);
+  }
 
   /** Вкладки «Мои задачи» / «Порученные»: задачи по всем проектам, а не по одной доске. */
   listForUser(tenantId: string, userId: string, scope: 'mine' | 'delegated' | 'review', includeClosed: boolean) {

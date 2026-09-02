@@ -145,6 +145,14 @@ export function ProjectsNav({ currentId, canManage }: { currentId: string | null
         {(p.origin === 'bitrix' || p.origin === 'yougile') && !nested && (
           <span className="project-src" title={`Импортировано из ${providerLabel(p.origin)}`}>⤓</span>
         )}
+        {/* Сколько нового в МОИХ задачах этого проекта — ответ на вопрос «где искать»,
+            не открывая доску. Чужие задачи не считаем: иначе на большом проекте цифра
+            горит всегда и смотреть на неё перестают. */}
+        {!!p.unread && (
+          <span className="project-unread" title={`${p.unread} новых изменений в ваших задачах`}>
+            {p.unread > 99 ? '99+' : p.unread}
+          </span>
+        )}
       </button>
       {canManage && (
         <>

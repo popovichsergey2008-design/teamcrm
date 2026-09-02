@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { TasksRepository, TaskRow } from '../tasks/tasks.repository';
+import { TaskReadsRepository } from '../tasks/task-reads.repository';
 import { TaskCardRepository } from '../taskcard/taskcard.repository';
 import { UsersRepository } from '../users/users.repository';
 
@@ -21,9 +22,10 @@ export class BoardService {
     private readonly tasks: TasksRepository,
     private readonly card: TaskCardRepository,
     private readonly users: UsersRepository,
+    private readonly reads: TaskReadsRepository,
   ) {}
 
-  async getBoard(tenantId: string, projectId: string, role: string) {
+  async getBoard(tenantId: string, projectId: string, role: string, userId: string) {
     const project = await this.projects.findById(tenantId, projectId);
     if (!project) throw AppException.notFound('Project not found');
 
@@ -55,6 +57,13 @@ export class BoardService {
     }
     const countsByTask = new Map<string, any>();
     for (const c of counts) countsByTask.set(c.task_id, c);
+    // Сколько на карточке НОВОГО лично для смотрящего. Значки «💬 3» и «📎 2» рядом
+    // показывают, сколько всего, — и задача с тремя вчерашними комментариями выглядела
+    // так же, как задача с тремя сегодняшними.
+    const unreadByTask = new Map<string, number>();
+    for (const u of await this.reads.byProject(tenantId, userId, projectId)) {
+      unreadByTask.set(String(u.task_id), Number(u.n));
+    }
 
     const enrich = (t: any) => {
       const c = countsByTask.get(t.id);
@@ -71,6 +80,7 @@ export class BoardService {
         attachmentsCount: c ? Number(c.attachments) : 0,
         checklistTotal: c ? Number(c.cl_total) : 0,
         checklistDone: c ? Number(c.cl_done) : 0,
+        unread: unreadByTask.get(String(t.id)) ?? 0,
       };
     };
 

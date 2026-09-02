@@ -38,6 +38,11 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
                 <div className="list-main">
                   {t.risk_level && <span className={`risk-dot risk-${t.risk_level}`} title={`Риск срока: ${t.risk_level}`} />}
                   <span className="list-title">{t.title}</span>
+                  {!!t.unread && (
+                    <span className="task-unread" title={`${t.unread} новых изменений с вашего последнего просмотра`}>
+                      {t.unread > 99 ? '99+' : t.unread}
+                    </span>
+                  )}
                   {t.labels?.map((l) => <span key={l.id} className="label-chip" style={{ background: l.color, color: labelTextColor(l.color) }}>{l.name}</span>)}
                 </div>
                 <div className="list-side">

@@ -20,6 +20,13 @@ function isoDate(value?: string): string {
 export class TasksController {
   constructor(private readonly tasks: TasksService) {}
 
+  /** Карточку открыли — изменения по ней больше не новые. */
+  @Post(':id/read')
+  async read(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    await this.tasks.markRead(user.tenantId, id, user.userId);
+    return { read: true };
+  }
+
   /**
    * Мои задачи (scope=mine), порученные другим (scope=delegated) и сданные мне
    * на проверку (scope=review) — сквозной срез по всем проектам.

@@ -40,6 +40,8 @@ export interface Project {
   origin_connection_id?: string | null;
   origin_label?: string | null;
   origin_portal?: string | null;
+  /** Сколько нового в МОИХ задачах этого проекта — цифра рядом с ним в панели. */
+  unread?: number;
 }
 
 export interface Task {
@@ -75,6 +77,14 @@ export interface Task {
   attachmentsCount?: number;
   checklistTotal?: number;
   checklistDone?: number;
+  /**
+   * Сколько по задаче произошло НОВОГО лично для меня.
+   *
+   * Не путать с commentsCount и прочими: те показывают, сколько всего. Задача с тремя
+   * вчерашними комментариями и задача с тремя сегодняшними выглядели одинаково —
+   * ровно об этом и было замечание.
+   */
+  unread?: number;
 }
 
 export interface BoardColumn {

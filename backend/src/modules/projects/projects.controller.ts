@@ -15,7 +15,7 @@ export class ProjectsController {
   /** ?archived=1 — вернуть вместе с архивными (переключатель «Показать архив»). */
   @Get()
   list(@CurrentUser() user: AuthUser, @Query('archived') archived?: string) {
-    return this.projects.list(user.tenantId, user.role, archived === '1' || archived === 'true');
+    return this.projects.list(user.tenantId, user.role, archived === '1' || archived === 'true', user.userId);
   }
 
   /** Убрать проект в архив / вернуть из архива. Данные сохраняются. */

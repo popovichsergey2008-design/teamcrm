@@ -98,6 +98,22 @@ export function TaskDrawer({ task, users, columns = [], canManage, timerActive, 
   useEffect(() => {
     api.meetingOfTask(task.id).then(setMeeting).catch(() => setMeeting(null));
   }, [task.id]);
+
+  /*
+    Открыли карточку — изменения по ней больше не новые.
+
+    Отметка ставится именно здесь, а не при прокрутке доски: увидеть, что написали
+    в обсуждении или куда переехала задача, можно только открыв её. Гаснет отметка
+    один раз, поэтому обновляем доску и счётчики панели сразу — иначе красная цифра
+    висит на карточке до перезагрузки и человек открывает задачу второй раз.
+  */
+  useEffect(() => {
+    if (!task.unread) return;
+    api.markTaskRead(task.id)
+      .then(() => { onRefresh(); window.dispatchEvent(new Event('teamcrm:tasks-changed')); })
+      .catch(() => undefined); // отметка — не то, ради чего стоит показывать ошибку
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id]);
   const [managerId, setManagerId] = useState(task.created_by ?? '');
 
   /** Есть ли что сохранять в блоке назначения: кнопка не должна лгать о работе. */

@@ -131,6 +131,7 @@ export class ProjectsRepository {
       // дочерние таблицы задач
       for (const tbl of [
         'task_activity',
+        'task_reads',
         'task_watchers',
         'task_labels',
         'task_checklist_items',

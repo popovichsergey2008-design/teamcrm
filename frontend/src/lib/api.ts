@@ -836,6 +836,9 @@ export const api = {
     request<{ meeting_id: string; title: string | null; happened_at: string | null } | null>(
       'GET', `/meetings/of-task/${taskId}`),
 
+  /** Карточку открыли — изменения по ней перестают быть новыми. */
+  markTaskRead: (id: string) => request<{ read: true }>('POST', `/tasks/${id}/read`, {}),
+
   saveTaskPlan: (id: string, b: { estimateHours?: number; deadlineAt?: string }) =>
     request<{ saved: true }>('POST', `/tasks/${id}/plan`, b),
   getForecast: (id: string) => request<any>('GET', `/tasks/${id}/forecast`),

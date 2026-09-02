@@ -54,7 +54,7 @@ export class PortalService {
     const clientId = await this.myClientId(tenantId, userId);
     if (!(await this.repo.projectBelongsToClient(tenantId, projectId, clientId))) throw AppException.notFound('Проект не найден');
     // board.getBoard с ролью client уже стрипует финансы; поверх — жёсткий whitelist
-    const board = await this.board.getBoard(tenantId, projectId, 'client');
+    const board = await this.board.getBoard(tenantId, projectId, 'client', userId);
     return this.clientView(board);
   }
 
