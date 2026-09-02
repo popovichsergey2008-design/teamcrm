@@ -554,7 +554,13 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
         {/* Правая колонка — чат задачи. Он на виду всегда: обсуждение и есть работа
             по задаче, а не отдельный раздел, в который надо переключаться. */}
         <div className="task-chat">
-          <TaskChat taskId={task.id} onRefresh={onRefresh} />
+          <TaskChat
+            taskId={task.id}
+            assigneeId={task.assignee_id}
+            creatorId={task.created_by}
+            participants={participants}
+            onRefresh={onRefresh}
+          />
         </div>
       </aside>
     </div>

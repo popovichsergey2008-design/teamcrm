@@ -98,7 +98,10 @@ export function MentionField({ value, users, onChange, onMention, placeholder, r
                 onClick={() => pick(u)}
               >
                 <Avatar path={u.avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
-                {u.fullName}
+                <span className="mention-name">{u.fullName}</span>
+                {/* Роль в задаче: по одному имени не понять, к кому обращаться
+                    с вопросом «когда будет», а к кому — «так делать?». */}
+                {u.hint && <span className="mention-hint">{u.hint}</span>}
               </button>
             </li>
           ))}

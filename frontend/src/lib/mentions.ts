@@ -10,6 +10,8 @@ export interface MentionUser {
   id: string;
   fullName: string;
   avatarUrl?: string | null;
+  /** Кто он в этой задаче: «Исполнитель», «Постановщик». В компании три Сергея. */
+  hint?: string;
 }
 
 /**

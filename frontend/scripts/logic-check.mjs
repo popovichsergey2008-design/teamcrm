@@ -605,6 +605,47 @@ test('разбор сообщения: упоминания, ссылки, ск�
   assert.equal(sameGroup(undefined, { author_id: 1, created_at: at(10, 0) }), false);
 });
 
+// ── упоминания в задаче ───────────────────────────────────────────────────────
+test('подсказка «@» ставит вперёд участников задачи и подписывает их роли', async () => {
+  const { orderMentions, roleOf } = await load('lib/task-mentions.ts');
+  const team = [
+    { id: 'ai', fullName: 'AI-помощник', hint: 'знает эту задачу' },
+    { id: '1', fullName: 'Аня Посторонняя' },
+    { id: '2', fullName: 'Борис Постановщик' },
+    { id: '3', fullName: 'Витя Исполнитель' },
+    { id: '4', fullName: 'Гриша Соисполнитель' },
+    { id: '5', fullName: 'Дима Наблюдатель' },
+  ];
+  const people = {
+    meId: '3', assigneeId: '3', creatorId: '2',
+    participants: [{ user_id: '4', role: 'co_assignee' }, { user_id: '5', role: 'watcher' }],
+  };
+
+  // пишет ИСПОЛНИТЕЛЬ: помощник, постановщик, соисполнитель, наблюдатель, остальные
+  assert.deepEqual(orderMentions(team, people).map((u) => u.id), ['ai', '2', '4', '5', '1']);
+  assert.equal(orderMentions(team, people).some((u) => u.id === '3'), false, 'себя звать незачем');
+  assert.deepEqual(
+    orderMentions(team, people).map((u) => u.hint),
+    ['знает эту задачу', 'Постановщик', 'Соисполнитель', 'Наблюдатель', undefined],
+  );
+
+  // пишет ПОСТАНОВЩИК: первым исполнитель
+  const asCreator = { ...people, meId: '2' };
+  assert.deepEqual(orderMentions(team, asCreator).map((u) => u.id), ['ai', '3', '4', '5', '1']);
+
+  // человек со стороны: сначала исполнитель, потом постановщик
+  const asOutsider = { ...people, meId: '1' };
+  assert.deepEqual(orderMentions(team, asOutsider).map((u) => u.id), ['ai', '3', '2', '4', '5']);
+
+  assert.equal(roleOf('3', people), 'assignee');
+  assert.equal(roleOf('5', people), 'watcher');
+  assert.equal(roleOf('1', people), null);
+
+  // задача без исполнителя и без участников — список не должен разваливаться
+  const bare = orderMentions(team, { meId: '1' });
+  assert.deepEqual(bare.map((u) => u.id), ['ai', '2', '3', '4', '5']);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

@@ -8,6 +8,7 @@ import { Lightbox } from './Lightbox';
 import { api, ApiError } from '../lib/api';
 import { dayLabel, sameGroup, splitMessage } from '../lib/chat-text';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
+import { orderMentions } from '../lib/task-mentions';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useAuth } from '../state/auth';
 
@@ -78,7 +79,14 @@ const initials = (name: string) => (name?.trim()?.[0] ?? '?').toUpperCase();
  * История задачи внизу — не украшение: строка «написал сообщение» ведёт к самому
  * сообщению. Без этого история отсылает в никуда.
  */
-export function TaskChat({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
+export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onRefresh }: {
+  taskId: string;
+  /** Кто в этой задаче кто — от этого зависит порядок подсказки при «@». */
+  assigneeId?: string | null;
+  creatorId?: string | null;
+  participants?: { user_id: string; role: string }[];
+  onRefresh: () => void;
+}) {
   const { user } = useAuth();
   const [comments, setComments] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
@@ -136,7 +144,18 @@ export function TaskChat({ taskId, onRefresh }: { taskId: string; onRefresh: () 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
-  const mentionUsers = [{ id: AI_MENTION_ID, fullName: AI_MENTION_NAME }, ...users];
+  /**
+   * Список для «@»: сначала помощник, потом те, кто в этой задаче участвует.
+   *
+   * Общий алфавитный перечень сотрудников почти бесполезен — зовут не «кого-нибудь
+   * из компании», а участников задачи. Порядок зависит от того, кто пишет: исполнителю
+   * первым нужен постановщик, постановщику — исполнитель.
+   */
+  const mentionUsers = orderMentions(
+    [{ id: AI_MENTION_ID, fullName: AI_MENTION_NAME, hint: 'знает эту задачу' }, ...users],
+    { meId: String(user?.id ?? ''), assigneeId, creatorId, participants },
+    AI_MENTION_ID,
+  );
 
   /** Скриншот приходит без имени — даём ему дату, иначе в файлах десяток «image.png». */
   const attach = (file: File) => {

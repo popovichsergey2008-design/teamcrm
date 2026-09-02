@@ -1267,6 +1267,15 @@
   background: transparent; border: none; color: var(--text); cursor: pointer;
 }
 .mention-option:hover, .mention-active { background: var(--bg-elev-2); }
+.mention-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Роль в задаче рядом с именем: три Сергея различаются не фамилией, а тем,
+   кто из них ведёт эту задачу. */
+.mention-hint {
+  flex: 0 0 auto; font-size: var(--fs-xs); color: var(--text-mut);
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 1px 7px;
+}
+.mention-active .mention-hint, .mention-option:hover .mention-hint { background: var(--bg-elev); }
 .mention { color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 3px; }
 /* вложения к посту */
 .feed-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
