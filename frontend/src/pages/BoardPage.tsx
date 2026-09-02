@@ -70,6 +70,18 @@ export function BoardPage({ initial, onNavigate }: {
 } = {}) {
   const { user } = useAuth();
   const isClient = user?.role === 'client';
+  /*
+    Два разных права, а не одно.
+
+    Раньше всё управление доской пряталось за «владелец или руководитель», и сотрудник
+    не видел ни стрелок переноса колонок, ни архивации проекта — кнопки просто не
+    рисовались, и понять, почему у коллеги они есть, а у тебя нет, было невозможно.
+
+    Граница проходит по обратимости: порядок колонок, их названия и архив проекта —
+    работа тех, кто по доске работает. Удаление колонки и проекта не отменишь, оно
+    остаётся за руководителем.
+  */
+  const canManageBoard = !isClient;
   const canManageProjects = user?.role === 'owner' || user?.role === 'manager';
   const showFinance = !isClient && MONETIZATION_ENABLED;
 
@@ -420,10 +432,10 @@ export function BoardPage({ initial, onNavigate }: {
             <EmptyState
               icon="board"
               title="Здесь появится доска"
-              hint={canManageProjects
+              hint={canManageBoard
                 ? 'Создайте проект — и сможете вести задачи по колонкам. Уже работаете в YouGile? Подключите импорт в «Интеграциях».'
                 : 'Как только вас добавят в проект, его доска откроется здесь.'}
-              action={canManageProjects
+              action={canManageBoard
                 // поле создания живёт в меню слева — просим его принять курсор
                 ? { label: 'Создать проект', onClick: () => window.dispatchEvent(new Event(NEW_PROJECT_FOCUS)) }
                 : undefined}
@@ -490,7 +502,8 @@ export function BoardPage({ initial, onNavigate }: {
                     column={col}
                     users={users}
                     canEdit={!isClient}
-                    canManage={canManageProjects}
+                    canManage={canManageBoard}
+                    canDelete={canManageProjects}
                     isFirst={idx === 0}
                     isLast={idx === board.columns.length - 1}
                     activeTimerTask={activeTimerTask}
@@ -503,7 +516,7 @@ export function BoardPage({ initial, onNavigate }: {
                     onColumnDrop={reorderColumns}
                   />
                 ))}
-                {canManageProjects && (
+                {canManageBoard && (
                   <button className="add-column" onClick={addColumn} title="Добавить колонку">
                     + колонка
                   </button>

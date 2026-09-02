@@ -9,6 +9,8 @@ interface Props {
   users?: User[];
   canEdit: boolean;
   canManage?: boolean;
+  /** Удаление колонки не отменишь — оно остаётся за владельцем и руководителем. */
+  canDelete?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
   activeTimerTask: string | null;
@@ -28,6 +30,7 @@ export function ColumnView({
   users,
   canEdit,
   canManage = false,
+  canDelete = false,
   isFirst = false,
   isLast = false,
   activeTimerTask,
@@ -127,9 +130,20 @@ export function ColumnView({
         <span className="col-head-right">
           {canManage && !renaming && (
             <span className="col-actions">
-              <button className="col-btn" title="Влево" disabled={isFirst} onClick={() => onMoveColumn?.(column.id, 'left')}>◀</button>
-              <button className="col-btn" title="Вправо" disabled={isLast} onClick={() => onMoveColumn?.(column.id, 'right')}>▶</button>
-              <button className="col-btn col-del" title="Удалить колонку" onClick={() => onDeleteColumn?.(column.id, column.name)}><Icon name="close" size={13} /></button>
+              {/* Стрелки были текстовыми значками «◀ ▶»: в светлой теме они выглядели
+                  чужеродными чёрными треугольниками, а выключенные — почти невидимыми.
+                  Теперь это обычные иконки набора, как везде. */}
+              <button className="col-btn" title="Переместить колонку влево" aria-label="Переместить колонку влево" disabled={isFirst} onClick={() => onMoveColumn?.(column.id, 'left')}>
+                <Icon name="chevron-left" size={14} />
+              </button>
+              <button className="col-btn" title="Переместить колонку вправо" aria-label="Переместить колонку вправо" disabled={isLast} onClick={() => onMoveColumn?.(column.id, 'right')}>
+                <Icon name="chevron-right" size={14} />
+              </button>
+              {canDelete && (
+                <button className="col-btn col-del" title="Удалить колонку" aria-label="Удалить колонку" onClick={() => onDeleteColumn?.(column.id, column.name)}>
+                  <Icon name="close" size={13} />
+                </button>
+              )}
             </span>
           )}
           <span className="badge">{column.tasks.length}</span>

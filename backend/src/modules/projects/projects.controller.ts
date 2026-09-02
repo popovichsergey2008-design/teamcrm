@@ -18,21 +18,30 @@ export class ProjectsController {
     return this.projects.list(user.tenantId, user.role, archived === '1' || archived === 'true', user.userId);
   }
 
-  /** Убрать проект в архив / вернуть из архива. Данные сохраняются. */
+  /**
+   * Убрать проект в архив / вернуть из архива. Данные сохраняются.
+   *
+   * Доступно и сотруднику: архив — действие ОБРАТИМОЕ, проект возвращается одной
+   * кнопкой и ничего не теряет. Держать за руководителем стоит то, что не отменишь,
+   * а не то, что убирает законченный проект с глаз. Удаление проекта — ниже, и оно
+   * по-прежнему только для владельца и руководителя.
+   */
   @Post(':id/archive')
-  @Roles('owner', 'manager')
   archive(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.projects.setArchived(user.tenantId, id, true);
   }
 
   @Post(':id/unarchive')
-  @Roles('owner', 'manager')
   unarchive(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.projects.setArchived(user.tenantId, id, false);
   }
 
+  /**
+   * Создание проекта — тоже обратимое действие: лишний проект убирается в архив,
+   * а удалить его может руководитель. Держать его за ролью значило бы показывать
+   * сотруднику поле ввода, на которое сервер отвечает «недостаточно прав».
+   */
   @Post()
-  @Roles('owner', 'manager')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateProjectDto) {
     return this.projects.create(user.tenantId, dto);
   }
@@ -43,15 +52,21 @@ export class ProjectsController {
     return this.projects.remove(user.tenantId, id);
   }
 
-  // ───── колонки доски ─────
+  /*
+    ───── колонки доски ─────
+
+    Порядок колонок, их названия и добавление новой — работа тех, кто по этой доске
+    работает, а не привилегия. Сотрудник видел кнопки… точнее, НЕ видел: они просто
+    не рисовались, и на вопрос «почему у меня нет стрелок» ответа в интерфейсе не было.
+
+    Удаление колонки осталось за руководителем: колонку с задачами не вернёшь.
+  */
   @Post(':id/columns')
-  @Roles('owner', 'manager')
   addColumn(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ColumnDto) {
     return this.projects.addColumn(user.tenantId, id, dto.name);
   }
 
   @Patch(':id/columns/:colId')
-  @Roles('owner', 'manager')
   renameColumn(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -62,13 +77,11 @@ export class ProjectsController {
   }
 
   @Post(':id/columns/reorder')
-  @Roles('owner', 'manager')
   reorderColumns(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ReorderColumnsDto) {
     return this.projects.reorderColumns(user.tenantId, id, dto.orderedIds);
   }
 
   @Post(':id/columns/:colId/move')
-  @Roles('owner', 'manager')
   moveColumn(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

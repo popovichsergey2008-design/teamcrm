@@ -23,7 +23,13 @@ export const NEW_PROJECT_FOCUS = 'teamcrm:new-project-focus';
  * Данные компонент держит сам: доске они нужны для своих целей, и связывать два экрана
  * общим состоянием ради одного списка — дороже, чем прочитать его дважды.
  */
-export function ProjectsNav({ currentId, canManage }: { currentId: string | null; canManage: boolean }) {
+export function ProjectsNav({ currentId, canManage, canDelete = false }: {
+  currentId: string | null;
+  /** Архив и создание проекта: обратимые действия — работа всех, кто ведёт проекты. */
+  canManage: boolean;
+  /** Удаление проекта не отменишь — только владелец и руководитель. */
+  canDelete?: boolean;
+}) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'active' | 'archived'>('active');
@@ -163,9 +169,11 @@ export function ProjectsNav({ currentId, canManage }: { currentId: string | null
           >
             <Icon name={p.status === 'archived' ? 'arrow-up' : 'archive'} size={13} />
           </button>
-          <button className="project-del" title="Удалить проект" onClick={() => remove(p)}>
-            <Icon name="close" size={13} />
-          </button>
+          {canDelete && (
+            <button className="project-del" title="Удалить проект" onClick={() => remove(p)}>
+              <Icon name="close" size={13} />
+            </button>
+          )}
         </>
       )}
     </div>
