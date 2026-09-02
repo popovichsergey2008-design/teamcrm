@@ -8,8 +8,14 @@ const OPTIONS: { value: ThemeChoice; label: string; icon: IconName }[] = [
   { value: 'system', label: 'Как в системе', icon: 'monitor' },
 ];
 
-/** Выбор темы: три состояния, «как в системе» — полноценный вариант, а не отсутствие выбора. */
-export function ThemeSwitch() {
+/**
+ * Выбор темы: три состояния, «как в системе» — полноценный вариант, а не отсутствие выбора.
+ *
+ * В меню под аватаром переключатель стоит значками — там тесно и рядом подпись пункта.
+ * В личном кабинете места достаточно, и варианты подписаны: значок солнца сам по себе
+ * не говорит, включена тема или предлагается включить.
+ */
+export function ThemeSwitch({ labels = false }: { labels?: boolean }) {
   const [choice, setChoice] = useState<ThemeChoice>(getThemeChoice());
 
   const pick = (value: ThemeChoice) => {
@@ -18,7 +24,7 @@ export function ThemeSwitch() {
   };
 
   return (
-    <div className="theme-switch" role="group" aria-label="Тема оформления">
+    <div className={`theme-switch${labels ? ' theme-switch-wide' : ''}`} role="group" aria-label="Тема оформления">
       {OPTIONS.map((o) => (
         <button
           key={o.value}
@@ -28,6 +34,7 @@ export function ThemeSwitch() {
           aria-pressed={choice === o.value}
         >
           <Icon name={o.icon} size={15} />
+          {labels && <span>{o.label}</span>}
         </button>
       ))}
     </div>

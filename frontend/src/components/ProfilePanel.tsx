@@ -6,6 +6,7 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { browserTimezone, listTimezones } from '../lib/timezones';
 import { Avatar } from './Avatar';
+import { ThemeSwitch } from './ThemeSwitch';
 import { DatePicker } from './DatePicker';
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients';
@@ -149,6 +150,16 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
               <Avatar path={me.avatarUrl} fallback={me.fullName?.[0] ?? '?'} className="avatar-lg" />
               <button className="btn btn-sm" onClick={() => fileRef.current?.click()}>Загрузить фото</button>
               <input ref={fileRef} type="file" accept="image/*" hidden onChange={onAvatarPick} />
+            </div>
+            {/* Тема — настройка внешнего вида, и место ей в кабинете. В меню под
+                аватаром она тоже есть, но туда заходят за другим и находят её случайно. */}
+            <div className="field">
+              <label>Оформление</label>
+              <ThemeSwitch labels />
+              <span className="dim" style={{ fontSize: 12 }}>
+                «Как в системе» — тема меняется вместе с настройкой компьютера: светлая днём,
+                тёмная вечером, если так настроено там.
+              </span>
             </div>
             <div className="field"><label>Имя</label><input className="input" value={me.fullName ?? ''} onChange={(e) => setMe({ ...me, fullName: e.target.value })} /></div>
             <div className="field"><label>E-mail</label><input className="input" value={me.email} disabled /></div>

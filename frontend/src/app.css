@@ -1737,6 +1737,13 @@
   font-size: var(--fs-sm);
 }
 .theme-switch { display: flex; gap: 2px; padding: 2px; background: var(--bg-elev-2); border-radius: var(--radius-sm); }
+/* В кабинете варианты подписаны и делят ширину поровну: одинокий значок солнца
+   не говорит, тема включена или предлагается включить. */
+.theme-switch-wide { align-self: flex-start; }
+.theme-switch-wide .theme-option {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: auto; height: auto; padding: 7px 12px; font-size: var(--fs-sm); white-space: nowrap;
+}
 .theme-option {
   display: grid; place-items: center; width: 28px; height: 24px; cursor: pointer;
   background: none; border: none; color: var(--text-mut); border-radius: 5px; transition: background .15s, color .15s;
