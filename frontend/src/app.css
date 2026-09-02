@@ -510,7 +510,7 @@
 .project-group-head:hover { background: var(--bg-elev-2); border-radius: var(--radius-sm); }
 .project-group-caret { width: 10px; opacity: .7; }
 .project-group-name { flex: 1; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.project-group-count { opacity: .6; font-size: 12px; }
+.project-group-count { color: var(--text-mut); font-size: 12px; }
 
 /* вкладки сайдбара: «Проекты» и «Архив» (появляется, только когда в архиве что-то есть) */
 .sidebar-tabs { display: flex; gap: 4px; margin: 0 0 10px; border-bottom: 1px solid var(--border); }
@@ -966,7 +966,7 @@
 .call-starter-call { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin-left: -1px; }
 /* Половинки подсвечиваются вместе: наводишь на любую — видно, что элемент один. */
 .call-starter:hover .call-starter-add:not(:disabled),
-.call-starter:hover .call-starter-call:not(:disabled) { background: var(--border); }
+.call-starter:hover .call-starter-call:not(:disabled) { background: var(--hover); }
 .call-starter-add .view-count { margin-left: 4px; }
 
 /* Строка «выбрать всех» отделена от людей: это действие, а не человек. */
@@ -1288,7 +1288,9 @@
 
 /* карточка задачи: панель статусов-колонок (клик = переезд в колонку доски) */
 .status-bar { display: flex; align-items: center; gap: 10px; margin: 12px 0 8px; flex-wrap: wrap; }
-.status-label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; opacity: .55; }
+/* Цветом, а не прозрачностью: 55% от приглушённого давали около 2.5:1 — заглавные
+   буквы 11-го кегля на светлом фоне при таком контрасте не читаются. */
+.status-label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-mut); }
 .status-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .status-pill {
   font-size: 12px; padding: 5px 12px; border-radius: 999px; cursor: pointer;

@@ -6,34 +6,53 @@
 :root {
   color-scheme: light;
 
+  /*
+    Светлая тема пересобрана по замерам, а не на глаз.
+
+    Текст и раньше проходил порог AA — и проверка это подтверждала. Плохо видно было
+    не буквы, а СТРУКТУРУ: границы давали 1.2:1 к белому (волосок, которого нет),
+    цветные рамки плашек — 1.5:1, поверхности отличались на 1.08:1. Экран выглядел
+    одним белым полем, где карточки, поля ввода и колонки ни во что не очерчены.
+
+    Отсюда правки: границы усилены (тонкая — 1.5:1, контурная — 2.7:1, почти порог
+    3:1 для нетекстовых элементов из WCAG 1.4.11), цветные рамки доведены до ~2.5:1,
+    поверхности разведены, статусные цвета углублены. Текст заодно стал контрастнее
+    на полбалла — но правка была не про него.
+  */
+
   /* поверхности: страница → панель → подложка внутри панели */
-  --bg:        #f4f6fa;
+  --bg:        #eef1f7;
   --bg-elev:   #ffffff;
-  --bg-elev-2: #eaeef6;
-  --border:    #e3e8f0;
-  --border-2:  #cfd7e5;
+  --bg-elev-2: #e2e7f0;
+  /* --border — тонкие разделители (строки списков, низ шапки), --border-2 — контуры
+     того, с чем взаимодействуют: поля ввода, кнопки, всплывающие окна. */
+  --border:    #c9d2e0;
+  --border-2:  #8f9db5;
+  /* Подсветка под курсором. Раньше её рисовали цветом границы — и, усилив границы,
+     мы бы разом сделали наведение грязно-серым. Это разные роли, и токена два. */
+  --hover:     #dde3ed;
 
   /* текст: основной → второстепенный → подсказки */
-  --text:      #101623;
-  --text-dim:  #4d5768;
-  --text-mut:  #626b7c;
+  --text:      #0f1521;
+  --text-dim:  #485263;
+  --text-mut:  #5b6474;
 
   /* акцент: --accent для текста, рамок и наведения, --accent-2 — заливка кнопки */
-  --accent:      #1e57e6;
-  --accent-2:    #2a67ff;
-  --accent-soft: #e8effe;
-  --accent-line: #b9cdfb;
+  --accent:      #1b52dd;
+  --accent-2:    #2560ee;
+  --accent-soft: #e6eefd;
+  --accent-line: #7ea6f5;
 
   /* статусы: у каждого мягкая подложка и рамка, чтобы не смешивать прозрачности */
-  --ok:          #157a51;
-  --ok-soft:     #e4f6ee;
-  --ok-line:     #a9e0c8;
-  --warn:        #956600;
-  --warn-soft:   #fdf3dd;
-  --warn-line:   #f0d093;
-  --danger:      #cb2a3a;
-  --danger-soft: #fdeaec;
-  --danger-line: #f4bcc2;
+  --ok:          #0f6f49;
+  --ok-soft:     #dff4ea;
+  --ok-line:     #54b78e;
+  --warn:        #8a5f00;
+  --warn-soft:   #fbf0d5;
+  --warn-line:   #cb9a35;
+  --danger:      #c22335;
+  --danger-soft: #fce7ea;
+  --danger-line: #e88b97;
 
   /* текст поверх цветных заливок */
   --on-accent: #ffffff;
@@ -42,16 +61,17 @@
   --on-danger: #ffffff;
 
   /* заливки плашек: плотный цвет под белый текст (не путать с *-soft — те под цветной) */
-  --fill-ok:     #157a51;
-  --fill-warn:   #9a6a00;
-  --fill-danger: #cf2b3b;
-  --fill-info:   #1e57e6;
-  --fill-muted:  #5a6478;
+  --fill-ok:     #0f6f49;
+  --fill-warn:   #8a5f00;
+  --fill-danger: #c22335;
+  --fill-info:   #1b52dd;
+  --fill-muted:  #525d72;
   --on-fill:     #ffffff;
 
-  --overlay:   rgba(15,23,42,.45);
-  --shadow:    0 8px 24px rgba(16,22,35,.10);
-  --shadow-lg: 0 18px 48px rgba(16,22,35,.18);
+  --overlay:   rgba(15,23,42,.50);
+  /* Тень — второй способ отделить карточку от страницы: на светлом одной границы мало. */
+  --shadow:    0 8px 24px rgba(16,22,35,.13);
+  --shadow-lg: 0 18px 48px rgba(16,22,35,.22);
   --video-bg:  #0d1117;   /* видео читается на тёмном в любой теме */
 
   /* шкалы: одинаковые шаги вместо произвольных чисел в каждом месте */
@@ -71,6 +91,7 @@
     --bg-elev-2: #1a2233;
     --border:    #232c40;
     --border-2:  #2e3a52;
+    --hover:     #232c40;
     --text:      #e6ebf5;
     --text-dim:  #97a2bb;
     --text-mut:  #7f89a1;
@@ -109,6 +130,7 @@
   --bg-elev-2: #1a2233;
   --border:    #232c40;
   --border-2:  #2e3a52;
+  --hover:     #232c40;
   --text:      #e6ebf5;
   --text-dim:  #97a2bb;
   --text-mut:  #7f89a1;
@@ -160,7 +182,7 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
   padding: var(--sp-2) 14px; border-radius: var(--radius-sm); cursor: pointer;
   transition: background .15s, border-color .15s, color .15s, opacity .15s; font-weight: 500;
 }
-.btn:hover:not(:disabled) { border-color: var(--border-2); background: var(--border); }
+.btn:hover:not(:disabled) { border-color: var(--border-2); background: var(--hover); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 /* доступность: видимое кольцо только при навигации с клавиатуры */
