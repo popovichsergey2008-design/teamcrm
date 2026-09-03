@@ -29,6 +29,9 @@ interface Message {
   /** Сколько ответов в ветке этого сообщения. */
   reply_count?: number;
   last_reply_at?: string | null;
+  /** Сводка реакций, а не список нажавших: в ленте нужен знак и число. */
+  reactions?: { emoji: string; count: number; mine: boolean }[];
+  pinned_at?: string | null;
 }
 
 /** Строка раздела «Треды». */
@@ -37,6 +40,9 @@ interface ThreadItem {
   project_name: string | null; root_body: string; root_author: string | null;
   reply_count: number; last_reply_at: string | null; unread: number;
 }
+
+/** Реакции: ответить «понял», не засоряя переписку и не будя всех уведомлением. */
+const REACTIONS = ['👍', '✅', '🔥', '❓', '👀', '🙏'];
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 /** «1 ответ», «2 ответа», «5 ответов» — иначе интерфейс выглядит машинным переводом. */
@@ -90,6 +96,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   /** Раздел «Треды»: мои ветки вместо переписки. */
   const [threadsView, setThreadsView] = useState(false);
   const [threads, setThreads] = useState<ThreadItem[]>([]);
+  /** Закреплённое чата: то, что нужно всем и всегда под рукой. */
+  const [pinned, setPinned] = useState<Message[]>([]);
+  const [pinsOpen, setPinsOpen] = useState(false);
+  /** У какого сообщения открыт выбор реакции: шесть смайлов в каждой строке — мусор. */
+  const [reactFor, setReactFor] = useState<string | null>(null);
+  /** Куда прокрутили из закреплённого — подсвечиваем, иначе непонятно, что нашли. */
+  const [highlight, setHighlight] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
 
@@ -103,6 +116,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
    * событием по сокету (сервер рассылает всем участникам, включая автора) и ответом REST,
    * причём событие обычно приходит РАНЬШЕ ответа. Сверяем по id.
    */
+  const loadPinned = useCallback((chatId: string) => {
+    api.chatPinned(chatId).then(setPinned).catch(() => undefined);
+  }, []);
+
   const loadThreads = useCallback(
     () => api.myThreads().then(setThreads).catch(() => undefined),
     [],
@@ -150,11 +167,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       if (String(p.chatId) === String(activeId)) { setActiveId(null); setMessages([]); }
       reload();
     };
+    // закрепление видят все: шапка чата должна измениться сразу у обоих
+    const onPinned = (p: { chatId: string }) => {
+      if (String(p.chatId) === String(activeId)) loadPinned(String(p.chatId));
+    };
+    socket.on('chat.pinned', onPinned);
     socket.on('chat.message', onMessage);
     socket.on('chat.message_deleted', onDeleted);
     socket.on('chat.created', reload);
     socket.on('chat.removed', onRemoved);
     return () => {
+      socket.off('chat.pinned', onPinned);
       socket.off('chat.message', onMessage);
       socket.off('chat.message_deleted', onDeleted);
       socket.off('chat.created', reload);
@@ -167,11 +190,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     setActiveId(id); setErr(''); setMessages([]); setMsgLoading(true);
     try {
       setMessages(await api.chatMessages(id)); // чтение помечается на сервере этим же запросом
+      loadPinned(id);
       reload();
       notifyChatsChanged(); // счётчик в шапке должен упасть сразу
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть чат'); }
     finally { setMsgLoading(false); }
-  }, [reload]);
+  }, [reload, loadPinned]);
 
   // пришли из уведомления — открываем названный чат, а не последний
   useEffect(() => {
@@ -263,6 +287,46 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     if (prev?.url) URL.revokeObjectURL(prev.url);
     return null;
   });
+
+  const react = async (messageId: string, emoji: string) => {
+    if (!activeId) return;
+    setReactFor(null);
+    // Оптимистично: реакция должна ставиться мгновенно — в этом вся её ценность.
+    const patch = (list: Message[]) => list.map((m) => {
+      if (String(m.id) !== String(messageId)) return m;
+      const next = [...(m.reactions ?? [])];
+      const found = next.find((r) => r.emoji === emoji);
+      if (found) {
+        found.mine ? (found.count -= 1) : (found.count += 1);
+        found.mine = !found.mine;
+      } else next.push({ emoji, count: 1, mine: true });
+      return { ...m, reactions: next.filter((r) => r.count > 0) };
+    });
+    setMessages(patch);
+    setThread((prev) => (prev ? { ...prev, messages: patch(prev.messages) } : prev));
+    try { await api.reactToChatMessage(activeId, messageId, emoji); }
+    catch { setMessages(await api.chatMessages(activeId)); }
+  };
+
+  const togglePin = async (m: Message) => {
+    if (!activeId) return;
+    const next = !m.pinned_at;
+    try {
+      await api.pinChatMessage(activeId, String(m.id), next);
+      setMessages((prev) => prev.map((x) => (String(x.id) === String(m.id)
+        ? { ...x, pinned_at: next ? new Date().toISOString() : null } : x)));
+      loadPinned(activeId);
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось закрепить'); }
+  };
+
+  /** Переход к сообщению из закреплённого: если оно ещё не подгружено, просто подсветим. */
+  const goToMessage = (id: string) => {
+    setPinsOpen(false);
+    const el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setHighlight(String(id));
+    window.setTimeout(() => setHighlight(null), 2200);
+  };
 
   /** Открыть ветку сообщения: подгружаем целиком, сервер тем же запросом её и отмечает. */
   const openThread = async (rootId: string) => {
@@ -481,9 +545,26 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                           onClick={() => setManageOpen(true)}><Icon name="settings" /></button>
                 )}
               </span>
+              {/* Закреплённое — в шапке: доступы к серверу и ссылку на макет ищут
+                  прокруткой на сотню сообщений назад, и это самая частая потеря времени. */}
+              {pinned.length > 0 && (
+                <button className="chat-pins-btn" onClick={() => setPinsOpen((v) => !v)} title="Закреплённые сообщения">
+                  <Icon name="flag" size={13} /> Закреплено: {pinned.length}
+                </button>
+              )}
               {/* Кнопки созвона стоят в шапке раздела — одни на все чаты,
                   чтобы не повторять их в каждой переписке. */}
             </div>
+
+            {pinsOpen && pinned.length > 0 && (
+              <div className="chat-pins">
+                {pinned.map((m) => (
+                  <button key={m.id} className="chat-pin-item" onClick={() => goToMessage(String(m.id))}>
+                    <b>{m.author_name}</b>: {String(m.body || m.file_name || 'вложение').slice(0, 120)}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
 
@@ -512,12 +593,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                   );
                 }
                 return (
-                  <div key={m.id}>
+                  <div key={m.id} data-msg={String(m.id)}>
                     {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
                     {/* Время — ПОД плашкой, а не внутри неё: серая строчка на цветном
                         пузыре не читалась вовсе, а место в углу отъедала. */}
-                    <div className={`chat-line ${mine ? 'mine' : ''}`}>
+                    <div className={`chat-line ${mine ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}`}>
                       <div className={`chat-msg ${mine ? 'mine' : ''}`}>
+                        {m.pinned_at && <span className="chat-pin-mark" title="Закреплено в шапке чата"><Icon name="flag" size={11} /></span>}
                         {!mine && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
                         {m.body && <div className="chat-body">{m.body}</div>}
                         {/* Ссылкой файл открыть было нельзя: он за авторизацией и отдавал 401.
@@ -530,8 +612,45 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                           />
                         )}
                       </div>
+                      {/* Поставленные реакции видны всегда: в них весь смысл — ответить
+                          «понял», не засоряя переписку и не будя всех уведомлением. */}
+                      {(m.reactions ?? []).length > 0 && (
+                        <div className={`chat-reactions ${mine ? 'mine' : ''}`}>
+                          {(m.reactions ?? []).map((r) => (
+                            <button
+                              key={r.emoji}
+                              className={r.mine ? 'reaction mine' : 'reaction'}
+                              onClick={() => react(String(m.id), r.emoji)}
+                              title={r.mine ? 'Снять свою реакцию' : 'Поддержать'}
+                            >
+                              {r.emoji} {r.count}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
                       <div className="chat-under">
                         <span className="chat-time">{timeOf(m.created_at)}</span>
+                        {reactFor === String(m.id) ? (
+                          <span className="chat-react-pick">
+                            {REACTIONS.map((emoji) => (
+                              <button key={emoji} className="reaction reaction-add" onClick={() => react(String(m.id), emoji)}>
+                                {emoji}
+                              </button>
+                            ))}
+                          </span>
+                        ) : (
+                          <button className="chat-thread-link chat-thread-new" onClick={() => setReactFor(String(m.id))} title="Поставить реакцию">
+                            Реакция
+                          </button>
+                        )}
+                        <button
+                          className="chat-thread-link chat-thread-new"
+                          onClick={() => togglePin(m)}
+                          title={m.pinned_at ? 'Открепить' : 'Закрепить в шапке чата — чтобы не искать прокруткой'}
+                        >
+                          {m.pinned_at ? 'Открепить' : 'Закрепить'}
+                        </button>
                         {/*
                           Ветка сообщения. Кнопка видна всегда, а не по наведению: о том,
                           чего не видно, никто не догадается, а на касании наведения нет.

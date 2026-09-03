@@ -21,6 +21,12 @@ class SendDto {
   /** «Также отправить в основной чат» — когда ответ важен не только участникам ветки. */
   @IsOptional() @IsBoolean() alsoInChannel?: boolean;
 }
+class ReactionDto {
+  @IsString() @MaxLength(16) emoji!: string;
+}
+class PinDto {
+  @IsOptional() @IsBoolean() pinned?: boolean;
+}
 class AddMembersDto {
   @IsArray() @IsString({ each: true }) userIds!: string[];
 }
@@ -78,6 +84,23 @@ export class ChatsController {
       rootId: dto.threadRootId ?? null,
       alsoInChannel: dto.alsoInChannel === true,
     });
+  }
+
+  /** Реакция на сообщение — переключатель: повторное нажатие снимает свою. */
+  @Post(':id/messages/:mid/reactions')
+  react(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string, @Body() dto: ReactionDto) {
+    return this.chats.react(u.tenantId, id, u, mid, dto.emoji);
+  }
+
+  /** Закрепить сообщение в шапке чата или снять закрепление. */
+  @Post(':id/messages/:mid/pin')
+  pin(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string, @Body() dto: PinDto) {
+    return this.chats.pin(u.tenantId, id, u, mid, dto.pinned !== false);
+  }
+
+  @Get(':id/pinned')
+  pinned(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.pinnedList(u.tenantId, id, u);
   }
 
   /** Ветка обсуждения: корневое сообщение и ответы. */

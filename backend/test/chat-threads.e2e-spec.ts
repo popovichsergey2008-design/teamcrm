@@ -132,4 +132,61 @@ describe('треды в чатах (e2e)', () => {
     const mateThreads = (await http.get('/api/chats/threads').set(M).expect(200)).body.data;
     expect(mateThreads.some((t: any) => String(t.root_id) === String(root.id))).toBe(true);
   }, 40000);
+
+  /**
+   * Реакции и закрепления.
+   *
+   * Реакция — переключатель и знак, а не событие: ни уведомлений, ни записи в историю.
+   * Закрепление видно обоим собеседникам сразу: доступы к серверу ищут прокруткой на
+   * сотню сообщений назад, и ради этого закрепление и существует.
+   */
+  it('реакция переключается и видна обоим; закрепление живёт в шапке чата', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'RP', email: `rp_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .expect(201)).body.data;
+    const mateEmail = `rp_m_${uniq()}@t.test`;
+    const mate = (await http.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Пётр', password: 'password123', role: 'member' })
+      .expect(201)).body.data;
+    const mateLogin = (await http.post('/api/auth/login')
+      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const M = H(mateLogin.accessToken);
+
+    const chat = (await http.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'Доступ к тестовому серверу: test / 12345' }).expect(201)).body.data;
+
+    // собеседник поддержал знаком
+    await http.post(`/api/chats/${chat.id}/messages/${msg.id}/reactions`).set(M).send({ emoji: '👍' }).expect(201);
+    const seenByMate = (await http.get(`/api/chats/${chat.id}/messages`).set(M).expect(200)).body.data[0];
+    expect(seenByMate.reactions).toEqual([{ emoji: '👍', count: 1, mine: true }]);
+    // автору видно ту же реакцию, но она не его
+    const seenByOwner = (await http.get(`/api/chats/${chat.id}/messages`).set(O).expect(200)).body.data[0];
+    expect(seenByOwner.reactions[0].mine).toBe(false);
+    expect(seenByOwner.reactions[0].count).toBe(1);
+
+    // повторное нажатие снимает свою
+    await http.post(`/api/chats/${chat.id}/messages/${msg.id}/reactions`).set(M).send({ emoji: '👍' }).expect(201);
+    const cleared = (await http.get(`/api/chats/${chat.id}/messages`).set(M).expect(200)).body.data[0];
+    expect(cleared.reactions).toEqual([]);
+
+    // закрепление видно обоим
+    expect((await http.get(`/api/chats/${chat.id}/pinned`).set(M).expect(200)).body.data.length).toBe(0);
+    await http.post(`/api/chats/${chat.id}/messages/${msg.id}/pin`).set(M).send({ pinned: true }).expect(201);
+    const pins = (await http.get(`/api/chats/${chat.id}/pinned`).set(O).expect(200)).body.data;
+    expect(pins.length).toBe(1);
+    expect(String(pins[0].id)).toBe(String(msg.id));
+
+    // и снимается любым участником — закрепление обратимо
+    await http.post(`/api/chats/${chat.id}/messages/${msg.id}/pin`).set(O).send({ pinned: false }).expect(201);
+    expect((await http.get(`/api/chats/${chat.id}/pinned`).set(O).expect(200)).body.data.length).toBe(0);
+
+    // чужой чат недоступен: правила изоляции важнее любых реакций
+    const other = (await http.post('/api/auth/register')
+      .send({ tenantName: 'RP2', email: `rp2_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' })
+      .expect(201)).body.data;
+    await http.post(`/api/chats/${chat.id}/messages/${msg.id}/reactions`)
+      .set(H(other.accessToken)).send({ emoji: '👍' }).expect(404);
+  }, 40000);
 });

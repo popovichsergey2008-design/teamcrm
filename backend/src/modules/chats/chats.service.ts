@@ -83,7 +83,7 @@ export class ChatsService {
 
   async messages(tenantId: string, chatId: string, user: { userId: string; role: string }, beforeId?: string) {
     await this.access(tenantId, chatId, user);
-    const rows = await this.repo.messages(tenantId, chatId, beforeId ?? null, PAGE);
+    const rows = await this.repo.messages(tenantId, chatId, beforeId ?? null, PAGE, user.userId);
     await this.repo.markRead(tenantId, chatId, user.userId);
     return rows;
   }
@@ -146,7 +146,7 @@ export class ChatsService {
     await this.access(tenantId, chatId, user);
     const root = await this.repo.findMessage(tenantId, rootId);
     if (!root || String(root.chat_id) !== String(chatId)) throw AppException.notFound('Ветка не найдена');
-    const messages = await this.repo.thread(tenantId, String(root.thread_root_id ?? root.id));
+    const messages = await this.repo.thread(tenantId, String(root.thread_root_id ?? root.id), user.userId);
     await this.repo.markThreadRead(tenantId, String(root.thread_root_id ?? root.id), user.userId);
     return messages;
   }
@@ -161,6 +161,44 @@ export class ChatsService {
   myThreads(tenantId: string, user: { userId: string; role: string }) {
     if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
     return this.repo.myThreads(tenantId, user.userId);
+  }
+
+  /**
+   * Реакция на сообщение: ни истории, ни уведомлений — это знак, а не событие.
+   *
+   * Ради «ок» и «спасибо» будить уведомлением всех участников чата незачем: половина
+   * шума в рабочих чатах — именно такие сообщения.
+   */
+  async react(tenantId: string, chatId: string, user: { userId: string; role: string }, messageId: string, emoji: string) {
+    await this.access(tenantId, chatId, user);
+    const msg = await this.repo.findMessage(tenantId, messageId);
+    if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
+    await this.repo.toggleReaction(tenantId, messageId, user.userId, emoji.slice(0, 16));
+    return { ok: true };
+  }
+
+  /**
+   * Закрепить сообщение или снять закрепление.
+   *
+   * Право у всех участников чата: закрепление обратимо, а спрашивать руководителя,
+   * чтобы повесить ссылку на макет, — не работа, а бюрократия.
+   */
+  async pin(tenantId: string, chatId: string, user: { userId: string; role: string }, messageId: string, pinned: boolean) {
+    const chat = await this.access(tenantId, chatId, user);
+    const msg = await this.repo.findMessage(tenantId, messageId);
+    if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
+    await this.repo.setPinned(tenantId, messageId, user.userId, pinned);
+    // Закрепление видят все: у собеседника шапка чата должна измениться сразу,
+    // иначе он узнает о важном сообщении, только перезагрузив страницу.
+    const to = await this.recipients(chat, tenantId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.pinned', { chatId, messageId, pinned });
+    return { pinned };
+  }
+
+  /** Закреплённое чата: то, что нужно всем и всегда под рукой. */
+  async pinnedList(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    await this.access(tenantId, chatId, user);
+    return this.repo.pinned(tenantId, chatId);
   }
 
   /** Вложение: файл кладётся в MinIO тем же путём, что и вложения задач. */

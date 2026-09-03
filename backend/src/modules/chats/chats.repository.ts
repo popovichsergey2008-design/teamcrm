@@ -24,6 +24,9 @@ export interface MessageRow {
   size_bytes: string | null; created_at: Date; edited_at: Date | null;
   /** Ответ в ветке: у корневых сообщений пусто. */
   thread_root_id?: string | null;
+  /** Реакции: [{emoji, count, mine}] — сводка, а не список нажавших. */
+  reactions?: { emoji: string; count: number; mine: boolean }[];
+  pinned_at?: Date | null;
   /** Сколько ответов в ветке этого сообщения и когда был последний. */
   reply_count?: number;
   last_reply_at?: Date | null;
@@ -172,11 +175,21 @@ export class ChatsRepository {
    * остаётся читаемой. Исключение — сообщения, которые автор попросил продублировать
    * в канал («Также отправить в основной чат»).
    */
-  messages(tenantId: string, chatId: string, beforeId: string | null, limit: number): Promise<MessageRow[]> {
+  messages(tenantId: string, chatId: string, beforeId: string | null, limit: number, viewerId: string): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
-              m.thread_root_id, m.reply_count, m.last_reply_at
+              m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
+              COALESCE((
+                SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
+                  FROM (
+                    SELECT emoji, COUNT(*)::int AS n, BOOL_OR(user_id = $5::bigint) AS mine
+                      FROM chat_message_reactions
+                     WHERE message_id = m.id
+                     GROUP BY emoji
+                  ) x
+              ), '[]'::json) AS reactions,
+              1
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
@@ -184,23 +197,33 @@ export class ChatsRepository {
           AND (m.thread_root_id IS NULL OR m.also_in_channel)
           AND ($3::bigint IS NULL OR m.id < $3::bigint)
         ORDER BY m.id DESC LIMIT $4`,
-      [tenantId, chatId, beforeId, limit],
+      [tenantId, chatId, beforeId, limit, viewerId],
     ).then((rows) => rows.reverse()); // наружу отдаём по возрастанию: так рисует лента
   }
 
   /** Ветка целиком: корневое сообщение и ответы по возрастанию. */
-  thread(tenantId: string, rootId: string): Promise<MessageRow[]> {
+  thread(tenantId: string, rootId: string, viewerId: string): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
-              m.thread_root_id, m.reply_count, m.last_reply_at
+              m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
+              COALESCE((
+                SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
+                  FROM (
+                    SELECT emoji, COUNT(*)::int AS n, BOOL_OR(user_id = $3::bigint) AS mine
+                      FROM chat_message_reactions
+                     WHERE message_id = m.id
+                     GROUP BY emoji
+                  ) x
+              ), '[]'::json) AS reactions,
+              1
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
         WHERE m.tenant_id=$1 AND m.deleted_at IS NULL
           AND (m.id = $2::bigint OR m.thread_root_id = $2::bigint)
         ORDER BY m.id`,
-      [tenantId, rootId],
+      [tenantId, rootId, viewerId],
     );
   }
 
@@ -283,6 +306,48 @@ export class ChatsRepository {
       [row!.id],
     );
     return full!;
+  }
+
+  /**
+   * Реакция-переключатель: повторное нажатие снимает свою.
+   *
+   * Тем же способом, что и в чате задачи: две разные механики на одно и то же
+   * действие разошлись бы на первой правке.
+   */
+  async toggleReaction(tenantId: string, messageId: string, userId: string, emoji: string): Promise<void> {
+    const del = await this.db.query(
+      `DELETE FROM chat_message_reactions WHERE message_id=$1 AND user_id=$2 AND emoji=$3`,
+      [messageId, userId, emoji],
+    );
+    if ((del as { rowCount?: number })?.rowCount) return;
+    await this.db.query(
+      `INSERT INTO chat_message_reactions (message_id, user_id, tenant_id, emoji) VALUES ($1,$2,$3,$4)
+       ON CONFLICT DO NOTHING`,
+      [messageId, userId, tenantId, emoji],
+    );
+  }
+
+  /** Закрепить или открепить. Кто закрепил — видно в списке закреплённого. */
+  async setPinned(tenantId: string, messageId: string, userId: string, pinned: boolean): Promise<void> {
+    await this.db.query(
+      `UPDATE chat_messages SET pinned_at = $3, pinned_by = $4 WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, messageId, pinned ? new Date() : null, pinned ? userId : null],
+    );
+  }
+
+  /** Закреплённое чата — свежее сверху. */
+  pinned(tenantId: string, chatId: string): Promise<MessageRow[]> {
+    return this.db.many<MessageRow>(
+      `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
+              m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at
+         FROM chat_messages m
+         LEFT JOIN users u ON u.id = m.author_id
+         LEFT JOIN files f ON f.id = m.file_id
+        WHERE m.tenant_id=$1 AND m.chat_id=$2 AND m.deleted_at IS NULL AND m.pinned_at IS NOT NULL
+        ORDER BY m.pinned_at DESC`,
+      [tenantId, chatId],
+    );
   }
 
   /** Отметка прочтения. Для чатов проектов строка участия создаётся здесь же. */

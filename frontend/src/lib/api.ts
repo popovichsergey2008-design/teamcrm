@@ -619,6 +619,14 @@ export const api = {
   renameChat: (chatId: string, title: string) => request<{ title: string }>('PATCH', `/chats/${chatId}`, { title }),
   leaveChat: (chatId: string) => request<any>('POST', `/chats/${chatId}/leave`),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
+  /** Реакция на сообщение чата — переключатель: повторное нажатие снимает свою. */
+  reactToChatMessage: (chatId: string, messageId: string, emoji: string) =>
+    request<{ ok: true }>('POST', `/chats/${chatId}/messages/${messageId}/reactions`, { emoji }),
+  /** Закрепить сообщение в шапке чата или снять закрепление. */
+  pinChatMessage: (chatId: string, messageId: string, pinned: boolean) =>
+    request<{ pinned: boolean }>('POST', `/chats/${chatId}/messages/${messageId}/pin`, { pinned }),
+  chatPinned: (chatId: string) => request<any[]>('GET', `/chats/${chatId}/pinned`),
+
   /** Ветка обсуждения: корневое сообщение и ответы. Открытие помечает её прочитанной. */
   chatThread: (chatId: string, rootId: string) =>
     request<any[]>('GET', `/chats/${chatId}/threads/${rootId}`),
