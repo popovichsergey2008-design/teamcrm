@@ -88,14 +88,31 @@ export class ChatsService {
     return rows;
   }
 
-  async send(tenantId: string, chatId: string, user: { userId: string; role: string }, body: string, fileId: string | null) {
+  /**
+   * Отправка сообщения — в чат или в ветку.
+   *
+   * `threadRootId` делает сообщение ответом в ветке: в общей ленте его не будет, ради
+   * этого треды и заводились. `alsoInChannel` — исключение по просьбе автора: ответ,
+   * который важен всем, показывается и в ленте. Копию при этом НЕ создаём: две записи
+   * об одном сообщении разъезжаются при первой же правке.
+   */
+  async send(
+    tenantId: string, chatId: string, user: { userId: string; role: string },
+    body: string, fileId: string | null,
+    thread?: { rootId?: string | null; alsoInChannel?: boolean },
+  ) {
     const chat = await this.access(tenantId, chatId, user);
     const text = (body ?? '').trim();
     if (!text && !fileId) throw AppException.validation('Пустое сообщение');
 
+    const rootId = await this.threadRoot(tenantId, chatId, thread?.rootId ?? null);
     const message = await this.repo.addMessage({
       tenantId, chatId, authorId: user.userId, body: text.slice(0, 8000), fileId,
+      threadRootId: rootId, alsoInChannel: thread?.alsoInChannel === true,
     });
+    // Ответив, человек ветку прочитал: иначе собственная реплика тут же
+    // возвращалась бы к нему непрочитанной в разделе «Треды».
+    if (rootId) await this.repo.markThreadRead(tenantId, rootId, user.userId);
     await this.repo.markRead(tenantId, chatId, user.userId); // своё сообщение прочитанным считаем сразу
 
     const to = await this.recipients(chat, tenantId);
@@ -107,6 +124,43 @@ export class ChatsService {
       event: 'message.sent', data: { messageId: String(message.id), recipients: to.length, hasFile: !!fileId, length: text.length },
     });
     return message;
+  }
+
+  /**
+   * Корень ветки: отвечать можно только на сообщение ЭТОГО чата.
+   *
+   * И только на корневое: ветки в ветках превращают разговор в дерево, по которому
+   * никто не ходит. Ответ на ответ уходит в ту же ветку — так же, как в Slack.
+   */
+  private async threadRoot(tenantId: string, chatId: string, rootId: string | null): Promise<string | null> {
+    if (!rootId) return null;
+    const msg = await this.repo.findMessage(tenantId, rootId);
+    if (!msg || String(msg.chat_id) !== String(chatId)) {
+      throw AppException.notFound('Сообщение не найдено в этом чате');
+    }
+    return String(msg.thread_root_id ?? msg.id);
+  }
+
+  /** Ветка целиком: корень и ответы. Открыли — значит прочитали. */
+  async thread(tenantId: string, chatId: string, user: { userId: string; role: string }, rootId: string) {
+    await this.access(tenantId, chatId, user);
+    const root = await this.repo.findMessage(tenantId, rootId);
+    if (!root || String(root.chat_id) !== String(chatId)) throw AppException.notFound('Ветка не найдена');
+    const messages = await this.repo.thread(tenantId, String(root.thread_root_id ?? root.id));
+    await this.repo.markThreadRead(tenantId, String(root.thread_root_id ?? root.id), user.userId);
+    return messages;
+  }
+
+  /**
+   * Мои ветки — раздел «Треды».
+   *
+   * Только те, где человек начал разговор или отвечал: список всех веток компании
+   * не нужен никому. Непрочитанное считается по чужим ответам после последнего
+   * открытия ветки.
+   */
+  myThreads(tenantId: string, user: { userId: string; role: string }) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    return this.repo.myThreads(tenantId, user.userId);
   }
 
   /** Вложение: файл кладётся в MinIO тем же путём, что и вложения задач. */

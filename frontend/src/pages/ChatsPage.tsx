@@ -24,9 +24,28 @@ interface Chat {
 interface Message {
   id: string; author_id: string | null; author_name: string | null; body: string;
   file_id: string | null; file_name: string | null; created_at: string;
+  /** Ответ в ветке: в общей ленте таких нет, если автор не попросил обратного. */
+  thread_root_id?: string | null;
+  /** Сколько ответов в ветке этого сообщения. */
+  reply_count?: number;
+  last_reply_at?: string | null;
+}
+
+/** Строка раздела «Треды». */
+interface ThreadItem {
+  root_id: string; chat_id: string; chat_kind: string; chat_title: string | null;
+  project_name: string | null; root_body: string; root_author: string | null;
+  reply_count: number; last_reply_at: string | null; unread: number;
 }
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+/** «1 ответ», «2 ответа», «5 ответов» — иначе интерфейс выглядит машинным переводом. */
+const plural = (n: number, one: string, few: string, many: string) => {
+  const a = Math.abs(n) % 100;
+  if (a > 10 && a < 20) return many;
+  const b = a % 10;
+  return b === 1 ? one : b >= 2 && b <= 4 ? few : many;
+};
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long' });
 
 /**
@@ -59,6 +78,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const [err, setErr] = useState('');
   /** Файл, выбранный или вставленный, но ещё не отправленный: его видно и можно подписать. */
   const [pending, setPending] = useState<{ file: File; url: string } | null>(null);
+  /**
+   * Открытая ветка: корневое сообщение и ответы.
+   *
+   * Панель справа от ленты, как в привычных рабочих чатах: разговор в ветке идёт,
+   * не закрывая основной чат, — иначе теряется то, ради чего ветку и открыли.
+   */
+  const [thread, setThread] = useState<{ rootId: string; messages: Message[] } | null>(null);
+  const [threadBody, setThreadBody] = useState('');
+  const [alsoInChannel, setAlsoInChannel] = useState(false);
+  /** Раздел «Треды»: мои ветки вместо переписки. */
+  const [threadsView, setThreadsView] = useState(false);
+  const [threads, setThreads] = useState<ThreadItem[]>([]);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
 
@@ -72,6 +103,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
    * событием по сокету (сервер рассылает всем участникам, включая автора) и ответом REST,
    * причём событие обычно приходит РАНЬШЕ ответа. Сверяем по id.
    */
+  const loadThreads = useCallback(
+    () => api.myThreads().then(setThreads).catch(() => undefined),
+    [],
+  );
+
   const appendMessage = useCallback((m: Message) => {
     setMessages((prev) => (prev.some((x) => String(x.id) === String(m.id)) ? prev : [...prev, m]));
   }, []);
@@ -79,17 +115,32 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   useEffect(() => {
     reload();
     api.listUsers().then(setUsers).catch(() => undefined);
-  }, [reload]);
+    void loadThreads(); // счётчик веток нужен сразу, а не после захода в раздел
+  }, [reload, loadThreads]);
 
   // Новые сообщения приходят по тому же сокету, что и события досок.
   useEffect(() => {
     const socket = getSocket();
     const onMessage = (p: { chatId: string; message: Message }) => {
       if (String(p.chatId) === String(activeId)) {
-        appendMessage(p.message);
+        const rootId = p.message.thread_root_id ? String(p.message.thread_root_id) : null;
+        // Ответ из ветки в общую ленту не попадает — ради этого треды и заводились.
+        // Но счётчик «N ответов» на корневом сообщении обязан вырасти сразу.
+        if (rootId) {
+          setMessages((prev) => prev.map((m) => (String(m.id) === rootId
+            ? { ...m, reply_count: (m.reply_count ?? 0) + 1, last_reply_at: p.message.created_at }
+            : m)));
+          setThread((prev) => (prev && prev.rootId === rootId
+            ? { ...prev, messages: prev.messages.some((x) => String(x.id) === String(p.message.id))
+              ? prev.messages : [...prev.messages, p.message] }
+            : prev));
+        } else {
+          appendMessage(p.message);
+        }
         api.markChatRead(p.chatId).catch(() => undefined);
       }
       reload();
+      if (threadsView) void loadThreads();
     };
     const onDeleted = (p: { chatId: string; messageId: string }) => {
       if (String(p.chatId) === String(activeId)) setMessages((prev) => prev.filter((m) => m.id !== p.messageId));
@@ -109,7 +160,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       socket.off('chat.created', reload);
       socket.off('chat.removed', onRemoved);
     };
-  }, [activeId, reload, appendMessage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, reload, appendMessage, threadsView]);
 
   const openChat = useCallback(async (id: string) => {
     setActiveId(id); setErr(''); setMessages([]); setMsgLoading(true);
@@ -212,6 +264,30 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     return null;
   });
 
+  /** Открыть ветку сообщения: подгружаем целиком, сервер тем же запросом её и отмечает. */
+  const openThread = async (rootId: string) => {
+    if (!activeId) return;
+    setThreadBody(''); setAlsoInChannel(false);
+    try {
+      const messages = await api.chatThread(activeId, rootId);
+      setThread({ rootId: String(rootId), messages });
+      notifyChatsChanged();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть ветку'); }
+  };
+
+  const sendToThread = async () => {
+    const text = threadBody.trim();
+    if (!text || !thread || !activeId) return;
+    setThreadBody('');
+    try {
+      await api.sendChatMessage(activeId, text, { rootId: thread.rootId, alsoInChannel });
+      // своё сообщение придёт сокетом — второй раз его не добавляем
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Ответ не отправлен');
+      setThreadBody(text);
+    }
+  };
+
   const writeTo = async (userId: string) => {
     try {
       const chat = await api.openDm(userId);
@@ -230,6 +306,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   }, [users, dms, user]);
 
   const match = (s: string | null) => !query || (s ?? '').toLowerCase().includes(query.toLowerCase());
+  const threadsUnread = threads.reduce((sum, t) => sum + (Number(t.unread) || 0), 0);
   // подразделения по id сотрудника — подписываем ими собеседников в списке и шапке
   const groupOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -252,6 +329,23 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           <input className="input chat-search" placeholder="Поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
           <button className="btn btn-ghost btn-sm" title="Создать группу" onClick={() => setGroupOpen(true)}><Icon name="plus" /></button>
         </div>
+
+        {/*
+          «Треды» — первым пунктом списка, как в привычных рабочих чатах.
+          Отвечают обычно в ветке, а ветку легко не заметить: она не поднимает чат
+          наверх и не мигает счётчиком. Этот раздел и отвечает на вопрос «где меня ждут».
+        */}
+        <button
+          className={`chat-row chat-row-threads${threadsView ? ' active' : ''}`}
+          onClick={() => { setThreadsView((v) => !v); setThread(null); void loadThreads(); }}
+        >
+          <span className="chat-threads-icon" aria-hidden="true"><Icon name="chat" size={15} /></span>
+          <span className="chat-row-main">
+            <span className="chat-row-title">Треды</span>
+            <span className="chat-row-last dim">ветки, где вы участвуете</span>
+          </span>
+          {threadsUnread > 0 && <span className="chat-unread">{threadsUnread}</span>}
+        </button>
 
         {/* Разрешение спрашиваем по кнопке: непрошеный запрос браузеры глушат,
             и человек больше не сможет его выдать. */}
@@ -332,7 +426,38 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           />
         </div>
 
-        {!active && (
+        {threadsView && (
+          <div className="threads-view">
+            <div className="chat-head"><span><Icon name="chat" size={15} /> <b>Мои ветки</b></span></div>
+            {threads.length === 0 && (
+              <EmptyState
+                compact
+                icon="chat"
+                title="Веток пока нет"
+                hint="Ветка — обсуждение одного сообщения. Нажмите «Ответить в ветке» под любым сообщением, и разговор пойдёт отдельно, не засоряя чат."
+              />
+            )}
+            {threads.map((t) => (
+              <button
+                key={t.root_id}
+                className="thread-item"
+                onClick={() => { setThreadsView(false); void openChat(String(t.chat_id)).then(() => openThread(String(t.root_id))); }}
+              >
+                <span className="thread-item-head">
+                  <b>{t.project_name ?? t.chat_title ?? 'Личный диалог'}</b>
+                  {t.unread > 0 && <span className="chat-unread">{t.unread}</span>}
+                </span>
+                <span className="thread-item-body dim">{t.root_author}: {t.root_body.slice(0, 120)}</span>
+                <span className="thread-item-foot dim">
+                  {t.reply_count} {plural(t.reply_count, 'ответ', 'ответа', 'ответов')}
+                  {t.last_reply_at ? ` · ${timeOf(t.last_reply_at)}` : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!active && !threadsView && (
           <div className="chat-empty">
             <EmptyState
               icon="chat"
@@ -341,7 +466,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
             />
           </div>
         )}
-        {active && (
+        {active && !threadsView && (
           <>
             <div className="chat-head">
               <span>
@@ -405,7 +530,23 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                           />
                         )}
                       </div>
-                      <div className="chat-time">{timeOf(m.created_at)}</div>
+                      <div className="chat-under">
+                        <span className="chat-time">{timeOf(m.created_at)}</span>
+                        {/*
+                          Ветка сообщения. Кнопка видна всегда, а не по наведению: о том,
+                          чего не видно, никто не догадается, а на касании наведения нет.
+                          Строчка «N ответов» — вход в обсуждение, которое не засоряет ленту.
+                        */}
+                        {m.reply_count ? (
+                          <button className="chat-thread-link" onClick={() => openThread(String(m.id))}>
+                            <Icon name="chat" size={12} /> {m.reply_count} {plural(m.reply_count, 'ответ', 'ответа', 'ответов')}
+                          </button>
+                        ) : (
+                          <button className="chat-thread-link chat-thread-new" onClick={() => openThread(String(m.id))}>
+                            Ответить в ветке
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -457,6 +598,65 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           </>
         )}
       </section>
+
+      {/*
+        Ветка — третьей колонкой, а не поверх переписки: обсуждение одного сообщения
+        ведут, не теряя из виду сам чат. На узком экране колонка закрывает ленту,
+        иначе обе становятся нечитаемыми.
+      */}
+      {thread && (
+        <section className="chat-thread">
+          <div className="chat-head">
+            <span><Icon name="chat" size={15} /> <b>Ветка обсуждения</b></span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setThread(null)} title="Закрыть ветку" aria-label="Закрыть ветку">
+              <Icon name="close" size={15} />
+            </button>
+          </div>
+          <div className="chat-feed">
+            {thread.messages.map((m, i) => (
+              <div key={m.id} className={i === 0 ? 'thread-root' : ''}>
+                <div className="chat-line">
+                  <div className="chat-msg">
+                    <div className="chat-author">{m.author_name}</div>
+                    {m.body && <div className="chat-body">{m.body}</div>}
+                    {m.file_id && (
+                      <ChatAttachment
+                        fileId={m.file_id}
+                        fileName={m.file_name ?? 'файл'}
+                        onOpen={(url, name, mime) => setPreview({ url, name, mime })}
+                      />
+                    )}
+                  </div>
+                  <div className="chat-time">{timeOf(m.created_at)}</div>
+                </div>
+                {i === 0 && thread.messages.length > 1 && (
+                  <div className="thread-divider">
+                    {thread.messages.length - 1} {plural(thread.messages.length - 1, 'ответ', 'ответа', 'ответов')}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {/* «Также отправить в основной чат»: иногда ответ важен не только участникам
+              ветки — тогда он показывается и в общей ленте, оставаясь одним сообщением. */}
+          <label className="thread-also">
+            <input type="checkbox" checked={alsoInChannel} onChange={(e) => setAlsoInChannel(e.target.checked)} />
+            Также отправить в основной чат
+          </label>
+          <div className="chat-input">
+            <input
+              className="input"
+              placeholder="Ответить в ветке…"
+              value={threadBody}
+              onChange={(e) => setThreadBody(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendToThread(); } }}
+            />
+            <button className="btn btn-primary btn-sm" onClick={sendToThread} disabled={!threadBody.trim()} title="Ответить">
+              <Icon name="send" />
+            </button>
+          </div>
+        </section>
+      )}
 
       {manageOpen && active && (
         <GroupManageModal

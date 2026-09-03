@@ -606,7 +606,10 @@ export const api = {
   openProjectChat: (projectId: string) => request<{ id: string; kind: string }>('POST', `/chats/project/${projectId}`),
   chatMessages: (chatId: string, before?: string) =>
     request<any[]>('GET', `/chats/${chatId}/messages${before ? `?before=${before}` : ''}`),
-  sendChatMessage: (chatId: string, body: string) => request<any>('POST', `/chats/${chatId}/messages`, { body }),
+  sendChatMessage: (chatId: string, body: string, thread?: { rootId?: string; alsoInChannel?: boolean }) =>
+    request<any>('POST', `/chats/${chatId}/messages`, {
+      body, threadRootId: thread?.rootId, alsoInChannel: thread?.alsoInChannel,
+    }),
   markChatRead: (chatId: string) => request<any>('POST', `/chats/${chatId}/read`),
   chatMembers: (chatId: string) => request<{
     canManage: boolean; createdBy: string | null; members: { userId: string; fullName: string }[];
@@ -616,6 +619,12 @@ export const api = {
   renameChat: (chatId: string, title: string) => request<{ title: string }>('PATCH', `/chats/${chatId}`, { title }),
   leaveChat: (chatId: string) => request<any>('POST', `/chats/${chatId}/leave`),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
+  /** Ветка обсуждения: корневое сообщение и ответы. Открытие помечает её прочитанной. */
+  chatThread: (chatId: string, rootId: string) =>
+    request<any[]>('GET', `/chats/${chatId}/threads/${rootId}`),
+  /** Мои ветки: где я начал разговор или отвечал, с числом новых ответов. */
+  myThreads: () => request<any[]>('GET', '/chats/threads'),
+
   sendChatFile: async (chatId: string, file: File, body: string) => {
     const fd = new FormData();
     fd.append('file', file);

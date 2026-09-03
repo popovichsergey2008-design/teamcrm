@@ -22,6 +22,25 @@ export interface MessageRow {
   id: string; chat_id: string; author_id: string | null; author_name: string | null;
   body: string; file_id: string | null; file_name: string | null; content_type: string | null;
   size_bytes: string | null; created_at: Date; edited_at: Date | null;
+  /** Ответ в ветке: у корневых сообщений пусто. */
+  thread_root_id?: string | null;
+  /** Сколько ответов в ветке этого сообщения и когда был последний. */
+  reply_count?: number;
+  last_reply_at?: Date | null;
+}
+
+/** Строка раздела «Треды»: ветка, в которой человек участвует. */
+export interface ThreadRow {
+  root_id: string;
+  chat_id: string;
+  chat_kind: string;
+  chat_title: string | null;
+  project_name: string | null;
+  root_body: string;
+  root_author: string | null;
+  reply_count: number;
+  last_reply_at: Date | null;
+  unread: number;
 }
 
 @Injectable()
@@ -146,30 +165,117 @@ export class ChatsRepository {
     return row ?? (await this.db.one<ChatRow>(`SELECT * FROM chats WHERE project_id=$1`, [projectId]))!;
   }
 
-  /** Лента чата: страница «до» указанного id, чтобы подгружать историю вверх. */
+  /**
+   * Лента чата: страница «до» указанного id, чтобы подгружать историю вверх.
+   *
+   * Ответы из веток сюда НЕ попадают — ради этого треды и заводились: основная лента
+   * остаётся читаемой. Исключение — сообщения, которые автор попросил продублировать
+   * в канал («Также отправить в основной чат»).
+   */
   messages(tenantId: string, chatId: string, beforeId: string | null, limit: number): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
+              m.thread_root_id, m.reply_count, m.last_reply_at
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
         WHERE m.tenant_id=$1 AND m.chat_id=$2 AND m.deleted_at IS NULL
+          AND (m.thread_root_id IS NULL OR m.also_in_channel)
           AND ($3::bigint IS NULL OR m.id < $3::bigint)
         ORDER BY m.id DESC LIMIT $4`,
       [tenantId, chatId, beforeId, limit],
     ).then((rows) => rows.reverse()); // наружу отдаём по возрастанию: так рисует лента
   }
 
-  async addMessage(i: { tenantId: string; chatId: string; authorId: string; body: string; fileId: string | null }): Promise<MessageRow> {
+  /** Ветка целиком: корневое сообщение и ответы по возрастанию. */
+  thread(tenantId: string, rootId: string): Promise<MessageRow[]> {
+    return this.db.many<MessageRow>(
+      `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
+              m.thread_root_id, m.reply_count, m.last_reply_at
+         FROM chat_messages m
+         LEFT JOIN users u ON u.id = m.author_id
+         LEFT JOIN files f ON f.id = m.file_id
+        WHERE m.tenant_id=$1 AND m.deleted_at IS NULL
+          AND (m.id = $2::bigint OR m.thread_root_id = $2::bigint)
+        ORDER BY m.id`,
+      [tenantId, rootId],
+    );
+  }
+
+  /**
+   * Мои ветки: где я начал разговор или отвечал.
+   *
+   * Показывать все ветки всех чатов бессмысленно — их тысячи. Человеку нужны те,
+   * к которым он причастен, и в первую очередь те, где после его последнего прочтения
+   * появились ЧУЖИЕ ответы: свои же реплики новостью не являются.
+   */
+  myThreads(tenantId: string, userId: string, limit = 50): Promise<ThreadRow[]> {
+    return this.db.many<ThreadRow>(
+      `SELECT r.id AS root_id, r.chat_id, c.kind AS chat_kind, c.title AS chat_title,
+              p.name AS project_name, r.body AS root_body, u.full_name AS root_author,
+              r.reply_count, r.last_reply_at,
+              (SELECT COUNT(*)::int FROM chat_messages x
+                WHERE x.thread_root_id = r.id AND x.deleted_at IS NULL
+                  AND x.author_id IS DISTINCT FROM $2::bigint
+                  AND (tr.last_read_at IS NULL OR x.created_at > tr.last_read_at)) AS unread
+         FROM chat_messages r
+         JOIN chats c ON c.id = r.chat_id
+    LEFT JOIN projects p ON p.id = c.project_id
+    LEFT JOIN users u ON u.id = r.author_id
+    LEFT JOIN chat_thread_reads tr ON tr.root_id = r.id AND tr.user_id = $2::bigint
+        WHERE r.tenant_id = $1 AND r.deleted_at IS NULL
+          AND r.thread_root_id IS NULL AND r.reply_count > 0
+          AND (r.author_id = $2::bigint
+               OR EXISTS (SELECT 1 FROM chat_messages y
+                           WHERE y.thread_root_id = r.id AND y.author_id = $2::bigint))
+        ORDER BY r.last_reply_at DESC NULLS LAST
+        LIMIT $3`,
+      [tenantId, userId, limit],
+    );
+  }
+
+  /** Ветку открыли — ответы в ней больше не новые. */
+  async markThreadRead(tenantId: string, rootId: string, userId: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO chat_thread_reads (root_id, user_id, tenant_id, last_read_at)
+            VALUES ($1,$2,$3, now())
+       ON CONFLICT (root_id, user_id) DO UPDATE SET last_read_at = now()`,
+      [rootId, userId, tenantId],
+    );
+  }
+
+  /** Сообщение по id: нужно, чтобы проверить, что отвечают в том же чате. */
+  findMessage(tenantId: string, id: string) {
+    return this.db.one<{ id: string; chat_id: string; thread_root_id: string | null }>(
+      `SELECT id, chat_id, thread_root_id FROM chat_messages WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL`,
+      [tenantId, id],
+    );
+  }
+
+  async addMessage(i: {
+    tenantId: string; chatId: string; authorId: string; body: string; fileId: string | null;
+    threadRootId?: string | null; alsoInChannel?: boolean;
+  }): Promise<MessageRow> {
     const row = await this.db.one<{ id: string }>(
-      `INSERT INTO chat_messages (tenant_id, chat_id, author_id, body, file_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [i.tenantId, i.chatId, i.authorId, i.body, i.fileId],
+      `INSERT INTO chat_messages (tenant_id, chat_id, author_id, body, file_id, thread_root_id, also_in_channel)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [i.tenantId, i.chatId, i.authorId, i.body, i.fileId, i.threadRootId ?? null, i.alsoInChannel === true],
     );
     await this.db.query(`UPDATE chats SET last_message_at=now() WHERE id=$1`, [i.chatId]);
+    // Счётчик ответов держим на корне: считать его подзапросом на каждое сообщение
+    // ленты — тысячи подсчётов ради строчки «7 ответов».
+    if (i.threadRootId) {
+      await this.db.query(
+        `UPDATE chat_messages SET reply_count = reply_count + 1, last_reply_at = now() WHERE id=$1`,
+        [i.threadRootId],
+      );
+    }
     const full = await this.db.one<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
+              m.thread_root_id, m.reply_count, m.last_reply_at
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id

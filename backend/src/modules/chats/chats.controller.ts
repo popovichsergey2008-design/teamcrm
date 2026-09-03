@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { IsArray, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
@@ -16,6 +16,10 @@ class CreateGroupDto {
 }
 class SendDto {
   @IsOptional() @IsString() @MaxLength(8000) body?: string;
+  /** Ответ в ветке этого сообщения: в общей ленте его не будет. */
+  @IsOptional() @IsString() @MaxLength(32) threadRootId?: string;
+  /** «Также отправить в основной чат» — когда ответ важен не только участникам ветки. */
+  @IsOptional() @IsBoolean() alsoInChannel?: boolean;
 }
 class AddMembersDto {
   @IsArray() @IsString({ each: true }) userIds!: string[];
@@ -54,6 +58,15 @@ export class ChatsController {
     return this.chats.openProjectChat(u.tenantId, u.userId, u.role, projectId);
   }
 
+  /**
+   * Мои ветки. Стоит ВЫШЕ маршрутов с «:id»: иначе `/chats/threads` разберётся
+   * как чат с идентификатором «threads».
+   */
+  @Get('threads')
+  myThreads(@CurrentUser() u: AuthUser) {
+    return this.chats.myThreads(u.tenantId, u);
+  }
+
   @Get(':id/messages')
   messages(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('before') before?: string) {
     return this.chats.messages(u.tenantId, id, u, before);
@@ -61,7 +74,16 @@ export class ChatsController {
 
   @Post(':id/messages')
   send(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: SendDto) {
-    return this.chats.send(u.tenantId, id, u, dto.body ?? '', null);
+    return this.chats.send(u.tenantId, id, u, dto.body ?? '', null, {
+      rootId: dto.threadRootId ?? null,
+      alsoInChannel: dto.alsoInChannel === true,
+    });
+  }
+
+  /** Ветка обсуждения: корневое сообщение и ответы. */
+  @Get(':id/threads/:rootId')
+  thread(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('rootId') rootId: string) {
+    return this.chats.thread(u.tenantId, id, u, rootId);
   }
 
   @Post(':id/files')

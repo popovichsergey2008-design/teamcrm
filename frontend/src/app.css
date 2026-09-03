@@ -1508,6 +1508,73 @@
 
 .chat-view { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chat-empty { margin: auto; }
+
+/*
+  ───── Треды ─────
+
+  Ветка обсуждения одного сообщения. Без них рабочий чат превращается в общую
+  свалку реплик: пять разговоров идут вперемешку, и через полчаса непонятно, кто
+  кому отвечает. Ветка держит обсуждение при своём сообщении, а лента остаётся
+  читаемой.
+
+  Панель — третьей колонкой, а не поверх переписки: обсуждение ведут, не теряя из
+  виду сам чат. На узком экране она закрывает ленту — две колонки по 200 пикселей
+  нечитаемы обе.
+*/
+.chat-thread {
+  width: 380px; flex-shrink: 0; display: flex; flex-direction: column;
+  border-left: 1px solid var(--border); background: var(--bg-elev); min-width: 0;
+}
+@media (max-width: 1100px) {
+  .chat-thread { position: absolute; inset: 0; width: auto; z-index: 30; }
+  .chats { position: relative; }
+}
+/* Корневое сообщение ветки выделено: разговор идёт вокруг него. */
+.thread-root { padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.thread-divider {
+  text-align: center; font-size: 11px; color: var(--text-mut); margin: 8px 0 4px;
+}
+.thread-also {
+  display: flex; align-items: center; gap: 6px; padding: 6px 16px 0;
+  font-size: var(--fs-xs); color: var(--text-dim); cursor: pointer;
+}
+/* кольцо на самой галке: подпись — часть label, отдельного фокуса у неё нет */
+.thread-also:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+.thread-also input:focus-visible { outline: none; }
+
+/* Строка под сообщением: время и вход в ветку. */
+.chat-under { display: flex; align-items: center; gap: 8px; margin: 2px 4px 0; }
+.chat-line.mine .chat-under { flex-direction: row-reverse; }
+.chat-thread-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: none; background: none; padding: 0; cursor: pointer;
+  font: inherit; font-size: 11px; color: var(--accent);
+}
+.chat-thread-link:hover { text-decoration: underline; }
+.chat-thread-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* «Ответить в ветке» у сообщения без ответов — приглушённое: это предложение,
+   а не сообщение о том, что там что-то есть. Но видимое: спрятанного не найдут. */
+.chat-thread-new { color: var(--text-mut); }
+.chat-thread-new:hover { color: var(--accent); }
+
+/* Раздел «Треды» первым пунктом списка чатов. */
+.chat-row-threads { border-bottom: 1px solid var(--border); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.chat-threads-icon {
+  width: 32px; height: 32px; flex: 0 0 auto; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.threads-view { flex: 1; min-height: 0; overflow-y: auto; }
+.thread-item {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  padding: 10px 16px; border: none; border-bottom: 1px solid var(--border);
+  background: none; color: inherit; font: inherit; cursor: pointer;
+}
+.thread-item:hover { background: var(--bg-elev-2); }
+.thread-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.thread-item-head { display: flex; align-items: center; gap: 8px; }
+.thread-item-body { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-item-foot { font-size: 11px; }
 .chat-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 12px 16px; border-bottom: 1px solid var(--border);
