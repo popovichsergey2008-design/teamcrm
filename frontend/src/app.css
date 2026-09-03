@@ -894,13 +894,20 @@
   ответить в ветке; остальное убрано под «ещё». Значки видны всегда, а не по наведению:
   на касании наведения не бывает, а спрятанного никто не ищет.
 */
-.msg-actions { position: relative; display: inline-flex; align-items: center; gap: 2px; }
+.msg-actions { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+/*
+  Кружок под значком обязателен.
+
+  Три тонких контурных значка 14 пикселей без подложки не читались вовсе — «вообще
+  ничего не видно». Кнопка должна выглядеть кнопкой: заметный размер, своя подложка
+  и цвет основного текста, а не приглушённый.
+*/
 .msg-icon {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; border: none; background: none; border-radius: 50%;
-  color: var(--text-mut); cursor: pointer;
+  width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 50%;
+  background: var(--bg-elev-2); color: var(--text-dim); cursor: pointer;
 }
-.msg-icon:hover { background: var(--hover); color: var(--text); }
+.msg-icon:hover { background: var(--hover); border-color: var(--border-2); color: var(--text); }
 .msg-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Набор реакций всплывает НАД сообщением, а не раздвигает ленту. */

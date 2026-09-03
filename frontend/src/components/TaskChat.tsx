@@ -380,7 +380,7 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
                         title="Поставить реакцию"
                         aria-label="Поставить реакцию"
                       >
-                        <Icon name="smile" size={14} />
+                        <Icon name="smile" size={17} />
                       </button>
                       {reactFor === String(c.id) && (
                         <span className="react-pop">

@@ -1251,7 +1251,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                             title="Поставить реакцию"
                             aria-label="Поставить реакцию"
                           >
-                            <Icon name="smile" size={14} />
+                            <Icon name="smile" size={17} />
                           </button>
                           <button
                             className="msg-icon"
@@ -1259,7 +1259,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                             title={m.reply_count ? `Ответы в ветке (${m.reply_count})` : 'Ответить в ветке'}
                             aria-label="Ответить в ветке"
                           >
-                            <Icon name="reply" size={14} />
+                            <Icon name="reply" size={17} />
                           </button>
                           <button
                             className="msg-icon"
@@ -1267,7 +1267,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                             title="Ещё"
                             aria-label="Ещё"
                           >
-                            <Icon name="more" size={14} />
+                            <Icon name="more" size={17} />
                           </button>
 
                           {/* Набор реакций всплывает НАД сообщением, как в привычных
