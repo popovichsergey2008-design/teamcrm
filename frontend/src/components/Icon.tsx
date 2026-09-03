@@ -10,7 +10,7 @@
  */
 
 export type IconName =
-  | 'chat' | 'hash' | 'phone' | 'phone-off' | 'video' | 'video-off' | 'mic' | 'mic-off' | 'screen'
+  | 'chat' | 'hash' | 'smile' | 'phone' | 'phone-off' | 'video' | 'video-off' | 'mic' | 'mic-off' | 'screen'
   | 'record' | 'stop' | 'hand' | 'robot' | 'users' | 'user' | 'user-plus'
   | 'maximize' | 'minimize'
   | 'board' | 'list' | 'check' | 'check-circle' | 'close' | 'plus' | 'minus'
@@ -45,6 +45,8 @@ const PATHS: Record<IconName, string> = {
   'user-plus': 'M15 20v-1.8a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20M9 10.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM19 8v6M22 11h-6',
   board: 'M4 4.5A.5.5 0 0 1 4.5 4h4a.5.5 0 0 1 .5.5v15a.5.5 0 0 1-.5.5h-4a.5.5 0 0 1-.5-.5ZM11 4.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-4a.5.5 0 0 1-.5-.5ZM18 4.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v12a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5Z',
   list: 'M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01',
+  /** Реакция: улыбка — то же, что в привычных мессенджерах. */
+  smile: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM9 10h.01M15 10h.01M8.5 14.5a4.5 4.5 0 0 0 7 0',
   /** Канал: решётка — привычный знак темы, а не переписки. */
   hash: 'M6 9h14M4 15h14M10 4l-2 16M17 4l-2 16',
   check: 'M4.5 12.5 9.5 17.5 19.5 6.5',

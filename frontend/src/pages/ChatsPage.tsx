@@ -78,7 +78,7 @@ const SECTIONS: { key: 'inbox' | 'threads' | 'saved'; title: string; hint: strin
 ];
 
 /** Реакции: ответить «понял», не засоряя переписку и не будя всех уведомлением. */
-const REACTIONS = ['👍', '✅', '🔥', '❓', '👀', '🙏'];
+const REACTIONS = ['👍', '❤️', '🔥', '👏', '😁', '🤔'];
 
 /** «@AI», «@ии», «@ai-помощник» — человек пишет как придётся. */
 const MENTIONS_AI = /@(ai|ии|ai-помощник)\b/gi;
@@ -136,8 +136,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   /** Закреплённое чата: то, что нужно всем и всегда под рукой. */
   const [pinned, setPinned] = useState<Message[]>([]);
   const [pinsOpen, setPinsOpen] = useState(false);
-  /** У какого сообщения открыт выбор реакции: шесть смайлов в каждой строке — мусор. */
+  /** У какого сообщения открыт выбор реакции: набор всплывает над сообщением. */
   const [reactFor, setReactFor] = useState<string | null>(null);
+  /** У какого сообщения открыто меню «ещё»: редкие действия прячутся туда. */
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   /** Куда прокрутили из закреплённого — подсвечиваем, иначе непонятно, что нашли. */
   const [highlight, setHighlight] = useState<string | null>(null);
   /** Какой раздел открыт вместо переписки: входящие, треды, сохранённое. */
@@ -232,6 +234,20 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       openChat(String(chatId));
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось вступить'); }
   };
+
+  /*
+    Всплывающие набор реакций и меню закрываются кликом мимо.
+
+    Без этого они висят открытыми, пока не нажмёшь ту же кнопку, — и человек, кликнув
+    по другому сообщению, получает два открытых меню сразу.
+  */
+  useEffect(() => {
+    if (!reactFor && !menuFor) return;
+    const close = () => { setReactFor(null); setMenuFor(null); };
+    // с задержкой: тот же клик, который открыл меню, не должен его сразу закрыть
+    const timer = window.setTimeout(() => document.addEventListener('click', close), 0);
+    return () => { window.clearTimeout(timer); document.removeEventListener('click', close); };
+  }, [reactFor, menuFor]);
 
   const loadInbox = useCallback(() => { api.chatInbox().then(setInbox).catch(() => undefined); }, []);
   const loadSaved = useCallback(() => {
@@ -1218,29 +1234,89 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
                       <div className="chat-under">
                         <span className="chat-time">{timeOf(m.created_at)}</span>
-                        {reactFor === String(m.id) ? (
-                          <span className="chat-react-pick">
-                            {REACTIONS.map((emoji) => (
-                              <button key={emoji} className="reaction reaction-add" onClick={() => react(String(m.id), emoji)}>
-                                {emoji}
+
+                        {/*
+                          Три значка вместо шести подписей.
+
+                          Раньше под каждым сообщением стояло шесть текстовых кнопок —
+                          под короткой репликой они занимали больше места, чем она сама.
+                          Часто нужны две вещи: поставить реакцию и ответить в ветке;
+                          остальное убрано под «ещё», но не спрятано за наведением —
+                          значки видны всегда, и на касании тоже.
+                        */}
+                        <span className="msg-actions" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            className="msg-icon"
+                            onClick={() => { setReactFor(reactFor === String(m.id) ? null : String(m.id)); setMenuFor(null); }}
+                            title="Поставить реакцию"
+                            aria-label="Поставить реакцию"
+                          >
+                            <Icon name="smile" size={14} />
+                          </button>
+                          <button
+                            className="msg-icon"
+                            onClick={() => openThread(String(m.id))}
+                            title={m.reply_count ? `Ответы в ветке (${m.reply_count})` : 'Ответить в ветке'}
+                            aria-label="Ответить в ветке"
+                          >
+                            <Icon name="reply" size={14} />
+                          </button>
+                          <button
+                            className="msg-icon"
+                            onClick={() => { setMenuFor(menuFor === String(m.id) ? null : String(m.id)); setReactFor(null); }}
+                            title="Ещё"
+                            aria-label="Ещё"
+                          >
+                            <Icon name="more" size={14} />
+                          </button>
+
+                          {/* Набор реакций всплывает НАД сообщением, как в привычных
+                              мессенджерах, а не раздвигает ленту. */}
+                          {reactFor === String(m.id) && (
+                            <span className="react-pop">
+                              {REACTIONS.map((emoji) => (
+                                <button key={emoji} className="react-pop-btn" onClick={() => react(String(m.id), emoji)}>
+                                  {emoji}
+                                </button>
+                              ))}
+                            </span>
+                          )}
+
+                          {menuFor === String(m.id) && (
+                            <span className="msg-menu" role="menu">
+                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); togglePin(m); }}>
+                                <Icon name="flag" size={13} /> {m.pinned_at ? 'Открепить' : 'Закрепить'}
                               </button>
-                            ))}
-                          </span>
-                        ) : (
-                          <button className="chat-thread-link chat-thread-new" onClick={() => setReactFor(String(m.id))} title="Поставить реакцию">
-                            Реакция
+                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); toggleSaved(m); }}>
+                                <Icon name="star" size={13} /> {savedIds.has(String(m.id)) ? 'Убрать из сохранённого' : 'Сохранить'}
+                              </button>
+                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); setRemindFor(String(m.id)); }}>
+                                <Icon name="clock" size={13} /> Напомнить
+                              </button>
+                              {m.task_id ? (
+                                <button
+                                  className="msg-menu-item"
+                                  onClick={() => { setMenuFor(null); navigate({ section: 'projects', taskId: String(m.task_id) }); }}
+                                >
+                                  <Icon name="check" size={13} /> Задача #{m.task_id}
+                                </button>
+                              ) : (
+                                <button className="msg-menu-item" onClick={() => { setMenuFor(null); setToTask(m); }}>
+                                  <Icon name="sparkles" size={13} /> Создать задачу
+                                </button>
+                              )}
+                            </span>
+                          )}
+                        </span>
+
+                        {/* Ответы в ветке — не действие, а состояние разговора:
+                            строчка остаётся на виду, её не прячут в меню. */}
+                        {!!m.reply_count && (
+                          <button className="chat-thread-link" onClick={() => openThread(String(m.id))}>
+                            <Icon name="chat" size={12} /> {m.reply_count} {plural(m.reply_count, 'ответ', 'ответа', 'ответов')}
                           </button>
                         )}
-                        <button
-                          className="chat-thread-link chat-thread-new"
-                          onClick={() => togglePin(m)}
-                          title={m.pinned_at ? 'Открепить' : 'Закрепить в шапке чата — чтобы не искать прокруткой'}
-                        >
-                          {m.pinned_at ? 'Открепить' : 'Закрепить'}
-                        </button>
-                        {/* Задача из сообщения — то, ради чего чат живёт внутри CRM.
-                            Если задача уже заведена, кнопки нет: вместо неё ссылка на неё. */}
-                        {m.task_id ? (
+                        {!!m.task_id && (
                           <button
                             className="chat-thread-link"
                             onClick={() => navigate({ section: 'projects', taskId: String(m.task_id) })}
@@ -1248,23 +1324,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                           >
                             <Icon name="check" size={12} /> Задача #{m.task_id}
                           </button>
-                        ) : (
-                          <button className="chat-thread-link chat-thread-new" onClick={() => setToTask(m)} title="ИИ разложит фразу на постановку и шаги">
-                            Создать задачу
-                          </button>
                         )}
-                        {/* Сохранить — для того, из чего не получается задача: ссылка
-                            на макет, доступы, решение по спорному вопросу. */}
-                        <button
-                          className={`chat-thread-link${savedIds.has(String(m.id)) ? '' : ' chat-thread-new'}`}
-                          onClick={() => toggleSaved(m)}
-                          title={savedIds.has(String(m.id)) ? 'Убрать из сохранённого' : 'Сохранить себе'}
-                        >
-                          {savedIds.has(String(m.id)) ? 'Сохранено' : 'Сохранить'}
-                        </button>
-                        {/* Напомнить: читают сообщения когда пришли, а делают по ним позже. */}
-                        {remindFor === String(m.id) ? (
-                          <span className="chat-remind-pick">
+                        {m.pinned_at && <span className="dim chat-under-mark"><Icon name="flag" size={11} /> закреплено</span>}
+
+                        {/* Выбор времени напоминания разворачивается на месте: отдельное
+                            окно ради четырёх вариантов — лишний шаг. */}
+                        {remindFor === String(m.id) && (
+                          <span className="chat-remind-pick" onClick={(e) => e.stopPropagation()}>
                             {remindOptions().map((o) => (
                               <button key={o.key} className="chat-thread-link" onClick={() => remind(String(m.id), o.at)}>
                                 {o.label}
@@ -1272,28 +1338,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                             ))}
                             <button className="chat-thread-link chat-thread-new" onClick={() => setRemindFor(null)}>Отмена</button>
                           </span>
-                        ) : (
-                          <button
-                            className="chat-thread-link chat-thread-new"
-                            onClick={() => setRemindFor(String(m.id))}
-                            title="Вернуться к этому сообщению позже"
-                          >
-                            Напомнить
-                          </button>
-                        )}
-                        {/*
-                          Ветка сообщения. Кнопка видна всегда, а не по наведению: о том,
-                          чего не видно, никто не догадается, а на касании наведения нет.
-                          Строчка «N ответов» — вход в обсуждение, которое не засоряет ленту.
-                        */}
-                        {m.reply_count ? (
-                          <button className="chat-thread-link" onClick={() => openThread(String(m.id))}>
-                            <Icon name="chat" size={12} /> {m.reply_count} {plural(m.reply_count, 'ответ', 'ответа', 'ответов')}
-                          </button>
-                        ) : (
-                          <button className="chat-thread-link chat-thread-new" onClick={() => openThread(String(m.id))}>
-                            Ответить в ветке
-                          </button>
                         )}
                       </div>
                     </div>

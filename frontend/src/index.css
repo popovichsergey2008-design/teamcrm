@@ -80,6 +80,15 @@
   --fs-xs: 11px; --fs-sm: 13px; --fs-md: 14px; --fs-lg: 18px;
 
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /*
+    Эмодзи отдельным стеком.
+
+    Без него смайлы рисуются шрифтом интерфейса и на части систем выходят чёрно-белыми
+    угловатыми глифами — «страшными», как их и назвали. Цветные наборы есть в каждой
+    системе, но подхватываются только по имени: Segoe UI Emoji в Windows, Apple Color
+    Emoji в macOS и iOS, Noto — в Linux и Android.
+  */
+  --font-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
 }
 
 /* Тёмная тема: по системной настройке, если человек не выбрал светлую явно. */

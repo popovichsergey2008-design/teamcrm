@@ -871,12 +871,67 @@
 
 /* Чат задачи: цитата, реакции, действия над сообщением, поиск. */
 .chat-search-input { margin-bottom: 8px; }
+/*
+  Реакция-«таблетка»: смайл и число рядом, как в привычных мессенджерах.
+
+  Эмодзи рисуется системным цветным набором (--font-emoji): шрифтом интерфейса они
+  выходят чёрно-белыми угловатыми глифами.
+*/
 .reaction {
+  display: inline-flex; align-items: center; gap: 4px;
   border: 1px solid var(--border); background: var(--bg-elev); border-radius: 999px;
-  padding: 1px 7px; font-size: 12px; cursor: pointer; color: var(--text-dim);
+  padding: 2px 8px; font-size: 12px; line-height: 1.4; cursor: pointer; color: var(--text-dim);
 }
+.reaction:hover { border-color: var(--border-2); }
 .reaction.mine { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-.reaction-add { border-color: transparent; background: none; }
+.reaction, .react-pop-btn { font-family: var(--font-emoji), var(--font); }
+
+/*
+  Действия сообщения: три значка вместо шести подписей.
+
+  Раньше под каждым сообщением стояло шесть текстовых кнопок — под короткой репликой
+  они занимали больше места, чем она сама. Часто нужны две вещи: поставить реакцию и
+  ответить в ветке; остальное убрано под «ещё». Значки видны всегда, а не по наведению:
+  на касании наведения не бывает, а спрятанного никто не ищет.
+*/
+.msg-actions { position: relative; display: inline-flex; align-items: center; gap: 2px; }
+.msg-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border: none; background: none; border-radius: 50%;
+  color: var(--text-mut); cursor: pointer;
+}
+.msg-icon:hover { background: var(--hover); color: var(--text); }
+.msg-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Набор реакций всплывает НАД сообщением, а не раздвигает ленту. */
+.react-pop {
+  position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 45;
+  display: inline-flex; gap: 2px; padding: 4px;
+  background: var(--bg-elev); border: 1px solid var(--border-2);
+  border-radius: 999px; box-shadow: var(--shadow);
+}
+.react-pop-btn {
+  width: 30px; height: 30px; border: none; background: none; border-radius: 50%;
+  font-size: 18px; line-height: 1; cursor: pointer; transition: transform .1s;
+}
+.react-pop-btn:hover { background: var(--bg-elev-2); transform: scale(1.15); }
+.react-pop-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Редкие действия — списком, а не строкой кнопок под каждым сообщением. */
+.msg-menu {
+  position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 45; min-width: 200px;
+  display: flex; flex-direction: column; padding: 4px;
+  background: var(--bg-elev); border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+}
+.msg-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 7px 10px; border: none; background: none; border-radius: var(--radius-sm);
+  font: inherit; font-size: 13px; color: var(--text); cursor: pointer;
+}
+.msg-menu-item:hover { background: var(--bg-elev-2); }
+.msg-menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chat-under-mark { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; }
 
 /*
   ───── Чат задачи ─────
@@ -936,7 +991,6 @@
 .msg-act:hover { background: var(--hover); color: var(--text); }
 .msg-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .msg-act-danger:hover { color: var(--danger); }
-.msg-react-pick { display: inline-flex; gap: 2px; }
 
 .chat-count { font-size: 11px; margin-left: 4px; }
 .chat-found { font-size: 12px; margin: 4px 0; }
@@ -1583,7 +1637,6 @@
 */
 .chat-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin: 3px 4px 0; }
 .chat-reactions.mine { justify-content: flex-end; }
-.chat-react-pick { display: inline-flex; gap: 2px; }
 /* Метка на самом сообщении: видно, что оно из закреплённых, а не просто старое. */
 .chat-pin-mark { float: right; margin-left: 6px; color: var(--accent); }
 

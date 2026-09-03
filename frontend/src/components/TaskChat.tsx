@@ -13,7 +13,7 @@ import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useAuth } from '../state/auth';
 
 /** Реакции: ответить «ок» знаком, не засоряя обсуждение и не будя участников. */
-const REACTIONS = ['👍', '✅', '🔥', '❓', '👀', '🙏'];
+const REACTIONS = ['👍', '❤️', '🔥', '👏', '😁', '🤔'];
 
 /**
  * Помощник в списке упоминаний.
@@ -371,24 +371,27 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
                         {r.emoji} {r.count}
                       </button>
                     ))}
-                    {reactFor === String(c.id) ? (
-                      <span className="msg-react-pick">
-                        {REACTIONS.map((emoji) => (
-                          <button key={emoji} className="reaction reaction-add" onClick={() => react(String(c.id), emoji)}>
-                            {emoji}
-                          </button>
-                        ))}
-                      </span>
-                    ) : (
+                    {/* Набор всплывает НАД сообщением — так же, как в мессенджере:
+                        строка действий не должна раздуваться от шести смайлов. */}
+                    <span className="msg-actions">
                       <button
-                        className="msg-act"
-                        onClick={() => setReactFor(String(c.id))}
+                        className="msg-icon"
+                        onClick={() => setReactFor(reactFor === String(c.id) ? null : String(c.id))}
                         title="Поставить реакцию"
                         aria-label="Поставить реакцию"
                       >
-                        <Icon name="plus" size={12} /> реакция
+                        <Icon name="smile" size={14} />
                       </button>
-                    )}
+                      {reactFor === String(c.id) && (
+                        <span className="react-pop">
+                          {REACTIONS.map((emoji) => (
+                            <button key={emoji} className="react-pop-btn" onClick={() => react(String(c.id), emoji)}>
+                              {emoji}
+                            </button>
+                          ))}
+                        </span>
+                      )}
+                    </span>
                     {!c.is_ai && (
                       <button
                         className="msg-act"
