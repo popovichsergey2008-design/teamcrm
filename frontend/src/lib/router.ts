@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from 'react';
 
-export type Section = 'focus' | 'calendar' | 'projects' | 'chat' | 'radar' | 'settings' | 'profile';
+export type Section = 'focus' | 'calendar' | 'tasks' | 'projects' | 'chat' | 'radar' | 'settings' | 'profile';
 
 /**
  * Разобранный адрес. Плоский на одном уровне: сузить тип по секции можно и в месте
@@ -28,7 +28,7 @@ export type Route = {
   tab?: string;
 };
 
-const SECTIONS: Section[] = ['focus', 'calendar', 'projects', 'chat', 'radar', 'settings', 'profile'];
+const SECTIONS: Section[] = ['focus', 'calendar', 'tasks', 'projects', 'chat', 'radar', 'settings', 'profile'];
 
 /** По ТЗ приложение открывается на «Фокусе дня», а не на досках. */
 export const DEFAULT_PATH = '/focus';
@@ -50,6 +50,10 @@ export function parsePath(pathname: string): Route {
       // он уже разослан ссылками в письмах-приглашениях и лежит в закладках
       if (seg[1] === 'calendar') return { section: 'calendar' };
       return { section };
+    // Реестр задач: срез живёт в адресе, чтобы ссылкой делились вкладкой
+    // («вот всё, что я поставил»), а не чьим-то временным набором фильтров.
+    case 'tasks':
+      return seg[1] ? { section, view: seg[1] } : { section };
     case 'projects': {
       if (!seg[1]) return { section };
       return seg[2] === 'task' && seg[3]
@@ -72,6 +76,8 @@ export function buildPath(r: Route): string {
     case 'focus':
       if (r.view === 'inbox') return '/focus/inbox';
       return '/focus';
+    case 'tasks':
+      return r.view ? `/tasks/${enc(r.view)}` : '/tasks';
     case 'projects':
       if (!r.projectId) return '/projects';
       return r.taskId

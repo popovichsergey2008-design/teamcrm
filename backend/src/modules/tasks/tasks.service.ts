@@ -10,6 +10,7 @@ import { KnowledgeService } from '../knowledge/knowledge.service';
 import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
 import { isDoneColumn, isReviewColumn } from './task-columns';
 import { handoffGate } from './handoff-gate';
+import { REGISTRY_PAGE_SIZE, RegistryFilters } from './task-registry';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
@@ -33,6 +34,43 @@ export class TasksService {
    */
   markRead(tenantId: string, taskId: string, userId: string): Promise<void> {
     return this.reads.markRead(tenantId, taskId, userId);
+  }
+
+  /**
+   * Реестр задач: всё по всем проектам одним списком.
+   *
+   * «Фокус дня» отвечает, что делать сегодня, и потому показывает только открытое и
+   * только со сроком. Реестр отвечает на другой вопрос — «покажи ВСЁ, что я поставил» и
+   * «всё, что на мне», — с историей, отбором и постраничностью.
+   *
+   * Общее число строк приходит окном в том же запросе: держать отдельный COUNT в
+   * согласии с фильтрами не получится, он разъедется на первой правке.
+   */
+  async registry(tenantId: string, userId: string, filters: RegistryFilters) {
+    const rows = await this.repo.registry(tenantId, userId, filters);
+    const total = Number(rows[0]?.total ?? 0);
+    // Красные счётчики — только по показанной странице: считать непрочитанное по всем
+    // задачам организации ради пятидесяти строк незачем.
+    const unread = new Map<string, number>();
+    for (const u of await this.reads.byIds(tenantId, userId, rows.map((r) => String(r.id)))) {
+      unread.set(String(u.task_id), Number(u.n));
+    }
+    const page = Math.max(1, Math.trunc(Number(filters.page) || 1));
+    return {
+      // total из строки убираем: он одинаков во всех и относится к выборке, а не к задаче
+      items: rows.map((r) => ({
+        ...r, total: undefined, unread: unread.get(String(r.id)) ?? 0,
+      })),
+      total,
+      page,
+      pageSize: REGISTRY_PAGE_SIZE,
+      pages: Math.max(1, Math.ceil(total / REGISTRY_PAGE_SIZE)),
+    };
+  }
+
+  /** Исполнители, встречающиеся в задачах, — для выпадающего фильтра реестра. */
+  registryAssignees(tenantId: string) {
+    return this.repo.registryAssignees(tenantId);
   }
 
   /** Вкладки «Мои задачи» / «Порученные»: задачи по всем проектам, а не по одной доске. */

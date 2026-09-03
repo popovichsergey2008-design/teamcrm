@@ -2649,3 +2649,111 @@
 .call-ai-status.on { color: var(--ok); }
 .call-ai-status.on .call-ai-dot { background: var(--ok); animation: voice-bar 1.6s ease-in-out infinite; }
 .call-ai-what { font-size: var(--fs-xs); }
+
+/* ───── Реестр задач ─────
+   Список, а не карточки: реестр читают по столбцам — срок, исполнитель, проект.
+   Строка — одна кнопка на всю ширину: попасть по ней с первого раза должно быть
+   так же легко, как по строке в почте. */
+.registry-page { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: var(--sp-4) var(--sp-5); overflow: hidden; }
+.registry-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
+.registry-title h1 { margin: 0; font-size: var(--fs-lg); font-weight: 700; }
+.registry-sub { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-dim); }
+
+/* Срезы вкладками: их четыре, они взаимоисключающие и переключаются постоянно —
+   выпадающий список тут добавил бы по два действия к каждому переключению. */
+.registry-tabs { display: flex; gap: 2px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px; }
+.registry-tab {
+  padding: 6px 14px; border: 0; border-radius: var(--radius-sm); cursor: pointer;
+  background: transparent; color: var(--text-dim); font: inherit; font-size: var(--fs-sm); font-weight: 600;
+}
+.registry-tab:hover { background: var(--hover); color: var(--text); }
+.registry-tab.active { background: var(--accent-2); color: #fff; }
+
+.registry-bar { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-4) 0 var(--sp-2); flex-wrap: wrap; }
+.registry-search {
+  display: flex; align-items: center; gap: var(--sp-2); flex: 1; min-width: 220px; max-width: 420px;
+  padding: 7px var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elev); color: var(--text-mut);
+}
+.registry-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.registry-search input { flex: 1; border: 0; background: transparent; color: var(--text); font: inherit; outline: none; padding: 0; }
+.registry-clear { border: 0; background: transparent; color: var(--text-mut); cursor: pointer; display: flex; padding: 2px; border-radius: var(--radius-sm); }
+.registry-clear:hover { color: var(--text); background: var(--hover); }
+.registry-toggle.active { border-color: var(--accent-line); color: var(--accent); }
+.registry-count { margin-left: auto; font-size: var(--fs-sm); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+.registry-filters { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+.registry-filters select {
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elev); color: var(--text); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.registry-check { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; }
+/* На узком экране фильтры сворачиваются под кнопку — но по НАЖАТИЮ, не по наведению:
+   спрятанный до наведения элемент не существует ни на телефоне, ни для того, кто
+   просто не догадался туда навести. */
+@media (max-width: 900px) {
+  .registry-filters { display: none; }
+  .registry-filters.open { display: flex; }
+}
+
+.registry-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.registry-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 150px 130px 170px 110px;
+  align-items: center; gap: var(--sp-3); width: 100%; text-align: left;
+  padding: 9px var(--sp-3); border: 0; border-bottom: 1px solid var(--border);
+  background: transparent; color: var(--text); font: inherit; cursor: pointer;
+}
+.registry-row:last-child { border-bottom: 0; }
+.registry-row:hover { background: var(--hover); }
+.registry-header {
+  position: sticky; top: 0; z-index: 1; cursor: default; background: var(--bg-elev-2);
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); font-weight: 600;
+}
+.registry-header:hover { background: var(--bg-elev-2); }
+/* Просрочка — полоской слева, а не красным фоном: фон на половине строк превращает
+   список в кашу, а полоска читается и не мешает читать текст. */
+.registry-row.late { box-shadow: inset 3px 0 0 var(--danger); }
+.registry-row.done .registry-name { color: var(--text-mut); text-decoration: line-through; }
+
+.registry-cell-title { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.registry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.registry-id { font-size: var(--fs-xs); color: var(--text-mut); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+/* Красная цифра — только по МОИМ задачам (так решено заказчиком): в YouGile краснеет
+   вся доска, и через неделю на счётчики перестают смотреть. */
+.registry-new {
+  flex-shrink: 0; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  /* заливка плотная (--fill-danger), а не --danger: в тёмной теме тот пастельный,
+     и белым по нему не прочитать — это ловит npm run contrast */
+  background: var(--fill-danger); color: #fff; font-size: var(--fs-xs); font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums;
+}
+.registry-cell-dim { font-size: var(--fs-sm); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.registry-cell-who { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-sm); }
+.registry-who-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.registry-nobody { font-size: var(--fs-sm); color: var(--text-mut); }
+.registry-cell-due { font-size: var(--fs-sm); }
+
+.registry-pages { display: flex; align-items: center; justify-content: center; gap: 4px; padding-top: var(--sp-3); flex-wrap: wrap; }
+.registry-page {
+  min-width: 30px; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elev); color: var(--text); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.registry-page:hover { background: var(--hover); }
+.registry-page.active { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+.registry-gap { color: var(--text-mut); padding: 0 2px; }
+
+/* Узкий экран: столбцы «статус» и «кто» уходят — на телефоне важны название и срок. */
+@media (max-width: 720px) {
+  .registry-row { grid-template-columns: minmax(0, 1fr) 100px; }
+  .registry-row > *:nth-child(3), .registry-row > *:nth-child(4) { display: none; }
+}
+/* Клавиатура: строка, вкладка и номер страницы — обычные кнопки, и обводка фокуса у
+   них обязана быть видна (проверяется npm run a11y). Внутри списка обводку убираем
+   внутрь, иначе её срезает прокрутка. */
+.registry-tab:focus-visible, .registry-page:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.registry-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.registry-filters select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.registry-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Обводку получает сам флажок: подпись — это label, фокус браузер даёт не ей. */
+.registry-check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

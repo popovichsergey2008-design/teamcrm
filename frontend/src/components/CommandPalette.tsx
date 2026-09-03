@@ -41,6 +41,8 @@ const RECENT_MAX = 5;
 
 const SECTIONS: { title: string; icon: IconName; route: Route; roles?: string[] }[] = [
   { title: 'Фокус дня', icon: 'target', route: { section: 'focus' } },
+  { title: 'Задачи: все по всем проектам', icon: 'check-circle', route: { section: 'tasks' } },
+  { title: 'Задачи: что я поручил', icon: 'send', route: { section: 'tasks', view: 'delegated' } },
   { title: 'Проекты и доски', icon: 'board', route: { section: 'projects' } },
   { title: 'Чаты & Миты', icon: 'chat', route: { section: 'chat' } },
   { title: 'Пульс команды', icon: 'chart', route: { section: 'radar' }, roles: ['owner', 'manager'] },

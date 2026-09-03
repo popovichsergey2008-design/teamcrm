@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { REVIEW_COLUMN_NAMES } from './task-columns';
 import { GateFacts, GateRequirements } from './handoff-gate';
+import { buildRegistry, RegistryFilters } from './task-registry';
 
 export interface TaskRow {
   id: string;
@@ -518,5 +519,59 @@ export class TasksRepository {
       [tenantId, req.checklist, req.comment, req.attachment],
     );
     return req;
+  }
+
+  /**
+   * Реестр: задачи по ВСЕМ проектам с отбором и постраничностью.
+   *
+   * Условия собирает task-registry (там же и тесты) — здесь только запрос. Три вещи
+   * стоит объяснить:
+   *
+   * 1. `COUNT(*) OVER ()` — общее число строк тем же запросом. Отдельный SELECT COUNT
+   *    по тем же условиям пришлось бы держать в согласии с этим, и он разъедется на
+   *    первой правке фильтров.
+   * 2. `is_mine` и `overdue` считаются в SELECT не только для удобства клиента:
+   *    Postgres требует, чтобы КАЖДЫЙ переданный параметр где-то использовался, иначе
+   *    падает с «could not determine data type of parameter». В срезе «Все» и без
+   *    фильтра по сроку $2 и $3 в условиях не встречаются — и запрос ронялся бы.
+   * 3. Порядок сортировки подставляется строкой, но приходит из белого списка
+   *    task-registry: пользовательский текст сюда не попадает.
+   */
+  registry(tenantId: string, userId: string, filters: RegistryFilters) {
+    const q = buildRegistry(tenantId, userId, filters);
+    return this.db.many<TaskRow & {
+      project_name: string; column_name: string;
+      assignee_name: string | null; manager_name: string | null;
+      is_mine: boolean; overdue: boolean; total: string;
+    }>(
+      `SELECT t.*, p.name AS project_name, bc.name AS column_name,
+              ua.full_name AS assignee_name, um.full_name AS manager_name,
+              (t.assignee_id = $2) AS is_mine,
+              (t.closed_at IS NULL AND t.deadline_at IS NOT NULL
+               AND t.deadline_at < $3::timestamptz - interval '1 day') AS overdue,
+              COUNT(*) OVER () AS total
+         FROM tasks t
+         JOIN projects p ON p.id = t.project_id
+         JOIN board_columns bc ON bc.id = t.column_id
+         LEFT JOIN users ua ON ua.id = t.assignee_id
+         LEFT JOIN users um ON um.id = t.created_by
+        WHERE ${q.where}
+        ORDER BY ${q.orderBy}
+        LIMIT ${q.limit} OFFSET ${q.offset}`,
+      q.params,
+    );
+  }
+
+  /** Кто ещё может быть исполнителем — для выпадающего фильтра реестра. */
+  registryAssignees(tenantId: string): Promise<{ id: string; full_name: string }[]> {
+    return this.db.many(
+      `SELECT DISTINCT u.id, u.full_name
+         FROM tasks t
+         JOIN users u ON u.id = t.assignee_id
+         JOIN projects p ON p.id = t.project_id
+        WHERE t.tenant_id = $1 AND p.status <> 'archived'
+        ORDER BY u.full_name`,
+      [tenantId],
+    );
   }
 }

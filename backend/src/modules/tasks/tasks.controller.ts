@@ -5,7 +5,7 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { TasksService } from './tasks.service';
 import {
   ApprovalRequiredDto, CreateTaskDto, FocusDateDto, MoveTaskDto, ParticipantDto,
-  ReturnTaskDto, UpdateTaskDto,
+  ReturnTaskDto, TaskRegistryQueryDto, UpdateTaskDto,
 } from './tasks.dto';
 
 /** Пустую или кривую дату не подставляем молча: считаем, что клиент имел в виду сегодня. */
@@ -25,6 +25,30 @@ export class TasksController {
   async read(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     await this.tasks.markRead(user.tenantId, id, user.userId);
     return { read: true };
+  }
+
+  /**
+   * Реестр: все задачи по всем проектам с отбором и постраничностью.
+   *
+   * Маршрут объявлен ВЫШЕ `:id`-маршрутов намеренно: иначе «registry» попадёт в
+   * параметр идентификатора и вернёт 404. На этом мы уже спотыкались в чатах.
+   *
+   * `dayEnd` присылает клиент: «сегодня» у человека и на сервере — разные сутки, и без
+   * этого «просрочено» считалось бы по часовому поясу сервера.
+   */
+  @Get('registry')
+  registry(@CurrentUser() user: AuthUser, @Query() query: TaskRegistryQueryDto) {
+    return this.tasks.registry(user.tenantId, user.userId, {
+      ...query,
+      closed: query.closed === '1' || query.closed === 'true',
+      dayEnd: query.dayEnd ?? new Date().toISOString(),
+    });
+  }
+
+  /** Исполнители для фильтра реестра. */
+  @Get('registry/assignees')
+  registryAssignees(@CurrentUser() user: AuthUser) {
+    return this.tasks.registryAssignees(user.tenantId);
   }
 
   /**

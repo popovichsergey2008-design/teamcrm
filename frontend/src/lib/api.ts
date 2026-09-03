@@ -899,6 +899,22 @@ export const api = {
 
   myTasks: (scope: 'mine' | 'delegated' | 'review', closed = false) =>
     request<any[]>('GET', `/tasks/my?scope=${scope}${closed ? '&closed=1' : ''}`),
+
+  /**
+   * Реестр задач по всем проектам. Строку запроса собирает task-registry-view:
+   * пустые фильтры отправлять нельзя — сервер отвечает на них 400.
+   */
+  taskRegistry: (query: string) =>
+    request<{
+      items: (Task & {
+        project_name: string; column_name: string; assignee_name: string | null;
+        manager_name: string | null; is_mine: boolean; overdue: boolean; unread: number;
+      })[];
+      total: number; page: number; pageSize: number; pages: number;
+    }>('GET', `/tasks/registry?${query}`),
+  /** Исполнители, встречающиеся в задачах, — для фильтра реестра. */
+  taskRegistryAssignees: () =>
+    request<{ id: string; full_name: string }[]>('GET', '/tasks/registry/assignees'),
   // архив проектов
   archiveProject: (id: string) => request<{ archived: boolean }>('POST', `/projects/${id}/archive`),
   unarchiveProject: (id: string) => request<{ archived: boolean }>('POST', `/projects/${id}/unarchive`),

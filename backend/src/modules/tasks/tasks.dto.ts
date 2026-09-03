@@ -156,3 +156,62 @@ export class ParticipantDto {
   @IsIn(['co_assignee', 'watcher'])
   role!: 'co_assignee' | 'watcher';
 }
+
+/**
+ * Фильтры реестра задач.
+ *
+ * Валидация здесь не формальность: `forbidNonWhitelisted` отклонит незнакомый параметр,
+ * а белые списки не дадут подставить произвольное значение в срез или сортировку —
+ * дальше эти строки попадают в текст SQL (значения фильтров идут параметрами).
+ *
+ * `closed` и `dayEnd` приходят строками: это query-параметры, а не тело запроса.
+ */
+export class TaskRegistryQueryDto {
+  @IsOptional()
+  @IsIn(['mine', 'delegated', 'watching', 'all'])
+  scope?: 'mine' | 'delegated' | 'watching' | 'all';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  projectId?: string;
+
+  /** Идентификатор либо `none` — «без исполнителя». */
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  assigneeId?: string;
+
+  @IsOptional()
+  @IsIn(['urgent', 'high', 'normal', 'low'])
+  priority?: string;
+
+  @IsOptional()
+  @IsIn(['any', 'overdue', 'today', 'week', 'none'])
+  due?: string;
+
+  @IsOptional()
+  @IsIn(['deadline', 'created', 'updated', 'priority', 'project'])
+  sort?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  closed?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  /** Конец «сегодня» у пользователя, ISO. Без него «просрочено» считается по серверу. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  dayEnd?: string;
+}

@@ -45,6 +45,8 @@ test('разбор и сборка адреса совпадают в обе с�
     ['/focus', { section: 'focus' }],
     ['/focus/inbox', { section: 'focus', view: 'inbox' }],
     ['/calendar', { section: 'calendar' }],
+    ['/tasks', { section: 'tasks' }],
+    ['/tasks/delegated', { section: 'tasks', view: 'delegated' }],
     ['/projects', { section: 'projects' }],
     ['/projects/p1', { section: 'projects', projectId: 'p1' }],
     ['/projects/p1/task/t2', { section: 'projects', projectId: 'p1', taskId: 't2' }],
@@ -674,6 +676,55 @@ test('«напомнить мне»: вечер не предлагается н
   assert.equal(remindLabel(new Date(2026, 8, 3, 18, 0), day), 'сегодня в 18:00');
   assert.equal(remindLabel(new Date(2026, 8, 4, 9, 0), day), 'завтра в 09:00');
   assert.equal(remindLabel(new Date(2026, 8, 10, 9, 0), day), '10 сентября в 09:00');
+});
+
+// ── реестр задач ──────────────────────────────────────────────────────────────
+test('реестр: пустые фильтры не уезжают в запрос, страницы не теряют края', async () => {
+  const m = await load('lib/task-registry-view.ts');
+  const { registryQuery, pageWindow, rangeLabel, activeFilterCount, endOfTodayIso, EMPTY_FILTERS } = m;
+
+  const now = new Date(2026, 8, 3, 14, 30);
+
+  // сервер отклоняет незнакомые и пустые значения (forbidNonWhitelisted):
+  // «priority=» это не «без фильтра», а ответ 400
+  const plain = registryQuery(EMPTY_FILTERS, now);
+  assert.equal(plain.includes('priority='), false);
+  assert.equal(plain.includes('projectId='), false);
+  assert.equal(plain.includes('due='), false, 'срок «любой» — это отсутствие фильтра');
+  assert.equal(plain.includes('sort='), false, 'сортировка по умолчанию не нужна в адресе');
+  assert.equal(plain.includes('page='), false, 'первая страница — не параметр');
+  assert.equal(plain.includes('scope=mine'), true);
+  assert.equal(plain.includes('dayEnd='), true, 'без границы суток «просрочено» считается по серверу');
+
+  const full = registryQuery({
+    ...EMPTY_FILTERS, scope: 'delegated', q: '  макет  ', projectId: '12',
+    assigneeId: 'none', priority: 'high', due: 'overdue', sort: 'project', closed: true, page: 3,
+  }, now);
+  const q = new URLSearchParams(full);
+  assert.equal(q.get('scope'), 'delegated');
+  assert.equal(q.get('q'), 'макет', 'поиск обрезается по краям');
+  assert.equal(q.get('assigneeId'), 'none');
+  assert.equal(q.get('closed'), '1');
+  assert.equal(q.get('page'), '3');
+
+  // граница суток — конец дня у ЧЕЛОВЕКА, а не «сейчас»
+  const end = new Date(endOfTodayIso(now));
+  assert.equal(end.getHours(), 23);
+  assert.equal(end.getDate(), 3);
+
+  assert.equal(activeFilterCount(EMPTY_FILTERS), 0, 'срез фильтром не считается');
+  assert.equal(activeFilterCount({ ...EMPTY_FILTERS, q: 'a', closed: true, due: 'week' }), 3);
+
+  // окно страниц: края доступны всегда, разрыв обозначен нулём
+  assert.deepEqual(pageWindow(1, 1), [1]);
+  assert.deepEqual(pageWindow(1, 3), [1, 2, 3]);
+  assert.deepEqual(pageWindow(5, 9), [1, 0, 4, 5, 6, 0, 9]);
+  assert.deepEqual(pageWindow(2, 9), [1, 2, 3, 0, 9], 'рядом с началом разрыв не нужен');
+  assert.deepEqual(pageWindow(9, 9), [1, 0, 8, 9]);
+
+  assert.equal(rangeLabel(1, 50, 137), '1–50 из 137');
+  assert.equal(rangeLabel(3, 50, 137), '101–137 из 137', 'последняя страница не врёт про 150');
+  assert.equal(rangeLabel(1, 50, 0), 'ничего не найдено');
 });
 
 // ── запуск ────────────────────────────────────────────────────────────────────

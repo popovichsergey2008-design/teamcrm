@@ -75,6 +75,25 @@ export class TaskReadsRepository {
     );
   }
 
+  /**
+   * Непрочитанное по перечисленным задачам — реестр раскрашивается одним запросом.
+   *
+   * Список идентификаторов приходит уже отобранной страницей: считать непрочитанное
+   * по всем задачам организации ради пятидесяти строк на экране незачем.
+   */
+  byIds(tenantId: string, userId: string, taskIds: string[]): Promise<{ task_id: string; n: string }[]> {
+    if (taskIds.length === 0) return Promise.resolve([]);
+    return this.db.many(
+      `SELECT a.task_id, COUNT(*) AS n
+         FROM task_activity a
+         JOIN tasks t ON t.id = a.task_id
+    LEFT JOIN task_reads r ON r.task_id = a.task_id AND r.user_id = $2
+        WHERE a.tenant_id = $1 AND a.task_id = ANY($3::bigint[]) AND ${MINE} AND ${FRESH}
+        GROUP BY a.task_id`,
+      [tenantId, userId, taskIds],
+    );
+  }
+
   /** Сколько всего нового — бейдж раздела «Проекты». */
   async total(tenantId: string, userId: string): Promise<number> {
     const row = await this.db.one<{ n: string }>(
