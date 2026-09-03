@@ -623,6 +623,20 @@ export const api = {
   renameChat: (chatId: string, title: string) => request<{ title: string }>('PATCH', `/chats/${chatId}`, { title }),
   leaveChat: (chatId: string) => request<any>('POST', `/chats/${chatId}/leave`),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
+  /** Канал — общая тема: публичный виден всем, приватный как группа с названием темы. */
+  createChannel: (b: { title: string; description?: string; isPrivate?: boolean; userIds?: string[] }) =>
+    request<{ id: string; kind: string; title: string }>('POST', '/chats/channels', b),
+  /** Витрина «Все каналы»: только публичные — приватные сюда не приходят вовсе. */
+  listChannels: () => request<{
+    id: string; title: string | null; description: string | null;
+    members: number; joined: boolean; last_message_at: string | null;
+  }[]>('GET', '/chats/channels'),
+  joinChannel: (chatId: string) => request<{ id: string }>('POST', `/chats/${chatId}/join`, {}),
+  /** Закрепить чат сверху списка или снять — порядок личный. */
+  toggleChatFavorite: (chatId: string) => request<{ favorite: boolean }>('POST', `/chats/${chatId}/favorite`, {}),
+  /** Чат с собой: ссылки и мысли на потом. Открывается один и тот же. */
+  openSelfChat: () => request<{ id: string; kind: string; title: string }>('POST', '/chats/self', {}),
+
   /**
    * Задача из сообщения: сначала черновик (ИИ раскладывает фразу на постановку,
    * шаги и срок), потом создание — формулировку человек правит сам.

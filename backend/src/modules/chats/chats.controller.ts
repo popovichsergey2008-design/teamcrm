@@ -33,6 +33,13 @@ class ReactionDto {
 class PinDto {
   @IsOptional() @IsBoolean() pinned?: boolean;
 }
+class CreateChannelDto {
+  @IsString() @MaxLength(160) title!: string;
+  @IsOptional() @IsString() @MaxLength(300) description?: string;
+  /** Умолчание — приватный: раскрыть канал проще, чем спрятать уже сказанное. */
+  @IsOptional() @IsBoolean() isPrivate?: boolean;
+  @IsOptional() @IsArray() @IsString({ each: true }) userIds?: string[];
+}
 class AddMembersDto {
   @IsArray() @IsString({ each: true }) userIds!: string[];
 }
@@ -81,6 +88,24 @@ export class ChatsController {
     return this.chats.myThreads(u.tenantId, u);
   }
 
+  /** Канал — общая тема: публичный виден всем, приватный как группа с названием темы. */
+  @Post('channels')
+  createChannel(@CurrentUser() u: AuthUser, @Body() dto: CreateChannelDto) {
+    return this.chats.createChannel(u.tenantId, u, dto);
+  }
+
+  /** Витрина «Все каналы»: публичные каналы компании. Приватных здесь нет вовсе. */
+  @Get('channels')
+  channels(@CurrentUser() u: AuthUser) {
+    return this.chats.channels(u.tenantId, u);
+  }
+
+  /** Чат с собой — «Заметки». Открывается один и тот же, сколько ни нажимай. */
+  @Post('self')
+  selfChat(@CurrentUser() u: AuthUser) {
+    return this.chats.selfChat(u.tenantId, u);
+  }
+
   /**
    * Откуда выросла задача. По образцу `/meetings/of-task/:id` — вопрос тот же:
    * «а это вообще откуда?», и отвечать на него должны все источники одинаково.
@@ -117,6 +142,18 @@ export class ChatsController {
       rootId: dto.threadRootId ?? null,
       alsoInChannel: dto.alsoInChannel === true,
     }, dto.mentionIds);
+  }
+
+  /** Вступить в публичный канал. В приватный — только по приглашению. */
+  @Post(':id/join')
+  join(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.joinChannel(u.tenantId, id, u);
+  }
+
+  /** Закрепить чат сверху списка или снять — порядок личный. */
+  @Post(':id/favorite')
+  favorite(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.toggleFavorite(u.tenantId, id, u);
   }
 
   /** Реакция на сообщение — переключатель: повторное нажатие снимает свою. */

@@ -18,14 +18,19 @@ import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from
 import { remindLabel, remindOptions } from '../lib/remind-times';
 import { MentionField } from '../components/MentionField';
 import { MessageToTask } from '../components/MessageToTask';
+import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
 import { showToast } from '../lib/notifications';
 import type { User } from '../types';
 
 interface Chat {
-  id: string; kind: 'dm' | 'group' | 'project'; title: string | null;
+  id: string; kind: 'dm' | 'group' | 'project' | 'channel' | 'self'; title: string | null;
   peerId: string | null; peerOnline: boolean; projectId: string | null; avatarUrl?: string | null;
   unread: number; lastBody: string | null; lastAuthor: string | null; lastAt: string | null;
+  /** Закреплён сверху лично этим человеком. */
+  favorite?: boolean;
+  isPrivate?: boolean;
+  description?: string | null;
 }
 interface Message {
   id: string; author_id: string | null; author_name: string | null; body: string;
@@ -124,7 +129,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   /** Куда прокрутили из закреплённого — подсвечиваем, иначе непонятно, что нашли. */
   const [highlight, setHighlight] = useState<string | null>(null);
   /** Какой раздел открыт вместо переписки: входящие, треды, сохранённое. */
-  const [view, setView] = useState<'chat' | 'inbox' | 'threads' | 'saved'>('chat');
+  const [view, setView] = useState<'chat' | 'inbox' | 'threads' | 'saved' | 'channels'>('chat');
   const [inbox, setInbox] = useState<{
     mentions: any[]; threads: any[]; chats: any[];
     counts: { mentions: number; threads: number; chats: number };
@@ -136,6 +141,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const [remindFor, setRemindFor] = useState<string | null>(null);
   /** Кого позвали по «@»: id, а не имена — имена переименовываются. */
   const [mentioned, setMentioned] = useState<string[]>([]);
+  /** Витрина «Все каналы»: публичные каналы компании. */
+  const [channelList, setChannelList] = useState<{
+    id: string; title: string | null; description: string | null;
+    members: number; joined: boolean; last_message_at: string | null;
+  }[]>([]);
+  const [channelOpen, setChannelOpen] = useState(false);
   /** Из какого сообщения делаем задачу: окно с черновиком от ИИ. */
   const [toTask, setToTask] = useState<Message | null>(null);
   /** Что за сущность стоит за чатом — показывается в шапке. */
@@ -156,6 +167,35 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
    * событием по сокету (сервер рассылает всем участникам, включая автора) и ответом REST,
    * причём событие обычно приходит РАНЬШЕ ответа. Сверяем по id.
    */
+  /** Закрепить чат сверху или снять: порядок личный, у каждого свои четыре. */
+  const star = async (c: Chat) => {
+    setChats((prev) => prev.map((x) => (String(x.id) === String(c.id) ? { ...x, favorite: !x.favorite } : x)));
+    try { await api.toggleChatFavorite(String(c.id)); reload(); }
+    catch { reload(); }
+  };
+
+  /** Чат с собой: открывается один и тот же, сколько ни нажимай. */
+  const openNotes = async () => {
+    try {
+      const chat = await api.openSelfChat();
+      await reload();
+      openChat(String(chat.id));
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть заметки'); }
+  };
+
+  const loadChannels = useCallback(() => {
+    api.listChannels().then(setChannelList).catch(() => undefined);
+  }, []);
+
+  const join = async (chatId: string) => {
+    try {
+      await api.joinChannel(chatId);
+      await reload();
+      setView('chat');
+      openChat(String(chatId));
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось вступить'); }
+  };
+
   const loadInbox = useCallback(() => { api.chatInbox().then(setInbox).catch(() => undefined); }, []);
   const loadSaved = useCallback(() => {
     api.listSavedMessages().then((rows) => {
@@ -469,8 +509,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   };
 
   const active = chats.find((c) => String(c.id) === String(activeId)) ?? null;
-  const dms = chats.filter((c) => c.kind === 'dm');
-  const groups = chats.filter((c) => c.kind !== 'dm');
+  /*
+    Группировка списка: избранное, каналы, потом всё остальное.
+
+    Канал — тема, которая переживёт состав участников (#разработка, #баги), группа —
+    разговор нескольких человек, диалог — переписка двоих. Валить это в один список
+    из сорока строк значит каждый раз искать нужное глазами.
+  */
+  const favorites = chats.filter((c) => c.favorite);
+  const rest = chats.filter((c) => !c.favorite);
+  const selfChat = rest.find((c) => c.kind === 'self') ?? null;
+  const channels = rest.filter((c) => c.kind === 'channel');
+  const dms = rest.filter((c) => c.kind === 'dm');
+  const groups = rest.filter((c) => c.kind === 'group' || c.kind === 'project');
   // с кем ещё не переписывались — показываем ниже, чтобы можно было начать диалог
   const others = useMemo(() => {
     const known = new Set(dms.map((c) => String(c.peerId)));
@@ -503,7 +554,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       <aside className="chat-list">
         <div className="chat-list-head">
           <input className="input chat-search" placeholder="Поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <button className="btn btn-ghost btn-sm" title="Создать группу" onClick={() => setGroupOpen(true)}><Icon name="plus" /></button>
+          <button className="btn btn-ghost btn-sm" title="Создать группу — разговор нескольких человек" onClick={() => setGroupOpen(true)}>
+            <Icon name="plus" />
+          </button>
+          {/* Канал — тема, которая переживёт состав участников. Витрина рядом:
+              публичный канал бесполезен, если о нём никто не знает. */}
+          <button className="btn btn-ghost btn-sm" title="Создать канал — общая тема" onClick={() => setChannelOpen(true)}>
+            <Icon name="hash" />
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            title="Все каналы компании"
+            onClick={() => { setView(view === 'channels' ? 'chat' : 'channels'); loadChannels(); }}
+          >
+            <Icon name="search" />
+          </button>
         </div>
 
         {/*
@@ -549,13 +614,50 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           </div>
         )}
 
+        {favorites.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Избранное</div>}
+        {favorites.filter((c) => match(c.title)).map((c) => (
+          <ChatRow
+            key={c.id} chat={c} active={String(c.id) === String(activeId)}
+            group={c.kind === 'dm' ? groupFor(c.peerId) : undefined}
+            onClick={() => openChat(c.id)} onStar={() => star(c)}
+          />
+        ))}
+
+        {/* Заметки — чат с собой: ссылки и мысли на потом складывают именно туда,
+            а без него пишут их коллеге «чтобы не потерять». */}
+        {selfChat
+          ? (
+            <ChatRow
+              key={selfChat.id} chat={selfChat} active={String(selfChat.id) === String(activeId)}
+              onClick={() => openChat(selfChat.id)} onStar={() => star(selfChat)}
+            />
+          )
+          : (
+            <button className="chat-row" onClick={openNotes} title="Ссылки, файлы и мысли на потом — себе">
+              <span className="chat-section-icon" aria-hidden="true"><Icon name="edit" size={15} /></span>
+              <span className="chat-row-main">
+                <span className="chat-row-title">Заметки</span>
+                <span className="chat-row-last dim">чат с собой</span>
+              </span>
+            </button>
+          )}
+
+        {channels.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Каналы</div>}
+        {channels.filter((c) => match(c.title)).map((c) => (
+          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)} />
+        ))}
+
+        {dms.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Личные</div>}
         {dms.filter((c) => match(c.title)).map((c) => (
-          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} group={groupFor(c.peerId)} onClick={() => openChat(c.id)} />
+          <ChatRow
+            key={c.id} chat={c} active={String(c.id) === String(activeId)} group={groupFor(c.peerId)}
+            onClick={() => openChat(c.id)} onStar={() => star(c)}
+          />
         ))}
 
         {groups.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Группы и проекты</div>}
         {groups.filter((c) => match(c.title)).map((c) => (
-          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} />
+          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)} />
         ))}
 
         {others.filter((u) => match(u.fullName)).length > 0 && <div className="chat-group-head">Написать впервые</div>}
@@ -675,6 +777,34 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                 ))}
               </>
             )}
+          </div>
+        )}
+
+        {view === 'channels' && (
+          <div className="threads-view">
+            <div className="chat-head"><span><Icon name="hash" size={15} /> <b>Все каналы</b></span></div>
+            {channelList.length === 0 && (
+              <EmptyState
+                compact
+                icon="hash"
+                title="Публичных каналов пока нет"
+                hint="Канал — общая тема компании: #разработка, #маркетинг, #баги. В публичный входят сами, в закрытый приглашают."
+              />
+            )}
+            {channelList.map((c) => (
+              <div key={c.id} className="thread-item channel-item">
+                <span className="thread-item-head">
+                  <b># {c.title}</b>
+                  <span className="dim">{c.members} участн.</span>
+                </span>
+                {c.description && <span className="thread-item-body dim">{c.description}</span>}
+                <span className="thread-item-foot">
+                  {c.joined
+                    ? <button className="btn btn-ghost btn-sm" onClick={() => { setView('chat'); openChat(String(c.id)); }}>Открыть</button>
+                    : <button className="btn btn-sm" onClick={() => join(String(c.id))}>Вступить</button>}
+                </span>
+              </div>
+            ))}
           </div>
         )}
 
@@ -1093,6 +1223,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
         />
       )}
 
+      {channelOpen && (
+        <ChannelModal
+          meId={user?.id}
+          onClose={() => setChannelOpen(false)}
+          onCreated={async (chatId) => {
+            setChannelOpen(false);
+            await reload();
+            setView('chat');
+            openChat(chatId);
+          }}
+        />
+      )}
+
       {groupOpen && (
         <GroupChatModal
           users={users}
@@ -1115,9 +1258,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   );
 }
 
-function ChatRow({ chat, active, group, onClick }: { chat: Chat; active: boolean; group?: string; onClick: () => void }) {
+function ChatRow({ chat, active, group, onClick, onStar }: {
+  chat: Chat; active: boolean; group?: string; onClick: () => void;
+  /** Закрепить сверху. В списке из сорока переписок нужные четыре ищут глазами. */
+  onStar?: () => void;
+}) {
   const icon = chat.kind === 'dm' ? (chat.title?.[0]?.toUpperCase() ?? '?') : '#';
   return (
+    <div className={`chat-row-wrap${active ? ' active' : ''}`}>
     <button className={`chat-row ${active ? 'active' : ''}`} onClick={onClick}>
       {/* у личного диалога — лицо собеседника: по десятку одинаковых кружков с буквой
           чат не находится взглядом, а по фотографии находится сразу */}
@@ -1137,5 +1285,18 @@ function ChatRow({ chat, active, group, onClick }: { chat: Chat; active: boolean
       </span>
       {chat.unread > 0 && <span className="chat-unread">{chat.unread}</span>}
     </button>
+    {/* Звезда вынесена из кнопки чата: кнопку внутрь кнопки не вложить, а закреплять
+        нужно, не открывая переписку. */}
+    {onStar && (
+      <button
+        className={`chat-star${chat.favorite ? ' on' : ''}`}
+        onClick={onStar}
+        title={chat.favorite ? 'Убрать из избранного' : 'Закрепить сверху'}
+        aria-label={chat.favorite ? 'Убрать из избранного' : 'Закрепить сверху'}
+      >
+        <Icon name="star" size={13} />
+      </button>
+    )}
+    </div>
   );
 }

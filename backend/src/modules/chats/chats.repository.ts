@@ -3,11 +3,14 @@ import { DbService } from '../../database/db.service';
 
 export interface ChatRow {
   id: string; tenant_id: string; kind: string; title: string | null;
+  is_private?: boolean; description?: string | null;
   project_id: string | null; dm_key: string | null; created_by: string | null;
   created_at: Date; last_message_at: Date | null;
 }
 
 export interface ChatListItem extends ChatRow {
+  /** Закреплён сверху лично этим человеком. */
+  favorite: boolean;
   peer_id: string | null;        // собеседник в личном диалоге
   peer_name: string | null;
   peer_avatar: string | null;
@@ -72,6 +75,7 @@ export class ChatsRepository {
                   SELECT 1 FROM chat_members m WHERE m.chat_id = c.id AND m.user_id = $2))
        )
        SELECT mine.*,
+              (fav.chat_id IS NOT NULL) AS favorite,
               peer.id   AS peer_id,
               peer.full_name AS peer_name,
               peer.avatar_file_id AS peer_avatar,
@@ -85,6 +89,7 @@ export class ChatsRepository {
               last.created_at AS last_at
          FROM mine
          LEFT JOIN chat_members me ON me.chat_id = mine.id AND me.user_id = $2
+         LEFT JOIN chat_favorites fav ON fav.chat_id = mine.id AND fav.user_id = $2
          LEFT JOIN projects p ON p.id = mine.project_id
          LEFT JOIN LATERAL (
               SELECT m2.user_id FROM chat_members m2
@@ -97,7 +102,8 @@ export class ChatsRepository {
                ORDER BY id DESC LIMIT 1
          ) last ON TRUE
          LEFT JOIN users lu ON lu.id = last.author_id
-        ORDER BY COALESCE(mine.last_message_at, mine.created_at) DESC
+        -- избранное всегда сверху: ради этого его и отмечают
+        ORDER BY (fav.chat_id IS NOT NULL) DESC, COALESCE(mine.last_message_at, mine.created_at) DESC
         LIMIT 200`,
       [tenantId, userId],
     );
@@ -483,6 +489,105 @@ export class ChatsRepository {
       [tenantId, userId],
     );
     return Number(row?.n ?? 0);
+  }
+
+  // ───── каналы, избранное, чат с собой (слой 4) ─────
+
+  /**
+   * Канал: тема, которая переживёт состав участников.
+   *
+   * Создатель сразу становится участником — канал без единого человека внутри
+   * выглядел бы чужим даже для того, кто его завёл.
+   */
+  async createChannel(i: {
+    tenantId: string; userId: string; title: string; description: string | null;
+    isPrivate: boolean; userIds: string[];
+  }): Promise<ChatRow> {
+    return this.db.withTransaction(async (c) => {
+      const chat = (await c.query(
+        `INSERT INTO chats (tenant_id, kind, title, description, is_private, created_by)
+         VALUES ($1,'channel',$2,$3,$4,$5) RETURNING *`,
+        [i.tenantId, i.title, i.description, i.isPrivate, i.userId],
+      )).rows[0] as ChatRow;
+      const ids = Array.from(new Set([String(i.userId), ...i.userIds.map(String)]));
+      for (const uid of ids) {
+        await c.query(
+          `INSERT INTO chat_members (chat_id, user_id, tenant_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+          [chat.id, uid, i.tenantId],
+        );
+      }
+      return chat;
+    });
+  }
+
+  /**
+   * Витрина «Все каналы»: публичные каналы компании.
+   *
+   * Приватных здесь нет вовсе — не «скрыты кнопкой», а не приходят с сервера:
+   * закрытый канал не должен даже упоминаться в поиске у того, кому он не открыт.
+   */
+  publicChannels(tenantId: string, userId: string) {
+    return this.db.many<{
+      id: string; title: string | null; description: string | null;
+      members: number; joined: boolean; last_message_at: Date | null;
+    }>(
+      `SELECT c.id, c.title, c.description, c.last_message_at,
+              (SELECT COUNT(*)::int FROM chat_members m WHERE m.chat_id = c.id) AS members,
+              EXISTS (SELECT 1 FROM chat_members m WHERE m.chat_id = c.id AND m.user_id = $2) AS joined
+         FROM chats c
+        WHERE c.tenant_id = $1 AND c.kind = 'channel' AND c.is_private = FALSE
+        ORDER BY c.last_message_at DESC NULLS LAST, c.id DESC
+        LIMIT 200`,
+      [tenantId, userId],
+    );
+  }
+
+  /** Вступить в канал: строка участия и есть вступление. */
+  async join(tenantId: string, chatId: string, userId: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO chat_members (chat_id, user_id, tenant_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+      [chatId, userId, tenantId],
+    );
+  }
+
+  /** Закрепить чат сверху или снять — порядок личный, у каждого свои четыре. */
+  async toggleFavorite(tenantId: string, chatId: string, userId: string): Promise<boolean> {
+    const del = await this.db.query(
+      `DELETE FROM chat_favorites WHERE chat_id=$1 AND user_id=$2`, [chatId, userId],
+    );
+    if ((del as { rowCount?: number })?.rowCount) return false;
+    await this.db.query(
+      `INSERT INTO chat_favorites (user_id, chat_id, tenant_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+      [userId, chatId, tenantId],
+    );
+    return true;
+  }
+
+  /**
+   * Чат с собой — «Заметки».
+   *
+   * Тот же личный диалог, только собеседник — ты сам. Ключ `self:<id>` попадает
+   * в тот же уникальный индекс, что и обычные диалоги, поэтому второй такой чат
+   * не заведётся даже при двойном нажатии.
+   */
+  async ensureSelfChat(tenantId: string, userId: string): Promise<ChatRow> {
+    const key = `self:${userId}`;
+    const found = await this.db.one<ChatRow>(
+      `SELECT * FROM chats WHERE tenant_id=$1 AND dm_key=$2`, [tenantId, key],
+    );
+    if (found) return found;
+    return this.db.withTransaction(async (c) => {
+      const chat = (await c.query(
+        `INSERT INTO chats (tenant_id, kind, title, dm_key, created_by)
+         VALUES ($1,'self','Заметки',$2,$3) RETURNING *`,
+        [tenantId, key, userId],
+      )).rows[0] as ChatRow;
+      await c.query(
+        `INSERT INTO chat_members (chat_id, user_id, tenant_id) VALUES ($1,$2,$3)`,
+        [chat.id, userId, tenantId],
+      );
+      return chat;
+    });
   }
 
   /** Сообщение с текстом и уже заведённой по нему задачей — для создания задачи из чата. */

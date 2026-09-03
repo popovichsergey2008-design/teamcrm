@@ -78,6 +78,73 @@ export class ChatsService {
     return { id: chat.id, kind: chat.kind, title: name };
   }
 
+  /**
+   * Канал — общая тема, а не переписка нескольких человек.
+   *
+   * Публичный виден всей компании и вступают в него сами; приватный — как группа,
+   * только с названием темы. Разница не косметическая: в публичном канале копится
+   * общее знание, и запирать его на приглашения значит потерять смысл затеи.
+   */
+  async createChannel(
+    tenantId: string, user: { userId: string; role: string },
+    dto: { title: string; description?: string; isPrivate?: boolean; userIds?: string[] },
+  ) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    const title = (dto.title ?? '').trim();
+    if (!title) throw AppException.validation('Назовите канал');
+    const chat = await this.repo.createChannel({
+      tenantId, userId: user.userId,
+      title: title.slice(0, 160),
+      description: (dto.description ?? '').trim().slice(0, 300) || null,
+      isPrivate: dto.isPrivate !== false, // умолчание — приватный: раскрыть проще, чем спрятать
+      userIds: (dto.userIds ?? []).map(String),
+    });
+    this.realtime.emitToUsers(tenantId, [user.userId, ...(dto.userIds ?? []).map(String)], 'chat.created', {
+      chatId: chat.id, title,
+    });
+    return { id: chat.id, kind: chat.kind, title };
+  }
+
+  /** Витрина «Все каналы»: публичные каналы компании и кнопка «Вступить». */
+  channels(tenantId: string, user: { userId: string; role: string }) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    return this.repo.publicChannels(tenantId, user.userId);
+  }
+
+  /**
+   * Вступить в канал.
+   *
+   * Только в публичный: в приватный входят по приглашению, иначе «приватный» —
+   * это просто слово в интерфейсе.
+   */
+  async joinChannel(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    const chat = await this.repo.get(tenantId, chatId);
+    if (!chat || chat.kind !== 'channel') throw AppException.notFound('Канал не найден');
+    if (chat.is_private) throw AppException.forbidden('Это закрытый канал — в него приглашают');
+    await this.repo.join(tenantId, chatId, user.userId);
+    return { id: chat.id, kind: chat.kind, title: chat.title };
+  }
+
+  /** Закрепить чат сверху списка или снять. Порядок личный. */
+  async toggleFavorite(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    await this.access(tenantId, chatId, user);
+    const favorite = await this.repo.toggleFavorite(tenantId, chatId, user.userId);
+    return { favorite };
+  }
+
+  /**
+   * Чат с собой — «Заметки».
+   *
+   * Ссылки, куски кода, мысли на потом: их складывают в диалог с самим собой в любом
+   * мессенджере, и без такого чата люди пишут это коллеге «чтобы не потерять».
+   */
+  async selfChat(tenantId: string, user: { userId: string; role: string }) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    const chat = await this.repo.ensureSelfChat(tenantId, user.userId);
+    return { id: chat.id, kind: chat.kind, title: chat.title };
+  }
+
   async openProjectChat(tenantId: string, userId: string, role: string, projectId: string) {
     if (role === 'client') throw AppException.forbidden('Чаты команды недоступны');
     void userId;

@@ -311,4 +311,61 @@ describe('треды в чатах (e2e)', () => {
     const steps = (await http.get(`/api/tasks/${created.taskId}/checklist`).set(O).expect(200)).body.data;
     expect(steps.length).toBe(2);
   }, 60000);
+
+  /**
+   * Слой 4: каналы, избранное, чат с собой.
+   *
+   * Главное правило каналов — приватный не должен даже упоминаться у того, кому он
+   * не открыт: витрина отдаёт только публичные, и вступить в закрытый нельзя.
+   */
+  it('каналы: публичный виден и открыт, закрытый не виден и не пускает', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'L4', email: `l4_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .expect(201)).body.data;
+    const mateEmail = `l4_m_${uniq()}@t.test`;
+    await http.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Пётр', password: 'password123', role: 'member' }).expect(201);
+    const mateLogin = (await http.post('/api/auth/login')
+      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const M = H(mateLogin.accessToken);
+
+    const open = (await http.post('/api/chats/channels').set(O)
+      .send({ title: 'разработка', description: 'Технические вопросы', isPrivate: false }).expect(201)).body.data;
+    const closed = (await http.post('/api/chats/channels').set(O)
+      .send({ title: 'руководство', isPrivate: true }).expect(201)).body.data;
+
+    // витрина: публичный виден всем, закрытого в ней нет вовсе
+    const shelf = (await http.get('/api/chats/channels').set(M).expect(200)).body.data;
+    expect(shelf.some((c: any) => String(c.id) === String(open.id))).toBe(true);
+    expect(shelf.some((c: any) => String(c.id) === String(closed.id))).toBe(false);
+    expect(shelf.find((c: any) => String(c.id) === String(open.id)).joined).toBe(false);
+
+    // до вступления канал недоступен на чтение
+    await http.get(`/api/chats/${open.id}/messages`).set(M).expect(403);
+    await http.post(`/api/chats/${open.id}/join`).set(M).expect(201);
+    await http.get(`/api/chats/${open.id}/messages`).set(M).expect(200);
+
+    // в закрытый канал войти нельзя — иначе «приватный» просто слово в интерфейсе
+    await http.post(`/api/chats/${closed.id}/join`).set(M).expect(403);
+
+    // канал появился в списке чатов вступившего
+    const list = (await http.get('/api/chats').set(M).expect(200)).body.data;
+    expect(list.some((c: any) => String(c.id) === String(open.id))).toBe(true);
+
+    // избранное: переключатель и личное — у второго человека своё
+    await http.post(`/api/chats/${open.id}/favorite`).set(M).expect(201);
+    const withFav = (await http.get('/api/chats').set(M).expect(200)).body.data;
+    expect(withFav.find((c: any) => String(c.id) === String(open.id)).favorite).toBe(true);
+    const ownerList = (await http.get('/api/chats').set(O).expect(200)).body.data;
+    expect(ownerList.find((c: any) => String(c.id) === String(open.id)).favorite).toBe(false);
+
+    // чат с собой: сколько ни нажимай — он один
+    const notes1 = (await http.post('/api/chats/self').set(M).expect(201)).body.data;
+    const notes2 = (await http.post('/api/chats/self').set(M).expect(201)).body.data;
+    expect(String(notes1.id)).toBe(String(notes2.id));
+    await http.post(`/api/chats/${notes1.id}/messages`).set(M).send({ body: 'пароль от стенда' }).expect(201);
+    // и он личный: чужие заметки недоступны
+    await http.get(`/api/chats/${notes1.id}/messages`).set(O).expect(403);
+  }, 60000);
 });

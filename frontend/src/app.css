@@ -1494,6 +1494,35 @@
   background: none; color: inherit; cursor: pointer; border-radius: var(--radius-sm); text-align: left;
 }
 .chat-row:hover { background: var(--bg-elev-2); }
+/*
+  Строка списка и звезда рядом с ней.
+
+  Звезду нельзя вложить в кнопку чата (кнопка внутрь кнопки не вкладывается), поэтому
+  строка — обёртка с двумя кнопками. Закрепить нужно, не открывая переписку.
+*/
+.chat-row-wrap { display: flex; align-items: center; gap: 2px; border-radius: var(--radius-sm); }
+.chat-row-wrap:hover { background: var(--bg-elev-2); }
+.chat-row-wrap.active { background: var(--bg-elev-2); box-shadow: inset 2px 0 0 var(--accent); }
+.chat-row-wrap .chat-row { flex: 1; min-width: 0; background: none; box-shadow: none; }
+.chat-star {
+  flex: 0 0 auto; border: none; background: none; cursor: pointer; padding: 4px 6px;
+  border-radius: var(--radius-sm); color: var(--text-mut); opacity: .5;
+}
+.chat-star:hover, .chat-star.on { opacity: 1; color: var(--warn); }
+.chat-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Выбор «публичный / закрытый» объяснён словами: половина каналов иначе окажется
+   закрытой по недосмотру, и общее знание опять не соберётся. */
+.channel-kind { display: flex; flex-direction: column; gap: 6px; }
+.channel-kind-btn {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; text-align: left;
+  padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer;
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text); font: inherit;
+}
+.channel-kind-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.channel-kind-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.channel-kind-btn .dim { flex-basis: 100%; font-size: var(--fs-xs); }
+.channel-item { cursor: default; }
 .chat-row.active { background: var(--bg-elev-2); box-shadow: inset 2px 0 0 var(--accent); }
 .chat-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chat-row-title { font-size: 13px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
