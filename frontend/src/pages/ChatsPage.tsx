@@ -25,13 +25,15 @@ import { showToast } from '../lib/notifications';
 import type { User } from '../types';
 
 interface Chat {
-  id: string; kind: 'dm' | 'group' | 'project' | 'channel' | 'self'; title: string | null;
+  id: string; kind: 'dm' | 'group' | 'project' | 'channel' | 'self' | 'external'; title: string | null;
   peerId: string | null; peerOnline: boolean; projectId: string | null; avatarUrl?: string | null;
   unread: number; lastBody: string | null; lastAuthor: string | null; lastAt: string | null;
   /** Закреплён сверху лично этим человеком. */
   favorite?: boolean;
   isPrivate?: boolean;
   description?: string | null;
+  /** В разговоре есть человек со стороны: всё сказанное здесь он увидит. */
+  isExternal?: boolean;
 }
 interface Message {
   id: string; author_id: string | null; author_name: string | null; body: string;
@@ -48,6 +50,8 @@ interface Message {
   meeting_id?: string | null;
   /** Ответ помощника: помечен, чтобы его не спутали со словами коллеги. */
   is_ai?: boolean;
+  /** Имя внешнего собеседника: учётной записи у него нет. */
+  guest_name?: string | null;
   /** Задача, заведённая по этому сообщению: чтобы вторую по той же фразе не завели. */
   task_id?: string | null;
   task_title?: string | null;
@@ -561,6 +565,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const rest = chats.filter((c) => !c.favorite);
   const selfChat = rest.find((c) => c.kind === 'self') ?? null;
   const channels = rest.filter((c) => c.kind === 'channel');
+  const external = rest.filter((c) => c.kind === 'external');
   const dms = rest.filter((c) => c.kind === 'dm');
   const groups = rest.filter((c) => c.kind === 'group' || c.kind === 'project');
   // с кем ещё не переписывались — показываем ниже, чтобы можно было начать диалог
@@ -610,6 +615,22 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               публичный канал бесполезен, если о нём никто не знает. */}
           <button className="btn btn-ghost btn-sm" title="Создать канал — общая тема" onClick={() => setChannelOpen(true)}>
             <Icon name="hash" />
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            title="Разговор с клиентом или подрядчиком — по ссылке, без доступа к остальному"
+            onClick={async () => {
+              const title = window.prompt('С кем разговор? Например, «ООО Вектор»');
+              if (!title?.trim()) return;
+              try {
+                const chat = await api.createExternalChat({ title: title.trim() });
+                await reload();
+                setView('chat');
+                openChat(String(chat.id));
+              } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось создать разговор'); }
+            }}
+          >
+            <Icon name="link" />
           </button>
           <button
             className="btn btn-ghost btn-sm"
@@ -693,6 +714,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
         {channels.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Каналы</div>}
         {channels.filter((c) => match(c.title)).map((c) => (
+          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)} />
+        ))}
+
+        {/* Внешние — отдельной группой и с пометкой: в этих разговорах есть человек
+            со стороны, и путать их с внутренними нельзя ни при каких обстоятельствах. */}
+        {external.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Внешние</div>}
+        {external.filter((c) => match(c.title)).map((c) => (
           <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)} />
         ))}
 
@@ -1050,6 +1078,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                   чтобы не повторять их в каждой переписке. */}
             </div>
 
+            {/*
+              Предупреждение, а не бейдж.
+
+              Сотрудник должен видеть, что здесь его читает клиент, ДО того как напишет
+              «они опять всё переиграли». Это единственное место, где полоса поперёк
+              экрана оправдана: цена ошибки — испорченные отношения с заказчиком.
+            */}
+            {active.kind === 'external' && (
+              <div className="chat-external-warn">
+                <Icon name="alert" size={14} />
+                Здесь есть человек со стороны — он видит всё, что вы напишете.
+                Внутреннее обсуждение ведите в чате проекта.
+              </div>
+            )}
+
             {pinsOpen && pinned.length > 0 && (
               <div className="chat-pins">
                 {pinned.map((m) => (
@@ -1120,7 +1163,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                   );
                 }
                 // системная строка (кого добавили, кто вышел) — без автора и без «пузыря»
-                if (!m.author_id) {
+                if (!m.author_id && !m.guest_name) {
                   return (
                     <div key={m.id}>
                       {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
@@ -1136,6 +1179,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                     <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}`}>
                       <div className={`chat-msg ${mine && !m.is_ai ? 'mine' : ''}${m.is_ai ? ' chat-msg-ai' : ''}`}>
                         {m.is_ai && <div className="chat-author"><Icon name="sparkles" size={11} /> AI-помощник</div>}
+                        {/* Кто именно писал со стороны: через месяц «внешний участник»
+                            без имени в переписке не значит ничего. */}
+                        {m.guest_name && (
+                          <div className="chat-author chat-author-guest">
+                            <Icon name="user" size={11} /> {m.guest_name} · внешний участник
+                          </div>
+                        )}
                         {m.pinned_at && <span className="chat-pin-mark" title="Закреплено в шапке чата"><Icon name="flag" size={11} /></span>}
                         {!mine && !m.is_ai && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
                         {m.body && <div className="chat-body">{m.body}</div>}

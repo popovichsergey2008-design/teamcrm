@@ -6,6 +6,8 @@ export interface GuestLinkRow {
   tenant_id: string;
   room_id: string;
   project_id: string | null;
+  /** Разговор, ради которого выдана ссылка: по нему гость попадает и в переписку. */
+  chat_id: string | null;
   label: string | null;
   created_by: string;
   expires_at: Date;

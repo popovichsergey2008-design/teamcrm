@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MeetingsModule } from '../meetings/meetings.module';
+import { ChatsModule } from '../chats/chats.module';
 import { GuestLinksRepository } from './guest-links.repository';
 import { GuestLinksService } from './guest-links.service';
 import { MediaController } from './media.controller';
@@ -14,7 +15,9 @@ import { RecordingService } from './recording.service';
  * что созвоны недоступны, и не мешает остальной CRM.
  */
 @Module({
-  imports: [MeetingsModule], // запись созвона отдаётся в тот же конвейер, что и загруженные встречи
+  // ChatsModule — внешний участник по ссылке попадает и в переписку, а не только
+  // в переговорную; проверка гостевого токена при этом остаётся здесь, в одном месте.
+  imports: [MeetingsModule, ChatsModule],
   controllers: [MediaController, MeetGuestController],
   providers: [MediaService, MeetGateway, RecordingService, GuestLinksService, GuestLinksRepository],
   exports: [MediaService],

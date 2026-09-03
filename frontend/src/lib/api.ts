@@ -667,6 +667,21 @@ export const api = {
   joinChannel: (chatId: string) => request<{ id: string }>('POST', `/chats/${chatId}/join`, {}),
   /** Закрепить чат сверху списка или снять — порядок личный. */
   toggleChatFavorite: (chatId: string) => request<{ favorite: boolean }>('POST', `/chats/${chatId}/favorite`, {}),
+  /**
+   * Внешний чат: разговор с клиентом или подрядчиком по ссылке.
+   *
+   * Отдельный от внутренних намеренно: «клиент опять поменял требования» говорят во
+   * внутреннем чате проекта, и уехать клиенту оно не может.
+   */
+  createExternalChat: (b: { title: string; clientId?: string; userIds?: string[] }) =>
+    request<{ id: string; kind: string; title: string }>('POST', '/chats/external', b),
+
+  /** Переписка глазами гостя: токен из ссылки, один-единственный разговор. */
+  guestChatMessages: (token: string) =>
+    rawRequest<any[]>('POST', '/meet/guest/chat/messages', { token }, false),
+  guestChatSend: (token: string, body: string) =>
+    rawRequest<any>('POST', '/meet/guest/chat/send', { token, body }, false),
+
   /** Чат с собой: ссылки и мысли на потом. Открывается один и тот же. */
   openSelfChat: () => request<{ id: string; kind: string; title: string }>('POST', '/chats/self', {}),
 

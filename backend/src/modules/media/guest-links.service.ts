@@ -18,6 +18,13 @@ export interface GuestTokenPayload {
   tenantId: string;
   roomId: string;
   name: string;
+  /**
+   * Разговор, ради которого выдана ссылка.
+   *
+   * По нему внешний участник читает и пишет — и ничего, кроме него: ссылку пересылают,
+   * и открывать она должна ровно один чат, а не «переписку компании».
+   */
+  chatId?: string | null;
 }
 
 export type LinkRefusal = 'unknown' | 'revoked' | 'expired' | 'used-up';
@@ -139,6 +146,7 @@ export class GuestLinksService {
     const gid = randomUUID();
     const payload: GuestTokenPayload = {
       kind: 'guest', gid, tenantId: link.tenant_id, roomId: link.room_id, name: guestName,
+      chatId: link.chat_id ? String(link.chat_id) : null,
     };
     const accessToken = await this.jwt.signAsync(payload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
@@ -151,6 +159,8 @@ export class GuestLinksService {
       token: accessToken,
       roomId: link.room_id,
       name: guestName,
+      // чат ссылки: гость попадает и в переписку, а не только в переговорную
+      chatId: link.chat_id ? String(link.chat_id) : null,
       // тот же id, под которым гость появится в комнате: по нему браузер отличает свои потоки
       userId: `guest:${gid}`,
       // ICE берём тем же способом, что и для сотрудников: гостю TURN нужнее всех —

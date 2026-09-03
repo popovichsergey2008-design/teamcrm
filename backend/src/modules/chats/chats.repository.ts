@@ -4,6 +4,9 @@ import { DbService } from '../../database/db.service';
 export interface ChatRow {
   id: string; tenant_id: string; kind: string; title: string | null;
   is_private?: boolean; description?: string | null;
+  /** В чате есть человек со стороны: всё сказанное здесь увидит он. */
+  is_external?: boolean;
+  client_id?: string | null;
   project_id: string | null; dm_key: string | null; created_by: string | null;
   created_at: Date; last_message_at: Date | null;
 }
@@ -34,6 +37,8 @@ export interface MessageRow {
   meeting_id?: string | null;
   /** Ответ помощника: помечен, чтобы его не спутали со словами коллеги. */
   is_ai?: boolean;
+  /** Имя внешнего собеседника: у гостя нет строки в users. */
+  guest_name?: string | null;
   /** Задача, заведённая по этому сообщению: чтобы вторую не завели. */
   task_id?: string | null;
   task_title?: string | null;
@@ -193,7 +198,7 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
-              m.task_id, t.title AS task_title, m.meeting_id, m.is_ai,
+              m.task_id, t.title AS task_title, m.meeting_id, m.is_ai, m.guest_name,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -222,7 +227,7 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
-              m.task_id, t.title AS task_title, m.meeting_id, m.is_ai,
+              m.task_id, t.title AS task_title, m.meeting_id, m.is_ai, m.guest_name,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -501,6 +506,50 @@ export class ChatsRepository {
   }
 
   // ───── каналы, избранное, чат с собой (слой 4) ─────
+
+  /**
+   * Внешний чат: разговор с человеком со стороны.
+   *
+   * Отдельный чат, а не режим существующего: «клиент опять поменял требования» должно
+   * быть сказано во внутреннем чате проекта и не может уехать клиенту, потому что это
+   * разные разговоры, а не один с фильтром видимости.
+   */
+  async createExternal(i: {
+    tenantId: string; userId: string; title: string; clientId: string | null; userIds: string[];
+  }): Promise<ChatRow> {
+    return this.db.withTransaction(async (c) => {
+      const chat = (await c.query(
+        `INSERT INTO chats (tenant_id, kind, title, created_by, is_external, is_private, client_id)
+         VALUES ($1,'external',$2,$3,TRUE,TRUE,$4) RETURNING *`,
+        [i.tenantId, i.title, i.userId, i.clientId],
+      )).rows[0] as ChatRow;
+      for (const uid of Array.from(new Set([String(i.userId), ...i.userIds.map(String)]))) {
+        await c.query(
+          `INSERT INTO chat_members (chat_id, user_id, tenant_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+          [chat.id, uid, i.tenantId],
+        );
+      }
+      return chat;
+    });
+  }
+
+  /** Сообщение от внешнего участника: автора-пользователя у него нет, есть имя. */
+  async addGuestMessage(tenantId: string, chatId: string, guestName: string, body: string): Promise<MessageRow> {
+    const row = await this.db.one<{ id: string }>(
+      `INSERT INTO chat_messages (tenant_id, chat_id, author_id, guest_name, body)
+       VALUES ($1,$2,NULL,$3,$4) RETURNING id`,
+      [tenantId, chatId, guestName.slice(0, 60), body.slice(0, 8000)],
+    );
+    await this.db.query(`UPDATE chats SET last_message_at=now() WHERE id=$1`, [chatId]);
+    return (await this.db.one<MessageRow>(
+      `SELECT m.id, m.chat_id, m.author_id, NULL::text AS author_name, m.body, m.file_id,
+              NULL::text AS file_name, NULL::text AS content_type, NULL::text AS size_bytes,
+              m.created_at, m.edited_at, m.thread_root_id, m.reply_count, m.last_reply_at,
+              m.pinned_at, m.guest_name, m.is_ai
+         FROM chat_messages m WHERE m.id=$1`,
+      [row!.id],
+    ))!;
+  }
 
   /**
    * Канал: тема, которая переживёт состав участников.

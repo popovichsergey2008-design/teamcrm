@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { CallPanel } from '../components/CallPanel';
 import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
+import { GuestChat } from '../components/GuestChat';
 
 interface LinkInfo {
   orgName: string;
@@ -15,6 +16,8 @@ interface Admission {
   roomId: string;
   userId: string;
   iceServers: RTCIceServer[];
+  /** Разговор, ради которого выдана ссылка. Пусто — ссылка только на созвон. */
+  chatId: string | null;
 }
 
 const REFUSAL: Record<string, string> = {
@@ -38,6 +41,14 @@ export function GuestMeetPage({ token }: { token: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [admission, setAdmission] = useState<Admission | null>(null);
+  /**
+   * Гость вошёл в переговорную.
+   *
+   * Отдельно от самого входа: ссылка выдана под РАЗГОВОР, и переписка доступна до
+   * созвона и без него. Раньше по ссылке можно было только войти в комнату — гость,
+   * пришедший раньше времени или не дозвонившийся, оставался ни с чем и писал на почту.
+   */
+  const [inCall, setInCall] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -59,7 +70,12 @@ export function GuestMeetPage({ token }: { token: string }) {
       const r = await api.guestJoin(token, name.trim());
       // имя запоминаем на этом устройстве: со второй попытки входа его не спросят заново
       localStorage.setItem('teamcrm.guest-name', r.name);
-      setAdmission({ token: r.token, roomId: r.roomId, userId: r.userId, iceServers: r.iceServers });
+      setAdmission({
+        token: r.token, roomId: r.roomId, userId: r.userId, iceServers: r.iceServers,
+        chatId: (r as { chatId?: string | null }).chatId ?? null,
+      });
+      // Ссылка только на созвон — идём в комнату сразу: переписки за ней нет.
+      if (!(r as { chatId?: string | null }).chatId) setInCall(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Не удалось подключиться');
     } finally {
@@ -67,13 +83,30 @@ export function GuestMeetPage({ token }: { token: string }) {
     }
   }
 
-  if (admission) {
+  if (admission && inCall) {
     return (
       <CallPanel
         meetingId={admission.roomId}
         guest={{ token: admission.token, iceServers: admission.iceServers, userId: admission.userId }}
-        onClose={() => setAdmission(null)}
+        // Выход из созвона возвращает в переписку, а не выбрасывает со страницы:
+        // разговор продолжается словами, даже когда созвон закончился.
+        onClose={() => (admission.chatId ? setInCall(false) : setAdmission(null))}
       />
+    );
+  }
+
+  if (admission?.chatId) {
+    return (
+      <div className="guest-shell">
+        <div className="brand auth-brand">TEAM<span>CRM</span></div>
+        <p className="dim auth-sub">
+          Вы в разговоре{info?.orgName ? <> · «{info.orgName}»</> : null}. Кроме него, вам ничего не видно.
+        </p>
+        <GuestChat token={admission.token} orgName={info?.orgName ?? null} />
+        <button className="btn btn-primary guest-call-btn" onClick={() => setInCall(true)}>
+          <Icon name="phone" size={15} /> Подключиться к созвону
+        </button>
+      </div>
     );
   }
 

@@ -426,4 +426,64 @@ describe('треды в чатах (e2e)', () => {
     // и спросить помощника про чужой чат нельзя
     await http.post(`/api/chats/${secret.id}/ai`).set(M).send({ question: 'о чём тут' }).expect(403);
   }, 60000);
+
+  /**
+   * Слой 8: внешний разговор.
+   *
+   * Здесь проверяется единственное, что по-настоящему важно: ссылка открывает ОДИН
+   * разговор и ничего больше. Ссылку пересылают, её теряют, она живёт неделями —
+   * и всё это время она не должна давать доступ ни к чему, кроме своего чата.
+   */
+  it('внешний чат: ссылка открывает один разговор и не пускает во внутренние', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'L8', email: `l8_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .expect(201)).body.data;
+    const O = H(owner.accessToken);
+
+    // внутренний разговор о клиенте и внешний с клиентом — РАЗНЫЕ чаты
+    const project = (await http.post('/api/projects').set(O).send({ name: 'Вектор' }).expect(201)).body.data;
+    const inner = (await http.post(`/api/chats/project/${project.id}`).set(O).expect(201)).body.data;
+    await http.post(`/api/chats/${inner.id}/messages`).set(O)
+      .send({ body: 'Клиент опять поменял требования' }).expect(201);
+
+    const outer = (await http.post('/api/chats/external').set(O)
+      .send({ title: 'ООО Вектор' }).expect(201)).body.data;
+    await http.post(`/api/chats/${outer.id}/messages`).set(O)
+      .send({ body: 'Добрый день! Показываем макет в пятницу' }).expect(201);
+
+    // ссылка выдаётся под внешний разговор
+    const link = (await http.post('/api/meet/guest-links').set(O)
+      .send({ label: 'ООО Вектор', chatId: String(outer.id), ttlHours: 24 }).expect(201)).body.data;
+    const token = String(link.url).split('/').pop();
+
+    const guest = (await http.post(`/api/meet/guest/${token}/join`)
+      .send({ name: 'Иван Петров' }).expect(201)).body.data;
+    expect(String(guest.chatId)).toBe(String(outer.id));
+
+    // гость видит свой разговор
+    const seen = (await http.post('/api/meet/guest/chat/messages')
+      .send({ token: guest.token }).expect(201)).body.data;
+    expect(seen.some((m: any) => String(m.body).includes('макет в пятницу'))).toBe(true);
+    // и НЕ видит внутреннего: там сказано то, что клиенту знать не следует
+    expect(seen.some((m: any) => String(m.body).includes('поменял требования'))).toBe(false);
+
+    // гость пишет — сотрудники видят это обычным сообщением с его именем
+    await http.post('/api/meet/guest/chat/send')
+      .send({ token: guest.token, body: 'Хорошо, ждём' }).expect(201);
+    const feed = (await http.get(`/api/chats/${outer.id}/messages`).set(O).expect(200)).body.data;
+    const fromGuest = feed.find((m: any) => m.guest_name);
+    expect(fromGuest.guest_name).toBe('Иван Петров');
+    expect(fromGuest.body).toBe('Хорошо, ждём');
+
+    // выдуманный токен не открывает ничего
+    await http.post('/api/meet/guest/chat/messages').send({ token: 'подделка' }).expect(401);
+
+    // и внутренний чат остаётся внутренним: по ссылке в него не попасть
+    const innerLink = (await http.post('/api/meet/guest-links').set(O)
+      .send({ chatId: String(inner.id), ttlHours: 24 }).expect(201)).body.data;
+    const innerToken = String(innerLink.url).split('/').pop();
+    const innerGuest = (await http.post(`/api/meet/guest/${innerToken}/join`)
+      .send({ name: 'Чужой' }).expect(201)).body.data;
+    await http.post('/api/meet/guest/chat/messages').send({ token: innerGuest.token }).expect(403);
+  }, 60000);
 });

@@ -49,6 +49,9 @@ export class ChatsService {
       favorite: c.favorite === true,
       isPrivate: c.is_private !== false,
       description: c.description ?? null,
+      // Список собирается явным объектом: новое поле репозитория само сюда не доедет —
+      // на этом мы уже обожглись со звездой «в избранном».
+      isExternal: c.is_external === true,
     }));
   }
 
@@ -109,6 +112,55 @@ export class ChatsService {
       chatId: chat.id, title,
     });
     return { id: chat.id, kind: chat.kind, title };
+  }
+
+  /**
+   * Внешний чат с человеком со стороны.
+   *
+   * Заводится явно и отдельно от внутренних: разговор при клиенте и разговор о клиенте —
+   * не одно и то же, и путать их нельзя ни при каких настройках видимости.
+   */
+  async createExternal(
+    tenantId: string, user: { userId: string; role: string },
+    dto: { title: string; clientId?: string; userIds?: string[] },
+  ) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    const title = (dto.title ?? '').trim();
+    if (!title) throw AppException.validation('Назовите разговор — например, «ООО Вектор»');
+    const chat = await this.repo.createExternal({
+      tenantId, userId: user.userId, title: title.slice(0, 160),
+      clientId: dto.clientId ?? null, userIds: (dto.userIds ?? []).map(String),
+    });
+    this.realtime.emitToUsers(tenantId, [user.userId, ...(dto.userIds ?? []).map(String)], 'chat.created', {
+      chatId: chat.id, title,
+    });
+    return { id: chat.id, kind: chat.kind, title };
+  }
+
+  /**
+   * Переписка глазами внешнего участника.
+   *
+   * Он видит ТОЛЬКО этот чат и только если чат помечен внешним. Проверка не косметика:
+   * гостевой токен выдаётся по ссылке, а ссылку пересылают — и она не должна открывать
+   * ничего, кроме того разговора, ради которого её выдали.
+   */
+  async guestMessages(tenantId: string, chatId: string) {
+    const chat = await this.repo.get(tenantId, chatId);
+    if (!chat || !chat.is_external) throw AppException.forbidden('Этот разговор недоступен по ссылке');
+    return this.repo.messages(tenantId, chatId, null, 50, '0');
+  }
+
+  /** Сообщение от внешнего участника: имя он назвал при входе по ссылке. */
+  async guestSend(tenantId: string, chatId: string, guestName: string, body: string) {
+    const chat = await this.repo.get(tenantId, chatId);
+    if (!chat || !chat.is_external) throw AppException.forbidden('Этот разговор недоступен по ссылке');
+    const text = (body ?? '').trim();
+    if (!text) throw AppException.validation('Пустое сообщение');
+    const message = await this.repo.addGuestMessage(tenantId, chatId, guestName, text.slice(0, 8000));
+    // Сотрудникам это обычное новое сообщение — с пометкой, что писал человек со стороны.
+    const to = await this.recipients(chat, tenantId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
+    return message;
   }
 
   /** Витрина «Все каналы»: публичные каналы компании и кнопка «Вступить». */

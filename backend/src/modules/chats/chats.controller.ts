@@ -46,6 +46,11 @@ class CreateChannelDto {
   @IsOptional() @IsBoolean() isPrivate?: boolean;
   @IsOptional() @IsArray() @IsString({ each: true }) userIds?: string[];
 }
+class CreateExternalDto {
+  @IsString() @MaxLength(160) title!: string;
+  @IsOptional() @IsString() clientId?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) userIds?: string[];
+}
 class AddMembersDto {
   @IsArray() @IsString({ each: true }) userIds!: string[];
 }
@@ -120,6 +125,17 @@ export class ChatsController {
   @Post('ai/search')
   aiSearch(@CurrentUser() u: AuthUser, @Body() dto: AiSearchDto) {
     return this.chats.aiSearch(u.tenantId, u, dto.query);
+  }
+
+  /**
+   * Внешний чат: разговор с клиентом или подрядчиком по ссылке.
+   *
+   * Отдельный от внутренних намеренно: «клиент опять поменял требования» говорят во
+   * внутреннем чате проекта, и уехать клиенту оно не может.
+   */
+  @Post('external')
+  createExternal(@CurrentUser() u: AuthUser, @Body() dto: CreateExternalDto) {
+    return this.chats.createExternal(u.tenantId, u, dto);
   }
 
   /** Чат с собой — «Заметки». Открывается один и тот же, сколько ни нажимай. */

@@ -3,6 +3,8 @@ import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
+import { AppException } from '../../common/http/app-exception';
+import { ChatsService } from '../chats/chats.service';
 import { GuestLinksService } from './guest-links.service';
 import { MeetGateway } from './meet.gateway';
 
@@ -19,6 +21,10 @@ class CreateGuestLinkDto {
 class GuestJoinDto {
   @IsString() name!: string;
 }
+class GuestMessageDto {
+  @IsString() token!: string;
+  @IsString() body!: string;
+}
 
 /**
  * Гостевой доступ в созвон.
@@ -33,7 +39,23 @@ export class MeetGuestController {
   constructor(
     private readonly guests: GuestLinksService,
     private readonly gateway: MeetGateway,
+    private readonly chats: ChatsService,
   ) {}
+
+  /**
+   * Разговор, доступный по ссылке.
+   *
+   * Живёт здесь, а не в модуле чатов, потому что здесь проверяется гостевой токен —
+   * а два места проверки одного и того же рано или поздно разойдутся.
+   *
+   * Токен привязан к ОДНОМУ чату: пересланная ссылка не откроет ничего другого.
+   */
+  private guestChat(token: string): { tenantId: string; chatId: string; name: string } {
+    const payload = this.guests.verify(String(token || ''));
+    if (!payload) throw AppException.unauthorized('Ссылка недействительна');
+    if (!payload.chatId) throw AppException.forbidden('Эта ссылка только на созвон');
+    return { tenantId: payload.tenantId, chatId: String(payload.chatId), name: payload.name };
+  }
 
   @Post('meet/guest-links')
   @Roles('owner', 'manager', 'member')
@@ -68,6 +90,21 @@ export class MeetGuestController {
   @Public()
   describe(@Param('token') token: string) {
     return this.guests.describe(token);
+  }
+
+  /** Переписка глазами гостя: только тот чат, ради которого выдана ссылка. */
+  @Post('meet/guest/chat/messages')
+  @Public()
+  guestMessages(@Body() dto: { token: string }) {
+    const g = this.guestChat(dto?.token);
+    return this.chats.guestMessages(g.tenantId, g.chatId);
+  }
+
+  @Post('meet/guest/chat/send')
+  @Public()
+  guestSend(@Body() dto: GuestMessageDto) {
+    const g = this.guestChat(dto?.token);
+    return this.chats.guestSend(g.tenantId, g.chatId, g.name, dto.body);
   }
 
   @Post('meet/guest/:token/join')

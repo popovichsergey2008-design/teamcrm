@@ -1681,6 +1681,31 @@
 .chat-feed::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 .chat-day { text-align: center; font-size: 11px; color: var(--text-mut); margin: 10px 0 6px; }
 /*
+  Внешний разговор.
+
+  Полоса поперёк экрана здесь оправдана ровно один раз: сотрудник должен увидеть, что
+  его читает клиент, ДО того как напишет «они опять всё переиграли». Цена ошибки —
+  испорченные отношения с заказчиком, а не неудобство.
+*/
+.chat-external-warn {
+  display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+  font-size: var(--fs-sm); color: var(--warn);
+  background: var(--warn-soft); border-bottom: 1px solid var(--warn-line);
+}
+.chat-author-guest { color: var(--warn); }
+/* Экран гостя: одна колонка по центру — ни сайдбара, ни разделов у него нет. */
+.guest-shell {
+  max-width: 720px; margin: 0 auto; padding: 24px 16px;
+  display: flex; flex-direction: column; gap: 12px; height: 100vh;
+}
+.guest-chat {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden;
+}
+.guest-call-btn { align-self: flex-start; }
+
+/*
   Клипы: голосовое сообщение и запись экрана.
 
   Играют прямо в ленте: ссылка «скачать запись» превращает клип в документ, который надо
