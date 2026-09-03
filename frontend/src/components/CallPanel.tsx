@@ -13,8 +13,17 @@ import { diag } from '../lib/diag';
 import { playKnock } from '../lib/sound';
 import { useAuth } from '../state/auth';
 
-/** Размер окна поверх всех окон: чтобы влезли четыре лица и кнопки под ними. */
-const PIP_SIZE = { width: 380, height: 300 };
+/**
+ * Размер свёрнутого созвона по умолчанию.
+ *
+ * Маленький намеренно: свёрнутое окно должно напоминать о разговоре, а не занимать
+ * угол экрана. Растянуть его можно и мышью, и это запоминается — но исходный размер
+ * рассчитан на «вижу собеседника краем глаза», а не «смотрю встречу».
+ */
+const PIP_SIZE = { width: 250, height: 200 };
+/** Размер плашки внутри страницы. Человек тянет за угол — размер сохраняется. */
+const DOCK_SIZE_KEY = 'teamcrm.callDockSize';
+const DOCK_DEFAULT = { width: 210, height: 175 };
 
 const STATE_LABEL: Record<string, string> = {
   connecting: 'Подключаюсь…',
@@ -88,6 +97,18 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
   /** Куда человек перетащил плашку. Отсчёт от правого нижнего угла — она там и появляется. */
   const [dock, setDock] = useState({ right: 16, bottom: 16 });
   const dragFrom = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null);
+  /**
+   * Размер плашки: человек тянет за угол, браузер меняет размеры сам (CSS resize),
+   * а мы только запоминаем результат — иначе после каждого сворачивания окно
+   * возвращалось бы к исходному, и растягивать его приходилось бы каждый раз.
+   */
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  const [dockSize] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(DOCK_SIZE_KEY) || 'null');
+      return saved?.width && saved?.height ? saved as { width: number; height: number } : DOCK_DEFAULT;
+    } catch { return DOCK_DEFAULT; }
+  });
   const tracksRef = useRef<RemoteTrack[]>([]);
 
   // Полноэкранный режим: следим за системным событием, а не за своей кнопкой —
@@ -134,6 +155,26 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
     pipWin.addEventListener('pagehide', onHide);
     return () => pipWin.removeEventListener('pagehide', onHide);
   }, [pipWin]);
+
+  // Размер плашки запоминаем по окончании растягивания: писать в хранилище на каждый
+  // пиксель бессмысленно, а терять выбранный размер — обидно.
+  useEffect(() => {
+    const el = dockRef.current;
+    if (!el || !mini || pipWin || typeof ResizeObserver === 'undefined') return;
+    let timer = 0;
+    const ro = new ResizeObserver(() => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        try {
+          localStorage.setItem(DOCK_SIZE_KEY, JSON.stringify({
+            width: Math.round(el.offsetWidth), height: Math.round(el.offsetHeight),
+          }));
+        } catch { /* приватный режим — просто не запомним */ }
+      }, 400);
+    });
+    ro.observe(el);
+    return () => { window.clearTimeout(timer); ro.disconnect(); };
+  }, [mini, pipWin]);
 
   // Созвон закончился, а окно осталось бы висеть поверх всего — закрываем вместе с панелью.
   useEffect(() => () => { pipRef.current?.close(); pipRef.current = null; }, []);
@@ -376,7 +417,8 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
           : (
             <div
               className="call-dock"
-              style={{ right: dock.right, bottom: dock.bottom }}
+              ref={dockRef}
+              style={{ right: dock.right, bottom: dock.bottom, width: dockSize.width, height: dockSize.height }}
               onPointerDown={startDrag}
               onPointerMove={onDrag}
               onPointerUp={endDrag}

@@ -151,17 +151,30 @@
   занимает его целиком; там, где не умеет, — плашкой в углу страницы, которую можно
   перетащить.
 */
+/*
+  Плашка маленькая по умолчанию и тянется за угол.
+
+  Свёрнутый созвон должен напоминать о разговоре, а не занимать угол экрана: смотреть
+  в него не надо, надо видеть краем глаза, что разговор идёт. Кому нужно крупнее —
+  тянет за правый нижний угол (штатный resize браузера), и размер запоминается.
+*/
 .call-dock {
-  position: fixed; z-index: 120; width: 320px; cursor: grab;
-  border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+  position: fixed; z-index: 120; cursor: grab;
+  min-width: 150px; min-height: 120px; max-width: 92vw; max-height: 80vh;
+  border-radius: var(--radius); box-shadow: var(--shadow);
   touch-action: none;
+  /* resize требует overflow не visible — иначе браузер ручку не покажет */
+  resize: both; overflow: hidden;
 }
 .call-dock:active { cursor: grabbing; }
-.mini-call { position: relative; background: var(--video-bg); overflow: hidden; }
+/* Содержимое тянется вместе с плашкой: лица занимают всё, что осталось от кнопок. */
+.mini-call {
+  position: relative; height: 100%; display: flex; flex-direction: column;
+  background: var(--video-bg); overflow: hidden;
+}
 .mini-call-pip { position: fixed; inset: 0; }
 
-.mini-grid { display: grid; gap: 2px; width: 100%; height: 180px; }
-.mini-call-pip .mini-grid { height: 100%; }
+.mini-grid { display: grid; gap: 2px; width: 100%; flex: 1; min-height: 0; }
 .mini-grid[data-count="2"] { grid-template-rows: 1fr 1fr; }
 .mini-grid[data-count="3"], .mini-grid[data-count="4"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
 /* третий участник занимает нижнюю строку целиком: половина строки пустой смотрится поломкой */
@@ -173,7 +186,7 @@
 .mini-speaking { box-shadow: inset 0 0 0 2px var(--accent); }
 .mini-avatar {
   display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
-  background: #2a2f3a; color: #fff; font-weight: 600; font-size: 20px; letter-spacing: .5px;
+  background: #2a2f3a; color: #fff; font-weight: 600; font-size: 16px; letter-spacing: .5px;
 }
 .mini-name {
   position: absolute; left: 6px; bottom: 5px; max-width: calc(100% - 12px);
@@ -207,13 +220,14 @@
 */
 .mini-bar {
   position: absolute; left: 0; right: 0; bottom: 0;
-  display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px;
+  display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px;
   background: linear-gradient(to top, rgba(10, 12, 16, .85), rgba(10, 12, 16, 0));
   transition: opacity .15s ease;
 }
+/* Кнопки под размер маленькой плашки: четыре по 32 в 150 пикселей не помещались. */
 .mini-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+  width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
   color: #fff; background: rgba(46, 52, 64, .92); border: 1px solid rgba(255, 255, 255, .18);
 }
 .mini-btn:hover { background: rgba(70, 78, 94, .95); }
