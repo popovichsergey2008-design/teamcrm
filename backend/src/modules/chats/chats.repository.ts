@@ -27,6 +27,9 @@ export interface MessageRow {
   /** Реакции: [{emoji, count, mine}] — сводка, а не список нажавших. */
   reactions?: { emoji: string; count: number; mine: boolean }[];
   pinned_at?: Date | null;
+  /** Задача, заведённая по этому сообщению: чтобы вторую не завели. */
+  task_id?: string | null;
+  task_title?: string | null;
   /** Сколько ответов в ветке этого сообщения и когда был последний. */
   reply_count?: number;
   last_reply_at?: Date | null;
@@ -180,6 +183,7 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
+              m.task_id, t.title AS task_title,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -193,6 +197,7 @@ export class ChatsRepository {
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
+         LEFT JOIN tasks t ON t.id = m.task_id
         WHERE m.tenant_id=$1 AND m.chat_id=$2 AND m.deleted_at IS NULL
           AND (m.thread_root_id IS NULL OR m.also_in_channel)
           AND ($3::bigint IS NULL OR m.id < $3::bigint)
@@ -207,6 +212,7 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
+              m.task_id, t.title AS task_title,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -220,6 +226,7 @@ export class ChatsRepository {
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
+         LEFT JOIN tasks t ON t.id = m.task_id
         WHERE m.tenant_id=$1 AND m.deleted_at IS NULL
           AND (m.id = $2::bigint OR m.thread_root_id = $2::bigint)
         ORDER BY m.id`,
@@ -476,6 +483,71 @@ export class ChatsRepository {
       [tenantId, userId],
     );
     return Number(row?.n ?? 0);
+  }
+
+  /** Сообщение с текстом и уже заведённой по нему задачей — для создания задачи из чата. */
+  messageBody(tenantId: string, id: string) {
+    return this.db.one<{ id: string; chat_id: string; body: string; task_id: string | null }>(
+      `SELECT id, chat_id, body, task_id FROM chat_messages
+        WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL`,
+      [tenantId, id],
+    );
+  }
+
+  /** Связать сообщение с задачей — в обе стороны сразу, чтобы связь не осталась однобокой. */
+  async linkTask(tenantId: string, messageId: string, taskId: string): Promise<void> {
+    await this.db.query(`UPDATE chat_messages SET task_id=$3 WHERE tenant_id=$1 AND id=$2`, [tenantId, messageId, taskId]);
+    await this.db.query(
+      `UPDATE tasks SET source_chat_message_id=$3 WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, taskId, messageId],
+    );
+  }
+
+  /**
+   * Откуда взялась задача.
+   *
+   * «А это вообще откуда?» через неделю после постановки — самый частый вопрос на
+   * разборах. Здесь ответ: чат, автор и сама фраза.
+   */
+  sourceMessage(tenantId: string, taskId: string) {
+    return this.db.one<{
+      message_id: string; chat_id: string; body: string; created_at: Date;
+      author_name: string | null; chat_kind: string; chat_title: string | null; project_name: string | null;
+    }>(
+      `SELECT m.id AS message_id, m.chat_id, m.body, m.created_at, u.full_name AS author_name,
+              c.kind AS chat_kind, c.title AS chat_title, p.name AS project_name
+         FROM tasks t
+         JOIN chat_messages m ON m.id = t.source_chat_message_id AND m.deleted_at IS NULL
+         JOIN chats c ON c.id = m.chat_id
+    LEFT JOIN projects p ON p.id = c.project_id
+    LEFT JOIN users u ON u.id = m.author_id
+        WHERE t.tenant_id=$1 AND t.id=$2`,
+      [tenantId, taskId],
+    );
+  }
+
+  /**
+   * Что за сущность стоит за чатом — для шапки.
+   *
+   * Открыв чат проекта, человек не должен идти в карточку проекта, чтобы понять,
+   * о чём этот чат: статус, число задач и сколько из них просрочено видно сразу.
+   */
+  chatContext(tenantId: string, chatId: string) {
+    return this.db.one<{
+      project_id: string | null; project_name: string | null; status: string | null;
+      open_tasks: number; overdue: number; client_name: string | null;
+    }>(
+      `SELECT p.id AS project_id, p.name AS project_name, p.status,
+              (SELECT COUNT(*)::int FROM tasks t WHERE t.project_id = p.id AND t.closed_at IS NULL) AS open_tasks,
+              (SELECT COUNT(*)::int FROM tasks t
+                WHERE t.project_id = p.id AND t.closed_at IS NULL AND t.deadline_at < now()) AS overdue,
+              cl.name AS client_name
+         FROM chats c
+         JOIN projects p ON p.id = c.project_id
+    LEFT JOIN clients cl ON cl.id = p.client_id
+        WHERE c.tenant_id=$1 AND c.id=$2`,
+      [tenantId, chatId],
+    );
   }
 
   /** Отметка прочтения. Для чатов проектов строка участия создаётся здесь же. */

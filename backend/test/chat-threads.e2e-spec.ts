@@ -252,4 +252,63 @@ describe('треды в чатах (e2e)', () => {
     await http.post(`/api/chats/${chat.id}/messages/${called.id}/remind`).set(M)
       .send({ remindAt: 'вчера' }).expect(400);
   }, 40000);
+
+  /**
+   * Слой 3: разговор превращается в работу и не теряет источник.
+   *
+   * Самый частый способ появления задачи — фраза в переписке. Проверяем то, ради чего
+   * связь и заводилась: по сообщению видно, что задача уже есть (иначе заведут вторую),
+   * а по задаче — из какой фразы она выросла. И контекст чата проекта в шапке.
+   */
+  it('задача из сообщения: связь в обе стороны и защита от второй задачи', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'L3', email: `l3_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .expect(201)).body.data;
+    const O = H(owner.accessToken);
+
+    const project = (await http.post('/api/projects').set(O).send({ name: 'Сайт' }).expect(201)).body.data;
+    const chat = (await http.post(`/api/chats/project/${project.id}`).set(O).expect(201)).body.data;
+
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'На мобильной версии блок съезжает и кнопка закрывает текст' }).expect(201)).body.data;
+
+    // черновик ничего не создаёт — человек ещё правит формулировку
+    const draft = (await http.post(`/api/chats/${chat.id}/messages/${msg.id}/task/draft`).set(O).expect(201)).body.data;
+    expect(draft.task).toBeTruthy();
+    expect(String(draft.task.title ?? '').length).toBeGreaterThan(2);
+
+    const created = (await http.post(`/api/chats/${chat.id}/messages/${msg.id}/task`).set(O).send({
+      projectId: String(project.id),
+      title: 'Исправить блок на мобильной версии',
+      description: 'Кнопка перекрывает текст',
+      checklist: ['Проверить блок', 'Исправить адаптив'],
+    }).expect(201)).body.data;
+    expect(created.taskId).toBeTruthy();
+
+    // на сообщении видно, что задача уже заведена
+    const feed = (await http.get(`/api/chats/${chat.id}/messages`).set(O).expect(200)).body.data;
+    const linked = feed.find((m: any) => String(m.id) === String(msg.id));
+    expect(String(linked.task_id)).toBe(String(created.taskId));
+    expect(linked.task_title).toBe('Исправить блок на мобильной версии');
+
+    // вторую по той же фразе завести нельзя — иначе на разборе окажется два дубля
+    await http.post(`/api/chats/${chat.id}/messages/${msg.id}/task`).set(O)
+      .send({ projectId: String(project.id), title: 'Ещё раз то же самое' }).expect(409);
+
+    // из задачи видно источник
+    const src = (await http.get(`/api/chats/of-task/${created.taskId}`).set(O).expect(200)).body.data;
+    expect(String(src.message_id)).toBe(String(msg.id));
+    expect(String(src.chat_id)).toBe(String(chat.id));
+    expect(src.body).toContain('мобильной версии');
+
+    // шапка чата проекта знает, что это за чат
+    const ctx = (await http.get(`/api/chats/${chat.id}/context`).set(O).expect(200)).body.data;
+    expect(ctx.project_name).toBe('Сайт');
+    expect(ctx.open_tasks).toBe(1);
+    expect(ctx.overdue).toBe(0);
+
+    // чек-лист из черновика доехал до задачи, а не остался в окне
+    const steps = (await http.get(`/api/tasks/${created.taskId}/checklist`).set(O).expect(200)).body.data;
+    expect(steps.length).toBe(2);
+  }, 60000);
 });

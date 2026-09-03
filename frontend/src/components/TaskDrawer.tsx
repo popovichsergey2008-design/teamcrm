@@ -97,8 +97,14 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
   /** Встреча, из которой выросла задача: обратный переход в её Summary. */
   const [meeting, setMeeting] = useState<{ meeting_id: string; title: string | null } | null>(null);
+  /** Из какого сообщения выросла задача: «а это вообще откуда?» — вопрос номер один. */
+  const [fromMessage, setFromMessage] = useState<{
+    chat_id: string; body: string; author_name: string | null;
+    chat_title: string | null; project_name: string | null;
+  } | null>(null);
   useEffect(() => {
     api.meetingOfTask(task.id).then(setMeeting).catch(() => setMeeting(null));
+    api.taskSourceMessage(task.id).then(setFromMessage).catch(() => setFromMessage(null));
   }, [task.id]);
 
   /*
@@ -456,6 +462,22 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 <Icon name="record" size={12} /> Создано по итогам встречи:{' '}
                 <button className="link-btn" onClick={() => navigate({ section: 'chat', view: 'meetings' })}>
                   {meeting.title || 'встреча'}
+                </button>
+              </div>
+            )}
+
+            {fromMessage && (
+              // Из задачи видно, из какой фразы она выросла. Через неделю после
+              // постановки «а это вообще откуда?» — самый частый вопрос на разборе.
+              <div className="dim task-origin">
+                <Icon name="chat" size={12} /> Создано из сообщения{' '}
+                {fromMessage.author_name ? `(${fromMessage.author_name})` : ''}:{' '}
+                <button
+                  className="link-btn"
+                  onClick={() => navigate({ section: 'chat', chatId: String(fromMessage.chat_id) })}
+                  title={fromMessage.body}
+                >
+                  «{fromMessage.body.slice(0, 80)}»
                 </button>
               </div>
             )}

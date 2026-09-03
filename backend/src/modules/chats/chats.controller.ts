@@ -81,6 +81,15 @@ export class ChatsController {
     return this.chats.myThreads(u.tenantId, u);
   }
 
+  /**
+   * Откуда выросла задача. По образцу `/meetings/of-task/:id` — вопрос тот же:
+   * «а это вообще откуда?», и отвечать на него должны все источники одинаково.
+   */
+  @Get('of-task/:taskId')
+  sourceMessage(@CurrentUser() u: AuthUser, @Param('taskId') taskId: string) {
+    return this.chats.sourceMessage(u.tenantId, taskId);
+  }
+
   @Get('saved')
   saved(@CurrentUser() u: AuthUser) {
     return this.chats.saved(u.tenantId, u);
@@ -114,6 +123,31 @@ export class ChatsController {
   @Post(':id/messages/:mid/reactions')
   react(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string, @Body() dto: ReactionDto) {
     return this.chats.react(u.tenantId, id, u, mid, dto.emoji);
+  }
+
+  /**
+   * Задача из сообщения — то, ради чего чат внутри CRM и нужен.
+   *
+   * Сначала черновик (ИИ раскладывает фразу на постановку, шаги и срок), потом
+   * создание: формулировку человек правит сам, ИИ за него задачи не ставит.
+   */
+  @Post(':id/messages/:mid/task/draft')
+  taskDraft(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string) {
+    return this.chats.taskDraft(u.tenantId, id, u, mid);
+  }
+
+  @Post(':id/messages/:mid/task')
+  createTask(
+    @CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string,
+    @Body() dto: Record<string, unknown>,
+  ) {
+    return this.chats.createTask(u.tenantId, id, u, mid, dto);
+  }
+
+  /** Что за сущность стоит за чатом: проект, его статус и сколько задач горит. */
+  @Get(':id/context')
+  context(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.context(u.tenantId, id, u);
   }
 
   /** Сохранить сообщение себе — переключатель, как реакция. */

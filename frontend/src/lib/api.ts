@@ -623,6 +623,25 @@ export const api = {
   renameChat: (chatId: string, title: string) => request<{ title: string }>('PATCH', `/chats/${chatId}`, { title }),
   leaveChat: (chatId: string) => request<any>('POST', `/chats/${chatId}/leave`),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
+  /**
+   * Задача из сообщения: сначала черновик (ИИ раскладывает фразу на постановку,
+   * шаги и срок), потом создание — формулировку человек правит сам.
+   */
+  messageTaskDraft: (chatId: string, messageId: string) =>
+    request<any>('POST', `/chats/${chatId}/messages/${messageId}/task/draft`, {}),
+  createTaskFromMessage: (chatId: string, messageId: string, task: Record<string, unknown>) =>
+    request<{ taskId: string; title: string }>('POST', `/chats/${chatId}/messages/${messageId}/task`, task),
+  /** Что за сущность стоит за чатом: проект, статус, сколько задач горит. */
+  chatContext: (chatId: string) => request<{
+    project_id: string | null; project_name: string | null; status: string | null;
+    open_tasks: number; overdue: number; client_name: string | null;
+  } | null>('GET', `/chats/${chatId}/context`),
+  /** Откуда выросла задача: чат, автор и сама фраза. */
+  taskSourceMessage: (taskId: string) => request<{
+    message_id: string; chat_id: string; body: string; created_at: string;
+    author_name: string | null; chat_kind: string; chat_title: string | null; project_name: string | null;
+  } | null>('GET', `/chats/of-task/${taskId}`),
+
   /** Сохранить сообщение себе — переключатель. Раздел «Сохранённое» его и показывает. */
   saveChatMessage: (chatId: string, messageId: string) =>
     request<{ saved: boolean }>('POST', `/chats/${chatId}/messages/${messageId}/save`, {}),

@@ -1613,6 +1613,21 @@
 /* Выбор времени напоминания разворачивается в строке действий: отдельное окно
    ради четырёх вариантов — лишний шаг. */
 .chat-remind-pick { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+
+/*
+  Контекст чата в шапке — то, чем чат внутри CRM отличается от обычного мессенджера:
+  открыв переписку по проекту, человек сразу видит его статус и сколько задач горит,
+  не заходя в карточку.
+*/
+.chat-ctx { font-size: var(--fs-xs); white-space: nowrap; }
+.chat-ctx-overdue { color: var(--danger); }
+/* Исходная фраза в окне создания задачи: правя формулировку, легко уехать от того,
+   о чём вообще была речь. */
+.msg-quote-src {
+  margin: 0 0 12px; padding: 8px 10px; font-size: 13px; color: var(--text-dim);
+  background: var(--bg-elev-2); border-left: 3px solid var(--accent-line);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
 .threads-view { flex: 1; min-height: 0; overflow-y: auto; }
 .thread-item {
   display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;

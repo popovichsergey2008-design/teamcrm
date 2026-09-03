@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
+import { NlService } from '../nl/nl.service';
 import { DiagService } from '../diagnostics/diag.service';
 import { FilesService } from '../files/files.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -21,6 +22,9 @@ export class ChatsService {
     private readonly files: FilesService,
     private readonly realtime: RealtimeService,
     private readonly diag: DiagService,
+    /** Разбор фразы в задачу — тот же, что у голосовой постановки: два механизма
+        для одного и того же разошлись бы на первой правке. */
+    private readonly nl: NlService,
   ) {}
 
   /** Список чатов + кто сейчас в сети (точка рядом с именем). */
@@ -149,6 +153,68 @@ export class ChatsService {
     this.realtime.emitToUsers(tenantId, users.map((u) => String(u.id)), 'chat.mention', {
       messageId: String(messageId), body: body.slice(0, 160),
     });
+  }
+
+  /**
+   * Черновик задачи из сообщения.
+   *
+   * Ничего не создаёт: человек правит формулировку и только потом нажимает «Создать».
+   * Разбор идёт тем же путём, что и голосовая постановка, — второй механизм для того
+   * же самого разошёлся бы с первым на первой правке.
+   *
+   * Проект чата подсказывается разбору: сообщение в чате проекта почти всегда о нём.
+   */
+  async taskDraft(tenantId: string, chatId: string, user: { userId: string; role: string }, messageId: string) {
+    const chat = await this.access(tenantId, chatId, user);
+    const msg = await this.repo.messageBody(tenantId, messageId);
+    if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
+    const text = String(msg.body ?? '').trim();
+    if (text.length < 3) throw AppException.validation('В сообщении нет текста, из которого получится задача');
+    const draft = await this.nl.parse(tenantId, user.userId, text, chat.project_id ?? null);
+    return { task: draft.task ?? null, context: draft.context, note: draft.note };
+  }
+
+  /**
+   * Создать задачу по сообщению и связать их.
+   *
+   * Создание идёт общим путём (`nl.apply`) — тем же, каким задача появляется из
+   * голоса и из командной строки. Дальше остаётся связь: под сообщением видно, что
+   * задача уже заведена (иначе заведут вторую), а в задаче — откуда она взялась.
+   */
+  async createTask(
+    tenantId: string, chatId: string, user: { userId: string; role: string },
+    messageId: string, task: Record<string, unknown>,
+  ) {
+    await this.access(tenantId, chatId, user);
+    const msg = await this.repo.messageBody(tenantId, messageId);
+    if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
+    if (msg.task_id) throw AppException.conflict('По этому сообщению задача уже заведена');
+
+    const res: any = await this.nl.apply(tenantId, user.userId, { intent: 'create_task', task });
+    const created = res?.task;
+    if (!created?.id) throw AppException.conflict('Задача не создалась');
+    await this.repo.linkTask(tenantId, messageId, String(created.id));
+    // Автор сообщения и участники чата должны увидеть отметку сразу: иначе второй
+    // человек заводит по той же фразе вторую задачу.
+    const chat = await this.repo.get(tenantId, chatId);
+    if (chat) {
+      const to = await this.recipients(chat, tenantId);
+      this.realtime.emitToUsers(tenantId, to, 'chat.task_linked', {
+        chatId, messageId, taskId: String(created.id), title: created.title,
+      });
+    }
+    return { taskId: String(created.id), title: created.title };
+  }
+
+  /** Откуда взялась задача: чат, автор и сама фраза. */
+  sourceMessage(tenantId: string, taskId: string) {
+    return this.repo.sourceMessage(tenantId, taskId);
+  }
+
+  /** Что за сущность стоит за чатом — для шапки. Не проектный чат контекста не имеет. */
+  async context(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    await this.access(tenantId, chatId, user);
+    return this.repo.chatContext(tenantId, chatId);
   }
 
   /** Сохранить сообщение себе или снять сохранение. */

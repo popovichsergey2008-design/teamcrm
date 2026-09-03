@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { NlModule } from '../nl/nl.module';
 import { ChatsController } from './chats.controller';
 import { ChatsRepository } from './chats.repository';
 import { ChatsService } from './chats.service';
@@ -14,7 +15,7 @@ import { RemindersScheduler } from './reminders.scheduler';
  * не напомнило ни о чём.
  */
 @Module({
-  imports: [RealtimeModule, NotificationsModule],
+  imports: [RealtimeModule, NotificationsModule, NlModule],
   controllers: [ChatsController],
   providers: [ChatsService, ChatsRepository, RemindersScheduler],
   exports: [ChatsService],

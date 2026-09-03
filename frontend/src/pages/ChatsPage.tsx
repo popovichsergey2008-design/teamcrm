@@ -3,6 +3,7 @@ import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
+import { navigate } from '../lib/router';
 import { notificationPermission, notifyChatsChanged, requestNotificationPermission } from '../lib/notifications';
 import { useAuth } from '../state/auth';
 import { EmptyState } from '../components/EmptyState';
@@ -16,6 +17,7 @@ import { Lightbox } from '../components/Lightbox';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { remindLabel, remindOptions } from '../lib/remind-times';
 import { MentionField } from '../components/MentionField';
+import { MessageToTask } from '../components/MessageToTask';
 import { stillMentioned } from '../lib/mentions';
 import { showToast } from '../lib/notifications';
 import type { User } from '../types';
@@ -36,6 +38,9 @@ interface Message {
   /** Сводка реакций, а не список нажавших: в ленте нужен знак и число. */
   reactions?: { emoji: string; count: number; mine: boolean }[];
   pinned_at?: string | null;
+  /** Задача, заведённая по этому сообщению: чтобы вторую по той же фразе не завели. */
+  task_id?: string | null;
+  task_title?: string | null;
 }
 
 /** Строка раздела «Треды». */
@@ -131,6 +136,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const [remindFor, setRemindFor] = useState<string | null>(null);
   /** Кого позвали по «@»: id, а не имена — имена переименовываются. */
   const [mentioned, setMentioned] = useState<string[]>([]);
+  /** Из какого сообщения делаем задачу: окно с черновиком от ИИ. */
+  const [toTask, setToTask] = useState<Message | null>(null);
+  /** Что за сущность стоит за чатом — показывается в шапке. */
+  const [ctx, setCtx] = useState<{
+    project_id: string | null; project_name: string | null; status: string | null;
+    open_tasks: number; overdue: number; client_name: string | null;
+  } | null>(null);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
 
@@ -226,6 +238,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       showToast({ title: 'Вас упомянули', body: p.body, section: 'chat' });
       loadInbox();
     };
+    // задачу по сообщению завёл кто-то другой — отметка должна появиться и у нас,
+    // иначе по той же фразе заведут вторую
+    const onTaskLinked = (p: { chatId: string; messageId: string; taskId: string; title: string }) => {
+      if (String(p.chatId) !== String(activeId)) return;
+      setMessages((prev) => prev.map((m) => (String(m.id) === String(p.messageId)
+        ? { ...m, task_id: String(p.taskId), task_title: p.title } : m)));
+    };
+    socket.on('chat.task_linked', onTaskLinked);
     socket.on('chat.reminder', onReminder);
     socket.on('chat.mention', onMention);
     socket.on('chat.pinned', onPinned);
@@ -234,6 +254,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     socket.on('chat.created', reload);
     socket.on('chat.removed', onRemoved);
     return () => {
+      socket.off('chat.task_linked', onTaskLinked);
       socket.off('chat.reminder', onReminder);
       socket.off('chat.mention', onMention);
       socket.off('chat.pinned', onPinned);
@@ -251,6 +272,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     try {
       setMessages(await api.chatMessages(id)); // чтение помечается на сервере этим же запросом
       loadPinned(id);
+      // Шапка чата проекта должна отвечать «что это за чат» без похода в карточку проекта.
+      api.chatContext(id).then(setCtx).catch(() => setCtx(null));
       reload();
       notifyChatsChanged(); // счётчик в шапке должен упасть сразу
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть чат'); }
@@ -728,7 +751,28 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                 {active.kind === 'dm' && groupFor(active.peerId) && (
                   <span className="chat-row-group">{groupFor(active.peerId)}</span>
                 )}
-                {active.kind === 'project' && <span className="badge badge-muted" style={{ marginLeft: 6 }}>проект</span>}
+                {/* Чат знает, с какой сущностью CRM он связан, — этим он и отличается
+                    от обычного мессенджера: статус и горящие задачи видно сразу. */}
+                {active.kind === 'project' && ctx?.project_id && (
+                  <>
+                    <span className="badge badge-muted" style={{ marginLeft: 6 }}>
+                      {ctx.status === 'archived' ? 'в архиве' : 'проект'}
+                    </span>
+                    {ctx.client_name && <span className="chat-row-group">{ctx.client_name}</span>}
+                    <span className="dim chat-ctx">
+                      задач в работе: {ctx.open_tasks}
+                      {ctx.overdue > 0 && <span className="chat-ctx-overdue"> · просрочено: {ctx.overdue}</span>}
+                    </span>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => navigate({ section: 'projects', projectId: String(ctx.project_id) })}
+                      title="Открыть доску проекта"
+                    >
+                      <Icon name="board" size={14} /> Проект
+                    </button>
+                  </>
+                )}
+                {active.kind === 'project' && !ctx?.project_id && <span className="badge badge-muted" style={{ marginLeft: 6 }}>проект</span>}
                 {active.kind === 'group' && (
                   <button className="btn btn-ghost btn-sm" title="Участники и настройки группы"
                           onClick={() => setManageOpen(true)}><Icon name="settings" /></button>
@@ -840,6 +884,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                         >
                           {m.pinned_at ? 'Открепить' : 'Закрепить'}
                         </button>
+                        {/* Задача из сообщения — то, ради чего чат живёт внутри CRM.
+                            Если задача уже заведена, кнопки нет: вместо неё ссылка на неё. */}
+                        {m.task_id ? (
+                          <button
+                            className="chat-thread-link"
+                            onClick={() => navigate({ section: 'projects', taskId: String(m.task_id) })}
+                            title={m.task_title ?? 'Открыть задачу'}
+                          >
+                            <Icon name="check" size={12} /> Задача #{m.task_id}
+                          </button>
+                        ) : (
+                          <button className="chat-thread-link chat-thread-new" onClick={() => setToTask(m)} title="ИИ разложит фразу на постановку и шаги">
+                            Создать задачу
+                          </button>
+                        )}
                         {/* Сохранить — для того, из чего не получается задача: ссылка
                             на макет, доступы, решение по спорному вопросу. */}
                         <button
@@ -999,6 +1058,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
             </button>
           </div>
         </section>
+      )}
+
+      {toTask && activeId && (
+        <MessageToTask
+          chatId={activeId}
+          messageId={String(toTask.id)}
+          messageText={String(toTask.body || toTask.file_name || '')}
+          onClose={() => setToTask(null)}
+          onCreated={(taskId, title) => {
+            setMessages((prev) => prev.map((m) => (String(m.id) === String(toTask.id)
+              ? { ...m, task_id: taskId, task_title: title } : m)));
+            setToTask(null);
+            showToast({ title: 'Задача создана', body: title, section: 'chat' });
+          }}
+        />
       )}
 
       {manageOpen && active && (
