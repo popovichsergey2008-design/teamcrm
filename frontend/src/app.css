@@ -8,8 +8,35 @@
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/*
+  ───── Логотип ANTHILL.TEAM ─────
+
+  Слово набрано градиентом брендбука (cyan → violet). В тёмной теме знак ещё и светится:
+  свечение — часть фирменного стиля, но на белом оно превращается в грязное пятно,
+  поэтому в светлой теме его нет, а цвета взяты глубже (см. --brand-* в index.css).
+*/
+.logo { display: inline-flex; align-items: center; gap: 10px; }
+.logo-mark { flex: 0 0 auto; }
+.logo-word {
+  font-weight: 800; letter-spacing: -.4px; line-height: 1;
+  background: linear-gradient(100deg, var(--brand-1), var(--brand-2) 55%, var(--brand-3));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+/* Точка в «ANTHILL.TEAM» — акцент знака. Берём глубокий фиолетовый, а не средний
+   синий: точка мелкая, и на светлом фоне середина градиента для неё слишком светла. */
+.logo-dot { color: var(--brand-3); -webkit-text-fill-color: var(--brand-3); }
+/* Свечение только в тёмной теме — там, где оно и задумано. */
+:root:not([data-theme="light"]) .logo-mark { filter: drop-shadow(0 0 6px rgba(78, 242, 247, .35)); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .logo-mark { filter: none; }
+}
+:root[data-theme="dark"] .logo-mark { filter: drop-shadow(0 0 6px rgba(78, 242, 247, .35)); }
+
 .brand { font-weight: 800; letter-spacing: -.5px; font-size: 20px; }
 .brand span { color: var(--accent); }
+/* Экран входа: знак крупнее слова — его и запоминают. */
+.auth-logo { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 6px; }
+.auth-logo .logo-word { font-size: 24px; }
 
 /* auth */
 .auth-card { width: 380px; max-width: 100%; padding: 32px; box-shadow: var(--shadow); }
@@ -55,10 +82,10 @@
   height: 34px; padding-top: 0; padding-bottom: 0;
 }
 .nav-org { display: flex; align-items: center; gap: var(--sp-2); position: relative; height: 34px; }
+/* Знак сам цветной: подкладывать под него плашку акцента — значит спорить с ним. */
 .nav-org-mark {
-  width: 28px; height: 28px; flex-shrink: 0; border-radius: 8px;
-  background: var(--accent-2); color: var(--on-accent);
-  display: grid; place-items: center; font-weight: 700; font-size: var(--fs-sm);
+  width: 28px; height: 28px; flex-shrink: 0;
+  display: grid; place-items: center;
 }
 /* Название организации читается заголовком панели: рамки и фона у него нет,
    но стрелка остаётся — по ней видно, что организацию можно сменить. */

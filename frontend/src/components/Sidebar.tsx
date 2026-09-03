@@ -7,6 +7,7 @@ import { GuestLinkButton } from './GuestLinkButton';
 import { setDoNotDisturb } from '../lib/sound';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
+import { Logo } from './Logo';
 import { buildPath, navigate, Route, Section } from '../lib/router';
 import { roleLabel } from '../lib/labels';
 import { NavCounters } from '../hooks/useNavCounters';
@@ -274,7 +275,16 @@ export function Sidebar({
         {/* ── верхний блок ── */}
         <div className="nav-top">
           <div className="nav-org">
-            <span className="nav-org-mark" aria-hidden="true">{orgName.slice(0, 1).toUpperCase()}</span>
+            {/*
+              Знак вместо буквы организации.
+
+              Буква отвечала на вопрос «в какой я организации», но его же решает
+              название рядом. Место в панели одно, и занимать его должен знак продукта:
+              он виден на каждом экране и каждый день.
+            */}
+            <span className="nav-org-mark" title={`Организация: ${orgName}`}>
+              <Logo size={22} />
+            </span>
             <select
               className="nav-org-select"
               value={user.tenantId}

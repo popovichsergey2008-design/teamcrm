@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useAuth } from '../state/auth';
+import { Logo } from '../components/Logo';
 import { ApiError } from '../lib/api';
 
 export function LoginPage() {
@@ -29,8 +30,10 @@ export function LoginPage() {
   return (
     <div className="center-screen">
       <form className="card auth-card" onSubmit={submit}>
-        <div className="brand auth-brand">
-          TEAM<span>CRM</span>
+        {/* Первое, что видит человек. Знак крупнее слова — его и запоминают. */}
+        <div className="auth-logo">
+          <Logo size={56} />
+          <span className="logo-word">ANTHILL<span className="logo-dot">.</span>TEAM</span>
         </div>
         <p className="dim auth-sub">
           {mode === 'login' ? 'Вход в систему' : 'Регистрация организации'}

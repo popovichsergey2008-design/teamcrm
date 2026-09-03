@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../components/Icon';
+import { Logo } from '../components/Logo';
 import { api } from '../lib/api';
 import { useAuth } from '../state/auth';
 
@@ -33,7 +34,9 @@ export function ClientPortal() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand">TEAM<span>CRM</span> · Портал клиента</div>
+        <div className="brand">
+          <Logo size={22} withWord /> <span className="dim">· Портал клиента</span>
+        </div>
         <div className="topbar-right">
           <span className="dim">{user?.fullName}</span>
           <button className="btn btn-ghost btn-sm" onClick={logout}>Выйти</button>

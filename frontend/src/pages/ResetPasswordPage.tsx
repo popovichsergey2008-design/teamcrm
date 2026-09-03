@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Icon } from '../components/Icon';
+import { Logo } from '../components/Logo';
 import { api, ApiError } from '../lib/api';
 
 /**
@@ -39,7 +40,11 @@ export function ResetPasswordPage({ token }: { token: string }) {
   return (
     <div className="center-screen">
       <form className="card auth-card" onSubmit={submit}>
-        <div className="brand auth-brand">TEAM<span>CRM</span></div>
+        {/* Первое, что видит человек. Знак крупнее слова — его и запоминают. */}
+        <div className="auth-logo">
+          <Logo size={56} />
+          <span className="logo-word">ANTHILL<span className="logo-dot">.</span>TEAM</span>
+        </div>
         <p className="dim auth-sub">
           {info ? <>Новый пароль для {info.email}</> : 'Смена пароля'}
         </p>

@@ -3,6 +3,7 @@ import { CallPanel } from '../components/CallPanel';
 import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 import { GuestChat } from '../components/GuestChat';
+import { Logo } from '../components/Logo';
 
 interface LinkInfo {
   orgName: string;
@@ -98,7 +99,11 @@ export function GuestMeetPage({ token }: { token: string }) {
   if (admission?.chatId) {
     return (
       <div className="guest-shell">
-        <div className="brand auth-brand">TEAM<span>CRM</span></div>
+        {/* Первое, что видит человек. Знак крупнее слова — его и запоминают. */}
+        <div className="auth-logo">
+          <Logo size={56} />
+          <span className="logo-word">ANTHILL<span className="logo-dot">.</span>TEAM</span>
+        </div>
         <p className="dim auth-sub">
           Вы в разговоре{info?.orgName ? <> · «{info.orgName}»</> : null}. Кроме него, вам ничего не видно.
         </p>
@@ -113,7 +118,11 @@ export function GuestMeetPage({ token }: { token: string }) {
   return (
     <div className="center-screen">
       <form className="card auth-card" onSubmit={submit}>
-        <div className="brand auth-brand">TEAM<span>CRM</span></div>
+        {/* Первое, что видит человек. Знак крупнее слова — его и запоминают. */}
+        <div className="auth-logo">
+          <Logo size={56} />
+          <span className="logo-word">ANTHILL<span className="logo-dot">.</span>TEAM</span>
+        </div>
 
         {refusal ? (
           <>
