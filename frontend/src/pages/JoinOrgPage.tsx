@@ -40,7 +40,7 @@ export function JoinOrgPage({ token }: { token: string }) {
       <form className="card auth-card" onSubmit={submit}>
         {/* Первое, что видит человек. Знак крупнее слова — его и запоминают. */}
         <div className="auth-logo">
-          <Logo size={56} />
+          <Logo size={88} />
           <span className="logo-word">ANTHILL<span className="logo-dot">.</span>TEAM</span>
         </div>
         <p className="dim auth-sub">

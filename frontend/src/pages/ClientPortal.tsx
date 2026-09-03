@@ -35,7 +35,7 @@ export function ClientPortal() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <Logo size={22} withWord /> <span className="dim">· Портал клиента</span>
+          <Logo size={28} withWord /> <span className="dim">· Портал клиента</span>
         </div>
         <div className="topbar-right">
           <span className="dim">{user?.fullName}</span>

@@ -37,11 +37,16 @@
   --text-dim:  #485263;
   --text-mut:  #5b6474;
 
-  /* акцент: --accent для текста, рамок и наведения, --accent-2 — заливка кнопки */
-  --accent:      #1b52dd;
-  --accent-2:    #2560ee;
-  --accent-soft: #e6eefd;
-  --accent-line: #7ea6f5;
+  /*
+    Акцент: --accent для текста, рамок и наведения, --accent-2 — заливка кнопки.
+
+    Оттенок взят у фирменного Neon Blue, но углублён: сам неон на белом даёт 3.4:1 и
+    не читается. Здесь 6.65:1 для текста и 4.9:1 для белого по заливке.
+  */
+  --accent:      #175bb0;
+  --accent-2:    #1f6fd4;
+  --accent-soft: #e7f1fd;
+  --accent-line: #7fb2ea;
 
   /* статусы: у каждого мягкая подложка и рамка, чтобы не смешивать прозрачности */
   --ok:          #0f6f49;
@@ -64,7 +69,7 @@
   --fill-ok:     #0f6f49;
   --fill-warn:   #8a5f00;
   --fill-danger: #c22335;
-  --fill-info:   #1b52dd;
+  --fill-info:   #175bb0;
   --fill-muted:  #525d72;
   --on-fill:     #ffffff;
 
@@ -76,6 +81,14 @@
     цвета взяты глубже: оттенок сохраняется (cyan → blue → violet), меняется светлота.
     Так знак остаётся узнаваемым и не превращается в бледное пятно.
   */
+  /*
+    Градиент главной кнопки (CTA по брендбуку: cyan → violet).
+
+    Концы подобраны так, чтобы БЕЛЫЙ текст читался на всём протяжении: 4.9:1 на синем
+    конце и 5.4:1 на фиолетовом. Неоновые концы брендбука для этого не годятся — белым
+    по циану нельзя, а тёмным по синему уже нельзя.
+  */
+  --cta-2: #7c4dd8;
   --brand-1: #0d9aa8;   /* Electric Cyan #4EF2F7, углублённый под белый фон */
   --brand-2: #2f7fd6;   /* Neon Blue    #79C9FF */
   --brand-3: #7c4dd8;   /* Neon Purple  #B06CFF */
@@ -107,19 +120,29 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg:        #0b0f1a;
-    --bg-elev:   #121826;
-    --bg-elev-2: #1a2233;
-    --border:    #232c40;
-    --border-2:  #2e3a52;
-    --hover:     #232c40;
-    --text:      #e6ebf5;
-    --text-dim:  #97a2bb;
-    --text-mut:  #7f89a1;
-    --accent:      #5b8cff;
-    --accent-2:    #3b6fe0;
-    --accent-soft: rgba(91,140,255,.14);
-    --accent-line: rgba(91,140,255,.42);
+    /*
+      ───── Тёмная тема = брендбук ANTHILL.TEAM ─────
+
+      Поверхности взяты из него дословно: Midnight Navy → Deep Space → Graphite.
+      Текст — Ice White и Cool Gray, акцент — Aqua Glow. Неон здесь и задуман: он
+      светится в темноте, и именно так продукт должен выглядеть по умолчанию.
+
+      Заливка кнопки НЕ неоновая: белым по циану читать нельзя (1.4:1). Под белый
+      текст берём глубокий синий из той же семьи — 5.67:1.
+    */
+    --bg:        #0b1020;
+    --bg-elev:   #111827;
+    --bg-elev-2: #1f2937;
+    --border:    #26324a;
+    --border-2:  #33415c;
+    --hover:     #26324a;
+    --text:      #eaf7ff;
+    --text-dim:  #94a3b8;
+    --text-mut:  #8494ab;
+    --accent:      #62e8ff;
+    --accent-2:    #2563c9;
+    --accent-soft: rgba(98,232,255,.13);
+    --accent-line: rgba(98,232,255,.40);
     --ok:          #57d9a3;
     --ok-soft:     rgba(87,217,163,.12);
     --ok-line:     rgba(87,217,163,.40);
@@ -132,7 +155,7 @@
     --fill-ok:     #16714f;
     --fill-warn:   #8a5a00;
     --fill-danger: #b3303a;
-    --fill-info:   #2f5fd0;
+    --fill-info:   #2563c9;
     --fill-muted:  #4d5c77;
     --on-ok:     #08110d;
   --on-warn:   #1a1300;
@@ -144,25 +167,36 @@
     --brand-1: #4ef2f7;
     --brand-2: #79c9ff;
     --brand-3: #b06cff;
+    --cta-2: #7c4dd8;
   }
 }
 
 /* Явный выбор человека сильнее системной настройки — в обе стороны. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg:        #0b0f1a;
-  --bg-elev:   #121826;
-  --bg-elev-2: #1a2233;
-  --border:    #232c40;
-  --border-2:  #2e3a52;
-  --hover:     #232c40;
-  --text:      #e6ebf5;
-  --text-dim:  #97a2bb;
-  --text-mut:  #7f89a1;
-  --accent:      #5b8cff;
-  --accent-2:    #3b6fe0;
-  --accent-soft: rgba(91,140,255,.14);
-  --accent-line: rgba(91,140,255,.42);
+  /*
+    ───── Тёмная тема = брендбук ANTHILL.TEAM ─────
+
+    Поверхности взяты из него дословно: Midnight Navy → Deep Space → Graphite.
+    Текст — Ice White и Cool Gray, акцент — Aqua Glow. Неон здесь и задуман: он
+    светится в темноте, и именно так продукт должен выглядеть по умолчанию.
+
+    Заливка кнопки НЕ неоновая: белым по циану читать нельзя (1.4:1). Под белый
+    текст берём глубокий синий из той же семьи — 5.67:1.
+  */
+  --bg:        #0b1020;
+  --bg-elev:   #111827;
+  --bg-elev-2: #1f2937;
+  --border:    #26324a;
+  --border-2:  #33415c;
+  --hover:     #26324a;
+  --text:      #eaf7ff;
+  --text-dim:  #94a3b8;
+  --text-mut:  #8494ab;
+  --accent:      #62e8ff;
+  --accent-2:    #2563c9;
+  --accent-soft: rgba(98,232,255,.13);
+  --accent-line: rgba(98,232,255,.40);
   --ok:          #57d9a3;
   --ok-soft:     rgba(87,217,163,.12);
   --ok-line:     rgba(87,217,163,.40);
@@ -175,7 +209,7 @@
   --fill-ok:     #16714f;
   --fill-warn:   #8a5a00;
   --fill-danger: #b3303a;
-  --fill-info:   #2f5fd0;
+  --fill-info:   #2563c9;
   --fill-muted:  #4d5c77;
   --on-ok:     #08110d;
   --on-warn:   #1a1300;
@@ -187,6 +221,7 @@
   --brand-1: #4ef2f7;
   --brand-2: #79c9ff;
   --brand-3: #b06cff;
+  --cta-2: #7c4dd8;
 }
 
 * { box-sizing: border-box; }

@@ -34,9 +34,18 @@
 
 .brand { font-weight: 800; letter-spacing: -.5px; font-size: 20px; }
 .brand span { color: var(--accent); }
-/* Экран входа: знак крупнее слова — его и запоминают. */
-.auth-logo { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 6px; }
-.auth-logo .logo-word { font-size: 24px; }
+/* Экран входа: знак крупный — это первое, что видит человек, и запоминает именно его. */
+.auth-logo { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 10px; }
+.auth-logo .logo-word { font-size: 30px; }
+/*
+  Главная кнопка экрана входа — фирменным градиентом.
+
+  Концы подобраны под БЕЛЫЙ текст (4.9:1 и 5.4:1): неоновые концы брендбука для этого
+  не годятся — белым по циану нельзя. Остальные кнопки остаются сплошной заливкой:
+  градиент на каждой кнопке перестаёт быть акцентом.
+*/
+.auth-submit { background: linear-gradient(100deg, var(--accent-2), var(--cta-2)); border-color: transparent; }
+.auth-submit:hover:not(:disabled) { background: linear-gradient(100deg, var(--accent), var(--cta-2)); border-color: transparent; }
 
 /* auth */
 .auth-card { width: 380px; max-width: 100%; padding: 32px; box-shadow: var(--shadow); }
@@ -84,7 +93,7 @@
 .nav-org { display: flex; align-items: center; gap: var(--sp-2); position: relative; height: 34px; }
 /* Знак сам цветной: подкладывать под него плашку акцента — значит спорить с ним. */
 .nav-org-mark {
-  width: 28px; height: 28px; flex-shrink: 0;
+  width: 34px; height: 34px; flex-shrink: 0;
   display: grid; place-items: center;
 }
 /* Название организации читается заголовком панели: рамки и фона у него нет,

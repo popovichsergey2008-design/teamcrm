@@ -283,7 +283,7 @@ export function Sidebar({
               он виден на каждом экране и каждый день.
             */}
             <span className="nav-org-mark" title={`Организация: ${orgName}`}>
-              <Logo size={22} />
+              <Logo size={30} />
             </span>
             <select
               className="nav-org-select"
