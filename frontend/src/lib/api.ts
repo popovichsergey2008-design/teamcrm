@@ -606,9 +606,13 @@ export const api = {
   openProjectChat: (projectId: string) => request<{ id: string; kind: string }>('POST', `/chats/project/${projectId}`),
   chatMessages: (chatId: string, before?: string) =>
     request<any[]>('GET', `/chats/${chatId}/messages${before ? `?before=${before}` : ''}`),
-  sendChatMessage: (chatId: string, body: string, thread?: { rootId?: string; alsoInChannel?: boolean }) =>
+  sendChatMessage: (
+    chatId: string, body: string,
+    thread?: { rootId?: string; alsoInChannel?: boolean },
+    mentionIds?: string[],
+  ) =>
     request<any>('POST', `/chats/${chatId}/messages`, {
-      body, threadRootId: thread?.rootId, alsoInChannel: thread?.alsoInChannel,
+      body, threadRootId: thread?.rootId, alsoInChannel: thread?.alsoInChannel, mentionIds,
     }),
   markChatRead: (chatId: string) => request<any>('POST', `/chats/${chatId}/read`),
   chatMembers: (chatId: string) => request<{
@@ -619,6 +623,20 @@ export const api = {
   renameChat: (chatId: string, title: string) => request<{ title: string }>('PATCH', `/chats/${chatId}`, { title }),
   leaveChat: (chatId: string) => request<any>('POST', `/chats/${chatId}/leave`),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
+  /** Сохранить сообщение себе — переключатель. Раздел «Сохранённое» его и показывает. */
+  saveChatMessage: (chatId: string, messageId: string) =>
+    request<{ saved: boolean }>('POST', `/chats/${chatId}/messages/${messageId}/save`, {}),
+  /** Напомнить об этом сообщении в назначенный момент. Момент считает клиент. */
+  remindAboutMessage: (chatId: string, messageId: string, remindAt: string) =>
+    request<{ remindAt: string }>('POST', `/chats/${chatId}/messages/${messageId}/remind`, { remindAt }),
+  listSavedMessages: () => request<any[]>('GET', '/chats/saved'),
+  listChatMentions: () => request<any[]>('GET', '/chats/mentions'),
+  /** «Входящие»: позвали по имени, ответили в ветке, написали в чат — одной лентой. */
+  chatInbox: () => request<{
+    mentions: any[]; threads: any[]; chats: any[];
+    counts: { mentions: number; threads: number; chats: number };
+  }>('GET', '/chats/inbox'),
+
   /** Реакция на сообщение чата — переключатель: повторное нажатие снимает свою. */
   reactToChatMessage: (chatId: string, messageId: string, emoji: string) =>
     request<{ ok: true }>('POST', `/chats/${chatId}/messages/${messageId}/reactions`, { emoji }),

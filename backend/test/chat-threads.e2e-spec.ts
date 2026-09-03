@@ -189,4 +189,67 @@ describe('треды в чатах (e2e)', () => {
     await http.post(`/api/chats/${chat.id}/messages/${msg.id}/reactions`)
       .set(H(other.accessToken)).send({ emoji: '👍' }).expect(404);
   }, 40000);
+
+  /**
+   * Слой 2: ничего не теряется.
+   *
+   * Сохранённое — для того, из чего не получается задача. Напоминание — потому что
+   * читают сообщения когда пришли, а делают по ним позже. Упоминание — единственный
+   * способ достучаться в чате, где сто сообщений в день. «Входящие» собирают всё это
+   * в одну ленту, чтобы не обходить тридцать переписок.
+   */
+  it('сохранённое, напоминание, упоминание и «Входящие» одной лентой', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'L2', email: `l2_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .expect(201)).body.data;
+    const mateEmail = `l2_m_${uniq()}@t.test`;
+    const mate = (await http.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Пётр', password: 'password123', role: 'member' })
+      .expect(201)).body.data;
+    const mateLogin = (await http.post('/api/auth/login')
+      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const M = H(mateLogin.accessToken);
+
+    const chat = (await http.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
+
+    // упоминание: владелец зовёт коллегу по имени
+    const called = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: '@Пётр посмотри доступы', mentionIds: [String(mate.id)] }).expect(201)).body.data;
+
+    // у коллеги это в «Входящих» и помечено как новое
+    const inbox = (await http.get('/api/chats/inbox').set(M).expect(200)).body.data;
+    expect(inbox.counts.mentions).toBe(1);
+    expect(inbox.mentions.some((m: any) => String(m.id) === String(called.id))).toBe(true);
+    // и непрочитанный чат там же — «Входящие» отвечают на вопрос «где меня ждут»
+    expect(inbox.chats.length).toBe(1);
+
+    // открыл раздел упоминаний — они прочитаны
+    await http.get('/api/chats/mentions').set(M).expect(200);
+    expect((await http.get('/api/chats/inbox').set(M).expect(200)).body.data.counts.mentions).toBe(0);
+
+    // себя упоминанием не зовут: оповещать человека о собственном сообщении незачем
+    await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'Заметка вслух @Ольга', mentionIds: [String(owner.user.id)] }).expect(201);
+    expect((await http.get('/api/chats/inbox').set(O).expect(200)).body.data.counts.mentions).toBe(0);
+
+    // сохранённое: переключатель, и сообщение видно в разделе
+    await http.post(`/api/chats/${chat.id}/messages/${called.id}/save`).set(M).expect(201);
+    const saved = (await http.get('/api/chats/saved').set(M).expect(200)).body.data;
+    expect(saved.length).toBe(1);
+    expect(String(saved[0].id)).toBe(String(called.id));
+    await http.post(`/api/chats/${chat.id}/messages/${called.id}/save`).set(M).expect(201);
+    expect((await http.get('/api/chats/saved').set(M).expect(200)).body.data.length).toBe(0);
+    // сохранённое — личное: у второго человека его нет
+    expect((await http.get('/api/chats/saved').set(O).expect(200)).body.data.length).toBe(0);
+
+    // напоминание принимается только на будущее: на прошедшее оно сработало бы мгновенно
+    const future = new Date(Date.now() + 3600_000).toISOString();
+    await http.post(`/api/chats/${chat.id}/messages/${called.id}/remind`).set(M)
+      .send({ remindAt: future }).expect(201);
+    await http.post(`/api/chats/${chat.id}/messages/${called.id}/remind`).set(M)
+      .send({ remindAt: new Date(Date.now() - 60_000).toISOString() }).expect(400);
+    await http.post(`/api/chats/${chat.id}/messages/${called.id}/remind`).set(M)
+      .send({ remindAt: 'вчера' }).expect(400);
+  }, 40000);
 });

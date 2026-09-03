@@ -646,6 +646,29 @@ test('подсказка «@» ставит вперёд участников з
   assert.deepEqual(bare.map((u) => u.id), ['ai', '2', '3', '4', '5']);
 });
 
+// ── напоминания о сообщениях ──────────────────────────────────────────────────
+test('«напомнить мне»: вечер не предлагается ночью, подписи по-человечески', async () => {
+  const { remindOptions, remindLabel } = await load('lib/remind-times.ts');
+
+  const day = new Date(2026, 8, 3, 10, 0);   // утро рабочего дня
+  const keys = remindOptions(day).map((o) => o.key);
+  assert.deepEqual(keys, ['hour', 'evening', 'tomorrow', 'week']);
+
+  // в 23:40 «сегодня вечером» означало бы «через двадцать минут» — вариант убираем
+  const night = new Date(2026, 8, 3, 23, 40);
+  assert.deepEqual(remindOptions(night).map((o) => o.key), ['hour', 'tomorrow', 'week']);
+  const tomorrow = remindOptions(night).find((o) => o.key === 'tomorrow');
+  assert.equal(tomorrow.at.getDate(), 4, 'завтра — это следующий день, а не сегодня');
+  assert.equal(tomorrow.at.getHours(), 9);
+
+  // все варианты строго в будущем: сервер прошедшее время не примет
+  for (const o of remindOptions(day)) assert.equal(o.at.getTime() > day.getTime(), true, o.key);
+
+  assert.equal(remindLabel(new Date(2026, 8, 3, 18, 0), day), 'сегодня в 18:00');
+  assert.equal(remindLabel(new Date(2026, 8, 4, 9, 0), day), 'завтра в 09:00');
+  assert.equal(remindLabel(new Date(2026, 8, 10, 9, 0), day), '10 сентября в 09:00');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

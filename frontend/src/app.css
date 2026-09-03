@@ -1595,13 +1595,24 @@
 .chat-thread-new { color: var(--text-mut); }
 .chat-thread-new:hover { color: var(--accent); }
 
-/* Раздел «Треды» первым пунктом списка чатов. */
-.chat-row-threads { border-bottom: 1px solid var(--border); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
-.chat-threads-icon {
+/*
+  Разделы над списком чатов: «Входящие», «Треды», «Сохранённое».
+
+  Без них человек обходит тридцать переписок, чтобы понять, где его ждут: ветка не
+  поднимает чат наверх, упоминание ничем не отличается от обычного сообщения, а
+  сохранённое смотреть вообще негде.
+*/
+.chat-row-section:last-of-type { border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.chat-section-icon {
   width: 32px; height: 32px; flex: 0 0 auto; border-radius: 50%;
   display: grid; place-items: center;
   background: var(--accent-soft); color: var(--accent);
 }
+/* Непрочитанное упоминание видно списком, а не только счётчиком в углу. */
+.thread-item-new { background: var(--accent-soft); }
+/* Выбор времени напоминания разворачивается в строке действий: отдельное окно
+   ради четырёх вариантов — лишний шаг. */
+.chat-remind-pick { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .threads-view { flex: 1; min-height: 0; overflow-y: auto; }
 .thread-item {
   display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;

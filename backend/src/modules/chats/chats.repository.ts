@@ -350,6 +350,134 @@ export class ChatsRepository {
     );
   }
 
+  // ───── сохранённое, напоминания, упоминания (слой 2) ─────
+
+  /** Сохранить сообщение себе или снять сохранение. Переключатель, как реакция. */
+  async toggleSaved(tenantId: string, messageId: string, userId: string): Promise<boolean> {
+    const del = await this.db.query(
+      `DELETE FROM saved_messages WHERE message_id=$1 AND user_id=$2`, [messageId, userId],
+    );
+    if ((del as { rowCount?: number })?.rowCount) return false;
+    await this.db.query(
+      `INSERT INTO saved_messages (user_id, message_id, tenant_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+      [userId, messageId, tenantId],
+    );
+    return true;
+  }
+
+  /** Сохранённое человека — свежее сверху, с указанием, откуда оно. */
+  savedList(tenantId: string, userId: string) {
+    return this.db.many(
+      `SELECT m.id, m.chat_id, m.body, m.file_id, f.file_name, m.created_at,
+              u.full_name AS author_name, s.saved_at,
+              c.kind AS chat_kind, c.title AS chat_title, p.name AS project_name
+         FROM saved_messages s
+         JOIN chat_messages m ON m.id = s.message_id AND m.deleted_at IS NULL
+         JOIN chats c ON c.id = m.chat_id
+    LEFT JOIN projects p ON p.id = c.project_id
+    LEFT JOIN users u ON u.id = m.author_id
+    LEFT JOIN files f ON f.id = m.file_id
+        WHERE s.tenant_id=$1 AND s.user_id=$2
+        ORDER BY s.saved_at DESC LIMIT 200`,
+      [tenantId, userId],
+    );
+  }
+
+  /** Какие из показанных сообщений человек сохранил — чтобы кнопка знала своё состояние. */
+  savedIds(tenantId: string, userId: string, chatId: string): Promise<{ message_id: string }[]> {
+    return this.db.many(
+      `SELECT s.message_id FROM saved_messages s
+         JOIN chat_messages m ON m.id = s.message_id
+        WHERE s.tenant_id=$1 AND s.user_id=$2 AND m.chat_id=$3`,
+      [tenantId, userId, chatId],
+    );
+  }
+
+  /** Напоминание о сообщении. Прежнее на то же сообщение заменяем: их не копят. */
+  async setReminder(tenantId: string, userId: string, messageId: string, remindAt: Date): Promise<void> {
+    await this.db.query(
+      `UPDATE message_reminders SET done_at = now()
+        WHERE tenant_id=$1 AND user_id=$2 AND message_id=$3 AND done_at IS NULL`,
+      [tenantId, userId, messageId],
+    );
+    await this.db.query(
+      `INSERT INTO message_reminders (tenant_id, user_id, message_id, remind_at) VALUES ($1,$2,$3,$4)`,
+      [tenantId, userId, messageId, remindAt],
+    );
+  }
+
+  /** Что уже пора напомнить. Забираем пачкой — планировщик ходит раз в минуту. */
+  dueReminders(now: Date, limit = 100) {
+    return this.db.many<{
+      id: string; tenant_id: string; user_id: string; message_id: string;
+      chat_id: string; body: string; author_name: string | null;
+    }>(
+      `SELECT r.id, r.tenant_id, r.user_id, r.message_id, m.chat_id, m.body, u.full_name AS author_name
+         FROM message_reminders r
+         JOIN chat_messages m ON m.id = r.message_id AND m.deleted_at IS NULL
+    LEFT JOIN users u ON u.id = m.author_id
+        WHERE r.done_at IS NULL AND r.remind_at <= $1
+        ORDER BY r.remind_at LIMIT $2`,
+      [now, limit],
+    );
+  }
+
+  async closeReminders(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    await this.db.query(`UPDATE message_reminders SET done_at = now() WHERE id = ANY($1::bigint[])`, [ids]);
+  }
+
+  /** Упоминания: список приходит от подсказки, здесь только запись. */
+  async addMentions(tenantId: string, messageId: string, userIds: string[]): Promise<void> {
+    if (!userIds.length) return;
+    await this.db.query(
+      `INSERT INTO chat_mentions (message_id, user_id, tenant_id)
+       SELECT $1, x, $3 FROM UNNEST($2::bigint[]) AS x
+       ON CONFLICT DO NOTHING`,
+      [messageId, userIds, tenantId],
+    );
+  }
+
+  /** Сотрудники этой компании из присланных id: чужие и выдуманные отсеиваются. */
+  tenantUserIds(tenantId: string, ids: string[]): Promise<{ id: string }[]> {
+    return this.db.many<{ id: string }>(
+      `SELECT id::text FROM users WHERE tenant_id=$1 AND id = ANY($2::bigint[])`,
+      [tenantId, ids],
+    );
+  }
+
+  /** Где меня звали по имени. Непрочитанные — сверху, они и есть повод открыть раздел. */
+  mentionsList(tenantId: string, userId: string, limit = 50) {
+    return this.db.many(
+      `SELECT m.id, m.chat_id, m.body, m.created_at, u.full_name AS author_name,
+              n.seen_at, c.kind AS chat_kind, c.title AS chat_title, p.name AS project_name
+         FROM chat_mentions n
+         JOIN chat_messages m ON m.id = n.message_id AND m.deleted_at IS NULL
+         JOIN chats c ON c.id = m.chat_id
+    LEFT JOIN projects p ON p.id = c.project_id
+    LEFT JOIN users u ON u.id = m.author_id
+        WHERE n.tenant_id=$1 AND n.user_id=$2
+        ORDER BY (n.seen_at IS NULL) DESC, m.created_at DESC
+        LIMIT $3`,
+      [tenantId, userId, limit],
+    );
+  }
+
+  async markMentionsSeen(tenantId: string, userId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE chat_mentions SET seen_at = now() WHERE tenant_id=$1 AND user_id=$2 AND seen_at IS NULL`,
+      [tenantId, userId],
+    );
+  }
+
+  async unseenMentions(tenantId: string, userId: string): Promise<number> {
+    const row = await this.db.one<{ n: string }>(
+      `SELECT COUNT(*) AS n FROM chat_mentions WHERE tenant_id=$1 AND user_id=$2 AND seen_at IS NULL`,
+      [tenantId, userId],
+    );
+    return Number(row?.n ?? 0);
+  }
+
   /** Отметка прочтения. Для чатов проектов строка участия создаётся здесь же. */
   async markRead(tenantId: string, chatId: string, userId: string): Promise<void> {
     await this.db.query(

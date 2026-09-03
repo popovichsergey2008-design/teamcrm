@@ -14,6 +14,10 @@ import { GroupManageModal } from '../components/GroupManageModal';
 import { ChatAttachment } from '../components/ChatAttachment';
 import { Lightbox } from '../components/Lightbox';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
+import { remindLabel, remindOptions } from '../lib/remind-times';
+import { MentionField } from '../components/MentionField';
+import { stillMentioned } from '../lib/mentions';
+import { showToast } from '../lib/notifications';
 import type { User } from '../types';
 
 interface Chat {
@@ -40,6 +44,19 @@ interface ThreadItem {
   project_name: string | null; root_body: string; root_author: string | null;
   reply_count: number; last_reply_at: string | null; unread: number;
 }
+
+/**
+ * Разделы над списком чатов.
+ *
+ * Без них человек обходит тридцать переписок, чтобы понять, где его ждут: ветка не
+ * поднимает чат наверх, упоминание ничем не отличается от обычного сообщения, а
+ * сохранённое вообще негде смотреть.
+ */
+const SECTIONS: { key: 'inbox' | 'threads' | 'saved'; title: string; hint: string; icon: 'inbox' | 'chat' | 'star' }[] = [
+  { key: 'inbox', title: 'Входящие', hint: 'всё, что ждёт лично вас', icon: 'inbox' },
+  { key: 'threads', title: 'Треды', hint: 'ветки, где вы участвуете', icon: 'chat' },
+  { key: 'saved', title: 'Сохранённое', hint: 'важное под рукой', icon: 'star' },
+];
 
 /** Реакции: ответить «понял», не засоряя переписку и не будя всех уведомлением. */
 const REACTIONS = ['👍', '✅', '🔥', '❓', '👀', '🙏'];
@@ -93,8 +110,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const [thread, setThread] = useState<{ rootId: string; messages: Message[] } | null>(null);
   const [threadBody, setThreadBody] = useState('');
   const [alsoInChannel, setAlsoInChannel] = useState(false);
-  /** Раздел «Треды»: мои ветки вместо переписки. */
-  const [threadsView, setThreadsView] = useState(false);
   const [threads, setThreads] = useState<ThreadItem[]>([]);
   /** Закреплённое чата: то, что нужно всем и всегда под рукой. */
   const [pinned, setPinned] = useState<Message[]>([]);
@@ -103,6 +118,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const [reactFor, setReactFor] = useState<string | null>(null);
   /** Куда прокрутили из закреплённого — подсвечиваем, иначе непонятно, что нашли. */
   const [highlight, setHighlight] = useState<string | null>(null);
+  /** Какой раздел открыт вместо переписки: входящие, треды, сохранённое. */
+  const [view, setView] = useState<'chat' | 'inbox' | 'threads' | 'saved'>('chat');
+  const [inbox, setInbox] = useState<{
+    mentions: any[]; threads: any[]; chats: any[];
+    counts: { mentions: number; threads: number; chats: number };
+  } | null>(null);
+  const [saved, setSaved] = useState<any[]>([]);
+  /** Какие из показанных сообщений уже сохранены — чтобы кнопка знала своё состояние. */
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  /** У какого сообщения открыт выбор времени напоминания. */
+  const [remindFor, setRemindFor] = useState<string | null>(null);
+  /** Кого позвали по «@»: id, а не имена — имена переименовываются. */
+  const [mentioned, setMentioned] = useState<string[]>([]);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
 
@@ -116,6 +144,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
    * событием по сокету (сервер рассылает всем участникам, включая автора) и ответом REST,
    * причём событие обычно приходит РАНЬШЕ ответа. Сверяем по id.
    */
+  const loadInbox = useCallback(() => { api.chatInbox().then(setInbox).catch(() => undefined); }, []);
+  const loadSaved = useCallback(() => {
+    api.listSavedMessages().then((rows) => {
+      setSaved(rows);
+      setSavedIds(new Set(rows.map((r: any) => String(r.id))));
+    }).catch(() => undefined);
+  }, []);
+
   const loadPinned = useCallback((chatId: string) => {
     api.chatPinned(chatId).then(setPinned).catch(() => undefined);
   }, []);
@@ -133,7 +169,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     reload();
     api.listUsers().then(setUsers).catch(() => undefined);
     void loadThreads(); // счётчик веток нужен сразу, а не после захода в раздел
-  }, [reload, loadThreads]);
+    loadInbox();
+    loadSaved();
+  }, [reload, loadThreads, loadInbox, loadSaved]);
 
   // Новые сообщения приходят по тому же сокету, что и события досок.
   useEffect(() => {
@@ -157,7 +195,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
         api.markChatRead(p.chatId).catch(() => undefined);
       }
       reload();
-      if (threadsView) void loadThreads();
+      if (view === 'threads') void loadThreads();
     };
     const onDeleted = (p: { chatId: string; messageId: string }) => {
       if (String(p.chatId) === String(activeId)) setMessages((prev) => prev.filter((m) => m.id !== p.messageId));
@@ -171,12 +209,33 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     const onPinned = (p: { chatId: string }) => {
       if (String(p.chatId) === String(activeId)) loadPinned(String(p.chatId));
     };
+    /*
+      Напоминание вернулось. Показываем всплывашкой и ведём к самому сообщению:
+      напоминание без перехода к тому, о чём оно, — половина дела.
+    */
+    const onReminder = (p: { chatId: string; messageId: string; author: string | null; body: string }) => {
+      showToast({
+        title: `Напоминание${p.author ? ` · ${p.author}` : ''}`,
+        body: p.body,
+        chatId: String(p.chatId),
+        section: 'chat',
+      });
+    };
+    // позвали по имени — это адресовано лично, и узнавать об этом надо сразу
+    const onMention = (p: { body: string }) => {
+      showToast({ title: 'Вас упомянули', body: p.body, section: 'chat' });
+      loadInbox();
+    };
+    socket.on('chat.reminder', onReminder);
+    socket.on('chat.mention', onMention);
     socket.on('chat.pinned', onPinned);
     socket.on('chat.message', onMessage);
     socket.on('chat.message_deleted', onDeleted);
     socket.on('chat.created', reload);
     socket.on('chat.removed', onRemoved);
     return () => {
+      socket.off('chat.reminder', onReminder);
+      socket.off('chat.mention', onMention);
       socket.off('chat.pinned', onPinned);
       socket.off('chat.message', onMessage);
       socket.off('chat.message_deleted', onDeleted);
@@ -184,10 +243,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       socket.off('chat.removed', onRemoved);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, reload, appendMessage, threadsView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, reload, appendMessage, view, loadPinned, loadInbox]);
 
   const openChat = useCallback(async (id: string) => {
-    setActiveId(id); setErr(''); setMessages([]); setMsgLoading(true);
+    setActiveId(id); setErr(''); setMessages([]); setMsgLoading(true); setView('chat');
     try {
       setMessages(await api.chatMessages(id)); // чтение помечается на сервере этим же запросом
       loadPinned(id);
@@ -251,9 +311,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     setDraft('');
     clearPending();
     try {
+      // Имя могли стереть после вставки — звать человека после этого не за что.
+      const calls = stillMentioned(mentioned, text, mentionUsers);
       const message = file
         ? await api.sendChatFile(activeId, file, text)
-        : await api.sendChatMessage(activeId, text);
+        : await api.sendChatMessage(activeId, text, undefined, calls);
+      setMentioned([]);
       appendMessage(message);
       reload();
     } catch (e) {
@@ -306,6 +369,28 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     setThread((prev) => (prev ? { ...prev, messages: patch(prev.messages) } : prev));
     try { await api.reactToChatMessage(activeId, messageId, emoji); }
     catch { setMessages(await api.chatMessages(activeId)); }
+  };
+
+  const toggleSaved = async (m: Message) => {
+    if (!activeId) return;
+    const id = String(m.id);
+    // Оптимистично: «сохранить» — жест на полсекунды, ждать ответа сети незачем.
+    setSavedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+    try { await api.saveChatMessage(activeId, id); loadSaved(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не сохранилось'); loadSaved(); }
+  };
+
+  const remind = async (messageId: string, at: Date) => {
+    if (!activeId) return;
+    setRemindFor(null);
+    try {
+      await api.remindAboutMessage(activeId, messageId, at.toISOString());
+      showToast({ title: 'Напомню', body: `Вернусь к этому сообщению ${remindLabel(at)}`, section: 'chat' });
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось поставить напоминание'); }
   };
 
   const togglePin = async (m: Message) => {
@@ -371,6 +456,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
   const match = (s: string | null) => !query || (s ?? '').toLowerCase().includes(query.toLowerCase());
   const threadsUnread = threads.reduce((sum, t) => sum + (Number(t.unread) || 0), 0);
+  const mentionUsers = users.map((u) => ({ id: String(u.id), fullName: u.fullName }));
+  const inboxTotal = inbox
+    ? inbox.counts.mentions + inbox.counts.threads + inbox.counts.chats
+    : 0;
   // подразделения по id сотрудника — подписываем ими собеседников в списке и шапке
   const groupOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -399,17 +488,29 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           Отвечают обычно в ветке, а ветку легко не заметить: она не поднимает чат
           наверх и не мигает счётчиком. Этот раздел и отвечает на вопрос «где меня ждут».
         */}
-        <button
-          className={`chat-row chat-row-threads${threadsView ? ' active' : ''}`}
-          onClick={() => { setThreadsView((v) => !v); setThread(null); void loadThreads(); }}
-        >
-          <span className="chat-threads-icon" aria-hidden="true"><Icon name="chat" size={15} /></span>
-          <span className="chat-row-main">
-            <span className="chat-row-title">Треды</span>
-            <span className="chat-row-last dim">ветки, где вы участвуете</span>
-          </span>
-          {threadsUnread > 0 && <span className="chat-unread">{threadsUnread}</span>}
-        </button>
+        {SECTIONS.map((sec) => {
+          const count = sec.key === 'inbox' ? inboxTotal : sec.key === 'threads' ? threadsUnread : 0;
+          return (
+            <button
+              key={sec.key}
+              className={`chat-row chat-row-section${view === sec.key ? ' active' : ''}`}
+              onClick={() => {
+                setView(view === sec.key ? 'chat' : sec.key);
+                setThread(null);
+                if (sec.key === 'threads') void loadThreads();
+                if (sec.key === 'inbox') loadInbox();
+                if (sec.key === 'saved') loadSaved();
+              }}
+            >
+              <span className="chat-section-icon" aria-hidden="true"><Icon name={sec.icon} size={15} /></span>
+              <span className="chat-row-main">
+                <span className="chat-row-title">{sec.title}</span>
+                <span className="chat-row-last dim">{sec.hint}</span>
+              </span>
+              {count > 0 && <span className="chat-unread">{count}</span>}
+            </button>
+          );
+        })}
 
         {/* Разрешение спрашиваем по кнопке: непрошеный запрос браузеры глушат,
             и человек больше не сможет его выдать. */}
@@ -490,7 +591,95 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           />
         </div>
 
-        {threadsView && (
+        {view === 'inbox' && (
+          <div className="threads-view">
+            <div className="chat-head"><span><Icon name="inbox" size={15} /> <b>Входящие</b></span></div>
+            {inboxTotal === 0 && (
+              <EmptyState
+                compact
+                icon="check"
+                title="Всё разобрано"
+                hint="Сюда попадает то, что ждёт лично вас: где позвали по имени, где ответили в вашей ветке и где написали в чат."
+              />
+            )}
+            {inbox && inbox.mentions.length > 0 && (
+              <>
+                <div className="chat-group-head">Вас упомянули</div>
+                {inbox.mentions.map((m: any) => (
+                  <button
+                    key={m.id}
+                    className={`thread-item${m.seen_at ? '' : ' thread-item-new'}`}
+                    onClick={() => { void openChat(String(m.chat_id)); }}
+                  >
+                    <span className="thread-item-head">
+                      <b>{m.project_name ?? m.chat_title ?? 'Личный диалог'}</b>
+                      {!m.seen_at && <span className="chat-unread">новое</span>}
+                    </span>
+                    <span className="thread-item-body dim">{m.author_name}: {String(m.body ?? '').slice(0, 120)}</span>
+                  </button>
+                ))}
+              </>
+            )}
+            {inbox && inbox.threads.length > 0 && (
+              <>
+                <div className="chat-group-head">Ответили в ветке</div>
+                {inbox.threads.map((t: any) => (
+                  <button
+                    key={t.root_id}
+                    className="thread-item"
+                    onClick={() => { void openChat(String(t.chat_id)).then(() => openThread(String(t.root_id))); }}
+                  >
+                    <span className="thread-item-head">
+                      <b>{t.project_name ?? t.chat_title ?? 'Личный диалог'}</b>
+                      <span className="chat-unread">{t.unread}</span>
+                    </span>
+                    <span className="thread-item-body dim">{t.root_author}: {String(t.root_body ?? '').slice(0, 120)}</span>
+                  </button>
+                ))}
+              </>
+            )}
+            {inbox && inbox.chats.length > 0 && (
+              <>
+                <div className="chat-group-head">Непрочитанные чаты</div>
+                {inbox.chats.map((c: any) => (
+                  <button key={c.id} className="thread-item" onClick={() => { void openChat(String(c.id)); }}>
+                    <span className="thread-item-head">
+                      <b>{c.title ?? c.peer_name ?? c.project_name ?? 'Чат'}</b>
+                      <span className="chat-unread">{c.unread}</span>
+                    </span>
+                    <span className="thread-item-body dim">{c.last_author}: {String(c.last_body ?? '').slice(0, 120)}</span>
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+
+        {view === 'saved' && (
+          <div className="threads-view">
+            <div className="chat-head"><span><Icon name="star" size={15} /> <b>Сохранённое</b></span></div>
+            {saved.length === 0 && (
+              <EmptyState
+                compact
+                icon="star"
+                title="Пока пусто"
+                hint="Сохраняйте сообщения, из которых не получается задача: ссылку на макет, доступы, решение по спорному вопросу. Кнопка «Сохранить» — под сообщением."
+              />
+            )}
+            {saved.map((m: any) => (
+              <button key={m.id} className="thread-item" onClick={() => { void openChat(String(m.chat_id)); }}>
+                <span className="thread-item-head">
+                  <b>{m.project_name ?? m.chat_title ?? 'Личный диалог'}</b>
+                </span>
+                <span className="thread-item-body dim">
+                  {m.author_name}: {String(m.body || m.file_name || 'вложение').slice(0, 120)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {view === 'threads' && (
           <div className="threads-view">
             <div className="chat-head"><span><Icon name="chat" size={15} /> <b>Мои ветки</b></span></div>
             {threads.length === 0 && (
@@ -505,7 +694,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               <button
                 key={t.root_id}
                 className="thread-item"
-                onClick={() => { setThreadsView(false); void openChat(String(t.chat_id)).then(() => openThread(String(t.root_id))); }}
+                onClick={() => { void openChat(String(t.chat_id)).then(() => openThread(String(t.root_id))); }}
               >
                 <span className="thread-item-head">
                   <b>{t.project_name ?? t.chat_title ?? 'Личный диалог'}</b>
@@ -521,7 +710,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           </div>
         )}
 
-        {!active && !threadsView && (
+        {!active && view === 'chat' && (
           <div className="chat-empty">
             <EmptyState
               icon="chat"
@@ -530,7 +719,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
             />
           </div>
         )}
-        {active && !threadsView && (
+        {active && view === 'chat' && (
           <>
             <div className="chat-head">
               <span>
@@ -651,6 +840,34 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                         >
                           {m.pinned_at ? 'Открепить' : 'Закрепить'}
                         </button>
+                        {/* Сохранить — для того, из чего не получается задача: ссылка
+                            на макет, доступы, решение по спорному вопросу. */}
+                        <button
+                          className={`chat-thread-link${savedIds.has(String(m.id)) ? '' : ' chat-thread-new'}`}
+                          onClick={() => toggleSaved(m)}
+                          title={savedIds.has(String(m.id)) ? 'Убрать из сохранённого' : 'Сохранить себе'}
+                        >
+                          {savedIds.has(String(m.id)) ? 'Сохранено' : 'Сохранить'}
+                        </button>
+                        {/* Напомнить: читают сообщения когда пришли, а делают по ним позже. */}
+                        {remindFor === String(m.id) ? (
+                          <span className="chat-remind-pick">
+                            {remindOptions().map((o) => (
+                              <button key={o.key} className="chat-thread-link" onClick={() => remind(String(m.id), o.at)}>
+                                {o.label}
+                              </button>
+                            ))}
+                            <button className="chat-thread-link chat-thread-new" onClick={() => setRemindFor(null)}>Отмена</button>
+                          </span>
+                        ) : (
+                          <button
+                            className="chat-thread-link chat-thread-new"
+                            onClick={() => setRemindFor(String(m.id))}
+                            title="Вернуться к этому сообщению позже"
+                          >
+                            Напомнить
+                          </button>
+                        )}
                         {/*
                           Ветка сообщения. Кнопка видна всегда, а не по наведению: о том,
                           чего не видно, никто не догадается, а на касании наведения нет.
@@ -698,12 +915,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                 <Icon name="paperclip" size={16} />
                 <input type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) attach(f); e.currentTarget.value = ''; }} />
               </label>
-              <input
-                className="input"
-                placeholder={pending ? 'Подпись к вложению…' : 'Сообщение…'}
+              {/*
+                Подсказка по «@» — как в ленте компании и в чате задачи.
+                Позвать человека по имени в чате на сто сообщений в день — единственный
+                способ до него достучаться; сам он это сообщение не найдёт.
+              */}
+              <MentionField
+                className="chat-mention-input"
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+                users={mentionUsers}
+                onChange={setDraft}
+                onMention={(userId) => setMentioned((prev) => (prev.includes(userId) ? prev : [...prev, userId]))}
+                placeholder={pending ? 'Подпись к вложению…' : 'Сообщение… «@» — позвать по имени'}
+                onEnter={send}
               />
               <button
                 className="btn btn-primary btn-sm"

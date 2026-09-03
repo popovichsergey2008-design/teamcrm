@@ -100,6 +100,7 @@ export class ChatsService {
     tenantId: string, chatId: string, user: { userId: string; role: string },
     body: string, fileId: string | null,
     thread?: { rootId?: string | null; alsoInChannel?: boolean },
+    mentionIds?: string[],
   ) {
     const chat = await this.access(tenantId, chatId, user);
     const text = (body ?? '').trim();
@@ -115,6 +116,8 @@ export class ChatsService {
     if (rootId) await this.repo.markThreadRead(tenantId, rootId, user.userId);
     await this.repo.markRead(tenantId, chatId, user.userId); // своё сообщение прочитанным считаем сразу
 
+    await this.mention(tenantId, String(message.id), mentionIds, user.userId, text);
+
     const to = await this.recipients(chat, tenantId);
     this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
     // В журнал — только факт и адресаты: по нему видно, ушло ли сообщение и кому,
@@ -124,6 +127,99 @@ export class ChatsService {
       event: 'message.sent', data: { messageId: String(message.id), recipients: to.length, hasFile: !!fileId, length: text.length },
     });
     return message;
+  }
+
+  /**
+   * Позвали по имени.
+   *
+   * Список приходит от подсказки по «@», поэтому проверяем, что это вообще сотрудники
+   * этой компании. Себя из рассылки выбрасываем: звать себя оповещением незачем.
+   *
+   * Храним id, а не имя из текста: после переименования сотрудника имя в сообщении
+   * указывало бы в никуда.
+   */
+  private async mention(
+    tenantId: string, messageId: string, ids: string[] | undefined, actorId: string, body: string,
+  ): Promise<void> {
+    const wanted = (ids ?? []).map(String).filter((id) => id !== String(actorId)).slice(0, 30);
+    if (!wanted.length) return;
+    const users = await this.repo.tenantUserIds(tenantId, wanted);
+    if (!users.length) return;
+    await this.repo.addMentions(tenantId, messageId, users.map((u) => String(u.id)));
+    this.realtime.emitToUsers(tenantId, users.map((u) => String(u.id)), 'chat.mention', {
+      messageId: String(messageId), body: body.slice(0, 160),
+    });
+  }
+
+  /** Сохранить сообщение себе или снять сохранение. */
+  async toggleSaved(tenantId: string, chatId: string, user: { userId: string; role: string }, messageId: string) {
+    await this.access(tenantId, chatId, user);
+    const msg = await this.repo.findMessage(tenantId, messageId);
+    if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
+    const saved = await this.repo.toggleSaved(tenantId, messageId, user.userId);
+    return { saved };
+  }
+
+  /** Раздел «Сохранённое»: важное, из которого задача не получается. */
+  saved(tenantId: string, user: { userId: string; role: string }) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    return this.repo.savedList(tenantId, user.userId);
+  }
+
+  /**
+   * «Напомнить мне»: сообщение вернётся в нужный момент.
+   *
+   * Время считает клиент — он знает часовой пояс человека и его «сегодня вечером».
+   * Сервер проверяет только, что момент в будущем и не дальше года: напоминание на
+   * прошедшее время сработало бы мгновенно и выглядело поломкой.
+   */
+  async remind(
+    tenantId: string, chatId: string, user: { userId: string; role: string },
+    messageId: string, remindAt: string,
+  ) {
+    await this.access(tenantId, chatId, user);
+    const msg = await this.repo.findMessage(tenantId, messageId);
+    if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
+    const at = new Date(remindAt);
+    if (Number.isNaN(at.getTime())) throw AppException.validation('Непонятное время напоминания');
+    if (at.getTime() < Date.now() + 30_000) throw AppException.validation('Напоминание можно поставить только на будущее');
+    if (at.getTime() > Date.now() + 365 * 86_400_000) throw AppException.validation('Слишком далеко — не больше года');
+    await this.repo.setReminder(tenantId, user.userId, messageId, at);
+    return { remindAt: at.toISOString() };
+  }
+
+  /** Где меня звали по имени. Открыли раздел — упоминания прочитаны. */
+  async mentions(tenantId: string, user: { userId: string; role: string }) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    const rows = await this.repo.mentionsList(tenantId, user.userId);
+    await this.repo.markMentionsSeen(tenantId, user.userId);
+    return rows;
+  }
+
+  /**
+   * «Входящие»: всё, что ждёт человека, одной лентой.
+   *
+   * Иначе он обходит тридцать чатов и три раздела, чтобы понять, где его ждут.
+   * Здесь ровно три источника: позвали по имени, ответили в ветке, написали в чат.
+   */
+  async inbox(tenantId: string, user: { userId: string; role: string }) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    const [mentions, threads, chats, unseen] = await Promise.all([
+      this.repo.mentionsList(tenantId, user.userId, 20),
+      this.repo.myThreads(tenantId, user.userId, 20),
+      this.repo.listForUser(tenantId, user.userId),
+      this.repo.unseenMentions(tenantId, user.userId),
+    ]);
+    return {
+      mentions,
+      threads: threads.filter((t) => Number(t.unread) > 0),
+      chats: chats.filter((c) => Number(c.unread) > 0),
+      counts: {
+        mentions: unseen,
+        threads: threads.reduce((n: number, t) => n + Number(t.unread || 0), 0),
+        chats: chats.reduce((n: number, c) => n + Number(c.unread || 0), 0),
+      },
+    };
   }
 
   /**

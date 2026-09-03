@@ -16,10 +16,16 @@ class CreateGroupDto {
 }
 class SendDto {
   @IsOptional() @IsString() @MaxLength(8000) body?: string;
+  /** Кого позвали по «@»: id, а не имена — имена переименовываются. */
+  @IsOptional() @IsArray() @IsString({ each: true }) mentionIds?: string[];
   /** Ответ в ветке этого сообщения: в общей ленте его не будет. */
   @IsOptional() @IsString() @MaxLength(32) threadRootId?: string;
   /** «Также отправить в основной чат» — когда ответ важен не только участникам ветки. */
   @IsOptional() @IsBoolean() alsoInChannel?: boolean;
+}
+class RemindDto {
+  /** Момент считает клиент: он знает часовой пояс и что такое «сегодня вечером». */
+  @IsString() remindAt!: string;
 }
 class ReactionDto {
   @IsString() @MaxLength(16) emoji!: string;
@@ -65,12 +71,30 @@ export class ChatsController {
   }
 
   /**
-   * Мои ветки. Стоит ВЫШЕ маршрутов с «:id»: иначе `/chats/threads` разберётся
-   * как чат с идентификатором «threads».
+   * Разделы «Треды», «Сохранённое», «Упоминания» и «Входящие».
+   *
+   * Стоят ВЫШЕ маршрутов с «:id»: иначе `/chats/threads` разберётся как чат
+   * с идентификатором «threads».
    */
   @Get('threads')
   myThreads(@CurrentUser() u: AuthUser) {
     return this.chats.myThreads(u.tenantId, u);
+  }
+
+  @Get('saved')
+  saved(@CurrentUser() u: AuthUser) {
+    return this.chats.saved(u.tenantId, u);
+  }
+
+  @Get('mentions')
+  mentions(@CurrentUser() u: AuthUser) {
+    return this.chats.mentions(u.tenantId, u);
+  }
+
+  /** Всё, что ждёт человека, одной лентой: позвали, ответили в ветке, написали. */
+  @Get('inbox')
+  inbox(@CurrentUser() u: AuthUser) {
+    return this.chats.inbox(u.tenantId, u);
   }
 
   @Get(':id/messages')
@@ -83,13 +107,25 @@ export class ChatsController {
     return this.chats.send(u.tenantId, id, u, dto.body ?? '', null, {
       rootId: dto.threadRootId ?? null,
       alsoInChannel: dto.alsoInChannel === true,
-    });
+    }, dto.mentionIds);
   }
 
   /** Реакция на сообщение — переключатель: повторное нажатие снимает свою. */
   @Post(':id/messages/:mid/reactions')
   react(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string, @Body() dto: ReactionDto) {
     return this.chats.react(u.tenantId, id, u, mid, dto.emoji);
+  }
+
+  /** Сохранить сообщение себе — переключатель, как реакция. */
+  @Post(':id/messages/:mid/save')
+  save(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string) {
+    return this.chats.toggleSaved(u.tenantId, id, u, mid);
+  }
+
+  /** Напомнить об этом сообщении в назначенный момент. */
+  @Post(':id/messages/:mid/remind')
+  remind(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string, @Body() dto: RemindDto) {
+    return this.chats.remind(u.tenantId, id, u, mid, dto.remindAt);
   }
 
   /** Закрепить сообщение в шапке чата или снять закрепление. */
