@@ -779,7 +779,7 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
               <option value="">Модель по умолчанию</option>
               {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}</option>)}
             </select>
-            <div className="dim" style={{ fontSize: 11, marginTop: 4 }}>Совет: удачный промпт сохраните в «Личный кабинет → Мои промпты», чтобы переиспользовать.</div>
+            <div className="dim" style={{ fontSize: 11, marginTop: 4 }}>Совет: удачный промпт сохраните в «Личный кабинет → Профиль → Мои промпты», чтобы переиспользовать.</div>
           </>
         )}
       </div>

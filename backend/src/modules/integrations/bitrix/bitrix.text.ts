@@ -1,3 +1,4 @@
+import { htmlToText } from '../html-text';
 /**
  * Очистка текста из Битрикса от разметки (BBCode + остатки HTML) в читаемый plain-text.
  * У нас описания/комментарии рендерятся как обычный текст, поэтому теги [URL], [P], [B]… — «мусор».
@@ -30,17 +31,9 @@ export function cleanBitrixMarkup(raw: string | null | undefined): string {
   // прочие bb-теги (B, I, U, S, COLOR=, SIZE=, FONT=, QUOTE, CODE, TABLE, TR, TD…) — снять, текст оставить
   s = s.replace(/\[\/?[a-z][a-z0-9]*(=[^\]]+)?\]/gi, '');
 
-  // остатки HTML
-  s = s.replace(/<br\s*\/?>/gi, '\n');
-  s = s.replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n');
-  s = s.replace(/<[^>]+>/g, '');
-
-  // html-сущности
-  const ent: Record<string, string> = {
-    '&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&apos;': "'", '&laquo;': '«', '&raquo;': '»', '&mdash;': '—', '&ndash;': '–',
-  };
-  s = s.replace(/&nbsp;|&amp;|&lt;|&gt;|&quot;|&#39;|&apos;|&laquo;|&raquo;|&mdash;|&ndash;/gi, (m) => ent[m.toLowerCase()] ?? m);
-  s = s.replace(/&#(\d+);/g, (_m, code) => { try { return String.fromCodePoint(Number(code)); } catch { return _m; } });
+  // Остатки HTML и сущности — общим модулем: две копии одного разбора разъезжаются
+  // на первой правке, а ошибается он молча.
+  s = htmlToText(s);
 
   // схлопнуть лишние пробелы/пустые строки (пустые строки от [P]/[BR] → один перевод строки)
   return s.replace(/[ \t]+\n/g, '\n').replace(/\n{2,}/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FilesService } from '../../files/files.service';
 import { YougileRepository } from './yougile.repository';
+import { htmlToText } from '../html-text';
 import { YougileClient, YgTask, YgMessage } from './yougile.client';
 import { chatEchoKey, taskStateHash } from './yougile.hash';
 import { buildPriorityMap, EMPTY_PRIORITY_MAP, PriorityMap, priorityFromStickers } from './yougile.priority';
@@ -185,7 +186,9 @@ export class YougileImportService {
     const deadlineMs = t.deadline?.deadline;
     const deadlineAt = deadlineMs ? new Date(Number(deadlineMs)).toISOString() : null;
     const completed = !!t.completed;
-    const description = t.description ? String(t.description).slice(0, 20000) : null;
+    // YouGile хранит описание разметкой. Без чистки в карточке оказывается
+    // «<p>Сделать <strong>до пятницы</strong></p>»: читать нельзя, искать тоже.
+    const description = t.description ? htmlToText(t.description).slice(0, 20000) || null : null;
     const priority = priorityFromStickers(st.prio, t.stickers);
 
     // В YouGile «завершено» — флажок, не зависящий от колонки, поэтому закрытая задача
@@ -230,7 +233,8 @@ export class YougileImportService {
     for (const m of messages) {
       if (m.deleted) continue;
       const author = (m.fromUserId ? userMap.get(String(m.fromUserId)) : undefined) ?? ctx.actorId;
-      const body = (m.text ?? '').trim();
+      // Комментарии в YouGile — тоже HTML: в чате задачи вместо текста были теги.
+      const body = htmlToText(m.text).trim();
       // наше же сообщение, отправленное из CRM (E4) — вернулось из YouGile; дубль не заводим
       if (body && await this.repo.getRef(ctx.connectionId, 'chat_echo', chatEchoKey(taskExternalId, body))) continue;
       const external = `${taskExternalId}:${m.id}`;

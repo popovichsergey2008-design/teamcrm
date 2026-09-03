@@ -498,10 +498,10 @@ export function Sidebar({
             </span>
           </button>
 
-          {link({ section: 'settings' }, route.section === 'settings', 'nav-item', 'Настройки и интеграции', (
+          {link({ section: 'settings' }, route.section === 'settings', 'nav-item', 'Личный кабинет: профиль, команда, интеграции, настройки', (
             <>
               <Icon name="settings" size={18} />
-              <span className="nav-label">Настройки</span>
+              <span className="nav-label">Личный кабинет</span>
             </>
           ))}
 
@@ -528,7 +528,7 @@ export function Sidebar({
                   role="menuitem"
                   onClick={() => { setMenuOpen(false); go({ section: 'profile' }); }}
                 >
-                  <Icon name="user" size={15} /> Личный кабинет
+                  <Icon name="user" size={15} /> Профиль
                 </button>
                 <div className="menu-theme">
                   <span className="dim">Тема</span>

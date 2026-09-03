@@ -122,7 +122,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
     <div className="page profile-page">
       <div className="page-head">
         <button className="btn btn-ghost btn-sm" onClick={onClose}><Icon name="arrow-left" size={14} /> К доскам</button>
-        <h2>Личный кабинет</h2>
+        <h2>Профиль</h2>
       </div>
       <div className="profile-layout">
         <nav className="profile-nav">

@@ -1885,7 +1885,18 @@
   max-width: 70%; padding: 8px 12px; border-radius: 12px; background: var(--bg-elev-2);
   border: 1px solid var(--border); margin-bottom: 2px; width: fit-content;
 }
-.chat-msg.mine { margin-left: auto; background: var(--accent-2); border-color: var(--accent); }
+/*
+  Своё сообщение — мягкая подложка акцента, а не плотная заливка.
+
+  Плотный синий требует белого текста, а текст в пузыре наследуется от темы: в светлой
+  он тёмный, и «изменю текст» читался как тёмное по синему. Тинт решает это в обеих
+  темах сразу и не спорит с сообщениями собеседника — они рядом и должны выглядеть
+  одинаково читаемо, отличаясь только стороной и оттенком.
+*/
+.chat-msg.mine {
+  margin-left: auto;
+  background: var(--accent-soft); border-color: var(--accent-line);
+}
 .chat-author { font-size: 11px; color: var(--accent); margin-bottom: 2px; }
 .chat-body { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
 /* Файл больше не ссылка, а кнопка: он лежит за авторизацией и по прямому адресу

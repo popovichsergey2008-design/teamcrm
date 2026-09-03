@@ -46,7 +46,7 @@ const SECTIONS: { title: string; icon: IconName; route: Route; roles?: string[] 
   { title: 'Пульс команды', icon: 'chart', route: { section: 'radar' }, roles: ['owner', 'manager'] },
   { title: 'Встречи', icon: 'record', route: { section: 'chat', view: 'meetings' } },
   { title: 'Настройки и интеграции', icon: 'settings', route: { section: 'settings' } },
-  { title: 'Личный кабинет', icon: 'user', route: { section: 'profile' } },
+  { title: 'Профиль', icon: 'user', route: { section: 'profile' } },
 ];
 
 type Recent = { title: string; path: string; icon: IconName };
