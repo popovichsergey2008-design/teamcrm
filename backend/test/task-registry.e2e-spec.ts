@@ -116,8 +116,8 @@ describe('реестр задач (e2e)', () => {
       .expect(201)).body.data;
     const board = (await http.get(`/api/projects/${project.id}/board`).set(H(owner.accessToken)).expect(200)).body.data;
     const done = board.columns[board.columns.length - 1];
-    await http.patch(`/api/tasks/${task.id}/move`).set(H(owner.accessToken))
-      .send({ columnId: done.id, position: 0 }).expect(200);
+    await http.post(`/api/tasks/${task.id}/move`).set(H(owner.accessToken))
+      .send({ columnId: done.id, position: 0 }).expect(201);
 
     expect(titles(await registry(member.accessToken, '&scope=mine'))).toEqual([]);
     const withClosed = await registry(member.accessToken, '&scope=mine&closed=1');

@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -204,7 +205,14 @@ export class TaskRegistryQueryDto {
   @MaxLength(8)
   closed?: string;
 
+  /*
+    Приведение типа задано явно, а не оставлено на enableImplicitConversion: этот
+    параметр включён только в main.ts, и в тестах тот же DTO получал строку «2» —
+    запрос отклонялся с 400 там, где в проде работал. Такое расхождение находится
+    не сразу, поэтому число разбираем здесь.
+  */
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   page?: number;

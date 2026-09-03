@@ -85,6 +85,13 @@ export function TasksPage({ active, scope, onScope, onOpenTask }: {
     try {
       const res = await api.taskRegistry(registryQuery(f));
       if (mine !== seq.current) return;
+      // Страница могла опустеть, пока человек на ней стоял: задачи закрыли или
+      // перенесли в архивный проект. Пустая пятая страница — тупик: кнопок
+      // постраничности при total=0 больше нет, и вернуться нечем.
+      if (res.total === 0 && f.page > 1) {
+        setFilters((cur) => ({ ...cur, page: 1 }));
+        return;
+      }
       setRows(res.items);
       setMeta({ total: res.total, page: res.page, pageSize: res.pageSize, pages: res.pages });
       setError(null);
