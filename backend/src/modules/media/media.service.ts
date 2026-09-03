@@ -145,11 +145,14 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
 
   // ───── комнаты ─────
 
-  async createRoom(tenantId: string, projectId: string | null, aiEnabled = false, startedBy: string | null = null): Promise<MeetingRoom> {
+  async createRoom(
+    tenantId: string, projectId: string | null, aiEnabled = false,
+    startedBy: string | null = null, chatId: string | null = null,
+  ): Promise<MeetingRoom> {
     if (!this.available) throw new Error('Медиа-сервер недоступен');
     const router: MsRouter = await this.pickWorker().createRouter({ mediaCodecs: MEDIA_CODECS });
     const room: MeetingRoom = {
-      id: randomUUID(), tenantId, projectId, router, participants: new Map(),
+      id: randomUUID(), tenantId, projectId, chatId, router, participants: new Map(),
       startedAt: Date.now(), aiEnabled, startedBy,
     };
     this.rooms.set(room.id, room);

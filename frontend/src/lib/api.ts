@@ -700,8 +700,9 @@ export const api = {
   mediaHealth: () => request<{ available: boolean; workers: number; error: string | null }>('GET', '/media/health'),
   iceServers: () => request<{ iceServers: RTCIceServer[] }>('GET', '/media/ice'),
   activeCalls: () => request<{ id: string; projectId: string | null; participants: { userId: string; displayName: string }[] }[]>('GET', '/media/rooms'),
-  startCall: (projectId?: string, withAi = false) =>
-    request<{ id: string; projectId: string | null; aiEnabled: boolean }>('POST', '/media/rooms', { projectId, withAi }),
+  /** chatId — чат, из которого звонят: туда после разбора вернётся карточка с итогом. */
+  startCall: (projectId?: string, withAi = false, chatId?: string) =>
+    request<{ id: string; projectId: string | null; aiEnabled: boolean }>('POST', '/media/rooms', { projectId, withAi, chatId }),
 
   // лента компании: сообщения и объявления
   feedList: (before?: string) =>

@@ -20,12 +20,46 @@ export interface DraftRow {
 export class MeetingsRepository {
   constructor(private readonly db: DbService) {}
 
-  create(i: { tenantId: string; projectId: string | null; title: string; happenedAt: string | null; source: string; fileId: string | null; createdBy: string | null }) {
+  create(i: {
+    tenantId: string; projectId: string | null; title: string; happenedAt: string | null;
+    source: string; fileId: string | null; createdBy: string | null;
+    /** Чат, из которого начали созвон: туда после разбора придёт карточка с итогом. */
+    chatId?: string | null;
+  }) {
     return this.db.one<MeetingRow>(
-      `INSERT INTO meetings (tenant_id, project_id, title, happened_at, source, file_id, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [i.tenantId, i.projectId, i.title, i.happenedAt, i.source, i.fileId, i.createdBy],
+      `INSERT INTO meetings (tenant_id, project_id, title, happened_at, source, file_id, created_by, chat_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [i.tenantId, i.projectId, i.title, i.happenedAt, i.source, i.fileId, i.createdBy, i.chatId ?? null],
     ) as Promise<MeetingRow>;
+  }
+
+  /**
+   * Карточка итога в чат, из которого начали созвон.
+   *
+   * Пишем сообщением без автора (системная строка) — итог принадлежит разговору,
+   * а не человеку. Тело остаётся человекочитаемым: в письмах и выгрузках карточек нет,
+   * а `meeting_id` даёт интерфейсу развернуть его в сводку с кнопкой «Открыть разбор».
+   */
+  async postMeetingCard(tenantId: string, chatId: string, meetingId: string, body: string): Promise<string | null> {
+    const row = await this.db.one<{ id: string }>(
+      `INSERT INTO chat_messages (tenant_id, chat_id, author_id, body, meeting_id)
+       VALUES ($1,$2,NULL,$3,$4) RETURNING id`,
+      [tenantId, chatId, body.slice(0, 4000), meetingId],
+    );
+    await this.db.query(`UPDATE chats SET last_message_at=now() WHERE id=$1`, [chatId]);
+    return row?.id ?? null;
+  }
+
+  /** Кому показать карточку: участники чата (у проектного — вся команда). */
+  async chatAudience(tenantId: string, chatId: string): Promise<string[]> {
+    const rows = await this.db.many<{ user_id: string }>(
+      `SELECT m.user_id FROM chat_members m WHERE m.chat_id=$1
+        UNION
+       SELECT u.id::text FROM users u
+        WHERE u.tenant_id=$2 AND EXISTS (SELECT 1 FROM chats c WHERE c.id=$1 AND c.kind='project')`,
+      [chatId, tenantId],
+    );
+    return rows.map((r) => String(r.user_id));
   }
 
   get(tenantId: string, id: string) {

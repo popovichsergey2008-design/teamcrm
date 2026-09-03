@@ -30,6 +30,8 @@ export interface MessageRow {
   /** Реакции: [{emoji, count, mine}] — сводка, а не список нажавших. */
   reactions?: { emoji: string; count: number; mine: boolean }[];
   pinned_at?: Date | null;
+  /** Итог созвона: сообщение разворачивается в карточку со сводкой. */
+  meeting_id?: string | null;
   /** Задача, заведённая по этому сообщению: чтобы вторую не завели. */
   task_id?: string | null;
   task_title?: string | null;
@@ -189,7 +191,7 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
-              m.task_id, t.title AS task_title,
+              m.task_id, t.title AS task_title, m.meeting_id,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -218,7 +220,7 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
-              m.task_id, t.title AS task_title,
+              m.task_id, t.title AS task_title, m.meeting_id,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (

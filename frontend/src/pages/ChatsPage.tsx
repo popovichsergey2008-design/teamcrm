@@ -43,6 +43,8 @@ interface Message {
   /** Сводка реакций, а не список нажавших: в ленте нужен знак и число. */
   reactions?: { emoji: string; count: number; mine: boolean }[];
   pinned_at?: string | null;
+  /** Итог созвона: сообщение разворачивается в карточку со сводкой и разбором. */
+  meeting_id?: string | null;
   /** Задача, заведённая по этому сообщению: чтобы вторую по той же фразе не завели. */
   task_id?: string | null;
   task_title?: string | null;
@@ -946,6 +948,38 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               {messages.map((m, i) => {
                 const mine = String(m.author_id) === String(user?.id);
                 const newDay = i === 0 || dayOf(m.created_at) !== dayOf(messages[i - 1].created_at);
+                /*
+                  Итог созвона — карточкой, а не серой строчкой.
+
+                  Разговор закончился, и его результат должен вернуться туда, где
+                  договаривались созвониться: сколько шёл, о чём договорились, что
+                  предложено сделать. Иначе разбор оседает в разделе встреч, куда надо
+                  специально пойти, и половина договорённостей теряется.
+                */
+                if (m.meeting_id) {
+                  const [head, ...rest] = String(m.body ?? '').split('\n');
+                  return (
+                    <div key={m.id} data-msg={String(m.id)}>
+                      {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
+                      <div className="meet-card">
+                        <div className="meet-card-head">
+                          <Icon name="record" size={14} /> <b>{head}</b>
+                          <span className="chat-time">{timeOf(m.created_at)}</span>
+                        </div>
+                        {rest.filter(Boolean).map((line, k) => (
+                          <div key={k} className="meet-card-line">{line}</div>
+                        ))}
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => navigate({ section: 'chat', view: 'meetings' })}
+                          title="Стенограмма, сводка и предложенные задачи"
+                        >
+                          <Icon name="list" size={13} /> Открыть разбор
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
                 // системная строка (кого добавили, кто вышел) — без автора и без «пузыря»
                 if (!m.author_id) {
                   return (

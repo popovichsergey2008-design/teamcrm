@@ -183,7 +183,9 @@ export function App() {
     // говорите, получал вызов в новую комнату, и разговор рвался пополам.
     if (callId) return;
     try {
-      const room = await api.startCall(chat.projectId ?? undefined, chat.withAi === true);
+      // Чат передаём серверу: после разбора итог созвона вернётся именно в этот
+      // разговор, а не осядет в разделе встреч, куда надо специально пойти.
+      const room = await api.startCall(chat.projectId ?? undefined, chat.withAi === true, chat.id);
       setCallInvite(chat.memberIds);
       setCallId(room.id);
     } catch { /* недоступность медиа покажет само окно звонка */ }

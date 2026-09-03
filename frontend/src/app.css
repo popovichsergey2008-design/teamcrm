@@ -1680,6 +1680,21 @@
 .chat-feed::-webkit-scrollbar { width: 8px; }
 .chat-feed::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 .chat-day { text-align: center; font-size: 11px; color: var(--text-mut); margin: 10px 0 6px; }
+/*
+  Итог созвона в чате.
+
+  Не серая строчка среди сообщений, а карточка: разговор закончился, и его результат
+  должен вернуться туда, где договаривались созвониться. Разбор, лежащий отдельно в
+  разделе встреч, читают единицы — и половина договорённостей теряется.
+*/
+.meet-card {
+  margin: 8px 0; padding: 10px 12px; border-radius: var(--radius);
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+}
+.meet-card-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.meet-card-line { font-size: 13px; white-space: pre-wrap; }
+
 /* служебные строки: кого добавили, кто вышел, как переименовали */
 .chat-system { text-align: center; font-size: 12px; color: var(--text-mut); margin: 6px 0; font-style: italic; }
 .group-leave { width: 100%; margin-top: 12px; color: var(--danger); }

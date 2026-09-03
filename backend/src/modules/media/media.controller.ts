@@ -10,6 +10,8 @@ class StartRoomDto {
   @IsOptional() @IsString() projectId?: string;
   /** Позвать ИИ-ассистента: он появится в списке участников и включит запись. */
   @IsOptional() @IsBoolean() withAi?: boolean;
+  /** Чат, из которого звонят: туда после разбора вернётся карточка с итогом. */
+  @IsOptional() @IsString() chatId?: string;
 }
 
 /** Диагностика медиа-слоя: поднялись ли воркеры и какие созвоны идут прямо сейчас. */
@@ -40,7 +42,9 @@ export class MediaController {
   /** Начать созвон: комната живёт в памяти, участники входят по WebSocket. */
   @Post('rooms')
   async start(@CurrentUser() u: AuthUser, @Body() dto: StartRoomDto) {
-    const room = await this.media.createRoom(u.tenantId, dto.projectId ?? null, dto.withAi === true, u.userId);
+    const room = await this.media.createRoom(
+      u.tenantId, dto.projectId ?? null, dto.withAi === true, u.userId, dto.chatId ?? null,
+    );
     return { id: room.id, projectId: room.projectId, aiEnabled: room.aiEnabled };
   }
 }

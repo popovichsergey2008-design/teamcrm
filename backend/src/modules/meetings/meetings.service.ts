@@ -103,6 +103,8 @@ export class MeetingsService {
     title: string;
     /** Комната созвона: по ней встреча связывается с событием календаря. */
     roomId?: string | null;
+    /** Чат, из которого начали созвон: туда придёт карточка с итогом. */
+    chatId?: string | null;
     tracks: { userId: string; displayName: string; buffer: Buffer; fileName: string; offsetSec: number }[];
   }): Promise<string | null> {
     if (!input.tracks.length) return null;
@@ -110,6 +112,7 @@ export class MeetingsService {
     const meeting = await this.repo.create({
       tenantId: input.tenantId, projectId: input.projectId, title: input.title.slice(0, 255),
       happenedAt: new Date().toISOString(), source: 'call', fileId: null, createdBy: input.actorId,
+      chatId: input.chatId ?? null,
     });
 
     // Созвон шёл в комнате события — свяжем: итог уйдёт приглашённым, а следующая
@@ -171,6 +174,10 @@ export class MeetingsService {
         await this.analyze(input.tenantId, meeting.id, input.projectId, replies);
         await this.repo.setStatus(meeting.id, 'done');
         this.knowledge.enqueue(input.tenantId, 'meeting', meeting.id);
+        // Итог возвращается в тот разговор, из которого созвон начали: иначе половина
+        // договорённостей не доходит до тех, кто в созвоне не был.
+        await this.postCardToChat(input.tenantId, meeting.id, input.chatId ?? null)
+          .catch((e) => this.log.warn(`карточка мита в чат не ушла: ${(e as Error).message}`));
       } catch (e) {
         this.log.warn(`созвон ${meeting.id}: ${(e as Error).message}`);
         await this.repo.setStatus(meeting.id, 'error', describeFfmpegError(e)).catch(() => undefined);
@@ -258,6 +265,42 @@ export class MeetingsService {
   }
 
   /** Стенограмма → LLM → строгая схема → черновики задач с сопоставленными исполнителями. */
+  /**
+   * Карточка итога в чат.
+   *
+   * Ошибка здесь не должна ничего ронять: разбор уже сделан и лежит в разделе встреч,
+   * а карточка — способ донести его до людей, а не сам результат.
+   */
+  private async postCardToChat(tenantId: string, meetingId: string, chatId: string | null): Promise<void> {
+    if (!chatId) return;
+    const [meeting, summary, drafts] = await Promise.all([
+      this.repo.get(tenantId, meetingId),
+      this.repo.summary(tenantId, meetingId).catch(() => null),
+      this.repo.drafts(tenantId, meetingId).catch(() => []),
+    ]);
+    if (!meeting) return;
+
+    const mins = Math.max(1, Math.round(Number(meeting.duration_sec ?? 0) / 60));
+    const lines = [`Созвон завершён · ${mins} мин`];
+    const text = String((summary as { summary?: string } | null)?.summary ?? '').trim();
+    if (text) lines.push(text.slice(0, 600));
+    if (drafts.length) lines.push(`Предложено задач: ${drafts.length}`);
+
+    const messageId = await this.repo.postMeetingCard(tenantId, String(chatId), meetingId, lines.join('\n'));
+    if (!messageId) return;
+    // Карточка обязана появиться у всех сразу, как обычное сообщение: чат, который
+    // «оживает» только после перезагрузки, никто не считает живым.
+    const to = await this.repo.chatAudience(tenantId, String(chatId));
+    this.realtime.emitToUsers(tenantId, to, 'chat.message', {
+      chatId: String(chatId),
+      message: {
+        id: messageId, chat_id: String(chatId), author_id: null, author_name: null,
+        body: lines.join('\n'), file_id: null, file_name: null,
+        created_at: new Date().toISOString(), edited_at: null, meeting_id: String(meetingId),
+      },
+    });
+  }
+
   private async analyze(tenantId: string, meetingId: string, projectId: string | null, replies: Reply[]): Promise<void> {
     const [team, projects] = await Promise.all([
       this.repo.teamMembers(tenantId),
