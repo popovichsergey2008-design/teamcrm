@@ -6,6 +6,8 @@ import { ChatsController } from './chats.controller';
 import { ChatsRepository } from './chats.repository';
 import { ChatsService } from './chats.service';
 import { RemindersScheduler } from './reminders.scheduler';
+import { ChatsAiService } from './chats-ai.service';
+import { AiModule } from '../ai/ai.module';
 
 /**
  * Этап 6, М1 — мессенджер команды: личные диалоги, группы, чаты проектов.
@@ -15,9 +17,9 @@ import { RemindersScheduler } from './reminders.scheduler';
  * не напомнило ни о чём.
  */
 @Module({
-  imports: [RealtimeModule, NotificationsModule, NlModule],
+  imports: [RealtimeModule, NotificationsModule, NlModule, AiModule],
   controllers: [ChatsController],
-  providers: [ChatsService, ChatsRepository, RemindersScheduler],
+  providers: [ChatsService, ChatsRepository, RemindersScheduler, ChatsAiService],
   exports: [ChatsService],
 })
 export class ChatsModule {}

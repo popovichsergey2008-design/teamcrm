@@ -23,6 +23,12 @@ class SendDto {
   /** «Также отправить в основной чат» — когда ответ важен не только участникам ветки. */
   @IsOptional() @IsBoolean() alsoInChannel?: boolean;
 }
+class AskAiDto {
+  @IsString() @MaxLength(2000) question!: string;
+}
+class AiSearchDto {
+  @IsString() @MaxLength(500) query!: string;
+}
 class RemindDto {
   /** Момент считает клиент: он знает часовой пояс и что такое «сегодня вечером». */
   @IsString() remindAt!: string;
@@ -100,6 +106,22 @@ export class ChatsController {
     return this.chats.channels(u.tenantId, u);
   }
 
+  /**
+   * «Что я пропустил»: сводка непрочитанного по всем доступным чатам.
+   *
+   * Стоит выше маршрутов с «:id» — иначе `/chats/ai` разберётся как чат с таким id.
+   */
+  @Post('ai/digest')
+  aiDigest(@CurrentUser() u: AuthUser) {
+    return this.chats.aiDigest(u.tenantId, u);
+  }
+
+  /** Поиск по переписке словами — только по тому, что доступно спрашивающему. */
+  @Post('ai/search')
+  aiSearch(@CurrentUser() u: AuthUser, @Body() dto: AiSearchDto) {
+    return this.chats.aiSearch(u.tenantId, u, dto.query);
+  }
+
   /** Чат с собой — «Заметки». Открывается один и тот же, сколько ни нажимай. */
   @Post('self')
   selfChat(@CurrentUser() u: AuthUser) {
@@ -142,6 +164,18 @@ export class ChatsController {
       rootId: dto.threadRootId ?? null,
       alsoInChannel: dto.alsoInChannel === true,
     }, dto.mentionIds);
+  }
+
+  /** Вопрос помощнику в этом чате: ответ ложится в ту же переписку, при всех. */
+  @Post(':id/ai')
+  askAi(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AskAiDto) {
+    return this.chats.askAi(u.tenantId, id, u, dto.question);
+  }
+
+  /** Сводка непрочитанного в этом чате: «47 непрочитанных» — не ответ на «что там». */
+  @Post(':id/ai/digest')
+  chatDigest(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.aiDigest(u.tenantId, u, id);
   }
 
   /** Вступить в публичный канал. В приватный — только по приглашению. */

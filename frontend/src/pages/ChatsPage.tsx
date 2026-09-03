@@ -45,6 +45,8 @@ interface Message {
   pinned_at?: string | null;
   /** Итог созвона: сообщение разворачивается в карточку со сводкой и разбором. */
   meeting_id?: string | null;
+  /** Ответ помощника: помечен, чтобы его не спутали со словами коллеги. */
+  is_ai?: boolean;
   /** Задача, заведённая по этому сообщению: чтобы вторую по той же фразе не завели. */
   task_id?: string | null;
   task_title?: string | null;
@@ -72,6 +74,9 @@ const SECTIONS: { key: 'inbox' | 'threads' | 'saved'; title: string; hint: strin
 
 /** Реакции: ответить «понял», не засоряя переписку и не будя всех уведомлением. */
 const REACTIONS = ['👍', '✅', '🔥', '❓', '👀', '🙏'];
+
+/** «@AI», «@ии», «@ai-помощник» — человек пишет как придётся. */
+const MENTIONS_AI = /@(ai|ии|ai-помощник)\b/gi;
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 /** «1 ответ», «2 ответа», «5 ответов» — иначе интерфейс выглядит машинным переводом. */
@@ -149,6 +154,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     members: number; joined: boolean; last_message_at: string | null;
   }[]>([]);
   const [channelOpen, setChannelOpen] = useState(false);
+  /** Сводка непрочитанного и ответ поиска — показываются панелью, в чат не пишутся. */
+  const [digest, setDigest] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiQuery, setAiQuery] = useState('');
+  const [aiAnswer, setAiAnswer] = useState<{
+    answer: string;
+    refs: { messageId: string; chatId: string; chat: string; author: string | null; at: string; text: string }[];
+  } | null>(null);
   /** Из какого сообщения делаем задачу: окно с черновиком от ИИ. */
   const [toTask, setToTask] = useState<Message | null>(null);
   /** Что за сущность стоит за чатом — показывается в шапке. */
@@ -376,6 +389,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     setDraft('');
     clearPending();
     try {
+      // «@AI» — обращение к помощнику, а не к человеку: ответ придёт в этот же чат
+      // и его увидят все, кто в разговоре.
+      if (!file && MENTIONS_AI.test(text)) {
+        setAiBusy(true);
+        try { await api.askChatAi(activeId, text.replace(MENTIONS_AI, ' ').trim() || text); }
+        finally { setAiBusy(false); }
+        return;
+      }
       // Имя могли стереть после вставки — звать человека после этого не за что.
       const calls = stillMentioned(mentioned, text, mentionUsers);
       const message = file
@@ -532,7 +553,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
   const match = (s: string | null) => !query || (s ?? '').toLowerCase().includes(query.toLowerCase());
   const threadsUnread = threads.reduce((sum, t) => sum + (Number(t.unread) || 0), 0);
-  const mentionUsers = users.map((u) => ({ id: String(u.id), fullName: u.fullName }));
+  /*
+    Помощник стоит в том же списке, что и люди: его зовут через «@», как коллегу.
+    Отдельная кнопка «спросить ИИ» делала бы из него инструмент в стороне от разговора,
+    хотя он участник этого разговора. Так же сделано в чате задачи.
+  */
+  const mentionUsers = [
+    { id: 'ai', fullName: 'AI-помощник', hint: 'знает эту переписку' },
+    ...users.map((u) => ({ id: String(u.id), fullName: u.fullName })),
+  ];
   const inboxTotal = inbox
     ? inbox.counts.mentions + inbox.counts.threads + inbox.counts.chats
     : 0;
@@ -720,7 +749,72 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
         {view === 'inbox' && (
           <div className="threads-view">
-            <div className="chat-head"><span><Icon name="inbox" size={15} /> <b>Входящие</b></span></div>
+            <div className="chat-head">
+              <span><Icon name="inbox" size={15} /> <b>Входящие</b></span>
+              <button
+                className="chat-pins-btn"
+                disabled={aiBusy}
+                onClick={async () => {
+                  setAiBusy(true); setDigest(null); setAiAnswer(null);
+                  try { setDigest((await api.aiMissed()).text); }
+                  catch (e) { setErr(e instanceof ApiError ? e.message : 'ИИ не ответил'); }
+                  finally { setAiBusy(false); }
+                }}
+                title="Пересказать всё непрочитанное по доступным чатам"
+              >
+                <Icon name="sparkles" size={13} /> {aiBusy ? 'Читаю…' : 'Что я пропустил'}
+              </button>
+            </div>
+
+            {digest && (
+              <div className="ai-digest">
+                <div className="ai-digest-head">
+                  <Icon name="sparkles" size={13} /> <b>Что вы пропустили</b>
+                  <button className="msg-act" onClick={() => setDigest(null)}>Скрыть</button>
+                </div>
+                <div className="ai-digest-body">{digest}</div>
+              </div>
+            )}
+
+            {/* Поиск словами: «где Глеб писал пароль от стенда». Обычный поиск ищет
+                по буквам, а спрашивают обычно смыслом — и не помнят точных слов. */}
+            <div className="ai-ask">
+              <input
+                className="input"
+                value={aiQuery}
+                onChange={(e) => setAiQuery(e.target.value)}
+                placeholder="Спросить по переписке: где мы решили про авторизацию?"
+                onKeyDown={async (e) => {
+                  if (e.key !== 'Enter' || !aiQuery.trim()) return;
+                  setAiBusy(true); setAiAnswer(null); setDigest(null);
+                  try { setAiAnswer(await api.aiSearchChats(aiQuery.trim())); }
+                  catch (err2) { setErr(err2 instanceof ApiError ? err2.message : 'ИИ не ответил'); }
+                  finally { setAiBusy(false); }
+                }}
+              />
+            </div>
+
+            {aiAnswer && (
+              <div className="ai-digest">
+                <div className="ai-digest-head">
+                  <Icon name="sparkles" size={13} /> <b>Ответ по переписке</b>
+                  <button className="msg-act" onClick={() => setAiAnswer(null)}>Скрыть</button>
+                </div>
+                <div className="ai-digest-body">{aiAnswer.answer}</div>
+                {/* Ссылки настоящие: ответ модели без перехода к первоисточнику
+                    проверить нельзя, а в рабочей переписке это обязательно. */}
+                {aiAnswer.refs.map((r) => (
+                  <button
+                    key={r.messageId}
+                    className="ai-ref"
+                    onClick={() => { setView('chat'); void openChat(String(r.chatId)); }}
+                  >
+                    <b>{r.chat}</b> · {r.author ?? 'система'} · {new Date(r.at).toLocaleDateString('ru-RU')}
+                    <span className="dim"> — {r.text.slice(0, 90)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             {inboxTotal === 0 && (
               <EmptyState
                 compact
@@ -912,6 +1006,23 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               </span>
               {/* Закреплённое — в шапке: доступы к серверу и ссылку на макет ищут
                   прокруткой на сотню сообщений назад, и это самая частая потеря времени. */}
+              {/* «47 непрочитанных» не отвечает на единственный вопрос, который человек
+                  задаёт, открывая чат после отпуска: что там решили и что от меня хотят. */}
+              {(active.unread > 0 || digest) && (
+                <button
+                  className="chat-pins-btn"
+                  disabled={aiBusy}
+                  onClick={async () => {
+                    setAiBusy(true); setDigest(null);
+                    try { setDigest((await api.chatAiDigest(String(active.id))).text); }
+                    catch (e) { setErr(e instanceof ApiError ? e.message : 'ИИ не ответил'); }
+                    finally { setAiBusy(false); }
+                  }}
+                  title="Пересказать непрочитанное в этом чате"
+                >
+                  <Icon name="sparkles" size={13} /> {aiBusy ? 'Читаю…' : 'Кратко'}
+                </button>
+              )}
               {pinned.length > 0 && (
                 <button className="chat-pins-btn" onClick={() => setPinsOpen((v) => !v)} title="Закреплённые сообщения">
                   <Icon name="flag" size={13} /> Закреплено: {pinned.length}
@@ -928,6 +1039,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                     <b>{m.author_name}</b>: {String(m.body || m.file_name || 'вложение').slice(0, 120)}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {digest && (
+              <div className="ai-digest">
+                <div className="ai-digest-head">
+                  <Icon name="sparkles" size={13} /> <b>Кратко о непрочитанном</b>
+                  <button className="msg-act" onClick={() => setDigest(null)}>Скрыть</button>
+                </div>
+                <div className="ai-digest-body">{digest}</div>
               </div>
             )}
 
@@ -994,10 +1115,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                     {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
                     {/* Время — ПОД плашкой, а не внутри неё: серая строчка на цветном
                         пузыре не читалась вовсе, а место в углу отъедала. */}
-                    <div className={`chat-line ${mine ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}`}>
-                      <div className={`chat-msg ${mine ? 'mine' : ''}`}>
+                    <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}`}>
+                      <div className={`chat-msg ${mine && !m.is_ai ? 'mine' : ''}${m.is_ai ? ' chat-msg-ai' : ''}`}>
+                        {m.is_ai && <div className="chat-author"><Icon name="sparkles" size={11} /> AI-помощник</div>}
                         {m.pinned_at && <span className="chat-pin-mark" title="Закреплено в шапке чата"><Icon name="flag" size={11} /></span>}
-                        {!mine && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
+                        {!mine && !m.is_ai && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
                         {m.body && <div className="chat-body">{m.body}</div>}
                         {/* Ссылкой файл открыть было нельзя: он за авторизацией и отдавал 401.
                             Картинка теперь видна сразу, остальное скачивается по нажатию. */}
@@ -1148,7 +1270,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                 value={draft}
                 users={mentionUsers}
                 onChange={setDraft}
-                onMention={(userId) => setMentioned((prev) => (prev.includes(userId) ? prev : [...prev, userId]))}
+                onMention={(userId) => {
+                  if (userId === 'ai') return; // помощник участником чата не становится
+                  setMentioned((prev) => (prev.includes(userId) ? prev : [...prev, userId]));
+                }}
                 placeholder={pending ? 'Подпись к вложению…' : 'Сообщение… «@» — позвать по имени'}
                 onEnter={send}
               />

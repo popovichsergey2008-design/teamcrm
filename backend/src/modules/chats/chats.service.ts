@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { NlService } from '../nl/nl.service';
+import { ChatsAiService } from './chats-ai.service';
 import { DiagService } from '../diagnostics/diag.service';
 import { FilesService } from '../files/files.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -25,6 +26,7 @@ export class ChatsService {
     /** Разбор фразы в задачу — тот же, что у голосовой постановки: два механизма
         для одного и того же разошлись бы на первой правке. */
     private readonly nl: NlService,
+    private readonly chatAi: ChatsAiService,
   ) {}
 
   /** Список чатов + кто сейчас в сети (точка рядом с именем). */
@@ -224,6 +226,42 @@ export class ChatsService {
     this.realtime.emitToUsers(tenantId, users.map((u) => String(u.id)), 'chat.mention', {
       messageId: String(messageId), body: body.slice(0, 160),
     });
+  }
+
+  /**
+   * Вопрос помощнику прямо в чате.
+   *
+   * Ответ ложится в тот же чат, что и сообщения людей: спросили при всех — ответ видят
+   * все и он остаётся в истории разговора. Отдельная панель «спросить ИИ» рядом с чатом
+   * сделала бы из помощника инструмент в стороне, хотя он участник разговора.
+   */
+  async askAi(tenantId: string, chatId: string, user: { userId: string; role: string }, question: string) {
+    const chat = await this.access(tenantId, chatId, user);
+    const answer = await this.chatAi.answer(tenantId, chatId, user.userId, question);
+    const message = await this.repo.addMessage({
+      tenantId, chatId, authorId: user.userId, body: answer, fileId: null, isAi: true,
+    });
+    const to = await this.recipients(chat, tenantId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
+    return message;
+  }
+
+  /**
+   * Сводка непрочитанного: по одному чату или по всем сразу («что я пропустил»).
+   *
+   * Ничего не сохраняет и ничего не помечает прочитанным: сводка — это взгляд на
+   * переписку, а не её чтение.
+   */
+  async aiDigest(tenantId: string, user: { userId: string; role: string }, chatId?: string) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    if (chatId) await this.access(tenantId, chatId, user);
+    return this.chatAi.digest(tenantId, user.userId, chatId ?? null);
+  }
+
+  /** Поиск по переписке словами — только по тому, что доступно спрашивающему. */
+  aiSearch(tenantId: string, user: { userId: string; role: string }, query: string) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    return this.chatAi.search(tenantId, user.userId, query);
   }
 
   /**

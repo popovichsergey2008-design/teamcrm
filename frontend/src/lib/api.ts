@@ -623,6 +623,20 @@ export const api = {
   renameChat: (chatId: string, title: string) => request<{ title: string }>('PATCH', `/chats/${chatId}`, { title }),
   leaveChat: (chatId: string) => request<any>('POST', `/chats/${chatId}/leave`),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
+  /** Вопрос помощнику в чате: ответ ложится в ту же переписку, при всех. */
+  askChatAi: (chatId: string, question: string) =>
+    request<any>('POST', `/chats/${chatId}/ai`, { question }),
+  /** Сводка непрочитанного в чате: «47 непрочитанных» — не ответ на вопрос «что там». */
+  chatAiDigest: (chatId: string) =>
+    request<{ text: string; messages: number }>('POST', `/chats/${chatId}/ai/digest`, {}),
+  /** «Что я пропустил»: сводка по всем доступным чатам. */
+  aiMissed: () => request<{ text: string; messages: number }>('POST', '/chats/ai/digest', {}),
+  /** Поиск по переписке словами — только по тому, что доступно спрашивающему. */
+  aiSearchChats: (query: string) => request<{
+    answer: string;
+    refs: { messageId: string; chatId: string; chat: string; author: string | null; at: string; text: string }[];
+  }>('POST', '/chats/ai/search', { query }),
+
   /** Канал — общая тема: публичный виден всем, приватный как группа с названием темы. */
   createChannel: (b: { title: string; description?: string; isPrivate?: boolean; userIds?: string[] }) =>
     request<{ id: string; kind: string; title: string }>('POST', '/chats/channels', b),

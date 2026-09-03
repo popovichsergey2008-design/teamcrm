@@ -368,4 +368,62 @@ describe('треды в чатах (e2e)', () => {
     // и он личный: чужие заметки недоступны
     await http.get(`/api/chats/${notes1.id}/messages`).set(O).expect(403);
   }, 60000);
+
+  /**
+   * Слой 6: помощник внутри переписки.
+   *
+   * Проверяем не качество ответов (на CI отвечает заглушка), а правило, которое важнее
+   * любого качества: ИИ видит только то, что видит спрашивающий. Ответ по чужой
+   * переписке — не удобство, а утечка.
+   */
+  it('@AI отвечает в чат, а поиск не заглядывает в чужую переписку', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'L6', email: `l6_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .expect(201)).body.data;
+    const mateEmail = `l6_m_${uniq()}@t.test`;
+    const mate = (await http.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Пётр', password: 'password123', role: 'member' })
+      .expect(201)).body.data;
+    const mateLogin = (await http.post('/api/auth/login')
+      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const M = H(mateLogin.accessToken);
+
+    const chat = (await http.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
+    await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'Договорились переносить релиз на пятницу' }).expect(201);
+
+    // ответ помощника ложится в тот же чат и помечен как ответ ИИ
+    const answer = (await http.post(`/api/chats/${chat.id}/ai`).set(M)
+      .send({ question: 'что решили по релизу?' }).expect(201)).body.data;
+    expect(String(answer.body ?? '').length).toBeGreaterThan(3);
+    const feed = (await http.get(`/api/chats/${chat.id}/messages`).set(O).expect(200)).body.data;
+    const ai = feed.find((m: any) => String(m.id) === String(answer.id));
+    expect(ai.is_ai).toBe(true);
+
+    // сводка непрочитанного считает ЧУЖИЕ сообщения и ничего не помечает прочитанным
+    const digest = (await http.post('/api/chats/ai/digest').set(M).expect(201)).body.data;
+    expect(digest.messages).toBeGreaterThan(0);
+    const stillUnread = (await http.get('/api/chats').set(M).expect(200)).body.data
+      .find((c: any) => String(c.id) === String(chat.id));
+    expect(Number(stillUnread.unread)).toBeGreaterThan(0);
+
+    // ГЛАВНОЕ: закрытый разговор владельца в поиск сотрудника не попадает
+    const secret = (await http.post('/api/chats/channels').set(O)
+      .send({ title: 'руководство', isPrivate: true }).expect(201)).body.data;
+    await http.post(`/api/chats/${secret.id}/messages`).set(O)
+      .send({ body: 'Пароль от расчётного счёта менять в понедельник' }).expect(201);
+
+    const mineSearch = (await http.post('/api/chats/ai/search').set(M)
+      .send({ query: 'пароль от расчётного счёта' }).expect(201)).body.data;
+    expect(mineSearch.refs.every((r: any) => String(r.chatId) !== String(secret.id))).toBe(true);
+
+    // а владельцу его же переписка находится
+    const ownerSearch = (await http.post('/api/chats/ai/search').set(O)
+      .send({ query: 'пароль от расчётного счёта' }).expect(201)).body.data;
+    expect(ownerSearch.refs.some((r: any) => String(r.chatId) === String(secret.id))).toBe(true);
+
+    // и спросить помощника про чужой чат нельзя
+    await http.post(`/api/chats/${secret.id}/ai`).set(M).send({ question: 'о чём тут' }).expect(403);
+  }, 60000);
 });

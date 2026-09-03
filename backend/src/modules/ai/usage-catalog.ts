@@ -26,6 +26,9 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'agent_task_rework', title: 'ИИ-агент: доработка по замечаниям', where: 'Карточка задачи → ИИ-агент', group: 'tasks' },
   { key: 'inbox_draft', title: 'Черновик задачи из входящего письма', where: 'Входящие', group: 'tasks' },
   { key: 'task_assistant', title: 'Помощник в обсуждении задачи', where: 'Карточка задачи → «Обсуждение»', group: 'tasks' },
+  { key: 'chat_assistant', title: 'Помощник в чате (@AI)', where: 'Чаты и миты → любой чат', group: 'service' },
+  { key: 'chat_digest', title: 'Сводка непрочитанного', where: 'Чаты и миты → «Кратко» и «Что я пропустил»', group: 'service' },
+  { key: 'chat_search', title: 'Поиск по переписке словами', where: 'Чаты и миты → «Входящие»', group: 'service' },
 
   { key: 'meeting_transcribe', title: 'Расшифровка записи встречи', where: 'Встречи → загрузка записи', group: 'meetings' },
   { key: 'meeting_analyze', title: 'Разбор встречи: сводка и задачи', where: 'Встречи → после расшифровки', group: 'meetings' },

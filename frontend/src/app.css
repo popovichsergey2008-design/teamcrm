@@ -1681,6 +1681,31 @@
 .chat-feed::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 .chat-day { text-align: center; font-size: 11px; color: var(--text-mut); margin: 10px 0 6px; }
 /*
+  Ответы помощника и сводки.
+
+  Ответ ИИ лежит в общей ленте — спросили при всех, ответ видят все, — но отличается
+  подложкой и подписью: принять его за слова коллеги нельзя, иначе придуманную
+  договорённость примут за настоящую.
+*/
+.chat-msg-ai { background: var(--accent-soft); border-color: var(--accent-line); }
+.ai-digest {
+  margin: 8px 16px; padding: 10px 12px; border-radius: var(--radius);
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+}
+.ai-digest-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.ai-digest-body { font-size: 13px; white-space: pre-wrap; }
+.ai-ask { padding: 8px 16px; }
+/* Ссылка на первоисточник: ответ модели без перехода к сообщению не проверить,
+   а в рабочей переписке это обязательно. */
+.ai-ref {
+  display: block; width: 100%; text-align: left; margin-top: 6px; padding: 6px 8px;
+  border: none; border-left: 3px solid var(--accent-line); border-radius: 0 6px 6px 0;
+  background: var(--bg-elev); font: inherit; font-size: 12px; color: var(--text-dim); cursor: pointer;
+}
+.ai-ref:hover { color: var(--text); border-left-color: var(--accent); }
+.ai-ref:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/*
   Итог созвона в чате.
 
   Не серая строчка среди сообщений, а карточка: разговор закончился, и его результат

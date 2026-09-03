@@ -32,6 +32,8 @@ export interface MessageRow {
   pinned_at?: Date | null;
   /** Итог созвона: сообщение разворачивается в карточку со сводкой. */
   meeting_id?: string | null;
+  /** Ответ помощника: помечен, чтобы его не спутали со словами коллеги. */
+  is_ai?: boolean;
   /** Задача, заведённая по этому сообщению: чтобы вторую не завели. */
   task_id?: string | null;
   task_title?: string | null;
@@ -191,7 +193,7 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
-              m.task_id, t.title AS task_title, m.meeting_id,
+              m.task_id, t.title AS task_title, m.meeting_id, m.is_ai,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -220,7 +222,7 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
-              m.task_id, t.title AS task_title, m.meeting_id,
+              m.task_id, t.title AS task_title, m.meeting_id, m.is_ai,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -295,11 +297,16 @@ export class ChatsRepository {
   async addMessage(i: {
     tenantId: string; chatId: string; authorId: string; body: string; fileId: string | null;
     threadRootId?: string | null; alsoInChannel?: boolean;
+    /** Ответ помощника: в ленте он помечен, чтобы его не спутали со словами коллеги. */
+    isAi?: boolean;
   }): Promise<MessageRow> {
     const row = await this.db.one<{ id: string }>(
-      `INSERT INTO chat_messages (tenant_id, chat_id, author_id, body, file_id, thread_root_id, also_in_channel)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [i.tenantId, i.chatId, i.authorId, i.body, i.fileId, i.threadRootId ?? null, i.alsoInChannel === true],
+      `INSERT INTO chat_messages (tenant_id, chat_id, author_id, body, file_id, thread_root_id, also_in_channel, is_ai)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [
+        i.tenantId, i.chatId, i.authorId, i.body, i.fileId,
+        i.threadRootId ?? null, i.alsoInChannel === true, i.isAi === true,
+      ],
     );
     await this.db.query(`UPDATE chats SET last_message_at=now() WHERE id=$1`, [i.chatId]);
     // Счётчик ответов держим на корне: считать его подзапросом на каждое сообщение
