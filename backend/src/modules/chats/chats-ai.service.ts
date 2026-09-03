@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
 import { DbService } from '../../database/db.service';
+import { extractAudioChunks } from '../meetings/audio.util';
 
 /**
  * Помощник внутри переписки.
@@ -150,6 +151,28 @@ export class ChatsAiService {
         author: h.author_name, at: h.created_at, text: String(h.body ?? '').slice(0, 200),
       })),
     };
+  }
+
+  /**
+   * Расшифровка клипа.
+   *
+   * Видео с экрана тоже сюда: распознаётся звуковая дорожка, а извлекает её тот же
+   * конвейер, что и у записей созвонов. Ошибку наверх не поднимаем — вызывающий
+   * отправит клип без текста, и это лучше, чем потерять запись.
+   */
+  async transcribe(tenantId: string, buffer: Buffer, fileName: string): Promise<string> {
+    try {
+      const { chunks } = await extractAudioChunks(buffer, fileName);
+      const parts: string[] = [];
+      for (const chunk of chunks) {
+        const text = await this.ai.transcribeAudio(tenantId, chunk.buffer, chunk.name);
+        if (text?.trim()) parts.push(text.trim());
+      }
+      return parts.join(' ').slice(0, 4000);
+    } catch (e) {
+      this.log.warn(`расшифровка клипа: ${(e as Error).message}`);
+      return '';
+    }
   }
 
   /** Один вызов модели на все сценарии: разные промпты, одинаковая обработка отказа. */

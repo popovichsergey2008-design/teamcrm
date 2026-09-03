@@ -4,6 +4,7 @@ import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { navigate } from '../lib/router';
+import { useClipRecorder } from '../hooks/useClipRecorder';
 import { notificationPermission, notifyChatsChanged, requestNotificationPermission } from '../lib/notifications';
 import { useAuth } from '../state/auth';
 import { EmptyState } from '../components/EmptyState';
@@ -148,6 +149,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const [remindFor, setRemindFor] = useState<string | null>(null);
   /** Кого позвали по «@»: id, а не имена — имена переименовываются. */
   const [mentioned, setMentioned] = useState<string[]>([]);
+  /** Клип ушёл на сервер: там его ещё расшифровывают, и это занимает секунды. */
+  const [clipBusy, setClipBusy] = useState(false);
   /** Витрина «Все каналы»: публичные каналы компании. */
   const [channelList, setChannelList] = useState<{
     id: string; title: string | null; description: string | null;
@@ -182,6 +185,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
    * событием по сокету (сервер рассылает всем участникам, включая автора) и ответом REST,
    * причём событие обычно приходит РАНЬШЕ ответа. Сверяем по id.
    */
+  /**
+   * Голосовое сообщение и запись экрана.
+   *
+   * Отправляются сразу по окончании записи: показывать превью аудио бессмысленно —
+   * прослушать себя перед отправкой всё равно никто не станет, а лишний шаг убивает
+   * весь смысл «быстрее, чем печатать».
+   */
+  const clip = useClipRecorder(async (blob, kind) => {
+    if (!activeId) return;
+    setClipBusy(true);
+    try { await api.sendChatClip(activeId, blob, kind); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Запись не отправлена'); }
+    finally { setClipBusy(false); }
+  });
+
   /** Закрепить чат сверху или снять: порядок личный, у каждого свои четыре. */
   const star = async (c: Chat) => {
     setChats((prev) => prev.map((x) => (String(x.id) === String(c.id) ? { ...x, favorite: !x.favorite } : x)));
@@ -1234,6 +1252,22 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               })}
             </div>
 
+            {/* Идёт запись — это должно быть видно без сомнений: человек говорит вслух,
+                и «пишется или нет» он обязан понимать сразу. */}
+            {(clip.recording || clipBusy || clip.error) && (
+              <div className="chat-clip-state">
+                {clip.recording && (
+                  <>
+                    <span className="chat-clip-dot" aria-hidden="true" />
+                    {clip.recording === 'voice' ? 'Говорите…' : 'Идёт запись экрана…'}
+                    <button className="msg-act" onClick={clip.stop}>Остановить и отправить</button>
+                  </>
+                )}
+                {clipBusy && <span className="dim">Отправляю и расшифровываю…</span>}
+                {clip.error && <span className="error-text">{clip.error}</span>}
+              </div>
+            )}
+
             {/* Вложение перед отправкой: видно, что именно уйдёт, и можно подписать.
                 Отправлять вслепую — верный способ прислать не тот скриншот. */}
             {pending && (
@@ -1277,6 +1311,28 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                 placeholder={pending ? 'Подпись к вложению…' : 'Сообщение… «@» — позвать по имени'}
                 onEnter={send}
               />
+              {/* Голосовое: сказать быстрее, чем напечатать, — но только если сказанное
+                  потом можно найти. Расшифровка приходит с сервера в тело сообщения. */}
+              <button
+                className={clip.recording === 'voice' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+                onClick={() => (clip.recording ? clip.stop() : clip.start('voice'))}
+                disabled={clipBusy}
+                title={clip.recording === 'voice' ? 'Остановить и отправить' : 'Голосовое сообщение'}
+                aria-label="Голосовое сообщение"
+              >
+                <Icon name={clip.recording === 'voice' ? 'stop' : 'mic'} size={16} />
+              </button>
+              {/* Запись экрана: «вот нажимаю кнопку, и всё зависает» показать проще,
+                  чем описать словами. Из такого сообщения потом делают задачу. */}
+              <button
+                className={clip.recording === 'screen' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+                onClick={() => (clip.recording ? clip.stop() : clip.start('screen'))}
+                disabled={clipBusy}
+                title={clip.recording === 'screen' ? 'Остановить и отправить' : 'Записать экран с голосом'}
+                aria-label="Записать экран"
+              >
+                <Icon name="screen" size={16} />
+              </button>
               <button
                 className="btn btn-primary btn-sm"
                 onClick={send}

@@ -472,6 +472,45 @@ export class ChatsService {
     return this.repo.pinned(tenantId, chatId);
   }
 
+  /**
+   * Клип: голосовое сообщение или запись экрана.
+   *
+   * Отличается от обычного вложения одним, но решающим: расшифровка кладётся в ТЕЛО
+   * сообщения. Аудио и видео в переписке иначе становятся чёрной дырой — их не найдёт
+   * поиск, не увидит сводка непрочитанного и не разберёт помощник, а слушать три минуты
+   * ради одной фразы никто не станет. С расшифровкой клип остаётся обычным сообщением,
+   * из которого можно и задачу сделать.
+   *
+   * Не распозналось (нет ключа, тишина, чужой язык) — отправляем как есть: запись
+   * ценнее расшифровки, и терять её из-за отсутствия ключа нельзя.
+   */
+  async sendClip(
+    tenantId: string, chatId: string, user: { userId: string; role: string },
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+    kind: 'voice' | 'screen',
+  ) {
+    const chat = await this.access(tenantId, chatId, user);
+    const stored = await this.files.upload({
+      tenantId, userId: user.userId, buffer: file.buffer, fileName: file.originalname,
+      contentType: file.mimetype, ownerKind: 'chat_message', ownerId: chatId,
+    });
+
+    // Расшифровка своих ошибок наружу не поднимает: клип уходит и без текста —
+    // запись ценнее расшифровки, и терять её из-за отсутствия ключа нельзя.
+    const text = (await this.chatAi.transcribe(tenantId, file.buffer, file.originalname)).trim();
+    // Подпись нужна и без расшифровки: в ленте «вложение» без слова не отличить
+    // от документа, а голосовое от записи экрана — тем более.
+    const body = text || (kind === 'voice' ? 'Голосовое сообщение' : 'Запись экрана');
+
+    const message = await this.repo.addMessage({
+      tenantId, chatId, authorId: user.userId, body, fileId: String(stored.id),
+    });
+    await this.repo.markRead(tenantId, chatId, user.userId);
+    const to = await this.recipients(chat, tenantId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
+    return message;
+  }
+
   /** Вложение: файл кладётся в MinIO тем же путём, что и вложения задач. */
   async sendFile(
     tenantId: string, chatId: string, user: { userId: string; role: string },

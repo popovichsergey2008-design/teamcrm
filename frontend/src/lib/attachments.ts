@@ -51,6 +51,30 @@ export function isImageName(name: string | null | undefined): boolean {
   return !!m && IMAGE_EXT.has(m[1].toLowerCase());
 }
 
+const AUDIO_EXT = new Set(['webm', 'ogg', 'oga', 'mp3', 'm4a', 'wav', 'flac']);
+const VIDEO_EXT = new Set(['mp4', 'mov', 'mkv', 'avi', 'mpeg']);
+
+/**
+ * Что проигрывается прямо в ленте, а что скачивается.
+ *
+ * Голосовое и запись экрана обязаны играть на месте: ссылка «скачать запись» превращает
+ * клип в документ, который надо сохранить, найти в загрузках и открыть плеером — ради
+ * двадцати секунд объяснения этого никто не делает.
+ *
+ * webm двусмыслен: в нём и голос, и видео с экрана. По расширению их не различить,
+ * поэтому голосовые отправляются с говорящим именем, а всё остальное webm считаем видео —
+ * ошибиться в эту сторону безопаснее: плеер видео проигрывает и звук.
+ */
+export function isPlayableName(name: string | null | undefined): 'audio' | 'video' | null {
+  const raw = String(name ?? '').trim();
+  const m = /\.([a-z0-9]+)$/i.exec(raw);
+  if (!m) return null;
+  const ext = m[1].toLowerCase();
+  if (VIDEO_EXT.has(ext)) return 'video';
+  if (ext === 'webm') return /голосов/i.test(raw) ? 'audio' : 'video';
+  return AUDIO_EXT.has(ext) ? 'audio' : null;
+}
+
 /** Размер по-человечески: «348 КБ», «1.2 МБ». */
 export function humanSize(bytes: number): string {
   const b = Math.max(0, Number(bytes) || 0);

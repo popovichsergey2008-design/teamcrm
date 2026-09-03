@@ -556,7 +556,7 @@ test('в свёрнутом окне видно того, кто говорит'
 
 // ── вложения в переписке ──────────────────────────────────────────────────────
 test('скриншот из буфера получает имя с датой, картинка узнаётся по расширению', async () => {
-  const { screenshotName, isAnonymousClipboardName, isImageName, humanSize } = await load('lib/attachments.ts');
+  const { screenshotName, isAnonymousClipboardName, isImageName, isPlayableName, humanSize } = await load('lib/attachments.ts');
 
   assert.equal(screenshotName(new Date(2026, 8, 2, 14, 33, 7), 'image/png'), 'Снимок 2026-09-02 14-33-07.png');
   assert.equal(screenshotName(new Date(2026, 0, 5, 9, 4, 1), 'image/jpeg'), 'Снимок 2026-01-05 09-04-01.jpg');
@@ -570,6 +570,13 @@ test('скриншот из буфера получает имя с датой, 
   assert.equal(isAnonymousClipboardName('Снимок экрана 2026-09-01.png'), false, 'своё имя не трогаем');
 
   assert.equal(isImageName('a.PNG'), true);
+  // клипы играют в ленте, документы скачиваются: webm двусмыслен, и голосовое
+  // отличается говорящим именем — ошибиться в сторону видео безопаснее (оно со звуком)
+  assert.equal(isPlayableName('Голосовое 03.09.2026.webm'), 'audio');
+  assert.equal(isPlayableName('Запись экрана 03.09.2026.webm'), 'video');
+  assert.equal(isPlayableName('отчёт.pdf'), null);
+  assert.equal(isPlayableName('разговор.mp3'), 'audio');
+  assert.equal(isPlayableName('демо.mp4'), 'video');
   assert.equal(isImageName('отчёт.pdf'), false);
   assert.equal(isImageName('без-расширения'), false);
 

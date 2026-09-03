@@ -166,6 +166,23 @@ export class ChatsController {
     }, dto.mentionIds);
   }
 
+  /**
+   * Клип: голосовое сообщение или запись экрана.
+   *
+   * Расшифровка кладётся в тело сообщения — иначе аудио и видео становятся чёрной
+   * дырой: их не найдёт поиск, не увидит сводка и не разберёт помощник.
+   */
+  @Post(':id/clip')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  sendClip(
+    @CurrentUser() u: AuthUser, @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File, @Body() body: { kind?: string },
+  ) {
+    if (!file) throw AppException.validation('Запись не получена');
+    return this.chats.sendClip(u.tenantId, id, u, file, body?.kind === 'screen' ? 'screen' : 'voice');
+  }
+
   /** Вопрос помощнику в этом чате: ответ ложится в ту же переписку, при всех. */
   @Post(':id/ai')
   askAi(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AskAiDto) {

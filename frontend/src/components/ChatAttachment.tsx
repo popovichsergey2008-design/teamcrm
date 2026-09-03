@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { api } from '../lib/api';
-import { isImageName } from '../lib/attachments';
+import { isImageName, isPlayableName } from '../lib/attachments';
 
 /**
  * Вложение в сообщении.
@@ -21,12 +21,20 @@ export function ChatAttachment({ fileId, fileName, onOpen }: {
   onOpen: (url: string, name: string, mime: string) => void;
 }) {
   const isImage = isImageName(fileName);
+  /*
+    Голосовое и запись экрана проигрываются прямо в ленте.
+
+    Ссылка «скачать запись» превращает клип в документ: его надо сохранить, найти в
+    загрузках и открыть плеером — ради двадцати секунд объяснения этого никто не делает,
+    и клипы перестают отправлять вовсе.
+  */
+  const media = isPlayableName(fileName);
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const mime = useRef<string>('');
 
   useEffect(() => {
-    if (!isImage) return;
+    if (!isImage && !media) return;
     let dead = false;
     let objectUrl = '';
     api.authedBlob(`/api/files/${fileId}`)
@@ -38,7 +46,7 @@ export function ChatAttachment({ fileId, fileName, onOpen }: {
       })
       .catch(() => { if (!dead) setFailed(true); });
     return () => { dead = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [fileId, isImage]);
+  }, [fileId, isImage, media]);
 
   /** Не картинка (или картинка не загрузилась) — скачиваем по нажатию, тоже с токеном. */
   const download = async () => {
@@ -52,6 +60,16 @@ export function ChatAttachment({ fileId, fileName, onOpen }: {
       setTimeout(() => URL.revokeObjectURL(href), 5000);
     } catch { setFailed(true); }
   };
+
+  if (media && url) {
+    return media === 'video'
+      ? <video className="chat-clip" src={url} controls preload="metadata" />
+      : <audio className="chat-clip-audio" src={url} controls preload="metadata" />;
+  }
+  if ((isImage || media) && !url && !failed) {
+    // место под запись занято, пока она грузится: иначе лента прыгает под курсором
+    return <span className="chat-img chat-img-wait" aria-hidden="true" />;
+  }
 
   if (isImage && url) {
     return (

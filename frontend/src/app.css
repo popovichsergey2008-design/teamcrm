@@ -1681,6 +1681,28 @@
 .chat-feed::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 .chat-day { text-align: center; font-size: 11px; color: var(--text-mut); margin: 10px 0 6px; }
 /*
+  Клипы: голосовое сообщение и запись экрана.
+
+  Играют прямо в ленте: ссылка «скачать запись» превращает клип в документ, который надо
+  сохранить, найти в загрузках и открыть плеером, — ради двадцати секунд объяснения
+  этого никто не делает, и клипы перестают отправлять вовсе.
+*/
+.chat-clip { display: block; max-width: 320px; max-height: 240px; border-radius: 10px; margin-top: 4px; }
+.chat-clip-audio { display: block; width: 260px; max-width: 100%; margin-top: 4px; }
+/* Идёт запись — видно без сомнений: человек говорит вслух и обязан понимать, пишется ли. */
+.chat-clip-state {
+  display: flex; align-items: center; gap: 8px; margin: 0 16px; padding: 6px 10px;
+  font-size: var(--fs-xs); color: var(--text-dim);
+  background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.chat-clip-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--danger);
+  animation: clip-blink 1s steps(2, start) infinite;
+}
+@keyframes clip-blink { 50% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .chat-clip-dot { animation: none; } }
+
+/*
   Ответы помощника и сводки.
 
   Ответ ИИ лежит в общей ленте — спросили при всех, ответ видят все, — но отличается

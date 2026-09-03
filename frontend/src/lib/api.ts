@@ -623,6 +623,25 @@ export const api = {
   renameChat: (chatId: string, title: string) => request<{ title: string }>('PATCH', `/chats/${chatId}`, { title }),
   leaveChat: (chatId: string) => request<any>('POST', `/chats/${chatId}/leave`),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
+  /**
+   * Клип в чат: голосовое сообщение или запись экрана.
+   *
+   * Расшифровка делается на сервере и ложится в тело сообщения — иначе аудио и видео
+   * становятся чёрной дырой: их не найдёт поиск и не разберёт помощник.
+   */
+  sendChatClip: async (chatId: string, blob: Blob, kind: 'voice' | 'screen') => {
+    const fd = new FormData();
+    const ext = kind === 'voice' ? 'webm' : 'webm';
+    fd.append('file', blob, `${kind === 'voice' ? 'Голосовое' : 'Запись экрана'} ${new Date().toLocaleString('ru-RU')}.${ext}`);
+    fd.append('kind', kind);
+    const res = await fetch(`/api/chats/${chatId}/clip`, {
+      method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
+    });
+    const env = await res.json();
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Запись не отправлена');
+    return env.data;
+  },
+
   /** Вопрос помощнику в чате: ответ ложится в ту же переписку, при всех. */
   askChatAi: (chatId: string, question: string) =>
     request<any>('POST', `/chats/${chatId}/ai`, { question }),
