@@ -43,6 +43,10 @@ export class ChatsService {
       lastBody: c.last_body,
       lastAuthor: c.last_author,
       lastAt: c.last_at,
+      // избранное личное: у каждого свои четыре закреплённых чата
+      favorite: c.favorite === true,
+      isPrivate: c.is_private !== false,
+      description: c.description ?? null,
     }));
   }
 
