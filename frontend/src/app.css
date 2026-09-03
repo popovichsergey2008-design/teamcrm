@@ -1929,7 +1929,27 @@
 .chat-line { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 6px; }
 .chat-line.mine { align-items: flex-end; }
 .chat-time { font-size: 11px; color: var(--text-dim); margin: 2px 4px 0; }
-.chat-input { display: flex; align-items: center; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--border); }
+/*
+  Строка ввода в чате.
+
+  Поле выровнено по НИЗУ, а не по центру: оно растёт под текст, и при центрировании
+  кнопки уезжали бы вверх вместе с ним, каждый раз меняя место под пальцем.
+*/
+.chat-input { display: flex; align-items: flex-end; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--border); }
+/*
+  Само поле — заметно крупнее прежнего однострочного: в чате пишут не одно слово, и
+  сообщение надо перечитать перед отправкой, а не гонять по нему курсором.
+
+  Растёт до шести строк, дальше прокручивается: строка ввода не должна съедать
+  переписку. Высоту под текст ставит MentionField (autoGrow), верхний предел — здесь.
+*/
+.chat-input .input {
+  min-height: 44px; max-height: 168px; padding: 11px var(--sp-3);
+  font-size: 15px; line-height: 1.45; resize: none; overflow-y: auto;
+}
+.chat-input .mention-wrap { flex: 1; min-width: 0; display: flex; }
+/* Гостевой чат и ответ в ветке — поле без обёртки упоминаний: ширину задаём ему. */
+.chat-input > .input { flex: 1; min-width: 0; }
 .chat-call { display: flex; align-items: center; gap: 8px; }
 .chat-ai-toggle { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
 
@@ -2181,6 +2201,11 @@
 .comment { border-bottom: 1px solid var(--border); padding: 8px 0; font-size: 14px; }
 .comment-head { margin-bottom: 4px; font-size: 13px; }
 .comment-input { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+/* Чат задачи — то же поле и те же правила: минимум две строки, рост до шести. */
+.comment-input .input {
+  min-height: 62px; max-height: 168px; font-size: 15px; line-height: 1.45;
+  resize: none; overflow-y: auto;
+}
 .activity-row { font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
 /* карточка на доске */
 .card-labels { display: flex; gap: 4px; margin-bottom: 6px; }

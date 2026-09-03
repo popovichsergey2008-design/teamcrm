@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Avatar } from './Avatar';
 import { activeQuery, MentionUser, suggest } from '../lib/mentions';
 
@@ -12,7 +12,9 @@ import { activeQuery, MentionUser, suggest } from '../lib/mentions';
 
 const MAX_SUGGESTIONS = 6;
 
-export function MentionField({ value, users, onChange, onMention, placeholder, rows, onEnter, disabled, className }: {
+export function MentionField({
+  value, users, onChange, onMention, placeholder, rows, autoGrow, onEnter, disabled, className,
+}: {
   value: string;
   users: MentionUser[];
   onChange: (v: string) => void;
@@ -21,6 +23,14 @@ export function MentionField({ value, users, onChange, onMention, placeholder, r
   placeholder?: string;
   /** Больше одной строки — textarea, иначе однострочный input (комментарий). */
   rows?: number;
+  /**
+   * Поле растёт под текст, как в мессенджерах.
+   *
+   * В однострочном поле длинное сообщение уезжает влево: написанного не видно, а
+   * перечитать перед отправкой нельзя — приходится гонять курсор стрелками. Предел
+   * роста задан в CSS (max-height), дальше поле прокручивается.
+   */
+  autoGrow?: boolean;
   onEnter?: () => void;
   disabled?: boolean;
   className?: string;
@@ -29,6 +39,20 @@ export function MentionField({ value, users, onChange, onMention, placeholder, r
   const [caret, setCaret] = useState(0);
   const [active, setActive] = useState(0);
   const [open, setOpen] = useState(false);
+
+  /*
+    Высоту пересчитываем на каждое изменение текста, а не только при вводе с
+    клавиатуры: сообщение приходит и извне — вставкой из буфера, выбором упоминания,
+    очисткой после отправки. Сначала «auto», иначе scrollHeight помнит прежнюю высоту
+    и поле умеет только расти.
+  */
+  useEffect(() => {
+    if (!autoGrow) return;
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [autoGrow, value]);
 
   const found = useMemo(() => {
     if (!open) return [];
@@ -86,7 +110,9 @@ export function MentionField({ value, users, onChange, onMention, placeholder, r
 
   return (
     <div className="mention-wrap">
-      {rows && rows > 1 ? <textarea {...common} rows={rows} /> : <input {...common} />}
+      {autoGrow || (rows && rows > 1)
+        ? <textarea {...common} rows={rows ?? 1} />
+        : <input {...common} />}
       {found.length > 0 && (
         <ul className="mention-list" role="listbox">
           {found.map((u, i) => (

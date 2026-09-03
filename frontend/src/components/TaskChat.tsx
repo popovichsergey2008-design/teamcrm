@@ -493,6 +493,7 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
             void api.addTaskParticipant(taskId, userId, 'watcher').catch(() => undefined);
           }}
           rows={2}
+          autoGrow
           placeholder={pending ? 'Подпись к вложению…' : 'Нажмите @, чтобы позвать человека или помощника'}
           onEnter={send}
         />
