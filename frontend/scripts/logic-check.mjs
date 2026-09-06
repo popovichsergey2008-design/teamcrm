@@ -727,6 +727,41 @@ test('реестр: пустые фильтры не уезжают в запр�
   assert.equal(rangeLabel(1, 50, 0), 'ничего не найдено');
 });
 
+// ── напоминания секретаря ─────────────────────────────────────────────────────
+test('напоминания: группы без пустых, превью не из сводки, красным — только горящее', async () => {
+  const { groupPings, pingPreview, urgentPings } = await load('lib/pings-view.ts');
+
+  const items = [
+    { id: '1', kind: 'due_soon', text: 'Срок через 1 день: «Задача на Сергея»' },
+    { id: '2', kind: 'digest', text: 'Сводка дня:\n• одно\n• два' },
+    { id: '3', kind: 'overdue', text: 'Срок прошёл 12 ч назад: «Голосовой поиск»' },
+    { id: '4', kind: 'stuck_review', text: 'Висит на проверке третий день' },
+  ];
+
+  const groups = groupPings(items);
+  assert.deepEqual(groups.map((g) => g.title), ['Сводка', 'Просрочено', 'Зависло на проверке', 'Скоро срок']);
+  for (const g of groups) assert.equal(g.items.length > 0, true, `пустая группа ${g.title}`);
+
+  // новый вид с сервера не должен пропадать с экрана молча
+  const withNew = groupPings([...items, { id: '5', kind: 'whatever_new', text: 'Новый повод' }]);
+  assert.equal(withNew[withNew.length - 1].title, 'Прочее');
+  assert.equal(withNew[withNew.length - 1].items[0].id, '5');
+
+  // сводка многострочная: в одну строку от неё остаётся обрывок — берём дело
+  assert.equal(pingPreview(items).startsWith('Срок через 1 день'), true);
+  // если кроме сводки ничего нет, показываем её, схлопнув переносы
+  assert.equal(pingPreview([items[1]]).includes('\n'), false);
+  // длинный текст обрезается с многоточием, а не рвёт строку
+  const long = pingPreview([{ id: '9', kind: 'overdue', text: 'я'.repeat(300) }], 20);
+  assert.equal(long.length, 20);
+  assert.equal(long.endsWith('…'), true);
+
+  // красным горит просроченное и зависшее, сводка и «скоро срок» — нет
+  assert.equal(urgentPings(items), 2);
+  assert.equal(urgentPings([items[1], items[0]]), 0);
+  assert.equal(pingPreview([]), '', 'пустой список не роняет строку');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

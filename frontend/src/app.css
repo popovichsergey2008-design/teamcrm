@@ -1339,7 +1339,6 @@
 .agenda-body { white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text); }
 
 /* напоминания ассистента */
-.ping-box { margin-bottom: 14px; padding: 14px 16px; }
 .ping-head { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: var(--fs-sm); }
 .ping-row {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -2782,3 +2781,46 @@
 .registry-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Обводку получает сам флажок: подпись — это label, фокус браузер даёт не ей. */
 .registry-check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ───── Напоминания секретаря: свёрнутая строка и панель разбора ─────
+   Строка одной высоты при двух напоминаниях и при двадцати: «Фокус дня» не должен
+   меняться от того, сколько поводов накопилось. Разбор — в правой панели. */
+.ping-strip {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; text-align: left;
+  margin-bottom: 14px; padding: 9px var(--sp-3);
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text-dim); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.ping-strip:hover { border-color: var(--border-2); background: var(--hover); }
+.ping-strip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ping-strip-label { font-weight: 600; color: var(--text); white-space: nowrap; }
+.ping-strip-count {
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--fill-muted); color: #fff; font-size: var(--fs-xs); font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* Красным — только когда действительно горит (просрочка и зависшее на проверке).
+   Если красное всё подряд, цвет перестают замечать. */
+.ping-strip-count.urgent { background: var(--fill-danger); }
+/* Превью — ровно одна строка: именно на нём блок и разрастался. */
+.ping-strip-preview {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ping-strip-go { display: flex; align-items: center; gap: 4px; color: var(--accent); white-space: nowrap; }
+@media (max-width: 720px) { .ping-strip-preview { display: none; } }
+
+.ping-bulk { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+.ping-group { margin-bottom: var(--sp-4); }
+.ping-group-head {
+  display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 2px;
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-mut); font-weight: 600;
+}
+.ping-group-count {
+  background: var(--bg-elev-2); color: var(--text-dim); border-radius: 9px;
+  padding: 0 6px; font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+}
+/* В панели строка узкая: кнопки уходят под текст, а не жмут его в две буквы. */
+.drawer .ping-row { flex-wrap: wrap; }
+.drawer .ping-actions { margin-left: auto; }
