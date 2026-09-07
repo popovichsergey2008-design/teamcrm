@@ -304,6 +304,24 @@ export class MeetGateway implements OnModuleInit {
       case 'meet.produce': {
         const participant = room?.participants.get(c.userId);
         if (!room || !participant?.sendTransport || !p.kind || !p.rtp_parameters) return;
+        /*
+          Новый показ экрана закрывает прежний показ ТОГО ЖЕ человека — до создания нового.
+
+          Остановить демонстрацию можно полосой самого браузера, минуя наши кнопки, и
+          тогда клиент мог не сообщить об этом серверу: поток оставался жить с мёртвой
+          дорожкой. Второй показ упирался в него, и собеседники видели чёрный экран
+          вместо картинки. Двух экранов сразу человек не показывает, поэтому здесь
+          безопасно и правильно закрыть предыдущий самим.
+        */
+        if ((p.app_data ?? {}).type === 'screen') {
+          for (const [id, old] of participant.producers) {
+            if ((old.appData as { type?: string } | undefined)?.type !== 'screen') continue;
+            old.close();
+            participant.producers.delete(id);
+            this.trace(c, 'screen.replaced', { producerId: id });
+            this.broadcast(room, 'meet.producer-closed', { meeting_id: room.id, user_id: c.userId, producer_id: id }, c.userId);
+          }
+        }
         try {
           const producer = await participant.sendTransport.produce({
             kind: p.kind, rtpParameters: p.rtp_parameters, appData: p.app_data ?? {},

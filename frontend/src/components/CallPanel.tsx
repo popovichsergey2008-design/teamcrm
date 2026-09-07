@@ -6,7 +6,7 @@ import { CallMini } from './CallMini';
 import { RemoteAudio, RemoteMedia } from './CallMedia';
 import { api, ApiError, tokens } from '../lib/api';
 import { Knock, MeetClient, Peer, RemoteTrack } from '../lib/meet-client';
-import { MiniPerson } from '../lib/call-mini';
+import { MiniPerson, callTime, currentScreen, mergeTrack } from '../lib/call-mini';
 import { openPipWindow, pipSupported } from '../lib/pip';
 import { watchSpeaking } from '../lib/speaking';
 import { diag } from '../lib/diag';
@@ -16,14 +16,16 @@ import { useAuth } from '../state/auth';
 /**
  * Размер свёрнутого созвона по умолчанию.
  *
- * Маленький намеренно: свёрнутое окно должно напоминать о разговоре, а не занимать
- * угол экрана. Растянуть его можно и мышью, и это запоминается — но исходный размер
- * рассчитан на «вижу собеседника краем глаза», а не «смотрю встречу».
+ * Просим у браузера самое маленькое окно, какое он согласится открыть: свёрнутый
+ * созвон должен напоминать о разговоре, а не занимать угол экрана. Chrome и Edge
+ * подтягивают запрошенный размер до своего минимума сами — просить меньше не вредно,
+ * а больше отдавать незачем. Кому нужно крупнее — тянет за край окна, и размер
+ * запоминается.
  */
-const PIP_SIZE = { width: 250, height: 200 };
+const PIP_SIZE = { width: 168, height: 108 };
 /** Размер плашки внутри страницы. Человек тянет за угол — размер сохраняется. */
 const DOCK_SIZE_KEY = 'teamcrm.callDockSize';
-const DOCK_DEFAULT = { width: 210, height: 175 };
+const DOCK_DEFAULT = { width: 148, height: 100 };
 
 const STATE_LABEL: Record<string, string> = {
   connecting: 'Подключаюсь…',
@@ -69,6 +71,8 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
   const localStream = useRef<MediaStream | null>(null);
   const camProducer = useRef<string | null>(null);
   const screenProducer = useRef<string | null>(null);
+  /** Захват экрана: держим сам поток, чтобы погасить его дорожки при остановке показа. */
+  const screenStream = useRef<MediaStream | null>(null);
   // Своя дорожка хранится состоянием, а не ссылкой на элемент: элемент появляется
   // только после включения камеры, и присваивать ему поток раньше было некуда —
   // собственная плитка оставалась пустой.
@@ -76,13 +80,18 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
   const windowRef = useRef<HTMLDivElement | null>(null);
   const [full, setFull] = useState(false);
   /**
-   * Свёрнутый созвон.
+   * Как показан созвон. Сам разговор от этого не зависит НИКАК: соединение, звук и
+   * запись живут, пока компонент смонтирован, — меняется только представление.
    *
-   * Разговор продолжается: соединение, звук и запись не трогаем, меняется только
-   * размер окна. Ради этого компонент и не размонтируется — иначе «свернуть» означало бы
-   * «положить трубку», а человеку нужно посмотреть задачу, не выходя из разговора.
+   *  - `full`   — обычное окно;
+   *  - `mini`   — свёрнут (отдельное окно поверх всех окон либо плашка в углу);
+   *  - `hidden` — убран с глаз совсем: на экране остаётся только маленькая кнопка
+   *               возврата. Так закрывают созвон крестиком в Google Meet: окна нет,
+   *               разговор идёт. Раньше крестик означал «положить трубку», и убрать
+   *               окно, не выходя из разговора, было нельзя.
    */
-  const [mini, setMini] = useState(false);
+  const [view, setView] = useState<'full' | 'mini' | 'hidden'>('full');
+  const mini = view === 'mini';
   /**
    * Окно поверх всех окон, если браузер его умеет.
    *
@@ -110,6 +119,23 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
     } catch { return DOCK_DEFAULT; }
   });
   const tracksRef = useRef<RemoteTrack[]>([]);
+  /**
+   * Сколько идёт разговор.
+   *
+   * Нужно там, где созвон убран с глаз: маленькая кнопка возврата — единственное
+   * свидетельство, что разговор ещё идёт, и часы на ней отвечают на главный вопрос
+   * «я всё ещё в созвоне?». В полном окне часы не считаем: перерисовывать окно с
+   * видео раз в секунду незачем.
+   */
+  const startedAt = useRef(Date.now());
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (view === 'full') return;
+    const tick = () => setElapsed(Math.floor((Date.now() - startedAt.current) / 1000));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [view]);
 
   // Полноэкранный режим: следим за системным событием, а не за своей кнопкой —
   // выйти можно и клавишей Esc, кнопка обязана это отражать.
@@ -136,22 +162,39 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
     if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch { /* уже вышли */ } }
     const win = await openPipWindow(PIP_SIZE.width, PIP_SIZE.height);
     if (win) { pipRef.current = win; setPipWin(win); }
-    setMini(true);
+    setView('mini');
   };
 
-  /** Вернуться к полному окну: отдельное окно при этом закрывается. */
-  const expand = useCallback(() => {
-    pipRef.current?.close();
+  /**
+   * Закрыть окно поверх всех окон ПО СВОЕЙ воле.
+   *
+   * Ссылку обнуляем ДО закрытия: по ней обработчик `pagehide` отличает «закрыли мы»
+   * от «человек нажал крестик», а это два разных намерения с разным исходом.
+   */
+  const dropPip = useCallback(() => {
+    const win = pipRef.current;
     pipRef.current = null;
     setPipWin(null);
-    setMini(false);
+    win?.close();
   }, []);
 
-  // Окно поверх всех окон человек может закрыть крестиком — для нас это «развернуть обратно»,
-  // а не «положить трубку»: разговор продолжается, менять надо только представление.
+  /** Вернуться к полному окну: отдельное окно при этом закрывается. */
+  const expand = useCallback(() => { dropPip(); setView('full'); }, [dropPip]);
+
+  /** Убрать созвон с глаз. Разговор продолжается, на экране остаётся кнопка возврата. */
+  const hide = useCallback(() => { dropPip(); setView('hidden'); }, [dropPip]);
+
+  // Крестик на окне поверх всех окон — это «убрать созвон с глаз», а не «положить
+  // трубку» и не «верни большое окно на пол-экрана»: человек закрывает окошко именно
+  // затем, чтобы оно не мешало. Разговор идёт дальше, вернуться — кнопкой в углу.
   useEffect(() => {
     if (!pipWin) return;
-    const onHide = () => { pipRef.current = null; setPipWin(null); setMini(false); };
+    const onHide = () => {
+      if (pipRef.current !== pipWin) return; // закрыли мы сами — представление уже выбрано
+      pipRef.current = null;
+      setPipWin(null);
+      setView('hidden');
+    };
     pipWin.addEventListener('pagehide', onHide);
     return () => pipWin.removeEventListener('pagehide', onHide);
   }, [pipWin]);
@@ -199,7 +242,8 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
         if (cancelled) return;
         const c = new MeetClient(meetingId, guest?.token ?? tokens.access ?? '', iceServers, {
           onPeers: setPeers,
-          onTrack: (t) => setTracks((prev) => [...prev.filter((x) => x.consumerId !== t.consumerId), t]),
+          // правила сложения потоков — в call-mini: там же они и проверяются
+          onTrack: (t) => setTracks((prev) => mergeTrack(prev, t)),
           onTrackGone: (id) => setTracks((prev) => prev.filter((x) => x.consumerId !== id)),
           onState: setState,
           onRecording: setRecording,
@@ -254,6 +298,10 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
       cancelled = true;
       client.current?.leave();
       localStream.current?.getTracks().forEach((t) => t.stop());
+      // захват экрана живёт своим потоком: не погасив его, оставляем человеку
+      // полосу «идёт демонстрация» уже после конца созвона
+      screenStream.current?.getTracks().forEach((t) => { t.onended = null; t.stop(); });
+      screenStream.current = null;
     };
     // список приглашаемых берётся один раз при входе в комнату — перезаходить на его смену нельзя
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -289,27 +337,52 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
     }
   }, [camOn, meetingId]);
 
+  /**
+   * Прекратить показ экрана — ОДНИМ путём, откуда бы его ни остановили.
+   *
+   * Остановить показ можно двумя способами: нашей кнопкой и полосой самого браузера
+   * («Прекратить показ»). Второй путь раньше только гасил подпись на кнопке: серверу
+   * никто не сообщал, поток оставался жить с мёртвой дорожкой, и следующий показ
+   * упирался в него — собеседники видели чёрный прямоугольник вместо экрана.
+   * Поэтому оба пути ведут сюда, и сервер узнаёт о конце показа всегда.
+   */
+  const stopScreen = useCallback(async () => {
+    const id = screenProducer.current;
+    screenProducer.current = null;
+    setScreenOn(false);
+    if (id) await client.current?.unpublish(id);
+    // дорожки гасим сами: браузер держит полосу «идёт показ», пока жив хоть один трек
+    screenStream.current?.getTracks().forEach((t) => { t.onended = null; t.stop(); });
+    screenStream.current = null;
+  }, []);
+
   const toggleScreen = useCallback(async () => {
     const c = client.current;
     if (!c) return;
+    if (screenOn) { await stopScreen(); return; }
+    let display: MediaStream | null = null;
     try {
-      if (screenOn) {
-        if (screenProducer.current) await c.unpublish(screenProducer.current);
-        screenProducer.current = null;
-        setScreenOn(false);
-        return;
-      }
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      display = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      screenStream.current = display;
       const track = display.getVideoTracks()[0];
-      // пользователь может остановить показ кнопкой браузера — состояние надо вернуть
-      track.onended = () => { screenProducer.current = null; setScreenOn(false); };
-      screenProducer.current = await c.publish(track, { screen: true });
+      if (!track) throw new Error('Браузер не дал картинку экрана');
+      const id = await c.publish(track, { screen: true });
+      if (!id) throw new Error('Сервер не принял показ экрана');
+      screenProducer.current = id;
       setScreenOn(true);
+      // остановка кнопкой браузера — такой же конец показа, как наша кнопка
+      track.onended = () => { void stopScreen(); };
     } catch (e) {
-      diag('meet', 'screen.cancelled', meetingId, { error: (e as Error)?.name });
+      // не отдали экран или не долетел до сервера — гасим захват, иначе браузер
+      // продолжит показывать «идёт демонстрация» при выключенном показе
+      display?.getTracks().forEach((t) => t.stop());
+      screenStream.current = null;
+      screenProducer.current = null;
+      setScreenOn(false);
+      diag('meet', 'screen.cancelled', meetingId, { error: (e as Error)?.name ?? (e as Error)?.message });
       setErr('Демонстрация экрана отменена');
     }
-  }, [screenOn, meetingId]);
+  }, [screenOn, meetingId, stopScreen]);
 
   const leave = () => {
     pipRef.current?.close();
@@ -366,7 +439,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
   };
 
   const audios = tracks.filter((t) => t.kind === 'audio');
-  const screenTrack = tracks.find((t) => t.kind === 'video' && t.screen) ?? null;
+  // Показов может прилететь несколько (кто-то показывает вслед за другим) — на сцене
+  // всегда САМЫЙ СВЕЖИЙ. Брать первый попавшийся значило показывать то, что уже кончилось.
+  const screenTrack = currentScreen(tracks);
   // видео по участникам: плитка есть у каждого, даже если камера выключена
   const camByUser = new Map(tracks.filter((t) => t.kind === 'video' && !t.screen).map((t) => [String(t.userId), t]));
   const me = String(guest?.userId ?? user?.id ?? '');
@@ -390,6 +465,47 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
   */
   const sound = <>{audios.map((t) => <RemoteAudio key={t.consumerId} track={t.track} />)}</>;
 
+  /*
+    Созвон убран с глаз.
+
+    На экране не остаётся ничего, кроме маленькой кнопки в углу: разговор идёт,
+    вернуться — одним нажатием. Совсем без следа убирать нельзя — человек забудет,
+    что микрофон включён, и его услышат там, где он этого не ждёт. Поэтому на кнопке
+    состояние микрофона и часы разговора, а выключить микрофон можно, не возвращаясь.
+  */
+  if (view === 'hidden') {
+    return (
+      <>
+        {sound}
+        <div className="call-pill">
+          <button
+            className={`call-pill-btn${micOn ? '' : ' call-pill-off'}`}
+            onClick={toggleMic}
+            title={micOn ? 'Выключить микрофон' : 'Включить микрофон'}
+            aria-label={micOn ? 'Выключить микрофон' : 'Включить микрофон'}
+          >
+            <Icon name={micOn ? 'mic' : 'mic-off'} size={14} />
+          </button>
+          <button
+            className="call-pill-back"
+            onClick={() => setView('full')}
+            title={knocks.length
+              ? `За дверью ждёт гость (${knocks.length}) — вернитесь в созвон, чтобы впустить`
+              : 'Идёт созвон — вернуться в окно разговора'}
+          >
+            {recording
+              ? <span className="mini-rec-dot" aria-hidden="true" />
+              : <Icon name="phone" size={13} />}
+            <span>{callTime(elapsed)}</span>
+            {/* Гость, стучащийся в дверь, обязан быть виден даже в убранном созвоне:
+                иначе он стоит там, пока о нём не вспомнят. */}
+            {knocks.length > 0 && <span className="call-pill-knock">{knocks.length}</span>}
+          </button>
+        </div>
+      </>
+    );
+  }
+
   if (mini) {
     const panel = (
       <CallMini
@@ -406,6 +522,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
         onMic={toggleMic}
         onCam={toggleCam}
         onExpand={expand}
+        onHide={isGuest ? undefined : hide}
         onLeave={leave}
       />
     );
@@ -482,7 +599,22 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
             <button className="btn btn-ghost btn-sm" onClick={toggleFull} title={full ? 'Свернуть из полного экрана' : 'Развернуть на весь экран'}>
               <Icon name={full ? 'minimize' : 'maximize'} size={15} />
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={leave} title="Выйти из созвона"><Icon name="close" /></button>
+            {/* Крестик УБИРАЕТ окно, а не кладёт трубку: разговор продолжается, в углу
+                остаётся кнопка возврата. Выход из созвона — красной кнопкой внизу:
+                «закрыть окно» и «уйти со встречи» — разные желания, и раньше одно
+                молча исполняло другое.
+                У гостя за окном созвона пусто — вся его страница и есть созвон, —
+                поэтому ему крестик по-прежнему значит «выйти». */}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={isGuest ? leave : hide}
+              title={isGuest
+                ? 'Выйти из созвона'
+                : 'Убрать окно — созвон продолжится, вернуться можно кнопкой в углу. Чтобы выйти, нажмите «Выйти» внизу'}
+              aria-label={isGuest ? 'Выйти из созвона' : 'Убрать окно созвона'}
+            >
+              <Icon name="close" />
+            </button>
           </span>
         </div>
 
@@ -534,7 +666,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
         <div className="call-stage">
           {screenTrack && (
             <div className="call-spotlight">
-              <RemoteMedia track={screenTrack.track} />
+              {/* ключ по потоку: сменился показывающий — элемент пересоздаётся целиком,
+                  а не переиспользуется вместе с застрявшим кадром прежнего показа */}
+              <RemoteMedia key={screenTrack.consumerId} track={screenTrack.track} />
             </div>
           )}
           <div className={screenTrack ? 'call-strip' : 'call-grid'}>

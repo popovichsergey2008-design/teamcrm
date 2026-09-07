@@ -526,7 +526,7 @@ test('личный порядок меню: переставили, спрята
 
 // ── свёрнутый созвон ──────────────────────────────────────────────────────────
 test('в свёрнутом окне видно того, кто говорит', async () => {
-  const { miniOrder, initials, loudest, miniNote } = await load('lib/call-mini.ts');
+  const { miniOrder, initials, loudest, miniNote, callTime } = await load('lib/call-mini.ts');
   const p = (id, over = {}) => ({ id, name: id, hasVideo: false, isSelf: false, ...over });
 
   const people = [p('me', { isSelf: true, hasVideo: true }), p('a'), p('b', { hasVideo: true }), p('ai', { isAi: true })];
@@ -554,6 +554,37 @@ test('в свёрнутом окне видно того, кто говорит'
 
   assert.equal(miniNote(1, false), 'вы одни');
   assert.equal(miniNote(3, true), 'на связи: 3 · идёт запись');
+
+  // часы на кнопке возврата: убранный созвон только ими и виден
+  assert.equal(callTime(0), '0:00');
+  assert.equal(callTime(64), '1:04');
+  assert.equal(callTime(3600 + 7 * 60 + 4), '1:07:04');
+  assert.equal(callTime(-5), '0:00', 'часы не идут назад даже при кривом времени системы');
+});
+
+// ── потоки собеседников ───────────────────────────────────────────────────────
+test('новый показ экрана вытесняет прежний показ того же человека', async () => {
+  const { mergeTrack, currentScreen } = await load('lib/call-mini.ts');
+  const t = (consumerId, userId, over = {}) => ({ consumerId, userId, kind: 'video', screen: false, ...over });
+
+  // тот же поток пришёл дважды (пауза и возврат) — в списке остаётся один
+  assert.deepEqual(mergeTrack([t('c1', 'u1')], t('c1', 'u1')).map((x) => x.consumerId), ['c1']);
+
+  // ГЛАВНОЕ: второй показ экрана того же человека убирает застрявший первый,
+  // иначе на сцену попадала мёртвая дорожка и все видели чёрный прямоугольник
+  const after = mergeTrack(
+    [t('cam', 'u1'), t('scr1', 'u1', { screen: true }), t('scr9', 'u2', { screen: true })],
+    t('scr2', 'u1', { screen: true }),
+  );
+  assert.deepEqual(after.map((x) => x.consumerId), ['cam', 'scr9', 'scr2']);
+  assert.equal(currentScreen(after).consumerId, 'scr2', 'на сцене самый свежий показ');
+
+  // камеру показ экрана не трогает: это разные дорожки одного человека
+  const withCam = mergeTrack(after, t('cam2', 'u1'));
+  assert.equal(withCam.filter((x) => x.userId === 'u1' && !x.screen).length, 2);
+
+  assert.equal(currentScreen([t('c1', 'u1'), { ...t('a', 'u2'), kind: 'audio', screen: true }]), null,
+    'звук показом экрана не считается');
 });
 
 // ── вложения в переписке ──────────────────────────────────────────────────────

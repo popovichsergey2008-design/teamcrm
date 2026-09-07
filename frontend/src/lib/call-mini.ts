@@ -91,3 +91,44 @@ export function miniNote(peerCount: number, recording: boolean): string {
   const who = peerCount > 1 ? `на связи: ${peerCount}` : 'вы одни';
   return recording ? `${who} · идёт запись` : who;
 }
+
+/** Часы разговора: «7:04», а после часа — «1:07:04». */
+export function callTime(total: number): string {
+  const s = Math.max(0, Math.floor(total || 0));
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  const two = (n: number) => String(n).padStart(2, '0');
+  return h ? `${h}:${two(m % 60)}:${two(s % 60)}` : `${m}:${two(s % 60)}`;
+}
+
+/**
+ * Минимум сведений о чужом потоке, нужный правилам ниже. Полное описание — в
+ * `meet-client`; здесь намеренно только то, по чему принимается решение.
+ */
+export interface TrackLike {
+  consumerId: string;
+  userId: string;
+  kind: 'audio' | 'video';
+  screen: boolean;
+}
+
+/**
+ * Прибавить пришедший поток к уже принятым.
+ *
+ * Тонкость одна, и она стоила чёрного экрана у всех, кроме показывающего: НОВЫЙ ПОКАЗ
+ * ЭКРАНА ВЫТЕСНЯЕТ ПРЕЖНИЙ ПОКАЗ ТОГО ЖЕ ЧЕЛОВЕКА. Двух экранов сразу никто не
+ * показывает, а вот дорожка от предыдущего показа застревает легко: показ можно
+ * остановить полосой браузера, минуя наши кнопки. Оставшись в списке, она занимала
+ * сцену — картинка была уже мёртвая, и человек видел чёрный прямоугольник.
+ */
+export function mergeTrack<T extends TrackLike>(prev: T[], t: T): T[] {
+  const stale = (x: T) => x.consumerId === t.consumerId
+    || (t.screen && x.screen && x.kind === 'video' && String(x.userId) === String(t.userId));
+  return [...prev.filter((x) => !stale(x)), t];
+}
+
+/** Что показать на сцене: самый свежий показ экрана, а не первый попавшийся. */
+export function currentScreen<T extends TrackLike>(tracks: T[]): T | null {
+  const screens = tracks.filter((t) => t.kind === 'video' && t.screen);
+  return screens.length ? screens[screens.length - 1] : null;
+}

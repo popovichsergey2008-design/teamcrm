@@ -196,7 +196,7 @@
 */
 .call-dock {
   position: fixed; z-index: 120; cursor: grab;
-  min-width: 150px; min-height: 120px; max-width: 92vw; max-height: 80vh;
+  min-width: 136px; min-height: 92px; max-width: 92vw; max-height: 80vh;
   border-radius: var(--radius); box-shadow: var(--shadow);
   touch-action: none;
   /* resize требует overflow не visible — иначе браузер ручку не покажет */
@@ -272,6 +272,56 @@
 .mini-btn-off { background: rgba(140, 30, 35, .92); }
 .mini-btn-leave { background: #c62828; border-color: rgba(255, 255, 255, .25); transform: rotate(135deg); }
 .mini-btn-leave:hover { background: #d43a3a; }
+
+/*
+  Крошечное окно.
+
+  Свёрнутый созвон просят «как можно меньше» — размером с напоминание, а не с
+  окно встречи. В такой размер помещаются одно лицо и полоса кнопок, и это ровно
+  то, что нужно: видеть, что разговор идёт, и дотянуться до микрофона. Подписи и
+  вторые-третьи лица отсюда убраны в разметке — они превращались в мусор из точек.
+*/
+.mini-tiny .mini-bar { gap: 3px; padding: 4px; }
+.mini-tiny .mini-btn { width: 24px; height: 24px; }
+.mini-tiny .mini-btn .icon { width: 14px; height: 14px; }
+.mini-tiny .mini-name { display: none; }
+.mini-tiny .mini-rec { top: 4px; left: 4px; padding: 3px; }
+.mini-tiny .mini-avatar { font-size: 13px; }
+
+/*
+  Созвон, убранный с глаз.
+
+  Окна нет совсем — только эта кнопка в углу. Меньше уже некуда, а совсем без следа
+  прятать разговор нельзя: человек не должен обнаружить включённый микрофон через
+  полчаса. Отсюда же его и выключают, не разворачивая созвон обратно.
+*/
+.call-pill {
+  position: fixed; right: 16px; bottom: 16px; z-index: 120;
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+  border-radius: 999px; box-shadow: var(--shadow-lg);
+}
+.call-pill-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  color: #fff; background: rgba(46, 52, 64, .92); border: 1px solid rgba(255, 255, 255, .18);
+}
+.call-pill-btn:hover { background: rgba(70, 78, 94, .95); }
+/* Выключенный микрофон — красным, как в самом созвоне: состояние читается мгновенно. */
+.call-pill-off { background: #c62828; }
+.call-pill-back {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  height: 26px; padding: 0 10px 0 8px; border-radius: 999px;
+  font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+  color: var(--text); background: transparent; border: none;
+}
+.call-pill-back:hover { background: var(--bg-elev-2); }
+.call-pill-knock {
+  display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; background: #c62828; color: #fff; font-size: 10px; font-weight: 600;
+}
+/* Кнопка возврата стоит выше кнопки диктовки: на телефоне они делят один угол. */
+@media (max-width: 1100px) { .call-pill { bottom: 80px; } }
 
 /*
   Кнопки свёрнутого созвона видны всегда.
@@ -2507,7 +2557,7 @@
 .focus-template:focus-visible, .focus-clear:focus-visible,
 .radar-row:focus-visible, .settings-card:focus-visible,
 .palette-item:focus-visible, .palette-mic:focus-visible, .palette-input:focus-visible,
-.voice-fab:focus-visible,
+.voice-fab:focus-visible, .call-pill-btn:focus-visible, .call-pill-back:focus-visible,
 .project-item:focus-visible, .menu-item:focus-visible,
 .add-column:focus-visible, .chat-ai-toggle:focus-visible, .chat-row:focus-visible,
 .col-btn:focus-visible, .dp-chip:focus-visible, .dp-nav:focus-visible, .dp-trigger:focus-visible,

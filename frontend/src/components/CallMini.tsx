@@ -1,7 +1,18 @@
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { RemoteMedia } from './CallMedia';
 import { Knock } from '../lib/meet-client';
 import { MiniPerson, initials, miniNote, miniOrder } from '../lib/call-mini';
+
+/**
+ * Ниже этой ширины (или высоты) окно считается крошечным.
+ *
+ * В такое окно четыре лица не влезают: они превращаются в марки, на которых не
+ * разобрать ни человека, ни кто говорит. Показываем одного — говорящего — и убираем
+ * всё, кроме кнопок: подписи в окне размером со спичечный коробок только мешают.
+ */
+const TINY_W = 210;
+const TINY_H = 140;
 
 /**
  * Свёрнутый созвон.
@@ -16,7 +27,7 @@ import { MiniPerson, initials, miniNote, miniOrder } from '../lib/call-mini';
  * Пустого прямоугольника здесь быть не может: нет камеры — рисуем инициалы.
  * Пустой чёрный блок читается как «созвон сломался», хотя разговор идёт.
  */
-export function CallMini({ people, videoOf, speaking, micOn, camOn, recording, peerCount, detached, knocks, onKnock, onMic, onCam, onExpand, onLeave }: {
+export function CallMini({ people, videoOf, speaking, micOn, camOn, recording, peerCount, detached, knocks, onKnock, onMic, onCam, onExpand, onHide, onLeave }: {
   people: MiniPerson[];
   /** Дорожка участника, если камера включена. */
   videoOf: (id: string) => MediaStreamTrack | null;
@@ -33,12 +44,34 @@ export function CallMini({ people, videoOf, speaking, micOn, camOn, recording, p
   onMic: () => void;
   onCam: () => void;
   onExpand: () => void;
+  /**
+   * Убрать созвон с глаз совсем: разговор продолжится, вернуться — кнопкой в углу.
+   * У гостя такой возможности нет: за окном созвона у него пустая страница.
+   */
+  onHide?: () => void;
   onLeave: () => void;
 }) {
-  const shown = miniOrder(people, speaking);
+  /**
+   * Насколько окно маленькое, решаем по нему самому, а не по тому, где оно живёт:
+   * плашку человек тянет за угол, а окно поверх всех окон браузер открывает своего
+   * размера — и в обоих случаях содержимое обязано ужаться само.
+   */
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const [tiny, setTiny] = useState(false);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      setTiny(el.offsetWidth < TINY_W || el.offsetHeight < TINY_H);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const shown = miniOrder(people, speaking, tiny ? 1 : undefined);
 
   return (
-    <div className={`mini-call${detached ? ' mini-call-pip' : ''}`}>
+    <div className={`mini-call${detached ? ' mini-call-pip' : ''}${tiny ? ' mini-tiny' : ''}`} ref={boxRef}>
       <div className="mini-grid" data-count={shown.length}>
         {shown.map((p) => {
           const track = videoOf(p.id);
@@ -73,9 +106,16 @@ export function CallMini({ people, videoOf, speaking, micOn, camOn, recording, p
         </div>
       )}
 
-      {/* Запись видна и в свёрнутом окне: тихой записи в продукте нет. */}
-      {recording && <span className="mini-rec"><span className="mini-rec-dot" aria-hidden="true" />запись</span>}
-      <span className="mini-note">{miniNote(peerCount, recording)}</span>
+      {/* Запись видна и в свёрнутом окне: тихой записи в продукте нет. В крошечном
+          окне от подписи остаётся точка — место есть только под неё, но знать о
+          записи человек обязан в любом размере. */}
+      {recording && (
+        <span className="mini-rec">
+          <span className="mini-rec-dot" aria-hidden="true" />
+          {!tiny && 'запись'}
+        </span>
+      )}
+      {!tiny && <span className="mini-note">{miniNote(peerCount, recording)}</span>}
 
       <div className="mini-bar">
         <button
@@ -102,6 +142,19 @@ export function CallMini({ people, videoOf, speaking, micOn, camOn, recording, p
         >
           <Icon name="maximize" size={16} />
         </button>
+        {/* Убрать с глаз — не то же самое, что выйти: соседняя красная кнопка кладёт
+            трубку, эта только прячет окно. В отдельном окне ту же работу делает его
+            собственный крестик, но искать его глазами человек не обязан. */}
+        {onHide && (
+          <button
+            className="mini-btn"
+            onClick={onHide}
+            title="Убрать окно — созвон продолжится, вернуться можно кнопкой в углу"
+            aria-label="Убрать окно созвона"
+          >
+            <Icon name="close" size={16} />
+          </button>
+        )}
         <button className="mini-btn mini-btn-leave" onClick={onLeave} title="Выйти из созвона" aria-label="Выйти из созвона">
           <Icon name="phone" size={16} />
         </button>

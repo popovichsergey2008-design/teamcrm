@@ -434,11 +434,20 @@ export class MeetClient {
     }
   }
 
+  /**
+   * Снять свой поток.
+   *
+   * Серверу сообщаем ВСЕГДА, даже если у себя продюсера уже нет: дорожка могла
+   * кончиться сама (человек остановил показ экрана полосой браузера), и тогда на
+   * сервере поток остаётся живым, а собеседники смотрят в застывший чёрный кадр.
+   * Лишнее сообщение сервер просто не найдёт у себя и промолчит — это дешевле,
+   * чем брошенный поток.
+   */
   async unpublish(producerId: string): Promise<void> {
     const producer = this.producers.get(producerId);
-    if (!producer) return;
-    producer.close();
+    producer?.close();
     this.producers.delete(producerId);
+    this.log('unpublish', { producerId, known: !!producer });
     this.emit('meet.producer-close', { producer_id: producerId });
   }
 
