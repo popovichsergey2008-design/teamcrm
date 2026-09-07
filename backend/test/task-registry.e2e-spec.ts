@@ -107,6 +107,42 @@ describe('реестр задач (e2e)', () => {
     expect(String(forMember.project_id)).toBe(String(project.id));
   });
 
+  it('«Делаю» и «Помогаю» — разные срезы, а не один список', async () => {
+    const { owner, member } = await team();
+    const project = (await http.post('/api/projects').set(H(owner.accessToken))
+      .send({ name: `Проект ${uniq()}` }).expect(201)).body.data;
+
+    await http.post('/api/tasks').set(H(owner.accessToken))
+      .send({ projectId: project.id, title: 'Своя работа', assigneeId: member.user.id }).expect(201);
+    const helped = (await http.post('/api/tasks').set(H(owner.accessToken))
+      .send({ projectId: project.id, title: 'Помощь коллеге', assigneeId: owner.user.id }).expect(201)).body.data;
+    await http.post(`/api/tasks/${helped.id}/participants`).set(H(owner.accessToken))
+      .send({ userId: member.user.id, role: 'co_assignee' }).expect(201);
+
+    // исполнитель отвечает за результат, соисполнитель помогает — и это разные списки
+    expect(titles(await registry(member.accessToken, '&scope=doing'))).toEqual(['Своя работа']);
+    expect(titles(await registry(member.accessToken, '&scope=helping'))).toEqual(['Помощь коллеге']);
+    // старое название среза приходит из сохранённых ссылок и обязано работать
+    expect(titles(await registry(member.accessToken, '&scope=mine')).sort())
+      .toEqual(['Помощь коллеге', 'Своя работа']);
+  });
+
+  it('сняли «В работе» — видно и завершённое, и задачи архивных проектов', async () => {
+    const { owner, member } = await team();
+    const project = (await http.post('/api/projects').set(H(owner.accessToken))
+      .send({ name: `Архивный ${uniq()}` }).expect(201)).body.data;
+    await http.post('/api/tasks').set(H(owner.accessToken))
+      .send({ projectId: project.id, title: 'Задача из архива', assigneeId: member.user.id }).expect(201);
+
+    expect(titles(await registry(member.accessToken, '&scope=doing'))).toEqual(['Задача из архива']);
+    await http.post(`/api/projects/${project.id}/archive`).set(H(owner.accessToken)).expect(201);
+
+    // архивный проект — не рабочий список: его задачи не всплывают в обычном срезе
+    expect(titles(await registry(member.accessToken, '&scope=doing'))).toEqual([]);
+    // но «покажи всё, что было» обязано показывать и его
+    expect(titles(await registry(member.accessToken, '&scope=doing&closed=1'))).toEqual(['Задача из архива']);
+  });
+
   it('завершённые показываются только по явному флагу', async () => {
     const { owner, member } = await team();
     const project = (await http.post('/api/projects').set(H(owner.accessToken))

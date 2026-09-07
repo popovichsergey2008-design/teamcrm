@@ -211,10 +211,22 @@ export function TasksPage({ active, scope, onScope, onOpenTask }: {
           {REGISTRY_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
 
-        <label className="registry-check">
-          <input type="checkbox" checked={filters.closed} onChange={(e) => patch({ closed: e.target.checked })} />
-          Показывать завершённые
-        </label>
+        {/*
+          «В работе» — главный переключатель списка, поэтому он выглядит как кнопка,
+          а не как галочка среди фильтров. Включён: только живая работа. Выключен:
+          видно всё, что было, — завершённое и задачи из архивных проектов.
+        */}
+        <button
+          className={`btn btn-sm registry-inwork${filters.inWork ? ' active' : ''}`}
+          onClick={() => patch({ inWork: !filters.inWork })}
+          aria-pressed={filters.inWork}
+          title={filters.inWork
+            ? 'Показаны только задачи в работе. Выключите, чтобы увидеть завершённые и архив'
+            : 'Показано всё, включая завершённое и архивные проекты'}
+        >
+          <Icon name={filters.inWork ? 'play' : 'archive'} size={14} />
+          {filters.inWork ? 'В работе' : 'Всё, включая архив'}
+        </button>
 
         {filterCount > 0 && (
           <button className="btn btn-sm" onClick={() => setFilters({ ...EMPTY_FILTERS, scope: filters.scope })}>

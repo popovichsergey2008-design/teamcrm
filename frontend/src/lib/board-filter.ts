@@ -11,6 +11,8 @@
  * в одном списке значит смешивать «что мне делать» и «что с меня спросят».
  */
 
+import type { TaskView } from './task-views';
+
 interface TaskLike {
   id?: string;
   assignee_id?: string | null;
@@ -18,6 +20,10 @@ interface TaskLike {
   created_by?: string | null;
   /** Кто делает работу вместе с исполнителем. */
   co_assignees?: { userId: string }[];
+  /** Кто следит за задачей, не выполняя её. */
+  watchers?: { userId: string }[];
+  /** Задача закрыта: по этому полю работает переключатель «Только в работе». */
+  closed_at?: string | null;
 }
 
 interface ColumnLike<T> {
@@ -27,13 +33,23 @@ interface ColumnLike<T> {
 }
 
 /**
- * Что показывать:
- * `off` — всю команду; `assigned` — назначенное мне; `created` — поставленное мной;
- * `both` — и то и другое (моя работа целиком, как её видит сам человек).
+ * Что показывать. Четыре вида — общие для доски и раздела «Задачи» (см. `task-views`):
+ * `doing` — я исполнитель; `delegated` — я поручил; `helping` — я соисполнитель;
+ * `watching` — я наблюдатель. Плюс два особых значения: `off` — всю команду и
+ * `both` — вся моя работа целиком (делаю, помогаю и поручил вместе).
  */
-export type MineMode = 'off' | 'assigned' | 'created' | 'both';
+export type MineMode = 'off' | TaskView | 'both';
 
 const eq = (a: unknown, b: unknown) => String(a ?? '') === String(b ?? '') && String(a ?? '') !== '';
+
+/** Полный набор условий отбора: один объект на все функции модуля. */
+export interface FilterOpts {
+  userId: string;
+  mode: MineMode;
+  creatorId?: string | null;
+  /** Скрыть завершённое — переключатель «Только в работе». */
+  inWorkOnly?: boolean;
+}
 
 /**
  * Задача «на мне» — если я исполнитель ИЛИ соисполнитель.
@@ -46,6 +62,11 @@ export const isAssignedTo = (task: TaskLike, userId: string) => (
   || (task.co_assignees ?? []).some((p) => eq(p.userId, userId))
 );
 export const isCreatedBy = (task: TaskLike, userId: string) => eq(task.created_by, userId);
+/** Только соисполнитель: «Помогаю» — это вторая пара рук, а не своя задача. */
+export const isHelping = (task: TaskLike, userId: string) =>
+  (task.co_assignees ?? []).some((p) => eq(p.userId, userId));
+export const isWatching = (task: TaskLike, userId: string) =>
+  (task.watchers ?? []).some((p) => eq(p.userId, userId));
 
 /**
  * Подходит ли задача под текущий выбор.
@@ -53,22 +74,24 @@ export const isCreatedBy = (task: TaskLike, userId: string) => eq(task.created_b
  * Постановщик из выпадающего списка работает НЕЗАВИСИМО от режима «мои»: выбрав
  * коллегу, человек видит всё, что тот раздал, — кому бы ни назначил.
  */
-export function matches<T extends TaskLike>(
-  task: T,
-  o: { userId: string; mode: MineMode; creatorId?: string | null },
-): boolean {
+export function matches<T extends TaskLike>(task: T, o: FilterOpts): boolean {
+  // «Только в работе» отсекает завершённое ДО всех прочих условий: это ответ на
+  // вопрос «что сейчас делается», и он не зависит от того, чья это задача.
+  if (o.inWorkOnly && task.closed_at) return false;
   if (o.creatorId && !isCreatedBy(task, o.creatorId)) return false;
   switch (o.mode) {
-    case 'assigned': return isAssignedTo(task, o.userId);
-    case 'created': return isCreatedBy(task, o.userId);
+    case 'doing': return eq(task.assignee_id, o.userId);
+    case 'helping': return isHelping(task, o.userId);
+    case 'delegated': return isCreatedBy(task, o.userId);
+    case 'watching': return isWatching(task, o.userId);
     case 'both': return isAssignedTo(task, o.userId) || isCreatedBy(task, o.userId);
     default: return true;
   }
 }
 
 /** Фильтр вообще что-то отсекает? От этого зависит и пересчёт позиций при переносе. */
-export const filterActive = (o: { mode: MineMode; creatorId?: string | null }): boolean =>
-  o.mode !== 'off' || !!o.creatorId;
+export const filterActive = (o: FilterOpts): boolean =>
+  o.mode !== 'off' || !!o.creatorId || !!o.inWorkOnly;
 
 /**
  * Оставить подходящие задачи.
@@ -79,7 +102,7 @@ export const filterActive = (o: { mode: MineMode; creatorId?: string | null }): 
  */
 export function filterBoard<T extends TaskLike, C extends ColumnLike<T>>(
   columns: C[],
-  o: { userId: string; mode: MineMode; creatorId?: string | null },
+  o: FilterOpts,
   keepEmpty = false,
 ): C[] {
   const filtered = columns.map((col) => ({ ...col, tasks: col.tasks.filter((t) => matches(t, o)) }));
@@ -89,7 +112,7 @@ export function filterBoard<T extends TaskLike, C extends ColumnLike<T>>(
 /** Сколько задач подходит под выбор — число на переключателе. */
 export function countMatching<T extends TaskLike, C extends ColumnLike<T>>(
   columns: C[],
-  o: { userId: string; mode: MineMode; creatorId?: string | null },
+  o: FilterOpts,
 ): number {
   return columns.reduce((sum, col) => sum + col.tasks.filter((t) => matches(t, o)).length, 0);
 }
@@ -104,7 +127,7 @@ export function countMatching<T extends TaskLike, C extends ColumnLike<T>>(
  */
 export function realPosition<T extends TaskLike>(
   fullTasks: T[],
-  o: { userId: string; mode: MineMode; creatorId?: string | null },
+  o: FilterOpts,
   visibleIndex: number,
 ): number {
   const shownAt: number[] = [];

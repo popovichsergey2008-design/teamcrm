@@ -44,18 +44,38 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const [requiresApproval, setRequiresApproval] = useState(true);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  /**
+   * Файлы, выбранные до создания задачи.
+   *
+   * Прикрепить их можно только ПОСЛЕ создания — вложение живёт при задаче, а её ещё
+   * нет. Поэтому держим файлы у себя и грузим сразу следом. Для человека это одно
+   * действие: раньше макет к задаче приходилось доносить вторым заходом, открыв
+   * карточку, — и половина задач уходила в работу без исходников.
+   */
+  const [files, setFiles] = useState<File[]>([]);
+  /** Задача уже создана, но файлы не долетели: второй раз её создавать нельзя. */
+  const [createdId, setCreatedId] = useState<string | null>(null);
 
   useEffect(() => { api.listLabels().then(setLabels).catch(() => undefined); }, []);
 
   const toggleLabel = (id: string) =>
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
+  const addFiles = (list: FileList | null) => {
+    if (!list?.length) return;
+    // одноимённые не копим: человек выбирает файл дважды чаще, чем прикладывает два одинаковых
+    setFiles((prev) => {
+      const seen = new Set(prev.map((f) => `${f.name}:${f.size}`));
+      return [...prev, ...Array.from(list).filter((f) => !seen.has(`${f.name}:${f.size}`))];
+    });
+  };
+
   const submit = async () => {
     if (!title.trim()) return setErr('Введите название задачи');
     setErr('');
     setBusy(true);
     try {
-      await api.createTask({
+      const created = await api.createTask({
         projectId,
         columnId,
         title: title.trim(),
@@ -69,6 +89,20 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         labelIds: picked.length ? picked : undefined,
         requiresApproval,
       });
+      setCreatedId(String(created.id));
+      // Файлы грузим по одному и по порядку: параллельная отправка десятка вложений
+      // с телефона рвётся на середине, и понять, что именно не долетело, нельзя.
+      const failed: string[] = [];
+      for (const f of files) {
+        try { await api.uploadAttachment(String(created.id), f); }
+        catch { failed.push(f.name); }
+      }
+      if (failed.length) {
+        // задача уже создана — предлагать «создать» второй раз нельзя, это дубль
+        setErr(`Задача создана (#${created.id}), но не загрузились файлы: ${failed.join(', ')}. Прикрепите их в карточке, на вкладке «Файлы».`);
+        setBusy(false);
+        return;
+      }
       onCreated();
       onClose();
     } catch (e) {
@@ -76,6 +110,9 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
       setBusy(false);
     }
   };
+
+  /** Задача создана, файлы — нет: выходим без повторного создания. */
+  const finishAfterPartial = () => { onCreated(); onClose(); };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -161,10 +198,58 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
           <textarea className="input" rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
 
+        {/* Файлы прямо здесь: задача без исходников — это вопрос «а где макет?»
+            через десять минут после постановки. */}
+        <div className="field">
+          <label>Файлы (необязательно)</label>
+          <div
+            className="file-drop"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+          >
+            <label className="btn btn-sm file-pick">
+              <Icon name="paperclip" size={14} /> Выбрать файлы
+              <input
+                className="file-pick-input"
+                type="file"
+                multiple
+                aria-label="Выбрать файлы для задачи"
+                onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
+              />
+            </label>
+            <span className="dim">или перетащите сюда</span>
+          </div>
+          {files.length > 0 && (
+            <div className="file-picked">
+              {files.map((f, i) => (
+                <span key={`${f.name}-${i}`} className="people-chip">
+                  <Icon name="file" size={12} /> {f.name}
+                  <button
+                    className="people-chip-x"
+                    onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                    title="Убрать файл"
+                    aria-label={`Убрать ${f.name}`}
+                  >
+                    <Icon name="close" size={11} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
         {err && <div className="error-text">{err}</div>}
-        <button className="btn btn-primary" style={{ width: '100%', marginTop: 6 }} disabled={busy} onClick={submit}>
-          {busy ? 'Создаём…' : 'Создать задачу'}
-        </button>
+        {createdId ? (
+          <button className="btn btn-primary" style={{ width: '100%', marginTop: 6 }} onClick={finishAfterPartial}>
+            Готово — открыть доску
+          </button>
+        ) : (
+          <button className="btn btn-primary" style={{ width: '100%', marginTop: 6 }} disabled={busy} onClick={submit}>
+            {busy
+              ? (files.length ? 'Создаём и грузим файлы…' : 'Создаём…')
+              : (files.length ? `Создать задачу и прикрепить ${files.length}` : 'Создать задачу')}
+          </button>
+        )}
       </div>
     </div>
   );

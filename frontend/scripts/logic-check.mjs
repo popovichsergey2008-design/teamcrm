@@ -392,7 +392,7 @@ test('напоминания: подписи, своё время и защит�
   assert.equal(rows.find((x) => x.minutes === 15).custom, false);
 });
 
-test('фильтры доски: назначено мне, поставлено мной и выбор постановщика', async () => {
+test('виды задач на доске: делаю, помогаю, поручил, наблюдаю', async () => {
   const { filterBoard, countMatching, realPosition, filterActive } = await load('lib/board-filter.ts');
   // t1 — моя работа, t2 — я поставил другому, t3 — чужая целиком, t4 — я и поставил, и делаю
   const columns = [
@@ -405,25 +405,43 @@ test('фильтры доски: назначено мне, поставлено
   ];
   const me = (mode, creatorId) => ({ userId: '7', mode, creatorId });
 
-  // Соисполнитель видит задачу в «Мне»: он делает ту же работу
+  // «Делаю» и «Помогаю» — РАЗНЫЕ виды: исполнитель отвечает за результат,
+  // соисполнитель помогает. В одной куче человек не видел, где с него спросят.
   const withCo = [{ id: 'c', name: 'x', tasks: [{ id: 't9', assignee_id: '9', created_by: '9', co_assignees: [{ userId: '7' }] }] }];
-  assert.equal(countMatching(withCo, me('assigned')), 1, 'соисполнитель находит свою работу');
-  assert.equal(countMatching(withCo, me('created')), 0, 'но постановщиком от этого не становится');
+  assert.equal(countMatching(withCo, me('helping')), 1, 'соисполнитель находит свою помощь');
+  assert.equal(countMatching(withCo, me('doing')), 0, 'но исполнителем от этого не становится');
+  assert.equal(countMatching(withCo, me('delegated')), 0, 'и постановщиком тоже');
+  assert.equal(countMatching(withCo, me('both')), 1, '«вся моя работа» помощь включает');
 
-  // «Назначены мне» и «Поставлены мной» — разные списки, и это главное различие
+  const withWatch = [{ id: 'c', name: 'x', tasks: [{ id: 't8', assignee_id: '9', created_by: '9', watchers: [{ userId: '7' }] }] }];
+  assert.equal(countMatching(withWatch, me('watching')), 1);
+  assert.equal(countMatching(withWatch, me('doing')), 0, 'наблюдатель ничего не делает');
+  assert.equal(countMatching(withWatch, me('both')), 0, 'и в «мою работу» не попадает');
+
+  // «Делаю» и «Поручил» — разные списки, и это главное различие
   assert.deepEqual(
-    filterBoard(columns, me('assigned')).flatMap((c) => c.tasks.map((t) => t.id)),
+    filterBoard(columns, me('doing')).flatMap((c) => c.tasks.map((t) => t.id)),
     ['t1', 't4'],
   );
   assert.deepEqual(
-    filterBoard(columns, me('created')).flatMap((c) => c.tasks.map((t) => t.id)),
+    filterBoard(columns, me('delegated')).flatMap((c) => c.tasks.map((t) => t.id)),
     ['t2', 't4'],
   );
-  // «Мои задачи» — обе роли разом, без дублей
+  // «Вся моя работа» — обе роли разом, без дублей
   assert.deepEqual(
     filterBoard(columns, me('both')).flatMap((c) => c.tasks.map((t) => t.id)),
     ['t1', 't2', 't4'],
   );
+
+  // «Только в работе» отсекает завершённое и работает вместе с любым видом
+  const withDone = [{ id: 'c', name: 'x', tasks: [
+    { id: 'open', assignee_id: '7' },
+    { id: 'done', assignee_id: '7', closed_at: '2026-09-01T10:00:00Z' },
+  ] }];
+  assert.equal(countMatching(withDone, { userId: '7', mode: 'doing' }), 2);
+  assert.equal(countMatching(withDone, { userId: '7', mode: 'doing', inWorkOnly: true }), 1);
+  assert.equal(countMatching(withDone, { userId: '7', mode: 'off', inWorkOnly: true }), 1, 'работает и без выбранного вида');
+  assert.equal(filterActive({ mode: 'off', inWorkOnly: true }), true, '«только в работе» — тоже фильтр');
 
   // Постановщик работает независимо от исполнителя: всё, что человек раздал
   assert.deepEqual(
@@ -432,39 +450,26 @@ test('фильтры доски: назначено мне, поставлено
   );
   // ...и сужает выбор вместе с режимом, а не вместо него
   assert.deepEqual(
-    filterBoard(columns, me('assigned', '9')).flatMap((c) => c.tasks.map((t) => t.id)),
+    filterBoard(columns, me('doing', '9')).flatMap((c) => c.tasks.map((t) => t.id)),
     ['t1'],
   );
 
   // список: пустые колонки не показываем; доска: колонки остаются, иначе бросать некуда
-  assert.deepEqual(filterBoard(columns, me('assigned')).map((c) => c.id), ['c1', 'c3']);
-  assert.deepEqual(filterBoard(columns, me('assigned'), true).map((c) => c.id), ['c1', 'c2', 'c3']);
+  assert.deepEqual(filterBoard(columns, me('doing')).map((c) => c.id), ['c1', 'c3']);
+  assert.deepEqual(filterBoard(columns, me('doing'), true).map((c) => c.id), ['c1', 'c2', 'c3']);
 
-  assert.equal(countMatching(columns, me('assigned')), 2);
-  assert.equal(countMatching(columns, me('created')), 2);
+  assert.equal(countMatching(columns, me('doing')), 2);
+  assert.equal(countMatching(columns, me('delegated')), 2);
   assert.equal(countMatching(columns, me('both')), 3, 'задача, где я и постановщик, и исполнитель, — одна');
   assert.equal(countMatching(columns, { userId: '42', mode: 'both' }), 0, 'чужой человек не находит своих');
   // id приходят и строкой, и числом; задача без исполнителя ничья
-  assert.equal(countMatching([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: 7 }] }], me('assigned')), 1);
-  assert.equal(countMatching([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: null }] }], me('assigned')), 0);
-  assert.equal(countMatching([{ id: 'c', name: 'x', tasks: [{ id: 't', created_by: null }] }], me('created')), 0);
-
-  // Тумблеры ролей: нажатые вместе дают «всё моё», повторный клик снимает свою половину.
-  // Логика переключения живёт в BoardPage, здесь проверяем её таблицу переходов.
-  const toggle = (mode, role) => {
-    const on = mode === role || mode === 'both';
-    const other = role === 'assigned' ? 'created' : 'assigned';
-    const otherOn = mode === other || mode === 'both';
-    return on ? (otherOn ? other : 'off') : (otherOn ? 'both' : role);
-  };
-  assert.equal(toggle('off', 'assigned'), 'assigned');
-  assert.equal(toggle('assigned', 'created'), 'both', 'две роли разом — прежнее «мои задачи»');
-  assert.equal(toggle('both', 'assigned'), 'created', 'сняли свою половину — осталась чужая');
-  assert.equal(toggle('created', 'created'), 'off', 'повторный клик снимает фильтр');
+  assert.equal(countMatching([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: 7 }] }], me('doing')), 1);
+  assert.equal(countMatching([{ id: 'c', name: 'x', tasks: [{ id: 't', assignee_id: null }] }], me('doing')), 0);
+  assert.equal(countMatching([{ id: 'c', name: 'x', tasks: [{ id: 't', created_by: null }] }], me('delegated')), 0);
 
   assert.equal(filterActive({ mode: 'off' }), false);
   assert.equal(filterActive({ mode: 'off', creatorId: '9' }), true, 'выбранный постановщик — тоже фильтр');
-  assert.equal(filterActive({ mode: 'created' }), true);
+  assert.equal(filterActive({ mode: 'delegated' }), true);
 
   // перенос при фильтре: индекс среди видимых → настоящее место в полной колонке
   const full = [
@@ -473,7 +478,7 @@ test('фильтры доски: назначено мне, поставлено
     { id: 'c', assignee_id: '9' },
     { id: 'd', assignee_id: '7' },
   ];
-  const opts = { userId: '7', mode: 'assigned' };
+  const opts = { userId: '7', mode: 'doing' };
   assert.equal(realPosition(full, opts, 0), 1, 'выше своей первой — на её место');
   assert.equal(realPosition(full, opts, 1), 3, 'между своими — на место второй своей, а не в начало');
   assert.equal(realPosition(full, opts, 2), 4, 'ниже последней своей — в конец колонки');
@@ -724,18 +729,18 @@ test('реестр: пустые фильтры не уезжают в запр�
   assert.equal(plain.includes('due='), false, 'срок «любой» — это отсутствие фильтра');
   assert.equal(plain.includes('sort='), false, 'сортировка по умолчанию не нужна в адресе');
   assert.equal(plain.includes('page='), false, 'первая страница — не параметр');
-  assert.equal(plain.includes('scope=mine'), true);
+  assert.equal(plain.includes('scope=doing'), true);
   assert.equal(plain.includes('dayEnd='), true, 'без границы суток «просрочено» считается по серверу');
 
   const full = registryQuery({
     ...EMPTY_FILTERS, scope: 'delegated', q: '  макет  ', projectId: '12',
-    assigneeId: 'none', priority: 'high', due: 'overdue', sort: 'project', closed: true, page: 3,
+    assigneeId: 'none', priority: 'high', due: 'overdue', sort: 'project', inWork: false, page: 3,
   }, now);
   const q = new URLSearchParams(full);
   assert.equal(q.get('scope'), 'delegated');
   assert.equal(q.get('q'), 'макет', 'поиск обрезается по краям');
   assert.equal(q.get('assigneeId'), 'none');
-  assert.equal(q.get('closed'), '1');
+  assert.equal(q.get('closed'), '1', 'сняли «В работе» — просим у сервера всё, включая архив');
   assert.equal(q.get('page'), '3');
 
   // граница суток — конец дня у ЧЕЛОВЕКА, а не «сейчас»
@@ -744,7 +749,7 @@ test('реестр: пустые фильтры не уезжают в запр�
   assert.equal(end.getDate(), 3);
 
   assert.equal(activeFilterCount(EMPTY_FILTERS), 0, 'срез фильтром не считается');
-  assert.equal(activeFilterCount({ ...EMPTY_FILTERS, q: 'a', closed: true, due: 'week' }), 3);
+  assert.equal(activeFilterCount({ ...EMPTY_FILTERS, q: 'a', inWork: false, due: 'week' }), 3);
 
   // окно страниц: края доступны всегда, разрыв обозначен нулём
   assert.deepEqual(pageWindow(1, 1), [1]);

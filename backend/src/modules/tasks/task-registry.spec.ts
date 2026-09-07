@@ -10,7 +10,19 @@ const DAY_END = '2026-09-03T20:59:59.000Z';
 const base = { dayEnd: DAY_END };
 
 describe('buildRegistry: срезы', () => {
-  it('«Мне» — и исполнитель, и соисполнитель', () => {
+  it('«Делаю» — только исполнитель, помощь сюда не попадает', () => {
+    const q = buildRegistry('1', '7', { ...base, scope: 'doing' });
+    expect(q.where).toContain('t.assignee_id = $2');
+    expect(q.where).not.toContain("tp.role = 'co_assignee'");
+  });
+
+  it('«Помогаю» — только соисполнитель', () => {
+    const q = buildRegistry('1', '7', { ...base, scope: 'helping' });
+    expect(q.where).toContain("tp.role = 'co_assignee'");
+    expect(q.where).not.toContain('t.assignee_id = $2');
+  });
+
+  it('старое «Мне» из сохранённых ссылок — и исполнитель, и соисполнитель', () => {
     const q = buildRegistry('1', '7', { ...base, scope: 'mine' });
     expect(q.where).toContain('t.assignee_id = $2');
     expect(q.where).toContain("tp.role = 'co_assignee'");
@@ -34,23 +46,24 @@ describe('buildRegistry: срезы', () => {
     expect(q.where).not.toContain('$2');
   });
 
-  it('неизвестный срез — это «Мне», а не «все задачи компании»', () => {
-    expect(normalizeScope('everything')).toBe('mine');
-    expect(normalizeScope(null)).toBe('mine');
+  it('неизвестный срез — это «Делаю», а не «все задачи компании»', () => {
+    expect(normalizeScope('everything')).toBe('doing');
+    expect(normalizeScope(null)).toBe('doing');
     expect(normalizeScope('all')).toBe('all');
   });
 });
 
 describe('buildRegistry: фильтры', () => {
-  it('по умолчанию завершённые скрыты, архивные проекты — всегда', () => {
+  it('в работе — только живые задачи в живых проектах', () => {
     const q = buildRegistry('1', '7', base);
     expect(q.where).toContain('t.closed_at IS NULL');
     expect(q.where).toContain("p.status <> 'archived'");
   });
 
-  it('завершённые показываются по явному флагу', () => {
+  it('сняли «В работе» — видно и завершённое, и архивные проекты', () => {
     const q = buildRegistry('1', '7', { ...base, closed: true });
     expect(q.where).not.toContain('t.closed_at IS NULL');
+    expect(q.where).not.toContain("p.status <> 'archived'");
   });
 
   it('«без исполнителя» — это IS NULL, а не сравнение со строкой', () => {

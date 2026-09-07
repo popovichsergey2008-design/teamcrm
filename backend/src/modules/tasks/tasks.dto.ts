@@ -168,9 +168,13 @@ export class ParticipantDto {
  * `closed` и `dayEnd` приходят строками: это query-параметры, а не тело запроса.
  */
 export class TaskRegistryQueryDto {
+  /**
+   * Срез реестра. `mine` оставлен рядом с новыми `doing`/`helping`: по нему приходят
+   * ссылки, сохранённые до разделения «делаю» и «помогаю», и отвечать на них 400 нельзя.
+   */
   @IsOptional()
-  @IsIn(['mine', 'delegated', 'watching', 'all'])
-  scope?: 'mine' | 'delegated' | 'watching' | 'all';
+  @IsIn(['doing', 'helping', 'mine', 'delegated', 'watching', 'all'])
+  scope?: 'doing' | 'helping' | 'mine' | 'delegated' | 'watching' | 'all';
 
   @IsOptional()
   @IsString()

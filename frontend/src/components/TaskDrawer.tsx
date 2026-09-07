@@ -123,48 +123,81 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id]);
   const [managerId, setManagerId] = useState(task.created_by ?? '');
-
-  /** Есть ли что сохранять в блоке назначения: кнопка не должна лгать о работе. */
-  const planChanged = String(assigneeId ?? '') !== String(task.assignee_id ?? '')
-    || String(estimate ?? '') !== String(task.estimate_hours ?? '')
-    || deadline !== initialDeadline;
-
-  const userName = (id?: string | null) => users.find((u) => u.id === id)?.fullName ?? '—';
-  const changeManager = async (id: string) => {
-    setManagerId(id);
-    await api.updateTask(task.id, { managerId: id || null });
-    onRefresh();
-  };
+  const initialApproval = task.requires_approval !== false;
+  const [approval, setApproval] = useState(initialApproval);
+  const [saving, setSaving] = useState(false);
+  /** Сколько файлов в задаче: цифра на вкладке отвечает «прикрепился ли», не открывая её. */
+  const [fileCount, setFileCount] = useState(Number(task.attachmentsCount ?? 0));
 
   /**
-   * Сохранить назначение и план.
+   * Есть ли что сохранять.
    *
-   * Раньше кнопка называлась «Назначить» и требовала исполнителя: поставить срок
-   * задаче, которую ещё не на кого повесить, было нельзя, а «сохранить» в карточке
-   * не находилось вовсе. Теперь сохраняется то, что человек изменил: план — всегда,
-   * исполнитель — если он выбран или снят.
+   * ОДНА кнопка на всю карточку и ОДИН признак изменений. Раньше сохранение было
+   * рассыпано: название с описанием — своей кнопкой, план — другой, а приоритет,
+   * постановщик и согласование применялись молча в момент выбора. Человек прикреплял
+   * файл, смотрел на неактивную кнопку «Сохранено» и не понимал, применилось ли
+   * хоть что-нибудь. Теперь правка любого поля зажигает кнопку, и пока она горит —
+   * работа не сохранена.
+   *
+   * Перенос по колонкам сюда НЕ входит намеренно: это действие, а не правка, и
+   * применяется оно сразу — как перетаскивание карточки на доске. Файлы, метки,
+   * люди и чек-лист — тоже действия со своим мгновенным откликом.
    */
-  const savePlan = async (confirmOverload: boolean) => {
+  const dirty = title !== (task.title ?? '')
+    || desc !== (task.description ?? '')
+    || String(assigneeId ?? '') !== String(task.assignee_id ?? '')
+    || String(managerId ?? '') !== String(task.created_by ?? '')
+    || String(priority ?? 'normal') !== String(task.priority ?? 'normal')
+    || String(estimate ?? '') !== String(task.estimate_hours ?? '')
+    || deadline !== initialDeadline
+    || approval !== initialApproval;
+
+  const userName = (id?: string | null) => users.find((u) => u.id === id)?.fullName ?? '—';
+
+  /**
+   * Сохранить карточку целиком.
+   *
+   * Порядок важен: СНАЧАЛА назначение — оно единственное умеет ответить отказом
+   * («перегруз, подтвердите»). Если начать с названия и описания, а споткнуться на
+   * назначении, половина правок уже записана, и повторное нажатие пишет их в историю
+   * второй раз. Здесь же до подтверждения не записывается ничего.
+   *
+   * Согласование идёт своей ручкой намеренно: она пишет отдельное событие в историю
+   * задачи и рассылает уведомления — сливать её с общей правкой полей нельзя.
+   */
+  const saveAll = async (confirmOverload = false) => {
+    if (!title.trim()) return setErr('Название не может быть пустым');
     setErr('');
+    setSaving(true);
     const estimateHours = estimate ? Number(estimate) : undefined;
     const deadlineAt = deadline ? new Date(deadline).toISOString() : undefined;
     const changedAssignee = String(assigneeId ?? '') !== String(task.assignee_id ?? '');
+    const changedPlan = String(estimate ?? '') !== String(task.estimate_hours ?? '') || deadline !== initialDeadline;
     try {
       if (assigneeId && (changedAssignee || confirmOverload)) {
         // назначение идёт через прогноз — он и предупредит о перегрузе
         const res = await api.assignTask(task.id, { assigneeId, confirmOverload, estimateHours, deadlineAt });
-        if (res.warning && !confirmOverload) return setWarn(res);
+        if (res.warning && !confirmOverload) { setWarn(res); setSaving(false); return; }
         setWarn(null);
       } else {
-        if (estimateHours !== undefined || deadlineAt !== undefined) {
-          await api.saveTaskPlan(task.id, { estimateHours, deadlineAt });
-        }
+        if (changedPlan) await api.saveTaskPlan(task.id, { estimateHours, deadlineAt });
         // исполнителя сняли — задача снова ничья, и это законное состояние
         if (!assigneeId && task.assignee_id) await api.updateTask(task.id, { assigneeId: null });
         setWarn(null);
       }
+
+      const patch: Record<string, unknown> = {};
+      if (title.trim() !== (task.title ?? '')) patch.title = title.trim();
+      if (desc !== (task.description ?? '')) patch.description = desc;
+      if (String(priority ?? 'normal') !== String(task.priority ?? 'normal')) patch.priority = priority;
+      if (String(managerId ?? '') !== String(task.created_by ?? '')) patch.managerId = managerId || null;
+      if (Object.keys(patch).length) await api.updateTask(task.id, patch);
+
+      if (approval !== initialApproval) await api.setTaskApproval(task.id, approval);
+
       onRefresh();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
+    finally { setSaving(false); }
   };
   /**
    * Решение постановщика по сданной работе.
@@ -185,22 +218,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
 
-  const toggleApproval = async (enabled: boolean) => {
-    setErr('');
-    try { await api.setTaskApproval(task.id, enabled); onRefresh(); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
-  };
-
-  /** Название и описание — одна правка: их и меняют вместе. */
-  const saveText = async () => {
-    if (!title.trim()) return setErr('Название не может быть пустым');
-    setErr('');
-    try {
-      await api.updateTask(task.id, { title: title.trim(), description: desc });
-      onRefresh();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
-  };
-  const changePriority = async (p: string) => { setPriority(p); await api.updateTask(task.id, { priority: p }); onRefresh(); };
+  // BLOCKED — не правка полей, а метка состояния: её ставят и снимают одним нажатием.
   const toggleBlocked = async () => { await api.updateTask(task.id, { isBlocked: !task.is_blocked }); onRefresh(); };
   // сменить статус = переместить в колонку доски (наверх колонки)
   const [moving, setMoving] = useState(false);
@@ -384,7 +402,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
         <div className="drawer-row card-meta">
           {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={12} /> ИИ-агент</span>}
-          <select className="input prio-select" value={priority} onChange={(e) => changePriority(e.target.value)}>
+          <select className="input prio-select" value={priority} onChange={(e) => setPriority(e.target.value)}>
             {PRIORITIES.map(([v, l]) => <option key={v} value={v}>приоритет: {l}</option>)}
           </select>
           {task.risk_level && <span className={`badge risk-badge risk-${task.risk_level}`} title="Риск срыва срока"><Icon name="alert" size={12} /> {task.risk_pct ?? '—'}%</span>}
@@ -398,7 +416,9 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
         <div className="tabs">
           <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Обзор</button>
-          <button className={`tab ${tab === 'files' ? 'active' : ''}`} onClick={() => setTab('files')}>Файлы</button>
+          <button className={`tab ${tab === 'files' ? 'active' : ''}`} onClick={() => setTab('files')}>
+            Файлы{fileCount > 0 && <span className="tab-count">{fileCount}</span>}
+          </button>
           <button className={`tab ${tab === 'checklist' ? 'active' : ''}`} onClick={() => setTab('checklist')}>Чеклист</button>
           {/* ИИ-агент доступен всем сотрудникам: сервер их и так пускал, пряталась
               только вкладка — человек видел у руководителя возможность, которой у него
@@ -487,13 +507,6 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             </div>
             <div className="field"><label>Описание (Markdown)</label>
               <textarea className="input" rows={5} value={desc} onChange={(e) => setDesc(e.target.value)} />
-              {/* Кнопка появляется, только когда есть что сохранять: постоянно висящее
-                  «Сохранить» не отвечает на вопрос «мои правки уже применились?». */}
-              {(title !== (task.title ?? '') || desc !== (task.description ?? '')) && (
-                <button className="btn btn-primary btn-sm" style={{ marginTop: 6 }} onClick={saveText}>
-                  Сохранить
-                </button>
-              )}
             </div>
             <div className="drawer-section">
               <div className="drawer-section-title">Назначение и план</div>
@@ -505,7 +518,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                   </select>
                 </div>
                 <div className="field"><label title="Кто ставит задачу и принимает результат">Постановщик</label>
-                  <select className="input" value={managerId} onChange={(e) => changeManager(e.target.value)}>
+                  <select className="input" value={managerId} onChange={(e) => setManagerId(e.target.value)}>
                     <option value="">— не задан —</option>
                     {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
                   </select>
@@ -540,22 +553,19 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               </div>
               {warn && (
                 <div className="overload-warn"><Icon name="alert" size={13} /> Перегруз: риск {warn.riskPct ?? '—'}%, {warn.projectedHours}ч &gt; {warn.capacityHours}ч/нед.
-                  <button className="btn btn-sm overload-confirm" onClick={() => savePlan(true)}>Всё равно назначить</button>
+                  <button className="btn btn-sm overload-confirm" onClick={() => saveAll(true)}>Всё равно назначить</button>
                 </div>
               )}
               {/* Переключатель согласования — право постановщика, пока задача жива. */}
               <label className="notify-row" title="Исполнитель сдаёт работу, завершаете её вы">
                 <input
                   type="checkbox"
-                  checked={task.requires_approval !== false}
+                  checked={approval}
                   disabled={!isManager || !!task.closed_at}
-                  onChange={(e) => toggleApproval(e.target.checked)}
+                  onChange={(e) => setApproval(e.target.checked)}
                 />
                 Не завершать без согласования с постановщиком
               </label>
-              <button className="btn btn-primary drawer-assign" onClick={() => savePlan(false)} disabled={!planChanged}>
-                {planChanged ? 'Сохранить' : 'Сохранено'}
-              </button>
             </div>
             <div className="drawer-section">
               <div className="drawer-section-title">Прогноз срока</div>
@@ -569,8 +579,27 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           </>
         )}
 
-        {tab === 'files' && <FilesTab taskId={task.id} onRefresh={onRefresh} />}
+        {tab === 'files' && <FilesTab taskId={task.id} onRefresh={onRefresh} onCount={setFileCount} />}
         {tab === 'checklist' && <ChecklistTab taskId={task.id} onRefresh={onRefresh} />}
+
+        {/*
+          Полоса сохранения — внизу карточки и всегда на виду, на любой вкладке.
+
+          Ответ на вопрос «мои правки применились?» должен лежать в ОДНОМ месте и не
+          уезжать за край экрана. Раньше кнопок сохранения было две, обе в середине
+          длинной карточки, а половина полей сохранялась молча — и человек, прикрепив
+          файл, смотрел на неактивную кнопку и не понимал, случилось ли хоть что-то.
+        */}
+        <div className={`task-save-bar${dirty ? ' is-dirty' : ''}`}>
+          <span className="task-save-note">
+            {dirty
+              ? 'Есть несохранённые правки'
+              : 'Всё сохранено. Файлы, метки, люди и чек-лист сохраняются сразу'}
+          </span>
+          <button className="btn btn-primary" onClick={() => saveAll(false)} disabled={!dirty || saving}>
+            {saving ? 'Сохраняю…' : dirty ? 'Сохранить' : 'Сохранено'}
+          </button>
+        </div>
         </div>
 
         {/* Правая колонка — чат задачи. Он на виду всегда: обсуждение и есть работа
@@ -817,16 +846,47 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
   );
 }
 
-function FilesTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
+function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: () => void; onCount?: (n: number) => void }) {
   const [files, setFiles] = useState<any[]>([]);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [err, setErr] = useState('');
-  const reload = () => api.listAttachments(taskId).then(setFiles).catch(() => undefined);
+  /**
+   * Что сейчас происходит с файлами.
+   *
+   * Загрузка шла молча: человек выбирал файл, окно ничего не отвечало, и понять,
+   * прикрепился он или нет, было нельзя — ровно это и было замечанием. Теперь виден
+   * и сам ход загрузки, и её итог.
+   */
+  const [busyName, setBusyName] = useState('');
+  const [done, setDone] = useState('');
+  const reload = () => api.listAttachments(taskId).then((list) => {
+    setFiles(list);
+    onCount?.(list.length);
+  }).catch(() => undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reload(); }, [taskId]);
-  const upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    try { await api.uploadAttachment(taskId, f); reload(); onRefresh(); } catch { /* */ }
+  // подтверждение гаснет само: постоянная зелёная строка перестаёт что-либо значить
+  useEffect(() => {
+    if (!done) return;
+    const t = window.setTimeout(() => setDone(''), 4000);
+    return () => window.clearTimeout(t);
+  }, [done]);
+  const upload = async (list: FileList | null) => {
+    const picked = Array.from(list ?? []);
+    if (!picked.length) return;
+    setErr(''); setDone('');
+    const failed: string[] = [];
+    for (const f of picked) {
+      setBusyName(f.name);
+      // по одному и по порядку: параллельная отправка рвётся на середине,
+      // и понять, какой файл не долетел, потом нельзя
+      try { await api.uploadAttachment(taskId, f); } catch { failed.push(f.name); }
+    }
+    setBusyName('');
+    await reload();
+    onRefresh();
+    if (failed.length) setErr(`Не загрузились: ${failed.join(', ')}. Попробуйте ещё раз.`);
+    else setDone(picked.length === 1 ? `Файл «${picked[0].name}» прикреплён` : `Прикреплено файлов: ${picked.length}`);
   };
   // файлы за авторизацией: тянем blob с токеном, картинку показываем в попапе, остальное скачиваем
   const open = async (f: any) => {
@@ -851,14 +911,30 @@ function FilesTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void
   };
   return (
     <>
-      <label className="btn btn-sm" style={{ display: 'inline-block', cursor: 'pointer' }}>
-        Загрузить файл<input type="file" hidden onChange={upload} />
-      </label>
+      <div
+        className="file-drop"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => { e.preventDefault(); void upload(e.dataTransfer.files); }}
+      >
+        <label className="btn btn-sm file-pick">
+          <Icon name="paperclip" size={14} /> Загрузить файлы
+          <input
+            className="file-pick-input"
+            type="file"
+            multiple
+            aria-label="Загрузить файлы в задачу"
+            onChange={(e) => { void upload(e.target.files); e.target.value = ''; }}
+          />
+        </label>
+        <span className="dim">или перетащите сюда</span>
+      </div>
+      {busyName && <div className="dim" style={{ marginTop: 8 }}>Загружаю «{busyName}»…</div>}
+      {done && <div className="file-ok"><Icon name="check" size={13} /> {done}</div>}
       {err && <div className="error-text" style={{ marginTop: 8 }}>{err}</div>}
       {files.map((f) => (
         <div key={f.id} className="team-row team-head">
           <button className="file-link" onClick={() => open(f)}>{f.file_name}</button>
-          <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteAttachment(taskId, f.id); reload(); onRefresh(); }} title="Удалить"><Icon name="close" size={13} /></button>
+          <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteAttachment(taskId, f.id); await reload(); onRefresh(); }} title="Удалить"><Icon name="close" size={13} /></button>
         </div>
       ))}
       {files.length === 0 && (

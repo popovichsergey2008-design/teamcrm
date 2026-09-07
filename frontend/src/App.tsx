@@ -13,7 +13,7 @@ import { FocusPage } from './pages/FocusPage';
 import { MeetingsPage } from './pages/MeetingsPage';
 import { RadarPage } from './pages/RadarPage';
 import { TasksPage } from './pages/TasksPage';
-import { isScope } from './lib/task-registry-view';
+import { toScope } from './lib/task-registry-view';
 import { SettingsPage } from './pages/SettingsPage';
 import { CallPanel } from './components/CallPanel';
 import { ChatsPage } from './pages/ChatsPage';
@@ -335,8 +335,8 @@ export function App() {
           <Pane active={route.section === 'tasks'}>
             <TasksPage
               active={route.section === 'tasks'}
-              scope={isScope(route.view) ? route.view : 'mine'}
-              onScope={(scope) => navigate({ section: 'tasks', view: scope === 'mine' ? undefined : scope })}
+              scope={toScope(route.view)}
+              onScope={(scope) => navigate({ section: 'tasks', view: scope === 'doing' ? undefined : scope })}
               onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
             />
           </Pane>

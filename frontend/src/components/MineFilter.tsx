@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import type { MineMode } from '../lib/board-filter';
+import { TASK_VIEWS, taskViewLabel } from '../lib/task-views';
 
 /**
  * «Мои задачи» — один выпадающий фильтр вместо россыпи кнопок в шапке доски.
@@ -12,14 +13,16 @@ import type { MineMode } from '../lib/board-filter';
  * Внутри — те же три ответа, но по одному: что делаю я (включая работу соисполнителем),
  * что я поручил другим, и что поручил конкретный человек.
  */
-export function MineFilter({ mode, creatorId, creators, count, onChange }: {
+export function MineFilter({ mode, creatorId, creators, count, inWorkOnly, onChange }: {
   mode: MineMode;
   creatorId: string;
   /** Кто ставил задачи на этой доске: список строится по ней, а не по всей команде. */
   creators: [string, string][];
   /** Сколько задач видно при текущем выборе — рядом с названием, как счётчик. */
   count: number;
-  onChange: (next: { mode: MineMode; creatorId: string }) => void;
+  /** «Только в работе»: скрыть завершённые карточки. */
+  inWorkOnly: boolean;
+  onChange: (next: { mode: MineMode; creatorId: string; inWorkOnly: boolean }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -33,17 +36,15 @@ export function MineFilter({ mode, creatorId, creators, count, onChange }: {
     return () => document.removeEventListener('mousedown', outside);
   }, [open]);
 
-  const active = mode !== 'off' || !!creatorId;
+  const active = mode !== 'off' || !!creatorId || inWorkOnly;
   const creatorName = creators.find(([id]) => id === creatorId)?.[1];
   const label = creatorName ? `Поставил ${creatorName}`
-    : mode === 'assigned' ? 'Мне'
-      : mode === 'created' ? 'От меня'
-        : mode === 'both' ? 'Мне и от меня'
-          : 'Мои задачи';
+    : mode === 'both' ? 'Вся моя работа'
+      : taskViewLabel(mode) || 'Мои задачи';
 
   /** Выбор — переключатель: повторное нажатие на активный пункт снимает фильтр. */
   const pick = (next: MineMode) => {
-    onChange({ mode: next === mode ? 'off' : next, creatorId: '' });
+    onChange({ mode: next === mode ? 'off' : next, creatorId: '', inWorkOnly });
     setOpen(false);
   };
 
@@ -62,18 +63,36 @@ export function MineFilter({ mode, creatorId, creators, count, onChange }: {
 
       {open && (
         <div className="mine-filter-pop" role="menu" aria-label="Чьи задачи показать">
-          <button className={`mine-filter-item ${mode === 'assigned' ? 'active' : ''}`} onClick={() => pick('assigned')}>
-            <Icon name="user" size={14} /> Мне
-            <span className="dim">исполнитель или соисполнитель</span>
-          </button>
-          <button className={`mine-filter-item ${mode === 'created' ? 'active' : ''}`} onClick={() => pick('created')}>
-            <Icon name="send" size={14} /> От меня
-            <span className="dim">я поставил, делает кто угодно</span>
-          </button>
+          {/* Виды задач — те же четыре слова, что и в разделе «Задачи». */}
+          {TASK_VIEWS.map((v) => (
+            <button
+              key={v.key}
+              className={`mine-filter-item ${mode === v.key ? 'active' : ''}`}
+              onClick={() => pick(v.key)}
+            >
+              <Icon name={v.icon} size={14} /> {v.label}
+              <span className="dim">{v.hint}</span>
+            </button>
+          ))}
           <button className={`mine-filter-item ${mode === 'both' ? 'active' : ''}`} onClick={() => pick('both')}>
-            <Icon name="users" size={14} /> Мне и от меня
-            <span className="dim">вся моя работа целиком</span>
+            <Icon name="board" size={14} /> Вся моя работа
+            <span className="dim">делаю, помогаю и поручил вместе</span>
           </button>
+
+          {/*
+            «Только в работе» — не вид, а состояние, поэтому стоит отдельно и работает
+            вместе с любым видом. На доске он выключен по умолчанию: колонка «Готово»
+            и есть смысл доски, и прятать её содержимое без спроса нельзя.
+          */}
+          <label className="mine-filter-switch">
+            <input
+              type="checkbox"
+              checked={inWorkOnly}
+              onChange={(e) => onChange({ mode, creatorId, inWorkOnly: e.target.checked })}
+            />
+            Только в работе
+            <span className="dim">скрыть завершённые</span>
+          </label>
 
           {creators.length > 0 && (
             <>
@@ -86,7 +105,7 @@ export function MineFilter({ mode, creatorId, creators, count, onChange }: {
                     onClick={() => {
                       // выбор человека — отдельный вопрос: роли при этом сбрасываем,
                       // иначе «мне» и «поставил Сергей» дают пустой экран и загадку
-                      onChange({ mode: 'off', creatorId: creatorId === id ? '' : id });
+                      onChange({ mode: 'off', creatorId: creatorId === id ? '' : id, inWorkOnly });
                       setOpen(false);
                     }}
                   >
@@ -98,7 +117,7 @@ export function MineFilter({ mode, creatorId, creators, count, onChange }: {
           )}
 
           {active && (
-            <button className="mine-filter-reset" onClick={() => { onChange({ mode: 'off', creatorId: '' }); setOpen(false); }}>
+            <button className="mine-filter-reset" onClick={() => { onChange({ mode: 'off', creatorId: '', inWorkOnly: false }); setOpen(false); }}>
               Показать все задачи
             </button>
           )}

@@ -14,8 +14,15 @@
  * Параметры нумеруются от $1: репозиторий подставляет тот же массив, что получил здесь.
  */
 
-/** Кто я в задаче — этим и различаются вкладки реестра. */
-export type RegistryScope = 'mine' | 'delegated' | 'watching' | 'all';
+/**
+ * Кто я в задаче — этим и различаются вкладки реестра.
+ *
+ * `doing` и `helping` разделены намеренно: исполнитель отвечает за результат,
+ * соисполнитель помогает. В одной куче («мне») человек не видел, где с него спросят,
+ * а где он вторая пара рук. `mine` оставлен как старое название — по нему приходят
+ * сохранённые ссылки, и ломать их нельзя.
+ */
+export type RegistryScope = 'doing' | 'helping' | 'mine' | 'delegated' | 'watching' | 'all';
 
 /** Отбор по сроку. `none` — задачи вообще без срока: их легко потерять. */
 export type RegistryDue = 'any' | 'overdue' | 'today' | 'week' | 'none';
@@ -31,7 +38,14 @@ export interface RegistryFilters {
   assigneeId?: string | null;
   priority?: string | null;
   due?: string | null;
-  /** Показывать ли завершённые. По умолчанию нет: реестр открывается как рабочий список. */
+  /**
+   * Показывать ли всё, что было.
+   *
+   * По умолчанию нет: реестр открывается рабочим списком — живые задачи в живых
+   * проектах. Включённый флаг снимает ОБА ограничения сразу: и «только незакрытые»,
+   * и «только неархивные проекты». Это одно человеческое действие — «покажи и то,
+   * что уже сделано», — и разводить его на два переключателя незачем.
+   */
   closed?: boolean;
   sort?: string | null;
   page?: number | null;
@@ -54,13 +68,13 @@ export interface RegistryQuery {
 
 export const REGISTRY_PAGE_SIZE = 50;
 
-const SCOPES: RegistryScope[] = ['mine', 'delegated', 'watching', 'all'];
+const SCOPES: RegistryScope[] = ['doing', 'helping', 'mine', 'delegated', 'watching', 'all'];
 const DUES: RegistryDue[] = ['any', 'overdue', 'today', 'week', 'none'];
 const SORTS: RegistrySort[] = ['deadline', 'created', 'updated', 'priority', 'project'];
 const PRIORITIES = ['urgent', 'high', 'normal', 'low'];
 
 export function normalizeScope(value?: string | null): RegistryScope {
-  return SCOPES.includes(value as RegistryScope) ? (value as RegistryScope) : 'mine';
+  return SCOPES.includes(value as RegistryScope) ? (value as RegistryScope) : 'doing';
 }
 
 function normalizeDue(value?: string | null): RegistryDue {
@@ -78,12 +92,18 @@ function normalizeSort(value?: string | null): RegistrySort {
  * поле в таблице, и видеть её он должен у себя. `delegated` — поставленное мной другим;
  * своя же задача, поставленная себе, живёт в «Мне» и дублироваться не должна.
  */
+/* eslint-disable-next-line complexity */
 function scopeCondition(scope: RegistryScope): string {
   const participant = (role: string) => `EXISTS (
       SELECT 1 FROM task_participants tp
        WHERE tp.tenant_id = t.tenant_id AND tp.task_id = t.id
          AND tp.user_id = $2 AND tp.role = '${role}')`;
   switch (scope) {
+    case 'doing':
+      return `t.assignee_id = $2`;
+    case 'helping':
+      return participant('co_assignee');
+    // старое название среза: и своё, и то, где помогаю
     case 'mine':
       return `(t.assignee_id = $2 OR ${participant('co_assignee')})`;
     case 'delegated':
@@ -129,14 +149,15 @@ export function buildRegistry(tenantId: string, userId: string, f: RegistryFilte
   const scope = normalizeScope(f.scope);
   const due = normalizeDue(f.due);
   const params: unknown[] = [tenantId, userId, f.dayEnd];
-  const where: string[] = [
-    't.tenant_id = $1',
-    // Архивные проекты — не рабочий список: их задачи всплывали бы в каждом фильтре.
-    `p.status <> 'archived'`,
-    scopeCondition(scope),
-  ];
+  const where: string[] = ['t.tenant_id = $1', scopeCondition(scope)];
 
-  if (!f.closed) where.push('t.closed_at IS NULL');
+  // Рабочий список — только живое: незакрытые задачи в неархивных проектах. Архивные
+  // проекты иначе всплывали бы в каждом фильтре. Сняли «В работе» — показываем всё,
+  // что было: и завершённое, и то, что уехало в архив вместе с проектом.
+  if (!f.closed) {
+    where.push(`p.status <> 'archived'`);
+    where.push('t.closed_at IS NULL');
+  }
 
   const add = (value: unknown): string => {
     params.push(value);

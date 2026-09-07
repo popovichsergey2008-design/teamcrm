@@ -14,6 +14,7 @@ import {
   countMatching, filterActive, filterBoard, MineMode, realPosition,
 } from '../lib/board-filter';
 import { MineFilter } from '../components/MineFilter';
+import { LEGACY_VIEWS, TASK_VIEWS } from '../lib/task-views';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { EmptyState } from '../components/EmptyState';
@@ -113,12 +114,16 @@ export function BoardPage({ initial, onNavigate }: {
    * Первое — что мне делать, второе — что я жду от других и с чего спрошу.
    */
   const [mineMode, setMineMode] = useState<MineMode>(() => {
-    const saved = localStorage.getItem('teamcrm.boardMine');
-    if (saved === 'assigned' || saved === 'created' || saved === 'both') return saved;
-    return saved === '1' ? 'assigned' : 'off'; // старая настройка «Мои задачи» = назначенные
+    const saved = localStorage.getItem('teamcrm.boardMine') ?? '';
+    if (saved === 'both' || TASK_VIEWS.some((v) => v.key === saved)) return saved as MineMode;
+    // прежние названия срезов: у людей они лежат в памяти браузера со вчерашнего дня
+    if (LEGACY_VIEWS[saved]) return LEGACY_VIEWS[saved];
+    return saved === '1' ? 'doing' : 'off'; // самая старая настройка «Мои задачи» = назначенные
   });
   /** Постановщик из списка: работает независимо от «моих» — что человек раздал кому угодно. */
   const [creatorId, setCreatorId] = useState<string>('');
+  /** «Только в работе»: скрыть завершённые карточки. По умолчанию выключено — см. MineFilter. */
+  const [inWorkOnly, setInWorkOnly] = useState(() => localStorage.getItem('teamcrm.boardInWork') === '1');
 
 
   const [showTeam, setShowTeam] = useState(false);
@@ -340,7 +345,7 @@ export function BoardPage({ initial, onNavigate }: {
       // это не настоящая позиция: между двумя своими задачами могут стоять чужие,
       // и без пересчёта задача уехала бы в начало колонки.
       const target = board?.columns.find((c) => c.id === columnId);
-      const opts = { userId: String(user?.id ?? ''), mode: mineMode, creatorId: creatorId || null };
+      const opts = { userId: String(user?.id ?? ''), mode: mineMode, creatorId: creatorId || null, inWorkOnly };
       const position = user && target && filterActive(opts)
         ? realPosition(target.tasks, opts, visibleIndex)
         : visibleIndex;
@@ -358,7 +363,7 @@ export function BoardPage({ initial, onNavigate }: {
         if (selected) api.getBoard(selected).then((b) => dispatch({ type: 'SET', board: b }));
       }
     },
-    [board, selected, mineMode, creatorId, user],
+    [board, selected, mineMode, creatorId, inWorkOnly, user],
   );
 
   const toggleTimer = useCallback(
@@ -381,7 +386,7 @@ export function BoardPage({ initial, onNavigate }: {
   const openTask = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === openTaskId) ?? null;
   // число рядом с «Моими задачами»: видно, есть ли по проекту работа лично на мне,
   // не переключаясь на эту вкладку
-  const filterOpts = { userId: String(user?.id ?? ''), mode: mineMode, creatorId: creatorId || null };
+  const filterOpts = { userId: String(user?.id ?? ''), mode: mineMode, creatorId: creatorId || null, inWorkOnly };
   /**
    * Кто вообще ставил задачи в этом проекте.
    *
@@ -462,10 +467,13 @@ export function BoardPage({ initial, onNavigate }: {
                     creatorId={creatorId}
                     creators={creators}
                     count={shownCount}
-                    onChange={({ mode, creatorId: creator }) => {
+                    inWorkOnly={inWorkOnly}
+                    onChange={({ mode, creatorId: creator, inWorkOnly: onlyWork }) => {
                       setMineMode(mode);
                       setCreatorId(creator);
+                      setInWorkOnly(onlyWork);
                       localStorage.setItem('teamcrm.boardMine', mode);
+                      localStorage.setItem('teamcrm.boardInWork', onlyWork ? '1' : '0');
                     }}
                   />
                 )}
@@ -483,9 +491,11 @@ export function BoardPage({ initial, onNavigate }: {
             {filterActive(filterOpts) && shownCount === 0 ? (
               <EmptyState
                 icon="user"
-                title={mineMode === 'created' ? 'В этом проекте вы ничего не поручали'
-                  : mineMode === 'assigned' ? 'В этом проекте на вас ничего не назначено'
-                    : 'Под выбранный фильтр ничего не подходит'}
+                title={mineMode === 'delegated' ? 'В этом проекте вы ничего не поручали'
+                  : mineMode === 'doing' ? 'В этом проекте на вас ничего не назначено'
+                    : mineMode === 'helping' ? 'В этом проекте вы никому не помогаете'
+                      : mineMode === 'watching' ? 'В этом проекте вы ни за чем не наблюдаете'
+                        : 'Под выбранный фильтр ничего не подходит'}
                 hint="Снимите фильтр, чтобы увидеть работу всей команды."
               />
             ) : view === 'list' ? (
@@ -530,6 +540,10 @@ export function BoardPage({ initial, onNavigate }: {
 
       {openTask && (
         <TaskDrawer
+          /* Ключ по задаче: карточка держит правки в своём состоянии, и при переходе
+             к другой задаче (из чата, из поиска) они обязаны обнулиться, а не переехать
+             в чужую карточку. */
+          key={openTask.id}
           task={openTask}
           users={users}
           columns={board?.columns.map((c) => ({ id: c.id, name: c.name })) ?? []}

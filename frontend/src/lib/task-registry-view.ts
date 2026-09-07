@@ -11,7 +11,9 @@
  * съехавшее окно страниц — и до последней страницы не добраться.
  */
 
-export type RegistryScope = 'mine' | 'delegated' | 'watching' | 'all';
+import { LEGACY_VIEWS, TaskView } from './task-views';
+
+export type RegistryScope = TaskView | 'all';
 
 export interface RegistryTab {
   key: RegistryScope;
@@ -21,15 +23,16 @@ export interface RegistryTab {
 }
 
 /**
- * Порядок вкладок — по частоте: сначала своя работа, потом поручения, потом наблюдение
- * и только в конце «всё». «Все задачи» последней сознательно: это срез для разбора, а
- * не рабочий список, и открывать реестр он не должен.
+ * Виды задач — те же четыре слова, что и в кнопке «Мои задачи» на доске (`task-views`),
+ * плюс «Все» последней. «Все задачи» в конце сознательно: это срез для разбора, а не
+ * рабочий список, и открывать реестр он не должен.
  */
 export const REGISTRY_TABS: RegistryTab[] = [
-  { key: 'mine', label: 'Мне', hint: 'Задачи, где вы исполнитель или соисполнитель' },
-  { key: 'delegated', label: 'От меня', hint: 'Всё, что вы поручили другим, по всем проектам' },
+  { key: 'doing', label: 'Делаю', hint: 'Задачи, где исполнитель — вы' },
+  { key: 'delegated', label: 'Поручил', hint: 'Всё, что вы поручили другим, по всем проектам' },
+  { key: 'helping', label: 'Помогаю', hint: 'Задачи, где вы соисполнитель' },
   { key: 'watching', label: 'Наблюдаю', hint: 'Задачи, куда вас добавили наблюдателем' },
-  { key: 'all', label: 'Все', hint: 'Все задачи компании во всех неархивных проектах' },
+  { key: 'all', label: 'Все', hint: 'Все задачи компании во всех проектах' },
 ];
 
 export const REGISTRY_SORTS: { key: string; label: string }[] = [
@@ -56,17 +59,34 @@ export interface RegistryFilters {
   priority: string;
   due: string;
   sort: string;
-  closed: boolean;
+  /**
+   * «В работе» — переключатель, а не фильтр «показать завершённые».
+   *
+   * Включён: только живые задачи в живых проектах — рабочий список. Выключен: видно
+   * ВСЁ, что было, — и завершённое, и задачи из архивных проектов. Именно этого не
+   * хватало: «сделанное полгода назад» находилось только через архив проекта.
+   */
+  inWork: boolean;
   page: number;
 }
 
 export const EMPTY_FILTERS: RegistryFilters = {
-  scope: 'mine', q: '', projectId: '', assigneeId: '', priority: '', due: 'any',
-  sort: 'deadline', closed: false, page: 1,
+  scope: 'doing', q: '', projectId: '', assigneeId: '', priority: '', due: 'any',
+  sort: 'deadline', inWork: true, page: 1,
 };
 
 export function isScope(value: string | undefined | null): value is RegistryScope {
   return REGISTRY_TABS.some((t) => t.key === value);
+}
+
+/**
+ * Срез из адреса. Старые ссылки (`/tasks/mine`, `/tasks/created`) обязаны открывать
+ * то же, что открывали вчера, — иначе сохранённая закладка ведёт в пустоту.
+ */
+export function toScope(value: string | undefined | null): RegistryScope {
+  if (isScope(value)) return value;
+  const legacy = LEGACY_VIEWS[String(value ?? '')];
+  return legacy ?? 'doing';
 }
 
 /**
@@ -97,7 +117,8 @@ export function registryQuery(f: RegistryFilters, now = new Date()): string {
   if (f.priority) p.set('priority', f.priority);
   if (f.due && f.due !== 'any') p.set('due', f.due);
   if (f.sort && f.sort !== 'deadline') p.set('sort', f.sort);
-  if (f.closed) p.set('closed', '1');
+  // «В работе» выключили — просим у сервера всё: и завершённое, и архивные проекты
+  if (!f.inWork) p.set('closed', '1');
   if (f.page > 1) p.set('page', String(f.page));
   p.set('dayEnd', endOfTodayIso(now));
   return p.toString();
@@ -111,7 +132,7 @@ export function activeFilterCount(f: RegistryFilters): number {
   if (f.assigneeId) n++;
   if (f.priority) n++;
   if (f.due && f.due !== 'any') n++;
-  if (f.closed) n++;
+  if (!f.inWork) n++;
   return n;
 }
 
@@ -151,10 +172,12 @@ export function emptyHint(scope: RegistryScope, filtered: boolean): string {
   switch (scope) {
     case 'delegated':
       return 'Вы пока никому не поручали задач. Поставьте задачу — она появится здесь.';
+    case 'helping':
+      return 'Вас не добавляли соисполнителем ни в одну задачу.';
     case 'watching':
       return 'Вас не добавляли наблюдателем ни в одну задачу.';
     case 'all':
-      return 'В компании ещё нет задач в неархивных проектах.';
+      return 'В компании ещё нет задач.';
     default:
       return 'На вас не назначено задач. Это нормально в начале — или всё уже закрыто.';
   }

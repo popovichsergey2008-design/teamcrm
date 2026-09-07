@@ -1153,6 +1153,59 @@
 }
 .people-chip-x:hover { color: var(--danger); background: var(--danger-soft); }
 
+/*
+  Выбор файлов до создания задачи.
+
+  Пунктирная рамка — обещание «сюда можно бросить»: кнопкой пользуются с телефона,
+  перетаскиванием — с компьютера, и оба способа обязаны быть видны сразу.
+*/
+.file-drop {
+  display: flex; align-items: center; gap: 8px; padding: 8px;
+  border: 1px dashed var(--border-2); border-radius: var(--radius-sm);
+}
+.file-picked { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+/*
+  Кнопка выбора файла.
+
+  Поле `type=file` лежит поверх кнопки прозрачным слоем, а не прячется атрибутом
+  `hidden`: спрятанное поле не получает фокус, и с клавиатуры прикрепить файл было
+  нельзя вовсе. Кольцо фокуса рисуется по самому полю — оно ровно накрывает кнопку.
+*/
+.file-pick { position: relative; overflow: hidden; }
+.file-pick-input {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer;
+}
+.file-pick-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Итог загрузки: зелёная строка живёт четыре секунды и гаснет. */
+.file-ok {
+  display: flex; align-items: center; gap: 6px; margin-top: 8px;
+  font-size: var(--fs-sm); color: var(--ok);
+}
+/* Цифра у вкладки «Файлы»: вложение видно, не открывая вкладку. */
+.tab-count {
+  display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 5px;
+  margin-left: 5px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  background: var(--bg-elev-2); color: var(--text-mut);
+}
+
+/*
+  Полоса сохранения внизу карточки задачи.
+
+  Липкая: карточка длинная, а ответ на вопрос «сохранилось ли» нужен там, где
+  человек сейчас смотрит, а не на дне страницы. Пока есть несохранённое —
+  подсвечена; когда всё сохранено, остаётся спокойной строкой состояния.
+*/
+.task-save-bar {
+  position: sticky; bottom: -20px; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 14px -20px -20px; padding: 10px 20px;
+  background: var(--bg-elev); border-top: 1px solid var(--border);
+}
+.task-save-bar.is-dirty { border-top-color: var(--accent); }
+.task-save-note { font-size: var(--fs-xs); color: var(--text-mut); }
+.task-save-bar.is-dirty .task-save-note { color: var(--text); }
+
 /* «Мои задачи» одним фильтром: кнопка + выпадающий список ответов. */
 .mine-filter { position: relative; display: inline-flex; margin-left: var(--sp-2); }
 .mine-filter .mine-toggle { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
@@ -1182,6 +1235,21 @@
   font-size: var(--fs-sm); text-align: left;
 }
 .mine-filter-reset:hover { color: var(--text); }
+/*
+  «Только в работе» — состояние, а не вид: стоит отдельной строкой под списком видов
+  и работает вместе с любым из них. Галочкой, а не пунктом списка, — чтобы было видно,
+  что это независимый переключатель.
+*/
+.mine-filter-switch {
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+  padding: 7px 8px; margin-top: 4px; border-top: 1px solid var(--border);
+  font-size: var(--fs-sm); color: var(--text);
+}
+.mine-filter-switch .dim { margin-left: auto; }
+/* Кольцо рисуем по всей строке: фокус получает галочка внутри, а видеть человек
+   должен строку целиком — иначе с клавиатуры непонятно, что сейчас выбрано. */
+.mine-filter-switch:focus-within,
+.mine-filter-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* Расход ИИ: итоги, столбики по дням и таблица возможностей. */
 .ai-usage-period { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 12px; }
@@ -2761,7 +2829,15 @@
   padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--bg-elev); color: var(--text); font: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
-.registry-check { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; }
+/*
+  «В работе» — главный переключатель реестра, а не рядовой фильтр.
+
+  Включён — рабочий список; выключен — вся история, включая завершённое и архивные
+  проекты. Поэтому он выглядит кнопкой с состоянием, а не галочкой в ряду фильтров:
+  от него зависит смысл всего, что ниже.
+*/
+.registry-inwork { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.registry-inwork.active { border-color: var(--accent); color: var(--accent); }
 /* На узком экране фильтры сворачиваются под кнопку — но по НАЖАТИЮ, не по наведению:
    спрятанный до наведения элемент не существует ни на телефоне, ни для того, кто
    просто не догадался туда навести. */
@@ -2830,7 +2906,6 @@
 .registry-filters select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .registry-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Обводку получает сам флажок: подпись — это label, фокус браузер даёт не ей. */
-.registry-check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ───── Напоминания секретаря: свёрнутая строка и панель разбора ─────
    Строка одной высоты при двух напоминаниях и при двадцати: «Фокус дня» не должен
