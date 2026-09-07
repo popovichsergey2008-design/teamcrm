@@ -1088,6 +1088,14 @@ export const api = {
       'GET', `/integrations/notion/connections/${cid}/unmatched-users`),
   notionMapUser: (cid: string, externalUserId: string, localUserId: string) =>
     request<any>('POST', `/integrations/notion/connections/${cid}/user-map`, { externalUserId, localUserId }),
+  /**
+   * Google-документы — слой 4 переезда (scan и status объявлены выше, рядом с базой
+   * знаний). Без OAuth: читаем то, что открыто «по ссылке». Граница честная —
+   * закрытый документ попадёт в список с причиной, а не молча пропадёт.
+   */
+  gdocsList: () => request<any[]>('GET', '/integrations/gdocs/list'),
+  gdocsAddLinks: (text: string, projectId?: string) =>
+    request<{ added: number; skipped: number }>('POST', '/integrations/gdocs/links', { text, projectId }),
   importFields: () => request<{ key: string; label: string; hint: string }[]>('GET', '/integrations/file/fields'),
   importPreview: async (file: File) => {
     const fd = new FormData();

@@ -36,6 +36,36 @@ export class GdocsRepository {
     );
   }
 
+  /**
+   * Список документов для экрана: что нашли, что прочитали, что не отдалось.
+   *
+   * Текст не тянем — он бывает на двести килобайт, а на экране нужна причина отказа,
+   * а не содержимое. Непрочитанные показываем ПЕРВЫМИ: именно с ними человеку и надо
+   * что-то сделать.
+   */
+  list(tenantId: string, limit = 200) {
+    return this.db.many<{
+      id: string; url: string; title: string | null; doc_type: string;
+      status: string; error: string | null; project_name: string | null; fetched_at: string | null;
+    }>(
+      `SELECT g.id, g.url, g.title, g.doc_type, g.status, g.error, g.fetched_at, p.name AS project_name
+         FROM google_docs g
+         LEFT JOIN projects p ON p.id = g.project_id
+        WHERE g.tenant_id = $1
+        ORDER BY (g.status = 'indexed'), g.updated_at DESC
+        LIMIT $2`,
+      [tenantId, limit],
+    );
+  }
+
+  /** Проект по умолчанию для ссылок, добавленных руками: первый неархивный. */
+  firstProject(tenantId: string) {
+    return this.db.one<{ id: string }>(
+      `SELECT id FROM projects WHERE tenant_id=$1 AND status <> 'archived' ORDER BY id LIMIT 1`,
+      [tenantId],
+    );
+  }
+
   statusCounts(tenantId: string) {
     return this.db.many<{ status: string; n: string }>(
       `SELECT status, count(*)::int AS n FROM google_docs WHERE tenant_id=$1 GROUP BY status`,
