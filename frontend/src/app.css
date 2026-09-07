@@ -1272,6 +1272,37 @@
 .repeat-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .repeat-note { display: flex; align-items: flex-start; gap: 6px; margin: 6px 0; font-size: var(--fs-xs); }
 
+/*
+  Импорт из файла: сопоставление колонок.
+
+  Главный экран переезда — таблица «поле задачи ↔ колонка файла» с образцом значения
+  рядом. Образец здесь не украшение: по нему человек за секунду видит, что «Срок»
+  уехал в колонку с фамилиями.
+*/
+.import-file { display: flex; flex-direction: column; gap: 10px; }
+.import-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.import-head .btn { margin-left: auto; }
+.import-target { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 6px; }
+.import-target .input { max-width: 320px; }
+.import-map { width: 100%; border-collapse: collapse; }
+.import-map td { padding: 5px 6px 5px 0; vertical-align: top; }
+.import-map-field { width: 38%; font-size: var(--fs-sm); }
+.import-map-field .dim { display: block; font-size: var(--fs-xs); }
+.import-map-field .req { color: var(--danger); }
+.import-map-sample { max-width: 220px; font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-sample { overflow-x: auto; }
+.import-sample table { border-collapse: collapse; font-size: var(--fs-xs); }
+.import-sample th, .import-sample td {
+  padding: 4px 8px; border: 1px solid var(--border); white-space: nowrap;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+}
+.import-sample th { background: var(--bg-elev-2); text-align: left; }
+.import-result { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev); }
+.import-result-head { display: flex; align-items: center; gap: 6px; color: var(--ok); font-weight: 600; }
+.import-nums { display: flex; gap: 16px; margin: 6px 0; font-size: var(--fs-sm); }
+.import-warnings { margin: 6px 0 0; padding-left: 18px; font-size: var(--fs-xs); color: var(--text-mut); }
+.import-warnings li { margin-bottom: 2px; }
+
 /* Расход ИИ: итоги, столбики по дням и таблица возможностей. */
 .ai-usage-period { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 12px; }
 .ai-usage-sums { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 6px; }

@@ -56,6 +56,26 @@ export interface TaskRecurrence {
   description: string;
 }
 
+/** Что нашлось в загруженном файле — до записи в базу. */
+export interface ImportPreview {
+  token: string;
+  fileName: string;
+  headers: string[];
+  mapping: Record<string, number>;
+  totalRows: number;
+  sample: string[][];
+  truncated: boolean;
+}
+
+/** Отчёт импорта. Предупреждения показываются целиком: импорт без отчёта — лотерея. */
+export interface ImportStats {
+  created: number;
+  updated: number;
+  skipped: number;
+  projects: string[];
+  warnings: string[];
+}
+
 export class ApiError extends Error {
   constructor(public code: string, message: string, public details?: unknown) {
     super(message);
@@ -1026,6 +1046,27 @@ export const api = {
     tz?: string;
   }) => request<TaskRecurrence>('PUT', `/tasks/${id}/recurrence`, b),
   clearTaskRecurrence: (id: string) => request<{ cleared: boolean }>('DELETE', `/tasks/${id}/recurrence`),
+  /**
+   * Импорт задач из файла (CSV/Excel) — переезд с чужой системы.
+   *
+   * Два шага и оба обязательны: предпросмотр (что в файле и куда поедут колонки) и
+   * только потом запись. Файл между шагами лежит на сервере — второй раз его не гоняем.
+   */
+  importFields: () => request<{ key: string; label: string; hint: string }[]>('GET', '/integrations/file/fields'),
+  importPreview: async (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/integrations/file/preview', {
+      method: 'POST',
+      headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+      body: fd,
+    });
+    const env = await res.json();
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Файл не прочитался');
+    return env.data as ImportPreview;
+  },
+  importRun: (b: { token: string; mapping: Record<string, number>; projectId?: string; newProjectName?: string }) =>
+    request<ImportStats>('POST', '/integrations/file/run', b),
   getForecast: (id: string) => request<any>('GET', `/tasks/${id}/forecast`),
   getVelocity: (userId: string) => request<any>('GET', `/users/${userId}/velocity`),
   getLoad: (userId: string) => request<any>('GET', `/users/${userId}/load`),

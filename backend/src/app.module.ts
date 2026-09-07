@@ -37,6 +37,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { DiagModule } from './modules/diagnostics/diag.module';
 import { BitrixModule } from './modules/integrations/bitrix/bitrix.module';
 import { YougileModule } from './modules/integrations/yougile/yougile.module';
+import { FileImportModule } from './modules/integrations/file/file-import.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { GdocsModule } from './modules/gdocs/gdocs.module';
 import { NlModule } from './modules/nl/nl.module';
@@ -98,6 +99,7 @@ import { FeedModule } from './modules/feed/feed.module';
     TaskCardModule,
     BitrixModule,
     YougileModule,
+    FileImportModule,
     KnowledgeModule,
     GdocsModule,
     NlModule,

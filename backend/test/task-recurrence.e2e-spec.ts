@@ -86,11 +86,13 @@ describe('регулярные задачи (e2e)', () => {
     expect(before).toHaveLength(1);
     expect(String(before[0].recurrence_id)).toBe(String(saved.id));
 
-    // ЗАКРЫВАЕМ образец: только тогда повтор вправе создать следующую
+    // ЗАКРЫВАЕМ образец: только тогда повтор вправе создать следующую.
+    // confirmGate — как в карточке: у задачи есть незакрытый чек-лист, и приёмка
+    // работы законно спрашивает, точно ли сдаём не доделав.
     const b = await board(owner.accessToken, project.id);
     const done = b.columns[b.columns.length - 1];
     await http.post(`/api/tasks/${task.id}/move`).set(H(owner.accessToken))
-      .send({ columnId: done.id, position: 0 }).expect(201);
+      .send({ columnId: done.id, position: 0, confirmGate: true }).expect(201);
 
     const scheduler = app.get(RecurrenceScheduler);
     // счётчик прохода не проверяем: база общая, и в ней могут ждать чужие расписания
