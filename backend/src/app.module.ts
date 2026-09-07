@@ -38,6 +38,7 @@ import { DiagModule } from './modules/diagnostics/diag.module';
 import { BitrixModule } from './modules/integrations/bitrix/bitrix.module';
 import { YougileModule } from './modules/integrations/yougile/yougile.module';
 import { FileImportModule } from './modules/integrations/file/file-import.module';
+import { TrelloModule } from './modules/integrations/trello/trello.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { GdocsModule } from './modules/gdocs/gdocs.module';
 import { NlModule } from './modules/nl/nl.module';
@@ -100,6 +101,7 @@ import { FeedModule } from './modules/feed/feed.module';
     BitrixModule,
     YougileModule,
     FileImportModule,
+    TrelloModule,
     KnowledgeModule,
     GdocsModule,
     NlModule,

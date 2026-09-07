@@ -1052,6 +1052,23 @@ export const api = {
    * Два шага и оба обязательны: предпросмотр (что в файле и куда поедут колонки) и
    * только потом запись. Файл между шагами лежит на сервере — второй раз его не гоняем.
    */
+  /**
+   * Trello — слой 2 переезда. Доступ по паре «ключ + токен»: OAuth-приложение для
+   * переноса своих досок не нужно и только добавило бы ожидание администратора.
+   */
+  trelloConnect: (apiKey: string, token: string, label?: string) =>
+    request<any>('POST', '/integrations/trello/connections', { apiKey, token, label }),
+  trelloConnections: () => request<any[]>('GET', '/integrations/trello/connections'),
+  trelloDisconnect: (cid: string) => request<any>('DELETE', `/integrations/trello/connections/${cid}`),
+  trelloBoards: (cid: string) =>
+    request<{ id: string; name: string; closed: boolean; url: string | null }[]>('GET', `/integrations/trello/connections/${cid}/boards`),
+  trelloImport: (cid: string, boardIds: string[]) =>
+    request<{ runId: string }>('POST', `/integrations/trello/connections/${cid}/import`, { boardIds }),
+  trelloRun: (runId: string) => request<any>('GET', `/integrations/trello/runs/${runId}`),
+  trelloUnmatched: (cid: string) =>
+    request<{ total: number; items: { externalId: string; name: string }[] }>('GET', `/integrations/trello/connections/${cid}/unmatched-users`),
+  trelloMapUser: (cid: string, externalUserId: string, localUserId: string) =>
+    request<any>('POST', `/integrations/trello/connections/${cid}/user-map`, { externalUserId, localUserId }),
   importFields: () => request<{ key: string; label: string; hint: string }[]>('GET', '/integrations/file/fields'),
   importPreview: async (file: File) => {
     const fd = new FormData();

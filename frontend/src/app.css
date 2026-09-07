@@ -1297,6 +1297,9 @@
   max-width: 220px; overflow: hidden; text-overflow: ellipsis;
 }
 .import-sample th { background: var(--bg-elev-2); text-align: left; }
+/* Выбор досок Trello и ход прогона. */
+.import-boards { max-height: 220px; overflow-y: auto; margin-bottom: 8px; }
+.import-run { margin-top: 10px; font-size: var(--fs-sm); }
 .import-result { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev); }
 .import-result-head { display: flex; align-items: center; gap: 6px; color: var(--ok); font-weight: 600; }
 .import-nums { display: flex; gap: 16px; margin: 6px 0; font-size: var(--fs-sm); }
