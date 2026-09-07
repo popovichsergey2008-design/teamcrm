@@ -1657,8 +1657,19 @@
 .team-metrics { margin-top: 8px; font-size: 13px; line-height: 1.6; }
 .add-user-input { margin-bottom: 8px; }
 .add-user { margin-bottom: 14px; }
-.tabs { display: flex; gap: 6px; margin: 4px 0 14px; border-bottom: 1px solid var(--border); }
-.tab { background: none; border: none; color: var(--text-dim); padding: 8px 12px; cursor: pointer; border-bottom: 2px solid transparent; }
+/*
+  Вкладки переносятся на вторую строку, а не уезжают за край.
+
+  В «Интеграциях» их стало восемь (по одной на источник переезда), и в одну строку они
+  перестали помещаться. Прокрутка здесь не годится: спрятанная вкладка — это вкладка,
+  которой для человека не существует, и «Промпты» никто бы больше не нашёл.
+  Названия не ломаем посередине слова — переносим целыми вкладками.
+*/
+.tabs { display: flex; flex-wrap: wrap; gap: 2px 6px; margin: 4px 0 14px; border-bottom: 1px solid var(--border); }
+.tab {
+  background: none; border: none; color: var(--text-dim); padding: 8px 12px; cursor: pointer;
+  border-bottom: 2px solid transparent; white-space: nowrap;
+}
 .tab.active { color: var(--text); border-bottom-color: var(--accent); }
 .team-inactive { opacity: .55; }
 .invite-box { margin-top: 8px; font-size: 13px; color: var(--text-dim); }
