@@ -63,12 +63,15 @@ describe('импорт из файла (e2e)', () => {
     expect(preview.mapping.title).toBe(0);
     expect(preview.mapping.assignee).toBe(2);
     expect(preview.mapping.deadline).toBe(3);
-    expect(preview.totalRows).toBe(2); // пустая по названию строка в предпросмотр не попала
+    // Строка без названия из предпросмотра НЕ прячется: человек должен видеть, что
+    // в файле она есть. Пропущена она будет при импорте — и попадёт в счётчик.
+    expect(preview.totalRows).toBe(3);
 
     const stats = (await http.post('/api/integrations/file/run').set(H(owner.accessToken))
       .send({ token: preview.token, mapping: preview.mapping, newProjectName: `Импорт ${uniq()}` })
       .expect(201)).body.data;
     expect(stats.created).toBe(2);
+    expect(stats.skipped).toBe(1); // строка без названия — не задача
     // человека, которого нет в команде, не выдумываем — говорим об этом в отчёте
     expect(stats.warnings.join(' ')).toContain('неизвестный@нигде.нет');
 
