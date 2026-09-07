@@ -656,14 +656,30 @@
   background: var(--fill-danger); color: var(--on-fill); font-size: 11px; font-weight: 700;
 }
 .project-row:hover .project-item, .project-row.active .project-item { color: var(--text); }
-/* Архив и удаление проекта — та же история: скрытые до наведения кнопки для того,
-   кто о них не знает, не существуют. */
+/*
+  Архив и удаление проекта — появляются при наведении (просьба заказчика).
+
+  Раньше они висели приглушёнными всегда: мы прятали их, человек не находил кнопки
+  вовсе, и мы вернули их на вид. Теперь, когда о них знают, постоянные значки у
+  каждого проекта только шумят — и это законный обратный ход.
+
+  Но ТОЛЬКО там, где наведение существует. На телефоне и планшете наведения нет, и
+  спрятанная кнопка там не «появляется при наведении», а исчезает навсегда — ровно та
+  ошибка, которую мы уже исправляли. Место кнопки остаётся занятым (прячем
+  прозрачностью, а не `display`), иначе строка дёргается под курсором.
+*/
 .project-del {
   border: none; background: transparent; color: var(--text-mut); cursor: pointer;
   padding: 4px 8px; font-size: 12px; opacity: .5; transition: opacity .12s, color .12s;
 }
-.project-row:hover .project-del, .project-del:focus-visible { opacity: 1; }
 .project-del:hover { color: var(--danger); }
+@media (hover: hover) and (pointer: fine) {
+  .project-del { opacity: 0; }
+  /* focus-within — для клавиатуры: дотабавшийся до кнопки человек должен её видеть */
+  .project-row:hover .project-del,
+  .project-row:focus-within .project-del,
+  .project-del:focus-visible { opacity: 1; }
+}
 .sidebar-empty { padding: 8px 10px; font-size: 13px; }
 .project-src { margin-left: 6px; color: var(--accent); font-size: 12px; }
 .new-project { display: flex; gap: 6px; margin-top: 12px; }
