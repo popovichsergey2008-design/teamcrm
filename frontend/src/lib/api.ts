@@ -33,6 +33,29 @@ export interface VoiceJob {
   durationSec: number | null;
 }
 
+/**
+ * Расписание повтора задачи.
+ *
+ * Подпись (`description`) приходит С СЕРВЕРА, а не собирается на клиенте: то же
+ * правило видит планировщик в журнале и человек в карточке, и разойтись в словах
+ * они не должны.
+ */
+export interface TaskRecurrence {
+  id: string;
+  taskId: string;
+  freq: 'daily' | 'weekly' | 'monthly' | 'days';
+  /** 1 = понедельник … 7 = воскресенье. */
+  weekdays: number[];
+  monthday: number | null;
+  intervalDays: number | null;
+  atTime: string;
+  tz: string;
+  nextRunAt: string;
+  lastRunAt: string | null;
+  active: boolean;
+  description: string;
+}
+
 export class ApiError extends Error {
   constructor(public code: string, message: string, public details?: unknown) {
     super(message);
@@ -989,6 +1012,20 @@ export const api = {
 
   saveTaskPlan: (id: string, b: { estimateHours?: number; deadlineAt?: string }) =>
     request<{ saved: true }>('POST', `/tasks/${id}/plan`, b),
+  /**
+   * Повтор задачи. Расписание живёт при задаче-образце: «повторять еженедельно» —
+   * свойство этой задачи, и искать его человек будет в её карточке.
+   */
+  taskRecurrence: (id: string) => request<TaskRecurrence | null>('GET', `/tasks/${id}/recurrence`),
+  setTaskRecurrence: (id: string, b: {
+    freq: 'daily' | 'weekly' | 'monthly' | 'days';
+    weekdays?: number[];
+    monthday?: number;
+    intervalDays?: number;
+    atTime: string;
+    tz?: string;
+  }) => request<TaskRecurrence>('PUT', `/tasks/${id}/recurrence`, b),
+  clearTaskRecurrence: (id: string) => request<{ cleared: boolean }>('DELETE', `/tasks/${id}/recurrence`),
   getForecast: (id: string) => request<any>('GET', `/tasks/${id}/forecast`),
   getVelocity: (userId: string) => request<any>('GET', `/users/${userId}/velocity`),
   getLoad: (userId: string) => request<any>('GET', `/users/${userId}/load`),

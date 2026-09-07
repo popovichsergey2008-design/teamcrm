@@ -246,6 +246,13 @@ function TaskCard({
         {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
         {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
         {due && <span className={due.cls} title={due.title}>{due.text}</span>}
+        {/* Повтор — первым: он объясняет, ПОЧЕМУ задача снова на доске. Без значка
+            очередная копия выглядит дублем, и её удаляют «как лишнюю». */}
+        {task.recurrence_id && (
+          <span className="badge badge-repeat" title="Регулярная задача — повторяется по расписанию">
+            <Icon name="refresh" size={12} /> повтор
+          </span>
+        )}
         {!!task.commentsCount && <span className="badge" title="комментарии"><Icon name="chat" size={12} /> {task.commentsCount}</span>}
         {!!task.attachmentsCount && <span className="badge" title="вложения"><Icon name="paperclip" size={12} /> {task.attachmentsCount}</span>}
         {!!task.checklistTotal && <span className="badge" title="чеклист"><Icon name="check" size={12} /> {task.checklistDone}/{task.checklistTotal}</span>}

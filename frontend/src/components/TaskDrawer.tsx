@@ -9,6 +9,7 @@ import type { Task, User } from '../types';
 import { Lightbox } from './Lightbox';
 import { DatePicker } from './DatePicker';
 import { TaskChat } from './TaskChat';
+import { TaskRecurrenceBlock } from './TaskRecurrence';
 import { MONETIZATION_ENABLED } from '../config';
 import { labelTextColor } from '../lib/labels';
 
@@ -567,6 +568,9 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 Не завершать без согласования с постановщиком
               </label>
             </div>
+            {/* Повтор — рядом с планом: это ответ на вопрос «когда», а не отдельная тема. */}
+            <TaskRecurrenceBlock taskId={task.id} onRefresh={onRefresh} />
+
             <div className="drawer-section">
               <div className="drawer-section-title">Прогноз срока</div>
               <div className="drawer-row">

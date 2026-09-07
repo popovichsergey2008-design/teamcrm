@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -226,4 +227,49 @@ export class TaskRegistryQueryDto {
   @IsString()
   @MaxLength(40)
   dayEnd?: string;
+}
+
+/**
+ * Расписание повтора задачи.
+ *
+ * Проверяем здесь только форму («число, строка, из списка»), а смысл — в
+ * `normalizeRule`: «еженедельно без дней недели» формально корректно, а работать
+ * не может. Разводить эти две проверки по разным местам нельзя — они разъедутся.
+ */
+export class TaskRecurrenceDto {
+  @IsIn(['daily', 'weekly', 'monthly', 'days'])
+  freq!: 'daily' | 'weekly' | 'monthly' | 'days';
+
+  /** 1 = понедельник … 7 = воскресенье. */
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(7, { each: true })
+  weekdays?: number[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  monthday?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  intervalDays?: number;
+
+  /** «ЧЧ:ММ» местного времени. */
+  @IsString()
+  @MaxLength(5)
+  atTime!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  tz?: string;
 }

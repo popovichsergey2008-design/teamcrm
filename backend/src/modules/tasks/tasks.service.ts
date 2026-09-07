@@ -4,6 +4,8 @@ import { ProjectsRepository } from '../projects/projects.repository';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TaskRow, TasksRepository } from './tasks.repository';
 import { TaskActivityRepository } from './task-activity.repository';
+import { ruleOf, TaskRecurrenceRepository } from './task-recurrence.repository';
+import { describeRule, nextRun, normalizeRule } from './recurrence';
 import { TaskReadsRepository } from './task-reads.repository';
 import { CreateTaskDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
 import { KnowledgeService } from '../knowledge/knowledge.service';
@@ -24,6 +26,7 @@ export class TasksService {
     private readonly knowledge: KnowledgeService,
     private readonly outbox: IntegrationOutboxService,
     private readonly notify: NotificationsService,
+    private readonly recurrence: TaskRecurrenceRepository,
   ) {}
 
   /**
@@ -152,6 +155,50 @@ export class TasksService {
     await this.outbox.enqueue(tenantId, task.project_id, 'task.create', task.id); // выгрузка во внешнюю систему
     void this.notify.taskCreated(tenantId, task.id, actorId); // письмо исполнителю; ответа не ждём
     return task;
+  }
+
+  /**
+   * Расписание повтора задачи.
+   *
+   * Живёт при задаче-образце: правят его там же, где завели, а копии узнаются по
+   * значку. Возвращаем и человеческую подпись — на клиенте она нужна ровно та же,
+   * и считать её дважды значит однажды разойтись в словах.
+   */
+  async getRecurrence(tenantId: string, taskId: string) {
+    const row = await this.recurrence.byTask(tenantId, taskId);
+    if (!row) return null;
+    const rule = ruleOf(row);
+    return {
+      ...rule,
+      id: String(row.id),
+      taskId: String(row.task_id),
+      nextRunAt: row.next_run_at,
+      lastRunAt: row.last_run_at,
+      active: row.active,
+      description: describeRule(rule),
+    };
+  }
+
+  async setRecurrence(tenantId: string, taskId: string, input: unknown, actorId: string | null) {
+    const task = await this.repo.findById(tenantId, taskId);
+    if (!task) throw AppException.notFound('Task not found');
+    const rule = normalizeRule(input as never);
+    // Отказ, а не молчаливая починка: повтор, который сработает не тогда, хуже
+    // отсутствующего — о нём уже перестали думать.
+    if (!rule) throw AppException.validation('Расписание повтора задано неверно');
+
+    const row = await this.recurrence.upsert(tenantId, taskId, rule, nextRun(rule, new Date()), actorId);
+    await this.activity.log(tenantId, taskId, actorId, 'recurrence_set', { rule: describeRule(rule) });
+    this.realtime.emit(tenantId, String(task.project_id), 'task.updated', { ...task, recurrence_id: row.id } as never);
+    return this.getRecurrence(tenantId, taskId);
+  }
+
+  async clearRecurrence(tenantId: string, taskId: string, actorId: string | null) {
+    const existing = await this.recurrence.byTask(tenantId, taskId);
+    if (!existing) return { cleared: false };
+    await this.recurrence.remove(tenantId, taskId);
+    await this.activity.log(tenantId, taskId, actorId, 'recurrence_cleared', {});
+    return { cleared: true };
   }
 
   async update(tenantId: string, id: string, dto: UpdateTaskDto, actorId: string | null = null): Promise<TaskRow> {

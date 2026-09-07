@@ -73,6 +73,11 @@ export interface Task {
   closed_at?: string | null;
   priority?: string;
   labels?: { id: string; name: string; color: string }[];
+  /**
+   * Задача с повтором: образец или его копия. Значок на карточке отвечает на вопрос
+   * «почему эта задача снова здесь» — без него копия выглядит дублем.
+   */
+  recurrence_id?: string | null;
   commentsCount?: number;
   attachmentsCount?: number;
   checklistTotal?: number;

@@ -1,11 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { TasksService } from './tasks.service';
 import {
   ApprovalRequiredDto, CreateTaskDto, FocusDateDto, MoveTaskDto, ParticipantDto,
-  ReturnTaskDto, TaskRegistryQueryDto, UpdateTaskDto,
+  ReturnTaskDto, TaskRecurrenceDto, TaskRegistryQueryDto, UpdateTaskDto,
 } from './tasks.dto';
 
 /** Пустую или кривую дату не подставляем молча: считаем, что клиент имел в виду сегодня. */
@@ -19,6 +19,27 @@ function isoDate(value?: string): string {
 @Roles('owner', 'manager', 'member') // клиенты не мутируют задачи
 export class TasksController {
   constructor(private readonly tasks: TasksService) {}
+
+  /**
+   * Повтор задачи: прочитать, задать, снять.
+   *
+   * Расписание живёт при задаче-образце, а не отдельным разделом: «повторять
+   * еженедельно» — свойство этой задачи, и искать его человек будет в ней.
+   */
+  @Get(':id/recurrence')
+  recurrence(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.tasks.getRecurrence(user.tenantId, id);
+  }
+
+  @Put(':id/recurrence')
+  setRecurrence(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: TaskRecurrenceDto) {
+    return this.tasks.setRecurrence(user.tenantId, id, dto, user.userId);
+  }
+
+  @Delete(':id/recurrence')
+  clearRecurrence(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.tasks.clearRecurrence(user.tenantId, id, user.userId);
+  }
 
   /** Карточку открыли — изменения по ней больше не новые. */
   @Post(':id/read')
