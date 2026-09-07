@@ -3,7 +3,7 @@ import { IntegrationCryptoService } from '../crypto.service';
 import { TrelloController } from './trello.controller';
 import { TrelloService } from './trello.service';
 import { TrelloImportService } from './trello.import.service';
-import { TrelloRepository } from './trello.repository';
+import { ImportRepository } from '../common/import.repository';
 
 /**
  * Интеграция с Trello — слой 2 «переезда в один клик» (ТЗ-4).
@@ -14,6 +14,6 @@ import { TrelloRepository } from './trello.repository';
  */
 @Module({
   controllers: [TrelloController],
-  providers: [TrelloService, TrelloImportService, TrelloRepository, IntegrationCryptoService],
+  providers: [TrelloService, TrelloImportService, ImportRepository, IntegrationCryptoService],
 })
 export class TrelloModule {}

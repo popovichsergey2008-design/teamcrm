@@ -7,40 +7,44 @@ export interface ConnectionRow {
 }
 
 /**
- * Хранилище интеграции с Trello.
+ * Хранилище импорта — общее для всех источников «переезда в один клик».
  *
  * Работает на ОБЩИХ таблицах интеграций (`integration_connections`, `external_refs`,
- * `import_runs`) — тех же, на которых живут Битрикс и YouGile. Своей схемы у Trello
- * нет и не должно быть: иначе третий импорт заведёт третью пару таблиц, и «история
- * прогонов» станет тремя разными историями.
+ * `import_runs`) — тех же, на которых живут Битрикс и YouGile. Источник различается
+ * ТОЛЬКО значением `provider`: заводить третью пару таблиц под Trello и четвёртую под
+ * Notion значит превратить историю прогонов в три разные истории.
  *
- * Секрет — пара «ключ:токен» — лежит в `webhook_enc` в зашифрованном виде.
+ * Секрет источника (ключ, пара «ключ:токен», токен интеграции) лежит в `webhook_enc`
+ * в зашифрованном виде.
  */
 @Injectable()
-export class TrelloRepository {
+export class ImportRepository {
   constructor(private readonly db: DbService) {}
 
   // ── подключения ──
-  createConnection(i: { tenantId: string; label: string | null; portal: string | null; secretEnc: string; createdBy: string }) {
+  createConnection(i: {
+    provider: string; tenantId: string; label: string | null;
+    portal: string | null; secretEnc: string; createdBy: string;
+  }) {
     return this.db.one<ConnectionRow>(
       `INSERT INTO integration_connections (tenant_id, provider, label, portal, webhook_enc, created_by, event_token)
-       VALUES ($1,'trello',$2,$3,$4,$5, md5(random()::text || clock_timestamp()::text)) RETURNING *`,
-      [i.tenantId, i.label, i.portal, i.secretEnc, i.createdBy],
+       VALUES ($1,$2,$3,$4,$5,$6, md5(random()::text || clock_timestamp()::text)) RETURNING *`,
+      [i.tenantId, i.provider, i.label, i.portal, i.secretEnc, i.createdBy],
     ) as Promise<ConnectionRow>;
   }
 
-  listConnections(tenantId: string) {
+  listConnections(tenantId: string, provider: string) {
     return this.db.many(
       `SELECT id, label, portal, is_active, created_at FROM integration_connections
-        WHERE tenant_id=$1 AND provider='trello' ORDER BY created_at`,
-      [tenantId],
+        WHERE tenant_id=$1 AND provider=$2 ORDER BY created_at`,
+      [tenantId, provider],
     );
   }
 
-  getConnection(tenantId: string, id: string): Promise<ConnectionRow | null> {
+  getConnection(tenantId: string, id: string, provider: string): Promise<ConnectionRow | null> {
     return this.db.one<ConnectionRow>(
-      `SELECT * FROM integration_connections WHERE tenant_id=$1 AND id=$2 AND provider='trello'`,
-      [tenantId, id],
+      `SELECT * FROM integration_connections WHERE tenant_id=$1 AND id=$2 AND provider=$3`,
+      [tenantId, id, provider],
     );
   }
 
@@ -142,15 +146,19 @@ export class TrelloRepository {
   }
 
   // ── доска → проект, список → колонка, карточка → задача ──
-  async upsertProject(i: { tenantId: string; connectionId: string; externalId: string; name: string }): Promise<{ id: string; created: boolean }> {
+  async upsertProject(i: {
+    tenantId: string; connectionId: string; externalId: string; name: string;
+    /** Происхождение проекта: 'trello' | 'notion' — по нему видно, откуда доска. */
+    origin: string;
+  }): Promise<{ id: string; created: boolean }> {
     const ref = await this.getRef(i.connectionId, 'project', i.externalId);
     if (ref) {
       await this.db.query(`UPDATE projects SET name=$3, updated_at=now() WHERE tenant_id=$1 AND id=$2`, [i.tenantId, ref.local_id, i.name]);
       return { id: ref.local_id, created: false };
     }
     const row = await this.db.one<{ id: string }>(
-      `INSERT INTO projects (tenant_id, name, origin, origin_connection_id) VALUES ($1,$2,'trello',$3) RETURNING id`,
-      [i.tenantId, i.name, i.connectionId],
+      `INSERT INTO projects (tenant_id, name, origin, origin_connection_id) VALUES ($1,$2,$4,$3) RETURNING id`,
+      [i.tenantId, i.name, i.connectionId, i.origin],
     );
     await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'project', externalId: i.externalId, localId: row!.id });
     return { id: row!.id, created: true };

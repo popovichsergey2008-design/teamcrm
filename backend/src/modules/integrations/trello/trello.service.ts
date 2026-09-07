@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../../common/http/app-exception';
 import { IntegrationCryptoService } from '../crypto.service';
-import { TrelloRepository } from './trello.repository';
+import { ImportRepository } from '../common/import.repository';
 import { TrelloImportService } from './trello.import.service';
 import { TrelloClient } from './trello.client';
+
+/** Имя источника в общих таблицах интеграций. */
+const PROVIDER = 'trello';
 
 /**
  * Trello: подключение по паре «ключ + токен», выбор досок, импорт.
@@ -18,7 +21,7 @@ export class TrelloService {
   private readonly log = new Logger('Trello');
 
   constructor(
-    private readonly repo: TrelloRepository,
+    private readonly repo: ImportRepository,
     private readonly crypto: IntegrationCryptoService,
     private readonly importer: TrelloImportService,
   ) {}
@@ -33,7 +36,7 @@ export class TrelloService {
   }
 
   private async credsFor(tenantId: string, cid: string) {
-    const conn = await this.repo.getConnection(tenantId, cid);
+    const conn = await this.repo.getConnection(tenantId, cid, PROVIDER);
     if (!conn) throw AppException.notFound('Подключение не найдено');
     return { conn, ...this.unpack(this.crypto.decrypt(conn.webhook_enc)) };
   }
@@ -47,6 +50,7 @@ export class TrelloService {
       throw AppException.validation((e as Error).message);
     });
     const conn = await this.repo.createConnection({
+      provider: PROVIDER,
       tenantId,
       label: (label ?? '').trim() || `Trello · ${me.fullName || me.username}`,
       portal: me.username ? `@${me.username}` : null,
@@ -57,7 +61,7 @@ export class TrelloService {
   }
 
   listConnections(tenantId: string) {
-    return this.repo.listConnections(tenantId);
+    return this.repo.listConnections(tenantId, PROVIDER);
   }
 
   async disconnect(tenantId: string, cid: string) {
@@ -128,7 +132,7 @@ export class TrelloService {
    * без сброса исполнитель доехал бы только до новых карточек.
    */
   async mapUser(tenantId: string, cid: string, externalUserId: string, localUserId: string) {
-    const conn = await this.repo.getConnection(tenantId, cid);
+    const conn = await this.repo.getConnection(tenantId, cid, PROVIDER);
     if (!conn) throw AppException.notFound('Подключение не найдено');
     if (!(await this.repo.userExists(tenantId, localUserId))) throw AppException.notFound('Сотрудник не найден');
     await this.repo.putRef({

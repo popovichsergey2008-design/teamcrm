@@ -1069,6 +1069,25 @@ export const api = {
     request<{ total: number; items: { externalId: string; name: string }[] }>('GET', `/integrations/trello/connections/${cid}/unmatched-users`),
   trelloMapUser: (cid: string, externalUserId: string, localUserId: string) =>
     request<any>('POST', `/integrations/trello/connections/${cid}/user-map`, { externalUserId, localUserId }),
+  /**
+   * Notion — слой 3 переезда. Токен внутренней интеграции; доступ к каждой базе
+   * человек открывает в самом Notion через «Connections» (об этом сказано в панели).
+   */
+  notionConnect: (token: string, label?: string) =>
+    request<any>('POST', '/integrations/notion/connections', { token, label }),
+  notionConnections: () => request<any[]>('GET', '/integrations/notion/connections'),
+  notionDisconnect: (cid: string) => request<any>('DELETE', `/integrations/notion/connections/${cid}`),
+  notionDatabases: (cid: string) =>
+    request<{ items: { id: string; name: string; statusProperty: string | null }[]; hint: string | null }>(
+      'GET', `/integrations/notion/connections/${cid}/databases`),
+  notionImport: (cid: string, databaseIds: string[]) =>
+    request<{ runId: string }>('POST', `/integrations/notion/connections/${cid}/import`, { databaseIds }),
+  notionRun: (runId: string) => request<any>('GET', `/integrations/notion/runs/${runId}`),
+  notionUnmatched: (cid: string) =>
+    request<{ total: number; items: { externalId: string; name: string; email: string }[] }>(
+      'GET', `/integrations/notion/connections/${cid}/unmatched-users`),
+  notionMapUser: (cid: string, externalUserId: string, localUserId: string) =>
+    request<any>('POST', `/integrations/notion/connections/${cid}/user-map`, { externalUserId, localUserId }),
   importFields: () => request<{ key: string; label: string; hint: string }[]>('GET', '/integrations/file/fields'),
   importPreview: async (file: File) => {
     const fd = new FormData();

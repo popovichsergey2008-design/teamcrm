@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FilesService } from '../../files/files.service';
-import { TrelloRepository } from './trello.repository';
+import { ImportRepository } from '../common/import.repository';
 import { TrelloClient, TrCard, TrMember } from './trello.client';
 import {
   cardHash, descriptionWithLinks, isCardDone, labelColor, labelNames, priorityFromLabels, projectName,
@@ -51,7 +51,7 @@ export class TrelloImportService {
   private readonly log = new Logger('TrelloImport');
 
   constructor(
-    private readonly repo: TrelloRepository,
+    private readonly repo: ImportRepository,
     private readonly files: FilesService,
   ) {}
 
@@ -91,7 +91,7 @@ export class TrelloImportService {
     if (!board) throw new Error('доска недоступна по этому токену');
 
     const project = await this.repo.upsertProject({
-      tenantId, connectionId, externalId: String(board.id), name: projectName(board.name),
+      tenantId, connectionId, externalId: String(board.id), name: projectName(board.name), origin: 'trello',
     });
     stats.boards++;
 

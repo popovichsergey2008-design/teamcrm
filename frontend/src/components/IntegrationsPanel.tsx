@@ -3,6 +3,7 @@ import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { FileImportPanel } from './FileImportPanel';
 import { TrelloPanel } from './TrelloPanel';
+import { NotionPanel } from './NotionPanel';
 import { SkeletonList } from './Skeleton';
 import { api, ApiError } from '../lib/api';
 import { AiSettingsSection } from './AiSettingsPanel';
@@ -12,7 +13,7 @@ import { useEscape } from '../hooks/useEscape';
 /** Интеграции: подключения (Битрикс24) + ключи ИИ + промпты (PromptOps). */
 export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
   useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
-  const [tab, setTab] = useState<'file' | 'trello' | 'bitrix' | 'yougile' | 'ai' | 'prompts'>('file');
+  const [tab, setTab] = useState<'file' | 'trello' | 'notion' | 'bitrix' | 'yougile' | 'ai' | 'prompts'>('file');
   const [conns, setConns] = useState<any[]>([]);
   const [msg, setMsg] = useState('');
   const [form, setForm] = useState({ webhookUrl: '', label: '' });
@@ -46,6 +47,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
               требуют доступа к чужой системе. */}
           <button className={`tab ${tab === 'file' ? 'active' : ''}`} onClick={() => setTab('file')}>Из файла</button>
           <button className={`tab ${tab === 'trello' ? 'active' : ''}`} onClick={() => setTab('trello')}>Trello</button>
+          <button className={`tab ${tab === 'notion' ? 'active' : ''}`} onClick={() => setTab('notion')}>Notion</button>
           <button className={`tab ${tab === 'bitrix' ? 'active' : ''}`} onClick={() => setTab('bitrix')}>Битрикс24</button>
           <button className={`tab ${tab === 'yougile' ? 'active' : ''}`} onClick={() => setTab('yougile')}>YouGile</button>
           <button className={`tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')}>ИИ (ключи и модель)</button>
@@ -57,6 +59,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
         {tab === 'prompts' && <PromptsSection />}
         {tab === 'file' && <FileImportPanel />}
         {tab === 'trello' && <TrelloPanel />}
+        {tab === 'notion' && <NotionPanel />}
         {tab === 'yougile' && <YougileSection />}
 
         {tab === 'bitrix' && (<>
