@@ -133,8 +133,17 @@ export function FeedPage() {
 
   return (
     <div className="page feed-page">
-      <div className="page-head"><h2>Лента компании</h2></div>
+      <div className="page-head"><h2>Новости компании</h2></div>
 
+      {/*
+        Прокручиваемое тело страницы.
+
+        Оболочка приложения не прокручивается специально (шапка и панель обязаны
+        оставаться на месте), поэтому у каждой страницы своя область прокрутки. У
+        ленты её не было: длинная новость просто уходила за нижний край экрана, и
+        добраться до неё было нечем.
+      */}
+      <div className="feed-scroll">
       {!canPost && (
         // Молчать нельзя: человек, пришедший «написать всем», должен понимать, почему
         // формы нет, — иначе он решит, что раздел сломан.
@@ -244,6 +253,7 @@ export function FeedPage() {
 
       <div className="feed-list">
         {items.map((p) => <PostCard key={p.id} post={p} team={team} onChanged={reload} />)}
+      </div>
       </div>
     </div>
   );

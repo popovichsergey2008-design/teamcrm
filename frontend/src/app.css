@@ -423,7 +423,21 @@
 .board-layout { display: flex; flex: 1; min-height: 0; }
 
 /* ── Лента компании ── */
-.feed-page { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; max-width: 820px; }
+/*
+  Страница новостей: шапка на месте, содержимое прокручивается.
+
+  Раньше ширину и отступы держала сама страница, а прокрутки не было ни у кого —
+  длинная новость (особенно с картинкой) уходила за нижний край экрана, и достать её
+  было нечем. Теперь как и в остальных разделах: шапка сверху, ниже — своя область
+  прокрутки, а колонка содержимого ограничена по ширине для читаемости.
+*/
+.feed-page { display: flex; flex-direction: column; }
+.feed-scroll {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px; padding: 16px 20px;
+}
+/* Колонка текста не шире 820: строки длиннее просто не читаются. */
+.feed-scroll > * { max-width: 820px; width: 100%; flex: 0 0 auto; }
 .feed-composer { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .feed-composer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .feed-flag { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; }
