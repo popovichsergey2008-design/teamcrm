@@ -229,6 +229,86 @@ export class FeedRepository {
   }
 
   /**
+   * Правая колонка новостей.
+   *
+   * Две короткие выборки вместо одной большой: объявления и обычные новости живут
+   * по разным правилам (объявление действует до даты и его подтверждают прочтением),
+   * и склеивать их в один запрос ради «одного похода в базу» значит потом разбирать
+   * склейку в коде.
+   *
+   * Тело обрезаем прямо в запросе: в колонку шириной в три сантиметра всё равно
+   * влезает строка, а тащить по сети восемь тысяч знаков на каждую новость незачем.
+   */
+  sideAnnouncements(tenantId: string, userId: string, limit = 5) {
+    return this.db.many<{ id: string; body: string; created_at: Date; read_at: Date | null }>(
+      `SELECT p.id, left(p.body, 140) AS body, p.created_at, r.read_at
+         FROM feed_posts p
+         LEFT JOIN feed_post_reads r ON r.post_id = p.id AND r.user_id = $2
+        WHERE p.tenant_id = $1 AND p.deleted_at IS NULL AND p.is_announcement
+          AND (p.active_until IS NULL OR p.active_until > now())
+          AND (
+            p.author_id = $2
+            OR NOT EXISTS (SELECT 1 FROM feed_post_groups pg WHERE pg.post_id = p.id)
+            OR EXISTS (
+              SELECT 1 FROM feed_post_groups pg
+               JOIN user_groups ug ON ug.group_id = pg.group_id AND ug.user_id = $2
+               WHERE pg.post_id = p.id)
+          )
+        ORDER BY p.id DESC
+        LIMIT $3`,
+      [tenantId, userId, limit],
+    );
+  }
+
+  sideLatest(tenantId: string, userId: string, limit = 5) {
+    return this.db.many<{ id: string; body: string; created_at: Date; author_name: string | null }>(
+      `SELECT p.id, left(p.body, 140) AS body, p.created_at, u.full_name AS author_name
+         FROM feed_posts p JOIN users u ON u.id = p.author_id
+        WHERE p.tenant_id = $1 AND p.deleted_at IS NULL AND NOT p.is_announcement
+          AND (
+            p.author_id = $2
+            OR NOT EXISTS (SELECT 1 FROM feed_post_groups pg WHERE pg.post_id = p.id)
+            OR EXISTS (
+              SELECT 1 FROM feed_post_groups pg
+               JOIN user_groups ug ON ug.group_id = pg.group_id AND ug.user_id = $2
+               WHERE pg.post_id = p.id)
+          )
+        ORDER BY p.id DESC
+        LIMIT $3`,
+      [tenantId, userId, limit],
+    );
+  }
+
+  /** Все, у кого указан день рождения: ближайших выбирает код (см. birthdays.ts). */
+  birthdayPeople(tenantId: string) {
+    return this.db.many<{ id: string; full_name: string; avatar_file_id: string | null; birth_date: string }>(
+      // Строкой, а не датой: драйвер отдаёт DATE как полночь ПО МЕСТНОМУ времени, и
+      // при поясе восточнее Гринвича 17 марта превращалось бы в 16-е.
+      `SELECT u.id, u.full_name, u.avatar_file_id, to_char(u.birth_date, 'YYYY-MM-DD') AS birth_date
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+        WHERE u.tenant_id = $1 AND u.is_active AND u.birth_date IS NOT NULL
+          AND r.code <> 'client'`,
+      [tenantId],
+    );
+  }
+
+  /** Кто недавно пришёл в компанию: повод познакомиться, а не гадать по аватарке. */
+  newcomers(tenantId: string, days = 30, limit = 5) {
+    return this.db.many<{ id: string; full_name: string; avatar_file_id: string | null; created_at: Date; position_name: string | null }>(
+      `SELECT u.id, u.full_name, u.avatar_file_id, u.created_at, p.name AS position_name
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+    LEFT JOIN positions p ON p.id = u.position_id
+        WHERE u.tenant_id = $1 AND u.is_active AND r.code <> 'client'
+          AND u.created_at > now() - ($2 || ' days')::interval
+        ORDER BY u.created_at DESC
+        LIMIT $3`,
+      [tenantId, String(days), limit],
+    );
+  }
+
+  /**
    * Комментарии к новости — ПОСЛЕДНИЕ, а не все.
    *
    * У обсуждения свой порядок чтения: человек открывает его, чтобы увидеть, чем всё

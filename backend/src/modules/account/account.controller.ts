@@ -27,6 +27,8 @@ class UpdateProfileDto {
   @IsOptional() @IsInt() @Min(1) @Max(168) radarStuckHours?: number | null;
   /** Не ставить мне встречи на время, где уже что-то стоит. */
   @IsOptional() @IsBoolean() calendarBlockOverlap?: boolean;
+  /** День рождения — для блока «Дни рождения» в новостях. Пустая строка стирает дату. */
+  @IsOptional() @IsString() @MaxLength(10) birthDate?: string | null;
 }
 class PasswordDto {
   @IsString() currentPassword!: string;

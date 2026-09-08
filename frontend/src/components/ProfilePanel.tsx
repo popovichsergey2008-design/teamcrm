@@ -72,6 +72,8 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
         radarStuckHours: me.radarStuckHours === '' || me.radarStuckHours === null || me.radarStuckHours === undefined
           ? null : Number(me.radarStuckHours),
         calendarBlockOverlap: me.calendarBlockOverlap !== false,
+        // пустое поле — «убрать дату»: сервер отличает пустую строку от «не менять»
+        birthDate: me.birthDate ?? '',
       });
       flash('Профиль сохранён'); loadMe();
     } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
@@ -165,6 +167,19 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             <div className="field"><label>E-mail</label><input className="input" value={me.email} disabled /></div>
             <div className="field"><label>Должность</label><input className="input" value={me.positionName ?? '—'} disabled /></div>
             <div className="field"><label>Телефон</label><input className="input" value={me.phone ?? ''} onChange={(e) => setMe({ ...me, phone: e.target.value })} /></div>
+            {/* День рождения. Нужен одному месту — блоку «Дни рождения» в новостях,
+                и показывается там только день и месяц: год никого не касается.
+                Поле необязательное: не заполнил — в списке тебя нет. */}
+            <div className="field">
+              <label>День рождения</label>
+              <input
+                className="input"
+                type="date"
+                value={me.birthDate ?? ''}
+                onChange={(e) => setMe({ ...me, birthDate: e.target.value })}
+                title="Показывается коллегам в разделе «Новости» — днём и месяцем, без года"
+              />
+            </div>
             <div className="field">
               <label>Часовой пояс</label>
               {/* Выбор из списка, а не свободный ввод: опечатка в «Europe/Moskow» тихо

@@ -260,4 +260,36 @@ describe('Лента компании (e2e)', () => {
     const comments = (await http$.get(`/api/feed/${post.id}/comments`).set(H(mate.token)).expect(200)).body.data;
     expect(comments.items[0].body).toContain('посмотрите');
   });
+
+  /*
+    Правая колонка.
+
+    Проверка нарочно стоит последней и заводит СВОЮ организацию: четыре списка
+    считаются по всей компании, и любой пост или сотрудник, добавленный соседним
+    случаем, менял бы здесь числа. Тем же кончилась однажды проверка переписки
+    в карточке задачи.
+
+    Смысл случая — что четыре запроса вообще выполняются: у дней рождения и
+    новичков внутри интервалы и даты, а такое ломается не на типах, а в базе.
+  */
+  it('правая колонка: объявления, новости, дни рождения, новички', async () => {
+    const owner = await org('Колонка новостей');
+    const mate = await employee(owner.accessToken);
+
+    await http$.post('/api/feed').set(H(owner.accessToken))
+      .send({ body: 'Обычная новость про кофемашину' }).expect(201);
+    await http$.post('/api/feed').set(H(owner.accessToken))
+      .send({ body: 'В пятницу общий сбор', isAnnouncement: true }).expect(201);
+
+    // день рождения ставит сам человек в своём профиле — год для показа не нужен
+    await http$.patch('/api/me').set(H(mate.token)).send({ birthDate: '1990-03-17' }).expect(200);
+
+    const side = (await http$.get('/api/feed/sidebar').set(H(mate.token)).expect(200)).body.data;
+    expect(side.announcements.map((a: any) => a.body)).toEqual(['В пятницу общий сбор']);
+    expect(side.announcements[0].isRead).toBe(false);
+    expect(side.latest.map((n: any) => n.body)).toEqual(['Обычная новость про кофемашину']);
+    expect(side.birthdays.map((b: any) => b.fullName)).toEqual(['Сотрудник member']);
+    // оба завелись только что — оба новички
+    expect(side.newcomers).toHaveLength(2);
+  });
 });

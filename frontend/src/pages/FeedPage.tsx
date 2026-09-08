@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useEscape } from '../hooks/useEscape';
 import { Avatar } from '../components/Avatar';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
@@ -83,20 +84,47 @@ export function FeedPage() {
   const [meta, setMeta] = useState({ total: 0, page: 1, pages: 1 });
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [team, setTeam] = useState<MentionUser[]>([]);
+  /**
+   * Открытая новость.
+   *
+   * В ленте лежат превью, а целиком новость читают в окне: пост на два экрана
+   * выталкивал соседние вниз, и «что вообще нового» приходилось собирать прокруткой.
+   */
+  const [openPost, setOpenPost] = useState<Post | null>(null);
 
   const reload = useCallback(
-    (page = 1) => api.feedList(page)
+    (page = 1): Promise<Post[]> => api.feedList(page)
       .then((r) => {
         setItems(r.items);
         setCanPost(r.canPost !== false);
         setMeta({ total: r.total ?? r.items.length, page: r.page ?? 1, pages: r.pages ?? 1 });
+        // Список возвращаем наружу: по ссылке из правой колонки новость надо не
+        // только загрузить, но и сразу открыть — а состояние к этому моменту ещё старое.
+        return r.items as Post[];
       })
-      .catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить ленту'))
+      .catch((e) => {
+        setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить ленту');
+        return [] as Post[];
+      })
       .finally(() => setLoaded(true)),
     [],
   );
 
   useEffect(() => { void reload(); }, [reload]);
+
+  /**
+   * Открыть новость по номеру — так работают ссылки в правой колонке.
+   *
+   * Чаще всего она уже на этой странице; если нет (объявление месячной давности),
+   * возвращаемся на первую и ищем там. Не нашли — молчим: пост мог быть удалён.
+   */
+  const openById = async (id: string) => {
+    const here = items.find((p) => String(p.id) === String(id));
+    if (here) return setOpenPost(here);
+    const list = await reload(1);
+    const found = list.find((p) => String(p.id) === String(id));
+    if (found) setOpenPost(found);
+  };
 
   /** Перейти на страницу: прокрутку возвращаем наверх — иначе человек смотрит в середину чужой страницы. */
   const setPage = (page: number) => {
@@ -305,18 +333,31 @@ export function FeedPage() {
       )}
 
       {err && !composerOpen && <div className="error-text">{err}</div>}
-      {!loaded && <SkeletonList rows={4} />}
-      {loaded && items.length === 0 && (
-        <EmptyState
-          icon="chat"
-          title="В ленте пока пусто"
-          hint="Здесь живут сообщения всей компании и объявления, которые нужно прочитать каждому."
-        />
-      )}
 
-      <div className="feed-list">
-        {items.map((p) => <PostCard key={p.id} post={p} team={team} onChanged={reload} />)}
-      </div>
+      {/*
+        Две колонки: слева поток, справа короткие списки.
+
+        Так устроены новости во всех корпоративных порталах, и не из моды: лента
+        отвечает на «что нового», но не отвечает на «что я мог пропустить» и «что
+        вообще происходит в компании». На узком экране колонка уходит вниз — она
+        полезная, но не главная.
+      */}
+      <div className="feed-layout">
+        <div className="feed-main">
+          {!loaded && <SkeletonList rows={4} />}
+          {loaded && items.length === 0 && (
+            <EmptyState
+              icon="chat"
+              title="В ленте пока пусто"
+              hint="Здесь живут сообщения всей компании и объявления, которые нужно прочитать каждому."
+            />
+          )}
+
+          <div className="feed-list">
+            {items.map((p) => (
+              <PostCard key={p.id} post={p} team={team} onOpen={() => setOpenPost(p)} onChanged={reload} />
+            ))}
+          </div>
 
       {/*
         Постраничность — та же, что в реестре задач: один способ листать на всё
@@ -355,8 +396,167 @@ export function FeedPage() {
           </button>
         </div>
       )}
+        </div>
+
+        <FeedAside onOpenPost={openById} />
       </div>
+      </div>
+
+      {openPost && (
+        <PostModal
+          post={openPost}
+          team={team}
+          onClose={() => setOpenPost(null)}
+          onChanged={() => { void reload(meta.page); }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Превью новости в ленте.
+ *
+ * Карточка отвечает на один вопрос: «стоит ли это читать». Поэтому текст обрезан
+ * четырьмя строками, картинка показана уголком, а обсуждение и список прочитавших
+ * живут в окне. Пост на два экрана выталкивал соседние вниз, и лента переставала
+ * быть лентой.
+ */
+function PostCard({ post, team, onOpen, onChanged }: {
+  post: Post; team: MentionUser[]; onOpen: () => void; onChanged: () => void;
+}) {
+  const images = post.files.filter((f) => f.mime.startsWith('image/'));
+  const attention = post.isAnnouncement && !post.isRead;
+  return (
+    <article
+      className={`card feed-post feed-post-card ${post.isAnnouncement ? 'announcement' : ''} ${post.isPinned ? 'pinned' : ''}`}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+      title="Открыть новость"
+    >
+      <header className="feed-post-head">
+        <Avatar path={post.authorAvatar} fallback={post.authorName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+        <span className="feed-author">{post.authorName ?? 'Сотрудник'}</span>
+        <span className="dim feed-time">{when(post.createdAt)}</span>
+        {post.isPinned && <Icon name="flag" size={13} />}
+        {post.isAnnouncement && <span className="feed-badge">объявление</span>}
+        {attention && <span className="feed-badge feed-badge-new">не прочитано</span>}
+        {post.groups.length > 0 && <span className="dim feed-time">· {post.groups.join(', ')}</span>}
+        {/* Управление постом остаётся на карточке: закрепляют и удаляют из списка,
+            а не изнутри новости. Клик по кнопке не должен открывать окно. */}
+        {post.canManage && (
+          <span className="feed-post-actions" onClick={(e) => e.stopPropagation()}>
+            <button className="btn btn-ghost btn-sm" onClick={() => api.feedPin(post.id, !post.isPinned).then(onChanged)}>
+              {post.isPinned ? 'Открепить' : 'Закрепить'}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              title="Удалить из ленты"
+              aria-label="Удалить из ленты"
+              onClick={() => { if (window.confirm('Удалить сообщение из ленты?')) api.feedDelete(post.id).then(onChanged); }}
+            >
+              <Icon name="trash" size={13} />
+            </button>
+          </span>
+        )}
+      </header>
+
+      <div className="feed-card-row">
+        <div className="feed-body feed-preview"><Body text={post.body} team={team} /></div>
+        {/* Картинка уголком: она обещает, что внутри есть на что посмотреть, но не
+            занимает пол-экрана в списке. Целиком — в окне новости. */}
+        {images.length > 0 && (
+          <div className="feed-thumb-wrap">
+            <FeedImage file={images[0]} thumb />
+            {images.length > 1 && <span className="feed-thumb-more">+{images.length - 1}</span>}
+          </div>
+        )}
+      </div>
+
+      <footer className="feed-post-foot dim">
+        <span><Icon name="chat" size={13} /> {post.comments || 0}</span>
+        {post.isAnnouncement && <span><Icon name="check" size={13} /> прочитали: {post.reads}</span>}
+        {post.files.length > 0 && <span><Icon name="paperclip" size={13} /> {post.files.length}</span>}
+        <span className="feed-open-hint">Читать</span>
+      </footer>
+    </article>
+  );
+}
+
+/**
+ * Правая колонка новостей.
+ *
+ * Четыре коротких списка: действующие объявления, свежие новости, дни рождения и
+ * кто недавно пришёл. Пустые блоки не показываем вовсе — колонка из заголовков с
+ * прочерками выглядит сломанной, а не пустой.
+ */
+function FeedAside({ onOpenPost }: { onOpenPost: (id: string) => void }) {
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.feedSidebar>> | null>(null);
+  useEffect(() => { api.feedSidebar().then(setData).catch(() => undefined); }, []);
+  if (!data) return <aside className="feed-aside" aria-hidden="true" />;
+
+  const birthdayWhen = (b: { inDays: number; date: string }) => {
+    if (b.inDays === 0) return 'сегодня';
+    if (b.inDays === 1) return 'завтра';
+    return new Date(`${b.date}T00:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  };
+
+  const line = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 90);
+
+  return (
+    <aside className="feed-aside">
+      {data.announcements.length > 0 && (
+        <div className="card feed-aside-card">
+          <h4><Icon name="alert" size={14} /> Объявления</h4>
+          {data.announcements.map((a) => (
+            <button key={a.id} className="feed-aside-item" onClick={() => onOpenPost(a.id)}>
+              <span className={a.isRead ? 'dim' : 'feed-aside-unread'}>{line(a.body)}</span>
+              <span className="dim feed-time">{when(a.createdAt)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {data.latest.length > 0 && (
+        <div className="card feed-aside-card">
+          <h4><Icon name="bell" size={14} /> Последние новости</h4>
+          {data.latest.map((n) => (
+            <button key={n.id} className="feed-aside-item" onClick={() => onOpenPost(n.id)}>
+              <span>{line(n.body)}</span>
+              <span className="dim feed-time">{n.authorName ?? ''} · {when(n.createdAt)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {data.birthdays.length > 0 && (
+        <div className="card feed-aside-card">
+          <h4>🎂 Дни рождения</h4>
+          {data.birthdays.map((b) => (
+            <div key={b.userId} className={`feed-aside-person${b.inDays === 0 ? ' today' : ''}`}>
+              <Avatar path={b.avatarUrl} fallback={b.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+              <span className="feed-aside-name">{b.fullName}</span>
+              <span className="dim feed-time">{birthdayWhen(b)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {data.newcomers.length > 0 && (
+        <div className="card feed-aside-card">
+          <h4><Icon name="user" size={14} /> Новые в команде</h4>
+          {data.newcomers.map((n) => (
+            <div key={n.userId} className="feed-aside-person">
+              <Avatar path={n.avatarUrl} fallback={n.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+              <span className="feed-aside-name">{n.fullName}</span>
+              <span className="dim feed-time">{n.positionName ?? ''}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </aside>
   );
 }
 
@@ -367,9 +567,12 @@ export function FeedPage() {
  * тянем блоб с токеном и показываем его. Ссылку освобождаем при размонтировании — в
  * длинной ленте иначе течёт память.
  */
-function FeedImage({ file, onOpen }: {
+function FeedImage({ file, onOpen, thumb }: {
   file: FeedFile;
-  onOpen: (p: { url: string; name: string; mime: string }) => void;
+  /** Не задан — картинка не кликается: в превью клик принадлежит самой карточке. */
+  onOpen?: (p: { url: string; name: string; mime: string }) => void;
+  /** Уголком, а не во всю ширину: так картинка показана в ленте. */
+  thumb?: boolean;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -389,8 +592,9 @@ function FeedImage({ file, onOpen }: {
 
   // Не загрузилась — говорим об этом, а не показываем пустоту: пустое место в новости
   // читается как «тут ничего и не было».
-  if (failed) return <div className="dim">Картинка «{file.name}» не загрузилась</div>;
-  if (!url) return <div className="feed-banner-skeleton" aria-hidden="true" />;
+  if (failed) return thumb ? null : <div className="dim">Картинка «{file.name}» не загрузилась</div>;
+  if (!url) return <div className={thumb ? 'feed-thumb-skeleton' : 'feed-banner-skeleton'} aria-hidden="true" />;
+  if (thumb || !onOpen) return <span className="feed-thumb"><img src={url} alt={file.name} /></span>;
   return (
     <button
       className="feed-banner"
@@ -415,7 +619,17 @@ async function downloadFile(file: FeedFile): Promise<void> {
   } catch { /* кнопка — удобство; молчаливый отказ лучше ошибки поверх ленты */ }
 }
 
-function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; onChanged: () => void }) {
+/**
+ * Новость целиком — в окне поверх ленты.
+ *
+ * Здесь всё, чего нет в превью: полный текст, все картинки, файлы, список
+ * прочитавших и обсуждение. Читают по одной новости за раз, поэтому окно, а не
+ * разворачивание на месте: развёрнутый пост сдвигал ленту под курсором.
+ */
+function PostModal({ post, team, onChanged, onClose }: {
+  post: Post; team: MentionUser[]; onChanged: () => void; onClose: () => void;
+}) {
+  useEscape(onClose);
   const [comments, setComments] = useState<Comment[] | null>(null);
   /** Сколько комментариев осталось выше загруженных: цифра на кнопке «показать предыдущие». */
   const [more, setMore] = useState(0);
@@ -426,6 +640,7 @@ function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; 
   const images = post.files.filter((f) => f.mime.startsWith('image/'));
   const docs = post.files.filter((f) => !f.mime.startsWith('image/'));
   const [readers, setReaders] = useState<{ read: { fullName: string }[]; pending: { fullName: string }[] } | null>(null);
+  const [read, setRead] = useState(post.isRead);
 
   /**
    * Открыть обсуждение: показываем ПОСЛЕДНИЕ десять.
@@ -433,12 +648,15 @@ function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; 
    * Обсуждение читают с конца — важно, чем всё кончилось, а не начало переписки
    * трёхмесячной давности. Старшие поднимаются кнопкой.
    */
-  const openComments = async () => {
-    if (comments) return setComments(null);
+  const openComments = useCallback(async () => {
     const r = await api.feedComments(post.id).catch(() => ({ items: [], total: 0, hasMore: false }));
     setComments(r.items);
     setMore(r.hasMore ? r.total - r.items.length : 0);
-  };
+  }, [post.id]);
+
+  // Обсуждение подгружаем сразу: в окно и заходят, чтобы прочитать целиком —
+  // включая то, что по новости уже сказали.
+  useEffect(() => { void openComments(); }, [openComments]);
 
   /** Поднять предыдущие: докладываем их СВЕРХУ, не трогая уже прочитанное. */
   const loadEarlier = async () => {
@@ -463,6 +681,9 @@ function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; 
 
   const confirmRead = async () => {
     await api.feedRead(post.id).catch(() => undefined);
+    // Отметку показываем сразу: список за окном перезагрузится, но `post` в окне
+    // остался прежним, и кнопка «Прочитал» иначе висела бы как ни в чём не бывало.
+    setRead(true);
     onChanged();
   };
 
@@ -472,7 +693,11 @@ function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; 
   };
 
   return (
-    <article className={`card feed-post ${post.isAnnouncement ? 'announcement' : ''} ${post.isPinned ? 'pinned' : ''}`}>
+    <div className="modal-overlay" onClick={onClose}>
+    <article
+      className={`modal-card feed-post feed-post-full ${post.isAnnouncement ? 'announcement' : ''} ${post.isPinned ? 'pinned' : ''}`}
+      onClick={(e) => e.stopPropagation()}
+    >
       <header className="feed-post-head">
         <Avatar path={post.authorAvatar} fallback={post.authorName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
         <span className="feed-author">{post.authorName ?? 'Сотрудник'}</span>
@@ -487,12 +712,17 @@ function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; 
                 {post.isPinned ? 'Открепить' : 'Закрепить'}
               </button>
               <button className="btn btn-ghost btn-sm" onClick={() => {
-                if (window.confirm('Удалить сообщение из ленты?')) api.feedDelete(post.id).then(onChanged);
+                if (window.confirm('Удалить сообщение из ленты?')) {
+                  api.feedDelete(post.id).then(() => { onChanged(); onClose(); });
+                }
               }}>
                 <Icon name="trash" size={13} />
               </button>
             </>
           )}
+          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть">
+            <Icon name="close" size={16} />
+          </button>
         </span>
       </header>
 
@@ -538,23 +768,20 @@ function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; 
         />
       )}
 
-      <footer className="feed-post-foot">
-        {/* Подтверждение прочтения — суть объявления: автор должен видеть, кто прочитал */}
-        {post.isAnnouncement && !post.isRead && (
-          <button className="btn btn-primary btn-sm" onClick={confirmRead}>
-            <Icon name="check" size={14} /> Прочитал
-          </button>
-        )}
-        {post.isAnnouncement && post.isRead && <span className="dim"><Icon name="check" size={13} /> вы прочитали</span>}
-        {post.isAnnouncement && (
+      {/* Подтверждение прочтения — суть объявления, у обычной новости этой строки нет */}
+      {post.isAnnouncement && (
+        <footer className="feed-post-foot">
+          {!read && (
+            <button className="btn btn-primary btn-sm" onClick={confirmRead}>
+              <Icon name="check" size={14} /> Прочитал
+            </button>
+          )}
+          {read && <span className="dim"><Icon name="check" size={13} /> вы прочитали</span>}
           <button className="btn btn-ghost btn-sm" onClick={showReaders}>
             Прочитали: {post.reads}
           </button>
-        )}
-        <button className="btn btn-ghost btn-sm" onClick={openComments}>
-          <Icon name="chat" size={14} /> Комментарии{post.comments ? ` · ${post.comments}` : ''}
-        </button>
-      </footer>
+        </footer>
+      )}
 
       {readers && (
         <div className="feed-readers">
@@ -597,6 +824,7 @@ function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; 
         </div>
       )}
     </article>
+    </div>
   );
 }
 

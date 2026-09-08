@@ -47,6 +47,17 @@ export class FeedController {
     return this.feed.unread(u.tenantId, u.userId);
   }
 
+  /**
+   * Правая колонка: объявления, свежие новости, дни рождения, новички.
+   *
+   * Стоит выше `:id`-маршрутов сознательно — иначе Nest примет слово «sidebar» за
+   * номер поста. Тем же местом когда-то отличился реестр задач.
+   */
+  @Get('sidebar')
+  sidebar(@CurrentUser() u: AuthUser) {
+    return this.feed.sidebar(u.tenantId, u.userId);
+  }
+
   @Post()
   create(@CurrentUser() u: AuthUser, @Body() dto: PostDto) {
     return this.feed.create(u.tenantId, u, dto);

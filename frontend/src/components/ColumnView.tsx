@@ -222,6 +222,10 @@ function TaskCard({
         )}
       </div>
       <div className="task-meta">
+        {/* Номер — первым: по нему задачу называют в переписке, в отчёте боту и
+            в чужой ссылке. Раньше он был только внутри карточки, и чтобы ответить
+            «сделал 1264», её приходилось открывать. */}
+        <span className="task-card-num" title="Номер задачи">#{task.id}</span>
         {assigneeName && (
           <span className="assignee-chip" title={`Исполнитель: ${assigneeName}`}>
             <span className="avatar-xs avatar-ph">{assigneeName[0]?.toUpperCase()}</span>

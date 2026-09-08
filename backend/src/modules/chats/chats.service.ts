@@ -330,9 +330,36 @@ export class ChatsService {
     const msg = await this.repo.messageBody(tenantId, messageId);
     if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
     const text = String(msg.body ?? '').trim();
-    if (text.length < 3) throw AppException.validation('В сообщении нет текста, из которого получится задача');
-    const draft = await this.nl.parse(tenantId, user.userId, text, chat.project_id ?? null);
-    return { task: draft.task ?? null, context: draft.context, note: draft.note };
+    // Скриншот без единого слова — обычное дело: «вот что сломалось». Раньше такое
+    // сообщение в задачу не превращалось вовсе. Теперь берём имя файла заголовком,
+    // а картинка всё равно уедет в задачу вложением.
+    if (text.length < 3 && !msg.file_id) {
+      throw AppException.validation('В сообщении нет ни текста, ни файла, из которых получится задача');
+    }
+    const draft = text.length >= 3
+      ? await this.nl.parse(tenantId, user.userId, text, chat.project_id ?? null)
+      : await this.nl.parse(tenantId, user.userId, String(msg.file_name ?? 'Разобраться со скриншотом'), chat.project_id ?? null);
+    return {
+      task: draft.task ?? null,
+      context: draft.context,
+      note: draft.note,
+      /*
+        Откуда взялась задача.
+
+        Автор фразы приходит наружу, потому что исполнителем по умолчанию становится
+        именно он: в переписке задачу пишет тот, кто её и делает («сделаю сегодня
+        экспорт»), а не тот, кто нажал «Создать задачу». Разбор фразы важнее — если
+        ИИ нашёл в тексте имя, оно и остаётся.
+
+        Файл — чтобы окно сразу показало, что скриншот поедет в задачу.
+      */
+      source: {
+        authorId: msg.author_id ? String(msg.author_id) : null,
+        authorName: msg.author_name ?? null,
+        fileId: msg.file_id ? String(msg.file_id) : null,
+        fileName: msg.file_name ?? null,
+      },
+    };
   }
 
   /**
@@ -355,16 +382,31 @@ export class ChatsService {
     const created = res?.task;
     if (!created?.id) throw AppException.conflict('Задача не создалась');
     await this.repo.linkTask(tenantId, messageId, String(created.id));
+    /*
+      Скриншот из сообщения — во вложения задачи.
+
+      Он и был половиной постановки: «вот тут съезжает» плюс картинка. Оставлять его
+      в переписке значит заставлять исполнителя искать исходное сообщение, а через
+      неделю — вспоминать, в каком чате оно было.
+
+      Файл не копируем, а привязываем второй раз: это та же самая картинка, и две её
+      копии в хранилище ничего не улучшат. Сообщения удаляются мягко, файл под ними
+      остаётся.
+    */
+    if (msg.file_id) {
+      await this.repo.attachFileToTask(tenantId, String(created.id), String(msg.file_id));
+    }
+    const projectId = created.project_id ? String(created.project_id) : String((task as any)?.projectId ?? '');
     // Автор сообщения и участники чата должны увидеть отметку сразу: иначе второй
     // человек заводит по той же фразе вторую задачу.
     const chat = await this.repo.get(tenantId, chatId);
     if (chat) {
       const to = await this.recipients(chat, tenantId);
       this.realtime.emitToUsers(tenantId, to, 'chat.task_linked', {
-        chatId, messageId, taskId: String(created.id), title: created.title,
+        chatId, messageId, taskId: String(created.id), title: created.title, projectId,
       });
     }
-    return { taskId: String(created.id), title: created.title };
+    return { taskId: String(created.id), title: created.title, projectId };
   }
 
   /** Откуда взялась задача: чат, автор и сама фраза. */

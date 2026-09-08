@@ -273,7 +273,7 @@ export const api = {
   taskActivity: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/activity`),
 
   // Этап C — личный кабинет
-  updateProfile: (b: { fullName?: string; phone?: string; timezone?: string; locale?: string; radarStuckHours?: number | null; calendarBlockOverlap?: boolean }) =>
+  updateProfile: (b: { fullName?: string; phone?: string; timezone?: string; locale?: string; radarStuckHours?: number | null; calendarBlockOverlap?: boolean; birthDate?: string | null }) =>
     request<any>('PATCH', '/me', b),
   changePassword: (b: { currentPassword: string; newPassword: string }) =>
     request<any>('POST', '/me/password', b),
@@ -756,7 +756,7 @@ export const api = {
   messageTaskDraft: (chatId: string, messageId: string) =>
     request<any>('POST', `/chats/${chatId}/messages/${messageId}/task/draft`, {}),
   createTaskFromMessage: (chatId: string, messageId: string, task: Record<string, unknown>) =>
-    request<{ taskId: string; title: string }>('POST', `/chats/${chatId}/messages/${messageId}/task`, task),
+    request<{ taskId: string; title: string; projectId: string }>('POST', `/chats/${chatId}/messages/${messageId}/task`, task),
   /** Что за сущность стоит за чатом: проект, статус, сколько задач горит. */
   chatContext: (chatId: string) => request<{
     project_id: string | null; project_name: string | null; status: string | null;
@@ -825,6 +825,13 @@ export const api = {
     request<{ items: any[]; canPost: boolean; total: number; page: number; pages: number }>(
       'GET', `/feed?page=${page}`),
   feedUnread: () => request<{ items: any[]; count: number }>('GET', '/feed/unread'),
+  /** Правая колонка новостей: объявления, свежие новости, дни рождения, новички. */
+  feedSidebar: () => request<{
+    announcements: { id: string; body: string; createdAt: string; isRead: boolean }[];
+    latest: { id: string; body: string; createdAt: string; authorName: string | null }[];
+    birthdays: { userId: string; fullName: string; avatarUrl: string | null; date: string; inDays: number }[];
+    newcomers: { userId: string; fullName: string; avatarUrl: string | null; positionName: string | null; joinedAt: string }[];
+  }>('GET', '/feed/sidebar'),
   feedCreate: (b: { body: string; isAnnouncement?: boolean; activeUntil?: string; groupIds?: string[]; mentionIds?: string[] }) =>
     request<any>('POST', '/feed', b),
   /** Вложение прикладывается к УЖЕ опубликованному посту: сорвётся загрузка — текст не пропадёт. */

@@ -50,6 +50,8 @@ export class AccountService {
         ? null : Number(p.radar_stuck_hours),
       // не ставить мне встречи на занятое время
       calendarBlockOverlap: p.calendar_block_overlap !== false,
+      // день рождения: только день и месяц имеют значение, год никого не касается
+      birthDate: p.birth_date ? String(p.birth_date).slice(0, 10) : null,
       groups,
     };
   }
@@ -60,6 +62,7 @@ export class AccountService {
     dto: {
       fullName?: string; phone?: string | null; timezone?: string; locale?: string;
       radarStuckHours?: number | null; calendarBlockOverlap?: boolean;
+      birthDate?: string | null;
     },
   ) {
     return this.users.updateProfile(tenantId, userId, {
@@ -69,6 +72,8 @@ export class AccountService {
       locale: dto.locale,
       radar_stuck_hours: dto.radarStuckHours,
       calendar_block_overlap: dto.calendarBlockOverlap,
+      // пустая строка из формы — это «убрать дату», а не «не менять»
+      birth_date: dto.birthDate === '' ? null : dto.birthDate,
     });
   }
 

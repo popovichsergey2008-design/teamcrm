@@ -441,6 +441,66 @@
 /* Колонка текста не шире 820: строки длиннее просто не читаются. */
 .feed-scroll > * { max-width: 820px; width: 100%; flex: 0 0 auto; }
 /*
+  Лента и правая колонка.
+
+  Шире 820, потому что 820 — предел ЧИТАЕМОЙ строки, а не всей страницы: сама
+  лента остаётся узкой, лишнее место уходит колонке. На узком экране колонка
+  встаёт под ленту: она полезная, но не главная.
+*/
+.feed-scroll > .feed-layout { max-width: 1180px; }
+.feed-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+.feed-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+@media (max-width: 1100px) { .feed-layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── превью новости ── */
+/* Карточка целиком кликабельна: читают новость в окне, а не разворачиванием на месте. */
+.feed-post-card { cursor: pointer; }
+.feed-post-card:hover { border-color: var(--border-2); }
+.feed-post-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.feed-card-row { display: flex; gap: 12px; align-items: flex-start; }
+/* Четыре строки — ровно столько, чтобы понять, о чём речь, и не больше. */
+.feed-preview {
+  flex: 1; min-width: 0;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.feed-thumb-wrap { position: relative; flex: 0 0 auto; }
+.feed-thumb { display: block; width: 132px; height: 88px; border-radius: var(--radius-sm); overflow: hidden; }
+.feed-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.feed-thumb-skeleton {
+  width: 132px; height: 88px; border-radius: var(--radius-sm); background: var(--bg-elev-2);
+}
+/* «И ещё две картинки» — цифрой на уголке, как в почте и мессенджерах. */
+.feed-thumb-more {
+  position: absolute; right: 5px; bottom: 5px; padding: 1px 6px; border-radius: 999px;
+  font-size: 11px; background: rgba(0,0,0,.62); color: #fff;
+}
+.feed-badge-new { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
+.feed-open-hint { margin-left: auto; color: var(--accent); font-size: var(--fs-xs); }
+/* Новость целиком — окном: длинный текст прокручивается внутри, а не тянет страницу. */
+.feed-post-full { max-width: 760px; max-height: 86vh; overflow-y: auto; }
+
+/* ── правая колонка ── */
+.feed-aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.feed-aside-card { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.feed-aside-card h4 {
+  margin: 0; display: flex; align-items: center; gap: 6px;
+  font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600;
+}
+.feed-aside-item {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  border: none; background: none; padding: 4px; margin: -4px; border-radius: var(--radius-sm);
+  color: var(--text); font-size: var(--fs-sm); cursor: pointer;
+}
+.feed-aside-item:hover { background: var(--bg-elev-2); }
+.feed-aside-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Непрочитанное объявление — единственное, что в колонке выделено: остальное справочно. */
+.feed-aside-unread { font-weight: 600; }
+.feed-aside-person { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); }
+.feed-aside-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-aside-person .feed-time { margin-left: auto; flex: 0 0 auto; }
+/* Именинник сегодня — единственная строка, которую стоит заметить с первого взгляда. */
+.feed-aside-person.today .feed-aside-name { font-weight: 600; color: var(--accent); }
+/*
   Форма новости — окном поверх страницы.
 
   Раньше она стояла первым блоком ленты и занимала верх экрана у всех, включая тех,
@@ -3095,6 +3155,8 @@
 .registry-cell-title { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .registry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .registry-id { font-size: var(--fs-xs); color: var(--text-mut); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+/* Номер на карточке доски: цифру называют в переписке, ради неё карточку не открывают. */
+.task-card-num { font-size: var(--fs-xs); color: var(--text-dim); font-variant-numeric: tabular-nums; }
 /* Красная цифра — только по МОИМ задачам (так решено заказчиком): в YouGile краснеет
    вся доска, и через неделю на счётчики перестают смотреть. */
 .registry-new {

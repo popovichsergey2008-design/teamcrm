@@ -37,6 +37,8 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenTask(t); } }}>
                 <div className="list-main">
                   {t.risk_level && <span className={`risk-dot risk-${t.risk_level}`} title={`Риск срока: ${t.risk_level}`} />}
+                  {/* Номер — как в реестре: задачу называют цифрой, а не заголовком */}
+                  <span className="registry-id" title="Номер задачи">#{t.id}</span>
                   <span className="list-title">{t.title}</span>
                   {!!t.unread && (
                     <span className="task-unread" title={`${t.unread} новых изменений с вашего последнего просмотра`}>

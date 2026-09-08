@@ -55,6 +55,8 @@ interface Message {
   /** Задача, заведённая по этому сообщению: чтобы вторую по той же фразе не завели. */
   task_id?: string | null;
   task_title?: string | null;
+  /** Проект задачи: адрес задачи без него не собрать — ссылка уводила в список проектов. */
+  task_project_id?: string | null;
 }
 
 /** Строка раздела «Треды». */
@@ -333,10 +335,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     };
     // задачу по сообщению завёл кто-то другой — отметка должна появиться и у нас,
     // иначе по той же фразе заведут вторую
-    const onTaskLinked = (p: { chatId: string; messageId: string; taskId: string; title: string }) => {
+    const onTaskLinked = (p: { chatId: string; messageId: string; taskId: string; title: string; projectId?: string }) => {
       if (String(p.chatId) !== String(activeId)) return;
       setMessages((prev) => prev.map((m) => (String(m.id) === String(p.messageId)
-        ? { ...m, task_id: String(p.taskId), task_title: p.title } : m)));
+        ? { ...m, task_id: String(p.taskId), task_title: p.title, task_project_id: p.projectId ?? null } : m)));
     };
     socket.on('chat.task_linked', onTaskLinked);
     socket.on('chat.reminder', onReminder);
@@ -538,6 +540,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   };
 
   /** Открыть ветку сообщения: подгружаем целиком, сервер тем же запросом её и отмечает. */
+  /**
+   * Открыть задачу, заведённую по сообщению.
+   *
+   * Адрес задачи — `/projects/<проект>/task/<номер>`: без проекта роутер понимает
+   * только «раздел проектов» и высаживал человека в списке досок вместо задачи.
+   */
+  const openTask = (m: Message) => {
+    if (!m.task_id) return;
+    navigate(m.task_project_id
+      ? { section: 'projects', projectId: String(m.task_project_id), taskId: String(m.task_id) }
+      : { section: 'projects' });
+  };
+
   const openThread = async (rootId: string) => {
     if (!activeId) return;
     setThreadBody(''); setAlsoInChannel(false);
@@ -1296,7 +1311,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                               {m.task_id ? (
                                 <button
                                   className="msg-menu-item"
-                                  onClick={() => { setMenuFor(null); navigate({ section: 'projects', taskId: String(m.task_id) }); }}
+                                  onClick={() => { setMenuFor(null); openTask(m); }}
                                 >
                                   <Icon name="check" size={13} /> Задача #{m.task_id}
                                 </button>
@@ -1319,7 +1334,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                         {!!m.task_id && (
                           <button
                             className="chat-thread-link"
-                            onClick={() => navigate({ section: 'projects', taskId: String(m.task_id) })}
+                            onClick={() => openTask(m)}
                             title={m.task_title ?? 'Открыть задачу'}
                           >
                             <Icon name="check" size={12} /> Задача #{m.task_id}
@@ -1507,9 +1522,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           messageId={String(toTask.id)}
           messageText={String(toTask.body || toTask.file_name || '')}
           onClose={() => setToTask(null)}
-          onCreated={(taskId, title) => {
+          onCreated={(taskId, title, projectId) => {
             setMessages((prev) => prev.map((m) => (String(m.id) === String(toTask.id)
-              ? { ...m, task_id: taskId, task_title: title } : m)));
+              ? { ...m, task_id: taskId, task_title: title, task_project_id: projectId } : m)));
             setToTask(null);
             showToast({ title: 'Задача создана', body: title, section: 'chat' });
           }}

@@ -3,6 +3,7 @@ import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { upcomingBirthdays } from './birthdays';
 import { FeedRepository, PostRow } from './feed.repository';
 
 /** Десять новостей на страницу: столько помещается на экран, не требуя прокрутки до дна. */
@@ -36,6 +37,48 @@ export class FeedService {
       page: current,
       pageSize: size,
       pages: Math.max(1, Math.ceil(total / size)),
+    };
+  }
+
+  /**
+   * Правая колонка раздела «Новости».
+   *
+   * Лента отвечает на вопрос «что нового», но не отвечает на «что я мог пропустить»
+   * и «что вообще происходит в компании». Так устроены корпоративные порталы у всех:
+   * слева поток, справа короткие списки — действующие объявления, свежие новости,
+   * дни рождения и кто недавно пришёл.
+   *
+   * Всё четыре списка короткие и грузятся одним запросом с клиента: колонка не
+   * должна мигать по частям.
+   */
+  async sidebar(tenantId: string, userId: string) {
+    const [announcements, latest, people, newcomers] = await Promise.all([
+      this.repo.sideAnnouncements(tenantId, userId),
+      this.repo.sideLatest(tenantId, userId),
+      this.repo.birthdayPeople(tenantId),
+      this.repo.newcomers(tenantId),
+    ]);
+    return {
+      announcements: announcements.map((a) => ({
+        id: String(a.id),
+        body: a.body,
+        createdAt: a.created_at,
+        isRead: !!a.read_at,
+      })),
+      latest: latest.map((n) => ({
+        id: String(n.id),
+        body: n.body,
+        createdAt: n.created_at,
+        authorName: n.author_name,
+      })),
+      birthdays: upcomingBirthdays(people, new Date()),
+      newcomers: newcomers.map((n) => ({
+        userId: String(n.id),
+        fullName: n.full_name,
+        avatarUrl: n.avatar_file_id ? `/api/files/${n.avatar_file_id}` : null,
+        positionName: n.position_name,
+        joinedAt: n.created_at,
+      })),
     };
   }
 

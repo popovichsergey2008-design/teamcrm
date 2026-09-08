@@ -20,7 +20,7 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
   /** Исходная фраза: она же запасной вариант, если разбор не удался. */
   messageText: string;
   onClose: () => void;
-  onCreated: (taskId: string, title: string) => void;
+  onCreated: (taskId: string, title: string, projectId: string) => void;
 }) {
   useEscape(onClose);
   const [loading, setLoading] = useState(true);
@@ -33,6 +33,10 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
   const [deadline, setDeadline] = useState('');
   const [priority, setPriority] = useState('normal');
   const [checklist, setChecklist] = useState<string[]>([]);
+  /** Что приедет в задачу из самого сообщения: автор и приложенный файл. */
+  const [source, setSource] = useState<{ authorName: string | null; fileName: string | null }>({
+    authorName: null, fileName: null,
+  });
   const [ctx, setCtx] = useState<{ projects: { id: string; name: string }[]; users: { id: string; name: string }[] }>({
     projects: [], users: [],
   });
@@ -48,7 +52,11 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
         setTitle(String(t.title ?? messageText).slice(0, 255));
         setDescription(String(t.description ?? ''));
         setProjectId(t.projectId ? String(t.projectId) : '');
-        setAssigneeId(t.assigneeId ? String(t.assigneeId) : '');
+        // Исполнитель по умолчанию — автор фразы: в переписке задачу описывает тот,
+        // кто её и делает, а нажимает «Создать» чаще руководитель. Имя, найденное
+        // разбором в самом тексте («Петя, посмотри»), важнее — оно и побеждает.
+        setAssigneeId(String(t.assigneeId ?? d.source?.authorId ?? ''));
+        setSource({ authorName: d.source?.authorName ?? null, fileName: d.source?.fileName ?? null });
         setDeadline(t.deadline ? String(t.deadline) : '');
         setPriority(String(t.priority ?? 'normal'));
         setChecklist(Array.isArray(t.checklist) ? t.checklist.map(String) : []);
@@ -73,7 +81,7 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
         priority,
         checklist: checklist.filter((x) => x.trim()),
       });
-      onCreated(String(res.taskId), res.title);
+      onCreated(String(res.taskId), res.title, String(res.projectId ?? projectId));
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Задача не создалась');
     } finally { setBusy(false); }
@@ -92,6 +100,13 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
         {/* Исходная фраза перед глазами: правя формулировку, легко уехать от того,
             о чём вообще была речь. */}
         <div className="msg-quote-src">«{messageText.slice(0, 300)}»</div>
+        {/* Файл из сообщения уедет во вложения задачи — об этом надо сказать до
+            нажатия «Создать», иначе скриншот приложат руками второй раз. */}
+        {source.fileName && (
+          <div className="dim msg-quote-file">
+            <Icon name="paperclip" size={12} /> {source.fileName} — приложится к задаче
+          </div>
+        )}
 
         {loading && <div className="dim">ИИ раскладывает фразу на постановку и шаги…</div>}
 
@@ -114,7 +129,7 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
             </div>
             <div className="drawer-row">
               <div className="field" style={{ flex: 1 }}>
-                <label>Исполнитель</label>
+                <label>Исполнитель{source.authorName ? ` · по умолчанию автор сообщения` : ''}</label>
                 <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
                   <option value="">— не назначен —</option>
                   {ctx.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
