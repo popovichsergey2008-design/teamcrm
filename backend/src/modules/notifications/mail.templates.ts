@@ -277,3 +277,59 @@ export function taskStatusLetter(ctx: TaskCtx & { to: string; closed: boolean },
     }),
   };
 }
+
+/**
+ * Объявление в ленте компании.
+ *
+ * Своя оболочка, а не общая: у объявления нет ни задачи, ни проекта, ни срока — вся
+ * табличка полей в нём пустует. Показываем то, что есть: кто объявил, что именно и
+ * кнопку в ленту.
+ *
+ * Текст письма — САМО объявление, а не «в ленте новое сообщение». Уведомление, ради
+ * которого нужно куда-то идти, чтобы узнать содержание, читают один раз.
+ */
+export function feedAnnouncementLetter(
+  ctx: { authorName: string; body: string; feedUrl: string },
+  unsubscribeUrl: string,
+): Letter {
+  const lead = `${ctx.authorName} — объявление для всей компании:`;
+  const subject = trim(`Объявление: ${ctx.body.split('\n')[0]}`, 120);
+  const text = [lead, '', ctx.body, '', `Открыть ленту: ${ctx.feedUrl}`, '', `Отписаться: ${unsubscribeUrl}`].join('\n');
+  const html = `<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>TEAMCRM</title></head>
+<body style="margin:0;padding:0;background:${BRAND.bg};">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">${escape(ctx.body.slice(0, 120))}</div>
+<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;background:${BRAND.bg}">
+  <tr><td align="center" style="padding:28px 12px">
+    <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;max-width:560px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif">
+      <tr><td style="padding:0 4px 14px">
+        <span style="font-size:19px;font-weight:800;letter-spacing:-.5px;color:${BRAND.ink}">TEAM<span style="color:${BRAND.accent}">CRM</span></span>
+      </td></tr>
+      <tr><td style="background:${BRAND.card};border:1px solid ${BRAND.line};border-radius:12px;overflow:hidden">
+        <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%">
+          <tr><td style="height:4px;background:${BRAND.warn};font-size:0;line-height:0">&nbsp;</td></tr>
+          <tr><td style="padding:22px 26px 24px">
+            <p style="margin:0 0 14px;font-size:14px;line-height:1.5;color:${BRAND.soft}">${escape(lead)}</p>
+            <div style="margin:0 0 18px;font-size:16px;line-height:1.55;color:${BRAND.ink};white-space:pre-wrap">${escape(ctx.body)}</div>
+            <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-top:6px">
+              <tr><td style="background:${BRAND.accent};border-radius:8px">
+                <a href="${escape(ctx.feedUrl)}" style="display:inline-block;padding:11px 22px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none">Открыть ленту</a>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding:16px 6px 0;font-size:12px;line-height:1.6;color:${BRAND.mut}">
+        Письмо от TEAMCRM.
+        <a href="${escape(unsubscribeUrl)}" style="color:${BRAND.mut};text-decoration:underline">Отписаться</a>
+        или настроить письма в личном кабинете.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+  return { subject, text, html };
+}

@@ -61,6 +61,12 @@ export function FeedPage() {
   const { user } = useAuth();
   const canAnnounce = user?.role === 'owner' || user?.role === 'manager';
   const [items, setItems] = useState<Post[]>([]);
+  /**
+   * Может ли этот человек публиковать. Считает СЕРВЕР и присылает со списком: правило
+   * одно (руководитель или должность с правом), и повторять его на клиенте значит
+   * однажды разойтись — форма покажется тому, кому ответят отказом.
+   */
+  const [canPost, setCanPost] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState('');
   const [body, setBody] = useState('');
@@ -75,7 +81,7 @@ export function FeedPage() {
 
   const reload = useCallback(
     () => api.feedList()
-      .then((r) => setItems(r.items))
+      .then((r) => { setItems(r.items); setCanPost(r.canPost !== false); })
       .catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить ленту'))
       .finally(() => setLoaded(true)),
     [],
@@ -129,6 +135,16 @@ export function FeedPage() {
     <div className="page feed-page">
       <div className="page-head"><h2>Лента компании</h2></div>
 
+      {!canPost && (
+        // Молчать нельзя: человек, пришедший «написать всем», должен понимать, почему
+        // формы нет, — иначе он решит, что раздел сломан.
+        <p className="dim">
+          Новости компании публикуют руководитель и сотрудники с должностью, которой это
+          доверено. Комментировать и читать может каждый.
+        </p>
+      )}
+
+      {canPost && (
       <div className="card feed-composer">
         <MentionField
           rows={3}
@@ -214,6 +230,7 @@ export function FeedPage() {
           </div>
         )}
       </div>
+      )}
 
       {err && <div className="error-text">{err}</div>}
       {!loaded && <SkeletonList rows={4} />}
@@ -232,11 +249,69 @@ export function FeedPage() {
   );
 }
 
+/**
+ * Картинка новости — во всю ширину карточки.
+ *
+ * Файлы лежат за авторизацией, поэтому обычный <img src="/api/files/…"> получает отказ:
+ * тянем блоб с токеном и показываем его. Ссылку освобождаем при размонтировании — в
+ * длинной ленте иначе течёт память.
+ */
+function FeedImage({ file, onOpen }: {
+  file: FeedFile;
+  onOpen: (p: { url: string; name: string; mime: string }) => void;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let dead = false;
+    let objectUrl = '';
+    api.authedBlob(`/api/files/${file.fileId}`)
+      .then((blob) => {
+        if (dead) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => { if (!dead) setFailed(true); });
+    return () => { dead = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [file.fileId]);
+
+  // Не загрузилась — говорим об этом, а не показываем пустоту: пустое место в новости
+  // читается как «тут ничего и не было».
+  if (failed) return <div className="dim">Картинка «{file.name}» не загрузилась</div>;
+  if (!url) return <div className="feed-banner-skeleton" aria-hidden="true" />;
+  return (
+    <button
+      className="feed-banner"
+      onClick={() => onOpen({ url, name: file.name, mime: file.mime })}
+      title="Открыть во весь экран"
+    >
+      <img src={url} alt={file.name} />
+    </button>
+  );
+}
+
+/** Скачивание с токеном: голая ссылка на файл за авторизацией отдаёт отказ. */
+async function downloadFile(file: FeedFile): Promise<void> {
+  try {
+    const blob = await api.authedBlob(`/api/files/${file.fileId}`);
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = file.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(href), 5000);
+  } catch { /* кнопка — удобство; молчаливый отказ лучше ошибки поверх ленты */ }
+}
+
 function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; onChanged: () => void }) {
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [text, setText] = useState('');
   const [mentionIds, setMentionIds] = useState<string[]>([]);
-  const [preview, setPreview] = useState<FeedFile | null>(null);
+  /** Что показываем во весь экран: уже загруженный блоб, а не адрес за авторизацией. */
+  const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
+  const images = post.files.filter((f) => f.mime.startsWith('image/'));
+  const docs = post.files.filter((f) => !f.mime.startsWith('image/'));
   const [readers, setReaders] = useState<{ read: { fullName: string }[]; pending: { fullName: string }[] } | null>(null);
 
   const openComments = async () => {
@@ -290,18 +365,31 @@ function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; 
 
       <div className="feed-body"><Body text={post.body} team={team} /></div>
 
-      {post.files.length > 0 && (
+      {/*
+        Картинка в новости — БАННЕР, а не строчка «файл».
+
+        Раньше приложенный к посту снимок выглядел как «image.png», и открыть его было
+        нельзя вовсе: файлы лежат за авторизацией, а ссылку мы отдавали браузеру голой —
+        он приходил без токена и получал отказ. Теперь картинки показываются прямо в
+        новости (блоб тянется с токеном), а всё остальное остаётся строкой с размером.
+      */}
+      {images.length > 0 && (
+        <div className={`feed-banners${images.length > 1 ? ' many' : ''}`}>
+          {images.map((f) => (
+            <FeedImage key={f.fileId} file={f} onOpen={setPreview} />
+          ))}
+        </div>
+      )}
+      {docs.length > 0 && (
         <div className="feed-files">
-          {post.files.map((f) => (
+          {docs.map((f) => (
             <button
               key={f.fileId}
               className="feed-file"
-              onClick={() => (f.mime.startsWith('image/')
-                ? setPreview(f)
-                : window.open(`/api/files/${f.fileId}`, '_blank', 'noopener'))}
-              title={f.mime.startsWith('image/') ? 'Посмотреть' : 'Скачать'}
+              onClick={() => downloadFile(f)}
+              title="Скачать"
             >
-              <Icon name={f.mime.startsWith('image/') ? 'image' : 'file'} size={14} />
+              <Icon name="file" size={14} />
               <span className="feed-file-name">{f.name}</span>
               <span className="dim">{fileSize(f.size)}</span>
             </button>
@@ -310,7 +398,7 @@ function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; 
       )}
       {preview && (
         <Lightbox
-          url={`/api/files/${preview.fileId}`}
+          url={preview.url}
           name={preview.name}
           mime={preview.mime}
           onClose={() => setPreview(null)}

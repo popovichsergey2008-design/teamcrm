@@ -296,10 +296,33 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
               <input className="input" placeholder="Новая должность" value={newPos} onChange={(e) => setNewPos(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addPos()} />
               <button className="btn btn-primary btn-sm" onClick={addPos}>+</button>
             </div>
+            {/*
+              Право публиковать новости — на должности, а не на человеке: при смене
+              пресс-секретаря оно переезжает вместе с должностью, и не надо вспоминать,
+              кому его когда-то выдали персонально. Раздаёт владелец.
+            */}
+            <p className="dim">
+              Отметьте должности, которым доверено публиковать новости компании
+              (пресс-секретарь, помощник руководителя). Руководители публикуют всегда.
+            </p>
             {positions.map((p) => (
               <div key={p.id} className="team-row team-head">
                 <span>{p.name}</span>
-                <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deletePosition(p.id); reload(); }}>Удалить</button>
+                <span className="team-rate">
+                  <label className="notify-row" title="Может публиковать новости компании">
+                    <input
+                      type="checkbox"
+                      checked={!!p.can_post_news}
+                      disabled={me?.role !== 'owner'}
+                      onChange={async (e) => {
+                        try { await api.setPositionNewsRight(p.id, e.target.checked); reload(); }
+                        catch (err) { flash(err instanceof ApiError ? err.message : 'Не удалось изменить'); }
+                      }}
+                    />
+                    Пишет новости
+                  </label>
+                  <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deletePosition(p.id); reload(); }}>Удалить</button>
+                </span>
               </div>
             ))}
           </>

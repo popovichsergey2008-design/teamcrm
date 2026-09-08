@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
 import { FilesService } from '../files/files.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { FeedRepository, PostRow } from './feed.repository';
 
 @Injectable()
@@ -10,11 +11,17 @@ export class FeedService {
     private readonly repo: FeedRepository,
     private readonly realtime: RealtimeService,
     private readonly files: FilesService,
+    private readonly notify: NotificationsService,
   ) {}
 
-  async list(tenantId: string, userId: string, limit = 20, before?: string) {
-    const rows = await this.repo.list(tenantId, userId, limit, before);
-    return { items: rows.map((r) => this.view(r, userId)) };
+  async list(tenantId: string, userId: string, role: string, limit = 20, before?: string) {
+    const [rows, canPost] = await Promise.all([
+      this.repo.list(tenantId, userId, limit, before),
+      this.repo.canPostNews(tenantId, userId, role),
+    ]);
+    // Право публиковать отдаём вместе со списком: форму видит тот, кому она пригодится,
+    // и никто не пишет пост, чтобы получить отказ на «Опубликовать».
+    return { items: rows.map((r) => this.view(r, userId)), canPost };
   }
 
   /** Плашка сверху: непрочитанные действующие объявления. */
@@ -26,9 +33,11 @@ export class FeedService {
   /**
    * Новый пост.
    *
-   * Обычное сообщение пишет кто угодно — это общая стена компании. Объявление требует
-   * внимания всех и подтверждения прочтения, поэтому его создаёт владелец или
-   * руководитель: иначе «важное» перестанет быть важным на второй неделе.
+   * Публикует руководитель и тот, кому это доверено должностью (пресс-секретарь):
+   * лента компании — издание, а не общая стена. Объявление — ещё уже: только владелец
+   * и руководитель, иначе «важное» перестанет быть важным на второй неделе.
+   *
+   * Комментировать и читать могут все: лента без обсуждения — доска объявлений в подъезде.
    */
   async create(tenantId: string, user: { userId: string; role: string }, dto: {
     body: string; isAnnouncement?: boolean; activeUntil?: string | null; groupIds?: string[];
@@ -36,6 +45,11 @@ export class FeedService {
   }) {
     const body = dto.body?.trim();
     if (!body) throw AppException.validation('Пустое сообщение отправить нельзя');
+    // Лента компании — издание, а не общая стена: публикуют руководитель и тот, кому
+    // это доверено должностью (пресс-секретарь). Комментировать по-прежнему могут все.
+    if (!(await this.repo.canPostNews(tenantId, user.userId, user.role))) {
+      throw AppException.forbidden('Публиковать новости может руководитель или сотрудник с такой должностью');
+    }
     const isAnnouncement = !!dto.isAnnouncement;
     if (isAnnouncement && user.role !== 'owner' && user.role !== 'manager') {
       throw AppException.forbidden('Объявление публикует владелец или руководитель');
@@ -61,6 +75,10 @@ export class FeedService {
         author: user.userId,
         body: body.slice(0, 160),
       });
+      // ...и письмом — тем, кто сейчас не в приложении. Письмо уходит через общую
+      // очередь, а значит дублируется и в Telegram: объявление, которое человек
+      // увидит завтра, объявлением не было.
+      void this.notify.feedAnnouncement(tenantId, String(post.id), user.userId, body);
     }
     return this.view({ ...post, author_name: null, author_avatar: null, reads: 1, comments: 0, read_at: new Date(), group_names: null, files: null }, user.userId);
   }

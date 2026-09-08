@@ -3,7 +3,7 @@ import { NotificationsRepository, Recipient } from './notifications.repository';
 import {
   EventKey, Letter, TaskCtx,
   taskApprovalLetter, taskCommentedLetter, taskCreatedLetter, taskParticipantLetter,
-  taskReturnedLetter, taskStatusLetter,
+  taskReturnedLetter, taskStatusLetter, feedAnnouncementLetter,
 } from './mail.templates';
 
 /**
@@ -77,6 +77,43 @@ export class NotificationsService {
     } catch (e) {
       // Уведомление — не причина ронять действие пользователя.
       this.log.warn(`${eventKey} для задачи ${taskId}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Объявление в ленте компании — письмом всем.
+   *
+   * Своим методом, а не через `fanout`: у поста нет ни задачи, ни списка участников —
+   * адресат здесь вся компания. Ошибку глушим так же: несостоявшееся письмо не должно
+   * ронять публикацию.
+   *
+   * Письмо уходит в ту же очередь, что и остальные, поэтому автоматически дублируется
+   * в Telegram — объявление, которое человек увидит завтра, объявлением не было.
+   */
+  async feedAnnouncement(tenantId: string, postId: string, actorId: string, body: string): Promise<void> {
+    try {
+      const [recipients, actorName] = await Promise.all([
+        this.repo.feedRecipients(tenantId, actorId),
+        this.repo.actorName(tenantId, actorId),
+      ]);
+      if (!recipients.length) return;
+      const url = `${this.baseUrl()}/feed`;
+      const short = body.replace(/\s+/g, ' ').trim().slice(0, 600);
+      for (const r of recipients) {
+        const token = await this.repo.ensureUnsubscribeToken(r.id, r.unsubscribe_token);
+        const letter = feedAnnouncementLetter(
+          { authorName: actorName, body: short, feedUrl: url },
+          this.unsubscribeUrl(token),
+        );
+        await this.repo.enqueue({
+          tenantId, userId: r.id, toEmail: r.email,
+          subject: letter.subject, text: letter.text, html: letter.html,
+          eventKey: 'feed.announcement',
+          dedupKey: `feed.announcement:${postId}:${r.id}`,
+        });
+      }
+    } catch (e) {
+      this.log.warn(`объявление ${postId}: ${(e as Error).message}`);
     }
   }
 

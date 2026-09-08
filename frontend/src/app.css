@@ -1657,6 +1657,28 @@
 .mention-active .mention-hint, .mention-option:hover .mention-hint { background: var(--bg-elev); }
 .mention { color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 3px; }
 /* вложения к посту */
+/*
+  Картинка в новости — баннер во всю ширину карточки.
+
+  Приложенный к посту снимок раньше выглядел строчкой «image.png»: чтобы понять, о чём
+  новость, её приходилось скачивать. Новость с картинкой и есть картинка — показываем её.
+  Высоту ограничиваем: вертикальный снимок экрана иначе занимает три экрана прокрутки.
+*/
+.feed-banners { display: grid; gap: 6px; margin: 10px 0 4px; }
+.feed-banners.many { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.feed-banner {
+  display: block; width: 100%; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elev-2); cursor: pointer; overflow: hidden;
+}
+.feed-banner img { display: block; width: 100%; max-height: 420px; object-fit: cover; }
+.feed-banner:hover { border-color: var(--border-2); }
+.feed-banner:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Пока картинка тянется — место под неё занято: иначе лента прыгает под курсором. */
+.feed-banner-skeleton {
+  height: 180px; border-radius: var(--radius-sm); background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+}
+
 .feed-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .feed-file {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%;

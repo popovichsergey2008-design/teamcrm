@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from 'react';
 
-export type Section = 'focus' | 'calendar' | 'tasks' | 'projects' | 'chat' | 'radar' | 'settings' | 'profile';
+export type Section = 'focus' | 'calendar' | 'news' | 'tasks' | 'projects' | 'chat' | 'radar' | 'settings' | 'profile';
 
 /**
  * Разобранный адрес. Плоский на одном уровне: сузить тип по секции можно и в месте
@@ -28,7 +28,7 @@ export type Route = {
   tab?: string;
 };
 
-const SECTIONS: Section[] = ['focus', 'calendar', 'tasks', 'projects', 'chat', 'radar', 'settings', 'profile'];
+const SECTIONS: Section[] = ['focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'settings', 'profile'];
 
 /** По ТЗ приложение открывается на «Фокусе дня», а не на досках. */
 export const DEFAULT_PATH = '/focus';
@@ -62,7 +62,9 @@ export function parsePath(pathname: string): Route {
     }
     case 'chat':
       if (seg[1] === 'meetings') return { section, view: 'meetings' };
-      if (seg[1] === 'feed') return { section, view: 'feed' };
+      // Лента переехала из чатов в свой раздел «Новости»: она не переписка, а издание.
+      // Старый адрес разослан в письмах и лежит в закладках — ведём его на новый.
+      if (seg[1] === 'feed') return { section: 'news' };
       return seg[1] ? { section, chatId: seg[1] } : { section };
     case 'settings':
       return seg[1] ? { section, tab: seg[1] } : { section };

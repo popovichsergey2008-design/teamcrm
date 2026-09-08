@@ -38,7 +38,7 @@ export class FeedController {
 
   @Get()
   list(@CurrentUser() u: AuthUser, @Query('before') before?: string, @Query('limit') limit?: string) {
-    return this.feed.list(u.tenantId, u.userId, Number(limit ?? 20) || 20, before);
+    return this.feed.list(u.tenantId, u.userId, u.role, Number(limit ?? 20) || 20, before);
   }
 
   /** Непрочитанные действующие объявления — плашка сверху и счётчик в меню. */

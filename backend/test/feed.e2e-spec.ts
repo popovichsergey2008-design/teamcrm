@@ -74,17 +74,45 @@ describe('Лента компании (e2e)', () => {
     expect((await http$.get('/api/feed/unread').set(H(mate.token)).expect(200)).body.data.count).toBe(0);
   });
 
-  it('объявление публикует владелец или руководитель, обычное сообщение — кто угодно', async () => {
+  /**
+   * Кто пишет новости.
+   *
+   * Лента компании — издание, а не общая стена: публикуют руководитель и тот, кому это
+   * доверено ДОЛЖНОСТЬЮ (пресс-секретарь). Читают и комментируют все — лента без
+   * обсуждения превращается в доску объявлений в подъезде.
+   */
+  it('новости пишет руководитель и должность с правом, читают все', async () => {
     const owner = await org('Права ленты');
     const mate = await employee(owner.accessToken);
 
+    // рядовой сотрудник по умолчанию не публикует ничего
     await http$.post('/api/feed').set(H(mate.token))
       .send({ body: 'Важное от рядового', isAnnouncement: true }).expect(403);
+    await http$.post('/api/feed').set(H(mate.token))
+      .send({ body: 'Кто-нибудь видел мою кружку?' }).expect(403);
+    expect((await http$.get('/api/feed').set(H(mate.token)).expect(200)).body.data.canPost).toBe(false);
 
-    // обычное сообщение писать может каждый: это общая стена, а не доска приказов
+    // владелец заводит должность «Пресс-секретарь», даёт ей право и назначает человеку
+    const position = (await http$.post('/api/positions').set(H(owner.accessToken))
+      .send({ name: `Пресс-секретарь ${uniq()}` }).expect(201)).body.data;
+    await http$.patch(`/api/positions/${position.id}/news-right`).set(H(owner.accessToken))
+      .send({ canPostNews: true }).expect(200);
+    await http$.patch(`/api/users/${mate.user.id}`).set(H(owner.accessToken))
+      .send({ positionId: String(position.id) }).expect(200);
+
+    // теперь он публикует — и знает об этом до того, как напишет текст
+    expect((await http$.get('/api/feed').set(H(mate.token)).expect(200)).body.data.canPost).toBe(true);
     const normal = (await http$.post('/api/feed').set(H(mate.token))
-      .send({ body: 'Кто-нибудь видел мою кружку?' }).expect(201)).body.data;
+      .send({ body: 'Во вторник переезжаем в новый офис' }).expect(201)).body.data;
     expect(normal.isAnnouncement).toBe(false);
+    // но объявление с подтверждением прочтения — по-прежнему право руководства
+    await http$.post('/api/feed').set(H(mate.token))
+      .send({ body: 'Важное', isAnnouncement: true }).expect(403);
+
+    // право снимается вместе с галочкой у должности — человека трогать не нужно
+    await http$.patch(`/api/positions/${position.id}/news-right`).set(H(owner.accessToken))
+      .send({ canPostNews: false }).expect(200);
+    await http$.post('/api/feed').set(H(mate.token)).send({ body: 'Ещё новость' }).expect(403);
 
     // список прочитавших — не всеобщее достояние
     const post = (await http$.post('/api/feed').set(H(owner.accessToken))

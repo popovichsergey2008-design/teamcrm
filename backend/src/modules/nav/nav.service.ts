@@ -4,6 +4,7 @@ import { ApprovalsRepository } from '../approvals/approvals.repository';
 import { CalendarRepository } from '../calendar/calendar.repository';
 import { endOfLocalDay } from '../../common/time/local-day';
 import { TaskReadsRepository } from '../tasks/task-reads.repository';
+import { FeedService } from '../feed/feed.service';
 
 export type NavCounters = {
   focus: { decide: number; today: number };
@@ -13,6 +14,8 @@ export type NavCounters = {
   radar: { risks: number } | null;
   /** Новое в моих задачах: чужие изменения, которых я ещё не видел. */
   tasks: { unread: number };
+  /** Непрочитанные объявления компании. */
+  news: { unread: number };
 };
 
 /**
@@ -31,13 +34,14 @@ export class NavService {
     private readonly approvals: ApprovalsRepository,
     private readonly calendar: CalendarRepository,
     private readonly reads: TaskReadsRepository,
+    private readonly feed: FeedService,
   ) {}
 
   async counters(tenantId: string, userId: string, role: string, tzOffsetMin: number): Promise<NavCounters> {
     const withRisks = role === 'owner' || role === 'manager';
     // «Требует решения» — это и сданные работы, и согласования: для человека
     // это один и тот же вопрос «что ждёт лично меня», разделять его в бейдже незачем.
-    const [row, approvals, invites, unread] = await Promise.all([
+    const [row, approvals, invites, unread, news] = await Promise.all([
       this.repo.counts(tenantId, userId, endOfLocalDay(tzOffsetMin), withRisks),
       this.approvals.pendingCount(tenantId, userId),
       // календарь стал разделом панели: неотвеченное приглашение должно быть видно
@@ -46,12 +50,16 @@ export class NavService {
       // «в проектах что-то произошло» — то же самое, что непрочитанное в чатах,
       // только про задачи: чужие изменения, до которых я ещё не дошёл
       this.reads.total(tenantId, userId).catch(() => 0),
+      // Непрочитанные объявления компании: раздел «Новости» без счётчика читали бы
+      // по настроению, а объявление на то и объявление, что его ждут прочитанным.
+      this.feed.unread(tenantId, userId).then((r) => r.count).catch(() => 0),
     ]);
     return {
       focus: { decide: (row?.decide ?? 0) + (approvals?.n ?? 0), today: row?.today ?? 0 },
       calendar: { pending: invites },
       radar: withRisks ? { risks: row?.risks ?? 0 } : null,
       tasks: { unread },
+      news: { unread: news },
     };
   }
 }

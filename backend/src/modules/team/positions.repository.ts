@@ -5,6 +5,8 @@ export interface PositionRow {
   id: string;
   tenant_id: string;
   name: string;
+  /** Должность, которой доверено публиковать новости компании (пресс-секретарь и т.п.). */
+  can_post_news: boolean;
   created_at: Date;
 }
 
@@ -30,6 +32,19 @@ export class PositionsRepository {
     return this.db.one<PositionRow>(
       `UPDATE positions SET name=$3 WHERE tenant_id=$1 AND id=$2 RETURNING *`,
       [tenantId, id, name],
+    );
+  }
+
+  /**
+   * Право публиковать новости — на должности, а не на человеке.
+   *
+   * При смене пресс-секретаря право переезжает вместе с должностью, и не нужно
+   * вспоминать, кому его когда-то выдали персонально.
+   */
+  setCanPostNews(tenantId: string, id: string, allowed: boolean) {
+    return this.db.one<PositionRow>(
+      `UPDATE positions SET can_post_news=$3 WHERE tenant_id=$1 AND id=$2 RETURNING *`,
+      [tenantId, id, allowed],
     );
   }
 

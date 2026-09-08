@@ -155,6 +155,45 @@ export class FeedRepository {
    * Просроченные не показываем: объявление про вчерашний субботник сегодня
    * не требует ничего, кроме раздражения.
    */
+  /**
+   * Может ли человек публиковать новости.
+   *
+   * Владелец и руководитель — всегда; остальные — по должности с правом (пресс-секретарь
+   * и подобные). Одно место на весь модуль: разъехавшись, проверка на сервере и вид
+   * формы на экране начнут расходиться, и человек будет писать в пустоту.
+   */
+  async canPostNews(tenantId: string, userId: string, role: string): Promise<boolean> {
+    if (role === 'owner' || role === 'manager') return true;
+    const row = await this.db.one<{ ok: boolean }>(
+      `SELECT COALESCE(p.can_post_news, FALSE) AS ok
+         FROM users u LEFT JOIN positions p ON p.id = u.position_id
+        WHERE u.tenant_id = $1 AND u.id = $2`,
+      [tenantId, userId],
+    );
+    return !!row?.ok;
+  }
+
+  /**
+   * Кому уходит письмо об объявлении.
+   *
+   * Всем действующим сотрудникам с почтой, кроме автора, и с учётом их настроек
+   * уведомлений: человек, отписавшийся от писем, не должен получать их через ленту.
+   * Клиент сюда не попадает — лента компании ему не показывается вовсе.
+   */
+  announcementRecipients(tenantId: string, exceptUserId: string) {
+    return this.db.many<{ id: string; email: string; full_name: string; unsubscribe_token: string | null }>(
+      `SELECT u.id, u.email, u.full_name, u.unsubscribe_token
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+    LEFT JOIN notification_prefs p
+           ON p.tenant_id = u.tenant_id AND p.user_id = u.id AND p.event_key = 'feed.announcement'
+        WHERE u.tenant_id = $1 AND u.is_active = TRUE AND u.email IS NOT NULL
+          AND u.id <> $2 AND r.code <> 'client'
+          AND COALESCE(p.enabled, TRUE)`,
+      [tenantId, exceptUserId],
+    );
+  }
+
   unreadAnnouncements(tenantId: string, userId: string) {
     return this.db.many<PostRow>(
       `SELECT p.*, u.full_name AS author_name, u.avatar_file_id AS author_avatar,

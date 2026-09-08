@@ -48,6 +48,26 @@ export class NotificationsRepository {
     );
   }
 
+  /**
+   * Кому уходит объявление из ленты компании.
+   *
+   * Вся компания, кроме автора и клиентов: лента им не показывается вовсе. Настройку
+   * уведомлений уважаем — отписавшийся от писем не должен получать их через ленту.
+   */
+  feedRecipients(tenantId: string, exceptUserId: string): Promise<Recipient[]> {
+    return this.db.many<Recipient>(
+      `SELECT u.id, u.email, u.full_name, u.unsubscribe_token
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+    LEFT JOIN notification_prefs p
+           ON p.tenant_id = u.tenant_id AND p.user_id = u.id AND p.event_key = 'feed.announcement'
+        WHERE u.tenant_id = $1 AND u.is_active = TRUE AND u.email IS NOT NULL
+          AND u.id <> $2 AND r.code <> 'client'
+          AND COALESCE(p.enabled, TRUE)`,
+      [tenantId, exceptUserId],
+    );
+  }
+
   /** Имя того, кто совершил действие: в письме важно, кто именно, а не «система». */
   async actorName(tenantId: string, actorId: string | null): Promise<string> {
     if (!actorId) return 'TEAMCRM';

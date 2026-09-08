@@ -629,6 +629,9 @@ export const api = {
   // positions
   listPositions: () => request<any[]>('GET', '/positions'),
   createPosition: (name: string) => request<any>('POST', '/positions', { name }),
+  /** Кому доверено публиковать новости компании. Право на ДОЛЖНОСТИ — см. ленту. */
+  setPositionNewsRight: (id: string, canPostNews: boolean) =>
+    request<any>('PATCH', `/positions/${id}/news-right`, { canPostNews }),
   deletePosition: (id: string) => request<any>('DELETE', `/positions/${id}`),
   // groups
   // почтовые уведомления
@@ -808,8 +811,9 @@ export const api = {
     request<{ id: string; projectId: string | null; aiEnabled: boolean }>('POST', '/media/rooms', { projectId, withAi, chatId }),
 
   // лента компании: сообщения и объявления
+  /** Лента компании. `canPost` считает сервер: правило одно, и повторять его на клиенте нельзя. */
   feedList: (before?: string) =>
-    request<{ items: any[] }>('GET', `/feed${before ? `?before=${before}` : ''}`),
+    request<{ items: any[]; canPost: boolean }>('GET', `/feed${before ? `?before=${before}` : ''}`),
   feedUnread: () => request<{ items: any[]; count: number }>('GET', '/feed/unread'),
   feedCreate: (b: { body: string; isAnnouncement?: boolean; activeUntil?: string; groupIds?: string[]; mentionIds?: string[] }) =>
     request<any>('POST', '/feed', b),

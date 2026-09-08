@@ -95,9 +95,22 @@ const MENU: Item[] = [
     icon: 'chat',
     hint: 'Личные, групповые и проектные обсуждения, созвоны',
     subs: [
-      { label: 'Лента компании', icon: 'list', route: { section: 'chat', view: 'feed' } },
       { label: 'Встречи', icon: 'record', route: { section: 'chat', view: 'meetings' } },
     ],
+  },
+  {
+    /*
+      Новости компании — свой раздел, а не вкладка внутри чатов.
+
+      В чатах она была не на месте: переписка живёт минутами, а объявление обязано
+      лежать там, где его найдут через неделю. Отдельная строка в панели того стоит —
+      так же устроены «Новости» в Битриксе, и искать их люди идут именно в меню.
+      Строку оправдывает и счётчик: непрочитанное объявление видно, не заходя внутрь.
+    */
+    section: 'news',
+    label: 'Новости',
+    icon: 'bell',
+    hint: 'Объявления и новости компании',
   },
   {
     section: 'radar',
@@ -388,6 +401,8 @@ export function Sidebar({
               : item.section === 'focus' ? counters.focus.decide
               : item.section === 'calendar' ? counters.calendar?.pending ?? 0
               : item.section === 'radar' ? counters.radar?.risks ?? 0
+              // Непрочитанные объявления компании: их на то и объявляют, чтобы прочитали
+              : item.section === 'news' ? counters.news?.unread ?? 0
               // «В проектах что-то произошло»: чужие изменения в моих задачах, до
               // которых я ещё не дошёл. То же самое, что непрочитанное в чатах.
               : item.section === 'projects' ? counters.tasks?.unread ?? 0
@@ -395,6 +410,7 @@ export function Sidebar({
             const badgeTitle = item.section === 'focus' ? 'ждут вашего решения'
               : item.section === 'calendar' ? 'приглашений без ответа'
               : item.section === 'projects' ? 'новых изменений в ваших задачах'
+              : item.section === 'news' ? 'объявлений, которые вы не читали'
               : item.section === 'radar' ? 'задач просрочено' : undefined;
             // Разворачивать нечего, если у раздела нет ни проектов, ни подпунктов —
             // шеврон в таком месте обещает содержимое, которого не существует.

@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
@@ -8,6 +8,10 @@ import { PositionsRepository } from './positions.repository';
 
 class PositionDto {
   @IsString() @MinLength(1) @MaxLength(96) name!: string;
+}
+
+class NewsRightDto {
+  @IsBoolean() canPostNews!: boolean;
 }
 
 @ApiTags('positions')
@@ -37,6 +41,20 @@ export class PositionsController {
   @Roles('owner', 'manager')
   async rename(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: PositionDto) {
     const row = await this.repo.rename(user.tenantId, id, dto.name.trim());
+    if (!row) throw AppException.notFound('Position not found');
+    return row;
+  }
+
+  /**
+   * Кому доверено публиковать новости компании.
+   *
+   * Раздаёт владелец: лента компании — это издание, а не общая стена, и решать, у кого
+   * есть право голоса от имени компании, должен тот, кто за компанию отвечает.
+   */
+  @Patch(':id/news-right')
+  @Roles('owner')
+  async newsRight(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: NewsRightDto) {
+    const row = await this.repo.setCanPostNews(user.tenantId, id, dto.canPostNews);
     if (!row) throw AppException.notFound('Position not found');
     return row;
   }

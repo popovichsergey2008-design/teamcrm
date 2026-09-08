@@ -208,7 +208,7 @@ export function App() {
   // напоминания о встречах приходят в любой раздел: календарь для этого открывать не нужно
   useCalendarReminders(!!user && user.role !== 'client');
   // позвали через @ в ленте — узнать об этом человек должен из любого раздела
-  useFeedMentions(!!user && user.role !== 'client', () => navigate({ section: 'chat', view: 'feed' }));
+  useFeedMentions(!!user && user.role !== 'client', () => navigate({ section: 'news' }));
   // напоминание о просроченном должно догонять человека в любом разделе
   useAssistantPings(!!user && user.role !== 'client', () => navigate({ section: 'focus' }));
   // повестка встречи и итог её разбора приходят в любой раздел
@@ -319,7 +319,8 @@ export function App() {
           </Pane>
         )}
         {/* Остальное открывают редко и ненадолго — держать это в памяти незачем */}
-        {route.section === 'chat' && route.view === 'feed' && <FeedPage />}
+        {/* Новости — свой раздел, а не вкладка чатов: это издание компании, а не переписка */}
+        {route.section === 'news' && <FeedPage />}
         {route.section === 'chat' && route.view === 'meetings' && (
           <MeetingsPage onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
         )}
@@ -355,7 +356,7 @@ export function App() {
 
       <Toasts
         onOpenChat={(chatId) => navigate({ section: 'chat', chatId: chatId ?? undefined })}
-        onOpenFeed={() => navigate({ section: 'chat', view: 'feed' })}
+        onOpenFeed={() => navigate({ section: 'news' })}
         onOpenFocus={() => navigate({ section: 'focus' })}
         onOpenMeetings={() => navigate({ section: 'chat', view: 'meetings' })}
       />
