@@ -7,6 +7,7 @@ import { useAuth } from '../state/auth';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { addReminder, MAX_REMINDERS, reminderRows, ReminderUnit, toMinutes } from '../lib/reminders';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
+import { CalendarSyncPanel } from '../components/CalendarSyncPanel';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import {
@@ -19,7 +20,10 @@ type View = 'day' | 'week' | 'month' | 'list';
 
 export interface CalEvent {
   id: string;
-  scope: 'personal' | 'company';
+  /** `external` — встреча из чужого календаря: показываем, но не трогаем. */
+  scope: 'personal' | 'company' | 'external';
+  /** Название источника для внешней встречи: «Google-календарь». */
+  source?: string;
   title: string;
   description: string | null;
   location: string | null;
@@ -158,6 +162,7 @@ function hint(e: CalEvent): string {
   if (guests.length) {
     lines.push(`Приглашены: ${guests.map((p) => `${p.fullName}${p.status === 'declined' ? ' (отказался)' : p.status === 'invited' ? ' (не ответил)' : ''}`).join(', ')}`);
   }
+  if (e.scope === 'external') lines.push(`Из внешнего календаря: ${e.source ?? 'подключённый календарь'} — здесь не правится`);
   if (e.location) lines.push(`Место: ${e.location}`);
   if (e.description) lines.push(e.description.slice(0, 200));
   return lines.join(String.fromCharCode(10));
@@ -174,6 +179,8 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const { user } = useAuth();
   // настройка рабочего времени живёт рядом с сеткой, на которую влияет
   const [workOpen, setWorkOpen] = useState(false);
+  /** Панель синхронизации: ссылка на наш календарь и адреса чужих. */
+  const [syncOpen, setSyncOpen] = useState(false);
   const [view, setView] = useState<View>(() => (localStorage.getItem('teamcrm.calendarView') as View) || 'week');
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [events, setEvents] = useState<CalEvent[]>([]);
@@ -193,7 +200,9 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
     setErr('');
     try {
       const r = await api.calendarRange(from.toISOString(), to.toISOString(), showTasks);
-      setEvents(r.events);
+      // Чужие встречи (Google) идут тем же ответом и в том же списке: календарь у
+      // человека один. Отличаются они видом и тем, что их нельзя править.
+      setEvents([...r.events, ...(r.external ?? [])]);
       setTasks(r.tasks ?? []);
       setWork(r.work);
     } catch (e) {
@@ -319,6 +328,15 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           >
             <Icon name="clock" size={15} />
           </button>
+          {/* Синхронизация с Google — рядом с рабочим временем: обе настройки календаря */}
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setSyncOpen(true)}
+            title="Синхронизация с Google-календарём: наши встречи туда, чужие сюда"
+            aria-label="Синхронизация календаря"
+          >
+            <Icon name="refresh" size={15} />
+          </button>
           <div className="cal-new-row">
             <button className="btn btn-primary btn-sm" onClick={() => createNow()}>
               <Icon name="plus" size={15} /> Событие
@@ -359,6 +377,10 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           onClose={() => { setWorkOpen(false); reload(); }}
         />
       )}
+
+      {/* Закрыли синхронизацию — сразу перечитываем календарь: подключённые встречи
+          должны появиться, а не ждать перелистывания недели. */}
+      {syncOpen && <CalendarSyncPanel onClose={() => { setSyncOpen(false); reload(); }} />}
 
       {view === 'list' ? (
         <ListView days={days} events={events} tasks={showTasks ? tasks : []} onOpen={setEditing} onRespond={respond} />
@@ -439,8 +461,13 @@ function TimeGrid({ days, work, segments, allDayOf, tasksOfDay, onOpen, onCreate
       {days.map((d) => (
         <div key={`a${d.getTime()}`} className="cal-allday">
           {allDayOf(d).map((e) => (
-            <button key={e.id} className={`cal-chip ${e.scope === 'company' ? 'company' : ''}`} onClick={() => onOpen(e)} title={hint(e)}>
-              {e.title}
+            <button
+              key={e.id}
+              className={`cal-chip ${e.scope === 'company' ? 'company' : ''} ${e.scope === 'external' ? 'external' : ''}`}
+              onClick={() => onOpen(e)}
+              title={hint(e)}
+            >
+              <span className="cal-chip-text">{e.title}</span>
             </button>
           ))}
         </div>
@@ -473,7 +500,7 @@ function TimeGrid({ days, work, segments, allDayOf, tasksOfDay, onOpen, onCreate
             {segments[i]?.map((seg) => (
               <button
                 key={`${seg.event.id}-${seg.dayIndex}`}
-                className={`cal-event ${seg.event.scope === 'company' ? 'company' : ''} ${seg.event.myStatus === 'declined' ? 'declined' : ''} ${seg.event.myStatus === 'invited' ? 'invited' : ''}`}
+                className={`cal-event ${seg.event.scope === 'company' ? 'company' : ''} ${seg.event.scope === 'external' ? 'external' : ''} ${seg.event.myStatus === 'declined' ? 'declined' : ''} ${seg.event.myStatus === 'invited' ? 'invited' : ''}`}
                 style={{
                   top: `${seg.top * 100}%`,
                   height: `${seg.height * 100}%`,
@@ -536,7 +563,7 @@ function MonthGrid({ days, events, tasks, work, anchor, onOpen, onCreate }: {
               {dayEvents.map((e) => (
                 <button
                   key={e.id}
-                  className={`cal-chip ${e.scope === 'company' ? 'company' : ''}`}
+                  className={`cal-chip ${e.scope === 'company' ? 'company' : ''} ${e.scope === 'external' ? 'external' : ''}`}
                   onClick={() => onOpen(e)}
                   title={hint(e)}
                 >

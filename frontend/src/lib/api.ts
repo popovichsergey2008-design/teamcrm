@@ -76,6 +76,18 @@ export interface ImportStats {
   warnings: string[];
 }
 
+/** Ссылка синхронизации календаря: наша наружу («export») или чужая внутрь («import»). */
+export interface CalendarLink {
+  id: string;
+  kind: 'export' | 'import';
+  title: string | null;
+  /** Адрес для подписки — только у нашей ссылки. Чужой секретный адрес обратно не отдаём. */
+  url: string | null;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  eventsCount: number;
+}
+
 export class ApiError extends Error {
   constructor(public code: string, message: string, public details?: unknown) {
     super(message);
@@ -847,8 +859,21 @@ export const api = {
 
   // календарь: события людей и компании
   calendarRange: (from: string, to: string, withTasks = true) =>
-    request<{ events: any[]; tasks: any[]; work: { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] } }>(
-      'GET', `/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&tasks=${withTasks ? '1' : '0'}`),
+    request<{
+      events: any[]; external?: any[]; tasks: any[];
+      work: { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] };
+    }>('GET', `/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&tasks=${withTasks ? '1' : '0'}`),
+  /**
+   * Синхронизация с внешним календарём — двумя обычными ссылками, без OAuth.
+   * Наш календарь отдаём по секретному адресу, чужой читаем по «секретному адресу
+   * в формате iCal» из настроек Google.
+   */
+  calendarLinks: () => request<CalendarLink[]>('GET', '/calendar/links'),
+  calendarExportLink: (rotate = false) => request<CalendarLink>('POST', '/calendar/links/export', { rotate }),
+  calendarAddImport: (url: string, title?: string) =>
+    request<{ id: string; imported: number }>('POST', '/calendar/links/import', { url, title }),
+  calendarSyncLink: (id: string) => request<{ synced: number }>('POST', `/calendar/links/${id}/sync`),
+  calendarRemoveLink: (id: string) => request<{ removed: boolean }>('DELETE', `/calendar/links/${id}`),
   calendarPending: () => request<{ count: number }>('GET', '/calendar/pending'),
   /** Занятость людей: только интервалы, без названий чужих встреч. */
   calendarBusy: (from: string, to: string, userIds: string[], exceptEventId?: string) =>

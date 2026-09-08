@@ -591,6 +591,22 @@
 .cal-month-cell.today .cal-month-num { background: var(--accent-2); color: var(--on-accent); border-radius: 999px; padding: 0 6px; }
 .cal-month-num { font-size: 12px; font-weight: 600; align-self: flex-start; }
 
+/*
+  Встреча из чужого календаря.
+
+  Выглядит иначе намеренно: она наша только на просмотр — ни правки, ни приглашений.
+  Штриховая рамка и приглушённый фон читаются как «это не отсюда», и человек не ищет
+  кнопку «изменить», которой не будет.
+*/
+.cal-event.external {
+  background: var(--bg-elev-2); border-style: dashed; border-color: var(--border-2); color: var(--text-dim);
+}
+.cal-chip.external { background: var(--bg-elev-2); border-style: dashed; border-color: var(--border-2); color: var(--text-dim); }
+
+/* Ссылка синхронизации: адрес и кнопка в одной строке — его копируют, а не читают. */
+.sync-link { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.sync-link .input { flex: 1; min-width: 0; }
+
 .cal-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .cal-list-day { display: flex; flex-direction: column; gap: 4px; }
 .cal-list-date { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { CalendarMailService } from './calendar-mail.service';
 import { CalendarRepository, EventRow } from './calendar.repository';
+import { CalendarSyncService } from './calendar-sync.service';
 import { buildIcs, icsUid } from './ics';
 
 const DEFAULT_WORK = { workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] as string[] };
@@ -39,6 +40,7 @@ export class CalendarService {
   constructor(
     private readonly repo: CalendarRepository,
     private readonly mail: CalendarMailService,
+    private readonly sync: CalendarSyncService,
   ) {}
 
   /**
@@ -72,7 +74,32 @@ export class CalendarService {
       reminders: reminders.get(String(r.id)) ?? [],
     }));
     const tasks = withTasks ? await this.repo.tasksInRange(tenantId, user.userId, from, to) : [];
-    return { events, tasks, work: await this.work(tenantId) };
+    /*
+      Встречи из чужого календаря (Google и прочие) приезжают тем же ответом.
+
+      Отдельным запросом их тянуть нельзя: человек листает недели, и второй поход в
+      сеть на каждый щелчок заметен. Помечаем их `external` — календарь показывает их
+      бледнее и не даёт править: чужая встреча нам не принадлежит.
+    */
+    const external = (await this.sync.externalInRange(tenantId, user.userId, from, to)).map((x) => ({
+      id: `x${x.id}`,
+      scope: 'external' as const,
+      title: x.title,
+      description: null,
+      location: x.location,
+      meetRoomId: null,
+      startsAt: x.starts_at.toISOString(),
+      endsAt: x.ends_at.toISOString(),
+      allDay: x.all_day,
+      color: null,
+      isPrivate: false,
+      ownerId: user.userId,
+      canEdit: false,
+      myStatus: null,
+      source: x.link_title ?? 'Внешний календарь',
+      participants: [],
+    }));
+    return { events, external, tasks, work: await this.work(tenantId) };
   }
 
   async work(tenantId: string) {

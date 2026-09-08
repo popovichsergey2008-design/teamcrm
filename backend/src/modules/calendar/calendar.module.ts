@@ -4,6 +4,8 @@ import { CalendarMailService } from './calendar-mail.service';
 import { CalendarRepository } from './calendar.repository';
 import { CalendarScheduler } from './calendar.scheduler';
 import { CalendarService } from './calendar.service';
+import { CalendarSyncService } from './calendar-sync.service';
+import { IntegrationCryptoService } from '../integrations/crypto.service';
 
 /**
  * ТЗ-2, этап 6, шаг 1 — календарь: личные события и события компании.
@@ -11,7 +13,10 @@ import { CalendarService } from './calendar.service';
  */
 @Module({
   controllers: [CalendarController],
-  providers: [CalendarService, CalendarRepository, CalendarMailService, CalendarScheduler],
+  providers: [
+    CalendarService, CalendarRepository, CalendarMailService, CalendarScheduler,
+    CalendarSyncService, IntegrationCryptoService,
+  ],
   exports: [CalendarService, CalendarRepository], // репозиторий нужен счётчикам панели
 })
 export class CalendarModule {}

@@ -4,9 +4,20 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength,
 } from 'class-validator';
-import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { CalendarService } from './calendar.service';
+import { CalendarSyncService } from './calendar-sync.service';
+
+class ExportLinkDto {
+  /** Заменить ссылку: старая перестаёт работать — так её и отзывают. */
+  @IsOptional() @IsBoolean() rotate?: boolean;
+}
+
+class ImportLinkDto {
+  @IsString() @MaxLength(1000) url!: string;
+  @IsOptional() @IsString() @MaxLength(120) title?: string;
+}
 
 class EventDto {
   @IsString() @MinLength(1) @MaxLength(255) title!: string;
@@ -60,9 +71,59 @@ class WorkDto {
 @Controller('calendar')
 @Roles('owner', 'manager', 'member')
 export class CalendarController {
-  constructor(private readonly calendar: CalendarService) {}
+  constructor(
+    private readonly calendar: CalendarService,
+    private readonly sync: CalendarSyncService,
+  ) {}
 
-  /** Всё для экрана за один запрос: события, задачи со сроком и рабочее время. */
+  /**
+   * Синхронизация с внешним календарём.
+   *
+   * Две ссылки и обе обычные: наш календарь отдаём по секретному адресу (его человек
+   * добавляет в Google), чужой читаем по «секретному адресу в формате iCal». OAuth не
+   * заводим — он требует проверки приложения Google и согласия администратора домена.
+   */
+  @Get('links')
+  links(@CurrentUser() u: AuthUser) {
+    return this.sync.list(u.tenantId, u.userId);
+  }
+
+  @Post('links/export')
+  exportLink(@CurrentUser() u: AuthUser, @Body() dto: ExportLinkDto) {
+    return this.sync.exportLink(u.tenantId, u.userId, dto.rotate === true);
+  }
+
+  @Post('links/import')
+  addImport(@CurrentUser() u: AuthUser, @Body() dto: ImportLinkDto) {
+    return this.sync.addImport(u.tenantId, u.userId, dto.url, dto.title);
+  }
+
+  @Post('links/:id/sync')
+  syncLink(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.sync.syncOne(u.tenantId, u.userId, id);
+  }
+
+  @Delete('links/:id')
+  removeLink(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.sync.remove(u.tenantId, u.userId, id);
+  }
+
+  /**
+   * Лента календаря по секретной ссылке — её читает Google, а не человек.
+   *
+   * Открытая ручка по необходимости: подписчик календаря ходит без заголовков и без
+   * печенья, предъявить токен ему негде, кроме адреса. Отсюда и длина токена, и
+   * возможность заменить его одной кнопкой.
+   */
+  @Public()
+  @Get('feed/:token.ics')
+  async feed(@Param('token') token: string, @Res() res: Response) {
+    const body = await this.sync.feed(token.replace(/\.ics$/i, ''));
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(body);
+  }
+
   @Get()
   range(
     @CurrentUser() user: AuthUser,

@@ -341,4 +341,46 @@ describe('Календарь (e2e)', () => {
     await http$.patch(`/api/calendar/events/${ev.id}`).set(H(owner.accessToken))
       .send({ scope: 'personal' }).expect(200);
   });
+
+  /**
+   * Синхронизация с Google без OAuth: две обычные ссылки.
+   *
+   * Проверяем то, ради чего всё и делалось: ссылка на наш календарь открывается БЕЗ
+   * авторизации (по ней ходит Google, а не человек) и содержит встречу; замена ссылки
+   * гасит старую; чужой адрес, который не календарь, отвергается словами.
+   */
+  it('календарь отдаётся по секретной ссылке и отзывается её заменой', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Sync', email: `sync_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .expect(201)).body.data;
+
+    await http$.post('/api/calendar/events').set(H(owner.accessToken))
+      .send({ title: 'Планёрка в Google', startsAt: iso(10), endsAt: iso(11) }).expect(201);
+
+    const link = (await http$.post('/api/calendar/links/export').set(H(owner.accessToken))
+      .send({}).expect(201)).body.data;
+    expect(link.url).toMatch(/\/api\/calendar\/feed\/[0-9a-f]{48}\.ics$/);
+    const token = String(link.url).split('/').pop()!.replace('.ics', '');
+
+    // БЕЗ заголовка авторизации: у подписчика календаря его нет и быть не может
+    const feed = await http$.get(`/api/calendar/feed/${token}.ics`).expect(200);
+    expect(feed.headers['content-type']).toContain('text/calendar');
+    expect(feed.text).toContain('BEGIN:VCALENDAR');
+    expect(feed.text).toContain('Планёрка в Google');
+
+    // повторный вызов возвращает ТУ ЖЕ ссылку: вторая означала бы, что первую нечем отозвать
+    const same = (await http$.post('/api/calendar/links/export').set(H(owner.accessToken))
+      .send({}).expect(201)).body.data;
+    expect(same.url).toBe(link.url);
+
+    // замена — и старый адрес мёртв: это и есть отзыв
+    const rotated = (await http$.post('/api/calendar/links/export').set(H(owner.accessToken))
+      .send({ rotate: true }).expect(201)).body.data;
+    expect(rotated.url).not.toBe(link.url);
+    await http$.get(`/api/calendar/feed/${token}.ics`).expect(404);
+
+    // чужой календарь: не-адрес и не-календарь отвергаются понятными словами
+    await http$.post('/api/calendar/links/import').set(H(owner.accessToken))
+      .send({ url: 'календарь Пети' }).expect(400);
+  });
 });
