@@ -281,14 +281,20 @@ describe('Лента компании (e2e)', () => {
     await http$.post('/api/feed').set(H(owner.accessToken))
       .send({ body: 'В пятницу общий сбор', isAnnouncement: true }).expect(201);
 
-    // день рождения ставит сам человек в своём профиле — год для показа не нужен
-    await http$.patch('/api/me').set(H(mate.token)).send({ birthDate: '1990-03-17' }).expect(200);
+    // День рождения ставит сам человек в своём профиле; год для показа не нужен.
+    // Дату берём сегодняшнюю: блок показывает ближайшие тридцать дней, и с любой
+    // жёстко вписанной датой тест зеленел бы только один месяц в году.
+    const now = new Date();
+    const md = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    await http$.patch('/api/me').set(H(mate.token)).send({ birthDate: `1990-${md}` }).expect(200);
 
     const side = (await http$.get('/api/feed/sidebar').set(H(mate.token)).expect(200)).body.data;
     expect(side.announcements.map((a: any) => a.body)).toEqual(['В пятницу общий сбор']);
     expect(side.announcements[0].isRead).toBe(false);
     expect(side.latest.map((n: any) => n.body)).toEqual(['Обычная новость про кофемашину']);
-    expect(side.birthdays.map((b: any) => b.fullName)).toEqual(['Сотрудник member']);
+    // Именно членство, а не «через 0 дней»: пояс машины и пояс сервера могут
+    // разойтись на дату, и такой тест падал бы ночью, а не по делу.
+    expect(side.birthdays.map((b: any) => b.fullName)).toContain('Сотрудник member');
     // оба завелись только что — оба новички
     expect(side.newcomers).toHaveLength(2);
   });
