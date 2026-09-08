@@ -7,6 +7,7 @@ import { Lightbox } from '../components/Lightbox';
 import { MentionField } from '../components/MentionField';
 import { MentionUser, stillMentioned, withMentions } from '../lib/mentions';
 import { api, ApiError } from '../lib/api';
+import { pageWindow } from '../lib/task-registry-view';
 import { useAuth } from '../state/auth';
 
 interface Post {
@@ -76,18 +77,46 @@ export function FeedPage() {
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  /** Форма живёт в попапе: читают новости в сто раз чаще, чем пишут. */
+  const [composerOpen, setComposerOpen] = useState(false);
+  /** Страница ленты. Считает и отдаёт сервер — на клиенте её пришлось бы угадывать. */
+  const [meta, setMeta] = useState({ total: 0, page: 1, pages: 1 });
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [team, setTeam] = useState<MentionUser[]>([]);
 
   const reload = useCallback(
-    () => api.feedList()
-      .then((r) => { setItems(r.items); setCanPost(r.canPost !== false); })
+    (page = 1) => api.feedList(page)
+      .then((r) => {
+        setItems(r.items);
+        setCanPost(r.canPost !== false);
+        setMeta({ total: r.total ?? r.items.length, page: r.page ?? 1, pages: r.pages ?? 1 });
+      })
       .catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить ленту'))
       .finally(() => setLoaded(true)),
     [],
   );
 
   useEffect(() => { void reload(); }, [reload]);
+
+  /** Перейти на страницу: прокрутку возвращаем наверх — иначе человек смотрит в середину чужой страницы. */
+  const setPage = (page: number) => {
+    void reload(page);
+    document.querySelector('.feed-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  /**
+   * Открыть форму. Объявление и обычная новость — один и тот же попап с разным
+   * заголовком: поля у них одни, а вот последствия разные, и выбирается это кнопкой
+   * снаружи, а не галочкой внутри, которую легко не заметить.
+   */
+  const openComposer = (announcement: boolean) => {
+    setAsAnnouncement(announcement);
+    setErr('');
+    setComposerOpen(true);
+  };
+
+  /** Закрытие черновик НЕ стирает: случайный промах мимо окна не должен стоить текста. */
+  const closeComposer = () => setComposerOpen(false);
   useEffect(() => { api.listGroups().then(setGroups).catch(() => undefined); }, []);
   // список сотрудников нужен и подсказке по @, и подсветке упоминаний в готовом тексте
   useEffect(() => {
@@ -123,7 +152,9 @@ export function FeedPage() {
       setGroupIds([]);
       setFiles([]);
       setMentionIds([]);
-      await reload();
+      setComposerOpen(false);
+      // новая новость всегда наверху первой страницы — туда и возвращаемся
+      await reload(1);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось опубликовать');
     } finally {
@@ -133,7 +164,30 @@ export function FeedPage() {
 
   return (
     <div className="page feed-page">
-      <div className="page-head"><h2>Новости компании</h2></div>
+      <div className="page-head">
+        <h2>Новости компании</h2>
+        {/*
+          Форма ушла в попап, а на её месте — кнопки.
+
+          Постоянно открытое поле ввода занимало верх экрана у всех, включая тех, кто
+          пришёл читать: новости читают в сто раз чаще, чем пишут. Две кнопки, а не
+          одна: «новость» и «объявление» — разные по последствиям вещи (объявление
+          требует подтверждения прочтения и будит письмом всю компанию), и выбирать
+          это галочкой внутри формы значит промахнуться по ней однажды.
+        */}
+        {canPost && (
+          <span className="page-head-actions">
+            <button className="btn btn-sm" onClick={() => openComposer(false)}>
+              <Icon name="plus" size={14} /> Новость
+            </button>
+            {canAnnounce && (
+              <button className="btn btn-primary btn-sm" onClick={() => openComposer(true)}>
+                <Icon name="alert" size={14} /> Объявление
+              </button>
+            )}
+          </span>
+        )}
+      </div>
 
       {/*
         Прокручиваемое тело страницы.
@@ -144,17 +198,20 @@ export function FeedPage() {
         добраться до неё было нечем.
       */}
       <div className="feed-scroll">
-      {!canPost && (
-        // Молчать нельзя: человек, пришедший «написать всем», должен понимать, почему
-        // формы нет, — иначе он решит, что раздел сломан.
-        <p className="dim">
-          Новости компании публикуют руководитель и сотрудники с должностью, которой это
-          доверено. Комментировать и читать может каждый.
-        </p>
-      )}
-
-      {canPost && (
-      <div className="card feed-composer">
+      {composerOpen && (
+      <div className="modal-overlay" onClick={closeComposer}>
+      <div className="modal-card feed-composer" onClick={(e) => e.stopPropagation()}>
+        <div className="drawer-head">
+          <h3>{asAnnouncement ? 'Объявление компании' : 'Новость компании'}</h3>
+          <button className="btn btn-ghost btn-sm" onClick={closeComposer} title="Закрыть"><Icon name="close" /></button>
+        </div>
+        {asAnnouncement && (
+          // Последствия объявления надо знать ДО отправки, а не узнавать по звонкам
+          <p className="dim">
+            Объявление подсвечивается в ленте, требует подтверждения прочтения и уходит
+            письмом (и в Telegram) тем, кому адресовано.
+          </p>
+        )}
         <MentionField
           rows={3}
           placeholder={asAnnouncement ? 'Что важно знать всем? Через @ можно позвать человека' : 'Написать всей компании…'}
@@ -165,12 +222,6 @@ export function FeedPage() {
         />
 
         <div className="feed-composer-row">
-          {canAnnounce && (
-            <label className="feed-flag" title="Объявление подсвечивается и требует подтверждения прочтения">
-              <input type="checkbox" checked={asAnnouncement} onChange={(e) => setAsAnnouncement(e.target.checked)} />
-              <Icon name="alert" size={14} /> Объявление
-            </label>
-          )}
           {/* Адресаты: пусто — всей компании. Так проще всего, а отделы выбирают, когда
               сообщение действительно касается только их. */}
           {groups.length > 0 && (
@@ -238,10 +289,22 @@ export function FeedPage() {
             ))}
           </div>
         )}
+
+        {err && <div className="error-text">{err}</div>}
+      </div>
       </div>
       )}
 
-      {err && <div className="error-text">{err}</div>}
+      {!canPost && (
+        // Молчать нельзя: человек, пришедший «написать всем», должен понимать, почему
+        // кнопок нет, — иначе он решит, что раздел сломан.
+        <p className="dim">
+          Новости компании публикуют руководитель и сотрудники с должностью, которой это
+          доверено. Комментировать и читать может каждый.
+        </p>
+      )}
+
+      {err && !composerOpen && <div className="error-text">{err}</div>}
       {!loaded && <SkeletonList rows={4} />}
       {loaded && items.length === 0 && (
         <EmptyState
@@ -254,6 +317,44 @@ export function FeedPage() {
       <div className="feed-list">
         {items.map((p) => <PostCard key={p.id} post={p} team={team} onChanged={reload} />)}
       </div>
+
+      {/*
+        Постраничность — та же, что в реестре задач: один способ листать на всё
+        приложение. Появляется, только когда страниц больше одной: одинокая кнопка «1»
+        ничего не сообщает и только занимает место.
+      */}
+      {meta.pages > 1 && (
+        <div className="registry-pages">
+          <button
+            className="registry-page"
+            disabled={meta.page <= 1}
+            onClick={() => setPage(meta.page - 1)}
+            aria-label="Предыдущая страница"
+          >
+            <Icon name="chevron-left" size={14} />
+          </button>
+          {pageWindow(meta.page, meta.pages).map((n, i) => (n === 0 ? (
+            <span key={`gap${i}`} className="dim">…</span>
+          ) : (
+            <button
+              key={n}
+              className={`registry-page${n === meta.page ? ' active' : ''}`}
+              onClick={() => setPage(n)}
+              aria-current={n === meta.page ? 'page' : undefined}
+            >
+              {n}
+            </button>
+          )))}
+          <button
+            className="registry-page"
+            disabled={meta.page >= meta.pages}
+            onClick={() => setPage(meta.page + 1)}
+            aria-label="Следующая страница"
+          >
+            <Icon name="chevron-right" size={14} />
+          </button>
+        </div>
+      )}
       </div>
     </div>
   );

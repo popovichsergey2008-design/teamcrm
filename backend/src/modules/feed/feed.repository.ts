@@ -38,8 +38,20 @@ export class FeedRepository {
    * самим. Закреплённое всегда сверху — в этом и смысл закрепления: оно не должно
    * тонуть под новыми сообщениями.
    */
-  list(tenantId: string, userId: string, limit: number, before?: string) {
-    return this.db.many<PostRow>(
+  /**
+   * Страница ленты.
+   *
+   * Постранично, а не «показать ещё»: новости читают не только сегодняшние — к
+   * объявлению месячной давности возвращаются, и добираться до него прокруткой на
+   * сотню постов невозможно. Нумерация такая же, как в реестре задач: один способ
+   * листать на всё приложение.
+   *
+   * Общее число считаем тем же запросом (`COUNT(*) OVER ()`): вторым запросом со
+   * своим WHERE эти два условия однажды разъедутся, и «страница 5 из 3» появится
+   * ровно тогда, когда её никто не ждёт.
+   */
+  list(tenantId: string, userId: string, limit: number, offset = 0) {
+    return this.db.many<PostRow & { total: string }>(
       `SELECT p.*, u.full_name AS author_name, u.avatar_file_id AS author_avatar,
               r.read_at,
               (SELECT count(*)::int FROM feed_post_reads x WHERE x.post_id = p.id) AS reads,
@@ -50,12 +62,12 @@ export class FeedRepository {
                         'fileId', f.id::text, 'name', f.file_name,
                         'mime', f.content_type, 'size', f.size_bytes) ORDER BY f.id)
                  FROM feed_post_files pf JOIN files f ON f.id = pf.file_id
-                WHERE pf.post_id = p.id) AS files
+                WHERE pf.post_id = p.id) AS files,
+              COUNT(*) OVER () AS total
          FROM feed_posts p
          JOIN users u ON u.id = p.author_id
          LEFT JOIN feed_post_reads r ON r.post_id = p.id AND r.user_id = $2
         WHERE p.tenant_id = $1 AND p.deleted_at IS NULL
-          AND ($3::bigint IS NULL OR p.id < $3::bigint)
           AND (
             p.author_id = $2
             OR NOT EXISTS (SELECT 1 FROM feed_post_groups pg WHERE pg.post_id = p.id)
@@ -65,8 +77,8 @@ export class FeedRepository {
                WHERE pg.post_id = p.id)
           )
         ORDER BY p.is_pinned DESC, p.id DESC
-        LIMIT $4`,
-      [tenantId, userId, before ?? null, Math.min(Math.max(limit, 1), 50)],
+        LIMIT $3 OFFSET $4`,
+      [tenantId, userId, Math.min(Math.max(limit, 1), 50), Math.max(0, offset)],
     );
   }
 

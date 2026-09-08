@@ -400,6 +400,8 @@
 .page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .page-head { display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
 .page-head h2 { margin: 0; font-size: 18px; font-weight: 700; }
+/* Кнопки действий страницы прижаты вправо: заголовок слева, дело справа. */
+.page-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .profile-layout { display: flex; flex: 1; min-height: 0; }
 .profile-nav {
   display: flex; flex-direction: column; gap: 2px; width: 220px; flex-shrink: 0;
@@ -438,7 +440,16 @@
 }
 /* Колонка текста не шире 820: строки длиннее просто не читаются. */
 .feed-scroll > * { max-width: 820px; width: 100%; flex: 0 0 auto; }
-.feed-composer { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+/*
+  Форма новости — окном поверх страницы.
+
+  Раньше она стояла первым блоком ленты и занимала верх экрана у всех, включая тех,
+  кто пришёл читать. Читают новости в сто раз чаще, чем пишут, поэтому теперь форму
+  открывают кнопкой, а место наверху досталось самим новостям.
+*/
+.feed-composer { display: flex; flex-direction: column; gap: 10px; }
+/* Поле ввода в окне выше, чем было в ленте: новость — это текст, а не строка чата. */
+.feed-composer .mention-wrap textarea { min-height: 160px; }
 .feed-composer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .feed-flag { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; }
 .feed-groups, .feed-until { max-width: 220px; font-size: var(--fs-sm); }

@@ -180,6 +180,39 @@ describe('Лента компании (e2e)', () => {
       .expect(403);
   });
 
+  /**
+   * Постраничность ленты.
+   *
+   * Новости читают не только сегодняшние: к объявлению месячной давности возвращаются,
+   * и добираться до него прокруткой на сотню постов невозможно. Проверяем то, на чём
+   * такие списки ошибаются: размер страницы, общее число и отсутствие нахлёста между
+   * страницами.
+   */
+  it('лента листается по десять, страницы не перекрываются', async () => {
+    const owner = await org(`Постранично ${uniq()}`);
+    for (let i = 1; i <= 12; i++) {
+      await http$.post('/api/feed').set(H(owner.accessToken))
+        .send({ body: `Новость номер ${i}` }).expect(201);
+    }
+
+    const first = (await http$.get('/api/feed').set(H(owner.accessToken)).expect(200)).body.data;
+    expect(first.items).toHaveLength(10);
+    expect(first.total).toBe(12);
+    expect(first.pages).toBe(2);
+    expect(first.page).toBe(1);
+
+    const second = (await http$.get('/api/feed?page=2').set(H(owner.accessToken)).expect(200)).body.data;
+    expect(second.items).toHaveLength(2);
+    expect(second.page).toBe(2);
+
+    // ни одна новость не попадает на обе страницы сразу
+    const ids = [...first.items, ...second.items].map((p: any) => String(p.id));
+    expect(new Set(ids).size).toBe(12);
+    // и порядок сохраняется: свежее — первым
+    expect(first.items[0].body).toBe('Новость номер 12');
+    expect(second.items[1].body).toBe('Новость номер 1');
+  });
+
   it('упоминание чужого человека публикацию не ломает', async () => {
     const a = await org('Упоминания А');
     const b = await org('Упоминания Б');

@@ -811,9 +811,13 @@ export const api = {
     request<{ id: string; projectId: string | null; aiEnabled: boolean }>('POST', '/media/rooms', { projectId, withAi, chatId }),
 
   // лента компании: сообщения и объявления
-  /** Лента компании. `canPost` считает сервер: правило одно, и повторять его на клиенте нельзя. */
-  feedList: (before?: string) =>
-    request<{ items: any[]; canPost: boolean }>('GET', `/feed${before ? `?before=${before}` : ''}`),
+  /**
+   * Лента компании, постранично. `canPost` и номера страниц считает СЕРВЕР: правило
+   * «кто публикует» одно на всю систему, а число страниц на клиенте пришлось бы гадать.
+   */
+  feedList: (page = 1) =>
+    request<{ items: any[]; canPost: boolean; total: number; page: number; pages: number }>(
+      'GET', `/feed?page=${page}`),
   feedUnread: () => request<{ items: any[]; count: number }>('GET', '/feed/unread'),
   feedCreate: (b: { body: string; isAnnouncement?: boolean; activeUntil?: string; groupIds?: string[]; mentionIds?: string[] }) =>
     request<any>('POST', '/feed', b),

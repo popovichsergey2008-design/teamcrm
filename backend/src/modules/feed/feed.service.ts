@@ -5,6 +5,9 @@ import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FeedRepository, PostRow } from './feed.repository';
 
+/** Десять новостей на страницу: столько помещается на экран, не требуя прокрутки до дна. */
+const PAGE_SIZE = 10;
+
 @Injectable()
 export class FeedService {
   constructor(
@@ -14,14 +17,24 @@ export class FeedService {
     private readonly notify: NotificationsService,
   ) {}
 
-  async list(tenantId: string, userId: string, role: string, limit = 20, before?: string) {
+  async list(tenantId: string, userId: string, role: string, page = 1, limit = PAGE_SIZE) {
+    const size = Math.min(Math.max(limit, 1), 50);
+    const current = Math.max(1, Math.trunc(page) || 1);
     const [rows, canPost] = await Promise.all([
-      this.repo.list(tenantId, userId, limit, before),
+      this.repo.list(tenantId, userId, size, (current - 1) * size),
       this.repo.canPostNews(tenantId, userId, role),
     ]);
+    const total = Number(rows[0]?.total ?? 0);
     // Право публиковать отдаём вместе со списком: форму видит тот, кому она пригодится,
     // и никто не пишет пост, чтобы получить отказ на «Опубликовать».
-    return { items: rows.map((r) => this.view(r, userId)), canPost };
+    return {
+      items: rows.map((r) => this.view(r, userId)),
+      canPost,
+      total,
+      page: current,
+      pageSize: size,
+      pages: Math.max(1, Math.ceil(total / size)),
+    };
   }
 
   /** Плашка сверху: непрочитанные действующие объявления. */
