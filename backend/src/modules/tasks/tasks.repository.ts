@@ -29,6 +29,9 @@ export interface TaskRow {
   approval_state: string;
   approval_requested_at: Date | null;
   approval_requested_by: string | null;
+  /** Задачу объединили с этой: она остаётся в списках, но помечена и закрыта. */
+  merged_into_id?: string | null;
+  merged_at?: Date | null;
 }
 
 @Injectable()

@@ -273,3 +273,20 @@ export class TaskRecurrenceDto {
   @MaxLength(64)
   tz?: string;
 }
+
+/**
+ * Объединение задач.
+ *
+ * Основную задачу выбирает человек, поэтому сторона приходит уже разобранной:
+ * `primaryId` остаётся, `secondaryId` получает пометку «объединена».
+ *
+ * Название, описание и чек-лист необязательны — их присылают, только если человек
+ * принял предложение ИИ или поправил его. Пусто — данные основной задачи не трогаем.
+ */
+export class MergeTasksDto {
+  @IsString() primaryId!: string;
+  @IsString() secondaryId!: string;
+  @IsOptional() @IsString() @MaxLength(255) title?: string;
+  @IsOptional() @IsString() @MaxLength(8000) description?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) checklist?: string[];
+}

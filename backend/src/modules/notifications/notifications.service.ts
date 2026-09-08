@@ -3,7 +3,7 @@ import { NotificationsRepository, Recipient } from './notifications.repository';
 import {
   EventKey, Letter, TaskCtx,
   taskApprovalLetter, taskCommentedLetter, taskCreatedLetter, taskParticipantLetter,
-  taskReturnedLetter, taskStatusLetter, feedAnnouncementLetter, feedMentionLetter,
+  taskReturnedLetter, taskStatusLetter, taskMergedLetter, feedAnnouncementLetter, feedMentionLetter,
 } from './mail.templates';
 
 /**
@@ -157,6 +157,55 @@ export class NotificationsService {
 
   taskCreated(tenantId: string, taskId: string, actorId: string | null): Promise<void> {
     return this.fanout(tenantId, taskId, 'task.created', actorId, 'new', taskCreatedLetter);
+  }
+
+  /**
+   * Задачи объединили — письмо участникам обеих.
+   *
+   * Своим методом, а не через `fanout`: адресаты здесь из ДВУХ задач сразу, и
+   * список приходит снаружи — считать его по одной задаче было бы неправдой,
+   * ведь у второй уже другой хозяин.
+   */
+  async taskMerged(
+    tenantId: string, primaryId: string, secondaryId: string, actorId: string | null, userIds: string[],
+  ): Promise<void> {
+    try {
+      const [card, actorName] = await Promise.all([
+        this.repo.taskCard(tenantId, primaryId),
+        this.repo.actorName(tenantId, actorId),
+      ]);
+      if (!card) return;
+      for (const id of userIds) {
+        if (String(id) === String(actorId)) continue; // о своём действии письмо не нужно
+        const person = await this.repo.recipientById(tenantId, id);
+        if (!person?.email) continue;
+        const token = await this.repo.ensureUnsubscribeToken(person.id, person.unsubscribe_token);
+        const ctx: TaskCtx = {
+          taskTitle: card.title,
+          projectName: card.project_name,
+          taskUrl: this.taskUrl(card.project_id, primaryId),
+          actorName,
+          assigneeName: card.assignee_name,
+          columnName: card.column_name,
+          priority: card.priority,
+          deadlineAt: card.deadline_at,
+        };
+        const letter = taskMergedLetter({
+          ...ctx,
+          mergedNumber: String(secondaryId),
+          primaryNumber: String(primaryId),
+          primaryTitle: card.title,
+        }, this.unsubscribeUrl(token));
+        await this.repo.enqueue({
+          tenantId, userId: person.id, toEmail: person.email,
+          subject: letter.subject, text: letter.text, html: letter.html,
+          eventKey: 'task.status',
+          dedupKey: `merge:${secondaryId}:${primaryId}:${person.id}`,
+        });
+      }
+    } catch (e) {
+      this.log.warn(`объединение задач ${secondaryId} → ${primaryId}: ${(e as Error).message}`);
+    }
   }
 
   /** Ключ повтора — id комментария: каждый комментарий это отдельное письмо. */

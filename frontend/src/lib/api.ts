@@ -77,6 +77,17 @@ export interface ImportStats {
 }
 
 /** Ссылка синхронизации календаря: наша наружу («export») или чужая внутрь («import»). */
+/** Сторона объединения задач: та, что остаётся, и та, что помечается объединённой. */
+export interface MergeSide {
+  id: string;
+  title: string;
+  description: string | null;
+  projectId: string;
+  projectName: string | null;
+  assigneeName: string | null;
+  managerName: string | null;
+}
+
 export interface CalendarLink {
   id: string;
   kind: 'export' | 'import';
@@ -277,6 +288,29 @@ export const api = {
     request<any>('PATCH', '/me', b),
   changePassword: (b: { currentPassword: string; newPassword: string }) =>
     request<any>('POST', '/me/password', b),
+  /**
+   * Объединение похожих задач: подсказки ИИ, предпросмотр и само объединение.
+   *
+   * Поиск без `q` — рекомендации по похожести; с `q` — обычный поиск по названию,
+   * номеру, проекту, исполнителю и постановщику.
+   */
+  taskMergeCandidates: (taskId: string, q?: string) => request<{
+    items: {
+      id: string; title: string; projectId: string; projectName: string | null;
+      assigneeName: string | null; managerName: string | null; match: number; reason: string;
+    }[];
+    searched: boolean;
+  }>('GET', `/tasks/${taskId}/merge/candidates${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  taskMergePreview: (taskId: string, withId: string) => request<{
+    primary: MergeSide; secondary: MergeSide;
+    moves: { comments: number; files: number; checklist: number; participants: number; messages: number; meetings: number };
+    differentProjects: boolean;
+    suggestion: { title: string; description: string; checklist: string[]; byAi: boolean };
+  }>('GET', `/tasks/${taskId}/merge/preview?with=${encodeURIComponent(withId)}`),
+  mergeTasks: (taskId: string, body: {
+    primaryId: string; secondaryId: string; title?: string; description?: string; checklist?: string[];
+  }) => request<{ taskId: string; projectId: string; mergedId: string }>('POST', `/tasks/${taskId}/merge`, body),
+
   /** Личное меню: порядок и скрытые разделы. Настройка человека, а не браузера. */
   saveUiPrefs: (prefs: { order?: string[]; hidden?: string[] }) =>
     request<{ uiPrefs: any }>('PUT', '/me/ui-prefs', { prefs }),

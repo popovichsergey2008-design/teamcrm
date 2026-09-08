@@ -71,6 +71,8 @@ export interface Task {
   /** личный план: на какой день человек взял задачу (не срок) */
   focus_date?: string | null;
   closed_at?: string | null;
+  /** Задачу объединили с этой: она остаётся в списках, но помечена и закрыта. */
+  merged_into_id?: string | null;
   priority?: string;
   labels?: { id: string; name: string; color: string }[];
   /**

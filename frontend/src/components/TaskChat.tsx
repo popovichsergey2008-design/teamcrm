@@ -51,12 +51,18 @@ const ACTIVITY_LABEL: Record<string, string> = {
   approval_confirmed: 'принял работу',
   approval_returned: 'вернул на доработку',
   approval_setting: 'изменил правило согласования',
+  merged_in: 'объединил сюда другую задачу',
+  merged_into: 'объединил эту задачу с другой',
 };
 
 function activityText(a: { kind: string; detail?: Record<string, any> }): string {
   const label = ACTIVITY_LABEL[a.kind] ?? a.kind;
   if (a.kind === 'moved' && a.detail?.to) return `${label} в «${a.detail.to}»`;
   if (a.kind === 'approval_returned' && a.detail?.reason) return `${label}: ${a.detail.reason}`;
+  // Номер обязателен: «объединил» без номера не отвечает на вопрос «с чем».
+  if ((a.kind === 'merged_in' || a.kind === 'merged_into') && a.detail?.taskId) {
+    return `${label} #${a.detail.taskId}${a.detail.title ? ` «${a.detail.title}»` : ''}`;
+  }
   // обход приёмки без списка нехваток бесполезен: ради этого списка запись и делается
   if (a.kind === 'handoff_forced' && Array.isArray(a.detail?.missing)) {
     return `${label}: ${a.detail.missing.join('; ')}`;

@@ -10,6 +10,7 @@ import { Lightbox } from './Lightbox';
 import { DatePicker } from './DatePicker';
 import { TaskChat } from './TaskChat';
 import { TaskRecurrenceBlock } from './TaskRecurrence';
+import { TaskMergeModal } from './TaskMergeModal';
 import { MONETIZATION_ENABLED } from '../config';
 import { labelTextColor } from '../lib/labels';
 
@@ -228,6 +229,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const toggleBlocked = async () => { await api.updateTask(task.id, { isBlocked: !task.is_blocked }); onRefresh(); };
   // сменить статус = переместить в колонку доски (наверх колонки)
   const [moving, setMoving] = useState(false);
+  /** Открыто окно объединения: поиск дубля и предпросмотр. */
+  const [merging, setMerging] = useState(false);
   // приёмка работы: сдаём не полностью — сначала показываем, чего не хватает
   const [gate, setGate] = useState<{ block: GateBlock; columnId: string } | null>(null);
   const moveToColumn = async (columnId: string, confirmGate = false) => {
@@ -331,6 +334,25 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
         {/* Завершение — отдельной строкой под заголовком. Сбоку от названия кнопка
             жалась к «закрыть» и терялась тем сильнее, чем длиннее название задачи. */}
+        {/*
+          Задача объединена — об этом надо сказать первой строкой.
+
+          Иначе человек продолжит работать в закрытой копии: комментарии он оставит
+          там, где их никто не читает. Ссылка ведёт в основную задачу.
+        */}
+        {task.merged_into_id && (
+          <div className="merge-banner">
+            <Icon name="refresh" size={14} />
+            <span>Объединена с задачей #{task.merged_into_id} — работа продолжается там.</span>
+            <button
+              className="btn btn-sm"
+              onClick={() => navigate({ section: 'projects', projectId: String(task.project_id), taskId: String(task.merged_into_id) })}
+            >
+              Открыть
+            </button>
+          </div>
+        )}
+
         {(isDone || targets.length > 0 || canDelete) && (
           <div className="task-actions-row">
             {targets.length > 0 && (
@@ -361,6 +383,18 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               </div>
             )}
             {isDone && <span className="badge badge-ok" title="Задача закрыта"><Icon name="check" size={12} /> завершена</span>}
+            {/* Объединение — рядом с завершением: это тоже способ закрыть задачу,
+                только не выбрасывая её содержимое. */}
+            {!task.merged_into_id && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setMerging(true)}
+                disabled={moving}
+                title="Найти дубль этой задачи и объединить их в одну"
+              >
+                <Icon name="refresh" size={14} /> Объединить
+              </button>
+            )}
             {canDelete && (
               <button className="btn btn-ghost btn-sm btn-delete" onClick={() => removeTask()} disabled={moving} title="Удалить задачу без возможности восстановления">
                 <Icon name="trash" size={14} /> Удалить
@@ -623,6 +657,21 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           />
         </div>
       </aside>
+
+      {merging && (
+        <TaskMergeModal
+          taskId={String(task.id)}
+          taskTitle={task.title}
+          onClose={() => setMerging(false)}
+          onMerged={(r) => {
+            setMerging(false);
+            // Уходим в основную задачу: она могла оказаться и в другом проекте,
+            // а оставаться в объединённой копии человеку незачем.
+            navigate({ section: 'projects', projectId: r.projectId, taskId: r.taskId });
+            onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }

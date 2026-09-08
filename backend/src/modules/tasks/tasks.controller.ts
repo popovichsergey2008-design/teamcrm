@@ -3,8 +3,9 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { TasksService } from './tasks.service';
+import { TaskMergeService } from './task-merge.service';
 import {
-  ApprovalRequiredDto, CreateTaskDto, FocusDateDto, MoveTaskDto, ParticipantDto,
+  ApprovalRequiredDto, CreateTaskDto, FocusDateDto, MergeTasksDto, MoveTaskDto, ParticipantDto,
   ReturnTaskDto, TaskRecurrenceDto, TaskRegistryQueryDto, UpdateTaskDto,
 } from './tasks.dto';
 
@@ -18,7 +19,38 @@ function isoDate(value?: string): string {
 @Controller('tasks')
 @Roles('owner', 'manager', 'member') // клиенты не мутируют задачи
 export class TasksController {
-  constructor(private readonly tasks: TasksService) {}
+  constructor(
+    private readonly tasks: TasksService,
+    private readonly merge: TaskMergeService,
+  ) {}
+
+  /**
+   * Объединение похожих задач.
+   *
+   * Маршруты стоят первыми и длиннее одного сегмента — `:id/merge/...` не спутать
+   * ни с `:id`, ни с `registry`. Тем же местом мы уже обожглись на реестре.
+   */
+  @Get(':id/merge/candidates')
+  mergeCandidates(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('q') q?: string) {
+    return this.merge.candidates(u.tenantId, id, q);
+  }
+
+  /** Что получится при объединении — вместе с предложением ИИ. Ничего не меняет. */
+  @Get(':id/merge/preview')
+  mergePreview(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('with') withId: string) {
+    return this.merge.preview(u.tenantId, id, withId);
+  }
+
+  @Post(':id/merge')
+  mergeTasks(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: MergeTasksDto) {
+    return this.merge.merge(u.tenantId, u.userId, {
+      primaryId: dto.primaryId,
+      secondaryId: dto.secondaryId,
+      title: dto.title ?? null,
+      description: dto.description ?? null,
+      checklist: dto.checklist ?? null,
+    });
+  }
 
   /**
    * Повтор задачи: прочитать, задать, снять.

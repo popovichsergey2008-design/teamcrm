@@ -247,6 +247,12 @@ function TaskCard({
         {task.approval_state === 'pending' && (
           <span className="badge badge-warn" title="Работа сдана, ждёт решения постановщика">На согласовании</span>
         )}
+        {/* Объединённая задача остаётся в списках, и без пометки её открывают как живую */}
+        {task.merged_into_id && (
+          <span className="badge badge-info" title={`Объединена с задачей #${task.merged_into_id}`}>
+            <Icon name="refresh" size={12} /> объединена
+          </span>
+        )}
         {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
         {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
         {due && <span className={due.cls} title={due.title}>{due.text}</span>}

@@ -277,6 +277,35 @@ export function taskParticipantLetter(
   };
 }
 
+/**
+ * Задачи объединили.
+ *
+ * Отдельного переключателя в настройках у этого письма нет и не нужно: для
+ * человека объединение — это смена состояния его задачи («она теперь вон та»),
+ * и приходит оно тем же каналом, что и перенос в другую колонку.
+ *
+ * Номера в тексте обязательны: по ним задачу ищут в переписке, где на неё уже
+ * успели сослаться.
+ */
+export function taskMergedLetter(
+  ctx: TaskCtx & { mergedNumber: string; primaryNumber: string; primaryTitle: string },
+  unsubscribeUrl: string,
+): Letter {
+  const lead = `${ctx.actorName} объединил задачу #${ctx.mergedNumber} с задачей #${ctx.primaryNumber} `
+    + `«${ctx.primaryTitle}». Работа продолжается в основной задаче — переписка и файлы уже там.`;
+  return {
+    subject: trim(`Задача #${ctx.mergedNumber} объединена с #${ctx.primaryNumber}`, 120),
+    text: plain(lead, ctx, unsubscribeUrl),
+    html: shell({
+      preheader: `${ctx.projectName} · объединение задач`,
+      lead: escape(lead),
+      ctx,
+      accent: BRAND.accent,
+      unsubscribeUrl,
+    }),
+  };
+}
+
 export function taskStatusLetter(ctx: TaskCtx & { to: string; closed: boolean }, unsubscribeUrl: string): Letter {
   const what = ctx.closed ? 'завершена' : `перенесена в «${ctx.to}»`;
   const lead = `${ctx.actorName} — задача ${what}.`;

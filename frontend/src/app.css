@@ -1347,6 +1347,51 @@
 .nav-tune-head-row .btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
 .nav-tune-hint { margin: 6px 0 0; font-size: var(--fs-xs); color: var(--text-mut); line-height: 1.35; }
 
+/*
+  Объединение похожих задач.
+
+  Окно широкое: в нём рядом стоят две задачи и список кандидатов, и в узкой колонке
+  человек не увидит, что с чем сравнивает.
+*/
+.merge-modal { max-width: 720px; display: flex; flex-direction: column; gap: 10px; max-height: 86vh; overflow-y: auto; }
+.merge-hint { font-size: var(--fs-xs); }
+.merge-list { display: flex; flex-direction: column; gap: 6px; }
+.merge-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px;
+  align-items: center; text-align: left; cursor: pointer;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elev); color: var(--text);
+}
+.merge-item:hover:not(:disabled) { border-color: var(--accent-line); background: var(--bg-elev-2); }
+.merge-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.merge-item-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.merge-item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.merge-item-meta { grid-column: 1; font-size: var(--fs-xs); }
+/* Процент — крупно и справа: по нему выбирают, всё остальное лишь подтверждает. */
+.merge-match { grid-row: 1 / span 2; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.merge-sides { display: flex; align-items: center; gap: 10px; }
+.merge-side {
+  flex: 1; min-width: 0; padding: 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-elev);
+}
+.merge-side.main { border-color: var(--accent); }
+.merge-side-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.merge-side-title { font-weight: 600; word-break: break-word; }
+.merge-keep { display: flex; flex-wrap: wrap; gap: 14px; }
+.merge-moves { font-size: var(--fs-sm); line-height: 1.4; }
+.merge-warn {
+  display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--warn-soft); border: 1px solid var(--warn-line); font-size: var(--fs-sm);
+}
+.merge-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* Пометка в карточке объединённой задачи: без неё в закрытой копии продолжают работать. */
+.merge-banner {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 10px;
+  border-radius: var(--radius-sm); background: var(--accent-soft); border: 1px solid var(--accent-line);
+  font-size: var(--fs-sm);
+}
+.merge-banner .btn { margin-left: auto; }
+
 /* Люди в задаче: соисполнители и наблюдатели — чипами, а не строкой через запятую. */
 .people-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }
 .people-chip {
