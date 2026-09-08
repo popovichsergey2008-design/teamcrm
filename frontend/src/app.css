@@ -1277,11 +1277,8 @@
   border-radius: var(--radius-sm);
 }
 .nav-tune-head-row { display: flex; align-items: center; gap: 8px; }
-.nav-tune-title { font-size: var(--fs-sm); font-weight: 600; }
-.nav-tune-head-row .btn { margin-left: auto; }
+.nav-tune-title { font-size: var(--fs-sm); font-weight: 600; margin-right: auto; }
 .nav-tune-hint { margin: 6px 0 0; font-size: var(--fs-xs); color: var(--text-mut); line-height: 1.35; }
-/* Выход из настройки — не такая же серая надпись, как вход: его ищут глазами. */
-.nav-tune-exit { color: var(--accent); font-weight: 600; }
 
 /* Люди в задаче: соисполнители и наблюдатели — чипами, а не строкой через запятую. */
 .people-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }

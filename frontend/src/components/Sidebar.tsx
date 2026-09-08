@@ -195,6 +195,8 @@ export function Sidebar({
   const ordered = applyOrder(allowed, prefs);
   // В режиме настройки показываем и спрятанное — иначе вернуть его будет неоткуда.
   const menuItems = tuning ? ordered : applyHidden(ordered, prefs);
+  // Меню уже трогали: только тогда «Сбросить» вообще имеет смысл.
+  const hasPrefs = !!(prefs.order?.length || prefs.hidden?.length);
 
   const savePrefs = (next: MenuPrefs) => {
     setPrefs(next);
@@ -418,6 +420,13 @@ export function Sidebar({
             <div className="nav-tune-head">
               <div className="nav-tune-head-row">
                 <span className="nav-tune-title">Настройка меню</span>
+                {/* «Сбросить» — только когда есть что сбрасывать: у нетронутого
+                    меню эта кнопка ничего не делает и лишь спорит с «Выйти». */}
+                {hasPrefs && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => savePrefs({})} title="Вернуть порядок и состав по умолчанию">
+                    Сбросить
+                  </button>
+                )}
                 <button className="btn btn-primary btn-sm" onClick={stopTuning}>
                   <Icon name="check" size={14} />
                   Выйти
@@ -529,23 +538,15 @@ export function Sidebar({
             );
           })}
 
-          {/* Настройка меню — внизу списка и мелко: ею пользуются один раз,
-              а место в панели занимают каждый день. */}
-          {!collapsed && (
+          {/* Вход в настройку — внизу списка и мелко: ею пользуются один раз,
+              а место в панели занимают каждый день. В самой настройке этой строки
+              нет: выход живёт в шапке, две кнопки об одном и том же только путают. */}
+          {!collapsed && !tuning && (
             <div className="nav-tune-bar">
-              {/* Выход и снизу тоже: до низа списка доходят те, кто там что-то менял. */}
-              <button
-                className={`nav-tune-btn${tuning ? ' nav-tune-exit' : ''}`}
-                onClick={() => { if (tuning) stopTuning(); else setTuning(true); }}
-              >
-                <Icon name={tuning ? 'check' : 'settings'} size={13} />
-                {tuning ? 'Выйти из настройки' : 'Настроить меню'}
+              <button className="nav-tune-btn" onClick={() => setTuning(true)}>
+                <Icon name="settings" size={13} />
+                Настроить меню
               </button>
-              {tuning && (prefs.order?.length || prefs.hidden?.length) && (
-                <button className="nav-tune-btn" onClick={() => savePrefs({})} title="Вернуть порядок и состав по умолчанию">
-                  Сбросить
-                </button>
-              )}
             </div>
           )}
 
