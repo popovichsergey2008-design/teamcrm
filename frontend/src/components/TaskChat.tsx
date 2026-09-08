@@ -113,8 +113,23 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
   } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
 
-  const reload = () => {
-    api.listComments(taskId).then(setComments).catch(() => undefined);
+  /**
+   * Загружена ли переписка целиком.
+   *
+   * Карточка открывается с хвостом в сто сообщений: у импортированной задачи их
+   * бывают сотни, и рисовать всё разом — это пауза при открытии ради того, что
+   * человек не читает. Кнопка сверху поднимает остальное.
+   */
+  const [fullyLoaded, setFullyLoaded] = useState(false);
+
+  const reload = (all = false) => {
+    api.listComments(taskId, all)
+      .then((rows) => {
+        setComments(rows);
+        // «Всё загружено» решаем по факту: пришло меньше предела — выше ничего нет
+        if (all || rows.length < 100) setFullyLoaded(true);
+      })
+      .catch(() => undefined);
     api.taskActivity(taskId).then(setActivity).catch(() => undefined);
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,9 +267,24 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
     setEditing(null);
   };
 
-  /** Переход из истории к самому сообщению. */
-  const goToMessage = (id: string) => {
-    const el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
+  /**
+   * Переход из истории к самому сообщению.
+   *
+   * Сообщения может не оказаться на экране: показан хвост переписки, а ссылка ведёт
+   * к старому. Тогда сначала поднимаем всю переписку и прыгаем после отрисовки —
+   * молча ничего не делать здесь нельзя, кнопка выглядела бы сломанной.
+   */
+  const goToMessage = async (id: string) => {
+    let el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
+    if (!el && !fullyLoaded) {
+      const rows = await api.listComments(taskId, true).catch(() => null);
+      if (rows) {
+        setComments(rows);
+        setFullyLoaded(true);
+        await new Promise((r) => window.setTimeout(r, 60)); // ждём отрисовку
+        el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
+      }
+    }
     if (!el) return;
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     setHighlight(String(id));
@@ -308,6 +338,13 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); attach(f); } }}
       >
+        {/* Показан хвост переписки — остальное поднимается кнопкой. Появляется, только
+            когда наверху действительно что-то есть. */}
+        {!fullyLoaded && comments.length >= 100 && (
+          <button className="btn btn-ghost btn-sm chat-earlier" onClick={() => reload(true)}>
+            <Icon name="chevron-up" size={13} /> Показать всю переписку
+          </button>
+        )}
         {shown.map((c, i) => {
           const prev = shown[i - 1];
           const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(c.created_at).toDateString();

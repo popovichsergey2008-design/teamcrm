@@ -454,6 +454,9 @@
 .feed-flag { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; }
 .feed-groups, .feed-until { max-width: 220px; font-size: var(--fs-sm); }
 .feed-composer-row .btn { margin-left: auto; }
+/* «Показать предыдущие» — над самими комментариями: оттуда они и появятся. */
+.feed-earlier { align-self: flex-start; }
+.chat-earlier { align-self: center; margin-bottom: 6px; }
 .feed-chosen { display: flex; flex-wrap: wrap; gap: 6px; }
 .feed-chip {
   display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; cursor: pointer;

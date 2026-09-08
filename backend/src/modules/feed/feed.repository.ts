@@ -228,14 +228,40 @@ export class FeedRepository {
     );
   }
 
-  comments(tenantId: string, postId: string) {
-    return this.db.many<{ id: string; author_id: string; full_name: string; avatar_file_id: string | null; body: string; created_at: Date }>(
+  /**
+   * Комментарии к новости — ПОСЛЕДНИЕ, а не все.
+   *
+   * У обсуждения свой порядок чтения: человек открывает его, чтобы увидеть, чем всё
+   * кончилось, а не начало трёхмесячной переписки. Поэтому берём хвост и даём поднять
+   * предыдущие кнопкой — так устроены обсуждения везде, от Facebook до GitHub.
+   *
+   * Выбираем по убыванию и переворачиваем: «последние N» иначе пришлось бы считать
+   * через общее число, а оно меняется между двумя запросами.
+   */
+  async comments(tenantId: string, postId: string, limit = 10, before?: string) {
+    const rows = await this.db.many<{
+      id: string; author_id: string; full_name: string; avatar_file_id: string | null;
+      body: string; created_at: Date;
+    }>(
       `SELECT c.id, c.author_id, u.full_name, u.avatar_file_id, c.body, c.created_at
          FROM feed_comments c JOIN users u ON u.id = c.author_id
         WHERE c.tenant_id = $1 AND c.post_id = $2 AND c.deleted_at IS NULL
-        ORDER BY c.id`,
+          AND ($4::bigint IS NULL OR c.id < $4::bigint)
+        ORDER BY c.id DESC
+        LIMIT $3`,
+      [tenantId, postId, Math.min(Math.max(limit, 1), 100), before ?? null],
+    );
+    return rows.reverse();
+  }
+
+  /** Сколько всего комментариев: по нему кнопка знает, сколько ещё осталось наверху. */
+  async commentsCount(tenantId: string, postId: string): Promise<number> {
+    const row = await this.db.one<{ n: string }>(
+      `SELECT count(*)::int AS n FROM feed_comments
+        WHERE tenant_id = $1 AND post_id = $2 AND deleted_at IS NULL`,
       [tenantId, postId],
     );
+    return Number(row?.n ?? 0);
   }
 
   addComment(tenantId: string, postId: string, authorId: string, body: string) {

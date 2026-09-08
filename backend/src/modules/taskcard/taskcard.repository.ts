@@ -20,7 +20,15 @@ export class TaskCardRepository {
       ],
     );
   }
-  listComments(tenantId: string, taskId: string, includePrivate: boolean, viewerId: string) {
+  /**
+   * Переписка задачи — ПОСЛЕДНИЕ `limit` сообщений.
+   *
+   * Раньше отдавались все: у импортированной из Битрикса задачи их бывает несколько
+   * сотен, и карточка открывалась через паузу, отрисовывая то, что человек всё равно
+   * не прочитает. Берём хвост (разговор читают с конца) и переворачиваем; поднять всю
+   * переписку можно одним запросом с большим пределом — за этим ходит кнопка в чате.
+   */
+  listComments(tenantId: string, taskId: string, includePrivate: boolean, viewerId: string, limit = 100) {
     return this.db.many(
       // is_ai — чтобы в ленте было видно, кто говорит: ответ помощника нельзя
       // спутать с указанием постановщика
@@ -48,9 +56,10 @@ export class TaskCardRepository {
     LEFT JOIN users ru ON ru.id = r.author_id
     LEFT JOIN files f ON f.id = c.file_id
         WHERE c.tenant_id=$1 AND c.task_id=$2 AND ($3 OR c.is_client_visible=TRUE)
-        ORDER BY c.created_at ASC`,
-      [tenantId, taskId, includePrivate, viewerId],
-    );
+        ORDER BY c.created_at DESC
+        LIMIT $5`,
+      [tenantId, taskId, includePrivate, viewerId, Math.min(Math.max(limit, 1), 2000)],
+    ).then((rows) => rows.reverse());
   }
   getComment(tenantId: string, id: string) {
     return this.db.one<{ id: string; author_id: string; task_id: string }>(

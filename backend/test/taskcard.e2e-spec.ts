@@ -58,6 +58,15 @@ describe('Enhancements v1 — Task card (e2e)', () => {
     await http.patch(`/api/tasks/${taskId}/comments/${c.id}`).set({ Authorization: `Bearer ${m}` }).send({ body: 'хак' }).expect(403);
     // автор может
     await http.patch(`/api/tasks/${taskId}/comments/${c.id}`).set(A()).send({ body: 'Исправлено' }).expect(200);
+
+    // Порядок обычный — сверху вниз, старое первым: переписку читают как переписку,
+    // а не как список «сначала последнее».
+    await http.post(`/api/tasks/${taskId}/comments`).set(A()).send({ body: 'Второй коммент' }).expect(201);
+    const two = (await http.get(`/api/tasks/${taskId}/comments`).set(A()).expect(200)).body.data;
+    expect(two.map((x: any) => x.body)).toEqual(['Исправлено', 'Второй коммент']);
+    // а «поднять всю переписку» отдаёт то же самое, пока сотни сообщений не набралось
+    const all = (await http.get(`/api/tasks/${taskId}/comments?all=1`).set(A()).expect(200)).body.data;
+    expect(all.length).toBe(2);
   });
 
   it('вложения: загрузка → список → скачивание', async () => {

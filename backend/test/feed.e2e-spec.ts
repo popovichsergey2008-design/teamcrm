@@ -137,8 +137,8 @@ describe('Лента компании (e2e)', () => {
     expect((await http$.get('/api/feed/unread').set(H(mate.token)).expect(200)).body.data.count).toBe(0);
 
     const comments = (await http$.get(`/api/feed/${post.id}/comments`).set(H(a.accessToken)).expect(200)).body.data;
-    expect(comments).toHaveLength(1);
-    expect(comments[0].body).toBe('А во сколько?');
+    expect(comments.items).toHaveLength(1);
+    expect(comments.items[0].body).toBe('А во сколько?');
   });
 
   it('закреплённое держится наверху, удалённое пропадает из ленты', async () => {
@@ -213,6 +213,37 @@ describe('Лента компании (e2e)', () => {
     expect(second.items[1].body).toBe('Новость номер 1');
   });
 
+  /**
+   * Длинное обсуждение.
+   *
+   * Комментарии читают с конца: важно, чем всё кончилось, а не начало переписки
+   * трёхмесячной давности. Поэтому отдаём хвост и даём поднять предыдущие — и
+   * проверяем ровно это, включая порядок и отсутствие нахлёста.
+   */
+  it('комментарии отдаются последними десятью, предыдущие поднимаются', async () => {
+    const owner = await org(`Обсуждение ${uniq()}`);
+    const post = (await http$.post('/api/feed').set(H(owner.accessToken))
+      .send({ body: 'Есть что обсудить' }).expect(201)).body.data;
+
+    for (let i = 1; i <= 13; i++) {
+      await http$.post(`/api/feed/${post.id}/comments`).set(H(owner.accessToken))
+        .send({ body: `Реплика ${i}` }).expect(201);
+    }
+
+    const last = (await http$.get(`/api/feed/${post.id}/comments`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(last.items).toHaveLength(10);
+    expect(last.total).toBe(13);
+    expect(last.hasMore).toBe(true);
+    // хвост, а не начало: последняя реплика внизу, порядок обычный — сверху вниз
+    expect(last.items[0].body).toBe('Реплика 4');
+    expect(last.items[9].body).toBe('Реплика 13');
+
+    const earlier = (await http$.get(`/api/feed/${post.id}/comments?before=${last.items[0].id}`)
+      .set(H(owner.accessToken)).expect(200)).body.data;
+    expect(earlier.items.map((c: any) => c.body)).toEqual(['Реплика 1', 'Реплика 2', 'Реплика 3']);
+    expect(earlier.hasMore).toBe(false); // выше уже ничего нет
+  });
+
   it('упоминание чужого человека публикацию не ломает', async () => {
     const a = await org('Упоминания А');
     const b = await org('Упоминания Б');
@@ -227,6 +258,6 @@ describe('Лента компании (e2e)', () => {
     await http$.post(`/api/feed/${post.id}/comments`).set(H(a.accessToken))
       .send({ body: `@${mate.user.fullName}, посмотрите`, mentionIds: [String(mate.user.id)] }).expect(201);
     const comments = (await http$.get(`/api/feed/${post.id}/comments`).set(H(mate.token)).expect(200)).body.data;
-    expect(comments[0].body).toContain('посмотрите');
+    expect(comments.items[0].body).toContain('посмотрите');
   });
 });

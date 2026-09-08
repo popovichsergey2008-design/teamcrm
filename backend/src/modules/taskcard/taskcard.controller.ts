@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Delete, Get, Param, Patch, Post, UploadedFile, UseInterceptors,
+  Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
@@ -53,8 +53,13 @@ export class TaskCardController {
 
   // comments
   @Get(':id/comments')
-  listComments(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.svc.listComments(u.tenantId, id, u.role, u.userId);
+  /**
+   * Переписка задачи. По умолчанию последние сто сообщений: разговор читают с конца,
+   * а у импортированной задачи их бывают сотни. `all=1` поднимает всю переписку —
+   * этим ходит кнопка «показать предыдущие» и переход к старому сообщению из истории.
+   */
+  listComments(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('all') all?: string) {
+    return this.svc.listComments(u.tenantId, id, u.role, u.userId, all === '1' ? 2000 : 100);
   }
   @Post(':id/comments')
   addComment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CommentDto) {

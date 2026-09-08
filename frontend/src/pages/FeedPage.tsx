@@ -417,6 +417,8 @@ async function downloadFile(file: FeedFile): Promise<void> {
 
 function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; onChanged: () => void }) {
   const [comments, setComments] = useState<Comment[] | null>(null);
+  /** Сколько комментариев осталось выше загруженных: цифра на кнопке «показать предыдущие». */
+  const [more, setMore] = useState(0);
   const [text, setText] = useState('');
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   /** Что показываем во весь экран: уже загруженный блоб, а не адрес за авторизацией. */
@@ -425,15 +427,35 @@ function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; 
   const docs = post.files.filter((f) => !f.mime.startsWith('image/'));
   const [readers, setReaders] = useState<{ read: { fullName: string }[]; pending: { fullName: string }[] } | null>(null);
 
+  /**
+   * Открыть обсуждение: показываем ПОСЛЕДНИЕ десять.
+   *
+   * Обсуждение читают с конца — важно, чем всё кончилось, а не начало переписки
+   * трёхмесячной давности. Старшие поднимаются кнопкой.
+   */
   const openComments = async () => {
     if (comments) return setComments(null);
-    setComments(await api.feedComments(post.id).catch(() => []));
+    const r = await api.feedComments(post.id).catch(() => ({ items: [], total: 0, hasMore: false }));
+    setComments(r.items);
+    setMore(r.hasMore ? r.total - r.items.length : 0);
+  };
+
+  /** Поднять предыдущие: докладываем их СВЕРХУ, не трогая уже прочитанное. */
+  const loadEarlier = async () => {
+    const first = comments?.[0]?.id;
+    if (!first) return;
+    const r = await api.feedComments(post.id, first).catch(() => ({ items: [], total: 0, hasMore: false }));
+    setComments([...r.items, ...(comments ?? [])]);
+    setMore(r.hasMore ? r.total - r.items.length - (comments?.length ?? 0) : 0);
   };
 
   const send = async () => {
     if (!text.trim()) return;
     const called = stillMentioned(mentionIds, text, team);
-    setComments(await api.feedComment(post.id, text.trim(), called).catch(() => comments ?? []));
+    const r = await api.feedComment(post.id, text.trim(), called)
+      .catch(() => ({ items: comments ?? [], total: 0, hasMore: false }));
+    setComments(r.items);
+    setMore(r.hasMore ? r.total - r.items.length : 0);
     setText('');
     setMentionIds([]);
     onChanged();
@@ -543,6 +565,13 @@ function PostCard({ post, team, onChanged }: { post: Post; team: MentionUser[]; 
 
       {comments && (
         <div className="feed-comments">
+          {/* Сколько ещё наверху — говорим числом: «показать ещё» без числа не даёт
+              понять, там три сообщения или триста. */}
+          {more > 0 && (
+            <button className="btn btn-ghost btn-sm feed-earlier" onClick={loadEarlier}>
+              <Icon name="chevron-up" size={13} /> Показать предыдущие ({more})
+            </button>
+          )}
           {comments.map((c) => (
             <div key={c.id} className="feed-comment">
               <Avatar path={c.avatarUrl} fallback={c.fullName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />

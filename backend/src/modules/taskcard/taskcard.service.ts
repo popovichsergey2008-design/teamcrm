@@ -55,10 +55,10 @@ export class TaskCardService {
     return { ok: true };
   }
 
-  listComments(tenantId: string, taskId: string, role: string, viewerId: string) {
+  listComments(tenantId: string, taskId: string, role: string, viewerId: string, limit = 100) {
     // viewerId нужен, чтобы отметить СВОИ реакции: «нравится» и «я поставил нравится»
     // выглядят по-разному, и без этого человек не может снять свою.
-    return this.repo.listComments(tenantId, taskId, role !== 'client', viewerId);
+    return this.repo.listComments(tenantId, taskId, role !== 'client', viewerId, limit);
   }
   async editComment(tenantId: string, taskId: string, commentId: string, userId: string, role: string, body: string) {
     const c = await this.repo.getComment(tenantId, commentId);

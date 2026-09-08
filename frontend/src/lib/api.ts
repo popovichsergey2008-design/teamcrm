@@ -236,7 +236,13 @@ export const api = {
   authedObjectUrl: async (path: string): Promise<string> => URL.createObjectURL(await api.authedBlob(path)),
 
   // Этап D — карточка задачи
-  listComments: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/comments`),
+  /**
+   * Переписка задачи: по умолчанию последние сто сообщений — разговор читают с конца.
+   * `all` поднимает всю: за ней ходит кнопка «показать предыдущие» и переход к
+   * старому сообщению из истории задачи.
+   */
+  listComments: (taskId: string, all = false) =>
+    request<any[]>('GET', `/tasks/${taskId}/comments${all ? '?all=1' : ''}`),
   addComment: (taskId: string, body: string, isClientVisible?: boolean, replyToId?: string, replyExcerpt?: string) =>
     request<any>('POST', `/tasks/${taskId}/comments`, { body, isClientVisible, replyToId, replyExcerpt }),
   /** Реакция на сообщение: повторное нажатие снимает свою. */
@@ -859,9 +865,15 @@ export const api = {
   dismissPing: (id: string) => request<any>('POST', `/assistant/pings/${id}/dismiss`),
   feedReaders: (id: string) =>
     request<{ read: { fullName: string }[]; pending: { fullName: string }[] }>('GET', `/feed/${id}/readers`),
-  feedComments: (id: string) => request<any[]>('GET', `/feed/${id}/comments`),
+  /**
+   * Комментарии новости: последние десять. `before` — идентификатор самого верхнего
+   * показанного, им поднимают предыдущие: обсуждение читают с конца, а не с начала.
+   */
+  feedComments: (id: string, before?: string) =>
+    request<{ items: any[]; total: number; hasMore: boolean }>(
+      'GET', `/feed/${id}/comments${before ? `?before=${before}` : ''}`),
   feedComment: (id: string, body: string, mentionIds?: string[]) =>
-    request<any[]>('POST', `/feed/${id}/comments`, { body, mentionIds }),
+    request<{ items: any[]; total: number; hasMore: boolean }>('POST', `/feed/${id}/comments`, { body, mentionIds }),
   feedPin: (id: string, pinned: boolean) => request<any>('POST', `/feed/${id}/pin`, { pinned }),
   feedDelete: (id: string) => request<any>('DELETE', `/feed/${id}`),
 

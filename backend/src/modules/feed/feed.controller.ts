@@ -62,9 +62,10 @@ export class FeedController {
     return this.feed.readers(u.tenantId, u, id);
   }
 
+  /** `before` — идентификатор самого верхнего показанного: им поднимают предыдущие. */
   @Get(':id/comments')
-  comments(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.feed.comments(u.tenantId, id);
+  comments(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('before') before?: string) {
+    return this.feed.comments(u.tenantId, id, 10, before);
   }
 
   @Post(':id/comments')

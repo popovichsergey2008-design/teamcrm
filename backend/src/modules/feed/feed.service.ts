@@ -7,6 +7,8 @@ import { FeedRepository, PostRow } from './feed.repository';
 
 /** Десять новостей на страницу: столько помещается на экран, не требуя прокрутки до дна. */
 const PAGE_SIZE = 10;
+/** Столько комментариев показываем сразу: остальные поднимаются кнопкой. */
+const COMMENTS_PAGE = 10;
 
 @Injectable()
 export class FeedService {
@@ -121,15 +123,31 @@ export class FeedService {
     };
   }
 
-  comments(tenantId: string, postId: string) {
-    return this.repo.comments(tenantId, postId).then((rows) => rows.map((c) => ({
-      id: c.id,
-      authorId: c.author_id,
-      fullName: c.full_name,
-      avatarUrl: c.avatar_file_id ? `/api/files/${c.avatar_file_id}` : null,
-      body: c.body,
-      createdAt: c.created_at,
-    })));
+  /**
+   * Комментарии: последние `limit`, старшие поднимаются кнопкой.
+   *
+   * Отдаём и общее число: без него кнопка «показать предыдущие» либо врёт о
+   * количестве, либо появляется там, где поднимать уже нечего.
+   */
+  async comments(tenantId: string, postId: string, limit = COMMENTS_PAGE, before?: string) {
+    const [rows, total] = await Promise.all([
+      this.repo.comments(tenantId, postId, limit, before),
+      this.repo.commentsCount(tenantId, postId),
+    ]);
+    return {
+      items: rows.map((c) => ({
+        id: c.id,
+        authorId: c.author_id,
+        fullName: c.full_name,
+        avatarUrl: c.avatar_file_id ? `/api/files/${c.avatar_file_id}` : null,
+        body: c.body,
+        createdAt: c.created_at,
+      })),
+      total,
+      // «есть что поднять» решает НЕ клиент: он видит только загруженный кусок
+      hasMore: rows.length === Math.min(Math.max(limit, 1), 100)
+        && total > rows.length,
+    };
   }
 
   async comment(tenantId: string, userId: string, postId: string, body: string, mentionIds?: string[]) {
