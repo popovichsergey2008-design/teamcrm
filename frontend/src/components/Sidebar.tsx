@@ -420,20 +420,24 @@ export function Sidebar({
             <div className="nav-tune-head">
               <div className="nav-tune-head-row">
                 <span className="nav-tune-title">Настройка меню</span>
-                {/* «Сбросить» — только когда есть что сбрасывать: у нетронутого
-                    меню эта кнопка ничего не делает и лишь спорит с «Выйти». */}
+                {/*
+                  Не «Сбросить»: так читалось как «выйти без сохранения», хотя
+                  несохранённого здесь не бывает вовсе. Кнопка стирает УЖЕ
+                  сохранённые порядок и скрытые разделы — и только тогда, когда
+                  им есть что стирать.
+                */}
                 {hasPrefs && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => savePrefs({})} title="Вернуть порядок и состав по умолчанию">
-                    Сбросить
+                  <button className="btn btn-ghost btn-sm" onClick={() => savePrefs({})} title="Вернуть меню к заводскому порядку и показать все разделы">
+                    Вернуть по умолчанию
                   </button>
                 )}
-                <button className="btn btn-primary btn-sm" onClick={stopTuning}>
+                <button className="btn btn-primary btn-sm" onClick={stopTuning} title="Закрыть настройку меню">
                   <Icon name="check" size={14} />
-                  Выйти
+                  Готово
                 </button>
               </div>
               <p className="nav-tune-hint">
-                Перетащите разделы, глазом скройте лишние. Сохраняется сразу — выйти можно и клавишей Esc.
+                Перетащите разделы, глазом скройте лишние. Всё сохраняется сразу — «Готово» просто закрывает настройку, как и Esc.
               </p>
             </div>
           )}
