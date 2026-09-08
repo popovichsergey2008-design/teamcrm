@@ -16,7 +16,12 @@
   поэтому в светлой теме его нет, а цвета взяты глубже (см. --brand-* в index.css).
 */
 .logo { display: inline-flex; align-items: center; gap: 10px; }
-.logo-mark { flex: 0 0 auto; }
+/*
+  Знак — картинка на своей тёмной подложке (он и нарисован неоном по тёмному).
+  Скругление превращает подложку в осознанную плитку, как иконка приложения: иначе
+  в светлой теме она читается как «картинку забыли обработать».
+*/
+.logo-mark { flex: 0 0 auto; border-radius: 22%; display: block; object-fit: cover; }
 .logo-word {
   font-weight: 800; letter-spacing: -.4px; line-height: 1;
   background: linear-gradient(100deg, var(--brand-1), var(--brand-2) 55%, var(--brand-3));
@@ -25,12 +30,18 @@
 /* Точка в «ANTHILL.TEAM» — акцент знака. Берём глубокий фиолетовый, а не средний
    синий: точка мелкая, и на светлом фоне середина градиента для неё слишком светла. */
 .logo-dot { color: var(--brand-3); -webkit-text-fill-color: var(--brand-3); }
-/* Свечение только в тёмной теме — там, где оно и задумано. */
-:root:not([data-theme="light"]) .logo-mark { filter: drop-shadow(0 0 6px rgba(78, 242, 247, .35)); }
+/*
+  В светлой теме плитку обводим тонкой рамкой, в тёмной — подсвечиваем.
+
+  На белом тёмный квадрат без границы выглядит дырой; на тёмном фоне, наоборот,
+  сливается — и там его выделяет то же свечение, что и в самом знаке.
+*/
+:root:not([data-theme="light"]) .logo-mark { box-shadow: 0 0 0 1px rgba(78, 242, 247, .25), 0 0 10px rgba(78, 242, 247, .18); }
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .logo-mark { filter: none; }
+  :root:not([data-theme="dark"]) .logo-mark { box-shadow: 0 0 0 1px var(--border-2); }
 }
-:root[data-theme="dark"] .logo-mark { filter: drop-shadow(0 0 6px rgba(78, 242, 247, .35)); }
+:root[data-theme="light"] .logo-mark { box-shadow: 0 0 0 1px var(--border-2); }
+:root[data-theme="dark"] .logo-mark { box-shadow: 0 0 0 1px rgba(78, 242, 247, .25), 0 0 10px rgba(78, 242, 247, .18); }
 
 .brand { font-weight: 800; letter-spacing: -.5px; font-size: 20px; }
 .brand span { color: var(--accent); }

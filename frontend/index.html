@@ -5,15 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TEAMCRM</title>
 
-    <!-- Знак вкладки: svg там, где его понимают, png — везде остальном.
-         apple-touch-icon нужен отдельно: iOS не берёт ни svg, ни манифест. -->
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="alternate icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <!-- Знак вкладки — фирменный ANTHILL.TEAM. Только png: знак растровый, и svg-версии
+         у него нет; своя векторная «похожая» фигура на вкладке хуже настоящей.
+         Два размера: 32 для вкладки, 64 для закладок и панели задач.
+         apple-touch-icon отдельно: iOS не берёт ни манифест, ни мелкие иконки. -->
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="/favicon-64.png" sizes="64x64" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
-    <!-- цвет строки браузера на телефоне: в тёмной теме фирменный синий слишком яркий -->
-    <meta name="theme-color" content="#1e57e6" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0f1420" media="(prefers-color-scheme: dark)" />
+    <!-- Цвет строки браузера на телефоне: тёмный фон знака в обеих темах.
+         Логотип неоновый по тёмному — светлая полоса рядом с ним смотрелась бы чужой. -->
+    <meta name="theme-color" content="#0b0d12" />
   </head>
   <body>
     <div id="root"></div>
