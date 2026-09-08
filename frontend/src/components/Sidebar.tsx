@@ -211,6 +211,20 @@ export function Sidebar({
     setDragged(null);
   };
 
+  /**
+   * Выход из настройки меню.
+   *
+   * Отдельной функцией, потому что выйти можно тремя способами: кнопкой сверху,
+   * кнопкой снизу и клавишей Esc. В настройке подменяется весь список разделов —
+   * человек, не заметивший мелкую надпись «Готово» внизу, оказывался заперт:
+   * ни один пункт меню в этом режиме не открывается.
+   */
+  const stopTuning = () => { setTuning(false); setDragged(null); };
+  // Esc — тем же общим хуком, что и остальные слои: Escape закрывает верхний.
+  useEscape(stopTuning, tuning);
+  // В свёрнутой панели у настройки нет ни подписей, ни кнопки выхода — выходим сами.
+  useEffect(() => { if (collapsed) stopTuning(); }, [collapsed]);
+
 
   // Фокус и сводка ассистента живут ровно здесь: больше их никто не показывает.
   // Обе выборки дешёвые, поэтому обновляем их вместе со счётчиками разделов.
@@ -393,6 +407,27 @@ export function Sidebar({
 
         {/* ── основное меню: порядок и состав человек настраивает под себя ── */}
         <nav className="nav-main" aria-label="Разделы">
+          {/*
+            Шапка режима настройки — липкая и всегда на виду.
+
+            В настройке разделы не открываются, поэтому выход обязан быть заметен
+            сразу, а не мелкой строчкой под списком: заказчик написал «зашёл в
+            настройку меню, а обратно выхода нет». Здесь же сказано, что делать.
+          */}
+          {tuning && !collapsed && (
+            <div className="nav-tune-head">
+              <div className="nav-tune-head-row">
+                <span className="nav-tune-title">Настройка меню</span>
+                <button className="btn btn-primary btn-sm" onClick={stopTuning}>
+                  <Icon name="check" size={14} />
+                  Выйти
+                </button>
+              </div>
+              <p className="nav-tune-hint">
+                Перетащите разделы, глазом скройте лишние. Сохраняется сразу — выйти можно и клавишей Esc.
+              </p>
+            </div>
+          )}
           {menuItems.map((item) => {
             const active = route.section === item.section;
             // Ноль не показываем вовсе — по ТЗ панель молчит, пока от человека
@@ -498,9 +533,13 @@ export function Sidebar({
               а место в панели занимают каждый день. */}
           {!collapsed && (
             <div className="nav-tune-bar">
-              <button className="nav-tune-btn" onClick={() => { setTuning((v) => !v); setDragged(null); }}>
+              {/* Выход и снизу тоже: до низа списка доходят те, кто там что-то менял. */}
+              <button
+                className={`nav-tune-btn${tuning ? ' nav-tune-exit' : ''}`}
+                onClick={() => { if (tuning) stopTuning(); else setTuning(true); }}
+              >
                 <Icon name={tuning ? 'check' : 'settings'} size={13} />
-                {tuning ? 'Готово' : 'Настроить меню'}
+                {tuning ? 'Выйти из настройки' : 'Настроить меню'}
               </button>
               {tuning && (prefs.order?.length || prefs.hidden?.length) && (
                 <button className="nav-tune-btn" onClick={() => savePrefs({})} title="Вернуть порядок и состав по умолчанию">
