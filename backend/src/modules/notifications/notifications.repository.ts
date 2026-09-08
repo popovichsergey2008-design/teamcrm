@@ -51,10 +51,15 @@ export class NotificationsRepository {
   /**
    * Кому уходит объявление из ленты компании.
    *
-   * Вся компания, кроме автора и клиентов: лента им не показывается вовсе. Настройку
-   * уведомлений уважаем — отписавшийся от писем не должен получать их через ленту.
+   * Ровно тем, кому оно адресовано: без подразделений — всей компании, с
+   * подразделениями — только их людям. Условие то же, что и у списка «кто ещё не
+   * прочитал»: если письмо уйдёт шире, чем показано в ленте, объявление «только для
+   * IT-отдела» разбудит ночью весь офис.
+   *
+   * Автор себе не пишет, клиенты не в счёт (лента им не показывается вовсе), а
+   * отписавшийся от писем не должен получать их через ленту.
    */
-  feedRecipients(tenantId: string, exceptUserId: string): Promise<Recipient[]> {
+  feedRecipients(tenantId: string, postId: string, exceptUserId: string): Promise<Recipient[]> {
     return this.db.many<Recipient>(
       `SELECT u.id, u.email, u.full_name, u.unsubscribe_token
          FROM users u
@@ -62,9 +67,18 @@ export class NotificationsRepository {
     LEFT JOIN notification_prefs p
            ON p.tenant_id = u.tenant_id AND p.user_id = u.id AND p.event_key = 'feed.announcement'
         WHERE u.tenant_id = $1 AND u.is_active = TRUE AND u.email IS NOT NULL
-          AND u.id <> $2 AND r.code <> 'client'
-          AND COALESCE(p.enabled, TRUE)`,
-      [tenantId, exceptUserId],
+          AND u.id <> $3 AND r.code <> 'client'
+          AND COALESCE(p.enabled, TRUE)
+          AND (
+            -- объявление без адресатов — всей компании
+            NOT EXISTS (SELECT 1 FROM feed_post_groups pg WHERE pg.post_id = $2)
+            -- ...а с подразделениями — только тем, кто в них состоит
+            OR EXISTS (
+              SELECT 1 FROM feed_post_groups pg
+               JOIN user_groups ug ON ug.group_id = pg.group_id AND ug.user_id = u.id
+               WHERE pg.post_id = $2)
+          )`,
+      [tenantId, postId, exceptUserId],
     );
   }
 

@@ -93,7 +93,7 @@ export class NotificationsService {
   async feedAnnouncement(tenantId: string, postId: string, actorId: string, body: string): Promise<void> {
     try {
       const [recipients, actorName] = await Promise.all([
-        this.repo.feedRecipients(tenantId, actorId),
+        this.repo.feedRecipients(tenantId, postId, actorId),
         this.repo.actorName(tenantId, actorId),
       ]);
       if (!recipients.length) return;
