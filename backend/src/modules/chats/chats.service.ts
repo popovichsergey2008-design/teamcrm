@@ -339,25 +339,49 @@ export class ChatsService {
     const draft = text.length >= 3
       ? await this.nl.parse(tenantId, user.userId, text, chat.project_id ?? null)
       : await this.nl.parse(tenantId, user.userId, String(msg.file_name ?? 'Разобраться со скриншотом'), chat.project_id ?? null);
+    /*
+      Кого предложить исполнителем.
+
+      Автор фразы им НЕ становится: в переписке задачу описывает тот, кто её просит,
+      то есть постановщик. Угадывать здесь нельзя — назначенная не тому задача
+      выглядит как поручение, которого человек не получал.
+
+      Поэтому исполнитель подставляется только там, где он назван однозначно:
+      — позвали одного человека через @ — он и делает («@Пётр, поправь блок»);
+      — личная переписка: собеседников двое, и сообщение адресовано второму.
+      Во всех прочих случаях поле остаётся пустым и заполняется руками.
+    */
+    const mentioned = await this.repo.messageMentions(tenantId, messageId);
+    let assigneeId: string | null = null;
+    let assigneeReason: string | null = null;
+    if (mentioned.length === 1) {
+      assigneeId = String(mentioned[0].user_id);
+      assigneeReason = 'назван в сообщении через @';
+    } else if (!mentioned.length && chat.kind === 'dm' && msg.author_id) {
+      // Двое в переписке: адресат — тот, кто не писал. Названных по имени тут нет,
+      // иначе разговор шёл бы о ком-то третьем и выбирать пришлось бы человеку.
+      const peer = await this.repo.dmPeer(tenantId, chatId, String(msg.author_id));
+      if (peer) {
+        assigneeId = String(peer.user_id);
+        assigneeReason = 'личная переписка — адресат сообщения';
+      }
+    }
+
     return {
       task: draft.task ?? null,
       context: draft.context,
       note: draft.note,
       /*
-        Откуда взялась задача.
-
-        Автор фразы приходит наружу, потому что исполнителем по умолчанию становится
-        именно он: в переписке задачу пишет тот, кто её и делает («сделаю сегодня
-        экспорт»), а не тот, кто нажал «Создать задачу». Разбор фразы важнее — если
-        ИИ нашёл в тексте имя, оно и остаётся.
-
-        Файл — чтобы окно сразу показало, что скриншот поедет в задачу.
+        Откуда взялась задача: автор фразы, приложенный файл и предложенный
+        исполнитель. Файл — чтобы окно сразу показало, что скриншот поедет в задачу.
       */
       source: {
         authorId: msg.author_id ? String(msg.author_id) : null,
         authorName: msg.author_name ?? null,
         fileId: msg.file_id ? String(msg.file_id) : null,
         fileName: msg.file_name ?? null,
+        assigneeId,
+        assigneeReason,
       },
     };
   }

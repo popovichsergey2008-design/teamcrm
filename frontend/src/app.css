@@ -1336,8 +1336,15 @@
   background: var(--bg-elev-2); border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
-.nav-tune-head-row { display: flex; align-items: center; gap: 8px; }
-.nav-tune-title { font-size: var(--fs-sm); font-weight: 600; margin-right: auto; }
+/*
+  Заголовок отдельной строкой, кнопки — своей.
+
+  Панель узкая: «Настройка меню» и две кнопки в один ряд не помещались и растягивали
+  её, отчего внизу появлялась горизонтальная прокрутка. Кнопки делят строку поровну.
+*/
+.nav-tune-head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.nav-tune-title { flex: 1 0 100%; font-size: var(--fs-sm); font-weight: 600; }
+.nav-tune-head-row .btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
 .nav-tune-hint { margin: 6px 0 0; font-size: var(--fs-xs); color: var(--text-mut); line-height: 1.35; }
 
 /* Люди в задаче: соисполнители и наблюдатели — чипами, а не строкой через запятую. */

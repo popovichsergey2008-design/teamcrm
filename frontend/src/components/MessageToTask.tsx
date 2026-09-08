@@ -33,10 +33,10 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
   const [deadline, setDeadline] = useState('');
   const [priority, setPriority] = useState('normal');
   const [checklist, setChecklist] = useState<string[]>([]);
-  /** Что приедет в задачу из самого сообщения: автор и приложенный файл. */
-  const [source, setSource] = useState<{ authorName: string | null; fileName: string | null }>({
-    authorName: null, fileName: null,
-  });
+  /** Что приедет в задачу из самого сообщения: автор, файл и подсказка по исполнителю. */
+  const [source, setSource] = useState<{
+    authorName: string | null; fileName: string | null; assigneeReason: string | null;
+  }>({ authorName: null, fileName: null, assigneeReason: null });
   const [ctx, setCtx] = useState<{ projects: { id: string; name: string }[]; users: { id: string; name: string }[] }>({
     projects: [], users: [],
   });
@@ -52,11 +52,20 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
         setTitle(String(t.title ?? messageText).slice(0, 255));
         setDescription(String(t.description ?? ''));
         setProjectId(t.projectId ? String(t.projectId) : '');
-        // Исполнитель по умолчанию — автор фразы: в переписке задачу описывает тот,
-        // кто её и делает, а нажимает «Создать» чаще руководитель. Имя, найденное
-        // разбором в самом тексте («Петя, посмотри»), важнее — оно и побеждает.
-        setAssigneeId(String(t.assigneeId ?? d.source?.authorId ?? ''));
-        setSource({ authorName: d.source?.authorName ?? null, fileName: d.source?.fileName ?? null });
+        /*
+          Исполнитель подставляется, только когда он назван однозначно: позвали через
+          @ либо это личная переписка (адресат — второй собеседник). Автор фразы
+          исполнителем НЕ становится: он просит, то есть ставит задачу.
+
+          Догадки разбора здесь не годятся — назначенная не тому задача выглядит как
+          поручение, которого человек не получал, и разбирать это приходится людям.
+        */
+        setAssigneeId(String(d.source?.assigneeId ?? ''));
+        setSource({
+          authorName: d.source?.authorName ?? null,
+          fileName: d.source?.fileName ?? null,
+          assigneeReason: d.source?.assigneeReason ?? null,
+        });
         setDeadline(t.deadline ? String(t.deadline) : '');
         setPriority(String(t.priority ?? 'normal'));
         setChecklist(Array.isArray(t.checklist) ? t.checklist.map(String) : []);
@@ -129,7 +138,7 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
             </div>
             <div className="drawer-row">
               <div className="field" style={{ flex: 1 }}>
-                <label>Исполнитель{source.authorName ? ` · по умолчанию автор сообщения` : ''}</label>
+                <label>Исполнитель{source.assigneeReason ? ` · ${source.assigneeReason}` : ''}</label>
                 <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
                   <option value="">— не назначен —</option>
                   {ctx.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}

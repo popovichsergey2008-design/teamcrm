@@ -428,7 +428,7 @@ export function Sidebar({
                 */}
                 {hasPrefs && (
                   <button className="btn btn-ghost btn-sm" onClick={() => savePrefs({})} title="Вернуть меню к заводскому порядку и показать все разделы">
-                    Вернуть по умолчанию
+                    По умолчанию
                   </button>
                 )}
                 <button className="btn btn-primary btn-sm" onClick={stopTuning} title="Закрыть настройку меню">
@@ -437,7 +437,7 @@ export function Sidebar({
                 </button>
               </div>
               <p className="nav-tune-hint">
-                Перетащите разделы, глазом скройте лишние. Всё сохраняется сразу — «Готово» просто закрывает настройку, как и Esc.
+                Перетащите разделы, глазом скройте лишние. Сохраняется сразу — «Готово» просто закрывает настройку (и Esc тоже).
               </p>
             </div>
           )}

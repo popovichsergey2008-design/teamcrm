@@ -467,6 +467,24 @@ export class ChatsRepository {
     );
   }
 
+  /** Кого позвали по имени в конкретном сообщении. */
+  messageMentions(tenantId: string, messageId: string): Promise<{ user_id: string }[]> {
+    return this.db.many<{ user_id: string }>(
+      `SELECT user_id::text FROM chat_mentions WHERE tenant_id=$1 AND message_id=$2 ORDER BY user_id`,
+      [tenantId, messageId],
+    );
+  }
+
+  /** Собеседник в личной переписке: тот из двоих, кто НЕ писал это сообщение. */
+  dmPeer(tenantId: string, chatId: string, authorId: string): Promise<{ user_id: string } | null> {
+    return this.db.one<{ user_id: string }>(
+      `SELECT user_id::text FROM chat_members
+        WHERE tenant_id=$1 AND chat_id=$2 AND user_id <> $3::bigint
+        LIMIT 1`,
+      [tenantId, chatId, authorId],
+    );
+  }
+
   /** Сотрудники этой компании из присланных id: чужие и выдуманные отсеиваются. */
   tenantUserIds(tenantId: string, ids: string[]): Promise<{ id: string }[]> {
     return this.db.many<{ id: string }>(
