@@ -150,6 +150,28 @@ export class TasksService {
     }
 
     this.realtime.emit(tenantId, task.project_id, 'task.created', task as any);
+    /*
+      Персональный сигнал «это для тебя».
+
+      `task.created` уходит в комнату проекта, а в ней сидит только тот, у кого
+      сейчас открыта эта доска. Человек, работающий в другом разделе или в другой
+      вкладке браузера, о новой задаче узнавал лишь из письма или из счётчика
+      через минуту. Этим событием мигает заголовок вкладки — как в YouGile.
+
+      Себе не шлём: собственное действие новостью не является.
+    */
+    const forYou = [
+      task.assignee_id,
+      ...(dto.coAssigneeIds ?? []),
+      ...(dto.watcherIds ?? []),
+    ].map((x) => String(x ?? '')).filter((id) => id && id !== String(actorId));
+    if (forYou.length) {
+      this.realtime.emitToUsers(tenantId, [...new Set(forYou)], 'task.for_you', {
+        taskId: String(task.id),
+        projectId: String(task.project_id),
+        title: task.title,
+      });
+    }
     await this.activity.log(tenantId, task.id, actorId, 'created', { title: task.title });
     this.knowledge.enqueue(tenantId, 'task', task.id); // в базу знаний (открытые проекты тоже)
     await this.outbox.enqueue(tenantId, task.project_id, 'task.create', task.id); // выгрузка во внешнюю систему

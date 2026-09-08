@@ -7,8 +7,6 @@
  * некоторых браузерах и окружениях его вообще нет.
  */
 
-const BASE_TITLE = 'TEAMCRM';
-
 export function notificationsSupported(): boolean {
   return typeof window !== 'undefined' && 'Notification' in window;
 }
@@ -51,10 +49,12 @@ export function showToast(payload: ToastPayload): void {
   window.dispatchEvent(new CustomEvent<ToastPayload>(TOAST_EVENT, { detail: payload }));
 }
 
-/** Счётчик в заголовке вкладки: видно, даже когда окно свёрнуто. */
-export function setTitleUnread(count: number): void {
-  document.title = count > 0 ? `(${count}) ${BASE_TITLE}` : BASE_TITLE;
-}
+/*
+  Счётчик в заголовке вкладки живёт в `tab-alert`: там же мигание о новом, и два
+  хозяина у `document.title` неизбежно перетирали бы друг друга. Здесь — только
+  повторный вывоз, чтобы места вызова не переписывать.
+*/
+export { setTitleUnread } from './tab-alert';
 
 /** Изменения чатов, о которых стоит пересчитать непрочитанное (прочли, открыли, вышли). */
 export const CHATS_CHANGED = 'teamcrm:chats-changed';

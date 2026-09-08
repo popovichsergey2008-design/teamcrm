@@ -817,6 +817,28 @@ test('напоминания: группы без пустых, превью н�
   assert.equal(pingPreview([]), '', 'пустой список не роняет строку');
 });
 
+// ── мигание вкладки ───────────────────────────────────────────────────────────
+test('вкладка мигает только о новом и называет самое весомое', async () => {
+  const { tabAlertMessage } = await load('lib/tab-alert.ts');
+
+  // первый замер молчит: иначе вкладка мигала бы при каждом открытии приложения
+  assert.equal(tabAlertMessage(null, { tasks: 3, chats: 5 }), null);
+
+  const was = { tasks: 1, news: 0, calendar: 0, decide: 0, chats: 2 };
+  assert.equal(tabAlertMessage(was, { ...was, tasks: 2 }), 'Новое в задачах');
+  assert.equal(tabAlertMessage(was, { ...was, chats: 3 }), 'Новое сообщение');
+  assert.equal(tabAlertMessage(was, { ...was, news: 1 }), 'Новое объявление');
+  assert.equal(tabAlertMessage(was, { ...was, calendar: 1 }), 'Приглашение на встречу');
+
+  // выросло два счётчика сразу — называем то, что требует действия
+  assert.equal(tabAlertMessage(was, { ...was, tasks: 2, chats: 9 }), 'Новое в задачах');
+  assert.equal(tabAlertMessage(was, { ...was, decide: 1, news: 1 }), 'Ждёт вашего решения');
+
+  // разобрал накопившееся — это не повод мигать
+  assert.equal(tabAlertMessage(was, { ...was, tasks: 0, chats: 0 }), null);
+  assert.equal(tabAlertMessage(was, was), null);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

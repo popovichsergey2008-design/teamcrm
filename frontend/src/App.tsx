@@ -24,6 +24,7 @@ import { useFeedMentions } from './hooks/useFeedMentions';
 import { useAssistantPings } from './hooks/useAssistantPings';
 import { useMeetingModerator } from './hooks/useMeetingModerator';
 import { useNavCounters } from './hooks/useNavCounters';
+import { useTabAlert } from './hooks/useTabAlert';
 import { Sidebar } from './components/Sidebar';
 import { Icon } from './components/Icon';
 import { ProfilePanel } from './components/ProfilePanel';
@@ -223,6 +224,8 @@ export function App() {
     route.section === 'chat' && !route.view ? openChatId : null,
     () => navigate({ section: 'chat' }),
   );
+  // заголовок вкладки мигает, когда появилось новое: в соседней вкладке иначе не видно
+  useTabAlert(!!user && user.role !== 'client', counters, unread);
 
   // Гость по ссылке `/meet/<токен>` — до всякой авторизации: у него нет учётной записи,
   // и экран входа на его пути означал бы «встреча только для сотрудников».
