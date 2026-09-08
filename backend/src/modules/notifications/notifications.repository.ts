@@ -82,6 +82,27 @@ export class NotificationsRepository {
     );
   }
 
+  /**
+   * Кому уходит письмо об упоминании.
+   *
+   * Ровно названным людям — не всей компании: упоминание адресное, в этом весь его
+   * смысл. Настройку уведомлений уважаем и здесь: отписавшийся от писем узнает об
+   * упоминании в самом приложении.
+   */
+  mentionRecipients(tenantId: string, userIds: string[]): Promise<Recipient[]> {
+    if (!userIds.length) return Promise.resolve([]);
+    return this.db.many<Recipient>(
+      `SELECT u.id, u.email, u.full_name, u.unsubscribe_token
+         FROM users u
+    LEFT JOIN notification_prefs p
+           ON p.tenant_id = u.tenant_id AND p.user_id = u.id AND p.event_key = 'feed.mention'
+        WHERE u.tenant_id = $1 AND u.id = ANY($2::bigint[])
+          AND u.is_active = TRUE AND u.email IS NOT NULL
+          AND COALESCE(p.enabled, TRUE)`,
+      [tenantId, userIds],
+    );
+  }
+
   /** Имя того, кто совершил действие: в письме важно, кто именно, а не «система». */
   async actorName(tenantId: string, actorId: string | null): Promise<string> {
     if (!actorId) return 'TEAMCRM';

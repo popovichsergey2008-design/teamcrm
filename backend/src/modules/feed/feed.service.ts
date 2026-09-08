@@ -196,6 +196,10 @@ export class FeedService {
       commentId: commentId ? String(commentId) : null,
       body: body.slice(0, 160),
     });
+    // ...и письмом — тем, кого сейчас нет в приложении. Обычная новость никого не
+    // дёргает, но названного по имени дёргает: «@Пётр, посмотри» — это личная
+    // просьба, а не общий шум. Письмо дублируется в Telegram общей очередью.
+    void this.notify.feedMention(tenantId, String(postId), actorId, users.map((u) => String(u.id)), body, !!commentId);
   }
 
   /**

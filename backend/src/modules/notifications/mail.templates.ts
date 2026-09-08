@@ -18,6 +18,18 @@ export const EVENT_TITLE: Record<EventKey, string> = {
   'task.status': 'Смена статуса моих задач',
 };
 
+/**
+ * Лента компании: объявления и упоминания.
+ *
+ * Отдельными ключами, а не одним «письма из ленты»: это разные поводы. Объявление
+ * приходит всем и его можно захотеть отключить, а упоминание — личное обращение, и
+ * отключают его совсем другие люди и по другой причине.
+ */
+export const FEED_ANNOUNCEMENT_KEY = 'feed.announcement';
+export const FEED_ANNOUNCEMENT_TITLE = 'Объявления компании';
+export const FEED_MENTION_KEY = 'feed.mention';
+export const FEED_MENTION_TITLE = 'Когда меня упомянули в новостях';
+
 /** Отдельный переключатель: письма о том, что человек сделал сам. */
 export const OWN_EVENT_KEY = 'task.own';
 export const OWN_EVENT_TITLE = 'Письма о моих собственных действиях';
@@ -70,6 +82,9 @@ export interface Letter {
 
 const escape = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** Перевод строки отдельной константой — чтобы не терялся при правках через инструменты. */
+const NEWLINE = '\n';
 
 const trim = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 
@@ -317,6 +332,60 @@ export function feedAnnouncementLetter(
             <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-top:6px">
               <tr><td style="background:${BRAND.accent};border-radius:8px">
                 <a href="${escape(ctx.feedUrl)}" style="display:inline-block;padding:11px 22px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none">Открыть ленту</a>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding:16px 6px 0;font-size:12px;line-height:1.6;color:${BRAND.mut}">
+        Письмо от TEAMCRM.
+        <a href="${escape(unsubscribeUrl)}" style="color:${BRAND.mut};text-decoration:underline">Отписаться</a>
+        или настроить письма в личном кабинете.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+  return { subject, text, html };
+}
+
+/**
+ * Вас упомянули в ленте компании.
+ *
+ * Письмо адресное и потому приходит даже на обычную новость: упоминание — это личная
+ * просьба посмотреть, а не общий шум. Как и в объявлении, показываем САМ текст: письмо,
+ * ради которого нужно куда-то идти, чтобы узнать содержание, читают один раз.
+ */
+export function feedMentionLetter(
+  ctx: { authorName: string; body: string; feedUrl: string; inComment: boolean },
+  unsubscribeUrl: string,
+): Letter {
+  const where = ctx.inComment ? 'в обсуждении новости' : 'в новости компании';
+  const lead = `${ctx.authorName} упомянул вас ${where}:`;
+  const subject = trim(`${ctx.authorName} упомянул вас: ${ctx.body.split(NEWLINE)[0]}`, 120);
+  const text = [lead, '', ctx.body, '', `Открыть: ${ctx.feedUrl}`, '', `Отписаться: ${unsubscribeUrl}`].join(NEWLINE);
+  const html = `<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>TEAMCRM</title></head>
+<body style="margin:0;padding:0;background:${BRAND.bg};">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">${escape(ctx.body.slice(0, 120))}</div>
+<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;background:${BRAND.bg}">
+  <tr><td align="center" style="padding:28px 12px">
+    <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;max-width:560px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif">
+      <tr><td style="padding:0 4px 14px">
+        <span style="font-size:19px;font-weight:800;letter-spacing:-.5px;color:${BRAND.ink}">TEAM<span style="color:${BRAND.accent}">CRM</span></span>
+      </td></tr>
+      <tr><td style="background:${BRAND.card};border:1px solid ${BRAND.line};border-radius:12px;overflow:hidden">
+        <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%">
+          <tr><td style="height:4px;background:${BRAND.accent};font-size:0;line-height:0">&nbsp;</td></tr>
+          <tr><td style="padding:22px 26px 24px">
+            <p style="margin:0 0 14px;font-size:14px;line-height:1.5;color:${BRAND.soft}">${escape(lead)}</p>
+            <div style="margin:0 0 18px;font-size:15px;line-height:1.55;color:${BRAND.ink};white-space:pre-wrap">${escape(ctx.body)}</div>
+            <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-top:6px">
+              <tr><td style="background:${BRAND.accent};border-radius:8px">
+                <a href="${escape(ctx.feedUrl)}" style="display:inline-block;padding:11px 22px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none">Открыть новость</a>
               </td></tr>
             </table>
           </td></tr>

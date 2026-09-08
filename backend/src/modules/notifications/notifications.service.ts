@@ -3,7 +3,7 @@ import { NotificationsRepository, Recipient } from './notifications.repository';
 import {
   EventKey, Letter, TaskCtx,
   taskApprovalLetter, taskCommentedLetter, taskCreatedLetter, taskParticipantLetter,
-  taskReturnedLetter, taskStatusLetter, feedAnnouncementLetter,
+  taskReturnedLetter, taskStatusLetter, feedAnnouncementLetter, feedMentionLetter,
 } from './mail.templates';
 
 /**
@@ -114,6 +114,44 @@ export class NotificationsService {
       }
     } catch (e) {
       this.log.warn(`объявление ${postId}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Вас упомянули в ленте компании — письмом (и, значит, в Telegram).
+   *
+   * Упоминание адресное, поэтому доходит даже до обычной новости, которая никого
+   * другого не дёргает: «@Пётр, посмотри» — это личная просьба, а не общий шум.
+   */
+  async feedMention(
+    tenantId: string, postId: string, actorId: string,
+    userIds: string[], body: string, inComment: boolean,
+  ): Promise<void> {
+    try {
+      const [recipients, actorName] = await Promise.all([
+        this.repo.mentionRecipients(tenantId, userIds),
+        this.repo.actorName(tenantId, actorId),
+      ]);
+      if (!recipients.length) return;
+      const url = `${this.baseUrl()}/news`;
+      const short = body.replace(/\s+/g, ' ').trim().slice(0, 600);
+      for (const r of recipients) {
+        const token = await this.repo.ensureUnsubscribeToken(r.id, r.unsubscribe_token);
+        const letter = feedMentionLetter(
+          { authorName: actorName, body: short, feedUrl: url, inComment },
+          this.unsubscribeUrl(token),
+        );
+        await this.repo.enqueue({
+          tenantId, userId: r.id, toEmail: r.email,
+          subject: letter.subject, text: letter.text, html: letter.html,
+          eventKey: 'feed.mention',
+          // ключ повтора включает комментарий: упоминание в посте и в его обсуждении —
+          // это два разных повода, и слипаться в одно письмо они не должны
+          dedupKey: `feed.mention:${postId}:${inComment ? 'c' : 'p'}:${r.id}:${short.length}`,
+        });
+      }
+    } catch (e) {
+      this.log.warn(`упоминание в ленте ${postId}: ${(e as Error).message}`);
     }
   }
 
