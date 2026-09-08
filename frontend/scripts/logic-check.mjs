@@ -264,6 +264,25 @@ test('звук молчит, когда его выключили или ког�
   delete globalThis.localStorage;
 });
 
+test('календарь: срочное, важное и просроченное отличаются', async () => {
+  const { dueMark, DUE_LABEL } = await load('lib/calendar-grid.ts');
+  const now = new Date(2026, 8, 8, 12, 0);
+  const at = (d, over = {}) => ({ deadline_at: d.toISOString(), ...over });
+
+  // порядок проверок и есть смысл: сделанное молчит, просроченное важнее приоритета
+  assert.equal(dueMark(at(new Date(2026, 8, 1), { closed_at: '2026-09-02T10:00:00Z', priority: 'urgent' }), now), 'done');
+  assert.equal(dueMark(at(new Date(2026, 8, 7), { priority: 'low' }), now), 'overdue');
+  assert.equal(dueMark(at(new Date(2026, 8, 9), { priority: 'urgent' }), now), 'urgent');
+  assert.equal(dueMark(at(new Date(2026, 8, 9), { priority: 'high' }), now), 'high');
+  assert.equal(dueMark(at(new Date(2026, 8, 9), { priority: 'normal' }), now), 'normal');
+  assert.equal(dueMark(at(new Date(2026, 8, 9)), now), 'normal', 'без приоритета — обычный срок');
+
+  // у каждой метки есть подпись: цвет один ничего не объясняет тем, кто его не различает
+  for (const key of ['done', 'overdue', 'urgent', 'high', 'normal']) {
+    assert.ok(DUE_LABEL[key], `нет подписи для метки ${key}`);
+  }
+});
+
 test('календарь раскладывает события по дням и колонкам', async () => {
   const g = await load('lib/calendar-grid.ts');
 

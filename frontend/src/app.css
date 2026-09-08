@@ -464,8 +464,15 @@
 .cal-view.active { background: var(--accent-2); color: var(--on-accent); }
 
 /* Сетка: строка заголовков, строка «весь день», прокручиваемое поле часов. */
+/*
+  minmax(0, 1fr), а не 1fr.
+
+  У `1fr` минимальная ширина колонки равна ширине СОДЕРЖИМОГО, и одна длинная строка
+  (название задачи, имя события) раздвигала колонку, а с ней и всю сетку — календарь
+  «рвало». С `minmax(0, 1fr)` колонки равны всегда, а лишнее обрезается многоточием.
+*/
 .cal-grid {
-  flex: 1; min-height: 0; display: grid; grid-template-columns: 56px repeat(var(--cal-days, 7), 1fr);
+  flex: 1; min-height: 0; display: grid; grid-template-columns: 56px repeat(var(--cal-days, 7), minmax(0, 1fr));
   /* строки: дни · «весь день» · сроки задач (может не быть) · часы */
   grid-template-rows: auto auto auto 1fr; border: 1px solid var(--border); border-radius: var(--radius);
   overflow: hidden; background: var(--bg-elev);
@@ -488,7 +495,7 @@
 }
 /* Поле часов прокручивается целиком: заголовки дней остаются на месте. */
 .cal-scroll {
-  grid-column: 1 / -1; display: grid; grid-template-columns: 56px repeat(var(--cal-days, 7), 1fr);
+  grid-column: 1 / -1; display: grid; grid-template-columns: 56px repeat(var(--cal-days, 7), minmax(0, 1fr));
   overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--border-2) transparent;
 }
 .cal-hours { border-right: 1px solid var(--border); }
@@ -504,7 +511,10 @@
 .cal-event {
   position: absolute; overflow: hidden; text-align: left; cursor: pointer;
   border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-2); color: var(--on-accent);
-  padding: 2px 5px; font-size: 11px; line-height: 1.25; display: flex; flex-direction: column; gap: 1px;
+  padding: 3px 6px; font-size: 11px; line-height: 1.3; display: flex; flex-direction: column; gap: 1px;
+  /* Получасовая встреча в сетке — 22 пикселя: в них не помещалось даже время.
+     Нижний предел делает плитку читаемой, не ломая раскладку по времени. */
+  min-height: 30px;
 }
 .cal-event.company { background: var(--fill-info); border-color: var(--fill-info); color: var(--on-fill); }
 .cal-event.invited { border-style: dashed; }
@@ -514,25 +524,68 @@
 .cal-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* имя организатора мельче названия: важен сам факт «кто зовёт», а не размер подписи */
 .cal-event-who { font-size: 10px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Место или первая строка описания — то, чего на плитке не хватало: «что за встреча». */
+.cal-event-sub { font-size: 10px; opacity: .9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/*
+  Короткой плитке — только время и название.
+
+  Плитка получасовой встречи не резиновая: подпись и организатор в ней превращаются в
+  обрезки букв. Прячем их по высоте самой плитки, а не по длительности в коде: высота
+  зависит ещё и от масштаба сетки.
+*/
+@container cal-tile (max-height: 52px) {
+  .cal-event-sub, .cal-event-who { display: none; }
+}
+.cal-event { container: cal-tile / size; }
 
 .cal-chip {
-  display: block; width: 100%; text-align: left; font-size: 11px; padding: 2px 6px; border-radius: 4px;
+  display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; max-width: 100%;
+  text-align: left; font-size: 11px; padding: 2px 6px; border-radius: 4px;
   background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent); cursor: pointer;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow: hidden; white-space: nowrap;
 }
+/* Время — не сжимается, название — обрезается: сначала «когда», потом «что». */
+.cal-chip-time { flex: 0 0 auto; font-variant-numeric: tabular-nums; opacity: .8; }
+.cal-chip-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cal-chip.company { background: var(--fill-info); border-color: var(--fill-info); color: var(--on-fill); }
 /* Срок задачи — тоже кнопка: щелчок ведёт в карточку, иначе календарь показывает
    напоминание, с которым ничего нельзя сделать. */
 .cal-chip-task { background: var(--bg-elev-2); border-color: var(--border); color: var(--text-dim); }
 .cal-chip-task:hover { color: var(--text); border-color: var(--border-2); }
 
+/*
+  Что горит, а что уже нет.
+
+  Раньше все сроки были одинаково серыми — и «отчёт в пятницу», и просроченное третьего
+  дня. Календарь не отвечал на единственный вопрос, ради которого в него смотрят.
+  Цвет ВСЕГДА сопровождается словом в подсказке («просрочено», «срочно», «важно»):
+  цветом одним ничего сказать нельзя — ни дальтонику, ни на плохом мониторе.
+*/
+.cal-chip-task.due-overdue { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); font-weight: 600; }
+.cal-chip-task.due-urgent { background: var(--danger-soft); border-color: var(--danger-line, var(--danger)); color: var(--danger); }
+.cal-chip-task.due-high { background: var(--warn-soft); border-color: var(--warn-line, var(--warn)); color: var(--warn); }
+.cal-chip-task.due-done { opacity: .55; text-decoration: line-through; }
+
+/* То же в списке: полоса слева вместо заливки — строки длинные, заливка их утомляет. */
+.cal-list-due { border-left: 3px solid var(--border-2); }
+.cal-list-due.due-overdue { border-left-color: var(--danger); }
+.cal-list-due.due-urgent { border-left-color: var(--danger); }
+.cal-list-due.due-high { border-left-color: var(--warn); }
+.cal-list-due.due-done { opacity: .6; }
+
 /* Месяц: клетки одинаковой высоты, иначе сетка «пляшет» от количества событий. */
 .cal-month {
-  flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+  flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: minmax(104px, 1fr); gap: 1px;
   background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: auto;
 }
 .cal-month-head { background: var(--bg-elev); text-align: center; font-size: 11px; text-transform: uppercase; color: var(--text-mut); padding: 4px; }
-.cal-month-cell { background: var(--bg-elev); min-height: 92px; padding: 4px; display: flex; flex-direction: column; gap: 2px; }
+.cal-month-cell {
+  background: var(--bg-elev); padding: 4px; display: flex; flex-direction: column; gap: 2px;
+  min-width: 0; min-height: 0; overflow: hidden;
+}
+/* Список дел внутри клетки прокручивается САМ — клетка от их числа не растёт. */
+.cal-month-items { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; }
 .cal-month-cell.off { background: var(--bg-elev-2); }
 .cal-month-cell.other .cal-month-num { color: var(--text-mut); }
 .cal-month-cell.today .cal-month-num { background: var(--accent-2); color: var(--on-accent); border-radius: 999px; padding: 0 6px; }

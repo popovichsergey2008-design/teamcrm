@@ -10,7 +10,8 @@ import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import {
-  addDays, daysOf, DaySegment, isDayOff, layoutDay, rangeTitle, splitByDay, startOfDay, timeToFraction,
+  addDays, daysOf, DaySegment, DUE_LABEL, dueMark, isDayOff, layoutDay, rangeTitle, splitByDay,
+  startOfDay, timeToFraction,
 } from '../lib/calendar-grid';
 import type { User } from '../types';
 
@@ -36,7 +37,12 @@ export interface CalEvent {
   participants: { userId: string; fullName: string | null; status: string; isOrganizer: boolean; avatarUrl: string | null }[];
 }
 
-interface CalTask { id: string; title: string; deadline_at: string; project_id: string; status: string }
+interface CalTask {
+  id: string; title: string; deadline_at: string; project_id: string; status: string;
+  /** Приоритет и завершение: по ним календарь и отличает горящее от сделанного. */
+  priority?: string | null;
+  closed_at?: string | null;
+}
 interface Work { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] }
 
 const VIEW_LABEL: Record<View, string> = { day: 'День', week: 'Неделя', month: 'Месяц', list: 'Список' };
@@ -99,9 +105,48 @@ function openTask(t: { id: string; project_id: string }): void {
   navigate({ section: 'projects', projectId: String(t.project_id), taskId: String(t.id) });
 }
 
+/**
+ * Срок задачи в календаре.
+ *
+ * Одна плашка на все виды — неделя, месяц и список: три почти одинаковых куска
+ * разметки разъехались бы на первой же правке, и просроченное краснело бы в одном
+ * месте из трёх.
+ *
+ * Цвет ВСЕГДА со словом: «просрочено», «срочно», «важно» — в подсказке и для тех,
+ * кто цвета не различает. Одним цветом ничего сказать нельзя.
+ */
+function DueChip({ task, compact }: { task: CalTask; compact?: boolean }) {
+  const mark = dueMark(task);
+  const time = new Date(task.deadline_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return (
+    <button
+      className={`cal-chip cal-chip-task due-${mark}`}
+      onClick={() => openTask(task)}
+      title={`${DUE_LABEL[mark]} · ${time} · ${task.title} — открыть карточку`}
+    >
+      <Icon name={mark === 'done' ? 'check' : mark === 'overdue' ? 'alert' : 'flag'} size={11} />
+      {!compact && <span className="cal-chip-time">{time}</span>}
+      <span className="cal-chip-text">{task.title}</span>
+    </button>
+  );
+}
+
 /** Имя организатора — то, что человек ищет глазами первым: кто зовёт. */
 function organizerOf(e: CalEvent): string | null {
   return e.participants.find((p) => p.isOrganizer)?.fullName ?? null;
+}
+
+/**
+ * Короткая подпись события: место или первая строка описания.
+ *
+ * «Просто маленькая плашка без описания» — жалоба ровно об этом: на плитке было
+ * только время и название, и понять, о чём встреча, можно было лишь открыв её.
+ */
+function subtitleOf(e: CalEvent): string {
+  const place = (e.location ?? '').trim();
+  if (place) return place;
+  const desc = (e.description ?? '').trim().split(String.fromCharCode(10))[0] ?? '';
+  return desc.slice(0, 80);
 }
 
 /** Подсказка при наведении: время, кто зовёт, кто приглашён и о чём встреча. */
@@ -408,16 +453,7 @@ function TimeGrid({ days, work, segments, allDayOf, tasksOfDay, onOpen, onCreate
           <div className="cal-corner cal-allday-label">сроки</div>
           {days.map((d) => (
             <div key={`t${d.getTime()}`} className="cal-allday cal-deadlines">
-              {tasksOfDay(d).map((t) => (
-                <button
-                  key={t.id}
-                  className="cal-chip cal-chip-task"
-                  onClick={() => openTask(t)}
-                  title={`Срок задачи: ${t.title} — открыть карточку`}
-                >
-                  <Icon name="flag" size={11} /> {t.title}
-                </button>
-              ))}
+              {tasksOfDay(d).map((t) => <DueChip key={t.id} task={t} />)}
             </div>
           ))}
         </>
@@ -448,12 +484,19 @@ function TimeGrid({ days, work, segments, allDayOf, tasksOfDay, onOpen, onCreate
                 title={hint(seg.event)}
               >
                 <span className="cal-event-time">
-                  {seg.continuesFrom ? '↑ ' : ''}{hhmm(seg.event.startsAt)}
+                  {seg.continuesFrom ? '↑ ' : ''}{hhmm(seg.event.startsAt)}–{hhmm(seg.event.endsAt)}
                   {seg.event.participants.length > 1 && (
                     <span className="cal-event-people"><Icon name="users" size={11} /> {seg.event.participants.length}</span>
                   )}
                 </span>
                 <span className="cal-event-title">{seg.event.title}</span>
+                {/*
+                  Подпись под названием: место, а если его нет — первая строка описания.
+                  Пустая плашка «Встреча» без единого слова о том, что это за встреча, —
+                  ровно то, на что жаловались. Прячется сама, когда плитка короткая:
+                  за это отвечает высота в стилях, а не расчёт в коде.
+                */}
+                {subtitleOf(seg.event) && <span className="cal-event-sub">{subtitleOf(seg.event)}</span>}
                 {/* организатор виден прямо на плитке: «кто зовёт» — первый вопрос к встрече */}
                 {organizerOf(seg.event) && <span className="cal-event-who">{organizerOf(seg.event)}</span>}
               </button>
@@ -484,19 +527,25 @@ function MonthGrid({ days, events, tasks, work, anchor, onOpen, onCreate }: {
             onDoubleClick={() => onCreate(d)}
           >
             <span className="cal-month-num">{d.getDate()}</span>
-            {dayEvents.slice(0, 3).map((e) => (
-              <button key={e.id} className={`cal-chip ${e.scope === 'company' ? 'company' : ''}`} onClick={() => onOpen(e)}>
-                {e.allDay ? '' : `${hhmm(e.startsAt)} `}{e.title}
-              </button>
-            ))}
-            {dayTasks.slice(0, 2).map((t) => (
-              <button key={t.id} className="cal-chip cal-chip-task" onClick={() => openTask(t)} title={`Срок задачи: ${t.title} — открыть карточку`}>
-                {t.title}
-              </button>
-            ))}
-            {dayEvents.length + dayTasks.length > 5 && (
-              <span className="dim" style={{ fontSize: 11 }}>ещё {dayEvents.length + dayTasks.length - 5}</span>
-            )}
+            {/*
+              Сколько плашек показать, решает высота клетки, а не число: раньше три
+              события и два срока растягивали клетку, и сетка месяца ехала. Теперь
+              содержимое прокручивается внутри клетки, а не двигает её края.
+            */}
+            <div className="cal-month-items">
+              {dayEvents.map((e) => (
+                <button
+                  key={e.id}
+                  className={`cal-chip ${e.scope === 'company' ? 'company' : ''}`}
+                  onClick={() => onOpen(e)}
+                  title={hint(e)}
+                >
+                  {!e.allDay && <span className="cal-chip-time">{hhmm(e.startsAt)}</span>}
+                  <span className="cal-chip-text">{e.title}</span>
+                </button>
+              ))}
+              {dayTasks.map((t) => <DueChip key={t.id} task={t} compact />)}
+            </div>
           </div>
         );
       })}
@@ -544,14 +593,20 @@ function ListView({ days, events, tasks, onOpen, onRespond }: {
               )}
             </div>
           ))}
-          {r.tasks.map((t) => (
-            <div key={t.id} className="cal-list-row">
-              <span className="cal-list-time dim">срок</span>
-              <button className="cal-list-title" onClick={() => openTask(t)} title="Открыть карточку задачи">
-                <span>{t.title}</span>
-              </button>
-            </div>
-          ))}
+          {r.tasks.map((t) => {
+            const mark = dueMark(t);
+            return (
+              <div key={t.id} className={`cal-list-row cal-list-due due-${mark}`}>
+                <span className="cal-list-time">
+                  {new Date(t.deadline_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                  {' · '}{DUE_LABEL[mark]}
+                </span>
+                <button className="cal-list-title" onClick={() => openTask(t)} title="Открыть карточку задачи">
+                  <span>{t.title}</span>
+                </button>
+              </div>
+            );
+          })}
         </div>
       ))}
     </div>

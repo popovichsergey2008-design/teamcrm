@@ -173,3 +173,37 @@ export function rangeTitle(view: 'day' | 'week' | 'month' | 'list', days: Date[]
     ? `${first.getDate()} — ${last.getDate()} ${month(first)}`
     : `${first.getDate()} ${month(first)} — ${last.getDate()} ${month(last)}`;
 }
+
+
+/**
+ * Как выглядит срок задачи в календаре.
+ *
+ * До сих пор все сроки были одинаково серыми: и «сдать отчёт в пятницу», и
+ * просроченное третьего дня. Смотреть на такой календарь бессмысленно — он не
+ * отвечает на единственный вопрос, ради которого в него заглядывают: «что горит».
+ *
+ * Порядок проверок и есть смысл: СНАЧАЛА сделанное (оно уже никого не касается),
+ * потом просроченное (оно важнее любого приоритета), и только потом сам приоритет.
+ * Перепутать порядок — значит красить сделанную вчера срочную задачу красным.
+ */
+export type DueMark = 'done' | 'overdue' | 'urgent' | 'high' | 'normal';
+
+export function dueMark(
+  task: { deadline_at: string; priority?: string | null; closed_at?: string | null; status?: string },
+  now: Date = new Date(),
+): DueMark {
+  if (task.closed_at) return 'done';
+  if (new Date(task.deadline_at).getTime() < now.getTime()) return 'overdue';
+  if (task.priority === 'urgent') return 'urgent';
+  if (task.priority === 'high') return 'high';
+  return 'normal';
+}
+
+/** Подпись метки — она же подсказка при наведении и текст для тех, кто не различает цвета. */
+export const DUE_LABEL: Record<DueMark, string> = {
+  done: 'сделано',
+  overdue: 'просрочено',
+  urgent: 'срочно',
+  high: 'важно',
+  normal: 'срок',
+};

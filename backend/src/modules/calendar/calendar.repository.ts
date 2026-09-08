@@ -151,10 +151,21 @@ export class CalendarRepository {
   }
 
   /** Задачи со сроком в окне — отдельный слой поверх событий, как в привычных календарях. */
+  /**
+   * Сроки задач в промежутке.
+   *
+   * Отдаём приоритет и признак завершения: в календаре срочное, важное и просроченное
+   * обязано отличаться цветом, а сделанное — не кричать. Без этих полей все сроки
+   * выглядели одинаково серыми, и смотреть на них было бессмысленно.
+   */
   tasksInRange(tenantId: string, userId: string, from: string, to: string) {
-    return this.db.many<{ id: string; title: string; deadline_at: Date; project_id: string; status: string }>(
-      `SELECT t.id, t.title, t.deadline_at, t.project_id, t.status
+    return this.db.many<{
+      id: string; title: string; deadline_at: Date; project_id: string; status: string;
+      priority: string | null; closed_at: Date | null;
+    }>(
+      `SELECT t.id, t.title, t.deadline_at, t.project_id, t.status, t.priority, t.closed_at
          FROM tasks t
+         JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
         WHERE t.tenant_id = $1 AND t.deadline_at IS NOT NULL
           AND t.deadline_at >= $3::timestamptz AND t.deadline_at < $4::timestamptz
           AND (t.assignee_id = $2 OR t.created_by = $2)
