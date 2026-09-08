@@ -37,13 +37,27 @@ function reducer(state: Board | null, action: Action): Board | null {
   switch (action.type) {
     case 'UPSERT_TASK': {
       const t = action.task;
+      /*
+        Событие сокета несёт СЫРУЮ строку задачи из базы — без обогащения, которое
+        доска считает отдельно: меток, счётчиков комментариев и файлов, чек-листа и
+        КРАСНОЙ ОТМЕТКИ «что нового».
+
+        Подменяя карточку целиком, мы стирали всё это до перезагрузки страницы. Отсюда
+        и жалоба: у проекта горит «3», а красных карточек на доске не видно — их
+        отметки сдуло чужим же изменением, которое эту отметку и породило.
+
+        Поэтому НАКЛАДЫВАЕМ пришедшее поверх известного: чего в событии нет, то
+        остаётся прежним.
+      */
+      const prev = state.columns.flatMap((c) => c.tasks).find((x) => String(x.id) === String(t.id));
+      const merged: Task = prev ? { ...prev, ...t } : t;
       const columns: BoardColumn[] = state.columns.map((c) => ({
         ...c,
         tasks: c.tasks.filter((x) => x.id !== t.id),
       }));
-      const target = columns.find((c) => c.id === t.column_id);
+      const target = columns.find((c) => c.id === merged.column_id);
       if (target) {
-        target.tasks.push(t);
+        target.tasks.push(merged);
         target.tasks.sort((a, b) => a.position - b.position);
       }
       return { ...state, columns };

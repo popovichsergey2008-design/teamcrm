@@ -62,12 +62,19 @@ export class TaskReadsRepository {
     );
   }
 
-  /** Непрочитанное по проектам: цифра рядом с проектом в панели — «где искать». */
+  /**
+   * Непрочитанное по проектам: цифра рядом с проектом в панели — «где искать».
+   *
+   * Архивные проекты не считаем. Их строк в списке не видно, а цифра от них попадала
+   * в общий бейдж раздела — и человек искал задачу, до которой нельзя дойти: горит
+   * «3», а на доске красного нет.
+   */
   byProjects(tenantId: string, userId: string): Promise<{ project_id: string; n: string }[]> {
     return this.db.many(
       `SELECT t.project_id, COUNT(*) AS n
          FROM task_activity a
          JOIN tasks t ON t.id = a.task_id
+         JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
     LEFT JOIN task_reads r ON r.task_id = a.task_id AND r.user_id = $2
         WHERE a.tenant_id = $1 AND ${MINE} AND ${FRESH}
         GROUP BY t.project_id`,
@@ -94,12 +101,19 @@ export class TaskReadsRepository {
     );
   }
 
-  /** Сколько всего нового — бейдж раздела «Проекты». */
+  /**
+   * Сколько всего нового — бейдж раздела «Проекты».
+   *
+   * Считаем ровно то же, что показывают красные цифры на карточках: живые проекты,
+   * мои задачи, чужие события. Бейдж, который считает шире карточек, отправляет
+   * человека искать то, чего он найти не сможет.
+   */
   async total(tenantId: string, userId: string): Promise<number> {
     const row = await this.db.one<{ n: string }>(
       `SELECT COUNT(*) AS n
          FROM task_activity a
          JOIN tasks t ON t.id = a.task_id
+         JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
     LEFT JOIN task_reads r ON r.task_id = a.task_id AND r.user_id = $2
         WHERE a.tenant_id = $1 AND ${MINE} AND ${FRESH}`,
       [tenantId, userId],

@@ -133,4 +133,50 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
     // экран руководителя рядовому сотруднику закрыт
     await http.get('/api/radar').set(H(memTok)).expect(403);
   });
+
+  /**
+   * Красная отметка «что нового» и её счётчик в панели.
+   *
+   * Две жалобы разом, и обе про доверие к цифре: она не гасла до перезагрузки
+   * страницы и горела там, где смотреть было нечего. Проверяем ровно это —
+   * открытие задачи гасит счётчик СРАЗУ, а архивный проект в него не попадает.
+   */
+  it('счётчик «нового» гаснет от открытия задачи и не считает архивные проекты', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'Unread', email: `un_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .expect(201)).body.data;
+    const memEmail = `un_m_${uniq()}@t.test`;
+    const inv = (await http.post('/api/invites').set(H(owner.accessToken))
+      .send({ email: memEmail, role: 'member' }).expect(201)).body.data;
+    await http.post('/api/invites/accept')
+      .send({ token: inv.token, fullName: 'Пётр Сотрудник', password: 'memberpass1' }).expect(201);
+    const mem = (await http.post('/api/auth/login')
+      .send({ email: memEmail, password: 'memberpass1' }).expect(201)).body.data;
+
+    const proj = (await http.post('/api/projects').set(H(owner.accessToken))
+      .send({ name: `Живой ${uniq()}` }).expect(201)).body.data;
+    const task = (await http.post('/api/tasks').set(H(owner.accessToken))
+      .send({ projectId: proj.id, title: 'Сверстать', assigneeId: mem.user.id }).expect(201)).body.data;
+
+    // чужое действие по моей задаче — вот оно и есть «новое»
+    await http.post(`/api/tasks/${task.id}/comments`).set(H(owner.accessToken))
+      .send({ body: 'Посмотри, пожалуйста' }).expect(201);
+    expect((await counters(mem.accessToken)).tasks!.unread).toBeGreaterThan(0);
+
+    // открыл карточку — счётчик обязан упасть сразу, а не после перезагрузки
+    await http.post(`/api/tasks/${task.id}/read`).set(H(mem.accessToken)).expect(201);
+    expect((await counters(mem.accessToken)).tasks!.unread).toBe(0);
+
+    // задача в архивном проекте в счётчик не попадает: дойти до неё человек не может
+    const old = (await http.post('/api/projects').set(H(owner.accessToken))
+      .send({ name: `Архивный ${uniq()}` }).expect(201)).body.data;
+    const oldTask = (await http.post('/api/tasks').set(H(owner.accessToken))
+      .send({ projectId: old.id, title: 'Забытая', assigneeId: mem.user.id }).expect(201)).body.data;
+    await http.post(`/api/tasks/${oldTask.id}/comments`).set(H(owner.accessToken))
+      .send({ body: 'И это тоже' }).expect(201);
+    expect((await counters(mem.accessToken)).tasks!.unread).toBeGreaterThan(0);
+
+    await http.post(`/api/projects/${old.id}/archive`).set(H(owner.accessToken)).expect(201);
+    expect((await counters(mem.accessToken)).tasks!.unread).toBe(0);
+  });
 });

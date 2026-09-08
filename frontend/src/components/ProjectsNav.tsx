@@ -10,6 +10,8 @@ const providerLabel = (origin?: string) => (origin === 'yougile' ? 'YouGile' : '
 
 /** Проекты изменились — доска должна перечитать список, не дожидаясь перезагрузки страницы. */
 export const PROJECTS_CHANGED = 'teamcrm:projects-changed';
+/** Сигнал «задачи изменились» — общий на всё приложение, шлётся из lib/api. */
+const TASKS_CHANGED = 'teamcrm:tasks-changed';
 /** «Создать проект» нажали с пустой доски — курсор должен оказаться в поле ввода здесь. */
 export const NEW_PROJECT_FOCUS = 'teamcrm:new-project-focus';
 
@@ -52,10 +54,27 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
     void reload();
     // проект могли создать не отсюда — из командной строки или импортом
     window.addEventListener(PROJECTS_CHANGED, reload);
+    /*
+      Красная цифра у проекта приезжает вместе со списком проектов, а меняется от
+      работы с задачами: открыл задачу — цифра обязана упасть. Раньше список
+      перечитывался только при появлении и исчезновении проектов, и цифра висела до
+      перезагрузки страницы, хотя читать было уже нечего.
+
+      Частоту ограничиваем: задачи меняются пачками (перенос колонки, импорт), и
+      перезапрашивать список на каждое изменение незачем.
+    */
+    let timer = 0;
+    const onTasks = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => void reload(), 400);
+    };
+    window.addEventListener(TASKS_CHANGED, onTasks);
     const focusNew = () => newRef.current?.focus();
     window.addEventListener(NEW_PROJECT_FOCUS, focusNew);
     return () => {
+      window.clearTimeout(timer);
       window.removeEventListener(PROJECTS_CHANGED, reload);
+      window.removeEventListener(TASKS_CHANGED, onTasks);
       window.removeEventListener(NEW_PROJECT_FOCUS, focusNew);
     };
   }, [reload]);

@@ -39,13 +39,16 @@ export function useNavCounters(enabled: boolean, section: string): NavCounters {
   useEffect(() => {
     if (!enabled) return;
     const timer = setInterval(() => load(true), POLL_MS);
+    // Своё действие обязано отражаться СРАЗУ: открыл задачу — цифра упала. Раньше
+    // здесь стоял обычный `load()`, и его глушила защита «не чаще раза в десять
+    // секунд» — человек читал задачу, а бейдж гас только через страницу.
+    const now = () => load(true);
     const soon = () => load();
-    // своё действие обязано отражаться сразу: принял задачу — бейдж упал
-    window.addEventListener('teamcrm:tasks-changed', soon);
+    window.addEventListener('teamcrm:tasks-changed', now);
     window.addEventListener('focus', soon);
     return () => {
       clearInterval(timer);
-      window.removeEventListener('teamcrm:tasks-changed', soon);
+      window.removeEventListener('teamcrm:tasks-changed', now);
       window.removeEventListener('focus', soon);
     };
   }, [enabled, load]);
