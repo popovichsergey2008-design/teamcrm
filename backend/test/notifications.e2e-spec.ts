@@ -125,8 +125,12 @@ describe('Почтовые уведомления (e2e)', () => {
     const tok = reg.accessToken;
 
     const prefs = (await http.get('/api/notifications/prefs').set(H(tok)).expect(200)).body.data;
-    expect(prefs.map((p: any) => p.eventKey).sort())
-      .toEqual(['task.commented', 'task.created', 'task.own', 'task.status', 'telegram.mirror']);
+    // Список полный: новый повод для письма обязан появиться и здесь, иначе человек
+    // получает письма, которые нечем выключить.
+    expect(prefs.map((p: any) => p.eventKey).sort()).toEqual([
+      'feed.announcement', 'feed.mention',
+      'task.commented', 'task.created', 'task.own', 'task.status', 'telegram.mirror',
+    ]);
     expect(prefs.every((p: any) => p.enabled)).toBe(true); // по умолчанию письма приходят
 
     // дубль в мессенджер выключается отдельно от самих поводов для письма
