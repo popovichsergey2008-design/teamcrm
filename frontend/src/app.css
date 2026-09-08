@@ -1384,6 +1384,22 @@
   background: var(--warn-soft); border: 1px solid var(--warn-line); font-size: var(--fs-sm);
 }
 .merge-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/*
+  Предупреждение о дубле при создании задачи.
+
+  Мягкое, а не запрещающее: похожая задача бывает нужна и второй раз. Поэтому
+  цвет предупреждения, а не ошибки, и кнопка «создать всё равно» рядом.
+*/
+.dupes-warn {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; margin-bottom: 10px;
+  border-radius: var(--radius-sm); background: var(--warn-soft); border: 1px solid var(--warn-line);
+  font-size: var(--fs-sm);
+}
+.dupes-head { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.dupes-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.dupes-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dupes-warn > .btn-ghost { align-self: flex-start; }
+
 /* Пометка в карточке объединённой задачи: без неё в закрытой копии продолжают работать. */
 .merge-banner {
   display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 10px;

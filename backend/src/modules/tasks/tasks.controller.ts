@@ -5,7 +5,7 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { TasksService } from './tasks.service';
 import { TaskMergeService } from './task-merge.service';
 import {
-  ApprovalRequiredDto, CreateTaskDto, FocusDateDto, MergeTasksDto, MoveTaskDto, ParticipantDto,
+  ApprovalRequiredDto, CreateTaskDto, DuplicatesQueryDto, FocusDateDto, MergeTasksDto, MoveTaskDto, ParticipantDto,
   ReturnTaskDto, TaskRecurrenceDto, TaskRegistryQueryDto, UpdateTaskDto,
 } from './tasks.dto';
 
@@ -33,6 +33,17 @@ export class TasksController {
   @Get(':id/merge/candidates')
   mergeCandidates(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('q') q?: string) {
     return this.merge.candidates(u.tenantId, id, q);
+  }
+
+  /**
+   * «Возможно, такая задача уже есть» — до создания.
+   *
+   * Статический маршрут стоит рядом с остальными про объединение и выше любых
+   * `:id`-путей: слово «duplicates» не должно приниматься за номер задачи.
+   */
+  @Get('duplicates')
+  duplicates(@CurrentUser() u: AuthUser, @Query() q: DuplicatesQueryDto) {
+    return this.merge.duplicatesOf(u.tenantId, { title: q.title, description: q.description });
   }
 
   /** Что получится при объединении — вместе с предложением ИИ. Ничего не меняет. */

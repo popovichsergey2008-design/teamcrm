@@ -290,3 +290,13 @@ export class MergeTasksDto {
   @IsOptional() @IsString() @MaxLength(8000) description?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) checklist?: string[];
 }
+
+/**
+ * Проверка дублей до создания задачи.
+ *
+ * Запросом, а не телом: ничего не меняет и вызывается по мере набора названия.
+ */
+export class DuplicatesQueryDto {
+  @IsString() @MaxLength(255) title!: string;
+  @IsOptional() @IsString() @MaxLength(4000) description?: string;
+}

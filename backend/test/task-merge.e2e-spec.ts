@@ -60,6 +60,25 @@ describe('Объединение задач (e2e)', () => {
     expect(String(r.items[0].reason).length).toBeGreaterThan(3);
   });
 
+  it('проверка дублей до создания: предупреждает о похожем и молчит о постороннем', async () => {
+    await newTask('Настроить выгрузку отчётов в Excel', 'Раз в неделю выгружать отчёты');
+
+    const near = (await http.get('/api/tasks/duplicates')
+      .query({ title: 'Настроить выгрузку отчётов в Эксель' }).set(H(tok)).expect(200)).body.data;
+    expect(near.items[0].title).toBe('Настроить выгрузку отчётов в Excel');
+    expect(near.items[0].match).toBeGreaterThan(45);
+
+    // постороннее название не должно поднимать тревогу: порог здесь высокий намеренно
+    const far = (await http.get('/api/tasks/duplicates')
+      .query({ title: 'Купить новый чайник в кухню' }).set(H(tok)).expect(200)).body.data;
+    expect(far.items).toEqual([]);
+
+    // два слова — не повод предупреждать, по ним похоже всё подряд
+    const short = (await http.get('/api/tasks/duplicates')
+      .query({ title: 'Отчёт' }).set(H(tok)).expect(200)).body.data;
+    expect(short.items).toEqual([]);
+  });
+
   it('ручной поиск находит по номеру и по названию', async () => {
     const base = await newTask('Своя задача для поиска');
     const other = await newTask('Совершенно посторонняя формулировка');

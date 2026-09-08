@@ -4,6 +4,7 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
 import { labelTextColor } from '../lib/labels';
+import { navigate } from '../lib/router';
 
 interface Props {
   projectId: string;
@@ -55,8 +56,29 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const [files, setFiles] = useState<File[]>([]);
   /** Задача уже создана, но файлы не долетели: второй раз её создавать нельзя. */
   const [createdId, setCreatedId] = useState<string | null>(null);
+  /**
+   * Возможные дубли по набранному названию.
+   *
+   * Проверяем ДО создания: дубль дешевле не завести, чем потом объединять. Ничего
+   * не запрещаем — предупреждение можно закрыть и создать задачу как ни в чём не бывало.
+   */
+  const [dupes, setDupes] = useState<Awaited<ReturnType<typeof api.taskDuplicates>>['items']>([]);
+  const [dupesHidden, setDupesHidden] = useState(false);
 
   useEffect(() => { api.listLabels().then(setLabels).catch(() => undefined); }, []);
+
+  // Запрос с задержкой и только на осмысленное название: на каждую букву ходить
+  // в базу незачем, а по двум словам похоже вообще всё.
+  useEffect(() => {
+    const text = title.trim();
+    if (text.length < 8) { setDupes([]); return; }
+    const t = setTimeout(() => {
+      api.taskDuplicates(text, description.trim() || undefined)
+        .then((r) => setDupes(r.items))
+        .catch(() => setDupes([])); // подсказка — удобство, молчаливый отказ лучше ошибки
+    }, 600);
+    return () => clearTimeout(t);
+  }, [title, description]);
 
   const toggleLabel = (id: string) =>
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -132,6 +154,42 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit(); }}
           />
         </div>
+
+        {/*
+          «Возможно, такая задача уже есть».
+
+          Стоит сразу под названием — там, где человек её и породил, — и ничего не
+          запрещает: бывает, что похожая задача действительно нужна второй раз.
+          Кнопка «Открыть» уводит в существующую, «Создать всё равно» просто убирает
+          подсказку, чтобы она не мешала дозаполнять форму.
+        */}
+        {!dupesHidden && dupes.length > 0 && (
+          <div className="dupes-warn">
+            <div className="dupes-head">
+              <Icon name="alert" size={14} /> Возможно, такая задача уже существует
+            </div>
+            {dupes.map((d) => (
+              <div key={d.id} className="dupes-row">
+                <span className="registry-id">#{d.id}</span>
+                <span className="dupes-title" title={d.reason}>{d.title}</span>
+                <span className="dim">{d.projectName ?? ''}</span>
+                <span className="merge-match">{d.match}%</span>
+                <button
+                  className="btn btn-sm"
+                  onClick={() => {
+                    navigate({ section: 'projects', projectId: String(d.projectId), taskId: String(d.id) });
+                    onClose();
+                  }}
+                >
+                  Открыть
+                </button>
+              </div>
+            ))}
+            <button className="btn btn-ghost btn-sm" onClick={() => setDupesHidden(true)}>
+              Создать всё равно
+            </button>
+          </div>
+        )}
 
         <div className="drawer-grid2">
           <div className="field"><label>Исполнитель</label>

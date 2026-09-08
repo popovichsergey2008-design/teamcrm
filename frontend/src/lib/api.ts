@@ -301,6 +301,18 @@ export const api = {
     }[];
     searched: boolean;
   }>('GET', `/tasks/${taskId}/merge/candidates${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  /**
+   * «Возможно, такая задача уже есть» — проверка до создания.
+   *
+   * Ищет по набранному названию и описанию; пустой ответ — обычное дело и не ошибка.
+   */
+  taskDuplicates: (title: string, description?: string) => request<{
+    items: {
+      id: string; title: string; projectId: string; projectName: string | null;
+      assigneeName: string | null; managerName: string | null; match: number; reason: string;
+    }[];
+  }>('GET', `/tasks/duplicates?title=${encodeURIComponent(title)}`
+    + (description ? `&description=${encodeURIComponent(description.slice(0, 4000))}` : '')),
   taskMergePreview: (taskId: string, withId: string) => request<{
     primary: MergeSide; secondary: MergeSide;
     moves: { comments: number; files: number; checklist: number; participants: number; messages: number; meetings: number };

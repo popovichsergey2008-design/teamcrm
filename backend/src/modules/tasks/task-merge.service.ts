@@ -12,6 +12,14 @@ import { joinDescriptions, mergeChecklists, percent, scoreTask } from './merge-s
 const TOP = 6;
 /** Из скольких открытых задач ищем похожие без модели. */
 const SCAN_LIMIT = 400;
+/**
+ * С какого совпадения предупреждаем при создании задачи.
+ *
+ * Порог высокий намеренно: в карточке человек сам нажал «Объединить» и готов
+ * смотреть список, а при создании предупреждение приходит незваным. Ошибиться
+ * здесь значит приучить его закрывать подсказку не читая.
+ */
+const DUPLICATE_MIN = 0.45;
 
 /**
  * Объединение похожих задач.
@@ -55,8 +63,39 @@ export class TaskMergeService {
    */
   async candidates(tenantId: string, taskId: string, q?: string) {
     const base = await this.task(tenantId, taskId);
+    return this.rank(tenantId, { id: String(base.id), title: base.title, description: base.description }, q);
+  }
+
+  /**
+   * Возможные дубли ЕЩЁ НЕ созданной задачи.
+   *
+   * Ловить дубль до его появления дешевле, чем объединять после: человек ещё
+   * ничего не завёл и может просто открыть существующую задачу. Порог здесь выше,
+   * чем в списке кандидатов: непрошеное предупреждение раздражает сильнее, чем
+   * отсутствующее, и показывать «возможно, дубль» на каждое общее слово нельзя.
+   */
+  async duplicatesOf(tenantId: string, input: { title: string; description?: string }) {
+    const title = (input.title ?? '').trim();
+    // Двух слов мало для вывода: по ним похоже всё подряд.
+    if (title.length < 8) return { items: [] };
+    const ranked = await this.rank(
+      tenantId,
+      { id: '0', title, description: input.description ?? null },
+      undefined,
+      DUPLICATE_MIN,
+    );
+    return { items: ranked.items.slice(0, 3) };
+  }
+
+  /** Общее ранжирование: и для карточки задачи, и для проверки при создании. */
+  private async rank(
+    tenantId: string,
+    base: { id: string; title: string; description: string | null },
+    q?: string,
+    minScore = 0.12,
+  ) {
     const query = (q ?? '').trim();
-    const rows = await this.repo.candidates(tenantId, taskId, query || null, query ? 30 : SCAN_LIMIT);
+    const rows = await this.repo.candidates(tenantId, base.id, query || null, query ? 30 : SCAN_LIMIT);
 
     const semantic = query ? new Map<string, number>() : await this.semantic(tenantId, base);
 
@@ -80,7 +119,7 @@ export class TaskMergeService {
 
     const items = query
       ? scored.slice(0, 20)
-      : scored.filter((x) => x.score > 0.12).sort((a, b) => b.score - a.score).slice(0, TOP);
+      : scored.filter((x) => x.score > minScore).sort((a, b) => b.score - a.score).slice(0, TOP);
 
     // score наружу не отдаём: человек видит проценты, а сырая мера — дело сервера
     return {
@@ -104,7 +143,9 @@ export class TaskMergeService {
    * Молча возвращаем пустоту, если модели нет: без ключа ИИ поиск обязан
    * продолжать работать словами, а не падать вместе с окном.
    */
-  private async semantic(tenantId: string, base: MergeTaskRow): Promise<Map<string, number>> {
+  private async semantic(
+    tenantId: string, base: { id: string; title: string; description: string | null },
+  ): Promise<Map<string, number>> {
     const out = new Map<string, number>();
     try {
       const hits = await this.knowledge.search(
