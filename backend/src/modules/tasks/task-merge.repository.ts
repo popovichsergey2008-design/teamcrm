@@ -167,7 +167,10 @@ export class TaskMergeRepository {
                WHERE tenant_id=$1 AND task_id=$3
          ON CONFLICT (task_id, file_id) DO NOTHING`, p,
       );
-      await c.query(`DELETE FROM task_attachments WHERE tenant_id=$1 AND task_id=$3`, p);
+      // Свой список параметров, а не общий `p`: Postgres роняет ВЕСЬ запрос, если
+      // переданный параметр в тексте не используется («could not determine data
+      // type of parameter $2»). Эти грабли у нас уже были в реестре задач.
+      await c.query(`DELETE FROM task_attachments WHERE tenant_id=$1 AND task_id=$2`, [tenantId, secondaryId]);
       await c.query(`UPDATE chat_messages SET task_id=$2 WHERE tenant_id=$1 AND task_id=$3`, p);
       await c.query(`UPDATE meeting_task_drafts SET task_id=$2 WHERE tenant_id=$1 AND task_id=$3`, p);
 
