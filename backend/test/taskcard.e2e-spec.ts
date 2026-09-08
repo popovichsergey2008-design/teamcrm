@@ -58,15 +58,6 @@ describe('Enhancements v1 — Task card (e2e)', () => {
     await http.patch(`/api/tasks/${taskId}/comments/${c.id}`).set({ Authorization: `Bearer ${m}` }).send({ body: 'хак' }).expect(403);
     // автор может
     await http.patch(`/api/tasks/${taskId}/comments/${c.id}`).set(A()).send({ body: 'Исправлено' }).expect(200);
-
-    // Порядок обычный — сверху вниз, старое первым: переписку читают как переписку,
-    // а не как список «сначала последнее».
-    await http.post(`/api/tasks/${taskId}/comments`).set(A()).send({ body: 'Второй коммент' }).expect(201);
-    const two = (await http.get(`/api/tasks/${taskId}/comments`).set(A()).expect(200)).body.data;
-    expect(two.map((x: any) => x.body)).toEqual(['Исправлено', 'Второй коммент']);
-    // а «поднять всю переписку» отдаёт то же самое, пока сотни сообщений не набралось
-    const all = (await http.get(`/api/tasks/${taskId}/comments?all=1`).set(A()).expect(200)).body.data;
-    expect(all.length).toBe(2);
   });
 
   it('вложения: загрузка → список → скачивание', async () => {
@@ -158,5 +149,32 @@ describe('Enhancements v1 — Task card (e2e)', () => {
     const list2 = (await http.get(`/api/tasks/${taskId}/comments`).set(A()).expect(200)).body.data;
     const shown = list2.find((c: any) => String(c.id) === String(reply.id));
     expect(shown.reply_body).toBe('как это выглядит');
+  });
+
+  /**
+   * Порядок и объём переписки.
+   *
+   * Со своей задачей, а не с общей: тесты этого файла делят состояние, и лишний
+   * комментарий в общей задаче ломает счётчики доски ниже по файлу — уже наступали.
+   *
+   * Проверяем то, ради чего переписка стала отдаваться хвостом: порядок остаётся
+   * обычным (старое первым — это переписка, а не список «сначала последнее»), а
+   * «поднять всю» отдаёт то же самое, пока сотен сообщений не набралось.
+   */
+  it('переписка задачи: порядок обычный, «поднять всю» отдаёт то же', async () => {
+    const project = (await http.post('/api/projects').set(A())
+      .send({ name: `Переписка ${Date.now()}` }).expect(201)).body.data;
+    const task = (await http.post('/api/tasks').set(A())
+      .send({ projectId: project.id, title: 'Обсуждаемая' }).expect(201)).body.data;
+
+    for (const body of ['Первое', 'Второе', 'Третье']) {
+      await http.post(`/api/tasks/${task.id}/comments`).set(A()).send({ body }).expect(201);
+    }
+
+    const tail = (await http.get(`/api/tasks/${task.id}/comments`).set(A()).expect(200)).body.data;
+    expect(tail.map((c: any) => c.body)).toEqual(['Первое', 'Второе', 'Третье']);
+
+    const all = (await http.get(`/api/tasks/${task.id}/comments?all=1`).set(A()).expect(200)).body.data;
+    expect(all.map((c: any) => c.body)).toEqual(['Первое', 'Второе', 'Третье']);
   });
 });
