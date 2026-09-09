@@ -775,14 +775,19 @@
 }
 .nav-projects-tabs button:hover { color: var(--text-dim); }
 .nav-projects-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
-/* Список ограничен по высоте: с тремя десятками импортированных досок меню иначе
-   выталкивает вниз всё остальное, включая «Пульс» и настройки. */
-.nav-projects-list {
-  max-height: 40vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1px;
-  scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; overscroll-behavior: contain;
-}
-.nav-projects-list::-webkit-scrollbar { width: 8px; }
-.nav-projects-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+/*
+  Своей прокрутки у списка досок НЕТ.
+
+  Раньше он был ограничен по высоте и прокручивался внутри — а панель прокручивалась
+  снаружи. Две полосы одна в другой: колесо мыши работало то на список, то на меню,
+  в зависимости от того, где курсор, и попасть в нужную доску было мучением.
+
+  Теперь прокрутка одна — у всей панели. Место внизу это не съедает: профиль,
+  настройки и AI-секретарь живут в `.nav-bottom` ЗА пределами прокручиваемой части
+  и видны всегда, сколько бы досок ни принёс импорт. Длинные импортированные группы
+  к тому же свёрнуты, пока их не раскроют.
+*/
+.nav-projects-list { display: flex; flex-direction: column; gap: 1px; }
 .nav-projects .project-item { font-size: 13px; padding: 6px 10px 6px 30px; }
 .nav-projects .project-row.active { box-shadow: inset 2px 0 0 var(--accent); }
 .nav-projects-empty { padding: 4px 10px 4px 30px; font-size: 12px; }
