@@ -48,7 +48,9 @@ export class NotificationsController {
     return ALL_KEYS.map((key) => ({
       eventKey: key,
       title: TITLE[key],
-      enabled: saved.get(key) ?? true,
+      // «Письма о моих собственных действиях» по умолчанию ВЫКЛЮЧЕНЫ: человек знает,
+      // что он сделал сам. Остальные виды писем по умолчанию включены.
+      enabled: saved.get(key) ?? key !== OWN_EVENT_KEY,
     }));
   }
 

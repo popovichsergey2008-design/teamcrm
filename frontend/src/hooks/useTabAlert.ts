@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { getSocket } from '../lib/socket';
+import { playTaskChime } from '../lib/sound';
+import { showToast } from '../lib/notifications';
 import { AlertCounters, flashTab, stopTabAlert, tabAlertMessage } from '../lib/tab-alert';
 import { NavCounters } from './useNavCounters';
 
@@ -36,8 +38,21 @@ export function useTabAlert(enabled: boolean, counters: NavCounters, chatUnread:
   useEffect(() => {
     if (!enabled) return;
     const socket = getSocket();
-    const onForYou = () => {
+    const onForYou = (p: { title?: string; taskId?: string; projectId?: string }) => {
       flashTab('Новая задача');
+      /*
+        Звук — отдельно от мигания вкладки.
+
+        Заголовок мигает для того, кто сидит в другой вкладке; звук нужен тому, кто
+        сидит в самой CRM и смотрит в другое место экрана. Сигнал свой, не такой, как
+        у сообщения: по звуку должно быть понятно, что случилось, не глядя на экран.
+      */
+      playTaskChime();
+      showToast({
+        title: 'Новая задача на вас',
+        body: p?.title ?? 'Откройте, чтобы посмотреть',
+        section: 'focus',
+      });
       // счётчик панели должен догнать событие, иначе бейдж отстанет на минуту
       window.dispatchEvent(new CustomEvent('teamcrm:tasks-changed'));
     };

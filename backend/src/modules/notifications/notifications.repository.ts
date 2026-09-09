@@ -43,7 +43,11 @@ export class NotificationsRepository {
           AND u.is_active = TRUE
           AND u.email IS NOT NULL
           AND COALESCE(p.enabled, TRUE)
-          AND ($4::bigint IS NULL OR u.id <> $4::bigint OR COALESCE(own.enabled, TRUE))`,
+          -- Письма о СОБСТВЕННЫХ действиях по умолчанию НЕ шлём: поставил задачу,
+          -- перенёс карточку, написал комментарий — и получил об этом письмо и дубль
+          -- в Telegram. Человек и так знает, что он сделал. Кому это зачем-то нужно
+          -- (например, чтобы видеть письмо целиком) — включает переключатель в кабинете.
+          AND ($4::bigint IS NULL OR u.id <> $4::bigint OR COALESCE(own.enabled, FALSE))`,
       [tenantId, taskId, eventKey, actorId, OWN_EVENT_KEY],
     );
   }

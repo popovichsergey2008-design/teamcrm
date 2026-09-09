@@ -92,6 +92,24 @@ export function playMessageChime(): void {
   note(now + 0.09, 880, 0.22, 0.14);
 }
 
+/**
+ * Новая задача на мне.
+ *
+ * Отличается от сигнала о сообщении намеренно: три ноты вверх по трезвучию —
+ * узнаётся за долю секунды и не путается ни с чатом, ни со звонком. Мягкий: он
+ * звучит по несколько раз в день, и резкий здесь через неделю выключат вместе со
+ * всеми остальными.
+ */
+export function playTaskChime(): void {
+  if (doNotDisturb || !soundPrefs().messages) return;
+  const audio = context();
+  if (!audio) return;
+  const now = audio.currentTime;
+  note(now, 587, 0.16, 0.11);        // ре
+  note(now + 0.12, 740, 0.16, 0.11); // фа-диез
+  note(now + 0.24, 880, 0.30, 0.12); // ля
+}
+
 /** Сигнал о госте, который просится в созвон, — тише и ниже, чем сообщение. */
 export function playKnock(): void {
   if (doNotDisturb || !soundPrefs().messages) return;

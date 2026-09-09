@@ -86,15 +86,35 @@ export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null;
   return { incoming, accept, decline };
 }
 
+/**
+ * Входящий звонок — окном по центру экрана, поверх всего.
+ *
+ * Раньше это была карточка в углу: её пропускали. Звонок — единственное в системе,
+ * что нельзя посмотреть потом: через двадцать секунд звонящий кладёт трубку, и от
+ * пропущенного вызова остаётся только «я тебе звонил». Поэтому он занимает середину
+ * экрана и закрывает собой работу — ровно как звонок на телефоне.
+ *
+ * Затемнение не закрывает окно и Esc не работает: и то и другое — случайные действия,
+ * а у звонка ровно два ответа, оба нажимаются осознанно.
+ */
 export function IncomingCallDialog({ call, onAccept, onDecline }: {
   call: Incoming; onAccept: () => void; onDecline: () => void;
 }) {
+  const initials = (call.callerName || '?').trim()[0]?.toUpperCase() ?? '?';
   return (
-    <div className="incoming-call">
-      <div className="incoming-title"><Icon name="phone" size={16} /> Звонит {call.callerName}</div>
-      <div className="incoming-actions">
-        <button className="btn btn-sm incoming-accept" onClick={onAccept}><Icon name="check" size={14} /> Принять</button>
-        <button className="btn btn-sm incoming-decline" onClick={onDecline}><Icon name="close" size={14} /> Отклонить</button>
+    <div className="incoming-overlay" role="dialog" aria-modal="true" aria-label={`Звонит ${call.callerName}`}>
+      <div className="incoming-call">
+        <div className="incoming-avatar" aria-hidden="true">{initials}</div>
+        <div className="incoming-who">{call.callerName}</div>
+        <div className="incoming-sub"><Icon name="phone" size={14} /> Входящий звонок</div>
+        <div className="incoming-actions">
+          <button className="btn incoming-accept" onClick={onAccept} autoFocus>
+            <Icon name="phone" size={16} /> Принять
+          </button>
+          <button className="btn incoming-decline" onClick={onDecline}>
+            <Icon name="close" size={16} /> Отклонить
+          </button>
+        </div>
       </div>
     </div>
   );

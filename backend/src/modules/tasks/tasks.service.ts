@@ -236,6 +236,21 @@ export class TasksService {
       priority: dto.priority,
     });
     this.realtime.emit(tenantId, existing.project_id, 'task.updated', updated as any);
+    /*
+      Задачу переназначили на другого — для него это ТАКАЯ ЖЕ новая задача.
+
+      Событие то же, что и при создании: у нового исполнителя мигает вкладка и
+      звучит сигнал. Себе не шлём и повторно тому же человеку тоже: перевесили с
+      Пети на Петю — новостью это не является.
+    */
+    const newAssignee = String(updated?.assignee_id ?? '');
+    if (newAssignee && newAssignee !== String(existing.assignee_id ?? '') && newAssignee !== String(actorId ?? '')) {
+      this.realtime.emitToUsers(tenantId, [newAssignee], 'task.for_you', {
+        taskId: String(id),
+        projectId: String(existing.project_id),
+        title: updated?.title ?? existing.title,
+      });
+    }
     const changed = Object.keys(dto).filter((k) => (dto as any)[k] !== undefined);
     await this.activity.log(tenantId, id, actorId, 'updated', { fields: changed });
     if (dto.title !== undefined || dto.description !== undefined) this.knowledge.enqueue(tenantId, 'task', id); // переиндексация при смене текста

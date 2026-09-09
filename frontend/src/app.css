@@ -2511,20 +2511,42 @@
 .chat-call { display: flex; align-items: center; gap: 8px; }
 .chat-ai-toggle { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
 
-/* входящий звонок: поверх всего, в углу — как в мессенджерах */
+/*
+  Входящий звонок — по центру экрана и поверх всего, включая окно созвона.
+
+  Карточку в углу пропускали: звонок — единственное, что нельзя посмотреть потом.
+  Затемнение специально плотное: пока звонят, работать всё равно нельзя.
+*/
+.incoming-overlay {
+  position: fixed; inset: 0; z-index: 120;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: var(--overlay);
+  backdrop-filter: blur(2px);
+}
 .incoming-call {
-  position: fixed; right: 20px; bottom: 20px; z-index: 70; min-width: 260px;
-  padding: 14px 16px; border-radius: var(--radius); background: var(--bg-elev);
+  width: min(360px, 100%); text-align: center;
+  padding: 28px 24px; border-radius: var(--radius); background: var(--bg-elev);
   border: 1px solid var(--accent); box-shadow: var(--shadow-lg);
   animation: incoming-pulse 1.6s ease-in-out infinite;
 }
 @keyframes incoming-pulse {
   0%, 100% { box-shadow: var(--shadow-lg); }
-  50% { box-shadow: var(--shadow-lg), 0 0 0 4px var(--accent-soft); }
+  50% { box-shadow: var(--shadow-lg), 0 0 0 8px var(--accent-soft); }
 }
-.incoming-title { font-weight: 600; margin-bottom: 10px; }
-.incoming-actions { display: flex; gap: 8px; }
-.incoming-accept { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); font-weight: 600; }
+/* Крупный кружок с буквой: лицо звонящего узнаётся раньше, чем прочитано имя. */
+.incoming-avatar {
+  width: 84px; height: 84px; margin: 0 auto 14px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 34px; font-weight: 700;
+  background: var(--accent-soft); color: var(--accent);
+}
+.incoming-who { font-size: 22px; font-weight: 700; word-break: break-word; }
+.incoming-sub {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin-top: 6px; color: var(--text-mut); font-size: var(--fs-sm);
+}
+.incoming-actions { display: flex; gap: 10px; margin-top: 22px; }
+.incoming-actions .btn { flex: 1; justify-content: center; padding: 12px; font-size: 15px; font-weight: 600; }
+.incoming-accept { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
 .incoming-accept:hover { background: var(--ok); color: var(--on-ok); }
 .incoming-decline { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 .incoming-decline:hover { background: var(--fill-danger); color: var(--on-fill); }

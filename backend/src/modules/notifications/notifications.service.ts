@@ -228,6 +228,8 @@ export class NotificationsService {
     tenantId: string, taskId: string, actorId: string | null,
     userId: string, role: 'co_assignee' | 'watcher',
   ): Promise<void> {
+    // Записал в наблюдатели сам себя — письмо об этом не нужно.
+    if (String(userId) === String(actorId ?? '')) return;
     try {
       const [card, person] = await Promise.all([
         this.repo.taskCard(tenantId, taskId),
