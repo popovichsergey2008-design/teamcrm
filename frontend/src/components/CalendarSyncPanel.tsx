@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, CalendarLink } from '../lib/api';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * Синхронизация календаря с Google (и любым другим, понимающим iCalendar).
@@ -69,7 +70,7 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3>Синхронизация календаря</h3>

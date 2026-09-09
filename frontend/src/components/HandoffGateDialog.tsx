@@ -1,4 +1,5 @@
 import { Icon } from './Icon';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * Приёмка работы: что мешает сдать задачу.
@@ -29,7 +30,7 @@ export function HandoffGateDialog({ block, busy, onCancel, onForce }: {
   onForce: () => void;
 }) {
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay" {...overlayProps(onCancel)}>
       <div className="modal-card gate-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Приёмка работы">
         <h3 className="gate-title"><Icon name="alert" size={18} /> Работа сдаётся не полностью</h3>
         <div className="dim gate-hint">

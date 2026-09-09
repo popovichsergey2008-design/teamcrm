@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * Управление клиентами портала: компании, приглашения, привязка проектов.
@@ -81,7 +82,7 @@ export function ClientsPanel({ onClose, embedded = false }: { onClose?: () => vo
   if (embedded) return <div className="clients-embedded">{body}</div>;
 
   return (
-    <div className="drawer-overlay" onClick={close}>
+    <div className="drawer-overlay" {...overlayProps(close)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="handshake" size={18} /> Клиенты и портал</h3>

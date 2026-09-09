@@ -141,6 +141,17 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reload(); }, [taskId]);
+  // Отчёт проверки ИИ ложится в переписку с сервера — обсуждение обязано его показать
+  // сразу, а не после переоткрытия карточки.
+  useEffect(() => {
+    const onExternal = (e: Event) => {
+      const id = (e as CustomEvent<{ taskId?: string }>).detail?.taskId;
+      if (!id || String(id) === String(taskId)) reload();
+    };
+    window.addEventListener('teamcrm:task-chat-reload', onExternal);
+    return () => window.removeEventListener('teamcrm:task-chat-reload', onExternal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
   useEffect(() => {
     api.listUsers()
       .then((team: any[]) => setUsers(team.map((u) => ({ id: String(u.id), fullName: u.fullName }))))

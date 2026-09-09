@@ -80,13 +80,19 @@ export class AiService {
    */
   async generate(
     tenantId: string, system: string, user: string, feature = 'brain',
-    opts?: { promptVersionId?: string | null; model?: string | null; params?: Record<string, unknown> },
+    opts?: {
+      promptVersionId?: string | null; model?: string | null; params?: Record<string, unknown>;
+      /** Скриншоты к запросу: без них проверить «сделано» по картинке невозможно. */
+      images?: { mime: string; base64: string }[];
+    },
   ): Promise<string> {
     const { provider, brainModel } = await this.providerFor(tenantId);
     const masked = maskPII(user).masked;
     const model = opts?.model || brainModel;
     const maxTokens = typeof opts?.params?.max_tokens === 'number' ? (opts.params.max_tokens as number) : undefined;
-    const text = await provider.generate(system, masked, { model: opts?.model || undefined, maxTokens });
+    const text = await provider.generate(system, masked, {
+      model: opts?.model || undefined, maxTokens, images: opts?.images,
+    });
     // Пишем ту модель, которая ОТВЕТИЛА, а не ту, которую просили: при отказе
     // выбранной модели включается фолбэк, и отчёт о расходе показывал бы красивую
     // неправду — «работает gpt-5», хотя отвечала совсем другая.

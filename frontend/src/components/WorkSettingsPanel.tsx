@@ -4,6 +4,7 @@ import { DatePicker } from './DatePicker';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { humanDate, mergeHolidays, ruHolidays, WEEK_DAYS } from '../lib/holidays';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * Рабочее время компании: часы, выходные и праздники.
@@ -64,7 +65,7 @@ export function WorkSettingsPanel({ canManage, onClose }: { canManage: boolean; 
 
   if (!work) {
     return (
-      <div className="drawer-overlay" onClick={onClose}>
+      <div className="drawer-overlay" {...overlayProps(onClose)}>
         <aside className="drawer" onClick={(e) => e.stopPropagation()}>
           <div className="drawer-head">
             <h3><Icon name="clock" size={18} /> Рабочее время</h3>
@@ -95,7 +96,7 @@ export function WorkSettingsPanel({ canManage, onClose }: { canManage: boolean; 
   };
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="clock" size={18} /> Рабочее время</h3>

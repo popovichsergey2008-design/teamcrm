@@ -39,7 +39,7 @@ export function MineFilter({ mode, creatorId, creators, count, inWorkOnly, onCha
   const active = mode !== 'off' || !!creatorId || inWorkOnly;
   const creatorName = creators.find(([id]) => id === creatorId)?.[1];
   const label = creatorName ? `Поставил ${creatorName}`
-    : mode === 'both' ? 'Вся моя работа'
+    : mode === 'both' ? 'Все мои задачи'
       : taskViewLabel(mode) || 'Мои задачи';
 
   /** Выбор — переключатель: повторное нажатие на активный пункт снимает фильтр. */
@@ -75,7 +75,7 @@ export function MineFilter({ mode, creatorId, creators, count, inWorkOnly, onCha
             </button>
           ))}
           <button className={`mine-filter-item ${mode === 'both' ? 'active' : ''}`} onClick={() => pick('both')}>
-            <Icon name="board" size={14} /> Вся моя работа
+            <Icon name="board" size={14} /> Все мои задачи
             <span className="dim">делаю, помогаю и поручил вместе</span>
           </button>
 

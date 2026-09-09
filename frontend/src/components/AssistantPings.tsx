@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { groupPings, pingPreview, urgentPings } from '../lib/pings-view';
 import type { Ping } from '../types';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * «Секретарь напоминает» — то, что сегодня руководитель обходит и спрашивает руками.
@@ -171,7 +172,7 @@ function PingsDrawer({ groups, count, canDismissAll, busyAll, onDismissAll, onCl
   useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="bell" size={18} /> Секретарь напоминает</h3>

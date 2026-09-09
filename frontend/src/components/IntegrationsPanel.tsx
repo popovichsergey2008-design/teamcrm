@@ -10,6 +10,7 @@ import { api, ApiError } from '../lib/api';
 import { AiSettingsSection } from './AiSettingsPanel';
 import { PromptsSection } from './PromptsPanel';
 import { useEscape } from '../hooks/useEscape';
+import { overlayProps } from '../lib/overlay';
 
 /** Интеграции: подключения (Битрикс24) + ключи ИИ + промпты (PromptOps). */
 export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
@@ -40,7 +41,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head"><h3><Icon name="plug" size={18} /> Интеграции</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="tabs">

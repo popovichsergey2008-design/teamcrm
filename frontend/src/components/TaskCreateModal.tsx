@@ -5,6 +5,7 @@ import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
 import { labelTextColor } from '../lib/labels';
 import { navigate } from '../lib/router';
+import { overlayProps } from '../lib/overlay';
 
 interface Props {
   projectId: string;
@@ -137,7 +138,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const finishAfterPartial = () => { onCreated(); onClose(); };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" {...overlayProps(onClose)}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3>Новая задача · {columnName}</h3>

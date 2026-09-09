@@ -3,6 +3,7 @@ import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
+import { overlayProps } from '../lib/overlay';
 
 /** База знаний (Этап 5, K1): семантический поиск + регламенты + реиндекс. */
 export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onClose: () => void }) {
@@ -145,7 +146,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
   };
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head"><h3><Icon name="book" size={18} /> База знаний</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="dim" style={{ fontSize: 12 }}>

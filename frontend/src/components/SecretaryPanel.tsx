@@ -5,6 +5,7 @@ import { EmptyState } from './EmptyState';
 import { SkeletonList } from './Skeleton';
 import type { AiAction, Ping, Proposal } from '../types';
 import { useEscape } from '../hooks/useEscape';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * Журнал «AI Секретаря»: что система сделала за людей сама.
@@ -56,7 +57,7 @@ export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boo
   }, []);
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="sparkles" size={18} /> AI Секретарь</h3>

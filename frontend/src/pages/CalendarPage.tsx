@@ -15,6 +15,7 @@ import {
   startOfDay, timeToFraction,
 } from '../lib/calendar-grid';
 import type { User } from '../types';
+import { overlayProps } from '../lib/overlay';
 
 type View = 'day' | 'week' | 'month' | 'list';
 
@@ -777,7 +778,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
   }));
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="calendar" size={18} /> {isNew ? 'Новое событие' : value.title}</h3>

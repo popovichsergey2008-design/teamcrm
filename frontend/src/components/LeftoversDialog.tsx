@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { api } from '../lib/api';
 import { deadlineBadge } from '../lib/labels';
 import type { Task } from '../types';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * Разбор вчерашних хвостов — первое, что человек видит за день, если вчера что-то не закрыл.
@@ -62,7 +63,7 @@ export function LeftoversDialog({ tasks, today, onClose, onDone }: {
   if (left.length === 0) return null;
 
   return (
-    <div className="drawer-overlay" onClick={() => { markLeftoversSeen(today); onClose(); }}>
+    <div className="drawer-overlay" {...overlayProps(() => { markLeftoversSeen(today); onClose(); })}>
       <div className="leftovers" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Вчерашние задачи">
         <div className="leftovers-head">
           <h3><Icon name="clock" size={18} /> Со вчера осталось: {left.length}</h3>

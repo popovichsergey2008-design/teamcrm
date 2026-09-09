@@ -303,6 +303,17 @@ export const api = {
     if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Upload error');
     return env.data;
   },
+  /**
+   * «Проверить задачу с помощью ИИ»: сверяет постановку с тем, что показали в задаче.
+   *
+   * Ответ ложится в переписку задачи, поэтому наверх возвращаем только вердикт —
+   * им подсвечиваем кнопку и показываем короткое сообщение.
+   */
+  reviewTask: (taskId: string) => request<{
+    verdict: 'done' | 'partial' | 'not_done' | 'cannot_check';
+    summary: string;
+    body: string;
+  }>('POST', `/tasks/${taskId}/review`),
   listChecklist: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/checklist`),
   addChecklist: (taskId: string, text: string) => request<any>('POST', `/tasks/${taskId}/checklist`, { text }),
   patchChecklist: (taskId: string, iid: string, b: { text?: string; isDone?: boolean }) => request<any>('PATCH', `/tasks/${taskId}/checklist/${iid}`, b),

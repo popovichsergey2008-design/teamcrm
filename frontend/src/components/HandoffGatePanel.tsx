@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { api } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import type { GateSettings } from '../types';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * Условия приёмки работы — общие для компании.
@@ -51,7 +52,7 @@ export function HandoffGatePanel({ canManage, onClose }: { canManage: boolean; o
   };
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="check" size={18} /> Приёмка работы</h3>

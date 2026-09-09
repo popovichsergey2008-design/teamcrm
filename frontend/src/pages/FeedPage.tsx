@@ -10,6 +10,7 @@ import { MentionUser, stillMentioned, withMentions } from '../lib/mentions';
 import { api, ApiError } from '../lib/api';
 import { pageWindow } from '../lib/task-registry-view';
 import { useAuth } from '../state/auth';
+import { overlayProps } from '../lib/overlay';
 
 interface Post {
   id: string;
@@ -227,7 +228,7 @@ export function FeedPage() {
       */}
       <div className="feed-scroll">
       {composerOpen && (
-      <div className="modal-overlay" onClick={closeComposer}>
+      <div className="modal-overlay" {...overlayProps(closeComposer)}>
       <div className="modal-card feed-composer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3>{asAnnouncement ? 'Объявление компании' : 'Новость компании'}</h3>
@@ -693,7 +694,7 @@ function PostModal({ post, team, onChanged, onClose }: {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" {...overlayProps(onClose)}>
     <article
       className={`modal-card feed-post feed-post-full ${post.isAnnouncement ? 'announcement' : ''} ${post.isPinned ? 'pinned' : ''}`}
       onClick={(e) => e.stopPropagation()}

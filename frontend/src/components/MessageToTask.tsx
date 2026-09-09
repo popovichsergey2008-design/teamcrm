@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * Задача из сообщения — то, ради чего чат живёт внутри CRM, а не рядом с ней.
@@ -97,7 +98,7 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
   };
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="sparkles" size={16} /> Задача из сообщения</h3>

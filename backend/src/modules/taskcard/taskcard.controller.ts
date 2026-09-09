@@ -8,6 +8,7 @@ import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
 import { TaskAssistantService } from './task-assistant.service';
+import { TaskReviewService } from './task-review.service';
 import { TaskCardService } from './taskcard.service';
 
 class CommentDto {
@@ -49,6 +50,7 @@ export class TaskCardController {
   constructor(
     private readonly svc: TaskCardService,
     private readonly assistant: TaskAssistantService,
+    private readonly review$: TaskReviewService,
   ) {}
 
   // comments
@@ -154,6 +156,18 @@ export class TaskCardController {
   @Post(':id/assistant')
   askAssistant(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AssistantAskDto) {
     return this.assistant.ask(u.tenantId, id, u.userId, dto.question);
+  }
+
+  /**
+   * «Проверить задачу с помощью ИИ».
+   *
+   * Собирает карточку целиком — постановку, чек-лист, переписку, документы и
+   * скриншоты — и сверяет обещанное с показанным. Отчёт ложится в переписку задачи.
+   * Это не приёмка: решение о закрытии остаётся за постановщиком.
+   */
+  @Post(':id/review')
+  review(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.review$.review(u.tenantId, id, u.userId);
   }
 
   /** Принять предложенный ИИ чек-лист — решение человека, а не ИИ. */

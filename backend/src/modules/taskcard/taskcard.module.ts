@@ -3,6 +3,7 @@ import { TasksModule } from '../tasks/tasks.module';
 import { TaskCardController } from './taskcard.controller';
 import { LabelsController } from './labels.controller';
 import { TaskAssistantService } from './task-assistant.service';
+import { TaskReviewService } from './task-review.service';
 import { TaskCardService } from './taskcard.service';
 import { TaskCardRepository } from './taskcard.repository';
 import { IntegrationOutboxModule } from '../integrations/outbox/integration-outbox.module';
@@ -12,7 +13,7 @@ import { KnowledgeModule } from '../knowledge/knowledge.module';
 @Module({
   imports: [TasksModule, IntegrationOutboxModule, NotificationsModule, KnowledgeModule],
   controllers: [TaskCardController, LabelsController],
-  providers: [TaskCardService, TaskCardRepository, TaskAssistantService],
+  providers: [TaskCardService, TaskCardRepository, TaskAssistantService, TaskReviewService],
   exports: [TaskCardRepository, TaskCardService],
 })
 export class TaskCardModule {}

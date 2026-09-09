@@ -12,6 +12,14 @@ const providerLog = new Logger('AiProvider');
 export interface GenerateOpts {
   model?: string;
   maxTokens?: number;
+  /**
+   * Картинки к запросу: скриншоты из задачи, которые модель должна ПОСМОТРЕТЬ.
+   *
+   * Нужны проверке выполнения: «сделал» в задаче обычно доказывают снимком экрана,
+   * и без картинки проверять нечего. Формат общий для обоих провайдеров, различия
+   * в теле запроса живут ниже, в самих вызовах.
+   */
+  images?: { mime: string; base64: string }[];
 }
 
 /** Реплика стенограммы: время от начала записи + текст. */
@@ -196,14 +204,22 @@ export class RealAiProvider implements AiProvider {
 
   /** Вызов OpenAI-совместимого chat/completions (OpenAI и OpenRouter — один формат). Бросает ошибку API. */
   private async chatCompletion(
-    url: string, key: string, model: string, system: string, user: string, maxTokens: number, extraHeaders: Record<string, string> = {},
+    url: string, key: string, model: string, system: string, user: string, maxTokens: number,
+    extraHeaders: Record<string, string> = {}, images: { mime: string; base64: string }[] = [],
   ): Promise<string> {
+    // Картинки идут списком блоков рядом с текстом — формат OpenAI и OpenRouter общий.
+    const content: unknown = images.length
+      ? [
+        { type: 'text', text: user },
+        ...images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.base64}` } })),
+      ]
+      : user;
     const res = await fetch(url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json', ...extraHeaders },
       body: JSON.stringify({
         model, max_tokens: maxTokens,
-        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+        messages: [{ role: 'system', content: system }, { role: 'user', content }],
       }),
     });
     const json: any = await res.json().catch(() => ({}));
@@ -212,11 +228,22 @@ export class RealAiProvider implements AiProvider {
     return json?.choices?.[0]?.message?.content ?? '';
   }
 
-  private async anthropicChat(model: string, system: string, user: string, maxTokens: number): Promise<string> {
+  private async anthropicChat(
+    model: string, system: string, user: string, maxTokens: number,
+    images: { mime: string; base64: string }[] = [],
+  ): Promise<string> {
+    // У Anthropic картинка — блок с base64-источником; порядок «сначала снимки,
+    // потом вопрос» модель понимает лучше, чем наоборот.
+    const content: unknown = images.length
+      ? [
+        ...images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mime, data: i.base64 } })),
+        { type: 'text', text: user },
+      ]
+      : user;
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': this.anthropicKey!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] }),
     });
     const json: any = await res.json().catch(() => ({}));
     if (json?.error) throw new Error(json.error?.message || JSON.stringify(json.error));
@@ -320,14 +347,15 @@ export class RealAiProvider implements AiProvider {
 
     // Упорядоченные попытки: сначала выбранная модель/провайдер, затем ЛЮБОЙ рабочий бэкенд (чтобы
     // из-за неудачной free-модели не сваливаться в mock, когда есть рабочий ключ).
+    const imgs = opts?.images ?? [];
     const attempts: { name: string; usedModel: string; run: () => Promise<string> }[] = [];
-    if (isOpenRouter && this.openrouterKey) attempts.push({ name: `openrouter(${model})`, usedModel: model, run: () => this.chatCompletion(OR_URL, this.openrouterKey!, model, system, user, maxTokens, ORH) });
-    if (this.anthropicKey && (!model || /^claude/i.test(model))) attempts.push({ name: `anthropic(${model || 'default'})`, usedModel: model || 'claude-3-5-sonnet-latest', run: () => this.anthropicChat(model || 'claude-3-5-sonnet-latest', system, user, maxTokens) });
-    if (this.openaiKey && !isOpenRouter) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, usedModel: model || 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens) });
+    if (isOpenRouter && this.openrouterKey) attempts.push({ name: `openrouter(${model})`, usedModel: model, run: () => this.chatCompletion(OR_URL, this.openrouterKey!, model, system, user, maxTokens, ORH, imgs) });
+    if (this.anthropicKey && (!model || /^claude/i.test(model))) attempts.push({ name: `anthropic(${model || 'default'})`, usedModel: model || 'claude-3-5-sonnet-latest', run: () => this.anthropicChat(model || 'claude-3-5-sonnet-latest', system, user, maxTokens, imgs) });
+    if (this.openaiKey && !isOpenRouter) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, usedModel: model || 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens, {}, imgs) });
     // фолбэки на любой доступный ключ
-    if (this.openaiKey) attempts.push({ name: 'openai(fallback)', usedModel: 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens) });
-    if (this.anthropicKey) attempts.push({ name: 'anthropic(fallback)', usedModel: 'claude-3-5-sonnet-latest', run: () => this.anthropicChat('claude-3-5-sonnet-latest', system, user, maxTokens) });
-    if (this.openrouterKey) attempts.push({ name: 'openrouter(fallback)', usedModel: isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', run: () => this.chatCompletion(OR_URL, this.openrouterKey!, isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', system, user, maxTokens, ORH) });
+    if (this.openaiKey) attempts.push({ name: 'openai(fallback)', usedModel: 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens, {}, imgs) });
+    if (this.anthropicKey) attempts.push({ name: 'anthropic(fallback)', usedModel: 'claude-3-5-sonnet-latest', run: () => this.anthropicChat('claude-3-5-sonnet-latest', system, user, maxTokens, imgs) });
+    if (this.openrouterKey) attempts.push({ name: 'openrouter(fallback)', usedModel: isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', run: () => this.chatCompletion(OR_URL, this.openrouterKey!, isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', system, user, maxTokens, ORH, imgs) });
 
     for (const a of attempts) {
       try {

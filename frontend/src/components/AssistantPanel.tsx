@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { api } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import type { AssistantMode } from '../types';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * Режим автономности ассистента.
@@ -85,7 +86,7 @@ export function AssistantPanel({ canManage, onClose }: { canManage: boolean; onC
   };
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="sparkles" size={18} /> Напоминания ассистента</h3>

@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { PeoplePicker } from './PeoplePicker';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * Создание канала.
@@ -46,7 +47,7 @@ export function ChannelModal({ meId, onClose, onCreated }: {
   };
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="hash" size={16} /> Новый канал</h3>

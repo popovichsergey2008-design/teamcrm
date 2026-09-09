@@ -3,6 +3,7 @@ import { Avatar } from './Avatar';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * Создание группового чата: название и состав.
@@ -40,7 +41,7 @@ export function GroupChatModal({ users, meId, onClose, onCreated }: {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" {...overlayProps(onClose)}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head"><h3>Новая группа</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
 

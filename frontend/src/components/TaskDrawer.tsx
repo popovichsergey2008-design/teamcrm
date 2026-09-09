@@ -11,8 +11,12 @@ import { DatePicker } from './DatePicker';
 import { TaskChat } from './TaskChat';
 import { TaskRecurrenceBlock } from './TaskRecurrence';
 import { TaskMergeModal } from './TaskMergeModal';
+import { AuthedMedia } from './AuthedMedia';
+import { MessageText } from './MessageText';
 import { MONETIZATION_ENABLED } from '../config';
 import { labelTextColor } from '../lib/labels';
+import { overlayProps } from '../lib/overlay';
+import { showToast } from '../lib/notifications';
 
 interface Props {
   task: Task;
@@ -251,6 +255,66 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const [moving, setMoving] = useState(false);
   /** Открыто окно объединения: поиск дубля и предпросмотр. */
   const [merging, setMerging] = useState(false);
+  /** Идёт проверка ИИ: она читает вложения и занимает секунды, а не мгновение. */
+  const [reviewing, setReviewing] = useState(false);
+
+  /**
+   * Проверка задачи ИИ.
+   *
+   * Отчёт уходит в переписку задачи — там его увидят все участники, а не только
+   * нажавший. Наверху показываем лишь короткий итог: подробности читаются в чате.
+   */
+  const runReview = async () => {
+    setErr('');
+    setReviewing(true);
+    try {
+      const r = await api.reviewTask(task.id);
+      onRefresh();
+      window.dispatchEvent(new CustomEvent('teamcrm:task-chat-reload', { detail: { taskId: task.id } }));
+      const title = r.verdict === 'done' ? 'ИИ: похоже, сделано'
+        : r.verdict === 'partial' ? 'ИИ: сделано не всё'
+          : r.verdict === 'not_done' ? 'ИИ: подтверждений нет'
+            : 'ИИ: проверить не смог';
+      showToast({ title, body: r.summary || 'Отчёт — в обсуждении задачи', section: 'focus' });
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось проверить задачу');
+    } finally { setReviewing(false); }
+  };
+
+  /** Описание правится по кнопке: по умолчанию его читают, а не редактируют. */
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [descBusy, setDescBusy] = useState(false);
+
+  /**
+   * Скриншот из буфера прямо в описание (Ctrl+V).
+   *
+   * Файл уезжает во вложения задачи, а в текст встаёт ссылка на него — картинка
+   * видна и в описании, и во вкладке «Файлы». Раньше вставить снимок в постановку
+   * было нельзя вовсе: приходилось сохранять его на диск и прикладывать файлом.
+   */
+  const onPasteDesc = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const item = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith('image/'));
+    const file = item?.getAsFile();
+    if (!file) return; // обычный текст вставляется как обычно
+    e.preventDefault();
+    const area = e.currentTarget;
+    const at = area.selectionStart ?? desc.length;
+    setDescBusy(true);
+    try {
+      // Имя со временем: у снимка из буфера его нет вовсе, и в списке файлов
+      // получалась стопка «image.png».
+      const stamp = new Date().toLocaleString('ru-RU').replace(/[:.]/g, '-');
+      const named = new File([file], `Снимок ${stamp}.png`, { type: file.type || 'image/png' });
+      const up = await api.uploadAttachment(task.id, named);
+      // Пустые строки вокруг: вставленный снимок не должен слипаться с текстом.
+      const mark = `\n![${named.name}](/api/files/${up.fileId})\n`;
+      setDesc(`${desc.slice(0, at)}${mark}${desc.slice(at)}`);
+      setFileCount((n) => n + 1);
+      onRefresh();
+    } catch (er) {
+      setErr(er instanceof ApiError ? er.message : 'Не удалось приложить картинку');
+    } finally { setDescBusy(false); }
+  };
   // приёмка работы: сдаём не полностью — сначала показываем, чего не хватает
   const [gate, setGate] = useState<{ block: GateBlock; columnId: string } | null>(null);
   const moveToColumn = async (columnId: string, confirmGate = false) => {
@@ -314,7 +378,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const doneTarget = isDone ? null : targets.find((c) => DONE_RE.test(c.name.trim())) ?? null;
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       {/*
         Карточка и чат стоят рядом постоянно, как в Битриксе: слева задача целиком —
         со всеми полями, статусами и вкладками, справа разговор по ней.
@@ -427,6 +491,21 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               </div>
             )}
             {isDone && <span className="badge badge-ok" title="Задача закрыта"><Icon name="check" size={12} /> завершена</span>}
+            {/*
+              Проверка ИИ.
+
+              Читает постановку, чек-лист, переписку, документы и СМОТРИТ скриншоты,
+              после чего пишет отчёт в переписку задачи. Это не приёмка: задачу
+              по-прежнему закрывает постановщик — ИИ только собирает доводы.
+            */}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={runReview}
+              disabled={reviewing || moving}
+              title="ИИ прочитает задачу, посмотрит вложения и напишет в обсуждение, что проверил"
+            >
+              <Icon name="sparkles" size={14} /> {reviewing ? 'Проверяю…' : 'Проверить ИИ'}
+            </button>
             {/* Объединение — рядом с завершением: это тоже способ закрыть задачу,
                 только не выбрасывая её содержимое. */}
             {!task.merged_into_id && (
@@ -588,8 +667,38 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
             {/* Поля «Название» здесь больше нет: заголовок правится в шапке карточки,
                 а два поля об одном и том же расходились и путали. */}
-            <div className="field"><label>Описание (Markdown)</label>
-              <textarea className="input" rows={5} value={desc} onChange={(e) => setDesc(e.target.value)} />
+            {/*
+              Описание читается, а не редактируется.
+
+              Пока оно было полем ввода, по ссылке в постановке нельзя было щёлкнуть,
+              а картинку — увидеть: текст в textarea можно только выделить и скопировать.
+              Правка включается кнопкой, как в Битриксе.
+            */}
+            <div className="field">
+              <label>
+                Описание
+                <button
+                  className="btn btn-ghost btn-sm desc-edit-btn"
+                  onClick={() => setEditingDesc((v) => !v)}
+                  title={editingDesc ? 'Закончить правку — сохранится общей кнопкой внизу' : 'Изменить описание'}
+                >
+                  <Icon name={editingDesc ? 'check' : 'edit'} size={13} /> {editingDesc ? 'Готово' : 'Редактировать'}
+                </button>
+              </label>
+              {editingDesc ? (
+                <textarea
+                  className="input"
+                  rows={7}
+                  value={desc}
+                  autoFocus
+                  placeholder="Что нужно сделать. Можно вставить скриншот из буфера (Ctrl+V)"
+                  onChange={(e) => setDesc(e.target.value)}
+                  onPaste={onPasteDesc}
+                />
+              ) : (
+                <TaskDescription text={desc} onEmptyClick={() => setEditingDesc(true)} />
+              )}
+              {descBusy && <div className="dim">Загружаю вложение…</div>}
             </div>
             <div className="drawer-section">
               <div className="drawer-section-title">Назначение и план</div>
@@ -949,7 +1058,7 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
 
 function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: () => void; onCount?: (n: number) => void }) {
   const [files, setFiles] = useState<any[]>([]);
-  const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
+  const [preview, setPreview] = useState<{ url: string; name: string; mime: string; own?: boolean } | null>(null);
   const [err, setErr] = useState('');
   /**
    * Что сейчас происходит с файлами.
@@ -996,7 +1105,7 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
       const blob = await api.authedBlob(`/api/files/${f.file_id}`);
       const url = URL.createObjectURL(blob);
       if (blob.type.startsWith('image/') || blob.type.startsWith('video/')) {
-        setPreview({ url, name: f.file_name, mime: blob.type });
+        setPreview({ url, name: f.file_name, mime: blob.type, own: true });
       } else {
         const a = document.createElement('a');
         a.href = url; a.download = f.file_name; a.click();
@@ -1007,9 +1116,16 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
     }
   };
   const closePreview = () => {
-    if (preview) URL.revokeObjectURL(preview.url);
+    // Ссылку освобождаем только свою: у превью из AuthedMedia хозяин другой, и
+    // отозванный блоб оставил бы вместо картинки битый значок.
+    if (preview?.own) URL.revokeObjectURL(preview.url);
     setPreview(null);
   };
+  /** Что показать глазами: картинки и видео. Документы остаются строкой со скачиванием. */
+  const media = files.filter((f: any) => {
+    const t = String(f.content_type ?? '');
+    return t.startsWith('image/') || t.startsWith('video/');
+  });
   return (
     <>
       <div
@@ -1032,6 +1148,26 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
       {busyName && <div className="dim" style={{ marginTop: 8 }}>Загружаю «{busyName}»…</div>}
       {done && <div className="file-ok"><Icon name="check" size={13} /> {done}</div>}
       {err && <div className="error-text" style={{ marginTop: 8 }}>{err}</div>}
+      {/*
+        Картинки и видео показываем сразу, а не строкой с именем файла.
+
+        Запись из чата приезжала в задачу правильно, но выглядела как «Видео-08-09.mp4»,
+        и человек считал, что она не приложилась. Смотреть вложение надо там, где оно
+        лежит, а не после скачивания.
+      */}
+      {media.length > 0 && (
+        <div className="task-media">
+          {media.map((f) => (
+            <AuthedMedia
+              key={f.id}
+              fileId={String(f.file_id)}
+              name={f.file_name}
+              mime={String(f.content_type ?? '')}
+              onOpen={(p) => setPreview(p)}
+            />
+          ))}
+        </div>
+      )}
       {files.map((f) => (
         <div key={f.id} className="team-row team-head">
           <button className="file-link" onClick={() => open(f)}>{f.file_name}</button>
@@ -1044,6 +1180,45 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
       )}
       {preview && <Lightbox url={preview.url} name={preview.name} mime={preview.mime} onClose={closePreview} />}
     </>
+  );
+}
+
+/**
+ * Описание задачи в режиме чтения.
+ *
+ * Ссылки кликаются, картинки видны, текст выделяется и копируется — всё то, чего
+ * нельзя было сделать, пока описание всегда было полем ввода.
+ *
+ * Разметку понимаем ровно одну: `![имя](/api/files/12)` — так сюда попадает
+ * вставленный из буфера снимок. Полноценный Markdown не тащим: описание пишут
+ * люди, а не верстальщики, и лишние правила ломают обычный текст со звёздочками.
+ */
+function TaskDescription({ text, onEmptyClick }: { text: string; onEmptyClick: () => void }) {
+  const body = String(text ?? '');
+  if (!body.trim()) {
+    return (
+      <button className="desc-empty" onClick={onEmptyClick}>
+        Описания нет — нажмите, чтобы добавить
+      </button>
+    );
+  }
+  const IMG = /!\[([^\]]*)\]\(\/api\/files\/(\d+)\)/g;
+  const parts: { kind: 'text' | 'img'; value: string; name?: string }[] = [];
+  let last = 0;
+  for (const m of body.matchAll(IMG)) {
+    const at = m.index ?? 0;
+    if (at > last) parts.push({ kind: 'text', value: body.slice(last, at) });
+    parts.push({ kind: 'img', value: m[2], name: m[1] || 'вложение' });
+    last = at + m[0].length;
+  }
+  if (last < body.length) parts.push({ kind: 'text', value: body.slice(last) });
+
+  return (
+    <div className="task-desc">
+      {parts.map((p, i) => (p.kind === 'img'
+        ? <AuthedMedia key={i} fileId={p.value} name={p.name ?? ''} mime="image/*" className="desc-img" />
+        : <MessageText key={i} text={p.value} className="task-desc-text" />))}
+    </div>
   );
 }
 

@@ -4,6 +4,7 @@ import { EmptyState } from './EmptyState';
 import { SkeletonList } from './Skeleton';
 import { api } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
+import { overlayProps } from '../lib/overlay';
 
 interface FeatureRow {
   feature: string;
@@ -76,7 +77,7 @@ export function AiUsagePanel({ onClose }: { onClose: () => void }) {
   const peak = Math.max(1, ...(data?.byDay ?? []).map((d) => d.tokens));
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="sparkles" size={18} /> Расход ИИ</h3>

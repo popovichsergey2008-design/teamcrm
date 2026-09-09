@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, MergeSide } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
+import { overlayProps } from '../lib/overlay';
 
 type Candidate = Awaited<ReturnType<typeof api.taskMergeCandidates>>['items'][number];
 type Preview = Awaited<ReturnType<typeof api.taskMergePreview>>;
@@ -107,7 +108,7 @@ export function TaskMergeModal({ taskId, taskTitle, onClose, onMerged }: {
   );
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" {...overlayProps(onClose)}>
       <div className="modal-card merge-modal" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="refresh" size={16} /> {preview ? 'Объединить задачи?' : 'Найти похожую задачу'}</h3>

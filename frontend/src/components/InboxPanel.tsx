@@ -3,6 +3,7 @@ import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
+import { overlayProps } from '../lib/overlay';
 
 /** Авто-задачи из переписок: каналы приёма (вебхук) + голосовые заметки + ревью черновиков задач. */
 export function InboxPanel({ onClose }: { onClose: () => void }) {
@@ -101,7 +102,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
   const hookUrl = (token: string) => `${window.location.origin}/api/inbox/hook/${token}`;
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head"><h3><Icon name="inbox" size={18} /> Входящие → задачи</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="dim" style={{ fontSize: 12 }}>Пересылайте письма/сообщения на вебхук канала — ИИ предложит черновик задачи, вы подтверждаете.</div>

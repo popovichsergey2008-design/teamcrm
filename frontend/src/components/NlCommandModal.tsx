@@ -4,6 +4,7 @@ import { api, ApiError, VoiceJob } from '../lib/api';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { DatePicker } from './DatePicker';
 import { VoiceStatus } from './VoiceStatus';
+import { overlayProps } from '../lib/overlay';
 
 /**
  * NL-команда / Zero-UI: сказал или написал обычным языком → готовые черновики → подтвердил.
@@ -172,7 +173,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     .filter((d, i) => !done.includes(i) && d.intent === 'create_task' && d.task?.projectId).length;
 
   return (
-    <div className="drawer-overlay" onClick={onClose}>
+    <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="zap" size={18} /> Быстрая команда</h3>
