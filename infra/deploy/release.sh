@@ -96,13 +96,23 @@ docker compose exec -T crm-web test -f /usr/share/nginx/html/logo-mark.png
 
 # Живой ответ через сам nginx: контейнеры бывают «здоровы» по отдельности, а
 # снаружи при этом 502 — проверяем ровно тот путь, которым ходят люди.
+# Проверяем КОДОМ ВОЗВРАТА, а не разбором заголовков.
+#
+# Первая версия читала заголовки (`wget -qO- -S | awk`) и роняла всю выкладку на
+# ровном месте: с `-q` заголовков нет вовсе, а конвейер под `set -o pipefail`
+# отдавал ненулевой статус — и уже выложенный, полностью рабочий прод считался
+# упавшим. busybox-wget и так возвращает ошибку на любой ответ, кроме успешного.
 say "проверяем ответ снаружи"
+ok=0
 for i in $(seq 1 10); do
-  code="$(docker compose exec -T crm-edge wget -qO- -S http://127.0.0.1/healthz 2>&1 | awk '/HTTP\//{print $2; exit}')"
-  if [ "$code" = "200" ]; then break; fi
-  if [ "$i" = "10" ]; then say "nginx не отвечает 200 на /healthz"; exit 1; fi
+  if docker compose exec -T crm-edge wget -q -O /dev/null http://127.0.0.1/healthz; then ok=1; break; fi
+  say "nginx ещё не отвечает (попытка $i из 10)"
   sleep 2
 done
+if [ "$ok" != "1" ]; then
+  say "nginx не отвечает на /healthz — смотрите логи crm-edge"
+  exit 1
+fi
 
 docker compose ps
 say "готово"
