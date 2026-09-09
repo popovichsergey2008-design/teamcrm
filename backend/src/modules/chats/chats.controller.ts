@@ -54,6 +54,10 @@ class CreateExternalDto {
 class AddMembersDto {
   @IsArray() @IsString({ each: true }) userIds!: string[];
 }
+class MessageEditDto {
+  @IsString() @MaxLength(4000) body!: string;
+}
+
 class RenameDto {
   @IsString() @MaxLength(160) title!: string;
 }
@@ -324,6 +328,17 @@ export class ChatsController {
   @Post(':id/read')
   read(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.chats.markRead(u.tenantId, id, u);
+  }
+
+  /** Правка своего сообщения: опечатку исправляют, а не переписывают следом. */
+  @Patch(':id/messages/:messageId')
+  editMessage(
+    @CurrentUser() u: AuthUser,
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @Body() dto: MessageEditDto,
+  ) {
+    return this.chats.editMessage(u.tenantId, id, messageId, u, dto.body);
   }
 
   @Delete(':id/messages/:messageId')

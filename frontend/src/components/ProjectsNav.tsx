@@ -38,6 +38,8 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
   const [creating, setCreating] = useState('');
   const [err, setErr] = useState('');
   const newRef = useRef<HTMLInputElement>(null);
+  /** Что перетаскиваем прямо сейчас: порядок досок — общий для компании. */
+  const [dragged, setDragged] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem(EXPANDED_KEY) || '[]')); } catch { return new Set(); }
   });
@@ -140,6 +142,48 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
     }
   };
 
+  /**
+   * Перетащили доску — сохраняем новый порядок целиком.
+   *
+   * Порядок общий для компании: доски это общая рабочая поверхность, и «у меня
+   * по-другому» мешает договариваться, где что лежит.
+   */
+  const dropOn = async (targetId: string) => {
+    if (!dragged || dragged === targetId) return;
+    const ids = projects.filter((p) => p.status !== 'archived').map((p) => String(p.id));
+    const from = ids.indexOf(dragged);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    ids.splice(to, 0, ...ids.splice(from, 1));
+    setDragged(null);
+    // порядок применяем сразу: перестановка должна ощущаться мгновенно
+    setProjects((prev) => [...prev].sort((a2, b2) => {
+      const ia = ids.indexOf(String(a2.id));
+      const ib = ids.indexOf(String(b2.id));
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+    }));
+    try { await api.saveProjectOrder(ids); } catch { void reload(); }
+  };
+
+  /** «Основная доска»: такие всегда идут первыми, что бы ни принёс очередной импорт. */
+  const toggleDefault = async (p: Project) => {
+    try {
+      await api.setProjectDefault(String(p.id), !p.is_default);
+      await reload();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось изменить');
+    }
+  };
+
+  /** Вернуть понятный порядок: основные наверх, остальные по алфавиту. */
+  const resetOrder = async () => {
+    try {
+      setProjects(await api.resetProjectOrder());
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось упорядочить');
+    }
+  };
+
   const archivedCount = projects.filter((p) => p.status === 'archived').length;
   const shown = projects.filter((p) => (tab === 'archived' ? p.status === 'archived' : p.status !== 'archived'));
   const local = shown.filter((p) => !p.origin_connection_id);
@@ -162,8 +206,13 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
   const row = (p: Project, nested = false) => (
     <div
       key={p.id}
-      className={`project-row ${String(p.id) === String(currentId) ? 'active' : ''} ${p.status === 'archived' ? 'project-archived' : ''}`}
+      className={`project-row ${String(p.id) === String(currentId) ? 'active' : ''} ${p.status === 'archived' ? 'project-archived' : ''}${p.is_default ? ' project-default' : ''}`}
       style={nested ? { paddingLeft: 18 } : undefined}
+      // Перетаскивание доступно тем, кто ведёт проекты; порядок общий для компании.
+      draggable={canManage && tab === 'active'}
+      onDragStart={() => setDragged(String(p.id))}
+      onDragOver={(e) => { if (canManage && dragged) e.preventDefault(); }}
+      onDrop={() => dropOn(String(p.id))}
     >
       <button className="project-item" onClick={() => open(p.id)}>
         {p.name}
@@ -181,6 +230,17 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
       </button>
       {canManage && (
         <>
+          {/* Звезда — «основная доска компании». Отмеченные всегда идут первыми,
+              и после импорта чужих досок свои остаются на виду. */}
+          {tab === 'active' && (
+            <button
+              className={`project-del${p.is_default ? ' project-star-on' : ''}`}
+              title={p.is_default ? 'Убрать из основных досок' : 'Сделать основной доской — всегда первой в списке'}
+              onClick={() => toggleDefault(p)}
+            >
+              <Icon name="star" size={13} />
+            </button>
+          )}
           <button
             className="project-del"
             title={p.status === 'archived' ? 'Вернуть из архива' : 'Убрать в архив (данные сохранятся)'}
@@ -233,6 +293,19 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
             ? 'Проектов пока нет — создайте первый ниже.'
             : 'Вас пока не добавили ни в один проект.'}
         </div>
+      )}
+
+      {/*
+        «Порядок по умолчанию».
+
+        После импорта из YouGile и Битрикса список превращается в кашу: чужие доски
+        вперемешку со своими. Одно нажатие возвращает понятный вид — основные доски
+        наверх, остальные по алфавиту. Задачи и сами доски при этом не трогаются.
+      */}
+      {canManage && tab === 'active' && projects.length > 2 && (
+        <button className="nav-projects-order" onClick={resetOrder} title="Основные доски — наверх, остальные по алфавиту. Порядок общий для компании">
+          <Icon name="list" size={12} /> Порядок по умолчанию
+        </button>
       )}
 
       {canManage && tab === 'active' && (

@@ -42,6 +42,10 @@ export interface Project {
   origin_portal?: string | null;
   /** Сколько нового в МОИХ задачах этого проекта — цифра рядом с ним в панели. */
   unread?: number;
+  /** Основная доска компании: такие всегда первыми в списке. */
+  is_default?: boolean;
+  /** Место в общем порядке досок: меньше — выше. */
+  sort_order?: number;
 }
 
 export interface Task {

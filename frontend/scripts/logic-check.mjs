@@ -655,6 +655,17 @@ test('разбор сообщения: упоминания, ссылки, ск�
   assert.deepEqual(kinds(''), []);
   assert.deepEqual(kinds('почта a@b.ru'), ['text:почта a@b.ru'], 'адрес почты упоминанием не считается');
 
+  // Ссылку вставляют как придётся: со схемой, с www и просто доменом. Кликается всё.
+  assert.deepEqual(kinds('открой teamsmrt.com/projects/130'), ['text:открой ', 'link:teamsmrt.com/projects/130']);
+  assert.deepEqual(kinds('www.example.com'), ['link:www.example.com']);
+  // ...но голый домен без пути ссылкой не считается — иначе ими станут «т.д.» и «5.5»
+  assert.deepEqual(kinds('и т.д. в 5.5 раза'), ['text:и т.д. в 5.5 раза']);
+
+  const { hrefOf } = await load('lib/chat-text.ts');
+  assert.equal(hrefOf('https://a.ru/x'), 'https://a.ru/x');
+  // без схемы href считается адресом ВНУТРИ приложения — дописываем протокол
+  assert.equal(hrefOf('teamsmrt.com/x'), 'https://teamsmrt.com/x');
+
   const now = new Date(2026, 8, 2, 12, 0);
   assert.equal(dayLabel(new Date(2026, 8, 2, 9, 0).toISOString(), now), 'Сегодня');
   assert.equal(dayLabel(new Date(2026, 8, 1, 9, 0).toISOString(), now), 'Вчера');

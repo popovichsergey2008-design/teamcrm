@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { ProjectsService } from './projects.service';
-import { ColumnDto, CreateProjectDto, MoveColumnDto, ReorderColumnsDto } from './projects.dto';
+import { ColumnDto, CreateProjectDto, MoveColumnDto, ProjectDefaultDto, ProjectOrderDto, ReorderColumnsDto } from './projects.dto';
 
 @ApiTags('projects')
 @ApiBearerAuth()
@@ -16,6 +16,30 @@ export class ProjectsController {
   @Get()
   list(@CurrentUser() user: AuthUser, @Query('archived') archived?: string) {
     return this.projects.list(user.tenantId, user.role, archived === '1' || archived === 'true', user.userId);
+  }
+
+  /**
+   * Порядок досок в списке. Маршруты стоят выше `:id`-путей: слово «order» не
+   * должно приниматься за номер проекта — теми же граблями отличился реестр задач.
+   */
+  @Post('order')
+  @Roles('owner', 'manager')
+  saveOrder(@CurrentUser() user: AuthUser, @Body() dto: ProjectOrderDto) {
+    return this.projects.saveOrder(user.tenantId, dto.ids);
+  }
+
+  /** Вернуть понятный порядок: основные доски наверх, остальные по алфавиту. */
+  @Post('order/default')
+  @Roles('owner', 'manager')
+  resetOrder(@CurrentUser() user: AuthUser) {
+    return this.projects.resetOrder(user.tenantId, user.role, user.userId);
+  }
+
+  /** Пометить доску основной или снять пометку. */
+  @Post(':id/default')
+  @Roles('owner', 'manager')
+  setDefault(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ProjectDefaultDto) {
+    return this.projects.setDefault(user.tenantId, id, dto.isDefault);
   }
 
   /**

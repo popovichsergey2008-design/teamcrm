@@ -834,6 +834,23 @@ export const api = {
     request<any>('POST', `/chats/${chatId}/messages/${messageId}/task/draft`, {}),
   createTaskFromMessage: (chatId: string, messageId: string, task: Record<string, unknown>) =>
     request<{ taskId: string; title: string; projectId: string }>('POST', `/chats/${chatId}/messages/${messageId}/task`, task),
+  /**
+   * Порядок досок — общий для компании.
+   *
+   * `saveProjectOrder` сохраняет перетаскивание, `setProjectDefault` помечает доску
+   * основной (такие всегда первыми), `resetProjectOrder` возвращает понятный вид
+   * после импорта: основные наверх, остальные по алфавиту.
+   */
+  saveProjectOrder: (ids: string[]) => request<{ saved: number }>('POST', '/projects/order', { ids }),
+  resetProjectOrder: () => request<import('../types').Project[]>('POST', '/projects/order/default'),
+  setProjectDefault: (id: string, isDefault: boolean) =>
+    request<{ isDefault: boolean }>('POST', `/projects/${id}/default`, { isDefault }),
+
+  /** Правка своего сообщения: помечается как изменённое, чужие править нельзя. */
+  editMessage: (chatId: string, messageId: string, body: string) =>
+    request<{ edited: boolean; body: string }>('PATCH', `/chats/${chatId}/messages/${messageId}`, { body }),
+  deleteMessage: (chatId: string, messageId: string) =>
+    request<{ deleted: boolean }>('DELETE', `/chats/${chatId}/messages/${messageId}`),
   /** Что за сущность стоит за чатом: проект, статус, сколько задач горит. */
   chatContext: (chatId: string) => request<{
     project_id: string | null; project_name: string | null; status: string | null;

@@ -18,6 +18,7 @@ import { Lightbox } from '../components/Lightbox';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { remindLabel, remindOptions } from '../lib/remind-times';
 import { MentionField } from '../components/MentionField';
+import { MessageText } from '../components/MessageText';
 import { MessageToTask } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
@@ -57,6 +58,10 @@ interface Message {
   task_title?: string | null;
   /** Проект задачи: адрес задачи без него не собрать — ссылка уводила в список проектов. */
   task_project_id?: string | null;
+  /** Сколько собеседников прочитали сообщение и сколько их всего — для галочек. */
+  read_by?: number;
+  others?: number;
+  edited_at?: string | null;
 }
 
 /** Строка раздела «Треды». */
@@ -175,6 +180,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   } | null>(null);
   /** Из какого сообщения делаем задачу: окно с черновиком от ИИ. */
   const [toTask, setToTask] = useState<Message | null>(null);
+  /** Какое сообщение сейчас правим и что в поле правки. */
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
   /** Что за сущность стоит за чатом — показывается в шапке. */
   const [ctx, setCtx] = useState<{
     project_id: string | null; project_name: string | null; status: string | null;
@@ -340,6 +348,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       setMessages((prev) => prev.map((m) => (String(m.id) === String(p.messageId)
         ? { ...m, task_id: String(p.taskId), task_title: p.title, task_project_id: p.projectId ?? null } : m)));
     };
+    // сообщение поправили в другой вкладке или у собеседника
+    const onEdited = (p: { chatId: string; messageId: string; body: string }) => {
+      if (String(p.chatId) !== String(activeId)) return;
+      setMessages((prev) => prev.map((m) => (String(m.id) === String(p.messageId)
+        ? { ...m, body: p.body, edited_at: new Date().toISOString() } : m)));
+    };
+    socket.on('chat.message_edited', onEdited);
     socket.on('chat.task_linked', onTaskLinked);
     socket.on('chat.reminder', onReminder);
     socket.on('chat.mention', onMention);
@@ -349,6 +364,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     socket.on('chat.created', reload);
     socket.on('chat.removed', onRemoved);
     return () => {
+      socket.off('chat.message_edited', onEdited);
       socket.off('chat.task_linked', onTaskLinked);
       socket.off('chat.reminder', onReminder);
       socket.off('chat.mention', onMention);
@@ -551,6 +567,32 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     navigate(m.task_project_id
       ? { section: 'projects', projectId: String(m.task_project_id), taskId: String(m.task_id) }
       : { section: 'projects' });
+  };
+
+  /** Сохранить правку сообщения. Пустой текст — это удаление, и оно отдельной кнопкой. */
+  const saveEdit = async (messageId: string) => {
+    if (!activeId) return;
+    const text = editText.trim();
+    if (!text) return;
+    try {
+      await api.editMessage(activeId, messageId, text);
+      setMessages((prev) => prev.map((m) => (String(m.id) === messageId
+        ? { ...m, body: text, edited_at: new Date().toISOString() } : m)));
+      setEditing(null);
+    } catch (e) {
+      showToast({ title: 'Не удалось изменить', body: e instanceof ApiError ? e.message : 'Ошибка', section: 'chat' });
+    }
+  };
+
+  const removeMessage = async (messageId: string) => {
+    if (!activeId) return;
+    if (!window.confirm('Удалить сообщение? У собеседников оно тоже исчезнет.')) return;
+    try {
+      await api.deleteMessage(activeId, messageId);
+      setMessages((prev) => prev.filter((m) => String(m.id) !== messageId));
+    } catch (e) {
+      showToast({ title: 'Не удалось удалить', body: e instanceof ApiError ? e.message : 'Ошибка', section: 'chat' });
+    }
   };
 
   const openThread = async (rootId: string) => {
@@ -1219,7 +1261,30 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                         )}
                         {m.pinned_at && <span className="chat-pin-mark" title="Закреплено в шапке чата"><Icon name="flag" size={11} /></span>}
                         {!mine && !m.is_ai && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
-                        {m.body && <div className="chat-body">{m.body}</div>}
+                        {/* Ссылку в переписке нажимают, а не выделяют и копируют:
+                            разбор тот же, что в карточке задачи. */}
+                        {m.body && editing !== String(m.id) && <MessageText text={m.body} className="chat-body" />}
+                        {/* Правка своего сообщения — прямо в пузыре: уводить человека
+                            в отдельное окно ради опечатки незачем. */}
+                        {editing === String(m.id) && (
+                          <div className="chat-edit">
+                            <textarea
+                              className="input"
+                              value={editText}
+                              autoFocus
+                              rows={2}
+                              onChange={(e) => setEditText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void saveEdit(String(m.id)); }
+                                if (e.key === 'Escape') setEditing(null);
+                              }}
+                            />
+                            <div className="chat-edit-actions">
+                              <button className="btn btn-primary btn-sm" onClick={() => saveEdit(String(m.id))}>Сохранить</button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Отмена</button>
+                            </div>
+                          </div>
+                        )}
                         {/* Ссылкой файл открыть было нельзя: он за авторизацией и отдавал 401.
                             Картинка теперь видна сразу, остальное скачивается по нажатию. */}
                         {m.file_id && (
@@ -1249,6 +1314,33 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
                       <div className="chat-under">
                         <span className="chat-time">{timeOf(m.created_at)}</span>
+                        {m.edited_at && <span className="dim chat-under-mark" title="Сообщение изменено">изменено</span>}
+                        {/*
+                          Две галочки — как в мессенджерах: одна «отправлено», две
+                          «прочитали все собеседники». Считается по отметке «был в чате
+                          после этого сообщения»: отдельной записи на каждое прочтение
+                          ради галочки заводить незачем.
+
+                          В чате проекта участников поимённо нет — там показываем одну
+                          галочку и не врём про прочтение.
+                        */}
+                        {mine && !m.is_ai && (
+                          (m.others ?? 0) > 0 && (m.read_by ?? 0) >= (m.others ?? 0) ? (
+                            <span className="chat-ticks read" title={`Прочитали все (${m.read_by})`}>
+                              <Icon name="check" size={12} /><Icon name="check" size={12} />
+                            </span>
+                          ) : (
+                            <span
+                              className="chat-ticks"
+                              title={(m.others ?? 0) > 0
+                                ? `Прочитали ${m.read_by ?? 0} из ${m.others}`
+                                : 'Отправлено'}
+                            >
+                              <Icon name="check" size={12} />
+                              {(m.read_by ?? 0) > 0 && <Icon name="check" size={12} />}
+                            </span>
+                          )
+                        )}
 
                         {/*
                           Три значка вместо шести подписей.
@@ -1299,6 +1391,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
                           {menuFor === String(m.id) && (
                             <span className="msg-menu" role="menu">
+                              {/* Своё сообщение можно поправить и убрать. Чужое — нет:
+                                  переписывать чужие слова не вправе никто. */}
+                              {mine && (
+                                <button
+                                  className="msg-menu-item"
+                                  onClick={() => { setMenuFor(null); setEditing(String(m.id)); setEditText(String(m.body ?? '')); }}
+                                >
+                                  <Icon name="edit" size={13} /> Изменить
+                                </button>
+                              )}
+                              {mine && (
+                                <button className="msg-menu-item" onClick={() => { setMenuFor(null); removeMessage(String(m.id)); }}>
+                                  <Icon name="trash" size={13} /> Удалить
+                                </button>
+                              )}
                               <button className="msg-menu-item" onClick={() => { setMenuFor(null); togglePin(m); }}>
                                 <Icon name="flag" size={13} /> {m.pinned_at ? 'Открепить' : 'Закрепить'}
                               </button>

@@ -44,6 +44,9 @@ export interface MessageRow {
   task_title?: string | null;
   /** Проект задачи: без него ссылка «Задача #N» вела в список проектов, а не в саму задачу. */
   task_project_id?: string | null;
+  /** Сколько собеседников уже прочитали это сообщение и сколько их всего. */
+  read_by?: number;
+  others?: number;
   /** Сколько ответов в ветке этого сообщения и когда был последний. */
   reply_count?: number;
   last_reply_at?: Date | null;
@@ -201,6 +204,15 @@ export class ChatsRepository {
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.is_ai, m.guest_name,
+              -- Две галочки, как в мессенджерах: сколько СОБЕСЕДНИКОВ уже открывали
+              -- чат после этого сообщения и сколько их всего. Считаем от отметки
+              -- «был здесь» (last_read_at) — отдельной таблицы прочтений на каждое
+              -- сообщение ради галочки заводить незачем.
+              (SELECT COUNT(*)::int FROM chat_members cm
+                WHERE cm.chat_id = m.chat_id AND cm.user_id <> m.author_id
+                  AND cm.last_read_at IS NOT NULL AND cm.last_read_at >= m.created_at) AS read_by,
+              (SELECT COUNT(*)::int FROM chat_members cm2
+                WHERE cm2.chat_id = m.chat_id AND cm2.user_id <> m.author_id) AS others,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -230,6 +242,15 @@ export class ChatsRepository {
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.is_ai, m.guest_name,
+              -- Две галочки, как в мессенджерах: сколько СОБЕСЕДНИКОВ уже открывали
+              -- чат после этого сообщения и сколько их всего. Считаем от отметки
+              -- «был здесь» (last_read_at) — отдельной таблицы прочтений на каждое
+              -- сообщение ради галочки заводить незачем.
+              (SELECT COUNT(*)::int FROM chat_members cm
+                WHERE cm.chat_id = m.chat_id AND cm.user_id <> m.author_id
+                  AND cm.last_read_at IS NOT NULL AND cm.last_read_at >= m.created_at) AS read_by,
+              (SELECT COUNT(*)::int FROM chat_members cm2
+                WHERE cm2.chat_id = m.chat_id AND cm2.user_id <> m.author_id) AS others,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -705,6 +726,20 @@ export class ChatsRepository {
     );
   }
 
+  /**
+   * Правка своего сообщения.
+   *
+   * Помечаем `edited_at`: молча подменённый текст — худшее, что можно сделать с
+   * перепиской, на которую потом ссылаются. Собеседник должен видеть, что правили.
+   */
+  async editMessage(tenantId: string, id: string, body: string): Promise<void> {
+    await this.db.query(
+      `UPDATE chat_messages SET body=$3, edited_at=now()
+        WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL`,
+      [tenantId, id, body],
+    );
+  }
+
   /** Связать сообщение с задачей — в обе стороны сразу, чтобы связь не осталась однобокой. */
   async linkTask(tenantId: string, messageId: string, taskId: string): Promise<void> {
     await this.db.query(`UPDATE chat_messages SET task_id=$3 WHERE tenant_id=$1 AND id=$2`, [tenantId, messageId, taskId]);
@@ -824,8 +859,10 @@ export class ChatsRepository {
   }
 
   message(tenantId: string, id: string) {
-    return this.db.one<{ id: string; chat_id: string; author_id: string | null }>(
-      `SELECT id, chat_id, author_id FROM chat_messages WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+    // file_id нужен правке: сообщение из одного вложения без подписи — законное,
+    // и стереть в нём текст можно, а вот пустое текстовое сообщение — нет.
+    return this.db.one<{ id: string; chat_id: string; author_id: string | null; file_id: string | null }>(
+      `SELECT id, chat_id, author_id, file_id FROM chat_messages WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
   }
 
   async softDelete(id: string): Promise<void> {

@@ -218,4 +218,43 @@ describe('Чаты команды (e2e)', () => {
     await http$.delete(`/api/chats/${chat.id}/messages/${msg.id}`).set(H(mateLogin.accessToken)).expect(403);
     await http$.delete(`/api/chats/${chat.id}/messages/${msg.id}`).set(H(owner.accessToken)).expect(200);
   });
+
+  it('правка своего сообщения и галочки «прочитано»', async () => {
+    const email = `ed_${uniq()}@t.test`;
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'ED', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+    const mateEmail = `edm_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const mateLogin = (await http$.post('/api/auth/login')
+      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+
+    const chat = (await http$.post('/api/chats/dm').set(H(owner.accessToken)).send({ userId: mate.id }).expect(201)).body.data;
+    const msg = (await http$.post(`/api/chats/${chat.id}/messages`).set(H(owner.accessToken))
+      .send({ body: 'превет' }).expect(201)).body.data;
+
+    // чужое сообщение править нельзя — это не про права руководителя, а про чужие слова
+    await http$.patch(`/api/chats/${chat.id}/messages/${msg.id}`).set(H(mateLogin.accessToken))
+      .send({ body: 'подменил' }).expect(403);
+    // пустой текст — это удаление, и делается оно отдельной кнопкой
+    await http$.patch(`/api/chats/${chat.id}/messages/${msg.id}`).set(H(owner.accessToken))
+      .send({ body: '   ' }).expect(400);
+
+    await http$.patch(`/api/chats/${chat.id}/messages/${msg.id}`).set(H(owner.accessToken))
+      .send({ body: 'привет' }).expect(200);
+
+    // до того как собеседник открыл чат — одна галочка (прочитавших ноль)
+    let list = (await http$.get(`/api/chats/${chat.id}/messages`).set(H(owner.accessToken)).expect(200)).body.data;
+    let mine = list.find((m: any) => String(m.id) === String(msg.id));
+    expect(mine.body).toBe('привет');
+    expect(mine.edited_at).not.toBeNull();
+    expect(mine.others).toBe(1);
+    expect(mine.read_by).toBe(0);
+
+    // собеседник открыл чат — сообщение прочитано
+    await http$.get(`/api/chats/${chat.id}/messages`).set(H(mateLogin.accessToken)).expect(200);
+    list = (await http$.get(`/api/chats/${chat.id}/messages`).set(H(owner.accessToken)).expect(200)).body.data;
+    mine = list.find((m: any) => String(m.id) === String(msg.id));
+    expect(mine.read_by).toBe(1);
+  });
 });

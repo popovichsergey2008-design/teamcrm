@@ -69,4 +69,42 @@ describe('Enhancements v1 — Project delete (e2e)', () => {
     const list = (await http.get('/api/projects').set(H(tok)).expect(200)).body.data;
     expect(list.find((p: any) => String(p.id) === String(proj.id))).toBeUndefined();
   });
+
+  /*
+    Порядок досок.
+
+    Проверка стоит последней и заводит свою организацию: порядок общий на компанию,
+    и любая доска, созданная соседним случаем, сдвигала бы здесь номера.
+  */
+  it('порядок досок: перетаскивание, основные первыми, возврат к умолчанию', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'Порядок', email: `ord_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .expect(201)).body.data;
+    const tok = owner.accessToken;
+
+    const make = async (name: string) =>
+      (await http.post('/api/projects').set(H(tok)).send({ name }).expect(201)).body.data;
+    const beta = await make('Бета');
+    const alpha = await make('Альфа');
+    const omega = await make('Омега');
+
+    const names = async () => (await http.get('/api/projects').set(H(tok)).expect(200))
+      .body.data.map((p: any) => p.name);
+
+    // по умолчанию — новые сверху, как было до порядка
+    expect(await names()).toEqual(['Омега', 'Альфа', 'Бета']);
+
+    // перетащили: порядок задаётся присланным списком
+    await http.post('/api/projects/order').set(H(tok))
+      .send({ ids: [String(beta.id), String(omega.id), String(alpha.id)] }).expect(201);
+    expect(await names()).toEqual(['Бета', 'Омега', 'Альфа']);
+
+    // основная доска всегда первая, что бы ни было в порядке
+    await http.post(`/api/projects/${alpha.id}/default`).set(H(tok)).send({ isDefault: true }).expect(201);
+    expect(await names()).toEqual(['Альфа', 'Бета', 'Омега']);
+
+    // «порядок по умолчанию»: основные наверх, остальные по алфавиту
+    const reset = (await http.post('/api/projects/order/default').set(H(tok)).expect(201)).body.data;
+    expect(reset.map((p: any) => p.name)).toEqual(['Альфа', 'Бета', 'Омега']);
+  });
 });

@@ -161,6 +161,26 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
   const userName = (id?: string | null) => users.find((u) => u.id === id)?.fullName ?? '—';
 
+  /*
+    Ctrl+S и Ctrl+Enter сохраняют карточку.
+
+    Полоса сохранения внизу липкая, но карточка длинная: человек правит поле в
+    середине и не видит, что кнопка зажглась. Привычное сочетание закрывает это
+    без единого движения мышью — и работает из любого поля карточки.
+  */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key !== 's' && e.key !== 'S' && e.key !== 'Enter') return;
+      if (!dirty || saving) return;
+      e.preventDefault();
+      void saveAll(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, saving, title, desc, assigneeId, managerId, priority, estimate, deadline, approval]);
+
   /**
    * Сохранить карточку целиком.
    *
@@ -312,8 +332,32 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           />
         )}
         <div className="drawer-head">
-          <h3>
-            {task.title}
+          {/*
+            Заголовок правится прямо здесь.
+
+            Так сделано в Битриксе, и это правильно: название — первое, что человек
+            читает и первое, что хочет поправить. Отдельное поле «Название» ниже по
+            карточке дублировало его и заставляло искать, где же настоящее.
+
+            Поле растёт под текст: длинное название иначе уезжает за край одной
+            строкой, и прочитать его можно только стрелками.
+          */}
+          <h3 className="drawer-title">
+            <textarea
+              className="drawer-title-input"
+              value={title}
+              rows={1}
+              placeholder="Название задачи"
+              onChange={(e) => setTitle(e.target.value)}
+              onInput={(e) => {
+                const el = e.currentTarget;
+                el.style.height = 'auto';
+                el.style.height = `${el.scrollHeight}px`;
+              }}
+              ref={(el) => {
+                if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }
+              }}
+            />
             {/* Номер нужен человеку, а не системе: по нему задачу называют боту
                 в ежедневном отчёте и в переписке. Клик копирует — переписывать
                 цифры с экрана руками никто не должен. */}
@@ -542,9 +586,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               </div>
             )}
 
-            <div className="field"><label>Название</label>
-              <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
-            </div>
+            {/* Поля «Название» здесь больше нет: заголовок правится в шапке карточки,
+                а два поля об одном и том же расходились и путали. */}
             <div className="field"><label>Описание (Markdown)</label>
               <textarea className="input" rows={5} value={desc} onChange={(e) => setDesc(e.target.value)} />
             </div>
@@ -636,7 +679,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
         <div className={`task-save-bar${dirty ? ' is-dirty' : ''}`}>
           <span className="task-save-note">
             {dirty
-              ? 'Есть несохранённые правки'
+              ? 'Есть несохранённые правки — Ctrl+S или «Сохранить»'
               : 'Всё сохранено. Файлы, метки, люди и чек-лист сохраняются сразу'}
           </span>
           <button className="btn btn-primary" onClick={() => saveAll(false)} disabled={!dirty || saving}>

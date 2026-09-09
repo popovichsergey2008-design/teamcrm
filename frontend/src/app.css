@@ -752,6 +752,20 @@
 }
 
 /* ── проекты внутри меню ── */
+/* Основная доска компании: помечена звездой и всегда сверху. */
+.project-star-on { color: var(--warn); }
+.project-default .project-item { font-weight: 600; }
+/* «Порядок по умолчанию» — мелкой строкой под списком: нажимают её редко, а место
+   в панели она занимала бы каждый день. */
+.nav-projects-order {
+  display: flex; align-items: center; gap: 5px; width: 100%;
+  border: none; background: none; color: var(--text-mut);
+  font-size: 12px; cursor: pointer; padding: 4px 10px; text-align: left;
+}
+.nav-projects-order:hover { color: var(--text); }
+.nav-projects-order:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Перетаскивание доски: курсор обещает, что строку можно взять. */
+.project-row[draggable="true"] .project-item { cursor: grab; }
 .nav-projects { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px; }
 .nav-projects-tabs { display: flex; gap: 4px; margin: 2px 8px 6px; border-bottom: 1px solid var(--border); }
 .nav-projects-tabs button {
@@ -1464,12 +1478,34 @@
   подсвечена; когда всё сохранено, остаётся спокойной строкой состояния.
 */
 .task-save-bar {
-  position: sticky; bottom: -20px; z-index: 5;
+  /* bottom: 0, а не -20px: при отрицательном значении полоса подъезжала под край
+     карточки, и «Сохранить» приходилось искать прокруткой — ровно та жалоба,
+     из-за которой правки казались непринимающимися. */
+  position: sticky; bottom: 0; z-index: 5;
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin: 14px -20px -20px; padding: 10px 20px;
   background: var(--bg-elev); border-top: 1px solid var(--border);
 }
-.task-save-bar.is-dirty { border-top-color: var(--accent); }
+/* Несохранённое видно боковым зрением: одной рамки для этого мало. */
+.task-save-bar.is-dirty { border-top-color: var(--accent); background: var(--accent-soft); }
+.task-save-bar.is-dirty .task-save-note { color: var(--accent); font-weight: 600; }
+
+/*
+  Заголовок задачи правится на месте.
+
+  Поле выглядит заголовком, а не полем ввода: рамка появляется по наведению и
+  фокусу. Иначе шапка карточки превращается в форму, хотя чаще её просто читают.
+*/
+.drawer-title { display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0; }
+.drawer-title-input {
+  flex: 1; min-width: 0; resize: none; overflow: hidden;
+  font: inherit; color: inherit; line-height: 1.3;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm);
+  padding: 2px 6px; margin: -2px -6px;
+}
+.drawer-title-input:hover { border-color: var(--border); }
+.drawer-title-input:focus { outline: none; border-color: var(--accent); background: var(--bg-elev); }
+.drawer-title-input::placeholder { color: var(--text-mut); font-weight: 400; }
 .task-save-note { font-size: var(--fs-xs); color: var(--text-mut); }
 .task-save-bar.is-dirty .task-save-note { color: var(--text); }
 
@@ -2420,6 +2456,21 @@
   font-size: 15px; line-height: 1.45; resize: none; overflow-y: auto;
 }
 .chat-input .mention-wrap { flex: 1; min-width: 0; display: flex; }
+/*
+  Подсказка «@» в чате открывается ВВЕРХ.
+
+  Поле ввода стоит у нижнего края экрана, а список по умолчанию выпадает вниз —
+  он оказывался за границей окна, и выглядело это как «подсказка не работает».
+*/
+.chat-input .mention-list { top: auto; bottom: 100%; margin: 0 0 4px; }
+/* Правка сообщения прямо в пузыре: отдельное окно ради опечатки — лишний шаг. */
+.chat-edit { display: flex; flex-direction: column; gap: 6px; min-width: 260px; }
+.chat-edit .input { font-size: 14px; }
+.chat-edit-actions { display: flex; gap: 6px; }
+/* Галочки «отправлено / прочитано» — как в мессенджерах. */
+.chat-ticks { display: inline-flex; align-items: center; color: var(--text-dim); }
+.chat-ticks .icon + .icon { margin-left: -6px; }
+.chat-ticks.read { color: var(--accent); }
 /* Гостевой чат и ответ в ветке — поле без обёртки упоминаний: ширину задаём ему. */
 .chat-input > .input { flex: 1; min-width: 0; }
 .chat-call { display: flex; align-items: center; gap: 8px; }

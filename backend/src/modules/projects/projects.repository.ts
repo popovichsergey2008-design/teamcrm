@@ -36,8 +36,53 @@ export class ProjectsRepository {
          FROM projects p
          LEFT JOIN integration_connections c ON c.id = p.origin_connection_id
         WHERE p.tenant_id = $1 AND ($2::boolean OR p.status <> 'archived')
-        ORDER BY p.created_at DESC`,
+        -- Основные доски компании всегда сверху, дальше — заданный порядок, и лишь
+        -- потом новые по дате. Без этого свои доски тонули среди импортированных.
+        ORDER BY p.is_default DESC, p.sort_order, p.created_at DESC`,
       [tenantId, includeArchived],
+    );
+  }
+
+  /**
+   * Сохранить порядок досок: пришедший список задаёт номера с первого.
+   *
+   * Одним запросом, а не циклом: при трёх десятках досок цикл — тридцать походов
+   * в базу ради одного перетаскивания.
+   */
+  async saveOrder(tenantId: string, ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    await this.db.query(
+      `UPDATE projects p SET sort_order = x.pos, updated_at = now()
+         FROM (SELECT id, ordinality::int AS pos
+                 FROM unnest($2::bigint[]) WITH ORDINALITY AS t(id, ordinality)) x
+        WHERE p.tenant_id = $1 AND p.id = x.id`,
+      [tenantId, ids],
+    );
+  }
+
+  /** Пометить доску основной или снять пометку. */
+  setDefault(tenantId: string, id: string, isDefault: boolean): Promise<ProjectRow | null> {
+    return this.db.one<ProjectRow>(
+      `UPDATE projects SET is_default = $3, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [tenantId, id, isDefault],
+    );
+  }
+
+  /**
+   * Вернуть порядок по умолчанию.
+   *
+   * Основные доски — первыми и по алфавиту, остальные следом тоже по алфавиту.
+   * Это и есть ответ на «после импорта всё перемешалось»: одно нажатие возвращает
+   * список к понятному виду, не трогая ни задач, ни самих досок.
+   */
+  async resetOrder(tenantId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE projects p SET sort_order = x.pos, updated_at = now()
+         FROM (SELECT id, row_number() OVER (ORDER BY is_default DESC, lower(name))::int AS pos
+                 FROM projects WHERE tenant_id = $1) x
+        WHERE p.tenant_id = $1 AND p.id = x.id`,
+      [tenantId],
     );
   }
 

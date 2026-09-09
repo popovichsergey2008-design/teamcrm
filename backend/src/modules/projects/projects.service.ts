@@ -51,6 +51,36 @@ export class ProjectsService {
     return { archived };
   }
 
+  /**
+   * Порядок досок — общий для компании.
+   *
+   * Перетаскиванием его задаёт руководитель: доски — общая рабочая поверхность,
+   * и «у меня свой порядок» здесь только мешает договариваться о том, где что лежит.
+   */
+  async saveOrder(tenantId: string, ids: string[]) {
+    await this.repo.saveOrder(tenantId, ids.map(String));
+    return { saved: ids.length };
+  }
+
+  /** Пометить доску основной: такие всегда идут первыми, что бы ни принёс импорт. */
+  async setDefault(tenantId: string, id: string, isDefault: boolean) {
+    await this.getOrThrow(tenantId, id);
+    await this.repo.setDefault(tenantId, id, isDefault);
+    return { isDefault };
+  }
+
+  /**
+   * «Порядок по умолчанию».
+   *
+   * После импорта из YouGile и Битрикса список превращается в кашу: чужие доски
+   * вперемешку со своими. Одно нажатие возвращает понятный вид — основные доски
+   * наверх, остальные по алфавиту. Ни задачи, ни сами доски при этом не трогаются.
+   */
+  async resetOrder(tenantId: string, role: string, userId: string) {
+    await this.repo.resetOrder(tenantId);
+    return this.list(tenantId, role, false, userId);
+  }
+
   async create(tenantId: string, dto: CreateProjectDto) {
     return this.repo.create({
       tenantId,

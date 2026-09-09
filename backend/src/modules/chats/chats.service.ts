@@ -731,6 +731,33 @@ export class ChatsService {
   }
 
   /** Удалять можно только своё: правки чужих сообщений в переписке недопустимы. */
+  /**
+   * Правка своего сообщения.
+   *
+   * Только автор и только текст: чужие слова не правит никто, включая руководителя —
+   * его дело удалить сообщение целиком, а не переписать за человека. Файл и вложение
+   * остаются на месте, меняется подпись.
+   */
+  async editMessage(
+    tenantId: string, chatId: string, messageId: string,
+    user: { userId: string; role: string }, body: string,
+  ) {
+    const chat = await this.access(tenantId, chatId, user);
+    const message = await this.repo.message(tenantId, messageId);
+    if (!message || String(message.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
+    if (String(message.author_id) !== String(user.userId)) throw AppException.forbidden('Это не ваше сообщение');
+    const text = String(body ?? '').trim();
+    // Пустое сообщение — это удаление, и делается оно отдельной кнопкой: иначе
+    // человек стирает текст, а в переписке остаётся пустой пузырь.
+    if (!text && !message.file_id) throw AppException.validation('Пустое сообщение — удалите его целиком');
+    await this.repo.editMessage(tenantId, messageId, text.slice(0, 4000));
+    const to = await this.recipients(chat, tenantId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.message_edited', {
+      chatId, messageId, body: text.slice(0, 4000),
+    });
+    return { edited: true, body: text.slice(0, 4000) };
+  }
+
   async remove(tenantId: string, chatId: string, messageId: string, user: { userId: string; role: string }) {
     const chat = await this.access(tenantId, chatId, user);
     const message = await this.repo.message(tenantId, messageId);

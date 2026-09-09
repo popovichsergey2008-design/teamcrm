@@ -6,7 +6,8 @@ import { VoiceStatus } from './VoiceStatus';
 import { ChatAttachment } from './ChatAttachment';
 import { Lightbox } from './Lightbox';
 import { api, ApiError } from '../lib/api';
-import { dayLabel, sameGroup, splitMessage } from '../lib/chat-text';
+import { dayLabel, sameGroup } from '../lib/chat-text';
+import { MessageText } from './MessageText';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { orderMentions } from '../lib/task-mentions';
 import { useVoiceInput } from '../hooks/useVoiceInput';
@@ -385,15 +386,7 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
                     </button>
                   )}
 
-                  {c.body && (
-                    <div className="msg-text">
-                      {splitMessage(c.body).map((p, k) => (
-                        p.kind === 'mention' ? <span key={k} className="msg-mention">{p.value}</span>
-                          : p.kind === 'link' ? <a key={k} href={p.value} target="_blank" rel="noreferrer">{p.value}</a>
-                            : <span key={k}>{p.value}</span>
-                      ))}
-                    </div>
-                  )}
+                  {c.body && <MessageText text={c.body} className="msg-text" />}
 
                   {c.file_id && (
                     <ChatAttachment

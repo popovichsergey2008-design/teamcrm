@@ -1,4 +1,4 @@
-import { ArrayNotEmpty, IsArray, IsIn, IsNumber, IsOptional, IsString, MaxLength, MinLength, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, MaxLength, MinLength, Min } from 'class-validator';
 
 export class CreateProjectDto {
   @IsString()
@@ -32,4 +32,14 @@ export class ReorderColumnsDto {
   @ArrayNotEmpty({ message: 'Передайте порядок колонок' })
   @IsString({ each: true })
   orderedIds!: string[];
+}
+
+/** Новый порядок досок: список идёт как есть, номера расставляет сервер. */
+export class ProjectOrderDto {
+  @IsArray() @ArrayNotEmpty() @IsString({ each: true }) ids!: string[];
+}
+
+/** Основная доска компании — такие всегда первыми в списке. */
+export class ProjectDefaultDto {
+  @IsBoolean() isDefault!: boolean;
 }
