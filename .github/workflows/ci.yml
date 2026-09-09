@@ -128,21 +128,16 @@ jobs:
             --exclude node_modules --exclude dist --exclude coverage \
             --exclude .git --exclude '.env' --exclude certs --exclude '.well-known' \
             -e "ssh -i ~/.ssh/deploy_key" \
-            backend frontend infra/docker-compose.yml infra/nginx \
+            backend frontend infra/docker-compose.yml infra/nginx infra/deploy \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/teamcrm/"
       - name: Build & restart stack
+        # Вся выкладка живёт в скрипте на сервере (infra/deploy/release.sh): в YAML ей
+        # не место — там её не прочитать и не поправить. Скрипт ждёт окончания созвонов,
+        # поднимает контейнеры до состояния healthy и МЯГКО перечитывает конфигурацию
+        # nginx. Прежний `docker compose restart crm-edge` рвал все соединения разом,
+        # и каждая выкладка обрывала созвоны и давала людям 502.
         run: |
           ssh -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
             set -e
-            cd /opt/teamcrm
-            sed -i "s/\r$//" backend/docker/entrypoint.sh
-            docker compose build crm-api crm-web
-            docker compose up -d           # поднимает весь стек, включая новые сервисы (crm-minio)
-            docker compose restart crm-edge
-            docker compose ps
-            # знак приложения должен быть В ОБРАЗЕ: сборка проходит и без него,
-            # а на сайте по адресу иконки молча отдаётся оболочка приложения
-            docker compose exec -T crm-web test -f /usr/share/nginx/html/favicon-32.png
-            docker compose exec -T crm-web test -f /usr/share/nginx/html/apple-touch-icon.png
-            docker compose exec -T crm-web test -f /usr/share/nginx/html/logo-mark.png
+            bash /opt/teamcrm/deploy/release.sh
           '

@@ -132,6 +132,15 @@ async function rawRequest<T>(
   try {
     env = await res.json();
   } catch {
+    /*
+      Ответ не разобрался — почти всегда это не наше приложение, а пограничный
+      nginx: в момент выкладки он отдаёт свою HTML-страницу с 502/503/504.
+      Отличаем это от настоящей поломки: такой ответ значит «сервер сейчас
+      обновляется», и запрос имеет смысл повторить.
+    */
+    if (res.status >= 502 && res.status <= 504) {
+      throw new ApiError('UNAVAILABLE', 'Сервер обновляется — секунду…');
+    }
     throw new ApiError('INTERNAL', `Bad response (${res.status})`);
   }
   if (!env.ok) {
@@ -207,22 +216,44 @@ function announceTaskChange(method: string, path: string) {
   if (/\/timer\/(start|stop)$/.test(path)) window.dispatchEvent(new Event('teamcrm:focus-changed'));
 }
 
-/** Запрос с авто-обновлением access-токена при 401/UNAUTHORIZED. */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Запрос с авто-обновлением access-токена при 401 и с пережиданием выкладки.
+ *
+ * Пока обновляется сервер, API недоступен несколько секунд, и человек видел
+ * «Bad response (502)» посреди работы. Чтение повторяем сами — дважды, с паузой:
+ * к этому моменту новый контейнер обычно уже отвечает.
+ *
+ * Изменения (POST/PATCH/DELETE) НЕ повторяем: 502 бывает и после того, как запрос
+ * уже дошёл до сервера, и повтор завёл бы вторую задачу. Здесь честнее сказать
+ * человеку «сервер обновляется, повторите», чем молча сделать что-то дважды.
+ */
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   // запоминаем, с каким токеном шли: по нему видно, обновил ли его кто-то параллельно
   const access = tokens.access;
-  try {
-    const res = await rawRequest<T>(method, path, body);
-    announceTaskChange(method, path);
-    return res;
-  } catch (e) {
-    if (e instanceof ApiError && e.code === 'UNAUTHORIZED') {
-      await tryRefresh(access);
+  const retries = method === 'GET' ? 2 : 0;
+  for (let attempt = 0; ; attempt++) {
+    try {
       const res = await rawRequest<T>(method, path, body);
       announceTaskChange(method, path);
       return res;
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'UNAUTHORIZED') {
+        await tryRefresh(access);
+        const res = await rawRequest<T>(method, path, body);
+        announceTaskChange(method, path);
+        return res;
+      }
+      if (e instanceof ApiError && e.code === 'UNAVAILABLE' && attempt < retries) {
+        await sleep(1500 * (attempt + 1));
+        continue;
+      }
+      if (e instanceof ApiError && e.code === 'UNAVAILABLE') {
+        throw new ApiError('UNAVAILABLE', 'Сервер обновляется — повторите действие через несколько секунд');
+      }
+      throw e;
     }
-    throw e;
   }
 }
 
