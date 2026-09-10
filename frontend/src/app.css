@@ -755,15 +755,6 @@
 /* Основная доска компании: помечена звездой и всегда сверху. */
 .project-star-on { color: var(--warn); }
 .project-default .project-item { font-weight: 600; }
-/* «Порядок по умолчанию» — мелкой строкой под списком: нажимают её редко, а место
-   в панели она занимала бы каждый день. */
-.nav-projects-order {
-  display: flex; align-items: center; gap: 5px; width: 100%;
-  border: none; background: none; color: var(--text-mut);
-  font-size: 12px; cursor: pointer; padding: 4px 10px; text-align: left;
-}
-.nav-projects-order:hover { color: var(--text); }
-.nav-projects-order:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Перетаскивание доски: курсор обещает, что строку можно взять. */
 .project-row[draggable="true"] .project-item { cursor: grab; }
 .nav-projects { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px; }

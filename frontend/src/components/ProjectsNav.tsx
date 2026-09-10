@@ -175,14 +175,15 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
     }
   };
 
-  /** Вернуть понятный порядок: основные наверх, остальные по алфавиту. */
-  const resetOrder = async () => {
-    try {
-      setProjects(await api.resetProjectOrder());
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Не удалось упорядочить');
-    }
-  };
+  /*
+    Кнопки «Порядок по умолчанию» здесь больше нет.
+
+    Заказчик: «эта кнопка должна быть в самом проекте, где можно сделать доски по
+    умолчанию, но пока вообще её убери». В панели ей и правда не место: панель —
+    это переход между досками, а не место, где их настраивают. Ручка на сервере
+    (`POST /projects/order/default`) осталась и ждёт своего экрана — вместе с
+    проверкой, которая её сторожит.
+  */
 
   const archivedCount = projects.filter((p) => p.status === 'archived').length;
   const shown = projects.filter((p) => (tab === 'archived' ? p.status === 'archived' : p.status !== 'archived'));
@@ -293,19 +294,6 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
             ? 'Проектов пока нет — создайте первый ниже.'
             : 'Вас пока не добавили ни в один проект.'}
         </div>
-      )}
-
-      {/*
-        «Порядок по умолчанию».
-
-        После импорта из YouGile и Битрикса список превращается в кашу: чужие доски
-        вперемешку со своими. Одно нажатие возвращает понятный вид — основные доски
-        наверх, остальные по алфавиту. Задачи и сами доски при этом не трогаются.
-      */}
-      {canManage && tab === 'active' && projects.length > 2 && (
-        <button className="nav-projects-order" onClick={resetOrder} title="Основные доски — наверх, остальные по алфавиту. Порядок общий для компании">
-          <Icon name="list" size={12} /> Порядок по умолчанию
-        </button>
       )}
 
       {canManage && tab === 'active' && (
