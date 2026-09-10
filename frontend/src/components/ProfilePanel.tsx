@@ -123,7 +123,10 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   return (
     <div className="page profile-page">
       <div className="page-head">
-        <button className="btn btn-ghost btn-sm" onClick={onClose}><Icon name="arrow-left" size={14} /> К доскам</button>
+        {/* «Назад» ведёт туда, откуда сюда приходят — на главную личного кабинета.
+            Раньше кнопка называлась «К доскам» и выбрасывала в «Фокус дня»: человек
+            правил профиль, нажимал назад и оказывался в другом разделе. */}
+        <button className="btn btn-ghost btn-sm" onClick={onClose}><Icon name="arrow-left" size={14} /> Назад</button>
         <h2>Профиль</h2>
       </div>
       <div className="profile-layout">

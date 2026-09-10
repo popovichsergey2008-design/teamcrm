@@ -348,7 +348,7 @@ export function App() {
         {route.section === 'radar' && canManage && <RadarPage />}
         {route.section === 'settings' && <SettingsPage route={route} role={user.role} />}
         {route.section === 'profile' && (
-          <ProfilePanel onClose={() => navigate({ section: 'focus' })} onAvatar={setAvatarPath} />
+          <ProfilePanel onClose={() => navigate({ section: 'settings' })} onAvatar={setAvatarPath} />
         )}
       </main>
 
