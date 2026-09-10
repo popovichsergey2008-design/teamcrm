@@ -16,7 +16,6 @@ import {
 import { MineFilter } from '../components/MineFilter';
 import { LEGACY_VIEWS, TASK_VIEWS } from '../lib/task-views';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
-import { TeamPanel } from '../components/TeamPanel';
 import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
 import { EmptyState } from '../components/EmptyState';
 import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
@@ -141,7 +140,14 @@ export function BoardPage({ initial, onNavigate }: {
   const [inWorkOnly, setInWorkOnly] = useState(() => localStorage.getItem('teamcrm.boardInWork') === '1');
 
 
-  const [showTeam, setShowTeam] = useState(false);
+  /*
+    Кнопки «Команда» на доске больше нет.
+
+    Она висела у КАЖДОГО, кроме клиента, хотя заводить и менять сотрудников вправе
+    только руководитель и его зам — рядовой сотрудник открывал панель и упирался в
+    отказы сервера. Управление командой живёт в личном кабинете, где карточка
+    «Команда и пространство» и так показана только этим двум ролям.
+  */
   /** Настройки проекта: место доски в списке и порядок досок компании. */
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
@@ -496,7 +502,6 @@ export function BoardPage({ initial, onNavigate }: {
                 )}
                 {!isClient && (
                   <span className="board-actions">
-                    <button className="btn btn-ghost btn-sm" onClick={() => setShowTeam(true)} title="Сотрудники, должности, группы, приглашения"><Icon name="users" size={15} /> Команда</button>
                     {/* Настройки самой доски: место в списке и порядок досок компании.
                         Раньше это висело кнопкой в левой панели — не её дело. */}
                     {canManageBoard && (
@@ -593,7 +598,6 @@ export function BoardPage({ initial, onNavigate }: {
           onCreated={reloadBoard}
         />
       )}
-      {showTeam && <TeamPanel onClose={() => setShowTeam(false)} />}
       {showProjectSettings && board && (
         <ProjectSettingsModal
           project={board.project as any}

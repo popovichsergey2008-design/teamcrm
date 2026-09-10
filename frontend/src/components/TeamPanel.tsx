@@ -144,6 +144,16 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head"><h3><Icon name="users" size={18} /> Команда</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
+        {/*
+          Кто здесь распоряжается — сказано прямо.
+
+          Раздел открывают редко, и через месяц никто не помнит, почему у сотрудника
+          нет кнопки «добавить». Одна строка снимает половину вопросов.
+        */}
+        <p className="dim team-who">
+          Заводить и менять сотрудников могут владелец и руководитель. Сотрудники этот
+          раздел не открывают вовсе, сброс пароля — только у владельца.
+        </p>
         <div className="tabs">
           <button className={`tab ${tab === 'people' ? 'active' : ''}`} onClick={() => setTab('people')}>Сотрудники</button>
           <button className={`tab ${tab === 'positions' ? 'active' : ''}`} onClick={() => setTab('positions')}>Должности</button>
@@ -166,9 +176,12 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                 <div className="add-user">
                   <div className="dim" style={{ fontSize: 12 }}>Одна ссылка — много участников (для чата/рассылки). Каждый вводит свои данные. Лимит и срок — по желанию.</div>
                   <div className="drawer-grid2">
+                    {/* Подписи ролей общие на всё приложение: здесь стояли свои
+                        («Участник», «Менеджер»), и одна и та же роль называлась в
+                        двух местах по-разному. */}
                     <select className="input" value={linkForm.role} onChange={(e) => setLinkForm({ ...linkForm, role: e.target.value })}>
-                      <option value="member">Участник</option>
-                      <option value="manager">Менеджер</option>
+                      {ASSIGNABLE_ROLES.filter((r) => r.value !== 'owner')
+                        .map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                     </select>
                     <input className="input" type="number" min={1} placeholder="Лимит входов" value={linkForm.maxUses} onChange={(e) => setLinkForm({ ...linkForm, maxUses: e.target.value })} />
                   </div>

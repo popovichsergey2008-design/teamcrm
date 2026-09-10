@@ -81,6 +81,13 @@ const CARDS: Card[] = [
   },
 ];
 
+/** Разделы с ограничением по роли: адрес открывается, а содержимое — нет. */
+const DENIED: [string, string[]][] = [
+  ['team', ['owner', 'manager']],
+  ['integrations', ['owner']],
+  ['ai-usage', ['owner', 'manager']],
+];
+
 export function SettingsPage({ route, role }: { route: Route; role: string }) {
   const canManage = role === 'owner' || role === 'manager';
   const close = () => navigate({ section: 'settings' });
@@ -114,6 +121,22 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}
       {route.tab === 'assistant' && <AssistantPanel canManage={role === 'owner'} onClose={close} />}
       {route.tab === 'work' && <WorkSettingsPanel canManage={role === 'owner'} onClose={close} />}
+
+      {/*
+        Раздел есть, а прав нет.
+
+        Карточки закрытых разделов сотруднику не показываются, но адрес можно
+        открыть по ссылке из переписки или из закладки. Раньше в таком случае
+        открывалась пустая страница — человек решал, что раздел сломан. Говорим
+        прямо, кому он доступен.
+      */}
+      {DENIED.some(([tab, allowed]) => route.tab === tab && !allowed.includes(role)) && (
+        <div className="settings-denied dim">
+          Этот раздел доступен руководителю
+          {route.tab === 'integrations' ? '' : ' и его заму'}.
+          Сотрудники и заказчики его не открывают.
+        </div>
+      )}
     </div>
   );
 }

@@ -1453,6 +1453,12 @@
   background: var(--bg-elev-2);
 }
 
+/* Кто распоряжается командой — строкой под заголовком раздела. */
+.team-who { margin: 0 0 8px; font-size: var(--fs-sm); line-height: 1.4; }
+
+/* Закрытый раздел настроек: пустая страница читалась как поломка. */
+.settings-denied { padding: 16px 20px; font-size: var(--fs-sm); }
+
 /* Люди в задаче: соисполнители и наблюдатели — чипами, а не строкой через запятую. */
 .people-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }
 .people-chip {
