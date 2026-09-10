@@ -725,8 +725,21 @@ export class ChatsService {
   }
 
   async markRead(tenantId: string, chatId: string, user: { userId: string; role: string }) {
-    await this.access(tenantId, chatId, user);
+    const chat = await this.access(tenantId, chatId, user);
     await this.repo.markRead(tenantId, chatId, user.userId);
+    /*
+      Собеседник должен увидеть вторую галочку СРАЗУ, а не после перезагрузки чата.
+      Отметку о прочтении шлём остальным участникам: у отправителя галочки на всех
+      его сообщениях до этого момента становятся прочитанными.
+    */
+    const to = (await this.recipients(chat, tenantId)).filter((id) => String(id) !== String(user.userId));
+    if (to.length) {
+      this.realtime.emitToUsers(tenantId, to, 'chat.read', {
+        chatId: String(chatId),
+        userId: String(user.userId),
+        at: new Date().toISOString(),
+      });
+    }
     return { read: true };
   }
 

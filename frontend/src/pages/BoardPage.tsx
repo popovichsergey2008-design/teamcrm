@@ -17,6 +17,7 @@ import { MineFilter } from '../components/MineFilter';
 import { LEGACY_VIEWS, TASK_VIEWS } from '../lib/task-views';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { TeamPanel } from '../components/TeamPanel';
+import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
 import { EmptyState } from '../components/EmptyState';
 import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
 import { SkeletonBoard } from '../components/Skeleton';
@@ -141,6 +142,8 @@ export function BoardPage({ initial, onNavigate }: {
 
 
   const [showTeam, setShowTeam] = useState(false);
+  /** Настройки проекта: место доски в списке и порядок досок компании. */
+  const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
   // Ключ памяти о проекте — свой на каждую организацию: при переключении
   // компании возврат должен вести в её проект, а не в чужой.
@@ -494,6 +497,17 @@ export function BoardPage({ initial, onNavigate }: {
                 {!isClient && (
                   <span className="board-actions">
                     <button className="btn btn-ghost btn-sm" onClick={() => setShowTeam(true)} title="Сотрудники, должности, группы, приглашения"><Icon name="users" size={15} /> Команда</button>
+                    {/* Настройки самой доски: место в списке и порядок досок компании.
+                        Раньше это висело кнопкой в левой панели — не её дело. */}
+                    {canManageBoard && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setShowProjectSettings(true)}
+                        title="Настройки проекта: место в списке досок"
+                      >
+                        <Icon name="settings" size={15} /> Настройки
+                      </button>
+                    )}
                     {board.project.origin === 'bitrix' && (
                       <button className="btn btn-ghost btn-sm" onClick={() => setShowFeed(true)} title="Живая лента импортированного проекта"><Icon name="list" size={15} /> Лента</button>
                     )}
@@ -580,6 +594,13 @@ export function BoardPage({ initial, onNavigate }: {
         />
       )}
       {showTeam && <TeamPanel onClose={() => setShowTeam(false)} />}
+      {showProjectSettings && board && (
+        <ProjectSettingsModal
+          project={board.project as any}
+          onClose={() => setShowProjectSettings(false)}
+          onChanged={reloadBoard}
+        />
+      )}
       {showFeed && selected && <ImportedFeedPanel projectId={selected} onClose={() => setShowFeed(false)} />}
     </div>
   );

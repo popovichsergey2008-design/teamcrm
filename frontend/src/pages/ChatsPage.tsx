@@ -307,7 +307,20 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
         } else {
           appendMessage(p.message);
         }
-        api.markChatRead(p.chatId).catch(() => undefined);
+        /*
+          Открытый чат = прочитано, но ТОЛЬКО когда вкладка на виду.
+
+          Отметку ждём и лишь потом перечитываем список: раньше `reload()` уходил
+          одновременно с отметкой и возвращал старый счётчик — единица висела на
+          чате, пока по нему не щёлкнешь ещё раз. Ровно на это и жаловались.
+        */
+        if (!document.hidden) {
+          api.markChatRead(p.chatId)
+            .then(() => { reload(); notifyChatsChanged(); })
+            .catch(() => reload());
+          if (view === 'threads') void loadThreads();
+          return;
+        }
       }
       reload();
       if (view === 'threads') void loadThreads();
@@ -348,6 +361,22 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       setMessages((prev) => prev.map((m) => (String(m.id) === String(p.messageId)
         ? { ...m, task_id: String(p.taskId), task_title: p.title, task_project_id: p.projectId ?? null } : m)));
     };
+    /*
+      Собеседник открыл чат — наши сообщения прочитаны.
+
+      Отмечаем вторую галочку сразу: без этого она появлялась только после
+      перезагрузки переписки, и «прочитано» узнавалось с опозданием на час.
+    */
+    const onRead = (p: { chatId: string; at: string }) => {
+      if (String(p.chatId) !== String(activeId)) return;
+      const at = new Date(p.at).getTime();
+      setMessages((prev) => prev.map((m) => (
+        String(m.author_id) === String(user?.id) && new Date(m.created_at).getTime() <= at
+          ? { ...m, read_by: Math.max(m.read_by ?? 0, m.others ?? 1) }
+          : m
+      )));
+    };
+    socket.on('chat.read', onRead);
     // сообщение поправили в другой вкладке или у собеседника
     const onEdited = (p: { chatId: string; messageId: string; body: string }) => {
       if (String(p.chatId) !== String(activeId)) return;
@@ -364,6 +393,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     socket.on('chat.created', reload);
     socket.on('chat.removed', onRemoved);
     return () => {
+      socket.off('chat.read', onRead);
       socket.off('chat.message_edited', onEdited);
       socket.off('chat.task_linked', onTaskLinked);
       socket.off('chat.reminder', onReminder);
@@ -390,6 +420,29 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть чат'); }
     finally { setMsgLoading(false); }
   }, [reload, loadPinned]);
+
+  /*
+    Вернулись во вкладку с открытым чатом — значит прочитали.
+
+    Пока вкладка была в фоне, сообщения приходили и оставались непрочитанными
+    намеренно: смотреть в другую вкладку не значит читать. А вот возвращение —
+    значит, и висящая единица на открытом чате раздражает больше всего.
+  */
+  useEffect(() => {
+    if (!activeId) return;
+    const onBack = () => {
+      if (document.hidden) return;
+      api.markChatRead(activeId)
+        .then(() => { reload(); notifyChatsChanged(); })
+        .catch(() => undefined);
+    };
+    window.addEventListener('focus', onBack);
+    document.addEventListener('visibilitychange', onBack);
+    return () => {
+      window.removeEventListener('focus', onBack);
+      document.removeEventListener('visibilitychange', onBack);
+    };
+  }, [activeId, reload]);
 
   // пришли из уведомления — открываем названный чат, а не последний
   useEffect(() => {
