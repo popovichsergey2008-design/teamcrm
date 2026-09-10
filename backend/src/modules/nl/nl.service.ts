@@ -8,7 +8,8 @@ import { DealsService } from '../deals/deals.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { matchUserInText, normalizeDeadline } from './nl.match';
 import {
-  chooseProject, matchProjectInText, pickApproval, pickDeadline, pickPriority, PROJECT_HINT, taskTitleFrom,
+  chooseProject, cleanTitle, matchProjectInText, pickApproval, pickDeadline, pickPriority,
+  PROJECT_HINT, taskTitleFrom,
 } from './task-draft';
 import { buildEventDraft, EventDraft } from './event-draft';
 
@@ -49,22 +50,20 @@ export interface NlDraft {
  * поэтому она прописана явно и с примером.
  */
 const FALLBACK_SYSTEM = [
-  'Ты — постановщик задач в CRM, а не расшифровщик речи. По сообщению определи намерение',
-  '(create_task | create_deal | none) и оформи нормальную задачу.',
+  'Ты — постановщик задач в CRM, а не расшифровщик речи. Дослушай фразу целиком и только потом решай,',
+  'что здесь название работы, что описание, а что служебное («задача на Сергея», «поставь задачу»).',
   'В JSON-входе: text, projects[{id,name}], users[{id,name}], clients[{id,name}], today.',
   'Сопоставляй имена с id ТОЛЬКО из списков (иначе null, не выдумывай).',
-  'title — короткий заголовок с глагола, до 70 символов, без разговорных слов и без пересказа описания.',
-  'Пример: из «Глеб, надо посмотреть там эту страницу, кнопка вроде неправильно работает, особенно на телефоне»',
-  'следует title «Исправить работу кнопки на мобильных устройствах».',
-  'description — деловое описание: что сделать, где, в чём проблема, какой результат ожидается,',
-  'плюс условия, которые человек назвал. Разговорный шум, повторы и незаконченные фразы убирай.',
-  'checklist — 3–7 конкретных шагов ИМЕННО этой задачи (не шаблонных), каждый начинается с глагола.',
-  'Если из речи шаги не следуют — пустой массив, выдумывать не надо.',
-  'ЗАПРЕЩЕНО: добавлять требования, которых не было; менять срок, приоритет или исполнителя по своему усмотрению;',
-  'терять названные пользователем условия. РАЗРЕШЕНО: сокращать, структурировать, править грамматику,',
-  'объединять повторы, делать формулировки профессиональнее.',
+  'title — НАЗВАНИЕ РАБОТЫ с глагола, до 70 символов, без имени исполнителя и без слова «задача».',
+  'НЕПРАВИЛЬНО: «Задача на Сергея», «Сергею», «Нужно посмотреть». ПРАВИЛЬНО: «Добавить кнопку выхода из настройки меню».',
+  'description — что не так, где, что сделать и каким должен быть результат, плюс названные условия.',
+  'Наклонение и залог требований не меняй, условия не теряй, своих не добавляй. Мало сказано — дополни',
+  'СТРУКТУРУ (что, где, признак готовности), но не придумывай новых требований и сроков.',
+  'checklist — 3–6 шагов ПРОВЕРКИ «как понять, что сделано», выведенных из самой задачи, каждый с глагола.',
+  'Шаги не расширяют задачу. Проверять нечего — пустой массив.',
   'Исполнитель называется после «на», «для», «поручи», «назначь»; имя обычно в косвенном падеже — это тот же человек.',
-  'deadline — срок выполнения задачи, а не любая дата в тексте: если дата часть содержания задачи, ставь null.',
+  'Постановщика не ищи: им становится говорящий, его подставит система.',
+  'deadline — срок выполнения задачи, а не любая дата в тексте: если дата часть содержания, ставь null.',
   'Относительные сроки переводи в YYYY-MM-DD относительно today. priority: low|normal|high|urgent.',
   'requiresApproval — завершать ли задачу только с согласия постановщика. По умолчанию true.',
   'false ставь, если сказано «можно закрывать без меня», «без согласования», «проверять не надо».',
@@ -242,7 +241,10 @@ export class NlService {
         ? t.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 12)
         : [];
       base.task = {
-        title: title.slice(0, 255), description: t.description ? String(t.description) : null,
+        // Последняя защита от «Задача на Сергея» в заголовке: модель иногда всё
+        // равно берёт первую фразу, а список задач из адресатов нечитаем.
+        title: cleanTitle(title, t.description ? String(t.description) : null).slice(0, 255),
+        description: t.description ? String(t.description) : null,
         projectId, projectName: projectId ? projectSet.get(projectId)! : null,
         projectHint: projectId ? PROJECT_HINT[source] : '',
         assigneeId, assigneeName: assigneeId ? userSet.get(assigneeId)! : null,
@@ -309,7 +311,7 @@ export class NlService {
       const source = String(item?.source ?? '').trim() || clean;
       const draft = await this.parse(tenantId, userId, source, currentProjectId);
       if (!draft.task) continue;
-      draft.task.title = title.slice(0, 255);
+      draft.task.title = cleanTitle(title, item?.description ? String(item.description) : null).slice(0, 255);
       if (item?.description) draft.task.description = String(item.description);
       if (Array.isArray(item?.checklist)) {
         draft.task.checklist = item.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 12);
@@ -380,9 +382,10 @@ export class NlService {
 const MANY_SYSTEM = [
   'Ты — постановщик задач. В сообщении человека может быть НЕСКОЛЬКО поручений разным людям.',
   'Раздели их: одна мысль о работе — одна задача. Если поручение одно, верни одну задачу.',
-  'Для каждой: title — короткий заголовок с глагола (до 70 символов);',
-  'description — деловое описание без разговорного шума;',
-  'checklist — 3–7 конкретных шагов этой задачи или пустой массив;',
+  'Для каждой: title — НАЗВАНИЕ РАБОТЫ с глагола (до 70 символов), без имени исполнителя',
+  'и без слова «задача»: «Задача на Сергея» — это адресат, а не название;',
+  'description — деловое описание без разговорного шума, с условиями, которые человек назвал;',
+  'checklist — 3–6 шагов ПРОВЕРКИ «как понять, что сделано», выведенных из самой задачи;',
   'source — дословный кусок исходной речи, относящийся ИМЕННО к этой задаче.',
   'Ничего не выдумывай и не теряй названные условия. Не объединяй задачи разных людей.',
   'Верни СТРОГО JSON: {"tasks":[{"title":"","description":"","checklist":[],"source":""}]}',

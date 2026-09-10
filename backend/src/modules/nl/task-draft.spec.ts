@@ -1,5 +1,5 @@
 import {
-  chooseProject, matchProjectInText, pickApproval, pickDeadline, pickPriority, taskTitleFrom,
+  chooseProject, cleanTitle, matchProjectInText, pickApproval, pickDeadline, pickPriority, taskTitleFrom,
 } from './task-draft';
 
 const PROJECTS = [
@@ -114,5 +114,40 @@ describe('Согласование с постановщиком', () => {
 
   it('при противоречии верим требованию согласования: человек уточняет, а не отменяет', () => {
     expect(pickApproval('без лишних вопросов, но не закрывать без моего подтверждения')).toBe(true);
+  });
+});
+
+describe('заголовок задачи — название работы, а не адресат', () => {
+  it('срезает «задача на Имя» и берёт суть из описания', () => {
+    // живой случай: так надиктовал заказчик, и в списке висело «Задача на Сергея»
+    expect(cleanTitle('Задача на Сергея', 'При нажатии «настроить меню» обратно выхода нет. Нужна кнопка «Выйти».'))
+      .toBe('При нажатии «настроить меню» обратно выхода нет');
+  });
+
+  it('срезает команду системе и обращение по имени', () => {
+    expect(cleanTitle('Поставь задачу проверить тексты на главной', null))
+      .toBe('Проверить тексты на главной');
+    expect(cleanTitle('Глеб,', 'Починить кнопку на мобильных')).toBe('Починить кнопку на мобильных');
+  });
+
+  it('нормальный заголовок не трогает', () => {
+    const good = 'Исправить работу кнопки на мобильных устройствах';
+    expect(cleanTitle(good, 'описание')).toBe(good);
+  });
+
+  it('длинный заголовок режет по слову и ставит многоточие', () => {
+    const long = 'Проверить и переделать все страницы услуг на сайте клиента, включая мобильную вёрстку и скорость загрузки';
+    const out = cleanTitle(long, null);
+    expect(out.length).toBeLessThanOrEqual(91);
+    expect(out.endsWith('…')).toBe(true);
+    // режем по границе слова: обрезанное «…мобильную вёрстк…» читается как сбой
+    const cut = out.slice(0, -1);
+    expect(long.startsWith(cut)).toBe(true);
+    expect(long[cut.length]).toBe(' ');
+  });
+
+  it('если резать нечего — возвращает исходное, а не пустоту', () => {
+    expect(cleanTitle('Задача на Сергея', null)).toBe('Задача на Сергея');
+    expect(cleanTitle('', null)).toBe('');
   });
 });

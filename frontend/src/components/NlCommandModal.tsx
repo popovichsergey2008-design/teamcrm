@@ -324,6 +324,9 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onDrop, onA
           <option value="">— исполнитель —</option>
           {ctx.users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
+        {/* Постановщик не выбирается: им становится тот, кто говорит. Сказать об этом
+            нужно прямо — иначе человек ищет поле «от кого» и не находит. */}
+        <div className="dim nl-hint">Постановщик — вы: задача записывается от вашего имени</div>
         <div className="team-rate" style={{ marginTop: 6 }}>
           <select className="input" value={draft.task.priority} onChange={(e) => onPatchTask({ priority: e.target.value })}>
             <option value="low">Низкий</option><option value="normal">Обычный</option>
@@ -340,7 +343,10 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onDrop, onA
 
         {/* Чек-лист приходит из разбора и правится здесь же: шаги, придуманные
             моделью, человек читает первым — и половину обычно переписывает. */}
-        <div className="drawer-section-title" style={{ marginTop: 8 }}>Шаги выполнения</div>
+        <div className="drawer-section-title" style={{ marginTop: 8 }}>
+          Шаги проверки
+          <span className="dim nl-hint" style={{ marginLeft: 6 }}>как понять, что работа сделана</span>
+        </div>
         {(draft.task.checklist ?? []).map((step: string, i: number) => (
           <div key={i} className="nl-step">
             <input className="input" value={step} aria-label={`Шаг ${i + 1}`}
