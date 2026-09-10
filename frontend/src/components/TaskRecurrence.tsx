@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, TaskRecurrence as Recurrence } from '../lib/api';
+import { toastSaved } from '../lib/notifications';
 
 /**
  * Повтор задачи.
@@ -85,6 +86,7 @@ export function TaskRecurrenceBlock({ taskId, onRefresh }: { taskId: string; onR
       setCurrent(saved);
       setOpen(false);
       onRefresh();
+      toastSaved('Повтор сохранён', 'Задача будет создаваться по расписанию');
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось сохранить повтор');
     } finally {

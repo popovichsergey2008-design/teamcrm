@@ -16,6 +16,7 @@ import {
 } from '../lib/calendar-grid';
 import type { User } from '../types';
 import { overlayProps } from '../lib/overlay';
+import { toastSaved } from '../lib/notifications';
 
 type View = 'day' | 'week' | 'month' | 'list';
 
@@ -753,6 +754,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
       if (isNew) await api.calendarCreate(body);
       else await api.calendarUpdate(String(value.id), body);
       onSaved();
+      toastSaved(isNew ? 'Событие создано' : 'Событие сохранено', form.title.trim());
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось сохранить');
     } finally {

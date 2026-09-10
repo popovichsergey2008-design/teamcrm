@@ -6,6 +6,7 @@ import { SkeletonList } from '../components/Skeleton';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import type { Project, User } from '../types';
+import { toastSaved } from '../lib/notifications';
 
 const STATUS_LABEL: Record<string, string> = {
   queued: 'В очереди',
@@ -335,6 +336,7 @@ function DraftRow({ draft, projects, users, onApply, onReject, onSaved }: {
       });
       setEditing(false);
       onSaved(); // список перечитывается: человек видит уже исправленную версию
+      toastSaved('Изменения сохранены');
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось сохранить');
     } finally { setBusy(false); }

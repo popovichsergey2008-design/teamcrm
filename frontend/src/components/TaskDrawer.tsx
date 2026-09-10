@@ -16,7 +16,7 @@ import { MessageText } from './MessageText';
 import { MONETIZATION_ENABLED } from '../config';
 import { labelTextColor } from '../lib/labels';
 import { overlayProps } from '../lib/overlay';
-import { showToast } from '../lib/notifications';
+import { showToast, toastSaved } from '../lib/notifications';
 
 interface Props {
   task: Task;
@@ -227,6 +227,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
       if (approval !== initialApproval) await api.setTaskApproval(task.id, approval);
 
       onRefresh();
+      toastSaved('Задача сохранена');
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
     finally { setSaving(false); }
   };

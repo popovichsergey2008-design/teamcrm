@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import type { GateSettings } from '../types';
 import { overlayProps } from '../lib/overlay';
+import { toastSaved } from '../lib/notifications';
 
 /**
  * Условия приёмки работы — общие для компании.
@@ -46,7 +47,7 @@ export function HandoffGatePanel({ canManage, onClose }: { canManage: boolean; o
     setGate(next); // сразу: галочка, которая думает, ощущается как сломанная
     setSaving(true);
     setErr('');
-    try { setGate(await api.saveHandoffGate(next)); }
+    try { setGate(await api.saveHandoffGate(next)); toastSaved('Настройка сохранена'); }
     catch { setGate(gate); setErr('Не удалось сохранить'); }
     finally { setSaving(false); }
   };

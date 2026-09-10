@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import type { AssistantMode } from '../types';
 import { overlayProps } from '../lib/overlay';
+import { toastSaved } from '../lib/notifications';
 
 /**
  * Режим автономности ассистента.
@@ -80,7 +81,7 @@ export function AssistantPanel({ canManage, onClose }: { canManage: boolean; onC
     setMode(next);
     setSaving(true);
     setErr('');
-    try { setMode((await api.setAssistantMode(next)).mode); }
+    try { setMode((await api.setAssistantMode(next)).mode); toastSaved('Настройка сохранена'); }
     catch { setMode(before); setErr('Не удалось сохранить'); }
     finally { setSaving(false); }
   };

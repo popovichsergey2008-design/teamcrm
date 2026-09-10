@@ -4,6 +4,7 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
 import { overlayProps } from '../lib/overlay';
+import { toastSaved } from '../lib/notifications';
 
 interface Member { userId: string; fullName: string }
 
@@ -66,7 +67,10 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
             <input className="input" value={name} disabled={!canManage} onChange={(e) => setName(e.target.value)} />
             {canManage && (
               <button className="btn btn-sm" disabled={busy || !name.trim() || name.trim() === title}
-                      onClick={() => wrap(() => api.renameChat(chatId, name.trim()))}>
+                      onClick={() => wrap(async () => {
+                        await api.renameChat(chatId, name.trim());
+                        toastSaved('Название сохранено');
+                      })}>
                 Сохранить
               </button>
             )}

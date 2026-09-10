@@ -4,6 +4,7 @@ import { TOAST_EVENT, ToastPayload } from '../lib/notifications';
 
 interface Toast extends ToastPayload { id: number }
 const LIFETIME_MS = 6000;
+const SAVED_LIFETIME_MS = 2500;
 const MAX_VISIBLE = 3;
 
 /**
@@ -29,7 +30,10 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings }: 
       const item: Toast = { ...detail, id: ++seq };
       // копить бесконечно нельзя: при активной переписке экран заполнится целиком
       setItems((prev) => [...prev, item].slice(-MAX_VISIBLE));
-      setTimeout(() => setItems((prev) => prev.filter((t) => t.id !== item.id)), LIFETIME_MS);
+      // «Сохранено» гаснет быстрее: это ответ на действие, а не новость, ради
+      // которой стоит держать место на экране шесть секунд.
+      const life = item.kind === 'saved' ? SAVED_LIFETIME_MS : LIFETIME_MS;
+      setTimeout(() => setItems((prev) => prev.filter((t) => t.id !== item.id)), life);
     };
     window.addEventListener(TOAST_EVENT, onToast);
     return () => window.removeEventListener(TOAST_EVENT, onToast);
@@ -41,19 +45,22 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings }: 
       {items.map((t) => (
         <button
           key={t.id}
-          className="toast"
+          className={`toast${t.kind === 'saved' ? ' toast-saved' : ''}`}
           onClick={() => {
+            // «Сохранено» никуда не ведёт: щелчок просто убирает её с глаз.
+            if (t.kind === 'saved') { setItems((prev) => prev.filter((x) => x.id !== t.id)); return; }
             if (t.section === 'feed') onOpenFeed?.();
             else if (t.section === 'focus') onOpenFocus?.();
             else if (t.section === 'meetings') onOpenMeetings?.();
             else onOpenChat(t.chatId);
             setItems((prev) => prev.filter((x) => x.id !== t.id));
           }}
-          title={t.section === 'feed' ? 'Открыть ленту'
+          title={t.kind === 'saved' ? 'Скрыть'
+            : t.section === 'feed' ? 'Открыть ленту'
             : t.section === 'focus' ? 'Открыть фокус дня'
               : t.section === 'meetings' ? 'Открыть встречи' : 'Открыть чаты'}
         >
-          <Icon name={t.section === 'chat' || !t.section ? 'chat' : 'bell'} size={16} />
+          <Icon name={t.kind === 'saved' ? 'check' : t.section === 'chat' || !t.section ? 'chat' : 'bell'} size={16} />
           <span className="toast-text">
             <span className="toast-title">{t.title}</span>
             <span className="toast-body">{t.body}</span>
