@@ -22,7 +22,7 @@ import { MessageText } from '../components/MessageText';
 import { MessageToTask } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
-import { showToast } from '../lib/notifications';
+import { showToast, toastSaved } from '../lib/notifications';
 import type { User } from '../types';
 
 interface Chat {
@@ -124,6 +124,24 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
+  /**
+   * Поиск по ПЕРЕПИСКЕ, а не только по названиям чатов.
+   *
+   * Заказчик: «нужен поиск во всех чатах, как в телеграме». То же поле: человек
+   * набирает слово и получает и чаты с таким названием, и сами сообщения.
+   */
+  const [found, setFound] = useState<{
+    messageId: string; chatId: string; chatTitle: string; chatKind: string;
+    authorName: string | null; body: string; createdAt: string; threadRootId: string | null;
+  }[]>([]);
+  const [searching, setSearching] = useState(false);
+  /**
+   * Отложенные сообщения: написать сейчас, отправить потом.
+   *
+   * `laterOpen` — открыт выбор времени, `scheduled` — что уже отложено в этом чате.
+   */
+  const [laterOpen, setLaterOpen] = useState(false);
+  const [scheduled, setScheduled] = useState<{ id: string; body: string; sendAt: string }[]>([]);
   const [groupOpen, setGroupOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [perm, setPerm] = useState(notificationPermission());
@@ -415,18 +433,38 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, reload, appendMessage, view, loadPinned, loadInbox]);
 
+  // Ищем с задержкой: запрос на каждую букву кладёт базу и мигает списком.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setFound([]); setSearching(false); return; }
+    setSearching(true);
+    const t = setTimeout(() => {
+      api.searchChatMessages(q)
+        .then((r) => setFound(r.items))
+        .catch(() => setFound([]))
+        .finally(() => setSearching(false));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  /** Что отложено в этом чате: список нужен и чтобы отменить, и чтобы не забыть. */
+  const loadScheduled = useCallback((chatId: string) => {
+    api.listScheduled(chatId).then((r) => setScheduled(r.items)).catch(() => setScheduled([]));
+  }, []);
+
   const openChat = useCallback(async (id: string) => {
     setActiveId(id); setErr(''); setMessages([]); setMsgLoading(true); setView('chat');
     try {
       setMessages(await api.chatMessages(id)); // чтение помечается на сервере этим же запросом
       loadPinned(id);
+      loadScheduled(id); // что я отложил в этот чат — видно сразу, а не после отправки
       // Шапка чата проекта должна отвечать «что это за чат» без похода в карточку проекта.
       api.chatContext(id).then(setCtx).catch(() => setCtx(null));
       reload();
       notifyChatsChanged(); // счётчик в шапке должен упасть сразу
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть чат'); }
     finally { setMsgLoading(false); }
-  }, [reload, loadPinned]);
+  }, [reload, loadPinned, loadScheduled]);
 
   /*
     Вернулись во вкладку с открытым чатом — значит прочитали.
@@ -627,6 +665,66 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     navigate(m.task_project_id
       ? { section: 'projects', projectId: String(m.task_project_id), taskId: String(m.task_id) }
       : { section: 'projects' });
+  };
+
+  /**
+   * Отложить набранное сообщение.
+   *
+   * Текст уходит с глаз сразу — как в мессенджерах: он больше не в поле ввода, а
+   * в списке отложенных. Иначе человек, нажав «отправить позже», смотрит на свой
+   * текст и не понимает, отправится он сейчас или нет.
+   */
+  const scheduleDraft = async (at: Date) => {
+    const text = draft.trim();
+    if (!text || !activeId) return;
+    setLaterOpen(false);
+    try {
+      await api.scheduleChatMessage(activeId, {
+        body: text,
+        sendAt: at.toISOString(),
+        mentionIds: stillMentioned(mentioned, text, mentionUsers),
+      });
+      setDraft('');
+      setMentioned([]);
+      loadScheduled(activeId);
+      toastSaved('Отправлю позже', remindLabel(at));
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось отложить сообщение');
+    }
+  };
+
+  const cancelScheduled = async (id: string) => {
+    try {
+      await api.cancelScheduled(id);
+      setScheduled((prev) => prev.filter((x) => x.id !== id));
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось отменить'); }
+  };
+
+  /**
+   * Открыть найденное сообщение.
+   *
+   * Три случая, и все три встречаются: ответ в ветке открываем веткой (в ленте его
+   * нет вовсе), старое сообщение — окном вокруг него (иначе человек видит реплику
+   * без разговора), свежее просто подсвечиваем в уже загруженной ленте.
+   */
+  const openFound = async (hit: { chatId: string; messageId: string; threadRootId: string | null }) => {
+    setView('chat');
+    setActiveId(hit.chatId);
+    setErr('');
+    try {
+      const list = hit.threadRootId
+        ? await api.chatMessages(hit.chatId)
+        : await api.chatMessagesAround(hit.chatId, hit.messageId);
+      setMessages(list);
+      loadPinned(hit.chatId);
+      api.chatContext(hit.chatId).then(setCtx).catch(() => setCtx(null));
+      if (hit.threadRootId) await openThread(hit.threadRootId);
+      setHighlight(hit.messageId);
+      // Подсветка гаснет сама: постоянная метка на сообщении ничего не значит.
+      setTimeout(() => setHighlight((cur) => (cur === hit.messageId ? null : cur)), 4000);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось открыть сообщение');
+    }
   };
 
   /** Сохранить правку сообщения. Пустой текст — это удаление, и оно отдельной кнопкой. */
@@ -958,6 +1056,37 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
         {/* Внешние — отдельной группой и с пометкой: в этих разговорах есть человек
             со стороны, и путать их с внутренними нельзя ни при каких обстоятельствах. */}
+        {/*
+          Найденные СООБЩЕНИЯ — первым блоком, над списком чатов.
+
+          Человек, набравший в поиске «пиликалка», ищет фразу, а не чат с таким
+          названием: показывать сначала чаты значило бы прятать ответ под тем, что
+          он и так видит.
+        */}
+        {query.trim().length >= 2 && (
+          <>
+            <div className="chat-group-head">
+              Сообщения{searching ? ' · ищу…' : found.length ? ` · ${found.length}` : ''}
+            </div>
+            {!searching && found.length === 0 && (
+              <div className="nav-projects-empty dim">Ничего не нашлось в переписке</div>
+            )}
+            {found.map((hit) => (
+              <button key={hit.messageId} className="chat-hit" onClick={() => openFound(hit)}>
+                <span className="chat-hit-head">
+                  <b>{hit.chatTitle}</b>
+                  <span className="dim chat-time">{dayOf(hit.createdAt)} {timeOf(hit.createdAt)}</span>
+                </span>
+                <span className="chat-hit-body dim">
+                  {hit.authorName ? `${hit.authorName}: ` : ''}{String(hit.body ?? '').slice(0, 140)}
+                </span>
+                {hit.threadRootId && <span className="dim chat-under-mark"><Icon name="chat" size={11} /> в ветке</span>}
+              </button>
+            ))}
+            {found.length > 0 && <div className="chat-group-head">Чаты</div>}
+          </>
+        )}
+
         {external.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Внешние</div>}
         {external.filter((c) => match(c.title)).map((c) => (
           <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)} />
@@ -1630,6 +1759,62 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               >
                 <Icon name="screen" size={16} />
               </button>
+              {/* Что уже отложено: строка над полем ввода, с отменой. Без неё
+                  отложенное сообщение исчезает бесследно до самой отправки. */}
+              {scheduled.length > 0 && (
+                <span className="chat-later-queue">
+                  {scheduled.map((x) => (
+                    <button
+                      key={x.id}
+                      className="chat-thread-link"
+                      title={`Отправлю ${remindLabel(new Date(x.sendAt))}. Нажмите, чтобы отменить`}
+                      onClick={() => cancelScheduled(x.id)}
+                    >
+                      <Icon name="clock" size={11} /> {remindLabel(new Date(x.sendAt))}: {x.body.slice(0, 28)}
+                      <Icon name="close" size={11} />
+                    </button>
+                  ))}
+                </span>
+              )}
+              {/*
+                Отправить позже — как в мессенджерах.
+
+                Рядом с «отправить», а не в меню: решение «сейчас или потом»
+                принимают в тот же момент, что и решение отправить.
+              */}
+              <span className="chat-later">
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setLaterOpen((v) => !v)}
+                  disabled={!draft.trim()}
+                  title="Отправить позже — напомнить о встрече, написать утром"
+                  aria-label="Отправить позже"
+                >
+                  <Icon name="clock" size={16} />
+                </button>
+                {laterOpen && (
+                  <span className="chat-later-pick" onClick={(e) => e.stopPropagation()}>
+                    {remindOptions().map((o) => (
+                      <button key={o.key} className="chat-thread-link" onClick={() => scheduleDraft(o.at)}>
+                        {o.label} · {remindLabel(o.at)}
+                      </button>
+                    ))}
+                    {/* Своё время: «за полчаса до встречи» ни один список не угадает. */}
+                    <label className="chat-later-own">
+                      <span className="dim">Своё время</span>
+                      <input
+                        type="datetime-local"
+                        className="input"
+                        onChange={(e) => {
+                          const at = new Date(e.target.value);
+                          if (!Number.isNaN(at.getTime())) void scheduleDraft(at);
+                        }}
+                      />
+                    </label>
+                    <button className="chat-thread-link chat-thread-new" onClick={() => setLaterOpen(false)}>Отмена</button>
+                  </span>
+                )}
+              </span>
               <button
                 className="btn btn-primary btn-sm"
                 onClick={send}

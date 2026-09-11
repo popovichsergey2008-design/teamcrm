@@ -174,12 +174,16 @@ export class TaskRegistryQueryDto {
    * ссылки, сохранённые до разделения «делаю» и «помогаю», и отвечать на них 400 нельзя.
    */
   /**
-   * Роли через запятую: «doing,delegated,helping». Проверять списком @IsIn нельзя —
-   * сочетаний два десятка; разбирает и чистит строку сам построитель запроса
-   * (`normalizeScopes`), неизвестные слова он молча отбрасывает.
+   * Роли через запятую: «doing,delegated,helping».
+   *
+   * Проверяем ВСЕ слова списка, а не только одно: незнакомый срез должен получать
+   * отказ, а не выполняться молча как «делаю» — иначе ссылка с опечаткой тихо
+   * показывает не те задачи. Сочетаний много, поэтому не @IsIn, а образец строки.
    */
   @IsOptional()
-  @IsString()
+  @Matches(/^(doing|helping|mine|delegated|watching|all)(,(doing|helping|mine|delegated|watching|all))*$/, {
+    message: 'scope: допустимы doing, helping, mine, delegated, watching, all — через запятую',
+  })
   @MaxLength(80)
   scope?: string;
 

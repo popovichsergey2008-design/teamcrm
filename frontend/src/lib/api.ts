@@ -857,6 +857,31 @@ export const api = {
   setProjectDefault: (id: string, isDefault: boolean) =>
     request<{ isDefault: boolean }>('POST', `/projects/${id}/default`, { isDefault }),
 
+  /**
+   * Поиск по ВСЕМ чатам — как в мессенджерах: ищет буквы, а не смысл.
+   *
+   * Отличается от `chatAiSearch`: тот пересказывает найденное, а здесь нужно само
+   * сообщение — человек помнит обрывок фразы и хочет увидеть её в разговоре.
+   */
+  searchChatMessages: (q: string) => request<{
+    items: {
+      messageId: string; chatId: string; chatTitle: string; chatKind: string;
+      authorName: string | null; body: string; createdAt: string; threadRootId: string | null;
+    }[];
+  }>('GET', `/chats/search?q=${encodeURIComponent(q)}`),
+  /** Окно сообщений вокруг найденного: увидеть реплику в разговоре, а не в пустоте. */
+  chatMessagesAround: (chatId: string, messageId: string) =>
+    request<any[]>('GET', `/chats/${chatId}/around/${messageId}`),
+
+  /** Отложенные сообщения: написать сейчас, отправить в назначенное время. */
+  scheduleChatMessage: (chatId: string, body: { body: string; sendAt: string; rootId?: string; alsoInChannel?: boolean; mentionIds?: string[] }) =>
+    request<{ id: string; chatId: string; body: string; sendAt: string }>('POST', `/chats/${chatId}/scheduled`, body),
+  listScheduled: (chatId: string) =>
+    request<{ items: { id: string; chatId: string; body: string; sendAt: string }[] }>('GET', `/chats/${chatId}/scheduled`),
+  cancelScheduled: (id: string) => request<{ cancelled: boolean }>('DELETE', `/chats/scheduled/${id}`),
+  rescheduleMessage: (id: string, sendAt: string) =>
+    request<{ sendAt: string }>('PATCH', `/chats/scheduled/${id}`, { sendAt }),
+
   /** Правка своего сообщения: помечается как изменённое, чужие править нельзя. */
   editMessage: (chatId: string, messageId: string, body: string) =>
     request<{ edited: boolean; body: string }>('PATCH', `/chats/${chatId}/messages/${messageId}`, { body }),

@@ -219,6 +219,84 @@ describe('Чаты команды (e2e)', () => {
     await http$.delete(`/api/chats/${chat.id}/messages/${msg.id}`).set(H(owner.accessToken)).expect(200);
   });
 
+  it('поиск по всем чатам находит чужие слова только там, куда есть доступ', async () => {
+    const email = `sr_${uniq()}@t.test`;
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Поиск', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+    const mateEmail = `srm_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const mateLogin = (await http$.post('/api/auth/login')
+      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+
+    const dm = (await http$.post('/api/chats/dm').set(H(owner.accessToken)).send({ userId: mate.id }).expect(201)).body.data;
+    await http$.post(`/api/chats/${dm.id}/messages`).set(H(owner.accessToken))
+      .send({ body: 'нужна пиликалка на кнопку' }).expect(201);
+
+    const found = (await http$.get('/api/chats/search?q=пиликалка').set(H(owner.accessToken)).expect(200)).body.data;
+    expect(found.items).toHaveLength(1);
+    expect(found.items[0].body).toContain('пиликалка');
+    expect(found.items[0].chatId).toBe(String(dm.id));
+
+    // окно вокруг найденного открывается и содержит само сообщение
+    const around = (await http$.get(`/api/chats/${dm.id}/around/${found.items[0].messageId}`)
+      .set(H(owner.accessToken)).expect(200)).body.data;
+    expect(around.some((m: any) => String(m.id) === String(found.items[0].messageId))).toBe(true);
+
+    // одна буква ничего не ищет: такой запрос находит всё и не сообщает ничего
+    const tiny = (await http$.get('/api/chats/search?q=п').set(H(owner.accessToken)).expect(200)).body.data;
+    expect(tiny.items).toEqual([]);
+
+    // чужой личный диалог в поиск не попадает
+    const third = `sr3_${uniq()}@t.test`;
+    const outsider = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: third, fullName: 'Посторонний', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const outLogin = (await http$.post('/api/auth/login')
+      .send({ email: third, password: 'password123' }).expect(201)).body.data;
+    void outsider;
+    const alien = (await http$.get('/api/chats/search?q=пиликалка').set(H(outLogin.accessToken)).expect(200)).body.data;
+    expect(alien.items).toEqual([]);
+    void mateLogin;
+  });
+
+  it('отложенное сообщение: время только в будущем, отменить может лишь автор', async () => {
+    const email = `sc_${uniq()}@t.test`;
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Отложенные', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+    const mateEmail = `scm_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const mateLogin = (await http$.post('/api/auth/login')
+      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+    const dm = (await http$.post('/api/chats/dm').set(H(owner.accessToken)).send({ userId: mate.id }).expect(201)).body.data;
+
+    const soon = new Date(Date.now() + 3600_000).toISOString();
+    const past = new Date(Date.now() - 3600_000).toISOString();
+
+    await http$.post(`/api/chats/${dm.id}/scheduled`).set(H(owner.accessToken))
+      .send({ body: 'напоминаю про встречу', sendAt: past }).expect(400);
+
+    const made = (await http$.post(`/api/chats/${dm.id}/scheduled`).set(H(owner.accessToken))
+      .send({ body: 'напоминаю про встречу', sendAt: soon }).expect(201)).body.data;
+    expect(made.id).toBeTruthy();
+
+    // до срока сообщения в чате НЕТ: иначе оно уедет собеседнику прямо сейчас
+    const feed = (await http$.get(`/api/chats/${dm.id}/messages`).set(H(mateLogin.accessToken)).expect(200)).body.data;
+    expect(feed.some((m: any) => String(m.body).includes('напоминаю'))).toBe(false);
+
+    const mine = (await http$.get(`/api/chats/${dm.id}/scheduled`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(mine.items).toHaveLength(1);
+
+    // чужое отложенное не отменить и не увидеть в своём списке
+    await http$.delete(`/api/chats/scheduled/${made.id}`).set(H(mateLogin.accessToken)).expect(403);
+    const alien = (await http$.get(`/api/chats/${dm.id}/scheduled`).set(H(mateLogin.accessToken)).expect(200)).body.data;
+    expect(alien.items).toEqual([]);
+
+    await http$.delete(`/api/chats/scheduled/${made.id}`).set(H(owner.accessToken)).expect(200);
+    const after = (await http$.get(`/api/chats/${dm.id}/scheduled`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(after.items).toEqual([]);
+  });
+
   it('правка своего сообщения и галочки «прочитано»', async () => {
     const email = `ed_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')

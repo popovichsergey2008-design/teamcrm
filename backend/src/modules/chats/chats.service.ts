@@ -6,6 +6,7 @@ import { DiagService } from '../diagnostics/diag.service';
 import { FilesService } from '../files/files.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ChatRow, ChatsRepository } from './chats.repository';
+import { ScheduledRepository, ScheduledRow } from './scheduled.repository';
 
 const PAGE = 50;
 
@@ -23,6 +24,7 @@ export class ChatsService {
     private readonly files: FilesService,
     private readonly realtime: RealtimeService,
     private readonly diag: DiagService,
+    private readonly scheduled: ScheduledRepository,
     /** Разбор фразы в задачу — тот же, что у голосовой постановки: два механизма
         для одного и того же разошлись бы на первой правке. */
     private readonly nl: NlService,
@@ -308,6 +310,112 @@ export class ChatsService {
     if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
     if (chatId) await this.access(tenantId, chatId, user);
     return this.chatAi.digest(tenantId, user.userId, chatId ?? null);
+  }
+
+  /**
+   * Поиск по всем чатам — как в мессенджерах.
+   *
+   * Отличается от `aiSearch` тем, что ничего не понимает: ищет ровно введённые
+   * буквы. Это и нужно чаще всего — человек помнит обрывок фразы («пиликалка»,
+   * «смет») и хочет найти само сообщение, а не пересказ.
+   *
+   * Подпись чата собираем здесь: «Юрий Про» для личного, название группы, имя
+   * проекта. В списке результатов без неё непонятно, где вообще это сказали.
+   */
+  async searchMessages(tenantId: string, user: { userId: string; role: string }, query: string) {
+    if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
+    const q = String(query ?? '').trim();
+    // Одна буква находит всё и ничего не сообщает — не ищем.
+    if (q.length < 2) return { items: [] };
+    const rows = await this.repo.searchMessages(tenantId, user.userId, q);
+    return {
+      items: rows.map((r) => ({
+        messageId: String(r.id),
+        chatId: String(r.chat_id),
+        chatTitle: r.chat_kind === 'dm' ? (r.peer_name ?? 'Личный чат')
+          : r.chat_kind === 'project' ? (r.project_name ?? 'Проект')
+            : (r.chat_title ?? 'Группа'),
+        chatKind: r.chat_kind,
+        authorName: r.author_name,
+        body: r.body,
+        createdAt: r.created_at,
+        // Ответ из ветки открывается веткой, иначе его в ленте не найти.
+        threadRootId: r.thread_root_id ? String(r.thread_root_id) : null,
+      })),
+    };
+  }
+
+  /**
+   * Окно сообщений вокруг найденного — переход из поиска.
+   *
+   * Отдаём тем же путём, что и обычную ленту, поэтому клиент показывает их своим
+   * же кодом. Отметку «прочитано» здесь НЕ ставим: человек пришёл посмотреть одно
+   * старое сообщение, а не прочитал весь чат.
+   */
+  async messagesAround(tenantId: string, chatId: string, user: { userId: string; role: string }, messageId: string) {
+    await this.access(tenantId, chatId, user);
+    return this.repo.messagesAround(tenantId, chatId, messageId, user.userId);
+  }
+
+  /**
+   * Отложить сообщение.
+   *
+   * Проверяем доступ и время: отправка в прошлое — почти всегда опечатка в дате,
+   * а «через год» чаще ошибка, чем замысел. Текст держим у себя до срока: положить
+   * его сразу в чат нельзя — он тут же уедет собеседнику.
+   */
+  async schedule(
+    tenantId: string, chatId: string, user: { userId: string; role: string },
+    body: string, sendAt: string, opts?: { rootId?: string | null; alsoInChannel?: boolean; mentionIds?: string[] },
+  ) {
+    await this.access(tenantId, chatId, user);
+    const text = String(body ?? '').trim();
+    if (!text) throw AppException.validation('Пустое сообщение отложить нельзя');
+    const at = new Date(sendAt);
+    if (Number.isNaN(at.getTime())) throw AppException.validation('Непонятное время отправки');
+    if (at.getTime() < Date.now() + 30_000) throw AppException.validation('Выберите время в будущем');
+    if (at.getTime() > Date.now() + 365 * 86_400_000) throw AppException.validation('Слишком далеко — не больше года');
+
+    const row = await this.scheduled.create({
+      tenantId, chatId, authorId: user.userId, body: text.slice(0, 8000),
+      threadRootId: opts?.rootId ? String(opts.rootId) : null,
+      alsoInChannel: opts?.alsoInChannel === true,
+      mentionIds: (opts?.mentionIds ?? []).map(String),
+      sendAt: at,
+    });
+    return this.scheduledView(row);
+  }
+
+  listScheduled(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    return this.access(tenantId, chatId, user)
+      .then(() => this.scheduled.listMine(tenantId, chatId, user.userId))
+      .then((rows) => ({ items: rows.map((r: ScheduledRow) => this.scheduledView(r)) }));
+  }
+
+  /** Отмена и перенос — только своего: чужое отложенное не трогает никто. */
+  async cancelScheduled(tenantId: string, id: string, user: { userId: string }) {
+    const row = await this.scheduled.byId(tenantId, id);
+    if (!row) throw AppException.notFound('Отложенное сообщение не найдено');
+    if (String(row.author_id) !== String(user.userId)) throw AppException.forbidden('Это не ваше сообщение');
+    await this.scheduled.cancel(tenantId, id);
+    return { cancelled: true };
+  }
+
+  async rescheduleMessage(tenantId: string, id: string, user: { userId: string }, sendAt: string) {
+    const row = await this.scheduled.byId(tenantId, id);
+    if (!row) throw AppException.notFound('Отложенное сообщение не найдено');
+    if (String(row.author_id) !== String(user.userId)) throw AppException.forbidden('Это не ваше сообщение');
+    const at = new Date(sendAt);
+    if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() + 30_000) {
+      throw AppException.validation('Выберите время в будущем');
+    }
+    await this.scheduled.reschedule(tenantId, id, at);
+    return { sendAt: at.toISOString() };
+  }
+
+  private scheduledView(row: { id: string; body: string; send_at: Date; chat_id: string } | null) {
+    if (!row) throw AppException.conflict('Не удалось отложить сообщение');
+    return { id: String(row.id), chatId: String(row.chat_id), body: row.body, sendAt: row.send_at };
   }
 
   /** Поиск по переписке словами — только по тому, что доступно спрашивающему. */

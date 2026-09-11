@@ -1295,6 +1295,21 @@
 
 .chat-count { font-size: 11px; margin-left: 4px; }
 .chat-found { font-size: 12px; margin: 4px 0; }
+/*
+  Найденное сообщение в списке слева.
+
+  Две строки: где сказали и что сказали. Автор идёт в той же строке, что и текст, —
+  в списке шириной в палец отдельная строка с именем съедает сам ответ.
+*/
+.chat-hit {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  padding: 8px 10px; border: none; background: none; cursor: pointer; color: var(--text);
+  border-left: 2px solid transparent;
+}
+.chat-hit:hover { background: var(--bg-elev-2); border-left-color: var(--accent); }
+.chat-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chat-hit-head { display: flex; align-items: baseline; gap: 6px; justify-content: space-between; }
+.chat-hit-body { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-history-head { margin-top: 16px; }
 /* Строка истории про сообщение ведёт к самому сообщению. */
 .activity-link {
@@ -2485,7 +2500,7 @@
   Поле выровнено по НИЗУ, а не по центру: оно растёт под текст, и при центрировании
   кнопки уезжали бы вверх вместе с ним, каждый раз меняя место под пальцем.
 */
-.chat-input { display: flex; align-items: flex-end; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--border); }
+.chat-input { position: relative; display: flex; align-items: flex-end; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--border); }
 /*
   Само поле — заметно крупнее прежнего однострочного: в чате пишут не одно слово, и
   сообщение надо перечитать перед отправкой, а не гонять по нему курсором.
@@ -2505,6 +2520,28 @@
   он оказывался за границей окна, и выглядело это как «подсказка не работает».
 */
 .chat-input .mention-list { top: auto; bottom: 100%; margin: 0 0 4px; }
+/*
+  Отложенная отправка.
+
+  Выбор времени всплывает НАД полем ввода: поле стоит у нижнего края экрана, и
+  список, выпадающий вниз, уехал бы за границу окна — на этом мы уже обожглись с
+  подсказкой «@».
+*/
+.chat-later { position: relative; display: inline-flex; }
+.chat-later-pick {
+  position: absolute; right: 0; bottom: 100%; margin-bottom: 6px; z-index: 30;
+  display: flex; flex-direction: column; gap: 4px; min-width: 240px; padding: 8px;
+  background: var(--bg-elev); border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+}
+.chat-later-own { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.chat-later-own .input { font-size: 12px; padding: 4px 6px; }
+/* Очередь отложенных — строкой над полем: иначе текст исчезает бесследно до отправки. */
+.chat-later-queue {
+  position: absolute; left: 16px; right: 16px; bottom: 100%; margin-bottom: 4px;
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+
 /* Правка сообщения прямо в пузыре: отдельное окно ради опечатки — лишний шаг. */
 .chat-edit { display: flex; flex-direction: column; gap: 6px; min-width: 260px; }
 .chat-edit .input { font-size: 14px; }

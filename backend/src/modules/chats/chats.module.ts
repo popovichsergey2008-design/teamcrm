@@ -7,6 +7,8 @@ import { ChatsRepository } from './chats.repository';
 import { ChatsService } from './chats.service';
 import { RemindersScheduler } from './reminders.scheduler';
 import { ChatsAiService } from './chats-ai.service';
+import { ScheduledRepository } from './scheduled.repository';
+import { ScheduledMessagesScheduler } from './scheduled.scheduler';
 import { AiModule } from '../ai/ai.module';
 
 /**
@@ -19,7 +21,10 @@ import { AiModule } from '../ai/ai.module';
 @Module({
   imports: [RealtimeModule, NotificationsModule, NlModule, AiModule],
   controllers: [ChatsController],
-  providers: [ChatsService, ChatsRepository, RemindersScheduler, ChatsAiService],
+  providers: [
+    ChatsService, ChatsRepository, RemindersScheduler, ChatsAiService,
+    ScheduledRepository, ScheduledMessagesScheduler,
+  ],
   exports: [ChatsService],
 })
 export class ChatsModule {}

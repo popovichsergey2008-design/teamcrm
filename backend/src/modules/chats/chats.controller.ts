@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
@@ -54,6 +54,19 @@ class CreateExternalDto {
 class AddMembersDto {
   @IsArray() @IsString({ each: true }) userIds!: string[];
 }
+class ScheduleDto {
+  @IsString() @MinLength(1) @MaxLength(8000) body!: string;
+  /** Время отправки в ISO: считает клиент — он знает часовой пояс человека. */
+  @IsDateString() sendAt!: string;
+  @IsOptional() @IsString() rootId?: string;
+  @IsOptional() @IsBoolean() alsoInChannel?: boolean;
+  @IsOptional() @IsArray() @IsString({ each: true }) mentionIds?: string[];
+}
+
+class RescheduleDto {
+  @IsDateString() sendAt!: string;
+}
+
 class MessageEditDto {
   @IsString() @MaxLength(4000) body!: string;
 }
@@ -328,6 +341,46 @@ export class ChatsController {
   @Post(':id/read')
   read(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.chats.markRead(u.tenantId, id, u);
+  }
+
+  /**
+   * Поиск по всем чатам. Маршрут статический и стоит выше `:id`-путей: слово
+   * «search» не должно приниматься за номер чата.
+   */
+  @Get('search')
+  searchMessages(@CurrentUser() u: AuthUser, @Query('q') q: string) {
+    return this.chats.searchMessages(u.tenantId, u, String(q ?? ''));
+  }
+
+  /** Окно сообщений вокруг найденного — переход из поиска. */
+  @Get(':id/around/:messageId')
+  around(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('messageId') messageId: string) {
+    return this.chats.messagesAround(u.tenantId, id, u, messageId);
+  }
+
+  /** Отложенные сообщения: написать сейчас, отправить в назначенное время. */
+  @Get(':id/scheduled')
+  listScheduled(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.listScheduled(u.tenantId, id, u);
+  }
+
+  @Post(':id/scheduled')
+  schedule(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ScheduleDto) {
+    return this.chats.schedule(u.tenantId, id, u, dto.body, dto.sendAt, {
+      rootId: dto.rootId ?? null,
+      alsoInChannel: dto.alsoInChannel,
+      mentionIds: dto.mentionIds,
+    });
+  }
+
+  @Patch('scheduled/:sid')
+  reschedule(@CurrentUser() u: AuthUser, @Param('sid') sid: string, @Body() dto: RescheduleDto) {
+    return this.chats.rescheduleMessage(u.tenantId, sid, u, dto.sendAt);
+  }
+
+  @Delete('scheduled/:sid')
+  cancelScheduled(@CurrentUser() u: AuthUser, @Param('sid') sid: string) {
+    return this.chats.cancelScheduled(u.tenantId, sid, u);
   }
 
   /** Правка своего сообщения: опечатку исправляют, а не переписывают следом. */

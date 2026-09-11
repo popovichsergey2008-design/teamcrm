@@ -501,6 +501,99 @@ export class ChatsRepository {
     );
   }
 
+  /**
+   * Поиск по всей переписке — как в мессенджерах.
+   *
+   * Ищем только там, куда человеку можно: личные и групповые чаты, где он участник,
+   * плюс чаты проектов (доступ к проектам в CRM общий). Без этого условия поиск стал
+   * бы дырой в приватность личных диалогов.
+   *
+   * ILIKE, а не полнотекстовый индекс: у поиска по переписке две особенности —
+   * ищут обрывок («смет», «пиликалка») и ищут редко. Полнотекстовый словарь такие
+   * куски не находит вовсе, а стоимость ILIKE на десятках тысяч строк ещё незаметна.
+   * Когда станет заметной, здесь появится trigram-индекс, и запрос не изменится.
+   */
+  searchMessages(tenantId: string, userId: string, query: string, limit = 40) {
+    return this.db.many<{
+      id: string; chat_id: string; body: string; created_at: Date;
+      author_id: string | null; author_name: string | null;
+      thread_root_id: string | null;
+      chat_kind: string; chat_title: string | null;
+      project_name: string | null; peer_name: string | null;
+    }>(
+      `SELECT m.id, m.chat_id, m.body, m.created_at, m.author_id, u.full_name AS author_name,
+              m.thread_root_id, c.kind AS chat_kind, c.title AS chat_title,
+              p.name AS project_name, peer.full_name AS peer_name
+         FROM chat_messages m
+         JOIN chats c ON c.id = m.chat_id
+    LEFT JOIN users u ON u.id = m.author_id
+    LEFT JOIN projects p ON p.id = c.project_id
+    LEFT JOIN LATERAL (
+           SELECT pu.full_name FROM chat_members cm
+             JOIN users pu ON pu.id = cm.user_id
+            WHERE cm.chat_id = c.id AND cm.user_id <> $2 AND c.kind = 'dm' LIMIT 1
+         ) peer ON TRUE
+        WHERE m.tenant_id = $1 AND m.deleted_at IS NULL
+          AND m.body ILIKE $3
+          AND (c.kind = 'project' OR EXISTS (
+                SELECT 1 FROM chat_members mm WHERE mm.chat_id = c.id AND mm.user_id = $2))
+        ORDER BY m.id DESC
+        LIMIT $4`,
+      [tenantId, userId, `%${query}%`, limit],
+    );
+  }
+
+  /**
+   * Окно сообщений ВОКРУГ найденного.
+   *
+   * По ссылке из поиска человек должен увидеть сообщение в разговоре, а не в
+   * пустоте: без соседних реплик непонятно, о чём вообще речь. Берём то же, что
+   * показывает лента (ответы из веток в неё не попадают), и по полсотни с каждой
+   * стороны.
+   */
+  messagesAround(tenantId: string, chatId: string, messageId: string, viewerId: string): Promise<MessageRow[]> {
+    return this.db.many<MessageRow>(
+      `WITH win AS (
+         (SELECT id FROM chat_messages
+           WHERE tenant_id=$1 AND chat_id=$2 AND deleted_at IS NULL
+             AND (thread_root_id IS NULL OR also_in_channel) AND id <= $3::bigint
+           ORDER BY id DESC LIMIT 50)
+         UNION
+         (SELECT id FROM chat_messages
+           WHERE tenant_id=$1 AND chat_id=$2 AND deleted_at IS NULL
+             AND (thread_root_id IS NULL OR also_in_channel) AND id > $3::bigint
+           ORDER BY id LIMIT 20)
+       )
+       SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
+              m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
+              m.task_id, t.title AS task_title, t.project_id AS task_project_id,
+              m.meeting_id, m.is_ai, m.guest_name,
+              (SELECT COUNT(*)::int FROM chat_members cm
+                WHERE cm.chat_id = m.chat_id AND cm.user_id <> m.author_id
+                  AND cm.last_read_at IS NOT NULL AND cm.last_read_at >= m.created_at) AS read_by,
+              (SELECT COUNT(*)::int FROM chat_members cm2
+                WHERE cm2.chat_id = m.chat_id AND cm2.user_id <> m.author_id) AS others,
+              COALESCE((
+                SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
+                  FROM (
+                    SELECT emoji, COUNT(*)::int AS n, BOOL_OR(user_id = $4::bigint) AS mine
+                      FROM chat_message_reactions
+                     WHERE message_id = m.id
+                     GROUP BY emoji
+                  ) x
+              ), '[]'::json) AS reactions,
+              1
+         FROM chat_messages m
+         JOIN win ON win.id = m.id
+    LEFT JOIN users u ON u.id = m.author_id
+    LEFT JOIN files f ON f.id = m.file_id
+    LEFT JOIN tasks t ON t.id = m.task_id
+        ORDER BY m.id`,
+      [tenantId, chatId, messageId, viewerId],
+    );
+  }
+
   /** Кого позвали по имени в конкретном сообщении. */
   messageMentions(tenantId: string, messageId: string): Promise<{ user_id: string }[]> {
     return this.db.many<{ user_id: string }>(
