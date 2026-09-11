@@ -37,6 +37,15 @@ export class ScheduledMessagesScheduler implements OnModuleInit, OnModuleDestroy
     this.timer = setInterval(() => { void this.tick(); }, TICK_MS);
     // Первый проход сразу: после перезапуска в очереди уже может быть просроченное.
     setTimeout(() => { void this.tick(); }, 5_000);
+    /*
+      Строка в журнале о старте.
+
+      Без неё проверить, работает ли планировщик, было нечем: он молчит, пока
+      отправлять нечего, и «тишина в логах» одинаково выглядит и при работающем
+      таймере, и при незапущенном. Один раз при старте — не шум, а ответ на
+      вопрос «он вообще живой».
+    */
+    this.log.log(`отложенные сообщения: планировщик запущен, проверка каждые ${TICK_MS / 1000} с`);
   }
 
   onModuleDestroy(): void {
@@ -48,6 +57,9 @@ export class ScheduledMessagesScheduler implements OnModuleInit, OnModuleDestroy
     this.busy = true;
     try {
       const due = await this.repo.dueBatch();
+      // Молчим, когда отправлять нечего: строка «ничего не найдено» каждые
+      // полминуты превращает журнал в шум, в котором не видно настоящих бед.
+      if (due.length) this.log.log(`отложенных к отправке: ${due.length}`);
       for (const row of due) {
         try {
           const message = await this.chats.send(
@@ -59,6 +71,7 @@ export class ScheduledMessagesScheduler implements OnModuleInit, OnModuleDestroy
             (row.mention_ids ?? []).map(String),
           );
           await this.repo.markSent(String(row.id), String((message as { id?: string })?.id ?? ''));
+          this.log.log(`отложенное ${row.id} отправлено в чат ${row.chat_id}`);
         } catch (e) {
           await this.repo.markFailed(String(row.id), (e as Error).message);
           this.log.warn(`отложенное ${row.id} не ушло: ${(e as Error).message}`);
