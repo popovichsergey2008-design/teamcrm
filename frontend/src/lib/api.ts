@@ -879,6 +879,9 @@ export const api = {
   listScheduled: (chatId: string) =>
     request<{ items: { id: string; chatId: string; body: string; sendAt: string }[] }>('GET', `/chats/${chatId}/scheduled`),
   cancelScheduled: (id: string) => request<{ cancelled: boolean }>('DELETE', `/chats/scheduled/${id}`),
+  /** «Отправить сейчас»: передумал ждать. */
+  sendScheduledNow: (id: string) => request<{ sent: boolean }>('POST', `/chats/scheduled/${id}/send`),
+  editScheduled: (id: string, body: string) => request<{ body: string }>('PATCH', `/chats/scheduled/${id}`, { body }),
   rescheduleMessage: (id: string, sendAt: string) =>
     request<{ sendAt: string }>('PATCH', `/chats/scheduled/${id}`, { sendAt }),
 
@@ -926,9 +929,17 @@ export const api = {
   /** Мои ветки: где я начал разговор или отвечал, с числом новых ответов. */
   myThreads: () => request<any[]>('GET', '/chats/threads'),
 
-  sendChatFile: async (chatId: string, file: File, body: string) => {
+  /**
+   * Файлы сообщением: несколько снимков — ОДНО сообщение, как в мессенджерах.
+   *
+   * Принимает и один файл, и пачку: отдельного метода на «один» не заводим, чтобы
+   * два пути отправки не разошлись в мелочах.
+   */
+  sendChatFile: async (chatId: string, file: File | File[], body: string, thread?: { rootId?: string; alsoInChannel?: boolean }) => {
     const fd = new FormData();
-    fd.append('file', file);
+    for (const f of Array.isArray(file) ? file : [file]) fd.append('files', f);
+    if (thread?.rootId) fd.append('threadRootId', thread.rootId);
+    if (thread?.alsoInChannel) fd.append('alsoInChannel', 'true');
     if (body) fd.append('body', body);
     const res = await fetch(`/api/chats/${chatId}/files`, {
       method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,

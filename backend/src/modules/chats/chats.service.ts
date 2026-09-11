@@ -232,6 +232,8 @@ export class ChatsService {
     body: string, fileId: string | null,
     thread?: { rootId?: string | null; alsoInChannel?: boolean },
     mentionIds?: string[],
+    /** Все вложения сообщения; `fileId` — первое из них. */
+    fileIds?: string[],
   ) {
     const chat = await this.access(tenantId, chatId, user);
     const text = (body ?? '').trim();
@@ -240,6 +242,7 @@ export class ChatsService {
     const rootId = await this.threadRoot(tenantId, chatId, thread?.rootId ?? null);
     const message = await this.repo.addMessage({
       tenantId, chatId, authorId: user.userId, body: text.slice(0, 8000), fileId,
+      fileIds,
       threadRootId: rootId, alsoInChannel: thread?.alsoInChannel === true,
     });
     // Ответив, человек ветку прочитал: иначе собственная реплика тут же
@@ -399,6 +402,37 @@ export class ChatsService {
     if (String(row.author_id) !== String(user.userId)) throw AppException.forbidden('Это не ваше сообщение');
     await this.scheduled.cancel(tenantId, id);
     return { cancelled: true };
+  }
+
+  /**
+   * «Отправить сейчас» — как в Telegram: передумал ждать.
+   *
+   * Отправляем тем же путём, что и планировщик, и сразу помечаем строку
+   * отправленной: иначе через полминуты он отправит её второй раз.
+   */
+  async sendScheduledNow(tenantId: string, id: string, user: { userId: string; role: string }) {
+    const row = await this.scheduled.byId(tenantId, id);
+    if (!row) throw AppException.notFound('Отложенное сообщение не найдено');
+    if (String(row.author_id) !== String(user.userId)) throw AppException.forbidden('Это не ваше сообщение');
+    if (row.status !== 'pending') throw AppException.conflict('Это сообщение уже отправлено или отменено');
+    const message = await this.send(
+      tenantId, String(row.chat_id), user, row.body, null,
+      { rootId: row.thread_root_id ? String(row.thread_root_id) : null, alsoInChannel: row.also_in_channel },
+      (row.mention_ids ?? []).map(String),
+    );
+    await this.scheduled.markSent(String(row.id), String((message as { id?: string })?.id ?? ''));
+    return { sent: true };
+  }
+
+  /** Правка текста отложенного: до отправки это ещё черновик. */
+  async editScheduled(tenantId: string, id: string, user: { userId: string }, body: string) {
+    const row = await this.scheduled.byId(tenantId, id);
+    if (!row) throw AppException.notFound('Отложенное сообщение не найдено');
+    if (String(row.author_id) !== String(user.userId)) throw AppException.forbidden('Это не ваше сообщение');
+    const text = String(body ?? '').trim();
+    if (!text) throw AppException.validation('Пустое сообщение — отмените его целиком');
+    await this.scheduled.editBody(tenantId, id, text.slice(0, 8000));
+    return { body: text.slice(0, 8000) };
   }
 
   async rescheduleMessage(tenantId: string, id: string, user: { userId: string }, sendAt: string) {
@@ -738,16 +772,38 @@ export class ChatsService {
   }
 
   /** Вложение: файл кладётся в MinIO тем же путём, что и вложения задач. */
+  /**
+   * Файлы сообщением — сколько угодно за раз.
+   *
+   * Три вставленных из буфера снимка это ОДНО сообщение с тремя картинками, а не
+   * три сообщения подряд: иначе разговор превращается в ленту обрывков. Первый файл
+   * дублируется в `file_id` — на него завязаны лента, поиск и задачи из сообщений.
+   */
+  async sendFiles(
+    tenantId: string, chatId: string, user: { userId: string; role: string },
+    files: { buffer: Buffer; originalname: string; mimetype: string }[], body: string,
+    thread?: { rootId?: string | null; alsoInChannel?: boolean },
+  ) {
+    await this.access(tenantId, chatId, user);
+    if (!files.length) throw AppException.validation('Файл не приложен');
+    const stored = [];
+    for (const f of files) {
+      stored.push(await this.files.upload({
+        tenantId, userId: user.userId, buffer: f.buffer, fileName: f.originalname,
+        contentType: f.mimetype, ownerKind: 'chat_message', ownerId: chatId,
+      }));
+    }
+    return this.send(
+      tenantId, chatId, user, body, String(stored[0].id), thread, undefined,
+      stored.map((x) => String(x.id)),
+    );
+  }
+
   async sendFile(
     tenantId: string, chatId: string, user: { userId: string; role: string },
     file: { buffer: Buffer; originalname: string; mimetype: string }, body: string,
   ) {
-    await this.access(tenantId, chatId, user);
-    const stored = await this.files.upload({
-      tenantId, userId: user.userId, buffer: file.buffer, fileName: file.originalname,
-      contentType: file.mimetype, ownerKind: 'chat_message', ownerId: chatId,
-    });
-    return this.send(tenantId, chatId, user, body, stored.id);
+    return this.sendFiles(tenantId, chatId, user, [file], body);
   }
 
   // ───── управление группой ─────

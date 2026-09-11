@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsDateString, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
@@ -64,7 +64,9 @@ class ScheduleDto {
 }
 
 class RescheduleDto {
-  @IsDateString() sendAt!: string;
+  /** Либо переносим время, либо правим текст — до отправки это ещё черновик. */
+  @IsOptional() @IsDateString() sendAt?: string;
+  @IsOptional() @IsString() @MaxLength(8000) body?: string;
 }
 
 class MessageEditDto {
@@ -300,15 +302,26 @@ export class ChatsController {
     return this.chats.thread(u.tenantId, id, u, rootId);
   }
 
+  /**
+   * Файлы сообщением: одним запросом можно прислать несколько.
+   *
+   * Поле называется `files`, но принимаем и старое `file` — на него ходят
+   * страницы, открытые до выкладки, и ронять им отправку нельзя.
+   */
   @Post(':id/files')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'files', maxCount: 10 }, { name: 'file', maxCount: 1 }]))
   sendFile(
     @CurrentUser() u: AuthUser, @Param('id') id: string,
-    @UploadedFile() file: Express.Multer.File, @Body() dto: SendDto,
+    @UploadedFiles() got: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
+    @Body() dto: SendDto,
   ) {
-    if (!file) throw AppException.validation('Файл не приложен');
-    return this.chats.sendFile(u.tenantId, id, u, file, dto.body ?? '');
+    const list = [...(got?.files ?? []), ...(got?.file ?? [])];
+    if (!list.length) throw AppException.validation('Файл не приложен');
+    return this.chats.sendFiles(u.tenantId, id, u, list, dto.body ?? '', {
+      rootId: dto.threadRootId ?? null,
+      alsoInChannel: dto.alsoInChannel === true,
+    });
   }
 
   // ───── управление группой ─────
@@ -375,7 +388,14 @@ export class ChatsController {
 
   @Patch('scheduled/:sid')
   reschedule(@CurrentUser() u: AuthUser, @Param('sid') sid: string, @Body() dto: RescheduleDto) {
-    return this.chats.rescheduleMessage(u.tenantId, sid, u, dto.sendAt);
+    if (dto.body !== undefined) return this.chats.editScheduled(u.tenantId, sid, u, dto.body);
+    return this.chats.rescheduleMessage(u.tenantId, sid, u, dto.sendAt ?? '');
+  }
+
+  /** «Отправить сейчас»: передумал ждать — отправляем немедленно. */
+  @Post('scheduled/:sid/send')
+  sendScheduledNow(@CurrentUser() u: AuthUser, @Param('sid') sid: string) {
+    return this.chats.sendScheduledNow(u.tenantId, sid, u);
   }
 
   @Delete('scheduled/:sid')

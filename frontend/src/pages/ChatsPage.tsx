@@ -23,6 +23,7 @@ import { MessageToTask } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
 import { showToast, toastSaved } from '../lib/notifications';
+import { overlayProps } from '../lib/overlay';
 import type { User } from '../types';
 
 interface Chat {
@@ -58,6 +59,8 @@ interface Message {
   task_title?: string | null;
   /** Проект задачи: адрес задачи без него не собрать — ссылка уводила в список проектов. */
   task_project_id?: string | null;
+  /** Все вложения сообщения: несколько картинок — это одно сообщение. */
+  files?: { fileId: string; name: string; mime?: string; size?: number }[];
   /** Сколько собеседников прочитали сообщение и сколько их всего — для галочек. */
   read_by?: number;
   others?: number;
@@ -141,13 +144,36 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
    * `laterOpen` — открыт выбор времени, `scheduled` — что уже отложено в этом чате.
    */
   const [laterOpen, setLaterOpen] = useState(false);
+  /** Открыто окно «Отложенные сообщения» — со списком и действиями над каждым. */
+  const [queueOpen, setQueueOpen] = useState(false);
+  /** Поиск внутри открытого чата: лупа в шапке, как в мессенджерах. */
+  const [inChatSearch, setInChatSearch] = useState(false);
+  const [inChatQuery, setInChatQuery] = useState('');
+  /**
+   * Что нашлось в этом разговоре.
+   *
+   * Ищем по УЖЕ загруженной ленте, без похода на сервер: в открытом чате человек
+   * ищет то, что видел недавно, а за старым есть общий поиск слева. Заодно поиск
+   * работает мгновенно и без сети.
+   */
+  const inChatHits = useMemo(() => {
+    const q = inChatQuery.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return messages.filter((m) => String(m.body ?? '').toLowerCase().includes(q));
+  }, [inChatQuery, messages]);
   const [scheduled, setScheduled] = useState<{ id: string; body: string; sendAt: string }[]>([]);
   const [groupOpen, setGroupOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [perm, setPerm] = useState(notificationPermission());
   const [err, setErr] = useState('');
   /** Файл, выбранный или вставленный, но ещё не отправленный: его видно и можно подписать. */
-  const [pending, setPending] = useState<{ file: File; url: string } | null>(null);
+  /**
+   * Что приложено к следующему сообщению — СПИСОК, а не один файл.
+   *
+   * В мессенджерах несколько снимков уходят одним сообщением; у нас каждая вставка
+   * вытесняла предыдущую, и человек мог приложить ровно одну картинку.
+   */
+  const [pending, setPending] = useState<{ file: File; url: string }[]>([]);
   /**
    * Открытая ветка: корневое сообщение и ответы.
    *
@@ -509,15 +535,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   useEffect(() => {
     if (!activeId) return;
     const onPaste = (e: ClipboardEvent) => {
-      const file = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'));
-      if (!file) return;
+      // Все картинки из буфера, а не первая: вставляют и по нескольку снимков сразу.
+      const images = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
+      if (!images.length) return;
       e.preventDefault();
-      attach(file);
+      // Открыта ветка — вставляем в НЕЁ: человек смотрит туда, туда и кладём.
+      if (thread) { void sendFilesToThread(images); return; }
+      attach(images);
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
+  }, [activeId, thread]);
 
   // сменили чат — недоотправленное вложение к новому собеседнику отношения не имеет
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -538,14 +567,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
    */
   const send = async () => {
     const text = draft.trim();
-    if (!activeId || (!text && !pending)) return;
-    const file = pending?.file ?? null;
+    if (!activeId || (!text && !pending.length)) return;
+    const files = pending.map((p) => p.file);
     setDraft('');
     clearPending();
     try {
       // «@AI» — обращение к помощнику, а не к человеку: ответ придёт в этот же чат
       // и его увидят все, кто в разговоре.
-      if (!file && MENTIONS_AI.test(text)) {
+      if (!files.length && MENTIONS_AI.test(text)) {
         setAiBusy(true);
         try { await api.askChatAi(activeId, text.replace(MENTIONS_AI, ' ').trim() || text); }
         finally { setAiBusy(false); }
@@ -553,16 +582,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       }
       // Имя могли стереть после вставки — звать человека после этого не за что.
       const calls = stillMentioned(mentioned, text, mentionUsers);
-      const message = file
-        ? await api.sendChatFile(activeId, file, text)
+      const message = files.length
+        ? await api.sendChatFile(activeId, files, text)
         : await api.sendChatMessage(activeId, text, undefined, calls);
       setMentioned([]);
       appendMessage(message);
       reload();
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : file ? 'Файл не отправлен' : 'Сообщение не отправлено');
+      setErr(e instanceof ApiError ? e.message : files.length ? 'Файл не отправлен' : 'Сообщение не отправлено');
       setDraft(text); // не теряем набранное
-      if (file) attach(file); // и вложение возвращаем в очередь — переснимать экран обидно
+      if (files.length) attach(files); // и вложения возвращаем в очередь — переснимать экран обидно
     }
   };
 
@@ -576,19 +605,28 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
    * Скриншот из буфера приходит без имени («image.png») — даём ему дату и время,
    * иначе в списке файлов копится десяток одинаковых.
    */
-  const attach = (file: File) => {
-    const named = isAnonymousClipboardName(file.name) && file.type.startsWith('image/')
-      ? new File([file], screenshotName(new Date(), file.type), { type: file.type })
-      : file;
-    setPending((prev) => {
-      if (prev?.url) URL.revokeObjectURL(prev.url);
-      return { file: named, url: isImageName(named.name) ? URL.createObjectURL(named) : '' };
-    });
+  const attach = (file: File | File[]) => {
+    const list = Array.isArray(file) ? file : [file];
+    const named = list.map((f) => (isAnonymousClipboardName(f.name) && f.type.startsWith('image/')
+      ? new File([f], screenshotName(new Date(), f.type), { type: f.type })
+      : f));
+    // Десять — предел одного сообщения: дальше это уже архив, а не разговор.
+    setPending((prev) => [
+      ...prev,
+      ...named.map((f) => ({ file: f, url: isImageName(f.name) ? URL.createObjectURL(f) : '' })),
+    ].slice(0, 10));
   };
 
   const clearPending = () => setPending((prev) => {
-    if (prev?.url) URL.revokeObjectURL(prev.url);
-    return null;
+    for (const p of prev) if (p.url) URL.revokeObjectURL(p.url);
+    return [];
+  });
+
+  /** Убрать одно вложение из очереди: приложил лишнее — не отправлять же всё заново. */
+  const dropPending = (idx: number) => setPending((prev) => {
+    const gone = prev[idx];
+    if (gone?.url) URL.revokeObjectURL(gone.url);
+    return prev.filter((_, i) => i !== idx);
   });
 
   const react = async (messageId: string, emoji: string) => {
@@ -691,6 +729,27 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось отложить сообщение');
     }
+  };
+
+  /** Отправить отложенное прямо сейчас: передумал ждать. */
+  const sendScheduledNow = async (id: string) => {
+    try {
+      await api.sendScheduledNow(id);
+      setScheduled((prev) => prev.filter((x) => x.id !== id));
+      if (activeId) setMessages(await api.chatMessages(activeId));
+      reload();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось отправить'); }
+  };
+
+  /** Перенести время: встречу передвинули — напоминание должно ехать за ней. */
+  const rescheduleAt = async (id: string, at: Date) => {
+    try {
+      await api.rescheduleMessage(id, at.toISOString());
+      setScheduled((prev) => prev
+        .map((x) => (x.id === id ? { ...x, sendAt: at.toISOString() } : x))
+        .sort((a2, b2) => new Date(a2.sendAt).getTime() - new Date(b2.sendAt).getTime()));
+      toastSaved('Время изменено', remindLabel(at));
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось перенести'); }
   };
 
   const cancelScheduled = async (id: string) => {
@@ -864,6 +923,25 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       setThread({ rootId: String(rootId), messages });
       notifyChatsChanged();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть ветку'); }
+  };
+
+  /**
+   * Картинки в ветку.
+   *
+   * Ветка — такая же переписка: показать «вот так съезжает» снимком в ней нужно
+   * ничуть не реже, чем в ленте, а раньше приложить файл там было нечем вовсе.
+   */
+  const sendFilesToThread = async (files: File[]) => {
+    if (!thread || !activeId || !files.length) return;
+    try {
+      await api.sendChatFile(activeId, files, threadBody.trim(), { rootId: thread.rootId, alsoInChannel });
+      setThreadBody('');
+      const messages = await api.chatThread(activeId, thread.rootId);
+      setThread({ rootId: thread.rootId, messages });
+      void loadThreads();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Файл не отправлен');
+    }
   };
 
   const sendToThread = async () => {
@@ -1385,6 +1463,37 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
         {active && view === 'chat' && (
           <>
             <div className="chat-head">
+              {/*
+                Поиск ВНУТРИ открытого чата — как лупа в шапке мессенджера.
+
+                Глобальный поиск слева отвечает на «где это вообще было», а этот —
+                на «найди в этом разговоре». Разные вопросы, поэтому и места разные.
+              */}
+              {inChatSearch && (
+                <span className="chat-insearch">
+                  <Icon name="search" size={14} />
+                  <input
+                    className="input"
+                    autoFocus
+                    placeholder={`Поиск в «${active.title ?? 'чате'}»`}
+                    value={inChatQuery}
+                    onChange={(e) => setInChatQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Escape') { setInChatSearch(false); setInChatQuery(''); } }}
+                  />
+                  <span className="dim">
+                    {inChatQuery.trim().length < 2 ? 'введите два знака'
+                      : `${inChatHits.length} ${plural(inChatHits.length, 'совпадение', 'совпадения', 'совпадений')}`}
+                  </span>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => { setInChatSearch(false); setInChatQuery(''); }}
+                    title="Закрыть поиск"
+                    aria-label="Закрыть поиск"
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </span>
+              )}
               <span>
                 {active.kind === 'dm' && <span className={`presence ${active.peerOnline ? 'on' : ''}`} title={active.peerOnline ? 'в сети' : 'не в сети'} />}
                 <b>{active.title ?? 'Чат'}</b>
@@ -1413,6 +1522,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                   </>
                 )}
                 {active.kind === 'project' && !ctx?.project_id && <span className="badge badge-muted" style={{ marginLeft: 6 }}>проект</span>}
+                {/* Лупа: поиск по этому разговору. */}
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setInChatSearch((v) => !v)}
+                  title="Поиск в этом чате"
+                  aria-label="Поиск в этом чате"
+                >
+                  <Icon name="search" size={14} />
+                </button>
                 {active.kind === 'group' && (
                   <button className="btn btn-ghost btn-sm" title="Участники и настройки группы"
                           onClick={() => setManageOpen(true)}><Icon name="settings" /></button>
@@ -1544,7 +1662,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                     {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
                     {/* Время — ПОД плашкой, а не внутри неё: серая строчка на цветном
                         пузыре не читалась вовсе, а место в углу отъедала. */}
-                    <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}`}>
+                    <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === m.id) ? ' chat-match' : ''}`}>
                       <div className={`chat-msg ${mine && !m.is_ai ? 'mine' : ''}${m.is_ai ? ' chat-msg-ai' : ''}`}>
                         {m.is_ai && <div className="chat-author"><Icon name="sparkles" size={11} /> AI-помощник</div>}
                         {/* Кто именно писал со стороны: через месяц «внешний участник»
@@ -1582,13 +1700,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                         )}
                         {/* Ссылкой файл открыть было нельзя: он за авторизацией и отдавал 401.
                             Картинка теперь видна сразу, остальное скачивается по нажатию. */}
-                        {m.file_id && (
+                        {/* Несколько картинок — одно сообщение, как в мессенджерах.
+                            Старые сообщения приходят с одним файлом и показываются так же. */}
+                        {(m.files?.length ? m.files : m.file_id ? [{ fileId: String(m.file_id), name: m.file_name ?? 'файл' }] : []).map((f) => (
                           <ChatAttachment
-                            fileId={m.file_id}
-                            fileName={m.file_name ?? 'файл'}
+                            key={f.fileId}
+                            fileId={f.fileId}
+                            fileName={f.name ?? 'файл'}
                             onOpen={(url, name, mime) => setPreview({ url, name, mime })}
                           />
-                        )}
+                        ))}
                       </div>
                       {/* Поставленные реакции видны всегда: в них весь смысл — ответить
                           «понял», не засоряя переписку и не будя всех уведомлением. */}
@@ -1694,17 +1815,29 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
             {/* Вложение перед отправкой: видно, что именно уйдёт, и можно подписать.
                 Отправлять вслепую — верный способ прислать не тот скриншот. */}
-            {pending && (
+            {pending.length > 0 && (
               <div className="chat-pending">
-                {pending.url
-                  ? <img className="chat-pending-img" src={pending.url} alt={pending.file.name} />
-                  : <Icon name="paperclip" size={16} />}
-                <span className="chat-pending-name">
-                  {pending.file.name} <span className="dim">· {humanSize(pending.file.size)}</span>
-                </span>
-                <button className="btn btn-ghost btn-sm" onClick={clearPending} title="Убрать вложение" aria-label="Убрать вложение">
-                  <Icon name="close" size={14} />
-                </button>
+                {pending.map((p, i) => (
+                  <span key={`${p.file.name}-${i}`} className="chat-pending-item">
+                    {p.url
+                      ? <img className="chat-pending-img" src={p.url} alt={p.file.name} />
+                      : <Icon name="paperclip" size={16} />}
+                    <span className="chat-pending-name">
+                      {p.file.name} <span className="dim">· {humanSize(p.file.size)}</span>
+                    </span>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => dropPending(i)}
+                      title="Убрать это вложение"
+                      aria-label="Убрать вложение"
+                    >
+                      <Icon name="close" size={14} />
+                    </button>
+                  </span>
+                ))}
+                {pending.length > 1 && (
+                  <button className="chat-thread-link" onClick={clearPending}>Убрать все ({pending.length})</button>
+                )}
               </div>
             )}
 
@@ -1759,22 +1892,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               >
                 <Icon name="screen" size={16} />
               </button>
-              {/* Что уже отложено: строка над полем ввода, с отменой. Без неё
-                  отложенное сообщение исчезает бесследно до самой отправки. */}
+              {/*
+                Полоска «отложено: N» над полем — как в мессенджерах.
+
+                Раньше здесь висели сами сообщения строчками, и что с ними делать
+                было непонятно. Теперь одна строка открывает окно, где отложенные
+                показаны как сообщения: отправить сейчас, перенести, удалить.
+              */}
               {scheduled.length > 0 && (
-                <span className="chat-later-queue">
-                  {scheduled.map((x) => (
-                    <button
-                      key={x.id}
-                      className="chat-thread-link"
-                      title={`Отправлю ${remindLabel(new Date(x.sendAt))}. Нажмите, чтобы отменить`}
-                      onClick={() => cancelScheduled(x.id)}
-                    >
-                      <Icon name="clock" size={11} /> {remindLabel(new Date(x.sendAt))}: {x.body.slice(0, 28)}
-                      <Icon name="close" size={11} />
-                    </button>
-                  ))}
-                </span>
+                <button className="chat-later-queue" onClick={() => setQueueOpen(true)}>
+                  <Icon name="clock" size={12} />
+                  Отложено: {scheduled.length} · ближайшее {remindLabel(new Date(scheduled[0].sendAt))}
+                </button>
               )}
               {/*
                 Отправить позже — как в мессенджерах.
@@ -1849,13 +1978,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                     <div className="chat-author">{m.author_name}</div>
                     {/* Ссылки кликаются и здесь: ветка — такая же переписка. */}
                     {m.body && <MessageText text={m.body} className="chat-body" />}
-                    {m.file_id && (
+                    {(m.files?.length ? m.files : m.file_id ? [{ fileId: String(m.file_id), name: m.file_name ?? 'файл' }] : []).map((f) => (
                       <ChatAttachment
-                        fileId={m.file_id}
-                        fileName={m.file_name ?? 'файл'}
+                        key={f.fileId}
+                        fileId={f.fileId}
+                        fileName={f.name ?? 'файл'}
                         onOpen={(url, name, mime) => setPreview({ url, name, mime })}
                       />
-                    )}
+                    ))}
                   </div>
                   {/* Поставленные реакции — как в ленте: ответить «понял» можно и в ветке. */}
                   {(m.reactions ?? []).length > 0 && (
@@ -1895,9 +2025,23 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
             Также отправить в основной чат
           </label>
           <div className="chat-input">
+            {/* Скрепка и в ветке: показать снимком быстрее, чем описать словами. */}
+            <label className="btn btn-ghost btn-sm" title="Приложить файлы" style={{ cursor: 'pointer' }}>
+              <Icon name="paperclip" size={16} />
+              <input
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const list = Array.from(e.target.files ?? []);
+                  if (list.length) void sendFilesToThread(list);
+                  e.currentTarget.value = '';
+                }}
+              />
+            </label>
             <input
               className="input"
-              placeholder="Ответить в ветке…"
+              placeholder="Ответить в ветке… Ctrl+V вставит картинку"
               value={threadBody}
               onChange={(e) => setThreadBody(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendToThread(); } }}
@@ -1922,6 +2066,53 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
             showToast({ title: 'Задача создана', body: title, section: 'chat' });
           }}
         />
+      )}
+
+      {/*
+        Отложенные сообщения — отдельным окном, как в Telegram.
+
+        Показываем их так же, как в переписке: пузырь с текстом и временем. Над
+        каждым три действия — отправить сейчас, перенести, удалить. Без такого окна
+        отложенное было чёрным ящиком: непонятно, что в нём и как это изменить.
+      */}
+      {queueOpen && (
+        <div className="modal-overlay" {...overlayProps(() => setQueueOpen(false))}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-head">
+              <h3><Icon name="clock" size={16} /> Отложенные сообщения</h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => setQueueOpen(false)} title="Закрыть" aria-label="Закрыть">
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+            {scheduled.length === 0 && <div className="dim">Здесь пусто — отложенных сообщений нет.</div>}
+            {scheduled.map((x) => (
+              <div key={x.id} className="later-item">
+                <div className="later-when">
+                  <Icon name="clock" size={13} /> Отправлю {remindLabel(new Date(x.sendAt))}
+                </div>
+                <div className="chat-body later-text">{x.body}</div>
+                <div className="later-actions">
+                  <button className="btn btn-primary btn-sm" onClick={() => sendScheduledNow(x.id)}>
+                    <Icon name="send" size={13} /> Отправить сейчас
+                  </button>
+                  <label className="btn btn-ghost btn-sm later-time" title="Перенести на другое время">
+                    <Icon name="calendar" size={13} /> Перенести
+                    <input
+                      type="datetime-local"
+                      onChange={(e) => {
+                        const at = new Date(e.target.value);
+                        if (!Number.isNaN(at.getTime())) void rescheduleAt(x.id, at);
+                      }}
+                    />
+                  </label>
+                  <button className="btn btn-ghost btn-sm btn-delete" onClick={() => cancelScheduled(x.id)}>
+                    <Icon name="trash" size={13} /> Удалить
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {manageOpen && active && (

@@ -74,6 +74,13 @@ export class ScheduledRepository {
     );
   }
 
+  async editBody(tenantId: string, id: string, body: string): Promise<void> {
+    await this.db.query(
+      `UPDATE chat_scheduled SET body=$3 WHERE tenant_id=$1 AND id=$2 AND status='pending'`,
+      [tenantId, id, body],
+    );
+  }
+
   async reschedule(tenantId: string, id: string, sendAt: Date): Promise<void> {
     await this.db.query(
       `UPDATE chat_scheduled SET send_at=$3 WHERE tenant_id=$1 AND id=$2 AND status='pending'`,

@@ -2539,8 +2539,42 @@
 /* Очередь отложенных — строкой над полем: иначе текст исчезает бесследно до отправки. */
 .chat-later-queue {
   position: absolute; left: 16px; right: 16px; bottom: 100%; margin-bottom: 4px;
-  display: flex; flex-wrap: wrap; gap: 6px;
+  display: flex; align-items: center; gap: 6px; padding: 4px 8px;
+  border: 1px solid var(--accent-line); border-radius: var(--radius-sm);
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 12px; cursor: pointer; text-align: left;
 }
+.chat-later-queue:hover { background: var(--bg-elev-2); }
+.chat-later-queue:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/*
+  Окно «Отложенные сообщения».
+
+  Показываем их как сообщения, а не строками списка: человек должен увидеть то же,
+  что увидит собеседник, и только потом решать — отправить сейчас, перенести или
+  удалить.
+*/
+.later-item {
+  display: flex; flex-direction: column; gap: 6px; padding: 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev);
+}
+.later-when { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--accent); }
+.later-text { white-space: pre-wrap; word-break: break-word; }
+.later-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Поле времени прячется за кнопкой: календарь браузера открывается по нажатию. */
+.later-time { position: relative; overflow: hidden; cursor: pointer; }
+.later-time input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+/* Кольцо рисуем по самой кнопке: поле внутри прозрачное и его не видно. */
+.later-time:focus-within,
+.later-time:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Несколько вложений в очереди отправки — плитками в ряд. */
+.chat-pending-item { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Поиск в открытом чате: строка занимает шапку целиком, пока ищут. */
+.chat-insearch { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.chat-insearch .input { flex: 1; min-width: 0; font-size: var(--fs-sm); padding: 5px 8px; }
+/* Найденное в этом чате подсвечено рамкой — глаз находит его прокруткой. */
+.chat-match .chat-msg { box-shadow: 0 0 0 2px var(--accent-line); }
 
 /* Правка сообщения прямо в пузыре: отдельное окно ради опечатки — лишний шаг. */
 .chat-edit { display: flex; flex-direction: column; gap: 6px; min-width: 260px; }

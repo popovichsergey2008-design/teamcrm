@@ -47,6 +47,8 @@ export interface MessageRow {
   /** Сколько собеседников уже прочитали это сообщение и сколько их всего. */
   read_by?: number;
   others?: number;
+  /** Все вложения сообщения: первое дублируется в `file_id` ради старого кода. */
+  files?: { fileId: string; name: string; mime: string; size: number }[];
   /** Сколько ответов в ветке этого сообщения и когда был последний. */
   reply_count?: number;
   last_reply_at?: Date | null;
@@ -226,6 +228,15 @@ export class ChatsRepository {
                   AND cm.last_read_at IS NOT NULL AND cm.last_read_at >= m.created_at) AS read_by,
               (SELECT COUNT(*)::int FROM chat_members cm2
                 WHERE cm2.chat_id = m.chat_id AND cm2.user_id <> m.author_id) AS others,
+              -- Все вложения сообщения: в мессенджерах несколько снимков — это ОДНО
+              -- сообщение, а не три подряд.
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                         'fileId', mf.file_id::text, 'name', ff.file_name,
+                         'mime', ff.content_type, 'size', ff.size_bytes) ORDER BY mf.position, mf.file_id)
+                  FROM chat_message_files mf JOIN files ff ON ff.id = mf.file_id
+                 WHERE mf.message_id = m.id
+              ), '[]'::json) AS files,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -264,6 +275,15 @@ export class ChatsRepository {
                   AND cm.last_read_at IS NOT NULL AND cm.last_read_at >= m.created_at) AS read_by,
               (SELECT COUNT(*)::int FROM chat_members cm2
                 WHERE cm2.chat_id = m.chat_id AND cm2.user_id <> m.author_id) AS others,
+              -- Все вложения сообщения: в мессенджерах несколько снимков — это ОДНО
+              -- сообщение, а не три подряд.
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                         'fileId', mf.file_id::text, 'name', ff.file_name,
+                         'mime', ff.content_type, 'size', ff.size_bytes) ORDER BY mf.position, mf.file_id)
+                  FROM chat_message_files mf JOIN files ff ON ff.id = mf.file_id
+                 WHERE mf.message_id = m.id
+              ), '[]'::json) AS files,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
@@ -308,9 +328,26 @@ export class ChatsRepository {
     LEFT JOIN chat_thread_reads tr ON tr.root_id = r.id AND tr.user_id = $2::bigint
         WHERE r.tenant_id = $1 AND r.deleted_at IS NULL
           AND r.thread_root_id IS NULL AND r.reply_count > 0
-          AND (r.author_id = $2::bigint
-               OR EXISTS (SELECT 1 FROM chat_messages y
-                           WHERE y.thread_root_id = r.id AND y.author_id = $2::bigint))
+          AND (
+            -- Ветки, к которым я причастен: начал сам или отвечал в них.
+            r.author_id = $2::bigint
+            OR EXISTS (SELECT 1 FROM chat_messages y
+                        WHERE y.thread_root_id = r.id AND y.author_id = $2::bigint)
+            /*
+              ...и СВЕЖИЕ ветки моих чатов, даже если я в них ещё не писал.
+
+              Раньше сюда попадали только «мои» ветки, и разговор, начатый коллегами
+              под чужим сообщением, не появлялся вовсе — со стороны это выглядело как
+              «треды работают не всегда». Показывать все ветки всех чатов по-прежнему
+              нельзя (их тысячи), поэтому берём только последние две недели и только
+              там, где я состою: это ровно то, что человек ещё может догнать.
+            */
+            OR (
+              r.last_reply_at > now() - interval '14 days'
+              AND (c.kind = 'project' OR EXISTS (
+                    SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.id AND cm.user_id = $2::bigint))
+            )
+          )
         ORDER BY r.last_reply_at DESC NULLS LAST
         LIMIT $3`,
       [tenantId, userId, limit],
@@ -337,6 +374,8 @@ export class ChatsRepository {
 
   async addMessage(i: {
     tenantId: string; chatId: string; authorId: string; body: string; fileId: string | null;
+    /** Остальные файлы сообщения: в `fileId` лежит первый — на него завязан старый код. */
+    fileIds?: string[];
     threadRootId?: string | null; alsoInChannel?: boolean;
     /** Ответ помощника: в ленте он помечен, чтобы его не спутали со словами коллеги. */
     isAi?: boolean;
@@ -349,6 +388,17 @@ export class ChatsRepository {
         i.threadRootId ?? null, i.alsoInChannel === true, i.isAi === true,
       ],
     );
+    // Все вложения сообщения — отдельной таблицей, с сохранением порядка.
+    const files = i.fileIds?.length ? i.fileIds : (i.fileId ? [i.fileId] : []);
+    if (files.length) {
+      await this.db.query(
+        `INSERT INTO chat_message_files (message_id, file_id, tenant_id, position)
+              SELECT $1, x.id, $2, x.pos
+                FROM unnest($3::bigint[]) WITH ORDINALITY AS x(id, pos)
+         ON CONFLICT DO NOTHING`,
+        [row!.id, i.tenantId, files],
+      );
+    }
     await this.db.query(`UPDATE chats SET last_message_at=now() WHERE id=$1`, [i.chatId]);
     // Счётчик ответов держим на корне: считать его подзапросом на каждое сообщение
     // ленты — тысячи подсчётов ради строчки «7 ответов».
@@ -574,6 +624,15 @@ export class ChatsRepository {
                   AND cm.last_read_at IS NOT NULL AND cm.last_read_at >= m.created_at) AS read_by,
               (SELECT COUNT(*)::int FROM chat_members cm2
                 WHERE cm2.chat_id = m.chat_id AND cm2.user_id <> m.author_id) AS others,
+              -- Все вложения сообщения: в мессенджерах несколько снимков — это ОДНО
+              -- сообщение, а не три подряд.
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                         'fileId', mf.file_id::text, 'name', ff.file_name,
+                         'mime', ff.content_type, 'size', ff.size_bytes) ORDER BY mf.position, mf.file_id)
+                  FROM chat_message_files mf JOIN files ff ON ff.id = mf.file_id
+                 WHERE mf.message_id = m.id
+              ), '[]'::json) AS files,
               COALESCE((
                 SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
                   FROM (
