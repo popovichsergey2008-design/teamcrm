@@ -3,6 +3,7 @@ import { Icon, IconName } from './Icon';
 import { ProjectsNav } from './ProjectsNav';
 import { CallStarter } from './CallStarter';
 import { applyHidden, applyOrder, isHidden, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
+import { TASK_VIEWS } from '../lib/task-views';
 import { GuestLinkButton } from './GuestLinkButton';
 import { setDoNotDisturb } from '../lib/sound';
 import { Avatar } from './Avatar';
@@ -72,14 +73,26 @@ const MENU: Item[] = [
       ответа не имел: задачи искали, обходя доски по одной.
     */
     section: 'tasks',
-    label: 'Задачи',
+    label: 'Мои задачи',
     icon: 'check-circle',
-    hint: 'Все задачи по всем проектам: на мне, от меня, под наблюдением — с фильтрами и историей',
-    subs: [
-      { label: 'Мне', icon: 'user', route: { section: 'tasks' } },
-      { label: 'От меня', icon: 'send', route: { section: 'tasks', view: 'delegated' } },
-      { label: 'Наблюдаю', icon: 'eye', route: { section: 'tasks', view: 'watching' } },
-    ],
+    hint: 'Вся ваша работа по всем проектам: делаю, поручил, помогаю, наблюдаю',
+    /*
+      Подпункты берутся из общего словаря видов задач.
+
+      Раньше они назывались здесь по-своему («Мне», «От меня») и расходились с
+      самим разделом, где те же срезы называются «Делаю» и «Поручил». Человек
+      читал в меню одно, попадал в другое. Теперь список один на всю систему:
+      переименовать в двух местах по-разному стало нельзя.
+
+      «Делаю» — срез по умолчанию, поэтому у него в адресе нет хвоста.
+    */
+    subs: TASK_VIEWS.map((v) => ({
+      label: v.label,
+      icon: v.icon,
+      route: v.key === 'doing'
+        ? { section: 'tasks' as Section }
+        : { section: 'tasks' as Section, view: v.key },
+    })),
   },
   {
     section: 'projects',
