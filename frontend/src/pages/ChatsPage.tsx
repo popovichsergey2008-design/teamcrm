@@ -146,6 +146,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const [laterOpen, setLaterOpen] = useState(false);
   /** Открыто окно «Отложенные сообщения» — со списком и действиями над каждым. */
   const [queueOpen, setQueueOpen] = useState(false);
+  /**
+   * Вложения, приготовленные для ответа в ветке.
+   *
+   * Своя очередь, как у основного поля: вставленные подряд снимки должны уйти
+   * ОДНИМ сообщением. Раньше каждая вставка отправлялась сразу, и три картинки
+   * превращались в три сообщения — ровно то, на что жаловался заказчик.
+   */
+  const [threadPending, setThreadPending] = useState<{ file: File; url: string }[]>([]);
+
   /** Поиск внутри открытого чата: лупа в шапке, как в мессенджерах. */
   const [inChatSearch, setInChatSearch] = useState(false);
   const [inChatQuery, setInChatQuery] = useState('');
@@ -377,7 +386,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       if (p.message?.thread_root_id || view === 'threads') void loadThreads();
     };
     const onDeleted = (p: { chatId: string; messageId: string }) => {
-      if (String(p.chatId) === String(activeId)) setMessages((prev) => prev.filter((m) => m.id !== p.messageId));
+      if (String(p.chatId) !== String(activeId)) return;
+      const gone = (list: Message[]) => list.filter((m) => String(m.id) !== String(p.messageId));
+      setMessages(gone);
+      setThread((prev) => (prev ? { ...prev, messages: gone(prev.messages) } : prev));
     };
     // нас убрали из группы — чат должен исчезнуть, а не висеть открытым с ошибками
     const onRemoved = (p: { chatId: string }) => {
@@ -431,8 +443,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     // сообщение поправили в другой вкладке или у собеседника
     const onEdited = (p: { chatId: string; messageId: string; body: string }) => {
       if (String(p.chatId) !== String(activeId)) return;
-      setMessages((prev) => prev.map((m) => (String(m.id) === String(p.messageId)
-        ? { ...m, body: p.body, edited_at: new Date().toISOString() } : m)));
+      const edited = (list: Message[]) => list.map((m) => (String(m.id) === String(p.messageId)
+        ? { ...m, body: p.body, edited_at: new Date().toISOString() } : m));
+      setMessages(edited);
+      setThread((prev) => (prev ? { ...prev, messages: edited(prev.messages) } : prev));
     };
     socket.on('chat.message_edited', onEdited);
     socket.on('chat.task_linked', onTaskLinked);
@@ -540,7 +554,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       if (!images.length) return;
       e.preventDefault();
       // Открыта ветка — вставляем в НЕЁ: человек смотрит туда, туда и кладём.
-      if (thread) { void sendFilesToThread(images); return; }
+      if (thread) { attachToThread(images); return; }
       attach(images);
     };
     window.addEventListener('paste', onPaste);
@@ -793,8 +807,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     if (!text) return;
     try {
       await api.editMessage(activeId, messageId, text);
-      setMessages((prev) => prev.map((m) => (String(m.id) === messageId
-        ? { ...m, body: text, edited_at: new Date().toISOString() } : m)));
+      const edited = (list: Message[]) => list.map((m) => (String(m.id) === messageId
+        ? { ...m, body: text, edited_at: new Date().toISOString() } : m));
+      setMessages(edited);
+      setThread((prev) => (prev ? { ...prev, messages: edited(prev.messages) } : prev));
       setEditing(null);
     } catch (e) {
       showToast({ title: 'Не удалось изменить', body: e instanceof ApiError ? e.message : 'Ошибка', section: 'chat' });
@@ -806,7 +822,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     if (!window.confirm('Удалить сообщение? У собеседников оно тоже исчезнет.')) return;
     try {
       await api.deleteMessage(activeId, messageId);
-      setMessages((prev) => prev.filter((m) => String(m.id) !== messageId));
+      // Ветка — отдельный список сообщений: без этой строки удалённое исчезало
+      // только из ленты, а в открытой ветке висело до перезагрузки страницы.
+      const gone = (list: Message[]) => list.filter((m) => String(m.id) !== messageId);
+      setMessages(gone);
+      setThread((prev) => (prev ? { ...prev, messages: gone(prev.messages) } : prev));
     } catch (e) {
       showToast({ title: 'Не удалось удалить', body: e instanceof ApiError ? e.message : 'Ошибка', section: 'chat' });
     }
@@ -931,24 +951,42 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
    * Ветка — такая же переписка: показать «вот так съезжает» снимком в ней нужно
    * ничуть не реже, чем в ленте, а раньше приложить файл там было нечем вовсе.
    */
-  const sendFilesToThread = async (files: File[]) => {
-    if (!thread || !activeId || !files.length) return;
-    try {
-      await api.sendChatFile(activeId, files, threadBody.trim(), { rootId: thread.rootId, alsoInChannel });
-      setThreadBody('');
-      const messages = await api.chatThread(activeId, thread.rootId);
-      setThread({ rootId: thread.rootId, messages });
-      void loadThreads();
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Файл не отправлен');
-    }
+  const attachToThread = (files: File[]) => {
+    const named = files.map((f) => (isAnonymousClipboardName(f.name) && f.type.startsWith('image/')
+      ? new File([f], screenshotName(new Date(), f.type), { type: f.type })
+      : f));
+    setThreadPending((prev) => [
+      ...prev,
+      ...named.map((f) => ({ file: f, url: isImageName(f.name) ? URL.createObjectURL(f) : '' })),
+    ].slice(0, 10));
   };
+
+  const clearThreadPending = () => setThreadPending((prev) => {
+    for (const p of prev) if (p.url) URL.revokeObjectURL(p.url);
+    return [];
+  });
+
+  const dropThreadPending = (idx: number) => setThreadPending((prev) => {
+    const gone = prev[idx];
+    if (gone?.url) URL.revokeObjectURL(gone.url);
+    return prev.filter((_, i) => i !== idx);
+  });
 
   const sendToThread = async () => {
     const text = threadBody.trim();
-    if (!text || !thread || !activeId) return;
+    if ((!text && !threadPending.length) || !thread || !activeId) return;
+    const files = threadPending.map((p) => p.file);
     setThreadBody('');
+    clearThreadPending();
     try {
+      // Вложения и подпись уходят ОДНИМ сообщением — как в ленте чата.
+      if (files.length) {
+        await api.sendChatFile(activeId, files, text, { rootId: thread.rootId, alsoInChannel });
+        const messages = await api.chatThread(activeId, thread.rootId);
+        setThread({ rootId: thread.rootId, messages });
+        void loadThreads();
+        return;
+      }
       await api.sendChatMessage(activeId, text, { rootId: thread.rootId, alsoInChannel });
       // своё сообщение придёт сокетом — второй раз его не добавляем
       // Список веток обязан обновиться сразу: новая ветка появляется с первым
@@ -957,6 +995,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Ответ не отправлен');
       setThreadBody(text);
+      if (files.length) attachToThread(files); // переснимать экран обидно
     }
   };
 
@@ -1966,7 +2005,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
         <section className="chat-thread">
           <div className="chat-head">
             <span><Icon name="chat" size={15} /> <b>Ветка обсуждения</b></span>
-            <button className="btn btn-ghost btn-sm" onClick={() => setThread(null)} title="Закрыть ветку" aria-label="Закрыть ветку">
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => { setThread(null); clearThreadPending(); }}
+              title="Закрыть ветку"
+              aria-label="Закрыть ветку"
+            >
               <Icon name="close" size={15} />
             </button>
           </div>
@@ -2025,6 +2069,27 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
             Также отправить в основной чат
           </label>
           <div className="chat-input">
+            {/* Приготовленные вложения ветки: видно, что уйдёт, и можно убрать лишнее. */}
+            {threadPending.length > 0 && (
+              <div className="chat-pending">
+                {threadPending.map((p, i) => (
+                  <span key={`${p.file.name}-${i}`} className="chat-pending-item">
+                    {p.url
+                      ? <img className="chat-pending-img" src={p.url} alt={p.file.name} />
+                      : <Icon name="paperclip" size={16} />}
+                    <span className="chat-pending-name">{p.file.name}</span>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => dropThreadPending(i)}
+                      title="Убрать это вложение"
+                      aria-label="Убрать вложение"
+                    >
+                      <Icon name="close" size={14} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             {/* Скрепка и в ветке: показать снимком быстрее, чем описать словами. */}
             <label className="btn btn-ghost btn-sm" title="Приложить файлы" style={{ cursor: 'pointer' }}>
               <Icon name="paperclip" size={16} />
@@ -2034,7 +2099,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                 hidden
                 onChange={(e) => {
                   const list = Array.from(e.target.files ?? []);
-                  if (list.length) void sendFilesToThread(list);
+                  if (list.length) attachToThread(list);
                   e.currentTarget.value = '';
                 }}
               />
@@ -2046,7 +2111,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               onChange={(e) => setThreadBody(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendToThread(); } }}
             />
-            <button className="btn btn-primary btn-sm" onClick={sendToThread} disabled={!threadBody.trim()} title="Ответить">
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={sendToThread}
+              disabled={!threadBody.trim() && !threadPending.length}
+              title="Ответить"
+            >
               <Icon name="send" />
             </button>
           </div>
