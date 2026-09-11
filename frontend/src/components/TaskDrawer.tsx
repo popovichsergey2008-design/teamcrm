@@ -678,8 +678,10 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             <div className="field">
               <label>
                 Описание
+                {/* Пока описание правили — «Готово» горит: человек должен видеть,
+                    что от него ждут действия, не разглядывая полосу внизу карточки. */}
                 <button
-                  className="btn btn-ghost btn-sm desc-edit-btn"
+                  className={`btn btn-sm desc-edit-btn${editingDesc && desc !== (task.description ?? '') ? ' btn-primary' : ' btn-ghost'}`}
                   onClick={() => setEditingDesc((v) => !v)}
                   title={editingDesc ? 'Закончить правку — сохранится общей кнопкой внизу' : 'Изменить описание'}
                 >

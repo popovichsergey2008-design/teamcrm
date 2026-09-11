@@ -35,6 +35,25 @@ export const REGISTRY_TABS: RegistryTab[] = [
   { key: 'all', label: 'Все', hint: 'Все задачи компании во всех проектах' },
 ];
 
+/**
+ * Четыре роли для галочек: «все задачи компании» сюда не входит — это не роль,
+ * а другой вопрос («чужая работа тоже»), и живёт он отдельной кнопкой.
+ */
+export const ROLE_TABS: RegistryTab[] = REGISTRY_TABS.filter((t) => t.key !== 'all');
+
+/**
+ * Подпись под заголовком: что сейчас показано.
+ *
+ * Перечислять роли словами, а не писать «выбрано 3 из 4»: человек должен понимать
+ * список, не считая галочки.
+ */
+export function scopeHint(picked: string[]): string {
+  if (picked.includes('all')) return 'Все задачи компании во всех проектах';
+  const roles = ROLE_TABS.filter((t) => picked.includes(t.key));
+  if (!roles.length || roles.length === ROLE_TABS.length) return 'Вся ваша работа: делаю, поручил, помогаю, наблюдаю';
+  return `Только: ${roles.map((t) => t.label.toLowerCase()).join(', ')}`;
+}
+
 export const REGISTRY_SORTS: { key: string; label: string }[] = [
   { key: 'deadline', label: 'По сроку' },
   { key: 'priority', label: 'По приоритету' },
@@ -85,6 +104,10 @@ export function isScope(value: string | undefined | null): value is RegistryScop
  */
 export function toScope(value: string | undefined | null): RegistryScope {
   if (isScope(value)) return value;
+  // Несколько ролей в адресе («doing,delegated»): проверяем каждую по отдельности,
+  // иначе ссылка на такой срез открывалась бы как «делаю» и человек терял выбор.
+  const parts = String(value ?? '').split(',').filter(Boolean);
+  if (parts.length > 1 && parts.every((p) => isScope(p))) return parts.join(',') as RegistryScope;
   const legacy = LEGACY_VIEWS[String(value ?? '')];
   return legacy ?? 'doing';
 }

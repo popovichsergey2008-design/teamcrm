@@ -94,9 +94,13 @@ export class ChatsRepository {
               peer.full_name AS peer_name,
               peer.avatar_file_id AS peer_avatar,
               p.name    AS project_name,
+              -- Непрочитанное — тоже про ленту чата: ответы в ветках считаются
+              -- отдельно, в разделе «Треды», и их цифра не должна висеть на чате,
+              -- где открыть их нечем.
               (SELECT count(*)::int FROM chat_messages msg
                 WHERE msg.chat_id = mine.id AND msg.deleted_at IS NULL
                   AND msg.author_id <> $2
+                  AND (msg.thread_root_id IS NULL OR msg.also_in_channel)
                   AND (me.last_read_at IS NULL OR msg.created_at > me.last_read_at)) AS unread,
               last.body AS last_body,
               lu.full_name AS last_author,
@@ -111,8 +115,17 @@ export class ChatsRepository {
          ) other ON TRUE
          LEFT JOIN users peer ON peer.id = other.user_id
          LEFT JOIN LATERAL (
+              /*
+                Последнее сообщение — из тех, что ВИДНЫ в самом чате.
+
+                Ответы из веток в общую ленту не попадают (ради этого треды и
+                заводились), а в списке они показывались: человек читал в превью
+                «Юрий: что-то слышно про З…», открывал чат — и не находил этой
+                строки. Условие здесь то же, что и в выборке сообщений.
+              */
               SELECT body, created_at, author_id FROM chat_messages
                WHERE chat_id = mine.id AND deleted_at IS NULL
+                 AND (thread_root_id IS NULL OR also_in_channel)
                ORDER BY id DESC LIMIT 1
          ) last ON TRUE
          LEFT JOIN users lu ON lu.id = last.author_id

@@ -1,4 +1,4 @@
-import { buildRegistry, normalizeScope, REGISTRY_PAGE_SIZE } from './task-registry';
+import { buildRegistry, normalizeScope, normalizeScopes, REGISTRY_PAGE_SIZE } from './task-registry';
 
 /**
  * Условия выборки ошибаются молча: потерянный срез покажет чужие задачи, сбитая
@@ -143,5 +143,27 @@ describe('buildRegistry: сортировка и страницы', () => {
     expect(buildRegistry('1', '7', { ...base, page: 3 }).offset).toBe(2 * REGISTRY_PAGE_SIZE);
     expect(buildRegistry('1', '7', { ...base, page: -5 }).offset).toBe(0);
     expect(buildRegistry('1', '7', { ...base, page: 1.7 }).offset).toBe(0);
+  });
+});
+
+describe('несколько ролей сразу', () => {
+  it('роли объединяются через ИЛИ — это «мои задачи» целиком', () => {
+    const q = buildRegistry('1', '7', { ...base, scope: 'doing,delegated,watching' });
+    expect(q.where).toContain(' OR ');
+    expect(q.where).toContain('t.assignee_id = $2');
+    expect(q.where).toContain('t.created_by = $2');
+    expect(q.where).toContain("tp.role = 'watcher'");
+  });
+
+  it('«все задачи компании» перекрывают остальные галочки', () => {
+    expect(normalizeScopes('all,doing,helping')).toEqual(['all']);
+  });
+
+  it('мусор отбрасывается, а пустой выбор — это «делаю», а не пустой экран', () => {
+    expect(normalizeScopes('doing,выдумка,,helping')).toEqual(['doing', 'helping']);
+    expect(normalizeScopes('')).toEqual(['doing']);
+    expect(normalizeScopes(null)).toEqual(['doing']);
+    // повтор роли не должен удваивать условие в запросе
+    expect(normalizeScopes('doing,doing')).toEqual(['doing']);
   });
 });

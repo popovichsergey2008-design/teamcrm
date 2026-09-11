@@ -343,10 +343,10 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onDrop, onA
 
         {/* Чек-лист приходит из разбора и правится здесь же: шаги, придуманные
             моделью, человек читает первым — и половину обычно переписывает. */}
-        <div className="drawer-section-title" style={{ marginTop: 8 }}>
-          Шаги проверки
-          <span className="dim nl-hint" style={{ marginLeft: 6 }}>как понять, что работа сделана</span>
-        </div>
+        {/* Подпись — ОТДЕЛЬНОЙ строкой обычными буквами. Внутри заголовка она
+            набиралась капслоком и читалась как продолжение названия блока. */}
+        <div className="drawer-section-title" style={{ marginTop: 8 }}>Шаги проверки задачи</div>
+        <div className="dim nl-hint">как понять, что работа сделана</div>
         {(draft.task.checklist ?? []).map((step: string, i: number) => (
           <div key={i} className="nl-step">
             <input className="input" value={step} aria-label={`Шаг ${i + 1}`}

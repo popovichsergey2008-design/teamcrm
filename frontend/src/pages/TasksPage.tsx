@@ -5,8 +5,8 @@ import { SkeletonList } from '../components/Skeleton';
 import { api } from '../lib/api';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import {
-  EMPTY_FILTERS, REGISTRY_DUES, REGISTRY_SORTS, REGISTRY_TABS, RegistryFilters, RegistryScope,
-  activeFilterCount, emptyHint, pageWindow, rangeLabel, registryQuery,
+  EMPTY_FILTERS, REGISTRY_DUES, REGISTRY_SORTS, RegistryFilters, RegistryScope, ROLE_TABS,
+  activeFilterCount, emptyHint, pageWindow, rangeLabel, registryQuery, scopeHint,
 } from '../lib/task-registry-view';
 import type { Project } from '../types';
 
@@ -129,30 +129,58 @@ export function TasksPage({ active, scope, onScope, onOpenTask }: {
   /** Любая правка фильтра возвращает на первую страницу: иначе «пусто» на пятой. */
   const patch = (part: Partial<RegistryFilters>) => setFilters((f) => ({ ...f, ...part, page: 1 }));
 
-  const tab = REGISTRY_TABS.find((t) => t.key === filters.scope) ?? REGISTRY_TABS[0];
+  /** Отмеченные роли: срез приходит строкой через запятую и остаётся в адресе. */
+  const picked = String(filters.scope ?? 'doing').split(',').filter(Boolean) as RegistryScope[];
+  const setScopes = (next: RegistryScope[]) => {
+    // Снять все галочки нельзя: пустой экран человек читает как поломку, а не
+    // как «вы ничего не выбрали».
+    const value = (next.length ? next : ['doing']).join(',');
+    onScope(value as RegistryScope);
+    patch({ scope: value as RegistryScope });
+  };
+  const toggleRole = (key: RegistryScope, on: boolean) => {
+    const base = picked.filter((k) => k !== 'all');
+    setScopes(on ? [...base, key] : base.filter((k) => k !== key));
+  };
+  const toggleAll = (on: boolean) => setScopes(on ? ['all'] : ROLE_TABS.map((t) => t.key));
   const filterCount = activeFilterCount(request);
-  const showWho: 'assignee' | 'manager' = filters.scope === 'delegated' ? 'assignee' : 'manager';
+  const showWho: 'assignee' | 'manager' = picked.length === 1 && picked[0] === 'delegated' ? 'assignee' : 'manager';
 
   return (
     <div className="page registry-page">
       <header className="registry-head">
         <div className="registry-title">
-          <h1>Задачи</h1>
-          <span className="registry-sub">{tab.hint}</span>
+          <h1>Мои задачи</h1>
+          <span className="registry-sub">{scopeHint(picked)}</span>
         </div>
-        <nav className="registry-tabs" role="tablist">
-          {REGISTRY_TABS.map((t) => (
-            <button
-              key={t.key}
-              role="tab"
-              aria-selected={t.key === filters.scope}
-              className={`registry-tab${t.key === filters.scope ? ' active' : ''}`}
-              title={t.hint}
-              onClick={() => { onScope(t.key); patch({ scope: t.key }); }}
-            >
+        {/*
+          Роли — ГАЛОЧКАМИ, а не вкладками.
+
+          Вкладки заставляли смотреть свою работу по четырём спискам: «делаю»,
+          «поручил», «помогаю», «наблюдаю». Человек хочет видеть её целиком, поэтому
+          по умолчанию отмечены все четыре, а снимая галочку, он сужает список.
+
+          «Все задачи компании» стоит особняком: это другой вопрос — чужая работа,
+          а не моя роль в ней. Поэтому он выключает роли, а не складывается с ними.
+        */}
+        <nav className="registry-roles" aria-label="Мои роли в задачах">
+          {ROLE_TABS.map((t) => (
+            <label key={t.key} className={`registry-role${picked.includes(t.key) ? ' active' : ''}`} title={t.hint}>
+              <input
+                type="checkbox"
+                checked={picked.includes(t.key)}
+                onChange={(e) => toggleRole(t.key, e.target.checked)}
+              />
               {t.label}
-            </button>
+            </label>
           ))}
+          <button
+            className={`registry-tab${picked.includes('all') ? ' active' : ''}`}
+            title="Все задачи компании во всех проектах, включая чужие"
+            onClick={() => toggleAll(!picked.includes('all'))}
+          >
+            Все задачи
+          </button>
         </nav>
       </header>
 
@@ -240,7 +268,7 @@ export function TasksPage({ active, scope, onScope, onOpenTask }: {
       {loading && rows.length === 0 && <SkeletonList rows={8} />}
 
       {!loading && rows.length === 0 && !error && (
-        <EmptyState icon="check-circle" title="Задач нет" hint={emptyHint(filters.scope, filterCount > 0)} />
+        <EmptyState icon="check-circle" title="Задач нет" hint={emptyHint(picked[0] ?? 'doing', filterCount > 0)} />
       )}
 
       {rows.length > 0 && (

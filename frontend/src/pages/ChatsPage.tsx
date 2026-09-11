@@ -318,12 +318,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           api.markChatRead(p.chatId)
             .then(() => { reload(); notifyChatsChanged(); })
             .catch(() => reload());
-          if (view === 'threads') void loadThreads();
+          if (p.message?.thread_root_id || view === 'threads') void loadThreads();
           return;
         }
       }
       reload();
-      if (view === 'threads') void loadThreads();
+      /*
+        Ветки пересчитываем ВСЕГДА, а не только на открытом разделе «Треды».
+
+        Заказчик: «треды не появляются сразу после отправки сообщения и требуют
+        перезагрузки». Ветка рождается первым ответом, и её счётчик висит в меню —
+        значит, знать о ней надо независимо от того, какой раздел сейчас открыт.
+      */
+      if (p.message?.thread_root_id || view === 'threads') void loadThreads();
     };
     const onDeleted = (p: { chatId: string; messageId: string }) => {
       if (String(p.chatId) === String(activeId)) setMessages((prev) => prev.filter((m) => m.id !== p.messageId));
@@ -648,6 +655,109 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     }
   };
 
+  /**
+   * Значки действий под сообщением.
+   *
+   * Обычная функция, а не компонент: она закрывает собой все обработчики страницы
+   * (реакции, меню, напоминания), и отдельному компоненту пришлось бы передавать
+   * полтора десятка пропсов. Живёт в одном месте, потому что используется дважды —
+   * в ленте чата и в ветке: заказчик справедливо заметил, что в ветке «нельзя ни
+   * смайлы поставить, ни удалить, ни задачу создать».
+   */
+  const messageActions = (m: Message, mine: boolean) => (
+    <>
+                        {/*
+                          Три значка вместо шести подписей.
+
+                          Раньше под каждым сообщением стояло шесть текстовых кнопок —
+                          под короткой репликой они занимали больше места, чем она сама.
+                          Часто нужны две вещи: поставить реакцию и ответить в ветке;
+                          остальное убрано под «ещё», но не спрятано за наведением —
+                          значки видны всегда, и на касании тоже.
+                        */}
+                        <span className="msg-actions" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            className="msg-icon"
+                            onClick={() => { setReactFor(reactFor === String(m.id) ? null : String(m.id)); setMenuFor(null); }}
+                            title="Поставить реакцию"
+                            aria-label="Поставить реакцию"
+                          >
+                            <Icon name="smile" size={17} />
+                          </button>
+                          <button
+                            className="msg-icon"
+                            onClick={() => openThread(String(m.id))}
+                            title={m.reply_count ? `Ответы в ветке (${m.reply_count})` : 'Ответить в ветке'}
+                            aria-label="Ответить в ветке"
+                          >
+                            <Icon name="reply" size={17} />
+                          </button>
+                          <button
+                            className="msg-icon"
+                            onClick={() => { setMenuFor(menuFor === String(m.id) ? null : String(m.id)); setReactFor(null); }}
+                            title="Ещё"
+                            aria-label="Ещё"
+                          >
+                            <Icon name="more" size={17} />
+                          </button>
+
+                          {/* Набор реакций всплывает НАД сообщением, как в привычных
+                              мессенджерах, а не раздвигает ленту. */}
+                          {reactFor === String(m.id) && (
+                            <span className="react-pop">
+                              {REACTIONS.map((emoji) => (
+                                <button key={emoji} className="react-pop-btn" onClick={() => react(String(m.id), emoji)}>
+                                  {emoji}
+                                </button>
+                              ))}
+                            </span>
+                          )}
+
+                          {menuFor === String(m.id) && (
+                            <span className="msg-menu" role="menu">
+                              {/* Своё сообщение можно поправить и убрать. Чужое — нет:
+                                  переписывать чужие слова не вправе никто. */}
+                              {mine && (
+                                <button
+                                  className="msg-menu-item"
+                                  onClick={() => { setMenuFor(null); setEditing(String(m.id)); setEditText(String(m.body ?? '')); }}
+                                >
+                                  <Icon name="edit" size={13} /> Изменить
+                                </button>
+                              )}
+                              {mine && (
+                                <button className="msg-menu-item" onClick={() => { setMenuFor(null); removeMessage(String(m.id)); }}>
+                                  <Icon name="trash" size={13} /> Удалить
+                                </button>
+                              )}
+                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); togglePin(m); }}>
+                                <Icon name="flag" size={13} /> {m.pinned_at ? 'Открепить' : 'Закрепить'}
+                              </button>
+                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); toggleSaved(m); }}>
+                                <Icon name="star" size={13} /> {savedIds.has(String(m.id)) ? 'Убрать из сохранённого' : 'Сохранить'}
+                              </button>
+                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); setRemindFor(String(m.id)); }}>
+                                <Icon name="clock" size={13} /> Напомнить
+                              </button>
+                              {m.task_id ? (
+                                <button
+                                  className="msg-menu-item"
+                                  onClick={() => { setMenuFor(null); openTask(m); }}
+                                >
+                                  <Icon name="check" size={13} /> Задача #{m.task_id}
+                                </button>
+                              ) : (
+                                <button className="msg-menu-item" onClick={() => { setMenuFor(null); setToTask(m); }}>
+                                  <Icon name="sparkles" size={13} /> Создать задачу
+                                </button>
+                              )}
+                            </span>
+                          )}
+                        </span>
+
+    </>
+  );
+
   const openThread = async (rootId: string) => {
     if (!activeId) return;
     setThreadBody(''); setAlsoInChannel(false);
@@ -665,6 +775,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     try {
       await api.sendChatMessage(activeId, text, { rootId: thread.rootId, alsoInChannel });
       // своё сообщение придёт сокетом — второй раз его не добавляем
+      // Список веток обязан обновиться сразу: новая ветка появляется с первым
+      // ответом, и раньше её приходилось ждать до перезагрузки страницы.
+      void loadThreads();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Ответ не отправлен');
       setThreadBody(text);
@@ -1395,94 +1508,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                           )
                         )}
 
-                        {/*
-                          Три значка вместо шести подписей.
-
-                          Раньше под каждым сообщением стояло шесть текстовых кнопок —
-                          под короткой репликой они занимали больше места, чем она сама.
-                          Часто нужны две вещи: поставить реакцию и ответить в ветке;
-                          остальное убрано под «ещё», но не спрятано за наведением —
-                          значки видны всегда, и на касании тоже.
-                        */}
-                        <span className="msg-actions" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            className="msg-icon"
-                            onClick={() => { setReactFor(reactFor === String(m.id) ? null : String(m.id)); setMenuFor(null); }}
-                            title="Поставить реакцию"
-                            aria-label="Поставить реакцию"
-                          >
-                            <Icon name="smile" size={17} />
-                          </button>
-                          <button
-                            className="msg-icon"
-                            onClick={() => openThread(String(m.id))}
-                            title={m.reply_count ? `Ответы в ветке (${m.reply_count})` : 'Ответить в ветке'}
-                            aria-label="Ответить в ветке"
-                          >
-                            <Icon name="reply" size={17} />
-                          </button>
-                          <button
-                            className="msg-icon"
-                            onClick={() => { setMenuFor(menuFor === String(m.id) ? null : String(m.id)); setReactFor(null); }}
-                            title="Ещё"
-                            aria-label="Ещё"
-                          >
-                            <Icon name="more" size={17} />
-                          </button>
-
-                          {/* Набор реакций всплывает НАД сообщением, как в привычных
-                              мессенджерах, а не раздвигает ленту. */}
-                          {reactFor === String(m.id) && (
-                            <span className="react-pop">
-                              {REACTIONS.map((emoji) => (
-                                <button key={emoji} className="react-pop-btn" onClick={() => react(String(m.id), emoji)}>
-                                  {emoji}
-                                </button>
-                              ))}
-                            </span>
-                          )}
-
-                          {menuFor === String(m.id) && (
-                            <span className="msg-menu" role="menu">
-                              {/* Своё сообщение можно поправить и убрать. Чужое — нет:
-                                  переписывать чужие слова не вправе никто. */}
-                              {mine && (
-                                <button
-                                  className="msg-menu-item"
-                                  onClick={() => { setMenuFor(null); setEditing(String(m.id)); setEditText(String(m.body ?? '')); }}
-                                >
-                                  <Icon name="edit" size={13} /> Изменить
-                                </button>
-                              )}
-                              {mine && (
-                                <button className="msg-menu-item" onClick={() => { setMenuFor(null); removeMessage(String(m.id)); }}>
-                                  <Icon name="trash" size={13} /> Удалить
-                                </button>
-                              )}
-                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); togglePin(m); }}>
-                                <Icon name="flag" size={13} /> {m.pinned_at ? 'Открепить' : 'Закрепить'}
-                              </button>
-                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); toggleSaved(m); }}>
-                                <Icon name="star" size={13} /> {savedIds.has(String(m.id)) ? 'Убрать из сохранённого' : 'Сохранить'}
-                              </button>
-                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); setRemindFor(String(m.id)); }}>
-                                <Icon name="clock" size={13} /> Напомнить
-                              </button>
-                              {m.task_id ? (
-                                <button
-                                  className="msg-menu-item"
-                                  onClick={() => { setMenuFor(null); openTask(m); }}
-                                >
-                                  <Icon name="check" size={13} /> Задача #{m.task_id}
-                                </button>
-                              ) : (
-                                <button className="msg-menu-item" onClick={() => { setMenuFor(null); setToTask(m); }}>
-                                  <Icon name="sparkles" size={13} /> Создать задачу
-                                </button>
-                              )}
-                            </span>
-                          )}
-                        </span>
+                        {messageActions(m, mine)}
 
                         {/* Ответы в ветке — не действие, а состояние разговора:
                             строчка остаётся на виду, её не прячут в меню. */}
@@ -1636,7 +1662,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                 <div className="chat-line">
                   <div className="chat-msg">
                     <div className="chat-author">{m.author_name}</div>
-                    {m.body && <div className="chat-body">{m.body}</div>}
+                    {/* Ссылки кликаются и здесь: ветка — такая же переписка. */}
+                    {m.body && <MessageText text={m.body} className="chat-body" />}
                     {m.file_id && (
                       <ChatAttachment
                         fileId={m.file_id}
@@ -1645,7 +1672,28 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                       />
                     )}
                   </div>
-                  <div className="chat-time">{timeOf(m.created_at)}</div>
+                  {/* Поставленные реакции — как в ленте: ответить «понял» можно и в ветке. */}
+                  {(m.reactions ?? []).length > 0 && (
+                    <div className="chat-reactions">
+                      {(m.reactions ?? []).map((r) => (
+                        <button
+                          key={r.emoji}
+                          className={r.mine ? 'reaction mine' : 'reaction'}
+                          onClick={() => react(String(m.id), r.emoji)}
+                          title={r.mine ? 'Снять свою реакцию' : 'Поддержать'}
+                        >
+                          {r.emoji} {r.count}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="chat-under">
+                    <span className="chat-time">{timeOf(m.created_at)}</span>
+                    {m.edited_at && <span className="dim chat-under-mark" title="Сообщение изменено">изменено</span>}
+                    {/* Полный набор действий, тот же, что в ленте: реакция, правка,
+                        удаление, напоминание, задача из сообщения. */}
+                    {messageActions(m, String(m.author_id) === String(user?.id))}
+                  </div>
                 </div>
                 {i === 0 && thread.messages.length > 1 && (
                   <div className="thread-divider">

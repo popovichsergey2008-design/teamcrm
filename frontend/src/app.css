@@ -3281,6 +3281,28 @@
 .registry-tab:hover { background: var(--hover); color: var(--text); }
 .registry-tab.active { background: var(--accent-2); color: #fff; }
 
+/*
+  Роли галочками.
+
+  Выглядят как переключатели, а не как форма с чекбоксами: список ролей читают
+  глазами, а не заполняют. Отмеченная роль подсвечена, сама галочка спрятана —
+  иначе четыре квадратика в шапке спорят с кнопкой «Все задачи» рядом.
+*/
+.registry-roles { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.registry-role {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 6px 12px; border-radius: var(--radius-sm);
+  color: var(--text-dim); font-size: var(--fs-sm); font-weight: 600;
+  border: 1px solid transparent;
+}
+.registry-role:hover { background: var(--hover); color: var(--text); }
+.registry-role.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
+.registry-role input { accent-color: var(--accent); }
+/* Кольцо и по :focus-visible — проверка a11y ищет именно его, и правильно ищет:
+   :focus-within не сработает, если галочку скроют совсем. */
+.registry-role:focus-within,
+.registry-role:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 .registry-bar { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-4) 0 var(--sp-2); flex-wrap: wrap; }
 .registry-search {
   display: flex; align-items: center; gap: var(--sp-2); flex: 1; min-width: 220px; max-width: 420px;

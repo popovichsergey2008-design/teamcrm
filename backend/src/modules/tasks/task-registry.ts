@@ -77,6 +77,25 @@ export function normalizeScope(value?: string | null): RegistryScope {
   return SCOPES.includes(value as RegistryScope) ? (value as RegistryScope) : 'doing';
 }
 
+/**
+ * Несколько ролей сразу: «делаю» + «поручил» + «помогаю» + «наблюдаю».
+ *
+ * Заказчик попросил выбирать роли галочками, а не по одной вкладке: человек хочет
+ * видеть свою работу целиком, а не переключаться между четырьмя списками. Приходит
+ * это строкой через запятую — так срез остаётся в адресе и ссылкой делятся как есть.
+ *
+ * Неизвестные слова молча отбрасываем, пустой список превращаем в «делаю»: пустой
+ * экран вместо задач человек читает как поломку.
+ */
+export function normalizeScopes(value?: string | null): RegistryScope[] {
+  const parts = String(value ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  const known = parts.filter((x): x is RegistryScope => SCOPES.includes(x as RegistryScope));
+  const unique = [...new Set(known)];
+  // «Все задачи компании» шире любой роли — при нём остальные галочки не нужны.
+  if (unique.includes('all')) return ['all'];
+  return unique.length ? unique : ['doing'];
+}
+
 function normalizeDue(value?: string | null): RegistryDue {
   return DUES.includes(value as RegistryDue) ? (value as RegistryDue) : 'any';
 }
@@ -146,10 +165,12 @@ function orderClause(sort: RegistrySort): string {
  * на них опираются срез и отбор по сроку. Остальные фильтры дописывают параметры дальше.
  */
 export function buildRegistry(tenantId: string, userId: string, f: RegistryFilters): RegistryQuery {
-  const scope = normalizeScope(f.scope);
+  const scopes = normalizeScopes(f.scope);
   const due = normalizeDue(f.due);
   const params: unknown[] = [tenantId, userId, f.dayEnd];
-  const where: string[] = ['t.tenant_id = $1', scopeCondition(scope)];
+  // Роли объединяются через ИЛИ: задача попадает в список, если человек в ней
+  // хоть кто-то из отмеченного.
+  const where: string[] = ['t.tenant_id = $1', `(${scopes.map(scopeCondition).join(' OR ')})`];
 
   // Рабочий список — только живое: незакрытые задачи в неархивных проектах. Архивные
   // проекты иначе всплывали бы в каждом фильтре. Сняли «В работе» — показываем всё,

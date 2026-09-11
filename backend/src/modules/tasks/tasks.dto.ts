@@ -173,9 +173,15 @@ export class TaskRegistryQueryDto {
    * Срез реестра. `mine` оставлен рядом с новыми `doing`/`helping`: по нему приходят
    * ссылки, сохранённые до разделения «делаю» и «помогаю», и отвечать на них 400 нельзя.
    */
+  /**
+   * Роли через запятую: «doing,delegated,helping». Проверять списком @IsIn нельзя —
+   * сочетаний два десятка; разбирает и чистит строку сам построитель запроса
+   * (`normalizeScopes`), неизвестные слова он молча отбрасывает.
+   */
   @IsOptional()
-  @IsIn(['doing', 'helping', 'mine', 'delegated', 'watching', 'all'])
-  scope?: 'doing' | 'helping' | 'mine' | 'delegated' | 'watching' | 'all';
+  @IsString()
+  @MaxLength(80)
+  scope?: string;
 
   @IsOptional()
   @IsString()
