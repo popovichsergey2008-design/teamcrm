@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, Scheduled } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { navigate } from '../lib/router';
 import { useClipRecorder } from '../hooks/useClipRecorder';
@@ -104,6 +104,18 @@ const plural = (n: number, one: string, few: string, many: string) => {
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long' });
 
 /**
+ * Когда уйдёт отложенное.
+ *
+ * У ежедневного это не дата, а правило: «каждый день в 09:00». Показывать ему
+ * конкретное число неправильно — человек подумает, что оно уйдёт один раз.
+ */
+const laterLabel = (x: { sendAt: string; repeat: 'none' | 'daily' }) => {
+  const at = new Date(x.sendAt);
+  const time = at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return x.repeat === 'daily' ? `каждый день в ${time}` : remindLabel(at);
+};
+
+/**
  * Мессенджер: слева люди и группы, справа переписка. Звонок — из шапки чата,
  * то есть звонишь конкретному человеку, а не в общую комнату.
  */
@@ -146,6 +158,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const [laterOpen, setLaterOpen] = useState(false);
   /** Открыто окно «Отложенные сообщения» — со списком и действиями над каждым. */
   const [queueOpen, setQueueOpen] = useState(false);
+  /** Как откладываем: один раз в дату и время или каждый день в это время. */
+  const [laterRepeat, setLaterRepeat] = useState<'none' | 'daily'>('none');
+  const [laterAt, setLaterAt] = useState('');
+  const [laterTime, setLaterTime] = useState('09:00');
   /**
    * Вложения, приготовленные для ответа в ветке.
    *
@@ -170,7 +186,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     if (q.length < 2) return [];
     return messages.filter((m) => String(m.body ?? '').toLowerCase().includes(q));
   }, [inChatQuery, messages]);
-  const [scheduled, setScheduled] = useState<{ id: string; body: string; sendAt: string }[]>([]);
+  const [scheduled, setScheduled] = useState<Scheduled[]>([]);
   const [groupOpen, setGroupOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [perm, setPerm] = useState(notificationPermission());
@@ -726,7 +742,28 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
    * в списке отложенных. Иначе человек, нажав «отправить позже», смотрит на свой
    * текст и не понимает, отправится он сейчас или нет.
    */
-  const scheduleDraft = async (at: Date) => {
+  /**
+   * Подтвердили выбор времени.
+   *
+   * Ежедневное считаем от СЕГОДНЯШНЕГО дня: если названное время уже прошло,
+   * первая отправка будет завтра — иначе напоминание ушло бы прямо сейчас.
+   */
+  const confirmLater = () => {
+    if (laterRepeat === 'daily') {
+      const [h, m] = laterTime.split(':').map(Number);
+      if (Number.isNaN(h) || Number.isNaN(m)) { setErr('Укажите время'); return; }
+      const at = new Date();
+      at.setHours(h, m, 0, 0);
+      if (at.getTime() < Date.now() + 60_000) at.setDate(at.getDate() + 1);
+      void scheduleDraft(at, 'daily');
+      return;
+    }
+    const at = new Date(laterAt);
+    if (Number.isNaN(at.getTime())) { setErr('Укажите дату и время'); return; }
+    void scheduleDraft(at, 'none');
+  };
+
+  const scheduleDraft = async (at: Date, repeat: 'none' | 'daily' = 'none') => {
     const text = draft.trim();
     if (!text || !activeId) return;
     setLaterOpen(false);
@@ -734,12 +771,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       await api.scheduleChatMessage(activeId, {
         body: text,
         sendAt: at.toISOString(),
+        repeat,
         mentionIds: stillMentioned(mentioned, text, mentionUsers),
       });
       setDraft('');
       setMentioned([]);
       loadScheduled(activeId);
-      toastSaved('Отправлю позже', remindLabel(at));
+      toastSaved(
+        repeat === 'daily' ? 'Буду отправлять каждый день' : 'Отправлю позже',
+        repeat === 'daily'
+          ? `в ${at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}, начиная с ${remindLabel(at)}`
+          : remindLabel(at),
+      );
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось отложить сообщение');
     }
@@ -1941,7 +1984,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               {scheduled.length > 0 && (
                 <button className="chat-later-queue" onClick={() => setQueueOpen(true)}>
                   <Icon name="clock" size={12} />
-                  Отложено: {scheduled.length} · ближайшее {remindLabel(new Date(scheduled[0].sendAt))}
+                  Отложено: {scheduled.length} · ближайшее {laterLabel(scheduled[0])}
                 </button>
               )}
               {/*
@@ -1962,24 +2005,54 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                 </button>
                 {laterOpen && (
                   <span className="chat-later-pick" onClick={(e) => e.stopPropagation()}>
-                    {remindOptions().map((o) => (
-                      <button key={o.key} className="chat-thread-link" onClick={() => scheduleDraft(o.at)}>
-                        {o.label} · {remindLabel(o.at)}
+                    {/*
+                      Два способа и всё.
+
+                      Готовые варианты («через час», «завтра утром») убраны по просьбе
+                      заказчика: они угадывают за человека, а он обычно знает точное
+                      время — за полчаса до планёрки, в девять утра каждый день.
+                    */}
+                    <span className="later-mode">
+                      <button
+                        className={`view-btn${laterRepeat === 'none' ? ' active' : ''}`}
+                        onClick={() => setLaterRepeat('none')}
+                      >
+                        Один раз
                       </button>
-                    ))}
-                    {/* Своё время: «за полчаса до встречи» ни один список не угадает. */}
-                    <label className="chat-later-own">
-                      <span className="dim">Своё время</span>
-                      <input
-                        type="datetime-local"
-                        className="input"
-                        onChange={(e) => {
-                          const at = new Date(e.target.value);
-                          if (!Number.isNaN(at.getTime())) void scheduleDraft(at);
-                        }}
-                      />
-                    </label>
-                    <button className="chat-thread-link chat-thread-new" onClick={() => setLaterOpen(false)}>Отмена</button>
+                      <button
+                        className={`view-btn${laterRepeat === 'daily' ? ' active' : ''}`}
+                        onClick={() => setLaterRepeat('daily')}
+                      >
+                        Каждый день
+                      </button>
+                    </span>
+
+                    {laterRepeat === 'none' ? (
+                      <label className="chat-later-own">
+                        <span className="dim">Дата и время</span>
+                        <input
+                          type="datetime-local"
+                          className="input"
+                          value={laterAt}
+                          onChange={(e) => setLaterAt(e.target.value)}
+                        />
+                      </label>
+                    ) : (
+                      <label className="chat-later-own">
+                        <span className="dim">Время — каждый день</span>
+                        <input
+                          type="time"
+                          className="input"
+                          value={laterTime}
+                          onChange={(e) => setLaterTime(e.target.value)}
+                        />
+                      </label>
+                    )}
+
+                    <span className="later-actions">
+                      <button className="btn btn-primary btn-sm" onClick={confirmLater}>Отложить</button>
+                      <button className="chat-thread-link chat-thread-new" onClick={() => setLaterOpen(false)}>Отмена</button>
+                    </span>
                   </span>
                 )}
               </span>
@@ -2158,7 +2231,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
             {scheduled.map((x) => (
               <div key={x.id} className="later-item">
                 <div className="later-when">
-                  <Icon name="clock" size={13} /> Отправлю {remindLabel(new Date(x.sendAt))}
+                  <Icon name={x.repeat === 'daily' ? 'refresh' : 'clock'} size={13} /> Отправлю {laterLabel(x)}
+                  {x.sentCount > 0 && (
+                    <span className="dim"> · уже отправлено раз: {x.sentCount}</span>
+                  )}
                 </div>
                 <div className="chat-body later-text">{x.body}</div>
                 <div className="later-actions">

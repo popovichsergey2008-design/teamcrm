@@ -12,6 +12,9 @@ export interface ScheduledRow {
   mention_ids: string[];
   send_at: Date;
   status: string;
+  /** none — один раз, daily — каждый день в это же время. */
+  repeat_kind: string;
+  sent_count: number;
   created_at: Date;
 }
 
@@ -28,15 +31,17 @@ export class ScheduledRepository {
   create(input: {
     tenantId: string; chatId: string; authorId: string; body: string;
     threadRootId: string | null; alsoInChannel: boolean; mentionIds: string[]; sendAt: Date;
+    repeatKind?: string;
   }): Promise<ScheduledRow | null> {
     return this.db.one<ScheduledRow>(
       `INSERT INTO chat_scheduled
-         (tenant_id, chat_id, author_id, body, thread_root_id, also_in_channel, mention_ids, send_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::bigint[],$8)
+         (tenant_id, chat_id, author_id, body, thread_root_id, also_in_channel, mention_ids, send_at, repeat_kind)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::bigint[],$8,$9)
        RETURNING *`,
       [
         input.tenantId, input.chatId, input.authorId, input.body,
         input.threadRootId, input.alsoInChannel, input.mentionIds, input.sendAt,
+        input.repeatKind === 'daily' ? 'daily' : 'none',
       ],
     );
   }
@@ -105,9 +110,30 @@ export class ScheduledRepository {
     );
   }
 
-  async markSent(id: string, messageId: string): Promise<void> {
+  /**
+   * Отправлено.
+   *
+   * У ежедневного напоминания строка остаётся живой и уезжает на сутки вперёд: это
+   * одно и то же напоминание, а не тридцать разных. У разового — закрывается.
+   *
+   * Время двигаем от НАЗНАЧЕННОГО момента, а не от «сейчас»: иначе напоминание,
+   * ушедшее с опозданием на минуту, каждый день сползало бы всё позже.
+   */
+  async markSent(id: string, messageId: string, repeatDaily = false): Promise<void> {
+    if (repeatDaily) {
+      await this.db.query(
+        `UPDATE chat_scheduled
+            SET send_at = send_at + interval '1 day',
+                sent_at = now(), sent_message_id = $2, sent_count = sent_count + 1
+          WHERE id = $1`,
+        [id, messageId],
+      );
+      return;
+    }
     await this.db.query(
-      `UPDATE chat_scheduled SET status='sent', sent_at=now(), sent_message_id=$2 WHERE id=$1`,
+      `UPDATE chat_scheduled
+          SET status='sent', sent_at=now(), sent_message_id=$2, sent_count = sent_count + 1
+        WHERE id=$1`,
       [id, messageId],
     );
   }

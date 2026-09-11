@@ -77,6 +77,16 @@ export interface ImportStats {
 }
 
 /** Ссылка синхронизации календаря: наша наружу («export») или чужая внутрь («import»). */
+/** Отложенное сообщение: разовое или ежедневное в одно и то же время. */
+export interface Scheduled {
+  id: string;
+  chatId: string;
+  body: string;
+  sendAt: string;
+  repeat: 'none' | 'daily';
+  sentCount: number;
+}
+
 /** Сторона объединения задач: та, что остаётся, и та, что помечается объединённой. */
 export interface MergeSide {
   id: string;
@@ -874,10 +884,12 @@ export const api = {
     request<any[]>('GET', `/chats/${chatId}/around/${messageId}`),
 
   /** Отложенные сообщения: написать сейчас, отправить в назначенное время. */
-  scheduleChatMessage: (chatId: string, body: { body: string; sendAt: string; rootId?: string; alsoInChannel?: boolean; mentionIds?: string[] }) =>
-    request<{ id: string; chatId: string; body: string; sendAt: string }>('POST', `/chats/${chatId}/scheduled`, body),
-  listScheduled: (chatId: string) =>
-    request<{ items: { id: string; chatId: string; body: string; sendAt: string }[] }>('GET', `/chats/${chatId}/scheduled`),
+  scheduleChatMessage: (chatId: string, body: {
+    body: string; sendAt: string; repeat?: 'none' | 'daily';
+    rootId?: string; alsoInChannel?: boolean; mentionIds?: string[];
+  }) =>
+    request<Scheduled>('POST', `/chats/${chatId}/scheduled`, body),
+  listScheduled: (chatId: string) => request<{ items: Scheduled[] }>('GET', `/chats/${chatId}/scheduled`),
   cancelScheduled: (id: string) => request<{ cancelled: boolean }>('DELETE', `/chats/scheduled/${id}`),
   /** «Отправить сейчас»: передумал ждать. */
   sendScheduledNow: (id: string) => request<{ sent: boolean }>('POST', `/chats/scheduled/${id}/send`),

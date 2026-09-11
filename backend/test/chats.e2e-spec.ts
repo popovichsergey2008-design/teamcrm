@@ -295,6 +295,26 @@ describe('Чаты команды (e2e)', () => {
     await http$.delete(`/api/chats/scheduled/${made.id}`).set(H(owner.accessToken)).expect(200);
     const after = (await http$.get(`/api/chats/${dm.id}/scheduled`).set(H(owner.accessToken)).expect(200)).body.data;
     expect(after.items).toEqual([]);
+
+    // Ежедневное: «каждый день в это время» — правило, а не дата. Отправка его не
+    // закрывает, а двигает на сутки вперёд.
+    const daily = (await http$.post(`/api/chats/${dm.id}/scheduled`).set(H(owner.accessToken))
+      .send({ body: 'планёрка через 10 минут', sendAt: soon, repeat: 'daily' }).expect(201)).body.data;
+    expect(daily.repeat).toBe('daily');
+
+    await http$.post(`/api/chats/scheduled/${daily.id}/send`).set(H(owner.accessToken)).expect(201);
+    const still = (await http$.get(`/api/chats/${dm.id}/scheduled`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(still.items).toHaveLength(1);
+    expect(still.items[0].sentCount).toBe(1);
+    // время уехало ровно на сутки, а не «на сутки от сейчас»
+    expect(new Date(still.items[0].sendAt).getTime() - new Date(soon).getTime()).toBe(86_400_000);
+
+    // а разовое после отправки из списка уходит
+    const once = (await http$.post(`/api/chats/${dm.id}/scheduled`).set(H(owner.accessToken))
+      .send({ body: 'разовое', sendAt: soon }).expect(201)).body.data;
+    await http$.post(`/api/chats/scheduled/${once.id}/send`).set(H(owner.accessToken)).expect(201);
+    const left = (await http$.get(`/api/chats/${dm.id}/scheduled`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(left.items.map((x: any) => x.id)).toEqual([String(daily.id)]);
   });
 
   it('правка своего сообщения и галочки «прочитано»', async () => {

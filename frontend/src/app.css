@@ -2535,6 +2535,9 @@
   border-radius: var(--radius-sm); box-shadow: var(--shadow);
 }
 .chat-later-own { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+/* Два способа отложить: один раз или каждый день. Больше вариантов не нужно. */
+.later-mode { display: flex; gap: 4px; }
+.later-mode .view-btn { flex: 1; justify-content: center; }
 .chat-later-own .input { font-size: 12px; padding: 4px 6px; }
 /* Очередь отложенных — строкой над полем: иначе текст исчезает бесследно до отправки. */
 .chat-later-queue {

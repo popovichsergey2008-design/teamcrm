@@ -369,7 +369,8 @@ export class ChatsService {
    */
   async schedule(
     tenantId: string, chatId: string, user: { userId: string; role: string },
-    body: string, sendAt: string, opts?: { rootId?: string | null; alsoInChannel?: boolean; mentionIds?: string[] },
+    body: string, sendAt: string,
+    opts?: { rootId?: string | null; alsoInChannel?: boolean; mentionIds?: string[]; repeat?: string },
   ) {
     await this.access(tenantId, chatId, user);
     const text = String(body ?? '').trim();
@@ -385,6 +386,7 @@ export class ChatsService {
       alsoInChannel: opts?.alsoInChannel === true,
       mentionIds: (opts?.mentionIds ?? []).map(String),
       sendAt: at,
+      repeatKind: opts?.repeat === 'daily' ? 'daily' : 'none',
     });
     return this.scheduledView(row);
   }
@@ -420,7 +422,9 @@ export class ChatsService {
       { rootId: row.thread_root_id ? String(row.thread_root_id) : null, alsoInChannel: row.also_in_channel },
       (row.mention_ids ?? []).map(String),
     );
-    await this.scheduled.markSent(String(row.id), String((message as { id?: string })?.id ?? ''));
+    await this.scheduled.markSent(
+      String(row.id), String((message as { id?: string })?.id ?? ''), row.repeat_kind === 'daily',
+    );
     return { sent: true };
   }
 
@@ -447,9 +451,17 @@ export class ChatsService {
     return { sendAt: at.toISOString() };
   }
 
-  private scheduledView(row: { id: string; body: string; send_at: Date; chat_id: string } | null) {
+  private scheduledView(row: ScheduledRow | null) {
     if (!row) throw AppException.conflict('Не удалось отложить сообщение');
-    return { id: String(row.id), chatId: String(row.chat_id), body: row.body, sendAt: row.send_at };
+    return {
+      id: String(row.id),
+      chatId: String(row.chat_id),
+      body: row.body,
+      sendAt: row.send_at,
+      /** Повтор показываем отдельно: «каждый день в 09:00» — это не дата, а правило. */
+      repeat: row.repeat_kind === 'daily' ? 'daily' : 'none',
+      sentCount: Number(row.sent_count ?? 0),
+    };
   }
 
   /** Поиск по переписке словами — только по тому, что доступно спрашивающему. */

@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsDateString, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
@@ -58,6 +58,8 @@ class ScheduleDto {
   @IsString() @MinLength(1) @MaxLength(8000) body!: string;
   /** Время отправки в ISO: считает клиент — он знает часовой пояс человека. */
   @IsDateString() sendAt!: string;
+  /** none — один раз, daily — каждый день в это же время. */
+  @IsOptional() @IsIn(['none', 'daily']) repeat?: string;
   @IsOptional() @IsString() rootId?: string;
   @IsOptional() @IsBoolean() alsoInChannel?: boolean;
   @IsOptional() @IsArray() @IsString({ each: true }) mentionIds?: string[];
@@ -383,6 +385,7 @@ export class ChatsController {
       rootId: dto.rootId ?? null,
       alsoInChannel: dto.alsoInChannel,
       mentionIds: dto.mentionIds,
+      repeat: dto.repeat,
     });
   }
 

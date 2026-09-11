@@ -70,8 +70,9 @@ export class ScheduledMessagesScheduler implements OnModuleInit, OnModuleDestroy
             { rootId: row.thread_root_id ? String(row.thread_root_id) : null, alsoInChannel: row.also_in_channel },
             (row.mention_ids ?? []).map(String),
           );
-          await this.repo.markSent(String(row.id), String((message as { id?: string })?.id ?? ''));
-          this.log.log(`отложенное ${row.id} отправлено в чат ${row.chat_id}`);
+          const daily = row.repeat_kind === 'daily';
+          await this.repo.markSent(String(row.id), String((message as { id?: string })?.id ?? ''), daily);
+          this.log.log(`отложенное ${row.id} отправлено в чат ${row.chat_id}${daily ? ' (повторится завтра)' : ''}`);
         } catch (e) {
           await this.repo.markFailed(String(row.id), (e as Error).message);
           this.log.warn(`отложенное ${row.id} не ушло: ${(e as Error).message}`);
