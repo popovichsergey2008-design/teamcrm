@@ -207,6 +207,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
    * не закрывая основной чат, — иначе теряется то, ради чего ветку и открыли.
    */
   const [thread, setThread] = useState<{ rootId: string; messages: Message[] } | null>(null);
+  /** Открытая ветка для обработчиков сокета: они живут дольше одного отрисованного кадра. */
+  const threadRef = useRef<{ rootId: string; messages: Message[] } | null>(null);
+  useEffect(() => { threadRef.current = thread; }, [thread]);
   const [threadBody, setThreadBody] = useState('');
   const [alsoInChannel, setAlsoInChannel] = useState(false);
   const [threads, setThreads] = useState<ThreadItem[]>([]);
@@ -386,9 +389,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
         // Ответ из ветки в общую ленту не попадает — ради этого треды и заводились.
         // Но счётчик «N ответов» на корневом сообщении обязан вырасти сразу.
         if (rootId) {
-          setMessages((prev) => prev.map((m) => (String(m.id) === rootId
-            ? { ...m, reply_count: (m.reply_count ?? 0) + 1, last_reply_at: p.message.created_at }
-            : m)));
+          // Своё сообщение уже посчитано при отправке — по длине ветки, а не
+          // прибавлением. Прибавить ещё раз значит показать «2 ответа» там, где один.
+          const mine = String(p.message.author_id) === String(user?.id);
+          if (!mine) {
+            setMessages((prev) => prev.map((m) => (String(m.id) === rootId
+              ? { ...m, reply_count: (m.reply_count ?? 0) + 1, last_reply_at: p.message.created_at }
+              : m)));
+          }
           setThread((prev) => (prev && prev.rootId === rootId
             ? { ...prev, messages: prev.messages.some((x) => String(x.id) === String(p.message.id))
               ? prev.messages : [...prev.messages, p.message] }
@@ -493,7 +501,33 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     socket.on('chat.message_deleted', onDeleted);
     socket.on('chat.created', reload);
     socket.on('chat.removed', onRemoved);
+    /*
+      Соединение восстановилось — догоняем пропущенное.
+
+      Пока сокет лежал (сеть моргнула, вкладка спала, прокси разорвал соединение),
+      события шли мимо: их никто не повторит. Человек видел переписку такой, какой
+      она была в момент обрыва, — и ветки «появлялись только после перезагрузки».
+      Перезагрузка помогала не потому, что данные не сохранились, а потому, что
+      это был единственный способ перечитать их.
+
+      Перечитываем то, что сейчас на экране: список чатов, открытую переписку,
+      открытую ветку и счётчики. Дёшево и ровно в тот момент, когда нужно.
+    */
+    const onReconnect = () => {
+      reload();
+      void loadThreads();
+      loadInbox();
+      if (activeId) {
+        api.chatMessages(activeId).then(setMessages).catch(() => undefined);
+        // через ссылку, а не через замыкание: ветку могли открыть уже после того,
+        // как этот обработчик повесили, и тогда в замыкании лежит пустота
+        const open = threadRef.current;
+        if (open) void refreshThread(open.rootId).catch(() => undefined);
+      }
+    };
+    socket.on('connect', onReconnect);
     return () => {
+      socket.off('connect', onReconnect);
       socket.off('chat.read', onRead);
       socket.off('chat.message_edited', onEdited);
       socket.off('chat.task_linked', onTaskLinked);
@@ -1015,6 +1049,22 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     </>
   );
 
+  /**
+   * Перечитать ветку с сервера и выправить счётчик ответов на корне.
+   *
+   * Счётчик берём от длины ветки, а не прибавляем единицу: прибавление врёт, если
+   * событие пришло дважды или не пришло вовсе, а «сколько сейчас в ветке» —
+   * единственная величина, которую не надо угадывать.
+   */
+  const refreshThread = async (rootId: string) => {
+    if (!activeId) return;
+    const messages = await api.chatThread(activeId, rootId);
+    setThread({ rootId: String(rootId), messages });
+    setMessages((prev) => prev.map((m) => (String(m.id) === String(rootId)
+      ? { ...m, reply_count: Math.max(0, messages.length - 1), last_reply_at: messages[messages.length - 1]?.created_at ?? m.last_reply_at }
+      : m)));
+  };
+
   const openThread = async (rootId: string) => {
     if (!activeId) return;
     setThreadBody(''); setAlsoInChannel(false);
@@ -1062,15 +1112,25 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       // Вложения и подпись уходят ОДНИМ сообщением — как в ленте чата.
       if (files.length) {
         await api.sendChatFile(activeId, files, text, { rootId: thread.rootId, alsoInChannel });
-        const messages = await api.chatThread(activeId, thread.rootId);
-        setThread({ rootId: thread.rootId, messages });
+        await refreshThread(thread.rootId);
         void loadThreads();
         return;
       }
       await api.sendChatMessage(activeId, text, { rootId: thread.rootId, alsoInChannel });
-      // своё сообщение придёт сокетом — второй раз его не добавляем
-      // Список веток обязан обновиться сразу: новая ветка появляется с первым
-      // ответом, и раньше её приходилось ждать до перезагрузки страницы.
+      /*
+        Своё не ждём от сокета.
+
+        Раньше ответ в ветке появлялся только эхом события `chat.message`, и пока
+        сокет жив, так и происходит — это подтверждено живой проверкой на проде.
+        Но сокет иногда мёртв: сеть моргнула, вкладка проснулась, прокси разорвал
+        соединение — socket.io переподключится, а событие, ушедшее в эту секунду,
+        уже никто не повторит. Тогда ответ уходил на сервер, но не показывался,
+        и ветка «появлялась только после перезагрузки».
+
+        Поэтому свою же отправку показываем сами, по ответу сервера: он у нас
+        уже есть, и ждать от него второго подтверждения незачем.
+      */
+      await refreshThread(thread.rootId);
       void loadThreads();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Ответ не отправлен');
