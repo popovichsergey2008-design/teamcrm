@@ -53,6 +53,27 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
     } finally { setBusy(false); }
   };
 
+  /**
+   * Доски по умолчанию внутри проекта.
+   *
+   * Проект из YouGile или Битрикса приезжает с чужими колонками, и работа по нему
+   * идёт не по тем правилам, что по остальным. Одно нажатие ставит в начало
+   * привычный набор; созданное вручную остаётся целым, вместе с задачами, — просто
+   * уезжает правее. Доска перестраивается сразу: `onChanged` перечитывает её.
+   */
+  const addDefaultColumns = async () => {
+    setErr(''); setDone(''); setBusy(true);
+    try {
+      const res = await api.ensureDefaultColumns(String(project.id));
+      onChanged();
+      setDone(res.added.length
+        ? `Добавлены доски: ${res.added.join(', ')} — они встали первыми`
+        : 'Все доски по умолчанию уже были в проекте — они переставлены в начало');
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось добавить доски по умолчанию');
+    } finally { setBusy(false); }
+  };
+
   return (
     <div className="modal-overlay" {...overlayProps(onClose)}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
@@ -60,6 +81,19 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
           <h3><Icon name="settings" size={16} /> Настройки проекта · {project.name}</h3>
           <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть">
             <Icon name="close" size={16} />
+          </button>
+        </div>
+
+        <div className="drawer-section">
+          <div className="drawer-section-title">Доски по умолчанию в этом проекте</div>
+          <p className="dim">
+            Привычный набор — «Новые», «В работе», «На тестировании», «Готово» — встанет
+            в начало проекта, перед созданными вручную. Ничего не удаляется и не
+            переименовывается: свои доски остаются вместе с задачами, просто уезжают
+            правее. Те, что уже есть, второй раз не заводятся.
+          </p>
+          <button className="btn" onClick={addDefaultColumns} disabled={busy}>
+            <Icon name="plus" size={14} /> Добавить доски по умолчанию
           </button>
         </div>
 
@@ -82,7 +116,9 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
         </div>
 
         <div className="drawer-section">
-          <div className="drawer-section-title">Порядок по умолчанию</div>
+          {/* Название с уточнением: рядом теперь есть доски ВНУТРИ проекта, и два
+              «по умолчанию» на одном экране путают. Здесь — порядок в левой панели. */}
+          <div className="drawer-section-title">Порядок проектов в левой панели</div>
           <p className="dim">
             После импорта из YouGile и Битрикса список превращается в кашу: чужие доски
             вперемешку со своими. Одно нажатие возвращает понятный вид. Задачи и сами

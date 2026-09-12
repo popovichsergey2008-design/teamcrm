@@ -105,6 +105,17 @@ export class ProjectsController {
     return this.projects.renameColumn(user.tenantId, id, colId, dto.name);
   }
 
+  /**
+   * Доски по умолчанию — в начало проекта.
+   *
+   * Маршрут стоит выше `:id/columns/:colId/...`: слово «default» не должно
+   * приниматься за номер колонки.
+   */
+  @Post(':id/columns/default')
+  ensureDefaultColumns(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.projects.ensureDefaultColumns(user.tenantId, id);
+  }
+
   @Post(':id/columns/reorder')
   reorderColumns(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ReorderColumnsDto) {
     return this.projects.reorderColumns(user.tenantId, id, dto.orderedIds);

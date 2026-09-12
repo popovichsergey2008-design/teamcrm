@@ -866,6 +866,13 @@ export const api = {
   resetProjectOrder: () => request<import('../types').Project[]>('POST', '/projects/order/default'),
   setProjectDefault: (id: string, isDefault: boolean) =>
     request<{ isDefault: boolean }>('POST', `/projects/${id}/default`, { isDefault }),
+  /**
+   * Доски по умолчанию внутри проекта: недостающие заводятся и встают в начало,
+   * перед созданными вручную. Ничего не удаляется — свои колонки уезжают правее.
+   */
+  ensureDefaultColumns: (projectId: string) =>
+    request<{ added: string[]; columns: { id: string; name: string }[] }>(
+      'POST', `/projects/${projectId}/columns/default`),
 
   /**
    * Поиск по ВСЕМ чатам — как в мессенджерах: ищет буквы, а не смысл.

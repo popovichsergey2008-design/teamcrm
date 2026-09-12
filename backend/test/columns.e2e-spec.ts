@@ -111,4 +111,55 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
     expect(left.columns.length).toBe(1);
     await http.delete(`/api/projects/${proj.id}/columns/${left.columns[0].id}`).set(H(mLogin.accessToken)).expect(409);
   });
+
+  /*
+    Доски по умолчанию в начало.
+
+    Проект из импорта живёт с чужими колонками, и работа по нему идёт не по тем
+    правилам, что по остальным. Кнопка добавляет недостающие ПЕРЕД созданными
+    вручную и ничего не трогает у существующих — иначе она стоила бы потерянных
+    задач, а не сэкономленной минуты.
+  */
+  it('доски по умолчанию встают в начало, своё остаётся целым, повтор не плодит близнецов', async () => {
+    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Cols3', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'К' }).expect(201)).body.data;
+    const tok = reg.accessToken;
+    const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Импортированная' }).expect(201)).body.data;
+    let board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+
+    // Превращаем доску в «пришедшую из чужой системы»: одна колонка с чужим именем.
+    await http.patch(`/api/projects/${proj.id}/columns/${board.columns[0].id}`).set(H(tok)).send({ name: 'Импортировано' }).expect(200);
+    await http.delete(`/api/projects/${proj.id}/columns/${board.columns[3].id}`).set(H(tok)).expect(200);
+    await http.delete(`/api/projects/${proj.id}/columns/${board.columns[2].id}`).set(H(tok)).expect(200);
+    await http.delete(`/api/projects/${proj.id}/columns/${board.columns[1].id}`).set(H(tok)).expect(200);
+    await http.post(`/api/projects/${proj.id}/columns`).set(H(tok)).send({ name: 'Согласование' }).expect(201);
+
+    board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+    expect(names(board)).toEqual(['Импортировано', 'Согласование']);
+
+    // Задача в своей колонке: перестановка не должна её никуда деть.
+    const own = board.columns[1].id;
+    const task = (await http.post('/api/tasks').set(H(tok)).send({ projectId: proj.id, columnId: own, title: 'Своя' }).expect(201)).body.data;
+
+    const res = (await http.post(`/api/projects/${proj.id}/columns/default`).set(H(tok)).expect(201)).body.data;
+    expect(res.added).toEqual(['Новые', 'В работе', 'На тестировании', 'Готово']);
+
+    board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+    expect(names(board)).toEqual(['Новые', 'В работе', 'На тестировании', 'Готово', 'Импортировано', 'Согласование']);
+    const kept = board.columns.find((c: any) => String(c.id) === String(own));
+    expect(kept.tasks.map((t: any) => String(t.id))).toContain(String(task.id));
+
+    // Повтор ничего не добавляет: иначе с каждым нажатием доска обрастала бы близнецами.
+    const again = (await http.post(`/api/projects/${proj.id}/columns/default`).set(H(tok)).expect(201)).body.data;
+    expect(again.added).toEqual([]);
+    board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+    expect(board.columns.length).toBe(6);
+
+    // Регистр и пробелы не создают вторую такую же колонку.
+    const proj2 = (await http.post('/api/projects').set(H(tok)).send({ name: 'Регистр' }).expect(201)).body.data;
+    const b2 = (await http.get(`/api/projects/${proj2.id}/board`).set(H(tok)).expect(200)).body.data;
+    await http.patch(`/api/projects/${proj2.id}/columns/${b2.columns[0].id}`).set(H(tok)).send({ name: '  новые ' }).expect(200);
+    const r2 = (await http.post(`/api/projects/${proj2.id}/columns/default`).set(H(tok)).expect(201)).body.data;
+    expect(r2.added).toEqual([]);
+    expect(r2.columns.length).toBe(4);
+  });
 });

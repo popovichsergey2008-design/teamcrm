@@ -109,6 +109,25 @@ export class ProjectsService {
     return col;
   }
 
+  /**
+   * Привести доску к набору по умолчанию: недостающие колонки — в начало.
+   *
+   * Возвращаем и то, что добавили, и полный список: доска у человека должна
+   * перестроиться сразу, а не после перезагрузки страницы. Остальным участникам
+   * о перестановке говорит `column.updated` — они смотрят на ту же доску.
+   */
+  async ensureDefaultColumns(tenantId: string, projectId: string) {
+    await this.getOrThrow(tenantId, projectId);
+    const { added } = await this.repo.ensureDefaultColumns(tenantId, projectId);
+    // Во внешние системы уходят только НОВЫЕ колонки: перестановка своих — наше дело.
+    for (const col of added) await this.outbox.enqueue(tenantId, projectId, 'column.create', col.id);
+    this.notifyColumns(tenantId, projectId);
+    return {
+      added: added.map((c) => c.name),
+      columns: await this.repo.listColumns(tenantId, projectId),
+    };
+  }
+
   async renameColumn(tenantId: string, projectId: string, columnId: string, name: string) {
     await this.getOrThrow(tenantId, projectId);
     const col = await this.repo.renameColumn(tenantId, projectId, columnId, name.trim());

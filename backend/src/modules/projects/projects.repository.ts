@@ -234,6 +234,61 @@ export class ProjectsRepository {
     );
   }
 
+  /**
+   * Доски по умолчанию — в начало проекта.
+   *
+   * Проект, приехавший из YouGile или Битрикса, живёт с чужими колонками, а
+   * заведённый вручную — с теми, что успели насоздавать. Привычного набора
+   * «Новые · В работе · На тестировании · Готово» в них нет, и работа по разным
+   * проектам идёт по разным правилам.
+   *
+   * Чего здесь НЕ происходит: ничего не удаляется и не переименовывается. Свои
+   * колонки остаются целыми вместе с задачами — просто уезжают правее. Уже
+   * существующая «Готово» (хоть «готово», хоть « Готово ») второй раз не заводится,
+   * а встаёт на своё место в наборе: иначе с каждым нажатием доска обрастала бы
+   * близнецами.
+   *
+   * Порядок выставляем ПОСЛЕ вставки: UNIQUE(project_id, position) не даст
+   * втиснуть новую колонку в начало, пока прежние занимают эти номера.
+   */
+  async ensureDefaultColumns(tenantId: string, projectId: string): Promise<{ added: ColumnRow[] }> {
+    return this.db.withTransaction(async (client) => {
+      const existing = (
+        await client.query<ColumnRow>(
+          `SELECT * FROM board_columns WHERE tenant_id = $1 AND project_id = $2
+            ORDER BY position ASC FOR UPDATE`,
+          [tenantId, projectId],
+        )
+      ).rows;
+
+      // Сравниваем без учёта регистра и пробелов по краям: «в работе» и «В работе  » —
+      // это одна и та же колонка, и заводить вторую значит сломать доску.
+      const key = (s: string) => s.trim().toLowerCase();
+      const have = new Map(existing.map((c) => [key(c.name), c]));
+      const added: ColumnRow[] = [];
+      let next = existing.reduce((max, c) => Math.max(max, c.position), -1) + 1;
+
+      for (const name of DEFAULT_COLUMNS) {
+        if (have.has(key(name))) continue;
+        const row = (
+          await client.query<ColumnRow>(
+            `INSERT INTO board_columns (tenant_id, project_id, name, position)
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [tenantId, projectId, name, next++],
+          )
+        ).rows[0];
+        have.set(key(name), row);
+        added.push(row);
+      }
+
+      const head = DEFAULT_COLUMNS.map((n) => have.get(key(n))).filter((c): c is ColumnRow => !!c);
+      const headIds = new Set(head.map((c) => String(c.id)));
+      const tail = existing.filter((c) => !headIds.has(String(c.id)));
+      await this.applyColumnOrder(client, tenantId, [...head, ...tail].map((c) => String(c.id)));
+      return { added };
+    });
+  }
+
   renameColumn(tenantId: string, projectId: string, columnId: string, name: string): Promise<ColumnRow | null> {
     return this.db.one<ColumnRow>(
       `UPDATE board_columns SET name = $4 WHERE tenant_id = $1 AND project_id = $2 AND id = $3 RETURNING *`,
