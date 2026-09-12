@@ -61,12 +61,28 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - name: Start MinIO (official image requires a command → run as step, not service)
         run: |
+          # Образ тянем сначала с quay.io, и только потом с Docker Hub.
+          #
+          # Docker Hub стал отдавать анонимным сборкам «pull access denied for
+          # minio/minio, repository does not exist» — на зелёном коде и без единой
+          # правки рядом с хранилищем. Это лимит чужого реестра, а не наша поломка,
+          # но чинить его нам: красный CI на исправной ветке хуже, чем лишняя
+          # строчка здесь. quay.io — второй официальный адрес того же образа.
+          IMAGE=""
+          for candidate in quay.io/minio/minio:latest minio/minio:latest; do
+            if docker pull "$candidate"; then IMAGE="$candidate"; break; fi
+            echo "образ $candidate недоступен, пробуем следующий"
+          done
+          if [ -z "$IMAGE" ]; then echo "MinIO не скачался ни с одного зеркала"; exit 1; fi
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=teamcrm -e MINIO_ROOT_PASSWORD=teamcrm12345 \
-            minio/minio:latest server /data
+            "$IMAGE" server /data
           for i in $(seq 1 30); do
             curl -fsS http://localhost:9000/minio/health/live && break || sleep 2
           done
+          # Проверяем, что хранилище действительно поднялось: без этого e2e упадут
+          # позже и непонятнее — на первом же вложении.
+          curl -fsS http://localhost:9000/minio/health/live
       - run: npm ci
       - run: npm run lint
       - run: npm test
