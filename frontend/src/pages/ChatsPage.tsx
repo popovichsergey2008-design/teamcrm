@@ -22,6 +22,7 @@ import { MessageText } from '../components/MessageText';
 import { MessageToTask } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
+import { placePopover, PopoverPlace } from '../lib/popover';
 import { showToast, toastSaved } from '../lib/notifications';
 import { overlayProps } from '../lib/overlay';
 import type { User } from '../types';
@@ -252,6 +253,25 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   /** Какое сообщение сейчас правим и что в поле правки. */
   const [editing, setEditing] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  /**
+   * Где раскрыть набор реакций и меню сообщения.
+   *
+   * Всплывашки висели ВНУТРИ ленты, у которой свой скролл, и открывались вверх.
+   * В ветке сообщений мало и первое из них стоит у самого верха панели: набор
+   * смайлов и меню раскрывались за границей прокручиваемой области и обрезались
+   * целиком. Со стороны это выглядело ровно так, как сказал заказчик: «в тредах
+   * нельзя ни смайлы поставить, ни удалить, ни задачу создать» — кнопки жались,
+   * а ничего не появлялось.
+   *
+   * Поэтому считаем место сами: всплывашка ложится координатами окна (position:
+   * fixed) и раскрывается вниз, если сверху не помещается. Ленту она больше не
+   * спрашивает, и обрезать её нечем.
+   */
+  const [popAt, setPopAt] = useState<PopoverPlace | null>(null);
+  const anchorFrom = (el: HTMLElement, height: number) =>
+    placePopover(el.getBoundingClientRect(), height, window.innerWidth);
+  /** Прокрутили ленту — всплывашка осталась бы висеть в воздухе: закрываем. */
+  const closePops = () => { setReactFor(null); setMenuFor(null); };
   /** Что за сущность стоит за чатом — показывается в шапке. */
   const [ctx, setCtx] = useState<{
     project_id: string | null; project_name: string | null; status: string | null;
@@ -898,7 +918,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                         <span className="msg-actions" onClick={(e) => e.stopPropagation()}>
                           <button
                             className="msg-icon"
-                            onClick={() => { setReactFor(reactFor === String(m.id) ? null : String(m.id)); setMenuFor(null); }}
+                            onClick={(e) => {
+                              const id = String(m.id);
+                              if (reactFor === id) return closePops();
+                              setPopAt(anchorFrom(e.currentTarget, 48));
+                              setReactFor(id); setMenuFor(null);
+                            }}
                             title="Поставить реакцию"
                             aria-label="Поставить реакцию"
                           >
@@ -914,7 +939,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                           </button>
                           <button
                             className="msg-icon"
-                            onClick={() => { setMenuFor(menuFor === String(m.id) ? null : String(m.id)); setReactFor(null); }}
+                            onClick={(e) => {
+                              const id = String(m.id);
+                              if (menuFor === id) return closePops();
+                              setPopAt(anchorFrom(e.currentTarget, 264));
+                              setMenuFor(id); setReactFor(null);
+                            }}
                             title="Ещё"
                             aria-label="Ещё"
                           >
@@ -923,8 +953,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
                           {/* Набор реакций всплывает НАД сообщением, как в привычных
                               мессенджерах, а не раздвигает ленту. */}
-                          {reactFor === String(m.id) && (
-                            <span className="react-pop">
+                          {reactFor === String(m.id) && popAt && (
+                            <span
+                              className="react-pop pop-fixed"
+                              style={{ left: popAt.x, top: popAt.y, transform: popAt.up ? 'translateY(-100%)' : undefined }}
+                            >
                               {REACTIONS.map((emoji) => (
                                 <button key={emoji} className="react-pop-btn" onClick={() => react(String(m.id), emoji)}>
                                   {emoji}
@@ -933,8 +966,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                             </span>
                           )}
 
-                          {menuFor === String(m.id) && (
-                            <span className="msg-menu" role="menu">
+                          {menuFor === String(m.id) && popAt && (
+                            <span
+                              className="msg-menu pop-fixed"
+                              role="menu"
+                              style={{ left: popAt.x, top: popAt.y, transform: popAt.up ? 'translateY(-100%)' : undefined }}
+                            >
                               {/* Своё сообщение можно поправить и убрать. Чужое — нет:
                                   переписывать чужие слова не вправе никто. */}
                               {mine && (
@@ -1683,7 +1720,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
             {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
 
-            <div className="chat-feed" ref={feedRef}>
+            <div className="chat-feed" ref={feedRef} onScroll={closePops}>
               {msgLoading && <div style={{ padding: 12 }}><SkeletonList rows={4} /></div>}
               {!msgLoading && messages.length === 0 && (
                 <EmptyState
@@ -2087,14 +2124,40 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               <Icon name="close" size={15} />
             </button>
           </div>
-          <div className="chat-feed">
+          <div className="chat-feed" onScroll={closePops}>
             {thread.messages.map((m, i) => (
               <div key={m.id} className={i === 0 ? 'thread-root' : ''}>
                 <div className="chat-line">
                   <div className="chat-msg">
                     <div className="chat-author">{m.author_name}</div>
                     {/* Ссылки кликаются и здесь: ветка — такая же переписка. */}
-                    {m.body && <MessageText text={m.body} className="chat-body" />}
+                    {m.body && editing !== String(m.id) && <MessageText text={m.body} className="chat-body" />}
+                    {/*
+                      Правка своего сообщения — и в ветке тоже.
+
+                      Пункт «Изменить» в меню был, а поля правки здесь не было:
+                      человек нажимал и не получал ничего. Разметка та же, что в
+                      ленте: Enter сохраняет, Esc отменяет.
+                    */}
+                    {editing === String(m.id) && (
+                      <div className="chat-edit">
+                        <textarea
+                          className="input"
+                          value={editText}
+                          autoFocus
+                          rows={2}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void saveEdit(String(m.id)); }
+                            if (e.key === 'Escape') setEditing(null);
+                          }}
+                        />
+                        <div className="chat-edit-actions">
+                          <button className="btn btn-primary btn-sm" onClick={() => saveEdit(String(m.id))}>Сохранить</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Отмена</button>
+                        </div>
+                      </div>
+                    )}
                     {(m.files?.length ? m.files : m.file_id ? [{ fileId: String(m.file_id), name: m.file_name ?? 'файл' }] : []).map((f) => (
                       <ChatAttachment
                         key={f.fileId}

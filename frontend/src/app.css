@@ -1230,6 +1230,17 @@
   padding: 7px 10px; border: none; background: none; border-radius: var(--radius-sm);
   font: inherit; font-size: 13px; color: var(--text); cursor: pointer;
 }
+/*
+  Всплывашка, которую нельзя обрезать.
+
+  Лента и ветка прокручиваются, а прокрутка по вертикали обрезает всё, что вылезло
+  за края. В ветке первое сообщение стоит у самого верха, меню раскрывалось вверх —
+  и не показывалось вовсе: человек жал на смайлик и не получал ничего. Координаты
+  считает страница, здесь остаётся только отвязаться от ленты.
+
+  left/top приходят инлайном, поэтому здесь их нет: они бы перебили расчёт.
+*/
+.react-pop.pop-fixed, .msg-menu.pop-fixed { position: fixed; bottom: auto; z-index: 60; }
 .msg-menu-item:hover { background: var(--bg-elev-2); }
 .msg-menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .chat-under-mark { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; }
