@@ -462,9 +462,6 @@ export function Sidebar({
                   Выйти
                 </button>
               </div>
-              <p className="nav-tune-hint">
-                Перетащите разделы, глазом скройте лишние. Сохраняется сразу — «Готово» и «Выйти» просто закрывают настройку (и Esc тоже).
-              </p>
             </div>
           )}
           {menuItems.map((item) => {

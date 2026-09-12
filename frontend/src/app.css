@@ -1374,7 +1374,6 @@
 .nav-tune-title { flex: 1 0 100%; font-size: var(--fs-sm); font-weight: 600; }
 .nav-tune-head-row .btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
 .nav-tune-head-row .nav-tune-reset { flex: 1 0 100%; }
-.nav-tune-hint { margin: 6px 0 0; font-size: var(--fs-xs); color: var(--text-mut); line-height: 1.35; }
 
 /*
   Объединение похожих задач.
