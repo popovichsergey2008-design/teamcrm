@@ -117,6 +117,16 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   const patchDeal = (i: number, patch: any) => setDrafts((list) => list.map((d, j) => (
     j === i ? { ...d, deal: { ...d.deal, ...patch } } : d
   )));
+  /**
+   * Правка самого черновика, а не его задачи: сюда ложатся файлы.
+   *
+   * Файлы храним В ЧЕРНОВИКЕ, а не отдельным списком по номерам: черновик можно
+   * выбросить крестиком, и остальные сдвинутся — приложенный к третьей задаче
+   * макет уехал бы ко второй.
+   */
+  const patchDraft = (i: number, patch: any) => setDrafts((list) => list.map((d, j) => (
+    j === i ? { ...d, ...patch } : d
+  )));
   const dropDraft = (i: number) => setDrafts((list) => list.filter((_, j) => j !== i));
 
   const bodyOf = (draft: any) => (draft.intent === 'create_task'
@@ -130,11 +140,35 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     }
     : { intent: 'create_deal', deal: draft.deal });
 
+  /**
+   * Файлы к уже созданной задаче.
+   *
+   * Вложение живёт ПРИ задаче, а до создания её ещё нет — поэтому файлы ждут в
+   * черновике и уходят сразу следом. По одному и по порядку: десяток вложений,
+   * отправленных разом с телефона, рвётся на середине, и потом не понять, что
+   * именно не долетело.
+   */
+  const uploadFiles = async (taskId: string, list: File[]): Promise<string[]> => {
+    const failed: string[] = [];
+    for (const f of list) {
+      try { await api.uploadAttachment(taskId, f); }
+      catch { failed.push(f.name); }
+    }
+    return failed;
+  };
+
   const applyOne = async (draft: any, index: number) => {
     setBusy(true); setMsg('');
     try {
       const res: any = await api.nlApply(bodyOf(draft));
+      const taskId = res?.task ? String(res.task.id) : '';
+      const failed = taskId ? await uploadFiles(taskId, draft.files ?? []) : [];
       setDone((d) => [...d, index]);
+      if (failed.length) {
+        // Задача создана — предлагать создать её второй раз нельзя, это дубль.
+        setMsg(`Задача создана, но не загрузились файлы: ${failed.join(', ')}. Прикрепите их в карточке, на вкладке «Файлы».`);
+        return;
+      }
       // Одна задача — сразу открываем её. Когда задач несколько, человек ещё работает
       // со списком, и уводить его с экрана нельзя.
       if (drafts.length === 1 && res?.task && onCreated) {
@@ -149,16 +183,22 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   const applyAll = async () => {
     setBusy(true); setMsg('');
     let failed = 0;
+    const lostFiles: string[] = [];
     for (let i = 0; i < drafts.length; i++) {
       const d = drafts[i];
       if (done.includes(i) || d.intent !== 'create_task' || !d.task?.projectId) continue;
       try {
-        await api.nlApply(bodyOf(d));
+        const res: any = await api.nlApply(bodyOf(d));
+        if (res?.task && d.files?.length) lostFiles.push(...await uploadFiles(String(res.task.id), d.files));
         setDone((list) => [...list, i]);
       } catch { failed++; }
     }
     setBusy(false);
-    if (failed) setMsg(`Не удалось создать: ${failed}. Остальные на доске.`);
+    const notes = [
+      failed ? `Не удалось создать: ${failed}. Остальные на доске.` : '',
+      lostFiles.length ? `Не загрузились файлы: ${lostFiles.join(', ')}. Прикрепите их в карточках, на вкладке «Файлы».` : '',
+    ].filter(Boolean);
+    if (notes.length) setMsg(notes.join(' '));
   };
 
   const retry = async () => {
@@ -250,6 +290,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             busy={busy}
             onPatchTask={(patch) => patchTask(i, patch)}
             onPatchDeal={(patch) => patchDeal(i, patch)}
+            onPatchDraft={(patch) => patchDraft(i, patch)}
             onDrop={() => dropDraft(i)}
             onApply={() => applyOne(draft, i)}
           />
@@ -266,16 +307,24 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
 }
 
 /** Одна задача из записи: правится целиком до создания. */
-function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onDrop, onApply }: {
+function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraft, onDrop, onApply }: {
   draft: any;
   created: boolean;
   busy: boolean;
   onPatchTask: (patch: any) => void;
   onPatchDeal: (patch: any) => void;
+  onPatchDraft: (patch: any) => void;
   onDrop: () => void;
   onApply: () => void;
 }) {
   const ctx = draft?.context ?? { projects: [], users: [], clients: [] };
+  const files: File[] = draft?.files ?? [];
+  /** Одноимённые не копим: файл выбирают дважды чаще, чем прикладывают два одинаковых. */
+  const addFiles = (list: FileList | null) => {
+    if (!list?.length) return;
+    const seen = new Set(files.map((f) => `${f.name}:${f.size}`));
+    onPatchDraft({ files: [...files, ...Array.from(list).filter((f) => !seen.has(`${f.name}:${f.size}`))] });
+  };
   const conf = draft?.confidence
     ? <span className="dim" style={{ fontSize: 11, marginLeft: 6 }}>увер. {Math.round(draft.confidence * 100)}%</span>
     : null;
@@ -366,9 +415,56 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onDrop, onA
           <Icon name="plus" size={13} /> Добавить шаг
         </button>
 
+        {/*
+          Файлы — и здесь тоже.
+
+          Задачу голосом ставят с телефона, где под рукой ровно тот снимок экрана,
+          из-за которого её и заводят. Кнопки приложить его в этой форме не было, и
+          задача уходила в работу без исходников: «а где макет?» через десять минут
+          после постановки. Грузятся они сразу после создания — вложение живёт при
+          задаче, а до её создания прикреплять не к чему.
+        */}
+        <div className="drawer-section-title" style={{ marginTop: 8 }}>Файлы</div>
+        <div
+          className="file-drop"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+        >
+          <label className="btn btn-sm file-pick">
+            <Icon name="paperclip" size={14} /> Загрузить файл
+            <input
+              className="file-pick-input"
+              type="file"
+              multiple
+              aria-label="Выбрать файлы для задачи"
+              onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
+            />
+          </label>
+          <span className="dim">или перетащите сюда</span>
+        </div>
+        {files.length > 0 && (
+          <div className="file-picked">
+            {files.map((f, i) => (
+              <span key={`${f.name}-${i}`} className="people-chip">
+                <Icon name="file" size={12} /> {f.name}
+                <button
+                  className="people-chip-x"
+                  onClick={() => onPatchDraft({ files: files.filter((_, j) => j !== i) })}
+                  title="Убрать файл"
+                  aria-label={`Убрать ${f.name}`}
+                >
+                  <Icon name="close" size={11} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
         <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }}
                 onClick={onApply} disabled={busy || !draft.task.projectId}>
-          {draft.task.projectId ? 'Создать задачу' : 'Выберите проект'}
+          {!draft.task.projectId
+            ? 'Выберите проект'
+            : (files.length ? `Создать задачу и прикрепить ${files.length}` : 'Создать задачу')}
         </button>
       </div>
     );
