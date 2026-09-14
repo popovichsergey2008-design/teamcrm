@@ -959,6 +959,7 @@ export class ChatsRepository {
     return this.db.one<{
       project_id: string | null; project_name: string | null; status: string | null;
       open_tasks: number; overdue: number; nearest_deadline: Date | null; client_name: string | null;
+      owner_name: string | null; owner_id: string | null;
     }>(
       `SELECT p.id AS project_id, p.name AS project_name, p.status,
               (SELECT COUNT(*)::int FROM tasks t WHERE t.project_id = p.id AND t.closed_at IS NULL) AS open_tasks,
@@ -968,10 +969,12 @@ export class ChatsRepository {
               -- а вопрос «когда ближайшее» в шапке чата задают именно так
               (SELECT MIN(t.deadline_at) FROM tasks t
                 WHERE t.project_id = p.id AND t.closed_at IS NULL AND t.deadline_at >= now()) AS nearest_deadline,
-              cl.name AS client_name
+              cl.name AS client_name,
+              ow.full_name AS owner_name, p.owner_user_id AS owner_id
          FROM chats c
          JOIN projects p ON p.id = c.project_id
     LEFT JOIN clients cl ON cl.id = p.client_id
+    LEFT JOIN users ow ON ow.id = p.owner_user_id
         WHERE c.tenant_id=$1 AND c.id=$2`,
       [tenantId, chatId],
     );

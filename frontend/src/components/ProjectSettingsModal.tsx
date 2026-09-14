@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
@@ -16,13 +16,31 @@ import { PROJECTS_CHANGED } from './ProjectsNav';
  * досками, а не место, где их настраивают. Заказчик сказал ровно это.
  */
 export function ProjectSettingsModal({ project, onClose, onChanged }: {
-  project: { id: string; name: string; is_default?: boolean; is_support?: boolean };
+  project: { id: string; name: string; is_default?: boolean; is_support?: boolean; owner_user_id?: string | null };
   onClose: () => void;
   onChanged: () => void;
 }) {
   useEscape(onClose);
   const [isDefault, setIsDefault] = useState(project.is_default === true);
   const [isSupport, setIsSupport] = useState(project.is_support === true);
+  /** Ответственный за проект: один человек, к которому идут с вопросами «что по проекту». */
+  const [owner, setOwner] = useState(project.owner_user_id ? String(project.owner_user_id) : '');
+  const [people, setPeople] = useState<{ id: string; fullName: string }[]>([]);
+  useEffect(() => { api.listUsers().then((u) => setPeople(u.filter((x: any) => x.isActive !== false))).catch(() => undefined); }, []);
+  const changeOwner = async (userId: string) => {
+    setErr(''); setDone(''); setBusy(true);
+    const prev = owner;
+    setOwner(userId);
+    try {
+      await api.setProjectOwner(String(project.id), userId || null);
+      window.dispatchEvent(new Event(PROJECTS_CHANGED));
+      onChanged();
+      setDone(userId ? 'Ответственный назначен — виден в шапке чата проекта' : 'Ответственный снят');
+    } catch (e) {
+      setOwner(prev);
+      setErr(e instanceof ApiError ? e.message : 'Не удалось изменить');
+    } finally { setBusy(false); }
+  };
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [done, setDone] = useState('');
@@ -98,6 +116,15 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
           <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть">
             <Icon name="close" size={16} />
           </button>
+        </div>
+
+        <div className="drawer-section">
+          <div className="drawer-section-title">Ответственный</div>
+          <select className="input" value={owner} disabled={busy} onChange={(e) => changeOwner(e.target.value)} aria-label="Ответственный за проект">
+            <option value="">— не назначен —</option>
+            {people.map((u) => <option key={u.id} value={String(u.id)}>{u.fullName}</option>)}
+          </select>
+          <p className="dim">К нему идут с вопросами «что по проекту»; показывается в шапке чата проекта и в сведениях.</p>
         </div>
 
         <div className="drawer-section">

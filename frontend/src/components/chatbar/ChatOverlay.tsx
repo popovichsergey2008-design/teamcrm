@@ -27,6 +27,26 @@ export function ChatOverlay({ chatId, width, onWidth, onClose, onCall, inCall, o
   context?: { taskId?: string; projectId?: string };
 }) {
   useEscape(onClose);
+  /*
+    Щелчок мимо окна закрывает его — как Esc.
+
+    Заказчик: «чат должен сворачиваться, если нажимаю на любую пустую область, а не
+    только по крестику». Панель Chat Bar — не «мимо»: по ней выбирают следующий чат.
+    Слушаем mousedown, а не click: перетаскивание и выделение текста в окне не
+    должны заканчиваться его исчезновением.
+  */
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      if (t.closest('.chat-overlay') || t.closest('.chat-bar')) return;
+      // всплывающие слои чата (меню сообщения, реакции, просмотр картинки) живут вне окна
+      if (t.closest('.pop-fixed') || t.closest('.lightbox-overlay') || t.closest('.modal-overlay') || t.closest('.drawer-overlay')) return;
+      onClose();
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [onClose]);
   const [drag, setDrag] = useState<{ startX: number; startW: number } | null>(null);
   const live = useRef(width);
 

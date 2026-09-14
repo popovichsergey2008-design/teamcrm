@@ -390,6 +390,7 @@ export function App() {
           expanded={barExpanded}
           onToggle={toggleBar}
           onOpenChat={openChatAnywhere}
+          onCollapse={() => { if (barExpanded) toggleBar(); }}
           onOpenAi={() => setPaletteOpen({ voice: false })}
           onNewChat={() => navigate({ section: 'chat' })}
           currentUserId={String(user.id)}

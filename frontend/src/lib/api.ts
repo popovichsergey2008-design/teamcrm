@@ -908,6 +908,9 @@ export const api = {
    */
   saveProjectOrder: (ids: string[]) => request<{ saved: number }>('POST', '/projects/order', { ids }),
   resetProjectOrder: () => request<import('../types').Project[]>('POST', '/projects/order/default'),
+  /** Ответственный за проект — показывается в шапке чата проекта; пусто — снять. */
+  setProjectOwner: (id: string, userId: string | null) =>
+    request<{ ownerUserId: string | null }>('POST', `/projects/${id}/owner`, { userId }),
   setProjectDefault: (id: string, isDefault: boolean) =>
     request<{ isDefault: boolean }>('POST', `/projects/${id}/default`, { isDefault }),
   /**

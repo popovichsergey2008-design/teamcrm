@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { ProjectsService } from './projects.service';
-import { ColumnDto, CreateProjectDto, MoveColumnDto, ProjectDefaultDto, ProjectOrderDto, ReorderColumnsDto } from './projects.dto';
+import { ColumnDto, CreateProjectDto, MoveColumnDto, ProjectDefaultDto, ProjectOrderDto, ProjectOwnerDto, ReorderColumnsDto } from './projects.dto';
 
 @ApiTags('projects')
 @ApiBearerAuth()
@@ -33,6 +33,13 @@ export class ProjectsController {
   @Roles('owner', 'manager')
   resetOrder(@CurrentUser() user: AuthUser) {
     return this.projects.resetOrder(user.tenantId, user.role, user.userId);
+  }
+
+  /** Ответственный за проект — назначает руководство; пустой userId снимает. */
+  @Post(':id/owner')
+  @Roles('owner', 'manager')
+  setOwner(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ProjectOwnerDto) {
+    return this.projects.setOwner(user.tenantId, id, dto.userId ?? null);
   }
 
   /** Пометить доску основной или снять пометку. */

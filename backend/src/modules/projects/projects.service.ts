@@ -62,6 +62,14 @@ export class ProjectsService {
     return { saved: ids.length };
   }
 
+  /** Ответственный за проект: пусто — снять. Сотрудник должен быть из этой же организации. */
+  async setOwner(tenantId: string, id: string, userId: string | null) {
+    await this.getOrThrow(tenantId, id);
+    if (userId && !(await this.repo.userInTenant(tenantId, userId))) throw AppException.notFound('Сотрудник не найден');
+    await this.repo.setOwner(tenantId, id, userId);
+    return { ownerUserId: userId };
+  }
+
   /** Пометить доску основной: такие всегда идут первыми, что бы ни принёс импорт. */
   async setDefault(tenantId: string, id: string, isDefault: boolean) {
     await this.getOrThrow(tenantId, id);

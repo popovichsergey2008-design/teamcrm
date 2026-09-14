@@ -115,6 +115,37 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     return { ok: true, room };
   }
 
+  /**
+   * «Печатает…» (ТЗ-5, раздел 40).
+   *
+   * Клиент шлёт не чаще раза в пару секунд, пока набирает; сервер проверяет, что
+   * человек в этом чате, и передаёт остальным участникам — без записи в базу: это
+   * состояние, а не событие. Имя отдаём сразу, чтобы получателю не ходить за ним.
+   */
+  @SubscribeMessage('chat.typing')
+  async typing(@ConnectedSocket() socket: Socket, @MessageBody() body: { chatId: string }) {
+    const user: AuthUser = socket.data.user;
+    if (!user || !body?.chatId || user.role === 'client') return { ok: false };
+    const chat = await this.db.one<{ kind: string; is_member: boolean; full_name: string }>(
+      `SELECT c.kind,
+              EXISTS (SELECT 1 FROM chat_members m WHERE m.chat_id = c.id AND m.user_id = $3) AS is_member,
+              (SELECT u.full_name FROM users u WHERE u.id = $3) AS full_name
+         FROM chats c WHERE c.id = $1 AND c.tenant_id = $2`,
+      [body.chatId, user.tenantId, user.userId],
+    );
+    if (!chat || (chat.kind !== 'project' && !chat.is_member)) return { ok: false };
+    const payload = { chatId: String(body.chatId), userId: user.userId, name: chat.full_name };
+    if (chat.kind === 'project') {
+      this.realtime.emitToTenant(user.tenantId, 'chat.typing', payload);
+    } else {
+      const members = await this.db.many<{ user_id: string }>(
+        `SELECT user_id FROM chat_members WHERE chat_id = $1 AND user_id <> $2`, [body.chatId, user.userId],
+      );
+      this.realtime.emitToUsers(user.tenantId, members.map((m) => String(m.user_id)), 'chat.typing', payload);
+    }
+    return { ok: true };
+  }
+
   @SubscribeMessage('project.unsubscribe')
   async unsubscribe(
     @ConnectedSocket() socket: Socket,

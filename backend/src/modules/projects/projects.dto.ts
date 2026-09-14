@@ -43,3 +43,7 @@ export class ProjectOrderDto {
 export class ProjectDefaultDto {
   @IsBoolean() isDefault!: boolean;
 }
+
+export class ProjectOwnerDto {
+  @IsOptional() @IsString() userId?: string | null;
+}

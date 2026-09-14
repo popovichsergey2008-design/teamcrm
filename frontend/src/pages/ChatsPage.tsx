@@ -309,6 +309,31 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * ответ в ленту. Расшифровка та же, что у голосовой постановки задач; ответ идёт
    * тем же путём, что и «@AI» текстом, — второй дороги для помощника нет.
    */
+  /** Кто сейчас печатает в открытом чате: имя и до какого момента верить. */
+  const [typing, setTyping] = useState<Record<string, { name: string; until: number }>>({});
+  useEffect(() => {
+    if (!Object.keys(typing).length) return;
+    const t = window.setInterval(() => {
+      const now = Date.now();
+      setTyping((prev) => {
+        const next = Object.fromEntries(Object.entries(prev).filter(([, v]) => v.until > now));
+        return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+      });
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [typing]);
+  useEffect(() => { setTyping({}); }, [activeId]);
+  /** Своё «печатаю» — не чаще раза в две секунды, пока набирают. */
+  const typingSentAt = useRef(0);
+  const noteTyping = () => {
+    if (!activeId) return;
+    const now = Date.now();
+    if (now - typingSentAt.current < 2000) return;
+    typingSentAt.current = now;
+    getSocket().emit('chat.typing', { chatId: activeId });
+  };
+  const typingNames = Object.values(typing).map((t) => t.name);
+
   const aiVoice = useVoiceInput(async (text) => {
     const q = text.trim();
     if (!activeId || !q) return;
@@ -350,6 +375,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   const [ctx, setCtx] = useState<{
     project_id: string | null; project_name: string | null; status: string | null;
     open_tasks: number; overdue: number; client_name: string | null;
+    nearest_deadline?: string | null; owner_name?: string | null; owner_id?: string | null;
   } | null>(null);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
@@ -584,6 +610,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     socket.on('chat.reminder', onReminder);
     socket.on('chat.mention', onMention);
     socket.on('chat.pinned', onPinned);
+    // «печатает…»: состояние на три секунды, продлевается каждым событием
+    const onTyping = (p: { chatId: string; userId: string; name: string }) => {
+      if (String(p.chatId) !== String(activeId) || String(p.userId) === String(user?.id)) return;
+      setTyping((prev) => ({ ...prev, [String(p.userId)]: { name: p.name, until: Date.now() + 3000 } }));
+    };
+    socket.on('chat.typing', onTyping);
     socket.on('chat.message', onMessage);
     socket.on('chat.message_deleted', onDeleted);
     socket.on('chat.created', reload);
@@ -614,6 +646,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     };
     socket.on('connect', onReconnect);
     return () => {
+      socket.off('chat.typing', onTyping);
       socket.off('connect', onReconnect);
       socket.off('chat.read', onRead);
       socket.off('chat.message_edited', onEdited);
@@ -1877,8 +1910,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                     </span>
                     {ctx.client_name && <span className="chat-row-group">{ctx.client_name}</span>}
                     <span className="dim chat-ctx">
+                      {ctx.owner_name && <span title="Ответственный за проект">ответственный: {ctx.owner_name} · </span>}
                       задач в работе: {ctx.open_tasks}
                       {ctx.overdue > 0 && <span className="chat-ctx-overdue"> · просрочено: {ctx.overdue}</span>}
+                      {ctx.nearest_deadline && <span> · ближайший срок: {new Date(ctx.nearest_deadline).toLocaleDateString('ru-RU')}</span>}
                     </span>
                     <button
                       className="btn btn-ghost btn-sm"
@@ -2220,6 +2255,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
               </div>
             )}
 
+            {typingNames.length > 0 && (
+              <div className="chat-typing" aria-live="polite">
+                <span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
+                {typingNames.length === 1 ? `${typingNames[0]} печатает…` : `${typingNames.slice(0, 2).join(', ')}${typingNames.length > 2 ? ` и ещё ${typingNames.length - 2}` : ''} печатают…`}
+              </div>
+            )}
             {/* Контекст страницы: задача или проект под окном — в чат одной кнопкой (ТЗ-5, раздел 30). */}
             {overlay && context && (context.taskId || context.projectId) && (
               <div className="chat-context-row">
@@ -2254,7 +2295,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                 className="chat-mention-input"
                 value={draft}
                 users={mentionUsers}
-                onChange={setDraft}
+                onChange={(v) => { setDraft(v); if (v.trim()) noteTyping(); }}
                 onMention={(userId) => {
                   if (userId === 'ai') return; // помощник участником чата не становится
                   setMentioned((prev) => (prev.includes(userId) ? prev : [...prev, userId]));

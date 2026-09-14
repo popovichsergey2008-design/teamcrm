@@ -32,9 +32,10 @@ export class ProjectsRepository {
   list(tenantId: string, includeArchived = false): Promise<ProjectRow[]> {
     // origin_label — имя портала-источника (для группировки импортированных проектов в сайдбаре)
     return this.db.many<ProjectRow>(
-      `SELECT p.*, c.label AS origin_label, c.portal AS origin_portal
+      `SELECT p.*, c.label AS origin_label, c.portal AS origin_portal, ow.full_name AS owner_name
          FROM projects p
          LEFT JOIN integration_connections c ON c.id = p.origin_connection_id
+         LEFT JOIN users ow ON ow.id = p.owner_user_id
         WHERE p.tenant_id = $1 AND ($2::boolean OR p.status <> 'archived')
         -- Основные доски компании всегда сверху, дальше — заданный порядок, и лишь
         -- потом новые по дате. Без этого свои доски тонули среди импортированных.
@@ -57,6 +58,18 @@ export class ProjectsRepository {
                  FROM unnest($2::bigint[]) WITH ORDINALITY AS t(id, ordinality)) x
         WHERE p.tenant_id = $1 AND p.id = x.id`,
       [tenantId, ids],
+    );
+  }
+
+  userInTenant(tenantId: string, userId: string): Promise<{ id: string } | null> {
+    return this.db.one<{ id: string }>(`SELECT id FROM users WHERE tenant_id = $1 AND id = $2 AND is_active`, [tenantId, userId]);
+  }
+
+  /** Ответственный за проект — один человек, к которому идут с вопросами «что по проекту». */
+  setOwner(tenantId: string, id: string, userId: string | null): Promise<ProjectRow | null> {
+    return this.db.one<ProjectRow>(
+      `UPDATE projects SET owner_user_id = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [tenantId, id, userId],
     );
   }
 

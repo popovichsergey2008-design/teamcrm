@@ -39,10 +39,12 @@ interface BarUser { id: string; fullName: string; avatarUrl?: string | null; isA
  * Данные — те же, что у раздела «Чаты & Миты» (`/chats`), плюс присутствие; свои
  * таблицы Chat Bar не заводит. Обновляется по тем же событиям сокета, что и раздел.
  */
-export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, currentUserId, onCallUserIds, activeChatId }: {
+export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, onNewChat, currentUserId, onCallUserIds, activeChatId }: {
   expanded: boolean;
   onToggle: () => void;
   onOpenChat: (chatId: string) => void;
+  /** Свернуть после выбора чата или человека — панель уже сделала своё дело. */
+  onCollapse: () => void;
   onOpenAi: () => void;
   onNewChat: () => void;
   currentUserId: string;
@@ -55,6 +57,28 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
   const [presence, setPresence] = useState<Map<string, { online: boolean; lastSeenAt: string | null; status: 'busy' | 'away' | null }>>(new Map());
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  /*
+    Раскрытие по наведению: подержал мышь две секунды — панель развернулась, ушёл —
+    свернулась. Стрелка по-прежнему разворачивает «насовсем» (это запоминается);
+    наведение — временно и ничего не сохраняет.
+  */
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const hoverTimer = useRef<number | null>(null);
+  const onEnter = () => {
+    if (expanded || hoverTimer.current) return;
+    hoverTimer.current = window.setTimeout(() => { hoverTimer.current = null; setHoverOpen(true); }, 2000);
+  };
+  const onLeave = () => {
+    if (hoverTimer.current) { window.clearTimeout(hoverTimer.current); hoverTimer.current = null; }
+    setHoverOpen(false);
+  };
+  const shown = expanded || hoverOpen;
+  /** Выбрали чат или человека — панель сворачивается, окно чата уже открывается. */
+  const pick = (chatId: string) => {
+    setHoverOpen(false);
+    if (expanded) onCollapse();
+    onOpenChat(chatId);
+  };
   /* Задачи ищутся на сервере — их тысячи, и держать их в панели незачем. Чат задачи
      открывается тем же окном, что и обычный: одна история с карточкой (ТЗ-5, этап 3). */
   const [taskHits, setTaskHits] = useState<SearchResults['tasks']>([]);
@@ -158,7 +182,7 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
     try {
       const chat = await api.openDm(userId);
       setQuery('');
-      onOpenChat(String(chat.id));
+      pick(String(chat.id));
       load();
     } catch { /* сеть моргнула — человек нажмёт ещё раз */ }
   };
@@ -171,15 +195,15 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
       <button
         key={c.id}
         className={`bar-chat${isActive ? ' active' : ''}${c.unread > 0 ? ' unread' : ''}${c.notify === 'none' ? ' muted' : ''}`}
-        onClick={() => onOpenChat(String(c.id))}
-        title={expanded ? undefined : `${c.title ?? 'Чат'}${c.unread ? ` · ${c.unread} непрочитанных` : ''}`}
+        onClick={() => pick(String(c.id))}
+        title={shown ? undefined : `${c.title ?? 'Чат'}${c.unread ? ` · ${c.unread} непрочитанных` : ''}`}
       >
         <span className="bar-avatar">
           <Avatar path={c.avatarUrl ?? null} fallback={c.kind === 'dm' ? (c.title?.[0]?.toUpperCase() ?? '?') : '#'} className="avatar-sm" />
           {kind && <span className={`bar-dot bar-dot-${kind}`} aria-hidden="true" />}
-          {!expanded && c.unread > 0 && <span className="bar-badge">{c.unread > 99 ? '99+' : c.unread}</span>}
+          {!shown && c.unread > 0 && <span className="bar-badge">{c.unread > 99 ? '99+' : c.unread}</span>}
         </span>
-        {expanded && (
+        {shown && (
           <span className="bar-chat-main">
             <span className="bar-chat-top">
               <span className="bar-chat-title">{c.title ?? 'Чат'}{c.notify && c.notify !== 'all' && <Icon name="bell" size={11} className="bar-mute" />}</span>
@@ -195,32 +219,32 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
             </span>
           </span>
         )}
-        {expanded && c.unread > 0 && <span className="bar-badge bar-badge-inline">{c.unread > 99 ? '99+' : c.unread}</span>}
+        {shown && c.unread > 0 && <span className="bar-badge bar-badge-inline">{c.unread > 99 ? '99+' : c.unread}</span>}
       </button>
     );
   };
 
   return (
-    <aside className={`chat-bar${expanded ? ' expanded' : ''}`} aria-label="Чаты">
+    <aside className={`chat-bar${shown ? ' expanded' : ''}`} aria-label="Чаты" onMouseEnter={onEnter} onMouseLeave={onLeave}>
       <div className="bar-top">
-        <button className="bar-icon" onClick={onToggle} title={expanded ? 'Свернуть панель чатов' : 'Развернуть панель чатов'} aria-label={expanded ? 'Свернуть панель чатов' : 'Развернуть панель чатов'}>
-          <Icon name={expanded ? 'chevron-right' : 'chevron-left'} size={16} />
-          {expanded && <span className="bar-label">Чаты</span>}
+        <button className="bar-icon" onClick={onToggle} title={shown ? 'Свернуть панель чатов' : 'Развернуть панель чатов'} aria-label={shown ? 'Свернуть панель чатов' : 'Развернуть панель чатов'}>
+          <Icon name={shown ? 'chevron-right' : 'chevron-left'} size={16} />
+          {shown && <span className="bar-label">Чаты</span>}
         </button>
-        <button className="bar-icon" onClick={expanded ? undefined : onToggle} title={totalUnread ? `Непрочитанных: ${totalUnread}` : 'Непрочитанных нет'} aria-label="Непрочитанные">
+        <button className="bar-icon" onClick={shown ? undefined : onToggle} title={totalUnread ? `Непрочитанных: ${totalUnread}` : 'Непрочитанных нет'} aria-label="Непрочитанные">
           <span className="bar-avatar">
             <Icon name="bell" size={16} />
             {totalUnread > 0 && <span className="bar-badge">{totalUnread > 99 ? '99+' : totalUnread}</span>}
           </span>
-          {expanded && <span className="bar-label">{totalUnread ? `Непрочитанных: ${totalUnread}` : 'Всё прочитано'}</span>}
+          {shown && <span className="bar-label">{totalUnread ? `Непрочитанных: ${totalUnread}` : 'Всё прочитано'}</span>}
         </button>
         <button className="bar-icon" onClick={onOpenAi} title="Спросить AI" aria-label="Спросить AI">
           <Icon name="sparkles" size={16} />
-          {expanded && <span className="bar-label">AI</span>}
+          {shown && <span className="bar-label">AI</span>}
         </button>
       </div>
 
-      {expanded && (
+      {shown && (
         <div className="bar-search">
           <Icon name="search" size={14} />
           <input
@@ -261,7 +285,7 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
             })}
             {taskHits.length > 0 && <div className="bar-section">Задачи</div>}
             {taskHits.map((t) => (
-              <button key={t.id} className="bar-chat" onClick={() => { setQuery(''); onOpenChat(`task:${t.id}`); }} title="Открыть чат задачи">
+              <button key={t.id} className="bar-chat" onClick={() => { setQuery(''); pick(`task:${t.id}`); }} title="Открыть чат задачи">
                 <span className="bar-avatar"><span className="bar-task-mark">#</span></span>
                 <span className="bar-chat-main">
                   <span className="bar-chat-title">#{t.id} · {t.title}</span>
@@ -272,24 +296,24 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
           </>
         ) : (
           <>
-            {pinned.length > 0 && (expanded ? <div className="bar-section">Закреплённые</div> : <div className="bar-rule" />)}
+            {pinned.length > 0 && (shown ? <div className="bar-section">Закреплённые</div> : <div className="bar-rule" />)}
             {pinned.map(row)}
-            {recent.length > 0 && (expanded ? <div className="bar-section">Последние</div> : <div className="bar-rule" />)}
+            {recent.length > 0 && (shown ? <div className="bar-section">Последние</div> : <div className="bar-rule" />)}
             {recent.map(row)}
-            {chats.length === 0 && expanded && <div className="bar-empty">Чатов пока нет — найдите человека выше</div>}
+            {chats.length === 0 && shown && <div className="bar-empty">Чатов пока нет — найдите человека выше</div>}
           </>
         )}
       </div>
 
       <div className="bar-bottom">
-        {!expanded && (
+        {!shown && (
           <button className="bar-icon" onClick={onToggle} title="Поиск по чатам и людям" aria-label="Поиск по чатам и людям">
             <Icon name="search" size={16} />
           </button>
         )}
         <button className="bar-icon" onClick={onNewChat} title="Новый чат — группа или канал" aria-label="Новый чат">
           <Icon name="plus" size={16} />
-          {expanded && <span className="bar-label">Новый чат</span>}
+          {shown && <span className="bar-label">Новый чат</span>}
         </button>
       </div>
     </aside>
