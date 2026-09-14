@@ -118,6 +118,26 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
   const [semantic, setSemantic] = useState<SemanticHit[] | null>(null);
   const [answer, setAnswer] = useState<{ text: string; sources: string[] } | null>(null);
   const [thinking, setThinking] = useState<'search' | 'answer' | null>(null);
+
+  /*
+    Esc закрывает окно откуда угодно.
+
+    Раньше Escape ловило только поле ввода. После диктовки фокус уходил на кнопку
+    микрофона — и Esc переставал работать, а другой видимой двери наружу не было:
+    заказчик написал «окно невозможно закрыть». Слушаем клавишу на окне, на фазе
+    перехвата, и гасим событие — иначе тот же Esc долетел бы до шторки под
+    палитрой и закрыл заодно её, вместе с заполненной формой.
+  */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
   // результат команды, показанный прямо в строке: «мои просроченные», «кто свободен» и т.п.
   const [inline, setInline] = useState<{ group: string; items: Item[] } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -506,7 +526,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => (i + 1) % items.length); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => (i - 1 + items.length) % items.length); }
     else if (e.key === 'Enter') { e.preventDefault(); items[active]?.run(); }
-    else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+    // Escape — общим обработчиком окна выше: он работает и когда фокус не в поле.
   };
 
   let lastGroup = '';
@@ -536,7 +556,11 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
           >
             <Icon name={voice.recording ? 'stop' : 'mic'} size={16} />
           </button>
-          <kbd className="nav-kbd">Esc</kbd>
+          {/* Настоящая кнопка, а не подпись «Esc»: подпись — подсказка для тех,
+              кто и так знает, а крестик — дверь для всех остальных, и на касании тоже. */}
+          <button className="palette-close" onClick={onClose} title="Закрыть (Esc)" aria-label="Закрыть поиск">
+            <Icon name="close" size={16} />
+          </button>
         </div>
 
         <VoiceStatus

@@ -2990,7 +2990,21 @@
   padding: 6px; border-radius: var(--radius-sm); display: grid; place-items: center;
 }
 .palette-mic:hover { background: var(--accent-soft); }
-.palette-list { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-2); }
+/* Крестик рядом с микрофоном: та же форма, но не акцентный — закрыть не главное действие. */
+.palette-close {
+  background: none; border: none; cursor: pointer; color: var(--text-dim);
+  padding: 6px; border-radius: var(--radius-sm); display: grid; place-items: center;
+}
+.palette-close:hover { background: var(--hover); color: var(--text); }
+.palette-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/*
+  Горизонтальной прокрутки в окне поиска быть не должно.
+
+  Подпись у строки («комментарий · убрать ссылки с … · videohunter.pro») не
+  сжималась, строка вылезала за окно, и внизу появлялась полоса прокрутки — она
+  видна на снимке заказчика. Подпись ужимается многоточием, окно режет лишнее.
+*/
+.palette-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--sp-2); }
 .palette-group {
   font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .08em;
   color: var(--text-mut); padding: var(--sp-2) var(--sp-2) var(--sp-1);
@@ -3002,7 +3016,7 @@
 }
 .palette-item.active { background: var(--accent-soft); color: var(--accent); }
 .palette-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.palette-hint { font-size: var(--fs-xs); color: var(--text-mut); white-space: nowrap; }
+.palette-hint { font-size: var(--fs-xs); color: var(--text-mut); white-space: nowrap; flex: 0 1 auto; min-width: 0; max-width: 55%; overflow: hidden; text-overflow: ellipsis; }
 .palette-item.active .palette-hint { color: var(--accent); }
 .palette-foot {
   display: flex; gap: var(--sp-4); padding: var(--sp-2) var(--sp-4);
