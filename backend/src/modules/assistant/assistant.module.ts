@@ -41,6 +41,6 @@ import { MaintenanceService } from './maintenance.service';
     MaintenanceService, MaintenanceRepository, MaintenanceScheduler,
     GapsService, GapsRepository, EveningService, AskService,
   ],
-  exports: [AssistantService, ModeratorService, MaintenanceService, GapsService],
+  exports: [AssistantService, ModeratorService, MaintenanceService, GapsService, AskService],
 })
 export class AssistantModule {}
