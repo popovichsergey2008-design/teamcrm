@@ -313,7 +313,7 @@ export class ChatsService {
    */
   async askAi(tenantId: string, chatId: string, user: { userId: string; role: string }, question: string) {
     const chat = await this.access(tenantId, chatId, user);
-    const answer = await this.chatAi.answer(tenantId, chatId, user.userId, question);
+    const answer = await this.chatAi.answer(tenantId, chatId, user.userId, question, await this.aiContext(tenantId, chat));
     const message = await this.repo.addMessage({
       tenantId, chatId, authorId: user.userId, body: answer, fileId: null, isAi: true,
     });
@@ -1030,6 +1030,50 @@ export class ChatsService {
     this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
     this.realtime.emitToUsers(tenantId, to, 'chat.updated', { chatId: String(chat.id) });
     return message;
+  }
+
+  /** Миты чата — блок в сайдбаре. */
+  async chatMeetings(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    await this.access(tenantId, chatId, user);
+    const rows = await this.repo.chatMeetings(tenantId, chatId);
+    return rows.map((m) => ({
+      id: String(m.id), title: m.title, at: m.happened_at ?? m.created_at, durationSec: m.duration_sec,
+      status: m.status, summary: m.summary, tasksCreated: Number(m.tasks_created ?? 0),
+      participants: m.participants ?? [], projectId: m.project_id ? String(m.project_id) : null,
+    }));
+  }
+
+  /**
+   * Контекст CRM для помощника (ТЗ-5, разделы 28 и 43): проект чата с живыми
+   * задачами, задачи, связанные с чатом, итог последнего мита. Ровно то, что
+   * человек и так видит в сайдбаре этого чата, — доступ уже проверен `access`.
+   * Отдаётся коротко: модели нужен контекст, а не выгрузка базы.
+   */
+  private async aiContext(tenantId: string, chat: ChatRow) {
+    const ctx: Record<string, unknown> = { chat: { kind: chat.kind, title: chat.title, description: chat.description ?? null } };
+    if (chat.project_id) {
+      const project = await this.repo.projectCard(tenantId, String(chat.project_id));
+      if (project) {
+        ctx.project = {
+          name: project.name, status: project.status, openTasks: project.open_tasks,
+          tasks: (await this.repo.projectTasksBrief(tenantId, String(chat.project_id))).map((t) => ({
+            id: String(t.id), title: t.title, status: t.status, assignee: t.assignee_name,
+            deadline: t.deadline_at ? new Date(t.deadline_at).toLocaleDateString('ru-RU') : null,
+          })),
+        };
+      }
+    }
+    const linked = await this.repo.chatTasks(tenantId, String(chat.id), 20);
+    if (linked.length) {
+      ctx.linkedTasks = linked.map((t) => ({
+        id: String(t.id), title: t.title, status: t.closed_at ? 'завершена' : t.status, assignee: t.assignee_name,
+        deadline: t.deadline_at ? new Date(t.deadline_at).toLocaleDateString('ru-RU') : null,
+      }));
+    }
+    const meetings = await this.repo.chatMeetings(tenantId, String(chat.id), 3);
+    const last = meetings.find((m) => m.summary);
+    if (last) ctx.lastMeeting = { title: last.title, at: new Date(last.happened_at ?? last.created_at).toLocaleString('ru-RU'), summary: String(last.summary).slice(0, 1500) };
+    return ctx;
   }
 
   /** Сайдбар у всех участников должен перечитаться: название, описание, состав, роли. */

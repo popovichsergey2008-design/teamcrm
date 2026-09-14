@@ -70,7 +70,7 @@ export class MeetingsService {
   /** Загрузка записи или готовых субтитров. Обработку запускаем фоном и сразу отвечаем. */
   async create(
     tenantId: string, actorId: string,
-    input: { title: string; projectId?: string | null; happenedAt?: string | null },
+    input: { title: string; projectId?: string | null; happenedAt?: string | null; chatId?: string | null },
     file: { buffer: Buffer; originalname: string; mimetype: string },
   ) {
     const isSubtitles = SUBTITLE_EXT.test(file.originalname);
@@ -84,7 +84,7 @@ export class MeetingsService {
     const meeting = await this.repo.create({
       tenantId, projectId: input.projectId ?? null, title: input.title.trim().slice(0, 255),
       happenedAt: input.happenedAt ?? null, source: isSubtitles ? 'transcript' : 'audio',
-      fileId: stored.id, createdBy: actorId,
+      fileId: stored.id, createdBy: actorId, chatId: input.chatId ?? null,
     });
 
     void this.process(tenantId, meeting.id);

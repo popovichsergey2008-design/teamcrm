@@ -1220,6 +1220,47 @@ export class ChatsRepository {
     return { ...message, task_id: taskId } as MessageRow;
   }
 
+  /**
+   * Миты чата — блок в сайдбаре (ТЗ-5, этап 4): созвоны, начатые из этого чата, и
+   * встречи, связанные с ним. Сводка — из разбора; участники — кто говорил в
+   * стенограмме; задачи — черновики, которые человек подтвердил.
+   */
+  chatMeetings(tenantId: string, chatId: string, limit = 20) {
+    return this.db.many<{
+      id: string; title: string; happened_at: Date | null; created_at: Date; duration_sec: number | null;
+      status: string; summary: string | null; tasks_created: number; participants: string[]; project_id: string | null;
+    }>(
+      `SELECT m.id, m.title, m.happened_at, m.created_at, m.duration_sec, m.status, m.project_id,
+              s.summary,
+              (SELECT COUNT(*)::int FROM meeting_task_drafts d WHERE d.meeting_id = m.id AND d.task_id IS NOT NULL) AS tasks_created,
+              COALESCE((
+                SELECT array_agg(DISTINCT u.full_name) FROM meeting_segments sg
+                  JOIN users u ON u.id = sg.speaker_user_id
+                 WHERE sg.meeting_id = m.id
+              ), '{}') AS participants
+         FROM meetings m
+    LEFT JOIN meeting_summaries s ON s.meeting_id = m.id
+        WHERE m.tenant_id = $1
+          AND (m.chat_id = $2 OR EXISTS (
+                SELECT 1 FROM conversation_links l
+                 WHERE l.chat_id = $2 AND l.entity_type = 'meeting' AND l.entity_id = m.id))
+        ORDER BY COALESCE(m.happened_at, m.created_at) DESC
+        LIMIT $3`,
+      [tenantId, chatId, limit],
+    );
+  }
+
+  /** Живые задачи проекта — контекст для помощника в чате проекта. */
+  projectTasksBrief(tenantId: string, projectId: string, limit = 25) {
+    return this.db.many<{ id: string; title: string; status: string; assignee_name: string | null; deadline_at: Date | null }>(
+      `SELECT t.id, t.title, bc.name AS status, a.full_name AS assignee_name, t.deadline_at
+         FROM tasks t JOIN board_columns bc ON bc.id = t.column_id LEFT JOIN users a ON a.id = t.assignee_id
+        WHERE t.tenant_id = $1 AND t.project_id = $2 AND t.closed_at IS NULL
+        ORDER BY t.deadline_at NULLS LAST, t.updated_at DESC LIMIT $3`,
+      [tenantId, projectId, limit],
+    );
+  }
+
   // ── журнал действий с чатом ──
   async audit(i: { tenantId: string; chatId: string; actorId: string | null; action: string; detail?: Record<string, unknown> }): Promise<void> {
     await this.db.query(

@@ -374,6 +374,12 @@ export class ChatsController {
     return this.chats.chatTasks(u.tenantId, id, u);
   }
 
+  /** Миты чата: созвоны отсюда и связанные встречи — с итогом и задачами. */
+  @Get(':id/meetings')
+  chatMeetings(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.chatMeetings(u.tenantId, id, u);
+  }
+
   /** «+ Отправить текущую задачу / проект» карточкой в чат. */
   @Post(':id/share')
   share(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ShareDto) {

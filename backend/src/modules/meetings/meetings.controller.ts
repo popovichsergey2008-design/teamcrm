@@ -11,6 +11,8 @@ class CreateMeetingDto {
   @IsString() @MinLength(2) @MaxLength(255) title!: string;
   @IsOptional() @IsString() projectId?: string;
   @IsOptional() @IsString() happenedAt?: string;
+  /** Чат, к которому относится встреча: карточка с итогом придёт туда, а сайдбар покажет её в «Митах». */
+  @IsOptional() @IsString() chatId?: string;
 }
 
 class ApplyDraftDto {

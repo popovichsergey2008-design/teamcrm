@@ -168,4 +168,48 @@ describe('Сайдбар чата (e2e)', () => {
     await http$.post(`/api/chats/${chat.id}/share`).set(O).send({ entityType: 'task', entityId: '999999999' }).expect(404);
     await http$.post(`/api/chats/${chat.id}/share`).set(O).send({ entityType: 'meeting', entityId: '1' }).expect(400);
   });
+
+  /*
+    Миты (этап 4): встреча, привязанная к чату, видна в блоке «Миты» с итогом и
+    участниками, а в журнале чата — «начал(а) созвон».
+  */
+  it('мит чата: в блоке «Миты» с итогом и говорившими, в истории — запуск', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'SB4', email: `sb4_${uniq()}@t.test`, password: 'password123', fullName: 'Иван Петров' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const mail = `sb4m_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(O).send({ email: mail, fullName: 'Алина', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data.accessToken);
+    const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
+
+    const vtt = [
+      'WEBVTT', '',
+      '1', '00:00:01.000 --> 00:00:06.000', '<v Иван Петров>Обсудим интеграцию',
+      '', '2', '00:00:07.000 --> 00:00:12.000', 'Алина: беру на себя, сделаю к пятнице',
+    ].join('\n');
+    const created = (await http$.post('/api/meetings').set(O)
+      .field('title', 'Созвон по интеграции').field('chatId', String(chat.id))
+      .attach('file', Buffer.from(vtt, 'utf8'), { filename: 'meet.vtt', contentType: 'text/plain' })
+      .expect(201)).body.data;
+    for (let i = 0; i < 60; i++) {
+      const d = (await http$.get(`/api/meetings/${created.id}`).set(O).expect(200)).body.data;
+      if (['done', 'error'].includes(d.meeting.status)) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
+    const meetings = (await http$.get(`/api/chats/${chat.id}/meetings`).set(M).expect(200)).body.data;
+    expect(meetings.length).toBe(1);
+    expect(meetings[0].title).toBe('Созвон по интеграции');
+    expect(meetings[0].status).toBe('done');
+    expect(meetings[0].summary).toBeTruthy();
+    expect(meetings[0].participants.sort()).toEqual(['Алина', 'Иван Петров']);
+
+    const audit = (await http$.get(`/api/chats/${chat.id}/audit`).set(O).expect(200)).body.data;
+    expect(audit.some((a: any) => a.action === 'call_started' && a.detail.title === 'Созвон по интеграции')).toBe(true);
+
+    // помощник отвечает по чату, зная о мите: ответ приходит в ленту и не роняет запрос
+    await http$.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'Кто берёт интеграцию?' }).expect(201);
+    const answer = (await http$.post(`/api/chats/${chat.id}/ai`).set(M).send({ question: 'что решили на созвоне?' }).expect(201)).body.data;
+    expect(String(answer.body ?? '').length).toBeGreaterThan(3);
+  });
 });

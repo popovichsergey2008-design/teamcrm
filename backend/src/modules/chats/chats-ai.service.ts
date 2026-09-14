@@ -35,7 +35,7 @@ export class ChatsAiService {
    * Ответ возвращаем — сохранением занимается ChatsService, чтобы вся запись в чат
    * шла одним путём.
    */
-  async answer(tenantId: string, chatId: string, userId: string, question: string): Promise<string> {
+  async answer(tenantId: string, chatId: string, userId: string, question: string, crm?: Record<string, unknown>): Promise<string> {
     const text = String(question ?? '').trim();
     if (text.length < 2) throw AppException.validation('Слишком короткий вопрос');
 
@@ -56,7 +56,9 @@ export class ChatsAiService {
       text: String(r.body ?? '').slice(0, 800),
     }));
 
-    return this.generate(tenantId, ASK_SYSTEM, { question: text, history }, 'chat_assistant');
+    // Контекст CRM — проект, задачи, последний мит — приходит от ChatsService уже
+    // проверенным: помощник видит ровно то, что видит спрашивающий, и не больше.
+    return this.generate(tenantId, ASK_SYSTEM, { question: text, history, crm: crm ?? null }, 'chat_assistant');
   }
 
   /**
@@ -202,6 +204,8 @@ const ASK_SYSTEM = [
   'Не пересказывай переписку целиком: человек её видит. Отвечай на заданный вопрос.',
   'Пиши по-русски, коротко и по делу: 2–6 предложений или короткий список.',
   'Если в переписке есть договорённость или решение — назови, кто и когда это сказал.',
+  'В поле crm — то, к чему привязан чат: проект с живыми задачами, связанные задачи, итог последнего созвона.',
+  'На вопросы о задачах, сроках, статусах и решениях отвечай по crm так же, как по переписке; номера задач называй как #N.',
 ].join(' ');
 
 const DIGEST_SYSTEM = [

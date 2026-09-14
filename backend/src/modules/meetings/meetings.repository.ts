@@ -30,7 +30,23 @@ export class MeetingsRepository {
       `INSERT INTO meetings (tenant_id, project_id, title, happened_at, source, file_id, created_by, chat_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [i.tenantId, i.projectId, i.title, i.happenedAt, i.source, i.fileId, i.createdBy, i.chatId ?? null],
-    ) as Promise<MeetingRow>;
+    ).then(async (row) => {
+      // Связь с чатом — и в общей таблице связей, и в журнале чата: сайдбар
+      // покажет мит в блоке «Миты», история — «начал(а) созвон».
+      if (row && i.chatId) {
+        await this.db.query(
+          `INSERT INTO conversation_links (tenant_id, chat_id, entity_type, entity_id, relation_type, created_by)
+           VALUES ($1,$2,'meeting',$3,'source',$4) ON CONFLICT DO NOTHING`,
+          [i.tenantId, i.chatId, row.id, i.createdBy],
+        ).catch(() => undefined);
+        await this.db.query(
+          `INSERT INTO chat_audit (tenant_id, chat_id, actor_id, action, detail)
+           VALUES ($1,$2,$3,'call_started',$4::jsonb)`,
+          [i.tenantId, i.chatId, i.createdBy, JSON.stringify({ meetingId: String(row.id), title: i.title })],
+        ).catch(() => undefined);
+      }
+      return row;
+    }) as Promise<MeetingRow>;
   }
 
   /**
