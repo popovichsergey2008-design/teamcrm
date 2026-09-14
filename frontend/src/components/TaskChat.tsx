@@ -6,7 +6,7 @@ import { VoiceStatus } from './VoiceStatus';
 import { ChatAttachment } from './ChatAttachment';
 import { Lightbox } from './Lightbox';
 import { api, ApiError } from '../lib/api';
-import { dayLabel, sameGroup } from '../lib/chat-text';
+import { dayLabel, sameGroup, stampLabel } from '../lib/chat-text';
 import { MessageText } from './MessageText';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { orderMentions } from '../lib/task-mentions';
@@ -71,7 +71,6 @@ function activityText(a: { kind: string; detail?: Record<string, any> }): string
   return label;
 }
 
-const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 const initials = (name: string) => (name?.trim()?.[0] ?? '?').toUpperCase();
 
 /**
@@ -384,7 +383,9 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
                   {!grouped && (
                     <div className="msg-head">
                       <b className="msg-name">{name}</b>
-                      <span className="msg-time">{timeOf(c.created_at)}</span>
+                      {/* Дата рядом со временем: черта дня выше есть, но сопоставлять
+                          с ней каждую реплику неудобно — заказчик сказал это прямо. */}
+                      <span className="msg-time" title={new Date(c.created_at).toLocaleString('ru-RU')}>{stampLabel(c.created_at)}</span>
                       {c.edited_at && <span className="msg-time">· изменено</span>}
                     </div>
                   )}

@@ -506,6 +506,16 @@ test('описание задачи: разметка → HTML и обратно
   );
 });
 
+test('подпись времени у сообщения: сегодня, вчера, дата, год только чужой', async () => {
+  const { stampLabel } = await load('lib/chat-text.ts');
+  const now = new Date(2026, 8, 14, 12, 0);
+  assert.equal(stampLabel(new Date(2026, 8, 14, 20, 34).toISOString(), now), 'сегодня 20:34');
+  assert.equal(stampLabel(new Date(2026, 8, 13, 9, 5).toISOString(), now), 'вчера 09:05');
+  assert.equal(stampLabel(new Date(2026, 8, 2, 18, 0).toISOString(), now), '2 сентября 18:00');
+  assert.ok(stampLabel(new Date(2025, 11, 30, 10, 0).toISOString(), now).includes('2025'), 'прошлый год — с годом');
+  assert.ok(!stampLabel(new Date(2026, 0, 3, 10, 0).toISOString(), now).includes('2026'), 'этот год — без года');
+});
+
 test('виды задач на доске: делаю, помогаю, поручил, наблюдаю', async () => {
   const { filterBoard, countMatching, realPosition, filterActive } = await load('lib/board-filter.ts');
   // t1 — моя работа, t2 — я поставил другому, t3 — чужая целиком, t4 — я и поставил, и делаю

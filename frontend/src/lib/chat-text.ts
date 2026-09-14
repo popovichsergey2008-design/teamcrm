@@ -93,6 +93,28 @@ export function dayLabel(iso: string, now = new Date()): string {
 }
 
 /**
+ * Дата и время у сообщения: «сегодня 20:34», «вчера 09:12», «12 сентября 20:34».
+ *
+ * Одного времени мало: заказчик — «не ясно, когда было сделано; дата есть, но
+ * ниже, и сопоставлять неудобно». Черта дня над группой сообщений остаётся, но
+ * у каждой шапки дата теперь своя — чтобы не искать глазами, к какой черте она
+ * относится. Год пишем, только если он не нынешний: «12 сентября» без года
+ * читается как этот год, и в январе это начнёт врать.
+ */
+export function stampLabel(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (same(d, now)) return `сегодня ${time}`;
+  if (same(d, new Date(now.getTime() - 86400000))) return `вчера ${time}`;
+  const withYear = d.getFullYear() !== now.getFullYear();
+  const day = d.toLocaleDateString('ru-RU', withYear
+    ? { day: 'numeric', month: 'long', year: 'numeric' }
+    : { day: 'numeric', month: 'long' });
+  return `${day} ${time}`;
+}
+
+/**
  * Склеивать ли сообщение с предыдущим.
  *
  * Подряд идущие реплики одного человека — это одна мысль, разбитая на строки.

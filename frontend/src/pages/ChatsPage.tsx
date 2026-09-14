@@ -22,6 +22,7 @@ import { MessageText } from '../components/MessageText';
 import { MessageToTask } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
+import { stampLabel } from '../lib/chat-text';
 import { placePopover, PopoverPlace } from '../lib/popover';
 import { firstUnreadId } from '../lib/unread-line';
 import { showToast, toastSaved } from '../lib/notifications';
@@ -1870,7 +1871,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                       <div className="meet-card">
                         <div className="meet-card-head">
                           <Icon name="record" size={14} /> <b>{head}</b>
-                          <span className="chat-time">{timeOf(m.created_at)}</span>
+                          <span className="chat-time" title={new Date(m.created_at).toLocaleString('ru-RU')}>{stampLabel(m.created_at)}</span>
                         </div>
                         {rest.filter(Boolean).map((line, k) => (
                           <div key={k} className="meet-card-line">{line}</div>
@@ -1970,7 +1971,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                       )}
 
                       <div className="chat-under">
-                        <span className="chat-time">{timeOf(m.created_at)}</span>
+                        <span className="chat-time" title={new Date(m.created_at).toLocaleString('ru-RU')}>{stampLabel(m.created_at)}</span>
                         {m.edited_at && <span className="dim chat-under-mark" title="Сообщение изменено">изменено</span>}
                         {/*
                           Две галочки — как в мессенджерах: одна «отправлено», две
@@ -2305,7 +2306,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                     </div>
                   )}
                   <div className="chat-under">
-                    <span className="chat-time">{timeOf(m.created_at)}</span>
+                    <span className="chat-time" title={new Date(m.created_at).toLocaleString('ru-RU')}>{stampLabel(m.created_at)}</span>
                     {m.edited_at && <span className="dim chat-under-mark" title="Сообщение изменено">изменено</span>}
                     {/* Полный набор действий, тот же, что в ленте: реакция, правка,
                         удаление, напоминание, задача из сообщения. */}
