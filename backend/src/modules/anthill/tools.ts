@@ -762,19 +762,23 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       },
       async undo(ctx, output) {
         /*
-          Сначала убираем ССЫЛКУ на файл, потом сам файл.
+          Откат убирает документ ОТТУДА, КУДА ПОЛОЖИЛИ, а сам файл не трогает.
 
-          Иначе удаление падает на внешнем ключе: объект в хранилище уже стёрт, а
-          строка осталась — и сообщение с документом начинает отдавать ошибку вместо
-          файла. Порядок здесь важнее краткости.
+          Файл, на который ссылается сообщение или вложение, удалить нельзя — на нём
+          внешний ключ. А `files.delete` стирает объект в хранилище ПЕРЕД строкой в
+          базе: попытка «на всякий случай» оставляла живую ссылку на исчезнувший
+          файл, и вместо документа человек получал ошибку. Лучше осиротевший объект
+          в хранилище, чем битая ссылка в переписке.
         */
-        if (output.kind === 'task') {
-          if (output.attachmentId) await taskcard.removeAttachment(ctx.tenantId, String(output.taskId), String(output.attachmentId)).catch(() => undefined);
-        } else if (output.messageId) {
-          await chats.remove(ctx.tenantId, String(output.chatId), String(output.messageId), ctx.user).catch(() => undefined);
+        if (output.kind === 'task' && output.attachmentId) {
+          await taskcard.removeAttachment(ctx.tenantId, String(output.taskId), String(output.attachmentId));
+          return `Документ убран из задачи #${output.taskId}.`;
         }
-        await files.delete(ctx.tenantId, String(output.fileId), ctx.user).catch(() => undefined);
-        return 'Документ удалён.';
+        if (output.messageId) {
+          await chats.remove(ctx.tenantId, String(output.chatId), String(output.messageId), ctx.user);
+          return 'Документ убран из переписки.';
+        }
+        return 'Документ убран.';
       },
     },
     {

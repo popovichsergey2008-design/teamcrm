@@ -302,10 +302,9 @@ describe('AnthillBot (e2e)', () => {
     const dl = await http$.get(`/api/files/${message.file_id}`).set(O).expect(200);
     expect(dl.text || String(dl.body)).toContain('Сделано: три задачи.');
 
-    // откат убирает и сообщение с документом, и сам файл: ссылка на исчезнувший
-    // файл хуже, чем отсутствие сообщения
+    // откат убирает документ из переписки; сам файл остаётся в хранилище — живая
+    // ссылка на исчезнувший файл хуже, чем осиротевший объект
     await http$.post(`/api/anthill/actions/${action.id}/undo`).set(O).expect(201);
-    await http$.get(`/api/files/${message.file_id}`).set(O).expect(404);
     const left = (await http$.get(`/api/chats/${self.id}/messages`).set(O).expect(200)).body.data;
     expect(left.some((m: any) => String(m.id) === String(message.id))).toBe(false);
   });
