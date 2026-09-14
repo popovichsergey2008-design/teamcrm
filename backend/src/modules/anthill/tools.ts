@@ -3,6 +3,7 @@ import { nextRun, parseSchedule, scheduleLabel } from './schedule-ru';
 import { FilesService } from '../files/files.service';
 import { ForecastService } from '../forecast/forecast.service';
 import { AnthillAdminService } from './anthill-admin.service';
+import { CalendarService } from '../calendar/calendar.service';
 import { TaskCardService } from '../taskcard/taskcard.service';
 import { extractText } from '../knowledge/file-text';
 import { buildDocx, DOCX_MIME } from '../../common/files/docx.util';
@@ -66,6 +67,7 @@ export interface ToolDef {
 export interface ToolDeps {
   repo: AnthillRepository;
   admin: AnthillAdminService;
+  calendar: CalendarService;
   files: FilesService;
   taskcard: TaskCardService;
   forecast: ForecastService;
@@ -81,7 +83,7 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, admin, tasks, chats, search, nl, ask, files, taskcard, forecast } = deps;
+  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast } = deps;
 
   /**
    * Человек по имени. Точного совпадения не требуем: в задаче просят «поставь на
@@ -804,6 +806,82 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           return 'Документ убран из переписки.';
         }
         return 'Документ убран.';
+      },
+    },
+    {
+      name: 'create_event', kind: 'write',
+      description: 'Поставить встречу в календарь: «созвон с Глебом завтра в 10 на час», «планёрка в понедельник в 9». start и end — ISO дата-время (вычисли из слов и текущего времени), people — имена участников.',
+      params: {
+        title: 'о чём встреча', start: 'ISO начало', end: 'ISO конец (по умолчанию час)',
+        people: 'имена участников через запятую (необязательно)', location: 'где или ссылка (необязательно)',
+      },
+      async preview(ctx, p) {
+        const title = str(p.title, 255);
+        if (!title) throw new Error('Не понял, как назвать встречу');
+        const start = new Date(str(p.start, 40));
+        if (Number.isNaN(start.getTime())) throw new Error('Не понял, когда встреча — назовите день и время');
+        if (start.getTime() < ctx.now.getTime() - 60_000) throw new Error('Это время уже прошло — назовите будущее');
+        const end = p.end && !Number.isNaN(new Date(String(p.end)).getTime())
+          ? new Date(String(p.end))
+          : new Date(start.getTime() + 3600_000);
+        if (end.getTime() <= start.getTime()) throw new Error('Конец встречи должен быть позже начала');
+
+        const names = str(p.people, 300).split(',').map((x) => x.trim()).filter(Boolean);
+        const ids: string[] = [];
+        const shown: string[] = [];
+        for (const n of names) {
+          const u = await findUser(ctx.tenantId, n);
+          if (u) { ids.push(String(u.id)); shown.push(u.full_name); }
+        }
+        const when = `${start.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+        return {
+          text: `Поставить встречу?\nЧто: ${title}\nКогда: ${when}\nКто: ${shown.length ? shown.join(', ') : 'только вы'}${p.location ? `\nГде: ${str(p.location, 255)}` : ''}`,
+          params: { title, start: start.toISOString(), end: end.toISOString(), participantIds: ids, location: str(p.location, 255) || null },
+        };
+      },
+      fields: [
+        { key: 'title', label: 'О чём встреча', type: 'text' },
+        { key: 'start', label: 'Начало', type: 'datetime' },
+        { key: 'end', label: 'Конец', type: 'datetime' },
+      ],
+      values: (p) => ({
+        title: str(p.title, 255),
+        start: p.start ? new Date(String(p.start)).toISOString().slice(0, 16) : '',
+        end: p.end ? new Date(String(p.end)).toISOString().slice(0, 16) : '',
+      }),
+      async edit(ctx, p, patch) {
+        const title = str(patch.title ?? p.title, 255);
+        const start = new Date(patch.start !== undefined ? patch.start : String(p.start));
+        const end = new Date(patch.end !== undefined ? patch.end : String(p.end));
+        if (!title) throw new Error('Нужно название встречи');
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new Error('Укажите день и время');
+        if (end.getTime() <= start.getTime()) throw new Error('Конец встречи должен быть позже начала');
+        if (start.getTime() < ctx.now.getTime() - 60_000) throw new Error('Это время уже прошло — выберите будущее');
+        const when = `${start.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+        return {
+          text: `Поставить встречу?\nЧто: ${title}\nКогда: ${when}`,
+          params: { ...p, title, start: start.toISOString(), end: end.toISOString() },
+        };
+      },
+      async execute(ctx, p) {
+        const row: any = await calendar.create(ctx.tenantId, ctx.user, {
+          title: String(p.title),
+          startsAt: String(p.start),
+          endsAt: String(p.end),
+          location: (p.location as string) ?? null,
+          participantIds: (p.participantIds as string[]) ?? [],
+          scope: 'personal',
+        });
+        const id = String(row?.id ?? row?.event?.id ?? '');
+        return {
+          text: `Встреча «${p.title}» поставлена на ${new Date(String(p.start)).toLocaleString('ru-RU')}. Участники получат приглашение.`,
+          output: { eventId: id },
+          sources: [],
+        };
+      },
+      async undo(ctx, output) {
+        await calendar.remove(ctx.tenantId, ctx.user, String(output.eventId));
+        return 'Встреча отменена, участникам уйдёт отмена.';
       },
     },
     {

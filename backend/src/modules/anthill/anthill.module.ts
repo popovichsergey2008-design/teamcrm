@@ -9,6 +9,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { FilesModule } from '../files/files.module';
 import { TaskCardModule } from '../taskcard/taskcard.module';
 import { ForecastModule } from '../forecast/forecast.module';
+import { CalendarModule } from '../calendar/calendar.module';
 import { AnthillController } from './anthill.controller';
 import { AnthillRepository } from './anthill.repository';
 import { AnthillService } from './anthill.service';
@@ -21,7 +22,7 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
  * постановка задач словами, вопросы о делах. Своих данных CRM не заводит.
  */
 @Module({
-  imports: [AiModule, TasksModule, ChatsModule, SearchModule, NlModule, AssistantModule, RealtimeModule, FilesModule, TaskCardModule, ForecastModule],
+  imports: [AiModule, TasksModule, ChatsModule, SearchModule, NlModule, AssistantModule, RealtimeModule, FilesModule, TaskCardModule, ForecastModule, CalendarModule],
   controllers: [AnthillController],
   providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService],
   exports: [AnthillService],

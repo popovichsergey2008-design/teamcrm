@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../Icon';
 import { api, ApiError } from '../../lib/api';
-import type { AnthillSchedule } from '../../lib/api';
+import type { AnthillActionRow, AnthillSchedule } from '../../lib/api';
 import { stampLabel } from '../../lib/chat-text';
 
 const GROUPS: { key: string; title: string }[] = [
@@ -9,6 +9,28 @@ const GROUPS: { key: string; title: string }[] = [
   { key: 'paused', title: 'На паузе' },
   { key: 'done', title: 'Завершённые' },
 ];
+
+/** Как назвать действие человеку: «create_task» ему ничего не говорит. */
+const TOOL_TITLE: Record<string, string> = {
+  create_task: 'Создать задачу',
+  create_reminder: 'Поставить напоминание',
+  create_scheduled_task: 'Делать регулярно',
+  create_skill: 'Записать навык',
+  create_document: 'Собрать документ',
+  create_event: 'Поставить встречу',
+  update_task: 'Изменить задачу',
+  add_comment: 'Написать в задачу',
+  send_message: 'Отправить сообщение',
+  remember: 'Запомнить',
+};
+
+/** Короткая подпись действия по его параметрам — чтобы не гадать, о чём оно. */
+function actionHint(a: AnthillActionRow): string {
+  const i = a.input ?? {};
+  const first = [i.title, i.text, (i.task as any)?.title, i.instruction, i.name, i.content]
+    .find((x) => typeof x === 'string' && x.trim());
+  return first ? String(first).slice(0, 120) : '';
+}
 
 /**
  * Регулярные задачи агента (ТЗ-6, разд. 15).
@@ -20,6 +42,13 @@ const GROUPS: { key: string; title: string }[] = [
  */
 export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: string) => void }) {
   const [rows, setRows] = useState<AnthillSchedule[]>([]);
+  /**
+   * Действия, которые агент предложил, а человек не досмотрел (ТЗ-6, разд. 36).
+   *
+   * Карточка живёт в разговоре, но из разговора уходят: закрыли окно — и предложение
+   * повисло. Здесь видно всё, что ждёт решения, и решить можно не возвращаясь.
+   */
+  const [pending, setPending] = useState<AnthillActionRow[]>([]);
   const [err, setErr] = useState('');
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ title: '', instruction: '', schedule: '' });
@@ -28,6 +57,9 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
 
   const load = useCallback(() => {
     api.anthillSchedules().then(setRows).catch(() => undefined);
+    api.anthillActions()
+      .then((list) => setPending(list.filter((a) => a.status === 'pending')))
+      .catch(() => undefined);
   }, []);
   useEffect(() => load(), [load]);
 
@@ -87,7 +119,34 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
 
       {err && <div className="error-text">{err}</div>}
 
-      {rows.length === 0 && !adding && (
+      {pending.length > 0 && (
+        <div className="anthill-group">
+          <div className="anthill-group-head">Ждут вашего решения</div>
+          {pending.map((a) => (
+            <div key={a.id} className="anthill-card anthill-task">
+              <div className="anthill-task-top">
+                <span className="anthill-task-title">{TOOL_TITLE[a.tool] ?? a.tool}</span>
+                <span className="dim">{stampLabel(a.createdAt)}</span>
+              </div>
+              {actionHint(a) && <div className="dim anthill-task-what">{actionHint(a)}</div>}
+              <div className="anthill-task-acts">
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => { setErr(''); api.anthillConfirm(a.id).then(load).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось выполнить')); }}
+                >
+                  <Icon name="check" size={13} /> Создать
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => { api.anthillReject(a.id).then(load).catch(() => undefined); }}
+                >Отмена</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rows.length === 0 && !adding && pending.length === 0 && (
         <div className="anthill-empty">
           <div className="anthill-empty-title">Регулярных задач пока нет</div>
           <div className="dim">Попросите прямо в разговоре: «каждый понедельник в 9:00 дай список просроченных» — или нажмите «Новая».</div>

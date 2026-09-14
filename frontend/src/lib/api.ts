@@ -542,6 +542,8 @@ export const api = {
   anthillDelete: (id: string) => request<{ deleted: boolean }>('DELETE', `/anthill/sessions/${id}`),
   anthillConfirm: (actionId: string) => request<{ status: string; text: string; output: Record<string, unknown>; sources: AnthillSource[]; canUndo: boolean }>('POST', `/anthill/actions/${actionId}/confirm`, {}),
   anthillReject: (actionId: string) => request<{ status: string }>('POST', `/anthill/actions/${actionId}/reject`, {}),
+  /** Журнал действий: по нему видно и то, что ещё ждёт подтверждения (разд. 36). */
+  anthillActions: () => request<AnthillActionRow[]>('GET', '/anthill/actions'),
   anthillEdit: (actionId: string, patch: Record<string, string>) =>
     request<{ id: string; preview: string; values: Record<string, string> }>('POST', `/anthill/actions/${actionId}/edit`, { patch }),
   anthillUndo: (actionId: string) => request<{ status: string; text: string }>('POST', `/anthill/actions/${actionId}/undo`, {}),
@@ -1576,6 +1578,13 @@ export interface AnthillSkill {
   mine: boolean;
   /** Общий для компании. */
   shared: boolean;
+}
+
+/** Строка журнала действий агента. */
+export interface AnthillActionRow {
+  id: string; tool: string; status: string;
+  input: Record<string, unknown>; output: Record<string, unknown> | null;
+  error: string | null; createdAt: string;
 }
 
 /** Что агент помнит о человеке: предпочтение (как работать) или рабочая тема. */

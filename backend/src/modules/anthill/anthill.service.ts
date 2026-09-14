@@ -10,6 +10,7 @@ import { FilesService } from '../files/files.service';
 import { TaskCardService } from '../taskcard/taskcard.service';
 import { ForecastService } from '../forecast/forecast.service';
 import { AnthillAdminService } from './anthill-admin.service';
+import { CalendarService } from '../calendar/calendar.service';
 import { AnthillRepository, ScheduleRow, SkillRow, Source } from './anthill.repository';
 import { buildTools, ToolContext, ToolDef } from './tools';
 import { nextRun, parseSchedule, Schedule, scheduleLabel } from './schedule-ru';
@@ -53,9 +54,9 @@ export class AnthillService {
     private readonly admin: AnthillAdminService,
     private readonly ai: AiService,
     tasks: TasksService, chats: ChatsService, search: SearchService, nl: NlService, ask: AskService,
-    files: FilesService, taskcard: TaskCardService, forecast: ForecastService,
+    files: FilesService, taskcard: TaskCardService, forecast: ForecastService, calendar: CalendarService,
   ) {
-    this.tools = buildTools({ repo, admin, tasks, chats, search, nl, ask, files, taskcard, forecast });
+    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast });
   }
 
   private base() { return (process.env.APP_BASE_URL || 'https://teamsmrt.com').replace(/\/+$/, ''); }
@@ -180,6 +181,7 @@ export class AnthillService {
       if (t.kind === 'write' && !settings.actionsAllowed) return false;
       if (!settings.filesAllowed && (t.name === 'read_file' || t.name === 'list_files' || t.name === 'create_document')) return false;
       if (t.name === 'web_search' && !settings.webSearch) return false;
+      if (t.name === 'create_event' && !settings.integrations) return false;
       return true;
     });
     emit({ type: 'status', text: 'Думаю, где искать…' });

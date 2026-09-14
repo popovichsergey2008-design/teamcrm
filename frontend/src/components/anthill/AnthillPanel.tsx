@@ -14,6 +14,7 @@ import { AnthillResponses } from './AnthillResponses';
 import { AnthillAdmin } from './AnthillAdmin';
 import { useAuth } from '../../state/auth';
 import { getSocket } from '../../lib/socket';
+import { showNotification, showToast } from '../../lib/notifications';
 
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
   task: 'задача', project: 'проект', chat: 'чат', meeting: 'мит',
@@ -121,7 +122,13 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
   */
   useEffect(() => {
     const socket = getSocket();
-    const done = () => loadSessions();
+    const done = (p: { title?: string }) => {
+      loadSessions();
+      // Человек мог давно уйти из агента: без сигнала об отчёте он узнает, только
+      // если сам заглянет. Отчёт уже лежит в «Заметках» — сюда даём короткий знак.
+      showToast({ kind: 'saved', title: 'AnthillBot: задача выполнена', body: p?.title ?? 'Отчёт готов и ждёт в «Заметках»' });
+      showNotification('AnthillBot', `${p?.title ?? 'Регулярная задача'} — отчёт готов`);
+    };
     socket.on('anthill.task.done', done);
     return () => { socket.off('anthill.task.done', done); };
   }, [loadSessions]);
