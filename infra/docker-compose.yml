@@ -12,6 +12,89 @@ name: teamcrm
 x-restart: &restart
   restart: unless-stopped
 
+# ── API и веб: сине-зелёная выкладка ─────────────────────────────────────────
+#
+# Раньше API был одним контейнером, и каждая выкладка пересоздавала его: секунд
+# пятнадцать — миграции, старт Nest — вся CRM отвечала 502. Люди в это время
+# работали, и заказчик написал «502 ошибка» ровно в момент выкладки.
+#
+# Теперь два одинаковых описания — «синий» и «зелёный». Работает один цвет;
+# выкладка поднимает второй рядом, ждёт его здоровья, переключает на него nginx
+# мягкой перезагрузкой и только потом гасит прежний. Кто живой, решает файл
+# state/color.inc: его читает nginx, пишет deploy/release.sh.
+#
+# Профили нужны, чтобы `docker compose up` не поднимал оба цвета разом: два API
+# одновременно — это двойные напоминания и двойные планировщики.
+#
+# Порты RTP у цветов разные, чтобы оба могли жить на машине одновременно;
+# созвон во время выкладки всё равно не переживает — скрипт ждёт тишины.
+
+x-api-env: &api-env
+  NODE_ENV: production
+  PORT: 3000
+  DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@crm-postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://:${REDIS_PASSWORD}@crm-redis:6379
+  RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@crm-rabbitmq:5672
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+  JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+  JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
+  JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-2592000}
+  CORS_ORIGIN: ${CORS_ORIGIN}
+  MINIO_ENDPOINT: http://crm-minio:9000
+  MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+  MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+  MINIO_BUCKET: ${MINIO_BUCKET:-teamcrm}
+  # Созвоны (Этап 6). Без ANNOUNCED_IP связь не установится: за NAT SFU обязан
+  # объявлять внешний адрес, иначе ICE-кандидаты указывают внутрь контейнера.
+  # Диапазон портов — у каждого цвета свой, ниже.
+  MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:-}
+  MEDIASOUP_NUM_WORKERS: ${MEDIASOUP_NUM_WORKERS:-2}
+  TURN_HOST: ${TURN_HOST:-}
+  TURN_SECRET: ${TURN_SECRET:-}
+  TURN_TTL_SEC: ${TURN_TTL_SEC:-28800}
+  # Почтовые уведомления. Без ключа приложение пишет письма в журнал вместо
+  # отправки — это рабочий режим, а не ошибка. APP_BASE_URL нужен для ссылок
+  # в письмах: по адресу с самоподписанным сертификатом их никто не откроет.
+  BREVO_API_KEY: ${BREVO_API_KEY:-}
+  MAIL_FROM: ${MAIL_FROM:-noreply@teamsmrt.com}
+  MAIL_FROM_NAME: ${MAIL_FROM_NAME:-TEAMCRM}
+  APP_BASE_URL: ${APP_BASE_URL:-https://teamsmrt.com}
+  # Телеграм-бот: без токена отправка молча ничего не делает — это рабочий режим
+  # для окружений без бота. Секрет проверяется на входящем вебхуке, если задан.
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+
+x-api: &api
+  build:
+    context: ./backend
+  image: teamcrm-crm-api
+  <<: *restart
+  depends_on:
+    crm-postgres: { condition: service_healthy }
+    crm-redis: { condition: service_healthy }
+    crm-rabbitmq: { condition: service_healthy }
+  networks: [crm-net]
+  healthcheck:
+    test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+    # Чаще, чем раньше: выкладка ждёт именно этой отметки, и каждые лишние
+    # десять секунд ожидания — это десять секунд, пока живут два API сразу.
+    interval: 5s
+    timeout: 5s
+    retries: 12
+    start_period: 20s
+
+x-web: &web
+  build:
+    context: ./frontend
+  image: teamcrm-crm-web
+  <<: *restart
+  networks: [crm-net]
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+    interval: 5s
+    timeout: 5s
+    retries: 6
+
 networks:
   crm-net:
     driver: bridge
@@ -101,73 +184,38 @@ services:
       retries: 5
     # бакет создаётся backend'ом (S3Service.ensureBucket) при старте
 
-  crm-api:
-    build:
-      context: ./backend
-    <<: *restart
+  # RTP ходит мимо nginx — порты публикуем напрямую. Диапазон узкий намеренно:
+  # docker поднимает по процессу-посреднику на каждый порт, и «на всякий случай»
+  # тут стоило бы 10 тысяч процессов. 41 порта хватает на созвон вшестером.
+  crm-api-blue:
+    <<: *api
+    profiles: [blue]
     environment:
-      NODE_ENV: production
-      PORT: 3000
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@crm-postgres:5432/${POSTGRES_DB}
-      REDIS_URL: redis://:${REDIS_PASSWORD}@crm-redis:6379
-      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@crm-rabbitmq:5672
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
-      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-2592000}
-      CORS_ORIGIN: ${CORS_ORIGIN}
-      MINIO_ENDPOINT: http://crm-minio:9000
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET: ${MINIO_BUCKET:-teamcrm}
-      # Созвоны (Этап 6). Без ANNOUNCED_IP связь не установится: за NAT SFU обязан
-      # объявлять внешний адрес, иначе ICE-кандидаты указывают внутрь контейнера.
-      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:-}
-      MEDIASOUP_NUM_WORKERS: ${MEDIASOUP_NUM_WORKERS:-2}
-      MEDIASOUP_MIN_PORT: ${MEDIASOUP_MIN_PORT:-40000}
-      MEDIASOUP_MAX_PORT: ${MEDIASOUP_MAX_PORT:-40040}
-      TURN_HOST: ${TURN_HOST:-}
-      TURN_SECRET: ${TURN_SECRET:-}
-      TURN_TTL_SEC: ${TURN_TTL_SEC:-28800}
-      # Почтовые уведомления. Без ключа приложение пишет письма в журнал вместо
-      # отправки — это рабочий режим, а не ошибка. APP_BASE_URL нужен для ссылок
-      # в письмах: по адресу с самоподписанным сертификатом их никто не откроет.
-      BREVO_API_KEY: ${BREVO_API_KEY:-}
-      MAIL_FROM: ${MAIL_FROM:-noreply@teamsmrt.com}
-      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-TEAMCRM}
-      APP_BASE_URL: ${APP_BASE_URL:-https://teamsmrt.com}
-      # Телеграм-бот: без токена отправка молча ничего не делает — это рабочий режим
-      # для окружений без бота. Секрет проверяется на входящем вебхуке, если задан.
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
-    # RTP ходит мимо nginx — порты публикуем напрямую. Диапазон узкий намеренно:
-    # docker поднимает по процессу-посреднику на каждый порт, и «на всякий случай»
-    # тут стоило бы 10 тысяч процессов. 41 порта хватает на созвон вшестером.
+      <<: *api-env
+      MEDIASOUP_MIN_PORT: 40000
+      MEDIASOUP_MAX_PORT: 40040
     ports:
       - "40000-40040:40000-40040/udp"
       - "40000-40040:40000-40040/tcp"
-    depends_on:
-      crm-postgres: { condition: service_healthy }
-      crm-redis: { condition: service_healthy }
-      crm-rabbitmq: { condition: service_healthy }
-    networks: [crm-net]
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 40s
 
-  crm-web:
-    build:
-      context: ./frontend
-    <<: *restart
-    networks: [crm-net]
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+  crm-api-green:
+    <<: *api
+    profiles: [green]
+    environment:
+      <<: *api-env
+      MEDIASOUP_MIN_PORT: 40041
+      MEDIASOUP_MAX_PORT: 40081
+    ports:
+      - "40041-40081:40041-40081/udp"
+      - "40041-40081:40041-40081/tcp"
+
+  crm-web-blue:
+    <<: *web
+    profiles: [blue]
+
+  crm-web-green:
+    <<: *web
+    profiles: [green]
 
   crm-edge:
     image: nginx:1.27-alpine
@@ -177,12 +225,16 @@ services:
       - ./nginx/html:/usr/share/nginx/html:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro   # Let's Encrypt сертификаты (host-persistent, вне /opt/teamcrm)
+      # Какой цвет живой: пишет deploy/release.sh, читает nginx. Каталог не
+      # синхронизируется из репозитория — иначе каждая выкладка сбрасывала бы выбор.
+      - ./state:/etc/nginx/state:ro
     ports:
       - "80:80"
       - "443:443"
       - "8080:80"   # convenience http-by-IP alias
     networks: [crm-net]
-    depends_on: [crm-api, crm-web]
+    # Без depends_on на API и веб: адреса nginx разрешает на каждый запрос, а
+    # какой цвет поднимать — решает выкладка, не порядок старта.
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
       interval: 30s
