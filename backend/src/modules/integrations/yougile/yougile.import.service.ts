@@ -7,6 +7,27 @@ import { chatEchoKey, taskStateHash } from './yougile.hash';
 import { buildPriorityMap, EMPTY_PRIORITY_MAP, PriorityMap, priorityFromStickers } from './yougile.priority';
 import { buildLabelMap, labelsForTask, StickerLabel } from './yougile.labels';
 
+/**
+ * Когда написано сообщение чата YouGile.
+ *
+ * Поле `timestamp` YouGile у сообщений не отдаёт — и комментарии записывались
+ * временем импорта. Старое сообщение, приехавшее вебхуком через месяц, вставало
+ * в переписку «сегодняшним», посреди свежих (задача #900). Настоящее время лежит
+ * в самом id сообщения: это миллисекунды создания. Берём его, когда оно похоже
+ * на правду — 13 цифр, между 2015 годом и сейчас; иначе честнее «сейчас», чем
+ * выдуманная дата.
+ */
+export function messagePostedAt(m: { id: string | number; timestamp?: number }, now = Date.now()): string | null {
+  const fromField = Number(m.timestamp);
+  const fromId = /^\d{13}$/.test(String(m.id)) ? Number(m.id) : NaN;
+  const ms = Number.isFinite(fromField) && fromField > 0 ? fromField : fromId;
+  if (!Number.isFinite(ms)) return null;
+  const min = Date.UTC(2015, 0, 1);
+  if (ms < min || ms > now + 86_400_000) return null;
+  return new Date(ms).toISOString();
+}
+
+
 /** Разбор кастомных стикеров YouGile: приоритет + метки. Готовится один раз на прогон. */
 interface StickerCtx {
   prio: PriorityMap;
@@ -243,7 +264,7 @@ export class YougileImportService {
         const inserted = await this.repo.upsertComment({
           tenantId: ctx.tenantId, connectionId: ctx.connectionId, externalId: external, taskId: localTaskId,
           authorId: author, body: (prefix + body).slice(0, 20000),
-          postedAt: m.timestamp ? new Date(Number(m.timestamp)).toISOString() : null,
+          postedAt: messagePostedAt(m),
         }).catch(() => false);
         if (inserted) stats.comments++;
       }
