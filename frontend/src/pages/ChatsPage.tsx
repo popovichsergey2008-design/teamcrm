@@ -124,7 +124,7 @@ const laterLabel = (x: { sendAt: string; repeat: 'none' | 'daily' }) => {
  * Мессенджер: слева люди и группы, справа переписка. Звонок — из шапки чата,
  * то есть звонишь конкретному человеку, а не в общую комнату.
  */
-export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 'page', onClose }: {
+export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 'page', onClose, context }: {
   onCall: (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null; withAi?: boolean }) => void;
   /** Уже идёт созвон — второй начинать нельзя, кнопка гасится. */
   inCall?: boolean;
@@ -140,6 +140,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   mode?: 'page' | 'overlay';
   /** Крестик в окне поверх CRM. */
   onClose?: () => void;
+  /** Что под окном: задача или проект — «+ Отправить в чат» одной кнопкой (ТЗ-5, раздел 30). */
+  context?: { taskId?: string; projectId?: string };
 }) {
   const overlay = mode === 'overlay';
   // «Позвать ИИ» — решение на конкретный звонок, поэтому галочка живёт рядом с кнопкой,
@@ -938,6 +940,30 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * нет вовсе), старое сообщение — окном вокруг него (иначе человек видит реплику
    * без разговора), свежее просто подсвечиваем в уже загруженной ленте.
    */
+  /**
+   * «Перейти к сообщению» из карточки задачи: раздел уже открыт, остаётся показать
+   * строку. Событием, потому что адрес сообщения в маршруте не живёт.
+   */
+  useEffect(() => {
+    const onJump = (e: Event) => {
+      const d = (e as CustomEvent<{ chatId: string; messageId: string }>).detail;
+      if (d?.chatId && d?.messageId) void openFound({ chatId: String(d.chatId), messageId: String(d.messageId), threadRootId: null });
+    };
+    window.addEventListener('teamcrm:chat-jump', onJump);
+    return () => window.removeEventListener('teamcrm:chat-jump', onJump);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Карточка задачи или проекта под окном — в ленту одним нажатием. */
+  const shareContext = async (kind: 'task' | 'project', id: string) => {
+    if (!activeId) return;
+    try {
+      const message = await api.chatShare(activeId, kind, id);
+      appendMessage(message);
+      reload();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось отправить карточку'); }
+  };
+
   const openFound = async (hit: { chatId: string; messageId: string; threadRootId: string | null }) => {
     setView('chat');
     setActiveId(hit.chatId);
@@ -2111,6 +2137,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
               </div>
             )}
 
+            {/* Контекст страницы: задача или проект под окном — в чат одной кнопкой (ТЗ-5, раздел 30). */}
+            {overlay && context && (context.taskId || context.projectId) && (
+              <div className="chat-context-row">
+                {context.taskId && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => void shareContext('task', String(context.taskId))} title="Отправить карточку задачи в этот чат">
+                    <Icon name="check-circle" size={13} /> Отправить задачу #{context.taskId}
+                  </button>
+                )}
+                {context.projectId && !context.taskId && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => void shareContext('project', String(context.projectId))} title="Отправить карточку проекта в этот чат">
+                    <Icon name="board" size={13} /> Отправить проект
+                  </button>
+                )}
+              </div>
+            )}
             <div
               className="chat-input"
               // Файл можно и перетащить — то же действие, что и вставка из буфера.

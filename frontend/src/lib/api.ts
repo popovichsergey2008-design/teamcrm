@@ -800,6 +800,19 @@ export const api = {
   chatAudit: (chatId: string) => request<{ id: string; action: string; detail: Record<string, unknown>; created_at: string; actor_name: string | null }[]>('GET', `/chats/${chatId}/audit`),
   setChatMemberRole: (chatId: string, userId: string, role: 'admin' | 'member') =>
     request<{ role: string }>('PATCH', `/chats/${chatId}/members/${userId}/role`, { role }),
+  /** Задачи чата: выросшие из сообщений и отправленные карточкой (ТЗ-5, этап 3). */
+  chatTasks: (chatId: string) => request<{
+    total: number; projectId: string | null;
+    items: { id: string; title: string; status: string; closed: boolean; deadlineAt: string | null; projectId: string; assigneeName: string | null; relation: string }[];
+  }>('GET', `/chats/${chatId}/tasks`),
+  /** «+ Отправить текущую задачу / проект» карточкой в чат. */
+  chatShare: (chatId: string, entityType: 'task' | 'project', entityId: string) =>
+    request<any>('POST', `/chats/${chatId}/share`, { entityType, entityId }),
+  /** Задача коротко — шапка окна чата задачи поверх CRM. */
+  taskBrief: (taskId: string) => request<{
+    id: string; title: string; projectId: string; projectName: string | null; status: string; closed: boolean;
+    assigneeId: string | null; createdBy: string | null; participants: { user_id: string; role: string; full_name: string }[];
+  }>('GET', `/tasks/${taskId}/brief`),
   setChatDescription: (chatId: string, description: string) =>
     request<{ description: string | null }>('PATCH', `/chats/${chatId}/description`, { description }),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),

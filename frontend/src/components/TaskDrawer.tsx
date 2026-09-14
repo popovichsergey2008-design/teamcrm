@@ -106,7 +106,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const [meeting, setMeeting] = useState<{ meeting_id: string; title: string | null } | null>(null);
   /** Из какого сообщения выросла задача: «а это вообще откуда?» — вопрос номер один. */
   const [fromMessage, setFromMessage] = useState<{
-    chat_id: string; body: string; author_name: string | null;
+    message_id: string; chat_id: string; body: string; author_name: string | null;
     chat_title: string | null; project_name: string | null;
   } | null>(null);
   useEffect(() => {
@@ -655,7 +655,13 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 {fromMessage.author_name ? `(${fromMessage.author_name})` : ''}:{' '}
                 <button
                   className="link-btn"
-                  onClick={() => navigate({ section: 'chat', chatId: String(fromMessage.chat_id) })}
+                  onClick={() => {
+                    // раздел откроется и сам покажет строку с подсветкой — событием, адреса у сообщения нет
+                    navigate({ section: 'chat', chatId: String(fromMessage.chat_id) });
+                    window.setTimeout(() => window.dispatchEvent(new CustomEvent('teamcrm:chat-jump', {
+                      detail: { chatId: String(fromMessage.chat_id), messageId: String(fromMessage.message_id) },
+                    })), 300);
+                  }}
                   title={fromMessage.body}
                 >
                   «{fromMessage.body.slice(0, 80)}»

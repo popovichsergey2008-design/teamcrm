@@ -6,6 +6,7 @@ import { getSocket } from '../../lib/socket';
 import { CHATS_CHANGED } from '../../lib/notifications';
 import { presenceKind, presenceLabel } from '../../lib/presence';
 import { stampLabel } from '../../lib/chat-text';
+import type { SearchResults } from '../../types';
 
 /** Строка списка чатов — то, что отдаёт GET /chats (см. ChatsPage). */
 export interface BarChat {
@@ -53,6 +54,17 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
   const [presence, setPresence] = useState<Map<string, { online: boolean; lastSeenAt: string | null; status: 'busy' | 'away' | null }>>(new Map());
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  /* Задачи ищутся на сервере — их тысячи, и держать их в панели незачем. Чат задачи
+     открывается тем же окном, что и обычный: одна история с карточкой (ТЗ-5, этап 3). */
+  const [taskHits, setTaskHits] = useState<SearchResults['tasks']>([]);
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setTaskHits([]); return; }
+    const t = window.setTimeout(() => {
+      api.search(q).then((r) => setTaskHits(r.tasks.slice(0, 6))).catch(() => setTaskHits([]));
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [query]);
 
   const load = useCallback(() => {
     api.listChats().then((list) => setChats(list as BarChat[])).catch(() => undefined);
@@ -224,7 +236,7 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
       <div className="bar-list">
         {found ? (
           <>
-            {found.chatHits.length === 0 && found.userHits.length === 0 && <div className="bar-empty">Ничего не нашлось</div>}
+            {found.chatHits.length === 0 && found.userHits.length === 0 && taskHits.length === 0 && <div className="bar-empty">Ничего не нашлось</div>}
             {found.chatHits.length > 0 && <div className="bar-section">Чаты</div>}
             {found.chatHits.map(row)}
             {found.userHits.length > 0 && <div className="bar-section">Сотрудники</div>}
@@ -245,6 +257,16 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
                 </button>
               );
             })}
+            {taskHits.length > 0 && <div className="bar-section">Задачи</div>}
+            {taskHits.map((t) => (
+              <button key={t.id} className="bar-chat" onClick={() => { setQuery(''); onOpenChat(`task:${t.id}`); }} title="Открыть чат задачи">
+                <span className="bar-avatar"><span className="bar-task-mark">#</span></span>
+                <span className="bar-chat-main">
+                  <span className="bar-chat-title">#{t.id} · {t.title}</span>
+                  <span className="bar-chat-sub"><span className="bar-chat-last">{t.closed ? 'завершена' : t.column_name}{t.project_name ? ` · ${t.project_name}` : ''}</span></span>
+                </span>
+              </button>
+            ))}
           </>
         ) : (
           <>

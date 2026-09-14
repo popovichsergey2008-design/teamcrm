@@ -9,6 +9,7 @@ import { presenceKind, presenceLabel } from '../../lib/presence';
 import { stampLabel } from '../../lib/chat-text';
 import { placePopover, PopoverPlace } from '../../lib/popover';
 import { toastSaved } from '../../lib/notifications';
+import { navigate } from '../../lib/router';
 import type { User } from '../../types';
 
 const KIND_LABEL: Record<string, string> = {
@@ -58,7 +59,7 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
 }) {
   const [info, setInfo] = useState<ChatInfo | null>(null);
   const [err, setErr] = useState('');
-  const [open, setOpen] = useState<Record<string, boolean>>({ about: true, members: true, materials: false, pinned: false, saved: false, history: false });
+  const [open, setOpen] = useState<Record<string, boolean>>({ about: true, members: true, materials: false, tasks: true, pinned: false, saved: false, history: false });
   const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
 
   const load = useCallback(() => {
@@ -120,6 +121,10 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
 
         <Section title="Материалы" count={counts.media + counts.files + counts.links + counts.voice + counts.docs} open={open.materials} onToggle={() => toggle('materials')}>
           <MaterialsBlock chatId={chatId} counts={counts} onJumpTo={onJumpTo} />
+        </Section>
+
+        <Section title="Задачи" open={open.tasks} onToggle={() => toggle('tasks')}>
+          <TasksBlock chatId={chatId} />
         </Section>
 
         <Section title="Закреплено" count={counts.pinned} open={open.pinned} onToggle={() => toggle('pinned')}>
@@ -412,6 +417,51 @@ function MaterialsBlock({ chatId, counts, onJumpTo }: { chatId: string; counts: 
         </button>
       ))}
     </div>
+  );
+}
+
+/** Задачи, выросшие из этого чата и отправленные в него карточкой (ТЗ-5, этап 3). */
+function TasksBlock({ chatId }: { chatId: string }) {
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.chatTasks>> | null>(null);
+  const [all, setAll] = useState(false);
+  useEffect(() => {
+    api.chatTasks(chatId).then(setData).catch(() => setData({ total: 0, projectId: null, items: [] }));
+    const socket = getSocket();
+    const refresh = (p: { chatId: string }) => { if (String(p.chatId) === String(chatId)) api.chatTasks(chatId).then(setData).catch(() => undefined); };
+    socket.on('chat.task_linked', refresh);
+    socket.on('chat.updated', refresh);
+    return () => { socket.off('chat.task_linked', refresh); socket.off('chat.updated', refresh); };
+  }, [chatId]);
+  if (!data) return <div className="dim">Загружаю…</div>;
+  if (!data.items.length) {
+    return (
+      <div className="dim">
+        Из этого чата задач ещё не создавали — «Создать задачу» есть в меню сообщения.
+        {data.projectId && (
+          <> <button className="ci-link" onClick={() => navigate({ section: 'projects', projectId: String(data.projectId) })}>Все задачи проекта →</button></>
+        )}
+      </div>
+    );
+  }
+  const shown = all ? data.items : data.items.slice(0, 8);
+  return (
+    <>
+      {shown.map((t) => (
+        <button key={t.id} className="ci-item" onClick={() => navigate({ section: 'projects', projectId: t.projectId, taskId: t.id })} title="Открыть задачу">
+          <Icon name={t.closed ? 'check-circle' : 'check'} size={14} />
+          <span className="ci-item-main">
+            <span className="ci-item-name">#{t.id} {t.title}</span>
+            <span className="dim">
+              {t.closed ? 'завершена' : t.status}{t.assigneeName ? ` · ${t.assigneeName}` : ''}
+              {t.deadlineAt ? ` · до ${new Date(t.deadlineAt).toLocaleDateString('ru-RU')}` : ''}
+              {t.relation === 'created_from' ? ' · из сообщения' : ''}
+            </span>
+          </span>
+        </button>
+      ))}
+      {data.items.length > 8 && !all && <button className="ci-link" onClick={() => setAll(true)}>Показать все ({data.total})</button>}
+      {data.projectId && <button className="ci-link" onClick={() => navigate({ section: 'projects', projectId: String(data.projectId) })}>Все задачи проекта →</button>}
+    </>
   );
 }
 

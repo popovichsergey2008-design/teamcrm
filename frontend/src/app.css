@@ -3809,3 +3809,16 @@
 .ci-audit { display: flex; flex-direction: column; padding: 4px 2px; font-size: var(--fs-sm); border-bottom: 1px dashed var(--border); }
 .ci-audit .ci-item-name { white-space: normal; }
 .ci-audit .dim { font-size: var(--fs-xs); }
+
+/* ── Чат задачи в окне поверх CRM (ТЗ-5, этап 3, адаптер) ── */
+.task-conversation { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.task-conv-title { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.task-conv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-conv-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px; background: var(--bg-elev-2); }
+/* Значок задачи вместо аватара в списке Chat Bar: «#» на подложке — читается как номер. */
+.bar-task-mark {
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent); font-weight: 700;
+}
+/* Строка «отправить задачу / проект» над полем ввода — только в окне поверх CRM. */
+.chat-context-row { display: flex; gap: 6px; padding: 4px 12px 0; }

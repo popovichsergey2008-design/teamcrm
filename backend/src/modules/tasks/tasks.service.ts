@@ -88,6 +88,21 @@ export class TasksService {
    * распоряжается сроком и приоритетом — тем, что видно всем, — а не чужим днём;
    * иначе «фокус дня» превращается в ещё один канал раздачи указаний.
    */
+  /** Задача коротко: шапка окна чата задачи. Участники — те же, что в карточке. */
+  async brief(tenantId: string, taskId: string) {
+    const task = await this.repo.findById(tenantId, taskId);
+    if (!task) throw AppException.notFound('Task not found');
+    const project = await this.projects.findById(tenantId, String(task.project_id));
+    const columns = await this.projects.listColumns(tenantId, String(task.project_id));
+    return {
+      id: String(task.id), title: task.title, projectId: String(task.project_id), projectName: project?.name ?? null,
+      status: columns.find((c) => String(c.id) === String(task.column_id))?.name ?? task.status,
+      closed: !!task.closed_at, assigneeId: task.assignee_id ? String(task.assignee_id) : null,
+      createdBy: task.created_by ? String(task.created_by) : null,
+      participants: await this.listParticipants(tenantId, taskId),
+    };
+  }
+
   async setFocusDate(tenantId: string, taskId: string, userId: string, date: string | null) {
     const task = await this.repo.findById(tenantId, taskId);
     if (!task) throw AppException.notFound('Task not found');

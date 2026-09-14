@@ -406,6 +406,7 @@ export function App() {
           onCall={callFromChat}
           inCall={!!callId}
           onActiveChat={setOverlayActive}
+          context={{ taskId: route.taskId ?? boardReported.current.taskId, projectId: route.projectId ?? boardReported.current.projectId }}
         />
       )}
 

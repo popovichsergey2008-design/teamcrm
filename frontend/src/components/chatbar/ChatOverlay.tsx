@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChatsPage } from '../../pages/ChatsPage';
 import { useEscape } from '../../hooks/useEscape';
+import { TaskConversation } from '../chat/TaskConversation';
 
 const MIN_W = 360;
 const MAX_W = 900;
@@ -13,7 +14,8 @@ const MAX_W = 900;
  * есть в разделе. Ширину можно потянуть за левый край, она запоминается на сервере
  * вместе с остальными настройками интерфейса.
  */
-export function ChatOverlay({ chatId, width, onWidth, onClose, onCall, inCall, onActiveChat }: {
+export function ChatOverlay({ chatId, width, onWidth, onClose, onCall, inCall, onActiveChat, context }: {
+  /** Обычный чат — номер; чат задачи — `task:<номер>` (ТЗ-5, этап 3, адаптер). */
   chatId: string;
   width: number;
   onWidth: (w: number) => void;
@@ -21,6 +23,8 @@ export function ChatOverlay({ chatId, width, onWidth, onClose, onCall, inCall, o
   onCall: Parameters<typeof ChatsPage>[0]['onCall'];
   inCall?: boolean;
   onActiveChat?: (chatId: string | null) => void;
+  /** Где сейчас человек: задача или проект под окном — их можно отправить в чат одной кнопкой. */
+  context?: { taskId?: string; projectId?: string };
 }) {
   useEscape(onClose);
   const [drag, setDrag] = useState<{ startX: number; startW: number } | null>(null);
@@ -56,14 +60,19 @@ export function ChatOverlay({ chatId, width, onWidth, onClose, onCall, inCall, o
         onMouseDown={(e) => { e.preventDefault(); setDrag({ startX: e.clientX, startW: live.current }); }}
         title="Потяните, чтобы изменить ширину"
       />
-      <ChatsPage
-        mode="overlay"
-        initialChatId={chatId}
-        onClose={onClose}
-        onCall={onCall}
-        inCall={inCall}
-        onActiveChat={onActiveChat}
-      />
+      {chatId.startsWith('task:') ? (
+        <TaskConversation taskId={chatId.slice(5)} onClose={onClose} />
+      ) : (
+        <ChatsPage
+          mode="overlay"
+          initialChatId={chatId}
+          onClose={onClose}
+          onCall={onCall}
+          inCall={inCall}
+          onActiveChat={onActiveChat}
+          context={context}
+        />
+      )}
     </div>
   );
 }

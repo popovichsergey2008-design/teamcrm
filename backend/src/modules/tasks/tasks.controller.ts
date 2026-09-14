@@ -194,6 +194,15 @@ export class TasksController {
     return this.tasks.move(user.tenantId, id, dto, user.userId);
   }
 
+  /**
+   * Задача коротко — для окна чата задачи поверх CRM (ТЗ-5, этап 3): шапке нужны
+   * номер, название, статус, проект и кто в ней кто, а не вся доска.
+   */
+  @Get(':id/brief')
+  brief(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.tasks.brief(u.tenantId, id);
+  }
+
   /** Кто ещё в задаче: соисполнители и наблюдатели. */
   @Get(':id/participants')
   participants(@CurrentUser() u: AuthUser, @Param('id') id: string) {
