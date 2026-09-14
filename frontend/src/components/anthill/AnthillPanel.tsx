@@ -96,6 +96,24 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     [useCtx, context],
   );
 
+  /*
+    Как называется то, что открыто.
+
+    Наверх приходит только тип и номер — страница о своём содержимом ничего не
+    сообщает. «Проект №130» человеку не говорит ничего, поэтому имя спрашиваем сами
+    и показываем его; не ответили — остаётся номер, это лучше пустоты.
+  */
+  const [ctxName, setCtxName] = useState<string | null>(null);
+  useEffect(() => {
+    setCtxName(context?.title ?? null);
+    if (!context || context.title) return;
+    let alive = true;
+    const set = (name?: string | null) => { if (alive && name) setCtxName(name); };
+    if (context.type === 'task') api.taskBrief(context.id).then((t) => set(t.title)).catch(() => undefined);
+    else if (context.type === 'project') api.listProjects().then((list) => set(list.find((p) => String(p.id) === String(context.id))?.name)).catch(() => undefined);
+    return () => { alive = false; };
+  }, [context]);
+
   const loadSessions = useCallback(() => {
     api.anthillSessions().then(setSessions).catch(() => undefined);
   }, []);
@@ -248,7 +266,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
   };
 
   const ctxLine = context
-    ? `${CONTEXT_LABEL[context.type]}${context.title ? ` «${context.title}»` : ` #${context.id}`}`
+    ? `${CONTEXT_LABEL[context.type]}${ctxName ? ` «${ctxName}»` : ` #${context.id}`}`
     : '';
 
   return (
@@ -444,14 +462,28 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
 
       {tab === 'chat' && (
       <div className="anthill-compose">
-        {context && (
-          <label className="anthill-ctx" title="Отправить вместе с вопросом то, что открыто на экране">
-            <input type="checkbox" checked={useCtx} onChange={(e) => setUseCtx(e.target.checked)} />
-            <Icon name="link" size={12} /> Контекст: {ctxLine}
-          </label>
+        {/*
+          Что открыто на экране — плашкой, а не галочкой.
+
+          Агент и так отвечает про то, что перед глазами: галочка требовала решения
+          там, где решение уже принято, и висела в композере постоянно. Плашка просто
+          сообщает, о чём пойдёт речь, и снимается крестиком, если речь о другом.
+        */}
+        {context && useCtx && (
+          <div className="anthill-ctx anthill-chip" title="Агент учтёт то, что открыто у вас на экране">
+            <Icon name="link" size={12} /> {ctxLine}
+            <button className="msg-icon" onClick={() => setUseCtx(false)} title="Спросить без привязки к странице" aria-label="Убрать контекст">
+              <Icon name="close" size={12} />
+            </button>
+          </div>
+        )}
+        {context && !useCtx && (
+          <button className="anthill-ctx-add" onClick={() => setUseCtx(true)} title="Учесть то, что открыто на экране">
+            <Icon name="plus" size={12} /> Контекст: {ctxLine}
+          </button>
         )}
         {skill && (
-          <div className="anthill-ctx anthill-skill-chosen">
+          <div className="anthill-ctx anthill-chip anthill-skill-chosen">
             <Icon name="sparkles" size={12} /> Навык: {skill.name}
             <button className="msg-icon" onClick={() => setSkill(null)} title="Пусть агент выберет сам" aria-label="Убрать навык">
               <Icon name="close" size={12} />

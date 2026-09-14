@@ -4057,3 +4057,16 @@
   .anthill-msg { max-width: 96%; }
 }
 .anthill-deep:focus-visible, .anthill-adm-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Плашка «о чём речь» над полем ввода: контекст страницы и выбранный навык. */
+.anthill-chip {
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+  margin: 6px 16px 0; padding: 3px 4px 3px 10px; border-radius: 999px;
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.anthill-ctx-add {
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+  margin: 6px 16px 0; padding: 4px 10px; border-radius: 999px; cursor: pointer; font-family: inherit;
+  background: transparent; border: 1px dashed var(--border-2); color: var(--text-mut); font-size: var(--fs-xs);
+}
+.anthill-ctx-add:hover { color: var(--text-dim); border-color: var(--text-mut); }
+.anthill-ctx-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
