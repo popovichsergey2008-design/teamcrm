@@ -7,6 +7,7 @@ import { CHATS_CHANGED } from '../../lib/notifications';
 import { presenceKind, presenceLabel } from '../../lib/presence';
 import { stampLabel } from '../../lib/chat-text';
 import type { SearchResults } from '../../types';
+import { PeoplePicker } from '../PeoplePicker';
 
 /** Строка списка чатов — то, что отдаёт GET /chats (см. ChatsPage). */
 export interface BarChat {
@@ -39,12 +40,16 @@ interface BarUser { id: string; fullName: string; avatarUrl?: string | null; isA
  * Данные — те же, что у раздела «Чаты & Миты» (`/chats`), плюс присутствие; свои
  * таблицы Chat Bar не заводит. Обновляется по тем же событиям сокета, что и раздел.
  */
-export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, onNewChat, currentUserId, onCallUserIds, activeChatId }: {
+export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, onNewChat, currentUserId, onCallUserIds, activeChatId, onStartCall, inCall }: {
   expanded: boolean;
   onToggle: () => void;
   onOpenChat: (chatId: string) => void;
   /** Свернуть после выбора чата или человека — панель уже сделала своё дело. */
   onCollapse: () => void;
+  /** Созвон из панели — из любого раздела, без переписки вокруг. */
+  onStartCall: (opts: { memberIds: string[]; withAi: boolean }) => void;
+  /** Уже в созвоне — второй не начать. */
+  inCall: boolean;
   onOpenAi: () => void;
   onNewChat: () => void;
   currentUserId: string;
@@ -62,6 +67,21 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
     свернулась. Стрелка по-прежнему разворачивает «насовсем» (это запоминается);
     наведение — временно и ничего не сохраняет.
   */
+  /* Созвон из панели: кого позвать — тем же выбором людей, что и в чате. */
+  const [callOpen, setCallOpen] = useState(false);
+  const [callChosen, setCallChosen] = useState<Set<string>>(new Set());
+  const callRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!callOpen) return;
+    const outside = (e: MouseEvent) => { if (callRef.current && !callRef.current.contains(e.target as Node)) setCallOpen(false); };
+    document.addEventListener('mousedown', outside);
+    return () => document.removeEventListener('mousedown', outside);
+  }, [callOpen]);
+  const startCall = () => {
+    if (!callChosen.size || inCall) return;
+    onStartCall({ memberIds: [...callChosen], withAi: false });
+    setCallChosen(new Set()); setCallOpen(false);
+  };
   const [hoverOpen, setHoverOpen] = useState(false);
   const hoverTimer = useRef<number | null>(null);
   const onEnter = () => {
@@ -227,6 +247,34 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
   return (
     <aside className={`chat-bar${shown ? ' expanded' : ''}`} aria-label="Чаты" onMouseEnter={onEnter} onMouseLeave={onLeave}>
       <div className="bar-top">
+        {/* Созвон — первой кнопкой: разговор начинают, когда упёрлись в вопрос, из любого раздела. */}
+        <div className="bar-call" ref={callRef}>
+          <button
+            className={`bar-icon${callOpen ? ' active' : ''}`}
+            onClick={() => setCallOpen((v) => !v)}
+            disabled={inCall}
+            title={inCall ? 'Вы уже в созвоне' : 'Созвон — выбрать, кого позвать'}
+            aria-label="Созвон"
+            aria-expanded={callOpen}
+          >
+            <Icon name="phone" size={16} />
+            {shown && <span className="bar-label">Созвон</span>}
+          </button>
+          {callOpen && (
+            <div className="call-starter-pop bar-call-pop" role="dialog" aria-label="Кого позвать в созвон">
+              <div className="call-starter-head">Кого зовём</div>
+              <PeoplePicker
+                chosen={callChosen}
+                onToggle={(id) => setCallChosen((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
+                onSetAll={(ids, on) => setCallChosen((prev) => { const n = new Set(prev); for (const id of ids) { if (on) n.add(id); else n.delete(id); } return n; })}
+                emptyHint="В организации пока некого звать."
+              />
+              <button className="btn btn-primary btn-sm call-starter-go" onClick={startCall} disabled={inCall || callChosen.size === 0}>
+                <Icon name="phone" size={14} /> Начать созвон{callChosen.size > 0 ? ` · ${callChosen.size}` : ''}
+              </button>
+            </div>
+          )}
+        </div>
         <button className="bar-icon" onClick={onToggle} title={shown ? 'Свернуть панель чатов' : 'Развернуть панель чатов'} aria-label={shown ? 'Свернуть панель чатов' : 'Развернуть панель чатов'}>
           <Icon name={shown ? 'chevron-right' : 'chevron-left'} size={16} />
           {shown && <span className="bar-label">Чаты</span>}
