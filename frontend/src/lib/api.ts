@@ -542,6 +542,8 @@ export const api = {
   anthillDelete: (id: string) => request<{ deleted: boolean }>('DELETE', `/anthill/sessions/${id}`),
   anthillConfirm: (actionId: string) => request<{ status: string; text: string; output: Record<string, unknown>; sources: AnthillSource[]; canUndo: boolean }>('POST', `/anthill/actions/${actionId}/confirm`, {}),
   anthillReject: (actionId: string) => request<{ status: string }>('POST', `/anthill/actions/${actionId}/reject`, {}),
+  anthillEdit: (actionId: string, patch: Record<string, string>) =>
+    request<{ id: string; preview: string; values: Record<string, string> }>('POST', `/anthill/actions/${actionId}/edit`, { patch }),
   anthillUndo: (actionId: string) => request<{ status: string; text: string }>('POST', `/anthill/actions/${actionId}/undo`, {}),
   anthillFeedback: (messageId: string, vote: 1 | -1, reason?: string, comment?: string) =>
     request<{ ok: true }>('POST', `/anthill/messages/${messageId}/feedback`, { vote, reason, comment }),
@@ -553,7 +555,7 @@ export const api = {
     id: string, question: string, context: AnthillContext | null,
     on: {
       onStatus?: (t: string) => void; onDelta?: (t: string) => void; onSources?: (s: AnthillSource[]) => void;
-      onAction?: (a: { id: string; tool: string; preview: string }) => void;
+      onAction?: (a: { id: string; tool: string; preview: string; fields: AnthillField[]; values: Record<string, string> }) => void;
       onDone?: (d: { messageId: string }) => void; onError?: (m: string) => void;
     },
   ): { stop: () => void; finished: Promise<void> } => {
@@ -1481,7 +1483,18 @@ export interface MaterialItem {
 export interface AnthillContext { type: 'task' | 'project' | 'chat' | 'meeting'; id: string; title?: string }
 export interface AnthillSource { kind: 'task' | 'message' | 'meeting' | 'project' | 'chat'; id: string; title: string; url: string }
 export interface AnthillSession { id: string; title: string; messages: number; updatedAt: string; context: { type: string; id: string } | null }
+/** Поле карточки действия: состав задаёт инструмент на сервере. */
+export interface AnthillField { key: string; label: string; type: 'text' | 'multiline' | 'date' | 'datetime' | string }
+export interface AnthillAction {
+  id: string;
+  tool: string;
+  status: string;
+  output: Record<string, unknown> | null;
+  /** Что можно поправить до «Создать»; пусто — карточка уже обработана. */
+  fields: AnthillField[];
+  values: Record<string, string>;
+}
 export interface AnthillMessage {
   id: string; role: 'user' | 'assistant'; content: string; citations: AnthillSource[]; createdAt: string;
-  action: { id: string; status: string; output: Record<string, unknown> | null } | null;
+  action: AnthillAction | null;
 }

@@ -95,6 +95,14 @@ describe('AnthillBot (e2e)', () => {
     const self = (await http$.post('/api/chats/self').set(O).expect(201)).body.data;
     expect((await http$.get(`/api/chats/${self.id}/scheduled`).set(O).expect(200)).body.data.items).toEqual([]);
 
+    // «Редактировать»: правка идёт мимо модели и переписывает карточку на месте
+    const edited = (await http$.post(`/api/anthill/actions/${action.id}/edit`).set(O)
+      .send({ patch: { text: 'позвонить подрядчику' } }).expect(201)).body.data;
+    expect(edited.preview).toContain('позвонить подрядчику');
+    expect(edited.values.text).toBe('позвонить подрядчику');
+    await http$.post(`/api/anthill/actions/${action.id}/edit`).set(O)
+      .send({ patch: { when: '2000-01-01T09:00' } }).expect(400); // время в прошлом
+
     const done = (await http$.post(`/api/anthill/actions/${action.id}/confirm`).set(O).expect(201)).body.data;
     expect(done.status).toBe('done');
     expect(done.canUndo).toBe(true);
@@ -113,5 +121,7 @@ describe('AnthillBot (e2e)', () => {
     });
     await http$.post(`/api/anthill/actions/${other.id}/reject`).set(O).expect(201);
     await http$.post(`/api/anthill/actions/${other.id}/confirm`).set(O).expect(409);
+    // и не поправить: карточка уже обработана
+    await http$.post(`/api/anthill/actions/${other.id}/edit`).set(O).send({ patch: { text: 'ещё раз' } }).expect(409);
   });
 });

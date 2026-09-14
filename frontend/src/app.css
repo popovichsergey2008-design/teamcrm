@@ -3971,3 +3971,8 @@
 .chat-row-anthill .anthill-mark { width: 26px; height: 26px; }
 .anthill-hint:focus-visible, .anthill-reason:focus-visible, .anthill-source:focus-visible,
 .anthill-session-open:focus-visible, .anthill-ctx:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Правка карточки — второй строкой внутри неё, поля во всю ширину. */
+.anthill-form { flex: 1 0 100%; display: flex; flex-direction: column; gap: 6px; }
+.anthill-form-row { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-xs); }
+.anthill-form-row textarea { resize: vertical; }
+.anthill-form-acts { display: flex; gap: 6px; }

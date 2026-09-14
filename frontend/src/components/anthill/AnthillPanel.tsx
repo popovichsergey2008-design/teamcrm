@@ -3,7 +3,7 @@ import { Icon } from '../Icon';
 import { RichText } from '../RichText';
 import { VoiceStatus } from '../VoiceStatus';
 import { api, ApiError } from '../../lib/api';
-import type { AnthillContext, AnthillMessage, AnthillSession, AnthillSource } from '../../lib/api';
+import type { AnthillAction, AnthillContext, AnthillMessage, AnthillSession, AnthillSource } from '../../lib/api';
 import { navigate } from '../../lib/router';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { stampLabel } from '../../lib/chat-text';
@@ -56,6 +56,8 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
   const [useCtx, setUseCtx] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [votes, setVotes] = useState<Record<string, 1 | -1>>({});
+  /** Карточка, открытая на правку: одна за раз — их и бывает одна. */
+  const [editing, setEditing] = useState<string | null>(null);
   const [err, setErr] = useState('');
   const stopRef = useRef<(() => void) | null>(null);
   const busy = live !== null;
@@ -103,7 +105,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     const acc: Live = { status: 'Думаю…', text: '', sources: [] };
     const show = () => setLive({ ...acc });
     show();
-    let pending: { id: string; tool: string; preview: string } | null = null;
+    let pending: { id: string; tool: string; preview: string; fields?: AnthillAction['fields']; values?: Record<string, string> } | null = null;
     let landed = false;
     const land = (messageId: string) => {
       if (landed) return;
@@ -111,7 +113,9 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
       setMessages((prev) => [...prev, {
         id: messageId, role: 'assistant', content: acc.text, citations: acc.sources,
         createdAt: new Date().toISOString(),
-        action: pending ? { id: pending.id, status: 'pending', output: null } : null,
+        action: pending
+          ? { id: pending.id, tool: pending.tool, status: 'pending', output: null, fields: pending.fields ?? [], values: pending.values ?? {} }
+          : null,
       }]);
     };
 
@@ -155,6 +159,13 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось выполнить действие');
     }
+  };
+
+  const saveEdit = async (messageId: string, actionId: string, patch: Record<string, string>) => {
+    const r = await api.anthillEdit(actionId, patch);
+    setMessages((prev) => prev.map((m) => (m.id === messageId && m.action
+      ? { ...m, content: r.preview, action: { ...m.action, values: r.values } }
+      : m)));
   };
 
   const vote = (messageId: string, v: 1 | -1, reason?: string) => {
@@ -298,6 +309,11 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
                     <button className="btn btn-primary btn-sm" onClick={() => { void act(m.id, m.action!.id, 'confirm'); }}>
                       <Icon name="check" size={13} /> Создать
                     </button>
+                    {m.action.fields.length > 0 && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing((cur) => (cur === m.id ? null : m.id))}>
+                        <Icon name="edit" size={13} /> Редактировать
+                      </button>
+                    )}
                     <button className="btn btn-ghost btn-sm" onClick={() => { void act(m.id, m.action!.id, 'reject'); }}>Отмена</button>
                     <span className="dim">пока не подтвердите — ничего не создано</span>
                   </>
@@ -309,6 +325,16 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
                       <Icon name="refresh" size={13} /> Отменить
                     </button>
                   </>
+                )}
+                {m.action.status === 'pending' && editing === m.id && (
+                  <ActionForm
+                    action={m.action}
+                    onCancel={() => setEditing(null)}
+                    onSave={async (patch) => {
+                      await saveEdit(m.id, m.action!.id, patch);
+                      setEditing(null);
+                    }}
+                  />
                 )}
                 {m.action.status === 'rejected' && <span className="badge badge-muted">отклонено</span>}
                 {m.action.status === 'undone' && <span className="badge badge-muted">отменено</span>}
@@ -377,6 +403,53 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Правка карточки действия перед созданием.
+ *
+ * Поля приходят с сервера вместе с действием: панель не знает, из чего состоит
+ * задача или напоминание, и не должна знать — завтра инструментов станет больше.
+ */
+function ActionForm({ action, onSave, onCancel }: {
+  action: AnthillAction;
+  onSave: (patch: Record<string, string>) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>(action.values);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const set = (key: string, v: string) => setValues((prev) => ({ ...prev, [key]: v }));
+  const save = async () => {
+    setBusy(true); setErr('');
+    try { await onSave(values); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось сохранить'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="anthill-form">
+      {action.fields.map((f) => (
+        <label key={f.key} className="anthill-form-row">
+          <span className="dim">{f.label}</span>
+          {f.type === 'multiline' ? (
+            <textarea className="input" rows={3} value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} />
+          ) : (
+            <input
+              className="input"
+              type={f.type === 'date' ? 'date' : f.type === 'datetime' ? 'datetime-local' : 'text'}
+              value={values[f.key] ?? ''}
+              onChange={(e) => set(f.key, e.target.value)}
+            />
+          )}
+        </label>
+      ))}
+      {err && <div className="error-text">{err}</div>}
+      <div className="anthill-form-acts">
+        <button className="btn btn-primary btn-sm" onClick={() => { void save(); }} disabled={busy}>Сохранить</button>
+        <button className="btn btn-ghost btn-sm" onClick={onCancel} disabled={busy}>Не менять</button>
+      </div>
+    </div>
   );
 }
 

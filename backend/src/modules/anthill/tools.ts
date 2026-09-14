@@ -38,6 +38,18 @@ export interface ToolDef {
   run?: (ctx: ToolContext, params: Record<string, unknown>) => Promise<ToolResult>;
   /** Только для write: карточка на подтверждение + нормализованные параметры. */
   preview?: (ctx: ToolContext, params: Record<string, unknown>) => Promise<{ text: string; params: Record<string, unknown> }>;
+  /**
+   * Что человек может поправить в карточке до «Создать» (ТЗ-6, разд. 62).
+   *
+   * Модель ошибается в мелочах — не в том проекте, срок на день раньше, название
+   * канцелярское. Переспрашивать её ради одного слова дольше, чем исправить рукой,
+   * поэтому карточка правится полями, а не новым вопросом.
+   */
+  fields?: { key: string; label: string; type: 'text' | 'multiline' | 'date' | 'datetime' }[];
+  /** Значения полей для формы правки — из сохранённых параметров действия. */
+  values?: (params: Record<string, unknown>) => Record<string, string>;
+  /** Применить правку: вернуть новые параметры и новую карточку. */
+  edit?: (ctx: ToolContext, params: Record<string, unknown>, patch: Record<string, string>) => Promise<{ text: string; params: Record<string, unknown> }>;
   execute?: (ctx: ToolContext, params: Record<string, unknown>) => Promise<{ text: string; output: Record<string, unknown>; sources: Source[] }>;
   undo?: (ctx: ToolContext, output: Record<string, unknown>) => Promise<string>;
 }
@@ -57,6 +69,36 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
   const { repo, tasks, chats, search, nl, ask } = deps;
+
+  /**
+   * Карточка задачи на подтверждение.
+   *
+   * Собирается и при первом предложении, и после правки полей — вид у неё обязан
+   * быть один: человек сверяет её глазами, и переехавшая строка читается как
+   * «агент передумал». Имена проекта и исполнителя после правки берём из базы:
+   * разбор речи их больше не подсказывает.
+   */
+  const taskCard = async (ctx: ToolContext, t: any, known?: { project?: string; assignee?: string }) => {
+    let project = known?.project;
+    if (!project && t.projectId) project = (await repo.project(ctx.tenantId, String(t.projectId)))?.name;
+    let assignee = known?.assignee;
+    if (!assignee && t.assigneeId) {
+      assignee = (await repo.users(ctx.tenantId)).find((u) => String(u.id) === String(t.assigneeId))?.full_name;
+    }
+    const lines = [
+      `Название: ${t.title}`,
+      t.description ? `Описание: ${clip(String(t.description), 400)}` : null,
+      `Исполнитель: ${assignee ?? 'не назначен'}`,
+      `Срок: ${t.deadline ? dateRu(t.deadline) : 'не задан'}`,
+      `Проект: ${project ?? '— не выбран —'}`,
+      Array.isArray(t.checklist) && t.checklist.length ? `Чек-лист: ${t.checklist.join('; ')}` : null,
+      'Не завершать без согласования с постановщиком: да',
+    ].filter(Boolean);
+    return `Создать задачу?\n${lines.join('\n')}`;
+  };
+
+  const reminderCard = (text: string, when: Date) =>
+    `Напомнить ${when.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}: «${text}»?`;
 
   const taskSource = (ctx: ToolContext, t: { id: string; title: string; project_id?: string; projectId?: string }): Source => ({
     kind: 'task', id: String(t.id), title: `#${t.id} ${t.title}`,
@@ -223,18 +265,34 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         if (draft.intent !== 'create_task' || !draft.task) throw new Error('Не понял, какую задачу создать — уточните, пожалуйста');
         const t = draft.task as any;
         const ctxp = (draft as any).context ?? { projects: [], users: [] };
-        const projectName = ctxp.projects?.find((x: any) => String(x.id) === String(t.projectId))?.name ?? '— не выбран —';
-        const assigneeName = ctxp.users?.find((x: any) => String(x.id) === String(t.assigneeId))?.name ?? 'не назначен';
-        const lines = [
-          `Название: ${t.title}`,
-          t.description ? `Описание: ${clip(String(t.description), 400)}` : null,
-          `Исполнитель: ${assigneeName}`,
-          `Срок: ${t.deadline ? dateRu(t.deadline) : 'не задан'}`,
-          `Проект: ${projectName}`,
-          Array.isArray(t.checklist) && t.checklist.length ? `Чек-лист: ${t.checklist.join('; ')}` : null,
-          'Не завершать без согласования с постановщиком: да',
-        ].filter(Boolean);
-        return { text: `Создать задачу?\n${lines.join('\n')}`, params: { intent: 'create_task', task: { ...t, requiresApproval: true } } };
+        return {
+          text: await taskCard(ctx, t, {
+            project: ctxp.projects?.find((x: any) => String(x.id) === String(t.projectId))?.name,
+            assignee: ctxp.users?.find((x: any) => String(x.id) === String(t.assigneeId))?.name,
+          }),
+          params: { intent: 'create_task', task: { ...t, requiresApproval: true } },
+        };
+      },
+      fields: [
+        { key: 'title', label: 'Название', type: 'text' },
+        { key: 'description', label: 'Описание', type: 'multiline' },
+        { key: 'deadline', label: 'Срок', type: 'date' },
+      ],
+      values: (p) => {
+        const t = (p.task ?? {}) as any;
+        return {
+          title: str(t.title, 300),
+          description: str(t.description, 4000),
+          deadline: t.deadline ? String(t.deadline).slice(0, 10) : '',
+        };
+      },
+      async edit(ctx, p, patch) {
+        const t = { ...((p.task ?? {}) as any) };
+        if (patch.title !== undefined) t.title = str(patch.title, 300);
+        if (patch.description !== undefined) t.description = str(patch.description, 4000);
+        if (patch.deadline !== undefined) t.deadline = patch.deadline ? patch.deadline.slice(0, 10) : null;
+        if (!t.title) throw new Error('У задачи должно быть название');
+        return { text: await taskCard(ctx, t), params: { ...p, task: t } };
       },
       async execute(ctx, p) {
         const res: any = await nl.apply(ctx.tenantId, ctx.user.userId, p as any);
@@ -257,7 +315,20 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         if (Number.isNaN(when.getTime())) throw new Error('Не понял, когда напомнить — назовите день и время');
         if (when.getTime() < ctx.now.getTime() + 30_000) throw new Error('Это время уже прошло — назовите будущее');
         const text = str(p.text, 500) || 'Напоминание';
-        return { text: `Напомнить ${when.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}: «${text}»?`, params: { text, when: when.toISOString() } };
+        return { text: reminderCard(text, when), params: { text, when: when.toISOString() } };
+      },
+      fields: [
+        { key: 'text', label: 'О чём напомнить', type: 'text' },
+        { key: 'when', label: 'Когда', type: 'datetime' },
+      ],
+      // datetime-local во фронте — без буквы Z и без секунд, иначе поле остаётся пустым
+      values: (p) => ({ text: str(p.text, 500), when: p.when ? new Date(String(p.when)).toISOString().slice(0, 16) : '' }),
+      async edit(ctx, p, patch) {
+        const text = str(patch.text ?? p.text, 500) || 'Напоминание';
+        const when = new Date(patch.when !== undefined ? patch.when : String(p.when));
+        if (Number.isNaN(when.getTime())) throw new Error('Укажите день и время');
+        if (when.getTime() < ctx.now.getTime() + 30_000) throw new Error('Это время уже прошло — выберите будущее');
+        return { text: reminderCard(text, when), params: { text, when: when.toISOString() } };
       },
       async execute(ctx, p) {
         const self = await chats.selfChat(ctx.tenantId, ctx.user);

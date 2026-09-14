@@ -107,12 +107,28 @@ export class AnthillRepository {
     return this.db.one<ActionRow>(`SELECT * FROM ai_tool_actions WHERE tenant_id=$1 AND user_id=$2 AND id=$3`, [tenantId, userId, id]);
   }
 
+  /** Правка карточки до подтверждения: меняются и параметры, и текст предложения. */
+  async updateActionInput(id: string, input: Record<string, unknown>): Promise<void> {
+    await this.db.query(`UPDATE ai_tool_actions SET input_json=$2::jsonb WHERE id=$1 AND status='pending'`, [id, JSON.stringify(input)]);
+  }
+
+  async setActionMessageText(actionId: string, text: string): Promise<void> {
+    await this.db.query(`UPDATE ai_messages SET content=$2 WHERE action_id=$1`, [actionId, text]);
+  }
+
+  /**
+   * Время подтверждения считаем в TS, а не в CASE по $2.
+   *
+   * Postgres выводит тип параметра один раз на весь запрос: один и тот же $2 как
+   * значение колонки и как операнд сравнения роняет ВЕСЬ запрос («inconsistent
+   * types deduced for parameter»), а не только эту ветку.
+   */
   async finishAction(id: string, status: 'done' | 'rejected' | 'failed' | 'undone', output?: Record<string, unknown> | null, error?: string | null): Promise<void> {
     await this.db.query(
       `UPDATE ai_tool_actions SET status=$2, output_json=COALESCE($3::jsonb, output_json), error=$4,
-              approved_at = CASE WHEN $2 = 'done' THEN now() ELSE approved_at END
+              approved_at = COALESCE($5::timestamptz, approved_at)
         WHERE id=$1`,
-      [id, status, output ? JSON.stringify(output) : null, error ?? null],
+      [id, status, output ? JSON.stringify(output) : null, error ?? null, status === 'done' ? new Date().toISOString() : null],
     );
   }
 

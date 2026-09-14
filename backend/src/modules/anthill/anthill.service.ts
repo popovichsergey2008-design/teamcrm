@@ -17,7 +17,7 @@ export type StreamEvent =
   | { type: 'status'; text: string }
   | { type: 'delta'; text: string }
   | { type: 'sources'; sources: Source[] }
-  | { type: 'action'; action: { id: string; tool: string; preview: string } }
+  | { type: 'action'; action: { id: string; tool: string; preview: string; fields: { key: string; label: string; type: string }[]; values: Record<string, string> } }
   | { type: 'done'; messageId: string }
   | { type: 'error'; text: string };
 
@@ -66,15 +66,31 @@ export class AnthillService {
   async messages(tenantId: string, userId: string, sessionId: string) {
     if (!(await this.repo.session(tenantId, userId, sessionId))) throw AppException.notFound('Разговор не найден');
     const rows = await this.repo.messages(sessionId);
-    const actions = new Map<string, { status: string; output: Record<string, unknown> | null }>();
+    const actions = new Map<string, ActionView>();
     for (const m of rows) if (m.action_id) {
       const a = await this.repo.action(tenantId, userId, m.action_id);
-      if (a) actions.set(String(m.action_id), { status: a.status, output: a.output_json });
+      if (a) actions.set(String(m.action_id), this.actionView(a));
     }
     return rows.map((m) => ({
       id: String(m.id), role: m.role, content: m.content, citations: m.citations ?? [], createdAt: m.created_at,
-      action: m.action_id ? { id: String(m.action_id), ...(actions.get(String(m.action_id)) ?? { status: 'pending', output: null }) } : null,
+      action: m.action_id
+        ? (actions.get(String(m.action_id)) ?? { id: String(m.action_id), tool: '', status: 'pending', output: null, fields: [], values: {} })
+        : null,
     }));
+  }
+
+  /**
+   * Карточка действия для экрана: статус, что можно поправить и текущие значения.
+   * Поля описывает сам инструмент — панель не знает, из чего состоит задача.
+   */
+  private actionView(a: { id: string; tool: string; status: string; output_json: Record<string, unknown> | null; input_json: Record<string, unknown> }): ActionView {
+    const def = this.tools.find((t) => t.name === a.tool);
+    const editable = a.status === 'pending' && !!def?.edit;
+    return {
+      id: String(a.id), tool: a.tool, status: a.status, output: a.output_json,
+      fields: editable ? (def?.fields ?? []) : [],
+      values: editable ? (def?.values?.(a.input_json) ?? {}) : {},
+    };
   }
 
   async remove(tenantId: string, userId: string, sessionId: string) {
@@ -141,7 +157,15 @@ export class AnthillService {
           const action = await this.repo.createAction({ tenantId, sessionId, userId: user.userId, tool: def.name, input: pv.params });
           const msg = await this.repo.addMessage({ tenantId, sessionId, role: 'assistant', content: pv.text, tools: used, actionId: String(action.id) });
           emit({ type: 'delta', text: pv.text });
-          emit({ type: 'action', action: { id: String(action.id), tool: def.name, preview: pv.text } });
+          emit({
+            type: 'action',
+            action: {
+              id: String(action.id), tool: def.name, preview: pv.text,
+              // поля для «Редактировать» — сразу: иначе поправить свежую карточку
+              // можно было бы только после перезагрузки разговора
+              fields: def.fields ?? [], values: def.values?.(pv.params) ?? {},
+            },
+          });
           emit({ type: 'done', messageId: String(msg.id) });
           await this.repo.touch(sessionId);
           return;
@@ -219,6 +243,28 @@ export class AnthillService {
     }
   }
 
+  /**
+   * «Редактировать» в карточке: человек правит поля до создания.
+   *
+   * Переспрашивать модель ради одного слова дольше, чем исправить рукой, поэтому
+   * правка идёт мимо модели — и карточка в истории переписывается на месте, чтобы
+   * при следующем открытии разговора на экране было то, что подтвердили.
+   */
+  async edit(tenantId: string, user: { userId: string; role: string }, actionId: string, patch: Record<string, string>) {
+    const action = await this.repo.action(tenantId, user.userId, actionId);
+    if (!action) throw AppException.notFound('Действие не найдено');
+    if (action.status !== 'pending') throw AppException.conflict('Это действие уже обработано');
+    const def = this.tools.find((t) => t.name === action.tool);
+    if (!def?.edit) throw AppException.conflict('Это действие правке не поддаётся');
+    const tctx: ToolContext = { tenantId, user, now: new Date(), base: this.base() };
+    let r: { text: string; params: Record<string, unknown> };
+    try { r = await def.edit(tctx, action.input_json, patch); }
+    catch (e) { throw AppException.validation((e as Error).message); }
+    await this.repo.updateActionInput(String(action.id), r.params);
+    await this.repo.setActionMessageText(String(action.id), r.text);
+    return { id: String(action.id), preview: r.text, values: def.values?.(r.params) ?? {} };
+  }
+
   async reject(tenantId: string, user: { userId: string }, actionId: string) {
     const action = await this.repo.action(tenantId, user.userId, actionId);
     if (!action) throw AppException.notFound('Действие не найдено');
@@ -250,6 +296,16 @@ export class AnthillService {
     await this.repo.feedback({ tenantId, messageId, userId, vote, reason, comment });
     return { ok: true };
   }
+}
+
+/** Карточка действия, как её видит панель. */
+interface ActionView {
+  id: string;
+  tool: string;
+  status: string;
+  output: Record<string, unknown> | null;
+  fields: { key: string; label: string; type: string }[];
+  values: Record<string, string>;
 }
 
 const STATUS_OF: Record<string, string> = {

@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { Response } from 'express';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
@@ -18,6 +18,10 @@ class StartDto {
 class AskDto {
   @IsString() @MinLength(2) @MaxLength(8000) question!: string;
   @IsOptional() @ValidateNested() @Type(() => ContextDto) context?: ContextDto;
+}
+class EditDto {
+  /** Значения полей карточки: их состав задаёт сам инструмент (fields). */
+  @IsObject() patch!: Record<string, string>;
 }
 class FeedbackDto {
   @IsInt() @IsIn([1, -1]) vote!: 1 | -1;
@@ -83,6 +87,12 @@ export class AnthillController {
   @Post('actions/:id/confirm')
   confirm(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.anthill.confirm(u.tenantId, u, id);
+  }
+
+  /** Поправить карточку до «Создать» — ТЗ-6, разд. 62. */
+  @Post('actions/:id/edit')
+  edit(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: EditDto) {
+    return this.anthill.edit(u.tenantId, u, id, dto.patch);
   }
 
   @Post('actions/:id/reject')
