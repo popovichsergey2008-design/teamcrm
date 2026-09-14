@@ -437,6 +437,22 @@ test('меню сообщения раскрывается вниз, когда 
   assert.equal(placePopover({ left: 4, top: 600, bottom: 628 }, 264, 320).x, 8);
 });
 
+test('черта «непрочитанные»: перед первым новым чужим, своё не считается', async () => {
+  const { firstUnreadId } = await load('lib/unread-line.ts');
+  const feed = [
+    { id: 1, author_id: 7 }, { id: 2, author_id: 5 }, { id: 3, author_id: 7 },
+    { id: 4, author_id: 5 }, { id: 5, author_id: 5 },
+  ];
+  // Сервер считает непрочитанными чужие после отметки «был здесь»: 2 → это 4 и 5.
+  assert.equal(firstUnreadId(feed, 2, 7), '4');
+  assert.equal(firstUnreadId(feed, 1, 7), '5');
+  assert.equal(firstUnreadId(feed, 3, 7), '2', 'своё сообщение (3) между чужими не в счёт');
+  assert.equal(firstUnreadId(feed, 0, 7), null, 'нечего выделять — черты нет');
+  assert.equal(firstUnreadId(feed, 99, 7), '2', 'непрочитанного больше, чем видно, — всё чужое новое');
+  assert.equal(firstUnreadId([{ id: 1, author_id: 7 }], 5, 7), null, 'в ленте только своё — черты нет');
+  assert.equal(firstUnreadId(feed, 2, '7'), '4', 'id приходят и строками, и числами');
+});
+
 test('виды задач на доске: делаю, помогаю, поручил, наблюдаю', async () => {
   const { filterBoard, countMatching, realPosition, filterActive } = await load('lib/board-filter.ts');
   // t1 — моя работа, t2 — я поставил другому, t3 — чужая целиком, t4 — я и поставил, и делаю

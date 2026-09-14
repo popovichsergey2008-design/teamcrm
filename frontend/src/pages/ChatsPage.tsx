@@ -23,6 +23,7 @@ import { MessageToTask } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
 import { placePopover, PopoverPlace } from '../lib/popover';
+import { firstUnreadId } from '../lib/unread-line';
 import { showToast, toastSaved } from '../lib/notifications';
 import { overlayProps } from '../lib/overlay';
 import type { User } from '../types';
@@ -137,9 +138,24 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatsLoaded, setChatsLoaded] = useState(false);
   const [msgLoading, setMsgLoading] = useState(false);
+  /**
+   * Черта «Непрочитанные сообщения»: id первого нового.
+   *
+   * Считается из цифры в списке чатов ДО открытия — сервер к этому моменту уже
+   * всё пометил прочитанным. Список берём через ссылку: openChat — useCallback,
+   * и в его замыкании лежал бы список на момент создания функции.
+   */
+  const [unreadFrom, setUnreadFrom] = useState<string | null>(null);
+  const chatsRef = useRef<Chat[]>([]);
+  useEffect(() => { chatsRef.current = chats; }, [chats]);
   const [users, setUsers] = useState<User[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  /** Где в ленте стоит черта: всё чужое от неё и ниже подсвечивается как новое. */
+  const unreadIndex = useMemo(
+    () => (unreadFrom ? messages.findIndex((m) => String(m.id) === unreadFrom) : -1),
+    [messages, unreadFrom],
+  );
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
   /**
@@ -318,34 +334,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   };
 
   /**
-   * «Пометить как непрочитанное» — как в Telegram.
+   * «Пометить как непрочитанное» — с этого сообщения, как просил заказчик.
    *
-   * Прочитал на бегу, вернуться некогда — помечаешь, и чат снова светится в списке.
-   * Открытый чат при этом закрываем: он и так «читается» — следующее же сообщение
-   * или возвращение во вкладку сняло бы пометку, не успев её показать.
+   * Оно и всё после него снова новые. Открытый чат закрываем: он «читается» самим
+   * фактом открытия — следующее сообщение или возврат во вкладку сняли бы пометку,
+   * не успев её показать.
    */
-  const markUnread = async (c: Chat) => {
-    if (String(c.id) === String(activeId)) { setActiveId(null); setMessages([]); setThread(null); }
-    setChats((prev) => prev.map((x) => (String(x.id) === String(c.id) ? { ...x, markedUnread: true } : x)));
-    try { await api.markChatUnread(String(c.id)); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось пометить'); }
-    finally { reload(); notifyChatsChanged(); }
-  };
-
-  /** Непрочитанное с конкретного сообщения: оно и всё после него. Чат закрываем — см. markUnread. */
   const markUnreadFrom = async (m: Message) => {
     if (!activeId) return;
     const chatId = activeId;
     setActiveId(null); setMessages([]); setThread(null);
     try { await api.markUnreadFromMessage(chatId, String(m.id)); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось пометить'); }
-    finally { reload(); notifyChatsChanged(); }
-  };
-
-  /** Обратное действие из того же меню: прочитал — снять пометку и счётчик, не открывая чат. */
-  const markRead = async (c: Chat) => {
-    setChats((prev) => prev.map((x) => (String(x.id) === String(c.id) ? { ...x, markedUnread: false, unread: 0 } : x)));
-    try { await api.markChatRead(String(c.id)); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось пометить'); }
     finally { reload(); notifyChatsChanged(); }
   };
@@ -599,8 +598,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
   const openChat = useCallback(async (id: string) => {
     setActiveId(id); setErr(''); setMessages([]); setMsgLoading(true); setView('chat');
+    const unreadBefore = chatsRef.current.find((c) => String(c.id) === String(id))?.unread ?? 0;
     try {
-      setMessages(await api.chatMessages(id)); // чтение помечается на сервере этим же запросом
+      const list = await api.chatMessages(id); // чтение помечается на сервере этим же запросом
+      setMessages(list);
+      setUnreadFrom(firstUnreadId(list, unreadBefore, user?.id));
       loadPinned(id);
       loadScheduled(id); // что я отложил в этот чат — видно сразу, а не после отправки
       // Шапка чата проекта должна отвечать «что это за чат» без похода в карточку проекта.
@@ -609,7 +611,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
       notifyChatsChanged(); // счётчик в шапке должен упасть сразу
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть чат'); }
     finally { setMsgLoading(false); }
-  }, [reload, loadPinned, loadScheduled]);
+  }, [reload, loadPinned, loadScheduled, user?.id]);
 
   /*
     Вернулись во вкладку с открытым чатом — значит прочитали.
@@ -676,6 +678,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     const el = feedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+  // …кроме случая, когда есть непрочитанное: тогда — к черте, чтобы читать с неё,
+  // а не мотать вверх в поисках, откуда начинается новое
+  useEffect(() => {
+    if (!unreadFrom) return;
+    const t = window.setTimeout(() => {
+      feedRef.current?.querySelector('.chat-unread-line')?.scrollIntoView({ block: 'center' });
+    }, 30);
+    return () => window.clearTimeout(t);
+  }, [unreadFrom, messages.length]);
 
   /**
    * Отправка.
@@ -687,6 +698,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   const send = async () => {
     const text = draft.trim();
     if (!activeId || (!text && !pending.length)) return;
+    setUnreadFrom(null); // ответил — значит, дочитал: черта больше не нужна
     const files = pending.map((p) => p.file);
     setDraft('');
     clearPending();
@@ -1331,7 +1343,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
             key={c.id} chat={c} active={String(c.id) === String(activeId)}
             group={c.kind === 'dm' ? groupFor(c.peerId) : undefined}
             onClick={() => openChat(c.id)} onStar={() => star(c)}
-            onUnread={() => markUnread(c)} onRead={() => markRead(c)}
           />
         ))}
 
@@ -1342,7 +1353,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
             <ChatRow
               key={selfChat.id} chat={selfChat} active={String(selfChat.id) === String(activeId)}
               onClick={() => openChat(selfChat.id)} onStar={() => star(selfChat)}
-              onUnread={() => markUnread(selfChat)} onRead={() => markRead(selfChat)}
             />
           )
           : (
@@ -1357,8 +1367,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
         {channels.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Каналы</div>}
         {channels.filter((c) => match(c.title)).map((c) => (
-          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)}
-            onUnread={() => markUnread(c)} onRead={() => markRead(c)} />
+          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)} />
         ))}
 
         {/* Внешние — отдельной группой и с пометкой: в этих разговорах есть человек
@@ -1396,8 +1405,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
 
         {external.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Внешние</div>}
         {external.filter((c) => match(c.title)).map((c) => (
-          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)}
-            onUnread={() => markUnread(c)} onRead={() => markRead(c)} />
+          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)} />
         ))}
 
         {dms.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Личные</div>}
@@ -1405,14 +1413,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           <ChatRow
             key={c.id} chat={c} active={String(c.id) === String(activeId)} group={groupFor(c.peerId)}
             onClick={() => openChat(c.id)} onStar={() => star(c)}
-            onUnread={() => markUnread(c)} onRead={() => markRead(c)}
           />
         ))}
 
         {groups.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Группы и проекты</div>}
         {groups.filter((c) => match(c.title)).map((c) => (
-          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)}
-            onUnread={() => markUnread(c)} onRead={() => markRead(c)} />
+          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)} />
         ))}
 
         {others.filter((u) => match(u.fullName)).length > 0 && <div className="chat-group-head">Написать впервые</div>}
@@ -1763,15 +1769,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                 >
                   <Icon name="search" size={14} />
                 </button>
-                {/* И из открытого разговора тоже: «дочитаю потом» решают, уже читая. */}
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => markUnread(active)}
-                  title="Пометить как непрочитанное и вернуться позже"
-                  aria-label="Пометить как непрочитанное"
-                >
-                  <Icon name="mail" size={14} />
-                </button>
                 {active.kind === 'group' && (
                   <button className="btn btn-ghost btn-sm" title="Участники и настройки группы"
                           onClick={() => setManageOpen(true)}><Icon name="settings" /></button>
@@ -1898,12 +1895,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                     </div>
                   );
                 }
+                const isNew = unreadIndex >= 0 && i >= unreadIndex && !mine;
                 return (
                   <div key={m.id} data-msg={String(m.id)}>
                     {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
+                    {/* Черта, как в Telegram: отсюда и ниже — то, чего вы ещё не видели. */}
+                    {unreadFrom === String(m.id) && <div className="chat-unread-line">Непрочитанные сообщения</div>}
                     {/* Время — ПОД плашкой, а не внутри неё: серая строчка на цветном
                         пузыре не читалась вовсе, а место в углу отъедала. */}
-                    <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === m.id) ? ' chat-match' : ''}`}>
+                    <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === m.id) ? ' chat-match' : ''}${isNew ? ' chat-new' : ''}`}>
                       <div className={`chat-msg ${mine && !m.is_ai ? 'mine' : ''}${m.is_ai ? ' chat-msg-ai' : ''}`}>
                         {m.is_ai && <div className="chat-author"><Icon name="sparkles" size={11} /> AI-помощник</div>}
                         {/* Кто именно писал со стороны: через месяц «внешний участник»
@@ -2499,40 +2499,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   );
 }
 
-function ChatRow({ chat, active, group, onClick, onStar, onUnread, onRead }: {
+function ChatRow({ chat, active, group, onClick, onStar }: {
   chat: Chat; active: boolean; group?: string; onClick: () => void;
   /** Закрепить сверху. В списке из сорока переписок нужные четыре ищут глазами. */
   onStar?: () => void;
-  /** «Пометить как непрочитанное» / «прочитанное» — как в Telegram, из меню чата. */
-  onUnread?: () => void;
-  onRead?: () => void;
 }) {
   const icon = chat.kind === 'dm' ? (chat.title?.[0]?.toUpperCase() ?? '?') : '#';
-  /*
-    Меню чата — по «…» и по правой кнопке, как в Telegram.
-
-    Открывается координатами окна (position: fixed): список чатов прокручивается,
-    и меню внутри него обрезалось бы у нижних строк — на этом уже обжигались с
-    действиями сообщений в ветке.
-  */
-  const [menu, setMenu] = useState<PopoverPlace | null>(null);
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
-    const t = window.setTimeout(() => document.addEventListener('click', close), 0);
-    return () => { window.clearTimeout(t); document.removeEventListener('click', close); };
-  }, [menu]);
-  const openMenu = (x: number, y: number) =>
-    setMenu(placePopover({ left: x, top: y, bottom: y }, 140, window.innerWidth));
-  const hasUnread = chat.unread > 0 || chat.markedUnread === true;
-
   return (
     <div className={`chat-row-wrap${active ? ' active' : ''}`}>
-    <button
-      className={`chat-row ${active ? 'active' : ''}`}
-      onClick={onClick}
-      onContextMenu={(e) => { if (!onUnread) return; e.preventDefault(); openMenu(e.clientX, e.clientY); }}
-    >
+    <button className={`chat-row ${active ? 'active' : ''}`} onClick={onClick}>
       {/* у личного диалога — лицо собеседника: по десятку одинаковых кружков с буквой
           чат не находится взглядом, а по фотографии находится сразу */}
       <Avatar path={chat.avatarUrl ?? null} fallback={icon} className="avatar-sm" />
@@ -2550,10 +2525,6 @@ function ChatRow({ chat, active, group, onClick, onStar, onUnread, onRead }: {
         )}
       </span>
       {chat.unread > 0 && <span className="chat-unread">{chat.unread}</span>}
-      {/* Ручная пометка без новых сообщений — точка, а не цифра: цифра врала бы «есть новое». */}
-      {chat.unread === 0 && chat.markedUnread && (
-        <span className="chat-unread chat-unread-dot" title="Помечено как непрочитанное" aria-label="Помечено как непрочитанное" />
-      )}
     </button>
     {/* Звезда вынесена из кнопки чата: кнопку внутрь кнопки не вложить, а закреплять
         нужно, не открывая переписку. */}
@@ -2566,39 +2537,6 @@ function ChatRow({ chat, active, group, onClick, onStar, onUnread, onRead }: {
       >
         <Icon name="star" size={13} />
       </button>
-    )}
-    {onUnread && (
-      <button
-        className="chat-star chat-more"
-        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu(r.left, r.bottom); }}
-        title="Ещё"
-        aria-label="Действия с чатом"
-      >
-        <Icon name="more" size={13} />
-      </button>
-    )}
-    {menu && onUnread && (
-      <span
-        className="msg-menu pop-fixed"
-        role="menu"
-        style={{ left: menu.x, top: menu.y, transform: menu.up ? 'translateY(-100%)' : undefined }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {hasUnread ? (
-          <button className="msg-menu-item" onClick={() => { setMenu(null); onRead?.(); }}>
-            <Icon name="check" size={13} /> Пометить как прочитанное
-          </button>
-        ) : (
-          <button className="msg-menu-item" onClick={() => { setMenu(null); onUnread(); }}>
-            <Icon name="mail" size={13} /> Пометить как непрочитанное
-          </button>
-        )}
-        {onStar && (
-          <button className="msg-menu-item" onClick={() => { setMenu(null); onStar(); }}>
-            <Icon name="star" size={13} /> {chat.favorite ? 'Убрать из избранного' : 'Закрепить сверху'}
-          </button>
-        )}
-      </span>
     )}
     </div>
   );
