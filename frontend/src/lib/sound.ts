@@ -156,6 +156,39 @@ export function stopRingtone(): void {
   ringStop = null;
 }
 
+/**
+ * Гудки у звонящего, пока никто не подошёл.
+ *
+ * Заказчик: «звонок идёт визуально, а звука не было». У того, кого зовут, звонит
+ * телефон; а тот, кто звонит, смотрел на пустую комнату в тишине и не понимал,
+ * идёт ли вызов вообще. Длинный гудок раз в четыре секунды — как в телефоне;
+ * замолкает, когда кто-то вошёл, или сам через минуту.
+ */
+const BACK_PERIOD_MS = 4000;
+let backTimer: ReturnType<typeof setInterval> | null = null;
+let backStop: ReturnType<typeof setTimeout> | null = null;
+
+function ringbackOnce(): void {
+  const audio = context();
+  if (!audio) return;
+  note(audio.currentTime, 425, 1.0, 0.08);
+}
+
+export function startRingback(): void {
+  if (doNotDisturb || !soundPrefs().calls) return;
+  if (backTimer) return;
+  ringbackOnce();
+  backTimer = setInterval(ringbackOnce, BACK_PERIOD_MS);
+  backStop = setTimeout(stopRingback, RING_LIMIT_MS);
+}
+
+export function stopRingback(): void {
+  if (backTimer) clearInterval(backTimer);
+  if (backStop) clearTimeout(backStop);
+  backTimer = null;
+  backStop = null;
+}
+
 /** Проба звука из настроек: человек должен услышать ровно то, что его ждёт. */
 export function previewSound(kind: 'messages' | 'calls'): void {
   const audio = context();

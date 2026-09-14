@@ -10,7 +10,7 @@ import { MiniPerson, callTime, currentScreen, mergeTrack } from '../lib/call-min
 import { openPipWindow, pipSupported } from '../lib/pip';
 import { watchSpeaking } from '../lib/speaking';
 import { diag } from '../lib/diag';
-import { playKnock } from '../lib/sound';
+import { playKnock, startRingback, stopRingback } from '../lib/sound';
 import { useAuth } from '../state/auth';
 
 /**
@@ -52,6 +52,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
   const isGuest = !!guest;
   const [state, setState] = useState<'connecting' | 'connected' | 'reconnecting' | 'closed'>('connecting');
   const [peers, setPeers] = useState<Peer[]>([]);
+  // Гудки звонящему: позвали людей, а в комнате пока никого. Вошёл первый — тишина.
+  useEffect(() => {
+    if (inviteUserIds.length > 0 && peers.length === 0 && !isGuest) startRingback();
+    else stopRingback();
+    return () => stopRingback();
+  }, [inviteUserIds.length, peers.length, isGuest]);
   const [tracks, setTracks] = useState<RemoteTrack[]>([]);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(false);

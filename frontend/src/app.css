@@ -3862,3 +3862,17 @@
 /* Созвон из панели: всплывашка выбора людей — от правого края колонки влево. */
 .bar-call { position: relative; }
 .bar-call-pop { top: 0; right: calc(100% + 8px); }
+
+/*
+  Второстепенные кнопки композера.
+
+  В разделе — в ряд, как раньше. В окне поверх CRM — второй строкой под полем и
+  только по «+»: поле ввода должно оставаться широким, а не сжиматься до щели.
+*/
+.chat-input-extra { display: contents; }
+.chat-input-extra-overlay { display: none; }
+.chat-input-extra-overlay.open { display: flex; flex-basis: 100%; order: 10; gap: 6px; flex-wrap: wrap; }
+.chats-overlay .chat-input { flex-wrap: wrap; padding: 8px 12px; }
+.chats-overlay .chat-input .btn.active { background: var(--accent-soft); color: var(--accent); }
+/* Всплывашка «отложить» в узком окне — от левого края, иначе уезжает за экран. */
+.chats-overlay .chat-later-pick { right: auto; left: 0; }

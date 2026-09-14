@@ -265,6 +265,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * два столбца справа не поместятся, и открытие одного закрывает другой.
    */
   const [infoOpen, setInfoOpen] = useState(false);
+  /** В окне поверх CRM второстепенные кнопки композера спрятаны за «+». */
+  const [extraOpen, setExtraOpen] = useState(false);
   /** Открытая ветка для обработчиков сокета: они живут дольше одного отрисованного кадра. */
   const threadRef = useRef<{ rootId: string; messages: Message[] } | null>(null);
   useEffect(() => { threadRef.current = thread; }, [thread]);
@@ -2305,6 +2307,25 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                 // Enter отправляет, Shift+Enter переносит строку — как в мессенджерах.
                 autoGrow
               />
+              {/*
+                Второстепенные действия — голосовое, AI голосом, запись экрана, отложить.
+
+                В окне поверх CRM они не помещаются в строку: поле ввода сжималось до
+                щели, а кнопки стояли лесенкой — заказчик назвал это «бардак». Там они
+                живут за одной кнопкой «+», в разделе — как раньше, в ряд.
+              */}
+              {overlay && (
+                <button
+                  className={`btn btn-ghost btn-sm${extraOpen ? ' active' : ''}`}
+                  onClick={() => setExtraOpen((v) => !v)}
+                  title={extraOpen ? 'Скрыть действия' : 'Ещё: голосовое, AI, запись экрана, отложить'}
+                  aria-label="Ещё действия"
+                  aria-expanded={extraOpen}
+                >
+                  <Icon name={extraOpen ? 'close' : 'plus'} size={16} />
+                </button>
+              )}
+              <span className={`chat-input-extra${overlay ? ' chat-input-extra-overlay' : ''}${extraOpen ? ' open' : ''}`}>
               {/* Голосовое: сказать быстрее, чем напечатать, — но только если сказанное
                   потом можно найти. Расшифровка приходит с сервера в тело сообщения. */}
               <button
@@ -2418,6 +2439,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                     </span>
                   </span>
                 )}
+              </span>
               </span>
               <button
                 className="btn btn-primary btn-sm"
