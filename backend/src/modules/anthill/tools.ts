@@ -1,5 +1,9 @@
 import { AnthillRepository, Source } from './anthill.repository';
 import { nextRun, parseSchedule, scheduleLabel } from './schedule-ru';
+import { FilesService } from '../files/files.service';
+import { TaskCardService } from '../taskcard/taskcard.service';
+import { extractText } from '../knowledge/file-text';
+import { buildDocx, DOCX_MIME } from '../../common/files/docx.util';
 import { TasksService } from '../tasks/tasks.service';
 import { ChatsService } from '../chats/chats.service';
 import { SearchService } from '../search/search.service';
@@ -59,6 +63,8 @@ export interface ToolDef {
 
 export interface ToolDeps {
   repo: AnthillRepository;
+  files: FilesService;
+  taskcard: TaskCardService;
   tasks: TasksService;
   chats: ChatsService;
   search: SearchService;
@@ -71,7 +77,19 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, tasks, chats, search, nl, ask } = deps;
+  const { repo, tasks, chats, search, nl, ask, files, taskcard } = deps;
+
+  /** Файл целиком в память: разбор текста иначе не сделать, размер ограничен выше. */
+  const fileBuffer = async (tenantId: string, fileId: string): Promise<Buffer> => {
+    const { stream } = await files.getForDownload(tenantId, fileId);
+    const chunks: Buffer[] = [];
+    for await (const c of stream as AsyncIterable<Buffer>) chunks.push(Buffer.from(c));
+    return Buffer.concat(chunks);
+  };
+
+  const sizeHuman = (bytes: number) => (bytes > 1024 * 1024
+    ? `${(bytes / 1024 / 1024).toFixed(1)} МБ`
+    : `${Math.max(1, Math.round(bytes / 1024))} КБ`);
 
   /**
    * Карточка задачи на подтверждение.
@@ -255,6 +273,40 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         for (const pe of (r.people as any[]).slice(0, 5)) parts.push(`сотрудник ${pe.full_name}${pe.position ? ` (${pe.position})` : ''}`);
         for (const d of (r.docs as any[]).slice(0, 5)) parts.push(`документ «${d.title}»`);
         return { text: parts.length ? parts.join('\n') : 'Ничего не нашлось.', sources };
+      },
+    },
+
+    {
+      name: 'list_files', kind: 'read',
+      description: 'Какие файлы приложены к задаче или к чату: имя, тип, размер. Нужен, когда просят «посмотри вложение», «что в файле» и неизвестно, какой именно файл имеется в виду.',
+      params: { taskId: 'номер задачи (или)', chatId: 'номер чата' },
+      async run(ctx, p) {
+        const taskId = str(p.taskId, 20);
+        const chatId = str(p.chatId, 20);
+        const rows = taskId
+          ? await repo.taskFiles(ctx.tenantId, taskId)
+          : chatId ? await repo.chatFiles(ctx.tenantId, ctx.user.userId, chatId) : [];
+        if (!rows.length) return { text: 'Вложений нет.', sources: [] };
+        const lines = rows.map((f) => `#${f.id} ${f.file_name} · ${sizeHuman(Number(f.size_bytes))}`);
+        return { text: `Вложения:\n${lines.join('\n')}`, sources: [] };
+      },
+    },
+    {
+      name: 'read_file', kind: 'read',
+      description: 'Прочитать содержимое файла: PDF, docx, xlsx, txt, csv, md. Сначала возьми номер файла из list_files. Картинки и сканы без текстового слоя прочитать нельзя.',
+      params: { fileId: 'номер файла из list_files' },
+      async run(ctx, p) {
+        const fileId = str(p.fileId, 20);
+        const meta = await repo.fileMeta(ctx.tenantId, fileId);
+        if (!meta) return { text: 'Такого файла нет.', sources: [] };
+        const buf = await fileBuffer(ctx.tenantId, fileId);
+        const got = await extractText(buf, meta.file_name, meta.content_type);
+        if (!got) {
+          // Честно говорим, что содержимого нет: молчаливый пустой ответ человек
+          // принимает за «в файле ничего важного», и это худший исход.
+          return { text: `Файл «${meta.file_name}» прочитать не удалось: это картинка, скан без текста или защищённый документ.`, sources: [] };
+        }
+        return { text: `Файл «${meta.file_name}»:\n${clip(got.text, 12000)}`, sources: [] };
       },
     },
 
@@ -462,6 +514,85 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       async undo(ctx, output) {
         await repo.deleteSkill(ctx.tenantId, ctx.user.userId, String(output.skillId));
         return 'Навык удалён.';
+      },
+    },
+    {
+      name: 'create_document', kind: 'write',
+      description: 'Собрать документ (отчёт, заметку, список) и отдать человеку файлом: «сделай отчёт по проекту и приложи к задаче», «собери заметку в мои Заметки». format — docx, md, txt или csv. target — task (вложением в задачу), chat (сообщением в чат) или notes (в «Заметки»).',
+      params: {
+        title: 'название документа', content: 'полный текст документа',
+        format: 'docx | md | txt | csv', target: 'task | chat | notes', targetId: 'номер задачи или чата, если target не notes',
+      },
+      async preview(_ctx, p) {
+        const title = str(p.title, 160);
+        const content = String(p.content ?? '').trim();
+        if (!title) throw new Error('Не понял, как назвать документ');
+        if (content.length < 20) throw new Error('Документ пустой — скажите, что в нём должно быть');
+        const format = ['docx', 'md', 'txt', 'csv'].includes(String(p.format)) ? String(p.format) : 'docx';
+        const target = ['task', 'chat', 'notes'].includes(String(p.target)) ? String(p.target) : 'notes';
+        const where = target === 'task' ? `вложением к задаче #${str(p.targetId, 20)}`
+          : target === 'chat' ? `сообщением в чат #${str(p.targetId, 20)}` : 'в ваши «Заметки»';
+        return {
+          text: `Сохранить документ?\nНазвание: ${title}.${format}\nКуда: ${where}\nНачало:\n${clip(content, 600)}`,
+          params: { title, content, format, target, targetId: str(p.targetId, 20) },
+        };
+      },
+      fields: [
+        { key: 'title', label: 'Название', type: 'text' },
+        { key: 'content', label: 'Текст документа', type: 'multiline' },
+      ],
+      values: (p) => ({ title: str(p.title, 160), content: String(p.content ?? '') }),
+      async edit(_ctx, p, patch) {
+        const title = str(patch.title ?? p.title, 160);
+        const content = String(patch.content ?? p.content ?? '').trim();
+        if (!title) throw new Error('Нужно название документа');
+        if (content.length < 20) throw new Error('В документе должен быть текст');
+        const target = String(p.target ?? 'notes');
+        const where = target === 'task' ? `вложением к задаче #${str(p.targetId, 20)}`
+          : target === 'chat' ? `сообщением в чат #${str(p.targetId, 20)}` : 'в ваши «Заметки»';
+        return {
+          text: `Сохранить документ?\nНазвание: ${title}.${String(p.format ?? 'docx')}\nКуда: ${where}\nНачало:\n${clip(content, 600)}`,
+          params: { ...p, title, content },
+        };
+      },
+      async execute(ctx, p) {
+        const title = str(p.title, 160);
+        const content = String(p.content ?? '');
+        const format = String(p.format ?? 'docx');
+        const target = String(p.target ?? 'notes');
+        const buffer = format === 'docx' ? await buildDocx(title, content) : Buffer.from(content, 'utf8');
+        const mime = format === 'docx' ? DOCX_MIME
+          : format === 'csv' ? 'text/csv; charset=utf-8'
+            : format === 'md' ? 'text/markdown; charset=utf-8' : 'text/plain; charset=utf-8';
+        const fileName = `${title.replace(/[^\p{L}\p{N} ._-]+/gu, ' ').trim().slice(0, 80) || 'Документ'}.${format}`;
+
+        if (target === 'task') {
+          const taskId = str(p.targetId, 20);
+          const att = await taskcard.attachUploaded(ctx.tenantId, taskId, ctx.user.userId, { buffer, originalname: fileName, mimetype: mime });
+          const t = await repo.taskFull(ctx.tenantId, taskId);
+          return {
+            text: `Документ «${att.fileName}» приложен к задаче #${taskId}.`,
+            output: { fileId: String(att.fileId), taskId, kind: 'task' },
+            sources: t ? [taskSource(ctx, { id: String(t.id), title: t.title, project_id: String(t.project_id) })] : [],
+          };
+        }
+
+        const chatId = target === 'chat' ? str(p.targetId, 20) : String((await chats.selfChat(ctx.tenantId, ctx.user)).id);
+        const uploaded = await files.upload({
+          tenantId: ctx.tenantId, userId: ctx.user.userId, buffer, fileName, contentType: mime, ownerKind: 'chat_attachment',
+        });
+        await chats.send(ctx.tenantId, chatId, ctx.user, `📄 ${title}`, String(uploaded.id));
+        const where = target === 'chat' ? `в чат #${chatId}` : 'в ваши «Заметки»';
+        return {
+          text: `Документ «${fileName}» отправлен ${where}.`,
+          output: { fileId: String(uploaded.id), chatId, kind: 'chat' },
+          sources: [{ kind: 'chat', id: chatId, title: target === 'chat' ? 'Чат' : 'Заметки', url: `${ctx.base}/chat/${chatId}` }],
+        };
+      },
+      async undo(ctx, output) {
+        // Файл удаляем; сообщение с ним остаётся — чужую переписку агент не правит.
+        await files.delete(ctx.tenantId, String(output.fileId), ctx.user).catch(() => undefined);
+        return 'Документ удалён.';
       },
     },
     {

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx';
+import { buildDocx, DOCX_MIME } from '../../common/files/docx.util';
 import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
@@ -37,18 +37,6 @@ const EXECUTE_SYSTEM = [
   `Маркер «${OFFLINE_MARKER}» используй ТОЛЬКО если задача физически невыполнима ИИ (нужен звонок, встреча, съёмка, выезд, покупка, подпись на бумаге) — тогда начни ответ с него и объясни, что сделать человеку.`,
   'Нехватка деталей в текстовой задаче — НЕ повод для этого маркера: всё равно выдай черновик.',
 ].join(' ');
-
-const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-
-/** Готовый результат агента → .docx (кириллица без шрифтовой возни). */
-async function buildDocx(title: string, body: string): Promise<Buffer> {
-  const paragraphs = [
-    new Paragraph({ text: title, heading: HeadingLevel.HEADING_1 }),
-    ...body.split('\n').map((line) => new Paragraph({ children: [new TextRun(line)] })),
-  ];
-  const doc = new Document({ creator: 'TeamCRM · ИИ-агент', sections: [{ children: paragraphs }] });
-  return Packer.toBuffer(doc);
-}
 
 /** Грубая эвристика: задача явно про офлайн/физическое действие (для отказа без обращения к LLM). */
 function looksOffline(text: string): boolean {

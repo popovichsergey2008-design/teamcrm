@@ -6,6 +6,8 @@ import { ChatsService } from '../chats/chats.service';
 import { SearchService } from '../search/search.service';
 import { NlService } from '../nl/nl.service';
 import { AskService } from '../assistant/ask.service';
+import { FilesService } from '../files/files.service';
+import { TaskCardService } from '../taskcard/taskcard.service';
 import { AnthillRepository, ScheduleRow, SkillRow, Source } from './anthill.repository';
 import { buildTools, ToolContext, ToolDef } from './tools';
 import { nextRun, parseSchedule, Schedule, scheduleLabel } from './schedule-ru';
@@ -45,8 +47,9 @@ export class AnthillService {
     private readonly repo: AnthillRepository,
     private readonly ai: AiService,
     tasks: TasksService, chats: ChatsService, search: SearchService, nl: NlService, ask: AskService,
+    files: FilesService, taskcard: TaskCardService,
   ) {
-    this.tools = buildTools({ repo, tasks, chats, search, nl, ask });
+    this.tools = buildTools({ repo, tasks, chats, search, nl, ask, files, taskcard });
   }
 
   private base() { return (process.env.APP_BASE_URL || 'https://teamsmrt.com').replace(/\/+$/, ''); }
@@ -569,6 +572,7 @@ const STATUS_OF: Record<string, string> = {
   search_tasks: 'Ищу задачи…', get_task: 'Читаю задачу…', search_messages: 'Ищу в переписке…',
   chat_recent: 'Читаю чат…', whats_missed: 'Собираю пропущенное…', get_project: 'Смотрю проект…',
   search_meetings: 'Ищу миты…', get_meeting: 'Читаю итог мита…', team_status: 'Считаю по доскам…', global_search: 'Ищу по всему…',
+  list_files: 'Смотрю вложения…', read_file: 'Читаю файл…',
 };
 
 function extractJson(raw: string): any {

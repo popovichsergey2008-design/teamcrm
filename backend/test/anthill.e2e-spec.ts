@@ -272,4 +272,40 @@ describe('AnthillBot (e2e)', () => {
 
     await http$.delete(`/api/anthill/responses/${resp.id}`).set(O).expect(200);
   });
+
+  it('документ: собирается в файл, уходит в «Заметки» и убирается откатом', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'AB7', email: `ab7_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const session = (await http$.post('/api/anthill/sessions').set(O).send({}).expect(201)).body.data;
+
+    const action = await repo.createAction({
+      tenantId: String(owner.user.tenantId), sessionId: String(session.id), userId: String(owner.user.id),
+      tool: 'create_document',
+      input: {
+        title: 'Отчёт за неделю', format: 'txt', target: 'notes',
+        content: 'Сделано: три задачи.\nВ работе: две.\nРиски: нет.',
+      },
+    });
+
+    const self = (await http$.post('/api/chats/self').set(O).expect(201)).body.data;
+    const before = (await http$.get(`/api/chats/${self.id}/messages`).set(O).expect(200)).body.data.length;
+
+    const done = (await http$.post(`/api/anthill/actions/${action.id}/confirm`).set(O).expect(201)).body.data;
+    expect(done.status).toBe('done');
+    expect(done.text).toContain('Отчёт за неделю.txt');
+
+    const after = (await http$.get(`/api/chats/${self.id}/messages`).set(O).expect(200)).body.data;
+    expect(after.length).toBe(before + 1);
+    const message = after[after.length - 1];
+    expect(message.file_id).toBeTruthy();
+    // файл настоящий: его можно скачать, и внутри то, что собрали
+    const dl = await http$.get(`/api/files/${message.file_id}`).set(O).expect(200);
+    expect(dl.text || String(dl.body)).toContain('Сделано: три задачи.');
+
+    // откат убирает файл, но чужую переписку не правит — сообщение остаётся
+    await http$.post(`/api/anthill/actions/${action.id}/undo`).set(O).expect(201);
+    await http$.get(`/api/files/${message.file_id}`).set(O).expect(404);
+    expect((await http$.get(`/api/chats/${self.id}/messages`).set(O).expect(200)).body.data.length).toBe(before + 1);
+  });
 });

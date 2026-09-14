@@ -287,6 +287,41 @@ export class AnthillRepository {
     return !row?.off;
   }
 
+  // ── файлы (разд. 23) ──
+
+  /** Вложения задачи: имя, тип, размер — чтобы агент знал, что вообще можно прочитать. */
+  taskFiles(tenantId: string, taskId: string) {
+    return this.db.many<{ id: string; file_name: string; content_type: string; size_bytes: string; created_at: Date }>(
+      `SELECT f.id, f.file_name, f.content_type, f.size_bytes, f.created_at
+         FROM task_attachments a JOIN files f ON f.id = a.file_id
+        WHERE a.tenant_id=$1 AND a.task_id=$2
+        ORDER BY f.id DESC LIMIT 30`,
+      [tenantId, taskId],
+    );
+  }
+
+  /** Вложения чата — только того, который человеку доступен (та же область видимости). */
+  chatFiles(tenantId: string, userId: string, chatId: string) {
+    return this.db.many<{ id: string; file_name: string; content_type: string; size_bytes: string; created_at: Date; author: string | null }>(
+      `SELECT f.id, f.file_name, f.content_type, f.size_bytes, f.created_at, u.full_name AS author
+         FROM chat_message_files mf
+         JOIN files f ON f.id = mf.file_id
+         JOIN chat_messages m ON m.id = mf.message_id
+         JOIN chats c ON c.id = m.chat_id
+    LEFT JOIN users u ON u.id = m.author_id
+        WHERE m.tenant_id=$1 AND m.chat_id=$3 AND m.deleted_at IS NULL AND ${AnthillRepository.CHAT_SCOPE}
+        ORDER BY f.id DESC LIMIT 30`,
+      [tenantId, userId, chatId],
+    );
+  }
+
+  fileMeta(tenantId: string, fileId: string) {
+    return this.db.one<{ id: string; file_name: string; content_type: string; size_bytes: string }>(
+      `SELECT id, file_name, content_type, size_bytes FROM files WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, fileId],
+    );
+  }
+
   // ── навыки (ТЗ-6, разд. 16–19) ──
 
   /**
