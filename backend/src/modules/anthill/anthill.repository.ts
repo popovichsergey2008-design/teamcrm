@@ -247,17 +247,38 @@ export class AnthillRepository {
     return (r.rowCount ?? 0) > 0;
   }
 
-  /** Что пора запускать. Пояс и роль владельца — тем же запросом: они нужны сразу. */
-  dueSchedules(limit = 20): Promise<(ScheduleRow & { timezone: string | null; role: string })[]> {
-    return this.db.many<ScheduleRow & { timezone: string | null; role: string }>(
-      `SELECT s.*, u.timezone, COALESCE(r.code, 'member') AS role
-         FROM ai_scheduled_tasks s
-         JOIN users u ON u.id = s.user_id AND u.is_active
-         LEFT JOIN roles r ON r.id = u.role_id
-        WHERE s.status='active' AND s.next_run_at <= now()
-        ORDER BY s.next_run_at
-        LIMIT $1`,
+  /**
+   * Забрать созревшие задачи СЕБЕ.
+   *
+   * Не просто «выбрать»: во время сине-зелёной выкладки минуту работают оба цвета,
+   * и одинаковый SELECT в обоих отдал бы одну задачу дважды — человек получил бы
+   * два одинаковых отчёта. Поэтому сразу двигаем next_run_at на пять минут вперёд:
+   * это аренда. Успели — finishRun поставит настоящее время следующего запуска;
+   * упали на середине — задача сама вернётся через пять минут, а не потеряется.
+   */
+  claimDue(limit = 20): Promise<ScheduleRow[]> {
+    return this.db.many<ScheduleRow>(
+      `UPDATE ai_scheduled_tasks SET next_run_at = now() + interval '5 minutes'
+        WHERE id IN (
+          SELECT s.id FROM ai_scheduled_tasks s
+            JOIN users u ON u.id = s.user_id AND u.is_active
+           WHERE s.status='active' AND s.next_run_at <= now()
+           ORDER BY s.next_run_at
+           LIMIT $1
+           FOR UPDATE SKIP LOCKED
+        )
+        RETURNING *`,
       [limit],
+    );
+  }
+
+  /** Пояс и роль владельца задачи: с ними её и выполняем — от его имени. */
+  userMeta(tenantId: string, userId: string) {
+    return this.db.one<{ timezone: string | null; role: string }>(
+      `SELECT u.timezone, COALESCE(r.code, 'member') AS role
+         FROM users u LEFT JOIN roles r ON r.id = u.role_id
+        WHERE u.tenant_id=$1 AND u.id=$2`,
+      [tenantId, userId],
     );
   }
 

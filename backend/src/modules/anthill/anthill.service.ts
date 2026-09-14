@@ -423,8 +423,15 @@ export class AnthillService {
     return { text: text.trim(), sessionId };
   }
 
-  async scheduleDue() {
-    return this.repo.dueSchedules();
+  /** Созревшие задачи — уже «занятые» этим процессом (см. claimDue). */
+  async scheduleDue(): Promise<(ScheduleRow & { timezone: string | null; role: string })[]> {
+    const rows = await this.repo.claimDue();
+    const out: (ScheduleRow & { timezone: string | null; role: string })[] = [];
+    for (const row of rows) {
+      const meta = await this.repo.userMeta(String(row.tenant_id), String(row.user_id));
+      out.push({ ...row, timezone: meta?.timezone ?? null, role: meta?.role ?? 'member' });
+    }
+    return out;
   }
 
   async afterRun(row: ScheduleRow & { timezone: string | null }, result: string | null, error: string | null) {
