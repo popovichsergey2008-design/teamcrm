@@ -10,6 +10,8 @@ import { stampLabel } from '../../lib/chat-text';
 import { AnthillTasks } from './AnthillTasks';
 import { AnthillMemory } from './AnthillMemory';
 import { AnthillSkills } from './AnthillSkills';
+import { AnthillResponses } from './AnthillResponses';
+import { useAuth } from '../../state/auth';
 import { getSocket } from '../../lib/socket';
 
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
@@ -63,7 +65,10 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
   /** Карточка, открытая на правку: одна за раз — их и бывает одна. */
   const [editing, setEditing] = useState<string | null>(null);
   /** Разговор · Задачи · Навыки · Память (ТЗ-6, MVP 2): вкладки одного помощника. */
-  const [tab, setTab] = useState<'chat' | 'tasks' | 'skills' | 'memory'>('chat');
+  const [tab, setTab] = useState<'chat' | 'tasks' | 'skills' | 'memory' | 'responses'>('chat');
+  /** Быстрые ответы звучат от имени компании — их заводит руководство (разд. 38). */
+  const { user } = useAuth();
+  const canManage = user?.role === 'owner' || user?.role === 'manager';
   /**
    * Навык, выбранный руками.
    *
@@ -270,6 +275,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
           { key: 'tasks', label: 'Задачи', icon: 'clock' },
           { key: 'skills', label: 'Навыки', icon: 'sparkles' },
           { key: 'memory', label: 'Память', icon: 'book' },
+          ...(canManage ? [{ key: 'responses', label: 'Ответы', icon: 'reply' }] as const : []),
         ] as const).map((t) => (
           <button
             key={t.key}
@@ -288,6 +294,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
         <AnthillSkills onRun={(x) => { setSkill(x); setTab('chat'); inputRef.current?.focus(); }} />
       )}
       {tab === 'memory' && <AnthillMemory />}
+      {tab === 'responses' && canManage && <AnthillResponses />}
 
       {tab === 'chat' && historyOpen && (
         <div className="anthill-history">

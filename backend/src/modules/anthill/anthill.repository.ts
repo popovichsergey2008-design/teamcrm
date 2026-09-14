@@ -304,6 +304,30 @@ export class AnthillRepository {
     );
   }
 
+  /**
+   * Есть ли у организации хоть один навык. По этому и решаем, заводить ли
+   * стартовый набор: пустой каталог не объясняет, что такое навык.
+   */
+  async hasSkills(tenantId: string): Promise<boolean> {
+    const row = await this.db.one<{ any: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM ai_skills WHERE tenant_id=$1) AS any`, [tenantId],
+    );
+    return !!row?.any;
+  }
+
+  /** Общий навык компании: владельца нет — правит его только тот, кто сделает копию. */
+  createCommonSkill(i: {
+    tenantId: string; name: string; description: string; whenToUse: string;
+    steps: string[]; inputs: string[]; output: string;
+  }): Promise<SkillRow> {
+    return this.db.one<SkillRow>(
+      `INSERT INTO ai_skills (tenant_id, owner_id, name, description, when_to_use, steps, inputs, output, visibility)
+       VALUES ($1, NULL, $2, $3, $4, $5::jsonb, $6::jsonb, $7, 'company')
+       ON CONFLICT DO NOTHING RETURNING *`,
+      [i.tenantId, i.name, i.description, i.whenToUse, JSON.stringify(i.steps), JSON.stringify(i.inputs), i.output],
+    ) as Promise<SkillRow>;
+  }
+
   skill(tenantId: string, userId: string, id: string): Promise<SkillRow | null> {
     return this.db.one<SkillRow>(
       `SELECT * FROM ai_skills

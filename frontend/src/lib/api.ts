@@ -545,6 +545,16 @@ export const api = {
   anthillEdit: (actionId: string, patch: Record<string, string>) =>
     request<{ id: string; preview: string; values: Record<string, string> }>('POST', `/anthill/actions/${actionId}/edit`, { patch }),
   anthillUndo: (actionId: string) => request<{ status: string; text: string }>('POST', `/anthill/actions/${actionId}/undo`, {}),
+  /* Быстрые ответы (разд. 38): заготовка вместо модели; заводит руководство. */
+  anthillResponses: () => request<AnthillResponse[]>('GET', '/anthill/responses'),
+  anthillAddResponse: (i: { trigger: string; answer: string; matchKind?: 'keyword' | 'exact'; scope?: 'all' | 'channels' | 'dms'; auto?: boolean }) =>
+    request<AnthillResponse>('POST', '/anthill/responses', i),
+  anthillEditResponse: (id: string, patch: {
+    trigger?: string; answer?: string; matchKind?: 'keyword' | 'exact';
+    scope?: 'all' | 'channels' | 'dms'; auto?: boolean; enabled?: boolean;
+  }) => request<AnthillResponse>('PATCH', `/anthill/responses/${id}`, patch),
+  anthillDeleteResponse: (id: string) => request<{ deleted: boolean }>('DELETE', `/anthill/responses/${id}`),
+
   /* Навыки (разд. 16–19): записанный порядок работы для того, что делают регулярно. */
   anthillSkills: () => request<AnthillSkill[]>('GET', '/anthill/skills'),
   anthillAddSkill: (i: { name: string; description?: string; whenToUse?: string; steps: string[]; output?: string; visibility?: 'private' | 'company' }) =>
@@ -1522,6 +1532,12 @@ export interface AnthillAction {
   fields: AnthillField[];
   values: Record<string, string>;
 }
+/** Заготовленный ответ на частый вопрос. */
+export interface AnthillResponse {
+  id: string; trigger: string; answer: string;
+  matchKind: string; scope: string; auto: boolean; enabled: boolean; hits: number;
+}
+
 /** Навык: порядок работы, который агент берёт сам или по выбору человека. */
 export interface AnthillSkill {
   id: string; name: string; description: string; whenToUse: string;

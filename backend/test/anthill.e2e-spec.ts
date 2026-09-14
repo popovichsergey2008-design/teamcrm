@@ -235,4 +235,41 @@ describe('AnthillBot (e2e)', () => {
 
     await http$.delete(`/api/anthill/skills/${own.id}`).set(O).expect(200);
   });
+
+  it('быстрый ответ приходит слово в слово и мимо модели; заводит его руководство', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'AB6', email: `ab6_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+
+    const answer = 'Инструкция по VPN: https://wiki.example/vpn';
+    const resp = (await http$.post('/api/anthill/responses').set(O)
+      .send({ trigger: 'vpn, впн', answer }).expect(201)).body.data;
+    expect(resp).toMatchObject({ matchKind: 'keyword', scope: 'all', auto: false, enabled: true });
+
+    // спросили у бота — пришёл заготовленный ответ, а не сочинение модели
+    const self = (await http$.post('/api/chats/self').set(O).expect(201)).body.data;
+    const msg = (await http$.post(`/api/chats/${self.id}/ai`).set(O).send({ question: 'ребята, где взять впн?' }).expect(201)).body.data;
+    expect(msg.body).toBe(answer);
+    expect(msg.is_ai).toBe(true);
+    expect((await http$.get('/api/anthill/responses').set(O).expect(200)).body.data[0].hits).toBe(1);
+
+    // «видео» не должно ловиться триггером «вид»: сравниваем по словам, а не по вхождению
+    await http$.patch(`/api/anthill/responses/${resp.id}`).set(O).send({ trigger: 'вид' }).expect(200);
+    const other = (await http$.post(`/api/chats/${self.id}/ai`).set(O).send({ question: 'а где видео с мита?' }).expect(201)).body.data;
+    expect(other.body).not.toBe(answer);
+
+    // выключённый ответ не срабатывает
+    await http$.patch(`/api/anthill/responses/${resp.id}`).set(O).send({ trigger: 'vpn', enabled: false }).expect(200);
+    const off = (await http$.post(`/api/chats/${self.id}/ai`).set(O).send({ question: 'где vpn?' }).expect(201)).body.data;
+    expect(off.body).not.toBe(answer);
+
+    // рядовому сотруднику быстрые ответы не заводить: они звучат от имени компании
+    const mateEmail = `ab6m_${uniq()}@t.test`;
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.get('/api/anthill/responses').set(M).expect(403);
+    await http$.post('/api/anthill/responses').set(M).send({ trigger: 'что-то', answer: 'ответ' }).expect(403);
+
+    await http$.delete(`/api/anthill/responses/${resp.id}`).set(O).expect(200);
+  });
 });

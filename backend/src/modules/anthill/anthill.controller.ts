@@ -1,12 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { Response } from 'express';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
 import { AnthillService, PageContext } from './anthill.service';
+import { CustomResponsesService } from '../chats/custom-responses.service';
 
 class ContextDto {
   @IsIn(['task', 'project', 'chat', 'meeting']) type!: PageContext['type'];
@@ -24,6 +25,21 @@ class AskDto {
 class EditDto {
   /** Значения полей карточки: их состав задаёт сам инструмент (fields). */
   @IsObject() patch!: Record<string, string>;
+}
+class ResponseDto {
+  @IsString() @MinLength(2) @MaxLength(300) trigger!: string;
+  @IsString() @MinLength(2) @MaxLength(4000) answer!: string;
+  @IsOptional() @IsIn(['keyword', 'exact']) matchKind?: 'keyword' | 'exact';
+  @IsOptional() @IsIn(['all', 'channels', 'dms']) scope?: 'all' | 'channels' | 'dms';
+  @IsOptional() @IsBoolean() auto?: boolean;
+}
+class ResponsePatchDto {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(300) trigger?: string;
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(4000) answer?: string;
+  @IsOptional() @IsIn(['keyword', 'exact']) matchKind?: 'keyword' | 'exact';
+  @IsOptional() @IsIn(['all', 'channels', 'dms']) scope?: 'all' | 'channels' | 'dms';
+  @IsOptional() @IsBoolean() auto?: boolean;
+  @IsOptional() @IsBoolean() enabled?: boolean;
 }
 class SkillDto {
   @IsString() @MinLength(2) @MaxLength(120) name!: string;
@@ -77,7 +93,38 @@ class FeedbackDto {
 @Controller('anthill')
 @Roles('owner', 'manager', 'member')
 export class AnthillController {
-  constructor(private readonly anthill: AnthillService) {}
+  constructor(
+    private readonly anthill: AnthillService,
+    private readonly responses: CustomResponsesService,
+  ) {}
+
+  /*
+    Быстрые ответы (ТЗ-6, разд. 38) — хозяйство руководства: они звучат от имени
+    компании в чужих разговорах, и заводить их каждому нельзя.
+  */
+  @Get('responses')
+  @Roles('owner', 'manager')
+  listResponses(@CurrentUser() u: AuthUser) {
+    return this.responses.list(u.tenantId);
+  }
+
+  @Post('responses')
+  @Roles('owner', 'manager')
+  addResponse(@CurrentUser() u: AuthUser, @Body() dto: ResponseDto) {
+    return this.responses.create(u.tenantId, u.userId, dto);
+  }
+
+  @Patch('responses/:id')
+  @Roles('owner', 'manager')
+  editResponse(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ResponsePatchDto) {
+    return this.responses.update(u.tenantId, id, dto);
+  }
+
+  @Delete('responses/:id')
+  @Roles('owner', 'manager')
+  removeResponse(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.responses.remove(u.tenantId, id);
+  }
 
   @Get('sessions')
   sessions(@CurrentUser() u: AuthUser) {

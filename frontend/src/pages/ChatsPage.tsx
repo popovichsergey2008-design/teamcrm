@@ -99,7 +99,7 @@ const SECTIONS: { key: 'inbox' | 'threads' | 'saved'; title: string; hint: strin
 const REACTIONS = ['👍', '❤️', '🔥', '👏', '😁', '🤔'];
 
 /** «@AI», «@ии», «@ai-помощник» — человек пишет как придётся. */
-const MENTIONS_AI = /@(ai|ии|ai-помощник)\b/gi;
+const MENTIONS_AI = /@(anthillbot|ai|ии|ai-помощник|бот)(?![\wа-яё-])/gi;
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 /** «1 ответ», «2 ответа», «5 ответов» — иначе интерфейс выглядит машинным переводом. */
@@ -1372,7 +1372,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     хотя он участник этого разговора. Так же сделано в чате задачи.
   */
   const mentionUsers = [
-    { id: 'ai', fullName: 'AI-помощник', hint: 'знает эту переписку' },
+    { id: 'ai', fullName: 'AnthillBot', hint: 'знает эту переписку' },
     ...users.map((u) => ({ id: String(u.id), fullName: u.fullName })),
   ];
   const inboxTotal = inbox
@@ -2111,7 +2111,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                         пузыре не читалась вовсе, а место в углу отъедала. */}
                     <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === m.id) ? ' chat-match' : ''}${isNew ? ' chat-new' : ''}`}>
                       <div className={`chat-msg ${mine && !m.is_ai ? 'mine' : ''}${m.is_ai ? ' chat-msg-ai' : ''}`}>
-                        {m.is_ai && <div className="chat-author"><Icon name="sparkles" size={11} /> AI-помощник</div>}
+                        {m.is_ai && <div className="chat-author"><Icon name="robot" size={11} /> AnthillBot</div>}
                         {/* Кто именно писал со стороны: через месяц «внешний участник»
                             без имени в переписке не значит ничего. */}
                         {m.guest_name && (

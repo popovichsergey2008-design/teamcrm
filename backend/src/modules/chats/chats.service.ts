@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { NlService } from '../nl/nl.service';
 import { ChatsAiService } from './chats-ai.service';
+import { CustomResponsesService } from './custom-responses.service';
 import { DiagService } from '../diagnostics/diag.service';
 import { FilesService } from '../files/files.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -42,6 +43,7 @@ export class ChatsService {
         для одного и того же разошлись бы на первой правке. */
     private readonly nl: NlService,
     private readonly chatAi: ChatsAiService,
+    private readonly responses: CustomResponsesService,
   ) {}
 
   /** Список чатов + кто сейчас в сети (точка рядом с именем). */
@@ -283,7 +285,26 @@ export class ChatsService {
       tenantId, scope: 'chat', refId: String(chatId), userId: user.userId, side: 'server',
       event: 'message.sent', data: { messageId: String(message.id), recipients: to.length, hasFile: !!fileId, length: text.length },
     });
+    // Заготовленный ответ без обращения к боту — только у тех ответов, где это
+    // включено отдельно (ТЗ-6, разд. 38). В стороне от отправки: сообщение человека
+    // не должно ждать бота и не должно упасть из-за него.
+    if (text) void this.autoRespond(tenantId, chat, text, to, user.userId).catch(() => undefined);
     return message;
+  }
+
+  /**
+   * «Слово VPN → вот инструкция», без упоминания бота.
+   *
+   * Ответ приходит отдельным сообщением от помощника, а не правкой чужого: в
+   * переписке видно, кто что сказал, и заготовку легко отличить от человека.
+   */
+  private async autoRespond(tenantId: string, chat: { id: string; kind: string }, text: string, to: string[], askedBy: string): Promise<void> {
+    const canned = await this.responses.match(tenantId, text, String(chat.kind), false);
+    if (!canned) return;
+    const message = await this.repo.addMessage({
+      tenantId, chatId: String(chat.id), authorId: askedBy, body: canned.answer, fileId: null, isAi: true,
+    });
+    this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId: String(chat.id), message });
   }
 
   /**
@@ -327,7 +348,12 @@ export class ChatsService {
    */
   async askAi(tenantId: string, chatId: string, user: { userId: string; role: string }, question: string) {
     const chat = await this.access(tenantId, chatId, user);
-    const answer = await this.chatAi.answer(tenantId, chatId, user.userId, question, await this.aiContext(tenantId, chat));
+    // Сначала — заготовленный ответ (ТЗ-6, разд. 38): на «где инструкция по VPN»
+    // компания отвечает одинаково каждому, и модель для этого не нужна.
+    const canned = await this.responses.match(tenantId, question, String(chat.kind), true);
+    const answer = canned
+      ? canned.answer
+      : await this.chatAi.answer(tenantId, chatId, user.userId, question, await this.aiContext(tenantId, chat));
     const message = await this.repo.addMessage({
       tenantId, chatId, authorId: user.userId, body: answer, fileId: null, isAi: true,
     });
