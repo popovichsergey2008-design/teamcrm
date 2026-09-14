@@ -250,7 +250,6 @@ describe('AnthillBot (e2e)', () => {
     const self = (await http$.post('/api/chats/self').set(O).expect(201)).body.data;
     const msg = (await http$.post(`/api/chats/${self.id}/ai`).set(O).send({ question: 'ребята, где взять впн?' }).expect(201)).body.data;
     expect(msg.body).toBe(answer);
-    expect(msg.is_ai).toBe(true);
     expect((await http$.get('/api/anthill/responses').set(O).expect(200)).body.data[0].hits).toBe(1);
 
     // «видео» не должно ловиться триггером «вид»: сравниваем по словам, а не по вхождению

@@ -727,9 +727,11 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         const format = String(p.format ?? 'docx');
         const target = String(p.target ?? 'notes');
         const buffer = format === 'docx' ? await buildDocx(title, content) : Buffer.from(content, 'utf8');
+        // Тип — БЕЗ charset: список разрешённых сверяется точной строкой, и
+        // «text/plain; charset=utf-8» в него не попадает (см. files.validation).
         const mime = format === 'docx' ? DOCX_MIME
-          : format === 'csv' ? 'text/csv; charset=utf-8'
-            : format === 'md' ? 'text/markdown; charset=utf-8' : 'text/plain; charset=utf-8';
+          : format === 'csv' ? 'text/csv'
+            : format === 'md' ? 'text/markdown' : 'text/plain';
         const fileName = `${title.replace(/[^\p{L}\p{N} ._-]+/gu, ' ').trim().slice(0, 80) || 'Документ'}.${format}`;
 
         if (target === 'task') {
