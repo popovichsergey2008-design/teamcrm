@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
@@ -81,6 +81,9 @@ class RenameDto {
 class ShareDto {
   @IsIn(['task', 'project']) entityType!: 'task' | 'project';
   @IsString() entityId!: string;
+}
+class NotifyModeDto {
+  @IsIn(['all', 'mentions', 'none']) notify!: string;
 }
 class MemberRoleDto {
   @IsIn(['admin', 'member']) role!: 'admin' | 'member';
@@ -394,6 +397,12 @@ export class ChatsController {
   @Patch(':id/members/:userId/role')
   setMemberRole(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('userId') userId: string, @Body() dto: MemberRoleDto) {
     return this.chats.setMemberRole(u.tenantId, id, u, userId, dto.role);
+  }
+
+  /** Уведомления по чату: all | mentions | none. */
+  @Put(':id/notify')
+  setNotify(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: NotifyModeDto) {
+    return this.chats.setNotify(u.tenantId, id, u, dto.notify);
   }
 
   @Patch(':id/description')

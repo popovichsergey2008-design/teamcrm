@@ -212,4 +212,30 @@ describe('Сайдбар чата (e2e)', () => {
     const answer = (await http$.post(`/api/chats/${chat.id}/ai`).set(M).send({ question: 'что решили на созвоне?' }).expect(201)).body.data;
     expect(String(answer.body ?? '').length).toBeGreaterThan(3);
   });
+
+  /* Уведомления по чату (этап 5): личная настройка, видна в списке и в сведениях. */
+  it('режим уведомлений по чату — личный: у меня «тихо», у собеседника как было', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'SB5', email: `sb5_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const mail = `sb5m_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(O).send({ email: mail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data.accessToken);
+    const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
+    const byChat = (list: any[]) => list.find((c) => String(c.id) === String(chat.id));
+
+    expect(byChat((await http$.get('/api/chats').set(M).expect(200)).body.data).notify).toBe('all');
+    await http$.put(`/api/chats/${chat.id}/notify`).set(M).send({ notify: 'none' }).expect(200);
+    expect(byChat((await http$.get('/api/chats').set(M).expect(200)).body.data).notify).toBe('none');
+    expect((await http$.get(`/api/chats/${chat.id}/info`).set(M).expect(200)).body.data.me.notify).toBe('none');
+    // у собеседника — по-прежнему всё
+    expect(byChat((await http$.get('/api/chats').set(O).expect(200)).body.data).notify).toBe('all');
+    await http$.put(`/api/chats/${chat.id}/notify`).set(M).send({ notify: 'loud' }).expect(400);
+
+    // чат проекта: строки участия ещё нет — настройка заводит её сама
+    const project = (await http$.post('/api/projects').set(O).send({ name: 'Тихий' }).expect(201)).body.data;
+    const pchat = (await http$.post(`/api/chats/project/${project.id}`).set(M).expect(201)).body.data;
+    await http$.put(`/api/chats/${pchat.id}/notify`).set(M).send({ notify: 'mentions' }).expect(200);
+    expect((await http$.get('/api/chats').set(M).expect(200)).body.data.find((c: any) => String(c.id) === String(pchat.id)).notify).toBe('mentions');
+  });
 });

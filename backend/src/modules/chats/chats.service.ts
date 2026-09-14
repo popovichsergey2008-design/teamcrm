@@ -61,6 +61,8 @@ export class ChatsService {
       unread: Number(c.unread ?? 0),
       // ручная пометка «непрочитанное»: в списке — точка, в счётчике — единица
       markedUnread: c.marked_unread === true,
+      // уведомления по чату: панель не звучит и не считает тихие чаты
+      notify: c.notify ?? 'all',
       lastBody: c.last_body,
       lastAuthor: c.last_author,
       lastAt: c.last_at,
@@ -269,10 +271,12 @@ export class ChatsService {
     if (rootId) await this.repo.markThreadRead(tenantId, rootId, user.userId);
     await this.repo.markRead(tenantId, chatId, user.userId); // своё сообщение прочитанным считаем сразу
 
-    await this.mention(tenantId, String(message.id), mentionIds, user.userId, text);
+    const mentioned = await this.mention(tenantId, String(message.id), mentionIds, user.userId, text);
 
     const to = await this.recipients(chat, tenantId);
-    this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
+    // Кого позвали — вместе с сообщением: у получателя может стоять «только
+    // упоминания», и решать, звучать ли, он должен сразу, без второго запроса.
+    this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message, mentionIds: mentioned });
     // В журнал — только факт и адресаты: по нему видно, ушло ли сообщение и кому,
     // когда человек говорит «мне не пришло». Текста сообщения здесь нет.
     this.diag.write({
@@ -293,15 +297,25 @@ export class ChatsService {
    */
   private async mention(
     tenantId: string, messageId: string, ids: string[] | undefined, actorId: string, body: string,
-  ): Promise<void> {
+  ): Promise<string[]> {
     const wanted = (ids ?? []).map(String).filter((id) => id !== String(actorId)).slice(0, 30);
-    if (!wanted.length) return;
+    if (!wanted.length) return [];
     const users = await this.repo.tenantUserIds(tenantId, wanted);
-    if (!users.length) return;
-    await this.repo.addMentions(tenantId, messageId, users.map((u) => String(u.id)));
-    this.realtime.emitToUsers(tenantId, users.map((u) => String(u.id)), 'chat.mention', {
+    if (!users.length) return [];
+    const userIds = users.map((u) => String(u.id));
+    await this.repo.addMentions(tenantId, messageId, userIds);
+    this.realtime.emitToUsers(tenantId, userIds, 'chat.mention', {
       messageId: String(messageId), body: body.slice(0, 160),
     });
+    return userIds;
+  }
+
+  /** Уведомления по чату — личная настройка: all | mentions | none. */
+  async setNotify(tenantId: string, chatId: string, user: { userId: string; role: string }, mode: string) {
+    await this.access(tenantId, chatId, user);
+    if (!['all', 'mentions', 'none'].includes(mode)) throw AppException.validation('Режим: все, только упоминания или выключено');
+    await this.repo.setNotify(tenantId, chatId, user.userId, mode);
+    return { notify: mode };
   }
 
   /**
@@ -905,8 +919,12 @@ export class ChatsService {
         createdAt: chat.created_at, createdBy: chat.created_by ? String(chat.created_by) : null, createdByName: chat.created_by_name,
       },
       members: rows.map((r) => ({ ...this.memberOut(r), online: online.has(String(r.user_id)) })),
+      // Внешние — по ссылке, без учётки: в списке участников они отдельной группой,
+      // чтобы было видно, кто из говорящих здесь не сотрудник.
+      guests: chat.is_external ? (await this.repo.guestNames(tenantId, chatId)).map((g) => g.guest_name) : [],
       me: {
         role: my?.role ?? (chat.kind === 'project' ? 'member' : null),
+        notify: my?.notify ?? 'all',
         canManage: (chat.kind === 'group' || chat.kind === 'channel') && await this.canManageChat(chat, user),
       },
       counts: {

@@ -23,6 +23,8 @@ export interface ChatListItem extends ChatRow {
   unread: number;
   /** Помечен непрочитанным вручную — как в Telegram; снимается открытием чата. */
   marked_unread: boolean;
+  /** Уведомления по этому чату: all | mentions | none. */
+  notify: string;
   last_body: string | null;
   last_author: string | null;
   last_at: Date | null;
@@ -112,6 +114,7 @@ export class ChatsRepository {
                   AND (msg.thread_root_id IS NULL OR msg.also_in_channel)
                   AND (me.last_read_at IS NULL OR msg.created_at > me.last_read_at)) AS unread,
               COALESCE(me.marked_unread, false) AS marked_unread,
+              COALESCE(me.notify, 'all') AS notify,
               last.body AS last_body,
               lu.full_name AS last_author,
               last.created_at AS last_at
@@ -1028,9 +1031,9 @@ export class ChatsRepository {
   members(tenantId: string, chatId: string) {
     return this.db.many<{
       user_id: string; full_name: string; avatar_file_id: string | null; joined_at: Date;
-      role: string; last_seen_at: Date | null; presence_status: string | null;
+      role: string; last_seen_at: Date | null; presence_status: string | null; notify: string;
     }>(
-      `SELECT m.user_id, u.full_name, u.avatar_file_id, m.joined_at, m.role,
+      `SELECT m.user_id, u.full_name, u.avatar_file_id, m.joined_at, m.role, m.notify,
               u.last_seen_at, u.presence_status
          FROM chat_members m JOIN users u ON u.id = m.user_id
         WHERE m.tenant_id=$1 AND m.chat_id=$2
@@ -1152,6 +1155,29 @@ export class ChatsRepository {
         WHERE s.tenant_id=$1 AND s.user_id=$3 AND m.chat_id=$2
         ORDER BY s.saved_at DESC LIMIT 100`,
       [tenantId, chatId, userId],
+    );
+  }
+
+  /** Режим уведомлений по чату. У чата проекта строки участия может не быть — заводим. */
+  async setNotify(tenantId: string, chatId: string, userId: string, mode: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO chat_members (chat_id, user_id, tenant_id, last_read_at, notify) VALUES ($1,$2,$3, now(), $4)
+       ON CONFLICT (chat_id, user_id) DO UPDATE SET notify = EXCLUDED.notify`,
+      [chatId, userId, tenantId, mode],
+    );
+  }
+
+  /** Кому в чате что приходит — для решения на сервере, слать ли письмо/Telegram. */
+  notifyModes(chatId: string): Promise<{ user_id: string; notify: string }[]> {
+    return this.db.many(`SELECT user_id, notify FROM chat_members WHERE chat_id=$1`, [chatId]);
+  }
+
+  /** Внешние участники: у гостя по ссылке нет учётки, есть только имя в сообщениях. */
+  guestNames(tenantId: string, chatId: string): Promise<{ guest_name: string }[]> {
+    return this.db.many(
+      `SELECT DISTINCT guest_name FROM chat_messages
+        WHERE tenant_id=$1 AND chat_id=$2 AND guest_name IS NOT NULL AND deleted_at IS NULL ORDER BY guest_name`,
+      [tenantId, chatId],
     );
   }
 
