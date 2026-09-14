@@ -286,9 +286,15 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
           </span>
           {shown && <span className="bar-label">{totalUnread ? `Непрочитанных: ${totalUnread}` : 'Всё прочитано'}</span>}
         </button>
-        <button className="bar-icon" onClick={onOpenAi} title="Спросить AI" aria-label="Спросить AI">
-          <Icon name="sparkles" size={16} />
-          {shown && <span className="bar-label">AI</span>}
+        {/* AnthillBot — такой же собеседник, как коллега: открывается тем же окном (ТЗ-6). */}
+        <button
+          className={`bar-icon${activeChatId === 'anthill' ? ' active' : ''}`}
+          onClick={() => { setHoverOpen(false); if (expanded) onCollapse(); onOpenAi(); }}
+          title="AnthillBot — AI-помощник: спросить о задачах, чатах и митах"
+          aria-label="AnthillBot — AI-помощник"
+        >
+          <Icon name="robot" size={16} />
+          {shown && <span className="bar-label">AnthillBot</span>}
         </button>
       </div>
 

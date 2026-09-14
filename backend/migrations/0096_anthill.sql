@@ -6,6 +6,8 @@
 --
 -- Действия — отдельной таблицей (разд. 62): модель НЕ меняет базу сама, она лишь
 -- предлагает; строка здесь — предложение, подтверждение, результат и откат.
+-- Имя ai_tool_actions, а не ai_actions: под ai_actions уже живёт журнал секретаря
+-- (0041) — там считают сэкономленные минуты, здесь ждут нажатия «Создать».
 
 CREATE TABLE ai_sessions (
     id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -37,7 +39,7 @@ CREATE TABLE ai_messages (
 );
 CREATE INDEX idx_ai_messages_session ON ai_messages (session_id, id);
 
-CREATE TABLE ai_actions (
+CREATE TABLE ai_tool_actions (
     id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     tenant_id         BIGINT NOT NULL REFERENCES tenants(id),
     session_id        BIGINT NULL REFERENCES ai_sessions(id) ON DELETE SET NULL,
@@ -52,10 +54,10 @@ CREATE TABLE ai_actions (
     error             TEXT NULL,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_ai_actions_user ON ai_actions (tenant_id, user_id, created_at DESC);
+CREATE INDEX idx_ai_tool_actions_user ON ai_tool_actions (tenant_id, user_id, created_at DESC);
 
 ALTER TABLE ai_messages
-    ADD CONSTRAINT fk_ai_messages_action FOREIGN KEY (action_id) REFERENCES ai_actions(id) ON DELETE SET NULL;
+    ADD CONSTRAINT fk_ai_messages_action FOREIGN KEY (action_id) REFERENCES ai_tool_actions(id) ON DELETE SET NULL;
 
 -- Оценка ответа (разд. 45): 👍/👎 и причина — сырьё для правки промптов и поиска.
 CREATE TABLE ai_feedback (

@@ -403,7 +403,7 @@ export function App() {
           onCollapse={() => { if (barExpanded) toggleBar(); }}
           onStartCall={startCallFromPanel}
           inCall={!!callId}
-          onOpenAi={() => setPaletteOpen({ voice: false })}
+          onOpenAi={() => openChatAnywhere('anthill')}
           onNewChat={() => navigate({ section: 'chat' })}
           currentUserId={String(user.id)}
           onCallUserIds={new Set(activeCalls.flatMap((c) => c.participants.map((p) => String(p.userId ?? ''))).filter(Boolean))}

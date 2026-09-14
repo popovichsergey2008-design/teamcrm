@@ -3876,3 +3876,98 @@
 .chats-overlay .chat-input .btn.active { background: var(--accent-soft); color: var(--accent); }
 /* Всплывашка «отложить» в узком окне — от левого края, иначе уезжает за экран. */
 .chats-overlay .chat-later-pick { right: auto; left: 0; }
+
+/*
+  ───── AnthillBot: AI-помощник в переписке (ТЗ-6) ─────
+
+  Разговор выглядит как чат, а не как форма: вопрос справа, ответ слева, под ответом
+  — кнопки-источники и, если агент собирается что-то создать, карточка подтверждения.
+  Панель живёт и в окне поверх CRM, и во весь экран — стили общие, разница только
+  в ширине колонки сообщений.
+*/
+.anthill { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.anthill-head { flex: 0 0 auto; }
+.anthill-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.anthill-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+}
+.anthill-title-text { display: flex; flex-direction: column; gap: 0; line-height: 1.25; min-width: 0; }
+.anthill-title-text .dim { font-size: var(--fs-xs); }
+.anthill-head-acts { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+
+/* История разговоров — выпадающим списком под шапкой, а не вторым столбцом:
+   в окне поверх CRM второму столбцу просто нет места. */
+.anthill-history {
+  flex: 0 0 auto; max-height: 40%; overflow-y: auto;
+  border-bottom: 1px solid var(--border); background: var(--bg-elev);
+}
+.anthill-history-empty { padding: 10px 14px; font-size: var(--fs-sm); }
+.anthill-session { display: flex; align-items: center; gap: 4px; padding: 0 6px 0 10px; }
+.anthill-session:hover { background: var(--hover); }
+.anthill-session.active { background: var(--accent-soft); }
+.anthill-session-open {
+  flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px;
+  padding: 7px 4px; text-align: left; background: none; border: 0; cursor: pointer; color: inherit;
+}
+.anthill-session-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
+.anthill-session-open .dim { font-size: var(--fs-xs); }
+
+.anthill-feed { gap: 10px; }
+.anthill-empty { margin: auto; max-width: 460px; text-align: center; display: flex; flex-direction: column; gap: 10px; }
+.anthill-empty-title { font-weight: 600; }
+.anthill-hints { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.anthill-hint, .anthill-reason {
+  padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
+  font-size: var(--fs-sm); font-family: inherit;
+}
+.anthill-hint:hover, .anthill-reason:hover { color: var(--text); border-color: var(--border-2); }
+
+.anthill-msg { display: flex; flex-direction: column; gap: 6px; max-width: 88%; }
+.anthill-user {
+  align-self: flex-end; align-items: flex-end;
+  background: var(--accent-soft); border: 1px solid var(--accent-line, var(--border-2));
+  border-radius: var(--radius) var(--radius) 4px var(--radius); padding: 8px 12px;
+}
+.anthill-assistant { align-self: flex-start; }
+.anthill-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.anthill-status { display: flex; align-items: center; gap: 8px; color: var(--text-mut); font-size: var(--fs-sm); }
+.anthill-err { padding: 2px 0; }
+
+/* Источники: номер такой же, как [1] в тексте ответа — по нему их и сопоставляют. */
+.anthill-sources { display: flex; flex-wrap: wrap; gap: 6px; }
+.anthill-source {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 4px 9px; border-radius: 999px; cursor: pointer; font-family: inherit;
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
+  font-size: var(--fs-xs);
+}
+.anthill-source:hover { color: var(--text); border-color: var(--border-2); }
+.anthill-source-n { font-weight: 700; color: var(--accent); }
+.anthill-source-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+
+/* Карточка действия: пока не нажали «Создать», в CRM ничего не изменилось. */
+.anthill-action {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--warn-soft); border: 1px solid var(--warn-line, var(--warn));
+}
+.anthill-action .dim { font-size: var(--fs-xs); }
+.anthill-feedback { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.anthill-reasons { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+
+.anthill-compose { flex: 0 0 auto; border-top: 1px solid var(--border); }
+.anthill-ctx {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 16px 0; font-size: var(--fs-xs); color: var(--text-dim); cursor: pointer;
+}
+.anthill-input textarea { resize: none; max-height: 160px; }
+/* Во весь экран колонка разговора не растягивается на всю ширину: длинная строка
+   читается хуже короткой, а мониторы у всех разные. */
+.anthill-full .anthill-feed,
+.anthill-full .anthill-compose > * { padding-left: max(16px, calc((100% - 880px) / 2)); padding-right: max(16px, calc((100% - 880px) / 2)); }
+.chat-row-anthill .anthill-mark { width: 26px; height: 26px; }
+.anthill-hint:focus-visible, .anthill-reason:focus-visible, .anthill-source:focus-visible,
+.anthill-session-open:focus-visible, .anthill-ctx:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

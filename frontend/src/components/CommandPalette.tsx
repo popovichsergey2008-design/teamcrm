@@ -45,6 +45,8 @@ const SECTIONS: { title: string; icon: IconName; route: Route; roles?: string[] 
   { title: 'Задачи: что я поручил', icon: 'send', route: { section: 'tasks', view: 'delegated' } },
   { title: 'Проекты и доски', icon: 'board', route: { section: 'projects' } },
   { title: 'Чаты & Миты', icon: 'chat', route: { section: 'chat' } },
+  // Спросить ИИ — такой же пункт, как раздел: помощник живёт в чатах, а не в модалке.
+  { title: 'Спросить ИИ — AnthillBot', icon: 'robot', route: { section: 'chat', chatId: 'anthill' } },
   { title: 'Пульс команды', icon: 'chart', route: { section: 'radar' }, roles: ['owner', 'manager'] },
   { title: 'Встречи', icon: 'record', route: { section: 'chat', view: 'meetings' } },
   { title: 'Настройки и интеграции', icon: 'settings', route: { section: 'settings' } },

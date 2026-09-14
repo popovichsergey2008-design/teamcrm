@@ -532,6 +532,71 @@ export const api = {
     }
     return true;
   },
+  /*
+    ───── AnthillBot (ТЗ-6) ─────
+    Сессии, вопрос потоком, действия с подтверждением, оценка.
+  */
+  anthillSessions: () => request<AnthillSession[]>('GET', '/anthill/sessions'),
+  anthillStart: (context?: AnthillContext | null) => request<{ id: string }>('POST', '/anthill/sessions', context ? { context } : {}),
+  anthillMessages: (id: string) => request<AnthillMessage[]>('GET', `/anthill/sessions/${id}/messages`),
+  anthillDelete: (id: string) => request<{ deleted: boolean }>('DELETE', `/anthill/sessions/${id}`),
+  anthillConfirm: (actionId: string) => request<{ status: string; text: string; output: Record<string, unknown>; sources: AnthillSource[]; canUndo: boolean }>('POST', `/anthill/actions/${actionId}/confirm`, {}),
+  anthillReject: (actionId: string) => request<{ status: string }>('POST', `/anthill/actions/${actionId}/reject`, {}),
+  anthillUndo: (actionId: string) => request<{ status: string; text: string }>('POST', `/anthill/actions/${actionId}/undo`, {}),
+  anthillFeedback: (messageId: string, vote: 1 | -1, reason?: string, comment?: string) =>
+    request<{ ok: true }>('POST', `/anthill/messages/${messageId}/feedback`, { vote, reason, comment }),
+  /**
+   * Вопрос потоком (SSE). Возвращает функцию остановки: разрыв соединения = «Остановить»,
+   * набранная часть остаётся у человека на экране и в истории.
+   */
+  anthillAsk: (
+    id: string, question: string, context: AnthillContext | null,
+    on: {
+      onStatus?: (t: string) => void; onDelta?: (t: string) => void; onSources?: (s: AnthillSource[]) => void;
+      onAction?: (a: { id: string; tool: string; preview: string }) => void;
+      onDone?: (d: { messageId: string }) => void; onError?: (m: string) => void;
+    },
+  ): { stop: () => void; finished: Promise<void> } => {
+    const ctrl = new AbortController();
+    const finished = (async () => {
+      let res: Response;
+      try {
+        res = await fetch(`${BASE}/anthill/sessions/${id}/ask`, {
+          method: 'POST', signal: ctrl.signal,
+          headers: { 'Content-Type': 'application/json', ...(tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}) },
+          body: JSON.stringify({ question, context: context ?? undefined }),
+        });
+      } catch (e) { if ((e as Error).name !== 'AbortError') on.onError?.('Нет связи с сервером'); return; }
+      if (!res.ok || !res.body) { on.onError?.('Не удалось получить ответ. Попробуйте снова.'); return; }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let sep: number;
+          while ((sep = buf.indexOf('\n\n')) >= 0) {
+            const block = buf.slice(0, sep);
+            buf = buf.slice(sep + 2);
+            const ev = /event: (.+)/.exec(block)?.[1];
+            const dm = /data: ([\s\S]+)/.exec(block)?.[1];
+            if (!ev || !dm) continue;
+            let data: any; try { data = JSON.parse(dm); } catch { continue; }
+            if (ev === 'status') on.onStatus?.(data.text);
+            else if (ev === 'delta') on.onDelta?.(data.text);
+            else if (ev === 'sources') on.onSources?.(data.sources ?? []);
+            else if (ev === 'action') on.onAction?.(data.action);
+            else if (ev === 'done') on.onDone?.(data);
+            else if (ev === 'error') on.onError?.(data.text ?? data.message);
+          }
+        }
+      } catch (e) { if ((e as Error).name !== 'AbortError') on.onError?.('Связь оборвалась'); }
+    })();
+    return { stop: () => ctrl.abort(), finished };
+  },
+
   /** Расход ИИ: токены, деньги, по дням и по возможностям (включая незапускавшиеся). */
   /** Проверить выбранную модель настоящим вызовом: отвечает ли она и кто ответил. */
   aiCheckModel: () => request<{
@@ -1410,4 +1475,13 @@ export interface ChatMember {
 export interface MaterialItem {
   messageId: string; fileId?: string; name?: string; mime?: string; size?: number;
   url?: string; authorName: string | null; createdAt: string;
+}
+
+/** AnthillBot: с чем открыт разговор. */
+export interface AnthillContext { type: 'task' | 'project' | 'chat' | 'meeting'; id: string; title?: string }
+export interface AnthillSource { kind: 'task' | 'message' | 'meeting' | 'project' | 'chat'; id: string; title: string; url: string }
+export interface AnthillSession { id: string; title: string; messages: number; updatedAt: string; context: { type: string; id: string } | null }
+export interface AnthillMessage {
+  id: string; role: 'user' | 'assistant'; content: string; citations: AnthillSource[]; createdAt: string;
+  action: { id: string; status: string; output: Record<string, unknown> | null } | null;
 }

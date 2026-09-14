@@ -14,6 +14,7 @@ import { GroupChatModal } from '../components/GroupChatModal';
 import { CallStarter } from '../components/CallStarter';
 import { GuestLinkButton } from '../components/GuestLinkButton';
 import { ChatInfoPanel } from '../components/chat/ChatInfoPanel';
+import { AnthillPanel } from '../components/anthill/AnthillPanel';
 import { ChatAttachment } from '../components/ChatAttachment';
 import { Lightbox } from '../components/Lightbox';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
@@ -283,7 +284,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   /** Куда прокрутили из закреплённого — подсвечиваем, иначе непонятно, что нашли. */
   const [highlight, setHighlight] = useState<string | null>(null);
   /** Какой раздел открыт вместо переписки: входящие, треды, сохранённое. */
-  const [view, setView] = useState<'chat' | 'inbox' | 'threads' | 'saved' | 'channels'>('chat');
+  const [view, setView] = useState<'chat' | 'inbox' | 'threads' | 'saved' | 'channels' | 'anthill'>('chat');
   const [inbox, setInbox] = useState<{
     mentions: any[]; threads: any[]; chats: any[];
     counts: { mentions: number; threads: number; chats: number };
@@ -725,9 +726,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     };
   }, [activeId, reload]);
 
-  // пришли из уведомления — открываем названный чат, а не последний
+  // пришли из уведомления — открываем названный чат, а не последний.
+  // `anthill` — не чат в базе, а AI-помощник: у него свой экран (ТЗ-6).
   useEffect(() => {
-    if (initialChatId) openChat(String(initialChatId));
+    if (!initialChatId) return;
+    if (String(initialChatId) === 'anthill') { setActiveId(null); setMessages([]); setView('anthill'); return; }
+    openChat(String(initialChatId));
   }, [initialChatId, openChat]);
 
   useEffect(() => {
@@ -1481,6 +1485,23 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
         </div>
 
         {/*
+          AnthillBot — отдельным собеседником в самом верху списка (ТЗ-6).
+
+          Не кнопка «спросить ИИ» где-то в углу: помощник отвечает в переписке, и
+          искать его человек будет там же, где ищет коллегу — в списке чатов.
+        */}
+        <button
+          className={`chat-row chat-row-section chat-row-anthill${view === 'anthill' ? ' active' : ''}`}
+          onClick={() => { setView('anthill'); setThread(null); }}
+        >
+          <span className="chat-section-icon anthill-mark" aria-hidden="true"><Icon name="robot" size={15} /></span>
+          <span className="chat-row-main">
+            <span className="chat-row-title">AnthillBot</span>
+            <span className="chat-row-last dim">AI-помощник TeamCRM</span>
+          </span>
+        </button>
+
+        {/*
           «Треды» — первым пунктом списка, как в привычных рабочих чатах.
           Отвечают обычно в ветке, а ветку легко не заметить: она не поднимает чат
           наверх и не мигает счётчиком. Этот раздел и отвечает на вопрос «где меня ждут».
@@ -1852,6 +1873,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
               </button>
             ))}
           </div>
+        )}
+
+        {view === 'anthill' && (
+          <AnthillPanel
+            fullscreen
+            context={context?.taskId
+              ? { type: 'task', id: context.taskId }
+              : context?.projectId ? { type: 'project', id: context.projectId } : null}
+            onClose={onClose ?? (() => setView('chat'))}
+          />
         )}
 
         {!active && view === 'chat' && (

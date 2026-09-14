@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ChatsPage } from '../../pages/ChatsPage';
 import { useEscape } from '../../hooks/useEscape';
 import { TaskConversation } from '../chat/TaskConversation';
+import { AnthillPanel } from '../anthill/AnthillPanel';
+import { navigate } from '../../lib/router';
 
 const MIN_W = 360;
 const MAX_W = 900;
@@ -15,7 +17,11 @@ const MAX_W = 900;
  * вместе с остальными настройками интерфейса.
  */
 export function ChatOverlay({ chatId, width, onWidth, onClose, onCall, inCall, onActiveChat, context }: {
-  /** Обычный чат — номер; чат задачи — `task:<номер>` (ТЗ-5, этап 3, адаптер). */
+  /**
+   * Обычный чат — номер; чат задачи — `task:<номер>` (ТЗ-5, этап 3, адаптер);
+   * `anthill` — разговор с AI-помощником (ТЗ-6): он такой же собеседник, и открывать
+   * его отдельным окном значило бы держать два непохожих способа «написать».
+   */
   chatId: string;
   width: number;
   onWidth: (w: number) => void;
@@ -80,7 +86,15 @@ export function ChatOverlay({ chatId, width, onWidth, onClose, onCall, inCall, o
         onMouseDown={(e) => { e.preventDefault(); setDrag({ startX: e.clientX, startW: live.current }); }}
         title="Потяните, чтобы изменить ширину"
       />
-      {chatId.startsWith('task:') ? (
+      {chatId === 'anthill' ? (
+        <AnthillPanel
+          context={context?.taskId
+            ? { type: 'task', id: context.taskId }
+            : context?.projectId ? { type: 'project', id: context.projectId } : null}
+          onClose={onClose}
+          onFullscreen={() => { onClose(); navigate({ section: 'chat', chatId: 'anthill' }); }}
+        />
+      ) : chatId.startsWith('task:') ? (
         <TaskConversation taskId={chatId.slice(5)} onClose={onClose} />
       ) : (
         <ChatsPage

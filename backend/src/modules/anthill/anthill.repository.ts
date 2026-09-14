@@ -98,18 +98,18 @@ export class AnthillRepository {
   // ── действия ──
   createAction(i: { tenantId: string; sessionId: string | null; userId: string; tool: string; input: Record<string, unknown> }): Promise<ActionRow> {
     return this.db.one<ActionRow>(
-      `INSERT INTO ai_actions (tenant_id, session_id, user_id, tool, input_json) VALUES ($1,$2,$3,$4,$5::jsonb) RETURNING *`,
+      `INSERT INTO ai_tool_actions (tenant_id, session_id, user_id, tool, input_json) VALUES ($1,$2,$3,$4,$5::jsonb) RETURNING *`,
       [i.tenantId, i.sessionId, i.userId, i.tool, JSON.stringify(i.input)],
     ) as Promise<ActionRow>;
   }
 
   action(tenantId: string, userId: string, id: string): Promise<ActionRow | null> {
-    return this.db.one<ActionRow>(`SELECT * FROM ai_actions WHERE tenant_id=$1 AND user_id=$2 AND id=$3`, [tenantId, userId, id]);
+    return this.db.one<ActionRow>(`SELECT * FROM ai_tool_actions WHERE tenant_id=$1 AND user_id=$2 AND id=$3`, [tenantId, userId, id]);
   }
 
   async finishAction(id: string, status: 'done' | 'rejected' | 'failed' | 'undone', output?: Record<string, unknown> | null, error?: string | null): Promise<void> {
     await this.db.query(
-      `UPDATE ai_actions SET status=$2, output_json=COALESCE($3::jsonb, output_json), error=$4,
+      `UPDATE ai_tool_actions SET status=$2, output_json=COALESCE($3::jsonb, output_json), error=$4,
               approved_at = CASE WHEN $2 = 'done' THEN now() ELSE approved_at END
         WHERE id=$1`,
       [id, status, output ? JSON.stringify(output) : null, error ?? null],
@@ -119,7 +119,7 @@ export class AnthillRepository {
   /** Журнал действий человека — вкладка «История» и админский обзор. */
   actions(tenantId: string, userId: string, limit = 100): Promise<ActionRow[]> {
     return this.db.many<ActionRow>(
-      `SELECT * FROM ai_actions WHERE tenant_id=$1 AND user_id=$2 ORDER BY id DESC LIMIT $3`, [tenantId, userId, limit],
+      `SELECT * FROM ai_tool_actions WHERE tenant_id=$1 AND user_id=$2 ORDER BY id DESC LIMIT $3`, [tenantId, userId, limit],
     );
   }
 
