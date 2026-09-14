@@ -23,6 +23,7 @@ export interface BarChat {
   lastAuthor: string | null;
   lastAt: string | null;
   favorite?: boolean;
+  notify?: 'all' | 'mentions' | 'none';
 }
 
 interface BarUser { id: string; fullName: string; avatarUrl?: string | null; isActive?: boolean }
@@ -138,7 +139,8 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
       .slice(0, 14),
     [chats],
   );
-  const totalUnread = chats.reduce((n, c) => n + (Number(c.unread) || 0), 0);
+  // тихие чаты в общий счётчик не входят — ради этого их и выключают
+  const totalUnread = chats.reduce((n, c) => n + (c.notify === 'none' ? 0 : (Number(c.unread) || 0)), 0);
 
   /* Поиск — по чатам и по людям сразу: человек ищет «Глеб», а не «диалог с Глебом». */
   const q = query.trim().toLowerCase();
@@ -168,7 +170,7 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
     return (
       <button
         key={c.id}
-        className={`bar-chat${isActive ? ' active' : ''}${c.unread > 0 ? ' unread' : ''}`}
+        className={`bar-chat${isActive ? ' active' : ''}${c.unread > 0 ? ' unread' : ''}${c.notify === 'none' ? ' muted' : ''}`}
         onClick={() => onOpenChat(String(c.id))}
         title={expanded ? undefined : `${c.title ?? 'Чат'}${c.unread ? ` · ${c.unread} непрочитанных` : ''}`}
       >
@@ -180,7 +182,7 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onOpenAi, onNewChat, c
         {expanded && (
           <span className="bar-chat-main">
             <span className="bar-chat-top">
-              <span className="bar-chat-title">{c.title ?? 'Чат'}</span>
+              <span className="bar-chat-title">{c.title ?? 'Чат'}{c.notify && c.notify !== 'all' && <Icon name="bell" size={11} className="bar-mute" />}</span>
               {c.lastAt && <span className="bar-chat-time">{stampLabel(c.lastAt).replace(/^сегодня /, '')}</span>}
             </span>
             <span className="bar-chat-sub">

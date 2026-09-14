@@ -90,11 +90,12 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
       <div className="chat-info-body">
         <Section title="О чате" open={open.about} onToggle={() => toggle('about')}>
           <AboutBlock chat={chat} manageable={manageable} onChanged={() => { load(); onChanged(); }} />
+          <NotifyRow chatId={chatId} value={me.notify} onChanged={() => { load(); onChanged(); }} />
         </Section>
 
         <Section
           title={`Участники`}
-          count={members.length}
+          count={members.length + info.guests.length}
           open={open.members}
           onToggle={() => toggle('members')}
           extra={(chat.kind === 'group' || chat.kind === 'channel') && (
@@ -117,6 +118,21 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
             onTasksOf={onTasksOf}
             onCalendar={onCalendar}
           />
+          {/* Внешние — по ссылке, без учётки: ни написать лично, ни назначить, только знать, что они здесь. */}
+          {info.guests.length > 0 && (
+            <div className="ci-role-group">
+              <div className="ci-role-title">Внешние</div>
+              {info.guests.map((g) => (
+                <div key={g} className="ci-member">
+                  <span className="bar-avatar"><span className="bar-task-mark" aria-hidden="true">⇢</span></span>
+                  <span className="ci-member-main">
+                    <span className="ci-member-name">{g}</span>
+                    <span className="bar-status">внешний пользователь · видит только этот чат</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </Section>
 
         <Section title="Материалы" count={counts.media + counts.files + counts.links + counts.voice + counts.docs} open={open.materials} onToggle={() => toggle('materials')}>
@@ -161,6 +177,28 @@ function Section({ title, count, open, onToggle, extra, children }: {
         {extra}
       </div>
       {open && <div className="ci-section-body">{children}</div>}
+    </div>
+  );
+}
+
+/** Уведомления по чату: все · только упоминания · выключены. Личная настройка. */
+function NotifyRow({ chatId, value, onChanged }: { chatId: string; value: 'all' | 'mentions' | 'none'; onChanged: () => void }) {
+  const [mode, setMode] = useState(value);
+  useEffect(() => setMode(value), [value]);
+  const set = async (next: 'all' | 'mentions' | 'none') => {
+    setMode(next);
+    try { await api.setChatNotify(chatId, next); onChanged(); } catch { setMode(value); }
+  };
+  return (
+    <div className="ci-notify">
+      <span className="dim"><Icon name="bell" size={13} /> Уведомления</span>
+      <span className="menu-status" role="group" aria-label="Уведомления по чату">
+        {([['all', 'все'], ['mentions', 'только @'], ['none', 'выкл.']] as const).map(([v, label]) => (
+          <button key={v} className={`menu-status-btn${mode === v ? ' active' : ''}`} onClick={() => set(v)} title={
+            v === 'all' ? 'Звук и всплывашки на каждое сообщение' : v === 'mentions' ? 'Только когда позвали по имени' : 'Тихо: чат не звучит и не считается в панели'
+          }>{label}</button>
+        ))}
+      </span>
     </div>
   );
 }

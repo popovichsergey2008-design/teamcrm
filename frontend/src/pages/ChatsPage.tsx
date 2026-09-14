@@ -25,6 +25,7 @@ import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
 import { stampLabel } from '../lib/chat-text';
 import { placePopover, PopoverPlace } from '../lib/popover';
+import { applyOrder, moveItem } from '../lib/menu-order';
 import { firstUnreadId } from '../lib/unread-line';
 import { showToast, toastSaved } from '../lib/notifications';
 import { overlayProps } from '../lib/overlay';
@@ -151,6 +152,28 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatsLoaded, setChatsLoaded] = useState(false);
   const [msgLoading, setMsgLoading] = useState(false);
+  /**
+   * Подгрузка ленты вверх (ТЗ-5, раздел 46): открывается хвост в 50 сообщений,
+   * остальное подтягивается, когда человек докрутил до верха. Тысяча сообщений
+   * разом — это и секунды ожидания, и тысяча узлов в DOM ради одного взгляда.
+   */
+  const [hasOlder, setHasOlder] = useState(false);
+  const [olderBusy, setOlderBusy] = useState(false);
+  /** Пока подшиваем старое сверху, прокрутку вниз не трогаем — иначе прыжок к концу. */
+  const keepScroll = useRef(false);
+  /**
+   * Секции списка чатов: порядок и свёрнутые — личные, на сервере (ТЗ-5, раздел 38).
+   * Ключи фиксированы: по ним же строится порядок, чужие ключи игнорируются.
+   */
+  const [sectionPrefs, setSectionPrefs] = useState<{ order: string[]; collapsed: string[] }>(() => ({
+    order: user?.uiPrefs?.chatSections?.order ?? [],
+    collapsed: user?.uiPrefs?.chatSections?.collapsed ?? [],
+  }));
+  const saveSections = (next: { order: string[]; collapsed: string[] }) => {
+    setSectionPrefs(next);
+    void api.saveUiPrefs({ chatSections: next }).catch(() => undefined);
+  };
+  const [dragSection, setDragSection] = useState<string | null>(null);
   /**
    * Черта «Непрочитанные сообщения»: id первого нового.
    *
@@ -632,6 +655,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     try {
       const list = await api.chatMessages(id); // чтение помечается на сервере этим же запросом
       setMessages(list);
+      setHasOlder(list.length >= 50); // страница полная — значит, выше ещё есть
       setUnreadFrom(firstUnreadId(list, unreadBefore, user?.id));
       loadPinned(id);
       loadScheduled(id); // что я отложил в этот чат — видно сразу, а не после отправки
@@ -705,9 +729,28 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
 
   // лента всегда прокручена вниз: читают последнее, а не начало переписки
   useEffect(() => {
+    if (keepScroll.current) { keepScroll.current = false; return; }
     const el = feedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  /** Докрутили до верха — подшиваем страницу старше, не сдвигая то, что перед глазами. */
+  const loadOlder = async () => {
+    if (!activeId || olderBusy || !hasOlder || !messages.length) return;
+    const el = feedRef.current;
+    const before = el?.scrollHeight ?? 0;
+    setOlderBusy(true);
+    try {
+      const older = await api.chatMessages(activeId, String(messages[0].id));
+      if (older.length < 50) setHasOlder(false);
+      if (older.length) {
+        keepScroll.current = true;
+        setMessages((prev) => [...older, ...prev]);
+        requestAnimationFrame(() => { if (el) el.scrollTop += el.scrollHeight - before; });
+      }
+    } catch { /* следующая прокрутка попробует снова */ }
+    finally { setOlderBusy(false); }
+  };
   // …кроме случая, когда есть непрочитанное: тогда — к черте, чтобы читать с неё,
   // а не мотать вверх в поисках, откуда начинается новое
   useEffect(() => {
@@ -1306,6 +1349,58 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     return m;
   }, [users]);
   const groupFor = (userId?: string | null) => (userId ? groupOf.get(String(userId)) : undefined);
+  /* Секции списка чатов: строки готовятся здесь, порядок задаёт человек. */
+  const rowOf = (c: Chat, withGroup = false) => (
+    <ChatRow
+      key={c.id} chat={c} active={String(c.id) === String(activeId)}
+      group={withGroup && c.kind === 'dm' ? groupFor(c.peerId) : undefined}
+      onClick={() => openChat(c.id)} onStar={() => star(c)}
+    />
+  );
+  const unreadOf = (list: Chat[]) => list.reduce((n, c) => n + (Number(c.unread) || 0), 0);
+  const sectionsByKey: Record<string, { label: string; count: number; unread: number; rows: React.ReactNode }> = {
+    favorites: { label: 'Избранное', count: favorites.filter((c) => match(c.title)).length, unread: unreadOf(favorites), rows: favorites.filter((c) => match(c.title)).map((c) => rowOf(c, true)) },
+    channels: { label: 'Каналы', count: channels.filter((c) => match(c.title)).length, unread: unreadOf(channels), rows: channels.filter((c) => match(c.title)).map((c) => rowOf(c)) },
+    external: { label: 'Внешние', count: external.filter((c) => match(c.title)).length, unread: unreadOf(external), rows: external.filter((c) => match(c.title)).map((c) => rowOf(c)) },
+    dms: { label: 'Личные', count: dms.filter((c) => match(c.title)).length, unread: unreadOf(dms), rows: dms.filter((c) => match(c.title)).map((c) => rowOf(c, true)) },
+    groups: { label: 'Группы и проекты', count: groups.filter((c) => match(c.title)).length, unread: unreadOf(groups), rows: groups.filter((c) => match(c.title)).map((c) => rowOf(c)) },
+    others: {
+      label: 'Написать впервые', count: others.filter((u) => match(u.fullName)).length, unread: 0,
+      rows: others.filter((u) => match(u.fullName)).map((u) => (
+        <button key={u.id} className="chat-row" onClick={() => writeTo(u.id)}>
+          <Avatar path={u.avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+          <span className="chat-row-main">
+            <span className="chat-row-title">
+              {u.fullName}
+              {groupFor(u.id) && <span className="chat-row-group">{groupFor(u.id)}</span>}
+            </span>
+          </span>
+        </button>
+      )),
+    },
+  };
+  const orderedSections = applyOrder(
+    ['favorites', 'channels', 'external', 'dms', 'groups', 'others'].map((section) => ({ section })),
+    { order: sectionPrefs.order },
+  ).map((x) => x.section);
+  // Заметки — чат с собой: ссылки и мысли на потом складывают именно туда,
+  // а без него пишут их коллеге «чтобы не потерять».
+  const notesRow = selfChat
+    ? (
+      <ChatRow
+        key={selfChat.id} chat={selfChat} active={String(selfChat.id) === String(activeId)}
+        onClick={() => openChat(selfChat.id)} onStar={() => star(selfChat)}
+      />
+    )
+    : (
+      <button key="notes" className="chat-row" onClick={openNotes} title="Ссылки, файлы и мысли на потом — себе">
+        <span className="chat-section-icon" aria-hidden="true"><Icon name="edit" size={15} /></span>
+        <span className="chat-row-main">
+          <span className="chat-row-title">Заметки</span>
+          <span className="chat-row-last dim">чат с собой</span>
+        </span>
+      </button>
+    );
   const listEmpty =
     dms.filter((c) => match(c.title)).length === 0 &&
     groups.filter((c) => match(c.title)).length === 0 &&
@@ -1393,48 +1488,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
           </div>
         )}
 
-        {favorites.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Избранное</div>}
-        {favorites.filter((c) => match(c.title)).map((c) => (
-          <ChatRow
-            key={c.id} chat={c} active={String(c.id) === String(activeId)}
-            group={c.kind === 'dm' ? groupFor(c.peerId) : undefined}
-            onClick={() => openChat(c.id)} onStar={() => star(c)}
-          />
-        ))}
-
-        {/* Заметки — чат с собой: ссылки и мысли на потом складывают именно туда,
-            а без него пишут их коллеге «чтобы не потерять». */}
-        {selfChat
-          ? (
-            <ChatRow
-              key={selfChat.id} chat={selfChat} active={String(selfChat.id) === String(activeId)}
-              onClick={() => openChat(selfChat.id)} onStar={() => star(selfChat)}
-            />
-          )
-          : (
-            <button className="chat-row" onClick={openNotes} title="Ссылки, файлы и мысли на потом — себе">
-              <span className="chat-section-icon" aria-hidden="true"><Icon name="edit" size={15} /></span>
-              <span className="chat-row-main">
-                <span className="chat-row-title">Заметки</span>
-                <span className="chat-row-last dim">чат с собой</span>
-              </span>
-            </button>
-          )}
-
-        {channels.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Каналы</div>}
-        {channels.filter((c) => match(c.title)).map((c) => (
-          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)} />
-        ))}
-
-        {/* Внешние — отдельной группой и с пометкой: в этих разговорах есть человек
-            со стороны, и путать их с внутренними нельзя ни при каких обстоятельствах. */}
-        {/*
-          Найденные СООБЩЕНИЯ — первым блоком, над списком чатов.
-
-          Человек, набравший в поиске «пиликалка», ищет фразу, а не чат с таким
-          названием: показывать сначала чаты значило бы прятать ответ под тем, что
-          он и так видит.
-        */}
         {query.trim().length >= 2 && (
           <>
             <div className="chat-group-head">
@@ -1459,36 +1512,51 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
           </>
         )}
 
-        {external.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Внешние</div>}
-        {external.filter((c) => match(c.title)).map((c) => (
-          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)} />
-        ))}
 
-        {dms.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Личные</div>}
-        {dms.filter((c) => match(c.title)).map((c) => (
-          <ChatRow
-            key={c.id} chat={c} active={String(c.id) === String(activeId)} group={groupFor(c.peerId)}
-            onClick={() => openChat(c.id)} onStar={() => star(c)}
-          />
-        ))}
+        {/*
+          Секции списка — в личном порядке и со сворачиванием (ТЗ-5, раздел 38).
 
-        {groups.filter((c) => match(c.title)).length > 0 && <div className="chat-group-head">Группы и проекты</div>}
-        {groups.filter((c) => match(c.title)).map((c) => (
-          <ChatRow key={c.id} chat={c} active={String(c.id) === String(activeId)} onClick={() => openChat(c.id)} onStar={() => star(c)} />
-        ))}
-
-        {others.filter((u) => match(u.fullName)).length > 0 && <div className="chat-group-head">Написать впервые</div>}
-        {others.filter((u) => match(u.fullName)).map((u) => (
-          <button key={u.id} className="chat-row" onClick={() => writeTo(u.id)}>
-            <Avatar path={u.avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
-            <span className="chat-row-main">
-              <span className="chat-row-title">
-                {u.fullName}
-                {groupFor(u.id) && <span className="chat-row-group">{groupFor(u.id)}</span>}
-              </span>
-            </span>
-          </button>
-        ))}
+          Заголовок тянется мышью (тот же приём, что у левой панели), нажатие
+          сворачивает. Заметки — не секция: одна строка, всегда на месте.
+        */}
+        {orderedSections.map((key, idx) => {
+          const sec = sectionsByKey[key];
+          if (!sec || sec.count === 0) return null;
+          const collapsed = sectionPrefs.collapsed.includes(key);
+          return (
+            <div
+              key={key}
+              className={`chat-section${dragSection === key ? ' dragging' : ''}`}
+              onDragOver={(e) => { if (dragSection) e.preventDefault(); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (!dragSection || dragSection === key) return;
+                saveSections({ ...sectionPrefs, order: moveItem(orderedSections, dragSection, idx) });
+                setDragSection(null);
+              }}
+            >
+              <button
+                className="chat-group-head chat-group-toggle"
+                draggable
+                onDragStart={(e) => { setDragSection(key); e.dataTransfer.effectAllowed = 'move'; }}
+                onDragEnd={() => setDragSection(null)}
+                onClick={() => saveSections({
+                  ...sectionPrefs,
+                  collapsed: collapsed ? sectionPrefs.collapsed.filter((k) => k !== key) : [...sectionPrefs.collapsed, key],
+                })}
+                aria-expanded={!collapsed}
+                title={collapsed ? 'Развернуть' : 'Свернуть · перетащите, чтобы переставить'}
+              >
+                <Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={12} />
+                {sec.label}
+                {collapsed && sec.unread > 0 && <span className="chat-unread chat-section-unread">{sec.unread}</span>}
+              </button>
+              {!collapsed && sec.rows}
+              {key === 'favorites' && notesRow}
+            </div>
+          );
+        })}
+        {!sectionsByKey.favorites?.count && notesRow}
 
         {!chatsLoaded && <div style={{ padding: '4px 8px' }}><SkeletonList rows={5} /></div>}
         {chatsLoaded && listEmpty && (
@@ -1908,7 +1976,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
 
             {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
 
-            <div className="chat-feed" ref={feedRef} onScroll={closePops}>
+            <div className="chat-feed" ref={feedRef} onScroll={(e) => { closePops(); if (e.currentTarget.scrollTop < 80) void loadOlder(); }}>
+              {olderBusy && <div className="dim chat-older">Загружаю более ранние…</div>}
               {msgLoading && <div style={{ padding: 12 }}><SkeletonList rows={4} /></div>}
               {!msgLoading && messages.length === 0 && (
                 <EmptyState

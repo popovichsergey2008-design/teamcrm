@@ -15,6 +15,8 @@ import { playMessageChime } from '../lib/sound';
  */
 export function useChatNotifications(enabled: boolean, meId: string | null, openChatId: string | null, onOpenChats: () => void) {
   const [unread, setUnread] = useState(0);
+  /** Режим уведомлений по чатам — из списка: тихие чаты не звучат и не считаются в панели. */
+  const modes = useRef<Map<string, string>>(new Map());
   // в колбэке сокета нужны свежие значения, но пересоздавать подписку на каждый чат не хочется
   const openRef = useRef(openChatId);
   const meRef = useRef(meId);
@@ -27,7 +29,9 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
     if (!enabled) return;
     try {
       const chats = await api.listChats();
-      setUnread(chats.reduce((sum: number, c: any) => sum + (Number(c.unread) || 0), 0));
+      modes.current = new Map(chats.map((c: any) => [String(c.id), String(c.notify ?? 'all')]));
+      // «none» — тихий чат: непрочитанное у него своё, а панель молчит
+      setUnread(chats.reduce((sum: number, c: any) => sum + (c.notify === 'none' ? 0 : (Number(c.unread) || 0)), 0));
     } catch { /* сеть моргнула — счётчик обновится следующим событием */ }
   }, [enabled]);
 
@@ -36,9 +40,13 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
     refresh();
 
     const socket = getSocket();
-    const onMessage = (p: { chatId: string; message: { author_id: string | null; author_name: string | null; body: string; file_name?: string | null } }) => {
+    const onMessage = (p: { chatId: string; message: { author_id: string | null; author_name: string | null; body: string; file_name?: string | null }; mentionIds?: string[] }) => {
       refresh();
       const m = p.message;
+      // Настройка чата: «выключено» — тишина, «только упоминания» — звучит, лишь если позвали меня.
+      const mode = modes.current.get(String(p.chatId)) ?? 'all';
+      if (mode === 'none') return;
+      if (mode === 'mentions' && !(p.mentionIds ?? []).map(String).includes(String(meRef.current ?? ''))) return;
       if (!m.author_id) return; // системные строки — не сообщение, тревожить нечем
       /*
         Своё сообщение уведомлением не возвращается.

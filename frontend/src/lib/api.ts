@@ -377,7 +377,7 @@ export const api = {
 
   /** Личное меню: порядок и скрытые разделы. Настройка человека, а не браузера. */
   /** Настройки интерфейса сливаются на сервере: присылайте только свой кусок. */
-  saveUiPrefs: (prefs: { order?: string[]; hidden?: string[]; chatBar?: { expanded?: boolean; width?: number } }) =>
+  saveUiPrefs: (prefs: { order?: string[]; hidden?: string[]; chatBar?: { expanded?: boolean; width?: number }; chatSections?: { order?: string[]; collapsed?: string[] } }) =>
     request<{ uiPrefs: any }>('PUT', '/me/ui-prefs', { prefs }),
   /** Присутствие людей компании — для Chat Bar: в сети, когда видели, что о себе поставили. */
   presence: () => request<{ userId: string; online: boolean; lastSeenAt: string | null; status: 'busy' | 'away' | null }[]>('GET', '/presence'),
@@ -818,6 +818,9 @@ export const api = {
     id: string; title: string; projectId: string; projectName: string | null; status: string; closed: boolean;
     assigneeId: string | null; createdBy: string | null; participants: { user_id: string; role: string; full_name: string }[];
   }>('GET', `/tasks/${taskId}/brief`),
+  /** Уведомления по чату: все · только упоминания · выключены (ТЗ-5, этап 5). */
+  setChatNotify: (chatId: string, notify: 'all' | 'mentions' | 'none') =>
+    request<{ notify: string }>('PUT', `/chats/${chatId}/notify`, { notify }),
   setChatDescription: (chatId: string, description: string) =>
     request<{ description: string | null }>('PATCH', `/chats/${chatId}/description`, { description }),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
@@ -1391,7 +1394,9 @@ export interface ChatInfo {
     createdAt: string; createdBy: string | null; createdByName: string | null;
   };
   members: ChatMember[];
-  me: { role: string | null; canManage: boolean };
+  /** Внешние участники по ссылке — без учётки, только имена. */
+  guests: string[];
+  me: { role: string | null; canManage: boolean; notify: 'all' | 'mentions' | 'none' };
   counts: { media: number; voice: number; docs: number; files: number; links: number; pinned: number };
 }
 export interface ChatMember {
