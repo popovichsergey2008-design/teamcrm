@@ -1233,10 +1233,12 @@ export class ChatsRepository {
       `SELECT m.id, m.title, m.happened_at, m.created_at, m.duration_sec, m.status, m.project_id,
               s.summary,
               (SELECT COUNT(*)::int FROM meeting_task_drafts d WHERE d.meeting_id = m.id AND d.task_id IS NOT NULL) AS tasks_created,
+              -- кто говорил: сотрудник по сопоставлению, а если сопоставить не удалось —
+              -- имя из субтитров как есть; безымянные реплики не в счёт
               COALESCE((
-                SELECT array_agg(DISTINCT u.full_name) FROM meeting_segments sg
-                  JOIN users u ON u.id = sg.speaker_user_id
-                 WHERE sg.meeting_id = m.id
+                SELECT array_agg(DISTINCT COALESCE(u.full_name, sg.speaker)) FROM meeting_segments sg
+                  LEFT JOIN users u ON u.id = sg.speaker_user_id
+                 WHERE sg.meeting_id = m.id AND COALESCE(u.full_name, sg.speaker) IS NOT NULL
               ), '{}') AS participants
          FROM meetings m
     LEFT JOIN meeting_summaries s ON s.meeting_id = m.id
