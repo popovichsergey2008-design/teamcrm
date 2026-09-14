@@ -27,6 +27,13 @@ export interface ScheduleRow {
   last_error: string | null; runs: number; session_id: string | null; created_at: Date;
 }
 
+export interface SkillRow {
+  id: string; tenant_id: string; owner_id: string | null; name: string; description: string;
+  when_to_use: string; steps: string[]; inputs: string[]; output: string;
+  visibility: string; status: string; version: number; uses: number;
+  created_at: Date; updated_at: Date;
+}
+
 /** Источник в ответе — то, что можно открыть одним нажатием. */
 export interface Source { kind: 'task' | 'message' | 'meeting' | 'project' | 'chat'; id: string; title: string; url: string }
 
@@ -278,6 +285,74 @@ export class AnthillRepository {
       [tenantId, userId],
     );
     return !row?.off;
+  }
+
+  // ── навыки (ТЗ-6, разд. 16–19) ──
+
+  /**
+   * Что человеку доступно: свои навыки и навыки компании.
+   *
+   * Чужие личные не показываем даже по номеру: навык — это ещё и описание того,
+   * как человек работает, и делиться им он решает сам (поле visibility).
+   */
+  skills(tenantId: string, userId: string): Promise<SkillRow[]> {
+    return this.db.many<SkillRow>(
+      `SELECT * FROM ai_skills
+        WHERE tenant_id=$1 AND status='active' AND (visibility='company' OR owner_id=$2)
+        ORDER BY uses DESC, lower(name)`,
+      [tenantId, userId],
+    );
+  }
+
+  skill(tenantId: string, userId: string, id: string): Promise<SkillRow | null> {
+    return this.db.one<SkillRow>(
+      `SELECT * FROM ai_skills
+        WHERE tenant_id=$1 AND id=$3 AND (visibility='company' OR owner_id=$2)`,
+      [tenantId, userId, id],
+    );
+  }
+
+  createSkill(i: {
+    tenantId: string; ownerId: string; name: string; description: string; whenToUse: string;
+    steps: string[]; inputs: string[]; output: string; visibility: string;
+  }): Promise<SkillRow> {
+    return this.db.one<SkillRow>(
+      `INSERT INTO ai_skills (tenant_id, owner_id, name, description, when_to_use, steps, inputs, output, visibility)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9) RETURNING *`,
+      [i.tenantId, i.ownerId, i.name, i.description, i.whenToUse,
+        JSON.stringify(i.steps), JSON.stringify(i.inputs), i.output, i.visibility],
+    ) as Promise<SkillRow>;
+  }
+
+  /** Править можно только свой навык: общие меняет тот, кто их завёл. */
+  updateSkill(tenantId: string, userId: string, id: string, p: {
+    name?: string | null; description?: string | null; whenToUse?: string | null;
+    steps?: string[] | null; output?: string | null; visibility?: string | null; status?: string | null;
+  }): Promise<SkillRow | null> {
+    return this.db.one<SkillRow>(
+      `UPDATE ai_skills
+          SET name        = COALESCE($4, name),
+              description = COALESCE($5, description),
+              when_to_use = COALESCE($6, when_to_use),
+              steps       = COALESCE($7::jsonb, steps),
+              output      = COALESCE($8, output),
+              visibility  = COALESCE($9, visibility),
+              status      = COALESCE($10, status),
+              version     = version + 1,
+              updated_at  = now()
+        WHERE tenant_id=$1 AND owner_id=$2 AND id=$3 RETURNING *`,
+      [tenantId, userId, id, p.name ?? null, p.description ?? null, p.whenToUse ?? null,
+        p.steps ? JSON.stringify(p.steps) : null, p.output ?? null, p.visibility ?? null, p.status ?? null],
+    );
+  }
+
+  async deleteSkill(tenantId: string, userId: string, id: string): Promise<boolean> {
+    const r = await this.db.query(`DELETE FROM ai_skills WHERE tenant_id=$1 AND owner_id=$2 AND id=$3`, [tenantId, userId, id]);
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async skillUsed(id: string): Promise<void> {
+    await this.db.query(`UPDATE ai_skills SET uses = uses + 1 WHERE id=$1`, [id]);
   }
 
   // ── оценки ──

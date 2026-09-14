@@ -193,4 +193,46 @@ describe('AnthillBot (e2e)', () => {
     await http$.delete(`/api/anthill/schedules/${task.id}`).set(O).expect(200);
     expect((await http$.get('/api/anthill/schedules').set(O).expect(200)).body.data).toEqual([]);
   });
+
+  it('навыки: стартовый набор виден всем, свой правится, чужой берут копией', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'AB5', email: `ab5_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+
+    // стартовый набор заводится вместе с организацией — иначе каталог пуст и непонятен
+    const start = (await http$.get('/api/anthill/skills').set(O).expect(200)).body.data;
+    expect(start.length).toBeGreaterThanOrEqual(4);
+    expect(start.every((x: any) => x.shared)).toBe(true);
+    const common = start[0];
+
+    // общий навык компании чужой: править нельзя, но можно взять копию под себя
+    await http$.patch(`/api/anthill/skills/${common.id}`).set(O).send({ name: 'Моё название' }).expect(404);
+    const fork = (await http$.post(`/api/anthill/skills/${common.id}/fork`).set(O).expect(201)).body.data;
+    expect(fork.mine).toBe(true);
+    expect(fork.shared).toBe(false);
+    expect(fork.steps).toEqual(common.steps);
+
+    const own = (await http$.post('/api/anthill/skills').set(O).send({
+      name: 'Релизный отчёт', whenToUse: 'просят отчёт о релизе',
+      steps: ['Собрать закрытые задачи', 'Найти незакрытые с релиза'], output: 'Список изменений',
+    }).expect(201)).body.data;
+    expect(own).toMatchObject({ mine: true, visibility: 'private', steps: ['Собрать закрытые задачи', 'Найти незакрытые с релиза'] });
+
+    // навык без шагов — не навык
+    await http$.post('/api/anthill/skills').set(O).send({ name: 'Пустой', steps: [] }).expect(400);
+
+    const shared = (await http$.patch(`/api/anthill/skills/${own.id}`).set(O).send({ visibility: 'company' }).expect(200)).body.data;
+    expect(shared.shared).toBe(true);
+
+    // коллега видит общий, но не чужой личный
+    const mateEmail = `ab5m_${uniq()}@t.test`;
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    const forMate = (await http$.get('/api/anthill/skills').set(M).expect(200)).body.data;
+    expect(forMate.some((x: any) => String(x.id) === String(own.id))).toBe(true);
+    expect(forMate.some((x: any) => String(x.id) === String(fork.id))).toBe(false);
+    await http$.delete(`/api/anthill/skills/${own.id}`).set(M).expect(404);
+
+    await http$.delete(`/api/anthill/skills/${own.id}`).set(O).expect(200);
+  });
 });

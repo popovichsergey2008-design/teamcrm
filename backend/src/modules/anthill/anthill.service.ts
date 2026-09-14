@@ -6,7 +6,7 @@ import { ChatsService } from '../chats/chats.service';
 import { SearchService } from '../search/search.service';
 import { NlService } from '../nl/nl.service';
 import { AskService } from '../assistant/ask.service';
-import { AnthillRepository, ScheduleRow, Source } from './anthill.repository';
+import { AnthillRepository, ScheduleRow, SkillRow, Source } from './anthill.repository';
 import { buildTools, ToolContext, ToolDef } from './tools';
 import { nextRun, parseSchedule, Schedule, scheduleLabel } from './schedule-ru';
 
@@ -103,6 +103,8 @@ export class AnthillService {
   async ask(
     tenantId: string, user: { userId: string; role: string }, sessionId: string,
     question: string, ctx: PageContext | null, emit: (e: StreamEvent) => void, aborted: () => boolean,
+    /** Навык выбран человеком руками — тогда подбирать свой агенту не нужно. */
+    forcedSkillId?: string | null,
   ): Promise<void> {
     const text = String(question ?? '').trim();
     if (text.length < 2) throw AppException.validation('Слишком короткий вопрос');
@@ -128,10 +130,25 @@ export class AnthillService {
     }
     if (aborted()) return;
 
+    /*
+      Навык (разд. 16–17): записанный порядок работы для того, что делают регулярно.
+
+      Подбирается по запросу автоматически и называется вслух — человек должен
+      видеть, ПОЧЕМУ отчёт получился именно такой формы, и уметь это отменить,
+      выбрав другой навык или ни одного.
+    */
+    const available = await this.repo.skills(tenantId, user.userId);
+    let skill = forcedSkillId ? available.find((x) => String(x.id) === String(forcedSkillId)) ?? null : null;
+
     // 1. План
     emit({ type: 'status', text: 'Думаю, где искать…' });
-    const plan = await this.plan(tenantId, text, history, pageText);
+    const plan = await this.plan(tenantId, text, history, pageText, skill ? [] : available);
     if (aborted()) return;
+    if (!skill && plan.skill) skill = available.find((x) => String(x.id) === String(plan.skill)) ?? null;
+    if (skill) {
+      emit({ type: 'status', text: `Работаю по навыку «${skill.name}»…` });
+      void this.repo.skillUsed(String(skill.id)).catch(() => undefined);
+    }
 
     // 2. Инструменты
     const used: { tool: string; params: Record<string, unknown> }[] = [];
@@ -184,6 +201,7 @@ export class AnthillService {
     const payload = JSON.stringify({
       question: text, history, page: pageText || null,
       memory: memory.length ? memory : null,
+      skill: skill ? { name: skill.name, steps: skill.steps, output: skill.output } : null,
       findings: findings.length ? findings.join('\n\n') : 'Инструменты ничего не нашли.',
       sources: numbered || 'нет',
       now: tctx.now.toLocaleString('ru-RU'),
@@ -253,6 +271,59 @@ export class AnthillService {
   async forget(tenantId: string, userId: string, id: string) {
     if (!(await this.repo.forget(tenantId, userId, id))) throw AppException.notFound('Запись памяти не найдена');
     return { deleted: true };
+  }
+
+  // ── навыки (разд. 16–19) ──
+
+  skills(tenantId: string, userId: string) {
+    return this.repo.skills(tenantId, userId).then((rows) => rows.map((x) => skillView(x, userId)));
+  }
+
+  async addSkill(tenantId: string, userId: string, i: {
+    name: string; description?: string; whenToUse?: string; steps: string[]; inputs?: string[]; output?: string; visibility?: 'private' | 'company';
+  }) {
+    const steps = i.steps.map((x) => String(x).trim()).filter(Boolean).slice(0, 15);
+    if (steps.length < 1) throw AppException.validation('У навыка должен быть хотя бы один шаг');
+    const row = await this.repo.createSkill({
+      tenantId, ownerId: userId, name: i.name.trim().slice(0, 120),
+      description: (i.description ?? '').slice(0, 500), whenToUse: (i.whenToUse ?? '').slice(0, 500),
+      steps, inputs: (i.inputs ?? []).slice(0, 10), output: (i.output ?? '').slice(0, 500),
+      visibility: i.visibility === 'company' ? 'company' : 'private',
+    });
+    return skillView(row, userId);
+  }
+
+  async editSkill(tenantId: string, userId: string, id: string, p: {
+    name?: string; description?: string; whenToUse?: string; steps?: string[]; output?: string;
+    visibility?: 'private' | 'company'; status?: 'active' | 'archived';
+  }) {
+    const row = await this.repo.updateSkill(tenantId, userId, id, {
+      name: p.name ?? null, description: p.description ?? null, whenToUse: p.whenToUse ?? null,
+      steps: p.steps ? p.steps.map((x) => String(x).trim()).filter(Boolean).slice(0, 15) : null,
+      output: p.output ?? null, visibility: p.visibility ?? null, status: p.status ?? null,
+    });
+    // Навык компании из стартового набора чужой всем: его правит владелец, а его нет.
+    if (!row) throw AppException.notFound('Навык не найден или он не ваш — сделайте копию под себя');
+    return skillView(row, userId);
+  }
+
+  async removeSkill(tenantId: string, userId: string, id: string) {
+    if (!(await this.repo.deleteSkill(tenantId, userId, id))) {
+      throw AppException.notFound('Навык не найден или он не ваш');
+    }
+    return { deleted: true };
+  }
+
+  /** «Скопировать под себя»: общий навык — основа, дальше человек правит его как свой. */
+  async forkSkill(tenantId: string, userId: string, id: string) {
+    const src = await this.repo.skill(tenantId, userId, id);
+    if (!src) throw AppException.notFound('Навык не найден');
+    const row = await this.repo.createSkill({
+      tenantId, ownerId: userId, name: `${src.name} (моя копия)`.slice(0, 120),
+      description: src.description, whenToUse: src.when_to_use,
+      steps: src.steps ?? [], inputs: src.inputs ?? [], output: src.output, visibility: 'private',
+    });
+    return skillView(row, userId);
   }
 
   // ── регулярные задачи (разд. 15) ──
@@ -350,15 +421,17 @@ export class AnthillService {
   }
 
   /** План — структурированный JSON от модели; сломанный JSON = ответ без инструментов. */
-  private async plan(tenantId: string, question: string, history: { role: string; text: string }[], page: string) {
+  private async plan(tenantId: string, question: string, history: { role: string; text: string }[], page: string, skills: SkillRow[] = []) {
     const catalog = this.tools.map((t) => ({ name: t.name, kind: t.kind, description: t.description, params: t.params }));
-    const raw = await this.ai.generate(tenantId, PLAN_SYSTEM, JSON.stringify({ question, history, page: page || null, tools: catalog, now: new Date().toLocaleString('ru-RU') }), 'anthill_plan');
+    const skillList = skills.map((x) => ({ id: String(x.id), name: x.name, when: x.when_to_use }));
+    const raw = await this.ai.generate(tenantId, PLAN_SYSTEM, JSON.stringify({ question, history, page: page || null, tools: catalog, skills: skillList, now: new Date().toLocaleString('ru-RU') }), 'anthill_plan');
     const json = extractJson(raw);
     const calls = Array.isArray(json?.calls) ? json.calls.filter((c: any) => c && typeof c.tool === 'string').map((c: any) => ({ tool: String(c.tool), params: (c.params && typeof c.params === 'object') ? c.params : {} })) : [];
     const action = json?.action && typeof json.action.tool === 'string'
       ? { tool: String(json.action.tool), params: (json.action.params && typeof json.action.params === 'object') ? json.action.params : {} }
       : null;
-    return { calls, action };
+    const skill = json?.skill ? String(json.skill) : null;
+    return { calls, action, skill };
   }
 
   // ── действия ──
@@ -438,6 +511,17 @@ export class AnthillService {
   }
 }
 
+function skillView(x: SkillRow, userId: string) {
+  return {
+    id: String(x.id), name: x.name, description: x.description, whenToUse: x.when_to_use,
+    steps: x.steps ?? [], inputs: x.inputs ?? [], output: x.output,
+    visibility: x.visibility, uses: Number(x.uses), version: Number(x.version),
+    mine: String(x.owner_id ?? '') === String(userId),
+    /** Общий навык компании: показывается всем, правится только владельцем. */
+    shared: x.visibility === 'company',
+  };
+}
+
 function memoryView(m: { id: string; type: string; title: string; content: string; source: string; updated_at: Date }) {
   return { id: String(m.id), type: m.type, title: m.title, content: m.content, source: m.source, updatedAt: m.updated_at };
 }
@@ -506,6 +590,7 @@ const PLAN_SYSTEM = [
   'Отвечай ТОЛЬКО JSON вида {"calls":[{"tool":"имя","params":{...}}],"action":{"tool":"имя","params":{...}}|null}.',
   'calls — до четырёх инструментов вида read, в порядке вызова; для простого разговора без данных — пустой список.',
   'action — ОДИН инструмент вида write, только если человек просит что-то СДЕЛАТЬ (создать задачу, напомнить); иначе null.',
+  'skills — готовые сценарии. Если запрос похож на поле when у одного из них, верни его id в поле "skill"; иначе "skill": null. Один навык, не несколько.',
   'Если у человека открыта задача/проект/чат (поле page), пользуйся их номерами из page — не спрашивай ссылку.',
   'Даты вычисляй от now. Номера задач бери из вопроса или page — не придумывай.',
 ].join(' ');
@@ -518,4 +603,5 @@ const ANSWER_SYSTEM = [
   'Сводки группируй по смыслу: Решения · Новые задачи · Проблемы · Требует вашего внимания — и только те разделы, где есть содержимое.',
   'Если просят чек-лист, дай список из 3–7 проверяемых шагов по данным задачи.',
   'memory — что известно об этом человеке: учитывай его предпочтения и текущие темы, но НЕ пересказывай их и не считай фактами о CRM.',
+  'skill — порядок работы для этого запроса: если он задан, иди по его шагам и приведи результат к описанной форме output.',
 ].join(' ');

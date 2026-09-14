@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { Response } from 'express';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
@@ -18,10 +18,29 @@ class StartDto {
 class AskDto {
   @IsString() @MinLength(2) @MaxLength(8000) question!: string;
   @IsOptional() @ValidateNested() @Type(() => ContextDto) context?: ContextDto;
+  /** Навык выбран руками — тогда агент не подбирает свой. */
+  @IsOptional() @IsString() @MaxLength(32) skillId?: string;
 }
 class EditDto {
   /** Значения полей карточки: их состав задаёт сам инструмент (fields). */
   @IsObject() patch!: Record<string, string>;
+}
+class SkillDto {
+  @IsString() @MinLength(2) @MaxLength(120) name!: string;
+  @IsOptional() @IsString() @MaxLength(500) description?: string;
+  @IsOptional() @IsString() @MaxLength(500) whenToUse?: string;
+  @IsArray() @ArrayMaxSize(15) @IsString({ each: true }) steps!: string[];
+  @IsOptional() @IsString() @MaxLength(500) output?: string;
+  @IsOptional() @IsIn(['private', 'company']) visibility?: 'private' | 'company';
+}
+class SkillPatchDto {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(120) name?: string;
+  @IsOptional() @IsString() @MaxLength(500) description?: string;
+  @IsOptional() @IsString() @MaxLength(500) whenToUse?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(15) @IsString({ each: true }) steps?: string[];
+  @IsOptional() @IsString() @MaxLength(500) output?: string;
+  @IsOptional() @IsIn(['private', 'company']) visibility?: 'private' | 'company';
+  @IsOptional() @IsIn(['active', 'archived']) status?: 'active' | 'archived';
 }
 class MemoryDto {
   @IsIn(['preference', 'topic']) type!: 'preference' | 'topic';
@@ -97,7 +116,7 @@ export class AnthillController {
     res.on('close', () => { closed = true; });
     const send = (event: string, data: unknown) => { if (!closed) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
     try {
-      await this.anthill.ask(u.tenantId, u, id, dto.question, dto.context ?? null, (e) => send(e.type, e), () => closed);
+      await this.anthill.ask(u.tenantId, u, id, dto.question, dto.context ?? null, (e) => send(e.type, e), () => closed, dto.skillId ?? null);
     } catch (e) {
       send('error', { text: e instanceof AppException ? e.message : 'Не удалось получить ответ. Попробуйте снова.' });
     } finally {
@@ -129,6 +148,34 @@ export class AnthillController {
   @Get('actions')
   actions(@CurrentUser() u: AuthUser) {
     return this.anthill.actions(u.tenantId, u.userId);
+  }
+
+  // ── навыки (разд. 16–19) ──
+
+  @Get('skills')
+  skills(@CurrentUser() u: AuthUser) {
+    return this.anthill.skills(u.tenantId, u.userId);
+  }
+
+  @Post('skills')
+  addSkill(@CurrentUser() u: AuthUser, @Body() dto: SkillDto) {
+    return this.anthill.addSkill(u.tenantId, u.userId, dto);
+  }
+
+  @Patch('skills/:id')
+  editSkill(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: SkillPatchDto) {
+    return this.anthill.editSkill(u.tenantId, u.userId, id, dto);
+  }
+
+  /** Чужой навык под себя: общий правит только владелец, а копию — кто угодно. */
+  @Post('skills/:id/fork')
+  forkSkill(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.anthill.forkSkill(u.tenantId, u.userId, id);
+  }
+
+  @Delete('skills/:id')
+  removeSkill(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.anthill.removeSkill(u.tenantId, u.userId, id);
   }
 
   // ── память (ТЗ-6, разд. 20–21) ──

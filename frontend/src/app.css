@@ -4019,3 +4019,14 @@
 .anthill-mem-body { font-size: var(--fs-sm); }
 .anthill-mem-acts { display: flex; align-items: center; gap: 4px; font-size: var(--fs-xs); }
 .anthill-mem-acts .dim { margin-right: auto; }
+/* Навык: свёрнут — название и «когда», развёрнут — шаги по порядку. */
+.anthill-skill-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.anthill-skill-top .dim { font-size: var(--fs-xs); }
+.anthill-skill-name {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0;
+  background: none; border: 0; cursor: pointer; font: inherit; font-weight: 600; color: inherit;
+}
+.anthill-skill-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.anthill-skill-when, .anthill-skill-desc { font-size: var(--fs-sm); }
+.anthill-skill-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; font-size: var(--fs-sm); }
+.anthill-skill-chosen { display: flex; align-items: center; gap: 6px; }

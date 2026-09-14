@@ -405,6 +405,66 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       },
     },
     {
+      name: 'create_skill', kind: 'write',
+      description: 'Записать НАВЫК — порядок работы для того, что человек делает регулярно: «создай навык, который каждую пятницу готовит отчёт по проекту». steps — шаги по порядку, по одному действию в строке.',
+      params: {
+        name: 'название навыка', description: 'о чём он', whenToUse: 'когда его применять — словами запроса',
+        steps: 'массив шагов по порядку', output: 'каким должен получиться результат',
+      },
+      async preview(_ctx, p) {
+        const name = str(p.name, 120);
+        const steps = Array.isArray(p.steps) ? p.steps.map((x) => str(x, 300)).filter(Boolean).slice(0, 15) : [];
+        if (!name) throw new Error('Не понял, как назвать навык');
+        if (!steps.length) throw new Error('Не понял, из каких шагов состоит навык');
+        return {
+          text: `Записать навык?\nНазвание: ${name}\nКогда применять: ${str(p.whenToUse, 500) || '— не указано —'}\nШаги:\n${steps.map((x, i) => `${i + 1}. ${x}`).join('\n')}\nРезультат: ${str(p.output, 500) || '— как получится —'}`,
+          params: { name, description: str(p.description, 500), whenToUse: str(p.whenToUse, 500), steps, output: str(p.output, 500) },
+        };
+      },
+      fields: [
+        { key: 'name', label: 'Название', type: 'text' },
+        { key: 'whenToUse', label: 'Когда применять', type: 'text' },
+        { key: 'steps', label: 'Шаги — по одному в строке', type: 'multiline' },
+        { key: 'output', label: 'Каким должен быть результат', type: 'text' },
+      ],
+      values: (p) => ({
+        name: str(p.name, 120), whenToUse: str(p.whenToUse, 500),
+        steps: Array.isArray(p.steps) ? (p.steps as unknown[]).map((x) => String(x)).join('\n') : '',
+        output: str(p.output, 500),
+      }),
+      async edit(_ctx, p, patch) {
+        const name = str(patch.name ?? p.name, 120);
+        const steps = patch.steps !== undefined
+          ? patch.steps.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 15)
+          : ((p.steps as string[]) ?? []);
+        if (!name) throw new Error('Нужно название навыка');
+        if (!steps.length) throw new Error('Нужен хотя бы один шаг');
+        const whenToUse = str(patch.whenToUse ?? p.whenToUse, 500);
+        const output = str(patch.output ?? p.output, 500);
+        return {
+          text: `Записать навык?\nНазвание: ${name}\nКогда применять: ${whenToUse || '— не указано —'}\nШаги:\n${steps.map((x, i) => `${i + 1}. ${x}`).join('\n')}\nРезультат: ${output || '— как получится —'}`,
+          params: { ...p, name, whenToUse, steps, output },
+        };
+      },
+      async execute(ctx, p) {
+        const row = await repo.createSkill({
+          tenantId: ctx.tenantId, ownerId: ctx.user.userId,
+          name: str(p.name, 120), description: str(p.description, 500), whenToUse: str(p.whenToUse, 500),
+          steps: ((p.steps as string[]) ?? []).map((x) => String(x)), inputs: [], output: str(p.output, 500),
+          visibility: 'private',
+        });
+        return {
+          text: `Навык «${row.name}» записан. Я буду брать его сам, когда запрос на него похож; посмотреть и поправить — во вкладке «Навыки».`,
+          output: { skillId: String(row.id) },
+          sources: [],
+        };
+      },
+      async undo(ctx, output) {
+        await repo.deleteSkill(ctx.tenantId, ctx.user.userId, String(output.skillId));
+        return 'Навык удалён.';
+      },
+    },
+    {
       name: 'remember', kind: 'write',
       description: 'Запомнить о человеке надолго, когда он просит: «запомни, что я работаю по Новосибирску», «запомни: отчёты нужны короткие». type — preference (как работать и отвечать) или topic (над чем работает сейчас).',
       params: { type: 'preference | topic', title: 'коротко, о чём это', content: 'сам факт одним предложением' },

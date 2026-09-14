@@ -545,6 +545,17 @@ export const api = {
   anthillEdit: (actionId: string, patch: Record<string, string>) =>
     request<{ id: string; preview: string; values: Record<string, string> }>('POST', `/anthill/actions/${actionId}/edit`, { patch }),
   anthillUndo: (actionId: string) => request<{ status: string; text: string }>('POST', `/anthill/actions/${actionId}/undo`, {}),
+  /* Навыки (разд. 16–19): записанный порядок работы для того, что делают регулярно. */
+  anthillSkills: () => request<AnthillSkill[]>('GET', '/anthill/skills'),
+  anthillAddSkill: (i: { name: string; description?: string; whenToUse?: string; steps: string[]; output?: string; visibility?: 'private' | 'company' }) =>
+    request<AnthillSkill>('POST', '/anthill/skills', i),
+  anthillEditSkill: (id: string, patch: {
+    name?: string; description?: string; whenToUse?: string; steps?: string[]; output?: string;
+    visibility?: 'private' | 'company'; status?: 'active' | 'archived';
+  }) => request<AnthillSkill>('PATCH', `/anthill/skills/${id}`, patch),
+  anthillForkSkill: (id: string) => request<AnthillSkill>('POST', `/anthill/skills/${id}/fork`, {}),
+  anthillDeleteSkill: (id: string) => request<{ deleted: boolean }>('DELETE', `/anthill/skills/${id}`),
+
   /* Память агента (ТЗ-6, разд. 20–21): человек видит, что о нём запомнили, и правит это. */
   anthillMemories: () => request<AnthillMemory[]>('GET', '/anthill/memories'),
   anthillRemember: (type: 'preference' | 'topic', title: string, content: string) =>
@@ -569,6 +580,7 @@ export const api = {
    */
   anthillAsk: (
     id: string, question: string, context: AnthillContext | null,
+    skillId: string | null,
     on: {
       onStatus?: (t: string) => void; onDelta?: (t: string) => void; onSources?: (s: AnthillSource[]) => void;
       onAction?: (a: { id: string; tool: string; preview: string; fields: AnthillField[]; values: Record<string, string> }) => void;
@@ -582,7 +594,7 @@ export const api = {
         res = await fetch(`${BASE}/anthill/sessions/${id}/ask`, {
           method: 'POST', signal: ctrl.signal,
           headers: { 'Content-Type': 'application/json', ...(tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}) },
-          body: JSON.stringify({ question, context: context ?? undefined }),
+          body: JSON.stringify({ question, context: context ?? undefined, skillId: skillId ?? undefined }),
         });
       } catch (e) { if ((e as Error).name !== 'AbortError') on.onError?.('Нет связи с сервером'); return; }
       if (!res.ok || !res.body) { on.onError?.('Не удалось получить ответ. Попробуйте снова.'); return; }
@@ -1510,6 +1522,17 @@ export interface AnthillAction {
   fields: AnthillField[];
   values: Record<string, string>;
 }
+/** Навык: порядок работы, который агент берёт сам или по выбору человека. */
+export interface AnthillSkill {
+  id: string; name: string; description: string; whenToUse: string;
+  steps: string[]; inputs: string[]; output: string;
+  visibility: string; uses: number; version: number;
+  /** Мой навык — его можно править и удалять. */
+  mine: boolean;
+  /** Общий для компании. */
+  shared: boolean;
+}
+
 /** Что агент помнит о человеке: предпочтение (как работать) или рабочая тема. */
 export interface AnthillMemory {
   id: string; type: 'preference' | 'topic' | string; title: string; content: string;

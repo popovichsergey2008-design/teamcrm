@@ -3,12 +3,13 @@ import { Icon } from '../Icon';
 import { RichText } from '../RichText';
 import { VoiceStatus } from '../VoiceStatus';
 import { api, ApiError } from '../../lib/api';
-import type { AnthillAction, AnthillContext, AnthillMessage, AnthillSession, AnthillSource } from '../../lib/api';
+import type { AnthillAction, AnthillContext, AnthillMessage, AnthillSession, AnthillSkill, AnthillSource } from '../../lib/api';
 import { navigate } from '../../lib/router';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { stampLabel } from '../../lib/chat-text';
 import { AnthillTasks } from './AnthillTasks';
 import { AnthillMemory } from './AnthillMemory';
+import { AnthillSkills } from './AnthillSkills';
 import { getSocket } from '../../lib/socket';
 
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
@@ -61,8 +62,15 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
   const [votes, setVotes] = useState<Record<string, 1 | -1>>({});
   /** Карточка, открытая на правку: одна за раз — их и бывает одна. */
   const [editing, setEditing] = useState<string | null>(null);
-  /** Разговор · Задачи · Память (ТЗ-6, MVP 2): три вкладки одного помощника. */
-  const [tab, setTab] = useState<'chat' | 'tasks' | 'memory'>('chat');
+  /** Разговор · Задачи · Навыки · Память (ТЗ-6, MVP 2): вкладки одного помощника. */
+  const [tab, setTab] = useState<'chat' | 'tasks' | 'skills' | 'memory'>('chat');
+  /**
+   * Навык, выбранный руками.
+   *
+   * По умолчанию агент подбирает его сам — так и задумано в ТЗ. Но когда человек
+   * знает, чего хочет («сделай именно релизный отчёт»), спорить с ним не нужно.
+   */
+  const [skill, setSkill] = useState<AnthillSkill | null>(null);
   const [err, setErr] = useState('');
   const stopRef = useRef<(() => void) | null>(null);
   const busy = live !== null;
@@ -138,7 +146,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
       }]);
     };
 
-    const run = api.anthillAsk(id, question, ctxArg, {
+    const run = api.anthillAsk(id, question, ctxArg, skill ? skill.id : null, {
       onStatus: (t) => { acc.status = t; show(); },
       onDelta: (t) => { acc.text += t; acc.status = ''; show(); },
       onSources: (s) => { acc.sources = s; show(); },
@@ -260,6 +268,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
         {([
           { key: 'chat', label: 'Разговор', icon: 'chat' },
           { key: 'tasks', label: 'Задачи', icon: 'clock' },
+          { key: 'skills', label: 'Навыки', icon: 'sparkles' },
           { key: 'memory', label: 'Память', icon: 'book' },
         ] as const).map((t) => (
           <button
@@ -275,6 +284,9 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
       </div>
 
       {tab === 'tasks' && <AnthillTasks onOpenSession={(id) => { setTab('chat'); void openSession(id); }} />}
+      {tab === 'skills' && (
+        <AnthillSkills onRun={(x) => { setSkill(x); setTab('chat'); inputRef.current?.focus(); }} />
+      )}
       {tab === 'memory' && <AnthillMemory />}
 
       {tab === 'chat' && historyOpen && (
@@ -411,6 +423,14 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
             <input type="checkbox" checked={useCtx} onChange={(e) => setUseCtx(e.target.checked)} />
             <Icon name="link" size={12} /> Контекст: {ctxLine}
           </label>
+        )}
+        {skill && (
+          <div className="anthill-ctx anthill-skill-chosen">
+            <Icon name="sparkles" size={12} /> Навык: {skill.name}
+            <button className="msg-icon" onClick={() => setSkill(null)} title="Пусть агент выберет сам" aria-label="Убрать навык">
+              <Icon name="close" size={12} />
+            </button>
+          </div>
         )}
         <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} hint="нажмите «стоп», когда закончите" />
         <div className="chat-input anthill-input">
