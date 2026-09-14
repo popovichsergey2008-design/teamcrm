@@ -17,6 +17,8 @@ export interface User {
     chatBar?: { expanded?: boolean; width?: number };
     /** Секции списка чатов: порядок и свёрнутые (ТЗ-5, раздел 38). */
     chatSections?: { order?: string[]; collapsed?: string[] };
+    /** AnthillBot: собирать ли память самому (ТЗ-6, разд. 21). */
+    anthill?: { memoryAuto?: boolean };
   };
 }
 

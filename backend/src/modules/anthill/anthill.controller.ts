@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -22,6 +22,27 @@ class AskDto {
 class EditDto {
   /** Значения полей карточки: их состав задаёт сам инструмент (fields). */
   @IsObject() patch!: Record<string, string>;
+}
+class MemoryDto {
+  @IsIn(['preference', 'topic']) type!: 'preference' | 'topic';
+  @IsString() @MinLength(2) @MaxLength(160) title!: string;
+  @IsString() @MinLength(2) @MaxLength(600) content!: string;
+}
+class MemoryPatchDto {
+  @IsString() @MinLength(2) @MaxLength(160) title!: string;
+  @IsString() @MinLength(2) @MaxLength(600) content!: string;
+}
+class ScheduleDto {
+  @IsString() @MinLength(2) @MaxLength(160) title!: string;
+  @IsString() @MinLength(5) @MaxLength(2000) instruction!: string;
+  /** Фраза о повторении целиком: её разбирают правила, а не модель. */
+  @IsString() @MinLength(3) @MaxLength(200) schedule!: string;
+}
+class SchedulePatchDto {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(160) title?: string;
+  @IsOptional() @IsString() @MinLength(5) @MaxLength(2000) instruction?: string;
+  @IsOptional() @IsString() @MinLength(3) @MaxLength(200) schedule?: string;
+  @IsOptional() @IsIn(['active', 'paused', 'done']) status?: 'active' | 'paused' | 'done';
 }
 class FeedbackDto {
   @IsInt() @IsIn([1, -1]) vote!: 1 | -1;
@@ -108,6 +129,53 @@ export class AnthillController {
   @Get('actions')
   actions(@CurrentUser() u: AuthUser) {
     return this.anthill.actions(u.tenantId, u.userId);
+  }
+
+  // ── память (ТЗ-6, разд. 20–21) ──
+
+  @Get('memories')
+  memories(@CurrentUser() u: AuthUser) {
+    return this.anthill.memories(u.tenantId, u.userId);
+  }
+
+  @Post('memories')
+  addMemory(@CurrentUser() u: AuthUser, @Body() dto: MemoryDto) {
+    return this.anthill.addMemory(u.tenantId, u.userId, dto.type, dto.title, dto.content);
+  }
+
+  @Patch('memories/:id')
+  editMemory(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: MemoryPatchDto) {
+    return this.anthill.updateMemory(u.tenantId, u.userId, id, dto.title, dto.content);
+  }
+
+  @Delete('memories/:id')
+  forget(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.anthill.forget(u.tenantId, u.userId, id);
+  }
+
+  // ── регулярные задачи (разд. 15) ──
+
+  @Get('schedules')
+  schedules(@CurrentUser() u: AuthUser) {
+    return this.anthill.schedules(u.tenantId, u.userId);
+  }
+
+  @Post('schedules')
+  addSchedule(@CurrentUser() u: AuthUser, @Body() dto: ScheduleDto) {
+    return this.anthill.addSchedule(u.tenantId, u, { title: dto.title, instruction: dto.instruction, phrase: dto.schedule });
+  }
+
+  /** Пауза, возобновление, правка расписания и текста — одной ручкой. */
+  @Patch('schedules/:id')
+  patchSchedule(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: SchedulePatchDto) {
+    return this.anthill.patchSchedule(u.tenantId, u.userId, id, {
+      title: dto.title, instruction: dto.instruction, phrase: dto.schedule, status: dto.status,
+    });
+  }
+
+  @Delete('schedules/:id')
+  removeSchedule(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.anthill.removeSchedule(u.tenantId, u.userId, id);
   }
 
   @Post('messages/:id/feedback')

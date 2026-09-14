@@ -6,8 +6,9 @@ import { ChatsService } from '../chats/chats.service';
 import { SearchService } from '../search/search.service';
 import { NlService } from '../nl/nl.service';
 import { AskService } from '../assistant/ask.service';
-import { AnthillRepository, Source } from './anthill.repository';
+import { AnthillRepository, ScheduleRow, Source } from './anthill.repository';
 import { buildTools, ToolContext, ToolDef } from './tools';
+import { nextRun, parseSchedule, Schedule, scheduleLabel } from './schedule-ru';
 
 /** Что открыто у человека — для «что здесь нужно сделать» без ссылки (разд. 4–5). */
 export interface PageContext { type: 'task' | 'project' | 'chat' | 'meeting'; id: string }
@@ -107,7 +108,7 @@ export class AnthillService {
     if (text.length < 2) throw AppException.validation('Слишком короткий вопрос');
     const session = await this.repo.session(tenantId, user.userId, sessionId);
     if (!session) throw AppException.notFound('Разговор не найден');
-    const tctx: ToolContext = { tenantId, user, now: new Date(), base: this.base() };
+    const tctx: ToolContext = { tenantId, user, now: new Date(), base: this.base(), timezone: await this.repo.userTz(tenantId, user.userId) };
 
     await this.repo.addMessage({ tenantId, sessionId, role: 'user', content: text });
     if (!session.title) await this.repo.setTitle(String(session.id), text);
@@ -179,8 +180,10 @@ export class AnthillService {
     emit({ type: 'status', text: 'Формирую ответ…' });
     const uniq = dedupeSources(sources);
     const numbered = uniq.map((s, i) => `[${i + 1}] ${s.title}`).join('\n');
+    const memory = await this.memoryLines(tenantId, user.userId);
     const payload = JSON.stringify({
       question: text, history, page: pageText || null,
+      memory: memory.length ? memory : null,
       findings: findings.length ? findings.join('\n\n') : 'Инструменты ничего не нашли.',
       sources: numbered || 'нет',
       now: tctx.now.toLocaleString('ru-RU'),
@@ -197,6 +200,143 @@ export class AnthillService {
     emit({ type: 'sources', sources: cited });
     emit({ type: 'done', messageId: String(msg.id) });
     await this.repo.touch(sessionId);
+    // Память — после ответа и в стороне: человек не должен ждать, пока агент
+    // осмыслит разговор, а сбой осмысления не должен портить уже полученный ответ.
+    void this.learn(tenantId, user.userId, sessionId, text).catch(() => undefined);
+  }
+
+  // ── память (ТЗ-6, разд. 20–21) ──
+
+  /** Строки памяти для подсказки модели: коротко и без мусора. */
+  private async memoryLines(tenantId: string, userId: string): Promise<string[]> {
+    const rows = await this.repo.memories(tenantId, userId, 20);
+    return rows.map((m) => `${m.type === 'preference' ? 'предпочтение' : 'тема'}: ${m.title} — ${m.content}`);
+  }
+
+  /**
+   * Что запомнить из реплики.
+   *
+   * Только то, что переживёт разговор: как человек работает и над чем работает.
+   * Разовые вопросы («какие задачи просрочены») памятью не становятся — иначе она
+   * за неделю превращается в свалку, а подсказка модели — в шум.
+   */
+  private async learn(tenantId: string, userId: string, sessionId: string, question: string): Promise<void> {
+    if (!(await this.repo.memoryAuto(tenantId, userId))) return;
+    let raw = '';
+    try { raw = await this.ai.generate(tenantId, MEMORY_SYSTEM, question.slice(0, 1500), 'anthill_memory'); }
+    catch { return; }
+    const json = extractJson(`{"facts":${raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1) || '[]'}}`);
+    const facts = Array.isArray(json?.facts) ? json.facts : [];
+    for (const f of facts.slice(0, 3)) {
+      const type = f?.type === 'preference' ? 'preference' : 'topic';
+      const title = String(f?.title ?? '').trim().slice(0, 160);
+      const content = String(f?.content ?? '').trim().slice(0, 600);
+      if (title.length < 3 || content.length < 3) continue;
+      await this.repo.rememberFact({ tenantId, userId, type, title, content, source: 'auto', sessionId });
+    }
+  }
+
+  memories(tenantId: string, userId: string) {
+    return this.repo.memories(tenantId, userId).then((rows) => rows.map(memoryView));
+  }
+
+  async addMemory(tenantId: string, userId: string, type: 'preference' | 'topic', title: string, content: string) {
+    return memoryView(await this.repo.rememberFact({ tenantId, userId, type, title, content, source: 'manual' }));
+  }
+
+  async updateMemory(tenantId: string, userId: string, id: string, title: string, content: string) {
+    const row = await this.repo.updateMemory(tenantId, userId, id, title, content);
+    if (!row) throw AppException.notFound('Запись памяти не найдена');
+    return memoryView(row);
+  }
+
+  async forget(tenantId: string, userId: string, id: string) {
+    if (!(await this.repo.forget(tenantId, userId, id))) throw AppException.notFound('Запись памяти не найдена');
+    return { deleted: true };
+  }
+
+  // ── регулярные задачи (разд. 15) ──
+
+  schedules(tenantId: string, userId: string) {
+    return this.repo.schedules(tenantId, userId).then((rows) => rows.map(scheduleView));
+  }
+
+  /**
+   * Завести регулярную задачу.
+   *
+   * Расписание разбираем правилами из той же фразы, которой человек её просил:
+   * «каждый понедельник в 9:00 — список просроченных». Инструкцию оставляем целиком:
+   * агент выполняет её так же, как если бы её задали вопросом в чате.
+   */
+  async addSchedule(tenantId: string, user: { userId: string }, i: { title: string; instruction: string; phrase?: string | null }) {
+    const schedule = parseSchedule(i.phrase || i.instruction);
+    if (!schedule) throw AppException.validation('Не понял расписание — скажите, например, «каждый понедельник в 9:00»');
+    const row = await this.repo.createSchedule({
+      tenantId, userId: user.userId,
+      title: i.title.slice(0, 160), instruction: i.instruction.slice(0, 2000),
+      schedule: schedule as unknown as Record<string, unknown>,
+      nextRunAt: nextRun(schedule, new Date(), await this.repo.userTz(tenantId, user.userId)),
+    });
+    return scheduleView(row);
+  }
+
+  async patchSchedule(tenantId: string, userId: string, id: string, p: {
+    title?: string; instruction?: string; phrase?: string; status?: 'active' | 'paused' | 'done';
+  }) {
+    const cur = await this.repo.schedule(tenantId, userId, id);
+    if (!cur) throw AppException.notFound('Регулярная задача не найдена');
+    let schedule: Schedule | null = null;
+    if (p.phrase) {
+      schedule = parseSchedule(p.phrase);
+      if (!schedule) throw AppException.validation('Не понял расписание — скажите, например, «каждую пятницу в 17:00»');
+    }
+    // Сняли с паузы или сменили расписание — следующий запуск считаем заново:
+    // иначе задача просыпается в момент, о котором человек уже передумал.
+    const revive = schedule || (p.status === 'active' && cur.status !== 'active');
+    const row = await this.repo.updateSchedule(tenantId, userId, id, {
+      title: p.title ?? null,
+      instruction: p.instruction ?? null,
+      schedule: schedule ? (schedule as unknown as Record<string, unknown>) : null,
+      status: p.status ?? null,
+      nextRunAt: revive ? nextRun(schedule ?? (cur.schedule as unknown as Schedule), new Date(), await this.repo.userTz(tenantId, userId)) : null,
+    });
+    return scheduleView(row!);
+  }
+
+  async removeSchedule(tenantId: string, userId: string, id: string) {
+    if (!(await this.repo.deleteSchedule(tenantId, userId, id))) throw AppException.notFound('Регулярная задача не найдена');
+    return { deleted: true };
+  }
+
+  /**
+   * Один прогон регулярной задачи — тем же путём, что и вопрос человека.
+   *
+   * Результат ложится в СВОЮ нитку разговора: у задачи «каждый понедельник» своя
+   * история, и по ней видно, как менялась картина неделя к неделе.
+   */
+  async runSchedule(row: ScheduleRow & { timezone: string | null; role: string }): Promise<{ text: string; sessionId: string }> {
+    const user = { userId: String(row.user_id), role: row.role };
+    let sessionId = row.session_id ? String(row.session_id) : '';
+    if (!sessionId || !(await this.repo.session(String(row.tenant_id), user.userId, sessionId))) {
+      const s = await this.repo.createSession(String(row.tenant_id), user.userId, null);
+      sessionId = String(s.id);
+      await this.repo.setTitle(sessionId, row.title);
+      await this.repo.attachSession(String(row.id), sessionId);
+    }
+    let text = '';
+    await this.ask(String(row.tenant_id), user, sessionId, row.instruction, null, (e) => {
+      if (e.type === 'delta') text += e.text;
+    }, () => false);
+    return { text: text.trim(), sessionId };
+  }
+
+  async scheduleDue() {
+    return this.repo.dueSchedules();
+  }
+
+  async afterRun(row: ScheduleRow & { timezone: string | null }, result: string | null, error: string | null) {
+    const when = nextRun(row.schedule as unknown as Schedule, new Date(), row.timezone);
+    await this.repo.finishRun(String(row.id), when, result ? result.slice(0, 4000) : null, error);
   }
 
   private async runTool(ctx: ToolContext, name: string, params: Record<string, unknown>) {
@@ -228,7 +368,7 @@ export class AnthillService {
     if (action.status !== 'pending') throw AppException.conflict('Это действие уже обработано');
     const def = this.tools.find((t) => t.name === action.tool);
     if (!def?.execute) throw AppException.conflict('Такое действие больше недоступно');
-    const tctx: ToolContext = { tenantId, user, now: new Date(), base: this.base() };
+    const tctx: ToolContext = { tenantId, user, now: new Date(), base: this.base(), timezone: await this.repo.userTz(tenantId, user.userId) };
     try {
       const r = await def.execute(tctx, action.input_json);
       await this.repo.finishAction(String(action.id), 'done', r.output);
@@ -256,7 +396,7 @@ export class AnthillService {
     if (action.status !== 'pending') throw AppException.conflict('Это действие уже обработано');
     const def = this.tools.find((t) => t.name === action.tool);
     if (!def?.edit) throw AppException.conflict('Это действие правке не поддаётся');
-    const tctx: ToolContext = { tenantId, user, now: new Date(), base: this.base() };
+    const tctx: ToolContext = { tenantId, user, now: new Date(), base: this.base(), timezone: await this.repo.userTz(tenantId, user.userId) };
     let r: { text: string; params: Record<string, unknown> };
     try { r = await def.edit(tctx, action.input_json, patch); }
     catch (e) { throw AppException.validation((e as Error).message); }
@@ -298,6 +438,21 @@ export class AnthillService {
   }
 }
 
+function memoryView(m: { id: string; type: string; title: string; content: string; source: string; updated_at: Date }) {
+  return { id: String(m.id), type: m.type, title: m.title, content: m.content, source: m.source, updatedAt: m.updated_at };
+}
+
+function scheduleView(s: ScheduleRow) {
+  const sched = s.schedule as unknown as Schedule;
+  return {
+    id: String(s.id), title: s.title, instruction: s.instruction,
+    schedule: sched, label: scheduleLabel(sched), status: s.status,
+    nextRunAt: s.status === 'active' ? s.next_run_at : null,
+    lastRunAt: s.last_run_at, lastResult: s.last_result, lastError: s.last_error,
+    runs: Number(s.runs), sessionId: s.session_id ? String(s.session_id) : null,
+  };
+}
+
 /** Карточка действия, как её видит панель. */
 interface ActionView {
   id: string;
@@ -337,6 +492,15 @@ function citedSources(answer: string, sources: Source[]): Source[] {
   return cited.length ? cited : sources.slice(0, 5);
 }
 
+const MEMORY_SYSTEM = [
+  'Ты выделяешь из реплики человека то, что стоит помнить о НЁМ надолго.',
+  'Верни ТОЛЬКО JSON-массив: [{"type":"preference|topic","title":"коротко","content":"одно предложение"}].',
+  'preference — как человек работает и как ему отвечать (часовой пояс, язык, формат, привычки).',
+  'topic — над чем он работает сейчас (проект, направление, договорённость).',
+  'Разовые вопросы, просьбы и факты из CRM памятью НЕ являются — на них верни [].',
+  'Максимум три записи. Пиши по-русски.',
+].join(' ');
+
 const PLAN_SYSTEM = [
   'Ты — планировщик AnthillBot, помощника в TeamCRM. По вопросу человека реши, какие инструменты вызвать.',
   'Отвечай ТОЛЬКО JSON вида {"calls":[{"tool":"имя","params":{...}}],"action":{"tool":"имя","params":{...}}|null}.',
@@ -353,4 +517,5 @@ const ANSWER_SYSTEM = [
   'Ссылайся на источники номерами в квадратных скобках, например [2], — только из списка sources. Номера задач пиши как #N.',
   'Сводки группируй по смыслу: Решения · Новые задачи · Проблемы · Требует вашего внимания — и только те разделы, где есть содержимое.',
   'Если просят чек-лист, дай список из 3–7 проверяемых шагов по данным задачи.',
+  'memory — что известно об этом человеке: учитывай его предпочтения и текущие темы, но НЕ пересказывай их и не считай фактами о CRM.',
 ].join(' ');

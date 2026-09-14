@@ -124,4 +124,73 @@ describe('AnthillBot (e2e)', () => {
     // и не поправить: карточка уже обработана
     await http$.post(`/api/anthill/actions/${other.id}/edit`).set(O).send({ patch: { text: 'ещё раз' } }).expect(409);
   });
+
+  it('память: своя, правится и удаляется; чужую не тронуть', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'AB3', email: `ab3_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+
+    expect((await http$.get('/api/anthill/memories').set(O).expect(200)).body.data).toEqual([]);
+    const m = (await http$.post('/api/anthill/memories').set(O)
+      .send({ type: 'preference', title: 'Часовой пояс', content: 'Работаю по Новосибирску' }).expect(201)).body.data;
+    expect(m).toMatchObject({ type: 'preference', title: 'Часовой пояс', source: 'manual' });
+
+    // тот же факт не плодит вторую строку, а обновляет первую
+    await http$.post('/api/anthill/memories').set(O)
+      .send({ type: 'preference', title: 'часовой пояс', content: 'Новосибирск, UTC+7' }).expect(201);
+    const list = (await http$.get('/api/anthill/memories').set(O).expect(200)).body.data;
+    expect(list.length).toBe(1);
+    expect(list[0].content).toBe('Новосибирск, UTC+7');
+
+    await http$.patch(`/api/anthill/memories/${m.id}`).set(O).send({ title: 'Пояс', content: 'UTC+7' }).expect(200);
+
+    const mateEmail = `ab3m_${uniq()}@t.test`;
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    expect((await http$.get('/api/anthill/memories').set(M).expect(200)).body.data).toEqual([]);
+    await http$.patch(`/api/anthill/memories/${m.id}`).set(M).send({ title: 'чужое', content: 'чужое' }).expect(404);
+    await http$.delete(`/api/anthill/memories/${m.id}`).set(M).expect(404);
+
+    await http$.delete(`/api/anthill/memories/${m.id}`).set(O).expect(200);
+    expect((await http$.get('/api/anthill/memories').set(O).expect(200)).body.data).toEqual([]);
+  });
+
+  it('регулярная задача: расписание словами, пауза и удаление', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'AB4', email: `ab4_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+
+    const task = (await http$.post('/api/anthill/schedules').set(O).send({
+      title: 'Просроченные за неделю',
+      instruction: 'дай список просроченных задач по всем проектам',
+      schedule: 'каждый понедельник в 9:00',
+    }).expect(201)).body.data;
+    expect(task).toMatchObject({ status: 'active', label: 'каждый понедельник в 9:00' });
+    expect(new Date(task.nextRunAt).getTime()).toBeGreaterThan(Date.now());
+
+    // «когда-нибудь» расписанием не является — просим сказать по-человечески
+    await http$.post('/api/anthill/schedules').set(O)
+      .send({ title: 'Как-нибудь', instruction: 'дай сводку', schedule: 'когда будет время' }).expect(400);
+
+    // пауза: следующего запуска у приостановленной нет
+    const paused = (await http$.patch(`/api/anthill/schedules/${task.id}`).set(O).send({ status: 'paused' }).expect(200)).body.data;
+    expect(paused.status).toBe('paused');
+    expect(paused.nextRunAt).toBeNull();
+
+    // сняли с паузы — время посчитано заново, в будущем
+    const back = (await http$.patch(`/api/anthill/schedules/${task.id}`).set(O).send({ status: 'active' }).expect(200)).body.data;
+    expect(new Date(back.nextRunAt).getTime()).toBeGreaterThan(Date.now());
+
+    const moved = (await http$.patch(`/api/anthill/schedules/${task.id}`).set(O).send({ schedule: 'каждую пятницу в 17:00' }).expect(200)).body.data;
+    expect(moved.label).toBe('каждую пятницу в 17:00');
+
+    const mateEmail = `ab4m_${uniq()}@t.test`;
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    expect((await http$.get('/api/anthill/schedules').set(M).expect(200)).body.data).toEqual([]);
+    await http$.delete(`/api/anthill/schedules/${task.id}`).set(M).expect(404);
+
+    await http$.delete(`/api/anthill/schedules/${task.id}`).set(O).expect(200);
+    expect((await http$.get('/api/anthill/schedules').set(O).expect(200)).body.data).toEqual([]);
+  });
 });

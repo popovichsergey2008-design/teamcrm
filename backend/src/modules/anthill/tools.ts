@@ -1,4 +1,5 @@
 import { AnthillRepository, Source } from './anthill.repository';
+import { nextRun, parseSchedule, scheduleLabel } from './schedule-ru';
 import { TasksService } from '../tasks/tasks.service';
 import { ChatsService } from '../chats/chats.service';
 import { SearchService } from '../search/search.service';
@@ -25,6 +26,8 @@ export interface ToolContext {
   user: { userId: string; role: string };
   now: Date;
   base: string;
+  /** Пояс человека: «каждый понедельник в 9:00» — это его девять, а не серверные. */
+  timezone?: string | null;
 }
 
 export interface ToolResult { text: string; sources: Source[] }
@@ -342,6 +345,102 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       async undo(ctx, output) {
         if (output.scheduledId) await chats.cancelScheduled(ctx.tenantId, String(output.scheduledId), ctx.user);
         return 'Напоминание отменено.';
+      },
+    },
+    {
+      name: 'create_scheduled_task', kind: 'write',
+      description: 'Делать что-то РЕГУЛЯРНО по расписанию: «каждый понедельник в 9:00 дай список просроченных», «каждый вечер собери задачи на согласование». schedule — фраза о повторении целиком, instruction — что именно делать при каждом запуске.',
+      params: { title: 'короткое название', instruction: 'что делать при каждом запуске', schedule: 'фраза о повторении: каждый понедельник в 9:00' },
+      async preview(ctx, p) {
+        const phrase = str(p.schedule, 200);
+        const sched = parseSchedule(phrase || str(p.instruction, 2000));
+        if (!sched) throw new Error('Не понял расписание — скажите, например, «каждый понедельник в 9:00»');
+        const instruction = str(p.instruction, 2000);
+        if (instruction.length < 5) throw new Error('Не понял, что делать при каждом запуске');
+        const title = str(p.title, 160) || clip(instruction, 60);
+        const first = nextRun(sched, ctx.now, ctx.timezone ?? null);
+        return {
+          text: `Делать регулярно?\nЗадача: ${title}\nЧто делать: ${instruction}\nКогда: ${scheduleLabel(sched)}\nПервый запуск: ${first.toLocaleString('ru-RU')}`,
+          params: { title, instruction, schedule: sched },
+        };
+      },
+      fields: [
+        { key: 'title', label: 'Название', type: 'text' },
+        { key: 'instruction', label: 'Что делать', type: 'multiline' },
+        { key: 'schedule', label: 'Когда (например «каждый понедельник в 9:00»)', type: 'text' },
+      ],
+      values: (p) => ({
+        title: str(p.title, 160),
+        instruction: str(p.instruction, 2000),
+        schedule: p.schedule ? scheduleLabel(p.schedule as any) : '',
+      }),
+      async edit(ctx, p, patch) {
+        const sched = patch.schedule !== undefined ? parseSchedule(patch.schedule) : (p.schedule as any);
+        if (!sched) throw new Error('Не понял расписание — скажите, например, «каждую пятницу в 17:00»');
+        const title = str(patch.title ?? p.title, 160);
+        const instruction = str(patch.instruction ?? p.instruction, 2000);
+        if (!title || instruction.length < 5) throw new Error('Нужны название и что делать при запуске');
+        const first = nextRun(sched, ctx.now, ctx.timezone ?? null);
+        return {
+          text: `Делать регулярно?\nЗадача: ${title}\nЧто делать: ${instruction}\nКогда: ${scheduleLabel(sched)}\nПервый запуск: ${first.toLocaleString('ru-RU')}`,
+          params: { title, instruction, schedule: sched },
+        };
+      },
+      async execute(ctx, p) {
+        const sched = p.schedule as any;
+        const row = await repo.createSchedule({
+          tenantId: ctx.tenantId, userId: ctx.user.userId,
+          title: str(p.title, 160), instruction: str(p.instruction, 2000),
+          schedule: sched, nextRunAt: nextRun(sched, ctx.now, ctx.timezone ?? null),
+        });
+        return {
+          text: `Буду делать ${scheduleLabel(sched)}: «${row.title}». Задача видна во вкладке «Задачи» — там же пауза и правка.`,
+          output: { scheduleId: String(row.id) },
+          sources: [],
+        };
+      },
+      async undo(ctx, output) {
+        await repo.deleteSchedule(ctx.tenantId, ctx.user.userId, String(output.scheduleId));
+        return 'Регулярная задача удалена.';
+      },
+    },
+    {
+      name: 'remember', kind: 'write',
+      description: 'Запомнить о человеке надолго, когда он просит: «запомни, что я работаю по Новосибирску», «запомни: отчёты нужны короткие». type — preference (как работать и отвечать) или topic (над чем работает сейчас).',
+      params: { type: 'preference | topic', title: 'коротко, о чём это', content: 'сам факт одним предложением' },
+      async preview(_ctx, p) {
+        const title = str(p.title, 160);
+        const content = str(p.content, 600);
+        if (!title || !content) throw new Error('Не понял, что запомнить');
+        const type = p.type === 'topic' ? 'topic' : 'preference';
+        return {
+          text: `Запомнить ${type === 'topic' ? 'рабочую тему' : 'предпочтение'}?\n${title}: ${content}`,
+          params: { type, title, content },
+        };
+      },
+      fields: [
+        { key: 'title', label: 'О чём это', type: 'text' },
+        { key: 'content', label: 'Что запомнить', type: 'multiline' },
+      ],
+      values: (p) => ({ title: str(p.title, 160), content: str(p.content, 600) }),
+      async edit(_ctx, p, patch) {
+        const title = str(patch.title ?? p.title, 160);
+        const content = str(patch.content ?? p.content, 600);
+        if (!title || !content) throw new Error('Нужны и название, и сам факт');
+        const type = p.type === 'topic' ? 'topic' : 'preference';
+        return { text: `Запомнить ${type === 'topic' ? 'рабочую тему' : 'предпочтение'}?\n${title}: ${content}`, params: { ...p, title, content } };
+      },
+      async execute(ctx, p) {
+        const row = await repo.rememberFact({
+          tenantId: ctx.tenantId, userId: ctx.user.userId,
+          type: String(p.type) === 'topic' ? 'topic' : 'preference',
+          title: str(p.title, 160), content: str(p.content, 600), source: 'manual',
+        });
+        return { text: `Запомнил: ${row.title}. Всё, что я помню, — во вкладке «Память»; там же можно исправить и удалить.`, output: { memoryId: String(row.id) }, sources: [] };
+      },
+      async undo(ctx, output) {
+        await repo.forget(ctx.tenantId, ctx.user.userId, String(output.memoryId));
+        return 'Забыл.';
       },
     },
   ];

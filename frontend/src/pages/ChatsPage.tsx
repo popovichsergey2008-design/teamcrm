@@ -1497,7 +1497,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
           <span className="chat-section-icon anthill-mark" aria-hidden="true"><Icon name="robot" size={15} /></span>
           <span className="chat-row-main">
             <span className="chat-row-title">AnthillBot</span>
-            <span className="chat-row-last dim">AI-помощник TeamCRM</span>
+            <span className="chat-row-last dim">AI-помощник</span>
           </span>
         </button>
 

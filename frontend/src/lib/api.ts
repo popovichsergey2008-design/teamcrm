@@ -377,7 +377,7 @@ export const api = {
 
   /** Личное меню: порядок и скрытые разделы. Настройка человека, а не браузера. */
   /** Настройки интерфейса сливаются на сервере: присылайте только свой кусок. */
-  saveUiPrefs: (prefs: { order?: string[]; hidden?: string[]; chatBar?: { expanded?: boolean; width?: number }; chatSections?: { order?: string[]; collapsed?: string[] } }) =>
+  saveUiPrefs: (prefs: { order?: string[]; hidden?: string[]; chatBar?: { expanded?: boolean; width?: number }; chatSections?: { order?: string[]; collapsed?: string[] }; anthill?: { memoryAuto?: boolean } }) =>
     request<{ uiPrefs: any }>('PUT', '/me/ui-prefs', { prefs }),
   /** Присутствие людей компании — для Chat Bar: в сети, когда видели, что о себе поставили. */
   presence: () => request<{ userId: string; online: boolean; lastSeenAt: string | null; status: 'busy' | 'away' | null }[]>('GET', '/presence'),
@@ -545,6 +545,22 @@ export const api = {
   anthillEdit: (actionId: string, patch: Record<string, string>) =>
     request<{ id: string; preview: string; values: Record<string, string> }>('POST', `/anthill/actions/${actionId}/edit`, { patch }),
   anthillUndo: (actionId: string) => request<{ status: string; text: string }>('POST', `/anthill/actions/${actionId}/undo`, {}),
+  /* Память агента (ТЗ-6, разд. 20–21): человек видит, что о нём запомнили, и правит это. */
+  anthillMemories: () => request<AnthillMemory[]>('GET', '/anthill/memories'),
+  anthillRemember: (type: 'preference' | 'topic', title: string, content: string) =>
+    request<AnthillMemory>('POST', '/anthill/memories', { type, title, content }),
+  anthillEditMemory: (id: string, title: string, content: string) =>
+    request<AnthillMemory>('PATCH', `/anthill/memories/${id}`, { title, content }),
+  anthillForget: (id: string) => request<{ deleted: boolean }>('DELETE', `/anthill/memories/${id}`),
+
+  /* Регулярные задачи агента (разд. 15). */
+  anthillSchedules: () => request<AnthillSchedule[]>('GET', '/anthill/schedules'),
+  anthillAddSchedule: (i: { title: string; instruction: string; schedule: string }) =>
+    request<AnthillSchedule>('POST', '/anthill/schedules', i),
+  anthillPatchSchedule: (id: string, patch: { title?: string; instruction?: string; schedule?: string; status?: 'active' | 'paused' | 'done' }) =>
+    request<AnthillSchedule>('PATCH', `/anthill/schedules/${id}`, patch),
+  anthillDeleteSchedule: (id: string) => request<{ deleted: boolean }>('DELETE', `/anthill/schedules/${id}`),
+
   anthillFeedback: (messageId: string, vote: 1 | -1, reason?: string, comment?: string) =>
     request<{ ok: true }>('POST', `/anthill/messages/${messageId}/feedback`, { vote, reason, comment }),
   /**
@@ -1493,6 +1509,22 @@ export interface AnthillAction {
   /** Что можно поправить до «Создать»; пусто — карточка уже обработана. */
   fields: AnthillField[];
   values: Record<string, string>;
+}
+/** Что агент помнит о человеке: предпочтение (как работать) или рабочая тема. */
+export interface AnthillMemory {
+  id: string; type: 'preference' | 'topic' | string; title: string; content: string;
+  /** auto — подметил сам, manual — попросили запомнить. */
+  source: string; updatedAt: string;
+}
+export interface AnthillSchedule {
+  id: string; title: string; instruction: string;
+  schedule: { kind: string; time: string; weekday?: number; day?: number };
+  /** Расписание по-русски: «каждый понедельник в 9:00». */
+  label: string;
+  status: 'active' | 'paused' | 'done' | string;
+  nextRunAt: string | null; lastRunAt: string | null;
+  lastResult: string | null; lastError: string | null;
+  runs: number; sessionId: string | null;
 }
 export interface AnthillMessage {
   id: string; role: 'user' | 'assistant'; content: string; citations: AnthillSource[]; createdAt: string;

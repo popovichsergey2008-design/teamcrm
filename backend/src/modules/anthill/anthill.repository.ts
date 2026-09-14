@@ -16,6 +16,17 @@ export interface ActionRow {
   requires_approval: boolean; approved_at: Date | null; status: string; error: string | null; created_at: Date;
 }
 
+export interface MemoryRow {
+  id: string; tenant_id: string; user_id: string; type: string; title: string; content: string;
+  source: string; session_id: string | null; created_at: Date; updated_at: Date;
+}
+export interface ScheduleRow {
+  id: string; tenant_id: string; user_id: string; title: string; instruction: string;
+  schedule: { kind: string; time: string; weekday?: number; day?: number };
+  status: string; next_run_at: Date; last_run_at: Date | null; last_result: string | null;
+  last_error: string | null; runs: number; session_id: string | null; created_at: Date;
+}
+
 /** Источник в ответе — то, что можно открыть одним нажатием. */
 export interface Source { kind: 'task' | 'message' | 'meeting' | 'project' | 'chat'; id: string; title: string; url: string }
 
@@ -137,6 +148,136 @@ export class AnthillRepository {
     return this.db.many<ActionRow>(
       `SELECT * FROM ai_tool_actions WHERE tenant_id=$1 AND user_id=$2 ORDER BY id DESC LIMIT $3`, [tenantId, userId, limit],
     );
+  }
+
+  // ── память (ТЗ-6, разд. 20–21, 57) ──
+
+  /**
+   * Запомнить факт. Повтор той же мысли обновляет строку, а не плодит вторую:
+   * иначе через месяц в памяти лежит пятнадцать вариантов «работаю по Новосибирску».
+   */
+  rememberFact(i: { tenantId: string; userId: string; type: string; title: string; content: string; source: string; sessionId?: string | null }): Promise<MemoryRow> {
+    return this.db.one<MemoryRow>(
+      `INSERT INTO ai_memories (tenant_id, user_id, type, title, content, source, session_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (tenant_id, user_id, type, lower(title))
+       DO UPDATE SET content = EXCLUDED.content, source = EXCLUDED.source, updated_at = now()
+       RETURNING *`,
+      [i.tenantId, i.userId, i.type, i.title, i.content, i.source, i.sessionId ?? null],
+    ) as Promise<MemoryRow>;
+  }
+
+  memories(tenantId: string, userId: string, limit = 100): Promise<MemoryRow[]> {
+    return this.db.many<MemoryRow>(
+      `SELECT * FROM ai_memories WHERE tenant_id=$1 AND user_id=$2 ORDER BY updated_at DESC LIMIT $3`,
+      [tenantId, userId, limit],
+    );
+  }
+
+  updateMemory(tenantId: string, userId: string, id: string, title: string, content: string): Promise<MemoryRow | null> {
+    return this.db.one<MemoryRow>(
+      `UPDATE ai_memories SET title=$4, content=$5, source='manual', updated_at=now()
+        WHERE tenant_id=$1 AND user_id=$2 AND id=$3 RETURNING *`,
+      [tenantId, userId, id, title, content],
+    );
+  }
+
+  async forget(tenantId: string, userId: string, id: string): Promise<boolean> {
+    const r = await this.db.query(`DELETE FROM ai_memories WHERE tenant_id=$1 AND user_id=$2 AND id=$3`, [tenantId, userId, id]);
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  // ── регулярные задачи (разд. 15, 58) ──
+
+  createSchedule(i: {
+    tenantId: string; userId: string; title: string; instruction: string;
+    schedule: Record<string, unknown>; nextRunAt: Date; sessionId?: string | null;
+  }): Promise<ScheduleRow> {
+    return this.db.one<ScheduleRow>(
+      `INSERT INTO ai_scheduled_tasks (tenant_id, user_id, title, instruction, schedule, next_run_at, session_id)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7) RETURNING *`,
+      [i.tenantId, i.userId, i.title, i.instruction, JSON.stringify(i.schedule), i.nextRunAt.toISOString(), i.sessionId ?? null],
+    ) as Promise<ScheduleRow>;
+  }
+
+  schedules(tenantId: string, userId: string): Promise<ScheduleRow[]> {
+    return this.db.many<ScheduleRow>(
+      `SELECT * FROM ai_scheduled_tasks WHERE tenant_id=$1 AND user_id=$2 ORDER BY status, next_run_at`,
+      [tenantId, userId],
+    );
+  }
+
+  schedule(tenantId: string, userId: string, id: string): Promise<ScheduleRow | null> {
+    return this.db.one<ScheduleRow>(
+      `SELECT * FROM ai_scheduled_tasks WHERE tenant_id=$1 AND user_id=$2 AND id=$3`, [tenantId, userId, id],
+    );
+  }
+
+  updateSchedule(tenantId: string, userId: string, id: string, p: {
+    title?: string | null; instruction?: string | null; schedule?: Record<string, unknown> | null;
+    status?: string | null; nextRunAt?: Date | null;
+  }): Promise<ScheduleRow | null> {
+    return this.db.one<ScheduleRow>(
+      `UPDATE ai_scheduled_tasks
+          SET title       = COALESCE($4, title),
+              instruction = COALESCE($5, instruction),
+              schedule    = COALESCE($6::jsonb, schedule),
+              status      = COALESCE($7, status),
+              next_run_at = COALESCE($8::timestamptz, next_run_at)
+        WHERE tenant_id=$1 AND user_id=$2 AND id=$3 RETURNING *`,
+      [tenantId, userId, id, p.title ?? null, p.instruction ?? null,
+        p.schedule ? JSON.stringify(p.schedule) : null, p.status ?? null, p.nextRunAt ? p.nextRunAt.toISOString() : null],
+    );
+  }
+
+  /** Нитка разговора задачи: заводится при первом запуске и живёт дальше. */
+  async attachSession(id: string, sessionId: string): Promise<void> {
+    await this.db.query(`UPDATE ai_scheduled_tasks SET session_id=$2 WHERE id=$1`, [id, sessionId]);
+  }
+
+  async deleteSchedule(tenantId: string, userId: string, id: string): Promise<boolean> {
+    const r = await this.db.query(`DELETE FROM ai_scheduled_tasks WHERE tenant_id=$1 AND user_id=$2 AND id=$3`, [tenantId, userId, id]);
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  /** Что пора запускать. Пояс и роль владельца — тем же запросом: они нужны сразу. */
+  dueSchedules(limit = 20): Promise<(ScheduleRow & { timezone: string | null; role: string })[]> {
+    return this.db.many<ScheduleRow & { timezone: string | null; role: string }>(
+      `SELECT s.*, u.timezone, COALESCE(r.code, 'member') AS role
+         FROM ai_scheduled_tasks s
+         JOIN users u ON u.id = s.user_id AND u.is_active
+         LEFT JOIN roles r ON r.id = u.role_id
+        WHERE s.status='active' AND s.next_run_at <= now()
+        ORDER BY s.next_run_at
+        LIMIT $1`,
+      [limit],
+    );
+  }
+
+  async finishRun(id: string, nextRunAt: Date, result: string | null, error: string | null): Promise<void> {
+    await this.db.query(
+      `UPDATE ai_scheduled_tasks
+          SET last_run_at=now(), next_run_at=$2, last_result=$3, last_error=$4, runs = runs + 1
+        WHERE id=$1`,
+      [id, nextRunAt.toISOString(), result, error],
+    );
+  }
+
+  /** Пояс человека: расписания и «завтра в 9» считаются по его часам, а не по серверным. */
+  async userTz(tenantId: string, userId: string): Promise<string | null> {
+    const row = await this.db.one<{ timezone: string | null }>(
+      `SELECT timezone FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, userId],
+    );
+    return row?.timezone ?? null;
+  }
+
+  /** Собирает ли агент память сам: выключатель живёт там же, где остальные настройки экрана. */
+  async memoryAuto(tenantId: string, userId: string): Promise<boolean> {
+    const row = await this.db.one<{ off: boolean }>(
+      `SELECT (ui_prefs->'anthill'->>'memoryAuto') = 'false' AS off FROM users WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, userId],
+    );
+    return !row?.off;
   }
 
   // ── оценки ──

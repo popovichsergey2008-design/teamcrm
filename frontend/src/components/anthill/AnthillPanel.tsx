@@ -7,6 +7,9 @@ import type { AnthillAction, AnthillContext, AnthillMessage, AnthillSession, Ant
 import { navigate } from '../../lib/router';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { stampLabel } from '../../lib/chat-text';
+import { AnthillTasks } from './AnthillTasks';
+import { AnthillMemory } from './AnthillMemory';
+import { getSocket } from '../../lib/socket';
 
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
   task: 'задача', project: 'проект', chat: 'чат', meeting: 'мит',
@@ -58,6 +61,8 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
   const [votes, setVotes] = useState<Record<string, 1 | -1>>({});
   /** Карточка, открытая на правку: одна за раз — их и бывает одна. */
   const [editing, setEditing] = useState<string | null>(null);
+  /** Разговор · Задачи · Память (ТЗ-6, MVP 2): три вкладки одного помощника. */
+  const [tab, setTab] = useState<'chat' | 'tasks' | 'memory'>('chat');
   const [err, setErr] = useState('');
   const stopRef = useRef<(() => void) | null>(null);
   const busy = live !== null;
@@ -85,6 +90,20 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     loadSessions();
     return String(s.id);
   }, [ctxArg, loadSessions]);
+
+  /*
+    Регулярная задача отработала.
+
+    Открывать её нитку силой нельзя — человек может быть в середине разговора,
+    поэтому просто обновляем список задач: вкладка «Задачи» покажет свежий
+    результат, а сам отчёт уже пришёл в «Заметки».
+  */
+  useEffect(() => {
+    const socket = getSocket();
+    const done = () => loadSessions();
+    socket.on('anthill.task.done', done);
+    return () => { socket.off('anthill.task.done', done); };
+  }, [loadSessions]);
 
   // Лента вниз на каждый кусок ответа: его читают с конца, пока он печатается.
   useEffect(() => { const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight; }, [messages, live]);
@@ -208,7 +227,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
           <span className="anthill-mark" aria-hidden="true"><Icon name="robot" size={16} /></span>
           <span className="anthill-title-text">
             <b>AnthillBot</b>
-            <span className="dim">AI-помощник TeamCRM</span>
+            <span className="dim">AI-помощник</span>
           </span>
         </span>
         <span className="anthill-head-acts">
@@ -237,7 +256,28 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
         </span>
       </div>
 
-      {historyOpen && (
+      <div className="anthill-tabs" role="tablist" aria-label="Разделы AnthillBot">
+        {([
+          { key: 'chat', label: 'Разговор', icon: 'chat' },
+          { key: 'tasks', label: 'Задачи', icon: 'clock' },
+          { key: 'memory', label: 'Память', icon: 'book' },
+        ] as const).map((t) => (
+          <button
+            key={t.key}
+            className={`anthill-tab${tab === t.key ? ' active' : ''}`}
+            onClick={() => setTab(t.key)}
+            role="tab"
+            aria-selected={tab === t.key}
+          >
+            <Icon name={t.icon} size={13} /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'tasks' && <AnthillTasks onOpenSession={(id) => { setTab('chat'); void openSession(id); }} />}
+      {tab === 'memory' && <AnthillMemory />}
+
+      {tab === 'chat' && historyOpen && (
         <div className="anthill-history">
           {sessions.length === 0 && <div className="dim anthill-history-empty">Разговоров пока нет.</div>}
           {sessions.map((s) => (
@@ -266,6 +306,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
         </div>
       )}
 
+      {tab === 'chat' && (
       <div className="chat-feed anthill-feed" ref={feedRef}>
         {messages.length === 0 && !live && (
           <div className="anthill-empty">
@@ -361,7 +402,9 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
 
         {err && <div className="error-text anthill-err">{err}</div>}
       </div>
+      )}
 
+      {tab === 'chat' && (
       <div className="anthill-compose">
         {context && (
           <label className="anthill-ctx" title="Отправить вместе с вопросом то, что открыто на экране">
@@ -402,6 +445,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
           )}
         </div>
       </div>
+      )}
     </section>
   );
 }
