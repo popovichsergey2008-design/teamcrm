@@ -1438,8 +1438,53 @@
   Пока это было поле ввода, по ссылке в постановке нельзя было щёлкнуть, а
   вставленную картинку — увидеть. Кнопка правки стоит у самой подписи поля.
 */
-.task-desc { white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
-.task-desc-text { display: inline; }
+.task-desc { word-break: break-word; line-height: 1.5; }
+
+/*
+  ───── Форматированное описание: показ и редактор ─────
+
+  Одни и те же правила для текста в режиме чтения (.rich-text) и в редакторе
+  (.rich-area): человек не должен удивляться, что «в редакторе список выглядел
+  иначе». Заголовок внутри описания — h2/h3, но заметно меньше заголовка карточки:
+  это раздел описания, а не вторая задача.
+*/
+.rich-text p, .rich-area p, .rich-area div { margin: 0 0 8px; }
+.rich-text > :last-child, .rich-area > :last-child { margin-bottom: 0; }
+.rich-text h2, .rich-area h2 { font-size: var(--fs-md); font-weight: 700; margin: 12px 0 6px; }
+.rich-text h3, .rich-area h3 { font-size: var(--fs-base); font-weight: 700; margin: 10px 0 4px; }
+.rich-text h4, .rich-area h4 { font-size: var(--fs-sm); font-weight: 700; margin: 8px 0 4px; }
+.rich-text ul, .rich-area ul, .rich-text ol, .rich-area ol { margin: 0 0 8px; padding-left: 22px; }
+.rich-text li, .rich-area li { margin: 2px 0; }
+.rich-text a, .rich-area a { color: var(--accent); text-decoration: underline; }
+.rich-text s, .rich-area s { color: var(--text-mut); }
+/* Картинка — во всю ширину колонки, но не выше экрана; пока грузится — пустое место
+   с рамкой, чтобы текст не прыгал, когда она появится. */
+.rich-text img, .rich-area img {
+  display: block; max-width: 100%; max-height: 420px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); margin: 6px 0; min-height: 24px; min-width: 24px;
+}
+.rich-text img:not([src]), .rich-area img:not([src]) { width: 160px; height: 90px; background: var(--bg-elev-2); }
+
+.rich-editor { display: flex; flex-direction: column; gap: 4px; }
+/* Панель — одной строкой, переносится на узком экране; кнопки одного размера. */
+.rich-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.rich-tool {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 26px;
+  padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-sm);
+  background: none; color: var(--text-dim); cursor: pointer; font: inherit; font-size: 13px;
+}
+.rich-tool:hover { background: var(--bg-elev-2); color: var(--text); border-color: var(--border); }
+.rich-tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rich-tool-b { font-weight: 800; }
+.rich-tool-i { font-style: italic; }
+.rich-tool-s { text-decoration: line-through; }
+.rich-busy { margin-left: 8px; font-size: var(--fs-xs); }
+/* Поле — как textarea: та же рамка, тот же цвет, растёт под текст. */
+.rich-area { min-height: 140px; max-height: 60vh; overflow-y: auto; height: auto; white-space: pre-wrap; }
+.rich-area:focus { outline: none; border-color: var(--accent); }
+.rich-area:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Подсказка в пустом поле — как placeholder у обычного поля ввода. */
+.rich-area.rich-empty::before { content: attr(data-placeholder); color: var(--text-mut); pointer-events: none; }
 .desc-edit-btn { margin-left: auto; }
 .field > label { display: flex; align-items: center; gap: 8px; }
 .desc-empty {
@@ -1449,8 +1494,6 @@
 }
 .desc-empty:hover { color: var(--text); border-color: var(--accent-line); }
 .desc-empty:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* Картинка в описании — во всю ширину колонки, но не выше экрана. */
-.desc-img img { max-height: 420px; }
 
 /* Вложения задачи: смотреть их надо там, где они лежат, а не после скачивания. */
 .task-media { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }

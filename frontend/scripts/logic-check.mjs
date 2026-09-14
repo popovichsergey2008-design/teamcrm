@@ -453,6 +453,59 @@ test('черта «непрочитанные»: перед первым нов�
   assert.equal(firstUnreadId(feed, 2, '7'), '4', 'id приходят и строками, и числами');
 });
 
+test('описание задачи: разметка → HTML и обратно, без потерь и без мусора', async () => {
+  const { mdToHtml, htmlToMd, inlineToHtml } = await load('lib/rich-text.ts');
+
+  // плоский текст старых задач проходит как был: абзацы, переводы строк, ссылки
+  assert.equal(mdToHtml('Сделать макет\nдо пятницы'), '<p>Сделать макет<br>до пятницы</p>');
+  assert.equal(mdToHtml('Первый\n\nВторой'), '<p>Первый</p><p>Второй</p>');
+  assert.ok(mdToHtml('см. teamsmrt.com/projects/1').includes('<a href="https://teamsmrt.com/projects/1"'), 'голый адрес — ссылка');
+  assert.ok(mdToHtml('позвать @Сергей Попович').includes('<span class="msg-mention">@Сергей Попович</span>'));
+
+  // форматирование с панели редактора
+  assert.equal(inlineToHtml('**жирно** и *курсив* и ~~нет~~'), '<strong>жирно</strong> и <em>курсив</em> и <s>нет</s>');
+  assert.equal(inlineToHtml('5 * 3 * 2'), '5 * 3 * 2', 'звёздочки в арифметике — не курсив');
+  assert.equal(inlineToHtml('a*b*c'), 'a*b*c', 'звёздочки внутри слова — не курсив');
+  assert.equal(inlineToHtml('[макет](https://figma.com/x)'), '<a href="https://figma.com/x" target="_blank" rel="noreferrer">макет</a>');
+  assert.equal(inlineToHtml('[x](javascript:alert(1))'), '[x](javascript:alert(1))', 'опасная схема ссылкой не становится');
+  assert.equal(inlineToHtml('<b>не тег</b>'), '&lt;b&gt;не тег&lt;/b&gt;', 'HTML из текста — экранируется, а не исполняется');
+
+  assert.equal(mdToHtml('# Заголовок\nтекст'), '<h2>Заголовок</h2><p>текст</p>');
+  assert.equal(mdToHtml('- один\n- два\n\n1. раз\n2) два'), '<ul><li>один</li><li>два</li></ul><ol><li>раз</li><li>два</li></ol>');
+  assert.equal(mdToHtml('![Снимок 1](/api/files/12)'), '<p><img data-file-id="12" alt="Снимок 1"></p>', 'картинка без src: файл за авторизацией');
+  assert.equal(mdToHtml('![x](/api/files/../../etc)'), '<p>![x](/api/files/../../etc)</p>', 'картинка — только по номеру файла');
+
+  // обратно из DOM редактора — на игрушечном дереве, без браузера
+  const text = (v) => ({ nodeType: 3, nodeName: '#text', textContent: v, childNodes: [] });
+  const el = (name, kids = [], attrs = {}) => ({
+    nodeType: 1, nodeName: name.toUpperCase(), textContent: null, childNodes: kids,
+    getAttribute: (k) => attrs[k] ?? null,
+  });
+  const root = el('div', [
+    text('Первая строка '), el('b', [text('жирно')]),
+    el('div', [el('br')]),
+    el('div', [text('вторая')]),
+    el('h2', [text('Раздел')]),
+    el('ul', [el('li', [text('один')]), el('li', [el('i', [text('два')])])]),
+    el('div', [el('img', [], { 'data-file-id': '12', alt: 'Снимок' })]),
+    el('div', [el('a', [text('макет')], { href: 'https://figma.com/x' })]),
+    el('div', [el('a', [text('https://x.ru/a')], { href: 'https://x.ru/a' })]),
+    el('div', [el('span', [text('цвет из Word')], { style: 'color:red' })]),
+  ]);
+  assert.equal(
+    htmlToMd(root),
+    // пустой div — это Enter дважды: пустая строка между абзацами остаётся
+    'Первая строка **жирно**\n\nвторая\n# Раздел\n\n- один\n- *два*\n\n![Снимок](/api/files/12)\n[макет](https://figma.com/x)\nhttps://x.ru/a\nцвет из Word',
+  );
+
+  // круг: то, что ушло в базу, показывается тем же, чем было
+  const md = '# План\n\n- **срочно** сделать\n- посмотреть [макет](https://figma.com/x)\n\n![Снимок](/api/files/3)';
+  assert.equal(
+    mdToHtml(md),
+    '<h2>План</h2><ul><li><strong>срочно</strong> сделать</li><li>посмотреть <a href="https://figma.com/x" target="_blank" rel="noreferrer">макет</a></li></ul><p><img data-file-id="3" alt="Снимок"></p>',
+  );
+});
+
 test('виды задач на доске: делаю, помогаю, поручил, наблюдаю', async () => {
   const { filterBoard, countMatching, realPosition, filterActive } = await load('lib/board-filter.ts');
   // t1 — моя работа, t2 — я поставил другому, t3 — чужая целиком, t4 — я и поставил, и делаю

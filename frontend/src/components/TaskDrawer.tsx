@@ -12,7 +12,8 @@ import { TaskChat } from './TaskChat';
 import { TaskRecurrenceBlock } from './TaskRecurrence';
 import { TaskMergeModal } from './TaskMergeModal';
 import { AuthedMedia } from './AuthedMedia';
-import { MessageText } from './MessageText';
+import { RichText } from './RichText';
+import { RichEditor } from './RichEditor';
 import { MONETIZATION_ENABLED } from '../config';
 import { labelTextColor } from '../lib/labels';
 import { overlayProps } from '../lib/overlay';
@@ -287,35 +288,31 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const [descBusy, setDescBusy] = useState(false);
 
   /**
-   * Скриншот из буфера прямо в описание (Ctrl+V).
+   * Картинка в описание — из буфера (Ctrl+V) или кнопкой на панели редактора.
    *
-   * Файл уезжает во вложения задачи, а в текст встаёт ссылка на него — картинка
-   * видна и в описании, и во вкладке «Файлы». Раньше вставить снимок в постановку
+   * Файл уезжает во вложения задачи, а в описание встаёт ссылка на него — картинка
+   * видна и в тексте, и во вкладке «Файлы». Раньше вставить снимок в постановку
    * было нельзя вовсе: приходилось сохранять его на диск и прикладывать файлом.
    */
-  const onPasteDesc = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const item = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith('image/'));
-    const file = item?.getAsFile();
-    if (!file) return; // обычный текст вставляется как обычно
-    e.preventDefault();
-    const area = e.currentTarget;
-    const at = area.selectionStart ?? desc.length;
+  const uploadDescImage = async (file: File): Promise<{ fileId: string; name: string }> => {
     setDescBusy(true);
     try {
       // Имя со временем: у снимка из буфера его нет вовсе, и в списке файлов
       // получалась стопка «image.png».
       const stamp = new Date().toLocaleString('ru-RU').replace(/[:.]/g, '-');
-      const named = new File([file], `Снимок ${stamp}.png`, { type: file.type || 'image/png' });
+      const anonymous = !file.name || /^image\.\w+$/i.test(file.name);
+      const named = anonymous ? new File([file], `Снимок ${stamp}.png`, { type: file.type || 'image/png' }) : file;
       const up = await api.uploadAttachment(task.id, named);
-      // Пустые строки вокруг: вставленный снимок не должен слипаться с текстом.
-      const mark = `\n![${named.name}](/api/files/${up.fileId})\n`;
-      setDesc(`${desc.slice(0, at)}${mark}${desc.slice(at)}`);
       setFileCount((n) => n + 1);
       onRefresh();
+      return { fileId: String(up.fileId), name: named.name };
     } catch (er) {
       setErr(er instanceof ApiError ? er.message : 'Не удалось приложить картинку');
+      throw er;
     } finally { setDescBusy(false); }
   };
+  /** Снимок из описания — во весь экран: разглядеть макет в узкой карточке нельзя. */
+  const [descPreview, setDescPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   // приёмка работы: сдаём не полностью — сначала показываем, чего не хватает
   const [gate, setGate] = useState<{ block: GateBlock; columnId: string } | null>(null);
   const moveToColumn = async (columnId: string, confirmGate = false) => {
@@ -688,20 +685,23 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                   <Icon name={editingDesc ? 'check' : 'edit'} size={13} /> {editingDesc ? 'Готово' : 'Редактировать'}
                 </button>
               </label>
+              {/* Визуальный редактор — как в WordPress: жирный, списки, картинки по Ctrl+V.
+                  В базу уходит лёгкая разметка, поэтому письма и ИИ читают описание как раньше. */}
               {editingDesc ? (
-                <textarea
-                  className="input"
-                  rows={7}
+                <RichEditor
                   value={desc}
+                  onChange={setDesc}
+                  onUploadImage={uploadDescImage}
+                  busy={descBusy}
                   autoFocus
-                  placeholder="Что нужно сделать. Можно вставить скриншот из буфера (Ctrl+V)"
-                  onChange={(e) => setDesc(e.target.value)}
-                  onPaste={onPasteDesc}
+                  placeholder="Что нужно сделать. Картинку можно вставить из буфера (Ctrl+V)"
                 />
               ) : (
-                <TaskDescription text={desc} onEmptyClick={() => setEditingDesc(true)} />
+                <TaskDescription text={desc} onEmptyClick={() => setEditingDesc(true)} onOpenImage={setDescPreview} />
               )}
-              {descBusy && <div className="dim">Загружаю вложение…</div>}
+              {descPreview && (
+                <Lightbox url={descPreview.url} name={descPreview.name} mime={descPreview.mime} onClose={() => setDescPreview(null)} />
+              )}
             </div>
             <div className="drawer-section">
               <div className="drawer-section-title">Назначение и план</div>
@@ -1190,13 +1190,14 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
  * Описание задачи в режиме чтения.
  *
  * Ссылки кликаются, картинки видны, текст выделяется и копируется — всё то, чего
- * нельзя было сделать, пока описание всегда было полем ввода.
- *
- * Разметку понимаем ровно одну: `![имя](/api/files/12)` — так сюда попадает
- * вставленный из буфера снимок. Полноценный Markdown не тащим: описание пишут
- * люди, а не верстальщики, и лишние правила ломают обычный текст со звёздочками.
+ * нельзя было сделать, пока описание всегда было полем ввода. Разметка та же, что
+ * пишет редактор (lib/rich-text); плоский текст старых задач проходит как был.
  */
-function TaskDescription({ text, onEmptyClick }: { text: string; onEmptyClick: () => void }) {
+function TaskDescription({ text, onEmptyClick, onOpenImage }: {
+  text: string;
+  onEmptyClick: () => void;
+  onOpenImage?: (p: { url: string; name: string; mime: string }) => void;
+}) {
   const body = String(text ?? '');
   if (!body.trim()) {
     return (
@@ -1205,24 +1206,7 @@ function TaskDescription({ text, onEmptyClick }: { text: string; onEmptyClick: (
       </button>
     );
   }
-  const IMG = /!\[([^\]]*)\]\(\/api\/files\/(\d+)\)/g;
-  const parts: { kind: 'text' | 'img'; value: string; name?: string }[] = [];
-  let last = 0;
-  for (const m of body.matchAll(IMG)) {
-    const at = m.index ?? 0;
-    if (at > last) parts.push({ kind: 'text', value: body.slice(last, at) });
-    parts.push({ kind: 'img', value: m[2], name: m[1] || 'вложение' });
-    last = at + m[0].length;
-  }
-  if (last < body.length) parts.push({ kind: 'text', value: body.slice(last) });
-
-  return (
-    <div className="task-desc">
-      {parts.map((p, i) => (p.kind === 'img'
-        ? <AuthedMedia key={i} fileId={p.value} name={p.name ?? ''} mime="image/*" className="desc-img" />
-        : <MessageText key={i} text={p.value} className="task-desc-text" />))}
-    </div>
-  );
+  return <RichText text={body} className="task-desc" onOpenImage={onOpenImage} />;
 }
 
 /**
