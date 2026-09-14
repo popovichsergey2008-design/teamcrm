@@ -955,12 +955,16 @@ export class ChatsRepository {
   chatContext(tenantId: string, chatId: string) {
     return this.db.one<{
       project_id: string | null; project_name: string | null; status: string | null;
-      open_tasks: number; overdue: number; client_name: string | null;
+      open_tasks: number; overdue: number; nearest_deadline: Date | null; client_name: string | null;
     }>(
       `SELECT p.id AS project_id, p.name AS project_name, p.status,
               (SELECT COUNT(*)::int FROM tasks t WHERE t.project_id = p.id AND t.closed_at IS NULL) AS open_tasks,
               (SELECT COUNT(*)::int FROM tasks t
                 WHERE t.project_id = p.id AND t.closed_at IS NULL AND t.deadline_at < now()) AS overdue,
+              -- ближайший срок среди живых задач: у проекта своего дедлайна нет,
+              -- а вопрос «когда ближайшее» в шапке чата задают именно так
+              (SELECT MIN(t.deadline_at) FROM tasks t
+                WHERE t.project_id = p.id AND t.closed_at IS NULL AND t.deadline_at >= now()) AS nearest_deadline,
               cl.name AS client_name
          FROM chats c
          JOIN projects p ON p.id = c.project_id
@@ -1149,6 +1153,71 @@ export class ChatsRepository {
         ORDER BY s.saved_at DESC LIMIT 100`,
       [tenantId, chatId, userId],
     );
+  }
+
+  // ── связи с CRM (conversation_links) ──
+
+  async link(i: { tenantId: string; chatId: string; entityType: string; entityId: string; relation: string; actorId: string | null }): Promise<void> {
+    await this.db.query(
+      `INSERT INTO conversation_links (tenant_id, chat_id, entity_type, entity_id, relation_type, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+      [i.tenantId, i.chatId, i.entityType, i.entityId, i.relation, i.actorId],
+    );
+  }
+
+  /**
+   * Задачи чата: созданные из его сообщений и отправленные в него карточкой.
+   * Живые первыми, потом закрытые; у каждой — как она сюда попала.
+   */
+  chatTasks(tenantId: string, chatId: string, limit = 50) {
+    return this.db.many<{
+      id: string; title: string; status: string; closed_at: Date | null; deadline_at: Date | null;
+      project_id: string; assignee_name: string | null; relation: string; updated_at: Date;
+    }>(
+      `SELECT DISTINCT ON (t.id) t.id, t.title, bc.name AS status, t.closed_at, t.deadline_at, t.project_id,
+              a.full_name AS assignee_name, l.relation_type AS relation, t.updated_at
+         FROM conversation_links l
+         JOIN tasks t ON t.id = l.entity_id
+         JOIN board_columns bc ON bc.id = t.column_id
+    LEFT JOIN users a ON a.id = t.assignee_id
+        WHERE l.tenant_id=$1 AND l.chat_id=$2 AND l.entity_type='task'
+        ORDER BY t.id, CASE l.relation_type WHEN 'created_from' THEN 0 ELSE 1 END`,
+      [tenantId, chatId],
+    ).then((rows) => rows
+      .sort((x, y) => (x.closed_at ? 1 : 0) - (y.closed_at ? 1 : 0) || y.updated_at.getTime() - x.updated_at.getTime())
+      .slice(0, limit));
+  }
+
+  countChatTasks(tenantId: string, chatId: string): Promise<{ n: string } | null> {
+    return this.db.one<{ n: string }>(
+      `SELECT COUNT(DISTINCT entity_id) AS n FROM conversation_links WHERE tenant_id=$1 AND chat_id=$2 AND entity_type='task'`,
+      [tenantId, chatId],
+    );
+  }
+
+  taskCard(tenantId: string, taskId: string) {
+    return this.db.one<{ id: string; title: string; project_id: string; status: string; assignee_name: string | null; deadline_at: Date | null }>(
+      `SELECT t.id, t.title, t.project_id, bc.name AS status, a.full_name AS assignee_name, t.deadline_at
+         FROM tasks t JOIN board_columns bc ON bc.id = t.column_id LEFT JOIN users a ON a.id = t.assignee_id
+        WHERE t.tenant_id=$1 AND t.id=$2`,
+      [tenantId, taskId],
+    );
+  }
+
+  projectCard(tenantId: string, projectId: string) {
+    return this.db.one<{ id: string; name: string; status: string; open_tasks: number }>(
+      `SELECT p.id, p.name, p.status,
+              (SELECT COUNT(*)::int FROM tasks t WHERE t.project_id = p.id AND t.closed_at IS NULL) AS open_tasks
+         FROM projects p WHERE p.tenant_id=$1 AND p.id=$2`,
+      [tenantId, projectId],
+    );
+  }
+
+  /** Сообщение со ссылкой на задачу — карточка задачи в ленте. */
+  async addTaskMessage(tenantId: string, chatId: string, authorId: string, body: string, taskId: string): Promise<MessageRow> {
+    const message = await this.addMessage({ tenantId, chatId, authorId, body, fileId: null });
+    await this.db.query(`UPDATE chat_messages SET task_id=$3 WHERE tenant_id=$1 AND id=$2`, [tenantId, message.id, taskId]);
+    return { ...message, task_id: taskId } as MessageRow;
   }
 
   // ── журнал действий с чатом ──

@@ -125,4 +125,47 @@ describe('Сайдбар чата (e2e)', () => {
     expect((await http$.get(`/api/chats/${chat.id}/saved`).set(M).expect(200)).body.data.map((m: any) => String(m.id))).toEqual([String(withLink.id)]);
     expect((await http$.get(`/api/chats/${chat.id}/saved`).set(O).expect(200)).body.data).toEqual([]);
   });
+
+  /*
+    Связи с CRM (этап 3): карточка задачи или проекта в ленте, задачи чата в сайдбаре.
+  */
+  it('«отправить задачу» кладёт карточку в ленту, и задача появляется в блоке задач чата', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'SB3', email: `sb3_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const mail = `sb3m_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(O).send({ email: mail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data.accessToken);
+
+    const project = (await http$.post('/api/projects').set(O).send({ name: 'Сайт' }).expect(201)).body.data;
+    const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
+    const task = (await http$.post('/api/tasks').set(O)
+      .send({ projectId: project.id, columnId: board.columns[0].id, title: 'Собрать макет', assigneeId: mate.id }).expect(201)).body.data;
+    const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
+
+    // до отправки блок пуст
+    expect((await http$.get(`/api/chats/${chat.id}/tasks`).set(M).expect(200)).body.data.total).toBe(0);
+
+    const msg = (await http$.post(`/api/chats/${chat.id}/share`).set(O).send({ entityType: 'task', entityId: String(task.id) }).expect(201)).body.data;
+    expect(String(msg.task_id)).toBe(String(task.id));
+    expect(msg.body).toContain(`Задача #${task.id} «Собрать макет»`);
+    expect(msg.body).toContain('исполнитель: Глеб');
+    expect(msg.body).toContain(`/projects/${project.id}/task/${task.id}`);
+
+    // собеседник видит карточку в ленте и задачу в блоке задач чата
+    const feed = (await http$.get(`/api/chats/${chat.id}/messages`).set(M).expect(200)).body.data;
+    expect(String(feed[feed.length - 1].task_id)).toBe(String(task.id));
+    const tasks = (await http$.get(`/api/chats/${chat.id}/tasks`).set(M).expect(200)).body.data;
+    expect(tasks.total).toBe(1);
+    expect(tasks.items[0]).toMatchObject({ id: String(task.id), title: 'Собрать макет', status: 'Новые', closed: false, assigneeName: 'Глеб', relation: 'shared' });
+
+    // проект — тоже карточкой, с адресом доски
+    const pm = (await http$.post(`/api/chats/${chat.id}/share`).set(O).send({ entityType: 'project', entityId: String(project.id) }).expect(201)).body.data;
+    expect(pm.body).toContain('Проект «Сайт»');
+    expect(pm.body).toContain(`/projects/${project.id}`);
+
+    // чужое и несуществующее — мимо
+    await http$.post(`/api/chats/${chat.id}/share`).set(O).send({ entityType: 'task', entityId: '999999999' }).expect(404);
+    await http$.post(`/api/chats/${chat.id}/share`).set(O).send({ entityType: 'meeting', entityId: '1' }).expect(400);
+  });
 });

@@ -5,7 +5,7 @@ import { ChatsAiService } from './chats-ai.service';
 import { DiagService } from '../diagnostics/diag.service';
 import { FilesService } from '../files/files.service';
 import { RealtimeService } from '../realtime/realtime.service';
-import { ChatRow, ChatsRepository } from './chats.repository';
+import { ChatRow, ChatsRepository, MessageRow } from './chats.repository';
 import { ScheduledRepository, ScheduledRow } from './scheduled.repository';
 
 const PAGE = 50;
@@ -579,6 +579,7 @@ export class ChatsService {
     const created = res?.task;
     if (!created?.id) throw AppException.conflict('Задача не создалась');
     await this.repo.linkTask(tenantId, messageId, String(created.id));
+    await this.repo.link({ tenantId, chatId, entityType: 'task', entityId: String(created.id), relation: 'created_from', actorId: user.userId });
     await this.repo.audit({ tenantId, chatId, actorId: user.userId, action: 'task_created', detail: { messageId, taskId: String(created.id), title: created.title } });
     /*
       Скриншот из сообщения — во вложения задачи.
@@ -970,6 +971,65 @@ export class ChatsService {
     await this.repo.audit({ tenantId, chatId, actorId: user.userId, action: 'description_changed', detail: {} });
     this.emitChatUpdated(tenantId, chat);
     return { description: text };
+  }
+
+  /**
+   * Задачи чата — блок в сайдбаре (ТЗ-5, этап 3): выросшие из сообщений и
+   * отправленные карточкой. У чата проекта — ещё и сколько всего задач на доске.
+   */
+  async chatTasks(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    const chat = await this.access(tenantId, chatId, user);
+    const rows = await this.repo.chatTasks(tenantId, chatId);
+    const total = Number((await this.repo.countChatTasks(tenantId, chatId))?.n ?? 0);
+    return {
+      total,
+      projectId: chat.project_id ? String(chat.project_id) : null,
+      items: rows.map((t) => ({
+        id: String(t.id), title: t.title, status: t.status, closed: !!t.closed_at,
+        deadlineAt: t.deadline_at, projectId: String(t.project_id), assigneeName: t.assignee_name, relation: t.relation,
+      })),
+    };
+  }
+
+  /**
+   * «+ Отправить текущую задачу / проект» (ТЗ-5, раздел 30).
+   *
+   * В ленту уходит обычное сообщение с карточкой: задача — с номером и ссылкой на
+   * неё (как у задачи, созданной из сообщения), проект — с названием и адресом
+   * доски. Связь записывается в conversation_links: сайдбар покажет задачу в
+   * блоке «Задачи», даже если сообщение потом уедет вверх.
+   */
+  async share(tenantId: string, chatId: string, user: { userId: string; role: string }, entityType: string, entityId: string) {
+    const chat = await this.access(tenantId, chatId, user);
+    const base = (process.env.APP_BASE_URL || 'https://teamsmrt.com').replace(/\/+$/, '');
+    let message: MessageRow;
+    if (entityType === 'task') {
+      const task = await this.repo.taskCard(tenantId, entityId);
+      if (!task) throw AppException.notFound('Задача не найдена');
+      const bits = [task.status, task.assignee_name ? `исполнитель: ${task.assignee_name}` : null,
+        task.deadline_at ? `срок: ${new Date(task.deadline_at).toLocaleDateString('ru-RU')}` : null].filter(Boolean);
+      message = await this.repo.addTaskMessage(
+        tenantId, chatId, user.userId,
+        `Задача #${task.id} «${task.title}»${bits.length ? `\n${bits.join(' · ')}` : ''}\n${base}/projects/${task.project_id}/task/${task.id}`,
+        String(task.id),
+      );
+      await this.repo.link({ tenantId, chatId, entityType: 'task', entityId: String(task.id), relation: 'shared', actorId: user.userId });
+    } else if (entityType === 'project') {
+      const project = await this.repo.projectCard(tenantId, entityId);
+      if (!project) throw AppException.notFound('Проект не найден');
+      message = await this.repo.addMessage({
+        tenantId, chatId, authorId: user.userId, fileId: null,
+        body: `Проект «${project.name}» · задач в работе: ${project.open_tasks}\n${base}/projects/${project.id}`,
+      });
+      await this.repo.link({ tenantId, chatId, entityType: 'project', entityId: String(project.id), relation: 'shared', actorId: user.userId });
+    } else {
+      throw AppException.validation('Отправить можно задачу или проект');
+    }
+    await this.repo.markRead(tenantId, chatId, user.userId);
+    const to = await this.recipients(chat, tenantId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
+    this.realtime.emitToUsers(tenantId, to, 'chat.updated', { chatId: String(chat.id) });
+    return message;
   }
 
   /** Сайдбар у всех участников должен перечитаться: название, описание, состав, роли. */

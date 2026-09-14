@@ -78,6 +78,10 @@ class MessageEditDto {
 class RenameDto {
   @IsString() @MaxLength(160) title!: string;
 }
+class ShareDto {
+  @IsIn(['task', 'project']) entityType!: 'task' | 'project';
+  @IsString() entityId!: string;
+}
 class MemberRoleDto {
   @IsIn(['admin', 'member']) role!: 'admin' | 'member';
 }
@@ -362,6 +366,18 @@ export class ChatsController {
   @Get(':id/saved')
   savedInChat(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.chats.savedInChat(u.tenantId, id, u);
+  }
+
+  /** Задачи чата: созданные из сообщений и отправленные карточкой. */
+  @Get(':id/tasks')
+  chatTasks(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.chatTasks(u.tenantId, id, u);
+  }
+
+  /** «+ Отправить текущую задачу / проект» карточкой в чат. */
+  @Post(':id/share')
+  share(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ShareDto) {
+    return this.chats.share(u.tenantId, id, u, dto.entityType, dto.entityId);
   }
 
   @Get(':id/audit')
