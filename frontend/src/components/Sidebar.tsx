@@ -165,7 +165,7 @@ export function Sidebar({
   onSwitchOrg, onSearch, onJoinCall, onOpenSecretary, onHoverSection, onLogout,
 }: {
   route: Route;
-  user: { role: string; fullName: string; tenantId: string; uiPrefs?: MenuPrefs };
+  user: { id: string; role: string; fullName: string; tenantId: string; uiPrefs?: MenuPrefs };
   organizations: { tenantId: string; name: string; role: string }[];
   avatarPath: string | null;
   unread: number;
@@ -242,6 +242,20 @@ export function Sidebar({
    * ни один пункт меню в этом режиме не открывается.
    */
   const stopTuning = () => { setTuning(false); setDragged(null); };
+
+  /** Свой статус присутствия: читается из сводки при входе, ставится из меню профиля. */
+  const [myStatus, setMyStatus] = useState<'busy' | 'away' | null>(null);
+  useEffect(() => {
+    api.presence()
+      .then((rows) => setMyStatus(rows.find((r) => String(r.userId) === String(user.id))?.status ?? null))
+      .catch(() => undefined);
+    // один раз при входе; дальше — своё же действие
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id]);
+  const setStatus = (status: 'busy' | 'away' | null) => {
+    setMyStatus(status);
+    void api.setPresenceStatus(status).catch(() => undefined);
+  };
   // Esc — тем же общим хуком, что и остальные слои: Escape закрывает верхний.
   useEscape(stopTuning, tuning);
   // В свёрнутой панели у настройки нет ни подписей, ни кнопки выхода — выходим сами.
@@ -619,6 +633,22 @@ export function Sidebar({
                 >
                   <Icon name="user" size={15} /> Профиль
                 </button>
+                {/* Свой статус для коллег — только руками (решение заказчика):
+                    «занят» ставят нарочно, чтобы к тебе не шли, и снимают сами. */}
+                <div className="menu-theme">
+                  <span className="dim">Статус</span>
+                  <span className="menu-status" role="group" aria-label="Статус для коллег">
+                    {([['', 'обычный'], ['busy', 'занят'], ['away', 'отошёл']] as const).map(([v, label]) => (
+                      <button
+                        key={v}
+                        className={`menu-status-btn${(myStatus ?? '') === v ? ' active' : ''}`}
+                        onClick={() => setStatus(v === '' ? null : v)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </span>
+                </div>
                 <div className="menu-theme">
                   <span className="dim">Тема</span>
                   <ThemeSwitch />

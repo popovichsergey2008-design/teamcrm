@@ -41,6 +41,8 @@ import { useShortcuts } from './hooks/useShortcuts';
 import { ShortcutsHelp } from './components/ShortcutsHelp';
 import { prefetchFocus } from './pages/FocusPage';
 import { prefetchRadar } from './pages/RadarPage';
+import { ChatBar } from './components/chatbar/ChatBar';
+import { ChatOverlay } from './components/chatbar/ChatOverlay';
 
 /**
  * Обёртка раздела, который остаётся жить после ухода с него.
@@ -74,12 +76,48 @@ export function App() {
   const [callInvite, setCallInvite] = useState<string[]>([]);
   // какой чат открыт — чтобы не слать уведомление о сообщении, которое человек и так видит
   const [openChatId, setOpenChatId] = useState<string | null>(null);
-  const [activeCalls, setActiveCalls] = useState<{ id: string; participants: { displayName: string }[] }[]>([]);
+  const [activeCalls, setActiveCalls] = useState<{ id: string; participants: { userId?: string; displayName: string }[] }[]>([]);
   // окно быстрой команды: null — закрыто; текст и голос приходят из командной строки
   const [nl, setNl] = useState<{ text?: string; voice?: boolean } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState<{ voice?: boolean } | null>(null);
   const [secretaryOpen, setSecretaryOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  /*
+    Chat Bar и окно чата поверх CRM (ТЗ-5, этап 1).
+
+    Панель справа видна во всех разделах, кроме самого мессенджера — там список
+    чатов и так слева (решение заказчика). Нажатие на чат в мессенджере открывает
+    его в разделе, в любом другом месте — окном поверх страницы. Свёрнута панель
+    или развёрнута и какой ширины окно — хранится у человека на сервере.
+  */
+  const [barExpanded, setBarExpanded] = useState(false);
+  const [overlayChat, setOverlayChat] = useState<string | null>(null);
+  const [overlayWidth, setOverlayWidth] = useState(480);
+  const [overlayActive, setOverlayActive] = useState<string | null>(null);
+  useEffect(() => {
+    const bar = user?.uiPrefs?.chatBar;
+    if (!bar) return;
+    if (typeof bar.expanded === 'boolean') setBarExpanded(bar.expanded);
+    if (typeof bar.width === 'number') setOverlayWidth(bar.width);
+    // прочитали один раз при входе: дальше правда — в состоянии, а не в токене
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+  const toggleBar = () => {
+    setBarExpanded((v) => {
+      void api.saveUiPrefs({ chatBar: { expanded: !v, width: overlayWidth } }).catch(() => undefined);
+      return !v;
+    });
+  };
+  const rememberWidth = (w: number) => {
+    setOverlayWidth(w);
+    void api.saveUiPrefs({ chatBar: { expanded: barExpanded, width: w } }).catch(() => undefined);
+  };
+  const openChatAnywhere = (chatId: string) => {
+    if (route.section === 'chat') { navigate({ section: 'chat', chatId }); return; }
+    setOverlayChat(chatId);
+  };
+  // ушли в мессенджер — окно поверх больше не нужно, чат и так перед глазами
+  useEffect(() => { if (route.section === 'chat') setOverlayChat(null); }, [route.section]);
   // какие разделы уже открывали: только их держим смонтированными
   const [visited, setVisited] = useState<Set<Section>>(() => new Set([route.section]));
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
@@ -212,7 +250,8 @@ export function App() {
   const { unread } = useChatNotifications(
     !!user && user.role !== 'client',
     user?.id ? String(user.id) : null,
-    route.section === 'chat' && !route.view ? openChatId : null,
+    // открытый чат — в разделе или в окне поверх CRM: по нему всплывашки не нужны
+    route.section === 'chat' && !route.view ? openChatId : overlayActive,
     () => navigate({ section: 'chat' }),
   );
   // заголовок вкладки мигает, когда появилось новое: в соседней вкладке иначе не видно
@@ -345,6 +384,30 @@ export function App() {
           <ProfilePanel onClose={() => navigate({ section: 'settings' })} onAvatar={setAvatarPath} />
         )}
       </main>
+
+      {route.section !== 'chat' && (
+        <ChatBar
+          expanded={barExpanded}
+          onToggle={toggleBar}
+          onOpenChat={openChatAnywhere}
+          onOpenAi={() => setPaletteOpen({ voice: false })}
+          onNewChat={() => navigate({ section: 'chat' })}
+          currentUserId={String(user.id)}
+          onCallUserIds={new Set(activeCalls.flatMap((c) => c.participants.map((p) => String(p.userId ?? ''))).filter(Boolean))}
+          activeChatId={overlayChat}
+        />
+      )}
+      {overlayChat && route.section !== 'chat' && (
+        <ChatOverlay
+          chatId={overlayChat}
+          width={overlayWidth}
+          onWidth={rememberWidth}
+          onClose={() => { setOverlayChat(null); setOverlayActive(null); }}
+          onCall={callFromChat}
+          inCall={!!callId}
+          onActiveChat={setOverlayActive}
+        />
+      )}
 
       {/* Подразделы, живущие поверх своего раздела: адрес у них свой, экран — родительский */}
       {route.section === 'focus' && route.view === 'inbox' && canManage && (

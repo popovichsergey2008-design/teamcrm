@@ -517,6 +517,27 @@ test('подпись времени у сообщения: сегодня, вч�
   assert.ok(!stampLabel(new Date(2026, 0, 3, 10, 0).toISOString(), now).includes('2026'), 'этот год — без года');
 });
 
+test('присутствие: мит важнее «занят», «занят» важнее «в сети», «был N минут назад» — только не в сети', async () => {
+  const { presenceKind, presenceLabel, agoLabel } = await load('lib/presence.ts');
+  const now = new Date(2026, 8, 14, 12, 0);
+
+  assert.equal(presenceKind({ online: true }), 'online');
+  assert.equal(presenceKind({ online: true, status: 'busy' }), 'busy', 'поставил «занят» нарочно — важнее факта «в сети»');
+  assert.equal(presenceKind({ online: false, status: 'away' }), 'away');
+  assert.equal(presenceKind({ online: true, status: 'busy', onCall: true }), 'meeting', 'мит — факт, важнее пожелания');
+  assert.equal(presenceKind({ online: false }), 'offline');
+
+  assert.equal(presenceLabel({ online: true }), 'в сети');
+  assert.equal(presenceLabel({ online: false, lastSeenAt: new Date(2026, 8, 14, 11, 48) }, now), 'был(а) 12 мин назад');
+  assert.equal(presenceLabel({ online: false }), 'не в сети', 'ни разу не заходил — так и говорим');
+  assert.equal(presenceLabel({ online: true, lastSeenAt: new Date(2026, 8, 14, 11, 48) }, now), 'в сети', 'в сети — «был N минут назад» врал бы');
+
+  assert.equal(agoLabel(new Date(2026, 8, 14, 11, 59, 40), now), 'только что');
+  assert.equal(agoLabel(new Date(2026, 8, 14, 9, 0), now), '3 ч назад');
+  assert.equal(agoLabel(new Date(2026, 8, 13, 23, 0), now), 'вчера');
+  assert.equal(agoLabel(new Date(2026, 8, 5, 23, 0), now), '5 сентября');
+});
+
 test('виды задач на доске: делаю, помогаю, поручил, наблюдаю', async () => {
   const { filterBoard, countMatching, realPosition, filterActive } = await load('lib/board-filter.ts');
   // t1 — моя работа, t2 — я поставил другому, t3 — чужая целиком, t4 — я и поставил, и делаю

@@ -124,7 +124,7 @@ const laterLabel = (x: { sendAt: string; repeat: 'none' | 'daily' }) => {
  * Мессенджер: слева люди и группы, справа переписка. Звонок — из шапки чата,
  * то есть звонишь конкретному человеку, а не в общую комнату.
  */
-export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
+export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 'page', onClose }: {
   onCall: (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null; withAi?: boolean }) => void;
   /** Уже идёт созвон — второй начинать нельзя, кнопка гасится. */
   inCall?: boolean;
@@ -132,7 +132,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
   onActiveChat?: (chatId: string | null) => void;
   /** Чат, который просили открыть снаружи — например кликом по уведомлению. */
   initialChatId?: string | null;
+  /**
+   * `overlay` — окно чата поверх CRM (ТЗ-5): одна переписка без списка и разделов,
+   * ветка раскрывается поверх ленты. Вся механика — та же, что в разделе: это тот
+   * же компонент, а не копия, и правки в одном месте доезжают в оба.
+   */
+  mode?: 'page' | 'overlay';
+  /** Крестик в окне поверх CRM. */
+  onClose?: () => void;
 }) {
+  const overlay = mode === 'overlay';
   // «Позвать ИИ» — решение на конкретный звонок, поэтому галочка живёт рядом с кнопкой,
   // а не в настройках: перед разговором видно, будет он записан или нет
   const { user } = useAuth();
@@ -1258,7 +1267,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     others.filter((u) => match(u.fullName)).length === 0;
 
   return (
-    <div className="chats">
+    <div className={`chats${overlay ? ' chats-overlay' : ''}`}>
+      {!overlay && (
       <aside className="chat-list">
         <div className="chat-list-head">
           <input className="input chat-search" placeholder="Поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -1449,6 +1459,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
           )
         )}
       </aside>
+      )}
 
       <section className="chat-view">
         {/*
@@ -1476,6 +1487,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
               withAi: ai,
             })}
           />
+          {onClose && (
+            <button className="btn btn-ghost btn-sm chat-overlay-close" onClick={onClose} title="Закрыть окно чата (Esc)" aria-label="Закрыть окно чата">
+              <Icon name="close" size={16} />
+            </button>
+          )}
         </div>
 
         {view === 'inbox' && (
