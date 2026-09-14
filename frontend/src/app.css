@@ -3822,3 +3822,7 @@
 }
 /* Строка «отправить задачу / проект» над полем ввода — только в окне поверх CRM. */
 .chat-context-row { display: flex; gap: 6px; padding: 4px 12px 0; }
+
+/* ── Миты в сайдбаре чата (ТЗ-5, этап 4) ── */
+.ci-meeting { display: flex; flex-direction: column; }
+.ci-meeting-body { display: flex; flex-direction: column; gap: 6px; padding: 2px 6px 8px 28px; font-size: var(--fs-sm); }

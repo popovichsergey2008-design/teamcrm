@@ -32,6 +32,15 @@ export function MeetingsPage({ onEnterGuestMeet }: { onEnterGuestMeet: (roomId: 
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
+  // «Открыть мит» из сайдбара чата: раздел уже открыт, остаётся развернуть разбор
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id;
+      if (id) setOpenId(String(id));
+    };
+    window.addEventListener('teamcrm:meeting-open', onOpen);
+    return () => window.removeEventListener('teamcrm:meeting-open', onOpen);
+  }, []);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ title: '', projectId: '' });

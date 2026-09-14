@@ -805,6 +805,11 @@ export const api = {
     total: number; projectId: string | null;
     items: { id: string; title: string; status: string; closed: boolean; deadlineAt: string | null; projectId: string; assigneeName: string | null; relation: string }[];
   }>('GET', `/chats/${chatId}/tasks`),
+  /** Миты чата: созвоны отсюда и связанные встречи — с итогом, говорившими и задачами (ТЗ-5, этап 4). */
+  chatMeetings: (chatId: string) => request<{
+    id: string; title: string; at: string; durationSec: number | null; status: string; summary: string | null;
+    tasksCreated: number; participants: string[]; projectId: string | null;
+  }[]>('GET', `/chats/${chatId}/meetings`),
   /** «+ Отправить текущую задачу / проект» карточкой в чат. */
   chatShare: (chatId: string, entityType: 'task' | 'project', entityId: string) =>
     request<any>('POST', `/chats/${chatId}/share`, { entityType, entityId }),

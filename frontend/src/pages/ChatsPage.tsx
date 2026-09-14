@@ -5,6 +5,7 @@ import { api, ApiError, Scheduled } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { navigate } from '../lib/router';
 import { useClipRecorder } from '../hooks/useClipRecorder';
+import { useVoiceInput } from '../hooks/useVoiceInput';
 import { notificationPermission, notifyChatsChanged, requestNotificationPermission } from '../lib/notifications';
 import { useAuth } from '../state/auth';
 import { EmptyState } from '../components/EmptyState';
@@ -280,6 +281,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   /** Сводка непрочитанного и ответ поиска — показываются панелью, в чат не пишутся. */
   const [digest, setDigest] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  /**
+   * Вопрос помощнику голосом (ТЗ-5, раздел 29): записал — расшифровали — спросили —
+   * ответ в ленту. Расшифровка та же, что у голосовой постановки задач; ответ идёт
+   * тем же путём, что и «@AI» текстом, — второй дороги для помощника нет.
+   */
+  const aiVoice = useVoiceInput(async (text) => {
+    const q = text.trim();
+    if (!activeId || !q) return;
+    setAiBusy(true);
+    try { await api.askChatAi(activeId, q); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Помощник не ответил'); }
+    finally { setAiBusy(false); }
+  });
   const [aiQuery, setAiQuery] = useState('');
   const [aiAnswer, setAiAnswer] = useState<{
     answer: string;
@@ -2191,6 +2205,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                 aria-label="Голосовое сообщение"
               >
                 <Icon name={clip.recording === 'voice' ? 'stop' : 'mic'} size={16} />
+              </button>
+              {/* Спросить помощника голосом: вопрос расшифровывается и уходит как «@AI». */}
+              <button
+                className={aiVoice.recording ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+                onClick={aiVoice.toggle}
+                disabled={aiBusy || aiVoice.transcribing || !!clip.recording}
+                title={aiVoice.recording ? 'Остановить и спросить' : aiVoice.transcribing ? 'Расшифровываю вопрос…' : 'Спросить AI голосом'}
+                aria-label="Спросить AI голосом"
+              >
+                <Icon name={aiVoice.recording ? 'stop' : 'robot'} size={16} />
               </button>
               {/* Запись экрана: «вот нажимаю кнопку, и всё зависает» показать проще,
                   чем описать словами. Из такого сообщения потом делают задачу. */}

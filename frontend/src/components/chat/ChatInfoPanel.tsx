@@ -59,7 +59,7 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
 }) {
   const [info, setInfo] = useState<ChatInfo | null>(null);
   const [err, setErr] = useState('');
-  const [open, setOpen] = useState<Record<string, boolean>>({ about: true, members: true, materials: false, tasks: true, pinned: false, saved: false, history: false });
+  const [open, setOpen] = useState<Record<string, boolean>>({ about: true, members: true, materials: false, tasks: true, meetings: false, pinned: false, saved: false, history: false });
   const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
 
   const load = useCallback(() => {
@@ -125,6 +125,10 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
 
         <Section title="Задачи" open={open.tasks} onToggle={() => toggle('tasks')}>
           <TasksBlock chatId={chatId} />
+        </Section>
+
+        <Section title="Миты" open={open.meetings} onToggle={() => toggle('meetings')}>
+          <MeetingsBlock chatId={chatId} />
         </Section>
 
         <Section title="Закреплено" count={counts.pinned} open={open.pinned} onToggle={() => toggle('pinned')}>
@@ -461,6 +465,66 @@ function TasksBlock({ chatId }: { chatId: string }) {
       ))}
       {data.items.length > 8 && !all && <button className="ci-link" onClick={() => setAll(true)}>Показать все ({data.total})</button>}
       {data.projectId && <button className="ci-link" onClick={() => navigate({ section: 'projects', projectId: String(data.projectId) })}>Все задачи проекта →</button>}
+    </>
+  );
+}
+
+const MEETING_STATUS: Record<string, string> = {
+  queued: 'в очереди', transcribing: 'расшифровка', analyzing: 'разбор', done: 'разобран', error: 'ошибка',
+};
+const durationLabel = (sec: number | null) => {
+  if (!sec) return '';
+  const m = Math.round(sec / 60);
+  return m < 60 ? `${m} мин` : `${Math.floor(m / 60)} ч ${m % 60} мин`;
+};
+
+/** Миты чата: созвоны отсюда и связанные встречи (ТЗ-5, этап 4). */
+function MeetingsBlock({ chatId }: { chatId: string }) {
+  const [items, setItems] = useState<Awaited<ReturnType<typeof api.chatMeetings>> | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  useEffect(() => {
+    api.chatMeetings(chatId).then(setItems).catch(() => setItems([]));
+    const socket = getSocket();
+    const refresh = (p: { chatId: string }) => { if (String(p.chatId) === String(chatId)) api.chatMeetings(chatId).then(setItems).catch(() => undefined); };
+    socket.on('chat.updated', refresh);
+    socket.on('chat.message', refresh); // карточка итога приходит сообщением
+    return () => { socket.off('chat.updated', refresh); socket.off('chat.message', refresh); };
+  }, [chatId]);
+  if (!items) return <div className="dim">Загружаю…</div>;
+  if (!items.length) return <div className="dim">Созвонов из этого чата ещё не было — кнопка «Созвон» в шапке.</div>;
+  return (
+    <>
+      {items.map((m) => (
+        <div key={m.id} className="ci-meeting">
+          <button className="ci-item" onClick={() => setOpenId(openId === m.id ? null : m.id)} title={openId === m.id ? 'Свернуть' : 'Подробнее'}>
+            <Icon name="record" size={14} />
+            <span className="ci-item-main">
+              <span className="ci-item-name">{m.title}</span>
+              <span className="dim">
+                {stampLabel(m.at)}{m.durationSec ? ` · ${durationLabel(m.durationSec)}` : ''}
+                {' · '}{MEETING_STATUS[m.status] ?? m.status}
+                {m.tasksCreated ? ` · задач: ${m.tasksCreated}` : ''}
+              </span>
+            </span>
+          </button>
+          {openId === m.id && (
+            <div className="ci-meeting-body">
+              {m.participants.length > 0 && <div className="dim">Говорили: {m.participants.join(', ')}</div>}
+              {m.summary ? <div className="ci-desc">{m.summary}</div> : <div className="dim">Итога пока нет.</div>}
+              <button
+                className="ci-link"
+                onClick={() => {
+                  navigate({ section: 'chat', view: 'meetings' });
+                  // раздел встреч откроет разбор сам — событием, адреса у мита нет
+                  window.setTimeout(() => window.dispatchEvent(new CustomEvent('teamcrm:meeting-open', { detail: { id: m.id } })), 300);
+                }}
+              >
+                <Icon name="list" size={13} /> Открыть мит
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
     </>
   );
 }
