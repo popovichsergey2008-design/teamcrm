@@ -195,8 +195,9 @@ export class ChatsRepository {
         [tenantId, title, createdBy],
       )).rows[0];
       for (const uid of new Set([createdBy, ...userIds])) {
-        await c.query(`INSERT INTO chat_members (chat_id, user_id, tenant_id) VALUES ($1,$2,$3)
-                       ON CONFLICT DO NOTHING`, [row.id, uid, tenantId]);
+        // создатель — владелец: с него начинается порядок в чате
+        await c.query(`INSERT INTO chat_members (chat_id, user_id, tenant_id, role) VALUES ($1,$2,$3,$4)
+                       ON CONFLICT DO NOTHING`, [row.id, uid, tenantId, String(uid) === String(createdBy) ? 'owner' : 'member']);
       }
       return row;
     });
@@ -784,8 +785,8 @@ export class ChatsRepository {
       const ids = Array.from(new Set([String(i.userId), ...i.userIds.map(String)]));
       for (const uid of ids) {
         await c.query(
-          `INSERT INTO chat_members (chat_id, user_id, tenant_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-          [chat.id, uid, i.tenantId],
+          `INSERT INTO chat_members (chat_id, user_id, tenant_id, role) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+          [chat.id, uid, i.tenantId, uid === String(i.userId) ? 'owner' : 'member'],
         );
       }
       return chat;
@@ -1021,11 +1022,149 @@ export class ChatsRepository {
 
   /** Состав группы с именами — для окна управления участниками. */
   members(tenantId: string, chatId: string) {
-    return this.db.many<{ user_id: string; full_name: string; avatar_file_id: string | null; joined_at: Date }>(
-      `SELECT m.user_id, u.full_name, u.avatar_file_id, m.joined_at
+    return this.db.many<{
+      user_id: string; full_name: string; avatar_file_id: string | null; joined_at: Date;
+      role: string; last_seen_at: Date | null; presence_status: string | null;
+    }>(
+      `SELECT m.user_id, u.full_name, u.avatar_file_id, m.joined_at, m.role,
+              u.last_seen_at, u.presence_status
          FROM chat_members m JOIN users u ON u.id = m.user_id
-        WHERE m.tenant_id=$1 AND m.chat_id=$2 ORDER BY m.joined_at`,
+        WHERE m.tenant_id=$1 AND m.chat_id=$2
+        -- владелец первым, потом администраторы, остальные по имени
+        ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'member' THEN 2 ELSE 3 END, u.full_name`,
       [tenantId, chatId],
+    );
+  }
+
+  memberRole(chatId: string, userId: string): Promise<{ role: string } | null> {
+    return this.db.one<{ role: string }>(`SELECT role FROM chat_members WHERE chat_id=$1 AND user_id=$2`, [chatId, userId]);
+  }
+
+  /** Роль участника: владелец один и не меняется — его роль здесь не трогаем. */
+  async setMemberRole(chatId: string, userId: string, role: 'admin' | 'member'): Promise<boolean> {
+    const res = await this.db.query(
+      `UPDATE chat_members SET role=$3 WHERE chat_id=$1 AND user_id=$2 AND role <> 'owner'`,
+      [chatId, userId, role],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async setDescription(tenantId: string, chatId: string, description: string | null): Promise<void> {
+    await this.db.query(`UPDATE chats SET description=$3 WHERE tenant_id=$1 AND id=$2`, [tenantId, chatId, description]);
+  }
+
+  /** Сведения для сайдбара: чат вместе с именами проекта и клиента. */
+  info(tenantId: string, chatId: string) {
+    return this.db.one<ChatRow & { project_name: string | null; client_name: string | null; created_by_name: string | null }>(
+      `SELECT c.*, p.name AS project_name, cl.name AS client_name, u.full_name AS created_by_name
+         FROM chats c
+    LEFT JOIN projects p ON p.id = c.project_id
+    LEFT JOIN clients cl ON cl.id = c.client_id
+    LEFT JOIN users u ON u.id = c.created_by
+        WHERE c.tenant_id=$1 AND c.id=$2`,
+      [tenantId, chatId],
+    );
+  }
+
+  /**
+   * Материалы чата — вложения по виду.
+   *
+   * Вид определяется по типу файла, а не по отдельной колонке: картинки и видео —
+   * медиа, звук — голосовые (клипы из чата именно так и хранятся), pdf и офисные —
+   * документы, всё остальное — файлы. Одним запросом с фильтром по маске: ходить
+   * в базу четыре раза ради четырёх вкладок незачем.
+   */
+  materials(tenantId: string, chatId: string, kind: 'media' | 'voice' | 'docs' | 'files', limit = 60, before?: string) {
+    const mask: Record<string, string> = {
+      media: `(f.content_type LIKE 'image/%' OR f.content_type LIKE 'video/%')`,
+      voice: `f.content_type LIKE 'audio/%'`,
+      docs: `(f.content_type IN ('application/pdf', 'text/plain', 'text/csv')
+              OR f.content_type LIKE 'application/vnd.openxmlformats%'
+              OR f.content_type LIKE 'application/msword%'
+              OR f.content_type LIKE 'application/vnd.ms-%')`,
+      files: `f.content_type NOT LIKE 'image/%' AND f.content_type NOT LIKE 'video/%' AND f.content_type NOT LIKE 'audio/%'`,
+    };
+    return this.db.many<{
+      message_id: string; file_id: string; file_name: string; content_type: string; size_bytes: string;
+      created_at: Date; author_name: string | null;
+    }>(
+      `SELECT mf.message_id, f.id AS file_id, f.file_name, f.content_type, f.size_bytes::text, m.created_at,
+              u.full_name AS author_name
+         FROM chat_message_files mf
+         JOIN chat_messages m ON m.id = mf.message_id AND m.deleted_at IS NULL
+         JOIN files f ON f.id = mf.file_id
+    LEFT JOIN users u ON u.id = m.author_id
+        WHERE m.tenant_id=$1 AND m.chat_id=$2 AND ${mask[kind]}
+          AND ($4::bigint IS NULL OR mf.message_id < $4::bigint)
+        ORDER BY mf.message_id DESC, mf.position
+        LIMIT $3`,
+      [tenantId, chatId, limit, before ?? null],
+    );
+  }
+
+  /** Сообщения со ссылками: сами адреса вынимает сервис — в SQL это нечитаемо. */
+  linkMessages(tenantId: string, chatId: string, limit = 200) {
+    return this.db.many<{ id: string; body: string; created_at: Date; author_name: string | null }>(
+      `SELECT m.id, m.body, m.created_at, u.full_name AS author_name
+         FROM chat_messages m LEFT JOIN users u ON u.id = m.author_id
+        WHERE m.tenant_id=$1 AND m.chat_id=$2 AND m.deleted_at IS NULL
+          AND (m.body ~* 'https?://' OR m.body ~* 'www\.')
+        ORDER BY m.id DESC LIMIT $3`,
+      [tenantId, chatId, limit],
+    );
+  }
+
+  /** Сколько чего в чате — цифры на вкладках сайдбара, чтобы пустые не открывать. */
+  materialCounts(tenantId: string, chatId: string) {
+    return this.db.one<{ media: string; voice: string; docs: string; files: string; links: string; pinned: string }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE f.content_type LIKE 'image/%' OR f.content_type LIKE 'video/%') AS media,
+         COUNT(*) FILTER (WHERE f.content_type LIKE 'audio/%') AS voice,
+         COUNT(*) FILTER (WHERE f.content_type IN ('application/pdf','text/plain','text/csv')
+                           OR f.content_type LIKE 'application/vnd.openxmlformats%'
+                           OR f.content_type LIKE 'application/msword%'
+                           OR f.content_type LIKE 'application/vnd.ms-%') AS docs,
+         COUNT(*) FILTER (WHERE f.content_type NOT LIKE 'image/%' AND f.content_type NOT LIKE 'video/%'
+                           AND f.content_type NOT LIKE 'audio/%') AS files,
+         (SELECT COUNT(*) FROM chat_messages x WHERE x.chat_id=$2 AND x.deleted_at IS NULL
+            AND (x.body ~* 'https?://' OR x.body ~* 'www\.')) AS links,
+         (SELECT COUNT(*) FROM chat_messages x WHERE x.chat_id=$2 AND x.deleted_at IS NULL AND x.pinned_at IS NOT NULL) AS pinned
+       FROM chat_message_files mf
+       JOIN chat_messages m ON m.id = mf.message_id AND m.deleted_at IS NULL
+       JOIN files f ON f.id = mf.file_id
+      WHERE m.tenant_id=$1 AND m.chat_id=$2`,
+      [tenantId, chatId],
+    );
+  }
+
+  /** Сохранённое этим человеком — только из этого чата, для блока в сайдбаре. */
+  savedInChat(tenantId: string, chatId: string, userId: string) {
+    return this.db.many<{ id: string; body: string; file_id: string | null; file_name: string | null; created_at: Date; author_name: string | null; saved_at: Date }>(
+      `SELECT m.id, m.body, m.file_id, f.file_name, m.created_at, u.full_name AS author_name, s.saved_at
+         FROM saved_messages s
+         JOIN chat_messages m ON m.id = s.message_id AND m.deleted_at IS NULL
+    LEFT JOIN users u ON u.id = m.author_id
+    LEFT JOIN files f ON f.id = m.file_id
+        WHERE s.tenant_id=$1 AND s.user_id=$3 AND m.chat_id=$2
+        ORDER BY s.saved_at DESC LIMIT 100`,
+      [tenantId, chatId, userId],
+    );
+  }
+
+  // ── журнал действий с чатом ──
+  async audit(i: { tenantId: string; chatId: string; actorId: string | null; action: string; detail?: Record<string, unknown> }): Promise<void> {
+    await this.db.query(
+      `INSERT INTO chat_audit (tenant_id, chat_id, actor_id, action, detail) VALUES ($1,$2,$3,$4,$5::jsonb)`,
+      [i.tenantId, i.chatId, i.actorId, i.action, JSON.stringify(i.detail ?? {})],
+    );
+  }
+
+  auditList(tenantId: string, chatId: string, limit = 50) {
+    return this.db.many<{ id: string; action: string; detail: Record<string, unknown>; created_at: Date; actor_name: string | null }>(
+      `SELECT a.id, a.action, a.detail, a.created_at, u.full_name AS actor_name
+         FROM chat_audit a LEFT JOIN users u ON u.id = a.actor_id
+        WHERE a.tenant_id=$1 AND a.chat_id=$2 ORDER BY a.id DESC LIMIT $3`,
+      [tenantId, chatId, limit],
     );
   }
 

@@ -17,6 +17,19 @@ const PAGE = 50;
  * доступ к проектам в CRM и так общий. Заказчик (client) в командные чаты не входит:
  * у него отдельный портал, и переписка команды не для его глаз.
  */
+/**
+ * Адреса из текста сообщения — для вкладки «Ссылки». Хвостовую пунктуацию
+ * отрезаем: точка в конце предложения не часть адреса.
+ */
+export function extractLinks(body: string): string[] {
+  const out: string[] = [];
+  for (const m of String(body ?? '').matchAll(/(?:https?:\/\/|www\.)[^\s<>"']+/gi)) {
+    const url = m[0].replace(/[).,;:!?»"']+$/, '');
+    if (url && !out.includes(url)) out.push(url);
+  }
+  return out;
+}
+
 @Injectable()
 export class ChatsService {
   constructor(
@@ -89,6 +102,7 @@ export class ChatsService {
     const name = title.trim();
     if (!name) throw AppException.validation('Назовите группу');
     const chat = await this.repo.createGroup(tenantId, userId, name.slice(0, 160), userIds.map(String));
+    await this.repo.audit({ tenantId, chatId: String(chat.id), actorId: userId, action: 'created', detail: { kind: 'group', title: name } });
     this.realtime.emitToUsers(tenantId, [userId, ...userIds], 'chat.created', { chatId: chat.id, title: name });
     return { id: chat.id, kind: chat.kind, title: name };
   }
@@ -110,10 +124,11 @@ export class ChatsService {
     const chat = await this.repo.createChannel({
       tenantId, userId: user.userId,
       title: title.slice(0, 160),
-      description: (dto.description ?? '').trim().slice(0, 300) || null,
+      description: (dto.description ?? '').trim().slice(0, 2000) || null,
       isPrivate: dto.isPrivate !== false, // умолчание — приватный: раскрыть проще, чем спрятать
       userIds: (dto.userIds ?? []).map(String),
     });
+    await this.repo.audit({ tenantId, chatId: String(chat.id), actorId: user.userId, action: 'created', detail: { kind: 'channel', title } });
     this.realtime.emitToUsers(tenantId, [user.userId, ...(dto.userIds ?? []).map(String)], 'chat.created', {
       chatId: chat.id, title,
     });
@@ -564,6 +579,7 @@ export class ChatsService {
     const created = res?.task;
     if (!created?.id) throw AppException.conflict('Задача не создалась');
     await this.repo.linkTask(tenantId, messageId, String(created.id));
+    await this.repo.audit({ tenantId, chatId, actorId: user.userId, action: 'task_created', detail: { messageId, taskId: String(created.id), title: created.title } });
     /*
       Скриншот из сообщения — во вложения задачи.
 
@@ -735,6 +751,7 @@ export class ChatsService {
     const msg = await this.repo.findMessage(tenantId, messageId);
     if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
     await this.repo.setPinned(tenantId, messageId, user.userId, pinned);
+    await this.repo.audit({ tenantId, chatId, actorId: user.userId, action: pinned ? 'pinned' : 'unpinned', detail: { messageId } });
     // Закрепление видят все: у собеседника шапка чата должна измениться сразу,
     // иначе он узнает о важном сообщении, только перезагрузив страницу.
     const to = await this.recipients(chat, tenantId);
@@ -827,27 +844,139 @@ export class ChatsService {
   /** Операции состава есть только у групп: у диалога участники неизменны, у проекта — вся команда. */
   private async group(tenantId: string, chatId: string, user: { userId: string; role: string }): Promise<ChatRow> {
     const chat = await this.access(tenantId, chatId, user);
-    if (chat.kind !== 'group') throw AppException.validation('Состав меняется только у групповых чатов');
+    // Каналы — тоже: у них есть владелец и администраторы, и порядок наводят так же.
+    if (chat.kind !== 'group' && chat.kind !== 'channel') throw AppException.validation('Состав меняется только у групп и каналов');
     return chat;
   }
 
-  /** Изменять группу вправе её создатель и руководство: иначе любой может выкинуть любого. */
-  private canManage(chat: ChatRow, user: { userId: string; role: string }): boolean {
-    return String(chat.created_by) === String(user.userId) || user.role === 'owner' || user.role === 'manager';
+  /**
+   * Кто вправе менять чат: владелец и администраторы чата, а также руководство
+   * компании — иначе любой мог бы выкинуть любого. Роль в чате — из chat_members,
+   * должность — из компании; создатель остаётся в силе и без записи о роли.
+   */
+  private async canManageChat(chat: ChatRow, user: { userId: string; role: string }): Promise<boolean> {
+    if (String(chat.created_by) === String(user.userId) || user.role === 'owner' || user.role === 'manager') return true;
+    const m = await this.repo.memberRole(String(chat.id), user.userId);
+    return m?.role === 'owner' || m?.role === 'admin';
+  }
+
+  private memberOut(r: { user_id: string; full_name: string; avatar_file_id: string | null; role: string; last_seen_at: Date | null; presence_status: string | null }) {
+    return {
+      userId: r.user_id,
+      fullName: r.full_name,
+      avatarUrl: r.avatar_file_id ? `/api/files/${r.avatar_file_id}` : null,
+      role: r.role,
+      lastSeenAt: r.last_seen_at,
+      status: r.presence_status,
+    };
   }
 
   async members(tenantId: string, chatId: string, user: { userId: string; role: string }) {
     const chat = await this.access(tenantId, chatId, user);
     const rows = await this.repo.members(tenantId, chatId);
+    const online = new Set(this.realtime.onlineUsers(tenantId));
     return {
-      canManage: chat.kind === 'group' && this.canManage(chat, user),
+      canManage: (chat.kind === 'group' || chat.kind === 'channel') && await this.canManageChat(chat, user),
       createdBy: chat.created_by,
-      members: rows.map((r) => ({
-        userId: r.user_id,
-        fullName: r.full_name,
-        avatarUrl: r.avatar_file_id ? `/api/files/${r.avatar_file_id}` : null,
+      members: rows.map((r) => ({ ...this.memberOut(r), online: online.has(String(r.user_id)) })),
+    };
+  }
+
+  /**
+   * Сведения для сайдбара чата (ТЗ-5, этап 2): что это за чат, кто в нём и по каким
+   * ролям, сколько в нём материалов. Одним запросом с фронта — сайдбар открывают
+   * ради одного взгляда, и три отдельных загрузки читались бы как «медленно».
+   */
+  async info(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    await this.access(tenantId, chatId, user);
+    const chat = await this.repo.info(tenantId, chatId);
+    if (!chat) throw AppException.notFound('Чат не найден');
+    const rows = await this.repo.members(tenantId, chatId);
+    const online = new Set(this.realtime.onlineUsers(tenantId));
+    const counts = await this.repo.materialCounts(tenantId, chatId);
+    const my = rows.find((r) => String(r.user_id) === String(user.userId));
+    return {
+      chat: {
+        id: String(chat.id), kind: chat.kind, title: chat.title, description: chat.description ?? null,
+        isPrivate: chat.is_private !== false, isExternal: chat.is_external === true,
+        projectId: chat.project_id ? String(chat.project_id) : null, projectName: chat.project_name,
+        clientId: chat.client_id ? String(chat.client_id) : null, clientName: chat.client_name,
+        createdAt: chat.created_at, createdBy: chat.created_by ? String(chat.created_by) : null, createdByName: chat.created_by_name,
+      },
+      members: rows.map((r) => ({ ...this.memberOut(r), online: online.has(String(r.user_id)) })),
+      me: {
+        role: my?.role ?? (chat.kind === 'project' ? 'member' : null),
+        canManage: (chat.kind === 'group' || chat.kind === 'channel') && await this.canManageChat(chat, user),
+      },
+      counts: {
+        media: Number(counts?.media ?? 0), voice: Number(counts?.voice ?? 0), docs: Number(counts?.docs ?? 0),
+        files: Number(counts?.files ?? 0), links: Number(counts?.links ?? 0), pinned: Number(counts?.pinned ?? 0),
+      },
+    };
+  }
+
+  /** Материалы чата по вкладке; ссылки вынимаются из текста сообщений. */
+  async materials(tenantId: string, chatId: string, user: { userId: string; role: string }, kind: string, before?: string) {
+    await this.access(tenantId, chatId, user);
+    if (kind === 'links') {
+      const rows = await this.repo.linkMessages(tenantId, chatId);
+      const items: { messageId: string; url: string; authorName: string | null; createdAt: Date }[] = [];
+      for (const m of rows) {
+        for (const url of extractLinks(m.body)) {
+          items.push({ messageId: String(m.id), url, authorName: m.author_name, createdAt: m.created_at });
+        }
+      }
+      return { items };
+    }
+    if (kind !== 'media' && kind !== 'voice' && kind !== 'docs' && kind !== 'files') {
+      throw AppException.validation('Неизвестный вид материалов');
+    }
+    const rows = await this.repo.materials(tenantId, chatId, kind, 60, before);
+    return {
+      items: rows.map((r) => ({
+        messageId: String(r.message_id), fileId: String(r.file_id), name: r.file_name, mime: r.content_type,
+        size: Number(r.size_bytes), authorName: r.author_name, createdAt: r.created_at,
       })),
     };
+  }
+
+  async savedInChat(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    await this.access(tenantId, chatId, user);
+    return this.repo.savedInChat(tenantId, chatId, user.userId);
+  }
+
+  async auditList(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    await this.access(tenantId, chatId, user);
+    return this.repo.auditList(tenantId, chatId);
+  }
+
+  /** Назначить администратора или снять: владелец, администраторы, руководство. */
+  async setMemberRole(tenantId: string, chatId: string, user: { userId: string; role: string }, targetId: string, role: 'admin' | 'member') {
+    const chat = await this.group(tenantId, chatId, user);
+    if (!(await this.canManageChat(chat, user))) throw AppException.forbidden('Назначать администраторов может владелец или администратор чата');
+    if (!(await this.repo.setMemberRole(chatId, targetId, role))) throw AppException.notFound('Участник не найден или это владелец');
+    const name = (await this.repo.members(tenantId, chatId)).find((m) => String(m.user_id) === String(targetId))?.full_name ?? 'Участник';
+    await this.repo.audit({ tenantId, chatId, actorId: user.userId, action: role === 'admin' ? 'admin_granted' : 'admin_revoked', detail: { userId: targetId, name } });
+    await this.announce(tenantId, chat, role === 'admin' ? `${name} — теперь администратор` : `${name} больше не администратор`);
+    this.emitChatUpdated(tenantId, chat);
+    return { role };
+  }
+
+  async setDescription(tenantId: string, chatId: string, user: { userId: string; role: string }, description: string) {
+    const chat = await this.group(tenantId, chatId, user);
+    if (!(await this.canManageChat(chat, user))) throw AppException.forbidden('Описание меняет владелец или администратор чата');
+    const text = description.trim().slice(0, 2000) || null;
+    await this.repo.setDescription(tenantId, chatId, text);
+    await this.repo.audit({ tenantId, chatId, actorId: user.userId, action: 'description_changed', detail: {} });
+    this.emitChatUpdated(tenantId, chat);
+    return { description: text };
+  }
+
+  /** Сайдбар у всех участников должен перечитаться: название, описание, состав, роли. */
+  private emitChatUpdated(tenantId: string, chat: ChatRow) {
+    void this.recipients(chat, tenantId).then((to) => {
+      this.realtime.emitToUsers(tenantId, to, 'chat.updated', { chatId: String(chat.id) });
+    });
   }
 
   /** Добавлять может любой участник: звать коллегу в обсуждение — обычное дело. */
@@ -859,31 +988,38 @@ export class ChatsService {
     const names = (await this.repo.members(tenantId, chatId))
       .filter((m) => added.includes(String(m.user_id))).map((m) => m.full_name);
     await this.announce(tenantId, chat, `${names.join(', ')} ${names.length > 1 ? 'добавлены' : 'добавлен(а)'} в группу`);
+    await this.repo.audit({ tenantId, chatId, actorId: user.userId, action: 'members_added', detail: { userIds: added, names } });
     // новичкам чат должен появиться в списке сразу
     this.realtime.emitToUsers(tenantId, added, 'chat.created', { chatId, title: chat.title });
+    this.emitChatUpdated(tenantId, chat);
     return { added: added.length };
   }
 
   async removeMember(tenantId: string, chatId: string, user: { userId: string; role: string }, targetId: string) {
     const chat = await this.group(tenantId, chatId, user);
     if (String(targetId) === String(user.userId)) throw AppException.validation('Чтобы выйти самому, используйте «Выйти из группы»');
-    if (!this.canManage(chat, user)) throw AppException.forbidden('Убирать участников может создатель группы или руководитель');
+    if (!(await this.canManageChat(chat, user))) throw AppException.forbidden('Убирать участников может владелец или администратор чата');
+    if (String(chat.created_by) === String(targetId)) throw AppException.validation('Владельца чата убрать нельзя');
 
     const name = (await this.repo.members(tenantId, chatId)).find((m) => String(m.user_id) === String(targetId))?.full_name;
     if (!(await this.repo.removeMember(chatId, targetId))) throw AppException.notFound('Участник не найден');
     await this.announce(tenantId, chat, `${name ?? 'Участник'} удалён(а) из группы`);
+    await this.repo.audit({ tenantId, chatId, actorId: user.userId, action: 'member_removed', detail: { userId: targetId, name } });
     // исключённому чат исчезает из списка
     this.realtime.emitToUsers(tenantId, [targetId], 'chat.removed', { chatId });
+    this.emitChatUpdated(tenantId, chat);
     return { removed: true };
   }
 
   async rename(tenantId: string, chatId: string, user: { userId: string; role: string }, title: string) {
     const chat = await this.group(tenantId, chatId, user);
-    if (!this.canManage(chat, user)) throw AppException.forbidden('Переименовать может создатель группы или руководитель');
+    if (!(await this.canManageChat(chat, user))) throw AppException.forbidden('Переименовать может владелец или администратор чата');
     const name = title.trim();
     if (!name) throw AppException.validation('Название не может быть пустым');
     await this.repo.rename(tenantId, chatId, name.slice(0, 160));
     await this.announce(tenantId, chat, `Группа переименована в «${name.slice(0, 160)}»`);
+    await this.repo.audit({ tenantId, chatId, actorId: user.userId, action: 'renamed', detail: { from: chat.title, to: name.slice(0, 160) } });
+    this.emitChatUpdated(tenantId, chat);
     return { title: name.slice(0, 160) };
   }
 

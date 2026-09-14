@@ -41,7 +41,7 @@ class PinDto {
 }
 class CreateChannelDto {
   @IsString() @MaxLength(160) title!: string;
-  @IsOptional() @IsString() @MaxLength(300) description?: string;
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
   /** Умолчание — приватный: раскрыть канал проще, чем спрятать уже сказанное. */
   @IsOptional() @IsBoolean() isPrivate?: boolean;
   @IsOptional() @IsArray() @IsString({ each: true }) userIds?: string[];
@@ -77,6 +77,12 @@ class MessageEditDto {
 
 class RenameDto {
   @IsString() @MaxLength(160) title!: string;
+}
+class MemberRoleDto {
+  @IsIn(['admin', 'member']) role!: 'admin' | 'member';
+}
+class DescriptionDto {
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
 }
 
 /** Мессенджер команды. Роль client сюда не допускается — у заказчика свой портал. */
@@ -337,6 +343,40 @@ export class ChatsController {
   @Get(':id/members')
   members(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.chats.members(u.tenantId, id, u);
+  }
+
+  // ───── сайдбар чата (ТЗ-5, этап 2) ─────
+
+  /** Сведения, участники по ролям, счётчики материалов — одним запросом. */
+  @Get(':id/info')
+  info(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.info(u.tenantId, id, u);
+  }
+
+  /** Материалы: media | voice | docs | files | links. */
+  @Get(':id/materials')
+  materials(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('kind') kind = 'files', @Query('before') before?: string) {
+    return this.chats.materials(u.tenantId, id, u, kind, before || undefined);
+  }
+
+  @Get(':id/saved')
+  savedInChat(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.savedInChat(u.tenantId, id, u);
+  }
+
+  @Get(':id/audit')
+  audit(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.auditList(u.tenantId, id, u);
+  }
+
+  @Patch(':id/members/:userId/role')
+  setMemberRole(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('userId') userId: string, @Body() dto: MemberRoleDto) {
+    return this.chats.setMemberRole(u.tenantId, id, u, userId, dto.role);
+  }
+
+  @Patch(':id/description')
+  setDescription(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: DescriptionDto) {
+    return this.chats.setDescription(u.tenantId, id, u, dto.description ?? '');
   }
 
   @Post(':id/members')
