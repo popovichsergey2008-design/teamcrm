@@ -608,7 +608,10 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         if (changed.includes('assigneeId')) patch.assigneeId = prev.assigneeId;
         if (changed.includes('priority')) patch.priority = prev.priority;
         if (Object.keys(patch).length) await tasks.update(ctx.tenantId, taskId, patch as any, ctx.user.userId);
-        if (changed.includes('deadline')) await forecast.setEstimateDeadline(ctx.tenantId, taskId, null, prev.deadline ?? null);
+        if (changed.includes('deadline')) {
+          if (prev.deadline) await forecast.setEstimateDeadline(ctx.tenantId, taskId, null, prev.deadline);
+          else await repo.clearDeadline(ctx.tenantId, taskId);
+        }
         return `Задача #${taskId} возвращена как была.`;
       },
     },
@@ -740,7 +743,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           const t = await repo.taskFull(ctx.tenantId, taskId);
           return {
             text: `Документ «${att.fileName}» приложен к задаче #${taskId}.`,
-            output: { fileId: String(att.fileId), taskId, kind: 'task' },
+            output: { fileId: String(att.fileId), attachmentId: String(att.id ?? ''), taskId, kind: 'task' },
             sources: t ? [taskSource(ctx, { id: String(t.id), title: t.title, project_id: String(t.project_id) })] : [],
           };
         }
@@ -749,16 +752,27 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         const uploaded = await files.upload({
           tenantId: ctx.tenantId, userId: ctx.user.userId, buffer, fileName, contentType: mime, ownerKind: 'chat_attachment',
         });
-        await chats.send(ctx.tenantId, chatId, ctx.user, `📄 ${title}`, String(uploaded.id));
+        const sent: any = await chats.send(ctx.tenantId, chatId, ctx.user, `📄 ${title}`, String(uploaded.id));
         const where = target === 'chat' ? `в чат #${chatId}` : 'в ваши «Заметки»';
         return {
           text: `Документ «${fileName}» отправлен ${where}.`,
-          output: { fileId: String(uploaded.id), chatId, kind: 'chat' },
+          output: { fileId: String(uploaded.id), messageId: String(sent?.id ?? ''), chatId, kind: 'chat' },
           sources: [{ kind: 'chat', id: chatId, title: target === 'chat' ? 'Чат' : 'Заметки', url: `${ctx.base}/chat/${chatId}` }],
         };
       },
       async undo(ctx, output) {
-        // Файл удаляем; сообщение с ним остаётся — чужую переписку агент не правит.
+        /*
+          Сначала убираем ССЫЛКУ на файл, потом сам файл.
+
+          Иначе удаление падает на внешнем ключе: объект в хранилище уже стёрт, а
+          строка осталась — и сообщение с документом начинает отдавать ошибку вместо
+          файла. Порядок здесь важнее краткости.
+        */
+        if (output.kind === 'task') {
+          if (output.attachmentId) await taskcard.removeAttachment(ctx.tenantId, String(output.taskId), String(output.attachmentId)).catch(() => undefined);
+        } else if (output.messageId) {
+          await chats.remove(ctx.tenantId, String(output.chatId), String(output.messageId), ctx.user).catch(() => undefined);
+        }
         await files.delete(ctx.tenantId, String(output.fileId), ctx.user).catch(() => undefined);
         return 'Документ удалён.';
       },

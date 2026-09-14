@@ -302,10 +302,12 @@ describe('AnthillBot (e2e)', () => {
     const dl = await http$.get(`/api/files/${message.file_id}`).set(O).expect(200);
     expect(dl.text || String(dl.body)).toContain('Сделано: три задачи.');
 
-    // откат убирает файл, но чужую переписку не правит — сообщение остаётся
+    // откат убирает и сообщение с документом, и сам файл: ссылка на исчезнувший
+    // файл хуже, чем отсутствие сообщения
     await http$.post(`/api/anthill/actions/${action.id}/undo`).set(O).expect(201);
     await http$.get(`/api/files/${message.file_id}`).set(O).expect(404);
-    expect((await http$.get(`/api/chats/${self.id}/messages`).set(O).expect(200)).body.data.length).toBe(before + 1);
+    const left = (await http$.get(`/api/chats/${self.id}/messages`).set(O).expect(200)).body.data;
+    expect(left.some((m: any) => String(m.id) === String(message.id))).toBe(false);
   });
 
   it('правка задачи: срок и исполнитель меняются только после «Создать» и возвращаются откатом', async () => {

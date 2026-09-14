@@ -308,6 +308,20 @@ export class AnthillRepository {
     return !row?.off;
   }
 
+  /**
+   * Снять срок с задачи.
+   *
+   * Общий `setEstimateDeadline` собран на COALESCE и умеет только ставить: null в
+   * нём означает «не трогать». Для отката этого мало — у задачи срока могло не быть
+   * вовсе, и вернуть её «как было» значит именно очистить поле.
+   */
+  async clearDeadline(tenantId: string, taskId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE tasks SET deadline_at = NULL, updated_at = now() WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, taskId],
+    );
+  }
+
   // ── файлы (разд. 23) ──
 
   /** Вложения задачи: имя, тип, размер — чтобы агент знал, что вообще можно прочитать. */
