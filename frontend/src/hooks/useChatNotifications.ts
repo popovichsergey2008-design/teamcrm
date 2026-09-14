@@ -27,7 +27,9 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
     if (!enabled) return;
     try {
       const chats = await api.listChats();
-      setUnread(chats.reduce((sum: number, c: any) => sum + (Number(c.unread) || 0), 0));
+      // Ручная пометка «непрочитанное» — тоже повод вернуться: считается за один,
+      // иначе помеченный чат светился бы в списке, а панель говорила «всё прочитано».
+      setUnread(chats.reduce((sum: number, c: any) => sum + ((Number(c.unread) || 0) || (c.markedUnread ? 1 : 0)), 0));
     } catch { /* сеть моргнула — счётчик обновится следующим событием */ }
   }, [enabled]);
 

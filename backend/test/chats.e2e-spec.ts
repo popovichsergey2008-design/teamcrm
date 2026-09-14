@@ -63,6 +63,51 @@ describe('Чаты команды (e2e)', () => {
     expect(mine.find((c: any) => String(c.id) === String(chat.id)).unread).toBe(0);
   });
 
+  /*
+    «Пометить как непрочитанное» — как в Telegram.
+
+    Пометка личная: собеседник её не видит, и его галочки «прочитано» не меняются —
+    он-то видел, что прочитали. Снимается открытием чата, а не отдельным действием.
+  */
+  it('пометка «непрочитанное»: видна только мне, галочки собеседника целы, открытие снимает', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'UN', email: `un_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+    const mateEmail = `unm_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const mateLogin = (await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const M = H(mateLogin.accessToken);
+
+    const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
+    const msg = (await http$.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'Посмотри позже' }).expect(201)).body.data;
+
+    // коллега прочитал — у автора вторая галочка
+    await http$.get(`/api/chats/${chat.id}/messages`).set(M).expect(200);
+    const byChat = (c: any[]) => c.find((x: any) => String(x.id) === String(chat.id));
+    expect(byChat((await http$.get('/api/chats').set(M).expect(200)).body.data).unread).toBe(0);
+
+    // и пометил чат непрочитанным, чтобы вернуться
+    await http$.post(`/api/chats/${chat.id}/unread`).set(M).expect(201);
+    const marked = byChat((await http$.get('/api/chats').set(M).expect(200)).body.data);
+    expect(marked.markedUnread).toBe(true);
+    expect(marked.unread).toBe(0); // счётчик сообщений не врёт: новых нет, есть пометка
+
+    // у автора галочка «прочитано» осталась — пометка личная
+    const feed = (await http$.get(`/api/chats/${chat.id}/messages`).set(O).expect(200)).body.data;
+    expect(feed.find((m: any) => String(m.id) === String(msg.id)).read_by).toBe(1);
+    expect(byChat((await http$.get('/api/chats').set(O).expect(200)).body.data).markedUnread).toBe(false);
+
+    // открыл чат — пометка снята
+    await http$.get(`/api/chats/${chat.id}/messages`).set(M).expect(200);
+    expect(byChat((await http$.get('/api/chats').set(M).expect(200)).body.data).markedUnread).toBe(false);
+
+    // в чужой чат пометку не поставить
+    const stranger = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'UN2', email: `un2_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
+    await http$.post(`/api/chats/${chat.id}/unread`).set(H(stranger.accessToken)).expect(404);
+  });
+
   it('в чужой диалог не попасть даже по угаданному id', async () => {
     const aEmail = `pa_${uniq()}@t.test`;
     const a = (await http$.post('/api/auth/register')

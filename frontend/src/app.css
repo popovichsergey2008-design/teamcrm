@@ -2206,6 +2206,12 @@
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--fill-info);
   color: var(--on-fill); font-size: 11px; display: flex; align-items: center; justify-content: center;
 }
+/* Пометка «непрочитанное» без новых сообщений — точка того же цвета, что и счётчик. */
+.chat-unread-dot { min-width: 10px; width: 10px; height: 10px; padding: 0; border-radius: 50%; }
+/* «…» показывается при наведении, как звезда; на касании — всегда. */
+.chat-more { opacity: .5; }
+.chat-more:hover { opacity: 1; color: var(--text); }
+.chat-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* точка присутствия: серая — не в сети, зелёная — онлайн */
 .presence { width: 7px; height: 7px; border-radius: 50%; background: var(--border-2); flex-shrink: 0; }
 .presence.on { background: var(--ok); }

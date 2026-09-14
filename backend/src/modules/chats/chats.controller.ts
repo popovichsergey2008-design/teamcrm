@@ -358,6 +358,12 @@ export class ChatsController {
     return this.chats.markRead(u.tenantId, id, u);
   }
 
+  /** «Пометить как непрочитанное»: вернуться к разговору позже, как в Telegram. */
+  @Post(':id/unread')
+  unread(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.markUnread(u.tenantId, id, u);
+  }
+
   /**
    * Поиск по всем чатам. Маршрут статический и стоит выше `:id`-путей: слово
    * «search» не должно приниматься за номер чата.

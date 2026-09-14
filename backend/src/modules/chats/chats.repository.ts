@@ -19,6 +19,8 @@ export interface ChatListItem extends ChatRow {
   peer_avatar: string | null;
   project_name: string | null;
   unread: number;
+  /** Помечен непрочитанным вручную — как в Telegram; снимается открытием чата. */
+  marked_unread: boolean;
   last_body: string | null;
   last_author: string | null;
   last_at: Date | null;
@@ -104,6 +106,7 @@ export class ChatsRepository {
                   AND msg.author_id <> $2
                   AND (msg.thread_root_id IS NULL OR msg.also_in_channel)
                   AND (me.last_read_at IS NULL OR msg.created_at > me.last_read_at)) AS unread,
+              COALESCE(me.marked_unread, false) AS marked_unread,
               last.body AS last_body,
               lu.full_name AS last_author,
               last.created_at AS last_at
@@ -961,11 +964,31 @@ export class ChatsRepository {
     );
   }
 
-  /** Отметка прочтения. Для чатов проектов строка участия создаётся здесь же. */
+  /**
+   * Отметка прочтения. Для чатов проектов строка участия создаётся здесь же.
+   * Снимает и ручную пометку «непрочитанное»: открыл чат — вернулся к нему.
+   */
   async markRead(tenantId: string, chatId: string, userId: string): Promise<void> {
     await this.db.query(
       `INSERT INTO chat_members (chat_id, user_id, tenant_id, last_read_at) VALUES ($1,$2,$3, now())
-       ON CONFLICT (chat_id, user_id) DO UPDATE SET last_read_at = now()`,
+       ON CONFLICT (chat_id, user_id) DO UPDATE SET last_read_at = now(), marked_unread = false`,
+      [chatId, userId, tenantId],
+    );
+  }
+
+  /**
+   * «Пометить как непрочитанное».
+   *
+   * Личный флаг, а не сдвиг last_read_at назад: собеседнику его галочки
+   * «прочитано» трогать нельзя — он видел, что прочитали. У чата проекта строки
+   * участия может ещё не быть — заводим её с отметкой «был здесь сейчас»: без
+   * этого весь чат посчитался бы непрочитанным целиком, а просили одну пометку.
+   */
+  async markUnread(tenantId: string, chatId: string, userId: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO chat_members (chat_id, user_id, tenant_id, last_read_at, marked_unread)
+       VALUES ($1,$2,$3, now(), true)
+       ON CONFLICT (chat_id, user_id) DO UPDATE SET marked_unread = true`,
       [chatId, userId, tenantId],
     );
   }

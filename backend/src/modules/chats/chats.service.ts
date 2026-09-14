@@ -44,6 +44,8 @@ export class ChatsService {
       avatarUrl: c.peer_avatar ? `/api/files/${c.peer_avatar}` : null,
       projectId: c.project_id,
       unread: Number(c.unread ?? 0),
+      // ручная пометка «непрочитанное»: в списке — точка, в счётчике — единица
+      markedUnread: c.marked_unread === true,
       lastBody: c.last_body,
       lastAuthor: c.last_author,
       lastAt: c.last_at,
@@ -898,6 +900,18 @@ export class ChatsService {
     const message = await this.repo.addSystemMessage(tenantId, chat.id, text);
     const to = await this.recipients(chat, tenantId);
     this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId: chat.id, message });
+  }
+
+  /**
+   * «Пометить как непрочитанное» — как в Telegram.
+   *
+   * Личная пометка: собеседник о ней не узнаёт, его галочки не меняются, поэтому
+   * никому ничего не рассылаем. Свои же устройства узнают из списка чатов.
+   */
+  async markUnread(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    await this.access(tenantId, chatId, user);
+    await this.repo.markUnread(tenantId, chatId, user.userId);
+    return { unread: true };
   }
 
   async markRead(tenantId: string, chatId: string, user: { userId: string; role: string }) {

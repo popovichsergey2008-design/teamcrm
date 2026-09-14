@@ -829,6 +829,8 @@ export const api = {
   joinChannel: (chatId: string) => request<{ id: string }>('POST', `/chats/${chatId}/join`, {}),
   /** Закрепить чат сверху списка или снять — порядок личный. */
   toggleChatFavorite: (chatId: string) => request<{ favorite: boolean }>('POST', `/chats/${chatId}/favorite`, {}),
+  /** «Пометить как непрочитанное» — как в Telegram: вернуться к разговору позже. Снимается открытием чата. */
+  markChatUnread: (chatId: string) => request<{ unread: boolean }>('POST', `/chats/${chatId}/unread`, {}),
   /**
    * Внешний чат: разговор с клиентом или подрядчиком по ссылке.
    *
