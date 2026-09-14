@@ -54,6 +54,7 @@ test('разбор и сборка адреса совпадают в обе с�
     ['/chat/meetings', { section: 'chat', view: 'meetings' }],
     ['/chat/c9', { section: 'chat', chatId: 'c9' }],
     ['/radar', { section: 'radar' }],
+    ['/support', { section: 'support' }],
     ['/settings', { section: 'settings' }],
     ['/settings/integrations', { section: 'settings', tab: 'integrations' }],
     ['/profile', { section: 'profile' }],

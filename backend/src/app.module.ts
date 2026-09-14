@@ -17,6 +17,7 @@ import { UsersModule } from './modules/users/users.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { TasksModule } from './modules/tasks/tasks.module';
+import { SupportModule } from './modules/support/support.module';
 import { DealsModule } from './modules/deals/deals.module';
 import { BoardModule } from './modules/board/board.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
@@ -81,6 +82,7 @@ import { FeedModule } from './modules/feed/feed.module';
     TenantsModule,
     ProjectsModule,
     TasksModule,
+    SupportModule,
     NotificationsModule,
     DiagModule,
     DealsModule,

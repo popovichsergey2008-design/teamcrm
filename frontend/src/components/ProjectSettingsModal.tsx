@@ -16,12 +16,13 @@ import { PROJECTS_CHANGED } from './ProjectsNav';
  * досками, а не место, где их настраивают. Заказчик сказал ровно это.
  */
 export function ProjectSettingsModal({ project, onClose, onChanged }: {
-  project: { id: string; name: string; is_default?: boolean };
+  project: { id: string; name: string; is_default?: boolean; is_support?: boolean };
   onClose: () => void;
   onChanged: () => void;
 }) {
   useEscape(onClose);
   const [isDefault, setIsDefault] = useState(project.is_default === true);
+  const [isSupport, setIsSupport] = useState(project.is_support === true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [done, setDone] = useState('');
@@ -37,6 +38,21 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
       setDone(next ? 'Доска будет первой в списке' : 'Доска убрана из основных');
     } catch (e) {
       setIsDefault(!next);
+      setErr(e instanceof ApiError ? e.message : 'Не удалось изменить');
+    } finally { setBusy(false); }
+  };
+
+  /** Сюда падают обращения из кнопки «Поддержка». Один проект на компанию. */
+  const toggleSupport = async (next: boolean) => {
+    setErr(''); setDone(''); setBusy(true);
+    setIsSupport(next);
+    try {
+      await api.setSupportProject(String(project.id), next);
+      window.dispatchEvent(new Event(PROJECTS_CHANGED));
+      onChanged();
+      setDone(next ? 'Обращения из «Поддержки» будут попадать в этот проект' : 'Проект больше не принимает обращения');
+    } catch (e) {
+      setIsSupport(!next);
       setErr(e instanceof ApiError ? e.message : 'Не удалось изменить');
     } finally { setBusy(false); }
   };
@@ -95,6 +111,18 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
           <button className="btn" onClick={addDefaultColumns} disabled={busy}>
             <Icon name="plus" size={14} /> Добавить доски по умолчанию
           </button>
+        </div>
+
+        <div className="drawer-section">
+          <div className="drawer-section-title">Поддержка</div>
+          <label className="notify-row" title="Обращения сотрудников из кнопки «Поддержка» становятся задачами здесь">
+            <input type="checkbox" checked={isSupport} disabled={busy} onChange={(e) => toggleSupport(e.target.checked)} />
+            Проект поддержки — сюда попадают обращения из кнопки «Поддержка»
+          </label>
+          <p className="dim">
+            Один проект на компанию: отметите здесь — с прежнего пометка снимется. Пока
+            ничего не выбрано, первое обращение само заведёт проект «Поддержка».
+          </p>
         </div>
 
         <div className="drawer-section">

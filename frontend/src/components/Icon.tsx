@@ -19,7 +19,7 @@ export type IconName =
   | 'calendar' | 'clock' | 'bell' | 'flag' | 'star' | 'tag'
   | 'edit' | 'trash' | 'copy' | 'link' | 'refresh' | 'send'
   | 'chevron-left' | 'chevron-right' | 'chevron-down' | 'chevron-up'
-  | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'arrow-down' | 'reply'
+  | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'arrow-down' | 'reply' | 'support'
   | 'alert' | 'info' | 'help' | 'lock' | 'eye' | 'eye-off' | 'logout'
   | 'book' | 'inbox' | 'plug' | 'handshake' | 'sparkles' | 'chart' | 'money' | 'sun' | 'moon' | 'monitor'
   | 'play' | 'pause' | 'mail' | 'building' | 'target' | 'zap';
@@ -90,6 +90,8 @@ const PATHS: Record<IconName, string> = {
   alert: 'M12 9v4.5M12 17.5h.01M10.3 3.9 2.4 17.5A2 2 0 0 0 4.1 20.5h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z',
   info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 11v5M12 7.5h.01',
   help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.9-.9 1.6v.4M12 17h.01',
+  // гарнитура — знак поддержки, который узнают без подписи
+  support: 'M4 14v-2.5a8 8 0 0 1 16 0V14M4 14a1.5 1.5 0 0 1 1.5-1.5H7a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 17.5ZM20 14a1.5 1.5 0 0 0-1.5-1.5H17a1 1 0 0 0-1 1V18a1 1 0 0 0 1 1h1.5a1.5 1.5 0 0 0 1.5-1.5ZM18 19v.5a2 2 0 0 1-2 2h-3',
   lock: 'M6 10.5A1.5 1.5 0 0 1 7.5 9h9a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 16.5 20h-9A1.5 1.5 0 0 1 6 18.5ZM8.5 9V6.5a3.5 3.5 0 1 1 7 0V9',
   eye: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12ZM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
   'eye-off': 'M9.9 5.8A9.7 9.7 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.8 3.6M6.3 7.7A16.7 16.7 0 0 0 2.5 12S6 18.5 12 18.5c1.6 0 3-.4 4.2-1M3 3l18 18M10 10a3 3 0 0 0 4 4',

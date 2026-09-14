@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from 'react';
 
-export type Section = 'focus' | 'calendar' | 'news' | 'tasks' | 'projects' | 'chat' | 'radar' | 'settings' | 'profile';
+export type Section = 'focus' | 'calendar' | 'news' | 'tasks' | 'projects' | 'chat' | 'radar' | 'support' | 'settings' | 'profile';
 
 /**
  * Разобранный адрес. Плоский на одном уровне: сузить тип по секции можно и в месте
@@ -28,7 +28,7 @@ export type Route = {
   tab?: string;
 };
 
-const SECTIONS: Section[] = ['focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'settings', 'profile'];
+const SECTIONS: Section[] = ['focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'support', 'settings', 'profile'];
 
 /** По ТЗ приложение открывается на «Фокусе дня», а не на досках. */
 export const DEFAULT_PATH = '/focus';

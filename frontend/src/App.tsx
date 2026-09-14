@@ -12,6 +12,7 @@ import { FeedPage } from './pages/FeedPage';
 import { FocusPage } from './pages/FocusPage';
 import { MeetingsPage } from './pages/MeetingsPage';
 import { RadarPage } from './pages/RadarPage';
+import { SupportPage } from './pages/SupportPage';
 import { TasksPage } from './pages/TasksPage';
 import { toScope } from './lib/task-registry-view';
 import { SettingsPage } from './pages/SettingsPage';
@@ -336,6 +337,9 @@ export function App() {
           </Pane>
         )}
         {route.section === 'radar' && canManage && <RadarPage />}
+        {route.section === 'support' && (
+          <SupportPage onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })} />
+        )}
         {route.section === 'settings' && <SettingsPage route={route} role={user.role} />}
         {route.section === 'profile' && (
           <ProfilePanel onClose={() => navigate({ section: 'settings' })} onAvatar={setAvatarPath} />

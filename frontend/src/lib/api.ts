@@ -872,6 +872,18 @@ export const api = {
   setProjectDefault: (id: string, isDefault: boolean) =>
     request<{ isDefault: boolean }>('POST', `/projects/${id}/default`, { isDefault }),
   /**
+   * Поддержка: обращение — обычная задача владельцу в проекте поддержки.
+   * Какой проект принимает обращения, выбирает руководитель в настройках проекта.
+   */
+  supportOverview: () => request<{
+    project: { id: string; name: string } | null;
+    tickets: { id: string; title: string; status: string; closed: boolean; createdAt: string; projectId: string; assigneeName: string | null }[];
+  }>('GET', '/support'),
+  supportCreate: (input: { title: string; description?: string }) =>
+    request<{ id: string; projectId: string; title: string }>('POST', '/support', input),
+  setSupportProject: (projectId: string, isSupport: boolean) =>
+    request<{ isSupport: boolean }>('POST', `/support/project/${projectId}`, { isSupport }),
+  /**
    * Доски по умолчанию внутри проекта: недостающие заводятся и встают в начало,
    * перед созданными вручную. Ничего не удаляется — свои колонки уезжают правее.
    */
