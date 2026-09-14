@@ -789,6 +789,19 @@ export const api = {
   removeChatMember: (chatId: string, userId: string) => request<any>('DELETE', `/chats/${chatId}/members/${userId}`),
   renameChat: (chatId: string, title: string) => request<{ title: string }>('PATCH', `/chats/${chatId}`, { title }),
   leaveChat: (chatId: string) => request<any>('POST', `/chats/${chatId}/leave`),
+  /**
+   * Сайдбар чата (ТЗ-5, этап 2): сведения и участники по ролям одним запросом,
+   * материалы по вкладкам, своё сохранённое в этом чате, журнал действий.
+   */
+  chatInfo: (chatId: string) => request<ChatInfo>('GET', `/chats/${chatId}/info`),
+  chatMaterials: (chatId: string, kind: 'media' | 'voice' | 'docs' | 'files' | 'links') =>
+    request<{ items: MaterialItem[] }>('GET', `/chats/${chatId}/materials?kind=${kind}`),
+  chatSavedIn: (chatId: string) => request<any[]>('GET', `/chats/${chatId}/saved`),
+  chatAudit: (chatId: string) => request<{ id: string; action: string; detail: Record<string, unknown>; created_at: string; actor_name: string | null }[]>('GET', `/chats/${chatId}/audit`),
+  setChatMemberRole: (chatId: string, userId: string, role: 'admin' | 'member') =>
+    request<{ role: string }>('PATCH', `/chats/${chatId}/members/${userId}/role`, { role }),
+  setChatDescription: (chatId: string, description: string) =>
+    request<{ description: string | null }>('PATCH', `/chats/${chatId}/description`, { description }),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
   /**
    * Клип в чат: голосовое сообщение или запись экрана.
@@ -1349,3 +1362,26 @@ export const api = {
   getVelocity: (userId: string) => request<any>('GET', `/users/${userId}/velocity`),
   getLoad: (userId: string) => request<any>('GET', `/users/${userId}/load`),
 };
+
+/** Сведения о чате для сайдбара. */
+export interface ChatInfo {
+  chat: {
+    id: string; kind: string; title: string | null; description: string | null;
+    isPrivate: boolean; isExternal: boolean;
+    projectId: string | null; projectName: string | null;
+    clientId: string | null; clientName: string | null;
+    createdAt: string; createdBy: string | null; createdByName: string | null;
+  };
+  members: ChatMember[];
+  me: { role: string | null; canManage: boolean };
+  counts: { media: number; voice: number; docs: number; files: number; links: number; pinned: number };
+}
+export interface ChatMember {
+  userId: string; fullName: string; avatarUrl: string | null;
+  role: 'owner' | 'admin' | 'member' | 'external' | string;
+  online: boolean; lastSeenAt: string | null; status: 'busy' | 'away' | null;
+}
+export interface MaterialItem {
+  messageId: string; fileId?: string; name?: string; mime?: string; size?: number;
+  url?: string; authorName: string | null; createdAt: string;
+}

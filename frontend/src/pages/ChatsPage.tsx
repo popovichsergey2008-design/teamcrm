@@ -12,7 +12,7 @@ import { SkeletonList } from '../components/Skeleton';
 import { GroupChatModal } from '../components/GroupChatModal';
 import { CallStarter } from '../components/CallStarter';
 import { GuestLinkButton } from '../components/GuestLinkButton';
-import { GroupManageModal } from '../components/GroupManageModal';
+import { ChatInfoPanel } from '../components/chat/ChatInfoPanel';
 import { ChatAttachment } from '../components/ChatAttachment';
 import { Lightbox } from '../components/Lightbox';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
@@ -217,7 +217,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   }, [inChatQuery, messages]);
   const [scheduled, setScheduled] = useState<Scheduled[]>([]);
   const [groupOpen, setGroupOpen] = useState(false);
-  const [manageOpen, setManageOpen] = useState(false);
   const [perm, setPerm] = useState(notificationPermission());
   const [err, setErr] = useState('');
   /** Файл, выбранный или вставленный, но ещё не отправленный: его видно и можно подписать. */
@@ -235,6 +234,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * не закрывая основной чат, — иначе теряется то, ради чего ветку и открыли.
    */
   const [thread, setThread] = useState<{ rootId: string; messages: Message[] } | null>(null);
+  /**
+   * Сайдбар чата ⓘ (ТЗ-5, этап 2). Занимает тот же правый слот, что и ветка:
+   * два столбца справа не поместятся, и открытие одного закрывает другой.
+   */
+  const [infoOpen, setInfoOpen] = useState(false);
   /** Открытая ветка для обработчиков сокета: они живут дольше одного отрисованного кадра. */
   const threadRef = useRef<{ rootId: string; messages: Message[] } | null>(null);
   useEffect(() => { threadRef.current = thread; }, [thread]);
@@ -1136,6 +1140,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
 
   const openThread = async (rootId: string) => {
     if (!activeId) return;
+    setInfoOpen(false); // правый слот один: ветка вытесняет сведения
     setThreadBody(''); setAlsoInChannel(false);
     try {
       const messages = await api.chatThread(activeId, rootId);
@@ -1786,10 +1791,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                 >
                   <Icon name="search" size={14} />
                 </button>
-                {active.kind === 'group' && (
-                  <button className="btn btn-ghost btn-sm" title="Участники и настройки группы"
-                          onClick={() => setManageOpen(true)}><Icon name="settings" /></button>
-                )}
+                {/* Сведения о чате: участники по ролям, материалы, закреплённое, история.
+                    Раньше шестерёнка открывала окно только у групп — сайдбар есть у любого чата. */}
+                <button
+                  className={`btn btn-ghost btn-sm${infoOpen ? ' active' : ''}`}
+                  title="Сведения о чате: участники, файлы, закреплённое"
+                  aria-label="Сведения о чате"
+                  aria-pressed={infoOpen}
+                  onClick={() => { setInfoOpen((v) => !v); if (!infoOpen) { setThread(null); clearThreadPending(); } }}
+                >
+                  <Icon name="info" size={15} />
+                </button>
               </span>
               {/* Закреплённое — в шапке: доступы к серверу и ссылку на макет ищут
                   прокруткой на сотню сообщений назад, и это самая частая потеря времени. */}
@@ -2250,6 +2262,27 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
         ведут, не теряя из виду сам чат. На узком экране колонка закрывает ленту,
         иначе обе становятся нечитаемыми.
       */}
+      {infoOpen && active && !thread && (
+        <ChatInfoPanel
+          chatId={String(active.id)}
+          meId={String(user?.id ?? '')}
+          users={users}
+          onClose={() => setInfoOpen(false)}
+          onJumpTo={(messageId) => void openFound({ chatId: String(active.id), messageId, threadRootId: null })}
+          onWriteTo={(userId) => void writeTo(userId)}
+          canCall={!inCall}
+          onCall={(memberIds) => onCall({ id: String(active.id), title: active.title ?? 'Созвон', memberIds, projectId: active.projectId })}
+          onMention={(name) => setDraft((d) => `${d}${d && !d.endsWith(' ') ? ' ' : ''}@${name} `)}
+          onChanged={reload}
+          onLeft={() => { setInfoOpen(false); setActiveId(null); setMessages([]); reload(); }}
+          onTasksOf={(userId) => {
+            navigate({ section: 'tasks', view: 'all' });
+            // реестр слушает и ставит фильтр по исполнителю
+            window.dispatchEvent(new CustomEvent('teamcrm:tasks-of', { detail: { userId } }));
+          }}
+          onCalendar={() => navigate({ section: 'calendar' })}
+        />
+      )}
       {thread && (
         <section className="chat-thread">
           <div className="chat-head">
@@ -2463,23 +2496,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
         </div>
       )}
 
-      {manageOpen && active && (
-        <GroupManageModal
-          chatId={active.id}
-          title={active.title ?? ''}
-          users={users}
-          meId={user?.id}
-          onClose={() => setManageOpen(false)}
-          onChanged={reload}
-          onLeft={() => {
-            // вышли — чат больше не наш: закрываем окно и очищаем ленту
-            setManageOpen(false);
-            setActiveId(null);
-            setMessages([]);
-            reload();
-          }}
-        />
-      )}
 
       {channelOpen && (
         <ChannelModal

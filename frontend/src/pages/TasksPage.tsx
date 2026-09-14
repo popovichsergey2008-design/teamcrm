@@ -132,6 +132,20 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
   /** Любая правка фильтра возвращает на первую страницу: иначе «пусто» на пятой. */
   const patch = (part: Partial<RegistryFilters>) => setFilters((f) => ({ ...f, ...part, page: 1 }));
 
+  // «Задачи сотрудника» из сайдбара чата: реестр открывается уже с фильтром по
+  // исполнителю. Событием, а не адресом — фильтров в адресе у реестра нет.
+  useEffect(() => {
+    const onTasksOf = (e: Event) => {
+      const userId = (e as CustomEvent<{ userId: string }>).detail?.userId;
+      if (!userId) return;
+      onScope('all');
+      setFilters((f) => ({ ...f, scope: 'all', assigneeId: String(userId), page: 1 }));
+    };
+    window.addEventListener('teamcrm:tasks-of', onTasksOf);
+    return () => window.removeEventListener('teamcrm:tasks-of', onTasksOf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** Отмеченные роли: срез приходит строкой через запятую и остаётся в адресе. */
   const picked = String(filters.scope ?? 'all').split(',').filter(Boolean) as RegistryScope[];
   const setScopes = (next: RegistryScope[]) => {
