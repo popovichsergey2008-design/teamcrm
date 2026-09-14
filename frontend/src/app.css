@@ -87,7 +87,7 @@
 .nav-sidebar.nav-collapsed { width: 68px; padding-left: 8px; padding-right: 8px; }
 .nav-collapsed .nav-label, .nav-collapsed .nav-kbd, .nav-collapsed .nav-user-text { display: none; }
 .nav-collapsed .nav-org-select { opacity: 0; pointer-events: none; }
-.nav-collapsed .nav-item, .nav-collapsed .nav-search, .nav-collapsed .nav-new, .nav-collapsed .nav-user { justify-content: center; }
+.nav-collapsed .nav-item, .nav-collapsed .nav-search, .nav-collapsed .nav-user { justify-content: center; }
 
 /*
   Верх панели: организация, поиск, создание, разговор — четыре ровные строки.
@@ -97,8 +97,7 @@
   высота на всех: взгляд идёт по прямой, а не по ступенькам.
 */
 .nav-top { display: flex; flex-direction: column; gap: var(--sp-2); padding-bottom: var(--sp-3); }
-.nav-top .nav-search, .nav-top .nav-search-mic, .nav-top .nav-new, .nav-top .nav-new-mic,
-.nav-call-row .btn {
+.nav-top .nav-search, .nav-top .nav-search-mic {
   height: 34px; padding-top: 0; padding-bottom: 0;
 }
 .nav-org { display: flex; align-items: center; gap: var(--sp-2); position: relative; height: 34px; }
@@ -147,8 +146,6 @@
   font-size: 10px; letter-spacing: .04em; color: var(--text-mut);
   border: 1px solid var(--border-2); border-radius: 5px; padding: 1px 5px; white-space: nowrap;
 }
-.nav-new { width: 100%; padding: 0 12px; font-weight: 600; }
-
 /* основное меню */
 .nav-main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding-top: var(--sp-2); border-top: 1px solid var(--border); }
 .nav-group { display: flex; flex-direction: column; gap: 2px; }
@@ -167,18 +164,6 @@
   cursor: pointer;
 }
 .task-num:hover { color: var(--accent); border-color: var(--accent-line); }
-
-/* созвон из панели — одна кнопка во всю ширину; приглашение живёт внутри созвона */
-/* Созвон и гость — одна строка: выбор между ними лишь «свой или со стороны». */
-.nav-call-row { display: flex; gap: var(--sp-1); position: relative; }
-.nav-call-row .call-starter { display: flex; flex: 1 1 auto; min-width: 0; align-items: stretch; }
-.nav-call-row .call-starter-call { flex: 1 1 auto; justify-content: center; }
-.nav-call-row .guest-link-btn { flex: 0 0 auto; }
-/* Всплывающие окна открываются от ЛЕВОГО края панели, а не от своей кнопки:
-   у прижатой к краю экрана панели вправо места нет, а от кнопки справа окно
-   уехало бы за экран. */
-.nav-call-row .guest-link-btn { position: static; }
-.nav-call-row .call-starter-pop, .nav-call-row .guest-link-pop { right: auto; left: 0; }
 
 /* приглашение сотрудника и ссылка для гостя — в шапке созвона */
 .call-invite { position: relative; display: inline-flex; align-items: center; gap: 6px; }
@@ -3024,12 +3009,6 @@
 }
 .palette-foot .muted { margin-left: auto; }
 
-/* «Новая задача» + микрофон одной строкой */
-.nav-new-row { display: flex; gap: var(--sp-1); }
-.nav-new-row .nav-new { flex: 1; min-width: 0; }
-.nav-new-mic { flex-shrink: 0; padding: 0 10px; }
-.nav-collapsed .nav-new-mic { display: none; }
-
 /* риск-счётчик отличается от непрочитанного: это не «новое», а «горит» */
 .nav-count-warn { background: var(--fill-warn); }
 
@@ -3370,6 +3349,8 @@
    так же легко, как по строке в почте. */
 .registry-page { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: var(--sp-4) var(--sp-5); overflow: hidden; }
 .registry-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
+/* Постановка задачи в шапке реестра: пара «текстом · голосом» одним блоком. */
+.registry-new { display: inline-flex; gap: 6px; align-items: center; }
 .registry-title h1 { margin: 0; font-size: var(--fs-lg); font-weight: 700; }
 .registry-sub { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-dim); }
 

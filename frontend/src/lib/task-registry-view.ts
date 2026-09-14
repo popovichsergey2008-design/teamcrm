@@ -90,7 +90,7 @@ export interface RegistryFilters {
 }
 
 export const EMPTY_FILTERS: RegistryFilters = {
-  scope: 'doing', q: '', projectId: '', assigneeId: '', priority: '', due: 'any',
+  scope: 'all', q: '', projectId: '', assigneeId: '', priority: '', due: 'any',
   sort: 'deadline', inWork: true, page: 1,
 };
 
@@ -101,6 +101,9 @@ export function isScope(value: string | undefined | null): value is RegistryScop
 /**
  * Срез из адреса. Старые ссылки (`/tasks/mine`, `/tasks/created`) обязаны открывать
  * то же, что открывали вчера, — иначе сохранённая закладка ведёт в пустоту.
+ *
+ * Без хвоста (`/tasks`) — ВСЕ задачи компании: так решил заказчик. Раздел отвечает
+ * на вопрос «что вообще происходит», а свою роль человек сужает галочками.
  */
 export function toScope(value: string | undefined | null): RegistryScope {
   if (isScope(value)) return value;
@@ -109,7 +112,7 @@ export function toScope(value: string | undefined | null): RegistryScope {
   const parts = String(value ?? '').split(',').filter(Boolean);
   if (parts.length > 1 && parts.every((p) => isScope(p))) return parts.join(',') as RegistryScope;
   const legacy = LEGACY_VIEWS[String(value ?? '')];
-  return legacy ?? 'doing';
+  return legacy ?? 'all';
 }
 
 /**

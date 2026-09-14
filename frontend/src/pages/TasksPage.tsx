@@ -50,11 +50,14 @@ function shortDate(iso?: string | null): string {
   return new Intl.DateTimeFormat('ru-RU', opts).format(d);
 }
 
-export function TasksPage({ active, scope, onScope, onOpenTask }: {
+export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoiceTask }: {
   active: boolean;
   scope: RegistryScope;
   onScope: (scope: RegistryScope) => void;
   onOpenTask: (projectId: string, taskId: string) => void;
+  /** Поставить задачу отсюда: текстом или голосом. Окно живёт в приложении. */
+  onNewTask?: () => void;
+  onVoiceTask?: () => void;
 }) {
   const [filters, setFilters] = useState<RegistryFilters>({ ...EMPTY_FILTERS, scope });
   const [rows, setRows] = useState<Row[]>([]);
@@ -130,11 +133,11 @@ export function TasksPage({ active, scope, onScope, onOpenTask }: {
   const patch = (part: Partial<RegistryFilters>) => setFilters((f) => ({ ...f, ...part, page: 1 }));
 
   /** Отмеченные роли: срез приходит строкой через запятую и остаётся в адресе. */
-  const picked = String(filters.scope ?? 'doing').split(',').filter(Boolean) as RegistryScope[];
+  const picked = String(filters.scope ?? 'all').split(',').filter(Boolean) as RegistryScope[];
   const setScopes = (next: RegistryScope[]) => {
     // Снять все галочки нельзя: пустой экран человек читает как поломку, а не
-    // как «вы ничего не выбрали».
-    const value = (next.length ? next : ['doing']).join(',');
+    // как «вы ничего не выбрали». Без единой роли — все задачи, как при входе.
+    const value = (next.length ? next : ['all']).join(',');
     onScope(value as RegistryScope);
     patch({ scope: value as RegistryScope });
   };
@@ -150,9 +153,30 @@ export function TasksPage({ active, scope, onScope, onOpenTask }: {
     <div className="page registry-page">
       <header className="registry-head">
         <div className="registry-title">
-          <h1>Мои задачи</h1>
+          <h1>Задачи</h1>
           <span className="registry-sub">{scopeHint(picked)}</span>
         </div>
+        {/*
+          Поставить задачу — прямо отсюда.
+
+          Раньше единственная кнопка постановки стояла в левой панели; заказчик убрал
+          её оттуда и попросил ставить задачи там, где они живут. Реестр — одно из
+          двух таких мест (второе — доска проекта).
+        */}
+        {(onNewTask || onVoiceTask) && (
+          <span className="registry-new">
+            {onNewTask && (
+              <button className="btn btn-primary btn-sm" onClick={onNewTask} title="Новая задача — текстом (клавиша C)">
+                <Icon name="plus" size={15} /> Новая задача
+              </button>
+            )}
+            {onVoiceTask && (
+              <button className="btn btn-primary btn-sm" onClick={onVoiceTask} title="Продиктовать задачу голосом" aria-label="Продиктовать задачу голосом">
+                <Icon name="mic" size={15} />
+              </button>
+            )}
+          </span>
+        )}
         {/*
           Роли — ГАЛОЧКАМИ, а не вкладками.
 

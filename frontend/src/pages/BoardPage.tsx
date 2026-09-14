@@ -78,10 +78,12 @@ function reducer(state: Board | null, action: Action): Board | null {
   }
 }
 
-export function BoardPage({ initial, onNavigate }: {
+export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   initial?: { projectId: string; taskId?: string };
   /** Сообщает наверх, что показано сейчас, — чтобы адрес в строке браузера совпадал с экраном. */
   onNavigate?: (projectId: string | null, taskId: string | null) => void;
+  /** Продиктовать задачу: окно живёт в приложении, доска только просит его открыть. */
+  onVoiceTask?: () => void;
 } = {}) {
   const { user } = useAuth();
   const isClient = user?.role === 'client';
@@ -502,6 +504,32 @@ export function BoardPage({ initial, onNavigate }: {
                 )}
                 {!isClient && (
                   <span className="board-actions">
+                    {/*
+                      Постановка задачи — здесь, а не в левой панели.
+
+                      Заказчик перенёс её туда, где задачи и живут. Текстом — обычная
+                      форма в первую колонку доски (с файлами и проверкой дублей);
+                      голосом — то же окно диктовки, что и раньше, с этим проектом.
+                    */}
+                    {board.columns.length > 0 && (
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => openCreate(board.columns[0].id)}
+                        title={`Новая задача в колонку «${board.columns[0].name}» (клавиша C — голосом или текстом)`}
+                      >
+                        <Icon name="plus" size={15} /> Новая задача
+                      </button>
+                    )}
+                    {onVoiceTask && (
+                      <button
+                        className="btn btn-primary btn-sm board-mic"
+                        onClick={onVoiceTask}
+                        title="Продиктовать задачу голосом"
+                        aria-label="Продиктовать задачу голосом"
+                      >
+                        <Icon name="mic" size={15} />
+                      </button>
+                    )}
                     {/* Настройки самой доски: место в списке и порядок досок компании.
                         Раньше это висело кнопкой в левой панели — не её дело. */}
                     {canManageBoard && (

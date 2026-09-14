@@ -785,7 +785,11 @@ test('реестр: пустые фильтры не уезжают в запр�
   assert.equal(plain.includes('due='), false, 'срок «любой» — это отсутствие фильтра');
   assert.equal(plain.includes('sort='), false, 'сортировка по умолчанию не нужна в адресе');
   assert.equal(plain.includes('page='), false, 'первая страница — не параметр');
-  assert.equal(plain.includes('scope=doing'), true);
+  // Без хвоста в адресе — все задачи компании: так решил заказчик (14.09).
+  assert.equal(plain.includes('scope=all'), true, 'вход в раздел — все задачи, роли сужают');
+  assert.equal(m.toScope(undefined), 'all', '/tasks без хвоста — все задачи');
+  assert.equal(m.toScope('doing'), 'doing', 'у роли хвост свой');
+  assert.equal(m.toScope('mine'), 'doing', 'старая ссылка живёт');
   assert.equal(plain.includes('dayEnd='), true, 'без границы суток «просрочено» считается по серверу');
 
   const full = registryQuery({

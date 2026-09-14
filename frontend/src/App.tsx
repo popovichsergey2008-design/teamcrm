@@ -194,16 +194,6 @@ export function App() {
     } catch { /* недоступность медиа покажет само окно звонка */ }
   };
 
-  /** Созвон из панели: та же комната, что и из чата, только без переписки вокруг. */
-  const startCallFromPanel = async ({ memberIds, withAi }: { memberIds: string[]; withAi: boolean }) => {
-    if (callId) return; // уже разговариваем — второй созвон рвал бы первый пополам
-    try {
-      const room = await api.startCall(undefined, withAi);
-      setCallInvite(memberIds);
-      setCallId(room.id);
-    } catch { /* недоступность медиа покажет само окно звонка */ }
-  };
-
   const counters = useNavCounters(!!user && user.role !== 'client', route.section);
   const { incoming, accept, decline } = useIncomingCalls(!!user && user.role !== 'client');
   // напоминания о встречах приходят в любой раздел: календарь для этого открывать не нужно
@@ -262,15 +252,12 @@ export function App() {
         activeCall={activeCalls.length > 0 ? { participants: activeCalls[0].participants.length } : null}
         inCall={!!callId}
         onSwitchOrg={onSwitchOrg}
-        onNewTask={() => setNl({})}
-        onVoiceTask={() => setNl({ voice: true })}
         onSearch={(voice) => setPaletteOpen({ voice })}
         onHoverSection={(section) => {
           if (section === 'focus') prefetchFocus();
           if (section === 'radar' && canManage) prefetchRadar();
         }}
         onJoinCall={joinActiveCall}
-        onStartCall={startCallFromPanel}
         onOpenSecretary={() => setSecretaryOpen(true)}
         onLogout={logout}
       />
@@ -296,6 +283,7 @@ export function App() {
           <Pane active={route.section === 'projects'}>
             <BoardPage
               key={boardJump.nonce}
+              onVoiceTask={() => setNl({ voice: true })}
               initial={boardJump.projectId ? { projectId: boardJump.projectId, taskId: boardJump.taskId } : undefined}
               onNavigate={(projectId, taskId) => {
                 boardReported.current = { projectId: projectId ?? undefined, taskId: taskId ?? undefined };
@@ -339,8 +327,10 @@ export function App() {
           <Pane active={route.section === 'tasks'}>
             <TasksPage
               active={route.section === 'tasks'}
+              onNewTask={() => setNl({})}
+              onVoiceTask={() => setNl({ voice: true })}
               scope={toScope(route.view)}
-              onScope={(scope) => navigate({ section: 'tasks', view: scope === 'doing' ? undefined : scope })}
+              onScope={(scope) => navigate({ section: 'tasks', view: scope === 'all' ? undefined : scope })}
               onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
             />
           </Pane>

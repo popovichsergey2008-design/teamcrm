@@ -1,10 +1,8 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { ProjectsNav } from './ProjectsNav';
-import { CallStarter } from './CallStarter';
 import { applyHidden, applyOrder, isHidden, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
 import { TASK_VIEWS } from '../lib/task-views';
-import { GuestLinkButton } from './GuestLinkButton';
 import { setDoNotDisturb } from '../lib/sound';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
@@ -21,7 +19,7 @@ import type { Focus } from '../types';
 /**
  * Левая панель — единственная навигация приложения.
  *
- * Структура из ТЗ и менять её нельзя: верхний блок (команда, поиск, «Новая задача»),
+ * Структура из ТЗ и менять её нельзя: верхний блок (команда, поиск),
  * ровно четыре раздела, нижний блок (AI Секретарь, настройки, профиль с фокусом).
  * Разделы, которых в ТЗ нет (Встречи, Клиенты, Входящие), живут подпунктами внутри
  * своего раздела — пятый пункт меню добавлять запрещено.
@@ -73,7 +71,7 @@ const MENU: Item[] = [
       ответа не имел: задачи искали, обходя доски по одной.
     */
     section: 'tasks',
-    label: 'Мои задачи',
+    label: 'Задачи',
     icon: 'check-circle',
     hint: 'Вся ваша работа по всем проектам: делаю, поручил, помогаю, наблюдаю',
     /*
@@ -84,14 +82,13 @@ const MENU: Item[] = [
       читал в меню одно, попадал в другое. Теперь список один на всю систему:
       переименовать в двух местах по-разному стало нельзя.
 
-      «Делаю» — срез по умолчанию, поэтому у него в адресе нет хвоста.
+      Без хвоста в адресе открываются ВСЕ задачи компании — так решил заказчик;
+      у каждой роли хвост свой.
     */
     subs: TASK_VIEWS.map((v) => ({
       label: v.label,
       icon: v.icon,
-      route: v.key === 'doing'
-        ? { section: 'tasks' as Section }
-        : { section: 'tasks' as Section, view: v.key },
+      route: { section: 'tasks' as Section, view: v.key },
     })),
   },
   {
@@ -151,7 +148,7 @@ function readFolded(): Set<string> {
 
 export function Sidebar({
   route, user, organizations, avatarPath, unread, counters, activeCall, inCall,
-  onSwitchOrg, onNewTask, onVoiceTask, onSearch, onJoinCall, onStartCall, onOpenSecretary, onHoverSection, onLogout,
+  onSwitchOrg, onSearch, onJoinCall, onOpenSecretary, onHoverSection, onLogout,
 }: {
   route: Route;
   user: { role: string; fullName: string; tenantId: string; uiPrefs?: MenuPrefs };
@@ -161,16 +158,12 @@ export function Sidebar({
   counters: NavCounters;
   /** Идёт созвон в компании — можно присоединиться. Не повод запрещать свой звонок. */
   activeCall: { participants: number } | null;
-  /** Я сам сейчас в разговоре: только это мешает начать новый. */
+  /** Я сам сейчас в разговоре: тогда «присоединиться» к нему незачем. */
   inCall: boolean;
   onSwitchOrg: (tenantId: string) => void;
-  onNewTask: () => void;
-  onVoiceTask: () => void;
   /** voice — открыть окно поиска сразу со включённым микрофоном. */
   onSearch: (voice?: boolean) => void;
   onJoinCall: () => void;
-  /** Начать созвон из любого раздела — панель видна везде. */
-  onStartCall: (opts: { memberIds: string[]; withAi: boolean }) => void;
   onOpenSecretary: () => void;
   /** наведение на пункт меню — повод прогреть данные раздела заранее */
   onHoverSection: (section: Section) => void;
@@ -390,34 +383,14 @@ export function Sidebar({
             </button>
           </div>
 
-          {/* Голос — отдельной кнопкой, а не режимом внутри окна: по ТЗ надиктовать
-              задачу нужно одним движением, а не «открыть, найти микрофон, нажать». */}
-          <div className="nav-new-row">
-            <button className="btn btn-primary nav-new" onClick={onNewTask} title="Новая задача — текстом (клавиша C)">
-              <Icon name="plus" size={16} />
-              <span className="nav-label">Новая задача</span>
-            </button>
-            <button className="btn btn-primary nav-new-mic" onClick={onVoiceTask} title="Продиктовать задачу голосом" aria-label="Продиктовать задачу голосом">
-              <Icon name="mic" size={16} />
-            </button>
-          </div>
           {/*
-            Позвать людей — одна строка, а не две.
+            Кнопок «Новая задача», «Созвон» и «Гость» здесь больше нет.
 
-            Созвон и ссылка для гостя отвечают на один вопрос: «как сейчас поговорить».
-            Раздельными строками они занимали треть панели и читались как разные темы,
-            хотя выбор между ними — только «свой или со стороны».
-
-            Созвон нужен из любого места, а не только из переписки: разговор начинают,
-            когда упёрлись в вопрос, а не когда открыли чат. Кнопка гаснет лишь от
-            СОБСТВЕННОГО разговора — чужой созвон в компании звонить не мешает.
+            Заказчик: постановка задачи живёт там, где задачи, — в «Проектах и досках»
+            и в «Задачах», а не в панели навигации; созвон и гостевая ссылка — в чатах,
+            откуда разговор и начинают. Панель — переход между разделами, и только.
+            Клавиша C и командная строка по-прежнему ставят задачу из любого места.
           */}
-          {user.role !== 'client' && !collapsed && (
-            <div className="nav-call-row">
-              <CallStarter disabled={inCall} onStart={onStartCall} />
-              <GuestLinkButton label="Гость" />
-            </div>
-          )}
         </div>
 
         {/* ── основное меню: порядок и состав человек настраивает под себя ── */}
