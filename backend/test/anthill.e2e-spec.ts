@@ -308,4 +308,52 @@ describe('AnthillBot (e2e)', () => {
     await http$.get(`/api/files/${message.file_id}`).set(O).expect(404);
     expect((await http$.get(`/api/chats/${self.id}/messages`).set(O).expect(200)).body.data.length).toBe(before + 1);
   });
+
+  it('правка задачи: срок и исполнитель меняются только после «Создать» и возвращаются откатом', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'AB8', email: `ab8_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const mateEmail = `ab8m_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(O)
+      .send({ email: mateEmail, fullName: 'Глеб Соколов', password: 'password123', role: 'member' }).expect(201)).body.data;
+
+    const project = (await http$.post('/api/projects').set(O).send({ name: 'Панорама' }).expect(201)).body.data;
+    const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
+    const task = (await http$.post('/api/tasks').set(O).send({
+      projectId: project.id, columnId: board.columns[0].id, title: 'Свести смету',
+      assigneeId: String(owner.user.id), priority: 'normal',
+    }).expect(201)).body.data;
+
+    const session = (await http$.post('/api/anthill/sessions').set(O).send({}).expect(201)).body.data;
+    const deadline = new Date(Date.now() + 5 * 86400_000).toISOString();
+    const action = await repo.createAction({
+      tenantId: String(owner.user.tenantId), sessionId: String(session.id), userId: String(owner.user.id),
+      tool: 'update_task',
+      input: { taskId: String(task.id), assigneeId: String(mate.id), priority: 'high', deadline },
+    });
+
+    // отдельной ручки «дай задачу» нет — читаем её с доски, как это делает экран
+    const fromBoard = async () => {
+      const b = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
+      return b.columns.flatMap((c: any) => c.tasks).find((t: any) => String(t.id) === String(task.id));
+    };
+
+    // до подтверждения задача не тронута
+    let card = await fromBoard();
+    expect(String(card.assignee_id)).toBe(String(owner.user.id));
+    expect(card.priority).toBe('normal');
+
+    await http$.post(`/api/anthill/actions/${action.id}/confirm`).set(O).expect(201);
+    card = await fromBoard();
+    expect(String(card.assignee_id)).toBe(String(mate.id));
+    expect(card.priority).toBe('high');
+    expect(card.deadline_at).toBeTruthy();
+
+    // откат возвращает ровно прежнее: и человека, и приоритет, и пустой срок
+    await http$.post(`/api/anthill/actions/${action.id}/undo`).set(O).expect(201);
+    card = await fromBoard();
+    expect(String(card.assignee_id)).toBe(String(owner.user.id));
+    expect(card.priority).toBe('normal');
+    expect(card.deadline_at).toBeNull();
+  });
 });

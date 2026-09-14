@@ -1,6 +1,7 @@
 import { AnthillRepository, Source } from './anthill.repository';
 import { nextRun, parseSchedule, scheduleLabel } from './schedule-ru';
 import { FilesService } from '../files/files.service';
+import { ForecastService } from '../forecast/forecast.service';
 import { TaskCardService } from '../taskcard/taskcard.service';
 import { extractText } from '../knowledge/file-text';
 import { buildDocx, DOCX_MIME } from '../../common/files/docx.util';
@@ -65,6 +66,7 @@ export interface ToolDeps {
   repo: AnthillRepository;
   files: FilesService;
   taskcard: TaskCardService;
+  forecast: ForecastService;
   tasks: TasksService;
   chats: ChatsService;
   search: SearchService;
@@ -77,7 +79,22 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, tasks, chats, search, nl, ask, files, taskcard } = deps;
+  const { repo, tasks, chats, search, nl, ask, files, taskcard, forecast } = deps;
+
+  /**
+   * Человек по имени. Точного совпадения не требуем: в задаче просят «поставь на
+   * Глеба», а в базе «Глеб Соколов». Неоднозначность решаем отказом — назначить
+   * не того хуже, чем переспросить.
+   */
+  const findUser = async (tenantId: string, name: string) => {
+    const q = name.trim().toLowerCase();
+    if (!q) return null;
+    const users = await repo.users(tenantId);
+    const hits = users.filter((u) => u.full_name.toLowerCase().includes(q));
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) throw new Error(`Под «${name}» подходят несколько: ${hits.map((u) => u.full_name).join(', ')} — назовите точнее`);
+    throw new Error(`Не нашёл сотрудника «${name}»`);
+  };
 
   /** Файл целиком в память: разбор текста иначе не сделать, размер ограничен выше. */
   const fileBuffer = async (tenantId: string, fileId: string): Promise<Buffer> => {
@@ -514,6 +531,155 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       async undo(ctx, output) {
         await repo.deleteSkill(ctx.tenantId, ctx.user.userId, String(output.skillId));
         return 'Навык удалён.';
+      },
+    },
+    {
+      name: 'update_task', kind: 'write',
+      description: 'Изменить существующую задачу: срок, исполнителя, приоритет, название или описание. Например «перенеси #128 на пятницу», «поставь задачу 45 на Глеба», «подними приоритет». Нужен номер задачи.',
+      params: {
+        taskId: 'номер задачи', deadline: 'новый срок, ISO-дата (необязательно)',
+        assignee: 'имя нового исполнителя (необязательно)', priority: 'low | normal | high | urgent (необязательно)',
+        title: 'новое название (необязательно)', description: 'новое описание (необязательно)',
+      },
+      async preview(ctx, p) {
+        const taskId = str(p.taskId, 20);
+        const task = await repo.taskFull(ctx.tenantId, taskId);
+        if (!task) throw new Error(`Задачи #${taskId} не нашёл`);
+        const lines: string[] = [];
+        const next: Record<string, unknown> = { taskId };
+
+        const title = str(p.title, 255);
+        if (title && title !== task.title) { lines.push(`Название: «${task.title}» → «${title}»`); next.title = title; }
+        const description = str(p.description, 4000);
+        if (description) { lines.push('Описание: заменить'); next.description = description; }
+        if (p.deadline) {
+          const when = new Date(String(p.deadline));
+          if (Number.isNaN(when.getTime())) throw new Error('Не понял новый срок');
+          lines.push(`Срок: ${task.deadline_at ? dateRu(task.deadline_at) : 'не задан'} → ${dateRu(when)}`);
+          next.deadline = when.toISOString();
+        }
+        if (p.assignee) {
+          const u = await findUser(ctx.tenantId, str(p.assignee, 120));
+          lines.push(`Исполнитель: ${task.assignee ?? 'не назначен'} → ${u!.full_name}`);
+          next.assigneeId = String(u!.id);
+          next.assigneeName = u!.full_name;
+        }
+        const priority = str(p.priority, 16).toLowerCase();
+        if (priority && ['low', 'normal', 'high', 'urgent'].includes(priority) && priority !== task.priority) {
+          lines.push(`Приоритет: ${task.priority} → ${priority}`);
+          next.priority = priority;
+        }
+        if (!lines.length) throw new Error('Не понял, что именно менять в задаче');
+        return { text: `Изменить задачу #${taskId} «${task.title}»?\n${lines.join('\n')}`, params: next };
+      },
+      async execute(ctx, p) {
+        const taskId = str(p.taskId, 20);
+        const before = await repo.taskFull(ctx.tenantId, taskId);
+        if (!before) throw new Error(`Задачи #${taskId} больше нет`);
+        const patch: Record<string, unknown> = {};
+        if (p.title) patch.title = p.title;
+        if (p.description) patch.description = p.description;
+        if (p.assigneeId) patch.assigneeId = p.assigneeId;
+        if (p.priority) patch.priority = p.priority;
+        if (Object.keys(patch).length) await tasks.update(ctx.tenantId, taskId, patch as any, ctx.user.userId);
+        if (p.deadline) await forecast.setEstimateDeadline(ctx.tenantId, taskId, null, String(p.deadline));
+        return {
+          text: `Задача #${taskId} изменена.`,
+          // прежние значения — чтобы «Отменить» вернуло ровно то, что было
+          output: {
+            taskId,
+            prev: {
+              title: before.title, description: before.description ?? '',
+              assigneeId: before.assignee_id ? String(before.assignee_id) : null,
+              priority: before.priority, deadline: before.deadline_at ? new Date(before.deadline_at).toISOString() : null,
+            },
+            changed: Object.keys(patch).concat(p.deadline ? ['deadline'] : []),
+          },
+          sources: [taskSource(ctx, { id: taskId, title: before.title, project_id: String(before.project_id) })],
+        };
+      },
+      async undo(ctx, output) {
+        const taskId = String(output.taskId);
+        const prev = (output.prev ?? {}) as any;
+        const changed = (output.changed ?? []) as string[];
+        const patch: Record<string, unknown> = {};
+        if (changed.includes('title')) patch.title = prev.title;
+        if (changed.includes('description')) patch.description = prev.description;
+        if (changed.includes('assigneeId')) patch.assigneeId = prev.assigneeId;
+        if (changed.includes('priority')) patch.priority = prev.priority;
+        if (Object.keys(patch).length) await tasks.update(ctx.tenantId, taskId, patch as any, ctx.user.userId);
+        if (changed.includes('deadline')) await forecast.setEstimateDeadline(ctx.tenantId, taskId, null, prev.deadline ?? null);
+        return `Задача #${taskId} возвращена как была.`;
+      },
+    },
+    {
+      name: 'add_comment', kind: 'write',
+      description: 'Написать в обсуждение задачи от имени человека: «напиши в #128, что макеты готовы». Нужен номер задачи и текст.',
+      params: { taskId: 'номер задачи', text: 'что написать' },
+      async preview(ctx, p) {
+        const taskId = str(p.taskId, 20);
+        const text = String(p.text ?? '').trim().slice(0, 4000);
+        const task = await repo.taskFull(ctx.tenantId, taskId);
+        if (!task) throw new Error(`Задачи #${taskId} не нашёл`);
+        if (text.length < 2) throw new Error('Не понял, что написать');
+        return { text: `Написать в задачу #${taskId} «${task.title}»?\n«${clip(text, 600)}»`, params: { taskId, text } };
+      },
+      fields: [{ key: 'text', label: 'Сообщение', type: 'multiline' }],
+      values: (p) => ({ text: String(p.text ?? '') }),
+      async edit(ctx, p, patch) {
+        const text = String(patch.text ?? p.text ?? '').trim().slice(0, 4000);
+        if (text.length < 2) throw new Error('Сообщение пустое');
+        const task = await repo.taskFull(ctx.tenantId, String(p.taskId));
+        return { text: `Написать в задачу #${p.taskId} «${task?.title ?? ''}»?\n«${clip(text, 600)}»`, params: { ...p, text } };
+      },
+      async execute(ctx, p) {
+        const taskId = str(p.taskId, 20);
+        const c: any = await taskcard.addComment(ctx.tenantId, taskId, ctx.user.userId, String(p.text), false);
+        const task = await repo.taskFull(ctx.tenantId, taskId);
+        return {
+          text: `Сообщение в задаче #${taskId} отправлено.`,
+          output: { taskId, commentId: String(c?.id ?? '') },
+          sources: task ? [taskSource(ctx, { id: taskId, title: task.title, project_id: String(task.project_id) })] : [],
+        };
+      },
+      async undo(ctx, output) {
+        await taskcard.deleteComment(ctx.tenantId, String(output.taskId), String(output.commentId), ctx.user.userId, ctx.user.role);
+        return 'Сообщение удалено.';
+      },
+    },
+    {
+      name: 'send_message', kind: 'write',
+      description: 'Отправить сообщение в чат от имени человека: «напиши Глебу, что созвон в 15», «напиши в чат проекта, что макеты готовы». Номер чата бери из chat_recent, search_messages или контекста страницы.',
+      params: { chatId: 'номер чата', text: 'что написать' },
+      async preview(ctx, p) {
+        const chatId = str(p.chatId, 20);
+        const text = String(p.text ?? '').trim().slice(0, 4000);
+        const chat = await repo.chatTitle(ctx.tenantId, ctx.user.userId, chatId);
+        if (!chat) throw new Error('Такого чата у вас нет');
+        if (text.length < 2) throw new Error('Не понял, что написать');
+        return { text: `Отправить в «${chat.title}»?\n«${clip(text, 600)}»`, params: { chatId, text } };
+      },
+      fields: [{ key: 'text', label: 'Сообщение', type: 'multiline' }],
+      values: (p) => ({ text: String(p.text ?? '') }),
+      async edit(ctx, p, patch) {
+        const text = String(patch.text ?? p.text ?? '').trim().slice(0, 4000);
+        if (text.length < 2) throw new Error('Сообщение пустое');
+        const chat = await repo.chatTitle(ctx.tenantId, ctx.user.userId, String(p.chatId));
+        return { text: `Отправить в «${chat?.title ?? 'чат'}»?\n«${clip(text, 600)}»`, params: { ...p, text } };
+      },
+      async execute(ctx, p) {
+        const chatId = str(p.chatId, 20);
+        const m: any = await chats.send(ctx.tenantId, chatId, ctx.user, String(p.text), null);
+        const chat = await repo.chatTitle(ctx.tenantId, ctx.user.userId, chatId);
+        return {
+          text: `Сообщение отправлено в «${chat?.title ?? 'чат'}».`,
+          output: { chatId, messageId: String(m?.id ?? '') },
+          sources: [{ kind: 'chat', id: chatId, title: chat?.title ?? 'Чат', url: `${ctx.base}/chat/${chatId}` }],
+        };
+      },
+      async undo(ctx, output) {
+        await chats.remove(ctx.tenantId, String(output.chatId), String(output.messageId), ctx.user);
+        return 'Сообщение удалено.';
       },
     },
     {

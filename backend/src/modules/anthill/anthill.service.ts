@@ -8,6 +8,7 @@ import { NlService } from '../nl/nl.service';
 import { AskService } from '../assistant/ask.service';
 import { FilesService } from '../files/files.service';
 import { TaskCardService } from '../taskcard/taskcard.service';
+import { ForecastService } from '../forecast/forecast.service';
 import { AnthillRepository, ScheduleRow, SkillRow, Source } from './anthill.repository';
 import { buildTools, ToolContext, ToolDef } from './tools';
 import { nextRun, parseSchedule, Schedule, scheduleLabel } from './schedule-ru';
@@ -47,9 +48,9 @@ export class AnthillService {
     private readonly repo: AnthillRepository,
     private readonly ai: AiService,
     tasks: TasksService, chats: ChatsService, search: SearchService, nl: NlService, ask: AskService,
-    files: FilesService, taskcard: TaskCardService,
+    files: FilesService, taskcard: TaskCardService, forecast: ForecastService,
   ) {
-    this.tools = buildTools({ repo, tasks, chats, search, nl, ask, files, taskcard });
+    this.tools = buildTools({ repo, tasks, chats, search, nl, ask, files, taskcard, forecast });
   }
 
   private base() { return (process.env.APP_BASE_URL || 'https://teamsmrt.com').replace(/\/+$/, ''); }

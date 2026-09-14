@@ -461,11 +461,12 @@ export class AnthillRepository {
     return this.db.one<{
       id: string; title: string; description: string | null; status: string; closed_at: Date | null;
       deadline_at: Date | null; priority: string | null; project_id: string; project_name: string;
-      assignee: string | null; manager: string | null; checklist: { text: string; done: boolean }[];
+      assignee: string | null; assignee_id: string | null; manager: string | null;
+      checklist: { text: string; done: boolean }[];
       comments: { author: string | null; body: string; at: Date }[];
     }>(
       `SELECT t.id, t.title, t.description, bc.name AS status, t.closed_at, t.deadline_at, t.priority,
-              t.project_id, p.name AS project_name, a.full_name AS assignee, mg.full_name AS manager,
+              t.project_id, p.name AS project_name, a.full_name AS assignee, t.assignee_id, mg.full_name AS manager,
               COALESCE((SELECT json_agg(json_build_object('text', ci.text, 'done', ci.is_done) ORDER BY ci.position)
                           FROM task_checklist_items ci WHERE ci.task_id = t.id), '[]'::json) AS checklist,
               COALESCE((SELECT json_agg(x) FROM (
