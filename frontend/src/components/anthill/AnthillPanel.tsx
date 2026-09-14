@@ -11,14 +11,15 @@ import { AnthillTasks } from './AnthillTasks';
 import { AnthillMemory } from './AnthillMemory';
 import { AnthillSkills } from './AnthillSkills';
 import { AnthillResponses } from './AnthillResponses';
+import { AnthillAdmin } from './AnthillAdmin';
 import { useAuth } from '../../state/auth';
 import { getSocket } from '../../lib/socket';
 
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
   task: 'задача', project: 'проект', chat: 'чат', meeting: 'мит',
 };
-const SOURCE_ICON: Record<AnthillSource['kind'], 'check-circle' | 'chat' | 'record' | 'board'> = {
-  task: 'check-circle', message: 'chat', chat: 'chat', meeting: 'record', project: 'board',
+const SOURCE_ICON: Record<AnthillSource['kind'], 'check-circle' | 'chat' | 'record' | 'board' | 'link'> = {
+  task: 'check-circle', message: 'chat', chat: 'chat', meeting: 'record', project: 'board', web: 'link',
 };
 /** Почему ответ не подошёл: короткий список вместо свободного поля — иначе не заполняют. */
 const REASONS: { key: string; label: string }[] = [
@@ -65,7 +66,14 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
   /** Карточка, открытая на правку: одна за раз — их и бывает одна. */
   const [editing, setEditing] = useState<string | null>(null);
   /** Разговор · Задачи · Навыки · Память (ТЗ-6, MVP 2): вкладки одного помощника. */
-  const [tab, setTab] = useState<'chat' | 'tasks' | 'skills' | 'memory' | 'responses'>('chat');
+  const [tab, setTab] = useState<'chat' | 'tasks' | 'skills' | 'memory' | 'responses' | 'admin'>('chat');
+  /**
+   * «Глубокий анализ» (ТЗ-6, разд. 25).
+   *
+   * Отдельным переключателем, а не догадкой по вопросу: разбор идёт минуту и стоит
+   * заметно дороже обычного ответа — решать, нужен ли он, должен человек.
+   */
+  const [deep, setDeep] = useState(false);
   /** Быстрые ответы звучат от имени компании — их заводит руководство (разд. 38). */
   const { user } = useAuth();
   const canManage = user?.role === 'owner' || user?.role === 'manager';
@@ -151,7 +159,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
       }]);
     };
 
-    const run = api.anthillAsk(id, question, ctxArg, skill ? skill.id : null, {
+    const run = api.anthillAsk(id, question, ctxArg, skill ? skill.id : null, deep, {
       onStatus: (t) => { acc.status = t; show(); },
       onDelta: (t) => { acc.text += t; acc.status = ''; show(); },
       onSources: (s) => { acc.sources = s; show(); },
@@ -207,6 +215,9 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
 
   /** Ссылка из ответа ведёт к первоисточнику: без перехода проверить ответ нельзя. */
   const openSource = (s: AnthillSource) => {
+    // Страница из интернета — в новую вкладку: наш роутер её открыть не может,
+    // а увести человека из разговора на чужой сайт тем более нельзя.
+    if (s.kind === 'web') { window.open(s.url, '_blank', 'noopener,noreferrer'); return; }
     const url = s.url.replace(/^https?:\/\/[^/]+/, '');
     const task = /\/projects\/([^/]+)\/task\/([^/#?]+)/.exec(url);
     if (task) { navigate({ section: 'projects', projectId: task[1], taskId: task[2] }); return; }
@@ -275,7 +286,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
           { key: 'tasks', label: 'Задачи', icon: 'clock' },
           { key: 'skills', label: 'Навыки', icon: 'sparkles' },
           { key: 'memory', label: 'Память', icon: 'book' },
-          ...(canManage ? [{ key: 'responses', label: 'Ответы', icon: 'reply' }] as const : []),
+          ...(canManage ? [{ key: 'responses', label: 'Ответы', icon: 'reply' }, { key: 'admin', label: 'Настройки', icon: 'settings' }] as const : []),
         ] as const).map((t) => (
           <button
             key={t.key}
@@ -295,6 +306,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
       )}
       {tab === 'memory' && <AnthillMemory />}
       {tab === 'responses' && canManage && <AnthillResponses />}
+      {tab === 'admin' && canManage && <AnthillAdmin />}
 
       {tab === 'chat' && historyOpen && (
         <div className="anthill-history">
@@ -439,6 +451,10 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
             </button>
           </div>
         )}
+        <label className="anthill-ctx anthill-deep" title="Несколько волн поиска и отчёт по разделам: выводы, факты, риски, рекомендации. Дольше и дороже обычного ответа.">
+          <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} />
+          <Icon name="search" size={12} /> Глубокий анализ
+        </label>
         <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} hint="нажмите «стоп», когда закончите" />
         <div className="chat-input anthill-input">
           <textarea
@@ -446,7 +462,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
             className="input"
             rows={1}
             value={draft}
-            placeholder={busy ? 'AnthillBot отвечает…' : 'Спросите или попросите сделать…'}
+            placeholder={busy ? 'AnthillBot отвечает…' : deep ? 'Что разобрать по-крупному?' : 'Спросите или попросите сделать…'}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(draft); } }}
             disabled={busy}

@@ -9,6 +9,7 @@ import { AskService } from '../assistant/ask.service';
 import { FilesService } from '../files/files.service';
 import { TaskCardService } from '../taskcard/taskcard.service';
 import { ForecastService } from '../forecast/forecast.service';
+import { AnthillAdminService } from './anthill-admin.service';
 import { AnthillRepository, ScheduleRow, SkillRow, Source } from './anthill.repository';
 import { buildTools, ToolContext, ToolDef } from './tools';
 import { nextRun, parseSchedule, Schedule, scheduleLabel } from './schedule-ru';
@@ -26,6 +27,9 @@ export type StreamEvent =
   | { type: 'error'; text: string };
 
 const MAX_CALLS = 4;
+/** «Глубокий анализ»: три волны по шесть вызовов — дальше растёт цена, а не польза. */
+const DEEP_WAVES = 3;
+const DEEP_CALLS = 6;
 
 /**
  * AnthillBot — оркестратор (ТЗ-6, разд. 48).
@@ -46,11 +50,12 @@ export class AnthillService {
 
   constructor(
     private readonly repo: AnthillRepository,
+    private readonly admin: AnthillAdminService,
     private readonly ai: AiService,
     tasks: TasksService, chats: ChatsService, search: SearchService, nl: NlService, ask: AskService,
     files: FilesService, taskcard: TaskCardService, forecast: ForecastService,
   ) {
-    this.tools = buildTools({ repo, tasks, chats, search, nl, ask, files, taskcard, forecast });
+    this.tools = buildTools({ repo, admin, tasks, chats, search, nl, ask, files, taskcard, forecast });
   }
 
   private base() { return (process.env.APP_BASE_URL || 'https://teamsmrt.com').replace(/\/+$/, ''); }
@@ -109,17 +114,41 @@ export class AnthillService {
     question: string, ctx: PageContext | null, emit: (e: StreamEvent) => void, aborted: () => boolean,
     /** Навык выбран человеком руками — тогда подбирать свой агенту не нужно. */
     forcedSkillId?: string | null,
+    /** «Глубокий анализ» (ТЗ-6, разд. 25): несколько волн поиска и отчёт по разделам. */
+    deep = false,
   ): Promise<void> {
     const text = String(question ?? '').trim();
     if (text.length < 2) throw AppException.validation('Слишком короткий вопрос');
     const session = await this.repo.session(tenantId, user.userId, sessionId);
     if (!session) throw AppException.notFound('Разговор не найден');
+
+    /*
+      Что агенту позволено в этой организации (разд. 52–53).
+
+      Проверяем ДО того, как потратить хоть один запрос к модели, и отвечаем словами,
+      а не кодом ошибки: «AI_ERROR_403» человеку не говорит ничего, а «агент выключен
+      администратором» — говорит всё.
+    */
+    const settings = await this.admin.get(tenantId);
+    if (!settings.enabled) throw AppException.forbidden('AnthillBot выключен администратором организации.');
+    if (!settings.allowedRoles.includes(user.role)) throw AppException.forbidden('У вашей роли нет доступа к AnthillBot. Попросите владельца включить его вашей роли.');
+    const spent = await this.repo.askedToday(tenantId, user.userId);
+    if (spent >= settings.limits.requestsPerDay) {
+      throw AppException.conflict(`На сегодня исчерпан лимит вопросов к агенту (${settings.limits.requestsPerDay}). Лимит меняется в настройках агента.`);
+    }
+    if (deep) {
+      if (settings.limits.deepPerDay <= 0) throw AppException.forbidden('Глубокий анализ выключен администратором.');
+      const deepSpent = await this.repo.deepToday(tenantId);
+      if (deepSpent >= settings.limits.deepPerDay) {
+        throw AppException.conflict(`На сегодня исчерпан лимит глубоких разборов (${settings.limits.deepPerDay}). Обычный вопрос по-прежнему работает.`);
+      }
+    }
     const tctx: ToolContext = { tenantId, user, now: new Date(), base: this.base(), timezone: await this.repo.userTz(tenantId, user.userId) };
 
     await this.repo.addMessage({ tenantId, sessionId, role: 'user', content: text });
     if (!session.title) await this.repo.setTitle(String(session.id), text);
 
-    const history = (await this.repo.messages(sessionId, 12)).slice(0, -1)
+    const history = (await this.repo.messages(sessionId, settings.limits.contextMessages)).slice(0, -1)
       .map((m) => ({ role: m.role, text: m.content.slice(0, 1200) }));
 
     // Контекст страницы — тем же инструментом, что и по просьбе: права те же.
@@ -145,9 +174,16 @@ export class AnthillService {
     const available = await this.repo.skills(tenantId, user.userId);
     let skill = forcedSkillId ? available.find((x) => String(x.id) === String(forcedSkillId)) ?? null : null;
 
-    // 1. План
+    // 1. План. Инструменты урезаны по настройкам: чего нельзя, того модель и не видит —
+    // так она не предложит человеку действие, которое всё равно будет отклонено.
+    const allowed = this.tools.filter((t) => {
+      if (t.kind === 'write' && !settings.actionsAllowed) return false;
+      if (!settings.filesAllowed && (t.name === 'read_file' || t.name === 'list_files' || t.name === 'create_document')) return false;
+      if (t.name === 'web_search' && !settings.webSearch) return false;
+      return true;
+    });
     emit({ type: 'status', text: 'Думаю, где искать…' });
-    const plan = await this.plan(tenantId, text, history, pageText, skill ? [] : available);
+    const plan = await this.plan(tenantId, text, history, pageText, skill ? [] : available, allowed);
     if (aborted()) return;
     if (!skill && plan.skill) skill = available.find((x) => String(x.id) === String(plan.skill)) ?? null;
     if (skill) {
@@ -155,18 +191,37 @@ export class AnthillService {
       void this.repo.skillUsed(String(skill.id)).catch(() => undefined);
     }
 
-    // 2. Инструменты
+    /*
+      2. Инструменты.
+
+      Обычный вопрос — одна волна: спросили, нашли, ответили. «Глубокий анализ» —
+      до трёх волн: после каждой агент смотрит на найденное и решает, чего не
+      хватает. Именно так человек и разбирается в незнакомом проекте — не одним
+      запросом, а несколькими, уточняющими. Волны ограничены сверху: без предела
+      разбор уходит в часы и в деньги, а полезного добавляет всё меньше.
+    */
     const used: { tool: string; params: Record<string, unknown> }[] = [];
     const findings: string[] = [];
-    for (const call of plan.calls.slice(0, MAX_CALLS)) {
-      const def = this.tools.find((t) => t.name === call.tool && t.kind === 'read');
-      if (!def) continue;
-      emit({ type: 'status', text: STATUS_OF[call.tool] ?? `Проверяю: ${call.tool}…` });
-      const r = await this.runTool(tctx, call.tool, call.params);
-      if (!r) continue;
-      used.push({ tool: call.tool, params: call.params });
-      findings.push(`[${call.tool}]\n${r.text}`);
-      sources.push(...r.sources);
+    const waves = deep ? DEEP_WAVES : 1;
+    const perWave = deep ? DEEP_CALLS : MAX_CALLS;
+    let calls = plan.calls;
+    for (let wave = 0; wave < waves; wave += 1) {
+      if (!calls.length) break;
+      for (const call of calls.slice(0, perWave)) {
+        const def = this.tools.find((t) => t.name === call.tool && t.kind === 'read');
+        if (!def) continue;
+        const label = STATUS_OF[call.tool] ?? `Проверяю: ${call.tool}…`;
+        emit({ type: 'status', text: deep ? `Шаг ${wave + 1} из ${waves}: ${label}` : label });
+        const r = await this.runTool(tctx, call.tool, call.params);
+        if (!r) continue;
+        used.push({ tool: call.tool, params: call.params });
+        findings.push(`[${call.tool}]\n${r.text}`);
+        sources.push(...r.sources);
+        if (aborted()) return;
+      }
+      if (!deep || wave === waves - 1) break;
+      emit({ type: 'status', text: 'Смотрю, чего не хватает…' });
+      calls = await this.nextWave(tenantId, text, findings, used);
       if (aborted()) return;
     }
 
@@ -213,7 +268,7 @@ export class AnthillService {
     });
     let answer = '';
     try {
-      answer = await this.ai.generateStream(tenantId, ANSWER_SYSTEM, payload, (d) => { if (!aborted()) { answer += d; emit({ type: 'delta', text: d }); } }, 'anthill_answer');
+      answer = await this.ai.generateStream(tenantId, deep ? DEEP_SYSTEM : ANSWER_SYSTEM, payload, (d) => { if (!aborted()) { answer += d; emit({ type: 'delta', text: d }); } }, deep ? 'anthill_deep' : 'anthill_answer');
     } catch (e) {
       this.log.warn(`answer: ${(e as Error).message}`);
       if (!answer) { emit({ type: 'error', text: 'Не удалось получить ответ от модели. Попробуйте снова.' }); return; }
@@ -304,6 +359,11 @@ export class AnthillService {
   async addSkill(tenantId: string, userId: string, i: {
     name: string; description?: string; whenToUse?: string; steps: string[]; inputs?: string[]; output?: string; visibility?: 'private' | 'company';
   }) {
+    const { limits } = await this.admin.get(tenantId);
+    const mine = (await this.repo.skills(tenantId, userId)).filter((x) => String(x.owner_id ?? '') === String(userId));
+    if (mine.length >= limits.maxSkills) {
+      throw AppException.conflict(`Больше ${limits.maxSkills} навыков заводить нельзя — удалите ненужные или попросите поднять лимит.`);
+    }
     const steps = i.steps.map((x) => String(x).trim()).filter(Boolean).slice(0, 15);
     if (steps.length < 1) throw AppException.validation('У навыка должен быть хотя бы один шаг');
     const row = await this.repo.createSkill({
@@ -362,6 +422,11 @@ export class AnthillService {
    * агент выполняет её так же, как если бы её задали вопросом в чате.
    */
   async addSchedule(tenantId: string, user: { userId: string }, i: { title: string; instruction: string; phrase?: string | null }) {
+    const { limits } = await this.admin.get(tenantId);
+    const mine = await this.repo.schedules(tenantId, user.userId);
+    if (mine.length >= limits.maxScheduled) {
+      throw AppException.conflict(`Больше ${limits.maxScheduled} регулярных задач заводить нельзя — удалите ненужные или попросите поднять лимит.`);
+    }
     const schedule = parseSchedule(i.phrase || i.instruction);
     if (!schedule) throw AppException.validation('Не понял расписание — скажите, например, «каждый понедельник в 9:00»');
     const row = await this.repo.createSchedule({
@@ -450,8 +515,11 @@ export class AnthillService {
   }
 
   /** План — структурированный JSON от модели; сломанный JSON = ответ без инструментов. */
-  private async plan(tenantId: string, question: string, history: { role: string; text: string }[], page: string, skills: SkillRow[] = []) {
-    const catalog = this.tools.map((t) => ({ name: t.name, kind: t.kind, description: t.description, params: t.params }));
+  private async plan(
+    tenantId: string, question: string, history: { role: string; text: string }[], page: string,
+    skills: SkillRow[] = [], allowed?: ToolDef[],
+  ) {
+    const catalog = (allowed ?? this.tools).map((t) => ({ name: t.name, kind: t.kind, description: t.description, params: t.params }));
     const skillList = skills.map((x) => ({ id: String(x.id), name: x.name, when: x.when_to_use }));
     const raw = await this.ai.generate(tenantId, PLAN_SYSTEM, JSON.stringify({ question, history, page: page || null, tools: catalog, skills: skillList, now: new Date().toLocaleString('ru-RU') }), 'anthill_plan');
     const json = extractJson(raw);
@@ -461,6 +529,33 @@ export class AnthillService {
       : null;
     const skill = json?.skill ? String(json.skill) : null;
     return { calls, action, skill };
+  }
+
+  /**
+   * Вторая и третья волна поиска: чего не хватает после уже найденного.
+   *
+   * Спрашиваем модель коротко и получаем только вызовы инструментов. Пустой ответ —
+   * законный: значит, данных достаточно, и лишний круг только сожжёт деньги.
+   */
+  private async nextWave(
+    tenantId: string, question: string, findings: string[], used: { tool: string; params: Record<string, unknown> }[],
+  ): Promise<{ tool: string; params: Record<string, unknown> }[]> {
+    const catalog = this.tools.filter((t) => t.kind === 'read')
+      .map((t) => ({ name: t.name, description: t.description, params: t.params }));
+    let raw = '';
+    try {
+      raw = await this.ai.generate(tenantId, NEXT_WAVE_SYSTEM, JSON.stringify({
+        question,
+        alreadyCalled: used.map((u) => u.tool),
+        found: findings.join('\n\n').slice(0, 12000),
+        tools: catalog,
+      }), 'anthill_deep');
+    } catch { return []; }
+    const json = extractJson(raw);
+    if (!Array.isArray(json?.calls)) return [];
+    return json.calls
+      .filter((c: any) => c && typeof c.tool === 'string')
+      .map((c: any) => ({ tool: String(c.tool), params: (c.params && typeof c.params === 'object') ? c.params : {} }));
   }
 
   // ── действия ──
@@ -668,6 +763,28 @@ const STARTER_SKILLS: {
     output: 'Карточка задачи с описанием и чек-листом',
   },
 ];
+
+const NEXT_WAVE_SYSTEM = [
+  'Ты ведёшь глубокий разбор по данным TeamCRM. Тебе дали вопрос и то, что уже найдено.',
+  'Реши, каких данных НЕ ХВАТАЕТ для полного ответа, и верни ТОЛЬКО JSON {"calls":[{"tool":"имя","params":{...}}]}.',
+  'Не повторяй инструменты с теми же параметрами. Максимум шесть вызовов.',
+  'Если данных достаточно — верни {"calls":[]}. Пустой ответ лучше лишнего круга поиска.',
+].join(' ');
+
+const DEEP_SYSTEM = [
+  'Ты — AnthillBot, персональный AI-помощник в TeamCRM. Это ГЛУБОКИЙ РАЗБОР: человек ждёт отчёт, а не реплику.',
+  'Отвечай ТОЛЬКО по findings и page — это данные, собранные с правами этого человека. Ничего не выдумывай.',
+  'Структура ответа строго такая, и разделы озаглавлены словами:',
+  'Выводы — 2–5 пунктов, самое важное первым.',
+  'Ключевые факты — что именно нашлось, с номерами задач и датами.',
+  'Риски — что может пойти не так и почему, по данным, а не по общим соображениям.',
+  'Рекомендации — что сделать дальше, по пунктам и конкретно.',
+  'Раздел, для которого нет данных, пропусти — пустые заголовки хуже их отсутствия.',
+  'Ссылайся на источники номерами в квадратных скобках, например [2], — только из списка sources. Номера задач пиши как #N.',
+  'Если среди источников есть материалы из интернета, отдельной строкой напиши «Источник: Интернет».',
+  'skill — порядок работы для этого запроса: если он задан, иди по его шагам.',
+  'memory — что известно об этом человеке: учитывай, но не пересказывай.',
+].join(' ');
 
 const MEMORY_SYSTEM = [
   'Ты выделяешь из реплики человека то, что стоит помнить о НЁМ надолго.',

@@ -35,7 +35,11 @@ export interface SkillRow {
 }
 
 /** Источник в ответе — то, что можно открыть одним нажатием. */
-export interface Source { kind: 'task' | 'message' | 'meeting' | 'project' | 'chat'; id: string; title: string; url: string }
+export interface Source {
+  /** `web` — страница из интернета: её видно в ответе отдельной пометкой (разд. 26). */
+  kind: 'task' | 'message' | 'meeting' | 'project' | 'chat' | 'web';
+  id: string; title: string; url: string;
+}
 
 /**
  * Хранилище агента: сессии, сообщения, действия, оценки.
@@ -155,6 +159,34 @@ export class AnthillRepository {
     return this.db.many<ActionRow>(
       `SELECT * FROM ai_tool_actions WHERE tenant_id=$1 AND user_id=$2 ORDER BY id DESC LIMIT $3`, [tenantId, userId, limit],
     );
+  }
+
+  /**
+   * Сколько вопросов человек задал за сутки. Считаем по его же репликам в
+   * разговорах: это ровно то, за что платит организация, и отдельного счётчика,
+   * который придётся чинить после каждого сбоя, заводить незачем.
+   */
+  async askedToday(tenantId: string, userId: string): Promise<number> {
+    const row = await this.db.one<{ n: string }>(
+      `SELECT COUNT(*)::text AS n
+         FROM ai_messages m JOIN ai_sessions s ON s.id = m.session_id
+        WHERE m.tenant_id=$1 AND s.user_id=$2 AND m.role='user' AND m.created_at > now() - interval '1 day'`,
+      [tenantId, userId],
+    );
+    return Number(row?.n ?? 0);
+  }
+
+  /**
+   * Глубокие разборы за сутки — по организации, а не по человеку: журнал расхода
+   * модели людей не различает, а платит за них всё равно организация.
+   */
+  async deepToday(tenantId: string): Promise<number> {
+    const row = await this.db.one<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM ai_usage
+        WHERE tenant_id=$1 AND feature='anthill_deep' AND created_at > now() - interval '1 day'`,
+      [tenantId],
+    );
+    return Number(row?.n ?? 0);
   }
 
   // ── память (ТЗ-6, разд. 20–21, 57) ──

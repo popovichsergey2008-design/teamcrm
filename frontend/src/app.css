@@ -4033,3 +4033,27 @@
 /* Быстрый ответ: два выбора в строку, пока хватает ширины. */
 .anthill-resp-opts { display: flex; gap: 10px; flex-wrap: wrap; }
 .anthill-resp-opts > * { flex: 1 1 160px; }
+
+/* ───── AnthillBot, MVP 3: глубокий анализ и настройки агента ───── */
+.anthill-deep { cursor: pointer; }
+.anthill-adm-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; cursor: pointer; }
+.anthill-adm-text { display: flex; flex-direction: column; gap: 1px; font-size: var(--fs-sm); }
+.anthill-adm-text .dim { font-size: var(--fs-xs); }
+.anthill-adm-num { width: 90px; flex: 0 0 auto; }
+.anthill-adm-roles { flex-direction: row; flex-wrap: wrap; gap: 12px; }
+.anthill-adm-day { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); }
+.anthill-adm-day .dim { flex: 1 1 auto; font-size: var(--fs-xs); }
+.anthill-adm-err { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-top: 1px solid var(--border); }
+.anthill-adm-err:first-child { border-top: 0; }
+.anthill-adm-err .dim { font-size: var(--fs-xs); }
+.anthill-adm-err .error-text { font-size: var(--fs-xs); }
+
+/* На телефоне помощник занимает экран целиком: узкое окно поверх страницы там
+   бессмысленно — под ним всё равно ничего не видно (ТЗ-6, разд. 65). */
+@media (max-width: 640px) {
+  .chat-overlay { left: 0; width: 100%; }
+  .anthill-tabs { overflow-x: auto; scrollbar-width: none; }
+  .anthill-tabs::-webkit-scrollbar { display: none; }
+  .anthill-msg { max-width: 96%; }
+}
+.anthill-deep:focus-visible, .anthill-adm-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

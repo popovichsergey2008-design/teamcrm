@@ -2,6 +2,7 @@ import { AnthillRepository, Source } from './anthill.repository';
 import { nextRun, parseSchedule, scheduleLabel } from './schedule-ru';
 import { FilesService } from '../files/files.service';
 import { ForecastService } from '../forecast/forecast.service';
+import { AnthillAdminService } from './anthill-admin.service';
 import { TaskCardService } from '../taskcard/taskcard.service';
 import { extractText } from '../knowledge/file-text';
 import { buildDocx, DOCX_MIME } from '../../common/files/docx.util';
@@ -64,6 +65,7 @@ export interface ToolDef {
 
 export interface ToolDeps {
   repo: AnthillRepository;
+  admin: AnthillAdminService;
   files: FilesService;
   taskcard: TaskCardService;
   forecast: ForecastService;
@@ -79,7 +81,7 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, tasks, chats, search, nl, ask, files, taskcard, forecast } = deps;
+  const { repo, admin, tasks, chats, search, nl, ask, files, taskcard, forecast } = deps;
 
   /**
    * Человек по имени. Точного совпадения не требуем: в задаче просят «поставь на
@@ -293,6 +295,29 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       },
     },
 
+    {
+      name: 'web_search', kind: 'read',
+      description: 'Поискать в интернете то, чего НЕТ в TeamCRM: документацию, цены, законы, публичные сведения о компании. По задачам, чатам и митам интернет не нужен — там ищи нашими инструментами.',
+      params: { query: 'поисковый запрос словами' },
+      async run(ctx, p) {
+        const key = await admin.webSearchKey(ctx.tenantId);
+        if (!key) {
+          // Молчать нельзя: модель решит, что в интернете ничего нет, и ответит уверенно
+          return { text: 'Веб-поиск выключен администратором или не настроен ключ — отвечай только по данным TeamCRM.', sources: [] };
+        }
+        const query = str(p.query, 300);
+        if (!query) return { text: 'Пустой запрос.', sources: [] };
+        const hits = await webSearch(key, query);
+        if (!hits.length) return { text: `В интернете по запросу «${query}» ничего не нашлось.`, sources: [] };
+        const lines = hits.map((h, i) => `${i + 1}. ${h.title} — ${h.snippet}\n   ${h.url}`);
+        return {
+          text: `Найдено в интернете по запросу «${query}»:\n${lines.join('\n')}`,
+          // Источник из интернета помечаем как обычный: человек должен уметь
+          // открыть страницу и проверить, а не верить пересказу.
+          sources: hits.map((h) => ({ kind: 'web' as const, id: h.url, title: h.title, url: h.url })),
+        };
+      },
+    },
     {
       name: 'list_files', kind: 'read',
       description: 'Какие файлы приложены к задаче или к чату: имя, тип, размер. Нужен, когда просят «посмотри вложение», «что в файле» и неизвестно, какой именно файл имеется в виду.',
@@ -821,4 +846,36 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       },
     },
   ];
+}
+
+
+/**
+ * Веб-поиск через Tavily.
+ *
+ * Провайдер выбран за то, что отдаёт готовые выдержки, а не список ссылок: модели
+ * нужен текст, а не обещание текста, иначе за поиском последовало бы скачивание
+ * страниц — и это уже другой порядок сложности и рисков.
+ *
+ * Любая неудача — не исключение наружу, а пустой список: интернет лишь дополняет
+ * данные CRM, и падать из-за него весь ответ не должен.
+ */
+async function webSearch(key: string, query: string): Promise<{ title: string; url: string; snippet: string }[]> {
+  try {
+    const res = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: key, query, max_results: 5, search_depth: 'basic' }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return [];
+    const json: any = await res.json();
+    const items = Array.isArray(json?.results) ? json.results : [];
+    return items.slice(0, 5).map((r: any) => ({
+      title: String(r?.title ?? 'Без названия').slice(0, 160),
+      url: String(r?.url ?? ''),
+      snippet: String(r?.content ?? '').replace(/\s+/g, ' ').slice(0, 400),
+    })).filter((r: { url: string }) => r.url.startsWith('http'));
+  } catch {
+    return [];
+  }
 }

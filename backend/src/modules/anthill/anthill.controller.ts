@@ -8,6 +8,7 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
 import { AnthillService, PageContext } from './anthill.service';
 import { CustomResponsesService } from '../chats/custom-responses.service';
+import { AgentLimits, AnthillAdminService } from './anthill-admin.service';
 
 class ContextDto {
   @IsIn(['task', 'project', 'chat', 'meeting']) type!: PageContext['type'];
@@ -16,11 +17,31 @@ class ContextDto {
 class StartDto {
   @IsOptional() @ValidateNested() @Type(() => ContextDto) context?: ContextDto;
 }
+class LimitsDto {
+  @IsOptional() @IsInt() requestsPerDay?: number;
+  @IsOptional() @IsInt() deepPerDay?: number;
+  @IsOptional() @IsInt() maxScheduled?: number;
+  @IsOptional() @IsInt() maxSkills?: number;
+  @IsOptional() @IsInt() contextMessages?: number;
+}
+class AdminDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsArray() @ArrayMaxSize(3) @IsString({ each: true }) allowedRoles?: string[];
+  @IsOptional() @IsBoolean() webSearch?: boolean;
+  /** Пустая строка — убрать ключ; поля нет — не трогать. */
+  @IsOptional() @IsString() @MaxLength(200) webSearchKey?: string;
+  @IsOptional() @IsBoolean() filesAllowed?: boolean;
+  @IsOptional() @IsBoolean() actionsAllowed?: boolean;
+  @IsOptional() @IsBoolean() integrations?: boolean;
+  @IsOptional() @ValidateNested() @Type(() => LimitsDto) limits?: LimitsDto;
+}
 class AskDto {
   @IsString() @MinLength(2) @MaxLength(8000) question!: string;
   @IsOptional() @ValidateNested() @Type(() => ContextDto) context?: ContextDto;
   /** Навык выбран руками — тогда агент не подбирает свой. */
   @IsOptional() @IsString() @MaxLength(32) skillId?: string;
+  /** «Глубокий анализ» (разд. 25): несколько волн поиска и отчёт по разделам. */
+  @IsOptional() @IsBoolean() deep?: boolean;
 }
 class EditDto {
   /** Значения полей карточки: их состав задаёт сам инструмент (fields). */
@@ -96,7 +117,32 @@ export class AnthillController {
   constructor(
     private readonly anthill: AnthillService,
     private readonly responses: CustomResponsesService,
+    private readonly admin: AnthillAdminService,
   ) {}
+
+  /*
+    Настройки агента и расход (разд. 52–53).
+
+    Смотреть их может руководство, менять — только владелец: выключатели здесь
+    решают, что агенту позволено делать от имени каждого человека в организации.
+  */
+  @Get('admin')
+  @Roles('owner', 'manager')
+  adminSettings(@CurrentUser() u: AuthUser) {
+    return this.admin.get(u.tenantId);
+  }
+
+  @Patch('admin')
+  @Roles('owner')
+  saveAdmin(@CurrentUser() u: AuthUser, @Body() dto: AdminDto) {
+    return this.admin.save(u.tenantId, u.userId, dto as Partial<{ limits: AgentLimits }> & AdminDto);
+  }
+
+  @Get('admin/usage')
+  @Roles('owner', 'manager')
+  adminUsage(@CurrentUser() u: AuthUser) {
+    return this.admin.usage(u.tenantId);
+  }
 
   /*
     Быстрые ответы (ТЗ-6, разд. 38) — хозяйство руководства: они звучат от имени
@@ -163,7 +209,7 @@ export class AnthillController {
     res.on('close', () => { closed = true; });
     const send = (event: string, data: unknown) => { if (!closed) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
     try {
-      await this.anthill.ask(u.tenantId, u, id, dto.question, dto.context ?? null, (e) => send(e.type, e), () => closed, dto.skillId ?? null);
+      await this.anthill.ask(u.tenantId, u, id, dto.question, dto.context ?? null, (e) => send(e.type, e), () => closed, dto.skillId ?? null, dto.deep === true);
     } catch (e) {
       send('error', { text: e instanceof AppException ? e.message : 'Не удалось получить ответ. Попробуйте снова.' });
     } finally {

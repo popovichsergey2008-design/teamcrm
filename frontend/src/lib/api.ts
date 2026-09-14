@@ -545,6 +545,12 @@ export const api = {
   anthillEdit: (actionId: string, patch: Record<string, string>) =>
     request<{ id: string; preview: string; values: Record<string, string> }>('POST', `/anthill/actions/${actionId}/edit`, { patch }),
   anthillUndo: (actionId: string) => request<{ status: string; text: string }>('POST', `/anthill/actions/${actionId}/undo`, {}),
+  /* Настройки агента и расход (разд. 52–53): смотрит руководство, меняет владелец. */
+  anthillAdmin: () => request<AnthillAdmin>('GET', '/anthill/admin'),
+  anthillSaveAdmin: (patch: Partial<Omit<AnthillAdmin, 'hasWebSearchKey'>> & { webSearchKey?: string }) =>
+    request<AnthillAdmin>('PATCH', '/anthill/admin', patch),
+  anthillUsage: () => request<AnthillUsage>('GET', '/anthill/admin/usage'),
+
   /* Быстрые ответы (разд. 38): заготовка вместо модели; заводит руководство. */
   anthillResponses: () => request<AnthillResponse[]>('GET', '/anthill/responses'),
   anthillAddResponse: (i: { trigger: string; answer: string; matchKind?: 'keyword' | 'exact'; scope?: 'all' | 'channels' | 'dms'; auto?: boolean }) =>
@@ -591,6 +597,8 @@ export const api = {
   anthillAsk: (
     id: string, question: string, context: AnthillContext | null,
     skillId: string | null,
+    /** «Глубокий анализ»: несколько волн поиска и отчёт по разделам. */
+    deep: boolean,
     on: {
       onStatus?: (t: string) => void; onDelta?: (t: string) => void; onSources?: (s: AnthillSource[]) => void;
       onAction?: (a: { id: string; tool: string; preview: string; fields: AnthillField[]; values: Record<string, string> }) => void;
@@ -604,7 +612,7 @@ export const api = {
         res = await fetch(`${BASE}/anthill/sessions/${id}/ask`, {
           method: 'POST', signal: ctrl.signal,
           headers: { 'Content-Type': 'application/json', ...(tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}) },
-          body: JSON.stringify({ question, context: context ?? undefined, skillId: skillId ?? undefined }),
+          body: JSON.stringify({ question, context: context ?? undefined, skillId: skillId ?? undefined, deep: deep || undefined }),
         });
       } catch (e) { if ((e as Error).name !== 'AbortError') on.onError?.('Нет связи с сервером'); return; }
       if (!res.ok || !res.body) { on.onError?.('Не удалось получить ответ. Попробуйте снова.'); return; }
@@ -1519,7 +1527,8 @@ export interface MaterialItem {
 
 /** AnthillBot: с чем открыт разговор. */
 export interface AnthillContext { type: 'task' | 'project' | 'chat' | 'meeting'; id: string; title?: string }
-export interface AnthillSource { kind: 'task' | 'message' | 'meeting' | 'project' | 'chat'; id: string; title: string; url: string }
+/** `web` — страница из интернета: открывается в новой вкладке, а не внутри CRM. */
+export interface AnthillSource { kind: 'task' | 'message' | 'meeting' | 'project' | 'chat' | 'web'; id: string; title: string; url: string }
 export interface AnthillSession { id: string; title: string; messages: number; updatedAt: string; context: { type: string; id: string } | null }
 /** Поле карточки действия: состав задаёт инструмент на сервере. */
 export interface AnthillField { key: string; label: string; type: 'text' | 'multiline' | 'date' | 'datetime' | string }
@@ -1532,6 +1541,26 @@ export interface AnthillAction {
   fields: AnthillField[];
   values: Record<string, string>;
 }
+/** Что агенту позволено в организации и сколько ему можно. */
+export interface AnthillAdmin {
+  enabled: boolean;
+  allowedRoles: string[];
+  webSearch: boolean;
+  /** Ключ наружу не отдаётся — только признак, что он задан. */
+  hasWebSearchKey: boolean;
+  filesAllowed: boolean;
+  actionsAllowed: boolean;
+  integrations: boolean;
+  limits: {
+    requestsPerDay: number; deepPerDay: number;
+    maxScheduled: number; maxSkills: number; contextMessages: number;
+  };
+}
+export interface AnthillUsage {
+  days: { day: string; requests: number; tokens: number; cost: number }[];
+  errors: { kind: string; id: string; title: string; text: string; at: string; who: string | null }[];
+}
+
 /** Заготовленный ответ на частый вопрос. */
 export interface AnthillResponse {
   id: string; trigger: string; answer: string;

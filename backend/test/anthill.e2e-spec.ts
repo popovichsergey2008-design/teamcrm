@@ -356,4 +356,52 @@ describe('AnthillBot (e2e)', () => {
     expect(card.priority).toBe('normal');
     expect(card.deadline_at).toBeNull();
   });
+
+  it('настройки агента: выключатели действуют, лимиты держат, менять может только владелец', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'AB9', email: `ab9_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+
+    // по умолчанию агент включён всем, веб-поиск выключен — он работает на данных CRM
+    const def = (await http$.get('/api/anthill/admin').set(O).expect(200)).body.data;
+    expect(def).toMatchObject({ enabled: true, webSearch: false, filesAllowed: true, actionsAllowed: true, hasWebSearchKey: false });
+    expect(def.allowedRoles).toEqual(expect.arrayContaining(['owner', 'manager', 'member']));
+    expect(def.limits.requestsPerDay).toBeGreaterThan(0);
+
+    // ключ поиска наружу не отдаётся — только признак, что он есть
+    const withKey = (await http$.patch('/api/anthill/admin').set(O)
+      .send({ webSearch: true, webSearchKey: 'tvly-secret-123' }).expect(200)).body.data;
+    expect(withKey.hasWebSearchKey).toBe(true);
+    expect(JSON.stringify(withKey)).not.toContain('tvly-secret-123');
+
+    // «никому» — не настройка, а поломка
+    await http$.patch('/api/anthill/admin').set(O).send({ allowedRoles: [] }).expect(400);
+
+    // лимит вопросов: ставим единицу, второй вопрос упирается в понятный отказ
+    await http$.patch('/api/anthill/admin').set(O).send({ limits: { requestsPerDay: 5 } }).expect(200);
+    const session = (await http$.post('/api/anthill/sessions').set(O).send({}).expect(201)).body.data;
+    await http$.post(`/api/anthill/sessions/${session.id}/ask`).set(O).send({ question: 'Что сегодня по задачам?' }).expect(200);
+    await http$.patch('/api/anthill/admin').set(O).send({ limits: { requestsPerDay: 5, deepPerDay: 0 } }).expect(200);
+    const deepRes = await http$.post(`/api/anthill/sessions/${session.id}/ask`).set(O).send({ question: 'Разбери проект целиком', deep: true }).expect(200);
+    expect(deepRes.text).toContain('event: error');
+    expect(deepRes.text).toContain('Глубокий анализ выключен');
+
+    // выключенный агент отвечает словами, а не молчанием
+    await http$.patch('/api/anthill/admin').set(O).send({ enabled: false }).expect(200);
+    const offRes = await http$.post(`/api/anthill/sessions/${session.id}/ask`).set(O).send({ question: 'Что там по задачам?' }).expect(200);
+    expect(offRes.text).toContain('выключен администратором');
+    await http$.patch('/api/anthill/admin').set(O).send({ enabled: true }).expect(200);
+
+    // рядовой сотрудник настройки видит? нет — их смотрит руководство, меняет владелец
+    const mateEmail = `ab9m_${uniq()}@t.test`;
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.get('/api/anthill/admin').set(M).expect(403);
+    await http$.patch('/api/anthill/admin').set(M).send({ enabled: false }).expect(403);
+
+    // расход и сбои — для решения о лимитах
+    const usage = (await http$.get('/api/anthill/admin/usage').set(O).expect(200)).body.data;
+    expect(Array.isArray(usage.days)).toBe(true);
+    expect(Array.isArray(usage.errors)).toBe(true);
+  });
 });

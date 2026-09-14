@@ -13,6 +13,8 @@ import { AnthillController } from './anthill.controller';
 import { AnthillRepository } from './anthill.repository';
 import { AnthillService } from './anthill.service';
 import { AnthillScheduler } from './anthill.scheduler';
+import { AnthillAdminService } from './anthill-admin.service';
+import { IntegrationCryptoService } from '../integrations/crypto.service';
 
 /**
  * AnthillBot — оркестратор над существующими модулями: задачи, чаты, поиск,
@@ -21,7 +23,7 @@ import { AnthillScheduler } from './anthill.scheduler';
 @Module({
   imports: [AiModule, TasksModule, ChatsModule, SearchModule, NlModule, AssistantModule, RealtimeModule, FilesModule, TaskCardModule, ForecastModule],
   controllers: [AnthillController],
-  providers: [AnthillService, AnthillRepository, AnthillScheduler],
+  providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService],
   exports: [AnthillService],
 })
 export class AnthillModule {}
