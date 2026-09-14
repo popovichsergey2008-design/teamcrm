@@ -17,6 +17,8 @@ export interface ChatListItem extends ChatRow {
   peer_id: string | null;        // собеседник в личном диалоге
   peer_name: string | null;
   peer_avatar: string | null;
+  peer_last_seen: Date | null;
+  peer_status: string | null;
   project_name: string | null;
   unread: number;
   /** Помечен непрочитанным вручную — как в Telegram; снимается открытием чата. */
@@ -97,6 +99,9 @@ export class ChatsRepository {
               peer.id   AS peer_id,
               peer.full_name AS peer_name,
               peer.avatar_file_id AS peer_avatar,
+              -- присутствие собеседника: «был 12 минут назад», «занят» — для Chat Bar
+              peer.last_seen_at AS peer_last_seen,
+              peer.presence_status AS peer_status,
               p.name    AS project_name,
               -- Непрочитанное — тоже про ленту чата: ответы в ветках считаются
               -- отдельно, в разделе «Треды», и их цифра не должна висеть на чате,

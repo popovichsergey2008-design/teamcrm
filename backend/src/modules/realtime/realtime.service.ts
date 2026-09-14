@@ -80,6 +80,16 @@ export class RealtimeService {
   static userRoom(tenantId: string, userId: string) {
     return `user:${tenantId}:${userId}`;
   }
+  /** Комната компании — то, что должны узнать все сразу: статус коллеги, новый чат. */
+  static tenantRoom(tenantId: string) {
+    return `tenant:${tenantId}`;
+  }
+
+  /** Событие всем сотрудникам компании: статусы присутствия и подобное. */
+  emitToTenant(tenantId: string, event: string, payload: Record<string, unknown>) {
+    if (!this.server) return;
+    this.server.to(RealtimeService.tenantRoom(tenantId)).emit(event, payload);
+  }
 
   /** Сообщение чата адресатам: у каждого свои устройства, комната решает это сама. */
   emitToUsers(tenantId: string, userIds: string[], event: string, payload: Record<string, unknown>) {

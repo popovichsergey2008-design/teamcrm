@@ -15,6 +15,7 @@ import { Server, Socket } from 'socket.io';
 import { DbService } from '../../database/db.service';
 import { AccessTokenPayload, AuthUser } from '../../common/auth/jwt.types';
 import { RealtimeService } from './realtime.service';
+import { PresenceService } from '../presence/presence.service';
 
 /**
  * WebSocket Gateway. Сокет авторизуется тем же access-JWT при handshake.
@@ -33,6 +34,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly config: ConfigService,
     private readonly db: DbService,
     private readonly realtime: RealtimeService,
+    private readonly presence: PresenceService,
   ) {}
 
   afterInit(server: Server) {
@@ -57,7 +59,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       socket.data.user = user;
       // личная комната: сюда приходят сообщения мессенджера, адресованные этому человеку
       await socket.join(RealtimeService.userRoom(user.tenantId, user.userId));
+      // комната компании: статусы коллег приходят всем, кто в сети
+      await socket.join(RealtimeService.tenantRoom(user.tenantId));
       this.realtime.presenceConnect(user.tenantId, user.userId);
+      void this.presence.touch(user.tenantId, user.userId);
+      this.realtime.emitToTenant(user.tenantId, 'user.online', { userId: user.userId });
     } catch {
       socket.emit('error', { code: 'UNAUTHORIZED', message: 'Socket auth failed' });
       socket.disconnect(true);
@@ -67,7 +73,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   /** Ушёл со всех устройств — гаснет точка «в сети» в мессенджере. */
   handleDisconnect(socket: Socket) {
     const user: AuthUser | undefined = socket.data?.user;
-    if (user) this.realtime.presenceDisconnect(user.tenantId, user.userId);
+    if (!user) return;
+    this.realtime.presenceDisconnect(user.tenantId, user.userId);
+    void this.presence.touch(user.tenantId, user.userId);
+    // «не в сети» — только когда закрылось ПОСЛЕДНЕЕ соединение человека: у него
+    // может быть открыта вторая вкладка или телефон
+    if (!this.realtime.isOnline(user.tenantId, user.userId)) {
+      this.realtime.emitToTenant(user.tenantId, 'user.offline', { userId: user.userId });
+    }
   }
 
   @SubscribeMessage('project.subscribe')

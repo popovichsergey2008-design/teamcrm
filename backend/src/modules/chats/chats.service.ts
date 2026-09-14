@@ -41,6 +41,8 @@ export class ChatsService {
       title: c.kind === 'dm' ? c.peer_name : c.kind === 'project' ? c.project_name : c.title,
       peerId: c.peer_id,
       peerOnline: c.peer_id ? online.has(String(c.peer_id)) : false,
+      peerLastSeen: c.peer_last_seen ?? null,
+      peerStatus: c.peer_status ?? null,
       avatarUrl: c.peer_avatar ? `/api/files/${c.peer_avatar}` : null,
       projectId: c.project_id,
       unread: Number(c.unread ?? 0),

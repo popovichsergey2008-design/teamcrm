@@ -157,11 +157,16 @@ export class UsersRepository {
    * Хранится у пользователя, а не в браузере: он садится за другой компьютер, и меню
    * должно остаться тем, которое он себе собрал.
    */
-  async setUiPrefs(tenantId: string, id: string, prefs: Record<string, unknown>): Promise<void> {
-    await this.db.query(
-      `UPDATE users SET ui_prefs=$3::jsonb WHERE tenant_id=$1 AND id=$2`,
+  async setUiPrefs(tenantId: string, id: string, prefs: Record<string, unknown>): Promise<Record<string, unknown>> {
+    // Слияние, а не замена: настройки интерфейса пишут разные места — меню слева,
+    // Chat Bar справа. Замена целиком стирала бы чужой кусок при каждом сохранении.
+    // Сбросить ключ — прислать его пустым (`order: []`), а не промолчать.
+    const row = await this.db.one<{ ui_prefs: Record<string, unknown> | null }>(
+      `UPDATE users SET ui_prefs = COALESCE(ui_prefs, '{}'::jsonb) || $3::jsonb
+        WHERE tenant_id=$1 AND id=$2 RETURNING ui_prefs`,
       [tenantId, id, JSON.stringify(prefs)],
     );
+    return row?.ui_prefs ?? prefs;
   }
 
   async countActiveOwners(tenantId: string): Promise<number> {

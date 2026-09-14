@@ -109,8 +109,7 @@ export class AccountService {
 
   /** Личная настройка меню: порядок и скрытые пункты. */
   async setUiPrefs(tenantId: string, userId: string, prefs: Record<string, unknown>) {
-    await this.users.setUiPrefs(tenantId, userId, prefs);
-    return { uiPrefs: prefs };
+    return { uiPrefs: await this.users.setUiPrefs(tenantId, userId, prefs) };
   }
 
   // availability (self-service, влияет на ёмкость/прогноз — Этап 4)

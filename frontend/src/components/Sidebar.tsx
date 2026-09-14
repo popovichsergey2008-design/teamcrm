@@ -427,7 +427,7 @@ export function Sidebar({
                   им есть что стирать.
                 */}
                 {hasPrefs && (
-                  <button className="btn btn-ghost btn-sm nav-tune-reset" onClick={() => savePrefs({})} title="Вернуть меню к заводскому порядку и показать все разделы">
+                  <button className="btn btn-ghost btn-sm nav-tune-reset" onClick={() => savePrefs({ order: [], hidden: [] })} title="Вернуть меню к заводскому порядку и показать все разделы">
                     По умолчанию
                   </button>
                 )}
