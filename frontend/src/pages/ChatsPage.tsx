@@ -1055,6 +1055,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                               <button className="msg-menu-item" onClick={() => { setMenuFor(null); setRemindFor(String(m.id)); }}>
                                 <Icon name="clock" size={13} /> Напомнить
                               </button>
+                              {/* И отсюда тоже: «дочитаю потом» решают, читая сообщение,
+                                  а не глядя на список чатов. Пометка — на весь чат. */}
+                              <button
+                                className="msg-menu-item"
+                                onClick={() => {
+                                  setMenuFor(null);
+                                  const c = chats.find((x) => String(x.id) === String(activeId));
+                                  if (c) void markUnread(c);
+                                }}
+                              >
+                                <Icon name="mail" size={13} /> Пометить чат как непрочитанное
+                              </button>
                               {m.task_id ? (
                                 <button
                                   className="msg-menu-item"
