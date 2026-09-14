@@ -106,6 +106,28 @@ describe('Чаты команды (e2e)', () => {
     const stranger = (await http$.post('/api/auth/register')
       .send({ tenantName: 'UN2', email: `un2_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
     await http$.post(`/api/chats/${chat.id}/unread`).set(H(stranger.accessToken)).expect(404);
+
+    /*
+      Пометка С СООБЩЕНИЯ: заказчик попросил именно это — «относится к определённому
+      входящему сообщению». Оно и всё после него снова становятся новыми, и чат
+      показывает их число, а не точку.
+    */
+    const second = (await http$.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'Второе' }).expect(201)).body.data;
+    await http$.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'Третье' }).expect(201);
+    await http$.get(`/api/chats/${chat.id}/messages`).set(M).expect(200); // всё прочитано
+    expect(byChat((await http$.get('/api/chats').set(M).expect(200)).body.data).unread).toBe(0);
+
+    await http$.post(`/api/chats/${chat.id}/messages/${second.id}/unread`).set(M).expect(201);
+    const fromSecond = byChat((await http$.get('/api/chats').set(M).expect(200)).body.data);
+    expect(fromSecond.unread).toBe(2); // второе и третье, первое остаётся прочитанным
+
+    // своё сообщение «не дочитать» нельзя, чужое из другого чата — не найти
+    await http$.post(`/api/chats/${chat.id}/messages/${second.id}/unread`).set(O).expect(400);
+    await http$.post(`/api/chats/${chat.id}/messages/999999999/unread`).set(M).expect(404);
+
+    // открыл — снова всё прочитано
+    await http$.get(`/api/chats/${chat.id}/messages`).set(M).expect(200);
+    expect(byChat((await http$.get('/api/chats').set(M).expect(200)).body.data).unread).toBe(0);
   });
 
   it('в чужой диалог не попасть даже по угаданному id', async () => {

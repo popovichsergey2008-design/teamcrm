@@ -369,8 +369,8 @@ export class ChatsRepository {
 
   /** Сообщение по id: нужно, чтобы проверить, что отвечают в том же чате. */
   findMessage(tenantId: string, id: string) {
-    return this.db.one<{ id: string; chat_id: string; thread_root_id: string | null }>(
-      `SELECT id, chat_id, thread_root_id FROM chat_messages WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL`,
+    return this.db.one<{ id: string; chat_id: string; thread_root_id: string | null; author_id: string | null }>(
+      `SELECT id, chat_id, thread_root_id, author_id FROM chat_messages WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL`,
       [tenantId, id],
     );
   }
@@ -984,6 +984,27 @@ export class ChatsRepository {
    * участия может ещё не быть — заводим её с отметкой «был здесь сейчас»: без
    * этого весь чат посчитался бы непрочитанным целиком, а просили одну пометку.
    */
+  /**
+   * «Пометить как непрочитанное» С ЭТОГО сообщения.
+   *
+   * Отметка «был здесь» откатывается на миг раньше сообщения: оно и всё после
+   * него снова считаются новыми, и чат показывает их число. Это честная
+   * пометка, а не флаг: человек действительно ещё не дочитал отсюда — и автору
+   * тоже видно, что дочитано не всё.
+   */
+  async markUnreadFrom(tenantId: string, chatId: string, userId: string, messageId: string): Promise<boolean> {
+    const res = await this.db.query(
+      `INSERT INTO chat_members (chat_id, user_id, tenant_id, last_read_at, marked_unread)
+       SELECT $1, $2, $3, m.created_at - interval '1 microsecond', true
+         FROM chat_messages m
+        WHERE m.id = $4 AND m.chat_id = $1 AND m.tenant_id = $3 AND m.deleted_at IS NULL
+       ON CONFLICT (chat_id, user_id) DO UPDATE
+         SET last_read_at = EXCLUDED.last_read_at, marked_unread = true`,
+      [chatId, userId, tenantId, messageId],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
   async markUnread(tenantId: string, chatId: string, userId: string): Promise<void> {
     await this.db.query(
       `INSERT INTO chat_members (chat_id, user_id, tenant_id, last_read_at, marked_unread)

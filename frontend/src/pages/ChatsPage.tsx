@@ -332,6 +332,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
     finally { reload(); notifyChatsChanged(); }
   };
 
+  /** Непрочитанное с конкретного сообщения: оно и всё после него. Чат закрываем — см. markUnread. */
+  const markUnreadFrom = async (m: Message) => {
+    if (!activeId) return;
+    const chatId = activeId;
+    setActiveId(null); setMessages([]); setThread(null);
+    try { await api.markUnreadFromMessage(chatId, String(m.id)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось пометить'); }
+    finally { reload(); notifyChatsChanged(); }
+  };
+
   /** Обратное действие из того же меню: прочитал — снять пометку и счётчик, не открывая чат. */
   const markRead = async (c: Chat) => {
     setChats((prev) => prev.map((x) => (String(x.id) === String(c.id) ? { ...x, markedUnread: false, unread: 0 } : x)));
@@ -1055,18 +1065,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall }: {
                               <button className="msg-menu-item" onClick={() => { setMenuFor(null); setRemindFor(String(m.id)); }}>
                                 <Icon name="clock" size={13} /> Напомнить
                               </button>
-                              {/* И отсюда тоже: «дочитаю потом» решают, читая сообщение,
-                                  а не глядя на список чатов. Пометка — на весь чат. */}
-                              <button
-                                className="msg-menu-item"
-                                onClick={() => {
-                                  setMenuFor(null);
-                                  const c = chats.find((x) => String(x.id) === String(activeId));
-                                  if (c) void markUnread(c);
-                                }}
-                              >
-                                <Icon name="mail" size={13} /> Пометить чат как непрочитанное
-                              </button>
+                              {/*
+                                Непрочитанное С ЭТОГО сообщения — как просил заказчик:
+                                пометка относится к конкретному входящему, а не к чату.
+                                Оно и всё после него снова новые; чат закрываем, иначе он
+                                тут же «прочитался» бы обратно. Своё сообщение не дочитать
+                                нельзя — пункт есть только у чужих.
+                              */}
+                              {!mine && !m.is_ai && !m.thread_root_id && (
+                                <button className="msg-menu-item" onClick={() => { setMenuFor(null); void markUnreadFrom(m); }}>
+                                  <Icon name="mail" size={13} /> Пометить как непрочитанное
+                                </button>
+                              )}
                               {m.task_id ? (
                                 <button
                                   className="msg-menu-item"

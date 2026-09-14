@@ -831,6 +831,9 @@ export const api = {
   toggleChatFavorite: (chatId: string) => request<{ favorite: boolean }>('POST', `/chats/${chatId}/favorite`, {}),
   /** «Пометить как непрочитанное» — как в Telegram: вернуться к разговору позже. Снимается открытием чата. */
   markChatUnread: (chatId: string) => request<{ unread: boolean }>('POST', `/chats/${chatId}/unread`, {}),
+  /** С этого сообщения и дальше — снова непрочитанное; чат покажет их число. Только для чужих сообщений. */
+  markUnreadFromMessage: (chatId: string, messageId: string) =>
+    request<{ unread: boolean }>('POST', `/chats/${chatId}/messages/${messageId}/unread`, {}),
   /**
    * Внешний чат: разговор с клиентом или подрядчиком по ссылке.
    *

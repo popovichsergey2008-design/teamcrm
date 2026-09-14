@@ -287,6 +287,12 @@ export class ChatsController {
     return this.chats.remind(u.tenantId, id, u, mid, dto.remindAt);
   }
 
+  /** «Пометить как непрочитанное» с этого сообщения: оно и всё после него — снова новые. */
+  @Post(':id/messages/:mid/unread')
+  unreadFrom(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string) {
+    return this.chats.markUnreadFrom(u.tenantId, id, u, mid);
+  }
+
   /** Закрепить сообщение в шапке чата или снять закрепление. */
   @Post(':id/messages/:mid/pin')
   pin(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string, @Body() dto: PinDto) {

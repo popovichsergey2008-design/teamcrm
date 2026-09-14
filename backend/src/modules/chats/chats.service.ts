@@ -914,6 +914,24 @@ export class ChatsService {
     return { unread: true };
   }
 
+  /**
+   * Непрочитанное С ЭТОГО сообщения.
+   *
+   * Только чужое: своё сообщение «не дочитать» нельзя. Собеседник узнаёт, что
+   * дочитано не всё, — обычной отметкой чтения, когда чат откроют снова.
+   */
+  async markUnreadFrom(tenantId: string, chatId: string, user: { userId: string; role: string }, messageId: string) {
+    await this.access(tenantId, chatId, user);
+    const msg = await this.repo.findMessage(tenantId, messageId);
+    if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
+    if (String(msg.author_id) === String(user.userId)) {
+      throw AppException.validation('Своё сообщение непрочитанным не пометить');
+    }
+    const ok = await this.repo.markUnreadFrom(tenantId, chatId, user.userId, messageId);
+    if (!ok) throw AppException.notFound('Сообщение не найдено');
+    return { unread: true };
+  }
+
   async markRead(tenantId: string, chatId: string, user: { userId: string; role: string }) {
     const chat = await this.access(tenantId, chatId, user);
     await this.repo.markRead(tenantId, chatId, user.userId);
