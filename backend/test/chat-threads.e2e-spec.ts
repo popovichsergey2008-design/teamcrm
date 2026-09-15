@@ -217,16 +217,26 @@ describe('треды в чатах (e2e)', () => {
     const called = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
       .send({ body: '@Пётр посмотри доступы', mentionIds: [String(mate.id)] }).expect(201)).body.data;
 
-    // у коллеги это в «Входящих» и помечено как новое
+    /*
+      У коллеги это в «Входящих» и помечено как новое.
+
+      Счётчик при открытии сразу ноль — раздел показал упоминания, значит человек их
+      увидел. Раньше цифра гасла только в отдельном разделе «Упоминания», куда этот
+      экран не ходит, и висела вечно: ровно на это и жаловались. Новизну показывает
+      не счётчик, а пустой seen_at у строк — они и подсвечиваются.
+    */
     const inbox = (await http.get('/api/chats/inbox').set(M).expect(200)).body.data;
-    expect(inbox.counts.mentions).toBe(1);
-    expect(inbox.mentions.some((m: any) => String(m.id) === String(called.id))).toBe(true);
+    expect(inbox.counts.mentions).toBe(0);
+    const mine = inbox.mentions.find((m: any) => String(m.id) === String(called.id));
+    expect(mine).toBeTruthy();
+    expect(mine.seen_at).toBeNull();
     // и непрочитанный чат там же — «Входящие» отвечают на вопрос «где меня ждут»
     expect(inbox.chats.length).toBe(1);
 
-    // открыл раздел упоминаний — они прочитаны
-    await http.get('/api/chats/mentions').set(M).expect(200);
-    expect((await http.get('/api/chats/inbox').set(M).expect(200)).body.data.counts.mentions).toBe(0);
+    // при следующем открытии упоминание уже не новое
+    const again = (await http.get('/api/chats/inbox').set(M).expect(200)).body.data;
+    expect(again.counts.mentions).toBe(0);
+    expect(again.mentions.find((m: any) => String(m.id) === String(called.id)).seen_at).toBeTruthy();
 
     // себя упоминанием не зовут: оповещать человека о собственном сообщении незачем
     await http.post(`/api/chats/${chat.id}/messages`).set(O)

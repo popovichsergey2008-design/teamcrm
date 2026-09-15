@@ -436,11 +436,14 @@ describe('Чаты команды (e2e)', () => {
     const called = (await http$.post(`/api/chats/${chat.id}/messages`).set(O)
       .send({ body: '@Глеб посмотри смету', mentionIds: [String(mate.id)] }).expect(201)).body.data;
 
-    // у коллеги горит единица — его позвали по имени
+    // открыл «Входящие» — упоминание там и подсвечено как новое, а счётчик уже погашен:
+    // раздел показал его, значит человек увидел
     let inbox = (await http$.get('/api/chats/inbox').set(M).expect(200)).body.data;
     expect(inbox.mentions.length).toBe(1);
+    expect(inbox.counts.mentions).toBe(0);
+    expect(inbox.mentions[0].seen_at).toBeNull();
 
-    // открыл «Входящие» — увидел; счётчик гаснет, а не висит вечно
+    // при следующем заходе оно уже не новое — и цифра не возвращается
     inbox = (await http$.get('/api/chats/inbox').set(M).expect(200)).body.data;
     expect(inbox.counts.mentions).toBe(0);
     expect(inbox.mentions[0].seen_at).toBeTruthy();
