@@ -846,7 +846,7 @@ export function TaskChat({
                 onClick={() => requestCall({ memberIds: callTo, projectId, taskId, title, video: true })}
                 title={`Видеозвонок: ${callNames}`}
               >
-                <Icon name="video" size={14} /> Видеозвонок
+                <Icon name="video" size={14} /> <span className="chat-call-label">Видеозвонок</span>
               </button>
               <button
                 className="btn btn-primary btn-sm chat-call-more"

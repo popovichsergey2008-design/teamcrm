@@ -2967,17 +2967,31 @@
   раскладка, что во всех мессенджерах, и потому её не приходится изучать.
 */
 .comment-input {
-  flex: 0 0 auto; display: flex; align-items: flex-end; gap: 4px;
-  margin: 8px 10px 10px; padding: 5px 6px 5px 8px;
+  flex: 0 0 auto; display: flex; align-items: flex-end; gap: 2px;
+  margin: 8px 10px 10px; padding: 4px 6px 4px 8px;
   background: var(--bg-elev); border: 1px solid var(--border-2); border-radius: 20px;
 }
+/* Скрепка и значки — того же роста, что поле в одну строку: ряд не должен ступенчаться. */
+.comment-input > .chat-tool { margin-bottom: 1px; }
+/* Поле в фокусе подсвечивается целиком, а не один textarea внутри него. */
+.comment-input:focus-within { border-color: var(--accent); }
+/*
+  Поле растягивается на всю свободную ширину.
+
+  Обёртка подсказки «@» — обычный div: без этого правила она сжималась по содержимому,
+  текст лепился к левому краю узкой полоской, а поле в три строки высотой выглядело
+  раздутым на пустом месте. Растягиваем именно обёртку, а поле внутри — за ней.
+*/
+.comment-input .mention-wrap { flex: 1 1 auto; min-width: 0; display: flex; }
 .comment-input .input {
-  flex: 1 1 auto; min-width: 0;
-  min-height: 34px; max-height: 168px; padding: 7px 4px;
-  font-size: 15px; line-height: 1.45; resize: none; overflow-y: auto;
+  flex: 1 1 auto; width: 100%; min-width: 0;
+  min-height: 36px; max-height: 168px; padding: 8px 6px;
+  font-size: 15px; line-height: 1.4; resize: none; overflow-y: auto;
   border: none; background: none; border-radius: 0;
 }
 .comment-input .input:focus { outline: none; box-shadow: none; }
+/* Подсказка «@» открывается ВВЕРХ: поле стоит у нижнего края, вниз список уходит за экран. */
+.comment-input .mention-list { top: auto; bottom: 100%; margin: 0 0 4px; }
 /* Значки поля ввода: кружок появляется под курсором, в покое — только сам значок. */
 .chat-tools { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
 .chat-tool-wrap { position: relative; display: inline-flex; }
@@ -4210,7 +4224,7 @@
   padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--bg-elev);
 }
 .task-chat-badge {
-  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
   background: var(--accent-soft); color: var(--accent);
 }
 .task-chat-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
@@ -4223,12 +4237,38 @@
 }
 .task-chat-sub:hover { color: var(--accent); }
 .task-chat-sub:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.task-chat-acts { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+/*
+  Кнопки шапки — одного роста и одной породы.
+
+  Было вразнобой: кнопка звонка одной высоты, круглые значки другой, у значков ещё и
+  своя рамка с подложкой. Ряд из четырёх разнокалиберных кнопок выглядит неопрятно,
+  сколько бы смысла в каждой ни было. Общий рост — 32 точки, значки без рамки:
+  подложка появляется под курсором.
+*/
+.task-chat-acts { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.task-chat-acts .msg-icon {
+  width: 32px; height: 32px; border-color: transparent; background: none; color: var(--text-dim);
+}
+.task-chat-acts .msg-icon:hover { background: var(--hover); border-color: transparent; color: var(--text); }
+.task-chat-acts .msg-icon.active { background: var(--accent-soft); color: var(--accent); }
 
 /* Звонок — не значок среди значков: из задачи звонят чаще, чем ищут по переписке. */
-.chat-call { position: relative; display: inline-flex; }
-.chat-call-main { border-radius: 999px 0 0 999px; padding-right: 8px; }
-.chat-call-more { border-radius: 0 999px 999px 0; padding: 0 7px; margin-left: 1px; }
+.chat-call { position: relative; display: inline-flex; margin-right: 4px; }
+.chat-call .btn { height: 32px; padding-top: 0; padding-bottom: 0; }
+.chat-call-main { border-radius: 999px 0 0 999px; padding-right: 9px; }
+.chat-call-more { border-radius: 0 999px 999px 0; padding: 0 8px; margin-left: 1px; }
+/*
+  В узкой колонке от кнопки остаётся один значок камеры.
+
+  Подпись «Видеозвонок» вместе с тремя значками не помещается в 420 точек, и шапка
+  переносилась на вторую строку — ряд кнопок ломался ровно там, где должен быть
+  аккуратным. Смысл не теряется: значок камеры читается однозначно, подпись остаётся
+  в подсказке.
+*/
+@media (max-width: 1280px) {
+  .task-chat .chat-call-label { display: none; }
+  .task-chat .chat-call-main { padding-left: 9px; }
+}
 
 /* Панели шапки: участники, история, способы связи. */
 .chat-pop {
