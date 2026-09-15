@@ -142,6 +142,18 @@ export function TaskChat({
   const [noteBusy, setNoteBusy] = useState(false);
   /** Уже поднимаем старое — второй раз на ту же прокрутку не идём. */
   const [olderBusy, setOlderBusy] = useState(false);
+  /**
+   * Открытая ветка (ТЗ-7, разд. 7).
+   *
+   * Разворачивается прямо под корневым сообщением, а не второй колонкой: в карточке
+   * задачи колонок и так две, третья превратила бы разговор в щель. Свернули —
+   * вернулись в ленту, ничего не потеряв.
+   */
+  const [thread, setThread] = useState<{ rootId: string; replies: any[] } | null>(null);
+  const [threadBody, setThreadBody] = useState('');
+  const [alsoInChannel, setAlsoInChannel] = useState(false);
+  /** Показывать ли список закреплённых: обычно он свёрнут в одну строку. */
+  const [pinsOpen, setPinsOpen] = useState(false);
   /** Куда прокрутили из истории — подсвечиваем, иначе непонятно, что именно нашли. */
   const [highlight, setHighlight] = useState<string | null>(null);
   /** У какого сообщения открыт выбор реакции: набор из шести эмодзи в каждой строке — мусор. */
@@ -364,6 +376,37 @@ export function TaskChat({
     finally { setBusy(false); setSending(null); }
   };
 
+  const openThread = async (rootId: string) => {
+    try {
+      const t = await api.taskThread(taskId, rootId);
+      setThread(t);
+      setThreadBody(''); setAlsoInChannel(false);
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть ветку'); }
+  };
+
+  const sendToThread = async () => {
+    const text = threadBody.trim();
+    if (!text || !thread) return;
+    setBusy(true); setErr('');
+    try {
+      await api.addComment(taskId, text, undefined, undefined, undefined, {
+        rootId: thread.rootId, alsoInChannel,
+      });
+      setThreadBody('');
+      // ветку перечитываем целиком: свой ответ должен встать на своё место по времени
+      await openThread(thread.rootId);
+      reload(fullyLoaded); onRefresh();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ответ не отправился'); }
+    finally { setBusy(false); }
+  };
+
+  /** Закрепить или открепить. Список закреплённых живёт прямо в ленте — она источник правды. */
+  const togglePin = async (id: string, pinned: boolean) => {
+    setErr('');
+    try { await api.pinComment(taskId, id, pinned); reload(fullyLoaded); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
+  };
+
   const dropNote = () => setNote((prev) => {
     if (prev?.url) URL.revokeObjectURL(prev.url);
     return null;
@@ -562,6 +605,9 @@ export function TaskChat({
     return out;
   }, [users, participants, assigneeId, creatorId]);
 
+  /** Закреплённые сообщения: их единицы, считаем из уже загруженной ленты. */
+  const pinned = comments.filter((c: any) => c.pinned_at);
+
   /** Кого зовём в созвон: участники задачи, кроме себя. */
   const callTo = people.map((p) => p.id).filter((id) => id !== String(user?.id ?? ''));
   const callNames = people
@@ -592,6 +638,17 @@ export function TaskChat({
           {people.length > 6 && <span className="dim">+{people.length - 6}</span>}
         </div>
         <div className="task-chat-acts">
+          {pinned.length > 0 && (
+            <button
+              className={`msg-icon${pinsOpen ? ' active' : ''}`}
+              onClick={() => setPinsOpen((v) => !v)}
+              title={`Закреплённые: ${pinned.length}`}
+              aria-label="Закреплённые сообщения"
+              aria-expanded={pinsOpen}
+            >
+              <Icon name="flag" size={15} />
+            </button>
+          )}
           {/*
             Позвонить — прямо из разговора по задаче.
 
@@ -642,6 +699,24 @@ export function TaskChat({
           )}
         </div>
       </div>
+
+      {/*
+        Закреплённые — свёрнуты в одну строку.
+
+        «Читайте прежде всего» должно быть видно сразу, но занимать пол-экрана
+        закреп не должен: строка с количеством, по нажатию — список с переходом.
+      */}
+      {pinned.length > 0 && pinsOpen && (
+        <div className="task-pins">
+          {pinned.map((c: any) => (
+            <button key={c.id} className="task-pin" onClick={() => { setPinsOpen(false); void goToMessage(String(c.id)); }}>
+              <Icon name="flag" size={12} />
+              <span className="task-pin-author">{c.is_ai ? AI_MENTION_NAME : c.author_name}:</span>
+              <span className="task-pin-body">{String(c.body ?? 'вложение').slice(0, 140)}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Поиск появляется по лупе: постоянное поле над лентой съедает место,
           а ищут в обсуждении редко. */}
@@ -803,6 +878,24 @@ export function TaskChat({
                         Ответить
                       </button>
                     )}
+                    {!c.is_ai && !c.thread_root_id && (
+                      <button
+                        className="msg-act"
+                        onClick={() => { void openThread(String(c.id)); }}
+                        title="Обсудить отдельно: ответы уйдут в ветку и не засорят ленту"
+                      >
+                        {Number(c.reply_count ?? 0) > 0
+                          ? `${c.reply_count} ${plural(Number(c.reply_count), 'ответ', 'ответа', 'ответов')}`
+                          : 'В ветку'}
+                      </button>
+                    )}
+                    <button
+                      className="msg-act"
+                      onClick={() => { void togglePin(String(c.id), !c.pinned_at); }}
+                      title={c.pinned_at ? 'Снять закрепление' : 'Закрепить: важное видно всем в шапке'}
+                    >
+                      {c.pinned_at ? 'Открепить' : 'Закрепить'}
+                    </button>
                     {mine && (
                       <>
                         <button
@@ -815,6 +908,60 @@ export function TaskChat({
                       </>
                     )}
                   </div>
+
+                  {/*
+                    Ветка раскрывается прямо под своим сообщением.
+
+                    Не второй колонкой: в карточке задачи их и так две, третья
+                    превратила бы разговор в щель. Свернули — вернулись в ленту.
+                  */}
+                  {thread && thread.rootId === String(c.id) && (
+                    <div className="task-thread">
+                      <div className="task-thread-head">
+                        <span className="dim">
+                          Ветка · {thread.replies.length} {plural(thread.replies.length, 'ответ', 'ответа', 'ответов')}
+                        </span>
+                        <button className="msg-act" onClick={() => setThread(null)}>Свернуть</button>
+                      </div>
+                      {thread.replies.map((r: any) => (
+                        <div key={r.id} className="msg msg-thread-reply">
+                          <div className="msg-avatar" aria-hidden="true">{initials(r.is_ai ? AI_MENTION_NAME : r.author_name)}</div>
+                          <div className="msg-main">
+                            <div className="msg-head">
+                              <b className="msg-name">{r.is_ai ? AI_MENTION_NAME : r.author_name}</b>
+                              <span className="msg-time">{stampLabel(r.created_at)}</span>
+                            </div>
+                            {r.body && <MessageText text={r.body} className="msg-text" />}
+                            {r.file_id && (
+                              <ChatAttachment
+                                fileId={String(r.file_id)}
+                                fileName={r.file_name ?? 'файл'}
+                                onOpen={(url, fname, m) => setPreview({ url, name: fname, mime: m })}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      <div className="task-thread-input">
+                        <textarea
+                          className="input"
+                          rows={2}
+                          value={threadBody}
+                          onChange={(e) => setThreadBody(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendToThread(); } }}
+                          placeholder="Ответить в ветке"
+                          aria-label="Ответить в ветке"
+                        />
+                        <label className="anthill-ctx" title="Ответ увидят и те, кто ветку не открывал">
+                          <input type="checkbox" checked={alsoInChannel} onChange={(e) => setAlsoInChannel(e.target.checked)} />
+                          Показать и в ленте
+                        </label>
+                        <button className="btn btn-primary btn-sm" onClick={() => { void sendToThread(); }} disabled={busy || !threadBody.trim()}>
+                          Ответить
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

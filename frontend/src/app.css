@@ -4178,3 +4178,26 @@
   background: var(--bg-elev-2); border: 1px solid var(--border);
 }
 .voice-note-player { flex: 1 1 220px; min-width: 0; height: 34px; }
+
+/* ───── Ветки и закреплённые в задаче (ТЗ-7, разд. 7 и 20) ───── */
+.task-thread {
+  margin: 6px 0 4px 0; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.task-thread-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-xs); }
+/* Ответ в ветке уже, чем сообщение ленты: видно, что разговор вложенный. */
+.msg-thread-reply { padding: 4px 0; }
+.task-thread-input { display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap; }
+.task-thread-input textarea { flex: 1 1 100%; resize: none; }
+
+.task-pins { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.task-pin {
+  display: flex; align-items: baseline; gap: 6px; text-align: left; cursor: pointer; font-family: inherit;
+  padding: 6px 8px; border-radius: var(--radius-sm);
+  background: var(--warn-soft); border: 1px solid var(--warn-line, var(--warn)); color: var(--text);
+  font-size: var(--fs-sm);
+}
+.task-pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.task-pin-author { font-weight: 600; flex: 0 0 auto; }
+.task-pin-body { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

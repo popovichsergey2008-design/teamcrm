@@ -9,15 +9,78 @@ export class TaskCardRepository {
   addComment(
     tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean,
     replyToId?: string | null,
-    extra?: { fileId?: string | null; replyExcerpt?: string | null },
+    extra?: { fileId?: string | null; replyExcerpt?: string | null; threadRootId?: string | null; alsoInChannel?: boolean },
   ) {
     return this.db.one(
-      `INSERT INTO task_comments (tenant_id, task_id, author_id, body, is_client_visible, reply_to_id, file_id, reply_excerpt)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO task_comments
+         (tenant_id, task_id, author_id, body, is_client_visible, reply_to_id, file_id, reply_excerpt,
+          thread_root_id, also_in_channel)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [
         tenantId, taskId, authorId, body, clientVisible, replyToId ?? null,
         extra?.fileId ?? null, extra?.replyExcerpt ?? null,
+        extra?.threadRootId ?? null, extra?.alsoInChannel === true,
       ],
+    );
+  }
+
+  /**
+   * Корень ветки: отвечают всегда на сообщение верхнего уровня.
+   *
+   * Ответ на ответ уходит в ту же ветку, что и родитель, — так же, как в чатах.
+   * Дерево в переписке никто не читает, а поддерживать его пришлось бы везде.
+   */
+  async threadRootOf(tenantId: string, commentId: string): Promise<string | null> {
+    const row = await this.db.one<{ id: string; thread_root_id: string | null; task_id: string }>(
+      `SELECT id, thread_root_id, task_id FROM task_comments WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, commentId],
+    );
+    if (!row) return null;
+    return String(row.thread_root_id ?? row.id);
+  }
+
+  /** Ответы ветки — по порядку разговора. */
+  threadReplies(tenantId: string, taskId: string, rootId: string, viewerId: string) {
+    return this.db.many(
+      `SELECT c.id, c.author_id, c.body, c.is_client_visible, c.is_ai, c.created_at, c.edited_at,
+              c.reply_to_id, c.file_id, c.thread_root_id, c.also_in_channel, c.pinned_at, f.file_name,
+              COALESCE(c.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author,
+              COALESCE((
+                SELECT json_agg(json_build_object('emoji', x.emoji, 'count', x.n, 'mine', x.mine))
+                  FROM (
+                    SELECT emoji, COUNT(*)::int AS n, BOOL_OR(user_id = $4::bigint) AS mine
+                      FROM task_comment_reactions
+                     WHERE tenant_id = c.tenant_id AND comment_id = c.id
+                     GROUP BY emoji
+                  ) x
+              ), '[]'::json) AS reactions,
+              u.full_name AS author_name
+         FROM task_comments c
+         JOIN users u ON u.id=c.author_id
+    LEFT JOIN task_comments r ON r.id = c.reply_to_id
+    LEFT JOIN users ru ON ru.id = r.author_id
+    LEFT JOIN files f ON f.id = c.file_id
+        WHERE c.tenant_id=$1 AND c.task_id=$2 AND c.thread_root_id=$3
+        ORDER BY c.created_at`,
+      [tenantId, taskId, rootId, viewerId],
+    );
+  }
+
+  async pinnedBy(tenantId: string, commentId: string): Promise<string | null> {
+    const row = await this.db.one<{ pinned_by: string | null }>(
+      `SELECT pinned_by FROM task_comments WHERE tenant_id=$1 AND id=$2`, [tenantId, commentId],
+    );
+    return row?.pinned_by ? String(row.pinned_by) : null;
+  }
+
+  /** Закрепить или открепить: одна ручка, потому что это одно решение с двумя исходами. */
+  setPinned(tenantId: string, commentId: string, userId: string | null) {
+    return this.db.one(
+      `UPDATE task_comments
+          SET pinned_at = CASE WHEN $3::bigint IS NULL THEN NULL ELSE now() END,
+              pinned_by = $3
+        WHERE tenant_id=$1 AND id=$2 RETURNING id, pinned_at, pinned_by`,
+      [tenantId, commentId, userId],
     );
   }
   /**
@@ -36,7 +99,14 @@ export class TaskCardRepository {
       // реплик — согласие неизвестно с чем, и лезть за ним отдельным запросом
       // на каждое сообщение слишком дорого.
       `SELECT c.id, c.author_id, c.body, c.is_client_visible, c.is_ai, c.created_at, c.edited_at,
-              c.reply_to_id, c.file_id, f.file_name,
+              c.reply_to_id, c.file_id, c.pinned_at, c.pinned_by, f.file_name,
+              -- Сколько ответов в ветке и когда был последний: по ним на корневом
+              -- сообщении рисуется «3 ответа · 10 минут назад», и лезть за этим
+              -- отдельным запросом на каждую строку слишком дорого.
+              (SELECT COUNT(*)::int FROM task_comments t
+                WHERE t.thread_root_id = c.id) AS reply_count,
+              (SELECT MAX(t.created_at) FROM task_comments t
+                WHERE t.thread_root_id = c.id) AS last_reply_at,
               -- цитируем выделенный человеком кусок, а если его нет — начало сообщения
               COALESCE(c.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author,
               COALESCE((
@@ -56,6 +126,9 @@ export class TaskCardRepository {
     LEFT JOIN users ru ON ru.id = r.author_id
     LEFT JOIN files f ON f.id = c.file_id
         WHERE c.tenant_id=$1 AND c.task_id=$2 AND ($3 OR c.is_client_visible=TRUE)
+          -- Ответы ветки в общей ленте не показываются: ради этого ветки и заводились.
+          -- Исключение — «ответить и в ленту»: автор счёл ответ важным для всех.
+          AND (c.thread_root_id IS NULL OR c.also_in_channel)
         ORDER BY c.created_at DESC
         LIMIT $5`,
       [tenantId, taskId, includePrivate, viewerId, Math.min(Math.max(limit, 1), 2000)],

@@ -177,4 +177,49 @@ describe('Enhancements v1 — Task card (e2e)', () => {
     const all = (await http.get(`/api/tasks/${task.id}/comments?all=1`).set(A()).expect(200)).body.data;
     expect(all.map((c: any) => c.body)).toEqual(['Первое', 'Второе', 'Третье']);
   });
+
+  it('ветка обсуждения: ответы уходят из ленты, «и в ленту» возвращает', async () => {
+    const task = (await http.post('/api/tasks').set(A()).send({ projectId, title: 'Ветка' }).expect(201)).body.data;
+    const root = (await http.post(`/api/tasks/${task.id}/comments`).set(A()).send({ body: 'Спорный срок' }).expect(201)).body.data;
+
+    await http.post(`/api/tasks/${task.id}/comments`).set(A())
+      .send({ body: 'Не успеем', threadRootId: String(root.id) }).expect(201);
+    const loud = (await http.post(`/api/tasks/${task.id}/comments`).set(A())
+      .send({ body: 'Решили: переносим', threadRootId: String(root.id), alsoInChannel: true }).expect(201)).body.data;
+
+    // в ленте — корень и «важный для всех» ответ; обычный ответ ветки её не засоряет
+    const feed = (await http.get(`/api/tasks/${task.id}/comments`).set(A()).expect(200)).body.data;
+    expect(feed.map((c: any) => String(c.id)).sort()).toEqual([String(root.id), String(loud.id)].sort());
+    const rootRow = feed.find((c: any) => String(c.id) === String(root.id));
+    expect(rootRow.reply_count).toBe(2);
+    expect(rootRow.last_reply_at).toBeTruthy();
+
+    // в ветке — оба ответа
+    const thread = (await http.get(`/api/tasks/${task.id}/threads/${root.id}`).set(A()).expect(200)).body.data;
+    expect(thread.rootId).toBe(String(root.id));
+    expect(thread.replies.length).toBe(2);
+
+    // ответ на ответ уходит в ТУ ЖЕ ветку, а не заводит вложенную
+    const deep = (await http.post(`/api/tasks/${task.id}/comments`).set(A())
+      .send({ body: 'И сроки сдвинем', threadRootId: String(thread.replies[0].id) }).expect(201)).body.data;
+    expect(String(deep.thread_root_id)).toBe(String(root.id));
+  });
+
+  it('закреплённое сообщение: видно в ленте, снять может автор закрепа или руководитель', async () => {
+    const task = (await http.post('/api/tasks').set(A()).send({ projectId, title: 'Закреп' }).expect(201)).body.data;
+    const c = (await http.post(`/api/tasks/${task.id}/comments`).set(A()).send({ body: 'Доступы к стенду' }).expect(201)).body.data;
+
+    await http.post(`/api/tasks/${task.id}/comments/${c.id}/pin`).set(A()).send({ pinned: true }).expect(201);
+    let feed = (await http.get(`/api/tasks/${task.id}/comments`).set(A()).expect(200)).body.data;
+    expect(feed.find((x: any) => String(x.id) === String(c.id)).pinned_at).toBeTruthy();
+
+    // чужой сотрудник открепить не может: закреп ставил не он
+    const m = synth('member');
+    await http.post(`/api/tasks/${task.id}/comments/${c.id}/pin`).set({ Authorization: `Bearer ${m}` })
+      .send({ pinned: false }).expect(403);
+
+    await http.post(`/api/tasks/${task.id}/comments/${c.id}/pin`).set(A()).send({ pinned: false }).expect(201);
+    feed = (await http.get(`/api/tasks/${task.id}/comments`).set(A()).expect(200)).body.data;
+    expect(feed.find((x: any) => String(x.id) === String(c.id)).pinned_at).toBeNull();
+  });
 });

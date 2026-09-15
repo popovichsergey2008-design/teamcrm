@@ -32,11 +32,24 @@ export class TaskCardService {
   async addComment(
     tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean,
     replyToId?: string | null,
-    extra?: { fileId?: string | null; replyExcerpt?: string | null },
+    extra?: { fileId?: string | null; replyExcerpt?: string | null; threadRootId?: string | null; alsoInChannel?: boolean },
   ) {
     const task = await this.task(tenantId, taskId);
     await this.repo.addWatcher(tenantId, taskId, authorId); // автор — наблюдатель
-    const c: any = await this.repo.addComment(tenantId, taskId, authorId, body, clientVisible, replyToId, extra);
+    /*
+      Корень ветки выясняем на сервере, а не верим клиенту.
+
+      Ответ на ответ должен уходить в ТУ ЖЕ ветку, что и родитель: иначе разговор
+      превращается в дерево, по которому никто не ходит. Заодно это проверка, что
+      корень вообще существует и принадлежит этой задаче.
+    */
+    let threadRootId: string | null = null;
+    if (extra?.threadRootId) {
+      threadRootId = await this.repo.threadRootOf(tenantId, String(extra.threadRootId));
+      if (!threadRootId) throw AppException.notFound('Сообщение, к которому отвечаете, не найдено');
+    }
+    const c: any = await this.repo.addComment(tenantId, taskId, authorId, body, clientVisible, replyToId,
+      { ...extra, threadRootId });
     // commentId в записи истории — не для отладки: по нему строка «написал сообщение»
     // становится ссылкой на само сообщение, иначе история отсылает в никуда
     await this.activity.log(tenantId, taskId, authorId, 'commented', { commentId: c.id });
@@ -89,10 +102,12 @@ export class TaskCardService {
     tenantId: string, taskId: string, userId: string,
     file: { buffer: Buffer; originalname: string; mimetype: string },
     body: string, replyToId?: string | null, replyExcerpt?: string | null,
+    /** Файл в ветку: картинку показывают там же, где о ней спорят. */
+    threadRootId?: string | null,
   ) {
     const uploaded = await this.attachUploaded(tenantId, taskId, userId, file, { silent: true });
     return this.addComment(tenantId, taskId, userId, body, false, replyToId, {
-      fileId: String(uploaded.fileId), replyExcerpt: replyExcerpt ?? null,
+      fileId: String(uploaded.fileId), replyExcerpt: replyExcerpt ?? null, threadRootId: threadRootId ?? null,
     });
   }
 
@@ -119,6 +134,42 @@ export class TaskCardService {
   listAttachments(tenantId: string, taskId: string) {
     return this.repo.listAttachments(tenantId, taskId);
   }
+  /** Ветка целиком: корень и ответы. */
+  async thread(tenantId: string, taskId: string, rootId: string, viewerId: string, includePrivate: boolean) {
+    const root = await this.repo.getComment(tenantId, rootId);
+    if (!root || String(root.task_id) !== String(taskId)) throw AppException.notFound('Ветка не найдена');
+    const real = await this.repo.threadRootOf(tenantId, rootId);
+    const replies = await this.repo.threadReplies(tenantId, taskId, String(real), viewerId);
+    void includePrivate;
+    return { rootId: String(real), replies };
+  }
+
+  /**
+   * Закрепить сообщение или снять закрепление.
+   *
+   * Закрепляет любой, кто видит задачу: закреплённое — это «читайте прежде всего»,
+   * и решать это должен тот, кто в работе, а не только начальник. Снять может тот,
+   * кто закрепил, или руководство — иначе чужой закреп висит вечно.
+   */
+  async setPinned(
+    tenantId: string, taskId: string, commentId: string, pinned: boolean,
+    user: { userId: string; role: string },
+  ) {
+    const c = await this.repo.getComment(tenantId, commentId);
+    if (!c || String(c.task_id) !== String(taskId)) throw AppException.notFound('Сообщение не найдено');
+    if (!pinned) {
+      const cur = await this.repo.pinnedBy(tenantId, commentId);
+      const boss = user.role === 'owner' || user.role === 'manager';
+      if (cur && String(cur) !== String(user.userId) && !boss) {
+        throw AppException.forbidden('Открепить может тот, кто закрепил, или руководитель');
+      }
+    }
+    const row: any = await this.repo.setPinned(tenantId, commentId, pinned ? user.userId : null);
+    const task = await this.task(tenantId, taskId);
+    this.realtime.emitScoped(tenantId, task.project_id, 'task.comment_added', { taskId, commentId }, false);
+    return { pinned: !!row?.pinned_at };
+  }
+
   async removeAttachment(tenantId: string, taskId: string, id: string) {
     const a = await this.repo.getAttachment(tenantId, id);
     if (!a || a.task_id !== taskId) throw AppException.notFound('Attachment not found');

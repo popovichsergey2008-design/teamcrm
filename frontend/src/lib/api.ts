@@ -295,8 +295,27 @@ export const api = {
    */
   listComments: (taskId: string, all = false) =>
     request<any[]>('GET', `/tasks/${taskId}/comments${all ? '?all=1' : ''}`),
-  addComment: (taskId: string, body: string, isClientVisible?: boolean, replyToId?: string, replyExcerpt?: string) =>
-    request<any>('POST', `/tasks/${taskId}/comments`, { body, isClientVisible, replyToId, replyExcerpt }),
+  /**
+   * Сообщение в обсуждение задачи.
+   *
+   * `thread.rootId` уводит ответ в ветку: в общей ленте его не будет — ради этого
+   * ветки и заводились. `alsoInChannel` — исключение для ответа, важного всем.
+   */
+  addComment: (
+    taskId: string, body: string, isClientVisible?: boolean, replyToId?: string, replyExcerpt?: string,
+    thread?: { rootId?: string | null; alsoInChannel?: boolean },
+  ) =>
+    request<any>('POST', `/tasks/${taskId}/comments`, {
+      body, isClientVisible, replyToId, replyExcerpt,
+      threadRootId: thread?.rootId ?? undefined,
+      alsoInChannel: thread?.alsoInChannel || undefined,
+    }),
+  /** Ветка обсуждения: корень и ответы. */
+  taskThread: (taskId: string, rootId: string) =>
+    request<{ rootId: string; replies: any[] }>('GET', `/tasks/${taskId}/threads/${rootId}`),
+  /** Закрепить сообщение задачи или снять закрепление. */
+  pinComment: (taskId: string, commentId: string, pinned: boolean) =>
+    request<{ pinned: boolean }>('POST', `/tasks/${taskId}/comments/${commentId}/pin`, { pinned }),
   /** Реакция на сообщение: повторное нажатие снимает свою. */
   reactToComment: (taskId: string, commentId: string, emoji: string) =>
     request<{ ok: true }>('POST', `/tasks/${taskId}/comments/${commentId}/reactions`, { emoji }),
@@ -1407,12 +1426,16 @@ export const api = {
   markTaskRead: (id: string) => request<{ read: true }>('POST', `/tasks/${id}/read`, {}),
 
   /** Файл сообщением в чат задачи: скриншот показывают в разговоре, а не «см. вложение». */
-  addCommentFile: async (taskId: string, file: File, body: string, replyToId?: string, replyExcerpt?: string) => {
+  addCommentFile: async (
+    taskId: string, file: File, body: string, replyToId?: string, replyExcerpt?: string,
+    threadRootId?: string | null,
+  ) => {
     const fd = new FormData();
     fd.append('file', file);
     if (body) fd.append('body', body);
     if (replyToId) fd.append('replyToId', replyToId);
     if (replyExcerpt) fd.append('replyExcerpt', replyExcerpt);
+    if (threadRootId) fd.append('threadRootId', threadRootId);
     const res = await fetch(`/api/tasks/${taskId}/comments/file`, {
       method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
     });

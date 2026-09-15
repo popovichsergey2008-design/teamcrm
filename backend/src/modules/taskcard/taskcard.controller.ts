@@ -18,6 +18,10 @@ class CommentDto {
   @IsOptional() @IsString() @MaxLength(32) replyToId?: string;
   /** Выделенный кусок, на который отвечают: в длинном сообщении спорят об одном абзаце. */
   @IsOptional() @IsString() @MaxLength(600) replyExcerpt?: string;
+  /** Ответ в ветку: в общей ленте его не будет — ради этого ветки и заводились. */
+  @IsOptional() @IsString() @MaxLength(32) threadRootId?: string;
+  /** Ответ, важный для всех: показывается и в ветке, и в ленте. */
+  @IsOptional() @IsBoolean() alsoInChannel?: boolean;
 }
 class ReactionDto {
   @IsString() @MaxLength(16) emoji!: string;
@@ -67,6 +71,8 @@ export class TaskCardController {
   addComment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CommentDto) {
     return this.svc.addComment(u.tenantId, id, u.userId, dto.body, dto.isClientVisible === true, dto.replyToId, {
       replyExcerpt: dto.replyExcerpt ?? null,
+      threadRootId: dto.threadRootId ?? null,
+      alsoInChannel: dto.alsoInChannel === true,
     });
   }
 
@@ -82,7 +88,7 @@ export class TaskCardController {
     @CurrentUser() u: AuthUser,
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: { body?: string; replyToId?: string; replyExcerpt?: string },
+    @Body() body: { body?: string; replyToId?: string; replyExcerpt?: string; threadRootId?: string },
   ) {
     if (!file) throw AppException.validation('file is required');
     return this.svc.addCommentWithFile(
@@ -90,6 +96,7 @@ export class TaskCardController {
       String(body?.body ?? '').slice(0, 5000),
       body?.replyToId ?? null,
       body?.replyExcerpt ?? null,
+      body?.threadRootId ?? null,
     );
   }
   @Patch(':id/comments/:cid')
@@ -117,6 +124,18 @@ export class TaskCardController {
   listAttachments(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.svc.listAttachments(u.tenantId, id);
   }
+  /** Ветка обсуждения: корень и ответы (ТЗ-7, разд. 7). */
+  @Get(':id/threads/:cid')
+  thread(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('cid') cid: string) {
+    return this.svc.thread(u.tenantId, id, cid, u.userId, u.role !== 'client');
+  }
+
+  /** Закрепить сообщение или снять закрепление (разд. 20). */
+  @Post(':id/comments/:cid/pin')
+  pin(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('cid') cid: string, @Body() body: { pinned?: boolean }) {
+    return this.svc.setPinned(u.tenantId, id, cid, body?.pinned !== false, u);
+  }
+
   @Post(':id/attachments')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
