@@ -682,6 +682,8 @@ export class MeetGateway implements OnModuleInit {
         tenantId: room.tenantId, actorId: author, projectId: room.projectId,
         // чат, из которого начали созвон: туда вернётся карточка с итогом
         chatId: room.chatId ?? null,
+        // задача, из которой звонили: итог ляжет в её обсуждение
+        taskId: room.taskId ?? null,
         // комната = событие календаря, если созвон начали из встречи
         roomId: room.id, title: `Созвон ${when}`, tracks,
       });

@@ -13,6 +13,7 @@ import { orderMentions } from '../lib/task-mentions';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useAuth } from '../state/auth';
 import { getSocket } from '../lib/socket';
+import { requestCall } from '../lib/notifications';
 
 /** Реакции: ответить «ок» знаком, не засоряя обсуждение и не будя участников. */
 const REACTIONS = ['👍', '❤️', '🔥', '👏', '😁', '🤔'];
@@ -94,7 +95,7 @@ const initials = (name: string) => (name?.trim()?.[0] ?? '?').toUpperCase();
  */
 export function TaskChat({
   taskId, assigneeId, creatorId, participants = [], onRefresh,
-  wide = false, title, status, onExpand, onCollapse,
+  wide = false, title, status, projectId, onExpand, onCollapse,
 }: {
   taskId: string;
   /** Кто в этой задаче кто — от этого зависит порядок подсказки при «@». */
@@ -110,6 +111,8 @@ export function TaskChat({
    * механика (ответы, реакции, поиск, ИИ) остаётся общей и не разъезжается.
    */
   wide?: boolean;
+  /** Проект задачи: комната созвона знает его, и задачи из разбора лягут в нужную доску. */
+  projectId?: string | null;
   /** Название задачи и колонка — подпись в шапке: о чём разговор и на каком этапе. */
   title?: string;
   status?: string | null;
@@ -488,6 +491,13 @@ export function TaskChat({
     return out;
   }, [users, participants, assigneeId, creatorId]);
 
+  /** Кого зовём в созвон: участники задачи, кроме себя. */
+  const callTo = people.map((p) => p.id).filter((id) => id !== String(user?.id ?? ''));
+  const callNames = people
+    .filter((p) => p.id !== String(user?.id ?? ''))
+    .map((p) => p.name)
+    .join(', ');
+
   return (
     <div className={`task-chat-box${wide ? ' task-chat-wide' : ''}`}>
       {/*
@@ -511,6 +521,34 @@ export function TaskChat({
           {people.length > 6 && <span className="dim">+{people.length - 6}</span>}
         </div>
         <div className="task-chat-acts">
+          {/*
+            Позвонить — прямо из разговора по задаче.
+
+            Зовём участников задачи: исполнителя, соисполнителей, постановщика. Себя из
+            списка убираем — звонить себе не за чем. Комната одна и та же, «видео»
+            отличается только тем, что камера включается сразу: два разных созвона ради
+            этого были бы обманом.
+          */}
+          {callTo.length > 0 && (
+            <>
+              <button
+                className="msg-icon"
+                onClick={() => requestCall({ memberIds: callTo, projectId, taskId, title })}
+                title={`Позвонить: ${callNames}`}
+                aria-label="Позвонить участникам задачи"
+              >
+                <Icon name="phone" size={15} />
+              </button>
+              <button
+                className="msg-icon"
+                onClick={() => requestCall({ memberIds: callTo, projectId, taskId, title, video: true })}
+                title={`Видеозвонок: ${callNames}`}
+                aria-label="Видеозвонок с участниками задачи"
+              >
+                <Icon name="video" size={15} />
+              </button>
+            </>
+          )}
           {comments.length > 5 && (
             <button
               className={`msg-icon${searchOpen ? ' active' : ''}`}

@@ -38,9 +38,17 @@ const STATE_LABEL: Record<string, string> = {
  * Окно созвона. Микрофон включается сразу, камера — по желанию: на рабочих
  * планёрках она нужна не всегда, а трафик экономит заметно.
  */
-export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
+export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = false, onClose }: {
   meetingId: string;
   inviteUserIds?: string[];
+  /**
+   * Войти сразу с камерой — «видеозвонок» против «позвонить».
+   *
+   * Разница только в этом: комната одна и та же, камера в ней и так включается
+   * кнопкой. Заводить два разных созвона ради этого было бы обманом — снаружи они
+   * выглядели бы разными сущностями, а внутри одинаковы.
+   */
+  withCamera?: boolean;
   /**
    * Гостевой вход по ссылке: свой токен и свои ICE-серверы, потому что учётной записи
    * у гостя нет. Внутри окна он отличается только урезанными правами.
@@ -60,7 +68,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, onClose }: {
   }, [inviteUserIds.length, peers.length, isGuest]);
   const [tracks, setTracks] = useState<RemoteTrack[]>([]);
   const [micOn, setMicOn] = useState(true);
-  const [camOn, setCamOn] = useState(false);
+  const [camOn, setCamOn] = useState(withCamera);
   const [screenOn, setScreenOn] = useState(false);
   const [hand, setHand] = useState(false);
   const [recording, setRecording] = useState(false);

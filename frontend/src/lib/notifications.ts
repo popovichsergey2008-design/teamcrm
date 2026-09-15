@@ -79,3 +79,27 @@ export const CHATS_CHANGED = 'teamcrm:chats-changed';
 export function notifyChatsChanged(): void {
   window.dispatchEvent(new CustomEvent(CHATS_CHANGED));
 }
+
+/**
+ * Просьба поднять созвон — из любого места, где открыта карточка задачи.
+ *
+ * Событием, а не свойством: карточку открывают доска, реестр задач, фокус дня и
+ * поиск — тянуть обработчик звонка через все эти экраны значит протащить его через
+ * половину приложения ради одной кнопки. Слушает его App, где созвон и живёт.
+ */
+export const START_CALL_EVENT = 'teamcrm:start-call';
+
+export interface StartCallRequest {
+  /** Кого зовём. */
+  memberIds: string[];
+  projectId?: string | null;
+  /** Задача, из которой звонят: туда вернётся итог разговора. */
+  taskId?: string | null;
+  /** Видеозвонок — камера включается сразу; иначе только голос. */
+  video?: boolean;
+  title?: string;
+}
+
+export function requestCall(req: StartCallRequest): void {
+  window.dispatchEvent(new CustomEvent<StartCallRequest>(START_CALL_EVENT, { detail: req }));
+}

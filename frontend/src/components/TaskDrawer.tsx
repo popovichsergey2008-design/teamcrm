@@ -613,6 +613,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             wide
             title={task.title}
             status={columnName}
+            projectId={task.project_id}
             onCollapse={() => setTab('overview')}
           />
         )}
@@ -847,6 +848,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             onRefresh={onRefresh}
             title={task.title}
             status={columnName}
+            projectId={task.project_id}
             onExpand={() => setTab('chat')}
           />
         </div>

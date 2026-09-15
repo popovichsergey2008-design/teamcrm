@@ -5,6 +5,7 @@ import { AiService } from '../ai/ai.service';
 import { FilesService } from '../files/files.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { TaskCardService } from '../taskcard/taskcard.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { TasksService } from '../tasks/tasks.service';
 import { describeFfmpegError, extractAudioChunks } from './audio.util';
@@ -43,6 +44,7 @@ export class MeetingsService {
     private readonly knowledge: KnowledgeService,
     private readonly secretary: SecretaryService,
     private readonly realtime: RealtimeService,
+    private readonly taskcard: TaskCardService,
   ) {}
 
   list(tenantId: string) {
@@ -105,6 +107,8 @@ export class MeetingsService {
     roomId?: string | null;
     /** Чат, из которого начали созвон: туда придёт карточка с итогом. */
     chatId?: string | null;
+    /** Задача, из которой звонили: итог ляжет и в её обсуждение. */
+    taskId?: string | null;
     tracks: { userId: string; displayName: string; buffer: Buffer; fileName: string; offsetSec: number }[];
   }): Promise<string | null> {
     if (!input.tracks.length) return null;
@@ -178,6 +182,10 @@ export class MeetingsService {
         // договорённостей не доходит до тех, кто в созвоне не был.
         await this.postCardToChat(input.tenantId, meeting.id, input.chatId ?? null)
           .catch((e) => this.log.warn(`карточка мита в чат не ушла: ${(e as Error).message}`));
+        // Созвон начали из задачи — итог возвращается в её обсуждение тем же путём,
+        // что и в чат: разговор по задаче есть работа по ней, а не отдельное событие.
+        await this.postCardToTask(input.tenantId, meeting.id, input.taskId ?? null, input.actorId)
+          .catch((e) => this.log.warn(`итог созвона в задачу не ушёл: ${(e as Error).message}`));
       } catch (e) {
         this.log.warn(`созвон ${meeting.id}: ${(e as Error).message}`);
         await this.repo.setStatus(meeting.id, 'error', describeFfmpegError(e)).catch(() => undefined);
@@ -299,6 +307,41 @@ export class MeetingsService {
         created_at: new Date().toISOString(), edited_at: null, meeting_id: String(meetingId),
       },
     });
+  }
+
+  /**
+   * Итог созвона — в обсуждение задачи.
+   *
+   * Пишем обычным сообщением от того, кто созвон начал: в переписке задачи не должно
+   * быть сущностей, которые выглядят иначе и ведут себя иначе. Ссылка на разбор
+   * приложена — за подробностями человек идёт в раздел встреч, а факт разговора,
+   * длительность и краткий итог остаются в задаче навсегда.
+   *
+   * Ошибка здесь ничего не роняет: разбор уже сделан и лежит в митах.
+   */
+  private async postCardToTask(
+    tenantId: string, meetingId: string, taskId: string | null, actorId: string | null,
+  ): Promise<void> {
+    if (!taskId || !actorId) return;
+    const [meeting, summary, drafts] = await Promise.all([
+      this.repo.get(tenantId, meetingId),
+      this.repo.summary(tenantId, meetingId).catch(() => null),
+      this.repo.drafts(tenantId, meetingId).catch(() => []),
+    ]);
+    if (!meeting) return;
+
+    const mins = Math.max(1, Math.round(Number(meeting.duration_sec ?? 0) / 60));
+    const lines = [`Созвон по задаче завершён · ${mins} мин`];
+    const text = String((summary as { summary?: string } | null)?.summary ?? '').trim();
+    if (text) lines.push(text.slice(0, 1500));
+    if (drafts.length) lines.push(`Предложено задач по итогам: ${drafts.length}`);
+    lines.push(`Расшифровка и разбор: ${this.base()}/chat/meetings#m${meetingId}`);
+
+    await this.taskcard.addComment(tenantId, String(taskId), String(actorId), lines.join('\n'), false);
+  }
+
+  private base(): string {
+    return (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, '');
   }
 
   private async analyze(tenantId: string, meetingId: string, projectId: string | null, replies: Reply[]): Promise<void> {

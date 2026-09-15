@@ -37,6 +37,7 @@ import { ClientPortal } from './pages/ClientPortal';
 import { Toasts } from './components/Toasts';
 import { navigate, parsePath, Section, useRoute } from './lib/router';
 import { dropCache } from './lib/cache';
+import { START_CALL_EVENT, StartCallRequest } from './lib/notifications';
 import { useShortcuts } from './hooks/useShortcuts';
 import { ShortcutsHelp } from './components/ShortcutsHelp';
 import { prefetchFocus } from './pages/FocusPage';
@@ -74,6 +75,8 @@ export function App() {
   // созвон: id комнаты, в которой мы сейчас, и список идущих в организации
   const [callId, setCallId] = useState<string | null>(null);
   const [callInvite, setCallInvite] = useState<string[]>([]);
+  /** Видеозвонок: камера включается сразу. Комната та же — разница только в этом. */
+  const [callCamera, setCallCamera] = useState(false);
   // какой чат открыт — чтобы не слать уведомление о сообщении, которое человек и так видит
   const [openChatId, setOpenChatId] = useState<string | null>(null);
   const [activeCalls, setActiveCalls] = useState<{ id: string; participants: { userId?: string; displayName: string }[] }[]>([]);
@@ -232,6 +235,28 @@ export function App() {
       setCallId(room.id);
     } catch { /* недоступность медиа покажет само окно звонка */ }
   };
+
+  /*
+    Звонок из карточки задачи.
+
+    Приходит событием, а не свойством: карточку открывают доска, реестр, фокус дня и
+    поиск, и тащить обработчик созвона через все эти экраны ради одной кнопки —
+    лишнее. Комнате передаём задачу: итог разговора вернётся в её обсуждение.
+  */
+  useEffect(() => {
+    const onRequest = async (e: Event) => {
+      const req = (e as CustomEvent<StartCallRequest>).detail;
+      if (!req || callId) return;
+      try {
+        const room = await api.startCall(req.projectId ?? undefined, false, undefined, req.taskId ?? undefined);
+        setCallInvite(req.memberIds);
+        setCallCamera(req.video === true);
+        setCallId(room.id);
+      } catch { /* недоступность медиа покажет само окно звонка */ }
+    };
+    window.addEventListener(START_CALL_EVENT, onRequest);
+    return () => window.removeEventListener(START_CALL_EVENT, onRequest);
+  }, [callId]);
 
   /** Созвон из панели чатов: та же комната, что и из чата, только без переписки вокруг. */
   const startCallFromPanel = async ({ memberIds, withAi }: { memberIds: string[]; withAi: boolean }) => {
@@ -434,7 +459,14 @@ export function App() {
         onOpenFocus={() => navigate({ section: 'focus' })}
         onOpenMeetings={() => navigate({ section: 'chat', view: 'meetings' })}
       />
-      {callId && <CallPanel meetingId={callId} inviteUserIds={callInvite} onClose={() => { setCallId(null); setCallInvite([]); }} />}
+      {callId && (
+        <CallPanel
+          meetingId={callId}
+          inviteUserIds={callInvite}
+          withCamera={callCamera}
+          onClose={() => { setCallId(null); setCallInvite([]); setCallCamera(false); }}
+        />
+      )}
       {incoming && !callId && (
         <IncomingCallDialog
           call={incoming}
