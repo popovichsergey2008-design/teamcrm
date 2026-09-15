@@ -4171,3 +4171,10 @@
 .msg-sending { opacity: .6; }
 /* В широком режиме лента прокручивается сама, а не тянет за собой всю карточку. */
 .task-chat-wide .msg-feed { overflow-y: auto; }
+/* Записанное голосовое до отправки: плеер и три решения — послать, расшифровать, стереть. */
+.voice-note {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 6px 0; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+}
+.voice-note-player { flex: 1 1 220px; min-width: 0; height: 34px; }

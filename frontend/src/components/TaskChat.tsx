@@ -137,6 +137,11 @@ export function TaskChat({
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   /** Файл, выбранный или вставленный, но ещё не отправленный. */
   const [pending, setPending] = useState<{ file: File; url: string } | null>(null);
+  /** Записанное голосовое: его сначала слушают, а потом отправляют или стирают. */
+  const [note, setNote] = useState<{ blob: Blob; url: string } | null>(null);
+  const [noteBusy, setNoteBusy] = useState(false);
+  /** Уже поднимаем старое — второй раз на ту же прокрутку не идём. */
+  const [olderBusy, setOlderBusy] = useState(false);
   /** Куда прокрутили из истории — подсвечиваем, иначе непонятно, что именно нашли. */
   const [highlight, setHighlight] = useState<string | null>(null);
   /** У какого сообщения открыт выбор реакции: набор из шести эмодзи в каждой строке — мусор. */
@@ -181,6 +186,7 @@ export function TaskChat({
         setComments(rows);
         // «Всё загружено» решаем по факту: пришло меньше предела — выше ничего нет
         if (all || rows.length < 100) setFullyLoaded(true);
+        setOlderBusy(false);
       })
       .catch(() => undefined);
     api.taskActivity(taskId).then(setActivity).catch(() => undefined);
@@ -358,6 +364,51 @@ export function TaskChat({
     finally { setBusy(false); setSending(null); }
   };
 
+  const dropNote = () => setNote((prev) => {
+    if (prev?.url) URL.revokeObjectURL(prev.url);
+    return null;
+  });
+
+  /**
+   * Отправить голосовое.
+   *
+   * Сначала расшифровываем, потом отправляем одним сообщением: текст идёт подписью к
+   * аудио. Расшифровка не удалась (нет ключа, тишина в записи) — отправляем как есть:
+   * потерять голосовое из-за необязательной подписи было бы странно.
+   */
+  const sendNote = async () => {
+    if (!note) return;
+    setNoteBusy(true); setErr('');
+    try {
+      const stamp = new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const file = new File([note.blob], `Голосовое ${stamp}.webm`, { type: note.blob.type || 'audio/webm' });
+      let caption = '';
+      try { caption = (await api.nlTranscribe(note.blob)).text ?? ''; } catch { caption = ''; }
+      await api.addCommentFile(taskId, file, caption, replyTo?.id, replyTo?.excerpt);
+      dropNote(); setReplyTo(null); reload(); onRefresh();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Голосовое не отправилось'); }
+    finally { setNoteBusy(false); }
+  };
+
+  /**
+   * «В текст»: та же запись, но сообщением уходит расшифровка, а не аудио.
+   *
+   * Продиктовать формулировку и продиктовать объяснение — разные задачи, и решать за
+   * человека, что из этого он сейчас делает, нельзя: голосовое в переписке слушают
+   * минуту, текст читают пять секунд.
+   */
+  const noteToText = async () => {
+    if (!note) return;
+    setNoteBusy(true); setErr('');
+    try {
+      const { text } = await api.nlTranscribe(note.blob);
+      if (!text) setErr('Речь не распознана. Для голоса нужен ключ OpenAI (Whisper) в «Интеграции → ИИ».');
+      else setBody((prev) => (prev.trim() ? `${prev.trim()} ${text}` : text));
+      if (text) dropNote();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось распознать'); }
+    finally { setNoteBusy(false); }
+  };
+
   const remove = async (id: string) => {
     if (!window.confirm('Удалить сообщение? Восстановить его будет нельзя.')) return;
     try { await api.deleteComment(taskId, id); reload(); }
@@ -381,7 +432,27 @@ export function TaskChat({
   };
 
   // Голос: продиктовать замечание проще, чем набирать его на телефоне.
-  const voice = useVoiceInput((text) => { setBody((prev) => (prev.trim() ? prev.trim() + ' ' + text : text)); });
+  /*
+    Голосовое сообщение (ТЗ-7, разд. 13).
+
+    Раньше микрофон сразу превращал речь в текст. Это удобно, когда диктуешь
+    формулировку, но не отвечает на «объясни голосом, тут на две минуты»: интонация
+    и скорость пропадали. Теперь запись становится сообщением: её слушают.
+
+    Расшифровку всё равно делаем и кладём подписью — голосовое, которое нельзя найти
+    поиском и прочитать глазами в переговорке, наполовину бесполезно.
+  */
+  const voice = useVoiceInput(
+    (text) => { setBody((prev) => (prev.trim() ? prev.trim() + ' ' + text : text)); },
+    {
+      onBlob: (blob) => {
+        setNote((prev) => {
+          if (prev?.url) URL.revokeObjectURL(prev.url);
+          return { blob, url: URL.createObjectURL(blob) };
+        });
+      },
+    },
+  );
 
   /**
    * Ответить — и, если человек выделил кусок, ответить именно на него.
@@ -604,6 +675,17 @@ export function TaskChat({
           atBottomRef.current = bottom;
           setAtBottom(bottom);
           if (bottom) setUnseen(0);
+          /*
+            Докрутили до верха — поднимаем остальную переписку.
+
+            Кнопка «показать всю» осталась для тех, кто ищет глазами, но в мессенджере
+            история достаётся прокруткой: человек тянет ленту вверх и ждёт, что она
+            продолжится, а не что появится кнопка.
+          */
+          if (el.scrollTop < 60 && !fullyLoaded && !olderBusy) {
+            setOlderBusy(true);
+            reload(true);
+          }
         }}
         // Файл можно перетащить прямо в переписку — то же, что вставка из буфера.
         onDragOver={(e) => e.preventDefault()}
@@ -848,7 +930,7 @@ export function TaskChat({
             className={voice.recording ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost'}
             onClick={voice.toggle}
             disabled={busy || voice.transcribing}
-            title="Написать голосом"
+            title={voice.recording ? 'Остановить запись' : 'Записать голосовое'}
           >
             <Icon name={voice.recording ? 'stop' : 'mic'} size={14} />
           </button>
@@ -857,6 +939,20 @@ export function TaskChat({
           </button>
         </div>
       </div>
+      {/* Записанное — сначала послушать. Отправлять вслепую то, что человек только что
+          наговорил, значит слать в задачу кашель и «эээ» без возможности передумать. */}
+      {note && (
+        <div className="voice-note">
+          <audio className="voice-note-player" src={note.url} controls preload="metadata" />
+          <button className="btn btn-primary btn-sm" onClick={() => { void sendNote(); }} disabled={noteBusy}>
+            {noteBusy ? 'Отправляю…' : 'Отправить'}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { void noteToText(); }} disabled={noteBusy} title="Распознать и положить текстом в поле ввода">
+            В текст
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={dropNote} disabled={noteBusy}>Удалить</button>
+        </div>
+      )}
       <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="nl-voice" />
 
       <div className="drawer-section-title chat-history-head">

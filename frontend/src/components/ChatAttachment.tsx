@@ -32,8 +32,30 @@ export function ChatAttachment({ fileId, fileName, onOpen }: {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const mime = useRef<string>('');
+  /*
+    Грузим, только когда вложение подошло к экрану.
+
+    В задаче с сотней сообщений и десятком скриншотов прежний подход тянул все файлы
+    разом при открытии: секунды ожидания и мегабайты трафика ради картинок, до
+    которых человек, скорее всего, не долистает. Запас в 400 точек — чтобы к моменту
+    появления в поле зрения картинка уже была на месте, а не подгружалась на глазах.
+  */
+  const holder = useRef<HTMLElement | null>(null);
+  const [near, setNear] = useState(() => typeof IntersectionObserver === 'undefined');
 
   useEffect(() => {
+    if (near || (!isImage && !media)) return;
+    const el = holder.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { setNear(true); io.disconnect(); }
+    }, { rootMargin: '400px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near, isImage, media]);
+
+  useEffect(() => {
+    if (!near) return;
     if (!isImage && !media) return;
     let dead = false;
     let objectUrl = '';
@@ -46,7 +68,7 @@ export function ChatAttachment({ fileId, fileName, onOpen }: {
       })
       .catch(() => { if (!dead) setFailed(true); });
     return () => { dead = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [fileId, isImage, media]);
+  }, [fileId, isImage, media, near]);
 
   /** Не картинка (или картинка не загрузилась) — скачиваем по нажатию, тоже с токеном. */
   const download = async () => {
@@ -67,8 +89,9 @@ export function ChatAttachment({ fileId, fileName, onOpen }: {
       : <audio className="chat-clip-audio" src={url} controls preload="metadata" />;
   }
   if ((isImage || media) && !url && !failed) {
-    // место под запись занято, пока она грузится: иначе лента прыгает под курсором
-    return <span className="chat-img chat-img-wait" aria-hidden="true" />;
+    // Место под вложение занято, пока оно грузится: иначе лента прыгает под курсором.
+    // Этот же узел наблюдает пересечение с экраном — по нему и решаем, пора ли грузить.
+    return <span ref={holder} className="chat-img chat-img-wait" aria-hidden="true" />;
   }
 
   if (isImage && url) {
@@ -79,7 +102,7 @@ export function ChatAttachment({ fileId, fileName, onOpen }: {
     );
   }
   // пока грузится — место под картинку занято, иначе лента прыгает при появлении
-  if (isImage && !failed) return <span className="chat-img chat-img-wait" aria-hidden="true" />;
+  if (isImage && !failed) return <span ref={holder} className="chat-img chat-img-wait" aria-hidden="true" />;
 
   return (
     <button className="chat-file" onClick={download} title="Скачать">
