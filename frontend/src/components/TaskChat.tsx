@@ -15,6 +15,19 @@ import { useAuth } from '../state/auth';
 import { getSocket } from '../lib/socket';
 import { requestCall } from '../lib/notifications';
 
+/**
+ * Цвет имени автора.
+ *
+ * Считается из id, поэтому за человеком закреплён навсегда и совпадает у всех, кто
+ * читает переписку. Шесть оттенков: каждый проверен на контраст в обеих темах
+ * (`npm run contrast`), а больше глаз в ленте всё равно не различает.
+ */
+function whoColor(id: string): number {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 997;
+  return (h % 6) + 1;
+}
+
 /** Реакции: ответить «ок» знаком, не засоряя обсуждение и не будя участников. */
 const REACTIONS = ['👍', '❤️', '🔥', '👏', '😁', '🤔'];
 
@@ -157,10 +170,19 @@ export function TaskChat({
   const [alsoInChannel, setAlsoInChannel] = useState(false);
   /** Показывать ли список закреплённых: обычно он свёрнут в одну строку. */
   const [pinsOpen, setPinsOpen] = useState(false);
+  /** Панели шапки: участники, история, выбор способа звонка. Открыта всегда одна. */
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [histOpen, setHistOpen] = useState(false);
+  const [callOpen, setCallOpen] = useState(false);
+  /** Смайлы и быстрые вопросы к ИИ — прячутся в поле ввода, как в мессенджере. */
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
   /** Куда прокрутили из истории — подсвечиваем, иначе непонятно, что именно нашли. */
   const [highlight, setHighlight] = useState<string | null>(null);
   /** У какого сообщения открыт выбор реакции: набор из шести эмодзи в каждой строке — мусор. */
   const [reactFor, setReactFor] = useState<string | null>(null);
+  /** У какого сообщения раскрыто меню «⋯»: редкие действия не должны стоять в пузыре. */
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [allHistory, setAllHistory] = useState(false);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [advice, setAdvice] = useState<{
@@ -729,17 +751,22 @@ export function TaskChat({
         который не отвечал ни на один вопрос.
       */}
       <div className="task-chat-head">
+        <span className="task-chat-badge" aria-hidden="true"><Icon name="chat" size={17} /></span>
         <div className="task-chat-title">
-          <Icon name="chat" size={15} />
-          <span className="task-chat-name">{title ?? 'Чат задачи'}</span>
-          {status && <span className="badge badge-muted">{status}</span>}
-          {comments.length > 0 && <span className="dim chat-count">{comments.length}</span>}
-        </div>
-        <div className="task-chat-people">
-          {people.slice(0, 6).map((p) => (
-            <span key={p.id} className="task-chat-person" title={`${p.name} · ${p.role}`}>{initials(p.name)}</span>
-          ))}
-          {people.length > 6 && <span className="dim">+{people.length - 6}</span>}
+          <span className="task-chat-name">{wide && title ? title : 'Чат задачи'}</span>
+          {/*
+            Вторая строка — кто здесь. Список участников раскрывается по нажатию:
+            шесть кружков в шапке занимали место, а имён всё равно не показывали.
+          */}
+          <button
+            className="task-chat-sub"
+            onClick={() => { setPeopleOpen((v) => !v); setHistOpen(false); }}
+            aria-expanded={peopleOpen}
+          >
+            {people.length} {plural(people.length, 'участник', 'участника', 'участников')}
+            {status ? ` · ${status}` : ''}
+            <Icon name="chevron-down" size={12} />
+          </button>
         </div>
         <div className="task-chat-acts">
           {pinned.length > 0 && (
@@ -762,24 +789,35 @@ export function TaskChat({
             этого были бы обманом.
           */}
           {callTo.length > 0 && (
-            <>
+            <span className="chat-call">
               <button
-                className="msg-icon"
-                onClick={() => requestCall({ memberIds: callTo, projectId, taskId, title })}
-                title={`Позвонить: ${callNames}`}
-                aria-label="Позвонить участникам задачи"
-              >
-                <Icon name="phone" size={15} />
-              </button>
-              <button
-                className="msg-icon"
+                className="btn btn-primary btn-sm chat-call-main"
                 onClick={() => requestCall({ memberIds: callTo, projectId, taskId, title, video: true })}
                 title={`Видеозвонок: ${callNames}`}
-                aria-label="Видеозвонок с участниками задачи"
               >
-                <Icon name="video" size={15} />
+                <Icon name="video" size={14} /> Видеозвонок
               </button>
-            </>
+              <button
+                className="btn btn-primary btn-sm chat-call-more"
+                onClick={() => { setCallOpen((v) => !v); setPeopleOpen(false); setHistOpen(false); }}
+                title="Другие способы связи"
+                aria-label="Другие способы связи"
+                aria-expanded={callOpen}
+              >
+                <Icon name="chevron-down" size={13} />
+              </button>
+              {callOpen && (
+                <span className="chat-pop chat-call-pop">
+                  <button
+                    className="chat-pop-row"
+                    onClick={() => { setCallOpen(false); requestCall({ memberIds: callTo, projectId, taskId, title }); }}
+                  >
+                    <Icon name="phone" size={14} /> Аудиозвонок
+                  </button>
+                  <span className="dim chat-pop-note">Позвоним: {callNames}</span>
+                </span>
+              )}
+            </span>
           )}
           {comments.length > 5 && (
             <button
@@ -791,6 +829,15 @@ export function TaskChat({
               <Icon name="search" size={15} />
             </button>
           )}
+          <button
+            className={`msg-icon${histOpen ? ' active' : ''}`}
+            onClick={() => { setHistOpen((v) => !v); setPeopleOpen(false); }}
+            title="История задачи"
+            aria-label="История задачи"
+            aria-expanded={histOpen}
+          >
+            <Icon name="clock" size={15} />
+          </button>
           {onExpand && (
             <button className="msg-icon" onClick={onExpand} title="Развернуть на всю карточку" aria-label="Развернуть на всю карточку">
               <Icon name="maximize" size={15} />
@@ -803,6 +850,67 @@ export function TaskChat({
           )}
         </div>
       </div>
+
+      {/*
+        Кто в разговоре и кого позвать.
+
+        Участники задачи попадают в чат сами (постановщик, исполнитель, соисполнители,
+        наблюдатели) — здесь их видно поимённо и можно добавить ещё человека: он станет
+        наблюдателем задачи, а не только читателем переписки.
+      */}
+      {peopleOpen && (
+        <div className="chat-pop chat-people-pop">
+          {people.map((p) => (
+            <span key={p.id} className="chat-pop-row chat-person-row">
+              <span className="msg-avatar" aria-hidden="true">{initials(p.name)}</span>
+              {p.name} <span className="dim">· {p.role}</span>
+            </span>
+          ))}
+          <label className="chat-pop-add">
+            <Icon name="user-plus" size={14} />
+            <select
+              className="input"
+              value=""
+              onChange={(e) => {
+                const id = e.target.value;
+                if (!id) return;
+                void api.addTaskParticipant(taskId, id, 'watcher').then(() => { setPeopleOpen(false); onRefresh(); });
+              }}
+              aria-label="Добавить участника"
+            >
+              <option value="">Добавить участника…</option>
+              {users
+                .filter((u) => !people.some((p) => p.id === String(u.id)))
+                .map((u) => <option key={u.id} value={String(u.id)}>{u.fullName}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {/*
+        История задачи — панелью из шапки, а не хвостом под перепиской.
+
+        Раньше она лежала ниже поля ввода: чтобы дописать сообщение, приходилось
+        проматывать два десятка строк «изменил поля». Разговор и журнал — разные вещи.
+      */}
+      {histOpen && (
+        <div className="chat-pop chat-hist-pop">
+          {history.map((a: any) => {
+            const to = a.kind === 'commented' && a.detail?.commentId ? String(a.detail.commentId) : null;
+            const line = `${new Date(a.created_at).toLocaleString('ru-RU')} · ${a.actor_name ?? 'система'} · ${activityText(a)}`;
+            // Строка про сообщение ведёт к самому сообщению: история, из которой нельзя
+            // попасть в то, о чём она говорит, отсылает в никуда.
+            return to
+              ? <button key={a.id} className="activity-row activity-link" onClick={() => { setHistOpen(false); void goToMessage(to); }} title="Перейти к сообщению">{line}</button>
+              : <div key={a.id} className="dim activity-row">{line}</div>;
+          })}
+          {activity.length > 5 && (
+            <button className="msg-act" onClick={() => setAllHistory((v) => !v)}>
+              {allHistory ? 'Свернуть историю' : `Показать всю историю (${activity.length})`}
+            </button>
+          )}
+        </div>
+      )}
 
       {/*
         Закреплённые — свёрнуты в одну строку.
@@ -913,15 +1021,14 @@ export function TaskChat({
                   {grouped ? '' : c.is_ai ? <Icon name="robot" size={14} /> : initials(name)}
                 </div>
                 <div className="msg-main">
-                  {!grouped && (
-                    <div className="msg-head">
-                      <b className="msg-name">{name}</b>
-                      {/* Дата рядом со временем: черта дня выше есть, но сопоставлять
-                          с ней каждую реплику неудобно — заказчик сказал это прямо. */}
-                      <span className="msg-time" title={new Date(c.created_at).toLocaleString('ru-RU')}>{stampLabel(c.created_at)}</span>
-                      {c.edited_at && <span className="msg-time">· изменено</span>}
-                    </div>
-                  )}
+                  {/*
+                    Имя автора — цветом, как в любом мессенджере.
+
+                    Цвет закреплён за человеком (считается из его id), поэтому в длинной
+                    ленте видно, кто говорит, не вчитываясь в подпись. Шесть оттенков —
+                    больше глаз всё равно не различает.
+                  */}
+                  {!grouped && <b className={`msg-name msg-who-${whoColor(String(c.author_id))}`}>{name}</b>}
 
                   {/* Цитата: без неё «да, согласен» через десять реплик — согласие
                       неизвестно с чем. Клик ведёт к исходному сообщению. */}
@@ -940,6 +1047,12 @@ export function TaskChat({
                       onOpen={(url, fname, mime) => setPreview({ url, name: fname, mime })}
                     />
                   )}
+
+                  {/* Время — в углу пузыря, как в мессенджере: в строке с именем оно
+                      отодвигало подпись, а взгляд ищет его именно справа внизу. */}
+                  <span className="msg-stamp" title={new Date(c.created_at).toLocaleString('ru-RU')}>
+                    {stampLabel(c.created_at)}{c.edited_at ? ' · изменено' : ''}
+                  </span>
 
                   <div className="msg-foot">
                     {(c.reactions ?? []).map((r: any) => (
@@ -991,24 +1104,59 @@ export function TaskChat({
                         <Icon name="chat" size={12} /> {c.reply_count} {plural(Number(c.reply_count), 'ответ', 'ответа', 'ответов')}
                       </button>
                     )}
-                    <button
-                      className="msg-act"
-                      onClick={() => { void togglePin(String(c.id), !c.pinned_at); }}
-                      title={c.pinned_at ? 'Снять закрепление' : 'Закрепить: важное видно всем в шапке'}
-                    >
-                      {c.pinned_at ? 'Открепить' : 'Закрепить'}
-                    </button>
-                    {mine && (
-                      <>
-                        <button
-                          className="msg-act"
-                          onClick={() => { setEditing({ id: String(c.id), body: c.body }); setBody(c.body); }}
-                        >
-                          Изменить
-                        </button>
-                        <button className="msg-act msg-act-danger" onClick={() => remove(String(c.id))}>Удалить</button>
-                      </>
-                    )}
+                    {/*
+                      Редкие действия — в меню «⋯», а не строкой в пузыре.
+
+                      Закрепить, изменить, удалить нажимают раз в неделю, а места они
+                      занимали столько же, сколько сам текст. Кнопка меню видна всегда
+                      (не по наведению): на касании наведения не бывает, и то, что
+                      появляется только под курсором, для половины людей не существует.
+                    */}
+                    <span className="msg-actions">
+                      <button
+                        className="msg-act"
+                        onClick={() => setMenuFor(menuFor === String(c.id) ? null : String(c.id))}
+                        title="Ещё действия"
+                        aria-label="Ещё действия"
+                        aria-expanded={menuFor === String(c.id)}
+                      >
+                        <Icon name="more" size={14} />
+                      </button>
+                      {menuFor === String(c.id) && (
+                        <span className="msg-menu" role="menu">
+                          <button
+                            className="msg-menu-item"
+                            onClick={() => { setMenuFor(null); void togglePin(String(c.id), !c.pinned_at); }}
+                          >
+                            <Icon name="flag" size={13} /> {c.pinned_at ? 'Открепить' : 'Закрепить'}
+                          </button>
+                          {c.body && (
+                            <button
+                              className="msg-menu-item"
+                              onClick={() => { setMenuFor(null); void navigator.clipboard?.writeText(String(c.body)).catch(() => undefined); }}
+                            >
+                              <Icon name="copy" size={13} /> Копировать текст
+                            </button>
+                          )}
+                          {mine && (
+                            <>
+                              <button
+                                className="msg-menu-item"
+                                onClick={() => { setMenuFor(null); setEditing({ id: String(c.id), body: c.body }); setBody(c.body); }}
+                              >
+                                <Icon name="edit" size={13} /> Изменить
+                              </button>
+                              <button
+                                className="msg-menu-item msg-menu-danger"
+                                onClick={() => { setMenuFor(null); remove(String(c.id)); }}
+                              >
+                                <Icon name="trash" size={13} /> Удалить
+                              </button>
+                            </>
+                          )}
+                        </span>
+                      )}
+                    </span>
                   </div>
 
                   {/*
@@ -1127,13 +1275,17 @@ export function TaskChat({
         </button>
       )}
 
-      <div className="ai-quick">
-        {QUICK_ASKS.map((qa) => (
-          <button key={qa.label} className="btn btn-ghost btn-sm" disabled={busy} onClick={() => ask(qa.ask)}>
-            {qa.label}
-          </button>
-        ))}
-      </div>
+      {/* Быстрые вопросы к ИИ — по кнопке в поле ввода: пять кнопок над строкой
+          занимали место каждый день ради нажатия раз в неделю. */}
+      {quickOpen && (
+        <div className="ai-quick">
+          {QUICK_ASKS.map((qa) => (
+            <button key={qa.label} className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setQuickOpen(false); ask(qa.ask); }}>
+              {qa.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Кому отвечаем или что правим — видно прямо над полем, а не угадывается. */}
       {editing && (
@@ -1161,7 +1313,22 @@ export function TaskChat({
         </div>
       )}
 
+      {/*
+        Поле ввода — одной «таблеткой» внизу, как в мессенджере.
+
+        Скрепка слева, текст посередине, справа смайлы, голос и круглая отправка.
+        Раньше кнопки стояли строкой ПОД полем и уезжали за край экрана вместе с
+        ним: поле было частью прокручиваемой колонки, а не дном разговора.
+      */}
       <div className="comment-input" ref={composeRef}>
+        <label className="chat-tool" title="Прикрепить файл — или просто вставьте скриншот через Ctrl+V">
+          <Icon name="paperclip" size={17} />
+          <input
+            type="file"
+            hidden
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) attach(f); e.currentTarget.value = ''; }}
+          />
+        </label>
         <MentionField
           value={body}
           users={mentionUsers}
@@ -1173,30 +1340,63 @@ export function TaskChat({
             if (userId === AI_MENTION_ID) return;
             void api.addTaskParticipant(taskId, userId, 'watcher').catch(() => undefined);
           }}
-          rows={2}
+          rows={1}
           autoGrow
           placeholder={pending ? 'Подпись к вложению…' : 'Нажмите @, чтобы позвать человека или помощника'}
           onEnter={send}
         />
-        <div className="comment-actions">
-          <label className="btn btn-sm btn-ghost" title="Прикрепить файл — или просто вставьте скриншот через Ctrl+V">
-            <Icon name="paperclip" size={14} />
-            <input
-              type="file"
-              hidden
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) attach(f); e.currentTarget.value = ''; }}
-            />
-          </label>
+        <div className="chat-tools">
           <button
-            className={voice.recording ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost'}
+            className={`chat-tool${quickOpen ? ' active' : ''}`}
+            onClick={() => { setQuickOpen((v) => !v); setEmojiOpen(false); }}
+            disabled={busy}
+            title="Быстрые вопросы помощнику"
+            aria-label="Быстрые вопросы помощнику"
+            aria-expanded={quickOpen}
+          >
+            <Icon name="sparkles" size={17} />
+          </button>
+          <span className="chat-tool-wrap">
+            <button
+              className={`chat-tool${emojiOpen ? ' active' : ''}`}
+              onClick={() => { setEmojiOpen((v) => !v); setQuickOpen(false); }}
+              title="Смайлы"
+              aria-label="Смайлы"
+              aria-expanded={emojiOpen}
+            >
+              <Icon name="smile" size={17} />
+            </button>
+            {emojiOpen && (
+              <span className="react-pop chat-emoji-pop">
+                {REACTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    className="react-pop-btn"
+                    onClick={() => { setBody((v) => v + emoji); setEmojiOpen(false); }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </span>
+            )}
+          </span>
+          <button
+            className={`chat-tool${voice.recording ? ' recording' : ''}`}
             onClick={voice.toggle}
             disabled={busy || voice.transcribing}
             title={voice.recording ? 'Остановить запись' : 'Записать голосовое'}
+            aria-label={voice.recording ? 'Остановить запись' : 'Записать голосовое'}
           >
-            <Icon name={voice.recording ? 'stop' : 'mic'} size={14} />
+            <Icon name={voice.recording ? 'stop' : 'mic'} size={17} />
           </button>
-          <button className="btn btn-primary btn-sm" disabled={busy || (!body.trim() && !pending)} onClick={send}>
-            {busy ? '…' : editing ? 'Сохранить' : 'Отправить'}
+          <button
+            className="chat-send"
+            disabled={busy || (!body.trim() && !pending)}
+            onClick={send}
+            title={editing ? 'Сохранить' : 'Отправить'}
+            aria-label={editing ? 'Сохранить' : 'Отправить'}
+          >
+            <Icon name={editing ? 'check' : 'send'} size={17} />
           </button>
         </div>
       </div>
@@ -1215,24 +1415,6 @@ export function TaskChat({
         </div>
       )}
       <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="nl-voice" />
-
-      <div className="drawer-section-title chat-history-head">
-        <Icon name="clock" size={13} /> История
-      </div>
-      {history.map((a: any) => {
-        const to = a.kind === 'commented' && a.detail?.commentId ? String(a.detail.commentId) : null;
-        const line = `${new Date(a.created_at).toLocaleString('ru-RU')} · ${a.actor_name ?? 'система'} · ${activityText(a)}`;
-        // Строка про сообщение ведёт к самому сообщению: история, из которой нельзя
-        // попасть в то, о чём она говорит, отсылает в никуда.
-        return to
-          ? <button key={a.id} className="activity-row activity-link" onClick={() => goToMessage(to)} title="Перейти к сообщению">{line}</button>
-          : <div key={a.id} className="dim activity-row">{line}</div>;
-      })}
-      {activity.length > 5 && (
-        <button className="msg-act" onClick={() => setAllHistory((v) => !v)}>
-          {allHistory ? 'Свернуть историю' : `Показать всю историю (${activity.length})`}
-        </button>
-      )}
 
       {preview && <Lightbox url={preview.url} name={preview.name} mime={preview.mime} onClose={() => setPreview(null)} />}
     </div>
