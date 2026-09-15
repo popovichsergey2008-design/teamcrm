@@ -4201,3 +4201,6 @@
 .task-pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .task-pin-author { font-weight: 600; flex: 0 0 auto; }
 .task-pin-body { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Счётчик ответов — заметнее прочих действий: это вход в разговор, а не операция. */
+.msg-act-thread { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
+.task-thread-quote { margin-bottom: 4px; }

@@ -131,8 +131,7 @@ export function TaskChat({
   const [query, setQuery] = useState('');
   /** Поиск прячется за лупой в шапке: над лентой он отнимает место у разговора. */
   const [searchOpen, setSearchOpen] = useState(false);
-  /** Кому отвечаем и на какой именно кусок его сообщения. */
-  const [replyTo, setReplyTo] = useState<{ id: string; author: string; excerpt: string } | null>(null);
+
   /** Правка своего сообщения: сказанное вслух не переписывают, написанное — да. */
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   /** Файл, выбранный или вставленный, но ещё не отправленный. */
@@ -150,7 +149,11 @@ export function TaskChat({
    * вернулись в ленту, ничего не потеряв.
    */
   const [thread, setThread] = useState<{ rootId: string; replies: any[] } | null>(null);
+  /** Ссылка на открытую ветку: обработчик сокета вешается один раз и замыкание устареет. */
+  const threadRef = useRef<{ rootId: string } | null>(null);
   const [threadBody, setThreadBody] = useState('');
+  /** Выделенный кусок, на который отвечают: уедет цитатой вместе с ответом. */
+  const [threadQuote, setThreadQuote] = useState<{ author: string; excerpt: string } | null>(null);
   const [alsoInChannel, setAlsoInChannel] = useState(false);
   /** Показывать ли список закреплённых: обычно он свёрнут в одну строку. */
   const [pinsOpen, setPinsOpen] = useState(false);
@@ -222,7 +225,14 @@ export function TaskChat({
     const soon = (p: { taskId?: string }) => {
       if (String(p?.taskId ?? '') !== String(taskId)) return;
       if (timer) return;
-      timer = window.setTimeout(() => { timer = null; reload(fullyLoaded); }, 350);
+      timer = window.setTimeout(() => {
+        timer = null;
+        reload(fullyLoaded);
+        // Открытая ветка — тоже часть экрана: без этого чужой ответ в ней виден
+        // только после повторного открытия, а счётчик уже вырос.
+        const open = threadRef.current;
+        if (open) void openThread(open.rootId);
+      }, 350);
     };
     for (const ev of ['task.comment_added', 'task.attachment_added', 'task.comment_deleted']) socket.on(ev, soon);
     // «Глеб печатает…»: своё игнорируем — человеку незачем видеть самого себя
@@ -358,7 +368,7 @@ export function TaskChat({
         await api.editComment(taskId, editing.id, text);
         setEditing(null);
       } else if (pending) {
-        await api.addCommentFile(taskId, pending.file, text, replyTo?.id, replyTo?.excerpt);
+        await api.addCommentFile(taskId, pending.file, text);
         clearPending();
       } else {
         /*
@@ -369,9 +379,9 @@ export function TaskChat({
           второй раз. Пришёл ответ — временная строка сменяется настоящей.
         */
         setSending({ body: text, at: new Date().toISOString() });
-        await api.addComment(taskId, text, undefined, replyTo?.id, replyTo?.excerpt);
+        await api.addComment(taskId, text);
       }
-      setBody(''); setReplyTo(null); reload(); onRefresh();
+      setBody(''); reload(); onRefresh();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не отправилось'); }
     finally { setBusy(false); setSending(null); }
   };
@@ -380,6 +390,7 @@ export function TaskChat({
     try {
       const t = await api.taskThread(taskId, rootId);
       setThread(t);
+      threadRef.current = { rootId: t.rootId };
       setThreadBody(''); setAlsoInChannel(false);
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть ветку'); }
   };
@@ -388,15 +399,32 @@ export function TaskChat({
     const text = threadBody.trim();
     if (!text || !thread) return;
     setBusy(true); setErr('');
+    /*
+      Свой ответ показываем СРАЗУ, не дожидаясь сервера.
+
+      Секунда ожидания в ветке заметнее, чем в ленте: человек смотрит в одну точку
+      под сообщением и не понимает, ушёл ответ или нет. Настоящий ответ придёт с
+      перечитыванием ветки и заменит временный.
+    */
+    const optimistic = {
+      id: `tmp-${Date.now()}`, author_name: meName, body: text,
+      created_at: new Date().toISOString(), pending: true,
+    };
+    setThread((prev) => (prev ? { ...prev, replies: [...prev.replies, optimistic] } : prev));
+    setThreadBody('');
     try {
-      await api.addComment(taskId, text, undefined, undefined, undefined, {
+      await api.addComment(taskId, text, undefined, threadQuote ? thread.rootId : undefined, threadQuote?.excerpt, {
         rootId: thread.rootId, alsoInChannel,
       });
-      setThreadBody('');
+      setThreadQuote(null);
       // ветку перечитываем целиком: свой ответ должен встать на своё место по времени
       await openThread(thread.rootId);
       reload(fullyLoaded); onRefresh();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ответ не отправился'); }
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Ответ не отправился');
+      setThread((prev) => (prev ? { ...prev, replies: prev.replies.filter((x: any) => x.id !== optimistic.id) } : prev));
+      setThreadBody(text);
+    }
     finally { setBusy(false); }
   };
 
@@ -427,8 +455,8 @@ export function TaskChat({
       const file = new File([note.blob], `Голосовое ${stamp}.webm`, { type: note.blob.type || 'audio/webm' });
       let caption = '';
       try { caption = (await api.nlTranscribe(note.blob)).text ?? ''; } catch { caption = ''; }
-      await api.addCommentFile(taskId, file, caption, replyTo?.id, replyTo?.excerpt);
-      dropNote(); setReplyTo(null); reload(); onRefresh();
+      await api.addCommentFile(taskId, file, caption);
+      dropNote(); reload(); onRefresh();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Голосовое не отправилось'); }
     finally { setNoteBusy(false); }
   };
@@ -504,17 +532,23 @@ export function TaskChat({
    * простынёй текста) не отвечает, с чем именно согласны. Выделение берём только внутри
    * этого сообщения: случайный текст со стороны в цитату попасть не должен.
    */
+  /**
+   * «Ответить» — это ответ ПОД сообщением, а не реплика в конец ленты.
+   *
+   * Так и жаловались: ответ на сообщение из середины разговора оказывался внизу, и
+   * понять, к чему он, было нельзя. Теперь ответ уходит в ветку своего сообщения и
+   * виден прямо под ним. Выделенный кусок сохраняется цитатой: в длинном сообщении
+   * спорят об одном абзаце.
+   */
   const startReply = (c: any, node: Element | null) => {
     const sel = window.getSelection();
     const picked = sel && !sel.isCollapsed && node && sel.anchorNode && node.contains(sel.anchorNode)
       ? sel.toString().trim().slice(0, 600)
       : '';
-    setReplyTo({
-      id: String(c.id),
-      author: c.is_ai ? AI_MENTION_NAME : c.author_name,
-      excerpt: picked || String(c.body ?? '').slice(0, 300),
-    });
     setEditing(null);
+    setThreadQuote(picked ? { author: c.is_ai ? AI_MENTION_NAME : c.author_name, excerpt: picked } : null);
+    // ответ на ответ уходит в ту же ветку: её корень знает сервер
+    void openThread(String(c.thread_root_id ?? c.id));
   };
 
   /**
@@ -878,15 +912,13 @@ export function TaskChat({
                         Ответить
                       </button>
                     )}
-                    {!c.is_ai && !c.thread_root_id && (
+                    {Number(c.reply_count ?? 0) > 0 && (
                       <button
-                        className="msg-act"
+                        className="msg-act msg-act-thread"
                         onClick={() => { void openThread(String(c.id)); }}
-                        title="Обсудить отдельно: ответы уйдут в ветку и не засорят ленту"
+                        title="Показать ответы на это сообщение"
                       >
-                        {Number(c.reply_count ?? 0) > 0
-                          ? `${c.reply_count} ${plural(Number(c.reply_count), 'ответ', 'ответа', 'ответов')}`
-                          : 'В ветку'}
+                        <Icon name="chat" size={12} /> {c.reply_count} {plural(Number(c.reply_count), 'ответ', 'ответа', 'ответов')}
                       </button>
                     )}
                     <button
@@ -900,7 +932,7 @@ export function TaskChat({
                       <>
                         <button
                           className="msg-act"
-                          onClick={() => { setEditing({ id: String(c.id), body: c.body }); setBody(c.body); setReplyTo(null); }}
+                          onClick={() => { setEditing({ id: String(c.id), body: c.body }); setBody(c.body); }}
                         >
                           Изменить
                         </button>
@@ -924,13 +956,18 @@ export function TaskChat({
                         <button className="msg-act" onClick={() => setThread(null)}>Свернуть</button>
                       </div>
                       {thread.replies.map((r: any) => (
-                        <div key={r.id} className="msg msg-thread-reply">
+                        <div key={r.id} className={`msg msg-thread-reply${r.pending ? ' msg-sending' : ''}`}>
                           <div className="msg-avatar" aria-hidden="true">{initials(r.is_ai ? AI_MENTION_NAME : r.author_name)}</div>
                           <div className="msg-main">
                             <div className="msg-head">
                               <b className="msg-name">{r.is_ai ? AI_MENTION_NAME : r.author_name}</b>
                               <span className="msg-time">{stampLabel(r.created_at)}</span>
                             </div>
+                            {r.reply_body && (
+                              <div className="msg-quote task-thread-quote">
+                                <b>{r.reply_author ?? ''}</b>: {String(r.reply_body).slice(0, 200)}
+                              </div>
+                            )}
                             {r.body && <MessageText text={r.body} className="msg-text" />}
                             {r.file_id && (
                               <ChatAttachment
@@ -942,10 +979,17 @@ export function TaskChat({
                           </div>
                         </div>
                       ))}
+                      {threadQuote && (
+                        <div className="msg-quote task-thread-quote">
+                          <b>{threadQuote.author}</b>: {threadQuote.excerpt.slice(0, 200)}
+                          <button className="msg-act" onClick={() => setThreadQuote(null)}>Убрать</button>
+                        </div>
+                      )}
                       <div className="task-thread-input">
                         <textarea
                           className="input"
                           rows={2}
+                          autoFocus
                           value={threadBody}
                           onChange={(e) => setThreadBody(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendToThread(); } }}
@@ -1022,13 +1066,13 @@ export function TaskChat({
       </div>
 
       {/* Кому отвечаем или что правим — видно прямо над полем, а не угадывается. */}
-      {(replyTo || editing) && (
+      {editing && (
         <div className="comment-reply-to">
           <Icon name={editing ? 'edit' : 'reply'} size={13} />
           <span className="dim">
-            {editing ? 'Правите своё сообщение' : `В ответ ${replyTo?.author}: ${replyTo?.excerpt.slice(0, 80)}`}
+            Правите своё сообщение
           </span>
-          <button className="msg-act" onClick={() => { setReplyTo(null); setEditing(null); setBody(''); }}>Отмена</button>
+          <button className="msg-act" onClick={() => { setEditing(null); setBody(''); }}>Отмена</button>
         </div>
       )}
 
