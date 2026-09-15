@@ -1,4 +1,4 @@
-import { formatReview, parseReview } from './task-review.prompt';
+import { formatReview, parseNeeds, parseReview } from './task-review.prompt';
 
 describe('проверка задачи ИИ: разбор ответа и отчёт', () => {
   const good = JSON.stringify({
@@ -53,5 +53,53 @@ describe('проверка задачи ИИ: разбор ответа и от�
     expect(text).toContain('не приёмка работы');
     // процент уверенности наружу не выносим: цифра без объяснения даёт ложное доверие
     expect(text).not.toContain('0.6');
+  });
+
+  it('отчёт называет, по чему судил', () => {
+    const text = formatReview(parseReview(good)!, {
+      messages: 12, attachments: 3, history: 40, minutes: 185, images: 2,
+    });
+    expect(text).toContain('Смотрел: сообщений: 12');
+    expect(text).toContain('вложений: 3');
+    expect(text).toContain('снимков посмотрел: 2');
+    expect(text).toContain('записей истории: 40');
+    expect(text).toContain('учтено времени: 3 ч');
+  });
+
+  it('дозапросы видны в отчёте', () => {
+    const text = formatReview(parseReview(good)!, {
+      messages: 12, attachments: 1, history: 5, minutes: 0, images: 0,
+      extra: ['переписку целиком', 'файл «отчёт.docx»'],
+    });
+    expect(text).toContain('Дозапросил: переписку целиком; файл «отчёт.docx».');
+  });
+
+  it('просьба о материалах разбирается, выдумки отбрасываются', () => {
+    const needs = parseNeeds(JSON.stringify({
+      need: [
+        { 'чем': 'переписка' },
+        { 'чем': 'файл', 'что': 'отчёт.docx' },
+        { 'чем': 'удалить_задачу', 'что': '1288' },
+        { 'чем': 'база_знаний' },
+        { 'чем': 'база_знаний', 'что': 'регламент приёмки' },
+      ],
+    }));
+    expect(needs).toEqual([
+      { tool: 'переписка', arg: '' },
+      { tool: 'файл', arg: 'отчёт.docx' },
+      { tool: 'база_знаний', arg: 'регламент приёмки' },
+    ]);
+  });
+
+  it('обычный отчёт не принимают за просьбу о материалах', () => {
+    expect(parseNeeds(good)).toEqual([]);
+    expect(parseNeeds('модель промолчала')).toEqual([]);
+  });
+
+  it('когда смотреть было нечего — так и говорит, а не молчит', () => {
+    const text = formatReview(parseReview(good)!, {
+      messages: 0, attachments: 0, history: 0, minutes: 0, images: 0,
+    });
+    expect(text).toContain('Смотреть было нечего');
   });
 });

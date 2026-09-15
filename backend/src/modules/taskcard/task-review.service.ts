@@ -5,10 +5,15 @@ import { DbService } from '../../database/db.service';
 import { FilesService } from '../files/files.service';
 import { detectKind, extractText } from '../knowledge/file-text';
 import { TaskActivityRepository } from '../tasks/task-activity.repository';
-import { formatReview, parseReview, REVIEW_SYSTEM, ReviewResult } from './task-review.prompt';
+import { KnowledgeService } from '../knowledge/knowledge.service';
+import {
+  EvidenceNeed, formatReview, parseNeeds, parseReview, REVIEW_FINAL, REVIEW_SYSTEM, ReviewResult,
+} from './task-review.prompt';
 
 /** Сколько последних сообщений отдаём проверяющему: дальше растёт цена, а не качество. */
 const RECENT_MESSAGES = 40;
+/** Записей истории: по ним видно, что с задачей вообще делали и когда. */
+const RECENT_HISTORY = 40;
 /**
  * Сколько скриншотов показываем модели.
  *
@@ -20,6 +25,16 @@ const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 /** Сколько знаков берём из каждого приложенного документа. */
 const DOC_CHARS = 6000;
+/** Столько же — но когда документ запросили отдельно: значит, он и есть доказательство. */
+const DOC_CHARS_FULL = 20000;
+/**
+ * Сколько раз проверяющему разрешено дозапросить материалы.
+ *
+ * Два круга: первый — «дайте переписку целиком», второй — «а теперь вот этот файл».
+ * Дальше растёт только счёт за запросы: дозапрос третьего круга ни разу не менял
+ * вывод, зато удваивал время ответа.
+ */
+const MAX_ROUNDS = 2;
 
 /**
  * «Проверить задачу с помощью ИИ».
@@ -29,6 +44,13 @@ const DOC_CHARS = 6000;
  * и просим модель сверить обещанное с показанным. Отчёт ложится в переписку задачи,
  * как ответ помощника, и виден всем участникам.
  *
+ * Проверка идёт КРУГАМИ, а не одним вопросом. Если материалов не хватает, проверяющий
+ * возвращает не вердикт, а список того, что ему нужно (вся переписка без сокращений,
+ * полный текст конкретного файла, регламент из базы знаний), мы это достаём и
+ * спрашиваем снова. Так делает человек, которому дали неполную папку, — и именно
+ * этого не хватало: один заход по обрезанной карточке давал «подтверждений нет»
+ * там, где подтверждение лежало в письме на двадцать первом сообщении.
+ *
  * Границы, которые здесь важнее качества:
  *
  * 1. Это НЕ приёмка. Проверка ничего не закрывает и не двигает: решение о том,
@@ -37,6 +59,13 @@ const DOC_CHARS = 6000;
  *    только руками, и модель обязана это говорить прямо, называя, что посмотреть.
  * 3. Ничего не выдумывать: каждый вывод — со ссылкой на источник в задаче.
  */
+/** Как дозапрос выглядит в отчёте: человек должен видеть, за чем ИИ ходил. */
+function needLabel(n: EvidenceNeed): string {
+  if (n.tool === 'переписка') return 'переписку целиком';
+  if (n.tool === 'файл') return `файл «${n.arg}»`;
+  return `базу знаний по запросу «${n.arg}»`;
+}
+
 @Injectable()
 export class TaskReviewService {
   private readonly log = new Logger('TaskReview');
@@ -46,11 +75,13 @@ export class TaskReviewService {
     private readonly ai: AiService,
     private readonly files: FilesService,
     private readonly activity: TaskActivityRepository,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   async review(tenantId: string, taskId: string, userId: string) {
     const task = await this.db.one<any>(
       `SELECT t.id::text, t.title, t.description, t.priority, t.deadline_at, t.closed_at,
+              t.project_id::text AS project_id,
               t.approval_state, c.name AS column_name, p.name AS project_name,
               ua.full_name AS assignee_name, um.full_name AS creator_name
          FROM tasks t
@@ -63,7 +94,7 @@ export class TaskReviewService {
     );
     if (!task) throw AppException.notFound('Задача не найдена');
 
-    const [checklist, messages, attachments] = await Promise.all([
+    const [checklist, messages, attachments, history, spent] = await Promise.all([
       this.db.many<{ text: string; is_done: boolean }>(
         `SELECT text, is_done FROM task_checklist_items
           WHERE tenant_id=$1 AND task_id=$2 ORDER BY position`,
@@ -81,6 +112,27 @@ export class TaskReviewService {
            FROM task_attachments a JOIN files f ON f.id = a.file_id
           WHERE a.tenant_id=$1 AND a.task_id=$2
           ORDER BY a.created_at`,
+        [tenantId, taskId],
+      ),
+      /*
+        История задачи — след работы, которого не было у проверяющего раньше.
+
+        Из-за этого он судил по одному чек-листу и объявлял «не выполнено» там, где
+        задачу переносили по колонкам, прикладывали файлы и обсуждали неделю. Перенос
+        в «Тестирование» и приложенный отчёт — доказательства не хуже галочки.
+      */
+      this.db.many<{ kind: string; detail: unknown; created_at: Date; actor: string | null }>(
+        `SELECT a.kind, a.detail, a.created_at, u.full_name AS actor
+           FROM task_activity a LEFT JOIN users u ON u.id = a.actor_id
+          WHERE a.tenant_id=$1 AND a.task_id=$2
+          ORDER BY a.created_at DESC LIMIT $3`,
+        [tenantId, taskId, RECENT_HISTORY],
+      ),
+      /** Учтённое время: часы на задачу говорят о работе честнее любых отметок. */
+      this.db.one<{ minutes: string | null; people: string | null }>(
+        `SELECT ROUND(SUM(EXTRACT(EPOCH FROM (COALESCE(timestamp_end, now()) - timestamp_start)) / 60))::text AS minutes,
+                COUNT(DISTINCT user_id)::text AS people
+           FROM time_logs WHERE tenant_id=$1 AND task_id=$2`,
         [tenantId, taskId],
       ),
     ]);
@@ -108,6 +160,11 @@ export class TaskReviewService {
         текст: String(m.body ?? '').slice(0, 2000),
       })),
       вложения: attachments.map((a) => ({ имя: a.file_name, тип: a.content_type, байт: Number(a.size_bytes) })),
+      история_задачи: [...history].reverse().map((h) => ({
+        когда: h.created_at, кто: h.actor ?? 'система', что: h.kind, подробности: h.detail ?? null,
+      })),
+      учтено_времени_минут: Number(spent?.minutes ?? 0),
+      людей_списывали_время: Number(spent?.people ?? 0),
       текст_из_документов: docs,
       // Модель должна знать, чего она НЕ видела: иначе решит, что видела всё.
       не_смог_посмотреть: skipped,
@@ -115,24 +172,100 @@ export class TaskReviewService {
     };
 
     let parsed: ReviewResult | null = null;
+    const extra: { запрос: string; ответ: unknown }[] = [];
     try {
-      const raw = await this.ai.generate(
-        tenantId, REVIEW_SYSTEM, JSON.stringify(context, null, 1), 'task_review',
-        { images, params: { max_tokens: 1800 } },
-      );
-      parsed = parseReview(raw);
+      for (let round = 0; round <= MAX_ROUNDS && !parsed; round += 1) {
+        // На последнем круге просить материалы уже нельзя — нужен вывод.
+        const last = round === MAX_ROUNDS;
+        const raw = await this.ai.generate(
+          tenantId,
+          last ? `${REVIEW_SYSTEM}\n\n${REVIEW_FINAL}` : REVIEW_SYSTEM,
+          JSON.stringify(extra.length ? { ...context, дополнительно: extra } : context, null, 1),
+          'task_review',
+          { images, params: { max_tokens: 1800 } },
+        );
+        const needs = last ? [] : parseNeeds(raw);
+        if (needs.length) {
+          for (const n of needs) {
+            extra.push({ запрос: needLabel(n), ответ: await this.fetchEvidence(tenantId, taskId, task.project_id, attachments, n) });
+          }
+          continue;
+        }
+        parsed = parseReview(raw);
+      }
     } catch (e) {
       this.log.warn(`проверка задачи ${taskId}: ${(e as Error).message}`);
       throw AppException.conflict('ИИ сейчас недоступен — попробуйте позже');
     }
     if (!parsed) throw AppException.conflict('ИИ ответил непонятно — попробуйте ещё раз');
 
-    const body = formatReview(parsed);
+    const body = formatReview(parsed, {
+      messages: messages.length,
+      attachments: attachments.length,
+      history: history.length,
+      minutes: Number(spent?.minutes ?? 0),
+      images: images.length,
+      extra: extra.map((e) => e.запрос),
+    });
     await this.saveAiMessage(tenantId, taskId, userId, body);
     // В историю — факт и вывод: через неделю видно, кто и когда просил проверку.
     await this.activity.log(tenantId, taskId, userId, 'ai_review', { verdict: parsed.verdict });
 
     return { ...parsed, body };
+  }
+
+  /**
+   * Достать то, что проверяющий попросил.
+   *
+   * Каждый запрос выполняется НАШИМ кодом по закрытому списку: модель называет, что
+   * ей нужно, но не решает, откуда это брать. Иначе проверка задачи превратилась бы
+   * в произвольный доступ к данным арендатора.
+   */
+  private async fetchEvidence(
+    tenantId: string,
+    taskId: string,
+    projectId: string | null,
+    attachments: { file_id: string; file_name: string; content_type: string; size_bytes: string }[],
+    need: EvidenceNeed,
+  ): Promise<unknown> {
+    if (need.tool === 'переписка') {
+      const rows = await this.db.many<{ author_name: string; body: string; is_ai: boolean; created_at: Date }>(
+        `SELECT u.full_name AS author_name, c.body, c.is_ai, c.created_at
+           FROM task_comments c JOIN users u ON u.id = c.author_id
+          WHERE c.tenant_id=$1 AND c.task_id=$2
+          ORDER BY c.created_at`,
+        [tenantId, taskId],
+      );
+      return rows.map((m) => ({
+        кто: m.is_ai ? 'ИИ-помощник' : m.author_name, когда: m.created_at, текст: String(m.body ?? ''),
+      }));
+    }
+
+    if (need.tool === 'файл') {
+      const want = need.arg.toLowerCase();
+      const row = attachments.find((a) => a.file_name.toLowerCase() === want)
+        ?? attachments.find((a) => a.file_name.toLowerCase().includes(want));
+      if (!row) return 'такого вложения в задаче нет';
+      if (String(row.content_type ?? '').startsWith('image/')) return 'это снимок — он уже показан выше';
+      try {
+        const buf = await this.bytes(tenantId, String(row.file_id));
+        const text = buf ? (await extractText(buf, row.file_name, row.content_type))?.text?.trim() ?? '' : '';
+        return text ? { имя: row.file_name, текст: text.slice(0, DOC_CHARS_FULL) } : 'текст из файла не извлёкся';
+      } catch (e) {
+        this.log.debug?.(`дозапрос файла ${row.file_name}: ${(e as Error).message}`);
+        return 'файл прочитать не удалось';
+      }
+    }
+
+    try {
+      const hits = await this.knowledge.search(tenantId, need.arg, 5, projectId ?? undefined);
+      return hits.length
+        ? hits.map((h) => ({ откуда: h.title ?? h.sourceType, проект: h.projectName, фрагмент: h.snippet }))
+        : 'в базе знаний по этому запросу ничего нет';
+    } catch (e) {
+      this.log.debug?.(`дозапрос базы знаний «${need.arg}»: ${(e as Error).message}`);
+      return 'база знаний сейчас недоступна';
+    }
   }
 
   /**
