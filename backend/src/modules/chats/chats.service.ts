@@ -238,7 +238,14 @@ export class ChatsService {
   async messages(tenantId: string, chatId: string, user: { userId: string; role: string }, beforeId?: string) {
     const chat = await this.access(tenantId, chatId, user);
     const rows = await this.repo.messages(tenantId, chatId, beforeId ?? null, PAGE, user.userId);
-    await this.repo.markRead(tenantId, chatId, user.userId);
+    /*
+      Прочитанным считаем ТОЛЬКО открытие чата, а не подгрузку старого.
+
+      Человек тянет ленту вверх, чтобы перечитать позавчерашнее, — и в этот момент
+      гасились счётчики новых сообщений, до которых он ещё не дошёл. То же самое
+      делает и переход к сообщению из поиска.
+    */
+    if (!beforeId) await this.repo.markRead(tenantId, chatId, user.userId);
     /*
       Открыли чат — значит прочитали, и собеседник должен увидеть вторую галочку СЕЙЧАС.
 

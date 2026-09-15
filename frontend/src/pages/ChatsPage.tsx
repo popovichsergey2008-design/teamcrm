@@ -176,6 +176,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * и в его замыкании лежал бы список на момент создания функции.
    */
   const [unreadFrom, setUnreadFrom] = useState<string | null>(null);
+  /**
+   * Виден ли раздел прямо сейчас.
+   *
+   * Разделы не размонтируются при уходе (App держит их живыми ради состояния и
+   * прокрутки), поэтому «чат открыт» и «человек его видит» — разные вещи. Из-за
+   * этого новые сообщения в последнем открытом чате помечались прочитанными, пока
+   * человек работал в задачах: кружочек непрочитанного не появлялся вовсе.
+   *
+   * У скрытого через `display: none` узла нет offsetParent — это и есть проверка.
+   */
+  const onScreen = () => !!feedRef.current?.offsetParent;
   const chatsRef = useRef<Chat[]>([]);
   useEffect(() => { chatsRef.current = chats; }, [chats]);
   const [users, setUsers] = useState<User[]>([]);
@@ -520,7 +531,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
           одновременно с отметкой и возвращал старый счётчик — единица висела на
           чате, пока по нему не щёлкнешь ещё раз. Ровно на это и жаловались.
         */
-        if (!document.hidden) {
+        if (!document.hidden && onScreen()) {
           api.markChatRead(p.chatId)
             .then(() => { reload(); notifyChatsChanged(); })
             .catch(() => reload());
@@ -706,7 +717,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   useEffect(() => {
     if (!activeId) return;
     const onBack = () => {
-      if (document.hidden) return;
+      if (document.hidden || !onScreen()) return;
       api.markChatRead(activeId)
         .then(() => { reload(); notifyChatsChanged(); })
         .catch(() => undefined);

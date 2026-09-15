@@ -458,4 +458,32 @@ describe('Чаты команды (e2e)', () => {
     expect(inbox.mentions.some((m: any) => String(m.id) === String(second.id))).toBe(false);
     expect(inbox.mentions.some((m: any) => String(m.id) === String(called.id))).toBe(true);
   });
+
+  it('подгрузка старого не гасит непрочитанное', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Unread', email: `unr_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const mateEmail = `unrm_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(O)
+      .send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+
+    const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: String(mate.id) }).expect(201)).body.data;
+    const first = (await http$.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'первое' }).expect(201)).body.data;
+    await http$.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'второе' }).expect(201);
+
+    const unreadOf = async () => {
+      const list = (await http$.get('/api/chats').set(M).expect(200)).body.data;
+      return Number(list.find((c: any) => String(c.id) === String(chat.id))?.unread ?? 0);
+    };
+    expect(await unreadOf()).toBe(2);
+
+    // Человек тянет ленту вверх, чтобы перечитать старое: это не чтение нового.
+    await http$.get(`/api/chats/${chat.id}/messages?before=${first.id}`).set(M).expect(200);
+    expect(await unreadOf()).toBe(2);
+
+    // А вот открытие чата — чтение
+    await http$.get(`/api/chats/${chat.id}/messages`).set(M).expect(200);
+    expect(await unreadOf()).toBe(0);
+  });
 });
