@@ -108,9 +108,22 @@ export class TaskReviewService {
           ORDER BY c.created_at DESC LIMIT $3`,
         [tenantId, taskId, RECENT_MESSAGES],
       ),
-      this.db.many<{ file_id: string; file_name: string; content_type: string; size_bytes: string }>(
-        `SELECT a.file_id, f.file_name, f.content_type, f.size_bytes
-           FROM task_attachments a JOIN files f ON f.id = a.file_id
+      /*
+        Вложения — со временем и автором.
+
+        Без этого проверяющий не отличал свежий отчётный снимок от старого «как было»
+        и упорно судил по первому приложенному. Время и имя приложившего дают порядок,
+        в котором материалы и надо читать: сначала последнее.
+      */
+      this.db.many<{
+        file_id: string; file_name: string; content_type: string; size_bytes: string;
+        created_at: Date; author: string | null;
+      }>(
+        `SELECT a.file_id, f.file_name, f.content_type, f.size_bytes, a.created_at,
+                u.full_name AS author
+           FROM task_attachments a
+           JOIN files f ON f.id = a.file_id
+      LEFT JOIN users u ON u.id = f.uploaded_by
           WHERE a.tenant_id=$1 AND a.task_id=$2
           ORDER BY a.created_at`,
         [tenantId, taskId],
@@ -138,7 +151,12 @@ export class TaskReviewService {
       ),
     ]);
 
-    const { images, docs, skipped } = await this.readAttachments(tenantId, attachments);
+    const { images, docs, skipped, shots } = await this.readAttachments(tenantId, attachments);
+    /** Когда проверяли в прошлый раз: отчёт помощника — такое же сообщение в ленте. */
+    const lastReview = messages
+      .filter((m) => m.is_ai && /^Провер/.test(String(m.body ?? '')))
+      .map((m) => new Date(m.created_at))
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
 
     const context = {
       задача: {
@@ -160,7 +178,31 @@ export class TaskReviewService {
         когда: m.created_at,
         текст: String(m.body ?? '').slice(0, 2000),
       })),
-      вложения: attachments.map((a) => ({ имя: a.file_name, тип: a.content_type, байт: Number(a.size_bytes) })),
+      вложения: attachments.map((a) => ({
+        имя: a.file_name, тип: a.content_type, байт: Number(a.size_bytes),
+        когда: a.created_at, кто: a.author ?? '—',
+      })),
+      /*
+        Подписи к снимкам идут ТЕМ ЖЕ порядком, что и сами картинки в запросе.
+
+        Иначе модель видит четыре картинки без единой пометки и не может сказать, какая
+        из них свежая. Заказчик: «повторно кидаешь скрин, а он смотрит на первый».
+      */
+      снимки: shots,
+      /** Показываем последние: старый снимок отвечает на вопрос «как было», а не «как стало». */
+      снимков_показано: images.length,
+      /*
+        Что появилось ПОСЛЕ прошлой проверки.
+
+        Повторную проверку зовут не от скуки: человек ответил на замечания и приложил
+        новое. Без этой отметки проверяющий перечитывал всё с начала и повторял прежний
+        вывод — заказчик так и сказал: «кидаешь новый скрин, а он смотрит на первый».
+      */
+      прошлая_проверка: lastReview ? {
+        когда: lastReview,
+        новых_сообщений: messages.filter((m) => new Date(m.created_at) > lastReview && !m.is_ai).length,
+        новых_вложений: attachments.filter((a) => new Date(a.created_at) > lastReview).length,
+      } : null,
       история_задачи: [...history].reverse().map((h) => ({
         когда: h.created_at, кто: h.actor ?? 'система', что: h.kind, подробности: h.detail ?? null,
       })),
@@ -287,17 +329,35 @@ export class TaskReviewService {
    */
   private async readAttachments(
     tenantId: string,
-    rows: { file_id: string; file_name: string; content_type: string; size_bytes: string }[],
+    rows: {
+      file_id: string; file_name: string; content_type: string; size_bytes: string;
+      created_at?: Date; author?: string | null;
+    }[],
   ) {
     const images: { mime: string; base64: string }[] = [];
     const docs: { имя: string; текст: string }[] = [];
     const skipped: string[] = [];
+    const shots: { номер: number; имя: string; когда: Date | null; кто: string }[] = [];
+
+    /*
+      Берём ПОСЛЕДНИЕ четыре снимка, а не первые.
+
+      Раньше отбор шёл с начала списка, и в задаче с историей проверяющий всегда
+      смотрел на самые старые картинки: человек прикладывал свежий отчёт, а ответ
+      приходил про то, как было неделю назад. Отобрали свежие — и вернули порядок
+      по времени: рассуждать удобнее слева направо, от раннего к позднему.
+    */
+    const pics = rows.filter((a) => String(a.content_type ?? '').startsWith('image/'));
+    const fresh = new Set(pics.slice(-MAX_IMAGES).map((a) => String(a.file_id)));
+    for (const a of pics.slice(0, Math.max(0, pics.length - MAX_IMAGES))) {
+      skipped.push(`${a.file_name} (старый снимок — показали ${MAX_IMAGES} последних)`);
+    }
 
     for (const a of rows) {
       const mime = String(a.content_type ?? '');
       const size = Number(a.size_bytes ?? 0);
       const isImage = mime.startsWith('image/');
-      if (isImage && images.length >= MAX_IMAGES) { skipped.push(`${a.file_name} (показали только первые ${MAX_IMAGES} снимков)`); continue; }
+      if (isImage && !fresh.has(String(a.file_id))) continue;
       if (isImage && size > MAX_IMAGE_BYTES) { skipped.push(`${a.file_name} (снимок слишком большой)`); continue; }
       // detectKind вернул пусто — формат нам незнаком (видео, архив, что угодно).
       if (!isImage && !detectKind(a.file_name, mime)) { skipped.push(`${a.file_name} (${mime || 'неизвестный тип'} — прочитать нечем)`); continue; }
@@ -307,6 +367,10 @@ export class TaskReviewService {
         if (!buf) { skipped.push(`${a.file_name} (не удалось скачать)`); continue; }
         if (isImage) {
           images.push({ mime, base64: buf.toString('base64') });
+          shots.push({
+            номер: images.length, имя: a.file_name,
+            когда: a.created_at ?? null, кто: a.author ?? '—',
+          });
         } else {
           const text = (await extractText(buf, a.file_name, mime))?.text?.trim() ?? '';
           if (text) docs.push({ имя: a.file_name, текст: text.slice(0, DOC_CHARS) });
@@ -317,7 +381,7 @@ export class TaskReviewService {
         this.log.debug?.(`вложение ${a.file_name}: ${(e as Error).message}`);
       }
     }
-    return { images, docs, skipped };
+    return { images, docs, skipped, shots };
   }
 
   private async bytes(tenantId: string, fileId: string): Promise<Buffer | null> {

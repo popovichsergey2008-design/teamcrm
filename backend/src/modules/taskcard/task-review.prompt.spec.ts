@@ -103,6 +103,34 @@ describe('проверка задачи ИИ: разбор ответа и от�
     expect(formatReview(r)).toContain('? Позвонить клиенту');
   });
 
+  it('довод «в чек-листе не отмечено» вычищается', () => {
+    // живой случай: на снимке видно и название, и ссылку, а пункты объявлены неподтверждёнными
+    const r = settleVerdict(parseReview(JSON.stringify({
+      verdict: 'partial',
+      summary: 'Не все пункты подтверждены.',
+      checked: [
+        { what: 'Нажать на логотип', status: 'no', evidence: 'в чек-листе не отмечено' },
+        { what: 'Переход ведёт на anthill.team', status: 'ok', evidence: 'видно на снимке' },
+      ],
+    }))!, { messages: 1, attachments: 2, history: 4, minutes: 0, images: 2, checklistDone: 0, checklistTotal: 3 });
+    expect(r.checked[0].status).toBe('no_proof');
+    expect(r.checked[0].evidence).toBe('в материалах задачи подтверждения не нашёл');
+    // у подтверждённого пункта довод не трогаем
+    expect(r.checked[1].evidence).toBe('видно на снимке');
+  });
+
+  it('все пункты подтверждены — вывод «сделано», а не «сделано не всё»', () => {
+    const r = settleVerdict(parseReview(JSON.stringify({
+      verdict: 'partial',
+      summary: 'Проверены требования.',
+      checked: [
+        { what: 'Логотип ведёт на главную', status: 'ok', evidence: 'на снимке открыт anthill.team' },
+        { what: 'Название заменено', status: 'ok', evidence: 'на снимке видно «anthill.team»' },
+      ],
+    }))!, { messages: 1, attachments: 1, history: 3, minutes: 0, images: 1 });
+    expect(r.verdict).toBe('done');
+  });
+
   it('чек-лист попадает в строку «Смотрел»', () => {
     const text = formatReview(parseReview(good)!, {
       messages: 4, attachments: 0, history: 14, minutes: 180, images: 0, checklistDone: 3, checklistTotal: 3,
