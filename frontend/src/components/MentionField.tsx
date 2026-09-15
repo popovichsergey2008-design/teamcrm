@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Avatar } from './Avatar';
+import { htmlToMd } from '../lib/rich-text';
 import { activeQuery, MentionUser, suggest } from '../lib/mentions';
 
 /**
@@ -98,6 +99,36 @@ export function MentionField({
       setCaret(e.target.selectionStart ?? e.target.value.length);
       setOpen(true);
       setActive(0);
+    },
+    /*
+      Вставка из Word, Google Docs, почты или с сайта.
+
+      В буфере лежит и HTML, и плоский текст. Браузер по умолчанию берёт плоский —
+      и вместе с ним пропадают списки, жирный, заголовки: приходит стена слов.
+      Берём HTML и переводим его в ту же разметку, которой живут описания задач
+      (`**жирный**`, `- пункт`), — сообщение потом показывается со списками и
+      абзацами, а в базе остаётся читаемый текст.
+
+      Если HTML нет (скопировали из блокнота) — не вмешиваемся вовсе: пусть работает
+      обычная вставка со всеми её привычками, включая отмену по Ctrl+Z.
+    */
+    onPaste: (e: React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const html = e.clipboardData?.getData('text/html');
+      if (!html?.trim()) return;
+      const md = htmlToMd(new DOMParser().parseFromString(html, 'text/html').body);
+      if (!md.trim()) return;
+      e.preventDefault();
+      const el = e.currentTarget;
+      const from = el.selectionStart ?? value.length;
+      const to = el.selectionEnd ?? from;
+      const next = `${value.slice(0, from)}${md}${value.slice(to)}`;
+      onChange(next);
+      // курсор — за вставленным куском: человек продолжает печатать с этого места
+      requestAnimationFrame(() => {
+        const pos = from + md.length;
+        el.setSelectionRange(pos, pos);
+        setCaret(pos);
+      });
     },
     onKeyDown: keyDown,
     onKeyUp: (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) =>

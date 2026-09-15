@@ -1258,7 +1258,7 @@
 .msg-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .msg-name { font-size: 13px; }
 .msg-time { font-size: 11px; color: var(--text-mut); }
-.msg-text { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+.msg-text { font-size: 14px; word-break: break-word; }
 /* Упоминание — самое важное в сообщении: его ищут глазами, а серой стеной оно не видно. */
 .msg-mention { color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 3px; }
 /* Своё сообщение и ответ помощника отличаются подложкой, а не выравниванием:
@@ -2518,7 +2518,7 @@
   background: var(--accent-soft); border-color: var(--accent-line);
 }
 .chat-author { font-size: 11px; color: var(--accent); margin-bottom: 2px; }
-.chat-body { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+.chat-body { font-size: 14px; word-break: break-word; }
 /* Файл больше не ссылка, а кнопка: он лежит за авторизацией и по прямому адресу
    отдавал 401 — скачиваем с токеном. Цвет берём у плашки, чтобы читалось на обеих. */
 .chat-file {
@@ -4204,3 +4204,22 @@
 /* Счётчик ответов — заметнее прочих действий: это вход в разговор, а не операция. */
 .msg-act-thread { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
 .task-thread-quote { margin-bottom: 4px; }
+
+/*
+  ───── Разметка внутри сообщения ─────
+
+  Сообщение показывается тем же разбором, что и описание задачи: списки, заголовки,
+  абзацы. Переносы строк живут в самом HTML (<br>), поэтому pre-wrap здесь больше не
+  нужен — с ним каждый перенос удваивался бы.
+
+  Отступы скромные: сообщение остаётся репликой в разговоре, а не документом.
+*/
+.msg-rich > :first-child { margin-top: 0; }
+.msg-rich > :last-child { margin-bottom: 0; }
+.msg-rich p { margin: 0 0 6px; }
+.msg-rich ul, .msg-rich ol { margin: 4px 0 6px; padding-left: 22px; }
+.msg-rich li { margin: 2px 0; }
+.msg-rich h2 { font-size: 16px; margin: 6px 0 4px; }
+.msg-rich h3 { font-size: 15px; margin: 6px 0 4px; }
+.msg-rich h4 { font-size: 14px; margin: 6px 0 4px; }
+.msg-rich img { max-width: 100%; border-radius: 8px; }

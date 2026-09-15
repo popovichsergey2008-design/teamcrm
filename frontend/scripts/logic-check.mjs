@@ -454,6 +454,44 @@ test('черта «непрочитанные»: перед первым нов�
   assert.equal(firstUnreadId(feed, 2, '7'), '4', 'id приходят и строками, и числами');
 });
 
+test('вставка из Word и с сайта: списки и абзацы доезжают до сообщения', async () => {
+  const { htmlToMd, mdToHtml } = await load('lib/rich-text.ts');
+
+  // игрушечный DOM: браузера здесь нет, а разбор обязан быть проверяемым
+  const text = (v) => ({ nodeType: 3, nodeName: '#text', textContent: v, childNodes: [] });
+  const el = (name, kids = [], attrs = {}) => ({
+    nodeType: 1, nodeName: name.toUpperCase(), textContent: null, childNodes: kids,
+    getAttribute: (k) => attrs[k] ?? null,
+  });
+
+  /*
+    Так выглядит буфер после копирования из Word: абзацы <p>, маркированный список,
+    жирный внутри строки и мусорные стили. Всё лишнее разбор игнорирует, смысл —
+    сохраняет.
+  */
+  const word = el('body', [
+    el('p', [text('Что нужно сделать:')], { style: 'mso-margin-top-alt:auto' }),
+    el('ul', [
+      el('li', [text('собрать смету')]),
+      el('li', [el('b', [text('согласовать')]), text(' с клиентом')]),
+    ]),
+    el('p', [text('Срок — пятница.')]),
+  ]);
+  const md = htmlToMd(word);
+  // перед списком пустая строка не нужна: список и так открывает свой блок,
+  // а лишний перенос дал бы в переписке дыру на ровном месте
+  assert.equal(md, 'Что нужно сделать:\n- собрать смету\n- **согласовать** с клиентом\n\nСрок — пятница.');
+
+  // и обратно: в переписке это список, а не стена слов
+  const html = mdToHtml(md);
+  assert.ok(html.includes('<ul><li>собрать смету</li>'), 'список остаётся списком');
+  assert.ok(html.includes('<strong>согласовать</strong>'), 'жирный остаётся жирным');
+  assert.ok(html.includes('<p>Срок — пятница.</p>'), 'абзац отделён от списка');
+
+  // перенос строки внутри абзаца не теряется и не удваивается
+  assert.equal(mdToHtml('первая\nвторая'), '<p>первая<br>вторая</p>');
+});
+
 test('описание задачи: разметка → HTML и обратно, без потерь и без мусора', async () => {
   const { mdToHtml, htmlToMd, inlineToHtml } = await load('lib/rich-text.ts');
 
