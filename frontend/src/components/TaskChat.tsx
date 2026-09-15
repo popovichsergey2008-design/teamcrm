@@ -12,6 +12,7 @@ import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from
 import { orderMentions } from '../lib/task-mentions';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useAuth } from '../state/auth';
+import { getSocket } from '../lib/socket';
 
 /** Реакции: ответить «ок» знаком, не засоряя обсуждение и не будя участников. */
 const REACTIONS = ['👍', '❤️', '🔥', '👏', '😁', '🤔'];
@@ -146,6 +147,37 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reload(); }, [taskId]);
+  /*
+    Живое обсуждение задачи.
+
+    Раньше карточка не слушала сокет вовсе: коллега писал в обсуждении, а увидеть это
+    можно было только перезагрузкой страницы или переоткрытием задачи. В чатах так
+    давно не работает — в задачах должно быть так же.
+
+    Перечитываем пачкой: на бурное обсуждение прилетает десяток событий подряд, и
+    десять запросов подряд ради одного и того же списка не нужны. Своё сообщение
+    уже на экране — перечитывание его не двоит, список приходит с сервера целиком.
+  */
+  useEffect(() => {
+    const socket = getSocket();
+    let timer: number | null = null;
+    const soon = (p: { taskId?: string }) => {
+      if (String(p?.taskId ?? '') !== String(taskId)) return;
+      if (timer) return;
+      timer = window.setTimeout(() => { timer = null; reload(fullyLoaded); }, 350);
+    };
+    for (const ev of ['task.comment_added', 'task.attachment_added', 'task.comment_deleted']) socket.on(ev, soon);
+    // связь моргнула — догоняем пропущенное, иначе обсуждение застынет на моменте обрыва
+    const onReconnect = () => reload(fullyLoaded);
+    socket.on('connect', onReconnect);
+    return () => {
+      for (const ev of ['task.comment_added', 'task.attachment_added', 'task.comment_deleted']) socket.off(ev, soon);
+      socket.off('connect', onReconnect);
+      if (timer) window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, fullyLoaded]);
+
   // Отчёт проверки ИИ ложится в переписку с сервера — обсуждение обязано его показать
   // сразу, а не после переоткрытия карточки.
   useEffect(() => {

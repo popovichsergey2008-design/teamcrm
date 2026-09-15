@@ -4070,3 +4070,46 @@
 }
 .anthill-ctx-add:hover { color: var(--text-dim); border-color: var(--text-mut); }
 .anthill-ctx-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/*
+  ───── Узкий экран: чаты, треды, миты ─────
+
+  Список чатов и переписка рядом требуют минимум тысячи точек. На телефоне и в
+  половине окна поле ввода из-за этого сжималось до щели — на это и жаловались.
+  Решение как в мессенджерах: показываем что-то одно, а вернуться к списку даёт
+  стрелка в шапке.
+*/
+@media (max-width: 900px) {
+  .chats:not(.chats-overlay) .chat-list { width: 100%; }
+  .chats.chats-picked:not(.chats-overlay) .chat-list { display: none; }
+  .chats:not(.chats-picked):not(.chats-overlay) .chat-view { display: none; }
+  .chat-back { display: inline-flex; }
+
+  /* Поле ввода — своей строкой во всю ширину, кнопки под ним: так в него видно,
+     что пишешь, а не последние два слова. */
+  .chat-input { flex-wrap: wrap; padding: 8px 12px; }
+  .chat-input > .input,
+  .chat-input .mention-wrap { flex: 1 1 100%; }
+  .chat-input .btn { flex: 0 0 auto; }
+
+  .chat-feed { padding: 10px 12px; }
+  .chat-head { padding: 10px 12px; }
+  .chat-view-head { flex-wrap: wrap; }
+  /* Ветка на узком экране — поверх переписки целиком, а не колонкой сбоку. */
+  .chat-thread { position: absolute; inset: 0; width: auto; z-index: 30; }
+  .chats { position: relative; }
+}
+
+/* Стрелка «назад» нужна только там, где список спрятан. */
+.chat-back { display: none; }
+
+@media (max-width: 720px) {
+  /* Миты: строка списка перестаёт быть строкой — иначе название и метки давят
+     друг друга, а на экране 360 точек от названия остаётся два слова. */
+  .mytasks { padding: 12px; }
+  .add-user .input, .add-user .btn { width: 100%; }
+  .list-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .list-title { max-width: 100%; white-space: normal; }
+  .list-side { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+  .meet-card { padding: 10px; }
+}

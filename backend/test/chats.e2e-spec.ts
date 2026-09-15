@@ -422,4 +422,37 @@ describe('Чаты команды (e2e)', () => {
     mine = list.find((m: any) => String(m.id) === String(msg.id));
     expect(mine.read_by).toBe(1);
   });
+
+  it('«Входящие»: упоминание гаснет при открытии, удалённое не висит цифрой', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Inbox', email: `inb_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const mateEmail = `inbm_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(O)
+      .send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+
+    const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: String(mate.id) }).expect(201)).body.data;
+    const called = (await http$.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: '@Глеб посмотри смету', mentionIds: [String(mate.id)] }).expect(201)).body.data;
+
+    // у коллеги горит единица — его позвали по имени
+    let inbox = (await http$.get('/api/chats/inbox').set(M).expect(200)).body.data;
+    expect(inbox.mentions.length).toBe(1);
+
+    // открыл «Входящие» — увидел; счётчик гаснет, а не висит вечно
+    inbox = (await http$.get('/api/chats/inbox').set(M).expect(200)).body.data;
+    expect(inbox.counts.mentions).toBe(0);
+    expect(inbox.mentions[0].seen_at).toBeTruthy();
+
+    // упоминание в УДАЛЁННОМ сообщении не показывается и не считается: открыть его нечем,
+    // а раньше из-за него в разделе вечно висела единица
+    const second = (await http$.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: '@Глеб и это тоже', mentionIds: [String(mate.id)] }).expect(201)).body.data;
+    await http$.delete(`/api/chats/${chat.id}/messages/${second.id}`).set(O).expect(200);
+    inbox = (await http$.get('/api/chats/inbox').set(M).expect(200)).body.data;
+    expect(inbox.counts.mentions).toBe(0);
+    expect(inbox.mentions.some((m: any) => String(m.id) === String(second.id))).toBe(false);
+    expect(inbox.mentions.some((m: any) => String(m.id) === String(called.id))).toBe(true);
+  });
 });

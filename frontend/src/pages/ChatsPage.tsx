@@ -1446,7 +1446,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     others.filter((u) => match(u.fullName)).length === 0;
 
   return (
-    <div className={`chats${overlay ? ' chats-overlay' : ''}`}>
+    /*
+      На узком экране список чатов и переписка не помещаются рядом: поле ввода
+      сжимается до щели. Поэтому там показывается что-то одно — список, пока чат
+      не выбран, и переписка, когда выбран. Какое именно, решает этот класс, а не
+      отдельное состояние: правда о «что открыто» уже есть в activeId и view.
+    */
+    <div className={`chats${overlay ? ' chats-overlay' : ''}${activeId || view !== 'chat' ? ' chats-picked' : ''}`}>
       {!overlay && (
       <aside className="chat-list">
         <div className="chat-list-head">
@@ -1897,6 +1903,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
         {active && view === 'chat' && (
           <>
             <div className="chat-head">
+              {/* Назад к списку: на телефоне переписка занимает весь экран, и вернуться
+                  к выбору собеседника иначе нечем. На широком экране кнопки нет. */}
+              <button
+                className="btn btn-ghost btn-sm chat-back"
+                onClick={() => { setActiveId(null); setMessages([]); setThread(null); }}
+                title="К списку чатов"
+                aria-label="К списку чатов"
+              >
+                <Icon name="chevron-left" size={16} />
+              </button>
               {/*
                 Поиск ВНУТРИ открытого чата — как лупа в шапке мессенджера.
 

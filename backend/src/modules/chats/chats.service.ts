@@ -236,10 +236,29 @@ export class ChatsService {
   }
 
   async messages(tenantId: string, chatId: string, user: { userId: string; role: string }, beforeId?: string) {
-    await this.access(tenantId, chatId, user);
+    const chat = await this.access(tenantId, chatId, user);
     const rows = await this.repo.messages(tenantId, chatId, beforeId ?? null, PAGE, user.userId);
     await this.repo.markRead(tenantId, chatId, user.userId);
+    /*
+      Открыли чат — значит прочитали, и собеседник должен увидеть вторую галочку СЕЙЧАС.
+
+      Раньше отметка здесь ставилась молча, а событие уходило только из отдельной
+      ручки «пометить прочитанным». Из-за этого галочки у отправителя появлялись
+      лишь после перезагрузки переписки — ровно на это и жаловались.
+
+      Только при первой странице: подгрузка старого вверх чтением не является.
+    */
+    if (!beforeId) await this.announceRead(tenantId, chat, user.userId);
     return rows;
+  }
+
+  /** Кому сказать «я прочитал»: всем участникам, кроме себя. */
+  private async announceRead(tenantId: string, chat: ChatRow, userId: string): Promise<void> {
+    const to = (await this.recipients(chat, tenantId)).filter((id) => String(id) !== String(userId));
+    if (!to.length) return;
+    this.realtime.emitToUsers(tenantId, to, 'chat.read', {
+      chatId: String(chat.id), userId: String(userId), at: new Date().toISOString(),
+    });
   }
 
   /**
@@ -712,18 +731,26 @@ export class ChatsService {
    */
   async inbox(tenantId: string, user: { userId: string; role: string }) {
     if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
-    const [mentions, threads, chats, unseen] = await Promise.all([
+    const [mentions, threads, chats] = await Promise.all([
       this.repo.mentionsList(tenantId, user.userId, 20),
       this.repo.myThreads(tenantId, user.userId, 20),
       this.repo.listForUser(tenantId, user.userId),
-      this.repo.unseenMentions(tenantId, user.userId),
     ]);
+    /*
+      Открыли «Входящие» — упоминания показаны, значит увидены.
+
+      Раньше счётчик гасила только отдельная ручка «упоминания», в которую этот
+      экран не ходит: цифра висела вечно. А считались упоминания по сырым строкам —
+      включая те, чьё сообщение давно удалили: в списке пусто, а единица горит.
+      Теперь и список, и счётчик берутся из одного места, а увиденное гасится здесь же.
+    */
+    await this.repo.markMentionsSeen(tenantId, user.userId);
     return {
       mentions,
       threads: threads.filter((t) => Number(t.unread) > 0),
       chats: chats.filter((c) => Number(c.unread) > 0),
       counts: {
-        mentions: unseen,
+        mentions: 0,
         threads: threads.reduce((n: number, t) => n + Number(t.unread || 0), 0),
         chats: chats.reduce((n: number, c) => n + Number(c.unread || 0), 0),
       },
@@ -1226,14 +1253,7 @@ export class ChatsService {
       Отметку о прочтении шлём остальным участникам: у отправителя галочки на всех
       его сообщениях до этого момента становятся прочитанными.
     */
-    const to = (await this.recipients(chat, tenantId)).filter((id) => String(id) !== String(user.userId));
-    if (to.length) {
-      this.realtime.emitToUsers(tenantId, to, 'chat.read', {
-        chatId: String(chatId),
-        userId: String(user.userId),
-        at: new Date().toISOString(),
-      });
-    }
+    await this.announceRead(tenantId, chat, user.userId);
     return { read: true };
   }
 

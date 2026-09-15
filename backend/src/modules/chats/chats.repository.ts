@@ -715,9 +715,19 @@ export class ChatsRepository {
     );
   }
 
+  /**
+   * Сколько упоминаний человек ещё не видел.
+   *
+   * Считаем только те, чьё сообщение ЖИВО: удалили сообщение — упоминание в нём
+   * больше никуда не ведёт, а счётчик по сырым строкам горел вечно и открыть его
+   * было нечем. Условие то же, что в списке упоминаний, — иначе они снова разойдутся.
+   */
   async unseenMentions(tenantId: string, userId: string): Promise<number> {
     const row = await this.db.one<{ n: string }>(
-      `SELECT COUNT(*) AS n FROM chat_mentions WHERE tenant_id=$1 AND user_id=$2 AND seen_at IS NULL`,
+      `SELECT COUNT(*) AS n
+         FROM chat_mentions n
+         JOIN chat_messages m ON m.id = n.message_id AND m.deleted_at IS NULL
+        WHERE n.tenant_id=$1 AND n.user_id=$2 AND n.seen_at IS NULL`,
       [tenantId, userId],
     );
     return Number(row?.n ?? 0);
