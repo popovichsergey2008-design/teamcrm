@@ -1,4 +1,4 @@
-import { formatReview, parseNeeds, parseReview } from './task-review.prompt';
+import { formatReview, parseNeeds, parseReview, settleVerdict } from './task-review.prompt';
 
 describe('проверка задачи ИИ: разбор ответа и отчёт', () => {
   const good = JSON.stringify({
@@ -64,6 +64,50 @@ describe('проверка задачи ИИ: разбор ответа и от�
     expect(text).toContain('снимков посмотрел: 2');
     expect(text).toContain('записей истории: 40');
     expect(text).toContain('учтено времени: 3 ч');
+  });
+
+  const notDone = parseReview(JSON.stringify({
+    verdict: 'not_done',
+    summary: 'Подтверждений выполнения нет.',
+    checked: [{ what: 'Проверить мобильную версию', status: 'no', evidence: 'в переписке подтверждений нет' }],
+    missing: ['доказательства выполнения'],
+    confidence: 0.6,
+  }))!;
+
+  it('«не выполнено» не проходит, если следы работы есть', () => {
+    // живой случай: чек-лист отмечен целиком, списано 3 часа, 14 записей истории
+    const r = settleVerdict(notDone, {
+      messages: 4, attachments: 0, history: 14, minutes: 180, images: 0, checklistDone: 3, checklistTotal: 3,
+    });
+    expect(r.verdict).toBe('cannot_check');
+    // и отдельные пункты перестают быть обвинением
+    expect(r.checked[0].status).toBe('no_proof');
+    expect(formatReview(r).split('\n')[0]).toBe('Проверить по материалам задачи не смог.');
+  });
+
+  it('в пустой задаче «не выполнено» остаётся «не выполнено»', () => {
+    const r = settleVerdict(notDone, {
+      messages: 0, attachments: 0, history: 0, minutes: 0, images: 0, checklistDone: 0, checklistTotal: 2,
+    });
+    expect(r.verdict).toBe('not_done');
+    expect(r.checked[0].status).toBe('no');
+  });
+
+  it('статус «подтверждения не нашёл» не читается как «не сделано»', () => {
+    const r = parseReview(JSON.stringify({
+      verdict: 'cannot_check',
+      summary: 'Подтвердить по материалам нечем.',
+      checked: [{ what: 'Позвонить клиенту', status: 'no_proof', evidence: 'звонки в задаче не фиксируются' }],
+    }))!;
+    expect(r.checked[0].status).toBe('no_proof');
+    expect(formatReview(r)).toContain('? Позвонить клиенту');
+  });
+
+  it('чек-лист попадает в строку «Смотрел»', () => {
+    const text = formatReview(parseReview(good)!, {
+      messages: 4, attachments: 0, history: 14, minutes: 180, images: 0, checklistDone: 3, checklistTotal: 3,
+    });
+    expect(text).toContain('чек-лист: 3 из 3 отмечено');
   });
 
   it('дозапросы видны в отчёте', () => {

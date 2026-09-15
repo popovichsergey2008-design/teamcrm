@@ -8,6 +8,7 @@ import { TaskActivityRepository } from '../tasks/task-activity.repository';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import {
   EvidenceNeed, formatReview, parseNeeds, parseReview, REVIEW_FINAL, REVIEW_SYSTEM, ReviewResult,
+  ReviewSources, settleVerdict,
 } from './task-review.prompt';
 
 /** Сколько последних сообщений отдаём проверяющему: дальше растёт цена, а не качество. */
@@ -199,14 +200,19 @@ export class TaskReviewService {
     }
     if (!parsed) throw AppException.conflict('ИИ ответил непонятно — попробуйте ещё раз');
 
-    const body = formatReview(parsed, {
+    const sources: ReviewSources = {
       messages: messages.length,
       attachments: attachments.length,
       history: history.length,
       minutes: Number(spent?.minutes ?? 0),
       images: images.length,
+      checklistDone: checklist.filter((c) => c.is_done).length,
+      checklistTotal: checklist.length,
       extra: extra.map((e) => e.запрос),
-    });
+    };
+    // Вердикт «не выполнено» проверяем арифметикой: см. settleVerdict.
+    parsed = settleVerdict(parsed, sources);
+    const body = formatReview(parsed, sources);
     await this.saveAiMessage(tenantId, taskId, userId, body);
     // В историю — факт и вывод: через неделю видно, кто и когда просил проверку.
     await this.activity.log(tenantId, taskId, userId, 'ai_review', { verdict: parsed.verdict });

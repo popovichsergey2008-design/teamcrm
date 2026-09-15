@@ -73,8 +73,14 @@ export const REVIEW_SYSTEM = [
   '  "verdict": "done" | "partial" | "not_done" | "cannot_check",',
   '  "summary": "одно-два предложения: что проверял и к чему пришёл",',
   '  "checked": [{"what": "требование своими словами",',
-  '               "status": "ok" | "no" | "unclear",',
+  '               "status": "ok" | "no_proof" | "no" | "unclear",',
   '               "evidence": "откуда это видно"}],',
+  '',
+  'Про status. ok — есть доказательство, что сделано. no_proof — доказательства не',
+  'нашёл (это НЕ обвинение: скорее всего так и будет у большинства пунктов).',
+  'no — есть прямое свидетельство обратного: исполнитель написал «не успел», в отчёте',
+  'сказано «не сделано», на снимке видно отсутствие. unclear — по материалам не понять.',
+  'Ставить no вместо no_proof — ошибка: «я не нашёл» не равно «этого нет».',
   '  "missing": ["чего не хватает, чтобы считать задачу выполненной"],',
   '  "ask_human": ["что человеку проверить самому — конкретно, по шагам"],',
   '  "confidence": 0.0-1.0',
@@ -88,6 +94,13 @@ export const REVIEW_SYSTEM = [
   'Сомневаешься между done и partial — ставь partial. Сомневаешься между not_done и',
   'cannot_check — ставь cannot_check: обвинить в невыполненной работе дороже, чем',
   'признать, что материалов мало.',
+  '',
+  'Отдельно про требования, которые в принципе не проверяются по карточке: «посмотреть»,',
+  '«проверить на устройствах», «позвонить», «предложить варианты», «обсудить». Их',
+  'результат живёт вне системы. Такие пункты — no_proof или unclear, а вердикт по ним —',
+  'cannot_check, и в ask_human пиши, что спросить у исполнителя.',
+  'Если исполнитель отметил чек-лист и списал на задачу время — работа шла. Написать',
+  'после этого «не выполнено» нельзя: это cannot_check с честным «подтвердить нечем».',
 ].join('\n');
 
 /** Последний заход: дозапрашивать больше нечего, нужен вывод по тому, что есть. */
@@ -139,10 +152,19 @@ export function parseNeeds(raw: string): EvidenceNeed[] {
   return out;
 }
 
+/**
+ * Статус пункта.
+ *
+ * `no_proof` появился после живой жалобы: проверяющий ставил «✗ не выполнено» всюду,
+ * где просто не нашёл доказательства, и отчёт читался как обвинение исполнителя.
+ * Разница принципиальная: «я не нашёл подтверждения» — не то же самое, что «этого нет».
+ */
+export type CheckStatus = 'ok' | 'no_proof' | 'no' | 'unclear';
+
 export interface ReviewResult {
   verdict: 'done' | 'partial' | 'not_done' | 'cannot_check';
   summary: string;
-  checked: { what: string; status: 'ok' | 'no' | 'unclear'; evidence: string }[];
+  checked: { what: string; status: CheckStatus; evidence: string }[];
   missing: string[];
   askHuman: string[];
   confidence: number;
@@ -155,7 +177,7 @@ const VERDICT_TITLE: Record<ReviewResult['verdict'], string> = {
   cannot_check: 'Проверить по материалам задачи не смог',
 };
 
-const MARK: Record<string, string> = { ok: '✓', no: '✗', unclear: '?' };
+const MARK: Record<string, string> = { ok: '✓', no: '✗', no_proof: '?', unclear: '?' };
 
 /** Что проверяющий вообще видел: без этого вывод выглядит взятым с потолка. */
 export interface ReviewSources {
@@ -164,8 +186,42 @@ export interface ReviewSources {
   history: number;
   minutes: number;
   images: number;
+  /** Сколько пунктов чек-листа отмечено исполнителем и сколько их всего. */
+  checklistDone?: number;
+  checklistTotal?: number;
   /** Что дозапросил сверх карточки — человеческими словами. */
   extra?: string[];
+}
+
+/**
+ * Есть ли в задаче хоть какие-то следы работы.
+ *
+ * Отмеченный чек-лист сюда входит: его ставит исполнитель, и как доказательство
+ * выполнения он слаб, но как признак того, что задачей занимались, — вполне.
+ */
+function hasTraces(s: ReviewSources): boolean {
+  return !!(s.messages || s.attachments || s.history || s.minutes || s.checklistDone);
+}
+
+/**
+ * Последнее слово о вердикте — за кодом, а не за моделью.
+ *
+ * В промпте написано, что «не выполнено» ставится, только когда следов работы нет
+ * вовсе. Модель это правило нарушает: живой отчёт объявил «подтверждений выполнения
+ * нет» по задаче, где чек-лист отмечен целиком, списано три часа и четырнадцать
+ * записей истории. Просьбами это не лечится — нарушение проверяется арифметикой,
+ * значит и запрет должен быть арифметическим.
+ *
+ * Заодно смягчаем пункты: если в целом сказать «не сделано» нельзя, то и каждый
+ * отдельный «✗ не выполнено» превращается в «? подтверждения не нашёл».
+ */
+export function settleVerdict(r: ReviewResult, s: ReviewSources): ReviewResult {
+  if (r.verdict !== 'not_done' || !hasTraces(s)) return r;
+  return {
+    ...r,
+    verdict: 'cannot_check',
+    checked: r.checked.map((c) => (c.status === 'no' ? { ...c, status: 'no_proof' as CheckStatus } : c)),
+  };
 }
 
 function sourcesLine(s: ReviewSources): string {
@@ -174,6 +230,7 @@ function sourcesLine(s: ReviewSources): string {
   if (s.attachments) parts.push(`вложений: ${s.attachments}`);
   if (s.images) parts.push(`снимков посмотрел: ${s.images}`);
   if (s.history) parts.push(`записей истории: ${s.history}`);
+  if (s.checklistTotal) parts.push(`чек-лист: ${s.checklistDone ?? 0} из ${s.checklistTotal} отмечено`);
   if (s.minutes) parts.push(`учтено времени: ${Math.round(s.minutes / 60)} ч`);
   const head = parts.length
     ? `Смотрел: ${parts.join(' · ')}.`
@@ -232,10 +289,11 @@ export function parseReview(raw: string): ReviewResult | null {
   const verdicts = ['done', 'partial', 'not_done', 'cannot_check'];
   const verdict = verdicts.includes(String(obj.verdict)) ? String(obj.verdict) : 'cannot_check';
   const list = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x ?? '').trim()).filter(Boolean) : []);
+  const statuses: CheckStatus[] = ['ok', 'no_proof', 'no', 'unclear'];
   const checked = Array.isArray(obj.checked)
     ? (obj.checked as Record<string, unknown>[]).map((c) => ({
       what: String(c?.what ?? '').trim(),
-      status: (['ok', 'no', 'unclear'].includes(String(c?.status)) ? String(c?.status) : 'unclear') as 'ok' | 'no' | 'unclear',
+      status: (statuses.includes(String(c?.status) as CheckStatus) ? String(c?.status) : 'unclear') as CheckStatus,
       evidence: String(c?.evidence ?? '').trim(),
     })).filter((c) => c.what)
     : [];
