@@ -4165,3 +4165,9 @@
   .task-chat-head { position: sticky; top: 0; z-index: 2; background: var(--bg-elev); }
   .task-chat-name { white-space: normal; }
 }
+/* «↓ N новых» — над полем ввода: она о ленте, к ней и возвращает. */
+.chat-jump-new { align-self: center; margin: 4px auto 0; }
+/* Отправляемое сообщение приглушено: оно уже видно, но ещё не закреплено на сервере. */
+.msg-sending { opacity: .6; }
+/* В широком режиме лента прокручивается сама, а не тянет за собой всю карточку. */
+.task-chat-wide .msg-feed { overflow-y: auto; }

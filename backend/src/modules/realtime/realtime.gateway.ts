@@ -146,6 +146,30 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     return { ok: true };
   }
 
+  /**
+   * «Печатает…» в обсуждении задачи (ТЗ-7).
+   *
+   * Тот же приём, что и у чатов: состояние живёт секунды и в базу не ложится.
+   * Рассылаем в комнату проекта — ровно туда же, куда уходят новые сообщения
+   * задачи, поэтому и слышат его те же люди. Имя берём сразу: получателю не
+   * придётся ходить за ним отдельным запросом ради строки «Глеб печатает…».
+   */
+  @SubscribeMessage('task.typing')
+  async taskTyping(@ConnectedSocket() socket: Socket, @MessageBody() body: { taskId: string }) {
+    const user: AuthUser = socket.data.user;
+    if (!user || !body?.taskId || user.role === 'client') return { ok: false };
+    const row = await this.db.one<{ project_id: string; full_name: string }>(
+      `SELECT t.project_id, (SELECT u.full_name FROM users u WHERE u.id = $3) AS full_name
+         FROM tasks t WHERE t.id = $1 AND t.tenant_id = $2`,
+      [body.taskId, user.tenantId, user.userId],
+    );
+    if (!row) return { ok: false };
+    this.realtime.emitScoped(user.tenantId, String(row.project_id), 'task.typing', {
+      taskId: String(body.taskId), userId: String(user.userId), name: row.full_name,
+    }, false);
+    return { ok: true };
+  }
+
   @SubscribeMessage('project.unsubscribe')
   async unsubscribe(
     @ConnectedSocket() socket: Socket,

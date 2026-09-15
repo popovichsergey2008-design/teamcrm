@@ -6,7 +6,7 @@ import { VoiceStatus } from './VoiceStatus';
 import { ChatAttachment } from './ChatAttachment';
 import { Lightbox } from './Lightbox';
 import { api, ApiError } from '../lib/api';
-import { dayLabel, sameGroup, stampLabel } from '../lib/chat-text';
+import { dayLabel, plural, sameGroup, stampLabel } from '../lib/chat-text';
 import { MessageText } from './MessageText';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { orderMentions } from '../lib/task-mentions';
@@ -144,6 +144,24 @@ export function TaskChat({
     answer: string; checklist: string[]; suggestion: { field: string; value: string; label: string } | null;
   } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * Человек читает старое, а не хвост.
+   *
+   * Тогда лента не прыгает вниз от каждого нового сообщения — это худшее, что может
+   * сделать чат с тем, кто как раз перечитывает вчерашнюю договорённость. Вместо
+   * прыжка внизу появляется «↓ N новых».
+   */
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
+  const [unseen, setUnseen] = useState(0);
+  /** Сколько сообщений было в прошлый раз — по этому и считаем «новое». */
+  const countRef = useRef(0);
+  /** Кто сейчас набирает: имя живёт три секунды и продлевается каждым событием. */
+  const [typing, setTyping] = useState<Record<string, { name: string; until: number }>>({});
+  /** Отправляемое сообщение — на экране сразу, с пометкой «отправляется». */
+  const [sending, setSending] = useState<{ body: string; at: string } | null>(null);
+  /** Когда последний раз сказали «печатаю»: чаще раза в две секунды незачем. */
+  const typingSentAt = useRef(0);
 
   /**
    * Загружена ли переписка целиком.
@@ -186,16 +204,38 @@ export function TaskChat({
       timer = window.setTimeout(() => { timer = null; reload(fullyLoaded); }, 350);
     };
     for (const ev of ['task.comment_added', 'task.attachment_added', 'task.comment_deleted']) socket.on(ev, soon);
+    // «Глеб печатает…»: своё игнорируем — человеку незачем видеть самого себя
+    const onTyping = (p: { taskId?: string; userId?: string; name?: string }) => {
+      if (String(p?.taskId ?? '') !== String(taskId)) return;
+      if (String(p?.userId ?? '') === String(user?.id ?? '')) return;
+      setTyping((prev) => ({ ...prev, [String(p.userId)]: { name: p.name ?? 'Коллега', until: Date.now() + 3000 } }));
+    };
+    socket.on('task.typing', onTyping);
     // связь моргнула — догоняем пропущенное, иначе обсуждение застынет на моменте обрыва
     const onReconnect = () => reload(fullyLoaded);
     socket.on('connect', onReconnect);
     return () => {
       for (const ev of ['task.comment_added', 'task.attachment_added', 'task.comment_deleted']) socket.off(ev, soon);
+      socket.off('task.typing', onTyping);
       socket.off('connect', onReconnect);
       if (timer) window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskId, fullyLoaded]);
+  }, [taskId, fullyLoaded, user?.id]);
+
+  /* Надпись гаснет сама: обещание «через три секунды» должен сдерживать таймер,
+     а не следующее событие — иначе «печатает…» висит после того, как человек ушёл. */
+  useEffect(() => {
+    if (!Object.keys(typing).length) return;
+    const t = window.setInterval(() => {
+      setTyping((prev) => {
+        const now = Date.now();
+        const next = Object.fromEntries(Object.entries(prev).filter(([, v]) => v.until > now));
+        return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+      });
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [typing]);
 
   // Отчёт проверки ИИ ложится в переписку с сервера — обсуждение обязано его показать
   // сразу, а не после переоткрытия карточки.
@@ -246,6 +286,17 @@ export function TaskChat({
     AI_MENTION_ID,
   );
 
+  /** Как зовут меня — для строки «отправляется»: она выглядит как обычное сообщение. */
+  const meName = users.find((u) => String(u.id) === String(user?.id ?? ''))?.fullName ?? 'Вы';
+
+  /** Сказать остальным, что набираю. Не чаще раза в две секунды: это состояние, а не поток. */
+  const pingTyping = () => {
+    const now = Date.now();
+    if (now - typingSentAt.current < 2000) return;
+    typingSentAt.current = now;
+    getSocket().emit('task.typing', { taskId });
+  };
+
   /** Скриншот приходит без имени — даём ему дату, иначе в файлах десяток «image.png». */
   const attach = (file: File) => {
     const named = isAnonymousClipboardName(file.name) && file.type.startsWith('image/')
@@ -289,11 +340,19 @@ export function TaskChat({
         await api.addCommentFile(taskId, pending.file, text, replyTo?.id, replyTo?.excerpt);
         clearPending();
       } else {
+        /*
+          Своё сообщение показываем СРАЗУ, с пометкой «отправляется».
+
+          Ожидание ответа сервера — полсекунды, но в эти полсекунды поле уже пустое,
+          а сообщения ещё нет: человек не понимает, ушло ли оно, и жмёт «Отправить»
+          второй раз. Пришёл ответ — временная строка сменяется настоящей.
+        */
+        setSending({ body: text, at: new Date().toISOString() });
         await api.addComment(taskId, text, undefined, replyTo?.id, replyTo?.excerpt);
       }
       setBody(''); setReplyTo(null); reload(); onRefresh();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не отправилось'); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setSending(null); }
   };
 
   const remove = async (id: string) => {
@@ -348,6 +407,35 @@ export function TaskChat({
    * к старому. Тогда сначала поднимаем всю переписку и прыгаем после отрисовки —
    * молча ничего не делать здесь нельзя, кнопка выглядела бы сломанной.
    */
+  /** Внизу ли лента. Восемьдесят точек запаса: «почти внизу» — это тоже внизу. */
+  const nearBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+
+  const toBottom = (smooth = false) => {
+    const el = feedRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    setUnseen(0);
+  };
+
+  /*
+    Новые сообщения пришли.
+
+    Внизу — показываем сразу и остаёмся внизу. Выше — ничего не двигаем и копим
+    счётчик: человек сам решит, когда спуститься.
+  */
+  useEffect(() => {
+    const before = countRef.current;
+    countRef.current = comments.length;
+    if (comments.length === before) return;
+    if (atBottomRef.current) {
+      // после отрисовки: до неё высота ленты ещё прежняя
+      requestAnimationFrame(() => toBottom(before > 0));
+    } else if (comments.length > before) {
+      setUnseen((n) => n + (comments.length - before));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comments.length]);
+
   const goToMessage = async (id: string) => {
     let el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
     if (!el && !fullyLoaded) {
@@ -472,6 +560,13 @@ export function TaskChat({
       <div
         className="msg-feed"
         ref={feedRef}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          const bottom = nearBottom(el);
+          atBottomRef.current = bottom;
+          setAtBottom(bottom);
+          if (bottom) setUnseen(0);
+        }}
         // Файл можно перетащить прямо в переписку — то же, что вставка из буфера.
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); attach(f); } }}
@@ -482,6 +577,24 @@ export function TaskChat({
           <button className="btn btn-ghost btn-sm chat-earlier" onClick={() => reload(true)}>
             <Icon name="chevron-up" size={13} /> Показать всю переписку
           </button>
+        )}
+        {/*
+          Своё сообщение, пока оно летит на сервер.
+
+          Выглядит как обычное, но приглушено и подписано «отправляется». Пропадёт
+          само, когда придёт настоящее: лента перечитывается целиком.
+        */}
+        {sending && (
+          <div className="msg msg-mine msg-sending">
+            <div className="msg-avatar" aria-hidden="true">{initials(meName)}</div>
+            <div className="msg-main">
+              <div className="msg-head">
+                <b className="msg-name">{meName}</b>
+                <span className="msg-time">отправляется…</span>
+              </div>
+              <MessageText text={sending.body} className="msg-text" />
+            </div>
+          </div>
         )}
         {shown.map((c, i) => {
           const prev = shown[i - 1];
@@ -615,6 +728,24 @@ export function TaskChat({
         </div>
       )}
 
+      {/* Строка «печатает…» под лентой, как в мессенджере: она о том, что
+          происходит прямо сейчас, и потому стоит у поля ввода, а не в шапке. */}
+      {Object.keys(typing).length > 0 && (
+        <div className="chat-typing">
+          <span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
+          {Object.values(typing).map((t) => t.name).join(' и ')}
+          {Object.keys(typing).length > 1 ? ' печатают…' : ' печатает…'}
+        </div>
+      )}
+
+      {/* Кнопка появляется, только когда есть что догонять: пустая стрелка вниз
+          в спокойной переписке — лишний шум. */}
+      {!atBottom && unseen > 0 && (
+        <button className="btn btn-primary btn-sm chat-jump-new" onClick={() => toBottom(true)}>
+          <Icon name="arrow-down" size={13} /> {unseen} {plural(unseen, 'новое сообщение', 'новых сообщения', 'новых сообщений')}
+        </button>
+      )}
+
       <div className="ai-quick">
         {QUICK_ASKS.map((qa) => (
           <button key={qa.label} className="btn btn-ghost btn-sm" disabled={busy} onClick={() => ask(qa.ask)}>
@@ -653,7 +784,7 @@ export function TaskChat({
         <MentionField
           value={body}
           users={mentionUsers}
-          onChange={setBody}
+          onChange={(v) => { setBody(v); if (v.trim()) pingTyping(); }}
           // Упомянутого нужно позвать: без этого «@Юрий, посмотри» он увидит,
           // только если сам зайдёт в задачу.
           onMention={(userId) => {

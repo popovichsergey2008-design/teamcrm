@@ -134,3 +134,16 @@ export function sameGroup(
   if (new Date(a).toDateString() !== new Date(b).toDateString()) return false;
   return b - a <= gapMinutes * 60_000;
 }
+
+/**
+ * «1 ответ», «2 ответа», «5 ответов» — иначе интерфейс выглядит машинным переводом.
+ *
+ * Живёт здесь, а не в экране чатов: то же самое понадобилось обсуждению задачи, и
+ * вторая копия правила разошлась бы с первой на ближайшей правке.
+ */
+export function plural(n: number, one: string, few: string, many: string): string {
+  const a = Math.abs(n) % 100;
+  if (a > 10 && a < 20) return many;
+  const b = a % 10;
+  return b === 1 ? one : b >= 2 && b <= 4 ? few : many;
+}

@@ -24,7 +24,7 @@ import { MessageText } from '../components/MessageText';
 import { MessageToTask } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
-import { stampLabel } from '../lib/chat-text';
+import { plural, stampLabel } from '../lib/chat-text';
 import { placePopover, PopoverPlace } from '../lib/popover';
 import { applyOrder, moveItem } from '../lib/menu-order';
 import { firstUnreadId } from '../lib/unread-line';
@@ -102,13 +102,6 @@ const REACTIONS = ['👍', '❤️', '🔥', '👏', '😁', '🤔'];
 const MENTIONS_AI = /@(anthillbot|ai|ии|ai-помощник|бот)(?![\wа-яё-])/gi;
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-/** «1 ответ», «2 ответа», «5 ответов» — иначе интерфейс выглядит машинным переводом. */
-const plural = (n: number, one: string, few: string, many: string) => {
-  const a = Math.abs(n) % 100;
-  if (a > 10 && a < 20) return many;
-  const b = a % 10;
-  return b === 1 ? one : b >= 2 && b <= 4 ? few : many;
-};
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long' });
 
 /**
