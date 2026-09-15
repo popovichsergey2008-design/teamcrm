@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { MentionField } from './MentionField';
@@ -92,13 +92,30 @@ const initials = (name: string) => (name?.trim()?.[0] ?? '?').toUpperCase();
  * История задачи внизу — не украшение: строка «написал сообщение» ведёт к самому
  * сообщению. Без этого история отсылает в никуда.
  */
-export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onRefresh }: {
+export function TaskChat({
+  taskId, assigneeId, creatorId, participants = [], onRefresh,
+  wide = false, title, status, onExpand, onCollapse,
+}: {
   taskId: string;
   /** Кто в этой задаче кто — от этого зависит порядок подсказки при «@». */
   assigneeId?: string | null;
   creatorId?: string | null;
   participants?: { user_id: string; role: string }[];
   onRefresh: () => void;
+  /**
+   * Разговор во всю ширину карточки (вкладка «Чат»).
+   *
+   * В узкой колонке справа абзац из пяти строк превращается в двадцать — на это и
+   * жаловались. Компонент один и тот же: расходятся только ширина и шапка, а вся
+   * механика (ответы, реакции, поиск, ИИ) остаётся общей и не разъезжается.
+   */
+  wide?: boolean;
+  /** Название задачи и колонка — подпись в шапке: о чём разговор и на каком этапе. */
+  title?: string;
+  status?: string | null;
+  /** Развернуть из колонки во вкладку и обратно. */
+  onExpand?: () => void;
+  onCollapse?: () => void;
 }) {
   const { user } = useAuth();
   const [comments, setComments] = useState<any[]>([]);
@@ -109,6 +126,8 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
   const [err, setErr] = useState('');
   /** Поиск по обсуждению: в переписке на сотню сообщений нужное иначе не найти. */
   const [query, setQuery] = useState('');
+  /** Поиск прячется за лупой в шапке: над лентой он отнимает место у разговора. */
+  const [searchOpen, setSearchOpen] = useState(false);
   /** Кому отвечаем и на какой именно кусок его сообщения. */
   const [replyTo, setReplyTo] = useState<{ id: string; author: string; excerpt: string } | null>(null);
   /** Правка своего сообщения: сказанное вслух не переписывают, написанное — да. */
@@ -358,21 +377,85 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
   const shown = q ? comments.filter((c) => String(c.body ?? '').toLowerCase().includes(q)) : comments;
   const history = allHistory ? activity : activity.slice(0, 5);
 
+  /*
+    Кто в разговоре.
+
+    Участники задачи и есть участники чата: постановщик, исполнитель, соисполнители,
+    наблюдатели. Отдельного состава у обсуждения нет и быть не должно — иначе человек
+    добавлен в задачу, но не слышит, что по ней говорят.
+  */
+  const people = useMemo(() => {
+    const byId = new Map(users.map((u) => [String(u.id), u.fullName]));
+    const seen = new Set<string>();
+    const out: { id: string; name: string; role: string }[] = [];
+    const add = (id?: string | null, role = 'участник') => {
+      const key = String(id ?? '');
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push({ id: key, name: byId.get(key) ?? '—', role });
+    };
+    add(creatorId, 'постановщик');
+    add(assigneeId, 'исполнитель');
+    for (const p of participants) add(p.user_id, p.role === 'watcher' ? 'наблюдатель' : 'соисполнитель');
+    return out;
+  }, [users, participants, assigneeId, creatorId]);
+
   return (
-    <>
-      <div className="drawer-section-title">
-        <Icon name="chat" size={14} /> Чат задачи
-        {comments.length > 0 && <span className="dim chat-count">{comments.length}</span>}
+    <div className={`task-chat-box${wide ? ' task-chat-wide' : ''}`}>
+      {/*
+        Шапка разговора.
+
+        В мессенджере всегда видно, с кем говоришь; здесь то же самое — название
+        задачи, её этап и люди. Раньше на этом месте стоял заголовок «Чат задачи»,
+        который не отвечал ни на один вопрос.
+      */}
+      <div className="task-chat-head">
+        <div className="task-chat-title">
+          <Icon name="chat" size={15} />
+          <span className="task-chat-name">{title ?? 'Чат задачи'}</span>
+          {status && <span className="badge badge-muted">{status}</span>}
+          {comments.length > 0 && <span className="dim chat-count">{comments.length}</span>}
+        </div>
+        <div className="task-chat-people">
+          {people.slice(0, 6).map((p) => (
+            <span key={p.id} className="task-chat-person" title={`${p.name} · ${p.role}`}>{initials(p.name)}</span>
+          ))}
+          {people.length > 6 && <span className="dim">+{people.length - 6}</span>}
+        </div>
+        <div className="task-chat-acts">
+          {comments.length > 5 && (
+            <button
+              className={`msg-icon${searchOpen ? ' active' : ''}`}
+              onClick={() => { setSearchOpen((v) => !v); if (searchOpen) setQuery(''); }}
+              title="Поиск по обсуждению"
+              aria-label="Поиск по обсуждению"
+            >
+              <Icon name="search" size={15} />
+            </button>
+          )}
+          {onExpand && (
+            <button className="msg-icon" onClick={onExpand} title="Развернуть на всю карточку" aria-label="Развернуть на всю карточку">
+              <Icon name="maximize" size={15} />
+            </button>
+          )}
+          {onCollapse && (
+            <button className="msg-icon" onClick={onCollapse} title="Свернуть в колонку" aria-label="Свернуть в колонку">
+              <Icon name="minimize" size={15} />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Поиск появляется, когда искать есть в чём: над тремя сообщениями он лишний. */}
-      {comments.length > 5 && (
+      {/* Поиск появляется по лупе: постоянное поле над лентой съедает место,
+          а ищут в обсуждении редко. */}
+      {searchOpen && (
         <input
           className="input chat-search-input"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Поиск по обсуждению"
           aria-label="Поиск по обсуждению"
+          autoFocus
         />
       )}
       {q && (
@@ -626,6 +709,6 @@ export function TaskChat({ taskId, assigneeId, creatorId, participants = [], onR
       )}
 
       {preview && <Lightbox url={preview.url} name={preview.name} mime={preview.mime} onClose={() => setPreview(null)} />}
-    </>
+    </div>
   );
 }

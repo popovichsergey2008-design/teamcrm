@@ -35,7 +35,7 @@ interface Props {
 }
 
 // Обсуждения среди вкладок больше нет: чат стоит справа и виден всегда.
-type Tab = 'overview' | 'checklist' | 'files' | 'agent';
+type Tab = 'overview' | 'checklist' | 'files' | 'agent' | 'chat';
 const PRIORITIES = [['low', 'низкий'], ['normal', 'обычный'], ['high', 'высокий'], ['urgent', 'срочно']];
 
 /** Колонки, означающие закрытие задачи (совпадает с логикой закрытия на бэкенде). */
@@ -374,6 +374,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const isDone = !!task.closed_at;
   const targets = orderColumns(columns, isDone ? 'reopen' : 'finish').filter((c) => c.id !== task.column_id);
   const doneTarget = isDone ? null : targets.find((c) => DONE_RE.test(c.name.trim())) ?? null;
+  /** Где задача стоит сейчас — подпись в шапке чата: «о чём разговор и на каком этапе». */
+  const columnName = columns.find((c) => String(c.id) === String(task.column_id))?.name ?? null;
 
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
@@ -383,7 +385,10 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
         Чат вкладкой не работает: обсуждать задачу, не видя её условий, значит держать
         их в голове и прыгать туда-обратно. Окно от этого шире обычного — и должно быть.
       */}
-      <aside className="drawer drawer-task" onClick={(e) => e.stopPropagation()}>
+      <aside
+        className={`drawer drawer-task${tab === 'chat' ? ' drawer-task-chat' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="task-main">
         {gate && (
           <HandoffGateDialog
@@ -585,7 +590,32 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               только вкладка — человек видел у руководителя возможность, которой у него
               «нет», хотя на деле она была. */}
           <button className={`tab ${tab === 'agent' ? 'active' : ''}`} onClick={() => setTab('agent')}><Icon name="robot" size={14} /> Агент</button>
+          {/*
+            Вкладка «Чат» — ответ на «сообщения в маленьких окнах».
+
+            Колонка справа шириной в 360 точек превращает абзац из пяти строк в
+            двадцать, а картинку — в марку. Здесь разговор занимает карточку целиком:
+            читать длинное сообщение становится так же удобно, как в мессенджере.
+            Колонка при этом никуда не делась — из неё в эту вкладку ведёт «развернуть».
+          */}
+          <button className={`tab ${tab === 'chat' ? 'active' : ''}`} onClick={() => setTab('chat')}>
+            <Icon name="chat" size={14} /> Чат
+          </button>
         </div>
+
+        {tab === 'chat' && (
+          <TaskChat
+            taskId={task.id}
+            assigneeId={task.assignee_id}
+            creatorId={task.created_by}
+            participants={participants}
+            onRefresh={onRefresh}
+            wide
+            title={task.title}
+            status={columnName}
+            onCollapse={() => setTab('overview')}
+          />
+        )}
 
         {tab === 'agent' && <AgentTab taskId={task.id} assigned={!!task.agent_assigned} onRefresh={onRefresh} />}
 
@@ -815,6 +845,9 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             creatorId={task.created_by}
             participants={participants}
             onRefresh={onRefresh}
+            title={task.title}
+            status={columnName}
+            onExpand={() => setTab('chat')}
           />
         </div>
       </aside>

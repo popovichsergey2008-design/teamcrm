@@ -4113,3 +4113,55 @@
   .list-side { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
   .meet-card { padding: 10px; }
 }
+
+/*
+  ───── Чат задачи: нормальная ширина и шапка (ТЗ-7) ─────
+
+  Жалоба была про «маленькие окна»: лента и так единая, но колонка справа шириной
+  360 точек превращала абзац из пяти строк в двадцать. Вкладка «Чат» отдаёт
+  разговору всю карточку; колонка остаётся для быстрого взгляда.
+*/
+.drawer-task-chat { grid-template-columns: minmax(0, 1fr); }
+.drawer-task-chat .task-chat { display: none; }
+
+.task-chat-box { display: flex; flex-direction: column; min-height: 0; }
+.task-chat-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.task-chat-title { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 auto; }
+.task-chat-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-chat-people { display: flex; align-items: center; gap: 2px; }
+/* Кружки участников внахлёст — как в мессенджере: состав читается одним взглядом. */
+.task-chat-person {
+  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 11px; font-weight: 600; margin-left: -6px;
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.task-chat-person:first-child { margin-left: 0; }
+.task-chat-acts { display: flex; align-items: center; gap: 2px; }
+
+/*
+  Широкий режим. Строку не растягиваем на всю карточку: читать текст длиной в метр
+  невозможно — глаз теряет начало следующей строки. Колонка в 900 точек — предел
+  удобного чтения, дальше лента просто центрируется.
+*/
+.task-chat-wide { height: 100%; }
+.task-chat-wide .msg-feed,
+.task-chat-wide .task-chat-head,
+.task-chat-wide .comment-input,
+.task-chat-wide .ai-quick,
+.task-chat-wide .chat-search-input,
+.task-chat-wide .chat-history-head,
+.task-chat-wide .activity-row { width: 100%; max-width: 900px; margin-left: auto; margin-right: auto; }
+.task-chat-wide .msg-feed { flex: 1 1 auto; min-height: 320px; gap: 2px; }
+.task-chat-wide .msg-text { font-size: 15px; line-height: 1.5; }
+.task-chat-wide .msg-avatar { width: 30px; height: 30px; }
+/* Картинка в широкой ленте показывается картинкой, а не маркой. */
+.task-chat-wide .chat-img { max-width: 520px; }
+.task-chat-wide .chat-img img { max-width: 520px; max-height: 420px; }
+
+@media (max-width: 720px) {
+  .task-chat-head { position: sticky; top: 0; z-index: 2; background: var(--bg-elev); }
+  .task-chat-name { white-space: normal; }
+}
