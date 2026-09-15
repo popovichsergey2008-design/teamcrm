@@ -78,7 +78,7 @@ export function createTransport(env: NodeJS.ProcessEnv): MailTransport {
   const key = env.BREVO_API_KEY?.trim();
   if (!key) return new LogTransport();
   return new BrevoTransport(key, {
-    email: env.MAIL_FROM?.trim() || 'noreply@teamsmrt.com',
+    email: env.MAIL_FROM?.trim() || 'noreply@anthill.team',
     name: env.MAIL_FROM_NAME?.trim() || 'TEAMCRM',
   });
 }

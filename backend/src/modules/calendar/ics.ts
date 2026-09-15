@@ -90,7 +90,7 @@ export function buildIcs(event: IcsEvent): string {
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//TEAMCRM//Calendar//RU',
+    'PRODID:-//ANTHILL//Calendar//RU',
     'CALSCALE:GREGORIAN',
     `METHOD:${method}`,
     'BEGIN:VEVENT',
@@ -140,6 +140,6 @@ export function buildIcs(event: IcsEvent): string {
 }
 
 /** Стабильный идентификатор встречи: по нему внешний календарь понимает правку и отмену. */
-export function icsUid(tenantId: string, eventId: string, host = 'teamsmrt.com'): string {
+export function icsUid(tenantId: string, eventId: string, host = 'anthill.team'): string {
   return `teamcrm-${tenantId}-${eventId}@${host}`;
 }

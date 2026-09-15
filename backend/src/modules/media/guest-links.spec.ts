@@ -26,7 +26,7 @@ describe('Гостевая ссылка в созвон', () => {
       signAsync: (payload: unknown) => Promise.resolve(`signed:${JSON.stringify(payload)}`),
       verify: (t: string) => JSON.parse(t.replace('signed:', '')),
     };
-    const config = { getOrThrow: () => 'secret', get: () => 'https://teamsmrt.com' };
+    const config = { getOrThrow: () => 'secret', get: () => 'https://anthill.team' };
     return new GuestLinksService(repo as any, media as any, jwt as any, config as any);
   };
 

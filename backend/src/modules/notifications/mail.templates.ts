@@ -1,5 +1,5 @@
 /**
- * Письма TEAMCRM.
+ * Письма ANTHILL.
  *
  * Чистые функции без обращений к базе — их проверяют тесты, а не живая отправка.
  *
@@ -132,7 +132,7 @@ function shell(opts: {
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>TEAMCRM</title></head>
+<title>ANTHILL</title></head>
 <body style="margin:0;padding:0;background:${BRAND.bg};">
 <!-- Строка предпросмотра: её показывает список писем рядом с темой, но в самом письме она не видна. -->
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escape(opts.preheader)}</div>
@@ -162,7 +162,7 @@ function shell(opts: {
       </td></tr>
 
       <tr><td style="padding:16px 6px 0;font-size:12px;line-height:1.6;color:${BRAND.mut}">
-        Письмо от TEAMCRM.
+        Письмо от ANTHILL.
         <a href="${escape(opts.unsubscribeUrl)}" style="color:${BRAND.mut};text-decoration:underline">Отписаться</a>
         или настроить письма в личном кабинете.
       </td></tr>
@@ -343,7 +343,7 @@ export function feedAnnouncementLetter(
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>TEAMCRM</title></head>
+<title>ANTHILL</title></head>
 <body style="margin:0;padding:0;background:${BRAND.bg};">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escape(ctx.body.slice(0, 120))}</div>
 <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;background:${BRAND.bg}">
@@ -367,7 +367,7 @@ export function feedAnnouncementLetter(
         </table>
       </td></tr>
       <tr><td style="padding:16px 6px 0;font-size:12px;line-height:1.6;color:${BRAND.mut}">
-        Письмо от TEAMCRM.
+        Письмо от ANTHILL.
         <a href="${escape(unsubscribeUrl)}" style="color:${BRAND.mut};text-decoration:underline">Отписаться</a>
         или настроить письма в личном кабинете.
       </td></tr>
@@ -397,7 +397,7 @@ export function feedMentionLetter(
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>TEAMCRM</title></head>
+<title>ANTHILL</title></head>
 <body style="margin:0;padding:0;background:${BRAND.bg};">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escape(ctx.body.slice(0, 120))}</div>
 <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;background:${BRAND.bg}">
@@ -421,7 +421,7 @@ export function feedMentionLetter(
         </table>
       </td></tr>
       <tr><td style="padding:16px 6px 0;font-size:12px;line-height:1.6;color:${BRAND.mut}">
-        Письмо от TEAMCRM.
+        Письмо от ANTHILL.
         <a href="${escape(unsubscribeUrl)}" style="color:${BRAND.mut};text-decoration:underline">Отписаться</a>
         или настроить письма в личном кабинете.
       </td></tr>

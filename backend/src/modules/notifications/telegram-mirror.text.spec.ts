@@ -5,14 +5,14 @@ describe('письмо в сообщение бота', () => {
     const out = mirrorText('Новая задача: Прайс', [
       'Сергей поставил вам задачу.',
       '',
-      'Открыть: https://teamsmrt.com/projects/1/task/2',
+      'Открыть: https://anthill.team/projects/1/task/2',
       '',
-      'Отписаться: https://teamsmrt.com/api/notifications/unsubscribe?token=SECRET',
+      'Отписаться: https://anthill.team/api/notifications/unsubscribe?token=SECRET',
     ].join('\n'));
 
     expect(out).not.toContain('SECRET');
     expect(out).not.toMatch(/отписаться/i);
-    expect(out).toContain('https://teamsmrt.com/projects/1/task/2');
+    expect(out).toContain('https://anthill.team/projects/1/task/2');
   });
 
   it('тема не повторяется, если письмо начинается с неё', () => {

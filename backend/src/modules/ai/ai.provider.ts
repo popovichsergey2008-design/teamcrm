@@ -261,7 +261,7 @@ export class RealAiProvider implements AiProvider {
 
   async transcribeAudio(audio: Buffer, filename: string, hint?: string): Promise<string> {
     if (!this.openaiKey) return '';
-    // словарь нужен и короткой команде: без него «TeamCRM» слышится как «Тим Сирей»,
+    // словарь нужен и короткой команде: без него «ANTHILL» слышится как «Тим Сирей»,
     // а сотрудник, записанный в базе латиницей, превращается в кого-то другого
     return this.whisper(audio, filename || 'audio.webm', hint);
   }
@@ -342,7 +342,7 @@ export class RealAiProvider implements AiProvider {
     const model = opts?.model || this.brainModel || '';
     const isOpenRouter = model.includes('/'); // id вида vendor/model[:free] → OpenRouter
     const OR_URL = 'https://openrouter.ai/api/v1/chat/completions';
-    const ORH = { 'HTTP-Referer': 'https://teamsmrt.com', 'X-Title': 'TeamCRM' };
+    const ORH = { 'HTTP-Referer': 'https://anthill.team', 'X-Title': 'ANTHILL' };
     const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
     // Упорядоченные попытки: сначала выбранная модель/провайдер, затем ЛЮБОЙ рабочий бэкенд (чтобы
@@ -422,7 +422,7 @@ export class RealAiProvider implements AiProvider {
     const maxTokens = opts?.maxTokens ?? 1500;
     const model = opts?.model || this.brainModel || '';
     const isOpenRouter = model.includes('/');
-    const ORH = { 'HTTP-Referer': 'https://teamsmrt.com', 'X-Title': 'TeamCRM' };
+    const ORH = { 'HTTP-Referer': 'https://anthill.team', 'X-Title': 'ANTHILL' };
     try {
       let full = '';
       if (isOpenRouter && this.openrouterKey) full = await this.openaiStream('https://openrouter.ai/api/v1/chat/completions', this.openrouterKey, model, system, user, maxTokens, onDelta, ORH);
@@ -449,7 +449,7 @@ export class RealAiProvider implements AiProvider {
     }
     if (this.openrouterKey) {
       try {
-        const v = await this.embedVia('https://openrouter.ai/api/v1/embeddings', this.openrouterKey, 'openai/text-embedding-3-small', input, { 'HTTP-Referer': 'https://teamsmrt.com', 'X-Title': 'TeamCRM' });
+        const v = await this.embedVia('https://openrouter.ai/api/v1/embeddings', this.openrouterKey, 'openai/text-embedding-3-small', input, { 'HTTP-Referer': 'https://anthill.team', 'X-Title': 'ANTHILL' });
         if (v) return v;
       } catch { /* mock ниже */ }
     }

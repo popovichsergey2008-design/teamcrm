@@ -3,10 +3,10 @@ import { taskCommentedLetter, taskCreatedLetter, taskStatusLetter, TaskCtx } fro
 const CTX: TaskCtx = {
   taskTitle: 'Обновить прайс',
   projectName: 'Сайт',
-  taskUrl: 'https://teamsmrt.com/projects/1/task/2',
+  taskUrl: 'https://anthill.team/projects/1/task/2',
   actorName: 'Сергей Попович',
 };
-const UNSUB = 'https://teamsmrt.com/api/notifications/unsubscribe?token=abc';
+const UNSUB = 'https://anthill.team/api/notifications/unsubscribe?token=abc';
 
 describe('письма по задачам', () => {
   it('в теме видно суть без открытия письма', () => {
@@ -35,7 +35,7 @@ describe('письма по задачам', () => {
     const letter = taskCreatedLetter(CTX, UNSUB);
     expect(letter.html).not.toMatch(/<img/i);
     expect(letter.html).not.toMatch(/<link/i);
-    expect(letter.html).not.toMatch(/https?:\/\/(?!teamsmrt\.com)/); // никаких чужих адресов
+    expect(letter.html).not.toMatch(/https?:\/\/(?!anthill\.team)/); // никаких чужих адресов
   });
 
   it('своя задача описывается иначе, чем чужая', () => {

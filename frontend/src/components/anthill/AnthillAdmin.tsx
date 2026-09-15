@@ -77,7 +77,7 @@ export function AnthillAdmin() {
           {toggle('AnthillBot включён', 'выключенный отвечает понятной фразой, а не молчанием', s.enabled, (v) => void save({ enabled: v }))}
           {toggle('Может менять CRM', 'создавать задачи, переносить сроки, писать сообщения — всегда с подтверждением человека', s.actionsAllowed, (v) => void save({ actionsAllowed: v }))}
           {toggle('Может читать файлы и собирать документы', 'вложения задач и чатов: PDF, docx, xlsx, txt, csv', s.filesAllowed, (v) => void save({ filesAllowed: v }))}
-          {toggle('Может искать в интернете', 'по умолчанию агент работает только на данных TeamCRM', s.webSearch, (v) => void save({ webSearch: v }))}
+          {toggle('Может искать в интернете', 'по умолчанию агент работает только на данных ANTHILL', s.webSearch, (v) => void save({ webSearch: v }))}
         </div>
       </div>
 
@@ -86,7 +86,7 @@ export function AnthillAdmin() {
           <div className="anthill-group-head">Ключ поиска</div>
           <div className="anthill-card">
             <div className="dim">
-              Поиск идёт через Tavily. {s.hasWebSearchKey ? 'Ключ задан.' : 'Ключа нет — агент будет отвечать только по данным TeamCRM и скажет об этом.'}
+              Поиск идёт через Tavily. {s.hasWebSearchKey ? 'Ключ задан.' : 'Ключа нет — агент будет отвечать только по данным ANTHILL и скажет об этом.'}
             </div>
             {canEdit && (
               <div className="anthill-form-acts">

@@ -17,6 +17,6 @@ export async function buildDocx(title: string, body: string): Promise<Buffer> {
     new Paragraph({ text: title, heading: HeadingLevel.HEADING_1 }),
     ...body.split('\n').map((line) => new Paragraph({ children: [new TextRun(line)] })),
   ];
-  const doc = new Document({ creator: 'TeamCRM', sections: [{ children: paragraphs }] });
+  const doc = new Document({ creator: 'ANTHILL', sections: [{ children: paragraphs }] });
   return Packer.toBuffer(doc);
 }

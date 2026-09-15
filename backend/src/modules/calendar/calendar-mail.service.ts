@@ -22,7 +22,7 @@ export class CalendarMailService {
   ) {}
 
   private baseUrl(): string {
-    return (this.config.get<string>('APP_BASE_URL') || 'https://teamsmrt.com').replace(/\/+$/, '');
+    return (this.config.get<string>('APP_BASE_URL') || 'https://anthill.team').replace(/\/+$/, '');
   }
 
   private when(event: EventRow): string {

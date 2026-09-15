@@ -106,7 +106,7 @@ export class CalendarSyncService implements OnModuleInit, OnModuleDestroy {
     } else {
       await this.db.query(
         `INSERT INTO calendar_links (tenant_id, user_id, kind, token, title)
-         VALUES ($1,$2,'export',$3,'Мой календарь TEAMCRM')`,
+         VALUES ($1,$2,'export',$3,'Мой календарь ANTHILL')`,
         [tenantId, userId, token],
       );
     }
@@ -291,10 +291,10 @@ export class CalendarSyncService implements OnModuleInit, OnModuleDestroy {
     return [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//TEAMCRM//Calendar//RU',
+      'PRODID:-//ANTHILL//Calendar//RU',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
-      'X-WR-CALNAME:TEAMCRM',
+      'X-WR-CALNAME:ANTHILL',
       body,
       'END:VCALENDAR',
       '',

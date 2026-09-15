@@ -56,9 +56,9 @@ x-api-env: &api-env
   # отправки — это рабочий режим, а не ошибка. APP_BASE_URL нужен для ссылок
   # в письмах: по адресу с самоподписанным сертификатом их никто не откроет.
   BREVO_API_KEY: ${BREVO_API_KEY:-}
-  MAIL_FROM: ${MAIL_FROM:-noreply@teamsmrt.com}
-  MAIL_FROM_NAME: ${MAIL_FROM_NAME:-TEAMCRM}
-  APP_BASE_URL: ${APP_BASE_URL:-https://teamsmrt.com}
+  MAIL_FROM: ${MAIL_FROM:-noreply@anthill.team}
+  MAIL_FROM_NAME: ${MAIL_FROM_NAME:-ANTHILL}
+  APP_BASE_URL: ${APP_BASE_URL:-https://anthill.team}
   # Телеграм-бот: без токена отправка молча ничего не делает — это рабочий режим
   # для окружений без бота. Секрет проверяется на входящем вебхуке, если задан.
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}

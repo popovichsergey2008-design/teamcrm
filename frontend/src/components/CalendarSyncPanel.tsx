@@ -81,7 +81,7 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
           <div className="drawer-section-title">Наши встречи — в Google</div>
           <p className="dim">
             Секретная ссылка на ваш календарь. В Google: <b>Другие календари → Плюс → Подписаться по URL</b>.
-            Встречи из TEAMCRM появятся там же, где остальная ваша жизнь, и будут обновляться сами.
+            Встречи из ANTHILL появятся там же, где остальная ваша жизнь, и будут обновляться сами.
           </p>
           {exportLink?.url ? (
             <>
