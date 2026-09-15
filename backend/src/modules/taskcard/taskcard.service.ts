@@ -28,6 +28,35 @@ export class TaskCardService {
     return t;
   }
 
+  // ---- отметки о прочтении ----
+  /**
+   * Отметить переписку прочитанной до указанного сообщения.
+   *
+   * Отправителю важно знать, что его прочитали, а не только что доставили: половина
+   * вопросов в задачах — «ты видел?». Событие уходит в комнату проекта, поэтому
+   * строка «Просмотрено» появляется у автора сразу, без перезагрузки.
+   */
+  async markRead(tenantId: string, taskId: string, userId: string, lastReadId: string) {
+    const task = await this.task(tenantId, taskId);
+    const row = await this.repo.markRead(tenantId, taskId, userId, lastReadId);
+    this.realtime.emitScoped(
+      tenantId, task.project_id, 'task.comment_read',
+      { taskId, userId, lastReadId: String(row?.last_read_id ?? lastReadId) }, false,
+    );
+    return { ok: true, lastReadId: String(row?.last_read_id ?? lastReadId) };
+  }
+
+  /** Кто докуда дочитал: по этому фронт считает, кому показывать «Просмотрено». */
+  async readers(tenantId: string, taskId: string) {
+    const rows = await this.repo.readers(tenantId, taskId);
+    return rows.map((r) => ({
+      userId: String(r.user_id),
+      name: r.full_name,
+      lastReadId: String(r.last_read_id),
+      at: r.updated_at,
+    }));
+  }
+
   // ---- comments ----
   async addComment(
     tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean,

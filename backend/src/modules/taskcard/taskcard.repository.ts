@@ -24,6 +24,37 @@ export class TaskCardRepository {
     );
   }
 
+  // ---- отметки о прочтении ----
+  /**
+   * «Дочитал до этого сообщения».
+   *
+   * Отметка только ползёт вверх: человек мог прокрутить переписку назад, но уже
+   * показанное отправителю «просмотрено» снимать нельзя — это выглядело бы как
+   * «прочитал и передумал».
+   */
+  markRead(tenantId: string, taskId: string, userId: string, lastReadId: string) {
+    return this.db.one<{ last_read_id: string }>(
+      `INSERT INTO task_comment_reads (tenant_id, task_id, user_id, last_read_id)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (tenant_id, task_id, user_id) DO UPDATE
+          SET last_read_id = GREATEST(task_comment_reads.last_read_id, EXCLUDED.last_read_id),
+              updated_at = now()
+       RETURNING last_read_id::text`,
+      [tenantId, taskId, userId, lastReadId],
+    );
+  }
+
+  /** Кто и докуда прочитал эту задачу — одной строкой на человека. */
+  readers(tenantId: string, taskId: string) {
+    return this.db.many<{ user_id: string; full_name: string; last_read_id: string; updated_at: Date }>(
+      `SELECT r.user_id::text, u.full_name, r.last_read_id::text, r.updated_at
+         FROM task_comment_reads r JOIN users u ON u.id = r.user_id
+        WHERE r.tenant_id=$1 AND r.task_id=$2
+        ORDER BY r.updated_at DESC`,
+      [tenantId, taskId],
+    );
+  }
+
   /**
    * Корень ветки: отвечают всегда на сообщение верхнего уровня.
    *

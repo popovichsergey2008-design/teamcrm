@@ -310,6 +310,12 @@ export const api = {
       threadRootId: thread?.rootId ?? undefined,
       alsoInChannel: thread?.alsoInChannel || undefined,
     }),
+  /** «Дочитал до сюда»: по этим отметкам собирается строка «Просмотрено». */
+  markTaskChatRead: (taskId: string, lastReadId: string) =>
+    request<{ ok: true; lastReadId: string }>('POST', `/tasks/${taskId}/comments/read`, { lastReadId }),
+  /** Кто докуда дочитал переписку задачи. */
+  taskChatReaders: (taskId: string) =>
+    request<{ userId: string; name: string; lastReadId: string; at: string }[]>('GET', `/tasks/${taskId}/comments/readers`),
   /** Ветка обсуждения: корень и ответы. */
   taskThread: (taskId: string, rootId: string) =>
     request<{ rootId: string; replies: any[] }>('GET', `/tasks/${taskId}/threads/${rootId}`),

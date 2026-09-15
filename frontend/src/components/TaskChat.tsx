@@ -152,6 +152,8 @@ export function TaskChat({
   /** Записанное голосовое: его сначала слушают, а потом отправляют или стирают. */
   const [note, setNote] = useState<{ blob: Blob; url: string } | null>(null);
   const [noteBusy, setNoteBusy] = useState(false);
+  /** Кто докуда дочитал: из этого собирается строка «Просмотрено» под своим сообщением. */
+  const [readers, setReaders] = useState<{ userId: string; name: string; lastReadId: string }[]>([]);
   /** Уже поднимаем старое — второй раз на ту же прокрутку не идём. */
   const [olderBusy, setOlderBusy] = useState(false);
   /**
@@ -229,9 +231,41 @@ export function TaskChat({
       })
       .catch(() => undefined);
     api.taskActivity(taskId).then(setActivity).catch(() => undefined);
+    api.taskChatReaders(taskId).then(setReaders).catch(() => undefined);
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reload(); }, [taskId]);
+
+  /*
+    «Просмотрено» — отметка о прочтении.
+
+    Ставим, когда человек ОТКРЫЛ разговор и стоит внизу ленты: он видит последние
+    сообщения. Поднятая кнопкой «показать предыдущие» страница прочтением не
+    считается — там человек ищет старое, а не читает новое.
+
+    Отметка только ползёт вверх (это же правило и на сервере), поэтому прокрутка
+    назад не снимает у автора уже показанное подтверждение.
+  */
+  const lastId = comments.length ? String(comments[comments.length - 1].id) : '';
+  useEffect(() => {
+    if (!lastId || !atBottom) return;
+    api.markTaskChatRead(taskId, lastId)
+      .then(() => api.taskChatReaders(taskId).then(setReaders))
+      .catch(() => undefined);
+  }, [taskId, lastId, atBottom]);
+
+  /*
+    Чужую отметку показываем сразу: «ты видел?» — половина вопросов в задачах.
+  */
+  useEffect(() => {
+    const socket = getSocket();
+    const onRead = (p: { taskId?: string }) => {
+      if (String(p?.taskId ?? '') !== String(taskId)) return;
+      api.taskChatReaders(taskId).then(setReaders).catch(() => undefined);
+    };
+    socket.on('task.comment_read', onRead);
+    return () => { socket.off('task.comment_read', onRead); };
+  }, [taskId]);
 
   /*
     Открыли задачу — видно КОНЕЦ разговора и поле ввода.
@@ -730,6 +764,23 @@ export function TaskChat({
     for (const p of participants) add(p.user_id, p.role === 'watcher' ? 'наблюдатель' : 'соисполнитель');
     return out;
   }, [users, participants, assigneeId, creatorId]);
+
+  /*
+    Кто видел моё последнее сообщение.
+
+    Показываем отметку только под СВОИМ последним сообщением: «просмотрено» под
+    каждым превращает ленту в таблицу учёта, а спрашивают всегда про последнее.
+    Себя из списка убираем, ИИ-ответы не считаем — читают их люди.
+  */
+  const seenBy = useMemo(() => {
+    const me = String(user?.id ?? '');
+    const mine = [...comments].reverse().find((c: any) => String(c.author_id) === me && !c.is_ai);
+    if (!mine) return null;
+    const names = readers
+      .filter((r) => r.userId !== me && Number(r.lastReadId) >= Number(mine.id))
+      .map((r) => r.name);
+    return names.length ? { id: String(mine.id), names } : null;
+  }, [comments, readers, user?.id]);
 
   /** Закреплённые сообщения: их единицы, считаем из уже загруженной ленты. */
   const pinned = comments.filter((c: any) => c.pinned_at);
@@ -1230,6 +1281,22 @@ export function TaskChat({
           );
         })}
       </div>
+
+      {/*
+        «Просмотрено» — под лентой, как в мессенджере.
+
+        Одна строка на весь разговор, а не отметка у каждого сообщения: отправителю
+        нужно знать, дошло ли ПОСЛЕДНЕЕ, а стена галочек только шумит. Имена названы
+        прямо: «просмотрено двумя» не отвечает на вопрос, кем именно.
+      */}
+      {seenBy && !q && (
+        <div className="chat-seen" title={`Просмотрено: ${seenBy.names.join(', ')}`}>
+          <Icon name="check" size={12} />
+          Просмотрено: {seenBy.names.length > 2
+            ? `${seenBy.names.slice(0, 2).join(', ')} и ещё ${seenBy.names.length - 2}`
+            : seenBy.names.join(', ')}
+        </div>
+      )}
 
       {err && <div className="error-text">{err}</div>}
 

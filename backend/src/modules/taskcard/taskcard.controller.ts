@@ -23,6 +23,9 @@ class CommentDto {
   /** Ответ, важный для всех: показывается и в ветке, и в ленте. */
   @IsOptional() @IsBoolean() alsoInChannel?: boolean;
 }
+class ReadDto {
+  @IsString() @MaxLength(32) lastReadId!: string;
+}
 class ReactionDto {
   @IsString() @MaxLength(16) emoji!: string;
 }
@@ -67,6 +70,24 @@ export class TaskCardController {
   listComments(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('all') all?: string) {
     return this.svc.listComments(u.tenantId, id, u.role, u.userId, all === '1' ? 2000 : 100);
   }
+  /**
+   * «Дочитал до сюда». Шлём при открытии разговора и когда человек стоит внизу ленты.
+   *
+   * Отдельной ручкой, а не побочным действием чтения списка: страницу переписки
+   * поднимают и кнопкой «показать предыдущие», и переходом к старому сообщению из
+   * истории — это не значит, что человек всё прочитал.
+   */
+  @Post(':id/comments/read')
+  markRead(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ReadDto) {
+    return this.svc.markRead(u.tenantId, id, u.userId, dto.lastReadId);
+  }
+
+  /** Кто докуда дочитал переписку задачи. */
+  @Get(':id/comments/readers')
+  readers(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.readers(u.tenantId, id);
+  }
+
   @Post(':id/comments')
   addComment(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CommentDto) {
     return this.svc.addComment(u.tenantId, id, u.userId, dto.body, dto.isClientVisible === true, dto.replyToId, {

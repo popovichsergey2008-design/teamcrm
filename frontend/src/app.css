@@ -4274,6 +4274,11 @@ button.chat-pop-row:hover { background: var(--hover); }
   .task-chat-head { position: sticky; top: 0; z-index: 2; background: var(--bg-elev); }
   .task-chat-name { white-space: normal; }
 }
+/* «Просмотрено» — тихой строкой под лентой: это подтверждение, а не событие. */
+.chat-seen {
+  display: flex; align-items: center; gap: 4px; align-self: flex-start;
+  padding: 2px 12px 0; font-size: 11px; color: var(--text-mut);
+}
 /* «↓ N новых» — над полем ввода: она о ленте, к ней и возвращает. */
 .chat-jump-new { align-self: center; margin: 4px auto 0; }
 /* Отправляемое сообщение приглушено: оно уже видно, но ещё не закреплено на сервере. */
