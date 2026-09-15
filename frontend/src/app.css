@@ -4332,6 +4332,8 @@ button.chat-pop-row:hover { background: var(--hover); }
   .task-chat-head { position: sticky; top: 0; z-index: 2; background: var(--bg-elev); }
   .task-chat-name { white-space: normal; }
 }
+/* Ответ кнопки «Сделал»: что именно случилось — переносим или ждём постановщика. */
+.task-shift-note { display: flex; align-items: center; gap: 5px; margin: 6px 0 2px; font-size: var(--fs-sm); }
 /* «Просмотрено» — тихой строкой под лентой: это подтверждение, а не событие. */
 .chat-seen {
   display: flex; align-items: center; gap: 4px; align-self: flex-start;

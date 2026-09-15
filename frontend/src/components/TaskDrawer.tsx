@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { navigate } from '../lib/router';
 import { useAuth } from '../state/auth';
 import { EmptyState } from './EmptyState';
@@ -68,7 +68,24 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
   })();
   const [deadline, setDeadline] = useState(initialDeadline);
+  /*
+    Срок в поле следует за задачей.
+
+    Поле заполняется один раз при открытии карточки, и после «Сделал» оно продолжало
+    показывать прежнюю дату: на экране не менялось ничего, и выходило, что кнопка не
+    работает. Подхватываем новый срок — но только если человек сам это поле не правил,
+    иначе обновление затрёт то, что он набрал.
+  */
+  useEffect(() => {
+    setDeadline((cur) => (cur === lastServerDeadline.current ? initialDeadline : cur));
+    lastServerDeadline.current = initialDeadline;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDeadline]);
   const [warn, setWarn] = useState<any>(null);
+  /** Какой срок пришёл с сервера в прошлый раз: по нему видно, правил ли поле человек. */
+  const lastServerDeadline = useRef(initialDeadline);
+  /** Что ответила кнопка «Сделал»: без строки на экране непонятно, случилось ли хоть что-то. */
+  const [shiftNote, setShiftNote] = useState('');
   const [err, setErr] = useState('');
   const [desc, setDesc] = useState(task.description ?? '');
   /** Название правится прямо в карточке: раньше его можно было изменить только заново создав задачу. */
@@ -77,6 +94,10 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const { user } = useAuth();
   /** Решение принимает постановщик; владельцу тоже даём — он последняя инстанция. */
   const isManager = String(task.created_by ?? '') === String(user?.id ?? '') || user?.role === 'owner';
+  /** Перенести срок вправе исполнитель и постановщик — им кнопку и показываем. */
+  const canShift = String(task.assignee_id ?? '') === String(user?.id ?? '')
+    || String(task.created_by ?? '') === String(user?.id ?? '')
+    || user?.role === 'owner';
   /** Предложенный срок человеческой строкой: по ней и принимают решение. */
   const shiftLabel = (at: string) => new Date(at).toLocaleString('ru-RU', {
     weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
@@ -250,9 +271,24 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
    * подтвердит, в задаче стоит прежняя дата (иначе это кнопка «продлить себе срок»).
    */
   const askShift = async () => {
+    /*
+      Спрашиваем ДО, отвечаем ПОСЛЕ.
+
+      «Непонятно, как кнопка работает» — потому что она молча делала своё дело.
+      Теперь до нажатия сказано, что произойдёт, а после видно, что именно вышло:
+      перенесли сразу или отправили постановщику на подтверждение.
+    */
+    const ok = window.confirm(
+      'Отчитаться «Сделал» и перенести срок на следующую среду, 17:00?\n\n'
+      + 'Постановщик получит уведомление и подтвердит перенос. До его ответа срок останется прежним.',
+    );
+    if (!ok) return;
     setErr('');
     try {
-      await api.askDeadlineShift(task.id);
+      const res = await api.askDeadlineShift(task.id);
+      setShiftNote(res.deadline_shift_to
+        ? `Отправлено постановщику: перенести срок на ${shiftLabel(res.deadline_shift_to)}. До подтверждения срок прежний.`
+        : `Срок перенесён на ${res.deadline_at ? shiftLabel(res.deadline_at) : 'следующую среду, 17:00'}.`);
       onRefresh();
     } catch (e) {
       setErr((e as Error).message);
@@ -680,8 +716,9 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 </button>
                 {/* «Сделал» — про срок, а не про завершение: задача остаётся жить и
                     ждёт следующего круга. Поэтому кнопка стоит у таймера, а не рядом
-                    с «Завершить», которую от неё надо отличать с первого взгляда. */}
-                <button
+                    с «Завершить», которую от неё надо отличать с первого взгляда.
+                    Видна тем, кто вправе её нажать: наблюдателю она вернула бы отказ. */}
+                {canShift && <button
                   className="btn btn-sm"
                   onClick={askShift}
                   disabled={!!task.deadline_shift_to}
@@ -689,10 +726,12 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                     ? 'Перенос уже отправлен постановщику'
                     : 'Отчитаться и перенести срок на следующую среду, 17:00 (подтверждает постановщик)'}
                 >
-                  <Icon name="check-circle" size={13} /> Сделал
-                </button>
+                  <Icon name="check-circle" size={13} /> Сделал — срок на среду
+                </button>}
               </div>
             </div>
+            {shiftNote && <div className="dim task-shift-note"><Icon name="check" size={12} /> {shiftNote}</div>}
+
             {/*
               Просьба перенести срок — рядом с решением о приёмке, по тем же правилам:
               видно всем, а кнопки — тому, кто решает.
