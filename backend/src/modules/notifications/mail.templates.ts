@@ -232,6 +232,48 @@ export function taskApprovalLetter(ctx: TaskCtx, unsubscribeUrl: string): Letter
   };
 }
 
+/**
+ * Просят перенести срок («Сделал»).
+ *
+ * Письмо постановщику: исполнитель закончил очередной круг и предлагает новый срок.
+ * Дату называем прямо в теме — по ней и принимают решение, лезть за ней в карточку
+ * ради одного слова «да» незачем.
+ */
+export function deadlineShiftAskLetter(ctx: TaskCtx & { shiftTo: string }, unsubscribeUrl: string): Letter {
+  const lead = `${ctx.actorName} отчитался «Сделал» и просит перенести срок на ${ctx.shiftTo}.`;
+  return {
+    subject: trim(`Подтвердите перенос срока: ${ctx.taskTitle}`, 120),
+    text: plain(lead, ctx, unsubscribeUrl, 'Откройте задачу и подтвердите или откажите.'),
+    html: shell({
+      preheader: `${ctx.projectName} · новый срок ${ctx.shiftTo}`,
+      lead: escape(lead),
+      ctx,
+      accent: BRAND.accent,
+      unsubscribeUrl,
+    }),
+  };
+}
+
+/** Решение по переносу срока — исполнителю: он ждёт ответа и не может планировать без него. */
+export function deadlineShiftDecidedLetter(
+  ctx: TaskCtx & { shiftTo: string; approved: boolean }, unsubscribeUrl: string,
+): Letter {
+  const lead = ctx.approved
+    ? `${ctx.actorName} подтвердил перенос срока на ${ctx.shiftTo}.`
+    : `${ctx.actorName} отказал в переносе срока: прежний срок остаётся в силе.`;
+  return {
+    subject: trim(`${ctx.approved ? 'Срок перенесён' : 'Перенос срока отклонён'}: ${ctx.taskTitle}`, 120),
+    text: plain(lead, ctx, unsubscribeUrl),
+    html: shell({
+      preheader: `${ctx.projectName} · ${ctx.approved ? ctx.shiftTo : 'срок прежний'}`,
+      lead: escape(lead),
+      ctx,
+      accent: BRAND.accent,
+      unsubscribeUrl,
+    }),
+  };
+}
+
 /** Работу вернули. Причина — в теле письма: «переделай» без объяснения бесполезно. */
 export function taskReturnedLetter(ctx: TaskCtx & { reason: string }, unsubscribeUrl: string): Letter {
   const lead = `${ctx.actorName} вернул задачу в работу.`;

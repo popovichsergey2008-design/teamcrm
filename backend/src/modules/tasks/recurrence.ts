@@ -153,6 +153,18 @@ function addDays(y: number, m: number, d: number, n: number): { y: number; m: nu
 }
 
 /**
+ * Конец календарного дня в поясе человека.
+ *
+ * Нужен там, где «следующий такой-то день» не должен совпасть с сегодняшним: отсчёт
+ * от конца дня отсекает сегодняшнюю дату целиком, не гадая о часах.
+ */
+export function endOfLocalDay(date: Date, tz: string): Date {
+  const zone = tz || FALLBACK_TZ;
+  const at = localDate(date, zone);
+  return zonedToUtc(at.y, at.m, at.d, '23:59', zone);
+}
+
+/**
  * Ближайшее срабатывание СТРОГО ПОСЛЕ `after`.
  *
  * Перебираем календарные дни в поясе человека, а не считаем формулой: с формулой

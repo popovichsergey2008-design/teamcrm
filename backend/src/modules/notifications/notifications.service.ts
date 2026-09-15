@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { NotificationsRepository, Recipient } from './notifications.repository';
 import {
   EventKey, Letter, TaskCtx,
+  deadlineShiftAskLetter, deadlineShiftDecidedLetter,
   taskApprovalLetter, taskCommentedLetter, taskCreatedLetter, taskParticipantLetter,
   taskReturnedLetter, taskStatusLetter, taskMergedLetter, feedAnnouncementLetter, feedMentionLetter,
 } from './mail.templates';
@@ -272,6 +273,30 @@ export class NotificationsService {
       (ctx, unsub) => taskApprovalLetter(ctx, unsub));
   }
 
+  /**
+   * «Сделал» — просят перенести срок.
+   *
+   * Уходит тем же кругом, что и согласование работы: постановщику и наблюдателям, но
+   * не самому просящему. Дату форматируем здесь, а не в шаблоне: в письме она должна
+   * быть человеческой — «среда, 23 сентября, 17:00», а не меткой времени.
+   */
+  deadlineShiftAsked(tenantId: string, taskId: string, actorId: string | null, to: Date): Promise<void> {
+    const shiftTo = humanMoment(to);
+    return this.fanout(tenantId, taskId, 'task.status', actorId, `ds${taskId}:${to.getTime()}`,
+      (ctx, unsub) => deadlineShiftAskLetter({ ...ctx, shiftTo }, unsub));
+  }
+
+  /** Ответ постановщика по переносу — тому, кто просил (и остальным участникам). */
+  deadlineShiftDecided(
+    tenantId: string, taskId: string, actorId: string | null, to: Date, approved: boolean,
+    askedBy: string | null,
+  ): Promise<void> {
+    const shiftTo = humanMoment(to);
+    // askedBy в ключе: два решения по одной задаче в один день — два письма, а не одно
+    return this.fanout(tenantId, taskId, 'task.status', actorId, `dd${taskId}:${askedBy ?? '-'}:${Date.now()}`,
+      (ctx, unsub) => deadlineShiftDecidedLetter({ ...ctx, shiftTo, approved }, unsub));
+  }
+
   /** Работу вернули: исполнителю нужно знать не только «нет», но и почему. */
   approvalReturned(tenantId: string, taskId: string, actorId: string | null, reason: string): Promise<void> {
     return this.fanout(tenantId, taskId, 'task.status', actorId, `ar${taskId}:${Date.now()}`,
@@ -291,4 +316,11 @@ export class NotificationsService {
     return this.fanout(tenantId, taskId, 'task.status', actorId, `m${moveId}`,
       (ctx, unsub) => taskStatusLetter({ ...ctx, to, closed }, unsub));
   }
+}
+
+/** Дата письмом: «среда, 23 сентября, 17:00» — по ней принимают решение, не глядя в карточку. */
+function humanMoment(at: Date): string {
+  return at.toLocaleString('ru-RU', {
+    timeZone: 'Europe/Moscow', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+  });
 }

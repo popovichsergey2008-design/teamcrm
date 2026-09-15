@@ -32,6 +32,14 @@ export interface TaskRow {
   /** Задачу объединили с этой: она остаётся в списках, но помечена и закрыта. */
   merged_into_id?: string | null;
   merged_at?: Date | null;
+  /** Срок задачи. */
+  deadline_at?: Date | null;
+  /** Предложенный перенос срока («Сделал») — ждёт слова постановщика. */
+  deadline_shift_to?: Date | null;
+  deadline_shift_by?: string | null;
+  deadline_shift_at?: Date | null;
+  /** Повтор, из которого выросла задача: у него после переноса уезжает расписание. */
+  recurrence_id?: string | null;
 }
 
 @Injectable()
@@ -43,6 +51,49 @@ export class TasksRepository {
       `SELECT * FROM tasks WHERE tenant_id = $1 AND id = $2`,
       [tenantId, id],
     );
+  }
+
+  // ---- перенос срока «Сделал» ----
+  /** Предложить новый срок: сам deadline_at не трогаем, пока постановщик не ответил. */
+  askDeadlineShift(tenantId: string, id: string, to: Date, byUserId: string): Promise<TaskRow | null> {
+    return this.db.one<TaskRow>(
+      `UPDATE tasks
+          SET deadline_shift_to = $3, deadline_shift_by = $4, deadline_shift_at = now(), updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [tenantId, id, to, byUserId],
+    );
+  }
+
+  /** Решение принято — предложение убираем в любом случае, принято оно или нет. */
+  clearDeadlineShift(tenantId: string, id: string): Promise<TaskRow | null> {
+    return this.db.one<TaskRow>(
+      `UPDATE tasks
+          SET deadline_shift_to = NULL, deadline_shift_by = NULL, deadline_shift_at = NULL, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [tenantId, id],
+    );
+  }
+
+  /**
+   * Поставить срок ровным значением.
+   *
+   * Не через общий setEstimateDeadline: тот собран на COALESCE и умеет только
+   * «оставить как было», а здесь срок задаётся точно и безусловно.
+   */
+  setDeadline(tenantId: string, id: string, at: Date | null): Promise<TaskRow | null> {
+    return this.db.one<TaskRow>(
+      `UPDATE tasks SET deadline_at = $3, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [tenantId, id, at],
+    );
+  }
+
+  /** Пояс исполнителя: «следующая среда 17:00» считается по его календарю, не по серверному. */
+  async userTimezone(tenantId: string, userId: string): Promise<string | null> {
+    const row = await this.db.one<{ timezone: string | null }>(
+      `SELECT timezone FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, userId],
+    );
+    return row?.timezone ?? null;
   }
 
   listByProject(tenantId: string, projectId: string): Promise<TaskRow[]> {

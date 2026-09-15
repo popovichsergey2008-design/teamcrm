@@ -77,6 +77,10 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const { user } = useAuth();
   /** Решение принимает постановщик; владельцу тоже даём — он последняя инстанция. */
   const isManager = String(task.created_by ?? '') === String(user?.id ?? '') || user?.role === 'owner';
+  /** Предложенный срок человеческой строкой: по ней и принимают решение. */
+  const shiftLabel = (at: string) => new Date(at).toLocaleString('ru-RU', {
+    weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+  });
   /**
    * Кто ещё в задаче: соисполнители делают работу вместе с исполнителем,
    * наблюдатели только следят и получают уведомления.
@@ -238,6 +242,34 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
    * Обе кнопки живут в карточке, а не на доске: чтобы принять работу, надо сначала
    * её посмотреть, а «принять не глядя» — способ обесценить всю затею.
    */
+  /**
+   * «Сделал» — отчитаться и подвинуть срок на следующую среду 17:00.
+   *
+   * Просьба заказчика для дел, которые повторяются каждую неделю: закончил круг —
+   * одно нажатие вместо календаря. Срок при этом не уезжает сам: пока постановщик не
+   * подтвердит, в задаче стоит прежняя дата (иначе это кнопка «продлить себе срок»).
+   */
+  const askShift = async () => {
+    setErr('');
+    try {
+      await api.askDeadlineShift(task.id);
+      onRefresh();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+
+  /** Ответ постановщика на просьбу о переносе. */
+  const decideShift = async (approve: boolean) => {
+    setErr('');
+    try {
+      await api.decideDeadlineShift(task.id, approve);
+      onRefresh();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+
   const decide = async (accept: boolean) => {
     setErr('');
     try {
@@ -646,8 +678,45 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 >
                   <Icon name="pause" size={13} /> Пауза
                 </button>
+                {/* «Сделал» — про срок, а не про завершение: задача остаётся жить и
+                    ждёт следующего круга. Поэтому кнопка стоит у таймера, а не рядом
+                    с «Завершить», которую от неё надо отличать с первого взгляда. */}
+                <button
+                  className="btn btn-sm"
+                  onClick={askShift}
+                  disabled={!!task.deadline_shift_to}
+                  title={task.deadline_shift_to
+                    ? 'Перенос уже отправлен постановщику'
+                    : 'Отчитаться и перенести срок на следующую среду, 17:00 (подтверждает постановщик)'}
+                >
+                  <Icon name="check-circle" size={13} /> Сделал
+                </button>
               </div>
             </div>
+            {/*
+              Просьба перенести срок — рядом с решением о приёмке, по тем же правилам:
+              видно всем, а кнопки — тому, кто решает.
+            */}
+            {task.deadline_shift_to && (
+              <div className="approval-box">
+                <div className="approval-head">
+                  <Icon name="calendar" size={15} />{' '}
+                  {userName(task.deadline_shift_by ?? null)} отчитался «Сделал» и просит перенести срок
+                  на {shiftLabel(task.deadline_shift_to)}
+                </div>
+                {isManager ? (
+                  <div className="team-rate">
+                    <button className="btn btn-primary btn-sm" onClick={() => decideShift(true)}>Подтвердите</button>
+                    <button className="btn btn-sm" onClick={() => decideShift(false)}>Оставить прежний срок</button>
+                  </div>
+                ) : (
+                  <div className="dim" style={{ fontSize: 12 }}>
+                    Решает {userName(task.created_by ?? null)} — до подтверждения срок прежний.
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Работа сдана и ждёт решения: блок стоит первым — это главное, что
                 сейчас происходит с задачей, и адресован он конкретному человеку. */}
             {task.approval_state === 'pending' && (

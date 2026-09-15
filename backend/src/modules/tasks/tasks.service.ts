@@ -14,6 +14,7 @@ import { isDoneColumn, isReviewColumn } from './task-columns';
 import { handoffGate } from './handoff-gate';
 import { REGISTRY_PAGE_SIZE, RegistryFilters } from './task-registry';
 import { NotificationsService } from '../notifications/notifications.service';
+import { nextWednesday } from './deadline-shift';
 
 @Injectable()
 export class TasksService {
@@ -486,6 +487,93 @@ export class TasksService {
     this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
     void this.notify.approvalReturned(tenantId, id, actor.userId, note);
     return updated;
+  }
+
+  /**
+   * «Сделал» — попросить перенос срока на следующую среду 17:00.
+   *
+   * Зачем кнопка: у регулярных дел («сводка каждую неделю») человек, закончив работу,
+   * каждый раз лез в срок и ставил дату руками. Одно нажатие вместо календаря.
+   *
+   * Почему через подтверждение: иначе это кнопка «продлить себе срок», и сроки
+   * перестают что-либо значить. Пока постановщик не ответил, deadline_at прежний —
+   * задача не перестаёт быть просроченной от одного лишь желания исполнителя.
+   *
+   * Повторяющиеся задачи: у них после подтверждения уезжает и расписание (см. decide),
+   * иначе планировщик тут же вернёт прежний срок и нажатие окажется бессмысленным.
+   */
+  async askDeadlineShift(tenantId: string, id: string, actor: { userId: string; role: string }): Promise<TaskRow> {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    const mine = String(task.assignee_id ?? '') === String(actor.userId)
+      || String(task.created_by ?? '') === String(actor.userId);
+    if (!mine && actor.role !== 'owner') {
+      throw AppException.forbidden('Перенести срок может исполнитель или постановщик задачи');
+    }
+    const tz = (await this.repo.userTimezone(tenantId, actor.userId)) || 'Europe/Moscow';
+    const to = nextWednesday(new Date(), tz);
+
+    /*
+      Постановщик сам себе подтверждение не шлёт.
+
+      Он и есть тот, кто решает; отправить себе письмо «подтвердите» и нажать вторую
+      кнопку — обряд ради обряда.
+    */
+    const decidesHimself = String(task.created_by ?? '') === String(actor.userId) || actor.role === 'owner';
+    if (decidesHimself) {
+      await this.repo.setDeadline(tenantId, id, to);
+      await this.shiftRecurrence(tenantId, task, to);
+      await this.activity.log(tenantId, id, actor.userId, 'deadline_shifted', { to: to.toISOString() });
+    } else {
+      await this.repo.askDeadlineShift(tenantId, id, to, actor.userId);
+      await this.activity.log(tenantId, id, actor.userId, 'deadline_shift_asked', { to: to.toISOString() });
+      void this.notify.deadlineShiftAsked(tenantId, id, actor.userId, to);
+    }
+    const updated = (await this.repo.findById(tenantId, id))!;
+    this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
+    return updated;
+  }
+
+  /** Решение постановщика по переносу: согласиться или отказать. */
+  async decideDeadlineShift(
+    tenantId: string, id: string, actor: { userId: string; role: string }, approve: boolean,
+  ): Promise<TaskRow> {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    if (!task.deadline_shift_to) throw AppException.conflict('Эта задача не ждёт переноса срока');
+    this.assertCanDecide(task, actor);
+
+    const to = new Date(task.deadline_shift_to as unknown as string);
+    const asked = task.deadline_shift_by ? String(task.deadline_shift_by) : null;
+    if (approve) {
+      await this.repo.setDeadline(tenantId, id, to);
+      await this.shiftRecurrence(tenantId, task, to);
+    }
+    await this.repo.clearDeadlineShift(tenantId, id);
+    await this.activity.log(
+      tenantId, id, actor.userId,
+      approve ? 'deadline_shifted' : 'deadline_shift_declined', { to: to.toISOString() },
+    );
+    void this.notify.deadlineShiftDecided(tenantId, id, actor.userId, to, approve, asked);
+
+    const updated = (await this.repo.findById(tenantId, id))!;
+    this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
+    return updated;
+  }
+
+  /**
+   * У повторяющейся задачи вместе со сроком уезжает и расписание.
+   *
+   * Иначе выходит так: человек перенёс срок на следующую среду, а планировщик той же
+   * ночью «замечает», что срок этого повтора наступил, и возвращает старую дату (по
+   * правилу «не плодить, а переносить»). Нажатие оказалось бы бессмысленным.
+   * Двигаем только вперёд: расписание, ушедшее дальше переноса, трогать незачем.
+   */
+  private async shiftRecurrence(tenantId: string, task: TaskRow, to: Date): Promise<void> {
+    if (!task.recurrence_id) return;
+    const rule = await this.recurrence.byTask(tenantId, String(task.id));
+    if (!rule || new Date(rule.next_run_at).getTime() >= to.getTime()) return;
+    await this.recurrence.markRun(String(rule.id), new Date(rule.last_run_at ?? new Date()), to);
   }
 
   /** Включить или снять согласование — право постановщика (и владельца). */

@@ -79,6 +79,13 @@ export interface Task {
   predicted_finish_at?: string | null;
   estimate_hours?: string | null;
   deadline_at?: string | null;
+  /**
+   * Предложенный перенос срока («Сделал») — ждёт слова постановщика.
+   *
+   * Пока он здесь, deadline_at прежний: срок двигает решение человека, а не просьба.
+   */
+  deadline_shift_to?: string | null;
+  deadline_shift_by?: string | null;
   /** личный план: на какой день человек взял задачу (не срок) */
   focus_date?: string | null;
   closed_at?: string | null;

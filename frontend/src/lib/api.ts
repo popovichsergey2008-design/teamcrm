@@ -1418,6 +1418,16 @@ export const api = {
 
   /** Постановщик принял работу — задача завершается по-настоящему. */
   approveTask: (id: string) => request<Task>('POST', `/tasks/${id}/approve`, {}),
+  /**
+   * «Сделал»: перенести срок на следующую среду 17:00.
+   *
+   * Постановщику уходит письмо и кнопка «Подтвердите»; до его ответа срок прежний.
+   * Если жмёт сам постановщик — переносится сразу, подтверждать себе нечего.
+   */
+  askDeadlineShift: (id: string) => request<Task>('POST', `/tasks/${id}/deadline-shift`, {}),
+  /** Решение постановщика по переносу срока. */
+  decideDeadlineShift: (id: string, approve: boolean) =>
+    request<Task>('POST', `/tasks/${id}/deadline-shift/decide`, { approve }),
   /** Вернуть в работу: причина обязательна и попадает в историю задачи. */
   returnTask: (id: string, reason: string) => request<Task>('POST', `/tasks/${id}/return`, { reason }),
   /** Включить или снять согласование по задаче. */

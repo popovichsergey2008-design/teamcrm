@@ -5,7 +5,7 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { TasksService } from './tasks.service';
 import { TaskMergeService } from './task-merge.service';
 import {
-  ApprovalRequiredDto, CreateTaskDto, DuplicatesQueryDto, FocusDateDto, MergeTasksDto, MoveTaskDto, ParticipantDto,
+  ApprovalRequiredDto, CreateTaskDto, DeadlineShiftDto, DuplicatesQueryDto, FocusDateDto, MergeTasksDto, MoveTaskDto, ParticipantDto,
   ReturnTaskDto, TaskRecurrenceDto, TaskRegistryQueryDto, UpdateTaskDto,
 } from './tasks.dto';
 
@@ -234,6 +234,23 @@ export class TasksController {
   @Post(':id/return')
   returnTask(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ReturnTaskDto) {
     return this.tasks.returnForRework(user.tenantId, id, user, dto.reason);
+  }
+
+  /**
+   * «Сделал»: перенести срок на следующую среду 17:00.
+   *
+   * Отдельной ручкой, а не правкой срока через PATCH: у переноса своя судьба —
+   * подтверждение постановщика и сдвиг расписания у повторяющихся задач.
+   */
+  @Post(':id/deadline-shift')
+  askDeadlineShift(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.tasks.askDeadlineShift(user.tenantId, id, user);
+  }
+
+  /** Решение постановщика: подтвердить перенос или отказать. */
+  @Post(':id/deadline-shift/decide')
+  decideDeadlineShift(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: DeadlineShiftDto) {
+    return this.tasks.decideDeadlineShift(user.tenantId, id, user, dto.approve);
   }
 
   /** Включить или снять согласование по этой задаче. */

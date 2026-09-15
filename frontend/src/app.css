@@ -43,11 +43,11 @@
 :root[data-theme="light"] .logo-mark { box-shadow: 0 0 0 1px var(--border-2); }
 :root[data-theme="dark"] .logo-mark { box-shadow: 0 0 0 1px rgba(78, 242, 247, .25), 0 0 10px rgba(78, 242, 247, .18); }
 
-.brand { font-weight: 800; letter-spacing: -.5px; font-size: 20px; }
+.brand { font-weight: 800; letter-spacing: -.5px; font-size: calc(20px * var(--fs-scale)); }
 .brand span { color: var(--accent); }
 /* Экран входа: знак крупный — это первое, что видит человек, и запоминает именно его. */
 .auth-logo { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 10px; }
-.auth-logo .logo-word { font-size: 30px; }
+.auth-logo .logo-word { font-size: calc(30px * var(--fs-scale)); }
 /*
   Главная кнопка экрана входа — фирменным градиентом.
 
@@ -60,7 +60,7 @@
 
 /* auth */
 .auth-card { width: 380px; max-width: 100%; padding: 32px; box-shadow: var(--shadow); }
-.auth-brand { font-size: 26px; margin-bottom: 4px; }
+.auth-brand { font-size: calc(26px * var(--fs-scale)); margin-bottom: 4px; }
 .auth-sub { margin: 0 0 22px; }
 .auth-submit { width: 100%; margin-top: 6px; }
 .auth-toggle { width: 100%; margin-top: 10px; }
@@ -143,7 +143,7 @@
 .nav-collapsed .nav-search-mic { display: none; }
 .nav-search .nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-kbd {
-  font-size: 10px; letter-spacing: .04em; color: var(--text-mut);
+  font-size: calc(10px * var(--fs-scale)); letter-spacing: .04em; color: var(--text-mut);
   border: 1px solid var(--border-2); border-radius: 5px; padding: 1px 5px; white-space: nowrap;
 }
 /* основное меню */
@@ -218,22 +218,22 @@
 .mini-speaking { box-shadow: inset 0 0 0 2px var(--accent); }
 .mini-avatar {
   display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
-  background: #2a2f3a; color: #fff; font-weight: 600; font-size: 16px; letter-spacing: .5px;
+  background: #2a2f3a; color: #fff; font-weight: 600; font-size: calc(16px * var(--fs-scale)); letter-spacing: .5px;
 }
 .mini-name {
   position: absolute; left: 6px; bottom: 5px; max-width: calc(100% - 12px);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 11px; color: #fff; background: rgba(10, 12, 16, .72);
+  font-size: calc(11px * var(--fs-scale)); color: #fff; background: rgba(10, 12, 16, .72);
   padding: 1px 6px; border-radius: 999px;
 }
 
 .mini-rec {
   position: absolute; top: 6px; left: 6px; display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; color: #fff; background: rgba(10, 12, 16, .72); padding: 2px 7px; border-radius: 999px;
+  font-size: calc(11px * var(--fs-scale)); color: #fff; background: rgba(10, 12, 16, .72); padding: 2px 7px; border-radius: 999px;
 }
 .mini-rec-dot { width: 7px; height: 7px; border-radius: 50%; background: #e5484d; }
 .mini-note {
-  position: absolute; top: 6px; right: 6px; font-size: 11px; color: #fff;
+  position: absolute; top: 6px; right: 6px; font-size: calc(11px * var(--fs-scale)); color: #fff;
   background: rgba(10, 12, 16, .72); padding: 2px 7px; border-radius: 999px;
 }
 
@@ -282,7 +282,7 @@
 .mini-tiny .mini-btn .icon { width: 14px; height: 14px; }
 .mini-tiny .mini-name { display: none; }
 .mini-tiny .mini-rec { top: 4px; left: 4px; padding: 3px; }
-.mini-tiny .mini-avatar { font-size: 13px; }
+.mini-tiny .mini-avatar { font-size: calc(13px * var(--fs-scale)); }
 
 /*
   Созвон, убранный с глаз.
@@ -314,7 +314,7 @@
 .call-pill-back:hover { background: var(--bg-elev-2); }
 .call-pill-knock {
   display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px;
-  border-radius: 999px; background: #c62828; color: #fff; font-size: 10px; font-weight: 600;
+  border-radius: 999px; background: #c62828; color: #fff; font-size: calc(10px * var(--fs-scale)); font-weight: 600;
 }
 /* Кнопка возврата стоит выше кнопки диктовки: на телефоне они делят один угол. */
 @media (max-width: 1100px) { .call-pill { bottom: 80px; } }
@@ -336,7 +336,7 @@
 .nav-count {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-  background: var(--fill-danger); color: var(--on-fill); font-size: 11px; font-weight: 600;
+  background: var(--fill-danger); color: var(--on-fill); font-size: calc(11px * var(--fs-scale)); font-weight: 600;
 }
 .nav-sub {
   display: flex; align-items: center; gap: 8px; margin-left: 26px;
@@ -384,7 +384,7 @@
 /* полноэкранная страница (личный кабинет и т.п.) — под топбаром */
 .page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .page-head { display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
-.page-head h2 { margin: 0; font-size: 18px; font-weight: 700; }
+.page-head h2 { margin: 0; font-size: calc(18px * var(--fs-scale)); font-weight: 700; }
 /* Кнопки действий страницы прижаты вправо: заголовок слева, дело справа. */
 .page-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .profile-layout { display: flex; flex: 1; min-height: 0; }
@@ -457,7 +457,7 @@
 /* «И ещё две картинки» — цифрой на уголке, как в почте и мессенджерах. */
 .feed-thumb-more {
   position: absolute; right: 5px; bottom: 5px; padding: 1px 6px; border-radius: 999px;
-  font-size: 11px; background: rgba(0,0,0,.62); color: #fff;
+  font-size: calc(11px * var(--fs-scale)); background: rgba(0,0,0,.62); color: #fff;
 }
 .feed-badge-new { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
 .feed-open-hint { margin-left: auto; color: var(--accent); font-size: var(--fs-xs); }
@@ -505,7 +505,7 @@
 .feed-chosen { display: flex; flex-wrap: wrap; gap: 6px; }
 .feed-chip {
   display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; cursor: pointer;
-  border-radius: 999px; font-size: 12px;
+  border-radius: 999px; font-size: calc(12px * var(--fs-scale));
   background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent);
 }
 
@@ -516,16 +516,16 @@
 .feed-post.pinned { box-shadow: inset 3px 0 0 var(--accent); }
 .feed-post-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .feed-author { font-weight: 600; }
-.feed-time { font-size: 12px; }
+.feed-time { font-size: calc(12px * var(--fs-scale)); }
 .feed-badge {
-  font-size: 10px; text-transform: uppercase; letter-spacing: .06em; padding: 1px 7px;
+  font-size: calc(10px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .06em; padding: 1px 7px;
   /* плотная заливка, а не пастельный --warn: белым по пастели в тёмной теме не читается */
   border-radius: 999px; background: var(--fill-warn); color: var(--on-fill);
 }
 .feed-post-actions { margin-left: auto; display: flex; gap: 4px; }
 .feed-body { white-space: pre-wrap; word-break: break-word; }
 .feed-post-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.feed-readers { font-size: 12px; display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: var(--radius-sm); background: var(--bg-elev-2); }
+.feed-readers { font-size: calc(12px * var(--fs-scale)); display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: var(--radius-sm); background: var(--bg-elev-2); }
 .feed-comments { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
 .feed-comment { display: flex; gap: 8px; font-size: var(--fs-sm); }
 .feed-comment-head { display: flex; gap: 6px; align-items: baseline; }
@@ -564,14 +564,14 @@
 /* сроки отделены от событий и приглушены: это не встреча, а отметка «сегодня надо сдать» */
 .cal-deadlines { background: var(--bg-elev-2); }
 .cal-corner { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-.cal-allday-label { font-size: 10px; color: var(--text-mut); padding: 4px; text-align: right; }
+.cal-allday-label { font-size: calc(10px * var(--fs-scale)); color: var(--text-mut); padding: 4px; text-align: right; }
 .cal-dayhead {
   display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 6px 4px;
   border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
 }
 .cal-dayhead.off { background: var(--bg-elev-2); }
 .cal-dayhead.today .cal-daynum { background: var(--accent-2); color: var(--on-accent); border-radius: 999px; padding: 1px 7px; }
-.cal-dayname { font-size: 11px; text-transform: uppercase; color: var(--text-mut); }
+.cal-dayname { font-size: calc(11px * var(--fs-scale)); text-transform: uppercase; color: var(--text-mut); }
 .cal-daynum { font-weight: 600; }
 .cal-allday {
   min-height: 26px; display: flex; flex-direction: column; gap: 2px; padding: 2px;
@@ -584,7 +584,7 @@
 }
 .cal-hours { border-right: 1px solid var(--border); }
 .cal-hour { height: 44px; position: relative; }
-.cal-hour span { position: absolute; top: -7px; right: 6px; font-size: 10px; color: var(--text-mut); }
+.cal-hour span { position: absolute; top: -7px; right: 6px; font-size: calc(10px * var(--fs-scale)); color: var(--text-mut); }
 .cal-col { position: relative; border-right: 1px solid var(--border); }
 .cal-col.off { background: var(--bg-elev-2); }
 /* рабочие часы светлее нерабочих — так видно, куда встречу ставить прилично */
@@ -595,7 +595,7 @@
 .cal-event {
   position: absolute; overflow: hidden; text-align: left; cursor: pointer;
   border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-2); color: var(--on-accent);
-  padding: 3px 6px; font-size: 11px; line-height: 1.3; display: flex; flex-direction: column; gap: 1px;
+  padding: 3px 6px; font-size: calc(11px * var(--fs-scale)); line-height: 1.3; display: flex; flex-direction: column; gap: 1px;
   /* Получасовая встреча в сетке — 22 пикселя: в них не помещалось даже время.
      Нижний предел делает плитку читаемой, не ломая раскладку по времени. */
   min-height: 30px;
@@ -603,13 +603,13 @@
 .cal-event.company { background: var(--fill-info); border-color: var(--fill-info); color: var(--on-fill); }
 .cal-event.invited { border-style: dashed; }
 .cal-event.declined { opacity: .55; text-decoration: line-through; }
-.cal-event-time { font-size: 10px; opacity: .85; display: flex; align-items: center; gap: 6px; }
+.cal-event-time { font-size: calc(10px * var(--fs-scale)); opacity: .85; display: flex; align-items: center; gap: 6px; }
 .cal-event-people { display: inline-flex; align-items: center; gap: 2px; }
 .cal-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* имя организатора мельче названия: важен сам факт «кто зовёт», а не размер подписи */
-.cal-event-who { font-size: 10px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-event-who { font-size: calc(10px * var(--fs-scale)); opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Место или первая строка описания — то, чего на плитке не хватало: «что за встреча». */
-.cal-event-sub { font-size: 10px; opacity: .9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-event-sub { font-size: calc(10px * var(--fs-scale)); opacity: .9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /*
   Короткой плитке — только время и название.
 
@@ -624,7 +624,7 @@
 
 .cal-chip {
   display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; max-width: 100%;
-  text-align: left; font-size: 11px; padding: 2px 6px; border-radius: 4px;
+  text-align: left; font-size: calc(11px * var(--fs-scale)); padding: 2px 6px; border-radius: 4px;
   background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent); cursor: pointer;
   overflow: hidden; white-space: nowrap;
 }
@@ -663,7 +663,7 @@
   grid-auto-rows: minmax(104px, 1fr); gap: 1px;
   background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: auto;
 }
-.cal-month-head { background: var(--bg-elev); text-align: center; font-size: 11px; text-transform: uppercase; color: var(--text-mut); padding: 4px; }
+.cal-month-head { background: var(--bg-elev); text-align: center; font-size: calc(11px * var(--fs-scale)); text-transform: uppercase; color: var(--text-mut); padding: 4px; }
 .cal-month-cell {
   background: var(--bg-elev); padding: 4px; display: flex; flex-direction: column; gap: 2px;
   min-width: 0; min-height: 0; overflow: hidden;
@@ -673,7 +673,7 @@
 .cal-month-cell.off { background: var(--bg-elev-2); }
 .cal-month-cell.other .cal-month-num { color: var(--text-mut); }
 .cal-month-cell.today .cal-month-num { background: var(--accent-2); color: var(--on-accent); border-radius: 999px; padding: 0 6px; }
-.cal-month-num { font-size: 12px; font-weight: 600; align-self: flex-start; }
+.cal-month-num { font-size: calc(12px * var(--fs-scale)); font-weight: 600; align-self: flex-start; }
 
 /*
   Встреча из чужого календаря.
@@ -693,24 +693,24 @@
 
 .cal-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .cal-list-day { display: flex; flex-direction: column; gap: 4px; }
-.cal-list-date { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); }
+.cal-list-date { font-size: calc(12px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); }
 .cal-list-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
-.cal-list-time { font-size: 12px; color: var(--text-dim); min-width: 104px; }
+.cal-list-time { font-size: calc(12px * var(--fs-scale)); color: var(--text-dim); min-width: 104px; }
 .cal-list-title {
   flex: 1; background: none; border: none; text-align: left; color: inherit; font: inherit; cursor: pointer;
   display: flex; flex-direction: column; gap: 2px; min-width: 0;
 }
-.cal-list-sub { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-list-sub { font-size: calc(11px * var(--fs-scale)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-organizer { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 6px; }
 .cal-list-answer { display: flex; gap: 6px; }
 
 /* Занятость коллеги видно прямо в списке — до сохранения, а не после отказа. */
-.cal-busy { font-size: 11px; color: var(--warn); flex: 0 0 auto; }
+.cal-busy { font-size: calc(11px * var(--fs-scale)); color: var(--warn); flex: 0 0 auto; }
 /* «весь день» встречу не запрещает — и цветом не пугает */
 .cal-busy.soft { color: var(--text-mut); }
 .cal-busy-warn {
   display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 8px 10px;
-  border-radius: var(--radius-sm); font-size: 12px;
+  border-radius: var(--radius-sm); font-size: calc(12px * var(--fs-scale));
   background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--warn);
 }
 
@@ -725,7 +725,7 @@
 
 .cal-people { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .cal-participant { display: flex; align-items: center; gap: 8px; padding: 4px 6px; font-size: var(--fs-sm); }
-.cal-status { font-size: 11px; color: var(--text-mut); }
+.cal-status { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); }
 .cal-status-accepted { color: var(--ok); }
 .cal-status-declined { color: var(--danger); }
 .cal-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
@@ -746,7 +746,7 @@
 .nav-projects-tabs { display: flex; gap: 4px; margin: 2px 8px 6px; border-bottom: 1px solid var(--border); }
 .nav-projects-tabs button {
   flex: 1; background: none; border: none; cursor: pointer; padding: 4px 2px 6px;
-  font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
+  font-size: calc(10px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .07em;
   color: var(--text-mut); border-bottom: 2px solid transparent;
 }
 .nav-projects-tabs button:hover { color: var(--text-dim); }
@@ -764,32 +764,32 @@
   к тому же свёрнуты, пока их не раскроют.
 */
 .nav-projects-list { display: flex; flex-direction: column; gap: 1px; }
-.nav-projects .project-item { font-size: 13px; padding: 6px 10px 6px 30px; }
+.nav-projects .project-item { font-size: calc(13px * var(--fs-scale)); padding: 6px 10px 6px 30px; }
 .nav-projects .project-row.active { box-shadow: inset 2px 0 0 var(--accent); }
-.nav-projects-empty { padding: 4px 10px 4px 30px; font-size: 12px; }
+.nav-projects-empty { padding: 4px 10px 4px 30px; font-size: calc(12px * var(--fs-scale)); }
 .nav-projects-new { display: flex; gap: 4px; padding: 6px 8px 2px 26px; }
-.nav-projects-new .input { font-size: 12px; padding: 5px 8px; min-width: 0; }
+.nav-projects-new .input { font-size: calc(12px * var(--fs-scale)); padding: 5px 8px; min-width: 0; }
 .project-group-head {
   display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 8px 5px 22px;
   background: none; border: none; cursor: pointer; color: inherit; font: inherit; text-align: left;
 }
 .project-group-head:hover { background: var(--bg-elev-2); border-radius: var(--radius-sm); }
 .project-group-caret { width: 10px; opacity: .7; }
-.project-group-name { flex: 1; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.project-group-count { color: var(--text-mut); font-size: 12px; }
+.project-group-name { flex: 1; font-weight: 600; font-size: calc(13px * var(--fs-scale)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-group-count { color: var(--text-mut); font-size: calc(12px * var(--fs-scale)); }
 
 /* вкладки сайдбара: «Проекты» и «Архив» (появляется, только когда в архиве что-то есть) */
 .sidebar-tabs { display: flex; gap: 4px; margin: 0 0 10px; border-bottom: 1px solid var(--border); }
 .sidebar-tab {
   flex: 1; background: none; border: none; cursor: pointer; padding: 6px 4px 8px;
-  font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  font-size: calc(11px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .08em;
   color: var(--text-mut); border-bottom: 2px solid transparent; transition: color .15s, border-color .15s;
 }
 .sidebar-tab:hover { color: var(--text-dim); }
 .sidebar-tab.active { color: var(--text); border-bottom-color: var(--accent); }
 .sidebar-tab-count {
   display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 999px;
-  background: var(--bg-elev-2); color: var(--text-mut); font-size: 10px; letter-spacing: 0;
+  background: var(--bg-elev-2); color: var(--text-mut); font-size: calc(10px * var(--fs-scale)); letter-spacing: 0;
 }
 
 /* Список проектов прокручивается сам; полосу делаем такой же тонкой, как на доске,
@@ -816,7 +816,7 @@
   margin-left: auto; flex: 0 0 auto;
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-  background: var(--fill-danger); color: var(--on-fill); font-size: 11px; font-weight: 700;
+  background: var(--fill-danger); color: var(--on-fill); font-size: calc(11px * var(--fs-scale)); font-weight: 700;
 }
 .project-row:hover .project-item, .project-row.active .project-item { color: var(--text); }
 /*
@@ -833,7 +833,7 @@
 */
 .project-del {
   border: none; background: transparent; color: var(--text-mut); cursor: pointer;
-  padding: 4px 8px; font-size: 12px; opacity: .5; transition: opacity .12s, color .12s;
+  padding: 4px 8px; font-size: calc(12px * var(--fs-scale)); opacity: .5; transition: opacity .12s, color .12s;
 }
 .project-del:hover { color: var(--danger); }
 @media (hover: hover) and (pointer: fine) {
@@ -843,32 +843,32 @@
   .project-row:focus-within .project-del,
   .project-del:focus-visible { opacity: 1; }
 }
-.sidebar-empty { padding: 8px 10px; font-size: 13px; }
-.project-src { margin-left: 6px; color: var(--accent); font-size: 12px; }
+.sidebar-empty { padding: 8px 10px; font-size: calc(13px * var(--fs-scale)); }
+.project-src { margin-left: 6px; color: var(--accent); font-size: calc(12px * var(--fs-scale)); }
 .new-project { display: flex; gap: 6px; margin-top: 12px; }
 
 .board-main { flex: 1; min-width: 0; padding: 20px 24px; overflow: hidden; display: flex; flex-direction: column; }
 .board-error { margin-bottom: 12px; }
 .board-placeholder { margin-top: 40px; }
 .board-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
-.board-title { font-size: 18px; font-weight: 700; }
+.board-title { font-size: calc(18px * var(--fs-scale)); font-weight: 700; }
 
 /* P&L панель */
 .pnl { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .pnl-alert {
   background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-line);
-  padding: 6px 12px; border-radius: var(--radius-sm); font-size: 13px;
+  padding: 6px 12px; border-radius: var(--radius-sm); font-size: calc(13px * var(--fs-scale));
 }
 .pnl-grid { display: flex; gap: 10px; flex-wrap: wrap; }
 .pnl-cell {
   display: flex; flex-direction: column; gap: 2px; padding: 8px 14px;
   background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 110px;
 }
-.pnl-label { font-size: 11px; color: var(--text-mut); text-transform: uppercase; letter-spacing: .06em; }
-.pnl-val { font-size: 16px; font-weight: 600; }
+.pnl-label { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); text-transform: uppercase; letter-spacing: .06em; }
+.pnl-val { font-size: calc(16px * var(--fs-scale)); font-weight: 600; }
 .pnl-good { color: var(--ok); }
 .pnl-bad { color: var(--danger); }
-.pnl-delta { font-size: 13px; font-weight: 500; }
+.pnl-delta { font-size: calc(13px * var(--fs-scale)); font-weight: 500; }
 
 /* Задача, по которой сейчас идёт отсчёт: полоса слева на карточке и в строке
    списка. Кнопки таймера с превью убраны — они живут в самой задаче. */
@@ -887,7 +887,7 @@
 }
 .col-name { cursor: text; border-radius: var(--radius-sm); padding: 1px 4px; }
 .col-name:hover { background: var(--bg-elev-2); }
-.col-rename { padding: 4px 6px; font-size: 14px; max-width: 150px; }
+.col-rename { padding: 4px 6px; font-size: calc(14px * var(--fs-scale)); max-width: 150px; }
 .col-head-right { display: inline-flex; align-items: center; gap: 6px; }
 /*
   Управление колонкой видно всегда, а не только под курсором.
@@ -900,7 +900,7 @@
 .column:hover .col-actions, .col-actions:focus-within { opacity: 1; }
 .col-btn {
   border: none; background: transparent; color: var(--text-mut); cursor: pointer;
-  padding: 2px 5px; font-size: 11px; border-radius: var(--radius-sm); line-height: 1;
+  padding: 2px 5px; font-size: calc(11px * var(--fs-scale)); border-radius: var(--radius-sm); line-height: 1;
 }
 .col-btn:hover:not(:disabled) { background: var(--bg-elev-2); color: var(--text); }
 /* Выключенная стрелка (крайняя колонка) остаётся читаемой: 25% на светлом фоне
@@ -959,11 +959,11 @@
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 18px; height: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px;
   background: var(--fill-danger); color: var(--on-fill);
-  font-size: 11px; font-weight: 700; vertical-align: middle;
+  font-size: calc(11px * var(--fs-scale)); font-weight: 700; vertical-align: middle;
 }
 .task-card-new { box-shadow: inset 3px 0 0 var(--fill-danger); }
 .task-card:active { cursor: grabbing; transform: scale(.99); }
-.task-title { font-size: 14px; }
+.task-title { font-size: calc(14px * var(--fs-scale)); }
 .risk-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: middle; }
 .risk-green { background: var(--ok); }
 .risk-yellow { background: var(--warn); }
@@ -974,7 +974,7 @@
 
 /* переключатель вида доска/список */
 .view-switch { display: inline-flex; margin-left: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; vertical-align: middle; }
-.view-btn { border: none; background: var(--bg-elev); color: var(--text-dim); padding: 5px 12px; font-size: 13px; cursor: pointer; }
+.view-btn { border: none; background: var(--bg-elev); color: var(--text-dim); padding: 5px 12px; font-size: calc(13px * var(--fs-scale)); cursor: pointer; }
 .view-btn + .view-btn { border-left: 1px solid var(--border); }
 .view-btn:hover { background: var(--bg-elev-2); color: var(--text); }
 .view-btn.active { background: var(--fill-info); color: var(--on-fill); }
@@ -984,17 +984,17 @@
 .task-list::-webkit-scrollbar { width: 8px; }
 .task-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 .list-group { margin-bottom: 18px; }
-.list-group-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-mut); padding: 6px 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.list-group-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: calc(13px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .05em; color: var(--text-mut); padding: 6px 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .list-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 10px 12px; border-radius: var(--radius-sm); cursor: pointer; border: 1px solid transparent;
 }
 .list-row:hover { background: var(--bg-elev); border-color: var(--border-2); }
 .list-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; flex-wrap: wrap; }
-.list-title { font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+.list-title { font-size: calc(14px * var(--fs-scale)); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
 .list-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
-.list-noassignee { font-size: 12px; }
-.list-empty { padding: 8px 12px; font-size: 13px; }
+.list-noassignee { font-size: calc(12px * var(--fs-scale)); }
+.list-empty { padding: 8px 12px; font-size: calc(13px * var(--fs-scale)); }
 
 /* пустые состояния */
 .empty-state {
@@ -1051,7 +1051,7 @@
   padding: 20px; box-shadow: var(--shadow-lg);
 }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-.drawer-head h3 { margin: 0; font-size: 18px; }
+.drawer-head h3 { margin: 0; font-size: calc(18px * var(--fs-scale)); }
 /* Крестик крупнее рядовой кнопки: карточка занимает пол-экрана, и выход из неё
    не должен требовать прицеливания. */
 .drawer-close {
@@ -1083,7 +1083,7 @@
 .timer-actions .btn:disabled { opacity: .45; }
 @media (prefers-reduced-motion: reduce) { .timer-panel.is-running .timer-dot { animation: none; } }
 /* Отклик на напоминания: строка под счётчиками, а не отдельный экран статистики. */
-.secretary-reaction { font-size: 12px; margin: -4px 0 12px; line-height: 1.45; }
+.secretary-reaction { font-size: calc(12px * var(--fs-scale)); margin: -4px 0 12px; line-height: 1.45; }
 
 /* Спросить секретаря: строка вопроса, подсказки и ответ фактами. */
 .secretary-ask { margin-bottom: 14px; }
@@ -1093,7 +1093,7 @@
 .ask-answer {
   margin-top: 8px; padding: 10px 12px; border-radius: var(--radius-sm);
   background: var(--bg-elev-2); border: 1px solid var(--border);
-  white-space: pre-line; font-size: 14px; line-height: 1.5;
+  white-space: pre-line; font-size: calc(14px * var(--fs-scale)); line-height: 1.5;
 }
 
 /* Работа сдана и ждёт постановщика — главное, что сейчас происходит с задачей. */
@@ -1101,13 +1101,13 @@
   margin-bottom: 12px; padding: 10px 12px; border-radius: var(--radius-sm);
   background: var(--warn-soft, var(--bg-elev-2)); border: 1px solid var(--warn, var(--border-2));
 }
-.approval-head { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
-.task-origin { font-size: 12px; margin-bottom: 10px; display: flex; align-items: center; gap: 5px; }
+.approval-head { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: calc(14px * var(--fs-scale)); margin-bottom: 6px; }
+.task-origin { font-size: calc(12px * var(--fs-scale)); margin-bottom: 10px; display: flex; align-items: center; gap: 5px; }
 
 /* Задачи по итогам встречи: список со ссылками, а не счётчик. */
 .meeting-task { padding: 6px 0; border-bottom: 1px solid var(--border); }
-.meeting-task-title { font-weight: 600; font-size: 14px; text-align: left; }
-.meeting-task-meta { font-size: 12px; margin-top: 2px; }
+.meeting-task-title { font-weight: 600; font-size: calc(14px * var(--fs-scale)); text-align: left; }
+.meeting-task-meta { font-size: calc(12px * var(--fs-scale)); margin-top: 2px; }
 
 /* Ответ помощника в ленте обсуждения: его нельзя спутать с сообщением коллеги. */
 .comment-ai { border-left: 2px solid var(--accent); padding-left: 10px; background: var(--accent-soft); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
@@ -1116,9 +1116,9 @@
 
 /* Предложения помощника — то, что применяет человек, а не он сам. */
 .ai-advice { margin: 10px 0; padding: 10px 12px; border: 1px dashed var(--accent-line); border-radius: var(--radius-sm); }
-.ai-advice-head { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
-.ai-advice-list { margin: 0 0 8px; padding-left: 18px; font-size: 13px; }
-.ai-advice-suggest { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.ai-advice-head { font-size: calc(12px * var(--fs-scale)); font-weight: 600; margin-bottom: 4px; }
+.ai-advice-list { margin: 0 0 8px; padding-left: 18px; font-size: calc(13px * var(--fs-scale)); }
+.ai-advice-suggest { display: flex; align-items: center; gap: 6px; font-size: calc(12px * var(--fs-scale)); color: var(--text-dim); }
 
 /*
  * Карточка задачи и чат рядом — постоянно.
@@ -1166,7 +1166,7 @@
 .reaction {
   display: inline-flex; align-items: center; gap: 4px;
   border: 1px solid var(--border); background: var(--bg-elev); border-radius: 999px;
-  padding: 2px 8px; font-size: 12px; line-height: 1.4; cursor: pointer; color: var(--text-dim);
+  padding: 2px 8px; font-size: calc(12px * var(--fs-scale)); line-height: 1.4; cursor: pointer; color: var(--text-dim);
 }
 .reaction:hover { border-color: var(--border-2); }
 .reaction.mine { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
@@ -1205,7 +1205,7 @@
 }
 .react-pop-btn {
   width: 30px; height: 30px; border: none; background: none; border-radius: 50%;
-  font-size: 18px; line-height: 1; cursor: pointer; transition: transform .1s;
+  font-size: calc(18px * var(--fs-scale)); line-height: 1; cursor: pointer; transition: transform .1s;
 }
 .react-pop-btn:hover { background: var(--bg-elev-2); transform: scale(1.15); }
 .react-pop-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -1220,7 +1220,7 @@
 .msg-menu-item {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
   padding: 7px 10px; border: none; background: none; border-radius: var(--radius-sm);
-  font: inherit; font-size: 13px; color: var(--text); cursor: pointer;
+  font: inherit; font-size: calc(13px * var(--fs-scale)); color: var(--text); cursor: pointer;
 }
 /*
   Всплывашка, которую нельзя обрезать.
@@ -1235,7 +1235,7 @@
 .react-pop.pop-fixed, .msg-menu.pop-fixed { position: fixed; bottom: auto; z-index: 60; }
 .msg-menu-item:hover { background: var(--bg-elev-2); }
 .msg-menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.chat-under-mark { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; }
+.chat-under-mark { display: inline-flex; align-items: center; gap: 3px; font-size: calc(11px * var(--fs-scale)); }
 
 /*
   ───── Чат задачи ─────
@@ -1269,7 +1269,7 @@
 }
 .msg-avatar {
   flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 12px; font-weight: 600;
+  display: grid; place-items: center; font-size: calc(12px * var(--fs-scale)); font-weight: 600;
   background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
 }
 /* У склеенного сообщения кружок пустой: он держит отступ, но не повторяет буквы. */
@@ -1286,7 +1286,7 @@
   background: var(--bg-elev); border: 1px solid var(--border);
 }
 .msg-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.msg-name { font-size: 13px; display: block; margin-bottom: 1px; }
+.msg-name { font-size: calc(13px * var(--fs-scale)); display: block; margin-bottom: 1px; }
 /* Цвет закреплён за автором — см. whoColor() в TaskChat. */
 .msg-who-1 { color: var(--who-1); }
 .msg-who-2 { color: var(--who-2); }
@@ -1295,9 +1295,9 @@
 .msg-who-5 { color: var(--who-5); }
 .msg-who-6 { color: var(--who-6); }
 /* Время — в правом нижнем углу пузыря, как в мессенджере. */
-.msg-stamp { display: block; text-align: right; font-size: 11px; color: var(--text-mut); margin-top: 2px; }
-.msg-time { font-size: 11px; color: var(--text-mut); }
-.msg-text { font-size: 14px; word-break: break-word; }
+.msg-stamp { display: block; text-align: right; font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); margin-top: 2px; }
+.msg-time { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); }
+.msg-text { font-size: calc(14px * var(--fs-scale)); word-break: break-word; }
 /* Упоминание — самое важное в сообщении: его ищут глазами, а серой стеной оно не видно. */
 .msg-mention { color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 3px; }
 /* Своё сообщение и ответ помощника отличаются подложкой пузыря, а не выравниванием:
@@ -1312,7 +1312,7 @@
   display: block; width: 100%; text-align: left; margin: 2px 0 4px; padding: 3px 8px;
   max-height: 42px; overflow: hidden;
   border: none; border-left: 3px solid var(--accent-line); border-radius: 0 6px 6px 0;
-  background: var(--bg-elev-2); color: var(--text-dim); font: inherit; font-size: 12px;
+  background: var(--bg-elev-2); color: var(--text-dim); font: inherit; font-size: calc(12px * var(--fs-scale));
   cursor: pointer;
 }
 .msg-quote:hover { border-left-color: var(--accent); color: var(--text); }
@@ -1321,15 +1321,15 @@
 .msg-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .msg-act {
   border: none; background: none; color: var(--text-mut); cursor: pointer;
-  font: inherit; font-size: 11px; padding: 1px 5px; border-radius: 5px;
+  font: inherit; font-size: calc(11px * var(--fs-scale)); padding: 1px 5px; border-radius: 5px;
   display: inline-flex; align-items: center; gap: 3px;
 }
 .msg-act:hover { background: var(--hover); color: var(--text); }
 .msg-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .msg-act-danger:hover { color: var(--danger); }
 
-.chat-count { font-size: 11px; margin-left: 4px; }
-.chat-found { font-size: 12px; margin: 4px 0; }
+.chat-count { font-size: calc(11px * var(--fs-scale)); margin-left: 4px; }
+.chat-found { font-size: calc(12px * var(--fs-scale)); margin: 4px 0; }
 /*
   Найденное сообщение в списке слева.
 
@@ -1344,26 +1344,26 @@
 .chat-hit:hover { background: var(--bg-elev-2); border-left-color: var(--accent); }
 .chat-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .chat-hit-head { display: flex; align-items: baseline; gap: 6px; justify-content: space-between; }
-.chat-hit-body { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-hit-body { font-size: calc(12px * var(--fs-scale)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-history-head { margin-top: 16px; }
 /* Строка истории про сообщение ведёт к самому сообщению. */
 .activity-link {
   display: block; width: 100%; text-align: left; border: none; background: none;
-  color: var(--text-mut); font: inherit; font-size: 12px; padding: 4px 0;
+  color: var(--text-mut); font: inherit; font-size: calc(12px * var(--fs-scale)); padding: 4px 0;
   border-bottom: 1px solid var(--border); cursor: pointer;
 }
 .activity-link:hover { color: var(--accent); }
 .activity-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .comment-reply-to {
   display: flex; align-items: center; gap: 6px; padding: 6px 8px; margin-top: 6px;
-  background: var(--bg-elev-2); border-radius: var(--radius-sm); font-size: 12px;
+  background: var(--bg-elev-2); border-radius: var(--radius-sm); font-size: calc(12px * var(--fs-scale));
 }
 
 /* Быстрые вопросы: их задают чаще всего, набирать руками незачем. */
 /* Быстрые вопросы в узкой колонке: мелко и в строку — иначе пять кнопок во всю
    ширину занимают полэкрана и выглядят как меню, а не как подсказки. */
 .ai-quick { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
-.ai-quick .btn { padding: 3px 8px; font-size: 12px; }
+.ai-quick .btn { padding: 3px 8px; font-size: calc(12px * var(--fs-scale)); }
 .comment-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 
 /* Настройка меню: перетаскивание пунктов и скрытие ненужных. */
@@ -1381,7 +1381,7 @@
 .nav-tune-bar { display: flex; gap: 8px; padding: 6px 10px; }
 .nav-tune-btn {
   display: inline-flex; align-items: center; gap: 5px; border: none; background: none;
-  color: var(--text-mut); font-size: 12px; cursor: pointer; padding: 2px;
+  color: var(--text-mut); font-size: calc(12px * var(--fs-scale)); cursor: pointer; padding: 2px;
 }
 .nav-tune-btn:hover { color: var(--text); }
 /*
@@ -1406,6 +1406,15 @@
   в ширину панели уже не влезают. Внизу остаётся пара «Готово» и «Выйти».
 */
 .nav-tune-head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* Размер шрифта — ряд цифр: выбор из пяти значений не стоит выпадающего списка. */
+.nav-font-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; font-size: var(--fs-xs); }
+.nav-font-btn {
+  min-width: 28px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elev); color: var(--text-dim); font: inherit; cursor: pointer;
+}
+.nav-font-btn:hover { color: var(--text); border-color: var(--border-2); }
+.nav-font-btn.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.nav-font-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .nav-tune-title { flex: 1 0 100%; font-size: var(--fs-sm); font-weight: 600; }
 .nav-tune-head-row .btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
 .nav-tune-head-row .nav-tune-reset { flex: 1 0 100%; }
@@ -1510,7 +1519,7 @@
 .rich-tool {
   display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 26px;
   padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-sm);
-  background: none; color: var(--text-dim); cursor: pointer; font: inherit; font-size: 13px;
+  background: none; color: var(--text-dim); cursor: pointer; font: inherit; font-size: calc(13px * var(--fs-scale));
 }
 .rich-tool:hover { background: var(--bg-elev-2); color: var(--text); border-color: var(--border); }
 .rich-tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -1563,7 +1572,7 @@
 /* Люди в задаче: соисполнители и наблюдатели — чипами, а не строкой через запятую. */
 .people-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }
 .people-chip {
-  display: inline-flex; align-items: center; gap: 4px; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 4px; font-size: calc(12px * var(--fs-scale));
   background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 4px 2px 9px;
 }
 .people-chip-x {
@@ -1604,7 +1613,7 @@
 /* Цифра у вкладки «Файлы»: вложение видно, не открывая вкладку. */
 .tab-count {
   display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 5px;
-  margin-left: 5px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  margin-left: 5px; border-radius: 999px; font-size: calc(11px * var(--fs-scale)); font-weight: 600;
   background: var(--bg-elev-2); color: var(--text-mut);
 }
 
@@ -1664,9 +1673,9 @@
 .mine-filter-item:hover { background: var(--bg-elev-2); }
 .mine-filter-item.active { background: var(--accent-soft); color: var(--accent); }
 /* Пояснение справа: оно объясняет пункт, но не спорит с ним за внимание. */
-.mine-filter-item .dim { margin-left: auto; font-size: 11px; }
+.mine-filter-item .dim { margin-left: auto; font-size: calc(11px * var(--fs-scale)); }
 .mine-filter-head {
-  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  font-size: calc(11px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .06em;
   color: var(--text-mut); padding: 8px 8px 4px; border-top: 1px solid var(--border); margin-top: 4px;
 }
 .mine-filter-list { max-height: 180px; overflow-y: auto; }
@@ -1750,24 +1759,24 @@
 /* Расход ИИ: итоги, столбики по дням и таблица возможностей. */
 .ai-usage-period { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 12px; }
 .ai-usage-sums { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 6px; }
-.ai-usage-note { font-size: 12px; margin-bottom: 8px; }
-.ai-usage-mock { font-size: 12px; display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.ai-usage-note { font-size: calc(12px * var(--fs-scale)); margin-bottom: 8px; }
+.ai-usage-mock { font-size: calc(12px * var(--fs-scale)); display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 
 /* Столбики по дням: без библиотеки графиков — здесь важна форма, а не точность до пикселя. */
 .ai-usage-days { display: flex; align-items: flex-end; gap: 3px; height: 90px; overflow-x: auto; padding-bottom: 16px; }
 .ai-usage-day { position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; min-width: 14px; flex: 1 1 14px; }
 .ai-usage-bar { width: 100%; background: var(--accent); border-radius: 2px 2px 0 0; }
-.ai-usage-daylabel { position: absolute; bottom: -16px; font-size: 9px; color: var(--text-mut); white-space: nowrap; }
+.ai-usage-daylabel { position: absolute; bottom: -16px; font-size: calc(9px * var(--fs-scale)); color: var(--text-mut); white-space: nowrap; }
 
 .ai-usage-group { margin-top: 10px; }
-.ai-usage-group-head { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); margin-bottom: 4px; }
+.ai-usage-group-head { font-size: calc(12px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); margin-bottom: 4px; }
 .ai-usage-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); }
 /* Незапускавшееся не прячем, но и не выпячиваем: это фон, а не событие. */
 .ai-usage-row.idle { opacity: .55; }
 .ai-usage-what { flex: 1 1 auto; min-width: 0; }
-.ai-usage-title { font-size: 14px; font-weight: 600; }
-.ai-usage-where { font-size: 11px; }
-.ai-usage-nums { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; font-size: 12px; }
+.ai-usage-title { font-size: calc(14px * var(--fs-scale)); font-weight: 600; }
+.ai-usage-where { font-size: calc(11px * var(--fs-scale)); }
+.ai-usage-nums { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; font-size: calc(12px * var(--fs-scale)); }
 .ai-usage-tokens { font-variant-numeric: tabular-nums; font-weight: 600; }
 
 /* Шапка раздела чатов: созвон и внешняя ссылка видны всегда, без выбранного чата. */
@@ -1835,7 +1844,7 @@
   margin-top: 12px; padding: 10px 12px;
   border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
-.nl-draft.created { display: flex; align-items: center; gap: 6px; color: var(--ok); font-size: 14px; }
+.nl-draft.created { display: flex; align-items: center; gap: 6px; color: var(--ok); font-size: calc(14px * var(--fs-scale)); }
 .nl-draft-drop { float: right; }
 
 /* Шаг чек-листа в предпросмотре голосовой задачи. */
@@ -1845,7 +1854,7 @@
 /* Черновик задачи со встречи: правится до создания, поэтому строка — почти форма. */
 .draft-row { margin-top: 6px; }
 .draft-quote {
-  font-size: 12px; font-style: italic; border-left: 2px solid var(--border-2);
+  font-size: calc(12px * var(--fs-scale)); font-style: italic; border-left: 2px solid var(--border-2);
   padding-left: 8px; margin: 4px 0;
 }
 
@@ -1855,20 +1864,20 @@
   padding: 10px 0; border-bottom: 1px solid var(--border);
 }
 .gap-body { flex: 1 1 220px; min-width: 0; }
-.gap-title { font-weight: 600; font-size: 14px; }
-.gap-meta { font-size: 12px; margin-top: 2px; }
+.gap-title { font-weight: 600; font-size: calc(14px * var(--fs-scale)); }
+.gap-meta { font-size: calc(12px * var(--fs-scale)); margin-top: 2px; }
 .gap-actions { display: flex; gap: 6px; flex: 0 0 auto; }
-.gap-note { font-size: 12px; margin: 6px 0; }
+.gap-note { font-size: calc(12px * var(--fs-scale)); margin: 6px 0; }
 
 /* Быстрая команда: голос и разбор стоят рядом — это два способа сделать одно. */
 .nl-actions { display: flex; gap: 6px; margin-top: 6px; }
 .nl-actions .nl-parse { flex: 1 1 auto; }
 .nl-heard {
-  margin-top: 8px; padding: 6px 8px; font-size: 12px; font-style: italic;
+  margin-top: 8px; padding: 6px 8px; font-size: calc(12px * var(--fs-scale)); font-style: italic;
   border-left: 2px solid var(--border-2); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   background: var(--bg-elev-2);
 }
-.nl-hint { font-size: 11px; margin-top: 3px; }
+.nl-hint { font-size: calc(11px * var(--fs-scale)); margin-top: 3px; }
 
 /* Ряд действий по Telegram: код, переход в сам чат, отвязка. Ссылка выглядит
    кнопкой, но ведёт наружу — подчёркивание здесь читалось бы как ошибка вёрстки. */
@@ -1876,12 +1885,12 @@
 .tg-actions a.btn { text-decoration: none; }
 
 .drawer-section { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; }
-.drawer-section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-mut); margin-bottom: 10px; }
+.drawer-section-title { font-size: calc(12px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .08em; color: var(--text-mut); margin-bottom: 10px; }
 .drawer-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .drawer-assign { width: 100%; margin-top: 6px; }
 .overload-warn {
   background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--warn);
-  padding: 10px 12px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 10px;
+  padding: 10px 12px; border-radius: var(--radius-sm); font-size: calc(13px * var(--fs-scale)); margin-bottom: 10px;
 }
 .overload-confirm { width: 100%; margin-top: 8px; background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
@@ -2055,7 +2064,7 @@
 
 /* AI Brain чат */
 .brain-chat { display: flex; flex-direction: column; gap: 10px; max-height: 52vh; overflow-y: auto; padding: 8px 2px; margin-bottom: 8px; }
-.brain-msg { padding: 10px 12px; border-radius: var(--radius-sm); font-size: 14px; max-width: 92%; }
+.brain-msg { padding: 10px 12px; border-radius: var(--radius-sm); font-size: calc(14px * var(--fs-scale)); max-width: 92%; }
 .brain-user { align-self: flex-end; background: var(--fill-info); color: var(--on-fill); }
 .brain-assistant { align-self: flex-start; background: var(--bg-elev-2); border: 1px solid var(--border); }
 .brain-cites { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
@@ -2111,13 +2120,13 @@
 
 /* подразделение рядом с именем собеседника — подпись, а не акцент */
 .chat-row-group {
-  margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--text-mut);
+  margin-left: 6px; font-size: calc(11px * var(--fs-scale)); font-weight: 400; color: var(--text-mut);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;
 }
 .team-head { display: flex; justify-content: space-between; margin-bottom: 8px; }
 .team-rate { display: flex; gap: 6px; }
 .team-rate .input { flex: 1; }
-.team-metrics { margin-top: 8px; font-size: 13px; line-height: 1.6; }
+.team-metrics { margin-top: 8px; font-size: calc(13px * var(--fs-scale)); line-height: 1.6; }
 .add-user-input { margin-bottom: 8px; }
 .add-user { margin-bottom: 14px; }
 /*
@@ -2135,7 +2144,7 @@
 }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); }
 .team-inactive { opacity: .55; }
-.invite-box { margin-top: 8px; font-size: 13px; color: var(--text-dim); }
+.invite-box { margin-top: 8px; font-size: calc(13px * var(--fs-scale)); color: var(--text-dim); }
 .invite-box .input { margin-top: 6px; }
 
 /* профиль / аватары */
@@ -2164,10 +2173,10 @@
 .status-bar { display: flex; align-items: center; gap: 10px; margin: 12px 0 8px; flex-wrap: wrap; }
 /* Цветом, а не прозрачностью: 55% от приглушённого давали около 2.5:1 — заглавные
    буквы 11-го кегля на светлом фоне при таком контрасте не читаются. */
-.status-label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-mut); }
+.status-label { font-size: calc(11px * var(--fs-scale)); letter-spacing: .06em; text-transform: uppercase; color: var(--text-mut); }
 .status-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .status-pill {
-  font-size: 12px; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  font-size: calc(12px * var(--fs-scale)); padding: 5px 12px; border-radius: 999px; cursor: pointer;
   background: var(--bg-elev-2); border: 1px solid var(--border-2); color: var(--text-dim);
   transition: background .15s, border-color .15s, color .15s;
 }
@@ -2235,7 +2244,7 @@
 .chat-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 .chat-list-head { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
 .chat-notify-ask { width: 100%; margin-bottom: 6px; color: var(--accent); border: 1px dashed var(--border-2); }
-.chat-notify-hint { font-size: 11px; padding: 0 6px 6px; line-height: 1.4; }
+.chat-notify-hint { font-size: calc(11px * var(--fs-scale)); padding: 0 6px 6px; line-height: 1.4; }
 .chat-search { flex: 1; min-width: 0; }
 /* список участников в форме группы прокручивается сам, а не растягивает окно */
 .group-members {
@@ -2245,7 +2254,7 @@
 }
 .group-members::-webkit-scrollbar { width: 8px; }
 .group-members::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
-.chat-group-head { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-mut); margin: 12px 6px 4px; }
+.chat-group-head { font-size: calc(11px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .08em; color: var(--text-mut); margin: 12px 6px 4px; }
 .chat-row {
   display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border: none;
   background: none; color: inherit; cursor: pointer; border-radius: var(--radius-sm); text-align: left;
@@ -2282,11 +2291,11 @@
 .channel-item { cursor: default; }
 .chat-row.active { background: var(--bg-elev-2); box-shadow: inset 2px 0 0 var(--accent); }
 .chat-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.chat-row-title { font-size: 13px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chat-row-last { font-size: 11px; color: var(--text-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-row-title { font-size: calc(13px * var(--fs-scale)); display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-row-last { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-unread {
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--fill-info);
-  color: var(--on-fill); font-size: 11px; display: flex; align-items: center; justify-content: center;
+  color: var(--on-fill); font-size: calc(11px * var(--fs-scale)); display: flex; align-items: center; justify-content: center;
 }
 /* точка присутствия: серая — не в сети, зелёная — онлайн */
 .presence { width: 7px; height: 7px; border-radius: 50%; background: var(--border-2); flex-shrink: 0; }
@@ -2318,7 +2327,7 @@
 /* Корневое сообщение ветки выделено: разговор идёт вокруг него. */
 .thread-root { padding-bottom: 4px; border-bottom: 1px solid var(--border); }
 .thread-divider {
-  text-align: center; font-size: 11px; color: var(--text-mut); margin: 8px 0 4px;
+  text-align: center; font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); margin: 8px 0 4px;
 }
 .thread-also {
   display: flex; align-items: center; gap: 6px; padding: 6px 16px 0;
@@ -2356,7 +2365,7 @@
 }
 .chat-pin-item {
   display: block; width: 100%; text-align: left; border: none; background: none;
-  padding: 8px 16px; font: inherit; font-size: 13px; color: var(--text-dim); cursor: pointer;
+  padding: 8px 16px; font: inherit; font-size: calc(13px * var(--fs-scale)); color: var(--text-dim); cursor: pointer;
   border-bottom: 1px solid var(--border);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -2371,7 +2380,7 @@
 .chat-thread-link {
   display: inline-flex; align-items: center; gap: 4px;
   border: none; background: none; padding: 0; cursor: pointer;
-  font: inherit; font-size: 11px; color: var(--accent);
+  font: inherit; font-size: calc(11px * var(--fs-scale)); color: var(--accent);
 }
 .chat-thread-link:hover { text-decoration: underline; }
 .chat-thread-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -2409,7 +2418,7 @@
 /* Исходная фраза в окне создания задачи: правя формулировку, легко уехать от того,
    о чём вообще была речь. */
 .msg-quote-src {
-  margin: 0 0 12px; padding: 8px 10px; font-size: 13px; color: var(--text-dim);
+  margin: 0 0 12px; padding: 8px 10px; font-size: calc(13px * var(--fs-scale)); color: var(--text-dim);
   background: var(--bg-elev-2); border-left: 3px solid var(--accent-line);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
@@ -2422,8 +2431,8 @@
 .thread-item:hover { background: var(--bg-elev-2); }
 .thread-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .thread-item-head { display: flex; align-items: center; gap: 8px; }
-.thread-item-body { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.thread-item-foot { font-size: 11px; }
+.thread-item-body { font-size: calc(13px * var(--fs-scale)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-item-foot { font-size: calc(11px * var(--fs-scale)); }
 .chat-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 12px 16px; border-bottom: 1px solid var(--border);
@@ -2438,7 +2447,7 @@
 /* Дата — «таблеткой» по центру ленты, как в мессенджере. */
 .chat-day {
   align-self: center; margin: 10px auto 6px; padding: 2px 10px;
-  font-size: 11px; color: var(--text-dim);
+  font-size: calc(11px * var(--fs-scale)); color: var(--text-dim);
   background: var(--bg-elev); border: 1px solid var(--border); border-radius: 999px;
 }
 /*
@@ -2450,7 +2459,7 @@
 */
 .chat-unread-line {
   display: flex; align-items: center; gap: 10px; margin: 10px 0 6px;
-  font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent);
+  font-size: calc(11px * var(--fs-scale)); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent);
 }
 .chat-unread-line::before, .chat-unread-line::after { content: ''; flex: 1; height: 1px; background: var(--accent-line); }
 .chat-line.chat-new .chat-msg { box-shadow: inset 3px 0 0 var(--accent); }
@@ -2514,14 +2523,14 @@
   background: var(--bg-elev-2); border: 1px solid var(--border);
 }
 .ai-digest-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-.ai-digest-body { font-size: 13px; white-space: pre-wrap; }
+.ai-digest-body { font-size: calc(13px * var(--fs-scale)); white-space: pre-wrap; }
 .ai-ask { padding: 8px 16px; }
 /* Ссылка на первоисточник: ответ модели без перехода к сообщению не проверить,
    а в рабочей переписке это обязательно. */
 .ai-ref {
   display: block; width: 100%; text-align: left; margin-top: 6px; padding: 6px 8px;
   border: none; border-left: 3px solid var(--accent-line); border-radius: 0 6px 6px 0;
-  background: var(--bg-elev); font: inherit; font-size: 12px; color: var(--text-dim); cursor: pointer;
+  background: var(--bg-elev); font: inherit; font-size: calc(12px * var(--fs-scale)); color: var(--text-dim); cursor: pointer;
 }
 .ai-ref:hover { color: var(--text); border-left-color: var(--accent); }
 .ai-ref:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -2539,10 +2548,10 @@
   display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
 }
 .meet-card-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.meet-card-line { font-size: 13px; white-space: pre-wrap; }
+.meet-card-line { font-size: calc(13px * var(--fs-scale)); white-space: pre-wrap; }
 
 /* служебные строки: кого добавили, кто вышел, как переименовали */
-.chat-system { text-align: center; font-size: 12px; color: var(--text-mut); margin: 6px 0; font-style: italic; }
+.chat-system { text-align: center; font-size: calc(12px * var(--fs-scale)); color: var(--text-mut); margin: 6px 0; font-style: italic; }
 .group-leave { width: 100%; margin-top: 12px; color: var(--danger); }
 .group-leave:hover { background: var(--danger-soft); border-color: var(--danger); }
 .chat-msg {
@@ -2561,13 +2570,13 @@
   margin-left: auto;
   background: var(--accent-soft); border-color: var(--accent-line);
 }
-.chat-author { font-size: 11px; color: var(--accent); margin-bottom: 2px; }
-.chat-body { font-size: 14px; word-break: break-word; }
+.chat-author { font-size: calc(11px * var(--fs-scale)); color: var(--accent); margin-bottom: 2px; }
+.chat-body { font-size: calc(14px * var(--fs-scale)); word-break: break-word; }
 /* Файл больше не ссылка, а кнопка: он лежит за авторизацией и по прямому адресу
    отдавал 401 — скачиваем с токеном. Цвет берём у плашки, чтобы читалось на обеих. */
 .chat-file {
   display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; padding: 0;
-  font-size: 13px; background: none; border: none; color: inherit;
+  font-size: calc(13px * var(--fs-scale)); background: none; border: none; color: inherit;
   text-decoration: underline; cursor: pointer;
 }
 .chat-file:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -2587,12 +2596,12 @@
   background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
 .chat-pending-img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; }
-.chat-pending-name { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-pending-name { flex: 1; min-width: 0; font-size: calc(13px * var(--fs-scale)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Строка сообщения: плашка и под ней время. Внутри плашки время было серым по цветному
    фону — не читалось вовсе и занимало угол; снаружи оно спокойно и видно. */
 .chat-line { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 6px; }
 .chat-line.mine { align-items: flex-end; }
-.chat-time { font-size: 11px; color: var(--text-dim); margin: 2px 4px 0; }
+.chat-time { font-size: calc(11px * var(--fs-scale)); color: var(--text-dim); margin: 2px 4px 0; }
 /*
   Строка ввода в чате.
 
@@ -2609,7 +2618,7 @@
 */
 .chat-input .input {
   min-height: 44px; max-height: 168px; padding: 11px var(--sp-3);
-  font-size: 15px; line-height: 1.45; resize: none; overflow-y: auto;
+  font-size: calc(15px * var(--fs-scale)); line-height: 1.45; resize: none; overflow-y: auto;
 }
 .chat-input .mention-wrap { flex: 1; min-width: 0; display: flex; }
 /*
@@ -2633,18 +2642,18 @@
   background: var(--bg-elev); border: 1px solid var(--border-2);
   border-radius: var(--radius-sm); box-shadow: var(--shadow);
 }
-.chat-later-own { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.chat-later-own { display: flex; flex-direction: column; gap: 4px; font-size: calc(12px * var(--fs-scale)); }
 /* Два способа отложить: один раз или каждый день. Больше вариантов не нужно. */
 .later-mode { display: flex; gap: 4px; }
 .later-mode .view-btn { flex: 1; justify-content: center; }
-.chat-later-own .input { font-size: 12px; padding: 4px 6px; }
+.chat-later-own .input { font-size: calc(12px * var(--fs-scale)); padding: 4px 6px; }
 /* Очередь отложенных — строкой над полем: иначе текст исчезает бесследно до отправки. */
 .chat-later-queue {
   position: absolute; left: 16px; right: 16px; bottom: 100%; margin-bottom: 4px;
   display: flex; align-items: center; gap: 6px; padding: 4px 8px;
   border: 1px solid var(--accent-line); border-radius: var(--radius-sm);
   background: var(--accent-soft); color: var(--accent);
-  font-size: 12px; cursor: pointer; text-align: left;
+  font-size: calc(12px * var(--fs-scale)); cursor: pointer; text-align: left;
 }
 .chat-later-queue:hover { background: var(--bg-elev-2); }
 .chat-later-queue:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -2680,7 +2689,7 @@
 
 /* Правка сообщения прямо в пузыре: отдельное окно ради опечатки — лишний шаг. */
 .chat-edit { display: flex; flex-direction: column; gap: 6px; min-width: 260px; }
-.chat-edit .input { font-size: 14px; }
+.chat-edit .input { font-size: calc(14px * var(--fs-scale)); }
 .chat-edit-actions { display: flex; gap: 6px; }
 /* Галочки «отправлено / прочитано» — как в мессенджерах. */
 .chat-ticks { display: inline-flex; align-items: center; color: var(--text-dim); }
@@ -2689,7 +2698,7 @@
 /* Гостевой чат и ответ в ветке — поле без обёртки упоминаний: ширину задаём ему. */
 .chat-input > .input { flex: 1; min-width: 0; }
 .chat-call { display: flex; align-items: center; gap: 8px; }
-.chat-ai-toggle { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
+.chat-ai-toggle { display: flex; align-items: center; gap: 4px; font-size: calc(12px * var(--fs-scale)); color: var(--text-dim); cursor: pointer; white-space: nowrap; }
 
 /*
   Входящий звонок — по центру экрана и поверх всего, включая окно созвона.
@@ -2716,16 +2725,16 @@
 /* Крупный кружок с буквой: лицо звонящего узнаётся раньше, чем прочитано имя. */
 .incoming-avatar {
   width: 84px; height: 84px; margin: 0 auto 14px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 34px; font-weight: 700;
+  display: grid; place-items: center; font-size: calc(34px * var(--fs-scale)); font-weight: 700;
   background: var(--accent-soft); color: var(--accent);
 }
-.incoming-who { font-size: 22px; font-weight: 700; word-break: break-word; }
+.incoming-who { font-size: calc(22px * var(--fs-scale)); font-weight: 700; word-break: break-word; }
 .incoming-sub {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   margin-top: 6px; color: var(--text-mut); font-size: var(--fs-sm);
 }
 .incoming-actions { display: flex; gap: 10px; margin-top: 22px; }
-.incoming-actions .btn { flex: 1; justify-content: center; padding: 12px; font-size: 15px; font-weight: 600; }
+.incoming-actions .btn { flex: 1; justify-content: center; padding: 12px; font-size: calc(15px * var(--fs-scale)); font-weight: 600; }
 .incoming-accept { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
 .incoming-accept:hover { background: var(--ok); color: var(--on-ok); }
 .incoming-decline { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
@@ -2775,9 +2784,9 @@
 /* плитка без видео: инициал вместо чёрного прямоугольника, как в привычных созвонах */
 .call-avatar {
   width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  background: var(--accent-soft); color: var(--accent); font-size: 24px; font-weight: 600;
+  background: var(--accent-soft); color: var(--accent); font-size: calc(24px * var(--fs-scale)); font-weight: 600;
 }
-.call-strip .call-avatar { width: 38px; height: 38px; font-size: 15px; }
+.call-strip .call-avatar { width: 38px; height: 38px; font-size: calc(15px * var(--fs-scale)); }
 .call-tile-ai .call-avatar { background: var(--fill-info); color: var(--on-fill); }
 .call-self { outline: 2px solid var(--accent); }
 /* себя показываем зеркально, как в зеркале и во всех привычных созвонах:
@@ -2786,7 +2795,7 @@
 .call-hand { position: absolute; top: 6px; right: 6px; color: var(--warn); }
 .call-muted-mark { position: absolute; top: 6px; left: 6px; color: var(--danger); }
 .call-name {
-  position: absolute; left: 6px; bottom: 6px; right: 6px; font-size: 11px; padding: 2px 6px;
+  position: absolute; left: 6px; bottom: 6px; right: 6px; font-size: calc(11px * var(--fs-scale)); padding: 2px 6px;
   background: var(--overlay); border-radius: 4px; color: #fff; /* поверх видео — тёмного в любой теме */
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -2797,7 +2806,7 @@
 .call-off { opacity: .65; }
 .call-recording {
   display: flex; align-items: center; gap: 8px; margin: 0 12px 8px; padding: 8px 12px;
-  border-radius: var(--radius-sm); font-size: 13px;
+  border-radius: var(--radius-sm); font-size: calc(13px * var(--fs-scale));
   background: var(--danger-soft); border: 1px solid var(--danger-line); color: var(--danger);
 }
 .call-rec-on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); font-weight: 600; }
@@ -2813,7 +2822,7 @@
    за дверью и ждёт, — худший исход этой функции. */
 .call-knock {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  margin: 0 12px 8px; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px;
+  margin: 0 12px 8px; padding: 8px 12px; border-radius: var(--radius-sm); font-size: calc(13px * var(--fs-scale));
   background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--warn);
 }
 .call-knock-actions { display: flex; gap: 6px; flex: 0 0 auto; }
@@ -2834,14 +2843,14 @@
 .guest-links-new .input { flex: 1 1 240px; }
 .guest-links-fresh { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
 /* Адрес показывается один раз — его должно быть видно целиком, а не «...» */
-.guest-links-url { word-break: break-all; font-size: 12px; opacity: .9; }
+.guest-links-url { word-break: break-all; font-size: calc(12px * var(--fs-scale)); opacity: .9; }
 .guest-links-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .guest-links-list li {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
 .guest-links-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.guest-links-who .dim { font-size: 12px; }
+.guest-links-who .dim { font-size: calc(12px * var(--fs-scale)); }
 .guest-links-actions { display: flex; gap: 6px; flex: 0 0 auto; }
 
 @media (max-width: 720px) {
@@ -2873,7 +2882,7 @@
 .dp-trigger:hover:not(:disabled) { border-color: var(--accent); }
 .dp-trigger.dp-empty { color: var(--text-mut); }
 .dp-trigger.dp-past { border-color: var(--danger-line); color: var(--danger); }
-.dp-clear { opacity: .5; padding: 0 2px; font-size: 12px; }
+.dp-clear { opacity: .5; padding: 0 2px; font-size: calc(12px * var(--fs-scale)); }
 .dp-clear:hover { opacity: 1; color: var(--danger); }
 
 /* Попап absolute — поле не меняет размеров и не двигает соседей.
@@ -2888,19 +2897,19 @@
 .dp-pop.dp-down { top: calc(100% + 6px); }
 .dp-pop.dp-right { left: auto; right: 0; }
 .dp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.dp-month { font-size: 13px; font-weight: 600; text-transform: capitalize; }
+.dp-month { font-size: calc(13px * var(--fs-scale)); font-weight: 600; text-transform: capitalize; }
 .dp-nav {
   background: none; border: 1px solid transparent; color: var(--text-dim); cursor: pointer;
-  width: 26px; height: 26px; border-radius: var(--radius-sm); font-size: 16px; line-height: 1;
+  width: 26px; height: 26px; border-radius: var(--radius-sm); font-size: calc(16px * var(--fs-scale)); line-height: 1;
 }
 .dp-nav:hover { background: var(--bg-elev-2); color: var(--text); border-color: var(--border-2); }
 
 .dp-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 4px; }
-.dp-week span { text-align: center; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); }
+.dp-week span { text-align: center; font-size: calc(10px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); }
 .dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .dp-day {
   height: 26px; border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer;
-  background: none; color: var(--text-dim); font-size: 12px; transition: background .12s, color .12s, border-color .12s;
+  background: none; color: var(--text-dim); font-size: calc(12px * var(--fs-scale)); transition: background .12s, color .12s, border-color .12s;
 }
 .dp-day:hover { background: var(--bg-elev-2); color: var(--text); }
 .dp-day.dp-other { opacity: .35; }
@@ -2910,10 +2919,10 @@
 .dp-day.dp-selected:hover { background: var(--fill-info); }
 
 .dp-time { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.dp-time-input { width: auto; padding: 4px 7px; font-size: 12px; }
+.dp-time-input { width: auto; padding: 4px 7px; font-size: calc(12px * var(--fs-scale)); }
 .dp-quick { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--border); }
 .dp-chip {
-  font-size: 11px; padding: 3px 8px; border-radius: 999px; cursor: pointer;
+  font-size: calc(11px * var(--fs-scale)); padding: 3px 8px; border-radius: 999px; cursor: pointer;
   background: var(--bg-elev-2); border: 1px solid var(--border-2); color: var(--text-dim);
 }
 .dp-chip:hover { color: var(--text); border-color: var(--accent); }
@@ -2944,22 +2953,22 @@
   line-height: 1; background: var(--accent-2); color: var(--on-accent); font-weight: 700;
 }
 .avatar-xs, .avatar-sm, .avatar-lg { flex: 0 0 auto; }
-.avatar-sm.avatar-ph { font-size: 12px; }
+.avatar-sm.avatar-ph { font-size: calc(12px * var(--fs-scale)); }
 .avatar-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
 .notify-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
 
 /* карточка задачи — расширенная */
 .drawer-wide { width: 520px; }
-.prio-select { width: auto; padding: 4px 8px; font-size: 13px; }
+.prio-select { width: auto; padding: 4px 8px; font-size: calc(13px * var(--fs-scale)); }
 .prio-high { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
 .prio-urgent { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
 .labels-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
 /* цвет метки задаёт пользователь, поэтому текст всегда белый */
-.label-chip { font-size: 11px; padding: 3px 9px; border-radius: 999px; color: #fff; border: 1px solid transparent; cursor: pointer; }
+.label-chip { font-size: calc(11px * var(--fs-scale)); padding: 3px 9px; border-radius: 999px; color: #fff; border: 1px solid transparent; cursor: pointer; }
 .label-off { color: var(--text-dim); }
 .label-pick { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--bg-elev-2); border-radius: var(--radius-sm); margin-top: 6px; }
-.comment { border-bottom: 1px solid var(--border); padding: 8px 0; font-size: 14px; }
-.comment-head { margin-bottom: 4px; font-size: 13px; }
+.comment { border-bottom: 1px solid var(--border); padding: 8px 0; font-size: calc(14px * var(--fs-scale)); }
+.comment-head { margin-bottom: 4px; font-size: calc(13px * var(--fs-scale)); }
 /*
   Поле ввода — дно разговора, а не строка в конце списка.
 
@@ -2986,7 +2995,7 @@
 .comment-input .input {
   flex: 1 1 auto; width: 100%; min-width: 0;
   min-height: 36px; max-height: 168px; padding: 8px 6px;
-  font-size: 15px; line-height: 1.4; resize: none; overflow-y: auto;
+  font-size: calc(15px * var(--fs-scale)); line-height: 1.4; resize: none; overflow-y: auto;
   border: none; background: none; border-radius: 0;
 }
 .comment-input .input:focus { outline: none; box-shadow: none; }
@@ -3011,7 +3020,7 @@
 }
 .chat-send:hover:not(:disabled) { filter: brightness(1.08); }
 .chat-send:disabled { opacity: .45; cursor: default; }
-.activity-row { font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.activity-row { font-size: calc(12px * var(--fs-scale)); padding: 4px 0; border-bottom: 1px solid var(--border); }
 /* карточка на доске */
 .card-labels { display: flex; gap: 4px; margin-bottom: 6px; }
 .card-label { width: 28px; height: 5px; border-radius: 3px; }
@@ -3040,15 +3049,15 @@
 .copilot-empty { margin-top: 16px; }
 .task-meta { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
 .assignee-chip {
-  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim);
+  display: inline-flex; align-items: center; gap: 5px; font-size: calc(12px * var(--fs-scale)); color: var(--text-dim);
   background: var(--bg-elev); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px 2px 2px;
 }
 /* Постановщик на карточке: тише исполнителя — главный вопрос всё-таки «кто делает». */
 .manager-chip {
-  display: inline-flex; align-items: center; gap: 4px; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 4px; font-size: calc(12px * var(--fs-scale));
   color: var(--text-mut); padding: 2px 6px;
 }
-.avatar-xs { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; font-size: 10px; }
+.avatar-xs { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; font-size: calc(10px * var(--fs-scale)); }
 
 .add-task { padding: 8px 10px; }
 .add-task-btn { margin: 6px 10px 10px; align-self: flex-start; }
@@ -3121,7 +3130,7 @@
 }
 .palette-input {
   flex: 1; min-width: 0; background: none; border: none; outline: none;
-  color: var(--text); font-size: 16px; padding: 2px 0;
+  color: var(--text); font-size: calc(16px * var(--fs-scale)); padding: 2px 0;
 }
 .palette-input::placeholder { color: var(--text-mut); }
 .palette-mic {
@@ -3211,7 +3220,7 @@
 
 /* ───── журнал секретаря ───── */
 .secretary-summary { display: flex; gap: var(--sp-5); padding: var(--sp-3) 0 var(--sp-4); border-bottom: 1px solid var(--border); }
-.secretary-big { font-size: 22px; font-weight: 700; }
+.secretary-big { font-size: calc(22px * var(--fs-scale)); font-weight: 700; }
 .secretary-summary .dim { font-size: var(--fs-xs); max-width: 180px; }
 .secretary-feed { display: flex; flex-direction: column; gap: 2px; padding-top: var(--sp-3); }
 .secretary-row { display: flex; gap: 10px; padding: 8px 6px; border-radius: var(--radius-sm); }
@@ -3283,7 +3292,7 @@
 .radar-bar span { display: block; height: 100%; background: var(--ok); }
 .radar-bar span.late { background: var(--warn); }
 .radar-velocity { display: flex; gap: var(--sp-5); padding-top: 4px; }
-.radar-big { font-size: 24px; font-weight: 700; }
+.radar-big { font-size: calc(24px * var(--fs-scale)); font-weight: 700; }
 .radar-up { color: var(--ok); }
 .radar-down { color: var(--danger); }
 
@@ -3387,7 +3396,7 @@
 .voice-status-main { font-weight: 600; color: var(--text); }
 /* Счётчик моноширинными цифрами: иначе строка дёргается на каждой секунде. */
 .voice-status-time { font-variant-numeric: tabular-nums; }
-.voice-status-hint { margin-left: auto; font-size: 12px; }
+.voice-status-hint { margin-left: auto; font-size: calc(12px * var(--fs-scale)); }
 
 .palette-voice { padding: 8px var(--sp-4); border-bottom: 1px solid var(--border); }
 .nl-voice {
@@ -3480,7 +3489,7 @@
 .call-starter-row:hover { background: var(--bg-elev-2); }
 .call-starter-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* «в чате» — подсказка, а не ярлык: тем, кто уже в переписке, галочка стоит сама */
-.call-starter-mark { font-size: 10px; color: var(--text-dim); flex: 0 0 auto; }
+.call-starter-mark { font-size: calc(10px * var(--fs-scale)); color: var(--text-dim); flex: 0 0 auto; }
 .call-starter-ai {
   display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-dim);
   border-top: 1px solid var(--border); padding-top: 8px; cursor: pointer;
@@ -3740,7 +3749,7 @@
 .bar-search-input::placeholder { color: var(--text-mut); }
 .bar-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 6px; scrollbar-width: thin; }
 .bar-section {
-  font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-mut);
+  font-size: calc(10px * var(--fs-scale)); letter-spacing: .08em; text-transform: uppercase; color: var(--text-mut);
   padding: 10px 8px 4px; white-space: nowrap;
 }
 .bar-rule { height: 1px; background: var(--border); margin: 6px 8px; }
@@ -3769,14 +3778,14 @@
 .bar-badge {
   position: absolute; top: -6px; right: -8px; min-width: 16px; height: 16px; padding: 0 4px;
   border-radius: 8px; background: var(--fill-info); color: var(--on-fill);
-  font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  font-size: calc(10px * var(--fs-scale)); font-weight: 700; display: flex; align-items: center; justify-content: center;
   border: 2px solid var(--bg-elev);
 }
 .bar-badge-inline { position: static; border: none; flex-shrink: 0; height: 18px; min-width: 18px; }
 .bar-chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .bar-chat-top { display: flex; align-items: baseline; gap: 6px; }
 .bar-chat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
-.bar-chat-time { flex-shrink: 0; font-size: 10px; color: var(--text-mut); }
+.bar-chat-time { flex-shrink: 0; font-size: calc(10px * var(--fs-scale)); color: var(--text-mut); }
 .bar-chat-sub { display: flex; min-width: 0; font-size: var(--fs-xs); color: var(--text-mut); white-space: nowrap; }
 .bar-chat-last { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .bar-status { flex-shrink: 0; }
@@ -3838,7 +3847,7 @@
 .ci-section-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .ci-count {
   margin-left: 4px; padding: 0 6px; min-width: 18px; height: 18px; border-radius: 9px;
-  background: var(--bg-elev-2); color: var(--text-mut); font-size: 11px; font-weight: 600;
+  background: var(--bg-elev-2); color: var(--text-mut); font-size: calc(11px * var(--fs-scale)); font-weight: 600;
   display: inline-flex; align-items: center; justify-content: center;
 }
 .ci-section-body { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
@@ -3858,7 +3867,7 @@
 .ci-row-actions { display: flex; gap: 6px; }
 .ci-search { margin-bottom: 4px; }
 .ci-role-group { display: flex; flex-direction: column; gap: 2px; }
-.ci-role-title { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-mut); padding: 8px 0 2px; }
+.ci-role-title { font-size: calc(10px * var(--fs-scale)); letter-spacing: .08em; text-transform: uppercase; color: var(--text-mut); padding: 8px 0 2px; }
 .ci-member { display: flex; align-items: center; gap: 10px; padding: 4px 2px; border-radius: var(--radius-sm); }
 .ci-member:hover { background: var(--bg-elev-2); }
 .ci-member-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -4233,7 +4242,7 @@
 .task-chat-sub {
   display: inline-flex; align-items: center; gap: 3px; align-self: flex-start;
   padding: 0; border: none; background: none; cursor: pointer;
-  font: inherit; font-size: 12px; color: var(--text-dim);
+  font: inherit; font-size: calc(12px * var(--fs-scale)); color: var(--text-dim);
 }
 .task-chat-sub:hover { color: var(--accent); }
 .task-chat-sub:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
@@ -4288,7 +4297,7 @@
 button.chat-pop-row:hover { background: var(--hover); }
 .chat-pop-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .chat-person-row { cursor: default; }
-.chat-pop-note { font-size: 12px; padding: 2px 8px 4px; }
+.chat-pop-note { font-size: calc(12px * var(--fs-scale)); padding: 2px 8px 4px; }
 .chat-pop-add { display: flex; align-items: center; gap: 6px; padding: 6px 4px 2px; margin-top: 4px; border-top: 1px solid var(--border); }
 .chat-hist-pop .activity-row:last-of-type { border-bottom: none; }
 
@@ -4304,7 +4313,7 @@ button.chat-pop-row:hover { background: var(--hover); }
 /* Подложка ленты идёт во всю ширину, а сами реплики держатся середины: строка
    длиной в метр нечитаема — глаз теряет начало следующей. */
 .task-chat-wide .msg-feed { flex: 1 1 auto; min-height: 320px; padding-inline: max(14px, calc((100% - 900px) / 2)); }
-.task-chat-wide .msg-text { font-size: 15px; line-height: 1.5; }
+.task-chat-wide .msg-text { font-size: calc(15px * var(--fs-scale)); line-height: 1.5; }
 .task-chat-wide .msg-avatar { width: 30px; height: 30px; }
 /* Картинка в широкой ленте показывается картинкой, а не маркой. */
 .task-chat-wide .chat-img { max-width: 520px; }
@@ -4317,7 +4326,7 @@ button.chat-pop-row:hover { background: var(--hover); }
 /* «Просмотрено» — тихой строкой под лентой: это подтверждение, а не событие. */
 .chat-seen {
   display: flex; align-items: center; gap: 4px; align-self: flex-start;
-  padding: 2px 12px 0; font-size: 11px; color: var(--text-mut);
+  padding: 2px 12px 0; font-size: calc(11px * var(--fs-scale)); color: var(--text-mut);
 }
 /* «↓ N новых» — над полем ввода: она о ленте, к ней и возвращает. */
 .chat-jump-new { align-self: center; margin: 4px auto 0; }
@@ -4373,7 +4382,7 @@ button.chat-pop-row:hover { background: var(--hover); }
 .msg-rich p { margin: 0 0 6px; }
 .msg-rich ul, .msg-rich ol { margin: 4px 0 6px; padding-left: 22px; }
 .msg-rich li { margin: 2px 0; }
-.msg-rich h2 { font-size: 16px; margin: 6px 0 4px; }
-.msg-rich h3 { font-size: 15px; margin: 6px 0 4px; }
-.msg-rich h4 { font-size: 14px; margin: 6px 0 4px; }
+.msg-rich h2 { font-size: calc(16px * var(--fs-scale)); margin: 6px 0 4px; }
+.msg-rich h3 { font-size: calc(15px * var(--fs-scale)); margin: 6px 0 4px; }
+.msg-rich h4 { font-size: calc(14px * var(--fs-scale)); margin: 6px 0 4px; }
 .msg-rich img { max-width: 100%; border-radius: 8px; }

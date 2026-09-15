@@ -2147,17 +2147,33 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                         {/* Правка своего сообщения — прямо в пузыре: уводить человека
                             в отдельное окно ради опечатки незачем. */}
                         {editing === String(m.id) && (
-                          <div className="chat-edit">
-                            <textarea
-                              className="input"
+                          <div
+                            className="chat-edit"
+                            /*
+                              Esc отменяет правку — но только если подсказка «@» закрыта:
+                              в открытом списке Esc закрывает его и отмечает событие
+                              обработанным, иначе один Esc делал бы два дела сразу.
+                            */
+                            onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) setEditing(null); }}
+                          >
+                            {/*
+                              Правим тем же полем, что и пишем.
+
+                              Простая textarea не знала «@»: дописать упоминание в уже
+                              отправленном сообщении было нельзя — приходилось удалять и
+                              писать заново. Поле одно и то же, значит и повадки одни.
+                            */}
+                            <MentionField
                               value={editText}
-                              autoFocus
-                              rows={2}
-                              onChange={(e) => setEditText(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void saveEdit(String(m.id)); }
-                                if (e.key === 'Escape') setEditing(null);
+                              users={mentionUsers}
+                              onChange={setEditText}
+                              onMention={(userId) => {
+                                if (userId === 'ai') return;
+                                setMentioned((prev) => (prev.includes(userId) ? prev : [...prev, userId]));
                               }}
+                              rows={2}
+                              autoGrow
+                              onEnter={() => { void saveEdit(String(m.id)); }}
                             />
                             <div className="chat-edit-actions">
                               <button className="btn btn-primary btn-sm" onClick={() => saveEdit(String(m.id))}>Сохранить</button>
@@ -2560,17 +2576,22 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                       ленте: Enter сохраняет, Esc отменяет.
                     */}
                     {editing === String(m.id) && (
-                      <div className="chat-edit">
-                        <textarea
-                          className="input"
+                      <div
+                        className="chat-edit"
+                        onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) setEditing(null); }}
+                      >
+                        {/* Правим тем же полем, что и пишем: «@» должно работать и здесь. */}
+                        <MentionField
                           value={editText}
-                          autoFocus
-                          rows={2}
-                          onChange={(e) => setEditText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void saveEdit(String(m.id)); }
-                            if (e.key === 'Escape') setEditing(null);
+                          users={mentionUsers}
+                          onChange={setEditText}
+                          onMention={(userId) => {
+                            if (userId === 'ai') return;
+                            setMentioned((prev) => (prev.includes(userId) ? prev : [...prev, userId]));
                           }}
+                          rows={2}
+                          autoGrow
+                          onEnter={() => { void saveEdit(String(m.id)); }}
                         />
                         <div className="chat-edit-actions">
                           <button className="btn btn-primary btn-sm" onClick={() => saveEdit(String(m.id))}>Сохранить</button>

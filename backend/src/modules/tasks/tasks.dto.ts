@@ -149,6 +149,12 @@ export class ApprovalRequiredDto {
   enabled!: boolean;
 }
 
+/** Решение постановщика по переносу срока: да или нет. */
+export class DeadlineShiftDto {
+  @IsBoolean()
+  approve!: boolean;
+}
+
 /** Кого и кем добавляем к задаче. */
 export class ParticipantDto {
   @IsString()
