@@ -167,6 +167,8 @@ export function TaskChat({
     answer: string; checklist: string[]; suggestion: { field: string; value: string; label: string } | null;
   } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
+  /** Поле ввода: к нему прокручиваем, когда прокручивается вся колонка целиком. */
+  const composeRef = useRef<HTMLDivElement | null>(null);
   /**
    * Человек читает старое, а не хвост.
    *
@@ -208,6 +210,25 @@ export function TaskChat({
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reload(); }, [taskId]);
+
+  /*
+    Открыли задачу — видно КОНЕЦ разговора и поле ввода.
+
+    Так устроен любой мессенджер: разговор читают с последней реплики, а не с той,
+    что была полгода назад. Ссылки на ТЗ и статьи, которые кладут последними,
+    оказывались за экраном — до них надо было прокручивать.
+
+    Дважды: сразу после отрисовки и ещё раз через мгновение — картинки и вложения
+    занимают высоту не мгновенно, и без второго прохода лента останавливается
+    чуть выше конца.
+  */
+  useEffect(() => {
+    if (!comments.length) return;
+    const first = requestAnimationFrame(() => toBottom());
+    const second = window.setTimeout(() => toBottom(), 250);
+    return () => { cancelAnimationFrame(first); window.clearTimeout(second); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, wide, comments.length > 0]);
   /*
     Живое обсуждение задачи.
 
@@ -561,12 +582,61 @@ export function TaskChat({
   /** Внизу ли лента. Восемьдесят точек запаса: «почти внизу» — это тоже внизу. */
   const nearBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 
+  /**
+   * Кто здесь на самом деле прокручивается.
+   *
+   * Во всю ширину лента прокручивается сама, а в узкой колонке — вся колонка
+   * целиком: под лентой там ещё быстрые вопросы к ИИ и история задачи. Раньше мы
+   * всегда двигали ленту, и в колонке это не делало ничего — чат открывался на
+   * первом сообщении, а до поля ввода приходилось прокручивать руками.
+   */
+  const scroller = (): HTMLElement | null => {
+    let el: HTMLElement | null = feedRef.current;
+    while (el) {
+      const st = window.getComputedStyle(el).overflowY;
+      if ((st === 'auto' || st === 'scroll') && el.scrollHeight > el.clientHeight + 4) return el;
+      el = el.parentElement;
+    }
+    return feedRef.current;
+  };
+
   const toBottom = (smooth = false) => {
-    const el = feedRef.current;
+    const el = scroller();
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    /*
+      Куда именно «вниз».
+
+      Если прокручивается сама лента — до её конца. Если прокручивается колонка
+      целиком, её конец — это история задачи, а не разговор: под лентой идут ещё
+      быстрые вопросы к ИИ, поле ввода и история. Поэтому целимся в поле ввода:
+      над ним видны последние сообщения, а само оно готово принять текст.
+    */
+    if (el === feedRef.current || !composeRef.current) {
+      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    } else {
+      composeRef.current.scrollIntoView({ block: 'end', behavior: smooth ? 'smooth' : 'auto' });
+    }
     setUnseen(0);
   };
+
+  /**
+   * Прокрутка может жить на родителе (узкая колонка) — событие с ленты туда не
+   * всплывает. Поэтому слушаем настоящего прокручиваемого, кем бы он ни оказался.
+   */
+  useEffect(() => {
+    const el = scroller();
+    if (!el || el === feedRef.current) return;
+    const onScroll = () => {
+      const bottom = nearBottom(el);
+      atBottomRef.current = bottom;
+      setAtBottom(bottom);
+      if (bottom) setUnseen(0);
+      if (el.scrollTop < 60 && !fullyLoaded && !olderBusy) { setOlderBusy(true); reload(true); }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, wide, fullyLoaded, olderBusy, comments.length > 0]);
 
   /*
     Новые сообщения пришли.
@@ -779,7 +849,7 @@ export function TaskChat({
         className="msg-feed"
         ref={feedRef}
         onScroll={(e) => {
-          const el = e.currentTarget;
+          const el = (scroller() ?? e.currentTarget) as HTMLElement;
           const bottom = nearBottom(el);
           atBottomRef.current = bottom;
           setAtBottom(bottom);
@@ -1091,7 +1161,7 @@ export function TaskChat({
         </div>
       )}
 
-      <div className="comment-input">
+      <div className="comment-input" ref={composeRef}>
         <MentionField
           value={body}
           users={mentionUsers}
