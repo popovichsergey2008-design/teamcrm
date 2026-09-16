@@ -3,6 +3,7 @@ import { useAuth } from './state/auth';
 import { api } from './lib/api';
 import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
+import { ProjectsPage } from './pages/ProjectsPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { JoinOrgPage } from './pages/JoinOrgPage';
 import { GuestMeetPage } from './pages/GuestMeetPage';
@@ -356,6 +357,15 @@ export function App() {
         )}
         {visited.has('projects') && (
           <Pane active={route.section === 'projects'}>
+            {/*
+              Без номера проекта в адресе показываем СПИСОК проектов таблицей, а доска
+              остаётся жить под ним со всеми загруженными задачами: возврат к доске
+              должен быть мгновенным, как и раньше.
+            */}
+            {!route.projectId && (
+              <ProjectsPage onOpen={(projectId) => navigate({ section: 'projects', projectId })} />
+            )}
+            <div className="pane-fill" style={{ display: route.projectId ? 'flex' : 'none' }}>
             <BoardPage
               key={boardJump.nonce}
               onVoiceTask={() => setNl({ voice: true })}
@@ -366,12 +376,16 @@ export function App() {
                 // или подраздел, — адрес тогда принадлежит не ей.
                 const now = parsePath(window.location.pathname);
                 if (now.section !== 'projects' || now.view) return;
+                // На «/projects» открыт СПИСОК проектов — доска, живущая под ним в
+                // фоне, не вправе подменять адрес своим последним проектом.
+                if (!now.projectId) return;
                 navigate(
                   { section: 'projects', projectId: projectId ?? undefined, taskId: taskId ?? undefined },
                   { replace: true },
                 );
               }}
             />
+            </div>
           </Pane>
         )}
         {visited.has('chat') && (

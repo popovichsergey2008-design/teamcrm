@@ -482,7 +482,31 @@ export const api = {
   // projects / board
   listProjects: (includeArchived = false) =>
     request<Project[]>('GET', `/projects${includeArchived ? '?archived=1' : ''}`),
+  /**
+   * Проекты с цифрами по задачам — для страницы «Проекты».
+   *
+   * Отдельно от listProjects: панели слева цифры не нужны, а здесь без них таблица
+   * бессмысленна.
+   */
+  projectsStats: (includeArchived = false) =>
+    request<(Project & {
+      owner_name: string | null; tasks_total: number; tasks_open: number; tasks_overdue: number;
+      next_deadline: string | null; members_count: number; visibility?: string;
+    })[]>('GET', `/projects/stats${includeArchived ? '?archived=1' : ''}`),
   createProject: (b: { name: string; budget?: number }) => request<Project>('POST', '/projects', b),
+  /** Правка проекта: переименование и видимость («видят все» / «только участники»). */
+  updateProject: (id: string, patch: { name?: string; visibility?: 'all' | 'members'; budget?: number }) =>
+    request<Project>('PATCH', `/projects/${id}`, patch),
+  /** Кто допущен к закрытому проекту. */
+  projectMembers: (id: string) =>
+    request<{ user_id: string; full_name: string; added_at: string }[]>('GET', `/projects/${id}/members`),
+  addProjectMembers: (id: string, userIds: string[]) =>
+    request<{ user_id: string; full_name: string }[]>('POST', `/projects/${id}/members`, { userIds }),
+  removeProjectMember: (id: string, userId: string) =>
+    request<{ user_id: string; full_name: string }[]>('DELETE', `/projects/${id}/members/${userId}`),
+  /** Перенести задачу в другой проект: поставили не туда — не надо пересоздавать. */
+  moveTaskToProject: (taskId: string, projectId: string) =>
+    request<Task>('POST', `/tasks/${taskId}/project`, { projectId }),
   deleteProject: (id: string) => request<{ deleted: boolean }>('DELETE', `/projects/${id}`),
   getBoard: (projectId: string) => request<Board>('GET', `/projects/${projectId}/board`),
   // колонки доски

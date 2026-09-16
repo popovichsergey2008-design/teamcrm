@@ -53,6 +53,12 @@ export interface Project {
   is_default?: boolean;
   /** Место в общем порядке досок: меньше — выше. */
   sort_order?: number;
+  /** Ответственный за проект: к нему идут с вопросами «что по проекту». */
+  owner_user_id?: string | null;
+  owner_name?: string | null;
+  /** all — видят все сотрудники; members — только участники и руководство. */
+  visibility?: string;
+  is_support?: boolean;
 }
 
 export interface Task {

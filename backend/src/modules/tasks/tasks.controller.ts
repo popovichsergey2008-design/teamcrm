@@ -5,7 +5,8 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { TasksService } from './tasks.service';
 import { TaskMergeService } from './task-merge.service';
 import {
-  ApprovalRequiredDto, CreateTaskDto, DeadlineShiftDto, DuplicatesQueryDto, FocusDateDto, MergeTasksDto, MoveTaskDto, ParticipantDto,
+  ApprovalRequiredDto, CreateTaskDto, DeadlineShiftDto, DuplicatesQueryDto, FocusDateDto, MergeTasksDto, MoveTaskDto,
+  MoveToProjectDto, ParticipantDto,
   ReturnTaskDto, TaskRecurrenceDto, TaskRegistryQueryDto, UpdateTaskDto,
 } from './tasks.dto';
 
@@ -251,6 +252,17 @@ export class TasksController {
   @Post(':id/deadline-shift/decide')
   decideDeadlineShift(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: DeadlineShiftDto) {
     return this.tasks.decideDeadlineShift(user.tenantId, id, user, dto.approve);
+  }
+
+  /**
+   * Перенести задачу в другой проект — если поставили не туда.
+   *
+   * Отдельной ручкой, а не полем в PATCH: перенос меняет колонку и порядок сразу на
+   * двух досках, и делать это побочным действием правки полей нельзя.
+   */
+  @Post(':id/project')
+  moveToProject(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: MoveToProjectDto) {
+    return this.tasks.moveToProject(user.tenantId, id, user, dto.projectId);
   }
 
   /** Включить или снять согласование по этой задаче. */

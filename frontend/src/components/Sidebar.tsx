@@ -1,6 +1,5 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
-import { ProjectsNav } from './ProjectsNav';
 import { applyHidden, applyOrder, isHidden, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
 import { TASK_VIEWS } from '../lib/task-views';
 import { setDoNotDisturb } from '../lib/sound';
@@ -499,7 +498,12 @@ export function Sidebar({
             // Разворачивать нечего, если у раздела нет ни проектов, ни подпунктов —
             // шеврон в таком месте обещает содержимое, которого не существует.
             const subs = item.subs?.filter((sub) => visible(sub.roles, user.role)) ?? [];
-            const hasChildren = item.section === 'projects' || subs.length > 0;
+            /*
+              Список досок из панели убран (просьба заказчика): на трёх проектах он
+              удобен, на тридцати — стена ссылок, в которой ничего не найти. Проекты
+              живут своим разделом с таблицей, поиском и цифрами.
+            */
+            const hasChildren = subs.length > 0;
             const unfolded = active && !collapsed && !folded.has(item.section);
             const hiddenNow = isHidden(item.section, prefs);
             return (
@@ -554,13 +558,6 @@ export function Sidebar({
                 {/* Проекты раскрываются прямо под своим разделом, как в привычных
                     таск-менеджерах: отдельная колонка слева отъедала место у доски
                     и висела перед глазами даже тогда, когда переключать нечего. */}
-                {item.section === 'projects' && unfolded && (
-                  <ProjectsNav
-                    currentId={route.projectId ?? null}
-                    canManage={user.role !== 'client'}
-                    canDelete={user.role !== 'client'}
-                  />
-                )}
                 {/* подпункты — только у открытого раздела: панель должна оставаться короткой */}
                 {unfolded && subs.map((sub) => (
                   <span key={sub.label}>

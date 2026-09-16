@@ -149,6 +149,11 @@ export class ApprovalRequiredDto {
   enabled!: boolean;
 }
 
+/** Куда переносим задачу: номер целевого проекта. */
+export class MoveToProjectDto {
+  @IsString() projectId!: string;
+}
+
 /** Решение постановщика по переносу срока: да или нет. */
 export class DeadlineShiftDto {
   @IsBoolean()

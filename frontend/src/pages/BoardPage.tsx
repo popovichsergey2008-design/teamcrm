@@ -19,6 +19,7 @@ import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
 import { EmptyState } from '../components/EmptyState';
 import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
+import { navigate } from '../lib/router';
 import { SkeletonBoard } from '../components/Skeleton';
 import { MONETIZATION_ENABLED } from '../config';
 
@@ -152,6 +153,9 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   */
   /** Настройки проекта: место доски в списке и порядок досок компании. */
   const [showProjectSettings, setShowProjectSettings] = useState(false);
+  /** Переключатель досок в названии проекта: открыт ли и что набрали в поиске. */
+  const [switchOpen, setSwitchOpen] = useState(false);
+  const [switchQuery, setSwitchQuery] = useState('');
   const [showFeed, setShowFeed] = useState(false);
   // Ключ памяти о проекте — свой на каждую организацию: при переключении
   // компании возврат должен вести в её проект, а не в чужой.
@@ -479,7 +483,56 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
           <>
             <div className="board-header">
               <div className="board-title">
-                {board.project.name}
+                {/*
+                  Название проекта — переключатель досок.
+
+                  Список проектов ушёл из левой панели, и перескакивать между досками
+                  надо оттуда, где ты уже находишься: нажал на название — выбрал другой
+                  проект. «Все проекты» уводит в таблицу со всеми досками.
+                */}
+                <span className="board-switch">
+                  <button
+                    className="board-switch-btn"
+                    onClick={() => setSwitchOpen((v) => !v)}
+                    aria-expanded={switchOpen}
+                    title="Перейти к другому проекту"
+                  >
+                    {board.project.name}
+                    <Icon name="chevron-down" size={14} />
+                  </button>
+                  {switchOpen && (
+                    <span className="chat-pop board-switch-pop">
+                      <input
+                        className="input"
+                        value={switchQuery}
+                        onChange={(e) => setSwitchQuery(e.target.value)}
+                        placeholder="Поиск проекта"
+                        aria-label="Поиск проекта"
+                        autoFocus
+                      />
+                      {projects
+                        .filter((p) => p.status !== 'archived')
+                        .filter((p) => p.name.toLowerCase().includes(switchQuery.trim().toLowerCase()))
+                        .slice(0, 12)
+                        .map((p) => (
+                          <button
+                            key={p.id}
+                            className={`chat-pop-row${String(p.id) === String(selected) ? ' active' : ''}`}
+                            onClick={() => { setSwitchOpen(false); setSwitchQuery(''); setSelected(String(p.id)); setOpenTaskId(null); }}
+                          >
+                            <Icon name="board" size={13} /> {p.name}
+                            {!!p.unread && <span className="badge badge-info">{p.unread}</span>}
+                          </button>
+                        ))}
+                      <button
+                        className="chat-pop-row board-switch-all"
+                        onClick={() => { setSwitchOpen(false); navigate({ section: 'projects' }); }}
+                      >
+                        <Icon name="list" size={13} /> Все проекты
+                      </button>
+                    </span>
+                  )}
+                </span>
                 <span className="view-switch" role="tablist" aria-label="Вид доски">
                   <button className={`view-btn ${view === 'board' ? 'active' : ''}`} onClick={() => switchView('board')} title="Канбан-доска"><Icon name="board" size={14} /> Доска</button>
                   <button className={`view-btn ${view === 'list' ? 'active' : ''}`} onClick={() => switchView('list')} title="Список"><Icon name="list" size={14} /> Список</button>

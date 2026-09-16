@@ -3,7 +3,10 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { ProjectsService } from './projects.service';
-import { ColumnDto, CreateProjectDto, MoveColumnDto, ProjectDefaultDto, ProjectOrderDto, ProjectOwnerDto, ReorderColumnsDto } from './projects.dto';
+import {
+  ColumnDto, CreateProjectDto, MoveColumnDto, ProjectDefaultDto, ProjectMembersDto, ProjectOrderDto,
+  ProjectOwnerDto, ReorderColumnsDto, UpdateProjectDto,
+} from './projects.dto';
 
 @ApiTags('projects')
 @ApiBearerAuth()
@@ -16,6 +19,40 @@ export class ProjectsController {
   @Get()
   list(@CurrentUser() user: AuthUser, @Query('archived') archived?: string) {
     return this.projects.list(user.tenantId, user.role, archived === '1' || archived === 'true', user.userId);
+  }
+
+  /**
+   * Проекты с цифрами по задачам — для страницы «Проекты».
+   *
+   * Отдельной ручкой, а не полем в общем списке: панель слева спрашивает проекты
+   * десятки раз за сеанс, и считать ей задачи по всем доскам незачем. Маршрут выше
+   * `:id`-путей — «stats» не должно приниматься за номер проекта.
+   */
+  @Get('stats')
+  stats(@CurrentUser() user: AuthUser, @Query('archived') archived?: string) {
+    return this.projects.listWithStats(user.tenantId, user, archived === '1' || archived === 'true');
+  }
+
+  /** Правка проекта: переименование и видимость. */
+  @Patch(':id')
+  update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: UpdateProjectDto) {
+    return this.projects.update(user.tenantId, id, user, dto);
+  }
+
+  /** Кто допущен к закрытому проекту. */
+  @Get(':id/members')
+  members(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.projects.members(user.tenantId, id);
+  }
+
+  @Post(':id/members')
+  addMembers(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ProjectMembersDto) {
+    return this.projects.addMembers(user.tenantId, id, user, dto.userIds);
+  }
+
+  @Delete(':id/members/:userId')
+  removeMember(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('userId') userId: string) {
+    return this.projects.removeMember(user.tenantId, id, user, userId);
   }
 
   /**

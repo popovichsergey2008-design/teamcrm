@@ -8,6 +8,8 @@ export type DomainEvent =
   | 'task.moved'
   | 'task.deleted'
   | 'column.updated'
+  // Проект переименовали или закрыли от посторонних: списки и шапка доски перечитываются
+  | 'project.updated'
   | 'deal.converted'
   // Этап 2: нефинансовые события трекинга (можно в обе комнаты)
   | 'time.started'

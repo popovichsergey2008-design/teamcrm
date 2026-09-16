@@ -496,6 +496,44 @@ export class TasksRepository {
   }
 
   /** Перенос задачи: новая колонка + позиция, с пересортировкой соседей. */
+  /**
+   * Перенос задачи в ДРУГОЙ проект.
+   *
+   * Одной транзакцией, потому что рвётся сразу три вещи: порядок в старой колонке,
+   * порядок в новой и сам проект. Задача уезжает в конец целевой колонки — вставлять
+   * чужую задачу в середину чужой доски нельзя, там свой порядок работ.
+   *
+   * Что ОСТАЁТСЯ при переносе: переписка, вложения, чек-лист, учтённое время,
+   * участники и метки (метки в организации общие). Это и есть смысл переноса —
+   * исправить ошибку адресации, ничего не потеряв.
+   */
+  async moveToProject(
+    tenantId: string, id: string, projectId: string, columnId: string, columnName: string,
+  ): Promise<TaskRow> {
+    return this.db.withTransaction(async (client) => {
+      const cur = await client.query<TaskRow>(
+        `SELECT * FROM tasks WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tenantId, id],
+      );
+      const task = cur.rows[0];
+      // старую колонку сжимаем: после ухода задачи в ней не должно остаться дырки
+      await client.query(
+        `UPDATE tasks SET position = position - 1
+          WHERE tenant_id = $1 AND column_id = $2 AND position > $3`,
+        [tenantId, task.column_id, task.position],
+      );
+      const tail = await client.query<{ n: string }>(
+        `SELECT COALESCE(MAX(position) + 1, 0) AS n FROM tasks WHERE tenant_id=$1 AND column_id=$2`,
+        [tenantId, columnId],
+      );
+      const res = await client.query<TaskRow>(
+        `UPDATE tasks SET project_id = $3, column_id = $4, position = $5, status = $6, updated_at = now()
+          WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+        [tenantId, id, projectId, columnId, Number(tail.rows[0]?.n ?? 0), columnName],
+      );
+      return res.rows[0];
+    });
+  }
+
   async move(
     tenantId: string,
     id: string,

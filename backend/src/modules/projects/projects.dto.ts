@@ -34,6 +34,19 @@ export class ReorderColumnsDto {
   orderedIds!: string[];
 }
 
+/** Правка проекта: название, видимость, бюджет. Пустые поля не трогаем. */
+export class UpdateProjectDto {
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(255) name?: string;
+  /** all — видят все; members — только участники, ответственный и руководство. */
+  @IsOptional() @IsIn(['all', 'members']) visibility?: 'all' | 'members';
+  @IsOptional() @IsNumber() @Min(0) budget?: number;
+}
+
+/** Кого допустить к закрытому проекту. */
+export class ProjectMembersDto {
+  @IsArray() @ArrayNotEmpty() @IsString({ each: true }) userIds!: string[];
+}
+
 /** Новый порядок досок: список идёт как есть, номера расставляет сервер. */
 export class ProjectOrderDto {
   @IsArray() @ArrayNotEmpty() @IsString({ each: true }) ids!: string[];

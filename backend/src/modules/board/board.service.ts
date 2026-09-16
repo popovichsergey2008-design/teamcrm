@@ -28,6 +28,16 @@ export class BoardService {
   async getBoard(tenantId: string, projectId: string, role: string, userId: string) {
     const project = await this.projects.findById(tenantId, projectId);
     if (!project) throw AppException.notFound('Project not found');
+    /*
+      Закрытый проект не открывается по прямой ссылке.
+
+      Список он уже не показывает, но адрес доски знают все, кому его хоть раз
+      прислали, — и без этой проверки «видно только своим» держалось бы на том, что
+      ссылку никто не сохранил.
+    */
+    if (!(await this.projects.canSee(tenantId, projectId, { userId, role }))) {
+      throw AppException.forbidden('Этот проект доступен только его участникам');
+    }
 
     const columns = await this.projects.listColumns(tenantId, projectId);
     const tasks = await this.tasks.listByProject(tenantId, projectId);

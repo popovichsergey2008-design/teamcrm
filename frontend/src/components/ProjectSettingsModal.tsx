@@ -16,11 +16,79 @@ import { PROJECTS_CHANGED } from './ProjectsNav';
  * досками, а не место, где их настраивают. Заказчик сказал ровно это.
  */
 export function ProjectSettingsModal({ project, onClose, onChanged }: {
-  project: { id: string; name: string; is_default?: boolean; is_support?: boolean; owner_user_id?: string | null };
+  project: {
+    id: string; name: string; is_default?: boolean; is_support?: boolean;
+    owner_user_id?: string | null; visibility?: string;
+  };
   onClose: () => void;
   onChanged: () => void;
 }) {
   useEscape(onClose);
+  /** Название правится здесь: раньше переименовать проект было нельзя вовсе. */
+  const [name, setName] = useState(project.name);
+  /** all — видят все сотрудники; members — только участники и руководство. */
+  const [visibility, setVisibility] = useState(project.visibility === 'members' ? 'members' : 'all');
+  const [members, setMembers] = useState<{ user_id: string; full_name: string }[]>([]);
+
+  useEffect(() => {
+    if (visibility !== 'members') return;
+    api.projectMembers(String(project.id)).then(setMembers).catch(() => undefined);
+  }, [visibility, project.id]);
+
+  const rename = async () => {
+    const next = name.trim();
+    if (!next || next === project.name) return;
+    setErr(''); setDone(''); setBusy(true);
+    try {
+      await api.updateProject(String(project.id), { name: next });
+      window.dispatchEvent(new Event(PROJECTS_CHANGED));
+      onChanged();
+      setDone('Название изменено');
+    } catch (e) {
+      setName(project.name);
+      setErr(e instanceof ApiError ? e.message : 'Не удалось переименовать');
+    } finally { setBusy(false); }
+  };
+
+  /*
+    Видимость — не переключатель «на всякий случай».
+
+    «Только свои» закрывает доску от остальной команды: список её не покажет и по
+    прямой ссылке она не откроется. Поэтому при закрытии сразу говорим, кто внутри:
+    люди, у которых в проекте есть задачи, попадают в список автоматически.
+  */
+  const changeVisibility = async (next: 'all' | 'members') => {
+    const prev = visibility;
+    setErr(''); setDone(''); setBusy(true);
+    setVisibility(next);
+    try {
+      await api.updateProject(String(project.id), { visibility: next });
+      if (next === 'members') setMembers(await api.projectMembers(String(project.id)));
+      window.dispatchEvent(new Event(PROJECTS_CHANGED));
+      onChanged();
+      setDone(next === 'members'
+        ? 'Проект виден только участникам — те, у кого здесь есть задачи, уже внутри'
+        : 'Проект снова виден всей команде');
+    } catch (e) {
+      setVisibility(prev);
+      setErr(e instanceof ApiError ? e.message : 'Не удалось изменить видимость');
+    } finally { setBusy(false); }
+  };
+
+  const addMember = async (userId: string) => {
+    if (!userId) return;
+    setErr(''); setBusy(true);
+    try { setMembers(await api.addProjectMembers(String(project.id), [userId])); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось добавить'); }
+    finally { setBusy(false); }
+  };
+
+  const dropMember = async (userId: string) => {
+    setErr(''); setBusy(true);
+    try { setMembers(await api.removeProjectMember(String(project.id), userId)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось убрать'); }
+    finally { setBusy(false); }
+  };
   const [isDefault, setIsDefault] = useState(project.is_default === true);
   const [isSupport, setIsSupport] = useState(project.is_support === true);
   /** Ответственный за проект: один человек, к которому идут с вопросами «что по проекту». */
@@ -117,6 +185,92 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
             <Icon name="close" size={16} />
           </button>
         </div>
+
+        {/*
+          Название и доступ — первым делом.
+
+          Раньше проект нельзя было ни переименовать, ни закрыть от посторонних:
+          опечатка в названии жила вечно, а доска с наймом или деньгами клиента была
+          открыта всей компании.
+        */}
+        <div className="drawer-section">
+          <div className="drawer-section-title">Название проекта</div>
+          <div className="drawer-row">
+            <input
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void rename(); }}
+              disabled={busy}
+              aria-label="Название проекта"
+            />
+            <button
+              className="btn btn-sm"
+              onClick={() => void rename()}
+              disabled={busy || !name.trim() || name.trim() === project.name}
+            >
+              Сохранить
+            </button>
+          </div>
+        </div>
+
+        <div className="drawer-section">
+          <div className="drawer-section-title">Кто видит проект</div>
+          <span className="view-switch" role="group" aria-label="Видимость проекта">
+            <button
+              className={`view-btn ${visibility === 'all' ? 'active' : ''}`}
+              onClick={() => void changeVisibility('all')}
+              disabled={busy}
+            >
+              Вся команда
+            </button>
+            <button
+              className={`view-btn ${visibility === 'members' ? 'active' : ''}`}
+              onClick={() => void changeVisibility('members')}
+              disabled={busy}
+            >
+              Только участники
+            </button>
+          </span>
+          <p className="dim">
+            «Только участники» убирает доску из списков у остальных и закрывает её по прямой
+            ссылке. Руководство и ответственный за проект видят её всегда.
+          </p>
+        </div>
+
+        {visibility === 'members' && (
+          <div className="drawer-section">
+            <div className="drawer-section-title">Участники проекта</div>
+            <div className="project-members">
+              {members.map((m) => (
+                <span key={m.user_id} className="chip">
+                  {m.full_name}
+                  <button
+                    className="msg-act"
+                    onClick={() => void dropMember(m.user_id)}
+                    title="Убрать из проекта"
+                    aria-label={`Убрать ${m.full_name}`}
+                  >
+                    <Icon name="close" size={12} />
+                  </button>
+                </span>
+              ))}
+              {!members.length && <span className="dim">Пока никого — добавьте людей ниже.</span>}
+            </div>
+            <select
+              className="input"
+              value=""
+              onChange={(e) => { void addMember(e.target.value); e.currentTarget.value = ''; }}
+              disabled={busy}
+              aria-label="Добавить участника проекта"
+            >
+              <option value="">Добавить участника…</option>
+              {people
+                .filter((u) => !members.some((m) => String(m.user_id) === String(u.id)))
+                .map((u) => <option key={u.id} value={String(u.id)}>{u.fullName}</option>)}
+            </select>
+          </div>
+        )}
 
         <div className="drawer-section">
           <div className="drawer-section-title">Ответственный</div>

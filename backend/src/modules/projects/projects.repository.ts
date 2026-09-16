@@ -12,6 +12,9 @@ export interface ProjectRow {
   status: string;
   created_at: Date;
   updated_at: Date;
+  /** all — видят все сотрудники; members — только участники, ответственный и руководство. */
+  visibility?: string;
+  owner_user_id?: string | null;
 }
 
 export interface ColumnRow {
@@ -41,6 +44,134 @@ export class ProjectsRepository {
         -- потом новые по дате. Без этого свои доски тонули среди импортированных.
         ORDER BY p.is_default DESC, p.sort_order, p.created_at DESC`,
       [tenantId, includeArchived],
+    );
+  }
+
+  /**
+   * Список проектов ВИДИМЫХ человеку — с цифрами по задачам.
+   *
+   * Одним запросом: страница «Проекты» показывает таблицу, и считать задачи по
+   * каждому проекту отдельным походом в базу — это тридцать запросов на один экран.
+   *
+   * Видимость решается здесь же, а не в сервисе: фильтр в SQL нельзя забыть
+   * применить, а проверку в коде — можно.
+   */
+  listWithStats(
+    tenantId: string, viewer: { userId: string; role: string }, includeArchived: boolean,
+  ): Promise<(ProjectRow & {
+    origin_label: string | null; owner_name: string | null;
+    tasks_total: number; tasks_open: number; tasks_overdue: number;
+    next_deadline: string | null; members_count: number;
+  })[]> {
+    // руководство видит всё: иначе некому вернуть доступ к закрытому проекту
+    const boss = viewer.role === 'owner' || viewer.role === 'manager';
+    return this.db.many(
+      `SELECT p.*, c.label AS origin_label, c.portal AS origin_portal, ow.full_name AS owner_name,
+              COALESCE(st.total, 0)::int   AS tasks_total,
+              COALESCE(st.open, 0)::int    AS tasks_open,
+              COALESCE(st.overdue, 0)::int AS tasks_overdue,
+              st.next_deadline,
+              (SELECT COUNT(*)::int FROM project_members pm WHERE pm.project_id = p.id) AS members_count
+         FROM projects p
+         LEFT JOIN integration_connections c ON c.id = p.origin_connection_id
+         LEFT JOIN users ow ON ow.id = p.owner_user_id
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE t.closed_at IS NULL) AS open,
+                  COUNT(*) FILTER (WHERE t.closed_at IS NULL AND t.deadline_at < now()) AS overdue,
+                  MIN(t.deadline_at) FILTER (WHERE t.closed_at IS NULL) AS next_deadline
+             FROM tasks t WHERE t.project_id = p.id
+         ) st ON TRUE
+        WHERE p.tenant_id = $1 AND ($2::boolean OR p.status <> 'archived')
+          AND ($3::boolean OR p.visibility = 'all'
+               OR p.owner_user_id = $4::bigint
+               OR EXISTS (SELECT 1 FROM project_members pm
+                           WHERE pm.project_id = p.id AND pm.user_id = $4::bigint))
+        ORDER BY p.is_default DESC, p.sort_order, p.created_at DESC`,
+      [tenantId, includeArchived, boss, viewer.userId],
+    );
+  }
+
+  /** Видит ли человек этот проект — тем же правилом, что и список. */
+  async canSee(tenantId: string, projectId: string, viewer: { userId: string; role: string }): Promise<boolean> {
+    if (viewer.role === 'owner' || viewer.role === 'manager') return true;
+    const row = await this.db.one<{ ok: boolean }>(
+      `SELECT (p.visibility = 'all'
+               OR p.owner_user_id = $3::bigint
+               OR EXISTS (SELECT 1 FROM project_members pm
+                           WHERE pm.project_id = p.id AND pm.user_id = $3::bigint)) AS ok
+         FROM projects p WHERE p.tenant_id=$1 AND p.id=$2`,
+      [tenantId, projectId, viewer.userId],
+    );
+    return !!row?.ok;
+  }
+
+  /** Правка проекта: название и видимость. Пустые поля не трогаем. */
+  async update(
+    tenantId: string, id: string, patch: { name?: string; visibility?: string; budget?: number | null },
+  ): Promise<ProjectRow | null> {
+    const set: string[] = [];
+    const vals: unknown[] = [tenantId, id];
+    let i = 3;
+    if (patch.name !== undefined) { set.push(`name = $${i++}`); vals.push(patch.name); }
+    if (patch.visibility !== undefined) { set.push(`visibility = $${i++}`); vals.push(patch.visibility); }
+    if (patch.budget !== undefined) { set.push(`budget = $${i++}`); vals.push(patch.budget); }
+    if (!set.length) return this.findById(tenantId, id);
+    set.push('updated_at = now()');
+    return this.db.one<ProjectRow>(
+      `UPDATE projects SET ${set.join(', ')} WHERE tenant_id=$1 AND id=$2 RETURNING *`, vals,
+    );
+  }
+
+  /**
+   * Открыть закрытый проект тем, кто в нём уже работает.
+   *
+   * Постановщики, исполнители и соисполнители задач проекта попадают в список
+   * автоматически при закрытии доски: иначе «видно только своим» означало бы, что
+   * доску отобрали у всей команды, включая тех, кто на ней работает прямо сейчас.
+   */
+  async seedMembersFromTasks(tenantId: string, projectId: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO project_members (tenant_id, project_id, user_id)
+            SELECT DISTINCT $1, $2, x.user_id
+              FROM (
+                SELECT t.assignee_id AS user_id FROM tasks t WHERE t.project_id = $2 AND t.assignee_id IS NOT NULL
+                UNION
+                SELECT t.created_by FROM tasks t WHERE t.project_id = $2 AND t.created_by IS NOT NULL
+                UNION
+                SELECT tp.user_id FROM task_participants tp
+                  JOIN tasks t ON t.id = tp.task_id WHERE t.project_id = $2
+              ) x
+       ON CONFLICT DO NOTHING`,
+      [tenantId, projectId],
+    );
+  }
+
+  /** Кто допущен к закрытому проекту. */
+  members(tenantId: string, projectId: string) {
+    return this.db.many<{ user_id: string; full_name: string; added_at: Date }>(
+      `SELECT pm.user_id::text, u.full_name, pm.added_at
+         FROM project_members pm JOIN users u ON u.id = pm.user_id
+        WHERE pm.tenant_id=$1 AND pm.project_id=$2
+        ORDER BY u.full_name`,
+      [tenantId, projectId],
+    );
+  }
+
+  async addMembers(tenantId: string, projectId: string, userIds: string[]): Promise<void> {
+    if (!userIds.length) return;
+    await this.db.query(
+      `INSERT INTO project_members (tenant_id, project_id, user_id)
+            SELECT $1, $2, x FROM UNNEST($3::bigint[]) AS x
+       ON CONFLICT DO NOTHING`,
+      [tenantId, projectId, userIds],
+    );
+  }
+
+  async removeMember(tenantId: string, projectId: string, userId: string): Promise<void> {
+    await this.db.query(
+      `DELETE FROM project_members WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3`,
+      [tenantId, projectId, userId],
     );
   }
 

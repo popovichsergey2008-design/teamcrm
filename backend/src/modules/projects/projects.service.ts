@@ -30,7 +30,10 @@ export class ProjectsService {
    * портал и чужие задачи он не ведёт.
    */
   async list(tenantId: string, role: string, includeArchived = false, userId?: string) {
-    const rows = await this.repo.list(tenantId, includeArchived);
+    // Закрытый проект не должен показываться даже строкой в панели — фильтруем в SQL.
+    const rows = userId
+      ? await this.repo.listWithStats(tenantId, { userId, role }, includeArchived)
+      : await this.repo.list(tenantId, includeArchived);
     if (role === 'client') return rows.map(toClientProject);
     if (!userId) return rows;
     const unread = new Map<string, number>();
@@ -38,6 +41,83 @@ export class ProjectsService {
       unread.set(String(u.project_id), Number(u.n));
     }
     return rows.map((r) => ({ ...r, unread: unread.get(String(r.id)) ?? 0 }));
+  }
+
+  /**
+   * Проекты с цифрами — для страницы «Проекты».
+   *
+   * Та же видимость, что и в списке для панели: закрытый проект не должен
+   * показываться даже строкой с названием.
+   */
+  async listWithStats(tenantId: string, viewer: { userId: string; role: string }, includeArchived = false) {
+    const rows = await this.repo.listWithStats(tenantId, viewer, includeArchived);
+    if (viewer.role === 'client') return rows.map(toClientProject);
+    const unread = new Map<string, number>();
+    for (const u of await this.reads.byProjects(tenantId, viewer.userId)) {
+      unread.set(String(u.project_id), Number(u.n));
+    }
+    return rows.map((r) => ({ ...r, unread: unread.get(String(r.id)) ?? 0 }));
+  }
+
+  /** Видит ли человек проект: одно правило на список, доску и перенос задачи. */
+  canSee(tenantId: string, projectId: string, viewer: { userId: string; role: string }) {
+    return this.repo.canSee(tenantId, projectId, viewer);
+  }
+
+  /**
+   * Правка проекта: название и видимость.
+   *
+   * Переименование — право всех, кто работает на доске: то же решение, что и с
+   * колонками (см. board-permissions). А вот закрыть проект от коллег или открыть
+   * обратно может только руководство и ответственный за проект: это про доступ, и
+   * случайное нажатие здесь дороже опечатки в названии.
+   */
+  async update(
+    tenantId: string, id: string, actor: { userId: string; role: string },
+    patch: { name?: string; visibility?: string; budget?: number | null },
+  ) {
+    const project = await this.getOrThrow(tenantId, id);
+    if (patch.visibility !== undefined) {
+      const boss = actor.role === 'owner' || actor.role === 'manager'
+        || String(project.owner_user_id ?? '') === String(actor.userId);
+      if (!boss) throw AppException.forbidden('Видимость проекта меняет руководство или ответственный');
+      if (!['all', 'members'].includes(patch.visibility)) throw AppException.validation('Неизвестная видимость');
+    }
+    const name = patch.name?.trim();
+    if (patch.name !== undefined && !name) throw AppException.validation('Название не может быть пустым');
+    const row = await this.repo.update(tenantId, id, { ...patch, name });
+    /*
+      Закрыли проект — открываем его тем, кто уже в нём работает.
+
+      Иначе «сделать видимым для определённых людей» на деле означало бы «отобрать
+      доску у всей команды»: список участников пуст, и в проект не попадает даже
+      исполнитель задачи. Люди с задачами в проекте попадают в список сразу.
+    */
+    if (patch.visibility === 'members') await this.repo.seedMembersFromTasks(tenantId, id);
+    this.realtime.emit(tenantId, id, 'project.updated', { id, name: row?.name, visibility: row?.visibility });
+    return row;
+  }
+
+  members(tenantId: string, projectId: string) {
+    return this.repo.members(tenantId, projectId);
+  }
+
+  async addMembers(tenantId: string, projectId: string, actor: { userId: string; role: string }, userIds: string[]) {
+    const project = await this.getOrThrow(tenantId, projectId);
+    const boss = actor.role === 'owner' || actor.role === 'manager'
+      || String(project.owner_user_id ?? '') === String(actor.userId);
+    if (!boss) throw AppException.forbidden('Состав проекта меняет руководство или ответственный');
+    await this.repo.addMembers(tenantId, projectId, userIds);
+    return this.repo.members(tenantId, projectId);
+  }
+
+  async removeMember(tenantId: string, projectId: string, actor: { userId: string; role: string }, userId: string) {
+    const project = await this.getOrThrow(tenantId, projectId);
+    const boss = actor.role === 'owner' || actor.role === 'manager'
+      || String(project.owner_user_id ?? '') === String(actor.userId);
+    if (!boss) throw AppException.forbidden('Состав проекта меняет руководство или ответственный');
+    await this.repo.removeMember(tenantId, projectId, userId);
+    return this.repo.members(tenantId, projectId);
   }
 
   /**

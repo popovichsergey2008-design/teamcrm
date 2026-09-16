@@ -576,6 +576,49 @@ export class TasksService {
     await this.recurrence.markRun(String(rule.id), new Date(rule.last_run_at ?? new Date()), to);
   }
 
+  /**
+   * Перенести задачу в другой проект.
+   *
+   * Живой случай заказчика: «поставил не туда и не могу перенести». Раньше это
+   * лечилось только пересозданием задачи — с потерей переписки, вложений и времени.
+   *
+   * Колонку в целевом проекте подбираем по названию («В работе» → «В работе»), а не
+   * ставим всегда первую: задача в работе не должна возвращаться в «Новые» просто
+   * потому, что переехала. Нет такой колонки — берём первую.
+   */
+  async moveToProject(
+    tenantId: string, id: string, actor: { userId: string; role: string }, projectId: string,
+  ): Promise<TaskRow> {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    if (String(task.project_id) === String(projectId)) return task;
+
+    const target = await this.projects.findById(tenantId, projectId);
+    if (!target) throw AppException.notFound('Проект не найден');
+    // в закрытый проект переносить нельзя тому, кто его не видит: так задачу можно
+    // было бы «спрятать» от себя же — и потерять
+    if (!(await this.projects.canSee(tenantId, projectId, actor))) {
+      throw AppException.forbidden('Этот проект доступен только его участникам');
+    }
+
+    const from = await this.projects.findById(tenantId, String(task.project_id));
+    const columns = await this.projects.listColumns(tenantId, projectId);
+    if (!columns.length) throw AppException.conflict('В целевом проекте нет ни одной колонки');
+    const current = (await this.projects.listColumns(tenantId, String(task.project_id)))
+      .find((c) => String(c.id) === String(task.column_id));
+    const same = current && columns.find((c) => c.name.trim().toLowerCase() === current.name.trim().toLowerCase());
+    const column = same ?? columns[0];
+
+    const moved = await this.repo.moveToProject(tenantId, id, projectId, String(column.id), column.name);
+    await this.activity.log(tenantId, id, actor.userId, 'project_moved', {
+      from: from?.name ?? null, to: target.name, column: column.name,
+    });
+    // обе доски перерисовываются: на одной задача исчезла, на другой появилась
+    this.realtime.emit(tenantId, String(task.project_id), 'task.deleted', { id } as any);
+    this.realtime.emit(tenantId, projectId, 'task.updated', moved as any);
+    return moved;
+  }
+
   /** Включить или снять согласование — право постановщика (и владельца). */
   async setApprovalRequired(
     tenantId: string, id: string, actor: { userId: string; role: string }, value: boolean,

@@ -86,6 +86,11 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const lastServerDeadline = useRef(initialDeadline);
   /** Что ответила кнопка «Сделал»: без строки на экране непонятно, случилось ли хоть что-то. */
   const [shiftNote, setShiftNote] = useState('');
+  /** Куда переехала задача — строкой под полем: перенос не должен проходить молча. */
+  const [movedNote, setMovedNote] = useState('');
+  /** Проекты для переноса: только те, которые человек видит. */
+  const [projectList, setProjectList] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => { api.listProjects().then(setProjectList).catch(() => undefined); }, []);
   const [err, setErr] = useState('');
   const [desc, setDesc] = useState(task.description ?? '');
   /** Название правится прямо в карточке: раньше его можно было изменить только заново создав задачу. */
@@ -300,6 +305,27 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     setErr('');
     try {
       await api.decideDeadlineShift(task.id, approve);
+      onRefresh();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+
+  /**
+   * Перенести задачу в другой проект.
+   *
+   * Колонку в целевом проекте подбирает сервер — по названию текущей: задача «в
+   * работе» не должна возвращаться в «Новые» просто потому, что переехала.
+   */
+  const moveToProject = async (projectId: string) => {
+    if (!projectId || String(projectId) === String(task.project_id)) return;
+    const to = projectList.find((p) => String(p.id) === String(projectId));
+    if (!window.confirm(`Перенести задачу в проект «${to?.name ?? projectId}»?\n\n`
+      + 'Переписка, вложения, чек-лист и учтённое время переедут вместе с ней.')) return;
+    setErr('');
+    try {
+      await api.moveTaskToProject(task.id, projectId);
+      setMovedNote(`Задача перенесена в «${to?.name ?? ''}»`);
       onRefresh();
     } catch (e) {
       setErr((e as Error).message);
@@ -884,6 +910,26 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 onAdd={addPerson}
                 onRemove={removePerson}
               />
+
+              {/*
+                Перенос задачи в другой проект.
+
+                Живая жалоба: «поставил не туда и не могу перенести». Пересоздавать
+                задачу значило потерять переписку, вложения и учтённое время — вместе
+                с ними теряется и вся история решения.
+              */}
+              <div className="field">
+                <label>Проект</label>
+                <select
+                  className="input"
+                  value={String(task.project_id)}
+                  onChange={(e) => { void moveToProject(e.target.value); }}
+                  title="Перенести задачу в другой проект"
+                >
+                  {projectList.map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                </select>
+                {movedNote && <span className="dim" style={{ fontSize: 12 }}>{movedNote}</span>}
+              </div>
 
               <div className="drawer-grid2">
                 <div className="field"><label>Оценка, ч</label><input className="input" type="number" min="0" step="0.5" value={estimate} onChange={(e) => setEstimate(e.target.value)} /></div>
