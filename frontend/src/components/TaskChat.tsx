@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { MentionField } from './MentionField';
@@ -9,6 +9,7 @@ import { api, ApiError } from '../lib/api';
 import { dayLabel, plural, sameGroup, stampLabel } from '../lib/chat-text';
 import { MessageText } from './MessageText';
 import { longPressProps, MenuAt, MessageMenu } from './MessageMenu';
+import { useDismiss } from '../hooks/useDismiss';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { orderMentions } from '../lib/task-mentions';
 import { useVoiceInput } from '../hooks/useVoiceInput';
@@ -187,7 +188,6 @@ export function TaskChat({
   /** Панели шапки: участники, история, выбор способа звонка. Открыта всегда одна. */
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [histOpen, setHistOpen] = useState(false);
-  const [callOpen, setCallOpen] = useState(false);
   /** Смайлы и быстрые вопросы к ИИ — прячутся в поле ввода, как в мессенджере. */
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
@@ -822,6 +822,20 @@ export function TaskChat({
     return names.length ? { id: String(mine.id), names } : null;
   }, [comments, readers, user?.id]);
 
+  /*
+    Выпадашки шапки закрываются щелчком мимо и клавишей Esc.
+
+    Жалоба заказчика: «невозможно закрыть эти выпадашки без перезагрузки». Кнопки
+    шапки переключают своё окно сами, поэтому щелчки по самой шапке пропускаем —
+    иначе нажатие на ту же кнопку закрывало бы и тут же открывало окно заново.
+  */
+  const closeHeadPops = useCallback(() => { setPeopleOpen(false); setHistOpen(false); setPinsOpen(false); }, []);
+  useDismiss(peopleOpen || histOpen || pinsOpen, closeHeadPops, '.task-chat-head');
+  const closeEmoji = useCallback(() => setEmojiOpen(false), []);
+  useDismiss(emojiOpen, closeEmoji, '.chat-tools');
+  const closeQuick = useCallback(() => setQuickOpen(false), []);
+  useDismiss(quickOpen, closeQuick, '.chat-tools');
+
   /** Закреплённые сообщения: их единицы, считаем из уже загруженной ленты. */
   const pinned = comments.filter((c: any) => c.pinned_at);
 
@@ -879,43 +893,21 @@ export function TaskChat({
             отличается только тем, что камера включается сразу: два разных созвона ради
             этого были бы обманом.
           */}
-          {callTo.length > 0 && (
-            <span className="chat-call">
-              {/*
-                «Созвон», а не «Видеозвонок».
+          {/*
+            Одна кнопка «Созвон» — решение заказчика.
 
-                Решение заказчика: в задаче чаще нужно просто поговорить, и камера
-                при этом не нужна. Основное действие — обычный звонок трубкой, видео
-                осталось вторым вариантом в том же меню.
-              */}
-              <button
-                className="btn btn-primary btn-sm chat-call-main"
-                onClick={() => requestCall({ memberIds: callTo, projectId, taskId, title })}
-                title={`Созвон: ${callNames}`}
-              >
-                <Icon name="phone" size={14} /> <span className="chat-call-label">Созвон</span>
-              </button>
-              <button
-                className="btn btn-primary btn-sm chat-call-more"
-                onClick={() => { setCallOpen((v) => !v); setPeopleOpen(false); setHistOpen(false); }}
-                title="Другие способы связи"
-                aria-label="Другие способы связи"
-                aria-expanded={callOpen}
-              >
-                <Icon name="chevron-down" size={13} />
-              </button>
-              {callOpen && (
-                <span className="chat-pop chat-call-pop">
-                  <button
-                    className="chat-pop-row"
-                    onClick={() => { setCallOpen(false); requestCall({ memberIds: callTo, projectId, taskId, title, video: true }); }}
-                  >
-                    <Icon name="video" size={14} /> Видеозвонок
-                  </button>
-                  <span className="dim chat-pop-note">Позвоним: {callNames}</span>
-                </span>
-              )}
-            </span>
+            Выбора «с камерой или без» в задаче не было нужно: звонят, чтобы
+            поговорить, а камеру включают уже в самом окне созвона. Меню с
+            «Видеозвонком» только добавляло нажатие на ровном месте.
+          */}
+          {callTo.length > 0 && (
+            <button
+              className="btn btn-primary btn-sm chat-call-main"
+              onClick={() => requestCall({ memberIds: callTo, projectId, taskId, title })}
+              title={`Созвон: ${callNames}`}
+            >
+              <Icon name="phone" size={14} /> <span className="chat-call-label">Созвон</span>
+            </button>
           )}
           {comments.length > 5 && (
             <button
@@ -973,7 +965,7 @@ export function TaskChat({
         наблюдателем задачи, а не только читателем переписки.
       */}
       {peopleOpen && (
-        <div className="chat-pop chat-people-pop">
+        <div className="chat-pop chat-people-pop" data-pop>
           {people.map((p) => (
             <span key={p.id} className="chat-pop-row chat-person-row">
               <span className="msg-avatar" aria-hidden="true">{initials(p.name)}</span>
@@ -1019,7 +1011,7 @@ export function TaskChat({
         проматывать два десятка строк «изменил поля». Разговор и журнал — разные вещи.
       */}
       {histOpen && (
-        <div className="chat-pop chat-hist-pop">
+        <div className="chat-pop chat-hist-pop" data-pop>
           {history.map((a: any) => {
             const to = a.kind === 'commented' && a.detail?.commentId ? String(a.detail.commentId) : null;
             const line = `${new Date(a.created_at).toLocaleString('ru-RU')} · ${a.actor_name ?? 'система'} · ${activityText(a)}`;
@@ -1044,7 +1036,7 @@ export function TaskChat({
         закреп не должен: строка с количеством, по нажатию — список с переходом.
       */}
       {pinned.length > 0 && pinsOpen && (
-        <div className="task-pins">
+        <div className="task-pins" data-pop>
           {pinned.map((c: any) => (
             <button key={c.id} className="task-pin" onClick={() => { setPinsOpen(false); void goToMessage(String(c.id)); }}>
               <Icon name="flag" size={12} />
@@ -1386,7 +1378,7 @@ export function TaskChat({
       {/* Быстрые вопросы к ИИ — по кнопке в поле ввода: пять кнопок над строкой
           занимали место каждый день ради нажатия раз в неделю. */}
       {quickOpen && (
-        <div className="ai-quick">
+        <div className="ai-quick" data-pop>
           {QUICK_ASKS.map((qa) => (
             <button key={qa.label} className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setQuickOpen(false); ask(qa.ask); }}>
               {qa.label}
@@ -1490,7 +1482,7 @@ export function TaskChat({
               <Icon name="smile" size={17} />
             </button>
             {emojiOpen && (
-              <span className="react-pop chat-emoji-pop">
+              <span className="react-pop chat-emoji-pop" data-pop>
                 {REACTIONS.map((emoji) => (
                   <button
                     key={emoji}

@@ -20,6 +20,7 @@ import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
 import { EmptyState } from '../components/EmptyState';
 import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
 import { navigate } from '../lib/router';
+import { useDismiss } from '../hooks/useDismiss';
 import { SkeletonBoard } from '../components/Skeleton';
 import { MONETIZATION_ENABLED } from '../config';
 
@@ -156,6 +157,9 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   /** Переключатель досок в названии проекта: открыт ли и что набрали в поиске. */
   const [switchOpen, setSwitchOpen] = useState(false);
   const [switchQuery, setSwitchQuery] = useState('');
+  // Щелчок мимо списка досок и Esc закрывают его: без этого он висел до перезагрузки.
+  const closeSwitch = useCallback(() => setSwitchOpen(false), []);
+  useDismiss(switchOpen, closeSwitch, '.board-switch-btn');
   const [showFeed, setShowFeed] = useState(false);
   // Ключ памяти о проекте — свой на каждую организацию: при переключении
   // компании возврат должен вести в её проект, а не в чужой.
@@ -501,7 +505,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                     <Icon name="chevron-down" size={14} />
                   </button>
                   {switchOpen && (
-                    <span className="chat-pop board-switch-pop">
+                    <span className="chat-pop board-switch-pop" data-pop>
                       <input
                         className="input"
                         value={switchQuery}

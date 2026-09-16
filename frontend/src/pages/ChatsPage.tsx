@@ -22,6 +22,7 @@ import { remindLabel, remindOptions } from '../lib/remind-times';
 import { MentionField } from '../components/MentionField';
 import { MessageText } from '../components/MessageText';
 import { longPressProps, MenuAt, MessageMenu } from '../components/MessageMenu';
+import { useDismiss } from '../hooks/useDismiss';
 import { MessageToTask } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
@@ -386,6 +387,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * привязываясь к кнопке «ещё», — кнопки больше нет.
    */
   const closePops = () => setCtxFor(null);
+  /*
+    Всплывашки закрываются щелчком мимо и Esc — общим правилом (useDismiss).
+
+    Жалоба заказчика: «невозможно закрыть эти выпадашки без перезагрузки». Кнопку,
+    которая окно открыла, из правила исключаем: она переключает своё состояние сама,
+    иначе повторное нажатие закрывало бы и тут же открывало окно заново.
+  */
+  const closePins = useCallback(() => setPinsOpen(false), []);
+  useDismiss(pinsOpen, closePins, '.chat-pins-btn');
+  const closeLater = useCallback(() => setLaterOpen(false), []);
+  useDismiss(laterOpen, closeLater, '.chat-later-btn');
 
   /** Что за сущность стоит за чатом — показывается в шапке. */
   const [ctx, setCtx] = useState<{
@@ -2007,7 +2019,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
             )}
 
             {pinsOpen && pinned.length > 0 && (
-              <div className="chat-pins">
+              <div className="chat-pins" data-pop>
                 {pinned.map((m) => (
                   <button key={m.id} className="chat-pin-item" onClick={() => goToMessage(String(m.id))}>
                     <b>{m.author_name}</b>: {String(m.body || m.file_name || 'вложение').slice(0, 120)}
@@ -2458,7 +2470,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
               */}
               <span className="chat-later">
                 <button
-                  className="btn btn-ghost btn-sm"
+                  className="btn btn-ghost btn-sm chat-later-btn"
                   onClick={() => setLaterOpen((v) => !v)}
                   disabled={!draft.trim()}
                   title="Отправить позже — напомнить о встрече, написать утром"
@@ -2467,7 +2479,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                   <Icon name="clock" size={16} />
                 </button>
                 {laterOpen && (
-                  <span className="chat-later-pick" onClick={(e) => e.stopPropagation()}>
+                  <span className="chat-later-pick" data-pop onClick={(e) => e.stopPropagation()}>
                     {/*
                       Два способа и всё.
 

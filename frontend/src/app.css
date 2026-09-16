@@ -4314,10 +4314,10 @@
 .task-chat-acts .msg-icon.active { background: var(--accent-soft); color: var(--accent); }
 
 /* Звонок — не значок среди значков: из задачи звонят чаще, чем ищут по переписке. */
-.chat-call { position: relative; display: inline-flex; margin-right: 4px; }
-.chat-call .btn { height: 32px; padding-top: 0; padding-bottom: 0; }
-.chat-call-main { border-radius: 999px 0 0 999px; padding-right: 9px; }
-.chat-call-more { border-radius: 0 999px 999px 0; padding: 0 8px; margin-left: 1px; }
+.task-chat-acts .chat-call-main {
+  height: 32px; padding: 0 12px; margin-right: 4px;
+  border-radius: 999px;
+}
 /*
   В узкой колонке от кнопки остаётся один значок камеры.
 
@@ -4328,7 +4328,7 @@
 */
 @media (max-width: 1280px) {
   .task-chat .chat-call-label { display: none; }
-  .task-chat .chat-call-main { padding-left: 9px; }
+  .task-chat .chat-call-main { padding: 0 9px; }
 }
 
 /* Панели шапки: участники, история, способы связи. */
@@ -4342,7 +4342,6 @@
   border-radius: var(--radius); box-shadow: var(--shadow);
 }
 .chat-people-pop { left: 10px; right: auto; }
-.chat-call-pop { position: absolute; top: calc(100% + 6px); right: 0; min-width: 220px; }
 .chat-pop-row {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
   padding: 5px 8px; border: none; background: none; border-radius: var(--radius-sm);
