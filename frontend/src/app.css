@@ -1220,6 +1220,28 @@
 .react-pop-btn:hover { background: var(--bg-elev-2); transform: scale(1.15); }
 .react-pop-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/*
+  Контекстное меню сообщения — как в Telegram.
+
+  Вызывается правой кнопкой (на касании — долгим нажатием) и ложится у курсора,
+  поверх всего: координатами окна, а не внутри прокручиваемой ленты. Сверху строка
+  быстрых реакций — самый частый ответ ставится одним движением.
+*/
+.msg-ctx-veil { position: fixed; inset: 0; z-index: 59; }
+.msg-ctx {
+  position: fixed; z-index: 60; min-width: 232px; max-width: 280px;
+  display: flex; flex-direction: column; padding: 4px;
+  background: var(--bg-elev); border: 1px solid var(--border-2);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg);
+  font-size: var(--fs-sm); font-weight: 400;
+}
+.msg-ctx-react {
+  display: flex; gap: 2px; padding: 2px 2px 6px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+/* Сообщение, у которого открыто меню, слегка подсвечено: видно, о ком речь. */
+.msg-ctx-open { background: var(--accent-soft); border-radius: var(--radius-sm); }
+
 /* Редкие действия — списком, а не строкой кнопок под каждым сообщением. */
 .msg-menu {
   position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 45; min-width: 200px;

@@ -21,11 +21,11 @@ import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from
 import { remindLabel, remindOptions } from '../lib/remind-times';
 import { MentionField } from '../components/MentionField';
 import { MessageText } from '../components/MessageText';
+import { longPressProps, MenuAt, MessageMenu } from '../components/MessageMenu';
 import { MessageToTask } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
 import { plural, stampLabel } from '../lib/chat-text';
-import { placePopover, PopoverPlace } from '../lib/popover';
 import { applyOrder, moveItem } from '../lib/menu-order';
 import { firstUnreadId } from '../lib/unread-line';
 import { showToast, toastSaved } from '../lib/notifications';
@@ -293,12 +293,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   /** Закреплённое чата: то, что нужно всем и всегда под рукой. */
   const [pinned, setPinned] = useState<Message[]>([]);
   const [pinsOpen, setPinsOpen] = useState(false);
-  /** У какого сообщения открыт выбор реакции: набор всплывает над сообщением. */
-  const [reactFor, setReactFor] = useState<string | null>(null);
-  /** У какого сообщения открыто меню «ещё»: редкие действия прячутся туда. */
-  const [menuFor, setMenuFor] = useState<string | null>(null);
   /** Куда прокрутили из закреплённого — подсвечиваем, иначе непонятно, что нашли. */
   const [highlight, setHighlight] = useState<string | null>(null);
+  /**
+   * Меню сообщения по правой кнопке — как в Telegram.
+   *
+   * Просьба заказчика: «убрать эти троеточия везде и сделать один в один как в
+   * телеграме». Одно меню на страницу: у какого сообщения открыто и в какой точке.
+   */
+  const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt } | null>(null);
   /** Какой раздел открыт вместо переписки: входящие, треды, сохранённое. */
   const [view, setView] = useState<'chat' | 'inbox' | 'threads' | 'saved' | 'channels' | 'anthill'>('chat');
   /**
@@ -376,24 +379,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   const [editing, setEditing] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   /**
-   * Где раскрыть набор реакций и меню сообщения.
+   * Прокрутили ленту — меню осталось бы висеть над чужой репликой: закрываем.
    *
-   * Всплывашки висели ВНУТРИ ленты, у которой свой скролл, и открывались вверх.
-   * В ветке сообщений мало и первое из них стоит у самого верха панели: набор
-   * смайлов и меню раскрывались за границей прокручиваемой области и обрезались
-   * целиком. Со стороны это выглядело ровно так, как сказал заказчик: «в тредах
-   * нельзя ни смайлы поставить, ни удалить, ни задачу создать» — кнопки жались,
-   * а ничего не появлялось.
-   *
-   * Поэтому считаем место сами: всплывашка ложится координатами окна (position:
-   * fixed) и раскрывается вниз, если сверху не помещается. Ленту она больше не
-   * спрашивает, и обрезать её нечем.
+   * Само место меню считает MessageMenu: оно ложится координатами курсора и
+   * раскрывается вверх, когда снизу не помещается. Раньше место считала страница,
+   * привязываясь к кнопке «ещё», — кнопки больше нет.
    */
-  const [popAt, setPopAt] = useState<PopoverPlace | null>(null);
-  const anchorFrom = (el: HTMLElement, height: number) =>
-    placePopover(el.getBoundingClientRect(), height, window.innerWidth);
-  /** Прокрутили ленту — всплывашка осталась бы висеть в воздухе: закрываем. */
-  const closePops = () => { setReactFor(null); setMenuFor(null); };
+  const closePops = () => setCtxFor(null);
+
   /** Что за сущность стоит за чатом — показывается в шапке. */
   const [ctx, setCtx] = useState<{
     project_id: string | null; project_name: string | null; status: string | null;
@@ -479,13 +472,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     Без этого они висят открытыми, пока не нажмёшь ту же кнопку, — и человек, кликнув
     по другому сообщению, получает два открытых меню сразу.
   */
-  useEffect(() => {
-    if (!reactFor && !menuFor) return;
-    const close = () => { setReactFor(null); setMenuFor(null); };
-    // с задержкой: тот же клик, который открыл меню, не должен его сразу закрыть
-    const timer = window.setTimeout(() => document.addEventListener('click', close), 0);
-    return () => { window.clearTimeout(timer); document.removeEventListener('click', close); };
-  }, [reactFor, menuFor]);
 
   const loadInbox = useCallback(() => { api.chatInbox().then(setInbox).catch(() => undefined); }, []);
   const loadSaved = useCallback(() => {
@@ -896,7 +882,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
 
   const react = async (messageId: string, emoji: string) => {
     if (!activeId) return;
-    setReactFor(null);
     // Оптимистично: реакция должна ставиться мгновенно — в этом вся её ценность.
     const patch = (list: Message[]) => list.map((m) => {
       if (String(m.id) !== String(messageId)) return m;
@@ -1143,150 +1128,63 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * в ленте чата и в ветке: заказчик справедливо заметил, что в ветке «нельзя ни
    * смайлы поставить, ни удалить, ни задачу создать».
    */
-  const messageActions = (m: Message, mine: boolean) => (
-    <>
-                        {/*
-                          Три значка вместо шести подписей.
+  /**
+   * Что можно сделать с сообщением — пунктами меню.
+   *
+   * Меню открывается правой кнопкой (на касании — долгим нажатием) и собирается под
+   * конкретную реплику: чужую не правят и не удаляют, у своей нет пункта «пометить
+   * непрочитанным». Раньше те же действия стояли значками под каждым сообщением —
+   * заказчик попросил убрать их совсем и повторить поведение Telegram.
+   */
+  const messageMenuItems = (m: Message, mine: boolean) => [
+    {
+      label: 'Ответить',
+      icon: 'reply' as const,
+      onClick: () => setReplyTo({
+        id: String(m.id),
+        author: m.is_ai ? 'AnthillBot' : (m.author_name ?? m.guest_name ?? 'Собеседник'),
+        excerpt: String(m.body ?? 'вложение').slice(0, 600),
+      }),
+    },
+    { label: 'Ответить в ветке', icon: 'chat' as const, onClick: () => { void openThread(String(m.id)); } },
+    ...(m.body ? [{
+      label: 'Копировать текст',
+      icon: 'copy' as const,
+      onClick: () => { void navigator.clipboard?.writeText(String(m.body)).catch(() => undefined); },
+    }] : []),
+    { label: m.pinned_at ? 'Открепить' : 'Закрепить', icon: 'flag' as const, onClick: () => togglePin(m) },
+    {
+      label: savedIds.has(String(m.id)) ? 'Убрать из сохранённого' : 'Сохранить',
+      icon: 'star' as const,
+      onClick: () => toggleSaved(m),
+    },
+    { label: 'Напомнить', icon: 'clock' as const, onClick: () => setRemindFor(String(m.id)) },
+    ...(!mine && !m.is_ai && !m.thread_root_id ? [{
+      label: 'Пометить как непрочитанное',
+      icon: 'mail' as const,
+      onClick: () => { void markUnreadFrom(m); },
+    }] : []),
+    ...(m.task_id
+      ? [{ label: `Задача #${m.task_id}`, icon: 'check' as const, onClick: () => openTask(m) }]
+      : [{ label: 'Создать задачу', icon: 'sparkles' as const, onClick: () => setToTask(m) }]),
+    ...(mine ? [
+      {
+        label: 'Изменить',
+        icon: 'edit' as const,
+        onClick: () => { setEditing(String(m.id)); setEditText(String(m.body ?? '')); },
+      },
+      { label: 'Удалить', icon: 'trash' as const, danger: true, onClick: () => { void removeMessage(String(m.id)); } },
+    ] : []),
+  ];
 
-                          Раньше под каждым сообщением стояло шесть текстовых кнопок —
-                          под короткой репликой они занимали больше места, чем она сама.
-                          Часто нужны две вещи: поставить реакцию и ответить в ветке;
-                          остальное убрано под «ещё», но не спрятано за наведением —
-                          значки видны всегда, и на касании тоже.
-                        */}
-                        <span className="msg-actions" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            className="msg-icon"
-                            onClick={(e) => {
-                              const id = String(m.id);
-                              if (reactFor === id) return closePops();
-                              setPopAt(anchorFrom(e.currentTarget, 48));
-                              setReactFor(id); setMenuFor(null);
-                            }}
-                            title="Поставить реакцию"
-                            aria-label="Поставить реакцию"
-                          >
-                            <Icon name="smile" size={17} />
-                          </button>
-                          {/*
-                            Два ответа — две кнопки, и подписи у них разные.
-
-                            Стрелка — обычный ответ: реплика останется в ленте с цитатой.
-                            Значок обсуждения — ветка: разговор уйдёт в сторону. Раньше
-                            стрелка вела в ветку, и обычного ответа в чатах не было вовсе.
-                          */}
-                          <button
-                            className="msg-icon"
-                            onClick={() => {
-                              closePops();
-                              setReplyTo({
-                                id: String(m.id),
-                                author: m.is_ai ? 'AnthillBot' : (m.author_name ?? m.guest_name ?? 'Собеседник'),
-                                excerpt: String(m.body ?? 'вложение').slice(0, 600),
-                              });
-                            }}
-                            title="Ответить в ленте"
-                            aria-label="Ответить"
-                          >
-                            <Icon name="reply" size={17} />
-                          </button>
-                          <button
-                            className="msg-icon"
-                            onClick={() => openThread(String(m.id))}
-                            title={m.reply_count ? `Ответы в ветке (${m.reply_count})` : 'Увести обсуждение в ветку'}
-                            aria-label="Ответить в ветке"
-                          >
-                            <Icon name="chat" size={17} />
-                          </button>
-                          <button
-                            className="msg-icon"
-                            onClick={(e) => {
-                              const id = String(m.id);
-                              if (menuFor === id) return closePops();
-                              setPopAt(anchorFrom(e.currentTarget, 264));
-                              setMenuFor(id); setReactFor(null);
-                            }}
-                            title="Ещё"
-                            aria-label="Ещё"
-                          >
-                            <Icon name="more" size={17} />
-                          </button>
-
-                          {/* Набор реакций всплывает НАД сообщением, как в привычных
-                              мессенджерах, а не раздвигает ленту. */}
-                          {reactFor === String(m.id) && popAt && (
-                            <span
-                              className="react-pop pop-fixed"
-                              style={{ left: popAt.x, top: popAt.y, transform: popAt.up ? 'translateY(-100%)' : undefined }}
-                            >
-                              {REACTIONS.map((emoji) => (
-                                <button key={emoji} className="react-pop-btn" onClick={() => react(String(m.id), emoji)}>
-                                  {emoji}
-                                </button>
-                              ))}
-                            </span>
-                          )}
-
-                          {menuFor === String(m.id) && popAt && (
-                            <span
-                              className="msg-menu pop-fixed"
-                              role="menu"
-                              style={{ left: popAt.x, top: popAt.y, transform: popAt.up ? 'translateY(-100%)' : undefined }}
-                            >
-                              {/* Своё сообщение можно поправить и убрать. Чужое — нет:
-                                  переписывать чужие слова не вправе никто. */}
-                              {mine && (
-                                <button
-                                  className="msg-menu-item"
-                                  onClick={() => { setMenuFor(null); setEditing(String(m.id)); setEditText(String(m.body ?? '')); }}
-                                >
-                                  <Icon name="edit" size={13} /> Изменить
-                                </button>
-                              )}
-                              {mine && (
-                                <button className="msg-menu-item" onClick={() => { setMenuFor(null); removeMessage(String(m.id)); }}>
-                                  <Icon name="trash" size={13} /> Удалить
-                                </button>
-                              )}
-                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); togglePin(m); }}>
-                                <Icon name="flag" size={13} /> {m.pinned_at ? 'Открепить' : 'Закрепить'}
-                              </button>
-                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); toggleSaved(m); }}>
-                                <Icon name="star" size={13} /> {savedIds.has(String(m.id)) ? 'Убрать из сохранённого' : 'Сохранить'}
-                              </button>
-                              <button className="msg-menu-item" onClick={() => { setMenuFor(null); setRemindFor(String(m.id)); }}>
-                                <Icon name="clock" size={13} /> Напомнить
-                              </button>
-                              {/*
-                                Непрочитанное С ЭТОГО сообщения — как просил заказчик:
-                                пометка относится к конкретному входящему, а не к чату.
-                                Оно и всё после него снова новые; чат закрываем, иначе он
-                                тут же «прочитался» бы обратно. Своё сообщение не дочитать
-                                нельзя — пункт есть только у чужих.
-                              */}
-                              {!mine && !m.is_ai && !m.thread_root_id && (
-                                <button className="msg-menu-item" onClick={() => { setMenuFor(null); void markUnreadFrom(m); }}>
-                                  <Icon name="mail" size={13} /> Пометить как непрочитанное
-                                </button>
-                              )}
-                              {m.task_id ? (
-                                <button
-                                  className="msg-menu-item"
-                                  onClick={() => { setMenuFor(null); openTask(m); }}
-                                >
-                                  <Icon name="check" size={13} /> Задача #{m.task_id}
-                                </button>
-                              ) : (
-                                <button className="msg-menu-item" onClick={() => { setMenuFor(null); setToTask(m); }}>
-                                  <Icon name="sparkles" size={13} /> Создать задачу
-                                </button>
-                              )}
-                            </span>
-                          )}
-                        </span>
-
-    </>
-  );
+  /** Правая кнопка и долгое нажатие — на самом сообщении, где их и ищут. */
+  const messageMenuProps = (m: Message) => ({
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      setCtxFor({ id: String(m.id), at: { x: e.clientX, y: e.clientY } });
+    },
+    ...longPressProps((at) => setCtxFor({ id: String(m.id), at })),
+  });
 
   /**
    * Перечитать ветку с сервера и выправить счётчик ответов на корне.
@@ -2130,6 +2028,25 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
 
             {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
 
+            {/*
+              Меню сообщения — одно на страницу: и для ленты, и для ветки. Ищем реплику
+              в обоих списках, потому что правой кнопкой её могли позвать откуда угодно.
+            */}
+            {ctxFor && (() => {
+              const m = messages.find((x) => String(x.id) === ctxFor.id)
+                ?? thread?.messages.find((x) => String(x.id) === ctxFor.id);
+              if (!m) return null;
+              return (
+                <MessageMenu
+                  at={ctxFor.at}
+                  reactions={REACTIONS}
+                  onReact={(emoji) => react(String(m.id), emoji)}
+                  items={messageMenuItems(m, String(m.author_id) === String(user?.id))}
+                  onClose={() => setCtxFor(null)}
+                />
+              );
+            })()}
+
             <div className="chat-feed" ref={feedRef} onScroll={(e) => { closePops(); if (e.currentTarget.scrollTop < 80) void loadOlder(); }}>
               {olderBusy && <div className="dim chat-older">Загружаю более ранние…</div>}
               {msgLoading && <div style={{ padding: 12 }}><SkeletonList rows={4} /></div>}
@@ -2196,7 +2113,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                     {/* Время — ПОД плашкой, а не внутри неё: серая строчка на цветном
                         пузыре не читалась вовсе, а место в углу отъедала. */}
                     <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === m.id) ? ' chat-match' : ''}${isNew ? ' chat-new' : ''}`}>
-                      <div className={`chat-msg ${mine && !m.is_ai ? 'mine' : ''}${m.is_ai ? ' chat-msg-ai' : ''}`}>
+                      <div
+                        className={`chat-msg ${mine && !m.is_ai ? 'mine' : ''}${m.is_ai ? ' chat-msg-ai' : ''}`
+                          + `${ctxFor?.id === String(m.id) ? ' msg-ctx-open' : ''}`}
+                        {...messageMenuProps(m)}
+                      >
                         {m.is_ai && <div className="chat-author"><Icon name="robot" size={11} /> AnthillBot</div>}
                         {/* Кто именно писал со стороны: через месяц «внешний участник»
                             без имени в переписке не значит ничего. */}
@@ -2319,7 +2240,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                           )
                         )}
 
-                        {messageActions(m, mine)}
+
 
                         {/* Ответы в ветке — не действие, а состояние разговора:
                             строчка остаётся на виду, её не прячут в меню. */}
@@ -2655,7 +2576,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
             {thread.messages.map((m, i) => (
               <div key={m.id} className={i === 0 ? 'thread-root' : ''}>
                 <div className="chat-line">
-                  <div className="chat-msg">
+                  <div
+                    className={`chat-msg${ctxFor?.id === String(m.id) ? ' msg-ctx-open' : ''}`}
+                    {...messageMenuProps(m)}
+                  >
                     <div className="chat-author">{m.author_name}</div>
                     {/* Ссылки кликаются и здесь: ветка — такая же переписка. */}
                     {m.body && editing !== String(m.id) && <MessageText text={m.body} className="chat-body" />}
@@ -2719,7 +2643,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                     {m.edited_at && <span className="dim chat-under-mark" title="Сообщение изменено">изменено</span>}
                     {/* Полный набор действий, тот же, что в ленте: реакция, правка,
                         удаление, напоминание, задача из сообщения. */}
-                    {messageActions(m, String(m.author_id) === String(user?.id))}
+
                   </div>
                 </div>
                 {i === 0 && thread.messages.length > 1 && (

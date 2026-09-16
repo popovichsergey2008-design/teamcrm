@@ -8,6 +8,7 @@ import { Lightbox } from './Lightbox';
 import { api, ApiError } from '../lib/api';
 import { dayLabel, plural, sameGroup, stampLabel } from '../lib/chat-text';
 import { MessageText } from './MessageText';
+import { longPressProps, MenuAt, MessageMenu } from './MessageMenu';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { orderMentions } from '../lib/task-mentions';
 import { useVoiceInput } from '../hooks/useVoiceInput';
@@ -193,9 +194,14 @@ export function TaskChat({
   /** Куда прокрутили из истории — подсвечиваем, иначе непонятно, что именно нашли. */
   const [highlight, setHighlight] = useState<string | null>(null);
   /** У какого сообщения открыт выбор реакции: набор из шести эмодзи в каждой строке — мусор. */
-  const [reactFor, setReactFor] = useState<string | null>(null);
-  /** У какого сообщения раскрыто меню «⋯»: редкие действия не должны стоять в пузыре. */
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  /**
+   * Меню сообщения по правой кнопке — как в Telegram.
+   *
+   * Одно на всю ленту: у какого сообщения открыто и в какой точке экрана. Раньше под
+   * каждой репликой стояли «Ответить», «В ветку», смайл и троеточие — заказчик
+   * попросил убрать их и сделать «один в один как в телеграме».
+   */
+  const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt } | null>(null);
   const [allHistory, setAllHistory] = useState(false);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [advice, setAdvice] = useState<{
@@ -577,7 +583,6 @@ export function TaskChat({
   };
 
   const react = async (id: string, emoji: string) => {
-    setReactFor(null);
     // Оптимистично: реакция должна ставиться мгновенно, это её единственная ценность.
     setComments((prev) => prev.map((c) => {
       if (String(c.id) !== String(id)) return c;
@@ -1135,7 +1140,12 @@ export function TaskChat({
               <div
                 data-msg={String(c.id)}
                 className={`msg${mine ? ' msg-mine' : ''}${c.is_ai ? ' msg-ai' : ''}`
-                  + `${grouped ? ' msg-grouped' : ''}${highlight === String(c.id) ? ' msg-found' : ''}`}
+                  + `${grouped ? ' msg-grouped' : ''}${highlight === String(c.id) ? ' msg-found' : ''}`
+                  + `${ctxFor?.id === String(c.id) ? ' msg-ctx-open' : ''}`}
+                /* Правая кнопка — меню сообщения, как в Telegram. На касании его
+                   открывает долгое нажатие: см. longPressProps. */
+                onContextMenu={(e) => { e.preventDefault(); setCtxFor({ id: String(c.id), at: { x: e.clientX, y: e.clientY } }); }}
+                {...longPressProps((at) => setCtxFor({ id: String(c.id), at }))}
               >
                 <div className="msg-avatar" aria-hidden="true">
                   {grouped ? '' : c.is_ai ? <Icon name="robot" size={14} /> : initials(name)}
@@ -1186,49 +1196,8 @@ export function TaskChat({
                         {r.emoji} {r.count}
                       </button>
                     ))}
-                    {/* Набор всплывает НАД сообщением — так же, как в мессенджере:
-                        строка действий не должна раздуваться от шести смайлов. */}
-                    <span className="msg-actions">
-                      <button
-                        className="msg-icon"
-                        onClick={() => setReactFor(reactFor === String(c.id) ? null : String(c.id))}
-                        title="Поставить реакцию"
-                        aria-label="Поставить реакцию"
-                      >
-                        <Icon name="smile" size={17} />
-                      </button>
-                      {reactFor === String(c.id) && (
-                        <span className="react-pop">
-                          {REACTIONS.map((emoji) => (
-                            <button key={emoji} className="react-pop-btn" onClick={() => react(String(c.id), emoji)}>
-                              {emoji}
-                            </button>
-                          ))}
-                        </span>
-                      )}
-                    </span>
-                    {/*
-                      Два разных ответа — двумя разными кнопками.
-
-                      «Ответить» оставляет реплику в общем разговоре и цитирует ту, на
-                      которую отвечают. «В ветку» уводит разговор в сторону: там он не
-                      мешает остальным и не растягивает ленту. Раньше «Ответить»
-                      молча открывало ветку — и обычного ответа не стало вовсе.
-                    */}
-                    <button
-                      className="msg-act"
-                      onClick={(e) => startReply(c, (e.currentTarget as HTMLElement).closest('.msg'))}
-                      title="Ответить в ленте. Если выделить кусок текста — ответ будет на него"
-                    >
-                      <Icon name="reply" size={12} /> Ответить
-                    </button>
-                    <button
-                      className="msg-act"
-                      onClick={(e) => startThreadReply(c, (e.currentTarget as HTMLElement).closest('.msg'))}
-                      title="Увести обсуждение в отдельную ветку"
-                    >
-                      В ветку
-                    </button>
+                    {/* Ответы в ветке — не действие, а состояние разговора: строка
+                        остаётся на виду, в меню её прятать незачем. */}
                     {Number(c.reply_count ?? 0) > 0 && (
                       <button
                         className="msg-act msg-act-thread"
@@ -1238,59 +1207,6 @@ export function TaskChat({
                         <Icon name="chat" size={12} /> {c.reply_count} {plural(Number(c.reply_count), 'ответ', 'ответа', 'ответов')}
                       </button>
                     )}
-                    {/*
-                      Редкие действия — в меню «⋯», а не строкой в пузыре.
-
-                      Закрепить, изменить, удалить нажимают раз в неделю, а места они
-                      занимали столько же, сколько сам текст. Кнопка меню видна всегда
-                      (не по наведению): на касании наведения не бывает, и то, что
-                      появляется только под курсором, для половины людей не существует.
-                    */}
-                    <span className="msg-actions">
-                      <button
-                        className="msg-act"
-                        onClick={() => setMenuFor(menuFor === String(c.id) ? null : String(c.id))}
-                        title="Ещё действия"
-                        aria-label="Ещё действия"
-                        aria-expanded={menuFor === String(c.id)}
-                      >
-                        <Icon name="more" size={14} />
-                      </button>
-                      {menuFor === String(c.id) && (
-                        <span className="msg-menu" role="menu">
-                          <button
-                            className="msg-menu-item"
-                            onClick={() => { setMenuFor(null); void togglePin(String(c.id), !c.pinned_at); }}
-                          >
-                            <Icon name="flag" size={13} /> {c.pinned_at ? 'Открепить' : 'Закрепить'}
-                          </button>
-                          {c.body && (
-                            <button
-                              className="msg-menu-item"
-                              onClick={() => { setMenuFor(null); void navigator.clipboard?.writeText(String(c.body)).catch(() => undefined); }}
-                            >
-                              <Icon name="copy" size={13} /> Копировать текст
-                            </button>
-                          )}
-                          {mine && (
-                            <>
-                              <button
-                                className="msg-menu-item"
-                                onClick={() => { setMenuFor(null); setEditing({ id: String(c.id), body: c.body }); setBody(c.body); }}
-                              >
-                                <Icon name="edit" size={13} /> Изменить
-                              </button>
-                              <button
-                                className="msg-menu-item msg-menu-danger"
-                                onClick={() => { setMenuFor(null); remove(String(c.id)); }}
-                              >
-                                <Icon name="trash" size={13} /> Удалить
-                              </button>
-                            </>
-                          )}
-                        </span>
-                      )}
-                    </span>
                   </div>
 
                   {/*
@@ -1380,6 +1296,48 @@ export function TaskChat({
             : seenBy.names.join(', ')}
         </div>
       )}
+
+      {/*
+        Меню сообщения. Собирается по тому, что с этой репликой вообще можно сделать:
+        чужую не правят и не удаляют, ответ помощнику в ветку не уводят.
+      */}
+      {ctxFor && (() => {
+        const c: any = comments.find((x: any) => String(x.id) === ctxFor.id);
+        if (!c) return null;
+        const mine = String(c.author_id) === String(user?.id ?? '') && !c.is_ai;
+        const node = document.querySelector(`[data-msg="${ctxFor.id}"]`);
+        const items = [
+          { label: 'Ответить', icon: 'reply' as const, onClick: () => startReply(c, node) },
+          { label: 'Ответить в ветке', icon: 'chat' as const, onClick: () => startThreadReply(c, node) },
+          ...(c.body ? [{
+            label: 'Копировать текст',
+            icon: 'copy' as const,
+            onClick: () => { void navigator.clipboard?.writeText(String(c.body)).catch(() => undefined); },
+          }] : []),
+          {
+            label: c.pinned_at ? 'Открепить' : 'Закрепить',
+            icon: 'flag' as const,
+            onClick: () => { void togglePin(String(c.id), !c.pinned_at); },
+          },
+          ...(mine ? [
+            {
+              label: 'Изменить',
+              icon: 'edit' as const,
+              onClick: () => { setEditing({ id: String(c.id), body: c.body }); setBody(c.body); },
+            },
+            { label: 'Удалить', icon: 'trash' as const, danger: true, onClick: () => remove(String(c.id)) },
+          ] : []),
+        ];
+        return (
+          <MessageMenu
+            at={ctxFor.at}
+            reactions={REACTIONS}
+            onReact={(emoji) => react(String(c.id), emoji)}
+            items={items}
+            onClose={() => setCtxFor(null)}
+          />
+        );
+      })()}
 
       {err && <div className="error-text">{err}</div>}
 
