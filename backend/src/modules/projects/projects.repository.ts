@@ -133,7 +133,7 @@ export class ProjectsRepository {
   async seedMembersFromTasks(tenantId: string, projectId: string): Promise<void> {
     await this.db.query(
       `INSERT INTO project_members (tenant_id, project_id, user_id)
-            SELECT DISTINCT $1, $2, x.user_id
+            SELECT DISTINCT $1::bigint, $2::bigint, x.user_id
               FROM (
                 SELECT t.assignee_id AS user_id FROM tasks t WHERE t.project_id = $2 AND t.assignee_id IS NOT NULL
                 UNION
@@ -162,7 +162,7 @@ export class ProjectsRepository {
     if (!userIds.length) return;
     await this.db.query(
       `INSERT INTO project_members (tenant_id, project_id, user_id)
-            SELECT $1, $2, x FROM UNNEST($3::bigint[]) AS x
+            SELECT $1::bigint, $2::bigint, x FROM UNNEST($3::bigint[]) AS x
        ON CONFLICT DO NOTHING`,
       [tenantId, projectId, userIds],
     );
