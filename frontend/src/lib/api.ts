@@ -913,13 +913,22 @@ export const api = {
   openProjectChat: (projectId: string) => request<{ id: string; kind: string }>('POST', `/chats/project/${projectId}`),
   chatMessages: (chatId: string, before?: string) =>
     request<any[]>('GET', `/chats/${chatId}/messages${before ? `?before=${before}` : ''}`),
+  /**
+   * Сообщение в чат.
+   *
+   * `thread.rootId` уводит реплику в ветку (в ленте её не будет), `reply` оставляет
+   * в ленте, но с шапкой-цитатой — как в Telegram. Это разные вещи, и одна другую
+   * не отменяет.
+   */
   sendChatMessage: (
     chatId: string, body: string,
     thread?: { rootId?: string; alsoInChannel?: boolean },
     mentionIds?: string[],
+    reply?: { toId?: string | null; excerpt?: string | null },
   ) =>
     request<any>('POST', `/chats/${chatId}/messages`, {
       body, threadRootId: thread?.rootId, alsoInChannel: thread?.alsoInChannel, mentionIds,
+      replyToId: reply?.toId ?? undefined, replyExcerpt: reply?.excerpt ?? undefined,
     }),
   markChatRead: (chatId: string) => request<any>('POST', `/chats/${chatId}/read`),
   chatMembers: (chatId: string) => request<{
@@ -1153,11 +1162,18 @@ export const api = {
    * Принимает и один файл, и пачку: отдельного метода на «один» не заводим, чтобы
    * два пути отправки не разошлись в мелочах.
    */
-  sendChatFile: async (chatId: string, file: File | File[], body: string, thread?: { rootId?: string; alsoInChannel?: boolean }) => {
+  sendChatFile: async (
+    chatId: string, file: File | File[], body: string,
+    thread?: { rootId?: string; alsoInChannel?: boolean },
+    reply?: { toId?: string | null; excerpt?: string | null },
+  ) => {
     const fd = new FormData();
     for (const f of Array.isArray(file) ? file : [file]) fd.append('files', f);
     if (thread?.rootId) fd.append('threadRootId', thread.rootId);
     if (thread?.alsoInChannel) fd.append('alsoInChannel', 'true');
+    // Снимок тоже бывает ответом: «вот о чём я» — и цитата исходной реплики.
+    if (reply?.toId) fd.append('replyToId', String(reply.toId));
+    if (reply?.excerpt) fd.append('replyExcerpt', String(reply.excerpt).slice(0, 600));
     if (body) fd.append('body', body);
     const res = await fetch(`/api/chats/${chatId}/files`, {
       method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,

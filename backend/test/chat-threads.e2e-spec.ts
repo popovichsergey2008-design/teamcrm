@@ -35,6 +35,61 @@ describe('треды в чатах (e2e)', () => {
   });
   afterAll(async () => { await app?.close(); });
 
+  it('обычный ответ остаётся в ленте с цитатой и веткой не считается', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'RP', email: `rp_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .expect(201)).body.data;
+    const mateEmail = `rp_m_${uniq()}@t.test`;
+    const mate = (await http.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' })
+      .expect(201)).body.data;
+    const mateLogin = (await http.post('/api/auth/login')
+      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const M = H(mateLogin.accessToken);
+
+    const chat = (await http.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
+    const src = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'Ещё нету по всс?' }).expect(201)).body.data;
+
+    // обычный ответ: остаётся в ленте, цитирует исходное
+    await http.post(`/api/chats/${chat.id}/messages`).set(M)
+      .send({ body: 'еще нет, еще кручу саму фдпу', replyToId: String(src.id) }).expect(201);
+    // и ветка — отдельно от него
+    await http.post(`/api/chats/${chat.id}/messages`).set(M)
+      .send({ body: 'вынесем в ветку', threadRootId: String(src.id) }).expect(201);
+
+    const feed = (await http.get(`/api/chats/${chat.id}/messages`).set(O).expect(200)).body.data;
+    // в ленте исходное и обычный ответ; ответ из ветки сюда не попал
+    expect(feed).toHaveLength(2);
+    const answer = feed[1];
+    expect(String(answer.reply_to_id)).toBe(String(src.id));
+    expect(answer.reply_body).toBe('Ещё нету по всс?');
+    expect(answer.reply_author).toBe('Ольга Владелец');
+    expect(answer.thread_root_id).toBeNull();
+    // счётчик ветки считает только ветку: обычный ответ его не трогает
+    expect(Number(feed[0].reply_count)).toBe(1);
+  });
+
+  it('цитата из чужого чата не подтягивается', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'RP2', email: `rp2_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .expect(201)).body.data;
+    const mateEmail = `rp2_m_${uniq()}@t.test`;
+    const mate = (await http.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' })
+      .expect(201)).body.data;
+    const O = H(owner.accessToken);
+
+    const dm = (await http.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
+    const other = (await http.post('/api/chats/groups').set(O).send({ title: 'Другой', userIds: [String(mate.id)] }).expect(201)).body.data;
+    const alien = (await http.post(`/api/chats/${other.id}/messages`).set(O).send({ body: 'чужая реплика' }).expect(201)).body.data;
+
+    const res = (await http.post(`/api/chats/${dm.id}/messages`).set(O)
+      .send({ body: 'ответ не туда', replyToId: String(alien.id) }).expect(201)).body.data;
+    expect(res.reply_to_id ?? null).toBeNull();
+  });
+
   it('ответы уходят в ветку, лента остаётся чистой, «Треды» считают чужое', async () => {
     const owner = (await http.post('/api/auth/register')
       .send({ tenantName: 'TH', email: `th_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })

@@ -36,6 +36,10 @@ export interface MessageRow {
   size_bytes: string | null; created_at: Date; edited_at: Date | null;
   /** Ответ в ветке: у корневых сообщений пусто. */
   thread_root_id?: string | null;
+  /** Ответ в ленте: на что отвечали, чьими словами и что именно процитировано. */
+  reply_to_id?: string | null;
+  reply_body?: string | null;
+  reply_author?: string | null;
   /** Реакции: [{emoji, count, mine}] — сводка, а не список нажавших. */
   reactions?: { emoji: string; count: number; mine: boolean }[];
   pinned_at?: Date | null;
@@ -230,6 +234,8 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
+              -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
+              m.reply_to_id, COALESCE(m.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.is_ai, m.guest_name,
               -- Две галочки, как в мессенджерах: сколько СОБЕСЕДНИКОВ уже открывали
               -- чат после этого сообщения и сколько их всего. Считаем от отметки
@@ -262,6 +268,8 @@ export class ChatsRepository {
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
+    LEFT JOIN chat_messages r ON r.id = m.reply_to_id
+    LEFT JOIN users ru ON ru.id = r.author_id
          LEFT JOIN tasks t ON t.id = m.task_id
         WHERE m.tenant_id=$1 AND m.chat_id=$2 AND m.deleted_at IS NULL
           AND (m.thread_root_id IS NULL OR m.also_in_channel)
@@ -277,6 +285,8 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
+              -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
+              m.reply_to_id, COALESCE(m.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.is_ai, m.guest_name,
               -- Две галочки, как в мессенджерах: сколько СОБЕСЕДНИКОВ уже открывали
               -- чат после этого сообщения и сколько их всего. Считаем от отметки
@@ -309,6 +319,8 @@ export class ChatsRepository {
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
+    LEFT JOIN chat_messages r ON r.id = m.reply_to_id
+    LEFT JOIN users ru ON ru.id = r.author_id
          LEFT JOIN tasks t ON t.id = m.task_id
         WHERE m.tenant_id=$1 AND m.deleted_at IS NULL
           AND (m.id = $2::bigint OR m.thread_root_id = $2::bigint)
@@ -389,15 +401,23 @@ export class ChatsRepository {
     /** Остальные файлы сообщения: в `fileId` лежит первый — на него завязан старый код. */
     fileIds?: string[];
     threadRootId?: string | null; alsoInChannel?: boolean;
+    /**
+     * Ответ на сообщение В ЛЕНТЕ: реплика остаётся в общем разговоре, но с цитатой.
+     * Не путать с веткой — та уводит обсуждение из ленты совсем.
+     */
+    replyToId?: string | null; replyExcerpt?: string | null;
     /** Ответ помощника: в ленте он помечен, чтобы его не спутали со словами коллеги. */
     isAi?: boolean;
   }): Promise<MessageRow> {
     const row = await this.db.one<{ id: string }>(
-      `INSERT INTO chat_messages (tenant_id, chat_id, author_id, body, file_id, thread_root_id, also_in_channel, is_ai)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      `INSERT INTO chat_messages
+         (tenant_id, chat_id, author_id, body, file_id, thread_root_id, also_in_channel, is_ai,
+          reply_to_id, reply_excerpt)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
       [
         i.tenantId, i.chatId, i.authorId, i.body, i.fileId,
         i.threadRootId ?? null, i.alsoInChannel === true, i.isAi === true,
+        i.replyToId ?? null, i.replyExcerpt?.slice(0, 600) ?? null,
       ],
     );
     // Все вложения сообщения — отдельной таблицей, с сохранением порядка.
@@ -427,6 +447,8 @@ export class ChatsRepository {
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
+    LEFT JOIN chat_messages r ON r.id = m.reply_to_id
+    LEFT JOIN users ru ON ru.id = r.author_id
         WHERE m.id=$1`,
       [row!.id],
     );
@@ -629,6 +651,8 @@ export class ChatsRepository {
        SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
+              -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
+              m.reply_to_id, COALESCE(m.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id,
               m.meeting_id, m.is_ai, m.guest_name,
               (SELECT COUNT(*)::int FROM chat_members cm

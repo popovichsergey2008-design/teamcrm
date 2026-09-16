@@ -283,16 +283,36 @@ export class ChatsService {
     mentionIds?: string[],
     /** Все вложения сообщения; `fileId` — первое из них. */
     fileIds?: string[],
+    /**
+     * Ответ на сообщение В ЛЕНТЕ.
+     *
+     * От ветки отличается тем, что реплика остаётся в общем разговоре: видно, кому
+     * отвечают, но обсуждение никуда не уводится. Одно с другим не спорит — человек
+     * сам выбирает, ответить здесь или увести в ветку.
+     */
+    reply?: { toId?: string | null; excerpt?: string | null },
   ) {
     const chat = await this.access(tenantId, chatId, user);
     const text = (body ?? '').trim();
     if (!text && !fileId) throw AppException.validation('Пустое сообщение');
 
     const rootId = await this.threadRoot(tenantId, chatId, thread?.rootId ?? null);
+    /*
+      На что отвечаем — проверяем, а не верим клиенту.
+
+      Сообщение должно существовать и лежать в ЭТОМ чате: иначе в цитату можно было бы
+      подтянуть чужую переписку, к которой у человека нет доступа.
+    */
+    let replyToId: string | null = null;
+    if (reply?.toId) {
+      const src = await this.repo.findMessage(tenantId, String(reply.toId));
+      if (src && String(src.chat_id) === String(chatId)) replyToId = String(src.id);
+    }
     const message = await this.repo.addMessage({
       tenantId, chatId, authorId: user.userId, body: text.slice(0, 8000), fileId,
       fileIds,
       threadRootId: rootId, alsoInChannel: thread?.alsoInChannel === true,
+      replyToId, replyExcerpt: replyToId ? reply?.excerpt ?? null : null,
     });
     // Ответив, человек ветку прочитал: иначе собственная реплика тут же
     // возвращалась бы к нему непрочитанной в разделе «Треды».
@@ -891,6 +911,8 @@ export class ChatsService {
     tenantId: string, chatId: string, user: { userId: string; role: string },
     files: { buffer: Buffer; originalname: string; mimetype: string }[], body: string,
     thread?: { rootId?: string | null; alsoInChannel?: boolean },
+    /** Снимок тоже бывает ответом: «вот о чём я» — и цитата исходной реплики. */
+    reply?: { toId?: string | null; excerpt?: string | null },
   ) {
     await this.access(tenantId, chatId, user);
     if (!files.length) throw AppException.validation('Файл не приложен');
@@ -903,7 +925,7 @@ export class ChatsService {
     }
     return this.send(
       tenantId, chatId, user, body, String(stored[0].id), thread, undefined,
-      stored.map((x) => String(x.id)),
+      stored.map((x) => String(x.id)), reply,
     );
   }
 

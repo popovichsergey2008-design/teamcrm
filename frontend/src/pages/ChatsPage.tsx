@@ -50,6 +50,10 @@ interface Message {
   file_id: string | null; file_name: string | null; created_at: string;
   /** Ответ в ветке: в общей ленте таких нет, если автор не попросил обратного. */
   thread_root_id?: string | null;
+  /** Ответ в ленте: на что отвечали, чьими словами и что процитировано. */
+  reply_to_id?: string | null;
+  reply_body?: string | null;
+  reply_author?: string | null;
   /** Сколько ответов в ветке этого сообщения. */
   reply_count?: number;
   last_reply_at?: string | null;
@@ -265,6 +269,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * не закрывая основной чат, — иначе теряется то, ради чего ветку и открыли.
    */
   const [thread, setThread] = useState<{ rootId: string; messages: Message[] } | null>(null);
+  /**
+   * Ответ на сообщение В ЛЕНТЕ — как в Telegram.
+   *
+   * Живёт рядом с ветками и не заменяет их: ответ остаётся в общем разговоре и
+   * цитирует одну реплику, ветка уводит обсуждение в сторону. Заказчик просил оба
+   * и особо оговорил, что они должны уживаться.
+   */
+  const [replyTo, setReplyTo] = useState<{ id: string; author: string; excerpt: string } | null>(null);
   /**
    * Сайдбар чата ⓘ (ТЗ-5, этап 2). Занимает тот же правый слот, что и ветка:
    * два столбца справа не поместятся, и открытие одного закрывает другой.
@@ -829,10 +841,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
       }
       // Имя могли стереть после вставки — звать человека после этого не за что.
       const calls = stillMentioned(mentioned, text, mentionUsers);
+      const reply = replyTo ? { toId: replyTo.id, excerpt: replyTo.excerpt } : undefined;
       const message = files.length
-        ? await api.sendChatFile(activeId, files, text)
-        : await api.sendChatMessage(activeId, text, undefined, calls);
+        ? await api.sendChatFile(activeId, files, text, undefined, reply)
+        : await api.sendChatMessage(activeId, text, undefined, calls, reply);
       setMentioned([]);
+      setReplyTo(null);
       appendMessage(message);
       reload();
     } catch (e) {
@@ -1150,13 +1164,35 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                           >
                             <Icon name="smile" size={17} />
                           </button>
+                          {/*
+                            Два ответа — две кнопки, и подписи у них разные.
+
+                            Стрелка — обычный ответ: реплика останется в ленте с цитатой.
+                            Значок обсуждения — ветка: разговор уйдёт в сторону. Раньше
+                            стрелка вела в ветку, и обычного ответа в чатах не было вовсе.
+                          */}
+                          <button
+                            className="msg-icon"
+                            onClick={() => {
+                              closePops();
+                              setReplyTo({
+                                id: String(m.id),
+                                author: m.is_ai ? 'AnthillBot' : (m.author_name ?? m.guest_name ?? 'Собеседник'),
+                                excerpt: String(m.body ?? 'вложение').slice(0, 600),
+                              });
+                            }}
+                            title="Ответить в ленте"
+                            aria-label="Ответить"
+                          >
+                            <Icon name="reply" size={17} />
+                          </button>
                           <button
                             className="msg-icon"
                             onClick={() => openThread(String(m.id))}
-                            title={m.reply_count ? `Ответы в ветке (${m.reply_count})` : 'Ответить в ветке'}
+                            title={m.reply_count ? `Ответы в ветке (${m.reply_count})` : 'Увести обсуждение в ветку'}
                             aria-label="Ответить в ветке"
                           >
-                            <Icon name="reply" size={17} />
+                            <Icon name="chat" size={17} />
                           </button>
                           <button
                             className="msg-icon"
@@ -2141,6 +2177,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                         )}
                         {m.pinned_at && <span className="chat-pin-mark" title="Закреплено в шапке чата"><Icon name="flag" size={11} /></span>}
                         {!mine && !m.is_ai && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
+                        {/* Шапка ответа: кому отвечают и что именно сказали. Нажатие
+                            ведёт к исходной реплике — иначе цитата обрывается ни на чём. */}
+                        {m.reply_to_id && m.reply_body && (
+                          <button
+                            className="msg-quote"
+                            onClick={() => void openFound({ chatId: String(activeId), messageId: String(m.reply_to_id), threadRootId: null })}
+                            title="Перейти к сообщению"
+                          >
+                            <b className="msg-quote-author">{m.reply_author ?? 'Собеседник'}</b>
+                            <span className="msg-quote-text">{String(m.reply_body).slice(0, 200)}</span>
+                          </button>
+                        )}
                         {/* Ссылку в переписке нажимают, а не выделяют и копируют:
                             разбор тот же, что в карточке задачи. */}
                         {m.body && editing !== String(m.id) && <MessageText text={m.body} className="chat-body" />}
@@ -2343,6 +2391,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                     <Icon name="board" size={13} /> Отправить проект
                   </button>
                 )}
+              </div>
+            )}
+            {/* Кому отвечаем — видно над полем, с именем, куском реплики и отменой. */}
+            {replyTo && (
+              <div className="comment-reply-to chat-reply-to">
+                <Icon name="reply" size={13} />
+                <span className="reply-to-body">
+                  <b>{replyTo.author}</b>
+                  <span className="dim"> · {replyTo.excerpt.slice(0, 120)}</span>
+                </span>
+                <button className="msg-act" onClick={() => setReplyTo(null)} title="Не отвечать" aria-label="Отменить ответ">
+                  <Icon name="close" size={13} />
+                </button>
               </div>
             )}
             <div

@@ -150,6 +150,14 @@ export function TaskChat({
 
   /** Правка своего сообщения: сказанное вслух не переписывают, написанное — да. */
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
+  /**
+   * Ответ на сообщение В ЛЕНТЕ — как в Telegram.
+   *
+   * Живёт отдельно от веток и не отменяет их. Разница проста и объяснима на пальцах:
+   * обычный ответ остаётся в общем разговоре и цитирует одну реплику, ветка уводит
+   * обсуждение в сторону и не засоряет ленту. Заказчик просил и то, и другое.
+   */
+  const [replyTo, setReplyTo] = useState<{ id: string; author: string; excerpt: string } | null>(null);
   /** Файл, выбранный или вставленный, но ещё не отправленный. */
   const [pending, setPending] = useState<{ file: File; url: string } | null>(null);
   /** Записанное голосовое: его сначала слушают, а потом отправляют или стирают. */
@@ -448,7 +456,7 @@ export function TaskChat({
         await api.editComment(taskId, editing.id, text);
         setEditing(null);
       } else if (pending) {
-        await api.addCommentFile(taskId, pending.file, text);
+        await api.addCommentFile(taskId, pending.file, text, replyTo?.id, replyTo?.excerpt);
         clearPending();
       } else {
         /*
@@ -459,8 +467,10 @@ export function TaskChat({
           второй раз. Пришёл ответ — временная строка сменяется настоящей.
         */
         setSending({ body: text, at: new Date().toISOString() });
-        await api.addComment(taskId, text);
+        // replyToId без threadRootId — это ответ В ЛЕНТЕ: цитата есть, ветки нет
+        await api.addComment(taskId, text, undefined, replyTo?.id, replyTo?.excerpt);
       }
+      setReplyTo(null);
       setBody(''); reload(); onRefresh();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не отправилось'); }
     finally { setBusy(false); setSending(null); }
@@ -620,13 +630,35 @@ export function TaskChat({
    * виден прямо под ним. Выделенный кусок сохраняется цитатой: в длинном сообщении
    * спорят об одном абзаце.
    */
-  const startReply = (c: any, node: Element | null) => {
+  /** Выделенный кусок сообщения: спорят обычно об одном абзаце, а не обо всём тексте. */
+  const picked = (node: Element | null) => {
     const sel = window.getSelection();
-    const picked = sel && !sel.isCollapsed && node && sel.anchorNode && node.contains(sel.anchorNode)
+    return sel && !sel.isCollapsed && node && sel.anchorNode && node.contains(sel.anchorNode)
       ? sel.toString().trim().slice(0, 600)
       : '';
+  };
+
+  /**
+   * Ответ в ленте — как в Telegram.
+   *
+   * Цитата встаёт над полем ввода, а после отправки — шапкой внутри пузыря: видно,
+   * на что отвечают, и нажатием можно прыгнуть к исходной реплике. Ветку при этом
+   * не заводим: обычный ответ остаётся частью общего разговора.
+   */
+  const startReply = (c: any, node: Element | null) => {
+    const excerpt = picked(node) || String(c.body ?? 'вложение');
     setEditing(null);
-    setThreadQuote(picked ? { author: c.is_ai ? AI_MENTION_NAME : c.author_name, excerpt: picked } : null);
+    setThread(null);
+    setReplyTo({ id: String(c.id), author: c.is_ai ? AI_MENTION_NAME : c.author_name, excerpt });
+    composeRef.current?.querySelector('textarea')?.focus();
+  };
+
+  /** Ответ ВЕТКОЙ: обсуждение уходит в сторону и общую ленту не засоряет. */
+  const startThreadReply = (c: any, node: Element | null) => {
+    const excerpt = picked(node);
+    setEditing(null);
+    setReplyTo(null);
+    setThreadQuote(excerpt ? { author: c.is_ai ? AI_MENTION_NAME : c.author_name, excerpt } : null);
     // ответ на ответ уходит в ту же ветку: её корень знает сервер
     void openThread(String(c.thread_root_id ?? c.id));
   };
@@ -1088,7 +1120,8 @@ export function TaskChat({
                       неизвестно с чем. Клик ведёт к исходному сообщению. */}
                   {c.reply_to_id && c.reply_body && (
                     <button className="msg-quote" onClick={() => goToMessage(String(c.reply_to_id))} title="Перейти к сообщению">
-                      <b>{c.reply_author}</b>: {String(c.reply_body).slice(0, 200)}
+                      <b className="msg-quote-author">{c.reply_author}</b>
+                      <span className="msg-quote-text">{String(c.reply_body).slice(0, 200)}</span>
                     </button>
                   )}
 
@@ -1140,20 +1173,33 @@ export function TaskChat({
                         </span>
                       )}
                     </span>
-                    {!c.is_ai && (
-                      <button
-                        className="msg-act"
-                        onClick={(e) => startReply(c, (e.currentTarget as HTMLElement).closest('.msg'))}
-                        title="Ответить. Если выделить кусок текста — ответ будет на него"
-                      >
-                        Ответить
-                      </button>
-                    )}
+                    {/*
+                      Два разных ответа — двумя разными кнопками.
+
+                      «Ответить» оставляет реплику в общем разговоре и цитирует ту, на
+                      которую отвечают. «В ветку» уводит разговор в сторону: там он не
+                      мешает остальным и не растягивает ленту. Раньше «Ответить»
+                      молча открывало ветку — и обычного ответа не стало вовсе.
+                    */}
+                    <button
+                      className="msg-act"
+                      onClick={(e) => startReply(c, (e.currentTarget as HTMLElement).closest('.msg'))}
+                      title="Ответить в ленте. Если выделить кусок текста — ответ будет на него"
+                    >
+                      <Icon name="reply" size={12} /> Ответить
+                    </button>
+                    <button
+                      className="msg-act"
+                      onClick={(e) => startThreadReply(c, (e.currentTarget as HTMLElement).closest('.msg'))}
+                      title="Увести обсуждение в отдельную ветку"
+                    >
+                      В ветку
+                    </button>
                     {Number(c.reply_count ?? 0) > 0 && (
                       <button
                         className="msg-act msg-act-thread"
                         onClick={() => { void openThread(String(c.id)); }}
-                        title="Показать ответы на это сообщение"
+                        title="Показать ответы в ветке"
                       >
                         <Icon name="chat" size={12} /> {c.reply_count} {plural(Number(c.reply_count), 'ответ', 'ответа', 'ответов')}
                       </button>
@@ -1354,6 +1400,21 @@ export function TaskChat({
               {qa.label}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Кому отвечаем — видно прямо над полем, как в мессенджере: с именем,
+          куском реплики и крестиком «передумал». */}
+      {replyTo && (
+        <div className="comment-reply-to">
+          <Icon name="reply" size={13} />
+          <span className="reply-to-body">
+            <b>{replyTo.author}</b>
+            <span className="dim"> · {replyTo.excerpt.slice(0, 120)}</span>
+          </span>
+          <button className="msg-act" onClick={() => setReplyTo(null)} title="Не отвечать" aria-label="Отменить ответ">
+            <Icon name="close" size={13} />
+          </button>
         </div>
       )}
 

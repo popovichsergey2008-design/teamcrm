@@ -22,6 +22,10 @@ class SendDto {
   @IsOptional() @IsString() @MaxLength(32) threadRootId?: string;
   /** «Также отправить в основной чат» — когда ответ важен не только участникам ветки. */
   @IsOptional() @IsBoolean() alsoInChannel?: boolean;
+  /** Ответ на сообщение В ЛЕНТЕ: цитата есть, ветка не заводится. */
+  @IsOptional() @IsString() @MaxLength(32) replyToId?: string;
+  /** Выделенный кусок, на который отвечают. */
+  @IsOptional() @IsString() @MaxLength(600) replyExcerpt?: string;
 }
 class AskAiDto {
   @IsString() @MaxLength(2000) question!: string;
@@ -213,7 +217,7 @@ export class ChatsController {
     return this.chats.send(u.tenantId, id, u, dto.body ?? '', null, {
       rootId: dto.threadRootId ?? null,
       alsoInChannel: dto.alsoInChannel === true,
-    }, dto.mentionIds);
+    }, dto.mentionIds, undefined, { toId: dto.replyToId ?? null, excerpt: dto.replyExcerpt ?? null });
   }
 
   /**
@@ -342,7 +346,7 @@ export class ChatsController {
     return this.chats.sendFiles(u.tenantId, id, u, list, dto.body ?? '', {
       rootId: dto.threadRootId ?? null,
       alsoInChannel: dto.alsoInChannel === true,
-    });
+    }, { toId: dto.replyToId ?? null, excerpt: dto.replyExcerpt ?? null });
   }
 
   // ───── управление группой ─────
