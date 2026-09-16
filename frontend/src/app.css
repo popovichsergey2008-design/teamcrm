@@ -1415,15 +1415,22 @@
   в ширину панели уже не влезают. Внизу остаётся пара «Готово» и «Выйти».
 */
 .nav-tune-head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-/* Размер шрифта — ряд цифр: выбор из пяти значений не стоит выпадающего списка. */
-.nav-font-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; font-size: var(--fs-xs); }
-.nav-font-btn {
-  min-width: 28px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--bg-elev); color: var(--text-dim); font: inherit; cursor: pointer;
+/*
+  Размер шрифта в кабинете — ряд цифр под выбором темы.
+
+  Каждая цифра набрана своим размером: «20» крупнее «12», и выбор делается глазами.
+  Кнопки одной высоты, чтобы ряд не прыгал, — растёт только сам текст.
+*/
+.font-switch { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; }
+.font-option {
+  min-width: 44px; height: 38px; padding: 0 10px;
+  display: inline-grid; place-items: center;
+  border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  background: var(--bg-elev); color: var(--text-dim); font-family: inherit; cursor: pointer;
 }
-.nav-font-btn:hover { color: var(--text); border-color: var(--border-2); }
-.nav-font-btn.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
-.nav-font-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.font-option:hover { color: var(--text); background: var(--hover); }
+.font-option.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.font-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .nav-tune-title { flex: 1 0 100%; font-size: var(--fs-sm); font-weight: 600; }
 .nav-tune-head-row .btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
 .nav-tune-head-row .nav-tune-reset { flex: 1 0 100%; }

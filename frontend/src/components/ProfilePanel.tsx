@@ -7,6 +7,7 @@ import { api, ApiError } from '../lib/api';
 import { browserTimezone, listTimezones } from '../lib/timezones';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
+import { FontSizeSwitch } from './FontSizeSwitch';
 import { DatePicker } from './DatePicker';
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients';
@@ -164,6 +165,16 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
               <span className="dim" style={{ fontSize: 12 }}>
                 «Как в системе» — тема меняется вместе с настройкой компьютера: светлая днём,
                 тёмная вечером, если так настроено там.
+              </span>
+            </div>
+            {/* Размер шрифта — сразу под темой: обе настройки про внешний вид, и
+                искать их человек будет в одном месте. */}
+            <div className="field">
+              <label>Размер шрифта</label>
+              <FontSizeSwitch />
+              <span className="dim" style={{ fontSize: 12 }}>
+                Крупнее — всему приложению сразу. Настройка своя на каждом устройстве:
+                на большом мониторе можно оставить обычный размер.
               </span>
             </div>
             <div className="field"><label>Имя</label><input className="input" value={me.fullName ?? ''} onChange={(e) => setMe({ ...me, fullName: e.target.value })} /></div>

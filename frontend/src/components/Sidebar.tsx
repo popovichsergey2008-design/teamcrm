@@ -7,7 +7,6 @@ import { setDoNotDisturb } from '../lib/sound';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { Logo } from './Logo';
-import { FONT_SIZES, fontSize, setFontSize } from '../lib/font-scale';
 import { buildPath, navigate, Route, Section } from '../lib/router';
 import { roleLabel } from '../lib/labels';
 import { NavCounters } from '../hooks/useNavCounters';
@@ -185,8 +184,6 @@ export function Sidebar({
   onLogout: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1');
-  /** Выбранный размер шрифта: сам он живёт в документе, здесь — только подсветка кнопки. */
-  const [size, setSize] = useState(fontSize);
   // на узком экране панель выезжает поверх содержимого, а не сжимает его
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -477,26 +474,6 @@ export function Sidebar({
                   <Icon name="logout" size={14} />
                   Выйти
                 </button>
-              </div>
-              {/*
-                Размер шрифта — здесь же, в настройке меню.
-
-                Просьба заказчика: людям с плохим зрением нужен крупный шрифт, а не
-                лупа. Меняется весь интерфейс сразу и остаётся на этом устройстве.
-              */}
-              <div className="nav-font-row">
-                <span className="dim">Размер шрифта</span>
-                {FONT_SIZES.map((px) => (
-                  <button
-                    key={px}
-                    className={`nav-font-btn${px === size ? ' active' : ''}`}
-                    onClick={() => { setFontSize(px); setSize(px); }}
-                    title={px === 14 ? 'Обычный размер' : `Шрифт ${px} точек`}
-                    aria-pressed={px === size}
-                  >
-                    {px}
-                  </button>
-                ))}
               </div>
             </div>
           )}
