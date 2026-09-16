@@ -860,7 +860,8 @@
 .board-error { margin-bottom: 12px; }
 .board-placeholder { margin-top: 40px; }
 .board-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
-.board-title { font-size: calc(18px * var(--fs-scale)); font-weight: 700; }
+/* Заголовок доски: 18 точек жирным перекрикивали всю шапку — 16 полужирным хватает. */
+.board-title { font-size: calc(16px * var(--fs-scale)); font-weight: 600; }
 
 /* P&L панель */
 .pnl { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
@@ -4310,6 +4311,8 @@
 
 /* Панели шапки: участники, история, способы связи. */
 .chat-pop {
+  /* Свой размер шрифта: список наследовал 18 точек жирным от заголовка доски. */
+  font-size: var(--fs-sm); font-weight: 400;
   position: absolute; z-index: 30; top: 54px; right: 10px;
   display: flex; flex-direction: column; gap: 2px; min-width: 240px; max-width: 340px;
   max-height: 340px; overflow-y: auto; padding: 6px;

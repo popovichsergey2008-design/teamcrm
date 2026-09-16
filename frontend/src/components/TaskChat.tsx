@@ -876,12 +876,19 @@ export function TaskChat({
           */}
           {callTo.length > 0 && (
             <span className="chat-call">
+              {/*
+                «Созвон», а не «Видеозвонок».
+
+                Решение заказчика: в задаче чаще нужно просто поговорить, и камера
+                при этом не нужна. Основное действие — обычный звонок трубкой, видео
+                осталось вторым вариантом в том же меню.
+              */}
               <button
                 className="btn btn-primary btn-sm chat-call-main"
-                onClick={() => requestCall({ memberIds: callTo, projectId, taskId, title, video: true })}
-                title={`Видеозвонок: ${callNames}`}
+                onClick={() => requestCall({ memberIds: callTo, projectId, taskId, title })}
+                title={`Созвон: ${callNames}`}
               >
-                <Icon name="video" size={14} /> <span className="chat-call-label">Видеозвонок</span>
+                <Icon name="phone" size={14} /> <span className="chat-call-label">Созвон</span>
               </button>
               <button
                 className="btn btn-primary btn-sm chat-call-more"
@@ -896,9 +903,9 @@ export function TaskChat({
                 <span className="chat-pop chat-call-pop">
                   <button
                     className="chat-pop-row"
-                    onClick={() => { setCallOpen(false); requestCall({ memberIds: callTo, projectId, taskId, title }); }}
+                    onClick={() => { setCallOpen(false); requestCall({ memberIds: callTo, projectId, taskId, title, video: true }); }}
                   >
-                    <Icon name="phone" size={14} /> Аудиозвонок
+                    <Icon name="video" size={14} /> Видеозвонок
                   </button>
                   <span className="dim chat-pop-note">Позвоним: {callNames}</span>
                 </span>
@@ -915,6 +922,22 @@ export function TaskChat({
               <Icon name="search" size={15} />
             </button>
           )}
+          {/*
+            Добавить человека — отдельной кнопкой, а не строкой внутри списка.
+
+            Заказчик: «вынести добавление участника в человечка с плюсиком». Раньше
+            это пряталось за подписью «2 участника», и найти его можно было только
+            случайно.
+          */}
+          <button
+            className={`msg-icon${peopleOpen ? ' active' : ''}`}
+            onClick={() => { setPeopleOpen((v) => !v); setHistOpen(false); }}
+            title="Участники задачи и добавление"
+            aria-label="Добавить участника"
+            aria-expanded={peopleOpen}
+          >
+            <Icon name="user-plus" size={15} />
+          </button>
           <button
             className={`msg-icon${histOpen ? ' active' : ''}`}
             onClick={() => { setHistOpen((v) => !v); setPeopleOpen(false); }}
@@ -952,6 +975,17 @@ export function TaskChat({
               {p.name} <span className="dim">· {p.role}</span>
             </span>
           ))}
+          {/*
+            Приглашения как отдельного шага у нас нет — и это сознательно.
+
+            Человек добавляется сразу: задача появляется у него в «Наблюдаю», приходит
+            уведомление, дальше он читает переписку и отвечает. Ждать согласия на
+            доступ к рабочей задаче внутри своей же компании незачем.
+          */}
+          <span className="dim chat-pop-note">
+            Добавленный сразу получит доступ к задаче, уведомление и увидит её в «Наблюдаю».
+            Подтверждать приглашение не нужно.
+          </span>
           <label className="chat-pop-add">
             <Icon name="user-plus" size={14} />
             <select
