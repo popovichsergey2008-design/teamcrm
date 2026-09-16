@@ -285,13 +285,36 @@ describe('треды в чатах (e2e)', () => {
     const mine = inbox.mentions.find((m: any) => String(m.id) === String(called.id));
     expect(mine).toBeTruthy();
     expect(mine.seen_at).toBeNull();
-    // и непрочитанный чат там же — «Входящие» отвечают на вопрос «где меня ждут»
-    expect(inbox.chats.length).toBe(1);
+    // личная переписка там же: «Входящие» — это то, что адресовано лично мне
+    expect(inbox.dms.length).toBe(1);
 
     // при следующем открытии упоминание уже не новое
     const again = (await http.get('/api/chats/inbox').set(M).expect(200)).body.data;
     expect(again.counts.mentions).toBe(0);
     expect(again.mentions.find((m: any) => String(m.id) === String(called.id)).seen_at).toBeTruthy();
+
+    /*
+      Обычное сообщение в ОБЩИЙ чат во «Входящие» не попадает.
+
+      Просьба заказчика: раздел светится только личным. Проверяем прямо: пишем в
+      групповой чат без упоминаний — и во «Входящих» у коллеги пусто, хотя на самом
+      чате непрочитанное есть.
+    */
+    const group = (await http.post('/api/chats/groups').set(O)
+      .send({ title: 'Общий', userIds: [String(mate.id)] }).expect(201)).body.data;
+    await http.post(`/api/chats/${group.id}/messages`).set(O).send({ body: 'всем привет' }).expect(201);
+    const quiet = (await http.get('/api/chats/inbox').set(M).expect(200)).body.data;
+    expect(quiet.dms.some((c: any) => String(c.id) === String(group.id))).toBe(false);
+    expect(quiet.replies.length).toBe(0);
+
+    // а ОТВЕТ на моё сообщение — попадает: это обращение ко мне, просто без имени
+    const mineMsg = (await http.post(`/api/chats/${group.id}/messages`).set(M)
+      .send({ body: 'я займусь стендом' }).expect(201)).body.data;
+    await http.post(`/api/chats/${group.id}/messages`).set(O)
+      .send({ body: 'спасибо, жду', replyToId: String(mineMsg.id) }).expect(201);
+    const answered = (await http.get('/api/chats/inbox').set(M).expect(200)).body.data;
+    expect(answered.replies.length).toBe(1);
+    expect(answered.replies[0].my_body).toBe('я займусь стендом');
 
     // себя упоминанием не зовут: оповещать человека о собственном сообщении незачем
     await http.post(`/api/chats/${chat.id}/messages`).set(O)

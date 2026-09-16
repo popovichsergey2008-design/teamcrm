@@ -301,9 +301,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   const [highlight, setHighlight] = useState<string | null>(null);
   /** Какой раздел открыт вместо переписки: входящие, треды, сохранённое. */
   const [view, setView] = useState<'chat' | 'inbox' | 'threads' | 'saved' | 'channels' | 'anthill'>('chat');
+  /**
+   * «Входящие» — только личное: упоминания, личные сообщения, ответы на мои реплики
+   * и ветки, где я участвую. Обычные сообщения общих чатов сюда не попадают.
+   */
   const [inbox, setInbox] = useState<{
-    mentions: any[]; threads: any[]; chats: any[];
-    counts: { mentions: number; threads: number; chats: number };
+    mentions: any[]; threads: any[]; dms: any[]; replies: any[];
+    counts: { mentions: number; threads: number; dms: number; replies: number };
   } | null>(null);
   const [saved, setSaved] = useState<any[]>([]);
   /** Какие из показанных сообщений уже сохранены — чтобы кнопка знала своё состояние. */
@@ -1415,8 +1419,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     { id: 'ai', fullName: 'AnthillBot', hint: 'знает эту переписку' },
     ...users.map((u) => ({ id: String(u.id), fullName: u.fullName })),
   ];
+  /*
+    «Входящие» светятся только личным.
+
+    Заказчик: «должно светиться то, что касается меня — тегнули, написали в личку,
+    ответили мне или в ветку, а не просто сообщение в общий чат». Обычная переписка
+    считается на самих чатах, и дублировать её сюда значит превращать раздел во
+    второй список чатов.
+  */
   const inboxTotal = inbox
-    ? inbox.counts.mentions + inbox.counts.threads + inbox.counts.chats
+    ? inbox.counts.mentions + inbox.counts.threads + inbox.counts.dms + inbox.counts.replies
     : 0;
   // подразделения по id сотрудника — подписываем ими собеседников в списке и шапке
   const groupOf = useMemo(() => {
@@ -1782,7 +1794,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                 compact
                 icon="check"
                 title="Всё разобрано"
-                hint="Сюда попадает то, что ждёт лично вас: где позвали по имени, где ответили в вашей ветке и где написали в чат."
+                hint="Сюда попадает только личное: где позвали по имени, написали в личку, ответили на ваше сообщение или в вашей ветке. Общие чаты считаются отдельно — в списке слева."
               />
             )}
             {inbox && inbox.mentions.length > 0 && (
@@ -1821,13 +1833,31 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                 ))}
               </>
             )}
-            {inbox && inbox.chats.length > 0 && (
+            {inbox && inbox.replies.length > 0 && (
               <>
-                <div className="chat-group-head">Непрочитанные чаты</div>
-                {inbox.chats.map((c: any) => (
+                <div className="chat-group-head">Ответили вам</div>
+                {inbox.replies.map((r: any) => (
+                  <button key={r.id} className="thread-item" onClick={() => { void openChat(String(r.chat_id)); }}>
+                    <span className="thread-item-head">
+                      <b>{r.chat_title ?? r.peer_name ?? r.project_name ?? 'Личный диалог'}</b>
+                      <span className="chat-unread">новое</span>
+                    </span>
+                    <span className="thread-item-body dim">{r.author_name}: {String(r.body ?? '').slice(0, 120)}</span>
+                    {/* На что ответили — второй строкой: без этого «да, согласен» ни о чём. */}
+                    {r.my_body && (
+                      <span className="thread-item-foot dim">в ответ на ваше: {String(r.my_body).slice(0, 80)}</span>
+                    )}
+                  </button>
+                ))}
+              </>
+            )}
+            {inbox && inbox.dms.length > 0 && (
+              <>
+                <div className="chat-group-head">Личные сообщения</div>
+                {inbox.dms.map((c: any) => (
                   <button key={c.id} className="thread-item" onClick={() => { void openChat(String(c.id)); }}>
                     <span className="thread-item-head">
-                      <b>{c.title ?? c.peer_name ?? c.project_name ?? 'Чат'}</b>
+                      <b>{c.peer_name ?? c.title ?? 'Личный диалог'}</b>
                       <span className="chat-unread">{c.unread}</span>
                     </span>
                     <span className="thread-item-body dim">{c.last_author}: {String(c.last_body ?? '').slice(0, 120)}</span>

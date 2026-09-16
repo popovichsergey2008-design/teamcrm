@@ -1160,10 +1160,14 @@ export const api = {
     request<{ remindAt: string }>('POST', `/chats/${chatId}/messages/${messageId}/remind`, { remindAt }),
   listSavedMessages: () => request<any[]>('GET', '/chats/saved'),
   listChatMentions: () => request<any[]>('GET', '/chats/mentions'),
-  /** «Входящие»: позвали по имени, ответили в ветке, написали в чат — одной лентой. */
+  /**
+   * «Входящие» — только личное: позвали по имени, написали в личку, ответили на ваше
+   * сообщение, ответили в вашей ветке. Обычные сообщения общих чатов сюда не идут:
+   * у них свой счётчик на самом чате.
+   */
   chatInbox: () => request<{
-    mentions: any[]; threads: any[]; chats: any[];
-    counts: { mentions: number; threads: number; chats: number };
+    mentions: any[]; threads: any[]; dms: any[]; replies: any[];
+    counts: { mentions: number; threads: number; dms: number; replies: number };
   }>('GET', '/chats/inbox'),
 
   /** Реакция на сообщение чата — переключатель: повторное нажатие снимает свою. */

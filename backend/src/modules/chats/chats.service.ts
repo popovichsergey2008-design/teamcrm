@@ -758,10 +758,11 @@ export class ChatsService {
    */
   async inbox(tenantId: string, user: { userId: string; role: string }) {
     if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
-    const [mentions, threads, chats] = await Promise.all([
+    const [mentions, threads, chats, replies] = await Promise.all([
       this.repo.mentionsList(tenantId, user.userId, 20),
       this.repo.myThreads(tenantId, user.userId, 20),
       this.repo.listForUser(tenantId, user.userId),
+      this.repo.repliesToMe(tenantId, user.userId, 20),
     ]);
     /*
       Открыли «Входящие» — упоминания показаны, значит увидены.
@@ -772,14 +773,25 @@ export class ChatsService {
       Теперь и список, и счётчик берутся из одного места, а увиденное гасится здесь же.
     */
     await this.repo.markMentionsSeen(tenantId, user.userId);
+    /*
+      «Входящие» — только то, что адресовано ЛИЧНО мне.
+
+      Заказчик сказал прямо: сюда не должно попадать обычное сообщение в общий чат.
+      Личное обращение — это четыре случая: меня позвали по имени, написали в личку,
+      ответили на мою реплику, ответили в моей ветке. Всё остальное — обычная
+      переписка, у неё свой счётчик на самом чате, и разбирать её приходят сами.
+    */
+    const dms = chats.filter((c: any) => c.kind === 'dm' && Number(c.unread) > 0);
     return {
       mentions,
       threads: threads.filter((t) => Number(t.unread) > 0),
-      chats: chats.filter((c) => Number(c.unread) > 0),
+      dms,
+      replies,
       counts: {
         mentions: 0,
         threads: threads.reduce((n: number, t) => n + Number(t.unread || 0), 0),
-        chats: chats.reduce((n: number, c) => n + Number(c.unread || 0), 0),
+        dms: dms.reduce((n: number, c: any) => n + Number(c.unread || 0), 0),
+        replies: replies.length,
       },
     };
   }

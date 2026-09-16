@@ -692,6 +692,45 @@ export class ChatsRepository {
     );
   }
 
+  /**
+   * Ответы НА МОИ сообщения — непрочитанные.
+   *
+   * «Входящие» отвечают на вопрос «что ждёт лично меня», и ответ на мою реплику —
+   * ровно такой случай: человек обратился ко мне, просто не назвал по имени.
+   * Раньше этого не существовало вовсе, и такие ответы тонули в общем счётчике чата.
+   *
+   * Свои ответы самому себе не считаем, ветки — тоже: у них свой раздел.
+   */
+  repliesToMe(tenantId: string, userId: string, limit = 20) {
+    return this.db.many<{
+      id: string; chat_id: string; body: string; created_at: Date;
+      author_name: string | null; chat_title: string | null; project_name: string | null;
+      peer_name: string | null; my_body: string | null;
+    }>(
+      `SELECT m.id::text, m.chat_id::text, m.body, m.created_at,
+              u.full_name AS author_name, c.title AS chat_title, p.name AS project_name,
+              peer.full_name AS peer_name,
+              r.body AS my_body
+         FROM chat_messages m
+         JOIN chat_messages r ON r.id = m.reply_to_id AND r.author_id = $2::bigint
+         JOIN chats c ON c.id = m.chat_id
+         JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $2::bigint
+         LEFT JOIN users u ON u.id = m.author_id
+         LEFT JOIN projects p ON p.id = c.project_id
+         LEFT JOIN LATERAL (
+           SELECT u2.full_name FROM chat_members cm2 JOIN users u2 ON u2.id = cm2.user_id
+            WHERE cm2.chat_id = c.id AND cm2.user_id <> $2::bigint LIMIT 1
+         ) peer ON c.kind = 'dm'
+        WHERE m.tenant_id = $1 AND m.deleted_at IS NULL
+          AND m.author_id IS DISTINCT FROM $2::bigint
+          AND m.thread_root_id IS NULL
+          AND (cm.last_read_at IS NULL OR m.created_at > cm.last_read_at)
+        ORDER BY m.created_at DESC
+        LIMIT $3`,
+      [tenantId, userId, limit],
+    );
+  }
+
   /** Кого позвали по имени в конкретном сообщении. */
   messageMentions(tenantId: string, messageId: string): Promise<{ user_id: string }[]> {
     return this.db.many<{ user_id: string }>(
