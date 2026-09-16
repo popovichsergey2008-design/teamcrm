@@ -1432,7 +1432,7 @@ export const api = {
     rawRequest<{ reset: boolean; email: string }>('POST', '/auth/password/reset', b, false),
 
   // Этап 4 — прогноз срока, назначение с проверкой перегруза, velocity
-  assignTask: (id: string, b: { assigneeId: string; confirmOverload?: boolean; estimateHours?: number; deadlineAt?: string }) =>
+  assignTask: (id: string, b: { assigneeId: string; confirmOverload?: boolean; estimateHours?: number | null; deadlineAt?: string | null }) =>
     request<any>('POST', `/tasks/${id}/assign`, b),
   /** confirmTimeLoss — второе подтверждение для задачи с учтённым временем (только владельцу). */
   deleteTask: (id: string, confirmTimeLoss = false) =>
@@ -1504,7 +1504,13 @@ export const api = {
     return env.data;
   },
 
-  saveTaskPlan: (id: string, b: { estimateHours?: number; deadlineAt?: string }) =>
+  /**
+   * Оценка и срок.
+   *
+   * `deadlineAt: null` — УБРАТЬ срок, отсутствие поля — не трогать. Разница важная:
+   * пустое поле в карточке должно стирать срок, а не оставлять прежний.
+   */
+  saveTaskPlan: (id: string, b: { estimateHours?: number | null; deadlineAt?: string | null }) =>
     request<{ saved: true }>('POST', `/tasks/${id}/plan`, b),
   /**
    * Повтор задачи. Расписание живёт при задаче-образце: «повторять еженедельно» —

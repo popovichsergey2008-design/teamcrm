@@ -232,7 +232,14 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     setErr('');
     setSaving(true);
     const estimateHours = estimate ? Number(estimate) : undefined;
-    const deadlineAt = deadline ? new Date(deadline).toISOString() : undefined;
+    /*
+      Пустое поле срока — это «убрать», а не «не трогать».
+
+      Раньше сюда уходил undefined, сервер понимал его как «оставь как было», и
+      просроченный срок было невозможно снять: заказчик так и сказал — «убираешь
+      срок, а он не убирается после сохранения».
+    */
+    const deadlineAt = deadline ? new Date(deadline).toISOString() : null;
     const changedAssignee = String(assigneeId ?? '') !== String(task.assignee_id ?? '');
     const changedPlan = String(estimate ?? '') !== String(task.estimate_hours ?? '') || deadline !== initialDeadline;
     try {

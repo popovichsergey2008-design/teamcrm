@@ -23,6 +23,7 @@ import { MentionField } from '../components/MentionField';
 import { MessageText } from '../components/MessageText';
 import { longPressProps, MenuAt, MessageMenu } from '../components/MessageMenu';
 import { useDismiss } from '../hooks/useDismiss';
+import { shrinkAll } from '../lib/image-shrink';
 import { MessageToTask } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
@@ -773,7 +774,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
       e.preventDefault();
       // Открыта ветка — вставляем в НЕЁ: человек смотрит туда, туда и кладём.
       if (thread) { attachToThread(images); return; }
-      attach(images);
+      void attach(images);
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
@@ -854,7 +855,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : files.length ? 'Файл не отправлен' : 'Сообщение не отправлено');
       setDraft(text); // не теряем набранное
-      if (files.length) attach(files); // и вложения возвращаем в очередь — переснимать экран обидно
+      if (files.length) void attach(files); // и вложения возвращаем в очередь — переснимать экран обидно
     }
   };
 
@@ -868,8 +869,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * Скриншот из буфера приходит без имени («image.png») — даём ему дату и время,
    * иначе в списке файлов копится десяток одинаковых.
    */
-  const attach = (file: File | File[]) => {
-    const list = Array.isArray(file) ? file : [file];
+  /*
+    Снимки ужимаются при выборе — см. lib/image-shrink.
+
+    Десять фотографий с телефона — это полсотни мегабайт и минуты ожидания; после
+    сжатия те же десять уходят за пару секунд и выглядят на экране так же.
+  */
+  const attach = async (file: File | File[]) => {
+    const list = await shrinkAll(Array.isArray(file) ? file : [file]);
     const named = list.map((f) => (isAnonymousClipboardName(f.name) && f.type.startsWith('image/')
       ? new File([f], screenshotName(new Date(), f.type), { type: f.type })
       : f));
@@ -2373,11 +2380,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
               className="chat-input"
               // Файл можно и перетащить — то же действие, что и вставка из буфера.
               onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); attach(f); } }}
+              onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); void attach(f); } }}
             >
               <label className="btn btn-ghost btn-sm" title="Прикрепить файл" style={{ cursor: 'pointer' }}>
                 <Icon name="paperclip" size={16} />
-                <input type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) attach(f); e.currentTarget.value = ''; }} />
+                <input type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void attach(f); e.currentTarget.value = ''; }} />
               </label>
               {/*
                 Подсказка по «@» — как в ленте компании и в чате задачи.

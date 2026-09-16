@@ -13,8 +13,14 @@ class AssignDto {
 }
 
 class PlanDto {
-  @IsOptional() @IsNumber() @Min(0) estimateHours?: number;
-  @IsOptional() @IsString() deadlineAt?: string;
+  @IsOptional() @IsNumber() @Min(0) estimateHours?: number | null;
+  /**
+   * `null` — убрать срок, отсутствие поля — не трогать.
+   *
+   * Разница принципиальная: пустое поле в карточке должно СТИРАТЬ срок, а не молча
+   * оставлять прежний (на это и жаловались).
+   */
+  @IsOptional() @IsString() deadlineAt?: string | null;
 }
 
 @ApiTags('forecast')
@@ -42,9 +48,10 @@ export class ForecastController {
   @Post(':id/plan')
   @Roles('owner', 'manager', 'member')
   async plan(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: PlanDto) {
-    await this.service.setEstimateDeadline(
-      user.tenantId, id, dto.estimateHours ?? null, dto.deadlineAt ?? null,
-    );
+    await this.service.setEstimateDeadline(user.tenantId, id, {
+      estimate: dto.estimateHours,
+      deadline: dto.deadlineAt,
+    });
     return { saved: true };
   }
 
@@ -63,7 +70,10 @@ export class ForecastController {
   @Roles('owner', 'manager', 'member')
   async assign(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: AssignDto) {
     if (dto.estimateHours !== undefined || dto.deadlineAt !== undefined) {
-      await this.service.setEstimateDeadline(user.tenantId, id, dto.estimateHours ?? null, dto.deadlineAt ?? null);
+      await this.service.setEstimateDeadline(user.tenantId, id, {
+        estimate: dto.estimateHours,
+        deadline: dto.deadlineAt,
+      });
     }
     return this.service.assign(user.tenantId, id, dto.assigneeId, user.userId, dto.confirmOverload === true);
   }

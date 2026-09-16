@@ -99,7 +99,7 @@ export class GapsService {
     }
     if (input.deadline) {
       const deadlineAt = `${input.deadline}T18:00:00`; // день без времени — конец рабочего дня
-      await this.forecast.setEstimateDeadline(tenantId, String(input.taskId), null, deadlineAt);
+      await this.forecast.setEstimateDeadline(tenantId, String(input.taskId), { deadline: deadlineAt });
     }
 
     void this.secretary.record({

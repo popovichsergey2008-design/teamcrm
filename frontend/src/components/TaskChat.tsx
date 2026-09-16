@@ -10,6 +10,7 @@ import { dayLabel, plural, sameGroup, stampLabel } from '../lib/chat-text';
 import { MessageText } from './MessageText';
 import { longPressProps, MenuAt, MessageMenu } from './MessageMenu';
 import { useDismiss } from '../hooks/useDismiss';
+import { shrinkImage } from '../lib/image-shrink';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { orderMentions } from '../lib/task-mentions';
 import { useVoiceInput } from '../hooks/useVoiceInput';
@@ -391,7 +392,7 @@ export function TaskChat({
       const file = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'));
       if (!file) return;
       e.preventDefault();
-      attach(file);
+      void attach(file);
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
@@ -423,10 +424,18 @@ export function TaskChat({
   };
 
   /** Скриншот приходит без имени — даём ему дату, иначе в файлах десяток «image.png». */
-  const attach = (file: File) => {
-    const named = isAnonymousClipboardName(file.name) && file.type.startsWith('image/')
-      ? new File([file], screenshotName(new Date(), file.type), { type: file.type })
-      : file;
+  /*
+    Снимок ужимаем ЗДЕСЬ, при выборе, а не при отправке.
+
+    Заказчик: «секунд тридцать не мог отправить сообщение — видимо, фото грузилось».
+    Фотография с телефона весит мегабайты и уходит полминуты. Пока человек пишет
+    подпись, снимок уже пережат, и отправка занимает секунду.
+  */
+  const attach = async (file: File) => {
+    const small = await shrinkImage(file);
+    const named = isAnonymousClipboardName(small.name) && small.type.startsWith('image/')
+      ? new File([small], screenshotName(new Date(), small.type), { type: small.type })
+      : small;
     setPending((prev) => {
       if (prev?.url) URL.revokeObjectURL(prev.url);
       return { file: named, url: isImageName(named.name) ? URL.createObjectURL(named) : '' };
@@ -1093,7 +1102,7 @@ export function TaskChat({
         }}
         // Файл можно перетащить прямо в переписку — то же, что вставка из буфера.
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); attach(f); } }}
+        onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); void attach(f); } }}
       >
         {/* Показан хвост переписки — остальное поднимается кнопкой. Появляется, только
             когда наверху действительно что-то есть. */}
@@ -1441,7 +1450,7 @@ export function TaskChat({
           <input
             type="file"
             hidden
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) attach(f); e.currentTarget.value = ''; }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void attach(f); e.currentTarget.value = ''; }}
           />
         </label>
         <MentionField

@@ -95,6 +95,38 @@ describe('планирование задачи: назначение и сро�
     expect(saved.deadline_at).toBeTruthy();
   }, 30000);
 
+  it('просроченный срок можно перенести и снять совсем', async () => {
+    const { owner } = await team();
+    const proj = (await http.post('/api/projects').set(H(owner.accessToken))
+      .send({ name: 'Сроки' }).expect(201)).body.data;
+    // срок в прошлом: именно на просроченной задаче заказчик и не смог его убрать
+    const past = new Date(Date.now() - 3 * 864e5).toISOString();
+    const task = (await http.post('/api/tasks').set(H(owner.accessToken))
+      .send({ projectId: proj.id, title: 'Просроченная', deadlineAt: past }).expect(201)).body.data;
+
+    const deadlineOf = async () => {
+      const board = (await http.get(`/api/projects/${proj.id}/board`).set(H(owner.accessToken)).expect(200)).body.data;
+      return board.columns.flatMap((c: any) => c.tasks).find((t: any) => String(t.id) === String(task.id)).deadline_at;
+    };
+    expect(await deadlineOf()).toBeTruthy();
+
+    // перенос вперёд
+    const next = new Date(Date.now() + 4 * 864e5).toISOString();
+    await http.post(`/api/tasks/${task.id}/plan`).set(H(owner.accessToken))
+      .send({ deadlineAt: next }).expect(201);
+    expect(new Date(await deadlineOf() as string).toISOString()).toBe(next);
+
+    // и снятие: пустое поле в карточке уходит как null и ДОЛЖНО стирать срок
+    await http.post(`/api/tasks/${task.id}/plan`).set(H(owner.accessToken))
+      .send({ deadlineAt: null }).expect(201);
+    expect(await deadlineOf()).toBeNull();
+
+    // поле, которого в запросе нет, срок не трогает
+    await http.post(`/api/tasks/${task.id}/plan`).set(H(owner.accessToken))
+      .send({ estimateHours: 3 }).expect(201);
+    expect(await deadlineOf()).toBeNull();
+  }, 30000);
+
   it('клиент не планирует и не назначает', async () => {
     const { owner, member, clientToken } = await team();
     const proj = (await http.post('/api/projects').set(H(owner.accessToken))

@@ -128,9 +128,13 @@ export class ForecastService {
     };
   }
 
-  async setEstimateDeadline(tenantId: string, taskId: string, estimate: number | null, deadline: string | null) {
-    const res = await this.repo.setEstimateDeadline(tenantId, taskId, estimate, deadline);
-    if (deadline) await this.outbox.enqueueForTask(tenantId, taskId, 'task.update'); // срок → во внешнюю систему
+  async setEstimateDeadline(
+    tenantId: string, taskId: string,
+    patch: { estimate?: number | null; deadline?: string | null },
+  ) {
+    const res = await this.repo.setEstimateDeadline(tenantId, taskId, patch);
+    // Снятый срок внешней системе тоже важен: там задача иначе останется просроченной.
+    if (patch.deadline !== undefined) await this.outbox.enqueueForTask(tenantId, taskId, 'task.update');
     return res;
   }
 }

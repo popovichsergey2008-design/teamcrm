@@ -46,12 +46,29 @@ export class ForecastRepository {
     );
   }
 
-  setEstimateDeadline(tenantId: string, taskId: string, estimate: number | null, deadline: string | null) {
+  /**
+   * Оценка и срок.
+   *
+   * Различаем «не трогать» и «убрать»: поле, которого в запросе нет (undefined),
+   * остаётся как было; явный null стирает значение.
+   *
+   * Раньше здесь стоял COALESCE, и убрать срок было НЕЛЬЗЯ в принципе: пустое поле
+   * приходило как null, а COALESCE понимал его как «оставь прежнее». Заказчик так и
+   * сказал: «убираешь срок, а он не убирается после сохранения».
+   */
+  setEstimateDeadline(
+    tenantId: string, taskId: string,
+    patch: { estimate?: number | null; deadline?: string | null },
+  ) {
+    const set: string[] = [];
+    const vals: unknown[] = [tenantId, taskId];
+    let i = 3;
+    if (patch.estimate !== undefined) { set.push(`estimate_hours = $${i++}`); vals.push(patch.estimate); }
+    if (patch.deadline !== undefined) { set.push(`deadline_at = $${i++}::timestamptz`); vals.push(patch.deadline); }
+    if (!set.length) return Promise.resolve(undefined as unknown as void);
+    set.push('updated_at = now()');
     return this.db.query(
-      `UPDATE tasks SET estimate_hours=COALESCE($3, estimate_hours),
-                        deadline_at=COALESCE($4::timestamptz, deadline_at), updated_at=now()
-        WHERE tenant_id=$1 AND id=$2`,
-      [tenantId, taskId, estimate, deadline],
+      `UPDATE tasks SET ${set.join(', ')} WHERE tenant_id=$1 AND id=$2`, vals,
     );
   }
 
