@@ -443,7 +443,8 @@ export class ChatsRepository {
     const full = await this.db.one<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
-              m.thread_root_id, m.reply_count, m.last_reply_at
+              m.thread_root_id, m.reply_count, m.last_reply_at,
+              m.reply_to_id, COALESCE(m.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
@@ -683,6 +684,8 @@ export class ChatsRepository {
          JOIN win ON win.id = m.id
     LEFT JOIN users u ON u.id = m.author_id
     LEFT JOIN files f ON f.id = m.file_id
+    LEFT JOIN chat_messages r ON r.id = m.reply_to_id
+    LEFT JOIN users ru ON ru.id = r.author_id
     LEFT JOIN tasks t ON t.id = m.task_id
         ORDER BY m.id`,
       [tenantId, chatId, messageId, viewerId],
