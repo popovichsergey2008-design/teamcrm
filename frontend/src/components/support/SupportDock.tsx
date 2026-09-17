@@ -306,9 +306,13 @@ export function SupportDock() {
         искать, где тут просят о помощи (разд. 3.1).
       */}
       {!open && (
-        <button className="support-fab" onClick={() => setOpen(true)} title="Служба заботы TeamCRM">
+        <button
+          className="support-fab"
+          onClick={() => setOpen(true)}
+          title="Служба заботы TeamCRM"
+          aria-label="Служба заботы"
+        >
           <Icon name="support" size={20} />
-          <span className="support-fab-text">Помощь</span>
           {online.length > 0 && <span className="support-fab-dot" aria-hidden="true" />}
         </button>
       )}

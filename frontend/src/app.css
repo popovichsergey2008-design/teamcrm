@@ -4525,27 +4525,35 @@ button.chat-pop-row:hover { background: var(--hover); }
  * 3. Реплики различаются подложкой, а не выравниванием: в колонке шириной в ладонь
  *    правый край съел бы половину строки (то же решение, что в чате задачи).
  */
+/*
+  Кнопка — кружок со значком, а не «таблетка» с подписью.
+
+  Заказчик: «сделать меньше, убрать текст и поднять — наезжает на поле ввода в
+  чатах». Справа живёт панель чатов шириной 56 точек, а поверх неё открывается окно
+  переписки со своим полем ввода внизу: кнопка обязана стоять левее панели и выше
+  этого поля, иначе она перекрывает ровно то место, куда человек печатает.
+*/
 .support-fab {
-  position: fixed; right: 18px; bottom: 18px; z-index: 55;
-  display: inline-flex; align-items: center; gap: 8px;
-  height: 46px; padding: 0 18px 0 16px;
-  border: none; border-radius: 999px; cursor: pointer;
+  position: fixed; right: calc(56px + 14px); bottom: 84px; z-index: 55;
+  display: inline-grid; place-items: center;
+  width: 42px; height: 42px; padding: 0;
+  border: none; border-radius: 50%; cursor: pointer;
   background: var(--accent-2); color: var(--on-accent);
   box-shadow: var(--shadow-lg);
-  font: inherit; font-weight: 600;
   transition: transform .12s, filter .15s;
 }
 .support-fab:hover { filter: brightness(1.08); transform: translateY(-1px); }
 .support-fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.support-fab-text { white-space: nowrap; }
 /* Зелёная точка — кто-то из дежурных сейчас на связи. Обещание, которое можно сдержать. */
 .support-fab-dot {
+  position: absolute; top: 2px; right: 2px;
   width: 9px; height: 9px; border-radius: 50%;
   background: var(--ok); box-shadow: 0 0 0 2px var(--accent-2);
 }
 
 .support-dock {
-  position: fixed; right: 18px; bottom: 18px; z-index: 56;
+  /* Панель тоже левее панели чатов: иначе она накрывает её кнопки. */
+  position: fixed; right: calc(56px + 14px); bottom: 18px; z-index: 56;
   width: min(420px, calc(100vw - 36px)); height: min(640px, calc(100vh - 100px));
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--bg-elev); border: 1px solid var(--border-2);
@@ -4625,10 +4633,14 @@ button.chat-pop-row:hover { background: var(--hover); }
 .support-history-sub { font-size: var(--fs-xs); }
 
 /* На узком экране панель занимает его целиком: разговор о поломке важнее фона. */
+/* Панели чатов справа нет — кнопке и окну больше не от чего отступать. */
+@media (max-width: 900px) {
+  .support-fab { right: 14px; bottom: 76px; }
+  .support-dock { right: 14px; }
+}
 @media (max-width: 560px) {
   .support-dock { right: 0; bottom: 0; width: 100vw; height: 100dvh; border-radius: 0; }
-  .support-fab { right: 12px; bottom: 12px; padding: 0 14px; }
-  .support-fab-text { display: none; }
+  .support-fab { right: 12px; bottom: 72px; }
 }
 
 /* Раздел «Служба заботы»: состояние службы, очередь дежурного и своя история. */
