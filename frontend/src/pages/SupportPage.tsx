@@ -1,156 +1,139 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../components/Icon';
+import { EmptyState } from '../components/EmptyState';
 import { SkeletonList } from '../components/Skeleton';
-import { api, ApiError } from '../lib/api';
+import { openSupport } from '../components/support/SupportDock';
+import { api } from '../lib/api';
 import { stampLabel } from '../lib/chat-text';
-import { showToast } from '../lib/notifications';
-
-type Overview = Awaited<ReturnType<typeof api.supportOverview>>;
+import type { SupportDesk, SupportQueueItem } from '../types';
 
 /**
- * Поддержка.
+ * Раздел «Служба заботы» (ТЗ-8, разд. 3.3 и 22).
  *
- * Одна кнопка для человека, у которого что-то не работает: описал, приложил снимок,
- * отправил. Обращение становится обычной задачей владельцу в проекте поддержки —
- * с перепиской, файлами и статусом, — и ниже видно, что с ним происходит.
- * Отдельной «системы заявок» здесь нет намеренно: всё это уже умеет задача.
+ * Сам разговор живёт в панели поверх CRM — здесь то, что в панель не помещается:
+ * состояние службы (кто дежурит, за сколько отвечаем), история своих обращений и,
+ * для дежурного, очередь ожидающих.
+ *
+ * Тяжёлой helpdesk-таблицы здесь нет намеренно (разд. 22): человеку нужны две вещи —
+ * «что было» и «открыть заново», а не колонки со статусами и приоритетами.
  */
-export function SupportPage({ onOpenTask }: { onOpenTask: (projectId: string, taskId: string) => void }) {
-  const [data, setData] = useState<Overview | null>(null);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
+export function SupportPage() {
+  const [desk, setDesk] = useState<SupportDesk | null>(null);
+  const [queue, setQueue] = useState<SupportQueueItem[]>([]);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
 
-  const load = useCallback(() => api.supportOverview().then(setData).catch(() => setData({ project: null, tickets: [] })), []);
+  const load = useCallback(async () => {
+    const d = await api.supportDesk().catch(() => null);
+    if (d) {
+      setDesk(d);
+      if (d.isAgent) setQueue(await api.supportQueue().catch(() => []));
+    }
+  }, []);
   useEffect(() => { void load(); }, [load]);
 
-  /** Снимок экрана — самое полезное в обращении: одноимённые не копим. */
-  const addFiles = (list: FileList | File[] | null) => {
-    if (!list || !('length' in list) || !list.length) return;
-    setFiles((prev) => {
-      const seen = new Set(prev.map((f) => `${f.name}:${f.size}`));
-      return [...prev, ...Array.from(list).filter((f) => !seen.has(`${f.name}:${f.size}`))];
-    });
+  const reopen = async (id: string) => {
+    setBusy(true);
+    try { await api.supportReopen(id); openSupport(); void load(); }
+    finally { setBusy(false); }
   };
 
-  const onPaste = (e: React.ClipboardEvent) => {
-    const image = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith('image/'))?.getAsFile();
-    if (!image) return;
-    e.preventDefault();
-    const stamp = new Date().toLocaleString('ru-RU').replace(/[:.]/g, '-');
-    addFiles([new File([image], `Снимок ${stamp}.png`, { type: image.type || 'image/png' })]);
-  };
-
-  const submit = async () => {
-    if (!title.trim()) { setErr('Опишите, что случилось, — хотя бы одной строкой'); return; }
-    setErr(''); setBusy(true);
-    try {
-      const created = await api.supportCreate({ title: title.trim(), description: description.trim() || undefined });
-      // Файлы — после создания и по одному: вложение живёт при задаче, а её до этого нет.
-      const failed: string[] = [];
-      for (const f of files) {
-        try { await api.uploadAttachment(created.id, f); } catch { failed.push(f.name); }
-      }
-      setTitle(''); setDescription(''); setFiles([]);
-      showToast(failed.length
-        ? { title: 'Обращение отправлено', body: `Не загрузились файлы: ${failed.join(', ')}. Приложите их в задаче.`, kind: 'saved' }
-        : { title: 'Обращение отправлено', body: 'Ответ и ход работы — в задаче', kind: 'saved' });
-      void load();
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Не удалось отправить обращение');
-    } finally { setBusy(false); }
-  };
+  const online = desk?.team.filter((t) => t.online) ?? [];
+  const eta = desk?.etaSeconds;
 
   return (
     <div className="page">
       <div className="page-head">
-        <h2><Icon name="support" size={18} /> Поддержка</h2>
-        <span className="dim">
-          {data?.project ? `Обращения попадают в проект «${data.project.name}»` : 'Проблемы, вопросы и предложения по системе'}
-        </span>
+        <h2 className="page-title"><Icon name="support" size={18} /> Служба заботы</h2>
+        <div className="page-head-actions">
+          <button className="btn btn-primary btn-sm" onClick={openSupport}>
+            <Icon name="chat" size={15} /> Написать
+          </button>
+        </div>
       </div>
 
-      <div className="support-body">
-        <section className="support-form">
-          <div className="drawer-section-title">Сообщить о проблеме</div>
-          <div className="field">
-            <label>Что случилось</label>
-            <input
-              className="input"
-              value={title}
-              autoFocus
-              placeholder="Коротко: что не работает или чего не хватает"
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void submit(); }}
-            />
-          </div>
-          <div className="field">
-            <label>Подробности (необязательно)</label>
-            <textarea
-              className="input"
-              rows={5}
-              value={description}
-              placeholder="Где это было, что нажимали, что ожидали увидеть. Снимок экрана можно вставить из буфера (Ctrl+V)"
-              onChange={(e) => setDescription(e.target.value)}
-              onPaste={onPaste}
-            />
-          </div>
-          <div className="field">
-            <label>Снимки экрана и файлы</label>
-            <div
-              className="file-drop"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
-            >
-              <label className="btn btn-sm file-pick">
-                <Icon name="paperclip" size={14} /> Выбрать файлы
-                <input
-                  className="file-pick-input"
-                  type="file"
-                  multiple
-                  aria-label="Выбрать файлы к обращению"
-                  onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
-                />
-              </label>
-              <span className="dim">или перетащите сюда, или Ctrl+V в подробности</span>
-            </div>
-            {files.length > 0 && (
-              <div className="file-picked">
-                {files.map((f, i) => (
-                  <span key={`${f.name}-${i}`} className="people-chip">
-                    <Icon name="file" size={12} /> {f.name}
-                    <button className="people-chip-x" onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} title="Убрать файл" aria-label={`Убрать ${f.name}`}>
-                      <Icon name="close" size={11} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-          {err && <div className="error-text">{err}</div>}
-          <button className="btn btn-primary" onClick={submit} disabled={busy}>
-            <Icon name="send" size={14} /> {busy ? 'Отправляю…' : 'Отправить'}
-          </button>
-          <p className="dim support-hint">
-            Обращение станет задачей владельцу компании: ответ и ход работы — в её переписке,
-            уведомления придут как по обычной задаче.
-          </p>
-        </section>
+      <div className="support-page">
+        {/*
+          Состояние службы — первым делом и честными словами.
 
-        <section className="support-list">
+          «Среднее время ответа» показываем, только если есть по чему считать: цифра
+          из воздуха здесь хуже её отсутствия (разд. 6).
+        */}
+        <div className="support-state">
+          <div className="support-state-row">
+            <span className={`support-state-dot${online.length ? ' on' : ''}`} aria-hidden="true" />
+            <b>{online.length ? 'Специалисты на связи' : 'Дежурные сейчас офлайн'}</b>
+            <span className="dim">
+              {eta ? `обычно отвечаем за ${eta < 90 ? `${Math.round(eta / 10) * 10} сек` : `${Math.round(eta / 60)} мин`}` : 'ответим, как только освободимся'}
+            </span>
+          </div>
+          {desk && desk.team.length > 0 && (
+            <div className="support-team">
+              {desk.team.map((t) => (
+                <span key={t.userId} className={`support-person${t.online ? ' on' : ''}`} title={t.online ? 'на связи' : 'офлайн'}>
+                  {t.name}
+                  {!!t.skills.length && <span className="dim"> · {t.skills.join(', ')}</span>}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="dim">
+            Поддержка — живой разговор внутри CRM: сначала отвечает AnthillBot, он видит,
+            на каком вы экране. Не помог — одна кнопка, и подключится человек. Контекст
+            при этом не теряется, повторять ничего не придётся.
+          </p>
+        </div>
+
+        {/* Очередь — только дежурному: остальным она ничего не говорит. */}
+        {desk?.isAgent && (
+          <div className="support-block">
+            <div className="drawer-section-title">Ждут ответа</div>
+            {!queue.length && <p className="dim">Сейчас никто не ждёт.</p>}
+            {queue.map((q) => (
+              <button key={q.id} className="support-queue-row" onClick={openSupport}>
+                <span className="support-queue-head">
+                  <b>{q.subject || 'Обращение'}</b>
+                  <span className="dim">{stampLabel(q.waitingSince)}</span>
+                </span>
+                <span className="dim">{q.userName} · {q.statusText}{q.agentName ? ` · ведёт ${q.agentName}` : ''}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="support-block">
           <div className="drawer-section-title">Мои обращения</div>
-          {!data && <SkeletonList rows={4} />}
-          {data && data.tickets.length === 0 && <p className="dim">Вы ещё ничего не отправляли.</p>}
-          {data && data.tickets.map((t) => (
-            <button key={t.id} className="support-ticket" onClick={() => onOpenTask(t.projectId, t.id)} title="Открыть задачу">
-              <span className={`badge ${t.closed ? 'badge-muted' : 'badge-info'}`}>{t.closed ? 'решено' : t.status}</span>
-              <span className="support-ticket-title">#{t.id} · {t.title}</span>
-              <span className="dim support-ticket-when">{stampLabel(t.createdAt)}</span>
-            </button>
+          {!desk && <SkeletonList rows={3} />}
+          {desk && !desk.history.length && (
+            <EmptyState
+              compact
+              icon="support"
+              title="Обращений пока не было"
+              hint="Если что-то не работает или непонятно — напишите. Ответим в разговоре, без заявок и номеров."
+            />
+          )}
+          {desk?.history.map((h) => (
+            <div key={h.id} className="support-history-row">
+              <div className="support-history-head">
+                <b>{h.subject || 'Обращение'}</b>
+                <span className="dim">{new Date(h.createdAt).toLocaleDateString('ru-RU')}</span>
+              </div>
+              <div className="dim support-history-sub">
+                {h.statusText}
+                {h.agentName ? ` · ${h.agentName}` : ''}
+                {h.messages ? ` · сообщений: ${h.messages}` : ''}
+                {h.csat ? ` · оценка ${h.csat}/4` : ''}
+              </div>
+              <div className="support-history-acts">
+                <button className="btn btn-ghost btn-sm" onClick={openSupport}>Открыть разговор</button>
+                {h.closedAt && (
+                  <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void reopen(h.id)}>
+                    Проблема снова появилась
+                  </button>
+                )}
+              </div>
+            </div>
           ))}
-        </section>
+        </div>
       </div>
     </div>
   );

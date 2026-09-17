@@ -7,7 +7,20 @@ import { stampLabel } from '../../lib/chat-text';
 import { useAuth } from '../../state/auth';
 import { Icon } from '../Icon';
 import { MessageText } from '../MessageText';
-import type { SupportConversation, SupportDesk } from '../../types';
+import type { SupportConversation, SupportDesk, SupportQueueItem } from '../../types';
+
+/**
+ * Открыть службу заботы откуда угодно.
+ *
+ * Панель живёт в оболочке приложения, а звать её нужно из левого меню, из командной
+ * строки и из пустых экранов («настроить вместе со специалистом»). Событие — самый
+ * дешёвый способ: никому не приходится протаскивать через себя чужой обработчик.
+ */
+export const SUPPORT_OPEN = 'teamcrm:support-open';
+
+export function openSupport(): void {
+  window.dispatchEvent(new Event(SUPPORT_OPEN));
+}
 
 /** Оценка: четыре лица вместо звёзд — на них отвечают, не задумываясь (ТЗ-8, разд. 31). */
 const FACES: { score: number; face: string; label: string }[] = [
@@ -51,7 +64,9 @@ export function SupportDock() {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [view, setView] = useState<'chat' | 'history'>('chat');
+  const [view, setView] = useState<'chat' | 'history' | 'queue'>('chat');
+  /** Очередь дежурного: кто ждёт ответа прямо сейчас. */
+  const [queue, setQueue] = useState<SupportQueueItem[]>([]);
   const [lowReason, setLowReason] = useState<number | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
 
@@ -67,6 +82,61 @@ export function SupportDock() {
 
   // Панель узнаёт о себе, только когда её открыли: фоновые запросы ради кнопки не нужны.
   useEffect(() => { if (open && !desk) void load(); }, [open, desk, load]);
+
+  // Позвали снаружи — из меню, командной строки или пустого экрана.
+  useEffect(() => {
+    const show = () => setOpen(true);
+    window.addEventListener(SUPPORT_OPEN, show);
+    return () => window.removeEventListener(SUPPORT_OPEN, show);
+  }, []);
+
+  /*
+    Очередь дежурного.
+
+    Обновляем при открытии вкладки и по событию: человек, которому ответили не сразу,
+    запоминает именно это ожидание — очередь не должна жить до перезагрузки страницы.
+  */
+  const loadQueue = useCallback(() => {
+    api.supportQueue().then(setQueue).catch(() => undefined);
+  }, []);
+  useEffect(() => { if (open && view === 'queue') loadQueue(); }, [open, view, loadQueue]);
+  useEffect(() => {
+    if (!desk?.isAgent) return undefined;
+    const socket = getSocket();
+    const onQueue = () => loadQueue();
+    socket.on('support.queue.changed', onQueue);
+    return () => { socket.off('support.queue.changed', onQueue); };
+  }, [desk?.isAgent, loadQueue]);
+
+  /** Взять разговор себе: человек сразу видит, кто ему отвечает. */
+  const takeConversation = async (id: string) => {
+    setBusy(true); setErr('');
+    try {
+      setConv(await api.supportJoin(id));
+      setView('chat');
+      loadQueue();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось взять разговор'); }
+    finally { setBusy(false); }
+  };
+
+  /** Ответ дежурного — в тот же разговор, что читает человек. */
+  const replyAsAgent = async () => {
+    const body = text.trim();
+    if (!conv || !body) return;
+    setBusy(true); setErr(''); setText('');
+    try { setConv(await api.supportReply(conv.id, body)); }
+    catch (e) { setText(body); setErr(e instanceof ApiError ? e.message : 'Не отправилось'); }
+    finally { setBusy(false); }
+  };
+
+  /** «Кажется, решено»: разговор уходит человеку на проверку, а не закрывается. */
+  const resolveAsAgent = async () => {
+    if (!conv) return;
+    setBusy(true);
+    try { setConv(await api.supportResolve(conv.id)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
+    finally { setBusy(false); }
+  };
 
   /*
     Живой разговор: ответ специалиста должен появляться сам.
@@ -154,7 +224,9 @@ export function SupportDock() {
   const online = desk?.team.filter((t) => t.online) ?? [];
   const agent = conv?.participants.find((p) => p.role === 'agent');
   /** Ждём ответа человека о результате — тогда лента уступает место вопросу. */
-  const asksResult = conv?.status === 'waiting_user';
+  const asksResult = conv?.status === 'waiting_user' && String(conv?.userId) === String(user?.id ?? '');
+  /** Чей разговор открыт: свой — пишем как человек, чужой — отвечаем как дежурный. */
+  const mineConversation = !conv || String(conv.userId) === String(user?.id ?? '');
   const ctx = describeContext(collectSupportContext());
 
   if (!user || user.role === 'client') return null;
@@ -190,6 +262,17 @@ export function SupportDock() {
                 {online.length > 0 && !agent && <span className="support-online"> · {online.length} на связи</span>}
               </span>
             </div>
+            {desk?.isAgent && (
+              <button
+                className={`msg-icon${view === 'queue' ? ' active' : ''}`}
+                onClick={() => setView(view === 'queue' ? 'chat' : 'queue')}
+                title="Очередь службы заботы"
+                aria-label="Очередь службы заботы"
+              >
+                <Icon name="inbox" size={15} />
+                {queue.some((q) => q.status === 'waiting_agent') && <span className="support-fab-dot" aria-hidden="true" />}
+              </button>
+            )}
             <button
               className={`msg-icon${view === 'history' ? ' active' : ''}`}
               onClick={() => setView(view === 'history' ? 'chat' : 'history')}
@@ -205,7 +288,30 @@ export function SupportDock() {
 
           {err && <div className="error-text support-err">{err}</div>}
 
-          {view === 'history' ? (
+          {view === 'queue' ? (
+            <div className="support-feed">
+              {!queue.length && <p className="dim support-empty">Сейчас никто не ждёт — тишина.</p>}
+              {queue.map((q) => (
+                <div key={q.id} className="support-history-row">
+                  <div className="support-history-head">
+                    <b>{q.subject || 'Обращение'}</b>
+                    <span className="dim">{stampLabel(q.waitingSince)}</span>
+                  </div>
+                  <div className="dim support-history-sub">
+                    {q.userName} · {q.statusText}
+                    {q.agentName ? ` · ведёт ${q.agentName}` : ''}
+                  </div>
+                  <button
+                    className={q.agentName ? 'btn btn-sm' : 'btn btn-primary btn-sm'}
+                    disabled={busy}
+                    onClick={() => void takeConversation(q.id)}
+                  >
+                    {q.agentName ? 'Открыть' : 'Взять себе'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : view === 'history' ? (
             <div className="support-feed">
               {!desk?.history.length && (
                 <p className="dim support-empty">Здесь появятся ваши прошлые обращения.</p>
@@ -326,9 +432,19 @@ export function SupportDock() {
                   rows={1}
                   placeholder="Что случилось?"
                   onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' || e.shiftKey) return;
+                    e.preventDefault();
+                    void (mineConversation ? send() : replyAsAgent());
+                  }}
                 />
-                <button className="chat-send" disabled={busy || !text.trim()} onClick={() => void send()} title="Отправить" aria-label="Отправить">
+                <button
+                  className="chat-send"
+                  disabled={busy || !text.trim()}
+                  onClick={() => void (mineConversation ? send() : replyAsAgent())}
+                  title="Отправить"
+                  aria-label="Отправить"
+                >
                   <Icon name="send" size={17} />
                 </button>
               </div>
@@ -338,9 +454,14 @@ export function SupportDock() {
                 <span className="dim support-ctx" title="Эти данные уйдут специалисту вместе с сообщением">
                   <Icon name="info" size={12} /> {ctx.join(' · ')}
                 </span>
-                {conv && !conv.agentId && conv.status !== 'closed' && (
+                {conv && mineConversation && !conv.agentId && conv.status !== 'closed' && (
                   <button className="btn btn-sm support-human" disabled={busy} onClick={() => void callHuman()}>
                     <Icon name="user" size={13} /> Позвать человека
+                  </button>
+                )}
+                {conv && !mineConversation && conv.status !== 'closed' && conv.status !== 'waiting_user' && (
+                  <button className="btn btn-sm support-human" disabled={busy} onClick={() => void resolveAsAgent()}>
+                    <Icon name="check" size={13} /> Кажется, решено
                   </button>
                 )}
               </footer>

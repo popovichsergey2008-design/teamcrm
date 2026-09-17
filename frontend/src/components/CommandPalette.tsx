@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
+import { openSupport } from './support/SupportDock';
 import { VoiceStatus } from './VoiceStatus';
 import { api } from '../lib/api';
 import { navigate, Route } from '../lib/router';
@@ -365,6 +366,24 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
           run: () => { navigate(r.path); onClose(); },
         });
       }
+    }
+
+    /*
+      Служба заботы — закреплённым пунктом сверху (ТЗ-8, разд. 3.2).
+
+      Человек, у которого что-то сломалось, жмёт Ctrl+K и пишет «поддержка»,
+      «помощь», «не работает» — и должен получить не список разделов, а живой
+      разговор. Поэтому пункт стоит первым и ловит все эти слова.
+    */
+    if (!query || /поддерж|помощ|не работ|сломал|ошибк|забот/i.test(query)) {
+      add({
+        key: 'support:open',
+        group: 'Служба заботы',
+        title: 'Написать в службу заботы',
+        hint: 'ответит помощник, при необходимости позовём специалиста',
+        icon: 'support',
+        run: () => { openSupport(); onClose(); },
+      });
     }
 
     // разделы — локально и всегда
