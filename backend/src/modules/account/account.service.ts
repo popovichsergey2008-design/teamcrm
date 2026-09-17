@@ -7,6 +7,7 @@ import { FilesService } from '../files/files.service';
 import { RefreshTokenRepository } from '../auth/refresh-token.repository';
 import { AccountsRepository } from '../auth/accounts.repository';
 import { VelocityService } from '../velocity/velocity.service';
+import { PlatformService } from '../platform/platform.service';
 
 @Injectable()
 export class AccountService {
@@ -17,6 +18,7 @@ export class AccountService {
     private readonly refresh: RefreshTokenRepository,
     private readonly accounts: AccountsRepository,
     private readonly velocity: VelocityService,
+    private readonly platform: PlatformService,
   ) {}
 
   async getMe(tenantId: string, userId: string) {
@@ -24,6 +26,16 @@ export class AccountService {
     if (!p) throw AppException.notFound('User not found');
     const groups = await this.groups.groupsForUser(tenantId, userId);
     const founderId = await this.users.founderId(tenantId);
+    /*
+      Техотдел платформы — отдельный признак, а не роль.
+
+      Консоль техподдержки продукта не должна появляться у владельца клиентской
+      организации: «owner» там означает хозяина компании, а не разработчика CRM.
+    */
+    const [platformStaff, platformAdmin] = await Promise.all([
+      this.platform.isStaff(userId),
+      this.platform.isAdmin(userId),
+    ]);
     return {
       id: p.id,
       // Клиенты и сделки — дело того, кто завёл компанию; приглашённым сотрудникам
@@ -53,6 +65,9 @@ export class AccountService {
       // день рождения: только день и месяц имеют значение, год никого не касается
       birthDate: p.birth_date ? String(p.birth_date).slice(0, 10) : null,
       groups,
+      /** Я из техотдела вендора: по этому фронт решает, показывать ли консоль. */
+      platformStaff,
+      platformAdmin,
     };
   }
 

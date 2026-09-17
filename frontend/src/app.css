@@ -4689,6 +4689,42 @@ button.chat-pop-row:hover { background: var(--hover); }
 .support-duty-name { flex: 1 1 auto; min-width: 0; }
 .support-hb { display: flex; flex-wrap: wrap; gap: 6px; }
 
+/*
+  Консоль техотдела: кабинет вендора внутри той же CRM.
+
+  Нарочно скромная: это рабочий экран для своих, а не витрина. Вкладками, потому что
+  разделы консоли не связаны между собой — очередь, люди, поломки, документация.
+*/
+.console-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 20px 10px; }
+.console-tab {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; cursor: pointer;
+  font: inherit; font-size: var(--fs-sm); color: var(--text-dim);
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 999px;
+}
+.console-tab:hover { border-color: var(--accent-line); color: var(--text); }
+.console-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.console-tab.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--text); }
+.console-badge {
+  min-width: 18px; padding: 0 5px; border-radius: 999px; text-align: center;
+  font-size: var(--fs-xs); background: var(--fill-info); color: var(--on-fill);
+}
+.console-org { color: var(--text); }
+.console-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.console-form .input { flex: 1 1 200px; min-width: 0; }
+.console-form .console-num { flex: 0 0 90px; }
+.console-table { display: flex; flex-direction: column; }
+.console-row {
+  display: grid; grid-template-columns: minmax(0, 2fr) 70px 110px minmax(0, 1fr);
+  gap: 8px; padding: 8px 10px; font-size: var(--fs-sm);
+  border-bottom: 1px solid var(--border);
+}
+.console-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console-row-head { color: var(--text-dim); font-size: var(--fs-xs); }
+@media (max-width: 640px) {
+  .console-row { grid-template-columns: minmax(0, 1fr) 60px; }
+  .console-row span:nth-child(n+3) { display: none; }
+}
+
 /* Инструменты специалиста в панели: диагностика, инженер, задача (ТЗ-8, разд. 17). */
 .support-tools {
   flex: 0 0 auto; margin: 0 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;

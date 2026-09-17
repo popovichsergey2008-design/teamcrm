@@ -278,7 +278,7 @@ export function SupportDock() {
     setBusy(true); setErr('');
     try {
       const small = await shrinkImage(file);
-      setConv(await api.supportAttach(small, text.trim()));
+      setConv(await api.supportAttach(small, text.trim(), mineConversation ? undefined : conv?.id));
       setText('');
       void load();
     } catch (e) {
@@ -507,8 +507,14 @@ export function SupportDock() {
                         <span className="dim support-msg-time">{stampLabel(m.createdAt)}</span>
                       </div>
                       {m.body && <MessageText text={m.body} className="support-msg-text" />}
+                      {/*
+                        Файл берём через ручку разговора, а не общую /files/:id.
+
+                        Снимок лежит в организации обратившегося: специалист вендора по
+                        общему адресу его не откроет, а по разговору — да.
+                      */}
                       {m.fileId && (
-                        <a className="support-file" href={`/api/files/${m.fileId}`} target="_blank" rel="noreferrer">
+                        <a className="support-file" href={`/api/support/desk/${conv?.id}/files/${m.fileId}`} target="_blank" rel="noreferrer">
                           <Icon name="paperclip" size={13} /> {m.fileName ?? 'файл'}
                         </a>
                       )}

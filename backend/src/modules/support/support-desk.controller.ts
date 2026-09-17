@@ -1,10 +1,11 @@
 import {
-  Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors,
+  Body, Controller, Get, Param, Post, Res, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import {
-  IsArray, IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min,
+  IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min,
 } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -98,18 +99,21 @@ class IncidentDto {
   @IsString() @MaxLength(4000) message!: string;
 }
 
-class AgentDto {
-  @IsString() userId!: string;
-  @IsBoolean() active!: boolean;
-  @IsOptional() @IsArray() @IsString({ each: true }) skills?: string[];
-}
-
 /**
  * Служба заботы (ТЗ-8).
  *
  * Обращение здесь — разговор, а не заявка: у ручек нет ни «темы», ни «категории»,
  * ни «номера обращения». Человек пишет, что случилось, — остальное система знает
  * сама из контекста.
+ *
+ * Две стороны у одних и тех же ручек. Клиент работает со СВОИМ обращением; техотдел
+ * вендора — с обращениями всех организаций, потому что поддержку продукта ведёт его
+ * разработчик. Поэтому перед каждой ручкой с номером разговора спрашиваем
+ * `deskTenant`: она отдаёт организацию разговора людям техотдела и собственную —
+ * всем остальным, для которых чужого обращения просто не существует.
+ *
+ * Управляющие ручки (очередь, сводка, известные проблемы, сбой, справочник) проверяют
+ * принадлежность к техотделу внутри сервиса: клиенту их не видно вовсе.
  */
 @ApiTags('support-desk')
 @ApiBearerAuth()
@@ -137,8 +141,8 @@ export class SupportDeskController {
   }
 
   @Get(':id')
-  conversation(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.desk.conversation(u.tenantId, u, id);
+  async conversation(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.conversation(await this.desk.deskTenant(u, id), u, id);
   }
 
   /** Написать в поддержку. Разговор заводится сам — анкеты здесь нет. */
@@ -154,41 +158,44 @@ export class SupportDeskController {
   attach(
     @CurrentUser() u: AuthUser,
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: { text?: string },
+    @Body() body: { text?: string; conversationId?: string },
   ) {
     if (!file) throw AppException.validation('Файл не приложен');
-    return this.desk.attach(u.tenantId, u, file, String(body?.text ?? '').slice(0, 8000));
+    return this.desk.attach(
+      u.tenantId, u, file, String(body?.text ?? '').slice(0, 8000),
+      body?.conversationId ? String(body.conversationId) : null,
+    );
   }
 
   /** «Позвать человека» — доступно всегда, без повторной анкеты. */
   @Post(':id/human')
-  human(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.desk.callHuman(u.tenantId, u, id);
+  async human(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.callHuman(await this.desk.deskTenant(u, id), u, id);
   }
 
   /** Специалист берёт разговор. */
   @Post(':id/join')
-  join(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.desk.join(u.tenantId, u, id);
+  async join(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.join(await this.desk.deskTenant(u, id), u, id);
   }
 
   /** Ответ специалиста. */
   @Post(':id/reply')
-  reply(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ReplyDto) {
-    return this.desk.reply(u.tenantId, u, id, dto.text);
+  async reply(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ReplyDto) {
+    return this.desk.reply(await this.desk.deskTenant(u, id), u, id, dto.text);
   }
 
   /** «Кажется, решено»: разговор ждёт проверки человеком, а не закрывается. */
   @Post(':id/resolve')
-  resolve(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ResolveDto) {
-    return this.desk.resolve(u.tenantId, u, id, dto.text);
+  async resolve(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ResolveDto) {
+    return this.desk.resolve(await this.desk.deskTenant(u, id), u, id, dto.text);
   }
 
   /** Слово человека: закрыть с оценкой или вернуть в работу. */
   /** «Вопрос снят»: человек закрывает свой разговор сам, не дожидаясь ответа. */
   @Post(':id/close')
-  close(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CloseDto) {
-    return this.desk.closeByUser(u.tenantId, u, id, dto.csat ?? null);
+  async close(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CloseDto) {
+    return this.desk.closeByUser(await this.desk.deskTenant(u, id), u, id, dto.csat ?? null);
   }
 
   @Post(':id/confirm')
@@ -204,26 +211,50 @@ export class SupportDeskController {
 
   /** Подключить инженера: он приходит в тот же разговор и видит его целиком. */
   @Post(':id/engineer')
-  engineer(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: EngineerDto) {
-    return this.desk.addEngineer(u.tenantId, u, id, dto.userId);
+  async engineer(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: EngineerDto) {
+    return this.desk.addEngineer(await this.desk.deskTenant(u, id), u, id, dto.userId);
   }
 
   /** Завести баг из разговора: контекст уезжает в задачу сам. */
   @Post(':id/bug')
-  bug(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: BugDto) {
-    return this.desk.createBug(u.tenantId, u, id, dto.title);
+  async bug(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: BugDto) {
+    return this.desk.createBug(await this.desk.deskTenant(u, id), u, id, dto.title);
   }
 
   /** Созвон из поддержки: комнату создаёт обычный созвон, здесь — пометка о разговоре. */
   @Post(':id/huddle')
-  huddle(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: HuddleDto) {
-    return this.desk.startHuddle(u.tenantId, u, id, dto.roomId);
+  async huddle(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: HuddleDto) {
+    return this.desk.startHuddle(await this.desk.deskTenant(u, id), u, id, dto.roomId);
   }
 
   /** Диагностика для специалиста: контекст, заведённые баги и время ответов. */
   @Get(':id/diagnostics')
-  diagnostics(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.desk.diagnostics(u.tenantId, u, id);
+  async diagnostics(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.diagnostics(await this.desk.deskTenant(u, id), u, id);
+  }
+
+  /**
+   * Файл из разговора.
+   *
+   * Своя ручка, а не общая `/files/:id`: снимок экрана лежит в организации
+   * обратившегося, а открыть его должен и он сам, и специалист вендора. Право даёт
+   * разговор — чужой файл по этому адресу не достать.
+   */
+  @Get(':id/files/:fileId')
+  async file(
+    @CurrentUser() u: AuthUser, @Param('id') id: string,
+    @Param('fileId') fileId: string, @Res() res: Response,
+  ) {
+    const { file, stream } = await this.desk.fileOf(u, id, fileId);
+    const inline = file.content_type.startsWith('image/') || file.content_type === 'application/pdf';
+    res.setHeader('Content-Type', file.content_type);
+    res.setHeader('Content-Length', file.size_bytes);
+    res.setHeader(
+      'Content-Disposition',
+      `${inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(file.file_name)}"`,
+    );
+    stream.on('error', () => res.destroy());
+    stream.pipe(res);
   }
 
   /*
@@ -233,30 +264,30 @@ export class SupportDeskController {
     разрешил, не происходит ничего: в базе лежит предложение с подписью.
   */
   @Post(':id/actions')
-  propose(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ActionDto) {
-    return this.desk.proposeAction(u.tenantId, u, id, {
+  async propose(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ActionDto) {
+    return this.desk.proposeAction(await this.desk.deskTenant(u, id), u, id, {
       kind: dto.kind as never, entityId: dto.entityId, value: dto.value ?? null,
     });
   }
 
   @Post(':id/actions/:actionId')
-  decide(
+  async decide(
     @CurrentUser() u: AuthUser, @Param('id') id: string,
     @Param('actionId') actionId: string, @Body() dto: DecideActionDto,
   ) {
-    return this.desk.decideAction(u.tenantId, u, id, actionId, dto.allow);
+    return this.desk.decideAction(await this.desk.deskTenant(u, id), u, id, actionId, dto.allow);
   }
 
   /** Вернуть как было — там, где это осмысленно. */
   @Post(':id/actions/:actionId/undo')
-  undo(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('actionId') actionId: string) {
-    return this.desk.undoAction(u.tenantId, u, id, actionId);
+  async undo(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('actionId') actionId: string) {
+    return this.desk.undoAction(await this.desk.deskTenant(u, id), u, id, actionId);
   }
 
   /** Копилот дежурного: суть, что проверить, что сказать человеку. */
   @Post(':id/copilot')
-  copilot(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.desk.copilot(u.tenantId, u, id);
+  async copilot(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.copilot(await this.desk.deskTenant(u, id), u, id);
   }
 
   /** Известные проблемы: список, пометка задачи, включение и выключение. */
@@ -286,36 +317,15 @@ export class SupportDeskController {
     return this.desk.resolveIncident(u.tenantId, u, incidentId);
   }
 
-  /** Что знает помощник: разделы справочника и дата загрузки. */
+  /** Что знает помощник: разделы справочника и дата загрузки (техотделу). */
   @Get('handbook/state')
   handbook(@CurrentUser() u: AuthUser) {
-    return this.desk.handbookState(u.tenantId);
+    return this.desk.handbookState(u.tenantId, u);
   }
 
-  /** Загрузить справочник в базу знаний — право руководства. */
+  /** Обновить справочник во всех организациях — право техотдела. */
   @Post('handbook/load')
-  @Roles('owner', 'manager')
   loadHandbook(@CurrentUser() u: AuthUser) {
     return this.desk.loadHandbook(u.tenantId, u);
-  }
-
-  /** Вся команда с отметкой «дежурит» — чтобы было из кого выбирать. */
-  @Get('team/picker')
-  @Roles('owner', 'manager')
-  teamPicker(@CurrentUser() u: AuthUser) {
-    return this.desk.teamPicker(u.tenantId, u);
-  }
-
-  /** Кто дежурит. */
-  @Get('team/list')
-  team(@CurrentUser() u: AuthUser) {
-    return this.desk.team(u.tenantId);
-  }
-
-  /** Назначить или снять дежурного — право руководства. */
-  @Post('team')
-  @Roles('owner', 'manager')
-  setAgent(@CurrentUser() u: AuthUser, @Body() dto: AgentDto) {
-    return this.desk.setAgent(u.tenantId, u, dto.userId, dto.active, dto.skills ?? []);
   }
 }

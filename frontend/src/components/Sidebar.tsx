@@ -38,6 +38,8 @@ type Item = {
   hint: string;
   /** роли, которым пункт виден; пусто — виден всем */
   roles?: Role[];
+  /** пункт только для техотдела вендора: клиенту такого раздела не существует */
+  platformOnly?: boolean;
   subs?: { label: string; icon: IconName; route: Route; roles?: Role[] }[];
 };
 
@@ -142,6 +144,21 @@ const MENU: Item[] = [
     icon: 'support',
     hint: 'Живой разговор: ответит помощник, при необходимости позовём специалиста',
   },
+  {
+    /*
+      Консоль техподдержки продукта — только техотделу вендора.
+
+      Строка появляется по признаку `platformStaff`, а не по роли: «owner» — это
+      хозяин компании-клиента, а не разработчик CRM, и настройки нашей службы
+      заботы ему не принадлежат. Клиенту раздела не существует: ни строки в меню,
+      ни доступа к ручкам за ней.
+    */
+    section: 'console',
+    label: 'Консоль',
+    icon: 'lock',
+    hint: 'Кабинет техотдела: обращения клиентов, дежурные, известные проблемы, справочник',
+    platformOnly: true,
+  },
 ];
 
 const visible = (roles: Role[] | undefined, role: Role) => !roles || roles.includes(role);
@@ -164,7 +181,7 @@ export function Sidebar({
   onSwitchOrg, onSearch, onJoinCall, onOpenSecretary, onHoverSection, onLogout,
 }: {
   route: Route;
-  user: { id: string; role: string; fullName: string; tenantId: string; uiPrefs?: MenuPrefs };
+  user: { id: string; role: string; fullName: string; tenantId: string; platformStaff?: boolean; uiPrefs?: MenuPrefs };
   organizations: { tenantId: string; name: string; role: string }[];
   avatarPath: string | null;
   unread: number;
@@ -210,7 +227,7 @@ export function Sidebar({
   const [dragged, setDragged] = useState<string | null>(null);
   useEffect(() => { setPrefs(user.uiPrefs ?? {}); }, [user.uiPrefs]);
 
-  const allowed = MENU.filter((i) => visible(i.roles, user.role));
+  const allowed = MENU.filter((i) => visible(i.roles, user.role) && (!i.platformOnly || user.platformStaff));
   const ordered = applyOrder(allowed, prefs);
   // В режиме настройки показываем и спрятанное — иначе вернуть его будет неоткуда.
   const menuItems = tuning ? ordered : applyHidden(ordered, prefs);

@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/http/all-exceptions.filter';
 import { ResponseInterceptor } from '../src/common/http/response.interceptor';
 import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
+import { PlatformService } from '../src/modules/platform/platform.service';
 
 /**
  * Служба заботы (ТЗ-8, MVP 1).
@@ -18,6 +19,7 @@ import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
 describe('служба заботы (e2e)', () => {
   let app: INestApplication;
   let http: any;
+  let platform: PlatformService;
   const uniq = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
   const H = (t: string) => ({ Authorization: `Bearer ${t}` });
 
@@ -31,6 +33,7 @@ describe('служба заботы (e2e)', () => {
     app.useWebSocketAdapter(new RedisIoAdapter(app));
     await app.listen(0, '0.0.0.0');
     http = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
+    platform = app.get(PlatformService);
   });
   afterAll(async () => { await app?.close(); });
 
@@ -251,36 +254,20 @@ describe('служба заботы (e2e)', () => {
     await http.get('/api/support/desk/dashboard').set(M).expect(403);
   }, 30000);
 
-  it('дежурного назначают галочкой, справочник уезжает в базу знаний', async () => {
-    const { O, M, mate } = await team('SD6');
-
-    // выбирать дежурного есть из кого: вся команда с отметкой
-    const picker = (await http.get('/api/support/desk/team/picker').set(O).expect(200)).body.data;
-    expect(picker.some((p: any) => String(p.userId) === String(mate.id))).toBe(true);
-    expect(picker.every((p: any) => p.onDuty === false)).toBe(true);
-    // сотруднику назначать дежурных не положено
-    await http.get('/api/support/desk/team/picker').set(M).expect(403);
-
-    // назначили — и человек стал дежурным: видит очередь
-    await http.post('/api/support/desk/team').set(O)
-      .send({ userId: String(mate.id), active: true, skills: ['доски'] }).expect(201);
-    const team2 = (await http.get('/api/support/desk/team/list').set(O).expect(200)).body.data;
-    expect(team2.some((t: any) => String(t.userId) === String(mate.id))).toBe(true);
-    await http.get('/api/support/desk/queue').set(M).expect(200);
-
-    // сняли — очередь снова не его дело
-    await http.post('/api/support/desk/team').set(O)
-      .send({ userId: String(mate.id), active: false }).expect(201);
+  it('справочник уезжает в базу знаний и не правится руками клиента', async () => {
+    const { O, M } = await team('SD6');
 
     /*
       Справочник по системе — то, из чего отвечает помощник.
 
       Проверяем обещание, а не факт записи: разделы видно, повторная загрузка не
-      плодит копии, а сотрудник справочник не загружает.
+      плодит копии, а клиент не может ни загрузить его, ни переписать у себя.
     */
-    const before = (await http.get('/api/support/desk/handbook/state').set(M).expect(200)).body.data;
+    const before = (await http.get('/api/support/desk/handbook/state').set(O).expect(200)).body.data;
     expect(before.sections.length).toBeGreaterThan(0);
     expect(before.loadedAt).toBeNull();
+    // сотруднику эта кухня не показывается вовсе
+    await http.get('/api/support/desk/handbook/state').set(M).expect(403);
 
     const loaded = (await http.post('/api/support/desk/handbook/load').set(O).expect(201)).body.data;
     expect(loaded.added).toBe(before.sections.length);
@@ -294,7 +281,83 @@ describe('служба заботы (e2e)', () => {
     expect(again.unchanged).toBe(before.sections.length);
 
     await http.post('/api/support/desk/handbook/load').set(M).expect(403);
+
+    // в базе знаний он системный: правка и удаление запрещены — выкладка всё равно затрёт
+    const regs = (await http.get('/api/regulations').set(O).expect(200)).body.data;
+    const sys = regs.find((r: any) => String(r.title).startsWith('Справочник TeamCRM'));
+    expect(sys).toBeTruthy();
+    expect(sys.is_system).toBe(true);
+    await http.put(`/api/regulations/${sys.id}`).set(O)
+      .send({ title: sys.title, body: 'моя версия' }).expect(403);
+    await http.delete(`/api/regulations/${sys.id}`).set(O).expect(403);
   }, 60000);
+
+  /*
+    Служба заботы — вендорская.
+
+    Главное обещание этой части: настройки поддержки принадлежат разработчику
+    продукта, а клиент их не видит и не трогает. Проверяем обе стороны — что техотдел
+    работает с обращениями всех организаций и что чужой клиент к ним не подступится.
+  */
+  it('поддержку ведёт техотдел вендора: очередь по всем клиентам, клиенту кухня не видна', async () => {
+    const vendor = await team('SDV');
+    const client = await team('SDC');
+    // Организация вендора: отсюда и дальше поддержку ведёт она.
+    await platform.declarePlatform(String(vendor.owner.user.tenantId), String(vendor.owner.user.id));
+
+    try {
+      // клиент пишет — и обращение попадает в очередь ТЕХОТДЕЛА, а не своей компании
+      const conv = (await http.post('/api/support/desk/messages').set(client.M)
+        .send({ text: 'Позовите специалиста: не открывается доска' }).expect(201)).body.data;
+
+      const queue = (await http.get('/api/support/desk/queue').set(vendor.O).expect(200)).body.data;
+      const row = queue.find((q: any) => String(q.id) === String(conv.id));
+      expect(row).toBeTruthy();
+      expect(row.orgName).toBeTruthy(); // видно, У КОГО сломалось
+
+      // владелец клиентской организации кухни поддержки больше не видит
+      await http.get('/api/support/desk/queue').set(client.O).expect(403);
+      await http.get('/api/support/desk/dashboard').set(client.O).expect(403);
+      await http.get('/api/support/desk/known/list').set(client.O).expect(403);
+      await http.post('/api/support/desk/incident').set(client.O)
+        .send({ title: 'Тест', message: 'Тест' }).expect(403);
+
+      // техотдел открывает чужое обращение и отвечает в него
+      const seen = (await http.get(`/api/support/desk/${conv.id}`).set(vendor.O).expect(200)).body.data;
+      expect(String(seen.id)).toBe(String(conv.id));
+      await http.post(`/api/support/desk/${conv.id}/join`).set(vendor.O).expect(201);
+      const answered = (await http.post(`/api/support/desk/${conv.id}/reply`).set(vendor.O)
+        .send({ text: 'Смотрим, вернусь через пару минут' }).expect(201)).body.data;
+      expect(answered.messages.some((m: any) => m.body.includes('Смотрим'))).toBe(true);
+
+      // а посторонняя организация — нет: чужое обращение для неё не существует
+      const stranger = await team('SDX');
+      await http.get(`/api/support/desk/${conv.id}`).set(stranger.O).expect(404);
+
+      // закрыть его по-прежнему может только тот, кто обратился
+      await http.post(`/api/support/desk/${conv.id}/close`).set(vendor.O).send({}).expect(403);
+      const closed = (await http.post(`/api/support/desk/${conv.id}/close`).set(client.M)
+        .send({}).expect(201)).body.data;
+      expect(closed.status).toBe('closed');
+
+      // состав техотдела виден только ему, и берут в него лишь своих
+      const staff = (await http.get('/api/platform/staff').set(vendor.O).expect(200)).body.data;
+      expect(staff.length).toBeGreaterThanOrEqual(1);
+      await http.get('/api/platform/staff').set(client.O).expect(403);
+      await http.post('/api/platform/staff').set(vendor.O)
+        .send({ userId: String(client.mate.id), active: true }).expect(400);
+      await http.post('/api/platform/staff').set(vendor.O)
+        .send({ userId: String(vendor.mate.id), active: true }).expect(201);
+
+      // организации-клиенты видны техотделу счётчиками, без единой строки содержимого
+      const orgs = (await http.get('/api/platform/tenants').set(vendor.O).expect(200)).body.data;
+      expect(Array.isArray(orgs)).toBe(true);
+      await http.get('/api/platform/tenants').set(client.O).expect(403);
+    } finally {
+      // возвращаем систему в прежний вид: платформа — общая на всю базу
+      await platform.clearPlatform();
+    }
+  }, 90000);
 
   it('«вопрос снят»: человек закрывает свой разговор сам', async () => {
     const { M, O } = await team('SD7');

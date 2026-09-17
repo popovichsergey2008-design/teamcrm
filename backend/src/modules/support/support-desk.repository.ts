@@ -83,6 +83,19 @@ export class SupportDeskRepository {
     );
   }
 
+  /**
+   * Разговор по номеру без привязки к организации.
+   *
+   * Нужен ровно для одного: служба заботы вендора отвечает КЛИЕНТАМ, а значит
+   * работает в чужой организации. Права проверяются выше (только техотдел), здесь —
+   * просто «в какой организации живёт это обращение».
+   */
+  byIdAny(id: string): Promise<ConversationRow | null> {
+    return this.db.one<ConversationRow>(
+      `SELECT * FROM support_conversations WHERE id=$1`, [id],
+    );
+  }
+
   create(tenantId: string, userId: string, subject: string): Promise<ConversationRow | null> {
     return this.db.one<ConversationRow>(
       `INSERT INTO support_conversations (tenant_id, user_id, subject, status)
@@ -104,15 +117,25 @@ export class SupportDeskRepository {
     );
   }
 
-  /** Очередь дежурного: кто ждёт и с чем. */
-  queue(tenantId: string) {
-    return this.db.many<ConversationRow & { user_name: string; agent_name: string | null; last_at: Date | null }>(
-      `SELECT c.*, u.full_name AS user_name, a.full_name AS agent_name,
+  /**
+   * Очередь дежурного: кто ждёт и с чем.
+   *
+   * `tenantId = null` — очередь по ВСЕМ организациям: так её видит техотдел вендора.
+   * Название организации идёт рядом с именем человека: без него специалист не
+   * понимает, у кого именно сломалось.
+   */
+  queue(tenantId: string | null) {
+    return this.db.many<ConversationRow & {
+      user_name: string; agent_name: string | null; last_at: Date | null; tenant_name: string;
+    }>(
+      `SELECT c.*, u.full_name AS user_name, a.full_name AS agent_name, t.name AS tenant_name,
               (SELECT MAX(m.created_at) FROM support_messages m WHERE m.conversation_id = c.id) AS last_at
          FROM support_conversations c
          JOIN users u ON u.id = c.user_id
+         JOIN tenants t ON t.id = c.tenant_id
          LEFT JOIN users a ON a.id = c.assigned_agent_id
-        WHERE c.tenant_id=$1 AND c.closed_at IS NULL AND c.status <> 'ai'
+        WHERE ($1::bigint IS NULL OR c.tenant_id = $1::bigint)
+          AND c.closed_at IS NULL AND c.status <> 'ai'
         ORDER BY (c.status = 'waiting_agent') DESC, c.priority = 'critical' DESC, c.created_at`,
       [tenantId],
     );
@@ -200,6 +223,15 @@ export class SupportDeskRepository {
         ORDER BY m.created_at`,
       [conversationId],
     );
+  }
+
+  /** Приложен ли файл к сообщению этого разговора: право на файл даёт только разговор. */
+  async hasFile(conversationId: string, fileId: string): Promise<boolean> {
+    const row = await this.db.one<{ id: string }>(
+      `SELECT id::text FROM support_messages WHERE conversation_id=$1 AND file_id=$2 LIMIT 1`,
+      [conversationId, fileId],
+    );
+    return !!row;
   }
 
   // ── участники ──
@@ -373,29 +405,28 @@ export class SupportDeskRepository {
     );
   }
 
-  /** Кому рассказать о сбое: все, у кого сейчас открыт разговор. */
-  liveConversations(tenantId: string) {
-    return this.db.many<{ id: string; user_id: string }>(
-      `SELECT id::text, user_id::text FROM support_conversations
-        WHERE tenant_id=$1 AND closed_at IS NULL`,
+  /**
+   * Кому рассказать о сбое: все, у кого сейчас открыт разговор.
+   *
+   * `tenantId = null` — по всем организациям: авария у вендора касается всех клиентов
+   * сразу, а не той организации, из которой её заметили.
+   */
+  liveConversations(tenantId: string | null) {
+    return this.db.many<{ id: string; tenant_id: string; user_id: string }>(
+      `SELECT id::text, tenant_id::text, user_id::text FROM support_conversations
+        WHERE ($1::bigint IS NULL OR tenant_id = $1::bigint) AND closed_at IS NULL`,
       [tenantId],
     );
   }
 
   // ── дежурные ──
-  /** Все сотрудники: из них руководство и выбирает дежурных. */
-  staff(tenantId: string) {
-    return this.db.many<{ id: string; full_name: string; position: string | null }>(
-      `SELECT u.id::text, u.full_name, p.name AS position
-         FROM users u
-         JOIN roles r ON r.id = u.role_id
-         LEFT JOIN positions p ON p.id = u.position_id
-        WHERE u.tenant_id=$1 AND u.is_active AND r.code <> 'client'
-        ORDER BY u.full_name`,
-      [tenantId],
-    );
-  }
-
+  /**
+   * Дежурные организации — ЗАПАСНОЙ путь, пока платформа не назначена.
+   *
+   * В обычной жизни на обращения отвечает техотдел вендора (platform_staff), и эта
+   * таблица не используется. Руками её больше никто не заполняет: настройка службы
+   * заботы клиенту не принадлежит.
+   */
   agents(tenantId: string) {
     return this.db.many<{ user_id: string; full_name: string; skills: string[]; last_seen_at: Date | null; presence_status: string | null }>(
       `SELECT a.user_id::text, u.full_name, a.skills, u.last_seen_at, u.presence_status
@@ -406,19 +437,18 @@ export class SupportDeskRepository {
     );
   }
 
-  async setAgent(tenantId: string, userId: string, active: boolean, skills: string[]): Promise<void> {
-    await this.db.query(
-      `INSERT INTO support_agents (tenant_id, user_id, active, skills)
-       VALUES ($1,$2,$3,$4)
-       ON CONFLICT (tenant_id, user_id) DO UPDATE SET active=EXCLUDED.active, skills=EXCLUDED.skills`,
-      [tenantId, userId, active, skills],
-    );
-  }
-
   /** Имя сотрудника: подставляется в системные строки разговора. */
   async userName(tenantId: string, userId: string): Promise<string | null> {
     const row = await this.db.one<{ full_name: string }>(
       `SELECT full_name FROM users WHERE tenant_id=$1 AND id=$2 AND is_active`, [tenantId, userId],
+    );
+    return row?.full_name ?? null;
+  }
+
+  /** То же, но про человека из другой организации: инженер вендора в чужом обращении. */
+  async userNameAny(userId: string): Promise<string | null> {
+    const row = await this.db.one<{ full_name: string }>(
+      `SELECT full_name FROM users WHERE id=$1 AND is_active`, [userId],
     );
     return row?.full_name ?? null;
   }
@@ -498,7 +528,7 @@ export class SupportDeskRepository {
    * а ответ на вопрос «как мы работаем сейчас». Медиану считаем, а не среднее —
    * один ночной разговор не должен рисовать несуществующую картину.
    */
-  dashboard(tenantId: string) {
+  dashboard(tenantId: string | null) {
     return this.db.one<{
       total: string; active: string; waiting: string; resolved: string;
       first_median: string | null; resolution_median: string | null;
@@ -506,7 +536,8 @@ export class SupportDeskRepository {
     }>(
       `WITH win AS (
          SELECT * FROM support_conversations
-          WHERE tenant_id=$1 AND created_at > now() - interval '30 days'
+          WHERE ($1::bigint IS NULL OR tenant_id = $1::bigint)
+            AND created_at > now() - interval '30 days'
        )
        SELECT COUNT(*)::text AS total,
               COUNT(*) FILTER (WHERE closed_at IS NULL)::text AS active,
@@ -534,13 +565,14 @@ export class SupportDeskRepository {
    * Медиана за две недели: среднее задирает один ночной разговор, а обещать по нему
    * нельзя — человек ждёт «двадцать секунд» и злится на третьей минуте.
    */
-  async medianFirstResponse(tenantId: string): Promise<number | null> {
+  async medianFirstResponse(tenantId: string | null): Promise<number | null> {
     const row = await this.db.one<{ sec: string | null }>(
       `SELECT percentile_cont(0.5) WITHIN GROUP (
                 ORDER BY EXTRACT(EPOCH FROM (first_response_at - created_at))
               )::text AS sec
          FROM support_conversations
-        WHERE tenant_id=$1 AND first_response_at IS NOT NULL
+        WHERE ($1::bigint IS NULL OR tenant_id = $1::bigint)
+          AND first_response_at IS NOT NULL
           AND created_at > now() - interval '14 days'`,
       [tenantId],
     );

@@ -7,6 +7,14 @@ export interface User {
   fullName: string;
   role: RoleCode;
   isActive: boolean;
+  /**
+   * Я из техотдела вендора: вижу консоль техподдержки продукта.
+   *
+   * Отдельный признак, а не роль: «owner» — хозяин клиентской компании, а не
+   * разработчик CRM, и консоль ему не принадлежит.
+   */
+  platformStaff?: boolean;
+  platformAdmin?: boolean;
   /** Отделы и группы человека. Приходят из GET /users; в токене авторизации их нет. */
   groups?: { id: string; name: string; kind: string }[];
   /** Путь к аватару (`/api/files/:id`) — файл лежит за авторизацией, тянется через Avatar. */
@@ -310,7 +318,7 @@ export interface SupportConversation {
   messages: SupportMessage[];
 }
 
-/** Раздел справочника: загружен ли в базу знаний и не отстал ли от системы. */
+/** Раздел справочника продукта: загружен ли в базу знаний и не отстал ли от системы. */
 export interface SupportHandbookSection {
   title: string;
   chars: number;
@@ -322,16 +330,6 @@ export interface SupportHandbook {
   sections: SupportHandbookSection[];
   loadedAt: string | null;
   stale: boolean;
-}
-
-/** Сотрудник в списке выбора дежурных. */
-export interface SupportTeamMember {
-  userId: string;
-  name: string;
-  position: string | null;
-  onDuty: boolean;
-  skills: string[];
-  online: boolean;
 }
 
 export interface SupportDesk {
@@ -351,8 +349,28 @@ export interface SupportDesk {
 
 export interface SupportQueueItem {
   id: string; subject: string; status: string; statusText: string;
-  userName: string; agentName: string | null; waitingSince: string;
+  userName: string;
+  /** Организация обратившегося: очередь техотдела общая на всех клиентов. */
+  orgName?: string;
+  agentName: string | null; waitingSince: string;
   lastAt: string | null; priority: string;
+}
+
+/** Сотрудник техотдела вендора. */
+export interface PlatformStaff {
+  userId: string; name: string; role: string; onDuty: boolean; skills: string[];
+}
+
+/** Кандидат в техотдел — сотрудник организации-платформы. */
+export interface PlatformCandidate {
+  userId: string; name: string; position: string | null;
+  inStaff: boolean; role: string | null; onDuty: boolean;
+}
+
+/** Организация-клиент в консоли: только счётчики, без содержимого. */
+export interface PlatformTenant {
+  id: string; name: string; people: number; openConversations: number;
+  lastSeenAt: string | null; createdAt: string;
 }
 
 /** Безопасный технический контекст: только то, что видно на экране (разд. 15–16). */

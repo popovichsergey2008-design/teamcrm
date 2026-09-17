@@ -18,6 +18,7 @@ import { TenantsModule } from './modules/tenants/tenants.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { SupportModule } from './modules/support/support.module';
+import { PlatformModule } from './modules/platform/platform.module';
 import { AnthillModule } from './modules/anthill/anthill.module';
 import { DealsModule } from './modules/deals/deals.module';
 import { BoardModule } from './modules/board/board.module';
@@ -81,6 +82,7 @@ import { FeedModule } from './modules/feed/feed.module';
     AuthModule,
     UsersModule,
     TenantsModule,
+    PlatformModule,
     ProjectsModule,
     TasksModule,
     SupportModule,

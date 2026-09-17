@@ -14,6 +14,7 @@ import { FocusPage } from './pages/FocusPage';
 import { MeetingsPage } from './pages/MeetingsPage';
 import { RadarPage } from './pages/RadarPage';
 import { SupportPage } from './pages/SupportPage';
+import { ConsolePage } from './pages/ConsolePage';
 import { TasksPage } from './pages/TasksPage';
 import { toScope } from './lib/task-registry-view';
 import { SettingsPage } from './pages/SettingsPage';
@@ -429,6 +430,13 @@ export function App() {
         {route.section === 'support' && (
           <SupportPage />
         )}
+        {/*
+          Консоль техотдела вендора.
+
+          Проверка здесь — чтобы клиент не увидел пустой каркас, набрав адрес руками;
+          настоящая защита на сервере: каждая ручка консоли спрашивает техотдел.
+        */}
+        {route.section === 'console' && user.platformStaff && <ConsolePage route={route} />}
         {route.section === 'settings' && <SettingsPage route={route} role={user.role} />}
         {route.section === 'profile' && (
           <ProfilePanel onClose={() => navigate({ section: 'settings' })} onAvatar={setAvatarPath} />

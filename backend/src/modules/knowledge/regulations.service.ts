@@ -14,9 +14,27 @@ export class RegulationsService {
 
   list(tenantId: string) {
     return this.db.many(
-      `SELECT id, title, left(body, 200) AS excerpt, updated_at FROM regulations WHERE tenant_id=$1 ORDER BY updated_at DESC`,
+      `SELECT id, title, left(body, 200) AS excerpt, updated_at, is_system
+         FROM regulations WHERE tenant_id=$1 ORDER BY is_system, updated_at DESC`,
       [tenantId],
     );
+  }
+
+  /**
+   * Системный документ — справочник по продукту.
+   *
+   * Он приезжает вместе с системой и обновляется выкладкой, поэтому править и удалять
+   * его в своей организации нельзя: правки всё равно затрёт следующая выкладка, а
+   * человек будет уверен, что исправил.
+   */
+  private async assertOwnDocument(tenantId: string, id: string): Promise<void> {
+    const row = await this.db.one<{ is_system: boolean }>(
+      `SELECT is_system FROM regulations WHERE tenant_id=$1 AND id=$2`, [tenantId, id],
+    );
+    if (!row) throw AppException.notFound('Регламент не найден');
+    if (row.is_system) {
+      throw AppException.forbidden('Это справочник по системе — он обновляется вместе с CRM');
+    }
   }
 
   get(tenantId: string, id: string) {
@@ -33,6 +51,7 @@ export class RegulationsService {
   }
 
   async update(tenantId: string, id: string, title: string, body: string) {
+    await this.assertOwnDocument(tenantId, id);
     const row = await this.db.one(
       `UPDATE regulations SET title=$3, body=$4, updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING id`,
       [tenantId, id, title.trim(), body],
@@ -43,8 +62,7 @@ export class RegulationsService {
   }
 
   async remove(tenantId: string, id: string) {
-    const row = await this.db.one(`SELECT id FROM regulations WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
-    if (!row) throw AppException.notFound('Регламент не найден');
+    await this.assertOwnDocument(tenantId, id);
     await this.kRepo.deleteBySource(tenantId, 'regulation', id);
     await this.db.query(`DELETE FROM regulations WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
     return { deleted: true };

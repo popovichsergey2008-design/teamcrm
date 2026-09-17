@@ -1,7 +1,8 @@
 import type {
   Agenda, AiAction, Approval, AssistantMode, AuthResult, Board, Focus, GateSettings, Ping,
   Project, Proposal, SearchResults, SemanticHit, SupportContextInput, SupportConversation,
-  SupportDesk, SupportHandbook, SupportQueueItem, SupportTeamMember, Task,
+  PlatformCandidate, PlatformStaff, PlatformTenant,
+  SupportDesk, SupportHandbook, SupportQueueItem, Task,
 } from '../types';
 
 const ACCESS_KEY = 'teamcrm.access';
@@ -1121,10 +1122,12 @@ export const api = {
   supportResolve: (id: string, text?: string) =>
     request<SupportConversation>('POST', `/support/desk/${id}/resolve`, { text }),
   /** Снимок экрана к обращению: его присылают вместо тысячи слов. */
-  supportAttach: async (file: File, text: string) => {
+  supportAttach: async (file: File, text: string, conversationId?: string) => {
     const fd = new FormData();
     fd.append('file', file);
     if (text) fd.append('text', text);
+    // Специалист прикладывает файл в чужой разговор — он должен лечь туда же.
+    if (conversationId) fd.append('conversationId', conversationId);
     const res = await fetch('/api/support/desk/messages/file', {
       method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
     });
@@ -1195,13 +1198,18 @@ export const api = {
     request<SupportHandbook & { added: number; updated: number; total: number }>(
       'POST', '/support/desk/handbook/load', {},
     ),
-  /** Вся команда с отметкой «дежурит» — из кого выбирать дежурных. */
-  supportTeamPicker: () => request<SupportTeamMember[]>('GET', '/support/desk/team/picker'),
-  /** Назначить или снять дежурного. */
-  supportSetAgent: (userId: string, active: boolean, skills?: string[]) =>
-    request<{ userId: string; name: string; skills: string[]; online: boolean }[]>(
-      'POST', '/support/desk/team', { userId, active, skills },
-    ),
+  /**
+   * Консоль техотдела: кабинет разработчика продукта.
+   *
+   * Служба заботы у коробочного продукта вендорская — отвечает разработчик, а не сама
+   * компания-клиент. Поэтому её настройки живут здесь, и клиенту этих ручек не видно.
+   */
+  platformMe: () => request<{ staff: boolean; admin: boolean; configured: boolean }>('GET', '/platform/me'),
+  platformStaff: () => request<PlatformStaff[]>('GET', '/platform/staff'),
+  platformCandidates: () => request<PlatformCandidate[]>('GET', '/platform/staff/candidates'),
+  platformSetStaff: (userId: string, patch: { active?: boolean; role?: string; skills?: string[]; remove?: boolean }) =>
+    request<PlatformStaff[]>('POST', '/platform/staff', { userId, ...patch }),
+  platformTenants: () => request<PlatformTenant[]>('GET', '/platform/tenants'),
 
   supportOverview: () => request<{
     project: { id: string; name: string } | null;

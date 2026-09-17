@@ -112,14 +112,15 @@ export class HandbookService implements OnModuleInit {
       if (row && row.body.trim() === f.body) { unchanged += 1; continue; }
       if (row) {
         await this.db.query(
-          `UPDATE regulations SET body=$3, updated_at=now() WHERE tenant_id=$1 AND id=$2`,
+          `UPDATE regulations SET body=$3, updated_at=now(), is_system=TRUE WHERE tenant_id=$1 AND id=$2`,
           [tenantId, row.id, f.body],
         );
         this.knowledge.enqueue(tenantId, 'regulation', row.id);
         updated += 1;
       } else {
         const created = await this.db.one<{ id: string }>(
-          `INSERT INTO regulations (tenant_id, title, body, created_by) VALUES ($1,$2,$3,$4) RETURNING id`,
+          `INSERT INTO regulations (tenant_id, title, body, created_by, is_system)
+           VALUES ($1,$2,$3,$4,TRUE) RETURNING id`,
           [tenantId, title, f.body, userId],
         );
         if (created) this.knowledge.enqueue(tenantId, 'regulation', String(created.id));

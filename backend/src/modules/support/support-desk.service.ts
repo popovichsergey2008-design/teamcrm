@@ -12,6 +12,7 @@ import { SupportRepository } from './support.repository';
 import { ContextInput, ConversationRow, SupportDeskRepository } from './support-desk.repository';
 import { ForecastService } from '../forecast/forecast.service';
 import { HandbookService } from '../knowledge/handbook.service';
+import { PlatformService } from '../platform/platform.service';
 import { ActionRequest, describeAction, isUndoable, validAction } from './support-actions';
 import { humanStatus, wantsHuman } from './support-text';
 
@@ -30,6 +31,13 @@ import { humanStatus, wantsHuman } from './support-text';
  *    «не помогло» переводят разговор сами (разд. 9). ИИ — помощь, а не барьер.
  * 3. Закрывает разговор только тот, кто обратился (разд. 21). «Решено» у специалиста
  *    переводит в «проверьте, пожалуйста» — и ждёт ответа.
+ *
+ * Чья это служба. TeamCRM — коробочный продукт, поэтому отвечает ВЕНДОР: обращение
+ * принадлежит организации обратившегося, а работают с ним люди техотдела платформы
+ * (см. PlatformService). Клиент не настраивает нашу поддержку и не видит её кухню —
+ * ни очереди, ни дежурных, ни известных проблем, ни сводки. Пока платформа не
+ * назначена, работает прежний порядок: обращения принимает владелец организации —
+ * выкладка не должна оставить людей без поддержки из-за незаполненной настройки.
  */
 @Injectable()
 export class SupportDeskService implements OnModuleInit {
@@ -48,6 +56,7 @@ export class SupportDeskService implements OnModuleInit {
     private readonly forecast: ForecastService,
     private readonly tasksRepo: TasksRepository,
     private readonly handbook: HandbookService,
+    private readonly platform: PlatformService,
   ) {}
 
   /**
@@ -69,6 +78,23 @@ export class SupportDeskService implements OnModuleInit {
     this.tasks.onTaskClosed(async (e) => { await this.notifyFixDeployed(e.taskId, e.title); });
   }
 
+  /**
+   * В какой организации работать с этим разговором.
+   *
+   * Обращение принадлежит организации ОБРАТИВШЕГОСЯ, а отвечает на него техотдел
+   * вендора — люди из другой организации. Поэтому рабочую организацию берём у самого
+   * разговора, но только для техотдела: всем остальным отдаём их собственную, и чужой
+   * разговор для них просто не существует (запрос вернёт «не найдено»).
+   *
+   * Зовётся контроллером перед каждой ручкой с номером разговора — одним местом
+   * вместо проверки, размазанной по двум десяткам методов.
+   */
+  async deskTenant(user: { userId: string; tenantId: string }, id: string): Promise<string> {
+    if (!(await this.platform.isStaff(user.userId))) return user.tenantId;
+    const conv = await this.repo.byIdAny(id);
+    return conv ? String(conv.tenant_id) : user.tenantId;
+  }
+
   // ── что показать в панели ──
   /**
    * Состояние службы заботы для человека: живой разговор, история и кто сейчас дежурит.
@@ -77,14 +103,20 @@ export class SupportDeskService implements OnModuleInit {
    * панель скажет «ищем свободного специалиста» (разд. 6).
    */
   async desk(tenantId: string, user: { userId: string; role: string }) {
-    const [active, mine, agents, eta, incident] = await Promise.all([
+    const platform = await this.platform.tenantId();
+    const [active, mine, people, eta, incident] = await Promise.all([
       this.repo.activeOf(tenantId, user.userId),
       this.repo.mine(tenantId, user.userId),
-      this.repo.agents(tenantId),
-      this.repo.medianFirstResponse(tenantId),
-      this.repo.openIncident(tenantId),
+      this.deskPeople(tenantId),
+      // Время ответа — по всей службе: она одна на всех клиентов, а не своя у каждого.
+      this.repo.medianFirstResponse(platform ? null : tenantId),
+      this.repo.openIncident(platform ?? tenantId),
     ]);
-    const online = new Set(this.realtime.onlineUsers(tenantId));
+    // «На связи» считается в организации самого человека: комнаты присутствия свои у каждой.
+    const online = new Set<string>();
+    for (const t of new Set(people.map((p) => p.tenantId))) {
+      for (const id of this.realtime.onlineUsers(t)) online.add(`${t}:${id}`);
+    }
     return {
       conversation: active ? await this.view(tenantId, active) : null,
       history: mine.map((c) => ({
@@ -98,12 +130,12 @@ export class SupportDeskService implements OnModuleInit {
         closedAt: c.closed_at,
         csat: c.csat_score,
       })),
-      team: agents.map((a) => ({
-        userId: a.user_id,
-        name: a.full_name,
-        online: online.has(a.user_id),
-        status: a.presence_status,
-        skills: a.skills ?? [],
+      team: people.map((p) => ({
+        userId: p.userId,
+        name: p.name,
+        online: online.has(`${p.tenantId}:${p.userId}`),
+        status: p.status,
+        skills: p.skills,
       })),
       /** Секунды до первого ответа или null — «обещать нечего». */
       etaSeconds: eta,
@@ -311,23 +343,29 @@ export class SupportDeskService implements OnModuleInit {
       body: 'Зовём специалиста — он подключится к этому разговору.',
     });
     // Дежурным — сразу, событием: очередь должна оживать без перезагрузки страницы.
-    const team = await this.deskTeam(tenantId);
-    this.realtime.emitToUsers(tenantId, team, 'support.queue.changed', { conversationId: id });
+    await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
     this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: next.status });
     return this.view(tenantId, next);
   }
 
   // ── сторона специалиста ──
-  /** Очередь дежурного: кто ждёт, с чем и сколько уже. */
+  /**
+   * Очередь дежурного: кто ждёт, с чем и сколько уже.
+   *
+   * У техотдела она одна на всех клиентов — потому рядом с именем человека стоит
+   * название его организации: без него специалист не понимает, у кого сломалось.
+   */
   async queue(tenantId: string, user: { userId: string; role: string }) {
     await this.assertAgent(tenantId, user);
-    const rows = await this.repo.queue(tenantId);
+    const platform = await this.platform.tenantId();
+    const rows = await this.repo.queue(platform ? null : tenantId);
     return rows.map((c) => ({
       id: String(c.id),
       subject: c.subject,
       status: c.status,
       statusText: humanStatus(c.status),
       userName: c.user_name,
+      orgName: c.tenant_name,
       agentName: c.agent_name,
       waitingSince: c.created_at,
       lastAt: c.last_at,
@@ -414,8 +452,7 @@ export class SupportDeskService implements OnModuleInit {
         tenantId, conversationId: id, authorId: null, kind: 'system',
         body: 'Человек ответил, что проблема осталась — разговор снова в работе.',
       });
-      const team = await this.deskTeam(tenantId);
-      this.realtime.emitToUsers(tenantId, team, 'support.queue.changed', { conversationId: id });
+      await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
       this.emit(tenantId, back, 'support.status.changed', { conversationId: id, status: back.status });
       return this.view(tenantId, back);
     }
@@ -435,8 +472,7 @@ export class SupportDeskService implements OnModuleInit {
       tenantId, conversationId: id, authorId: user.userId, kind: 'user',
       body: text?.trim() || 'Эта проблема снова появилась.',
     });
-    const team = await this.deskTeam(tenantId);
-    this.realtime.emitToUsers(tenantId, team, 'support.queue.changed', { conversationId: id });
+    await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
     this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: next.status });
     return this.view(tenantId, next);
   }
@@ -445,16 +481,48 @@ export class SupportDeskService implements OnModuleInit {
   async attach(
     tenantId: string, user: { userId: string; role: string },
     file: { buffer: Buffer; originalname: string; mimetype: string }, text: string,
+    conversationId?: string | null,
   ) {
+    /*
+      Специалист отвечает файлом в чужую организацию.
+
+      Файл кладём ТУДА, где живёт разговор: иначе человек его не откроет — файлы
+      читаются в своей организации, а отдаёт их ручка поддержки по разговору.
+    */
+    if (conversationId) {
+      const conv = await this.repo.byIdAny(conversationId);
+      if (!conv) throw AppException.notFound('Разговор не найден');
+      if (String(conv.user_id) !== String(user.userId)) {
+        await this.assertAgent(String(conv.tenant_id), user);
+        const asAgent = await this.files.upload({
+          tenantId: String(conv.tenant_id), userId: user.userId, buffer: file.buffer,
+          fileName: file.originalname, contentType: file.mimetype, ownerKind: 'support',
+        });
+        return this.reply(String(conv.tenant_id), user, String(conv.id), text, String(asAgent.id));
+      }
+    }
     const uploaded = await this.files.upload({
       tenantId, userId: user.userId, buffer: file.buffer, fileName: file.originalname,
       contentType: file.mimetype, ownerKind: 'support',
     });
-    const conv = await this.repo.activeOf(tenantId, user.userId);
-    if (conv && String(conv.assigned_agent_id ?? '') && String(conv.user_id) !== String(user.userId)) {
-      return this.reply(tenantId, user, String(conv.id), text, String(uploaded.id));
-    }
     return this.send(tenantId, user, text, null, String(uploaded.id));
+  }
+
+  /**
+   * Файл из разговора.
+   *
+   * Снимок экрана лежит в организации ОБРАЩЕНИЯ, а открыть его должен и специалист
+   * вендора, и сам человек. Обычная ручка файлов смотрит только в свою организацию,
+   * поэтому у поддержки своя: право проверяем по разговору, а файл отдаём из той
+   * организации, где он лежит. Чужой файл так не достать — он должен быть приложен
+   * к сообщению именно этого разговора.
+   */
+  async fileOf(user: { userId: string; role: string }, id: string, fileId: string) {
+    const conv = await this.repo.byIdAny(id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    await this.assertCanSee(String(conv.tenant_id), user, conv);
+    if (!(await this.repo.hasFile(id, fileId))) throw AppException.notFound('Файл не найден');
+    return this.files.getForDownload(String(conv.tenant_id), fileId);
   }
 
   // ── MVP 2: инженер, баг, созвон, метрики ──
@@ -469,7 +537,13 @@ export class SupportDeskService implements OnModuleInit {
     await this.assertAgent(tenantId, user);
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
-    const who = await this.repo.userName(tenantId, engineerId);
+    // Инженер приходит из техотдела вендора — он в другой организации, чем обращение.
+    if (await this.platform.tenantId()) {
+      if (!(await this.platform.isStaff(engineerId))) {
+        throw AppException.validation('В разговор зовём только людей техотдела');
+      }
+    }
+    const who = await this.repo.userNameAny(engineerId);
     if (!who) throw AppException.notFound('Такого сотрудника нет');
     // Звать в разговор его же автора незачем: он и так здесь, и он здесь главный.
     if (String(conv.user_id) === String(engineerId)) {
@@ -481,7 +555,8 @@ export class SupportDeskService implements OnModuleInit {
       tenantId, conversationId: id, authorId: user.userId, kind: 'system',
       body: `добавил в разговор: ${who} — инженер видит всю переписку и контекст`,
     });
-    this.realtime.emitToUsers(tenantId, [engineerId], 'support.agent.joined', { conversationId: id });
+    const home = await this.platform.tenantId();
+    this.realtime.emitToUsers(home ?? tenantId, [engineerId], 'support.agent.joined', { conversationId: id });
     const next = (await this.repo.byId(tenantId, id))!;
     this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: engineerId });
     return this.view(tenantId, next);
@@ -527,14 +602,20 @@ export class SupportDeskService implements OnModuleInit {
       `Обращение №${id}.`,
     ].filter(Boolean).join('\n');
 
-    // Баг живёт в проекте поддержки: он и заведён для такой работы.
-    let project = await this.support.project(tenantId);
+    /*
+      Баг живёт в проекте поддержки ВЕНДОРА, а не клиента.
+
+      Чинит продукт разработчик, у него и доска: задача в проекте клиента была бы
+      работой, которую он не может сделать, и висела бы у него на виду укором.
+    */
+    const home = await this.deskHome(tenantId);
+    let project = await this.support.project(home);
     if (!project) {
-      const created = await this.projects.create(tenantId, { name: 'Поддержка' });
-      await this.support.setProject(tenantId, String(created.id));
+      const created = await this.projects.create(home, { name: 'Поддержка' });
+      await this.support.setProject(home, String(created.id));
       project = { id: String(created.id), name: created.name };
     }
-    const task = await this.tasks.create(tenantId, {
+    const task = await this.tasks.create(home, {
       projectId: String(project.id),
       title: (title?.trim() || conv.subject || 'Разобраться с обращением').slice(0, 200),
       description,
@@ -635,12 +716,16 @@ export class SupportDeskService implements OnModuleInit {
     };
   }
 
-  /** Метрики службы заботы для руководителя (разд. 30). */
+  /**
+   * Метрики службы заботы (разд. 30) — техотделу.
+   *
+   * Цифры службы, а не клиентской организации: как МЫ отвечаем и как нас оценивают.
+   * Клиенту они не показываются: это управленческие цифры вендора.
+   */
   async dashboard(tenantId: string, user: { userId: string; role: string }) {
-    if (user.role !== 'owner' && user.role !== 'manager') {
-      throw AppException.forbidden('Сводка службы заботы — для руководства');
-    }
-    const d = await this.repo.dashboard(tenantId);
+    await this.assertAgent(tenantId, user);
+    const platform = await this.platform.tenantId();
+    const d = await this.repo.dashboard(platform ? null : tenantId);
     const num = (v: string | null | undefined) => (v === null || v === undefined ? null : Number(v));
     return {
       total: Number(d?.total ?? 0),
@@ -719,6 +804,7 @@ export class SupportDeskService implements OnModuleInit {
       value: (act.params_json?.value as string | null) ?? null,
     };
     await this.runAction(tenantId, user, req);
+    // Действие выполнено в организации обращения и от имени того, кто его разрешил.
     const after = await this.currentState(tenantId, req);
     await this.repo.decideAction(actionId, 'done', true, after.state);
     await this.repo.addMessage({
@@ -741,7 +827,14 @@ export class SupportDeskService implements OnModuleInit {
     if (!isUndoable(kind)) throw AppException.conflict('Это действие отменить нельзя');
 
     const before = (act.before_json ?? {}) as Record<string, string | null>;
-    await this.runAction(tenantId, user, {
+    /*
+      Возвращаем от имени ХОЗЯИНА обращения, даже если кнопку нажал специалист.
+
+      Специалист вендора в этой организации чужой: его нет ни в проекте, ни в задаче,
+      и правка от его имени либо не пройдёт по правам, либо оставит в истории задачи
+      человека, которого там никто не знает.
+    */
+    await this.runAction(tenantId, { userId: String(conv.user_id), role: 'member' }, {
       kind, entityId: String(act.entity_id), value: before.value ?? null,
     });
     await this.repo.decideAction(actionId, 'undone', act.approved_by_user, before);
@@ -787,9 +880,19 @@ export class SupportDeskService implements OnModuleInit {
   }
 
   // ── известные проблемы (разд. 42) ──
+  /**
+   * Где живут известные проблемы, сбои и справочник — в организации ВЕНДОРА.
+   *
+   * Поломка продукта одна на всех клиентов: заводить её заново в каждой организации
+   * значит рассказывать о ней столько раз, сколько у нас клиентов.
+   */
+  private async deskHome(fallback: string): Promise<string> {
+    return (await this.platform.tenantId()) ?? fallback;
+  }
+
   async knownIssues(tenantId: string, user: { userId: string; role: string }) {
     await this.assertAgent(tenantId, user);
-    const rows = await this.repo.knownIssues(tenantId);
+    const rows = await this.repo.knownIssues(await this.deskHome(tenantId));
     return rows.map((k) => ({
       id: k.id, taskId: k.task_id, title: k.title, pattern: k.pattern,
       active: k.active, fixed: !!k.closed_at,
@@ -802,13 +905,13 @@ export class SupportDeskService implements OnModuleInit {
     taskId: string, title: string, pattern: string,
   ) {
     await this.assertAgent(tenantId, user);
-    const row = await this.repo.addKnownIssue(tenantId, taskId, title, pattern, user.userId);
+    const row = await this.repo.addKnownIssue(await this.deskHome(tenantId), taskId, title, pattern, user.userId);
     return { id: String(row?.id), taskId };
   }
 
   async setKnownIssueActive(tenantId: string, user: { userId: string; role: string }, id: string, active: boolean) {
     await this.assertAgent(tenantId, user);
-    await this.repo.setKnownIssueActive(tenantId, id, active);
+    await this.repo.setKnownIssueActive(await this.deskHome(tenantId), id, active);
     return this.knownIssues(tenantId, user);
   }
 
@@ -822,7 +925,7 @@ export class SupportDeskService implements OnModuleInit {
   private async matchKnownIssue(tenantId: string, text: string, lastError?: string | null) {
     const hay = `${text} ${lastError ?? ''}`.toLowerCase();
     if (hay.trim().length < 4) return null;
-    const rows = await this.repo.knownIssues(tenantId);
+    const rows = await this.repo.knownIssues(await this.deskHome(tenantId));
     return rows.find((k) => k.active && !k.closed_at && k.pattern
       .split(',')
       .map((w) => w.trim().toLowerCase())
@@ -838,36 +941,39 @@ export class SupportDeskService implements OnModuleInit {
    * кого открыт разговор, и все, кто откроет панель.
    */
   async declareIncident(tenantId: string, user: { userId: string; role: string }, title: string, message: string) {
-    if (user.role !== 'owner' && user.role !== 'manager') {
-      await this.assertAgent(tenantId, user);
-    }
-    const inc = await this.repo.createIncident(tenantId, title, message, user.userId);
-    const live = await this.repo.liveConversations(tenantId);
+    await this.assertAgent(tenantId, user);
+    const platform = await this.platform.tenantId();
+    const inc = await this.repo.createIncident(platform ?? tenantId, title, message, user.userId);
+    // Авария у вендора касается ВСЕХ клиентов сразу, а не той организации, из которой её заметили.
+    const live = await this.repo.liveConversations(platform ? null : tenantId);
     for (const c of live) {
       await this.repo.addMessage({
-        tenantId, conversationId: c.id, authorId: null, kind: 'system',
+        tenantId: c.tenant_id, conversationId: c.id, authorId: null, kind: 'system',
         body: `${title}. ${message}`,
       });
     }
-    this.realtime.emitToTenant(tenantId, 'support.incident', { id: inc?.id, title, message, status: 'open' });
+    for (const t of new Set(live.map((c) => c.tenant_id))) {
+      this.realtime.emitToTenant(t, 'support.incident', { id: inc?.id, title, message, status: 'open' });
+    }
     return inc;
   }
 
   /** Починили — сказать всем, кому говорили о сбое. */
   async resolveIncident(tenantId: string, user: { userId: string; role: string }, id: string) {
-    if (user.role !== 'owner' && user.role !== 'manager') {
-      await this.assertAgent(tenantId, user);
-    }
-    const inc = await this.repo.resolveIncident(tenantId, id);
+    await this.assertAgent(tenantId, user);
+    const platform = await this.platform.tenantId();
+    const inc = await this.repo.resolveIncident(platform ?? tenantId, id);
     if (!inc) throw AppException.notFound('Открытого сбоя с таким номером нет');
-    const live = await this.repo.liveConversations(tenantId);
+    const live = await this.repo.liveConversations(platform ? null : tenantId);
     for (const c of live) {
       await this.repo.addMessage({
-        tenantId, conversationId: c.id, authorId: null, kind: 'system',
+        tenantId: c.tenant_id, conversationId: c.id, authorId: null, kind: 'system',
         body: `Исправлено: ${inc.title}. Обновите страницу, пожалуйста.`,
       });
     }
-    this.realtime.emitToTenant(tenantId, 'support.incident', { id: inc.id, status: 'resolved' });
+    for (const t of new Set(live.map((c) => c.tenant_id))) {
+      this.realtime.emitToTenant(t, 'support.incident', { id: inc.id, status: 'resolved' });
+    }
     return { resolved: true };
   }
 
@@ -878,7 +984,7 @@ export class SupportDeskService implements OnModuleInit {
    * проблемы, что проверить и похоже ли это на известную поломку. Клиенту сам ничего
    * не отправляет — после подключения человека ИИ молчит, пока его не попросят.
    */
-  async copilot(tenantId: string, user: { userId: string; role: string }, id: string) {
+  async copilot(tenantId: string, user: { userId: string; role: string; tenantId?: string }, id: string) {
     await this.assertAgent(tenantId, user);
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
@@ -893,14 +999,17 @@ export class SupportDeskService implements OnModuleInit {
 
     let text = '';
     try {
-      let sessionId = conv.ai_session_id ? String(conv.ai_session_id) : '';
-      if (!sessionId) {
-        const s = await this.agentRepo.createSession(tenantId, user.userId, null);
-        sessionId = String(s.id);
-        await this.repo.setAiSession(id, sessionId);
-      }
+      /*
+        Копилот думает в организации САМОГО специалиста, а не клиента.
+
+        Его сессия не должна ходить инструментами по чужим задачам и переписке: всё,
+        что ему нужно, уже лежит в подсказке — сам разговор и экран человека. И это
+        не та сессия, что у первой линии: та принадлежит клиенту и живёт у него.
+      */
+      const home = user.tenantId ?? tenantId;
+      const session = await this.agentRepo.createSession(home, user.userId, null);
       await this.agent.ask(
-        tenantId, user, sessionId,
+        home, user, String(session.id),
         'Ты помогаешь специалисту поддержки. По переписке ниже дай ТРИ коротких раздела: '
         + '«Суть» (одно предложение), «Что проверить» (2–4 пункта), «Что сказать человеку» (одна фраза). '
         + `Без вступлений.\n\nПереписка:\n${talk}\n\nЭкран: ${c.route ?? '—'}, ошибка: ${c.last_error ?? 'нет'}.`,
@@ -938,73 +1047,81 @@ export class SupportDeskService implements OnModuleInit {
     });
     const score = csat && csat >= 1 && csat <= 4 ? csat : null;
     const next = (await this.repo.close(tenantId, id, score, null))!;
-    const team = await this.deskTeam(tenantId);
-    this.realtime.emitToUsers(tenantId, team, 'support.queue.changed', { conversationId: id });
+    await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
     this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: 'closed' });
     return this.view(tenantId, next);
   }
 
   // ── справочник: то, из чего отвечает помощник ──
-  /** Что знает помощник: разделы справочника и не отстали ли они от системы. */
-  handbookState(tenantId: string) {
-    return this.handbook.state(tenantId);
+  /**
+   * Что знает помощник: разделы справочника и не отстали ли они от системы.
+   *
+   * Смотрим по организации вендора: справочник везде один и тот же, а показывать
+   * сто одинаковых состояний незачем.
+   */
+  async handbookState(tenantId: string, user: { userId: string; role: string }) {
+    await this.assertAgent(tenantId, user);
+    return this.handbook.state(await this.deskHome(tenantId));
   }
 
-  /** Загрузить справочник в базу знаний — право руководства. */
+  /** Обновить справочник во всех организациях — право техотдела. */
   async loadHandbook(tenantId: string, user: { userId: string; role: string }) {
-    if (user.role !== 'owner' && user.role !== 'manager') {
-      throw AppException.forbidden('Справочник загружает руководство');
-    }
-    return this.handbook.load(tenantId, user.userId);
+    await this.assertAgent(tenantId, user);
+    const home = await this.deskHome(tenantId);
+    const mine = await this.handbook.load(home, user.userId);
+    // Клиентам справочник нужен не меньше: их помощник ищет ответ в их же базе знаний.
+    void this.handbook.syncAll();
+    return mine;
   }
 
-  // ── дежурные ──
-  /** Вся команда с отметкой «дежурит»: выбирать не из кого, если не видно всех. */
-  async teamPicker(tenantId: string, user: { userId: string; role: string }) {
-    if (user.role !== 'owner' && user.role !== 'manager') {
-      throw AppException.forbidden('Дежурных назначает руководство');
+  // ── кто отвечает ──
+  /**
+   * Кто отвечает в службе заботы: техотдел вендора.
+   *
+   * Пока платформа не назначена — прежний порядок: дежурные самой организации, а если
+   * их нет, её владелец. Этот запасной путь существует ради одного: выкладка не должна
+   * оставить людей без поддержки, если настройку платформы забыли прописать.
+   */
+  private async deskPeople(tenantId: string): Promise<{
+    userId: string; name: string; tenantId: string; skills: string[]; status: string | null;
+  }[]> {
+    if (await this.platform.tenantId()) {
+      const staff = await this.platform.onDuty();
+      return staff.map((p) => ({
+        userId: String(p.user_id), name: p.full_name, tenantId: String(p.tenant_id),
+        skills: p.skills ?? [], status: null,
+      }));
     }
-    const [people, agents] = await Promise.all([this.repo.staff(tenantId), this.repo.agents(tenantId)]);
-    const on = new Map(agents.map((a) => [String(a.user_id), a.skills ?? []]));
-    const online = new Set(this.realtime.onlineUsers(tenantId));
-    return people.map((p) => ({
-      userId: p.id,
-      name: p.full_name,
-      position: p.position,
-      onDuty: on.has(p.id),
-      skills: on.get(p.id) ?? [],
-      online: online.has(p.id),
-    }));
-  }
-
-  async team(tenantId: string) {
     const agents = await this.repo.agents(tenantId);
-    const online = new Set(this.realtime.onlineUsers(tenantId));
-    return agents.map((a) => ({
-      userId: a.user_id, name: a.full_name, skills: a.skills ?? [],
-      online: online.has(a.user_id), status: a.presence_status,
-    }));
-  }
-
-  async setAgent(tenantId: string, user: { userId: string; role: string }, userId: string, active: boolean, skills: string[]) {
-    if (user.role !== 'owner' && user.role !== 'manager') {
-      throw AppException.forbidden('Дежурных назначает руководство');
+    if (agents.length) {
+      return agents.map((a) => ({
+        userId: String(a.user_id), name: a.full_name, tenantId,
+        skills: a.skills ?? [], status: a.presence_status,
+      }));
     }
-    await this.repo.setAgent(tenantId, userId, active, skills.slice(0, 12));
-    return this.team(tenantId);
-  }
-
-  /** Кому показывать очередь: дежурные, а если их нет — владелец компании. */
-  private async deskTeam(tenantId: string): Promise<string[]> {
-    const agents = await this.repo.agents(tenantId);
-    if (agents.length) return agents.map((a) => a.user_id);
     const owner = await this.repo.owner(tenantId);
-    return owner ? [String(owner.id)] : [];
+    return owner
+      ? [{ userId: String(owner.id), name: owner.full_name, tenantId, skills: [], status: null }]
+      : [];
+  }
+
+  /**
+   * Событие всем, кто принимает обращения.
+   *
+   * Комната присутствия строится из пары «организация + человек», поэтому техотделу
+   * шлём в ЕГО организацию, а не в ту, где живёт обращение: иначе событие уходит в
+   * пустоту и очередь оживает только по F5.
+   */
+  private async notifyDesk(tenantId: string, event: string, payload: Record<string, unknown>): Promise<void> {
+    for (const p of await this.deskPeople(tenantId)) {
+      this.realtime.emitToUsers(p.tenantId, [p.userId], event, payload);
+    }
   }
 
   private async isAgent(tenantId: string, user: { userId: string; role: string }): Promise<boolean> {
-    const team = await this.deskTeam(tenantId);
-    return team.includes(String(user.userId));
+    if (await this.platform.tenantId()) return this.platform.isStaff(user.userId);
+    const people = await this.deskPeople(tenantId);
+    return people.some((p) => p.userId === String(user.userId));
   }
 
   private async assertAgent(tenantId: string, user: { userId: string; role: string }): Promise<void> {

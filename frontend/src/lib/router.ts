@@ -11,7 +11,10 @@
  */
 import { useEffect, useState } from 'react';
 
-export type Section = 'focus' | 'calendar' | 'news' | 'tasks' | 'projects' | 'chat' | 'radar' | 'support' | 'settings' | 'profile';
+export type Section = 'focus' | 'calendar' | 'news' | 'tasks' | 'projects' | 'chat' | 'radar' | 'support'
+  /** Консоль техотдела вендора: клиентам этого раздела не существует. */
+  | 'console'
+  | 'settings' | 'profile';
 
 /**
  * Разобранный адрес. Плоский на одном уровне: сузить тип по секции можно и в месте
@@ -28,7 +31,9 @@ export type Route = {
   tab?: string;
 };
 
-const SECTIONS: Section[] = ['focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'support', 'settings', 'profile'];
+const SECTIONS: Section[] = [
+  'focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'support', 'console', 'settings', 'profile',
+];
 
 /** По ТЗ приложение открывается на «Фокусе дня», а не на досках. */
 export const DEFAULT_PATH = '/focus';
@@ -67,6 +72,7 @@ export function parsePath(pathname: string): Route {
       if (seg[1] === 'feed') return { section: 'news' };
       return seg[1] ? { section, chatId: seg[1] } : { section };
     case 'settings':
+    case 'console':
       return seg[1] ? { section, tab: seg[1] } : { section };
     default:
       return { section };
@@ -91,6 +97,8 @@ export function buildPath(r: Route): string {
       return r.chatId ? `/chat/${enc(r.chatId)}` : '/chat';
     case 'settings':
       return r.tab ? `/settings/${enc(r.tab)}` : '/settings';
+    case 'console':
+      return r.tab ? `/console/${enc(r.tab)}` : '/console';
     default:
       return `/${r.section}`;
   }
