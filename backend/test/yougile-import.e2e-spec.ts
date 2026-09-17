@@ -144,6 +144,29 @@ describe('YouGile импорт (e2e)', () => {
     // E2: комментарий из чата + вложение из файла сообщения
     const comments = (await http$.get(`/api/tasks/${t1.id}/comments`).set(H(tok)).expect(200)).body.data;
     expect(comments.some((c: any) => /Первый коммент/.test(c.body))).toBe(true);
+    /*
+      Дата комментария — из источника, а не «сейчас».
+
+      Живая авария: в задаче висело по три-четыре копии одного сообщения, и все с
+      датой синхронизации. Здесь фиксируем обе половины: дата берётся из timestamp
+      сообщения, а повторный прогон копий не плодит — даже если источник выдаст
+      сообщению новый id (ниже).
+    */
+    const first = comments.find((c: any) => /Первый коммент/.test(c.body));
+    expect(new Date(first.created_at).toISOString()).toBe(new Date(1700000000000).toISOString());
+
+    // тот же текст под ДРУГИМ id сообщения: второй копии быть не должно
+    state.messagesByTask.t1 = [
+      { id: 'm1-new', fromUserId: 'u1', text: 'Первый коммент', timestamp: 1700000000000, files: [] },
+    ];
+    const again = (await http$.post(`/api/integrations/yougile/connections/${conn.id}/import`).set(H(tok)).send({ boardExternalIds: ['b1'] }).expect(201)).body.data;
+    for (let i = 0; i < 40; i++) {
+      const r = (await http$.get(`/api/integrations/yougile/runs/${again.runId}`).set(H(tok)).expect(200)).body.data;
+      if (r.status === 'done' || r.status === 'error') break;
+      await sleep(150);
+    }
+    const afterSecond = (await http$.get(`/api/tasks/${t1.id}/comments`).set(H(tok)).expect(200)).body.data;
+    expect(afterSecond.filter((c: any) => /Первый коммент/.test(c.body))).toHaveLength(1);
     const atts = (await http$.get(`/api/tasks/${t1.id}/attachments`).set(H(tok)).expect(200)).body.data;
     expect(atts.some((a: any) => a.file_name === 'doc.png')).toBe(true);
 

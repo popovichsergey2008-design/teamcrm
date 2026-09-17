@@ -235,9 +235,28 @@ export class ImportRepository {
     authorId: string; body: string; postedAt: string | null;
   }): Promise<boolean> {
     if (await this.getRef(i.connectionId, 'comment', i.externalId)) return false;
+    // Вторая опора идемпотентности — содержимое: см. yougile.repository.upsertComment.
+    const same = await this.db.one<{ id: string }>(
+      `SELECT id FROM task_comments
+        WHERE tenant_id=$1 AND task_id=$2 AND author_id=$3 AND body=$4
+        ORDER BY created_at LIMIT 1`,
+      [i.tenantId, i.taskId, i.authorId, i.body],
+    );
+    if (same) {
+      await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'comment', externalId: i.externalId, localId: same.id });
+      return false;
+    }
     const row = await this.db.one<{ id: string }>(
-      `INSERT INTO task_comments (tenant_id, task_id, author_id, body, created_at)
-       VALUES ($1,$2,$3,$4, COALESCE($5, now())) RETURNING id`,
+      `WITH src AS (
+         SELECT COALESCE(
+                  $5::timestamptz,
+                  (SELECT max(c.created_at) FROM task_comments c WHERE c.tenant_id=$1 AND c.task_id=$2),
+                  (SELECT t.created_at FROM tasks t WHERE t.id=$2),
+                  now()
+                ) AS at
+       )
+       INSERT INTO task_comments (tenant_id, task_id, author_id, body, created_at)
+       SELECT $1, $2, $3, $4, src.at FROM src RETURNING id`,
       [i.tenantId, i.taskId, i.authorId, i.body, i.postedAt],
     );
     await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'comment', externalId: i.externalId, localId: row!.id });

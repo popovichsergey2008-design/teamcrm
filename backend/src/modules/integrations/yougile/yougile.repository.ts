@@ -219,14 +219,58 @@ export class YougileRepository {
     return this.db.one(`SELECT id FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, userId]);
   }
 
-  // ── комментарий задачи (идемпотентно по external_refs 'comment') ──
+  // ── комментарий задачи ──
+  /**
+   * Комментарий из внешней системы.
+   *
+   * Идемпотентность держится на ДВУХ опорах, и вторая появилась после живой аварии:
+   * в задаче оказалось по три-четыре копии одного сообщения, причём копии — с датой
+   * синхронизации, а не с настоящей.
+   *
+   * 1. Внешний идентификатор (external_refs) — как было. Работает, пока источник
+   *    отдаёт сообщению один и тот же id.
+   * 2. СОДЕРЖИМОЕ: та же задача, тот же автор, тот же текст. Спасает, когда id
+   *    сообщения меняется между прогонами или ссылка на него потерялась, — а
+   *    именно это и произошло: копии в базе есть, ссылок на них нет.
+   *
+   * Дата. Если источник её не сообщил, `now()` ставить НЕЛЬЗЯ: переписка полугодовой
+   * давности превращается в сегодняшнюю, и в задаче начинается неразбериха («Юра
+   * точно не оставлял такого комментария сегодня»). Кладём сообщение следом за
+   * последним известным в этой задаче, а если их нет — в дату самой задачи.
+   */
   async upsertComment(i: { tenantId: string; connectionId: string; externalId: string; taskId: string; authorId: string; body: string; postedAt: string | null }): Promise<boolean> {
     if (await this.getRef(i.connectionId, 'comment', i.externalId)) return false;
+    const same = await this.sameComment(i.tenantId, i.taskId, i.authorId, i.body);
+    if (same) {
+      // Копия уже есть — не заводим вторую, а привязываем к ней внешний id.
+      await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'comment', externalId: i.externalId, localId: same });
+      return false;
+    }
     const row = await this.db.one<{ id: string }>(
-      `INSERT INTO task_comments (tenant_id, task_id, author_id, body, created_at) VALUES ($1,$2,$3,$4, COALESCE($5, now())) RETURNING id`,
+      `WITH src AS (
+         SELECT COALESCE(
+                  $5::timestamptz,
+                  (SELECT max(c.created_at) FROM task_comments c WHERE c.tenant_id=$1 AND c.task_id=$2),
+                  (SELECT t.created_at FROM tasks t WHERE t.id=$2),
+                  now()
+                ) AS at
+       )
+       INSERT INTO task_comments (tenant_id, task_id, author_id, body, created_at)
+       SELECT $1, $2, $3, $4, src.at FROM src RETURNING id`,
       [i.tenantId, i.taskId, i.authorId, i.body, i.postedAt]);
     await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'comment', externalId: i.externalId, localId: row!.id });
     return true;
+  }
+
+  /** Тот же текст того же автора в той же задаче — значит это он и есть, а не новое сообщение. */
+  async sameComment(tenantId: string, taskId: string, authorId: string, body: string): Promise<string | null> {
+    const row = await this.db.one<{ id: string }>(
+      `SELECT id FROM task_comments
+        WHERE tenant_id=$1 AND task_id=$2 AND author_id=$3 AND body=$4
+        ORDER BY created_at LIMIT 1`,
+      [tenantId, taskId, authorId, body],
+    );
+    return row?.id ?? null;
   }
 
   // ── метки из стикеров YouGile ──
