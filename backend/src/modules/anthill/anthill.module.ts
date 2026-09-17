@@ -25,6 +25,8 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
   imports: [AiModule, TasksModule, ChatsModule, SearchModule, NlModule, AssistantModule, RealtimeModule, FilesModule, TaskCardModule, ForecastModule, CalendarModule],
   controllers: [AnthillController],
   providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService],
-  exports: [AnthillService],
+  // AnthillRepository наружу: служба заботы заводит агенту сессию под каждый разговор,
+  // чтобы первая линия помнила нить, а не отвечала с чистого листа каждый раз.
+  exports: [AnthillService, AnthillRepository],
 })
 export class AnthillModule {}

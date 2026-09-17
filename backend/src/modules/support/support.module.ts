@@ -1,13 +1,26 @@
 import { Module } from '@nestjs/common';
+import { AnthillModule } from '../anthill/anthill.module';
+import { FilesModule } from '../files/files.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { SupportController } from './support.controller';
+import { SupportDeskController } from './support-desk.controller';
+import { SupportDeskRepository } from './support-desk.repository';
+import { SupportDeskService } from './support-desk.service';
 import { SupportRepository } from './support.repository';
 import { SupportService } from './support.service';
 
+/**
+ * Служба заботы (ТЗ-8) и старая кнопка «Поддержка».
+ *
+ * Разговор — новая сущность (SupportDesk*), обращение-задача — прежний путь: он
+ * остаётся для случаев, когда из разговора рождается работа для команды.
+ */
 @Module({
-  imports: [ProjectsModule, TasksModule],
-  controllers: [SupportController],
-  providers: [SupportService, SupportRepository],
+  imports: [ProjectsModule, TasksModule, RealtimeModule, FilesModule, AnthillModule],
+  controllers: [SupportController, SupportDeskController],
+  providers: [SupportService, SupportRepository, SupportDeskService, SupportDeskRepository],
+  exports: [SupportDeskService],
 })
 export class SupportModule {}
