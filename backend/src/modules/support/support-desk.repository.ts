@@ -274,6 +274,14 @@ export class SupportDeskRepository {
     );
   }
 
+  /** Имя сотрудника: подставляется в системные строки разговора. */
+  async userName(tenantId: string, userId: string): Promise<string | null> {
+    const row = await this.db.one<{ full_name: string }>(
+      `SELECT full_name FROM users WHERE tenant_id=$1 AND id=$2 AND is_active`, [tenantId, userId],
+    );
+    return row?.full_name ?? null;
+  }
+
   /** Владелец компании — дежурный по умолчанию, пока список пуст. */
   owner(tenantId: string) {
     return this.db.one<{ id: string; full_name: string }>(
@@ -281,6 +289,100 @@ export class SupportDeskRepository {
          JOIN roles r ON r.id = u.role_id
         WHERE u.tenant_id=$1 AND r.code='owner' AND u.is_active
         ORDER BY u.id LIMIT 1`,
+      [tenantId],
+    );
+  }
+
+  // ── баг из разговора, созвон, метрики (MVP 2) ──
+  /** Связь разговора с заведённой задачей: обе стороны должны знать друг о друге. */
+  async linkIssue(conversationId: string, taskId: string, issueType = 'bug'): Promise<void> {
+    await this.db.query(
+      `INSERT INTO support_issue_links (conversation_id, task_id, issue_type)
+       VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+      [conversationId, taskId, issueType],
+    );
+  }
+
+  issues(conversationId: string) {
+    return this.db.many<{ task_id: string; issue_type: string; title: string; closed_at: Date | null; project_id: string }>(
+      `SELECT l.task_id::text, l.issue_type, t.title, t.closed_at, t.project_id::text
+         FROM support_issue_links l JOIN tasks t ON t.id = l.task_id
+        WHERE l.conversation_id=$1
+        ORDER BY l.created_at`,
+      [conversationId],
+    );
+  }
+
+  /** Разговоры, которые ждут этой задачи: по ним пойдёт весть о выпущенном исправлении. */
+  conversationsOfTask(taskId: string) {
+    return this.db.many<{ conversation_id: string; tenant_id: string; user_id: string }>(
+      `SELECT l.conversation_id::text, c.tenant_id::text, c.user_id::text
+         FROM support_issue_links l JOIN support_conversations c ON c.id = l.conversation_id
+        WHERE l.task_id=$1`,
+      [taskId],
+    );
+  }
+
+  /** Созвон из разговора: якорь, по которому итог вернётся в поддержку. */
+  startHuddle(conversationId: string, roomId: string, startedBy: string) {
+    return this.db.one<{ id: string }>(
+      `INSERT INTO support_huddles (conversation_id, room_id, started_by)
+       VALUES ($1,$2,$3) RETURNING id::text`,
+      [conversationId, roomId, startedBy],
+    );
+  }
+
+  /** Какому разговору принадлежит комната созвона — спрашивается при обработке записи. */
+  huddleByRoom(roomId: string) {
+    return this.db.one<{ id: string; conversation_id: string; tenant_id: string }>(
+      `SELECT h.id::text, h.conversation_id::text, c.tenant_id::text
+         FROM support_huddles h JOIN support_conversations c ON c.id = h.conversation_id
+        WHERE h.room_id=$1 AND h.ended_at IS NULL
+        ORDER BY h.started_at DESC LIMIT 1`,
+      [roomId],
+    );
+  }
+
+  async finishHuddle(id: string, meetingId: string | null): Promise<void> {
+    await this.db.query(
+      `UPDATE support_huddles SET ended_at = now(), meeting_id = $2 WHERE id = $1`,
+      [id, meetingId],
+    );
+  }
+
+  /**
+   * Метрики службы заботы (разд. 30).
+   *
+   * Одним запросом и за окно в 30 дней: руководителю нужна не история за всё время,
+   * а ответ на вопрос «как мы работаем сейчас». Медиану считаем, а не среднее —
+   * один ночной разговор не должен рисовать несуществующую картину.
+   */
+  dashboard(tenantId: string) {
+    return this.db.one<{
+      total: string; active: string; waiting: string; resolved: string;
+      first_median: string | null; resolution_median: string | null;
+      csat_avg: string | null; csat_count: string; reopened: string; ai_only: string;
+    }>(
+      `WITH win AS (
+         SELECT * FROM support_conversations
+          WHERE tenant_id=$1 AND created_at > now() - interval '30 days'
+       )
+       SELECT COUNT(*)::text AS total,
+              COUNT(*) FILTER (WHERE closed_at IS NULL)::text AS active,
+              COUNT(*) FILTER (WHERE status = 'waiting_agent')::text AS waiting,
+              COUNT(*) FILTER (WHERE closed_at IS NOT NULL)::text AS resolved,
+              percentile_cont(0.5) WITHIN GROUP (
+                ORDER BY EXTRACT(EPOCH FROM (first_response_at - created_at))
+              ) FILTER (WHERE first_response_at IS NOT NULL)::text AS first_median,
+              percentile_cont(0.5) WITHIN GROUP (
+                ORDER BY EXTRACT(EPOCH FROM (closed_at - created_at))
+              ) FILTER (WHERE closed_at IS NOT NULL)::text AS resolution_median,
+              AVG(csat_score) FILTER (WHERE csat_score IS NOT NULL)::text AS csat_avg,
+              COUNT(*) FILTER (WHERE csat_score IS NOT NULL)::text AS csat_count,
+              COUNT(*) FILTER (WHERE reopens > 0)::text AS reopened,
+              -- решено без человека: разговор закрыт, а специалист так и не понадобился
+              COUNT(*) FILTER (WHERE closed_at IS NOT NULL AND assigned_agent_id IS NULL)::text AS ai_only
+         FROM win`,
       [tenantId],
     );
   }

@@ -1130,6 +1130,30 @@ export const api = {
     return env.data as SupportConversation;
   },
 
+  /** Подключить инженера: он приходит в тот же разговор и видит его целиком. */
+  supportAddEngineer: (id: string, userId: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/engineer`, { userId }),
+  /** Завести баг из разговора: контекст уезжает в задачу сам. */
+  supportCreateBug: (id: string, title?: string) =>
+    request<{ taskId: string; projectId: string; conversation: SupportConversation }>(
+      'POST', `/support/desk/${id}/bug`, { title },
+    ),
+  /** Пометить, что созвон идёт по этому обращению: итог вернётся в разговор. */
+  supportHuddle: (id: string, roomId: string) =>
+    request<{ roomId: string }>('POST', `/support/desk/${id}/huddle`, { roomId }),
+  /** Диагностика для специалиста: контекст, заведённые баги, время ответов. */
+  supportDiagnostics: (id: string) => request<{
+    context: Record<string, string | null> | null;
+    issues: { taskId: string; projectId: string; title: string; type: string; closed: boolean }[];
+    sla: { createdAt: string; firstResponseAt: string | null; resolvedAt: string | null; reopens: number };
+  }>('GET', `/support/desk/${id}/diagnostics`),
+  /** Сводка службы заботы — для руководителя. */
+  supportDashboard: () => request<{
+    total: number; active: number; waiting: number; resolved: number;
+    firstResponseSeconds: number | null; resolutionSeconds: number | null;
+    csatAvg: number | null; csatCount: number; reopened: number; solvedByAi: number;
+  }>('GET', '/support/desk/dashboard'),
+
   supportOverview: () => request<{
     project: { id: string; name: string } | null;
     tickets: { id: string; title: string; status: string; closed: boolean; createdAt: string; projectId: string; assigneeName: string | null }[];

@@ -4656,3 +4656,26 @@ button.chat-pop-row:hover { background: var(--hover); }
 .support-queue-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .support-queue-head { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); }
 .support-history-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Инструменты специалиста в панели: диагностика, инженер, задача (ТЗ-8, разд. 17). */
+.support-tools {
+  flex: 0 0 auto; margin: 0 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+}
+.support-tools-head { display: flex; justify-content: space-between; gap: 8px; }
+.support-diag { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 2px 8px; margin: 0; }
+.support-diag dt { color: var(--text-dim); }
+.support-diag dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.support-issues { display: flex; flex-wrap: wrap; gap: 4px; }
+.support-tools-acts { display: flex; gap: 6px; align-items: center; }
+.support-tools-acts .input { flex: 1 1 auto; min-width: 0; }
+
+/* Сводка службы заботы: шесть цифр вместо дашборда на двадцать графиков. */
+.support-stats { display: flex; flex-wrap: wrap; gap: 10px; }
+.support-stat {
+  display: flex; flex-direction: column; gap: 2px; min-width: 120px; padding: 10px 12px;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.support-stat b { font-size: calc(18px * var(--fs-scale)); }
+.support-stat span { font-size: var(--fs-xs); }

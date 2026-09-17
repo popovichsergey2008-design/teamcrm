@@ -36,6 +36,22 @@ const MAX_AUTO_TASKS = 10;
 export class MeetingsService {
   private readonly log = new Logger('Meetings');
 
+  /**
+   * Кому рассказать о готовом разборе созвона.
+   *
+   * Подписчики регистрируются сами (см. службу заботы): встречам не нужно знать, кто
+   * их слушает, — так модули остаются независимыми.
+   */
+  private readonly sinks: ((e: {
+    tenantId: string; meetingId: string; roomId: string; summary: string | null;
+  }) => Promise<void>)[] = [];
+
+  onCallProcessed(fn: (e: {
+    tenantId: string; meetingId: string; roomId: string; summary: string | null;
+  }) => Promise<void>): void {
+    this.sinks.push(fn);
+  }
+
   constructor(
     private readonly repo: MeetingsRepository,
     private readonly files: FilesService,
@@ -186,6 +202,19 @@ export class MeetingsService {
         // что и в чат: разговор по задаче есть работа по ней, а не отдельное событие.
         await this.postCardToTask(input.tenantId, meeting.id, input.taskId ?? null, input.actorId)
           .catch((e) => this.log.warn(`итог созвона в задачу не ушёл: ${(e as Error).message}`));
+        /*
+          Разбор готов — рассказываем тем, кто его ждал.
+
+          Подписка, а не прямой вызов: службе заботы нужен итог созвона, но встречи
+          не должны знать о её существовании. Через прямой вызов вышло бы кольцо
+          зависимостей (поддержка → агент → помощник → встречи → поддержка), а
+          кольца в модулях всегда заканчиваются загадочными отказами при старте.
+        */
+        const summary = (await this.repo.summary(input.tenantId, meeting.id))?.summary ?? null;
+        for (const sink of this.sinks) {
+          await sink({ tenantId: input.tenantId, meetingId: meeting.id, roomId: input.roomId ?? '', summary })
+            .catch((e) => this.log.warn(`подписчик разбора созвона: ${(e as Error).message}`));
+        }
       } catch (e) {
         this.log.warn(`созвон ${meeting.id}: ${(e as Error).message}`);
         await this.repo.setStatus(meeting.id, 'error', describeFfmpegError(e)).catch(() => undefined);

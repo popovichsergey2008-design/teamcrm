@@ -56,6 +56,18 @@ class ReopenDto {
   @IsOptional() @IsString() @MaxLength(8000) text?: string;
 }
 
+class EngineerDto {
+  @IsString() userId!: string;
+}
+
+class BugDto {
+  @IsOptional() @IsString() @MaxLength(200) title?: string;
+}
+
+class HuddleDto {
+  @IsString() @MaxLength(64) roomId!: string;
+}
+
 class AgentDto {
   @IsString() userId!: string;
   @IsBoolean() active!: boolean;
@@ -80,6 +92,12 @@ export class SupportDeskController {
   @Get()
   overview(@CurrentUser() u: AuthUser) {
     return this.desk.desk(u.tenantId, u);
+  }
+
+  /** Сводка службы заботы для руководителя — тоже раньше «:id». */
+  @Get('dashboard')
+  dashboard(@CurrentUser() u: AuthUser) {
+    return this.desk.dashboard(u.tenantId, u);
   }
 
   /** Очередь дежурного — раньше «:id», иначе слово «queue» примут за номер разговора. */
@@ -146,6 +164,30 @@ export class SupportDeskController {
   @Post(':id/reopen')
   reopen(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ReopenDto) {
     return this.desk.reopen(u.tenantId, u, id, dto.text);
+  }
+
+  /** Подключить инженера: он приходит в тот же разговор и видит его целиком. */
+  @Post(':id/engineer')
+  engineer(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: EngineerDto) {
+    return this.desk.addEngineer(u.tenantId, u, id, dto.userId);
+  }
+
+  /** Завести баг из разговора: контекст уезжает в задачу сам. */
+  @Post(':id/bug')
+  bug(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: BugDto) {
+    return this.desk.createBug(u.tenantId, u, id, dto.title);
+  }
+
+  /** Созвон из поддержки: комнату создаёт обычный созвон, здесь — пометка о разговоре. */
+  @Post(':id/huddle')
+  huddle(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: HuddleDto) {
+    return this.desk.startHuddle(u.tenantId, u, id, dto.roomId);
+  }
+
+  /** Диагностика для специалиста: контекст, заведённые баги и время ответов. */
+  @Get(':id/diagnostics')
+  diagnostics(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.diagnostics(u.tenantId, u, id);
   }
 
   /** Кто дежурит. */

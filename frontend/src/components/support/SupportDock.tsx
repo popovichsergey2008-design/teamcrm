@@ -3,6 +3,7 @@ import { api, ApiError } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { collectSupportContext, describeContext } from '../../lib/support-context';
 import { shrinkImage } from '../../lib/image-shrink';
+import { requestCall } from '../../lib/notifications';
 import { stampLabel } from '../../lib/chat-text';
 import { useAuth } from '../../state/auth';
 import { Icon } from '../Icon';
@@ -68,6 +69,10 @@ export function SupportDock() {
   /** Очередь дежурного: кто ждёт ответа прямо сейчас. */
   const [queue, setQueue] = useState<SupportQueueItem[]>([]);
   const [lowReason, setLowReason] = useState<number | null>(null);
+  /** Диагностика и подключение инженера — инструменты дежурного (MVP 2). */
+  const [diag, setDiag] = useState<Awaited<ReturnType<typeof api.supportDiagnostics>> | null>(null);
+  const [tools, setTools] = useState(false);
+  const [people, setPeople] = useState<{ id: string; fullName: string }[]>([]);
   const feedRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
@@ -107,6 +112,67 @@ export function SupportDock() {
     socket.on('support.queue.changed', onQueue);
     return () => { socket.off('support.queue.changed', onQueue); };
   }, [desk?.isAgent, loadQueue]);
+
+  /*
+    Инструменты дежурного открываются по кнопке и грузятся тогда же.
+
+    Диагностика, список коллег и заведённые баги нужны в одном разговоре из десяти —
+    тянуть их вместе с каждым открытием панели значит платить за них всегда.
+  */
+  const openTools = async (id: string) => {
+    setTools((v) => !v);
+    if (diag) return;
+    const [d, users] = await Promise.all([
+      api.supportDiagnostics(id).catch(() => null),
+      api.listUsers().then((u) => u.map((x: { id: string; fullName: string }) => ({ id: String(x.id), fullName: x.fullName }))).catch(() => []),
+    ]);
+    setDiag(d);
+    setPeople(users);
+  };
+
+  /** Позвать инженера — в ТОТ ЖЕ разговор: объяснять второй раз человек не должен. */
+  const addEngineer = async (userId: string) => {
+    if (!conv || !userId) return;
+    setBusy(true);
+    try { setConv(await api.supportAddEngineer(conv.id, userId)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось подключить'); }
+    finally { setBusy(false); }
+  };
+
+  /** Баг из разговора: описание, шаги и контекст уезжают в задачу сами. */
+  const createBug = async () => {
+    if (!conv) return;
+    setBusy(true);
+    try {
+      const res = await api.supportCreateBug(conv.id);
+      setConv(res.conversation);
+      setDiag(await api.supportDiagnostics(conv.id).catch(() => null));
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось завести задачу'); }
+    finally { setBusy(false); }
+  };
+
+  /**
+   * Созвон из поддержки (разд. 13).
+   *
+   * Комнату поднимает обычный созвон CRM — со звуком, видео, демонстрацией экрана и
+   * записью. Мы лишь помечаем, что разговор идёт по этому обращению: по пометке итог
+   * с расшифровкой и разбором вернётся сюда же.
+   */
+  const startHuddle = async () => {
+    if (!conv) return;
+    setBusy(true); setErr('');
+    try {
+      const room = await api.startCall(undefined, true);
+      await api.supportHuddle(conv.id, String(room.id));
+      const to = conv.participants
+        .map((p) => String(p.user_id))
+        .filter((uid) => uid !== String(user?.id ?? ''));
+      requestCall({ memberIds: to, title: `Служба заботы · ${conv.subject}`.slice(0, 80) });
+      setConv(await api.supportConversation(conv.id));
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Созвон не начался');
+    } finally { setBusy(false); }
+  };
 
   /** Взять разговор себе: человек сразу видит, кто ему отвечает. */
   const takeConversation = async (id: string) => {
@@ -262,6 +328,28 @@ export function SupportDock() {
                 {online.length > 0 && !agent && <span className="support-online"> · {online.length} на связи</span>}
               </span>
             </div>
+            {conv && (
+              <button
+                className="msg-icon"
+                onClick={() => void startHuddle()}
+                disabled={busy}
+                title="Созвон по этому обращению — с записью и разбором"
+                aria-label="Созвон"
+              >
+                <Icon name="phone" size={15} />
+              </button>
+            )}
+            {desk?.isAgent && conv && !mineConversation && (
+              <button
+                className={`msg-icon${tools ? ' active' : ''}`}
+                onClick={() => void openTools(conv.id)}
+                title="Диагностика, инженер, задача"
+                aria-label="Инструменты специалиста"
+                aria-expanded={tools}
+              >
+                <Icon name="settings" size={15} />
+              </button>
+            )}
             {desk?.isAgent && (
               <button
                 className={`msg-icon${view === 'queue' ? ' active' : ''}`}
@@ -414,6 +502,60 @@ export function SupportDock() {
                       )}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/*
+                Инструменты специалиста: диагностика, инженер, задача.
+
+                Всё, за чем раньше пришлось бы ходить по системе и спрашивать человека:
+                где он был, в каком браузере, что за ошибка (разд. 17), — плюс два
+                действия, из-за которых обращение обычно и застревает.
+              */}
+              {tools && conv && (
+                <div className="support-tools">
+                  <div className="support-tools-head">
+                    <b>Диагностика</b>
+                    <span className="dim">видно только специалисту</span>
+                  </div>
+                  <dl className="support-diag">
+                    <dt>Адрес</dt><dd>{diag?.context?.url ?? '—'}</dd>
+                    <dt>Раздел</dt>
+                    <dd>
+                      {diag?.context?.route ?? '—'}
+                      {diag?.context?.entity_type ? ` · ${diag.context.entity_type} #${diag.context.entity_id}` : ''}
+                    </dd>
+                    <dt>Браузер</dt><dd>{diag?.context?.browser ?? '—'} · {diag?.context?.os ?? '—'}</dd>
+                    <dt>Сборка</dt><dd>{diag?.context?.app_version ?? '—'}{diag?.context?.build_id ? ` (${diag.context.build_id})` : ''}</dd>
+                    <dt>Ошибка</dt><dd>{diag?.context?.last_error ?? 'не было'}</dd>
+                    <dt>Сеть</dt><dd>{diag?.context?.network ?? '—'}</dd>
+                  </dl>
+                  {!!diag?.issues.length && (
+                    <div className="support-issues">
+                      {diag.issues.map((i) => (
+                        <span key={i.taskId} className={`badge${i.closed ? ' badge-muted' : ' badge-info'}`}>
+                          Задача #{i.taskId} · {i.closed ? 'закрыта' : 'в работе'}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="support-tools-acts">
+                    <select
+                      className="input"
+                      value=""
+                      disabled={busy}
+                      onChange={(e) => { void addEngineer(e.target.value); e.currentTarget.value = ''; }}
+                      aria-label="Подключить инженера"
+                    >
+                      <option value="">Подключить инженера…</option>
+                      {people
+                        .filter((p) => !conv.participants.some((x) => String(x.user_id) === p.id))
+                        .map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}
+                    </select>
+                    <button className="btn btn-sm" disabled={busy} onClick={() => void createBug()}>
+                      <Icon name="alert" size={13} /> Завести задачу
+                    </button>
+                  </div>
                 </div>
               )}
 

@@ -1,9 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { AnthillService } from '../anthill/anthill.service';
 import { AnthillRepository } from '../anthill/anthill.repository';
 import { FilesService } from '../files/files.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { MeetingsService } from '../meetings/meetings.service';
+import { ProjectsService } from '../projects/projects.service';
+import { TasksService } from '../tasks/tasks.service';
+import { SupportRepository } from './support.repository';
 import { ContextInput, ConversationRow, SupportDeskRepository } from './support-desk.repository';
 import { humanStatus, wantsHuman } from './support-text';
 
@@ -24,7 +28,7 @@ import { humanStatus, wantsHuman } from './support-text';
  *    переводит в «проверьте, пожалуйста» — и ждёт ответа.
  */
 @Injectable()
-export class SupportDeskService {
+export class SupportDeskService implements OnModuleInit {
   private readonly log = new Logger('SupportDesk');
 
   constructor(
@@ -33,7 +37,30 @@ export class SupportDeskService {
     private readonly files: FilesService,
     private readonly agent: AnthillService,
     private readonly agentRepo: AnthillRepository,
+    private readonly tasks: TasksService,
+    private readonly projects: ProjectsService,
+    private readonly support: SupportRepository,
+    private readonly meetings: MeetingsService,
   ) {}
+
+  /**
+   * Подписываемся на разбор созвонов.
+   *
+   * Итог созвона из поддержки должен вернуться в тот разговор, из которого звонили.
+   * Встречи о поддержке не знают — мы приходим к ним сами.
+   */
+  onModuleInit(): void {
+    this.meetings.onCallProcessed(async (e) => {
+      if (e.roomId) await this.huddleFinished(e.roomId, e.meetingId, e.summary);
+    });
+    /*
+      Задача закрыта — говорим тем, кто её ждал (разд. 25).
+
+      Человек, обратившийся неделю назад, узнаёт о починке сам, а не проверяет по
+      своей инициативе. Подписка по той же причине, что и на разбор созвона.
+    */
+    this.tasks.onTaskClosed(async (e) => { await this.notifyFixDeployed(e.taskId, e.title); });
+  }
 
   // ── что показать в панели ──
   /**
@@ -385,6 +412,201 @@ export class SupportDeskService {
       return this.reply(tenantId, user, String(conv.id), text, String(uploaded.id));
     }
     return this.send(tenantId, user, text, null, String(uploaded.id));
+  }
+
+  // ── MVP 2: инженер, баг, созвон, метрики ──
+  /**
+   * Подключить инженера к разговору (разд. 11, 12).
+   *
+   * Инженер приходит в ТОТ ЖЕ разговор и видит его целиком — переписку, контекст, что
+   * уже проверил специалист. Ради этого модуль и строился: человеку не приходится
+   * объяснять свою проблему второй раз новому человеку (разд. 2.4).
+   */
+  async addEngineer(tenantId: string, user: { userId: string; role: string }, id: string, engineerId: string) {
+    await this.assertAgent(tenantId, user);
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    const who = await this.repo.userName(tenantId, engineerId);
+    if (!who) throw AppException.notFound('Такого сотрудника нет');
+
+    await this.repo.addParticipant(id, engineerId, 'engineer');
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: user.userId, kind: 'system',
+      body: `добавил в разговор: ${who} — инженер видит всю переписку и контекст`,
+    });
+    this.realtime.emitToUsers(tenantId, [engineerId], 'support.agent.joined', { conversationId: id });
+    const next = (await this.repo.byId(tenantId, id))!;
+    this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: engineerId });
+    return this.view(tenantId, next);
+  }
+
+  /**
+   * Завести баг из разговора (разд. 24).
+   *
+   * В задачу уезжает всё, что нужно разработчику и что у нас уже собрано: что
+   * случилось, где, в каком браузере и сборке, последняя ошибка и ссылка на сам
+   * разговор. Переписывать это руками — ровно та работа, ради отмены которой
+   * поддержка и собирает контекст.
+   */
+  async createBug(tenantId: string, user: { userId: string; role: string }, id: string, title?: string) {
+    await this.assertAgent(tenantId, user);
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+
+    const [messages, ctx] = await Promise.all([
+      this.repo.messages(id),
+      this.repo.context(id),
+    ]);
+    const c = (ctx ?? {}) as Record<string, string | null>;
+    const talk = messages
+      .filter((m) => m.author_kind !== 'system')
+      .slice(-12)
+      .map((m) => `${m.author_kind === 'user' ? 'Человек' : m.author_kind === 'ai' ? 'AnthillBot' : m.author_name ?? 'Специалист'}: ${String(m.body ?? '').slice(0, 400)}`)
+      .join('\n');
+    const description = [
+      '**Из разговора службы заботы.**',
+      '',
+      '**Что произошло**',
+      talk || conv.subject,
+      '',
+      '**Где**',
+      `Адрес: ${c.url ?? '—'}`,
+      `Раздел: ${c.route ?? '—'}${c.entity_type ? ` · ${c.entity_type} #${c.entity_id}` : ''}`,
+      `Браузер: ${c.browser ?? '—'} · ${c.os ?? '—'}`,
+      `Сборка: ${c.app_version ?? '—'}${c.build_id ? ` (${c.build_id})` : ''}`,
+      c.last_error ? `Последняя ошибка: ${c.last_error}` : '',
+      c.request_id ? `Request ID: ${c.request_id}` : '',
+      '',
+      `Обращение №${id}.`,
+    ].filter(Boolean).join('\n');
+
+    // Баг живёт в проекте поддержки: он и заведён для такой работы.
+    let project = await this.support.project(tenantId);
+    if (!project) {
+      const created = await this.projects.create(tenantId, { name: 'Поддержка' });
+      await this.support.setProject(tenantId, String(created.id));
+      project = { id: String(created.id), name: created.name };
+    }
+    const task = await this.tasks.create(tenantId, {
+      projectId: String(project.id),
+      title: (title?.trim() || conv.subject || 'Разобраться с обращением').slice(0, 200),
+      description,
+      priority: conv.priority === 'critical' ? 'urgent' : 'normal',
+    } as never, user.userId);
+
+    await this.repo.linkIssue(id, String(task.id));
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: user.userId, kind: 'system',
+      body: `завёл задачу #${task.id} — «${task.title}». Сообщим, когда исправление выйдет.`,
+    });
+    const next = (await this.repo.byId(tenantId, id))!;
+    this.emit(tenantId, next, 'support.issue.linked', { conversationId: id, taskId: String(task.id) });
+    return { taskId: String(task.id), projectId: String(project.id), conversation: await this.view(tenantId, next) };
+  }
+
+  /**
+   * Задача закрыта — сказать об этом тем, кто её ждал (разд. 25).
+   *
+   * Зовётся из закрытия задачи: человек, обратившийся неделю назад, узнаёт о
+   * починке сам, а не проверяет по своей инициативе.
+   */
+  async notifyFixDeployed(taskId: string, taskTitle: string): Promise<void> {
+    try {
+      const rows = await this.repo.conversationsOfTask(taskId);
+      for (const r of rows) {
+        await this.repo.addMessage({
+          tenantId: r.tenant_id, conversationId: r.conversation_id, authorId: null, kind: 'system',
+          body: `Мы выпустили исправление по «${taskTitle}». Обновите страницу и проверьте, пожалуйста.`,
+        });
+        await this.repo.setStatus(r.tenant_id, r.conversation_id, 'waiting_user');
+        this.realtime.emitToUsers(r.tenant_id, [r.user_id], 'support.status.changed', {
+          conversationId: r.conversation_id, status: 'waiting_user',
+        });
+      }
+    } catch (e) {
+      // Весть о починке — приятная мелочь, а не причина ронять закрытие задачи.
+      this.log.warn(`весть об исправлении задачи ${taskId}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Созвон из поддержки (разд. 13).
+   *
+   * Комнату создаёт обычный созвон CRM — со звуком, видео, демонстрацией экрана и
+   * записью. Здесь мы только помечаем, что разговор ведётся по этому обращению:
+   * по этой пометке итог с расшифровкой и разбором вернётся в саму поддержку.
+   */
+  async startHuddle(tenantId: string, user: { userId: string; role: string }, id: string, roomId: string) {
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    await this.assertCanSee(tenantId, user, conv);
+    await this.repo.startHuddle(id, roomId, user.userId);
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: user.userId, kind: 'system', body: 'начал созвон',
+    });
+    this.emit(tenantId, conv, 'support.call.started', { conversationId: id, roomId });
+    return { roomId };
+  }
+
+  /** Итог созвона — обратно в разговор: что произошло, что проверили, что дальше. */
+  async huddleFinished(roomId: string, meetingId: string | null, summary: string | null): Promise<void> {
+    try {
+      const h = await this.repo.huddleByRoom(roomId);
+      if (!h) return;
+      await this.repo.finishHuddle(h.id, meetingId);
+      await this.repo.addMessage({
+        tenantId: h.tenant_id, conversationId: h.conversation_id, authorId: null, kind: 'system',
+        body: summary?.trim()
+          ? `Итог созвона:\n${summary.trim().slice(0, 4000)}`
+          : 'Созвон завершён — расшифровка и разбор появятся в разделе «Встречи».',
+      });
+      const conv = await this.repo.byId(h.tenant_id, h.conversation_id);
+      if (conv) this.emit(h.tenant_id, conv, 'support.call.ended', { conversationId: h.conversation_id });
+    } catch (e) {
+      this.log.warn(`итог созвона ${roomId}: ${(e as Error).message}`);
+    }
+  }
+
+  /** Диагностика для специалиста (разд. 17): весь технический контекст одним местом. */
+  async diagnostics(tenantId: string, user: { userId: string; role: string }, id: string) {
+    await this.assertAgent(tenantId, user);
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    const [ctx, issues] = await Promise.all([this.repo.context(id), this.repo.issues(id)]);
+    return {
+      context: ctx ?? null,
+      issues: issues.map((i) => ({
+        taskId: i.task_id, projectId: i.project_id, title: i.title,
+        type: i.issue_type, closed: !!i.closed_at,
+      })),
+      sla: {
+        createdAt: conv.created_at,
+        firstResponseAt: conv.first_response_at,
+        resolvedAt: conv.resolved_at,
+        reopens: conv.reopens,
+      },
+    };
+  }
+
+  /** Метрики службы заботы для руководителя (разд. 30). */
+  async dashboard(tenantId: string, user: { userId: string; role: string }) {
+    if (user.role !== 'owner' && user.role !== 'manager') {
+      throw AppException.forbidden('Сводка службы заботы — для руководства');
+    }
+    const d = await this.repo.dashboard(tenantId);
+    const num = (v: string | null | undefined) => (v === null || v === undefined ? null : Number(v));
+    return {
+      total: Number(d?.total ?? 0),
+      active: Number(d?.active ?? 0),
+      waiting: Number(d?.waiting ?? 0),
+      resolved: Number(d?.resolved ?? 0),
+      firstResponseSeconds: num(d?.first_median) ? Math.round(num(d?.first_median)!) : null,
+      resolutionSeconds: num(d?.resolution_median) ? Math.round(num(d?.resolution_median)!) : null,
+      csatAvg: num(d?.csat_avg) ? Number(num(d?.csat_avg)!.toFixed(2)) : null,
+      csatCount: Number(d?.csat_count ?? 0),
+      reopened: Number(d?.reopened ?? 0),
+      solvedByAi: Number(d?.ai_only ?? 0),
+    };
   }
 
   // ── дежурные ──

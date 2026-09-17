@@ -18,6 +18,25 @@ import { nextWednesday } from './deadline-shift';
 
 @Injectable()
 export class TasksService {
+  /**
+   * Кому рассказать о закрытой задаче.
+   *
+   * Подписка, а не прямой вызов: службе заботы нужно знать, что исправление вышло
+   * («мы выпустили фикс, проверьте»), но задачи о её существовании знать не должны.
+   * Прямой вызов дал бы кольцо зависимостей между модулями.
+   */
+  private readonly closedSinks: ((e: { tenantId: string; taskId: string; title: string }) => Promise<void>)[] = [];
+
+  onTaskClosed(fn: (e: { tenantId: string; taskId: string; title: string }) => Promise<void>): void {
+    this.closedSinks.push(fn);
+  }
+
+  private async announceClosed(tenantId: string, taskId: string, title: string): Promise<void> {
+    for (const sink of this.closedSinks) {
+      await sink({ tenantId, taskId, title }).catch(() => undefined);
+    }
+  }
+
   constructor(
     private readonly repo: TasksRepository,
     private readonly projects: ProjectsRepository,
@@ -352,6 +371,7 @@ export class TasksService {
       await this.repo.closeTask(tenantId, id);
       if (task.approval_state === 'pending') await this.repo.clearApproval(tenantId, id);
       this.knowledge.enqueue(tenantId, 'task', id); // закрытая задача → в базу знаний
+      void this.announceClosed(tenantId, id, task.title);
     } else if (needsApproval) {
       await this.repo.requestApproval(tenantId, id, actorId);
       await this.activity.log(tenantId, id, actorId, 'approval_requested', { to: column.name });
@@ -447,6 +467,7 @@ export class TasksService {
     await this.repo.clearApproval(tenantId, id);
     await this.activity.log(tenantId, id, actor.userId, 'approval_confirmed', {});
     this.knowledge.enqueue(tenantId, 'task', id);
+    void this.announceClosed(tenantId, id, task.title);
 
     const updated = (await this.repo.findById(tenantId, id))!;
     this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);

@@ -7,6 +7,15 @@ import { api } from '../lib/api';
 import { stampLabel } from '../lib/chat-text';
 import type { SupportDesk, SupportQueueItem } from '../types';
 
+/** Секунды человеческими словами: «28 сек», «4 мин», «1 ч 10 мин». */
+function dur(sec: number | null): string {
+  if (!sec) return '—';
+  if (sec < 90) return `${Math.round(sec)} сек`;
+  if (sec < 3600) return `${Math.round(sec / 60)} мин`;
+  const h = Math.floor(sec / 3600);
+  return `${h} ч ${Math.round((sec - h * 3600) / 60)} мин`;
+}
+
 /**
  * Раздел «Служба заботы» (ТЗ-8, разд. 3.3 и 22).
  *
@@ -20,6 +29,8 @@ import type { SupportDesk, SupportQueueItem } from '../types';
 export function SupportPage() {
   const [desk, setDesk] = useState<SupportDesk | null>(null);
   const [queue, setQueue] = useState<SupportQueueItem[]>([]);
+  /** Сводка — только руководству: цифры управленческие, остальным они ничего не говорят. */
+  const [stats, setStats] = useState<Awaited<ReturnType<typeof api.supportDashboard>> | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -27,6 +38,7 @@ export function SupportPage() {
     if (d) {
       setDesk(d);
       if (d.isAgent) setQueue(await api.supportQueue().catch(() => []));
+      setStats(await api.supportDashboard().catch(() => null));
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
@@ -82,6 +94,29 @@ export function SupportPage() {
             при этом не теряется, повторять ничего не придётся.
           </p>
         </div>
+
+        {/*
+          Сводка службы заботы (разд. 30).
+
+          Шесть цифр вместо дашборда на двадцать графиков: за сколько отвечаем, за
+          сколько решаем, как оценивают, сколько возвращается и сколько разобрал
+          помощник. Медианы, а не средние: один ночной разговор не должен рисовать
+          несуществующую картину.
+        */}
+        {stats && (
+          <div className="support-stats">
+            <div className="support-stat"><b>{dur(stats.firstResponseSeconds)}</b><span className="dim">первый ответ</span></div>
+            <div className="support-stat"><b>{dur(stats.resolutionSeconds)}</b><span className="dim">до решения</span></div>
+            <div className="support-stat"><b>{stats.active}</b><span className="dim">в работе</span></div>
+            <div className="support-stat"><b>{stats.waiting}</b><span className="dim">ждут специалиста</span></div>
+            <div className="support-stat">
+              <b>{stats.csatAvg ? `${stats.csatAvg}/4` : '—'}</b>
+              <span className="dim">оценка{stats.csatCount ? ` · ${stats.csatCount}` : ''}</span>
+            </div>
+            <div className="support-stat"><b>{stats.solvedByAi}</b><span className="dim">решил помощник</span></div>
+            <div className="support-stat"><b>{stats.reopened}</b><span className="dim">открывали заново</span></div>
+          </div>
+        )}
 
         {/* Очередь — только дежурному: остальным она ничего не говорит. */}
         {desk?.isAgent && (

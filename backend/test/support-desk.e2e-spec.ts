@@ -120,6 +120,58 @@ describe('служба заботы (e2e)', () => {
     expect(again.messages.length).toBeGreaterThan(5);
   }, 60000);
 
+  it('инженер входит в тот же разговор, баг уносит контекст, фикс возвращается вестью', async () => {
+    const { mate, O, M } = await team('SD4');
+
+    const conv = (await http.post('/api/support/desk/messages').set(M)
+      .send({
+        text: 'Задача не сохраняется, жму «Сохранить» — ничего',
+        context: { url: 'https://anthill.team/projects/3/task/9', route: 'projects', entityType: 'task', entityId: '9', browser: 'Chrome 141', os: 'Windows', lastError: 'PATCH /api/tasks/9 500' },
+      }).expect(201)).body.data;
+    await http.post(`/api/support/desk/${conv.id}/join`).set(O).expect(201);
+
+    // инженер приходит в ТОТ ЖЕ разговор: объяснять второй раз не нужно
+    const withEngineer = (await http.post(`/api/support/desk/${conv.id}/engineer`).set(O)
+      .send({ userId: String(mate.id) }).expect(201)).body.data;
+    expect(withEngineer.participants.some((p: any) => p.role === 'engineer')).toBe(true);
+
+    // баг заводится из разговора и уносит контекст с собой
+    const bug = (await http.post(`/api/support/desk/${conv.id}/bug`).set(O)
+      .send({ title: 'Задача не сохраняется' }).expect(201)).body.data;
+    expect(bug.taskId).toBeTruthy();
+    const task = (await http.get(`/api/projects/${bug.projectId}/board`).set(O).expect(200)).body.data
+      .columns.flatMap((c: any) => c.tasks).find((t: any) => String(t.id) === String(bug.taskId));
+    expect(task.description).toContain('PATCH /api/tasks/9 500');
+    expect(task.description).toContain('Chrome 141');
+    expect(task.description).toContain(`Обращение №${conv.id}`);
+
+    // диагностика собрана для специалиста в одном месте
+    const diag = (await http.get(`/api/support/desk/${conv.id}/diagnostics`).set(O).expect(200)).body.data;
+    expect(diag.context.route).toBe('projects');
+    expect(diag.issues.some((i: any) => String(i.taskId) === String(bug.taskId))).toBe(true);
+
+    // задачу закрыли — человеку приходит весть об исправлении, разговор ждёт проверки
+    const board = (await http.get(`/api/projects/${bug.projectId}/board`).set(O).expect(200)).body.data;
+    const done = board.columns.find((c: any) => /готов/i.test(c.name)) ?? board.columns[board.columns.length - 1];
+    await http.post(`/api/tasks/${bug.taskId}/move`).set(O).send({ columnId: String(done.id), position: 0 }).expect(201);
+    await new Promise((r) => setTimeout(r, 400)); // весть уходит следом за закрытием
+
+    const after = (await http.get(`/api/support/desk/${conv.id}`).set(M).expect(200)).body.data;
+    expect(after.messages.some((m: any) => /выпустили исправление/i.test(m.body))).toBe(true);
+    expect(after.status).toBe('waiting_user');
+  }, 60000);
+
+  it('сводка службы заботы — для руководства', async () => {
+    const { O, M } = await team('SD5');
+    await http.post('/api/support/desk/messages').set(M).send({ text: 'Не открывается отчёт' }).expect(201);
+
+    const d = (await http.get('/api/support/desk/dashboard').set(O).expect(200)).body.data;
+    expect(d.total).toBeGreaterThanOrEqual(1);
+    expect(d.active).toBeGreaterThanOrEqual(1);
+    // сотруднику сводка не положена: это управленческие цифры
+    await http.get('/api/support/desk/dashboard').set(M).expect(403);
+  }, 30000);
+
   it('чужое обращение не прочитать', async () => {
     const a = await team('SD2');
     const b = await team('SD3');
