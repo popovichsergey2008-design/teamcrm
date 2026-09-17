@@ -6,7 +6,7 @@ import { setDoNotDisturb } from '../lib/sound';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { Logo } from './Logo';
-import { buildPath, navigate, Route, Section } from '../lib/router';
+import { buildPath, isConsoleHost, navigate, Route, Section } from '../lib/router';
 import { roleLabel } from '../lib/labels';
 import { NavCounters } from '../hooks/useNavCounters';
 import { useEscape } from '../hooks/useEscape';
@@ -38,7 +38,13 @@ type Item = {
   hint: string;
   /** роли, которым пункт виден; пусто — виден всем */
   roles?: Role[];
-  /** пункт только для техотдела вендора: клиенту такого раздела не существует */
+  /**
+   * Пункт только для техотдела вендора И только на его собственном адресе.
+   *
+   * На основном домене консоли в меню нет вовсе: сотрудник вендора работает в CRM
+   * как все, а поддержкой занимается по своему адресу. Так строка не мелькает на
+   * общих экранах и не наводит на мысль, что у соседа «есть что-то ещё».
+   */
   platformOnly?: boolean;
   subs?: { label: string; icon: IconName; route: Route; roles?: Role[] }[];
 };
@@ -227,7 +233,7 @@ export function Sidebar({
   const [dragged, setDragged] = useState<string | null>(null);
   useEffect(() => { setPrefs(user.uiPrefs ?? {}); }, [user.uiPrefs]);
 
-  const allowed = MENU.filter((i) => visible(i.roles, user.role) && (!i.platformOnly || user.platformStaff));
+  const allowed = MENU.filter((i) => visible(i.roles, user.role) && (!i.platformOnly || (user.platformStaff && isConsoleHost())));
   const ordered = applyOrder(allowed, prefs);
   // В режиме настройки показываем и спрятанное — иначе вернуть его будет неоткуда.
   const menuItems = tuning ? ordered : applyHidden(ordered, prefs);

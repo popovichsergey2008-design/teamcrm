@@ -4,7 +4,7 @@ import { EmptyState } from '../components/EmptyState';
 import { SkeletonList } from '../components/Skeleton';
 import { openSupport } from '../components/support/SupportDock';
 import { api } from '../lib/api';
-import { navigate } from '../lib/router';
+import { consoleHref } from '../lib/router';
 import { useAuth } from '../state/auth';
 import type { SupportDesk } from '../types';
 
@@ -16,7 +16,8 @@ import type { SupportDesk } from '../types';
  *
  * Настроек здесь нет и не будет. TeamCRM — продукт, и службу заботы ведёт его
  * разработчик: очередь, дежурные, известные проблемы, сводка и справочник живут в
- * консоли техотдела (раздел «Консоль»), которой у клиента просто не существует.
+ * консоли техотдела по своему адресу (console.<домен>), и на основном домене её нет
+ * даже в меню.
  * Раньше эта кухня была видна любому владельцу компании — для коробочного продукта
  * это неверно: клиент не настраивает нашу поддержку.
  *
@@ -48,11 +49,16 @@ export function SupportPage() {
       <div className="page-head">
         <h2 className="page-title"><Icon name="support" size={18} /> Служба заботы</h2>
         <div className="page-head-actions">
-          {/* Свои в техотделе попадают отсюда в консоль: искать её адрес не надо. */}
+          {/*
+            Единственный след консоли на основном домене — эта ссылка, и только у
+            техотдела. В меню её нет намеренно: консоль живёт по своему адресу, и
+            строка раздела на общих экранах наводила бы клиентов на лишние вопросы.
+            Вход там отдельный: другой адрес — другое хранилище браузера.
+          */}
           {user?.platformStaff && (
-            <button className="btn btn-sm" onClick={() => navigate({ section: 'console' })}>
+            <a className="btn btn-sm" href={consoleHref()} target="_blank" rel="noreferrer">
               <Icon name="lock" size={14} /> Консоль техподдержки
-            </button>
+            </a>
           )}
           <button className="btn btn-primary btn-sm" onClick={openSupport}>
             <Icon name="chat" size={15} /> Написать

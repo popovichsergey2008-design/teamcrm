@@ -54,6 +54,23 @@ export function isConsoleHost(): boolean {
   return window.location.hostname.startsWith(CONSOLE_HOST);
 }
 
+/**
+ * Куда вести за консолью с основного домена.
+ *
+ * На боевом адресе — на поддомен: у техотдела свой вход, и в меню обычного сайта
+ * консоли нет. В разработке (localhost, голый IP) поддомена не существует — там
+ * остаёмся внутри приложения, иначе ссылка вела бы в никуда.
+ *
+ * Имя выводим из текущего домена, а не пишем строкой: установок у продукта будет
+ * больше одной, и «anthill.team» в коде фронта — чужое имя в чужой копии.
+ */
+export function consoleHref(): string {
+  const host = window.location.hostname;
+  const local = host === 'localhost' || host === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(host);
+  if (isConsoleHost() || local) return '/console';
+  return `${window.location.protocol}//${CONSOLE_HOST}${host.replace(/^www\./, '')}/console`;
+}
+
 const NAV_EVENT = 'teamcrm:navigate';
 const enc = encodeURIComponent;
 
