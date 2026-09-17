@@ -4513,3 +4513,120 @@ button.chat-pop-row:hover { background: var(--hover); }
 .msg-rich h3 { font-size: calc(15px * var(--fs-scale)); margin: 6px 0 4px; }
 .msg-rich h4 { font-size: calc(14px * var(--fs-scale)); margin: 6px 0 4px; }
 .msg-rich img { max-width: 100%; border-radius: 8px; }
+
+/* ───── Служба заботы (ТЗ-8) ─────
+ *
+ * Панель поверх CRM, а не отдельный экран: человек видит свою задачу и разговор
+ * одновременно. Всё оформление держится на трёх решениях:
+ *
+ * 1. Кнопка в правом нижнем углу заметна, но не мешает: узкая «таблетка» с подписью,
+ *    на узком экране — только значок.
+ * 2. Панель — того же роста, что окно чата поверх CRM: человек уже знает эту форму.
+ * 3. Реплики различаются подложкой, а не выравниванием: в колонке шириной в ладонь
+ *    правый край съел бы половину строки (то же решение, что в чате задачи).
+ */
+.support-fab {
+  position: fixed; right: 18px; bottom: 18px; z-index: 55;
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 46px; padding: 0 18px 0 16px;
+  border: none; border-radius: 999px; cursor: pointer;
+  background: var(--accent-2); color: var(--on-accent);
+  box-shadow: var(--shadow-lg);
+  font: inherit; font-weight: 600;
+  transition: transform .12s, filter .15s;
+}
+.support-fab:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.support-fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.support-fab-text { white-space: nowrap; }
+/* Зелёная точка — кто-то из дежурных сейчас на связи. Обещание, которое можно сдержать. */
+.support-fab-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--ok); box-shadow: 0 0 0 2px var(--accent-2);
+}
+
+.support-dock {
+  position: fixed; right: 18px; bottom: 18px; z-index: 56;
+  width: min(420px, calc(100vw - 36px)); height: min(640px, calc(100vh - 100px));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg-elev); border: 1px solid var(--border-2);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+}
+.support-head {
+  display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
+  padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--bg-elev);
+}
+.support-head-mark {
+  width: 34px; height: 34px; flex: 0 0 auto; border-radius: 50%;
+  display: grid; place-items: center; background: var(--accent-soft); color: var(--accent);
+}
+.support-head-title { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.support-head-sub { font-size: var(--fs-xs); }
+.support-online { color: var(--ok); }
+.support-err { padding: 6px 12px; }
+
+.support-feed {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--bg-elev-2);
+}
+.support-hello p { margin: 0 0 6px; }
+.support-empty { padding: 12px; }
+
+.support-msg { max-width: 92%; padding: 8px 12px; border-radius: 14px; background: var(--bg-elev); border: 1px solid var(--border); }
+.support-msg-user { align-self: flex-end; background: var(--accent-soft); border-color: var(--accent-line); }
+.support-msg-ai { border-color: var(--ok-line); }
+.support-msg-who { display: flex; gap: 6px; align-items: baseline; font-size: var(--fs-xs); font-weight: 600; margin-bottom: 2px; }
+.support-msg-time { font-weight: 400; }
+.support-msg-text { font-size: var(--fs-sm); word-break: break-word; }
+.support-file { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-size: var(--fs-xs); color: var(--accent); }
+/* Отметки разговора («подключился Максим») — тихой строкой по центру, как в мессенджерах. */
+.support-system { align-self: center; font-size: var(--fs-xs); color: var(--text-dim); text-align: center; }
+
+.support-ask {
+  flex: 0 0 auto; padding: 10px 12px; border-top: 1px solid var(--border);
+  background: var(--ok-soft); display: flex; flex-direction: column; gap: 8px;
+}
+.support-ask-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.support-csat { display: flex; flex-direction: column; gap: 6px; }
+.support-faces { display: flex; gap: 6px; }
+.support-face {
+  width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 50%;
+  background: var(--bg-elev); font-size: 20px; line-height: 1; cursor: pointer;
+  font-family: var(--font-emoji), var(--font);
+}
+.support-face:hover { border-color: var(--accent); transform: scale(1.06); }
+.support-face:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.support-reasons { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.support-compose {
+  flex: 0 0 auto; display: flex; align-items: flex-end; gap: 2px;
+  margin: 8px 10px 4px; padding: 4px 6px 4px 8px;
+  background: var(--bg-elev); border: 1px solid var(--border-2); border-radius: 20px;
+}
+.support-compose:focus-within { border-color: var(--accent); }
+.support-compose .input {
+  flex: 1 1 auto; min-width: 0; min-height: 36px; max-height: 140px; padding: 8px 6px;
+  border: none; background: none; resize: none; font-size: var(--fs-md);
+}
+.support-compose .input:focus { outline: none; box-shadow: none; }
+
+.support-foot {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 0 12px 10px; font-size: var(--fs-xs);
+}
+.support-ctx { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.support-human { margin-left: auto; white-space: nowrap; }
+
+.support-history-row {
+  display: flex; flex-direction: column; gap: 4px; padding: 10px;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.support-history-head { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); }
+.support-history-sub { font-size: var(--fs-xs); }
+
+/* На узком экране панель занимает его целиком: разговор о поломке важнее фона. */
+@media (max-width: 560px) {
+  .support-dock { right: 0; bottom: 0; width: 100vw; height: 100dvh; border-radius: 0; }
+  .support-fab { right: 12px; bottom: 12px; padding: 0 14px; }
+  .support-fab-text { display: none; }
+}

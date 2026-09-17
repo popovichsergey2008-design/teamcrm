@@ -1,6 +1,7 @@
 import type {
   Agenda, AiAction, Approval, AssistantMode, AuthResult, Board, Focus, GateSettings, Ping,
-  Project, Proposal, SearchResults, SemanticHit, Task,
+  Project, Proposal, SearchResults, SemanticHit, SupportContextInput, SupportConversation,
+  SupportDesk, SupportQueueItem, Task,
 } from '../types';
 
 const ACCESS_KEY = 'teamcrm.access';
@@ -1090,6 +1091,45 @@ export const api = {
    * Поддержка: обращение — обычная задача владельцу в проекте поддержки.
    * Какой проект принимает обращения, выбирает руководитель в настройках проекта.
    */
+  // ── служба заботы (ТЗ-8): живой разговор, а не заявки ──
+  /** Что показать в панели: живой разговор, история, дежурные и честное время ответа. */
+  supportDesk: () => request<SupportDesk>('GET', '/support/desk'),
+  /** Разговор целиком. */
+  supportConversation: (id: string) => request<SupportConversation>('GET', `/support/desk/${id}`),
+  /**
+   * Написать в поддержку.
+   *
+   * Разговор заводится сам при первом сообщении — ни темы, ни категории у человека
+   * не спрашиваем. Контекст уходит вместе с сообщением: адрес, раздел, сущность,
+   * браузер, сборка, последняя ошибка — и ничего сверх этого.
+   */
+  supportSend: (text: string, context?: SupportContextInput) =>
+    request<SupportConversation>('POST', '/support/desk/messages', { text, context }),
+  supportCallHuman: (id: string) => request<SupportConversation>('POST', `/support/desk/${id}/human`, {}),
+  supportConfirm: (id: string, ok: boolean, csat?: number, reason?: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/confirm`, { ok, csat, reason }),
+  supportReopen: (id: string, text?: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/reopen`, { text }),
+  /** Сторона дежурного: очередь, подключение, ответ, «кажется, решено». */
+  supportQueue: () => request<SupportQueueItem[]>('GET', '/support/desk/queue'),
+  supportJoin: (id: string) => request<SupportConversation>('POST', `/support/desk/${id}/join`, {}),
+  supportReply: (id: string, text: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/reply`, { text }),
+  supportResolve: (id: string, text?: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/resolve`, { text }),
+  /** Снимок экрана к обращению: его присылают вместо тысячи слов. */
+  supportAttach: async (file: File, text: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (text) fd.append('text', text);
+    const res = await fetch('/api/support/desk/messages/file', {
+      method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
+    });
+    const env = await res.json();
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Файл не отправился');
+    return env.data as SupportConversation;
+  },
+
   supportOverview: () => request<{
     project: { id: string; name: string } | null;
     tickets: { id: string; title: string; status: string; closed: boolean; createdAt: string; projectId: string; assigneeName: string | null }[];

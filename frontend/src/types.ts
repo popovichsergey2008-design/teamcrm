@@ -265,3 +265,76 @@ export interface Proposal {
   decidedAt: string | null;
   decidedBy: string | null;
 }
+
+/*
+  Служба заботы (ТЗ-8).
+
+  Разговор, а не заявка: у него нет ни темы, ни категории, ни номера для человека.
+  Статус приходит парой — сухой ярлык для кода и человеческая фраза для экрана.
+*/
+export interface SupportMessage {
+  id: string;
+  /** user — человек, agent — специалист, ai — AnthillBot, system — отметки разговора. */
+  kind: 'user' | 'agent' | 'ai' | 'system';
+  authorId: string | null;
+  authorName: string | null;
+  body: string;
+  fileId: string | null;
+  fileName: string | null;
+  contentType: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+}
+
+export interface SupportConversation {
+  id: string;
+  subject: string;
+  status: string;
+  statusText: string;
+  priority: string;
+  agentId: string | null;
+  userId: string;
+  createdAt: string;
+  firstResponseAt: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  csat: number | null;
+  reopens: number;
+  participants: { user_id: string; role: string; full_name: string; joined_at: string }[];
+  context: Record<string, unknown> | null;
+  messages: SupportMessage[];
+}
+
+export interface SupportDesk {
+  conversation: SupportConversation | null;
+  history: {
+    id: string; subject: string; status: string; statusText: string;
+    agentName: string | null; messages: number; createdAt: string;
+    closedAt: string | null; csat: number | null;
+  }[];
+  team: { userId: string; name: string; online: boolean; status: string | null; skills: string[] }[];
+  /** Секунды до первого ответа или null — обещать нечего (ТЗ-8, разд. 6). */
+  etaSeconds: number | null;
+  isAgent: boolean;
+}
+
+export interface SupportQueueItem {
+  id: string; subject: string; status: string; statusText: string;
+  userName: string; agentName: string | null; waitingSince: string;
+  lastAt: string | null; priority: string;
+}
+
+/** Безопасный технический контекст: только то, что видно на экране (разд. 15–16). */
+export interface SupportContextInput {
+  url?: string;
+  route?: string;
+  entityType?: string;
+  entityId?: string;
+  browser?: string;
+  os?: string;
+  appVersion?: string;
+  buildId?: string;
+  lastError?: string;
+  requestId?: string;
+  network?: string;
+}

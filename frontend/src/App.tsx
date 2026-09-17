@@ -44,6 +44,7 @@ import { ShortcutsHelp } from './components/ShortcutsHelp';
 import { prefetchFocus } from './pages/FocusPage';
 import { prefetchRadar } from './pages/RadarPage';
 import { ChatBar } from './components/chatbar/ChatBar';
+import { SupportDock } from './components/support/SupportDock';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
 
 /**
@@ -461,6 +462,15 @@ export function App() {
           context={{ taskId: route.taskId ?? boardReported.current.taskId, projectId: route.projectId ?? boardReported.current.projectId }}
         />
       )}
+
+      {/*
+        Служба заботы — поверх любого раздела (ТЗ-8).
+
+        Живёт рядом с чат-баром, а не внутри раздела: у человека, у которого что-то
+        сломалось, помощь должна быть под рукой на любом экране и без ухода со
+        страницы — он видит свою задачу и разговор одновременно.
+      */}
+      <SupportDock />
 
       {/* Подразделы, живущие поверх своего раздела: адрес у них свой, экран — родительский */}
       {route.section === 'focus' && route.view === 'inbox' && canManage && (
