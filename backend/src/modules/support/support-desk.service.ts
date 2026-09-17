@@ -6,9 +6,12 @@ import { FilesService } from '../files/files.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { MeetingsService } from '../meetings/meetings.service';
 import { ProjectsService } from '../projects/projects.service';
+import { TasksRepository } from '../tasks/tasks.repository';
 import { TasksService } from '../tasks/tasks.service';
 import { SupportRepository } from './support.repository';
 import { ContextInput, ConversationRow, SupportDeskRepository } from './support-desk.repository';
+import { ForecastService } from '../forecast/forecast.service';
+import { ActionRequest, describeAction, isUndoable, validAction } from './support-actions';
 import { humanStatus, wantsHuman } from './support-text';
 
 /**
@@ -41,6 +44,8 @@ export class SupportDeskService implements OnModuleInit {
     private readonly projects: ProjectsService,
     private readonly support: SupportRepository,
     private readonly meetings: MeetingsService,
+    private readonly forecast: ForecastService,
+    private readonly tasksRepo: TasksRepository,
   ) {}
 
   /**
@@ -70,11 +75,12 @@ export class SupportDeskService implements OnModuleInit {
    * панель скажет «ищем свободного специалиста» (разд. 6).
    */
   async desk(tenantId: string, user: { userId: string; role: string }) {
-    const [active, mine, agents, eta] = await Promise.all([
+    const [active, mine, agents, eta, incident] = await Promise.all([
       this.repo.activeOf(tenantId, user.userId),
       this.repo.mine(tenantId, user.userId),
       this.repo.agents(tenantId),
       this.repo.medianFirstResponse(tenantId),
+      this.repo.openIncident(tenantId),
     ]);
     const online = new Set(this.realtime.onlineUsers(tenantId));
     return {
@@ -99,6 +105,13 @@ export class SupportDeskService implements OnModuleInit {
       })),
       /** Секунды до первого ответа или null — «обещать нечего». */
       etaSeconds: eta,
+      /*
+        Открытый сбой виден каждому, кто откроет панель (разд. 43).
+
+        Человек, у которого «всё сломалось», должен узнать об этом раньше, чем
+        напишет: иначе двадцать человек по очереди объясняют одну и ту же аварию.
+      */
+      incident: incident ? { id: incident.id, title: incident.title, message: incident.message } : null,
       isAgent: await this.isAgent(tenantId, user),
     };
   }
@@ -112,10 +125,11 @@ export class SupportDeskService implements OnModuleInit {
   }
 
   private async view(tenantId: string, conv: ConversationRow) {
-    const [messages, participants, context] = await Promise.all([
+    const [messages, participants, context, actions] = await Promise.all([
       this.repo.messages(String(conv.id)),
       this.repo.participants(String(conv.id)),
       this.repo.context(String(conv.id)),
+      this.repo.actions(String(conv.id)),
     ]);
     return {
       id: String(conv.id),
@@ -133,6 +147,11 @@ export class SupportDeskService implements OnModuleInit {
       reopens: conv.reopens,
       participants,
       context: context ?? null,
+      /** Предложенные действия: их человек и разрешает (разд. 38). */
+      actions: actions.map((a) => ({
+        id: a.id, action: a.action, preview: a.preview, status: a.status,
+        approved: a.approved_by_user, createdAt: a.created_at,
+      })),
       messages: messages.map((m) => ({
         id: String(m.id),
         kind: m.author_kind,
@@ -185,6 +204,24 @@ export class SupportDeskService implements OnModuleInit {
     if (wantsHuman(body)) {
       await this.callHuman(tenantId, user, String(conv.id));
       return this.conversation(tenantId, user, String(conv.id));
+    }
+
+    /*
+      Известная поломка узнаётся в первую же минуту (разд. 42).
+
+      Если мы о ней уже знаем и чиним — человеку не нужно ни доказывать её, ни ждать
+      специалиста: он сразу получает честный ответ и номер задачи.
+    */
+    if (!conv.assigned_agent_id) {
+      const known = await this.matchKnownIssue(tenantId, body, (ctx as ContextInput | null)?.lastError);
+      if (known) {
+        await this.repo.addMessage({
+          tenantId, conversationId: String(conv.id), authorId: null, kind: 'system',
+          body: `Похоже на известную проблему: «${known.title}» (задача #${known.task_id}). `
+            + 'Исправление уже готовится — сообщим, когда выйдет. Если у вас что-то другое, напишите, позовём специалиста.',
+        });
+        return this.conversation(tenantId, user, String(conv.id));
+      }
     }
 
     // Пока специалист не подключился, отвечает помощник — он и есть первая линия.
@@ -610,6 +647,268 @@ export class SupportDeskService implements OnModuleInit {
       csatCount: Number(d?.csat_count ?? 0),
       reopened: Number(d?.reopened ?? 0),
       solvedByAi: Number(d?.ai_only ?? 0),
+    };
+  }
+
+  // ── MVP 3: действия с разрешения, известные проблемы, сбой, копилот ──
+  /**
+   * Предложить сделать что-то за человека (разд. 38).
+   *
+   * Пока он не нажал «Разрешить», не происходит НИЧЕГО: в базе лежит предложение с
+   * подписью, которую он читает. Это и отличает помощь от доступа к чужому аккаунту.
+   */
+  async proposeAction(tenantId: string, user: { userId: string; role: string }, id: string, req: ActionRequest) {
+    await this.assertAgent(tenantId, user);
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    if (!validAction(req)) throw AppException.validation('Непонятно, что именно сделать');
+
+    const before = await this.currentState(tenantId, req);
+    const preview = describeAction({ ...req, labels: { ...req.labels, entity: before.label ?? req.labels?.entity } });
+    const row = await this.repo.proposeAction({
+      conversationId: id, actorId: user.userId, action: req.kind,
+      entityType: req.kind.startsWith('task') ? 'task' : 'project',
+      entityId: String(req.entityId), preview,
+      params: { value: req.value ?? null, labels: req.labels ?? {} },
+      before: before.state,
+    });
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: user.userId, kind: 'system',
+      body: `предлагает: ${preview}${isUndoable(req.kind) ? ' Если что — вернём как было.' : ''}`,
+    });
+    const next = (await this.repo.byId(tenantId, id))!;
+    this.emit(tenantId, next, 'support.action.proposed', { conversationId: id, actionId: String(row?.id) });
+    return this.view(tenantId, next);
+  }
+
+  /**
+   * Слово человека по предложенному действию.
+   *
+   * «Разрешить» — выполняем и записываем «до» и «после»; «Отклонить» — не делаем
+   * ничего и тоже записываем: отказ — такой же факт разговора, как согласие.
+   */
+  async decideAction(
+    tenantId: string, user: { userId: string; role: string }, id: string, actionId: string, allow: boolean,
+  ) {
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    if (String(conv.user_id) !== String(user.userId)) {
+      throw AppException.forbidden('Разрешить действие может только тот, кто обратился');
+    }
+    const act = await this.repo.action(actionId);
+    if (!act || String(act.conversation_id) !== String(id)) throw AppException.notFound('Действие не найдено');
+    if (act.status !== 'proposed') throw AppException.conflict('Это действие уже решено');
+
+    if (!allow) {
+      await this.repo.decideAction(actionId, 'declined', false, null);
+      await this.repo.addMessage({
+        tenantId, conversationId: id, authorId: user.userId, kind: 'system', body: 'не разрешил это действие',
+      });
+      return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
+    }
+
+    const req: ActionRequest = {
+      kind: act.action as ActionRequest['kind'],
+      entityId: String(act.entity_id),
+      value: (act.params_json?.value as string | null) ?? null,
+    };
+    await this.runAction(tenantId, user, req);
+    const after = await this.currentState(tenantId, req);
+    await this.repo.decideAction(actionId, 'done', true, after.state);
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: null, kind: 'system',
+      body: `Сделано: ${act.preview}${isUndoable(req.kind) ? ' Можно вернуть как было.' : ''}`,
+    });
+    const next = (await this.repo.byId(tenantId, id))!;
+    this.emit(tenantId, next, 'support.action.done', { conversationId: id, actionId });
+    return this.view(tenantId, next);
+  }
+
+  /** Вернуть как было — там, где это осмысленно (см. isUndoable). */
+  async undoAction(tenantId: string, user: { userId: string; role: string }, id: string, actionId: string) {
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    await this.assertCanSee(tenantId, user, conv);
+    const act = await this.repo.action(actionId);
+    if (!act || act.status !== 'done') throw AppException.conflict('Отменять нечего');
+    const kind = act.action as ActionRequest['kind'];
+    if (!isUndoable(kind)) throw AppException.conflict('Это действие отменить нельзя');
+
+    const before = (act.before_json ?? {}) as Record<string, string | null>;
+    await this.runAction(tenantId, user, {
+      kind, entityId: String(act.entity_id), value: before.value ?? null,
+    });
+    await this.repo.decideAction(actionId, 'undone', act.approved_by_user, before);
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: user.userId, kind: 'system', body: 'вернул как было',
+    });
+    return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
+  }
+
+  /** Что сейчас: нужно и для подписи предложения, и для записи «до». */
+  private async currentState(tenantId: string, req: ActionRequest): Promise<{ state: Record<string, unknown> | null; label: string | null }> {
+    if (req.kind === 'project.columns') {
+      const project = await this.projects.getOrThrow(tenantId, String(req.entityId));
+      return { state: null, label: project.name };
+    }
+    const task = await this.tasksRepo.findById(tenantId, String(req.entityId));
+    if (!task) throw AppException.notFound('Задача не найдена');
+    const value = req.kind === 'task.deadline'
+      ? (task.deadline_at ? new Date(task.deadline_at as unknown as string).toISOString() : null)
+      : req.kind === 'task.assignee' ? (task.assignee_id ? String(task.assignee_id) : null)
+        : String(task.project_id);
+    return { state: { value }, label: task.title };
+  }
+
+  /** Само действие. Каждое — вызов уже существующей части CRM, а не новая логика. */
+  private async runAction(tenantId: string, user: { userId: string; role: string }, req: ActionRequest): Promise<void> {
+    switch (req.kind) {
+      case 'task.deadline':
+        await this.forecast.setEstimateDeadline(tenantId, String(req.entityId), { deadline: req.value ?? null });
+        return;
+      case 'task.assignee':
+        await this.forecast.assign(tenantId, String(req.entityId), String(req.value), user.userId, true);
+        return;
+      case 'task.project':
+        await this.tasks.moveToProject(tenantId, String(req.entityId), user, String(req.value));
+        return;
+      case 'project.columns':
+        await this.projects.ensureDefaultColumns(tenantId, String(req.entityId));
+        return;
+      default:
+        throw AppException.validation('Неизвестное действие');
+    }
+  }
+
+  // ── известные проблемы (разд. 42) ──
+  async knownIssues(tenantId: string, user: { userId: string; role: string }) {
+    await this.assertAgent(tenantId, user);
+    const rows = await this.repo.knownIssues(tenantId);
+    return rows.map((k) => ({
+      id: k.id, taskId: k.task_id, title: k.title, pattern: k.pattern,
+      active: k.active, fixed: !!k.closed_at,
+    }));
+  }
+
+  /** Пометить задачу известной проблемой: дальше система узнаёт её в чужих обращениях. */
+  async addKnownIssue(
+    tenantId: string, user: { userId: string; role: string },
+    taskId: string, title: string, pattern: string,
+  ) {
+    await this.assertAgent(tenantId, user);
+    const row = await this.repo.addKnownIssue(tenantId, taskId, title, pattern, user.userId);
+    return { id: String(row?.id), taskId };
+  }
+
+  async setKnownIssueActive(tenantId: string, user: { userId: string; role: string }, id: string, active: boolean) {
+    await this.assertAgent(tenantId, user);
+    await this.repo.setKnownIssueActive(tenantId, id, active);
+    return this.knownIssues(tenantId, user);
+  }
+
+  /**
+   * Узнать известную проблему в обращении.
+   *
+   * Сравниваем слова-приметы с текстом и последней ошибкой. Совпало — говорим сразу,
+   * в первую же минуту: «похоже на известную проблему, исправление готовится». Это
+   * честнее, чем заставлять человека доказывать поломку, о которой мы уже знаем.
+   */
+  private async matchKnownIssue(tenantId: string, text: string, lastError?: string | null) {
+    const hay = `${text} ${lastError ?? ''}`.toLowerCase();
+    if (hay.trim().length < 4) return null;
+    const rows = await this.repo.knownIssues(tenantId);
+    return rows.find((k) => k.active && !k.closed_at && k.pattern
+      .split(',')
+      .map((w) => w.trim().toLowerCase())
+      .filter((w) => w.length >= 3)
+      .some((w) => hay.includes(w))) ?? null;
+  }
+
+  // ── массовый сбой (разд. 43) ──
+  /**
+   * Объявить сбой.
+   *
+   * Одно честное сообщение вместо двадцати одинаковых разговоров: его видят все, у
+   * кого открыт разговор, и все, кто откроет панель.
+   */
+  async declareIncident(tenantId: string, user: { userId: string; role: string }, title: string, message: string) {
+    if (user.role !== 'owner' && user.role !== 'manager') {
+      await this.assertAgent(tenantId, user);
+    }
+    const inc = await this.repo.createIncident(tenantId, title, message, user.userId);
+    const live = await this.repo.liveConversations(tenantId);
+    for (const c of live) {
+      await this.repo.addMessage({
+        tenantId, conversationId: c.id, authorId: null, kind: 'system',
+        body: `${title}. ${message}`,
+      });
+    }
+    this.realtime.emitToTenant(tenantId, 'support.incident', { id: inc?.id, title, message, status: 'open' });
+    return inc;
+  }
+
+  /** Починили — сказать всем, кому говорили о сбое. */
+  async resolveIncident(tenantId: string, user: { userId: string; role: string }, id: string) {
+    if (user.role !== 'owner' && user.role !== 'manager') {
+      await this.assertAgent(tenantId, user);
+    }
+    const inc = await this.repo.resolveIncident(tenantId, id);
+    if (!inc) throw AppException.notFound('Открытого сбоя с таким номером нет');
+    const live = await this.repo.liveConversations(tenantId);
+    for (const c of live) {
+      await this.repo.addMessage({
+        tenantId, conversationId: c.id, authorId: null, kind: 'system',
+        body: `Исправлено: ${inc.title}. Обновите страницу, пожалуйста.`,
+      });
+    }
+    this.realtime.emitToTenant(tenantId, 'support.incident', { id: inc.id, status: 'resolved' });
+    return { resolved: true };
+  }
+
+  /**
+   * Копилот дежурного (разд. 41).
+   *
+   * Готовит специалисту то, на что у него уходит первая пара минут: короткое резюме
+   * проблемы, что проверить и похоже ли это на известную поломку. Клиенту сам ничего
+   * не отправляет — после подключения человека ИИ молчит, пока его не попросят.
+   */
+  async copilot(tenantId: string, user: { userId: string; role: string }, id: string) {
+    await this.assertAgent(tenantId, user);
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    const [messages, ctx] = await Promise.all([this.repo.messages(id), this.repo.context(id)]);
+    const c = (ctx ?? {}) as Record<string, string | null>;
+    const talk = messages
+      .filter((m) => m.author_kind !== 'system')
+      .slice(-14)
+      .map((m) => `${m.author_kind === 'user' ? 'Человек' : m.author_kind === 'ai' ? 'Помощник' : 'Специалист'}: ${String(m.body ?? '').slice(0, 400)}`)
+      .join('\n');
+    const known = await this.matchKnownIssue(tenantId, talk, c.last_error);
+
+    let text = '';
+    try {
+      let sessionId = conv.ai_session_id ? String(conv.ai_session_id) : '';
+      if (!sessionId) {
+        const s = await this.agentRepo.createSession(tenantId, user.userId, null);
+        sessionId = String(s.id);
+        await this.repo.setAiSession(id, sessionId);
+      }
+      await this.agent.ask(
+        tenantId, user, sessionId,
+        'Ты помогаешь специалисту поддержки. По переписке ниже дай ТРИ коротких раздела: '
+        + '«Суть» (одно предложение), «Что проверить» (2–4 пункта), «Что сказать человеку» (одна фраза). '
+        + `Без вступлений.\n\nПереписка:\n${talk}\n\nЭкран: ${c.route ?? '—'}, ошибка: ${c.last_error ?? 'нет'}.`,
+        null,
+        (e) => { if (e.type === 'delta') text += e.text; },
+        () => false,
+      );
+    } catch (e) {
+      this.log.warn(`копилот поддержки ${id}: ${(e as Error).message}`);
+    }
+
+    return {
+      summary: text.trim() || null,
+      known: known ? { id: known.id, taskId: known.task_id, title: known.title } : null,
     };
   }
 

@@ -1154,6 +1154,33 @@ export const api = {
     csatAvg: number | null; csatCount: number; reopened: number; solvedByAi: number;
   }>('GET', '/support/desk/dashboard'),
 
+  /** Предложить действие человеку (право дежурного). */
+  supportProposeAction: (id: string, kind: string, entityId: string, value?: string | null) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/actions`, { kind, entityId, value }),
+  /** Слово человека: разрешить или отклонить. Без него не происходит ничего. */
+  supportDecideAction: (id: string, actionId: string, allow: boolean) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/actions/${actionId}`, { allow }),
+  supportUndoAction: (id: string, actionId: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/actions/${actionId}/undo`, {}),
+  /** Копилот дежурного: суть, что проверить, что сказать человеку. */
+  supportCopilot: (id: string) => request<{
+    summary: string | null;
+    known: { id: string; taskId: string; title: string } | null;
+  }>('POST', `/support/desk/${id}/copilot`, {}),
+  /** Известные проблемы. */
+  supportKnownIssues: () => request<{
+    id: string; taskId: string; title: string; pattern: string; active: boolean; fixed: boolean;
+  }[]>('GET', '/support/desk/known/list'),
+  supportAddKnownIssue: (taskId: string, title: string, pattern?: string) =>
+    request<{ id: string; taskId: string }>('POST', '/support/desk/known', { taskId, title, pattern }),
+  supportSetKnownIssue: (id: string, active: boolean) =>
+    request<unknown[]>('POST', `/support/desk/known/${id}`, { active }),
+  /** Массовый сбой: объявить и закрыть. */
+  supportDeclareIncident: (title: string, message: string) =>
+    request<{ id: string; title: string }>('POST', '/support/desk/incident', { title, message }),
+  supportResolveIncident: (id: string) =>
+    request<{ resolved: true }>('POST', `/support/desk/incident/${id}/resolve`, {}),
+
   supportOverview: () => request<{
     project: { id: string; name: string } | null;
     tickets: { id: string; title: string; status: string; closed: boolean; createdAt: string; projectId: string; assigneeName: string | null }[];

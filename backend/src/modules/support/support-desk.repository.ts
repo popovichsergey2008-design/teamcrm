@@ -265,6 +265,123 @@ export class SupportDeskRepository {
     );
   }
 
+  // ── действия с разрешения человека, известные проблемы, сбой (MVP 3) ──
+  /** Предложенное действие: пока человек не разрешил, оно только предложение. */
+  proposeAction(i: {
+    conversationId: string; actorId: string; action: string; entityType: string;
+    entityId: string; preview: string; params: Record<string, unknown>; before: Record<string, unknown> | null;
+  }) {
+    return this.db.one<{ id: string }>(
+      `INSERT INTO support_actions
+         (conversation_id, actor_id, action, entity_type, entity_id, preview, params_json, before_json, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'proposed') RETURNING id::text`,
+      [
+        i.conversationId, i.actorId, i.action, i.entityType, i.entityId,
+        i.preview.slice(0, 500), JSON.stringify(i.params), i.before ? JSON.stringify(i.before) : null,
+      ],
+    );
+  }
+
+  action(id: string) {
+    return this.db.one<{
+      id: string; conversation_id: string; actor_id: string | null; action: string;
+      entity_type: string | null; entity_id: string | null; preview: string; status: string;
+      params_json: Record<string, unknown> | null; before_json: Record<string, unknown> | null;
+      approved_by_user: boolean;
+    }>(
+      `SELECT id::text, conversation_id::text, actor_id::text, action, entity_type, entity_id,
+              preview, status, params_json, before_json, approved_by_user
+         FROM support_actions WHERE id=$1`,
+      [id],
+    );
+  }
+
+  actions(conversationId: string) {
+    return this.db.many<{
+      id: string; action: string; preview: string; status: string; entity_type: string | null;
+      entity_id: string | null; approved_by_user: boolean; created_at: Date; decided_at: Date | null;
+    }>(
+      `SELECT id::text, action, preview, status, entity_type, entity_id, approved_by_user,
+              created_at, decided_at
+         FROM support_actions WHERE conversation_id=$1 ORDER BY created_at`,
+      [conversationId],
+    );
+  }
+
+  /** Решение человека по действию: сделано, отклонено или отменено. */
+  async decideAction(id: string, status: string, approved: boolean, after: Record<string, unknown> | null): Promise<void> {
+    await this.db.query(
+      `UPDATE support_actions
+          SET status=$2, approved_by_user=$3, after_json=$4, decided_at=now()
+        WHERE id=$1`,
+      [id, status, approved, after ? JSON.stringify(after) : null],
+    );
+  }
+
+  // ── известные проблемы ──
+  knownIssues(tenantId: string) {
+    return this.db.many<{
+      id: string; task_id: string; title: string; pattern: string; active: boolean; closed_at: Date | null;
+    }>(
+      `SELECT k.id::text, k.task_id::text, k.title, k.pattern, k.active, t.closed_at
+         FROM support_known_issues k JOIN tasks t ON t.id = k.task_id
+        WHERE k.tenant_id=$1
+        ORDER BY k.active DESC, k.created_at DESC`,
+      [tenantId],
+    );
+  }
+
+  addKnownIssue(tenantId: string, taskId: string, title: string, pattern: string, by: string) {
+    return this.db.one<{ id: string }>(
+      `INSERT INTO support_known_issues (tenant_id, task_id, title, pattern, created_by)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (tenant_id, task_id) DO UPDATE
+          SET title=EXCLUDED.title, pattern=EXCLUDED.pattern, active=TRUE
+       RETURNING id::text`,
+      [tenantId, taskId, title.slice(0, 200), pattern.slice(0, 500), by],
+    );
+  }
+
+  async setKnownIssueActive(tenantId: string, id: string, active: boolean): Promise<void> {
+    await this.db.query(
+      `UPDATE support_known_issues SET active=$3 WHERE tenant_id=$1 AND id=$2`, [tenantId, id, active],
+    );
+  }
+
+  // ── массовый сбой ──
+  openIncident(tenantId: string) {
+    return this.db.one<{ id: string; title: string; message: string; started_at: Date }>(
+      `SELECT id::text, title, message, started_at FROM support_incidents
+        WHERE tenant_id=$1 AND status='open' ORDER BY started_at DESC LIMIT 1`,
+      [tenantId],
+    );
+  }
+
+  createIncident(tenantId: string, title: string, message: string, by: string) {
+    return this.db.one<{ id: string; title: string; message: string; started_at: Date }>(
+      `INSERT INTO support_incidents (tenant_id, title, message, created_by)
+       VALUES ($1,$2,$3,$4) RETURNING id::text, title, message, started_at`,
+      [tenantId, title.slice(0, 200), message.slice(0, 4000), by],
+    );
+  }
+
+  resolveIncident(tenantId: string, id: string) {
+    return this.db.one<{ id: string; title: string }>(
+      `UPDATE support_incidents SET status='resolved', resolved_at=now()
+        WHERE tenant_id=$1 AND id=$2 AND status='open' RETURNING id::text, title`,
+      [tenantId, id],
+    );
+  }
+
+  /** Кому рассказать о сбое: все, у кого сейчас открыт разговор. */
+  liveConversations(tenantId: string) {
+    return this.db.many<{ id: string; user_id: string }>(
+      `SELECT id::text, user_id::text FROM support_conversations
+        WHERE tenant_id=$1 AND closed_at IS NULL`,
+      [tenantId],
+    );
+  }
+
   // ── дежурные ──
   agents(tenantId: string) {
     return this.db.many<{ user_id: string; full_name: string; skills: string[]; last_seen_at: Date | null; presence_status: string | null }>(

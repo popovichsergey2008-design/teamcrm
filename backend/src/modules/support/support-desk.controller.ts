@@ -68,6 +68,32 @@ class HuddleDto {
   @IsString() @MaxLength(64) roomId!: string;
 }
 
+class ActionDto {
+  @IsString() @MaxLength(32) kind!: string;
+  @IsString() @MaxLength(32) entityId!: string;
+  @IsOptional() @IsString() @MaxLength(64) value?: string | null;
+}
+
+class DecideActionDto {
+  @IsBoolean() allow!: boolean;
+}
+
+class KnownIssueDto {
+  @IsString() @MaxLength(32) taskId!: string;
+  @IsString() @MaxLength(200) title!: string;
+  /** Слова-приметы через запятую: по ним проблему узнают в чужом обращении. */
+  @IsOptional() @IsString() @MaxLength(500) pattern?: string;
+}
+
+class KnownIssueActiveDto {
+  @IsBoolean() active!: boolean;
+}
+
+class IncidentDto {
+  @IsString() @MaxLength(200) title!: string;
+  @IsString() @MaxLength(4000) message!: string;
+}
+
 class AgentDto {
   @IsString() userId!: string;
   @IsBoolean() active!: boolean;
@@ -188,6 +214,66 @@ export class SupportDeskController {
   @Get(':id/diagnostics')
   diagnostics(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.desk.diagnostics(u.tenantId, u, id);
+  }
+
+  /*
+    Действия с разрешения человека (разд. 38).
+
+    Предложить может специалист, разрешить — только тот, кто обратился. Пока он не
+    разрешил, не происходит ничего: в базе лежит предложение с подписью.
+  */
+  @Post(':id/actions')
+  propose(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ActionDto) {
+    return this.desk.proposeAction(u.tenantId, u, id, {
+      kind: dto.kind as never, entityId: dto.entityId, value: dto.value ?? null,
+    });
+  }
+
+  @Post(':id/actions/:actionId')
+  decide(
+    @CurrentUser() u: AuthUser, @Param('id') id: string,
+    @Param('actionId') actionId: string, @Body() dto: DecideActionDto,
+  ) {
+    return this.desk.decideAction(u.tenantId, u, id, actionId, dto.allow);
+  }
+
+  /** Вернуть как было — там, где это осмысленно. */
+  @Post(':id/actions/:actionId/undo')
+  undo(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('actionId') actionId: string) {
+    return this.desk.undoAction(u.tenantId, u, id, actionId);
+  }
+
+  /** Копилот дежурного: суть, что проверить, что сказать человеку. */
+  @Post(':id/copilot')
+  copilot(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.copilot(u.tenantId, u, id);
+  }
+
+  /** Известные проблемы: список, пометка задачи, включение и выключение. */
+  @Get('known/list')
+  knownIssues(@CurrentUser() u: AuthUser) {
+    return this.desk.knownIssues(u.tenantId, u);
+  }
+
+  @Post('known')
+  addKnown(@CurrentUser() u: AuthUser, @Body() dto: KnownIssueDto) {
+    return this.desk.addKnownIssue(u.tenantId, u, dto.taskId, dto.title, dto.pattern ?? dto.title);
+  }
+
+  @Post('known/:knownId')
+  setKnownActive(@CurrentUser() u: AuthUser, @Param('knownId') knownId: string, @Body() dto: KnownIssueActiveDto) {
+    return this.desk.setKnownIssueActive(u.tenantId, u, knownId, dto.active);
+  }
+
+  /** Массовый сбой: объявить и закрыть. Одно честное сообщение вместо двадцати разговоров. */
+  @Post('incident')
+  declareIncident(@CurrentUser() u: AuthUser, @Body() dto: IncidentDto) {
+    return this.desk.declareIncident(u.tenantId, u, dto.title, dto.message);
+  }
+
+  @Post('incident/:incidentId/resolve')
+  resolveIncident(@CurrentUser() u: AuthUser, @Param('incidentId') incidentId: string) {
+    return this.desk.resolveIncident(u.tenantId, u, incidentId);
   }
 
   /** Кто дежурит. */

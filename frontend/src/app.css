@@ -4691,3 +4691,36 @@ button.chat-pop-row:hover { background: var(--hover); }
 }
 .support-stat b { font-size: calc(18px * var(--fs-scale)); }
 .support-stat span { font-size: var(--fs-xs); }
+
+/*
+  Массовый сбой — полосой поверх разговора (ТЗ-8, разд. 43).
+
+  Цвет предупреждения, а не ошибки: авария уже известна и чинится, паниковать не о
+  чем — это сообщение экономит человеку время, а не пугает его.
+*/
+.support-incident {
+  display: flex; align-items: flex-start; gap: 6px; padding: 8px 12px;
+  background: var(--warn-soft); border-bottom: 1px solid var(--warn-line);
+  font-size: var(--fs-xs); color: var(--text);
+}
+
+/*
+  Предложенное действие: человек читает последствие и решает сам (разд. 38).
+
+  Карточка стоит между лентой и полем ввода — на пути взгляда, но не вместо
+  разговора: это предложение, а не модальное окно с требованием.
+*/
+.support-action {
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 0 10px 6px; padding: 8px 10px; font-size: var(--fs-sm);
+  background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: var(--radius-sm);
+}
+.support-action.done { background: var(--ok-soft); border-color: var(--ok-line); }
+.support-action-text { display: flex; align-items: center; gap: 6px; flex: 1 1 200px; min-width: 0; }
+.support-action-acts { display: flex; gap: 6px; }
+
+/* Подсказка помощника дежурному: читает её человек, клиенту она не уходит. */
+.support-copilot {
+  white-space: pre-wrap; padding: 8px; font-size: var(--fs-xs);
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}

@@ -73,6 +73,8 @@ export function SupportDock() {
   const [diag, setDiag] = useState<Awaited<ReturnType<typeof api.supportDiagnostics>> | null>(null);
   const [tools, setTools] = useState(false);
   const [people, setPeople] = useState<{ id: string; fullName: string }[]>([]);
+  /** Подсказка копилота дежурному: суть, что проверить, что сказать человеку. */
+  const [copilot, setCopilot] = useState<Awaited<ReturnType<typeof api.supportCopilot>> | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
@@ -172,6 +174,32 @@ export function SupportDock() {
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Созвон не начался');
     } finally { setBusy(false); }
+  };
+
+  /** Слово человека по предложенному действию: без него не происходит ничего. */
+  const decideAction = async (actionId: string, allow: boolean) => {
+    if (!conv) return;
+    setBusy(true);
+    try { setConv(await api.supportDecideAction(conv.id, actionId, allow)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
+    finally { setBusy(false); }
+  };
+
+  const undoAction = async (actionId: string) => {
+    if (!conv) return;
+    setBusy(true);
+    try { setConv(await api.supportUndoAction(conv.id, actionId)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось вернуть'); }
+    finally { setBusy(false); }
+  };
+
+  /** Копилот: готовит специалисту то, на что уходит первая пара минут разговора. */
+  const askCopilot = async () => {
+    if (!conv) return;
+    setBusy(true); setErr('');
+    try { setCopilot(await api.supportCopilot(conv.id)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Помощник не ответил'); }
+    finally { setBusy(false); }
   };
 
   /** Взять разговор себе: человек сразу видит, кто ему отвечает. */
@@ -378,6 +406,19 @@ export function SupportDock() {
             </button>
           </header>
 
+          {/*
+            Массовый сбой — первым делом и для всех (разд. 43).
+
+            Человек, у которого «всё сломалось», должен узнать об этом раньше, чем
+            напишет: иначе двадцать человек по очереди объясняют одну и ту же аварию.
+          */}
+          {desk?.incident && (
+            <div className="support-incident">
+              <Icon name="alert" size={14} />
+              <span><b>{desk.incident.title}.</b> {desk.incident.message}</span>
+            </div>
+          )}
+
           {err && <div className="error-text support-err">{err}</div>}
 
           {view === 'queue' ? (
@@ -462,6 +503,35 @@ export function SupportDock() {
               </div>
 
               {/*
+                Предложенные действия (разд. 38).
+
+                Человек читает, ЧТО именно произойдёт, и решает сам. Пока не разрешил —
+                не сделано ничего; сделанное можно вернуть, если это осмысленно.
+              */}
+              {conv?.actions.filter((a) => a.status === 'proposed' || a.status === 'done').map((a) => (
+                <div key={a.id} className={`support-action${a.status === 'done' ? ' done' : ''}`}>
+                  <span className="support-action-text">
+                    <Icon name={a.status === 'done' ? 'check' : 'zap'} size={13} /> {a.preview}
+                  </span>
+                  {a.status === 'proposed' && mineConversation && (
+                    <span className="support-action-acts">
+                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void decideAction(a.id, true)}>
+                        Разрешить
+                      </button>
+                      <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void decideAction(a.id, false)}>
+                        Не надо
+                      </button>
+                    </span>
+                  )}
+                  {a.status === 'done' && a.action !== 'project.columns' && (
+                    <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void undoAction(a.id)}>
+                      Вернуть как было
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {/*
                 «Всё работает?» — единственный способ закрыть разговор.
 
                 Специалист может считать, что починил; знает это только человек
@@ -543,6 +613,24 @@ export function SupportDock() {
                       ))}
                     </div>
                   )}
+                  {/*
+                    Копилот (разд. 41): суть, что проверить, что сказать человеку.
+
+                    Клиенту сам ничего не отправляет — после подключения специалиста ИИ
+                    молчит, пока его не попросят. Ответ читает человек, а не машина.
+                  */}
+                  <div className="support-tools-acts">
+                    <button className="btn btn-sm" disabled={busy} onClick={() => void askCopilot()}>
+                      <Icon name="sparkles" size={13} /> Подсказка помощника
+                    </button>
+                    {copilot?.known && (
+                      <span className="badge badge-warn" title={`Задача #${copilot.known.taskId}`}>
+                        похоже на известную: {copilot.known.title}
+                      </span>
+                    )}
+                  </div>
+                  {copilot?.summary && <div className="support-copilot">{copilot.summary}</div>}
+
                   <div className="support-tools-acts">
                     <select
                       className="input"

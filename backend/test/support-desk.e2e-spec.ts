@@ -169,6 +169,77 @@ describe('служба заботы (e2e)', () => {
     expect(after.status).toBe('waiting_user');
   }, 60000);
 
+  it('действие делается только с разрешения человека и откатывается', async () => {
+    const { O, M } = await team('SD6');
+    const proj = (await http.post('/api/projects').set(O).send({ name: 'Работа' }).expect(201)).body.data;
+    const board = (await http.get(`/api/projects/${proj.id}/board`).set(O).expect(200)).body.data;
+    const task = (await http.post('/api/tasks').set(O)
+      .send({ projectId: proj.id, columnId: board.columns[0].id, title: 'Отчёт' }).expect(201)).body.data;
+
+    const conv = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'Не могу поставить срок задаче' }).expect(201)).body.data;
+    await http.post(`/api/support/desk/${conv.id}/join`).set(O).expect(201);
+
+    // специалист ПРЕДЛАГАЕТ — и пока ничего не происходит
+    const when = new Date(Date.now() + 3 * 864e5).toISOString();
+    const proposed = (await http.post(`/api/support/desk/${conv.id}/actions`).set(O)
+      .send({ kind: 'task.deadline', entityId: String(task.id), value: when }).expect(201)).body.data;
+    const action = proposed.actions[proposed.actions.length - 1];
+    expect(action.status).toBe('proposed');
+    expect(action.preview).toContain('Отчёт');
+    const still = (await http.get(`/api/projects/${proj.id}/board`).set(O).expect(200)).body.data
+      .columns.flatMap((c: any) => c.tasks).find((t: any) => String(t.id) === String(task.id));
+    expect(still.deadline_at).toBeNull();
+
+    // разрешить может только тот, кто обратился
+    await http.post(`/api/support/desk/${conv.id}/actions/${action.id}`).set(O).send({ allow: true }).expect(403);
+
+    const done = (await http.post(`/api/support/desk/${conv.id}/actions/${action.id}`).set(M)
+      .send({ allow: true }).expect(201)).body.data;
+    expect(done.actions[done.actions.length - 1].status).toBe('done');
+    const after = (await http.get(`/api/projects/${proj.id}/board`).set(O).expect(200)).body.data
+      .columns.flatMap((c: any) => c.tasks).find((t: any) => String(t.id) === String(task.id));
+    expect(new Date(after.deadline_at).toISOString()).toBe(when);
+
+    // и возвращается как было
+    await http.post(`/api/support/desk/${conv.id}/actions/${action.id}/undo`).set(M).expect(201);
+    const back = (await http.get(`/api/projects/${proj.id}/board`).set(O).expect(200)).body.data
+      .columns.flatMap((c: any) => c.tasks).find((t: any) => String(t.id) === String(task.id));
+    expect(back.deadline_at).toBeNull();
+  }, 60000);
+
+  it('известная проблема узнаётся сразу, а массовый сбой доходит до всех', async () => {
+    const { O, M } = await team('SD7');
+    const proj = (await http.post('/api/projects').set(O).send({ name: 'Баги' }).expect(201)).body.data;
+    const board = (await http.get(`/api/projects/${proj.id}/board`).set(O).expect(200)).body.data;
+    const bug = (await http.post('/api/tasks').set(O)
+      .send({ projectId: proj.id, columnId: board.columns[0].id, title: 'Вложения не грузятся' }).expect(201)).body.data;
+
+    await http.post('/api/support/desk/known').set(O)
+      .send({ taskId: String(bug.id), title: 'Вложения не грузятся', pattern: 'вложени, файл не приклад' })
+      .expect(201);
+
+    // человек пишет о том же — и узнаёт об этом в первую же минуту
+    const conv = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'У меня вложения не открываются в задаче' }).expect(201)).body.data;
+    expect(conv.messages.some((m: any) => /известную проблему/i.test(m.body))).toBe(true);
+    expect(conv.messages.some((m: any) => m.body.includes(`#${bug.id}`))).toBe(true);
+
+    // массовый сбой: сообщение доходит до открытых разговоров и видно в панели
+    await http.post('/api/support/desk/incident').set(O)
+      .send({ title: 'Медленно открываются доски', message: 'Мы нашли проблему и уже работаем над исправлением.' })
+      .expect(201);
+    const desk = (await http.get('/api/support/desk').set(M).expect(200)).body.data;
+    expect(desk.incident.title).toBe('Медленно открываются доски');
+    expect(desk.conversation.messages.some((m: any) => /уже работаем над исправлением/i.test(m.body))).toBe(true);
+
+    const inc = (await http.get('/api/support/desk').set(O).expect(200)).body.data.incident;
+    await http.post(`/api/support/desk/incident/${inc.id}/resolve`).set(O).expect(201);
+    const after = (await http.get('/api/support/desk').set(M).expect(200)).body.data;
+    expect(after.incident).toBeNull();
+    expect(after.conversation.messages.some((m: any) => /^Исправлено/i.test(m.body))).toBe(true);
+  }, 60000);
+
   it('сводка службы заботы — для руководства', async () => {
     const { O, M } = await team('SD5');
     await http.post('/api/support/desk/messages').set(M).send({ text: 'Не открывается отчёт' }).expect(201);

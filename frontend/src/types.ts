@@ -302,11 +302,18 @@ export interface SupportConversation {
   reopens: number;
   participants: { user_id: string; role: string; full_name: string; joined_at: string }[];
   context: Record<string, unknown> | null;
+  /** Предложенные действия: пока человек не разрешил, не сделано ничего. */
+  actions: {
+    id: string; action: string; preview: string;
+    status: 'proposed' | 'done' | 'declined' | 'undone'; approved: boolean; createdAt: string;
+  }[];
   messages: SupportMessage[];
 }
 
 export interface SupportDesk {
   conversation: SupportConversation | null;
+  /** Открытый массовый сбой: о нём человек должен узнать раньше, чем напишет. */
+  incident: { id: string; title: string; message: string } | null;
   history: {
     id: string; subject: string; status: string; statusText: string;
     agentName: string | null; messages: number; createdAt: string;
