@@ -122,6 +122,11 @@ describe('служба заботы (e2e)', () => {
 
   it('инженер входит в тот же разговор, баг уносит контекст, фикс возвращается вестью', async () => {
     const { mate, O, M } = await team('SD4');
+    // инженер — ТРЕТИЙ человек: автора обращения звать инженером незачем, он и так здесь
+    const engEmail = `sd4_e_${uniq()}@t.test`;
+    const engineer = (await http.post('/api/users').set(O)
+      .send({ email: engEmail, fullName: 'Юрий Инженер', password: 'password123', role: 'member' })
+      .expect(201)).body.data;
 
     const conv = (await http.post('/api/support/desk/messages').set(M)
       .send({
@@ -132,8 +137,11 @@ describe('служба заботы (e2e)', () => {
 
     // инженер приходит в ТОТ ЖЕ разговор: объяснять второй раз не нужно
     const withEngineer = (await http.post(`/api/support/desk/${conv.id}/engineer`).set(O)
-      .send({ userId: String(mate.id) }).expect(201)).body.data;
+      .send({ userId: String(engineer.id) }).expect(201)).body.data;
     expect(withEngineer.participants.some((p: any) => p.role === 'engineer')).toBe(true);
+    // автор обращения остаётся автором: его инженером не зовут
+    await http.post(`/api/support/desk/${conv.id}/engineer`).set(O)
+      .send({ userId: String(mate.id) }).expect(400);
 
     // баг заводится из разговора и уносит контекст с собой
     const bug = (await http.post(`/api/support/desk/${conv.id}/bug`).set(O)

@@ -203,10 +203,21 @@ export class SupportDeskRepository {
   }
 
   // ── участники ──
+  /**
+   * Добавить или вернуть участника.
+   *
+   * Роль обновляется намеренно: человек мог прийти специалистом, а потом остаться
+   * инженером — в списке участников должно стоять то, кем он тут работает сейчас.
+   * Единственное исключение — автор обращения: он остаётся автором, кем бы его ни
+   * позвали, иначе разговор теряет хозяина (а закрывать его вправе только он).
+   */
   async addParticipant(conversationId: string, userId: string, role: string): Promise<void> {
     await this.db.query(
       `INSERT INTO support_participants (conversation_id, user_id, role)
-       VALUES ($1,$2,$3) ON CONFLICT (conversation_id, user_id) DO UPDATE SET left_at = NULL`,
+       VALUES ($1,$2,$3)
+       ON CONFLICT (conversation_id, user_id) DO UPDATE
+          SET left_at = NULL,
+              role = CASE WHEN support_participants.role = 'user' THEN 'user' ELSE EXCLUDED.role END`,
       [conversationId, userId, role],
     );
   }

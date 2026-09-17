@@ -428,6 +428,10 @@ export class SupportDeskService implements OnModuleInit {
     if (!conv) throw AppException.notFound('Разговор не найден');
     const who = await this.repo.userName(tenantId, engineerId);
     if (!who) throw AppException.notFound('Такого сотрудника нет');
+    // Звать в разговор его же автора незачем: он и так здесь, и он здесь главный.
+    if (String(conv.user_id) === String(engineerId)) {
+      throw AppException.validation('Этот человек и есть автор обращения');
+    }
 
     await this.repo.addParticipant(id, engineerId, 'engineer');
     await this.repo.addMessage({
