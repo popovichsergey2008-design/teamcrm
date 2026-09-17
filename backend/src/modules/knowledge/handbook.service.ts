@@ -8,6 +8,8 @@ import { KnowledgeService } from './knowledge.service';
 const PREFIX = 'Справочник TeamCRM · ';
 /** Пауза после старта: выкладка не должна ждать индексации справочника. */
 const BOOT_DELAY_MS = 30_000;
+/** Как часто сверяться потом: организации заводятся и после выкладки. */
+const SYNC_EVERY_MS = 6 * 60 * 60 * 1000;
 
 /**
  * Справочник по системе — то, из чего отвечает помощник в службе заботы.
@@ -42,8 +44,37 @@ export class HandbookService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    const timer = setTimeout(() => void this.syncAll(), BOOT_DELAY_MS);
-    timer.unref?.(); // не держим процесс в тестах и консольных запусках
+    const first = setTimeout(() => void this.syncAll(), BOOT_DELAY_MS);
+    first.unref?.(); // не держим процесс в тестах и консольных запусках
+    // Организации заводятся и между выкладками: без повтора у новой компании
+    // помощник до следующего релиза отвечал бы «не нашёл» на любой вопрос о системе.
+    const every = setInterval(() => void this.syncAll(), SYNC_EVERY_MS);
+    every.unref?.();
+  }
+
+  /**
+   * Убедиться, что у организации есть справочник — до того, как он понадобится.
+   *
+   * Зовётся при первом обращении в службу заботы: новая компания спрашивает «как
+   * создать задачу» в первые же дни, а ждать общей сверки полдня — значит встретить
+   * её отказом. Ничего не делает, если справочник уже загружен.
+   */
+  async ensure(tenantId: string): Promise<void> {
+    try {
+      const row = await this.db.one<{ n: string }>(
+        `SELECT count(*)::text AS n FROM regulations WHERE tenant_id=$1 AND title LIKE $2`,
+        [tenantId, `${PREFIX}%`],
+      );
+      if (Number(row?.n ?? 0) > 0) return;
+      const owner = await this.db.one<{ id: string }>(
+        `SELECT u.id::text FROM users u JOIN roles r ON r.id = u.role_id
+          WHERE u.tenant_id=$1 AND r.code='owner' AND u.is_active ORDER BY u.id LIMIT 1`,
+        [tenantId],
+      );
+      if (owner) await this.load(tenantId, owner.id);
+    } catch (e) {
+      this.log.warn(`справочник для организации ${tenantId}: ${(e as Error).message}`);
+    }
   }
 
   /** Разделы справочника с диска: имя файла, заголовок, текст. */
