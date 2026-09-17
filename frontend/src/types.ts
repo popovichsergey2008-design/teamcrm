@@ -310,6 +310,30 @@ export interface SupportConversation {
   messages: SupportMessage[];
 }
 
+/** Раздел справочника: загружен ли в базу знаний и не отстал ли от системы. */
+export interface SupportHandbookSection {
+  title: string;
+  chars: number;
+  loadedAt: string | null;
+  stale: boolean;
+}
+
+export interface SupportHandbook {
+  sections: SupportHandbookSection[];
+  loadedAt: string | null;
+  stale: boolean;
+}
+
+/** Сотрудник в списке выбора дежурных. */
+export interface SupportTeamMember {
+  userId: string;
+  name: string;
+  position: string | null;
+  onDuty: boolean;
+  skills: string[];
+  online: boolean;
+}
+
 export interface SupportDesk {
   conversation: SupportConversation | null;
   /** Открытый массовый сбой: о нём человек должен узнать раньше, чем напишет. */

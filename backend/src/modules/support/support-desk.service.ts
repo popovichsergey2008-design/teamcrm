@@ -11,6 +11,7 @@ import { TasksService } from '../tasks/tasks.service';
 import { SupportRepository } from './support.repository';
 import { ContextInput, ConversationRow, SupportDeskRepository } from './support-desk.repository';
 import { ForecastService } from '../forecast/forecast.service';
+import { HandbookService } from '../knowledge/handbook.service';
 import { ActionRequest, describeAction, isUndoable, validAction } from './support-actions';
 import { humanStatus, wantsHuman } from './support-text';
 
@@ -46,6 +47,7 @@ export class SupportDeskService implements OnModuleInit {
     private readonly meetings: MeetingsService,
     private readonly forecast: ForecastService,
     private readonly tasksRepo: TasksRepository,
+    private readonly handbook: HandbookService,
   ) {}
 
   /**
@@ -263,9 +265,13 @@ export class SupportDeskService implements OnModuleInit {
       let text = '';
       await this.agent.ask(
         tenantId, user, sessionId,
-        `Ты — первая линия службы заботы TeamCRM. Ответь коротко и по делу, предложи конкретное '
-        + 'действие. Если не знаешь или нужна правка в системе — так и скажи и предложи позвать '
-        + 'специалиста.\n\nВопрос: ${question}${where}${err}`,
+        `Ты — первая линия службы заботы TeamCRM.\n`
+        + `Отвечай по СПРАВОЧНИКУ TeamCRM — это документация по системе, она лежит в базе `
+        + `знаний регламентами с названием «Справочник TeamCRM · …». Сначала поищи ответ там `
+        + `и назови раздел, откуда он; свои догадки о том, как устроена система, не годятся.\n`
+        + `Коротко и по делу: что нажать и где это находится. Если в справочнике ответа нет `
+        + `или нужна правка в системе — так и скажи и предложи позвать специалиста.\n\n`
+        + `Вопрос: ${question}${where}${err}`,
         null,
         (e) => { if (e.type === 'delta') text += e.text; },
         () => false,
@@ -912,7 +918,65 @@ export class SupportDeskService implements OnModuleInit {
     };
   }
 
+  /**
+   * «Вопрос снят» — человек закрывает разговор сам (разд. 21).
+   *
+   * Вопрос часто отпадает без всякого ответа: разобрался, передумал, нашёл сам.
+   * Заставлять в этом случае ждать специалиста, чтобы тот нажал «решено», — глупо;
+   * закрыть свой разговор вправе тот, кто его завёл, и в любой момент.
+   */
+  async closeByUser(tenantId: string, user: { userId: string; role: string }, id: string, csat?: number | null) {
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    if (String(conv.user_id) !== String(user.userId)) {
+      throw AppException.forbidden('Закрыть разговор может только тот, кто обратился');
+    }
+    if (conv.closed_at) return this.view(tenantId, conv);
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: null, kind: 'system',
+      body: 'Вопрос снят — разговор закрыт. Если проблема вернётся, откройте его заново.',
+    });
+    const score = csat && csat >= 1 && csat <= 4 ? csat : null;
+    const next = (await this.repo.close(tenantId, id, score, null))!;
+    const team = await this.deskTeam(tenantId);
+    this.realtime.emitToUsers(tenantId, team, 'support.queue.changed', { conversationId: id });
+    this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: 'closed' });
+    return this.view(tenantId, next);
+  }
+
+  // ── справочник: то, из чего отвечает помощник ──
+  /** Что знает помощник: разделы справочника и не отстали ли они от системы. */
+  handbookState(tenantId: string) {
+    return this.handbook.state(tenantId);
+  }
+
+  /** Загрузить справочник в базу знаний — право руководства. */
+  async loadHandbook(tenantId: string, user: { userId: string; role: string }) {
+    if (user.role !== 'owner' && user.role !== 'manager') {
+      throw AppException.forbidden('Справочник загружает руководство');
+    }
+    return this.handbook.load(tenantId, user.userId);
+  }
+
   // ── дежурные ──
+  /** Вся команда с отметкой «дежурит»: выбирать не из кого, если не видно всех. */
+  async teamPicker(tenantId: string, user: { userId: string; role: string }) {
+    if (user.role !== 'owner' && user.role !== 'manager') {
+      throw AppException.forbidden('Дежурных назначает руководство');
+    }
+    const [people, agents] = await Promise.all([this.repo.staff(tenantId), this.repo.agents(tenantId)]);
+    const on = new Map(agents.map((a) => [String(a.user_id), a.skills ?? []]));
+    const online = new Set(this.realtime.onlineUsers(tenantId));
+    return people.map((p) => ({
+      userId: p.id,
+      name: p.full_name,
+      position: p.position,
+      onDuty: on.has(p.id),
+      skills: on.get(p.id) ?? [],
+      online: online.has(p.id),
+    }));
+  }
+
   async team(tenantId: string) {
     const agents = await this.repo.agents(tenantId);
     const online = new Set(this.realtime.onlineUsers(tenantId));

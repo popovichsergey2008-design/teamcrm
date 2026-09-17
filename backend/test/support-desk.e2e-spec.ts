@@ -251,6 +251,69 @@ describe('служба заботы (e2e)', () => {
     await http.get('/api/support/desk/dashboard').set(M).expect(403);
   }, 30000);
 
+  it('дежурного назначают галочкой, справочник уезжает в базу знаний', async () => {
+    const { O, M, mate } = await team('SD6');
+
+    // выбирать дежурного есть из кого: вся команда с отметкой
+    const picker = (await http.get('/api/support/desk/team/picker').set(O).expect(200)).body.data;
+    expect(picker.some((p: any) => String(p.userId) === String(mate.id))).toBe(true);
+    expect(picker.every((p: any) => p.onDuty === false)).toBe(true);
+    // сотруднику назначать дежурных не положено
+    await http.get('/api/support/desk/team/picker').set(M).expect(403);
+
+    // назначили — и человек стал дежурным: видит очередь
+    await http.post('/api/support/desk/team').set(O)
+      .send({ userId: String(mate.id), active: true, skills: ['доски'] }).expect(201);
+    const team2 = (await http.get('/api/support/desk/team/list').set(O).expect(200)).body.data;
+    expect(team2.some((t: any) => String(t.userId) === String(mate.id))).toBe(true);
+    await http.get('/api/support/desk/queue').set(M).expect(200);
+
+    // сняли — очередь снова не его дело
+    await http.post('/api/support/desk/team').set(O)
+      .send({ userId: String(mate.id), active: false }).expect(201);
+
+    /*
+      Справочник по системе — то, из чего отвечает помощник.
+
+      Проверяем обещание, а не факт записи: разделы видно, повторная загрузка не
+      плодит копии, а сотрудник справочник не загружает.
+    */
+    const before = (await http.get('/api/support/desk/handbook/state').set(M).expect(200)).body.data;
+    expect(before.sections.length).toBeGreaterThan(0);
+    expect(before.loadedAt).toBeNull();
+
+    const loaded = (await http.post('/api/support/desk/handbook/load').set(O).expect(201)).body.data;
+    expect(loaded.added).toBe(before.sections.length);
+    expect(loaded.loadedAt).not.toBeNull();
+    expect(loaded.stale).toBe(false);
+
+    const again = (await http.post('/api/support/desk/handbook/load').set(O).expect(201)).body.data;
+    expect(again.added).toBe(0);
+    expect(again.updated).toBe(before.sections.length);
+
+    await http.post('/api/support/desk/handbook/load').set(M).expect(403);
+  }, 60000);
+
+  it('«вопрос снят»: человек закрывает свой разговор сам', async () => {
+    const { M, O } = await team('SD7');
+    const conv = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'Не вижу кнопку переноса задачи' }).expect(201)).body.data;
+
+    // чужой разговор так не закрыть
+    await http.post(`/api/support/desk/${conv.id}/close`).set(O).send({}).expect(403);
+
+    const closed = (await http.post(`/api/support/desk/${conv.id}/close`).set(M)
+      .send({ csat: 4 }).expect(201)).body.data;
+    expect(closed.status).toBe('closed');
+    // повторное закрытие ничего не ломает
+    await http.post(`/api/support/desk/${conv.id}/close`).set(M).send({}).expect(201);
+
+    // вернуться к нему можно: переписка на месте
+    const back = (await http.post(`/api/support/desk/${conv.id}/reopen`).set(M).send({}).expect(201)).body.data;
+    expect(back.status).not.toBe('closed');
+    expect(back.messages.length).toBeGreaterThan(1);
+  }, 30000);
+
   it('чужое обращение не прочитать', async () => {
     const a = await team('SD2');
     const b = await team('SD3');

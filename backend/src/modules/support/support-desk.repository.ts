@@ -383,6 +383,19 @@ export class SupportDeskRepository {
   }
 
   // ── дежурные ──
+  /** Все сотрудники: из них руководство и выбирает дежурных. */
+  staff(tenantId: string) {
+    return this.db.many<{ id: string; full_name: string; position: string | null }>(
+      `SELECT u.id::text, u.full_name, p.name AS position
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+         LEFT JOIN positions p ON p.id = u.position_id
+        WHERE u.tenant_id=$1 AND u.is_active AND r.code <> 'client'
+        ORDER BY u.full_name`,
+      [tenantId],
+    );
+  }
+
   agents(tenantId: string) {
     return this.db.many<{ user_id: string; full_name: string; skills: string[]; last_seen_at: Date | null; presence_status: string | null }>(
       `SELECT a.user_id::text, u.full_name, a.skills, u.last_seen_at, u.presence_status

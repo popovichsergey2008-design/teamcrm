@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AnthillModule } from '../anthill/anthill.module';
 import { FilesModule } from '../files/files.module';
 import { ForecastModule } from '../forecast/forecast.module';
+import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { MeetingsModule } from '../meetings/meetings.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { RealtimeModule } from '../realtime/realtime.module';
@@ -20,7 +21,10 @@ import { SupportService } from './support.service';
  * остаётся для случаев, когда из разговора рождается работа для команды.
  */
 @Module({
-  imports: [ProjectsModule, TasksModule, RealtimeModule, FilesModule, AnthillModule, MeetingsModule, ForecastModule],
+  imports: [
+    ProjectsModule, TasksModule, RealtimeModule, FilesModule, AnthillModule, MeetingsModule,
+    ForecastModule, KnowledgeModule,
+  ],
   controllers: [SupportController, SupportDeskController],
   providers: [SupportService, SupportRepository, SupportDeskService, SupportDeskRepository],
   exports: [SupportDeskService],

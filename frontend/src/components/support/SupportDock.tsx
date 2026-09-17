@@ -305,6 +305,21 @@ export function SupportDock() {
     finally { setBusy(false); }
   };
 
+  /**
+   * «Вопрос снят»: человек закрывает свой разговор сам.
+   *
+   * Половина обращений заканчивается тем, что человек разобрался сам. Держать
+   * такой разговор открытым до ответа специалиста — значит гонять его за ответом,
+   * который уже не нужен.
+   */
+  const closeMine = async () => {
+    if (!conv) return;
+    setBusy(true);
+    try { setConv(await api.supportClose(conv.id)); void load(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось закрыть'); }
+    finally { setBusy(false); }
+  };
+
   const reopen = async (id: string) => {
     setBusy(true);
     try {
@@ -541,6 +556,9 @@ export function SupportDock() {
               {asksResult && (
                 <div className="support-ask">
                   <b>Всё работает?</b>
+                  <span className="dim">
+                    Специалист считает, что починил. Закрыть разговор можете только вы.
+                  </span>
                   <div className="support-ask-row">
                     <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => setLowReason(0)}>
                       Да, проблема решена
@@ -693,9 +711,24 @@ export function SupportDock() {
                     <Icon name="user" size={13} /> Позвать человека
                   </button>
                 )}
+                {conv && mineConversation && conv.status !== 'closed' && !asksResult && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    disabled={busy}
+                    onClick={() => void closeMine()}
+                    title="Закрыть разговор: вопрос больше не нужен. Если проблема вернётся — откроете заново."
+                  >
+                    <Icon name="check" size={13} /> Вопрос снят
+                  </button>
+                )}
                 {conv && !mineConversation && conv.status !== 'closed' && conv.status !== 'waiting_user' && (
-                  <button className="btn btn-sm support-human" disabled={busy} onClick={() => void resolveAsAgent()}>
-                    <Icon name="check" size={13} /> Кажется, решено
+                  <button
+                    className="btn btn-sm support-human"
+                    disabled={busy}
+                    onClick={() => void resolveAsAgent()}
+                    title="Человек получит вопрос «Всё работает?» и закроет разговор сам"
+                  >
+                    <Icon name="check" size={13} /> Решено — спросить человека
                   </button>
                 )}
               </footer>

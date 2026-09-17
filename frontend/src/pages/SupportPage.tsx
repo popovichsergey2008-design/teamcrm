@@ -5,7 +5,8 @@ import { SkeletonList } from '../components/Skeleton';
 import { openSupport } from '../components/support/SupportDock';
 import { api } from '../lib/api';
 import { stampLabel } from '../lib/chat-text';
-import type { SupportDesk, SupportQueueItem } from '../types';
+import { useAuth } from '../state/auth';
+import type { SupportDesk, SupportHandbook, SupportQueueItem, SupportTeamMember } from '../types';
 
 /** Секунды человеческими словами: «28 сек», «4 мин», «1 ч 10 мин». */
 function dur(sec: number | null): string {
@@ -27,7 +28,13 @@ function dur(sec: number | null): string {
  * «что было» и «открыть заново», а не колонки со статусами и приоритетами.
  */
 export function SupportPage() {
+  const { user } = useAuth();
+  const canManage = user?.role === 'owner' || user?.role === 'manager';
   const [desk, setDesk] = useState<SupportDesk | null>(null);
+  /** Кого можно поставить дежурным — вся команда с отметкой. */
+  const [staff, setStaff] = useState<SupportTeamMember[]>([]);
+  /** Справочник: то, из чего помощник отвечает на первой линии. */
+  const [hb, setHb] = useState<SupportHandbook | null>(null);
   const [queue, setQueue] = useState<SupportQueueItem[]>([]);
   /** Сводка — только руководству: цифры управленческие, остальным они ничего не говорят. */
   const [stats, setStats] = useState<Awaited<ReturnType<typeof api.supportDashboard>> | null>(null);
@@ -40,8 +47,29 @@ export function SupportPage() {
       if (d.isAgent) setQueue(await api.supportQueue().catch(() => []));
       setStats(await api.supportDashboard().catch(() => null));
     }
-  }, []);
+    setHb(await api.supportHandbook().catch(() => null));
+    if (user?.role === 'owner' || user?.role === 'manager') {
+      setStaff(await api.supportTeamPicker().catch(() => []));
+    }
+  }, [user?.role]);
   useEffect(() => { void load(); }, [load]);
+
+  /** Назначить или снять дежурного: одна галочка, без отдельного экрана настроек. */
+  const toggleDuty = async (m: SupportTeamMember) => {
+    setBusy(true);
+    // Показываем сразу: галочка не должна ждать ответа сервера.
+    setStaff((prev) => prev.map((p) => (p.userId === m.userId ? { ...p, onDuty: !p.onDuty } : p)));
+    try { await api.supportSetAgent(m.userId, !m.onDuty, m.skills); void load(); }
+    catch { setStaff((prev) => prev.map((p) => (p.userId === m.userId ? { ...p, onDuty: m.onDuty } : p))); }
+    finally { setBusy(false); }
+  };
+
+  /** Загрузить справочник в базу знаний — после правки документации. */
+  const loadHandbook = async () => {
+    setBusy(true);
+    try { setHb(await api.supportLoadHandbook()); }
+    finally { setBusy(false); }
+  };
 
   const reopen = async (id: string) => {
     setBusy(true);
@@ -117,6 +145,77 @@ export function SupportPage() {
             <div className="support-stat"><b>{stats.reopened}</b><span className="dim">открывали заново</span></div>
           </div>
         )}
+
+        {/*
+          Кто дежурит (разд. 7).
+
+          Дежурство — это галочка напротив человека, а не отдельный экран настроек:
+          в маленькой команде состав меняется каждую неделю. Пока не отмечен никто,
+          обращения идут владельцу компании — служба заботы не может молчать.
+        */}
+        {canManage && (
+          <div className="support-block">
+            <div className="drawer-section-title"><Icon name="users" size={14} /> Кто дежурит</div>
+            <p className="dim">
+              Дежурным приходят обращения, которые не закрыл помощник: они видят очередь и
+              кнопку «Позвать человека». Пока никто не отмечен, всё идёт владельцу компании.
+            </p>
+            <div className="support-duty">
+              {staff.map((m) => (
+                <label key={m.userId} className={`support-duty-row${m.onDuty ? ' on' : ''}`}>
+                  <input type="checkbox" checked={m.onDuty} disabled={busy} onChange={() => void toggleDuty(m)} />
+                  <span className="support-duty-name">
+                    {m.name}
+                    {m.position && <span className="dim"> · {m.position}</span>}
+                  </span>
+                  <span className="dim">{m.online ? 'на связи' : 'офлайн'}</span>
+                </label>
+              ))}
+              {!staff.length && <p className="dim">Сотрудников пока нет.</p>}
+            </div>
+          </div>
+        )}
+
+        {/*
+          Чем отвечает помощник (разд. 5).
+
+          Вопрос «по какой базе знаний он работает» должен иметь ответ прямо здесь, а
+          не в голове у того, кто это настраивал. Справочник по системе лежит рядом с
+          кодом и правится вместе с ним; здесь видно, что загружено и не отстало ли.
+        */}
+        <div className="support-block">
+          <div className="drawer-section-title"><Icon name="book" size={14} /> Чем отвечает помощник</div>
+          <p className="dim">
+            Первая линия — AnthillBot. Он отвечает по справочнику TeamCRM: это документация
+            по всем разделам системы, она лежит в базе знаний обычными регламентами — рядом
+            с вашими правилами работы. Плюс к ней он видит ваши задачи, переписку и встречи
+            в пределах ваших прав и говорит, из какого раздела взят ответ.
+          </p>
+          {hb && (
+            <>
+              <div className="support-hb">
+                {hb.sections.map((sec) => (
+                  <span key={sec.title} className={`support-person${sec.loadedAt ? ' on' : ''}`} title={sec.stale ? 'на диске новее — стоит загрузить' : 'загружено'}>
+                    {sec.title}
+                    {sec.stale && <span className="dim"> · обновился</span>}
+                  </span>
+                ))}
+              </div>
+              <div className="support-history-acts">
+                <span className="dim">
+                  {hb.loadedAt
+                    ? `Загружено ${new Date(hb.loadedAt).toLocaleDateString('ru-RU')}${hb.stale ? ' · документация с тех пор менялась' : ''}`
+                    : 'Справочник ещё не загружен — помощник отвечает только по вашим данным.'}
+                </span>
+                {canManage && (
+                  <button className="btn btn-sm" disabled={busy} onClick={() => void loadHandbook()}>
+                    <Icon name="refresh" size={13} /> {hb.loadedAt ? 'Обновить справочник' : 'Загрузить справочник'}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
 
         {/* Очередь — только дежурному: остальным она ничего не говорит. */}
         {desk?.isAgent && (

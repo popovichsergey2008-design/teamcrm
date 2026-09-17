@@ -52,6 +52,10 @@ class ConfirmDto {
   @IsOptional() @IsString() @MaxLength(64) reason?: string;
 }
 
+class CloseDto {
+  @IsOptional() @IsInt() @Min(1) @Max(4) csat?: number;
+}
+
 class ReopenDto {
   @IsOptional() @IsString() @MaxLength(8000) text?: string;
 }
@@ -181,6 +185,12 @@ export class SupportDeskController {
   }
 
   /** Слово человека: закрыть с оценкой или вернуть в работу. */
+  /** «Вопрос снят»: человек закрывает свой разговор сам, не дожидаясь ответа. */
+  @Post(':id/close')
+  close(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CloseDto) {
+    return this.desk.closeByUser(u.tenantId, u, id, dto.csat ?? null);
+  }
+
   @Post(':id/confirm')
   confirm(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ConfirmDto) {
     return this.desk.confirm(u.tenantId, u, id, dto.ok, dto.csat ?? null, dto.reason ?? null);
@@ -274,6 +284,26 @@ export class SupportDeskController {
   @Post('incident/:incidentId/resolve')
   resolveIncident(@CurrentUser() u: AuthUser, @Param('incidentId') incidentId: string) {
     return this.desk.resolveIncident(u.tenantId, u, incidentId);
+  }
+
+  /** Что знает помощник: разделы справочника и дата загрузки. */
+  @Get('handbook/state')
+  handbook(@CurrentUser() u: AuthUser) {
+    return this.desk.handbookState(u.tenantId);
+  }
+
+  /** Загрузить справочник в базу знаний — право руководства. */
+  @Post('handbook/load')
+  @Roles('owner', 'manager')
+  loadHandbook(@CurrentUser() u: AuthUser) {
+    return this.desk.loadHandbook(u.tenantId, u);
+  }
+
+  /** Вся команда с отметкой «дежурит» — чтобы было из кого выбирать. */
+  @Get('team/picker')
+  @Roles('owner', 'manager')
+  teamPicker(@CurrentUser() u: AuthUser) {
+    return this.desk.teamPicker(u.tenantId, u);
   }
 
   /** Кто дежурит. */

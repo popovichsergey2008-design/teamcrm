@@ -4667,7 +4667,27 @@ button.chat-pop-row:hover { background: var(--hover); }
 .support-queue-row:hover { border-color: var(--accent-line); }
 .support-queue-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .support-queue-head { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); }
-.support-history-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.support-history-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/*
+  Дежурные и справочник: два вопроса, на которые раздел обязан отвечать сам.
+
+  «Кто принимает обращения» и «откуда помощник знает ответы» — настройки, которые
+  обычно прячут в админку; здесь они стоят там же, где их задают.
+*/
+.support-duty { display: flex; flex-direction: column; gap: 4px; }
+.support-duty-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+}
+.support-duty-row:hover { border-color: var(--accent-line); }
+/* Кольцо по галочке внутри: табом сюда попадают именно на checkbox. */
+.support-duty-row:focus-visible,
+.support-duty-row:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.support-duty-row.on { border-color: var(--ok-line); }
+.support-duty-name { flex: 1 1 auto; min-width: 0; }
+.support-hb { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* Инструменты специалиста в панели: диагностика, инженер, задача (ТЗ-8, разд. 17). */
 .support-tools {

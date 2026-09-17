@@ -45,6 +45,8 @@ COPY package*.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY migrations ./migrations
+# Справочник по системе: из него служба заботы наполняет базу знаний.
+COPY handbook ./handbook
 COPY docker/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 EXPOSE 3000

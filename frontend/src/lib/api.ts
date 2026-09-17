@@ -1,7 +1,7 @@
 import type {
   Agenda, AiAction, Approval, AssistantMode, AuthResult, Board, Focus, GateSettings, Ping,
   Project, Proposal, SearchResults, SemanticHit, SupportContextInput, SupportConversation,
-  SupportDesk, SupportQueueItem, Task,
+  SupportDesk, SupportHandbook, SupportQueueItem, SupportTeamMember, Task,
 } from '../types';
 
 const ACCESS_KEY = 'teamcrm.access';
@@ -1108,6 +1108,9 @@ export const api = {
   supportCallHuman: (id: string) => request<SupportConversation>('POST', `/support/desk/${id}/human`, {}),
   supportConfirm: (id: string, ok: boolean, csat?: number, reason?: string) =>
     request<SupportConversation>('POST', `/support/desk/${id}/confirm`, { ok, csat, reason }),
+  /** «Вопрос снят»: закрыть свой разговор, не дожидаясь ответа специалиста. */
+  supportClose: (id: string, csat?: number) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/close`, { csat }),
   supportReopen: (id: string, text?: string) =>
     request<SupportConversation>('POST', `/support/desk/${id}/reopen`, { text }),
   /** Сторона дежурного: очередь, подключение, ответ, «кажется, решено». */
@@ -1180,6 +1183,25 @@ export const api = {
     request<{ id: string; title: string }>('POST', '/support/desk/incident', { title, message }),
   supportResolveIncident: (id: string) =>
     request<{ resolved: true }>('POST', `/support/desk/incident/${id}/resolve`, {}),
+
+  /**
+   * Справочник по системе — то, из чего отвечает помощник службы заботы.
+   *
+   * Документация лежит рядом с кодом и загружается в базу знаний регламентами:
+   * помощник и AnthillBot читают один источник, а не каждый свой.
+   */
+  supportHandbook: () => request<SupportHandbook>('GET', '/support/desk/handbook/state'),
+  supportLoadHandbook: () =>
+    request<SupportHandbook & { added: number; updated: number; total: number }>(
+      'POST', '/support/desk/handbook/load', {},
+    ),
+  /** Вся команда с отметкой «дежурит» — из кого выбирать дежурных. */
+  supportTeamPicker: () => request<SupportTeamMember[]>('GET', '/support/desk/team/picker'),
+  /** Назначить или снять дежурного. */
+  supportSetAgent: (userId: string, active: boolean, skills?: string[]) =>
+    request<{ userId: string; name: string; skills: string[]; online: boolean }[]>(
+      'POST', '/support/desk/team', { userId, active, skills },
+    ),
 
   supportOverview: () => request<{
     project: { id: string; name: string } | null;
