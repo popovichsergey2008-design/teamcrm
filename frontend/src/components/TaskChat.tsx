@@ -10,6 +10,7 @@ import { dayLabel, plural, sameGroup, stampLabel } from '../lib/chat-text';
 import { MessageText } from './MessageText';
 import { longPressProps, MenuAt, MessageMenu } from './MessageMenu';
 import { useDismiss } from '../hooks/useDismiss';
+import { selectionIn } from '../lib/selection';
 import { shrinkImage } from '../lib/image-shrink';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { orderMentions } from '../lib/task-mentions';
@@ -202,7 +203,7 @@ export function TaskChat({
    * каждой репликой стояли «Ответить», «В ветку», смайл и троеточие — заказчик
    * попросил убрать их и сделать «один в один как в телеграме».
    */
-  const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt } | null>(null);
+  const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt; picked: string } | null>(null);
   const [allHistory, setAllHistory] = useState(false);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [advice, setAdvice] = useState<{
@@ -644,13 +645,13 @@ export function TaskChat({
    * виден прямо под ним. Выделенный кусок сохраняется цитатой: в длинном сообщении
    * спорят об одном абзаце.
    */
-  /** Выделенный кусок сообщения: спорят обычно об одном абзаце, а не обо всём тексте. */
-  const picked = (node: Element | null) => {
-    const sel = window.getSelection();
-    return sel && !sel.isCollapsed && node && sel.anchorNode && node.contains(sel.anchorNode)
-      ? sel.toString().trim().slice(0, 600)
-      : '';
-  };
+  /**
+   * Выделенный кусок сообщения.
+   *
+   * Обычно он приходит готовым из меню (там его снимают в момент вызова, пока
+   * выделение ещё живо). Аргумент `ready` — этот случай; без него смотрим сами.
+   */
+  const picked = (node: Element | null, ready?: string) => ready || selectionIn(node);
 
   /**
    * Ответ в ленте — как в Telegram.
@@ -659,8 +660,8 @@ export function TaskChat({
    * на что отвечают, и нажатием можно прыгнуть к исходной реплике. Ветку при этом
    * не заводим: обычный ответ остаётся частью общего разговора.
    */
-  const startReply = (c: any, node: Element | null) => {
-    const excerpt = picked(node) || String(c.body ?? 'вложение');
+  const startReply = (c: any, node: Element | null, ready?: string) => {
+    const excerpt = picked(node, ready) || String(c.body ?? 'вложение');
     setEditing(null);
     setThread(null);
     setReplyTo({ id: String(c.id), author: c.is_ai ? AI_MENTION_NAME : c.author_name, excerpt });
@@ -668,8 +669,8 @@ export function TaskChat({
   };
 
   /** Ответ ВЕТКОЙ: обсуждение уходит в сторону и общую ленту не засоряет. */
-  const startThreadReply = (c: any, node: Element | null) => {
-    const excerpt = picked(node);
+  const startThreadReply = (c: any, node: Element | null, ready?: string) => {
+    const excerpt = picked(node, ready);
     setEditing(null);
     setReplyTo(null);
     setThreadQuote(excerpt ? { author: c.is_ai ? AI_MENTION_NAME : c.author_name, excerpt } : null);
@@ -1145,8 +1146,16 @@ export function TaskChat({
                   + `${ctxFor?.id === String(c.id) ? ' msg-ctx-open' : ''}`}
                 /* Правая кнопка — меню сообщения, как в Telegram. На касании его
                    открывает долгое нажатие: см. longPressProps. */
-                onContextMenu={(e) => { e.preventDefault(); setCtxFor({ id: String(c.id), at: { x: e.clientX, y: e.clientY } }); }}
-                {...longPressProps((at) => setCtxFor({ id: String(c.id), at }))}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  // Выделение снимаем сразу: щелчок по пункту меню его сбросит.
+                  setCtxFor({
+                    id: String(c.id),
+                    at: { x: e.clientX, y: e.clientY },
+                    picked: selectionIn(e.currentTarget as Element),
+                  });
+                }}
+                {...longPressProps((at) => setCtxFor({ id: String(c.id), at, picked: '' }))}
               >
                 <div className="msg-avatar" aria-hidden="true">
                   {grouped ? '' : c.is_ai ? <Icon name="robot" size={14} /> : initials(name)}
@@ -1307,9 +1316,24 @@ export function TaskChat({
         if (!c) return null;
         const mine = String(c.author_id) === String(user?.id ?? '') && !c.is_ai;
         const node = document.querySelector(`[data-msg="${ctxFor.id}"]`);
+        const picked = ctxFor.picked;
         const items = [
-          { label: 'Ответить', icon: 'reply' as const, onClick: () => startReply(c, node) },
-          { label: 'Ответить в ветке', icon: 'chat' as const, onClick: () => startThreadReply(c, node) },
+          {
+            label: picked ? 'Ответить с цитатой' : 'Ответить',
+            icon: 'reply' as const,
+            onClick: () => startReply(c, node, picked),
+          },
+          {
+            label: picked ? 'В ветку с цитатой' : 'Ответить в ветке',
+            icon: 'chat' as const,
+            onClick: () => startThreadReply(c, node, picked),
+          },
+          // Своё меню забрало у браузера его «Копировать» — возвращаем выделенное.
+          ...(picked ? [{
+            label: 'Копировать выделенное',
+            icon: 'copy' as const,
+            onClick: () => { void navigator.clipboard?.writeText(picked).catch(() => undefined); },
+          }] : []),
           ...(c.body ? [{
             label: 'Копировать текст',
             icon: 'copy' as const,

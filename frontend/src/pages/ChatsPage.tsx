@@ -23,6 +23,7 @@ import { MentionField } from '../components/MentionField';
 import { MessageText } from '../components/MessageText';
 import { longPressProps, MenuAt, MessageMenu } from '../components/MessageMenu';
 import { useDismiss } from '../hooks/useDismiss';
+import { selectionIn } from '../lib/selection';
 import { shrinkAll } from '../lib/image-shrink';
 import { MessageToTask } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
@@ -303,7 +304,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * Просьба заказчика: «убрать эти троеточия везде и сделать один в один как в
    * телеграме». Одно меню на страницу: у какого сообщения открыто и в какой точке.
    */
-  const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt } | null>(null);
+  const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt; picked: string } | null>(null);
   /** Какой раздел открыт вместо переписки: входящие, треды, сохранённое. */
   const [view, setView] = useState<'chat' | 'inbox' | 'threads' | 'saved' | 'channels' | 'anthill'>('chat');
   /**
@@ -1155,17 +1156,30 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * непрочитанным». Раньше те же действия стояли значками под каждым сообщением —
    * заказчик попросил убрать их совсем и повторить поведение Telegram.
    */
-  const messageMenuItems = (m: Message, mine: boolean) => [
+  const messageMenuItems = (m: Message, mine: boolean, picked = '') => [
     {
-      label: 'Ответить',
+      label: picked ? 'Ответить с цитатой' : 'Ответить',
       icon: 'reply' as const,
       onClick: () => setReplyTo({
         id: String(m.id),
         author: m.is_ai ? 'AnthillBot' : (m.author_name ?? m.guest_name ?? 'Собеседник'),
-        excerpt: String(m.body ?? 'вложение').slice(0, 600),
+        // Цитируем ИМЕННО выделенный кусок: спорят обычно об одном абзаце.
+        excerpt: picked || String(m.body ?? 'вложение').slice(0, 600),
       }),
     },
     { label: 'Ответить в ветке', icon: 'chat' as const, onClick: () => { void openThread(String(m.id)); } },
+    /*
+      Копирование выделенного.
+
+      Своё меню по правой кнопке забрало у браузера его собственное — вместе с
+      пунктом «Копировать». Возвращаем: есть выделение — копируем именно его,
+      нет — всё сообщение.
+    */
+    ...(picked ? [{
+      label: 'Копировать выделенное',
+      icon: 'copy' as const,
+      onClick: () => { void navigator.clipboard?.writeText(picked).catch(() => undefined); },
+    }] : []),
     ...(m.body ? [{
       label: 'Копировать текст',
       icon: 'copy' as const,
@@ -1196,13 +1210,22 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     ] : []),
   ];
 
-  /** Правая кнопка и долгое нажатие — на самом сообщении, где их и ищут. */
+  /**
+   * Правая кнопка и долгое нажатие — на самом сообщении, где их и ищут.
+   *
+   * Выделенный кусок снимаем ЗДЕСЬ, пока он ещё есть: пока человек ведёт мышь к
+   * пункту меню, любой щелчок выделение сбрасывает.
+   */
   const messageMenuProps = (m: Message) => ({
     onContextMenu: (e: React.MouseEvent) => {
       e.preventDefault();
-      setCtxFor({ id: String(m.id), at: { x: e.clientX, y: e.clientY } });
+      setCtxFor({
+        id: String(m.id),
+        at: { x: e.clientX, y: e.clientY },
+        picked: selectionIn(e.currentTarget as Element),
+      });
     },
-    ...longPressProps((at) => setCtxFor({ id: String(m.id), at })),
+    ...longPressProps((at) => setCtxFor({ id: String(m.id), at, picked: '' })),
   });
 
   /**
@@ -2060,7 +2083,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                   at={ctxFor.at}
                   reactions={REACTIONS}
                   onReact={(emoji) => react(String(m.id), emoji)}
-                  items={messageMenuItems(m, String(m.author_id) === String(user?.id))}
+                  items={messageMenuItems(m, String(m.author_id) === String(user?.id), ctxFor.picked)}
                   onClose={() => setCtxFor(null)}
                 />
               );
