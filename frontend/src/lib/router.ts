@@ -38,6 +38,22 @@ const SECTIONS: Section[] = [
 /** По ТЗ приложение открывается на «Фокусе дня», а не на досках. */
 export const DEFAULT_PATH = '/focus';
 
+/**
+ * Адрес консоли техподдержки — тот же сайт под своим именем (ТЗ-8).
+ *
+ * Открытый по нему TeamCRM сразу показывает консоль: у техотдела свой вход, и идти
+ * через «Фокус дня» ему незачем. Дальше по сайту он ходит как обычно — приложение
+ * одно, отдельной сборки для поддомена нет.
+ *
+ * Скрытием это не является и являться не должно: права проверяет сервер, а адрес
+ * лишь избавляет клиентов от лишней строки в чужой адресной строке.
+ */
+const CONSOLE_HOST = 'console.';
+
+export function isConsoleHost(): boolean {
+  return window.location.hostname.startsWith(CONSOLE_HOST);
+}
+
 const NAV_EVENT = 'teamcrm:navigate';
 const enc = encodeURIComponent;
 
@@ -150,6 +166,6 @@ export function initRouter() {
   const saved = localStorage.getItem(LEGACY_KEY);
   if (saved) localStorage.removeItem(LEGACY_KEY);
   if (window.location.pathname !== '/') return;
-  const path = (saved && LEGACY_PATHS[saved]) || DEFAULT_PATH;
+  const path = (saved && LEGACY_PATHS[saved]) || (isConsoleHost() ? '/console' : DEFAULT_PATH);
   window.history.replaceState({}, '', path + window.location.search);
 }

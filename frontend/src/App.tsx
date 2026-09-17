@@ -124,6 +124,17 @@ export function App() {
   };
   // ушли в мессенджер — окно поверх больше не нужно, чат и так перед глазами
   useEffect(() => { if (route.section === 'chat') setOverlayChat(null); }, [route.section]);
+  /*
+    Консоль техподдержки — не для клиентов.
+
+    Адрес `/console` можно набрать руками (и он открывается сам на поддомене консоли),
+    поэтому уводим отсюда тех, кто не в техотделе: пустой экран пугает сильнее, чем
+    привычный «Фокус дня». Настоящая защита — на сервере: ручки консоли всё равно
+    отвечают отказом.
+  */
+  useEffect(() => {
+    if (route.section === 'console' && user && !user.platformStaff) navigate({ section: 'focus' }, { replace: true });
+  }, [route.section, user]);
   // какие разделы уже открывали: только их держим смонтированными
   const [visited, setVisited] = useState<Set<Section>>(() => new Set([route.section]));
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
