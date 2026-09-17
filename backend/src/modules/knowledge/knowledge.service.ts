@@ -186,14 +186,14 @@ ${extracted.text}`,
   }
 
   /** Семантический поиск. Опционально в рамках одного проекта (+ общие регламенты). */
-  async search(tenantId: string, query: string, k = 8, projectId?: string) {
+  async search(tenantId: string, query: string, k = 8, projectId?: string, types?: SourceType[]) {
     const vec = await this.ai.embed(tenantId, query, 'embedding');
-    return this.searchByVector(tenantId, vec, k, projectId);
+    return this.searchByVector(tenantId, vec, k, projectId, types);
   }
 
   /** Поиск по готовому вектору (переиспользуется в AI Brain / кэше — без повторного эмбеддинга). */
-  async searchByVector(tenantId: string, vec: number[], k = 8, projectId?: string) {
-    const hits = await this.repo.search(tenantId, vec, k, projectId);
+  async searchByVector(tenantId: string, vec: number[], k = 8, projectId?: string, types?: SourceType[]) {
+    const hits = await this.repo.search(tenantId, vec, k, projectId, types);
     // подписи проектов для разреза «по проектам»
     const scopeIds = [...new Set(hits.map((h) => h.access_scope).filter(Boolean) as string[])];
     const names = new Map<string, string>();

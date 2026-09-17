@@ -63,12 +63,23 @@ export class KnowledgeRepository {
    * Семантический поиск. ВСЕГДА фильтр по tenant. Если задан projectId — только
    * фрагменты этого проекта + общие регламенты (access_scope IS NULL).
    */
-  search(tenantId: string, queryVec: number[], k: number, projectId?: string): Promise<SearchHit[]> {
+  /**
+   * Поиск по смыслу.
+   *
+   * `types` сужает поиск до нужного рода источников — например, только до документов.
+   * Без него вопрос «как ставятся задачи» тонет в самих задачах со словом «задача»:
+   * их в базе тысячи, справочника — десяток, и он не попадает даже в первую сотню.
+   */
+  search(tenantId: string, queryVec: number[], k: number, projectId?: string, types?: string[]): Promise<SearchHit[]> {
     const params: any[] = [tenantId, this.vec(queryVec), k];
     let scopeSql = '';
     if (projectId) {
       params.push(projectId);
-      scopeSql = `AND (access_scope = $4 OR access_scope IS NULL)`;
+      scopeSql += ` AND (access_scope = $${params.length} OR access_scope IS NULL)`;
+    }
+    if (types?.length) {
+      params.push(types);
+      scopeSql += ` AND source_type = ANY($${params.length}::text[])`;
     }
     return this.db.many<SearchHit>(
       `SELECT id, source_type, source_id, chunk_index, title, content, access_scope,
