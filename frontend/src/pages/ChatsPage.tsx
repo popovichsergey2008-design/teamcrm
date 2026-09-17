@@ -952,6 +952,24 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось закрепить'); }
   };
 
+  /**
+   * Переход по цитате — к исходному сообщению.
+   *
+   * Если оно уже в ленте, прыгаем сразу, без похода на сервер: мигание
+   * перезагруженной ленты в ответ на нажатие выглядит как сбой. Если его в ленте
+   * нет (разговор длинный, а цитата — из глубины), поднимаем окно вокруг него.
+   */
+  const goToQuoted = async (id: string) => {
+    const el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
+    if (el) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setHighlight(id);
+      window.setTimeout(() => setHighlight((cur) => (cur === id ? null : cur)), 2600);
+      return;
+    }
+    if (activeId) await openFound({ chatId: String(activeId), messageId: id, threadRootId: null });
+  };
+
   /** Переход к сообщению из закреплённого: если оно ещё не подгружено, просто подсветим. */
   const goToMessage = (id: string) => {
     setPinsOpen(false);
@@ -1100,6 +1118,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
       api.chatContext(hit.chatId).then(setCtx).catch(() => setCtx(null));
       if (hit.threadRootId) await openThread(hit.threadRootId);
       setHighlight(hit.messageId);
+      /*
+        И прокручиваем к нему.
+
+        Раньше сообщение только подсвечивалось, а лента оставалась там, где была:
+        человек нажимал на цитату и не понимал, произошло ли хоть что-то. Ждём
+        отрисовку: до неё узла с этим id в ленте ещё нет.
+      */
+      window.setTimeout(() => {
+        feedRef.current?.querySelector(`[data-msg="${hit.messageId}"]`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }, 80);
       // Подсветка гаснет сама: постоянная метка на сообщении ничего не значит.
       setTimeout(() => setHighlight((cur) => (cur === hit.messageId ? null : cur)), 4000);
     } catch (e) {
@@ -2175,8 +2204,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                         {m.reply_to_id && m.reply_body && (
                           <button
                             className="msg-quote"
-                            onClick={() => void openFound({ chatId: String(activeId), messageId: String(m.reply_to_id), threadRootId: null })}
-                            title="Перейти к сообщению"
+                            onClick={() => void goToQuoted(String(m.reply_to_id))}
+                            title="Перейти к исходному сообщению"
                           >
                             <b className="msg-quote-author">{m.reply_author ?? 'Собеседник'}</b>
                             <span className="msg-quote-text">{String(m.reply_body).slice(0, 200)}</span>

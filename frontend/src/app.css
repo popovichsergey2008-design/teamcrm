@@ -2422,7 +2422,21 @@
 .chat-pin-item:hover { background: var(--bg-elev); color: var(--text); }
 .chat-pin-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* Пришли из закреплённого — сообщение подсвечено: иначе непонятно, куда прокрутили. */
-.chat-found .chat-msg { box-shadow: 0 0 0 2px var(--warn-line); }
+/*
+  Куда прыгнули по цитате — видно сразу.
+
+  Одной рамки мало: в длинной ленте глаз её не находит. Подкрашиваем сам пузырь и
+  даём короткую вспышку — она гаснет сама, постоянная метка ничего не значит.
+*/
+.chat-found .chat-msg {
+  box-shadow: 0 0 0 2px var(--warn-line);
+  background: var(--warn-soft);
+  animation: chat-found-pulse 1.2s ease-out 1;
+}
+@keyframes chat-found-pulse {
+  0% { box-shadow: 0 0 0 6px var(--warn-soft), 0 0 0 2px var(--warn-line); }
+  100% { box-shadow: 0 0 0 2px var(--warn-line); }
+}
 
 /* Строка под сообщением: время и вход в ветку. */
 .chat-under { display: flex; align-items: center; gap: 8px; margin: 2px 4px 0; }
