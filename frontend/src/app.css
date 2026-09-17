@@ -2739,7 +2739,15 @@
 
 /* Правка сообщения прямо в пузыре: отдельное окно ради опечатки — лишний шаг. */
 .chat-edit { display: flex; flex-direction: column; gap: 6px; min-width: 260px; }
-.chat-edit .input { font-size: calc(14px * var(--fs-scale)); }
+/*
+  Поле правки растягиваем на всю ширину пузыря.
+
+  Правим тем же полем, что и пишем, а оно приходит в обёртке подсказки «@»: без этих
+  двух строк обёртка растягивалась, а сама textarea оставалась узкой — шириной в свои
+  двадцать знаков по умолчанию.
+*/
+.chat-edit .mention-wrap { display: flex; width: 100%; }
+.chat-edit .input { flex: 1; width: 100%; min-width: 0; font-size: calc(14px * var(--fs-scale)); }
 .chat-edit-actions { display: flex; gap: 6px; }
 /* Галочки «отправлено / прочитано» — как в мессенджерах. */
 .chat-ticks { display: inline-flex; align-items: center; color: var(--text-dim); }

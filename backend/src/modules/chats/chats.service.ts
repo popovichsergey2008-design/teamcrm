@@ -1318,12 +1318,12 @@ export class ChatsService {
     // Пустое сообщение — это удаление, и делается оно отдельной кнопкой: иначе
     // человек стирает текст, а в переписке остаётся пустой пузырь.
     if (!text && !message.file_id) throw AppException.validation('Пустое сообщение — удалите его целиком');
-    await this.repo.editMessage(tenantId, messageId, text.slice(0, 4000));
+    // Обрезаем по тому же пределу, что и при отправке: правка не должна укорачивать текст.
+    const next = text.slice(0, 8000);
+    await this.repo.editMessage(tenantId, messageId, next);
     const to = await this.recipients(chat, tenantId);
-    this.realtime.emitToUsers(tenantId, to, 'chat.message_edited', {
-      chatId, messageId, body: text.slice(0, 4000),
-    });
-    return { edited: true, body: text.slice(0, 4000) };
+    this.realtime.emitToUsers(tenantId, to, 'chat.message_edited', { chatId, messageId, body: next });
+    return { edited: true, body: next };
   }
 
   async remove(tenantId: string, chatId: string, messageId: string, user: { userId: string; role: string }) {

@@ -28,6 +28,34 @@ describe('Чаты команды (e2e)', () => {
   });
   afterAll(async () => { await app?.close(); });
 
+  it('длинное сообщение можно не только отправить, но и поправить', async () => {
+    /*
+      Живая жалоба: «в чате не редактируются сообщения». На сообщении в 5000 знаков
+      сервер отвечал «body must be shorter than or equal to 4000 characters»:
+      отправить такое было можно, а исправить в нём опечатку — нельзя.
+    */
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'ED', email: `ed_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .expect(201)).body.data;
+    const mateEmail = `ed_m_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' })
+      .expect(201)).body.data;
+    const O = H(owner.accessToken);
+
+    const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
+    const long = `Отчёт: ${'ссылка '.repeat(800)}`.slice(0, 5000);
+    const msg = (await http$.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: long }).expect(201)).body.data;
+
+    const fixed = `${long.slice(0, 4990)} (правка)`;
+    const res = (await http$.patch(`/api/chats/${chat.id}/messages/${msg.id}`).set(O)
+      .send({ body: fixed }).expect(200)).body.data;
+    expect(res.edited).toBe(true);
+    const feed = (await http$.get(`/api/chats/${chat.id}/messages`).set(O).expect(200)).body.data;
+    expect(feed[0].body.endsWith('(правка)')).toBe(true);
+    expect(feed[0].edited_at).toBeTruthy();
+  });
+
   it('диалог: переписка, непрочитанное, повторное открытие не плодит второй чат', async () => {
     const ownerEmail = `ch_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
