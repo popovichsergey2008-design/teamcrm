@@ -287,9 +287,11 @@ describe('служба заботы (e2e)', () => {
     expect(loaded.loadedAt).not.toBeNull();
     expect(loaded.stale).toBe(false);
 
+    // повтор ничего не переиндексирует: сверяется текст, а не дата файла
     const again = (await http.post('/api/support/desk/handbook/load').set(O).expect(201)).body.data;
     expect(again.added).toBe(0);
-    expect(again.updated).toBe(before.sections.length);
+    expect(again.updated).toBe(0);
+    expect(again.unchanged).toBe(before.sections.length);
 
     await http.post('/api/support/desk/handbook/load').set(M).expect(403);
   }, 60000);
