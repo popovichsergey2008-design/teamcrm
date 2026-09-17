@@ -10,6 +10,7 @@ import { FilesModule } from '../files/files.module';
 import { TaskCardModule } from '../taskcard/taskcard.module';
 import { ForecastModule } from '../forecast/forecast.module';
 import { CalendarModule } from '../calendar/calendar.module';
+import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { AnthillController } from './anthill.controller';
 import { AnthillRepository } from './anthill.repository';
 import { AnthillService } from './anthill.service';
@@ -22,7 +23,12 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
  * постановка задач словами, вопросы о делах. Своих данных CRM не заводит.
  */
 @Module({
-  imports: [AiModule, TasksModule, ChatsModule, SearchModule, NlModule, AssistantModule, RealtimeModule, FilesModule, TaskCardModule, ForecastModule, CalendarModule],
+  imports: [
+    AiModule, TasksModule, ChatsModule, SearchModule, NlModule, AssistantModule, RealtimeModule,
+    FilesModule, TaskCardModule, ForecastModule, CalendarModule,
+    // База знаний: из неё агент отвечает на вопросы о том, как работает сама система.
+    KnowledgeModule,
+  ],
   controllers: [AnthillController],
   providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService],
   // AnthillRepository наружу: служба заботы заводит агенту сессию под каждый разговор,

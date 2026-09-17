@@ -6,6 +6,7 @@ import { ChatsService } from '../chats/chats.service';
 import { SearchService } from '../search/search.service';
 import { NlService } from '../nl/nl.service';
 import { AskService } from '../assistant/ask.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 import { FilesService } from '../files/files.service';
 import { TaskCardService } from '../taskcard/taskcard.service';
 import { ForecastService } from '../forecast/forecast.service';
@@ -55,8 +56,9 @@ export class AnthillService {
     private readonly ai: AiService,
     tasks: TasksService, chats: ChatsService, search: SearchService, nl: NlService, ask: AskService,
     files: FilesService, taskcard: TaskCardService, forecast: ForecastService, calendar: CalendarService,
+    knowledge: KnowledgeService,
   ) {
-    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast });
+    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge });
   }
 
   private base() { return (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, ''); }
@@ -804,6 +806,9 @@ const PLAN_SYSTEM = [
   'action — ОДИН инструмент вида write, только если человек просит что-то СДЕЛАТЬ (создать задачу, напомнить); иначе null.',
   'skills — готовые сценарии. Если запрос похож на поле when у одного из них, верни его id в поле "skill"; иначе "skill": null. Один навык, не несколько.',
   'Если у человека открыта задача/проект/чат (поле page), пользуйся их номерами из page — не спрашивай ссылку.',
+  'Вопрос о САМОЙ СИСТЕМЕ и о порядках компании («как создать задачу», «где найти отчёт», '
+  + '«почему не вижу проект», «что означает эта кнопка») — это how_to. Искать такое по задачам и '
+  + 'переписке бесполезно: ответ лежит в справочнике.',
   'Даты вычисляй от now. Номера задач бери из вопроса или page — не придумывай.',
 ].join(' ');
 
@@ -811,6 +816,9 @@ const ANSWER_SYSTEM = [
   'Ты — AnthillBot, персональный AI-помощник в ANTHILL. Отвечай по-русски, коротко и по делу, как коллега.',
   'Отвечай ТОЛЬКО по findings и page: это данные, собранные для этого человека с его правами. Чего там нет — не выдумывай.',
   'Никогда не придумывай номера задач, имена, сроки, решения и ссылки. Если данных не хватает, так и скажи: «Я не нашёл подтверждения этого в доступных данных ANTHILL».',
+  'Эта оговорка — про ФАКТЫ (задачи, сроки, люди, решения). На вопрос о том, как работает система '
+  + 'или как принято в компании, отвечай по справочнику из findings: по шагам, своими словами, назвав '
+  + 'раздел справочника. Отказ вместо объяснения — худший из ответов, когда объяснение есть.',
   'Ссылайся на источники номерами в квадратных скобках, например [2], — только из списка sources. Номера задач пиши как #N.',
   'Сводки группируй по смыслу: Решения · Новые задачи · Проблемы · Требует вашего внимания — и только те разделы, где есть содержимое.',
   'Если просят чек-лист, дай список из 3–7 проверяемых шагов по данным задачи.',

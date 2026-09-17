@@ -12,6 +12,7 @@ import { ChatsService } from '../chats/chats.service';
 import { SearchService } from '../search/search.service';
 import { NlService } from '../nl/nl.service';
 import { AskService } from '../assistant/ask.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 
 /**
  * Инструменты AnthillBot (ТЗ-6, разд. 48).
@@ -76,6 +77,7 @@ export interface ToolDeps {
   search: SearchService;
   nl: NlService;
   ask: AskService;
+  knowledge: KnowledgeService;
 }
 
 const str = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
@@ -83,7 +85,7 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast } = deps;
+  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge } = deps;
 
   /**
    * Человек по имени. Точного совпадения не требуем: в задаче просят «поставь на
@@ -294,6 +296,44 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         for (const pe of (r.people as any[]).slice(0, 5)) parts.push(`сотрудник ${pe.full_name}${pe.position ? ` (${pe.position})` : ''}`);
         for (const d of (r.docs as any[]).slice(0, 5)) parts.push(`документ «${d.title}»`);
         return { text: parts.length ? parts.join('\n') : 'Ничего не нашлось.', sources };
+      },
+    },
+
+    {
+      /*
+        Как устроена сама система (ТЗ-8).
+
+        Без этого инструмента на вопрос «как создать задачу» агент честно отвечал
+        «не нашёл подтверждения в данных ANTHILL»: искать он умел только по задачам
+        и переписке, а документации у него не было вовсе. Теперь справочник по
+        продукту лежит в базе знаний обычными регламентами, и сюда же попадают
+        правила самой компании — на вопрос «как у нас принято» ответ один и тот же
+        поиск.
+
+        Возвращаем куски текста, а не ссылки: у регламента нет своего экрана, зато
+        есть название раздела — его модель и назовёт человеку.
+      */
+      name: 'how_to', kind: 'read',
+      description: 'Как устроена и как работает сама CRM ANTHILL и как принято работать в компании: где что находится, как сделать действие, что означает раздел или кнопка. Зови на любой вопрос «как…», «где…», «почему не вижу…», «что означает…» про саму систему и её порядки — по задачам и переписке такое искать бесполезно.',
+      params: { q: 'вопрос словами, как его задал человек' },
+      async run(ctx, p) {
+        const q = str(p.q, 300);
+        if (!q) return { text: 'Пустой вопрос.', sources: [] };
+        /*
+          Берём с запасом и оставляем только документы.
+
+          Сверху выдачи легко оказываются задачи и реплики со словом «задача» — если
+          просить сразу шесть, справочник вытесняется ими и человек снова слышит «не
+          нашёл». Заодно это и граница доступа: у регламента нет проекта, а всё
+          остальное отсекается здесь и до модели не доходит.
+        */
+        const hits = await knowledge.search(ctx.tenantId, q, 24);
+        const docs = hits.filter((h) => h.sourceType === 'regulation').slice(0, 5);
+        if (!docs.length) {
+          return { text: `В справочнике и регламентах про «${q}» ничего не нашлось.`, sources: [] };
+        }
+        const lines = docs.map((d) => `— ${d.title}:\n${d.snippet}`);
+        return { text: `Из справочника и регламентов:\n${lines.join('\n')}`, sources: [] };
       },
     },
 
