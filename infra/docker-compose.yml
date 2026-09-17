@@ -63,6 +63,11 @@ x-api-env: &api-env
   # для окружений без бота. Секрет проверяется на входящем вебхуке, если задан.
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
   TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+  # Организация-вендор: её сотрудники ведут службу заботы всего продукта (ТЗ-8).
+  # Задаётся ОДИН раз — дальше живёт флагом в базе. Не задано — обращения принимает
+  # владелец организации, в которой они появились: без поддержки никто не остаётся.
+  PLATFORM_TENANT_ID: ${PLATFORM_TENANT_ID:-}
+  PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-}
 
 x-api: &api
   build:
