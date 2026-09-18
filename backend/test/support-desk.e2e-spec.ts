@@ -604,6 +604,51 @@ describe('служба заботы (e2e)', () => {
     }
   }, 90000);
 
+  /*
+    Этап 4: созвон по просьбе и согласию.
+
+    Главное обещание раздела 04_SUPPORT_HUDDLE §2: нажатие на трубку никому не звонит.
+    Вторая сторона решает сама, удобно ли ей сейчас, и отказ — обычный ответ, а не сбой.
+  */
+  it('созвон не начинается без согласия второй стороны', async () => {
+    const { O, M } = await team('SDH');
+    const conv = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'Позовите специалиста' }).expect(201)).body.data;
+    await http.post(`/api/support/desk/${conv.id}/join`).set(O).expect(201);
+
+    // специалист предлагает созвон — комнаты пока нет, есть просьба
+    const asked = (await http.post(`/api/support/desk/${conv.id}/call/request`).set(O)
+      .send({}).expect(201)).body.data;
+    expect(asked.call).toBeTruthy();
+    expect(asked.call.byRole).toBe('agent');
+    expect(asked.messages.some((m: any) => String(m.body).includes('предлагает созвониться'))).toBe(true);
+
+    // сам себе принять созвон нельзя: соглашается вторая сторона
+    await http.post(`/api/support/desk/${conv.id}/call/accept`).set(O)
+      .send({ roomId: 'room-1' }).expect(400);
+
+    // человек отказывается — это обычное состояние, разговор продолжается
+    const declined = (await http.post(`/api/support/desk/${conv.id}/call/decline`).set(M)
+      .send({}).expect(201)).body.data;
+    expect(declined.call).toBeNull();
+    expect(declined.messages.some((m: any) => String(m.body).includes('сейчас неудобно'))).toBe(true);
+    // отказ закрыл просьбу: принять её задним числом уже нельзя
+    await http.post(`/api/support/desk/${conv.id}/call/accept`).set(M)
+      .send({ roomId: 'room-1' }).expect(409);
+
+    // теперь просит человек, соглашается специалист — и только тут появляется комната
+    const again = (await http.post(`/api/support/desk/${conv.id}/call/request`).set(M)
+      .send({}).expect(201)).body.data;
+    expect(again.call.byRole).toBe('user');
+
+    const started = (await http.post(`/api/support/desk/${conv.id}/call/accept`).set(O)
+      .send({ roomId: 'room-42', joinUrl: 'https://anthill.team/meet/token' }).expect(201)).body.data;
+    expect(started.call).toBeNull();
+    expect(started.messages.some((m: any) => String(m.body).includes('meet/token'))).toBe(true);
+    // и о записи предупредили в самом разговоре, а не галочкой
+    expect(started.messages.some((m: any) => String(m.body).includes('может записываться'))).toBe(true);
+  }, 60000);
+
   it('чужое обращение не прочитать', async () => {
     const a = await team('SD2');
     const b = await team('SD3');

@@ -813,6 +813,79 @@ export class SupportDeskRepository {
     );
   }
 
+  // ── просьба о созвоне (этап 4) ──
+  /**
+   * Попросить созвон.
+   *
+   * Прежние живые просьбы этого же человека гасим: две карточки «просит созвон» в одном
+   * разговоре означают только то, что первую не заметили, и отвечать на обе незачем.
+   */
+  async requestCall(conversationId: string, byUserId: string, role: 'user' | 'agent') {
+    await this.db.query(
+      `UPDATE support_call_requests SET status='expired', decided_at=now()
+        WHERE conversation_id=$1 AND status='requested'`,
+      [conversationId],
+    );
+    return this.db.one<{ id: string; created_at: Date }>(
+      `INSERT INTO support_call_requests (conversation_id, requested_by, requested_role)
+       VALUES ($1,$2,$3) RETURNING id::text, created_at`,
+      [conversationId, byUserId, role],
+    );
+  }
+
+  /**
+   * Живая просьба о созвоне.
+   *
+   * Просьба живёт десять минут: через полчаса «давайте созвонимся» — это уже не
+   * предложение, а недоразумение, и принимать его не нужно ни одной из сторон.
+   */
+  liveCallRequest(conversationId: string) {
+    return this.db.one<{
+      id: string; requested_by: string; requested_role: string; created_at: Date; full_name: string | null;
+    }>(
+      `SELECT r.id::text, r.requested_by::text, r.requested_role, r.created_at, u.full_name
+         FROM support_call_requests r
+         LEFT JOIN users u ON u.id = r.requested_by
+        WHERE r.conversation_id=$1 AND r.status='requested'
+          AND r.created_at > now() - interval '10 minutes'
+        ORDER BY r.created_at DESC LIMIT 1`,
+      [conversationId],
+    );
+  }
+
+  callRequest(id: string) {
+    return this.db.one<{
+      id: string; conversation_id: string; requested_by: string; requested_role: string; status: string;
+    }>(
+      `SELECT id::text, conversation_id::text, requested_by::text, requested_role, status
+         FROM support_call_requests WHERE id=$1`,
+      [id],
+    );
+  }
+
+  /** Согласие или отказ: комната и ссылка появляются только вместе с согласием. */
+  async decideCall(
+    id: string, status: 'accepted' | 'declined', by: string,
+    room?: { roomId: string; joinUrl: string | null } | null,
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE support_call_requests
+          SET status=$2, decided_by=$3, decided_at=now(),
+              room_id=COALESCE($4, room_id), join_url=COALESCE($5, join_url)
+        WHERE id=$1 AND status='requested'`,
+      [id, status, by, room?.roomId ?? null, room?.joinUrl ?? null],
+    );
+  }
+
+  /** Отметка «предупредили о записи»: она остаётся в разговоре, а не в галочке. */
+  async markRecordingNotice(conversationId: string, roomId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE support_huddles SET recording_notified_at = now()
+        WHERE conversation_id=$1 AND room_id=$2 AND recording_notified_at IS NULL`,
+      [conversationId, roomId],
+    );
+  }
+
   /** Созвон из разговора: якорь, по которому итог вернётся в поддержку. */
   startHuddle(conversationId: string, roomId: string, startedBy: string) {
     return this.db.one<{ id: string }>(

@@ -78,6 +78,12 @@ class HuddleDto {
   @IsString() @MaxLength(64) roomId!: string;
 }
 
+class AcceptCallDto {
+  @IsString() @MaxLength(64) roomId!: string;
+  /** Гостевая ссылка на комнату: по ней входит вторая сторона из другой организации. */
+  @IsOptional() @IsString() @MaxLength(500) joinUrl?: string;
+}
+
 class ActionDto {
   @IsString() @MaxLength(32) kind!: string;
   @IsString() @MaxLength(32) entityId!: string;
@@ -284,6 +290,30 @@ export class SupportDeskController {
   @Post(':id/bug')
   async bug(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: BugDto) {
     return this.desk.createBug(await this.desk.deskTenant(u, id), u, id, dto.title);
+  }
+
+  /*
+    Созвон по просьбе и согласию (04_SUPPORT_HUDDLE §2).
+
+    «Попросить» не звонит никому: вторая сторона видит карточку и отвечает. Комната
+    поднимается в момент СОГЛАСИЯ и приходит сюда от того, кто согласился, — стороны в
+    разных организациях, и обычное приглашение между ними не ходит.
+  */
+  @Post(':id/call/request')
+  async requestCall(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.requestCall(await this.desk.deskTenant(u, id), u, id);
+  }
+
+  @Post(':id/call/accept')
+  async acceptCall(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AcceptCallDto) {
+    return this.desk.acceptCall(await this.desk.deskTenant(u, id), u, id, {
+      roomId: dto.roomId, joinUrl: dto.joinUrl ?? null,
+    });
+  }
+
+  @Post(':id/call/decline')
+  async declineCall(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.declineCall(await this.desk.deskTenant(u, id), u, id);
   }
 
   /** Созвон из поддержки: комнату создаёт обычный созвон, здесь — пометка о разговоре. */

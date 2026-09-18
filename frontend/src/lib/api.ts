@@ -1165,6 +1165,18 @@ export const api = {
     request<{ taskId: string; projectId: string; conversation: SupportConversation }>(
       'POST', `/support/desk/${id}/bug`, { title },
     ),
+  /**
+   * Созвон по просьбе и согласию.
+   *
+   * «Попросить» никому не звонит: вторая сторона видит карточку и отвечает. Комнату и
+   * гостевую ссылку поднимает тот, кто СОГЛАСИЛСЯ, и передаёт их сюда.
+   */
+  supportRequestCall: (id: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/call/request`, {}),
+  supportAcceptCall: (id: string, roomId: string, joinUrl?: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/call/accept`, { roomId, joinUrl }),
+  supportDeclineCall: (id: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/call/decline`, {}),
   /** Пометить, что созвон идёт по этому обращению: итог вернётся в разговор. */
   supportHuddle: (id: string, roomId: string) =>
     request<{ roomId: string }>('POST', `/support/desk/${id}/huddle`, { roomId }),

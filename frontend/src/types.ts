@@ -330,6 +330,11 @@ export interface SupportAiState {
   aiSummary?: string | null;
   /** Записка «что уже пробовали» — только тому, кто работает в разговоре. */
   handoffNote?: string | null;
+  /** Живая просьба о созвоне: карточка «принять / сейчас неудобно» у второй стороны. */
+  call?: {
+    id: string; byUserId: string; byName: string | null;
+    byRole: 'user' | 'agent'; at: string;
+  } | null;
 }
 
 /** Раздел справочника продукта: загружен ли в базу знаний и не отстал ли от системы. */

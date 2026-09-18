@@ -176,11 +176,12 @@ export class SupportDeskService implements OnModuleInit {
   }
 
   private async view(tenantId: string, conv: ConversationRow) {
-    const [messages, participants, context, actions] = await Promise.all([
+    const [messages, participants, context, actions, call] = await Promise.all([
       this.repo.messages(String(conv.id)),
       this.repo.participants(String(conv.id)),
       this.repo.context(String(conv.id)),
       this.repo.actions(String(conv.id)),
+      this.repo.liveCallRequest(String(conv.id)),
     ]);
     return {
       id: String(conv.id),
@@ -201,6 +202,17 @@ export class SupportDeskService implements OnModuleInit {
       aiSummary: conv.ai_summary,
       /** Записку видит только тот, кто работает в разговоре: клиенту она не уходит. */
       handoffNote: conv.handoff_note,
+      /**
+       * Живая просьба о созвоне: её видит вторая сторона карточкой «принять / сейчас
+       * неудобно». Нет просьбы — нет и карточки.
+       */
+      call: call ? {
+        id: String(call.id),
+        byUserId: String(call.requested_by),
+        byName: call.full_name,
+        byRole: call.requested_role,
+        at: call.created_at,
+      } : null,
       resolvedAt: conv.resolved_at,
       closedAt: conv.closed_at,
       csat: conv.csat_score,
@@ -1018,20 +1030,121 @@ export class SupportDeskService implements OnModuleInit {
     return { roomId };
   }
 
+  /**
+   * Попросить созвон (04_SUPPORT_HUDDLE §2).
+   *
+   * Не звонит никому: создаёт просьбу и показывает её второй стороне. Клиент, нажавший
+   * трубку, не должен мгновенно дёргать специалиста, а специалист — клиента, который
+   * может быть на совещании или за рулём. Комната поднимается в момент согласия — нет
+   * согласия, нет и комнаты, которую некому закрыть.
+   */
+  async requestCall(tenantId: string, user: { userId: string; role: string }, id: string) {
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    await this.assertCanSee(tenantId, user, conv);
+
+    const mine = String(conv.user_id) === String(user.userId);
+    const row = await this.repo.requestCall(id, user.userId, mine ? 'user' : 'agent');
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: user.userId, kind: 'system',
+      body: mine ? 'просит созвон' : 'предлагает созвониться',
+    });
+    this.emit(tenantId, conv, 'support.call.requested', { conversationId: id, requestId: String(row?.id) });
+    if (mine) await this.notifyDesk(tenantId, 'support.call.requested', { conversationId: id });
+    return this.view(tenantId, conv);
+  }
+
+  /**
+   * Согласиться на созвон.
+   *
+   * Комнату и гостевую ссылку поднимает СОГЛАСИВШАЯСЯ сторона и передаёт сюда: стороны
+   * в разных организациях, и обычное приглашение на созвон между ними не ходит. Ссылку
+   * кладём в разговор — по ней входит тот, кто просил.
+   */
+  async acceptCall(
+    tenantId: string, user: { userId: string; role: string }, id: string,
+    room: { roomId: string; joinUrl?: string | null },
+  ) {
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    await this.assertCanSee(tenantId, user, conv);
+    const req = await this.repo.liveCallRequest(id);
+    if (!req) throw AppException.conflict('Эта просьба о созвоне уже неактуальна');
+    if (String(req.requested_by) === String(user.userId)) {
+      throw AppException.validation('Созвон принимает вторая сторона');
+    }
+
+    await this.repo.decideCall(String(req.id), 'accepted', user.userId, {
+      roomId: room.roomId, joinUrl: room.joinUrl ?? null,
+    });
+    await this.repo.startHuddle(id, room.roomId, user.userId);
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: user.userId, kind: 'system',
+      body: room.joinUrl ? `Созвон начат — подключайтесь: ${room.joinUrl}` : 'Созвон начат',
+    });
+    /*
+      О записи предупреждаем сообщением в разговор, а не галочкой (§04.10).
+
+      Сообщение видят обе стороны, и оно остаётся в переписке — в отличие от галочки, о
+      которой через месяц не вспомнит никто.
+    */
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: null, kind: 'system',
+      body: 'Разговор может записываться: расшифровка и итог вернутся сюда же.',
+    });
+    await this.repo.markRecordingNotice(id, room.roomId);
+    this.emit(tenantId, conv, 'support.call.accepted', { conversationId: id, roomId: room.roomId });
+    this.emit(tenantId, conv, 'support.call.started', { conversationId: id, roomId: room.roomId });
+    return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
+  }
+
+  /**
+   * «Сейчас неудобно».
+   *
+   * Обычное состояние, а не ошибка: отказ от созвона должен быть таким же простым
+   * ответом, как согласие, иначе люди начинают соглашаться, чтобы не показаться грубыми.
+   */
+  async declineCall(tenantId: string, user: { userId: string; role: string }, id: string) {
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    await this.assertCanSee(tenantId, user, conv);
+    const req = await this.repo.liveCallRequest(id);
+    if (!req) return this.view(tenantId, conv);
+
+    await this.repo.decideCall(String(req.id), 'declined', user.userId);
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: user.userId, kind: 'system',
+      body: 'сейчас неудобно созваниваться — продолжаем перепиской',
+    });
+    this.emit(tenantId, conv, 'support.call.declined', { conversationId: id });
+    return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
+  }
+
   /** Итог созвона — обратно в разговор: что произошло, что проверили, что дальше. */
   async huddleFinished(roomId: string, meetingId: string | null, summary: string | null): Promise<void> {
     try {
       const h = await this.repo.huddleByRoom(roomId);
       if (!h) return;
       await this.repo.finishHuddle(h.id, meetingId);
+      /*
+        Неудача расшифровки не должна выглядеть тишиной (§04.16).
+
+        Человек ждёт итог: если его не будет, он должен узнать об этом словами, а не по
+        отсутствию сообщения. Сам разговор при этом не теряется.
+      */
       await this.repo.addMessage({
         tenantId: h.tenant_id, conversationId: h.conversation_id, authorId: null, kind: 'system',
         body: summary?.trim()
           ? `Итог созвона:\n${summary.trim().slice(0, 4000)}`
-          : 'Созвон завершён — расшифровка и разбор появятся в разделе «Встречи».',
+          : 'Созвон завершён. Расшифровка пока недоступна — если она понадобится, скажите, поищем запись.',
       });
       const conv = await this.repo.byId(h.tenant_id, h.conversation_id);
-      if (conv) this.emit(h.tenant_id, conv, 'support.call.ended', { conversationId: h.conversation_id });
+      if (conv) {
+        this.emit(h.tenant_id, conv, 'support.call.ended', { conversationId: h.conversation_id });
+        if (summary?.trim()) {
+          this.emit(h.tenant_id, conv, 'support.call.summary.ready', { conversationId: h.conversation_id });
+        }
+      }
     } catch (e) {
       this.log.warn(`итог созвона ${roomId}: ${(e as Error).message}`);
     }

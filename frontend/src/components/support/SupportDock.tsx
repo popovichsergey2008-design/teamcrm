@@ -163,12 +163,36 @@ export function SupportDock() {
    * записью. Мы лишь помечаем, что разговор идёт по этому обращению: по пометке итог
    * с расшифровкой и разбором вернётся сюда же.
    */
+  /**
+   * Попросить созвон.
+   *
+   * Никому не звонит: вторая сторона увидит карточку и ответит. Комната поднимется,
+   * только если она согласится, — звонить человеку, который может быть на совещании или
+   * за рулём, продукт не должен.
+   */
+  const askCall = async () => {
+    if (!conv) return;
+    setBusy(true); setErr('');
+    try { setConv(await api.supportRequestCall(conv.id)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
+    finally { setBusy(false); }
+  };
+
+  /** «Сейчас неудобно» — такой же обычный ответ, как согласие. */
+  const declineCall = async () => {
+    if (!conv) return;
+    setBusy(true);
+    try { setConv(await api.supportDeclineCall(conv.id)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
+    finally { setBusy(false); }
+  };
+
+  /** Согласиться: комнату и гостевую ссылку поднимает согласившаяся сторона. */
   const startHuddle = async () => {
     if (!conv) return;
     setBusy(true); setErr('');
     try {
       const room = await api.startCall(undefined, true);
-      await api.supportHuddle(conv.id, String(room.id));
       /*
         Ссылку на комнату кладём в разговор — гостевую.
 
@@ -182,15 +206,14 @@ export function SupportDock() {
         label: `Служба заботы · ${conv.subject}`.slice(0, 80),
         ttlHours: 4,
       });
-      const invite = `Созвон начат — подключайтесь: ${link.url}`;
-      setConv(mineConversation ? await api.supportSend(invite) : await api.supportReply(conv.id, invite));
+      setConv(await api.supportAcceptCall(conv.id, String(room.id), link.url));
       // Своим (когда обращение внутри одной организации) звоним и обычным приглашением.
       const to = mineConversation
         ? conv.participants.map((p) => String(p.user_id)).filter((uid) => uid !== String(user?.id ?? ''))
         : [];
       requestCall({ memberIds: to, title: `Служба заботы · ${conv.subject}`.slice(0, 80) });
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Созвон не начался');
+      setErr(e instanceof ApiError ? e.message : 'Не удалось начать созвон. Разговор сохранён — попробуйте ещё раз.');
     } finally { setBusy(false); }
   };
 
@@ -417,10 +440,12 @@ export function SupportDock() {
             {conv && (
               <button
                 className="msg-icon"
-                onClick={() => void startHuddle()}
-                disabled={busy}
-                title="Созвон по этому обращению — с записью и разбором"
-                aria-label="Созвон"
+                onClick={() => void askCall()}
+                disabled={busy || !!conv.call}
+                title={conv.call
+                  ? 'Просьба о созвоне уже отправлена — ждём ответа'
+                  : 'Предложить созвон: вторая сторона решит, удобно ли ей сейчас'}
+                aria-label="Предложить созвон"
               >
                 <Icon name="phone" size={15} />
               </button>
@@ -590,6 +615,36 @@ export function SupportDock() {
                   )}
                 </div>
               ))}
+
+              {/*
+                Просьба о созвоне (04_SUPPORT_HUDDLE §2).
+
+                Карточку видит ВТОРАЯ сторона — та, которую зовут. Отказ стоит рядом с
+                согласием и выглядит так же обычно: «сейчас неудобно» должно быть таким
+                же простым ответом, как «давайте», иначе люди соглашаются из вежливости.
+              */}
+              {conv?.call && String(conv.call.byUserId) !== String(user?.id ?? '') && (
+                <div className="support-ask">
+                  <b>
+                    {conv.call.byRole === 'user'
+                      ? `${conv.call.byName ?? 'Человек'} просит созвон`
+                      : `${conv.call.byName ?? 'Специалист'} предлагает созвониться`}
+                  </b>
+                  <div className="support-ask-row">
+                    <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void startHuddle()}>
+                      Присоединиться
+                    </button>
+                    <button className="btn btn-sm" disabled={busy} onClick={() => void declineCall()}>
+                      Сейчас неудобно
+                    </button>
+                  </div>
+                </div>
+              )}
+              {conv?.call && String(conv.call.byUserId) === String(user?.id ?? '') && (
+                <div className="support-ask">
+                  <span className="dim">Просьба о созвоне отправлена — ждём ответа.</span>
+                </div>
+              )}
 
               {/*
                 «Всё работает?» — единственный способ закрыть разговор.
