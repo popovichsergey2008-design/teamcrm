@@ -4695,6 +4695,19 @@ button.chat-pop-row:hover { background: var(--hover); }
   Право читать чужую переписку выдаётся на время эскалации. Специалист должен видеть,
   кому сейчас открыт разговор: иначе отозвать доступ не придёт в голову никому.
 */
+/*
+  Записка помощника специалисту — первым, что он видит.
+
+  Человек уже рассказал боту, что случилось и что пробовал. Первый вопрос живого
+  специалиста «расскажите, что у вас» — ровно та потеря, ради которой записка и
+  готовится, поэтому она стоит над диагностикой, а не под ней.
+*/
+.support-handoff {
+  display: flex; flex-direction: column; gap: 3px; padding: 8px 10px;
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm); font-size: var(--fs-xs); white-space: pre-line;
+}
+
 .support-grants { display: flex; flex-direction: column; gap: 4px; }
 .support-grant {
   display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: var(--fs-xs);
@@ -4748,6 +4761,8 @@ button.chat-pop-row:hover { background: var(--hover); }
   font-size: var(--fs-xs); background: var(--fill-info); color: var(--on-fill);
 }
 .console-org { color: var(--text); }
+/* Суть обращения строкой под шапкой: специалист понимает, о чём оно, не открывая. */
+.console-sum { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Роль в техотделе меняется там же, где дежурство: это одно решение, а не два. */
 .console-role { flex: 0 0 auto; max-width: 190px; font-size: var(--fs-xs); }
 .console-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

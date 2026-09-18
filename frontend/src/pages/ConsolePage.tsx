@@ -179,7 +179,8 @@ export function ConsolePage({ route }: { route: Route }) {
           <>
             {stats && (
               <div className="support-stats">
-                <div className="support-stat"><b>{dur(stats.firstResponseSeconds)}</b><span className="dim">первый ответ</span></div>
+                <div className="support-stat"><b>{dur(stats.firstResponseSeconds)}</b><span className="dim">первый ответ человека</span></div>
+                <div className="support-stat"><b>{dur(stats.aiResponseSeconds)}</b><span className="dim">ответ помощника</span></div>
                 <div className="support-stat"><b>{dur(stats.resolutionSeconds)}</b><span className="dim">до решения</span></div>
                 <div className="support-stat"><b>{stats.active}</b><span className="dim">в работе</span></div>
                 <div className="support-stat"><b>{stats.waiting}</b><span className="dim">ждут специалиста</span></div>
@@ -189,6 +190,12 @@ export function ConsolePage({ route }: { route: Route }) {
                 </div>
                 <div className="support-stat"><b>{stats.solvedByAi}</b><span className="dim">решил помощник</span></div>
                 <div className="support-stat"><b>{stats.reopened}</b><span className="dim">открывали заново</span></div>
+                <div className="support-stat">
+                  <b>{stats.escalated}</b>
+                  <span className="dim">
+                    передал человеку{stats.escalatedUnsure ? ` · не был уверен: ${stats.escalatedUnsure}` : ''}
+                  </span>
+                </div>
               </div>
             )}
 
@@ -211,7 +218,10 @@ export function ConsolePage({ route }: { route: Route }) {
                   <span className="dim">
                     {q.orgName ? <b className="console-org">{q.orgName}</b> : null} {q.userName} · {q.statusText}
                     {q.agentName ? ` · ведёт ${q.agentName}` : ''}
+                    {q.requiredSkill ? ` · ${q.requiredSkill}` : ''}
+                    {q.priority && q.priority !== 'normal' ? ` · ${q.priority === 'critical' ? 'критично' : 'срочно'}` : ''}
                   </span>
+                  {q.aiSummary && <span className="dim console-sum">{q.aiSummary}</span>}
                 </button>
               ))}
             </div>

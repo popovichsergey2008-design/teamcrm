@@ -1156,7 +1156,8 @@ export const api = {
   /** Сводка службы заботы — для руководителя. */
   supportDashboard: () => request<{
     total: number; active: number; waiting: number; resolved: number;
-    firstResponseSeconds: number | null; resolutionSeconds: number | null;
+    firstResponseSeconds: number | null; aiResponseSeconds: number | null; resolutionSeconds: number | null;
+    escalated: number; escalatedUnsure: number;
     csatAvg: number | null; csatCount: number; reopened: number; solvedByAi: number;
   }>('GET', '/support/desk/dashboard'),
 
@@ -1168,6 +1169,9 @@ export const api = {
     request<SupportConversation>('POST', `/support/desk/${id}/actions/${actionId}`, { allow }),
   supportUndoAction: (id: string, actionId: string) =>
     request<SupportConversation>('POST', `/support/desk/${id}/actions/${actionId}/undo`, {}),
+  /** Вернуть помощника в разговор — явным решением специалиста. */
+  supportReturnAi: (id: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/ai/return`, {}),
   /** Копилот дежурного: суть, что проверить, что сказать человеку. */
   supportCopilot: (id: string) => request<{
     summary: string | null;

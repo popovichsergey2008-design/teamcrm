@@ -472,6 +472,55 @@ describe('служба заботы (e2e)', () => {
     }
   }, 60000);
 
+  /*
+    Этап 2: помощник как первая линия и как копилот.
+
+    Проверяем обещание раздела 02_ANTHILLBOT §7: позвали человека — помощник замолчал,
+    даже если специалист ещё не взял разговор. Раньше условием было «агент не назначен»,
+    и бот продолжал отвечать поверх уже позванного человека.
+  */
+  it('позвали человека — помощник молчит, пока его не вернут', async () => {
+    const { O, M } = await team('SDA');
+
+    const first = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'Позовите специалиста, пожалуйста' }).expect(201)).body.data;
+    expect(first.aiMode).toBe('copilot');
+    expect(first.status).toBe('waiting_agent');
+
+    // пишем ещё раз, ожидая специалиста: помощник не вмешивается
+    const again = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'Жду, когда подключитесь' }).expect(201)).body.data;
+    expect(again.aiMode).toBe('copilot');
+
+    // специалист может вернуть помощника — но только явным действием
+    const back = (await http.post(`/api/support/desk/${first.id}/ai/return`).set(O)
+      .send({}).expect(201)).body.data;
+    expect(back.aiMode).toBe('agent');
+    expect(back.messages.some((m: any) => String(m.body).includes('вернул помощника'))).toBe(true);
+
+    // клиент вернуть помощника не может: это решение специалиста
+    await http.post(`/api/support/desk/${first.id}/ai/return`).set(M).send({}).expect(403);
+  }, 60000);
+
+  it('часы помощника и человека считаются отдельно', async () => {
+    const { O, M } = await team('SDT');
+    const conv = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'Дайте специалиста' }).expect(201)).body.data;
+    // до ответа человека его отметки нет
+    expect(conv.firstResponseAt).toBeNull();
+
+    await http.post(`/api/support/desk/${conv.id}/join`).set(O).expect(201);
+    const answered = (await http.post(`/api/support/desk/${conv.id}/reply`).set(O)
+      .send({ text: 'Здравствуйте, смотрю' }).expect(201)).body.data;
+    expect(answered.firstResponseAt).toBeTruthy();
+
+    // в сводке обе цифры живут порознь
+    const d = (await http.get('/api/support/desk/dashboard').set(O).expect(200)).body.data;
+    expect(d).toHaveProperty('aiResponseSeconds');
+    expect(d).toHaveProperty('escalated');
+    expect(Number(d.escalated)).toBeGreaterThanOrEqual(1);
+  }, 60000);
+
   it('чужое обращение не прочитать', async () => {
     const a = await team('SD2');
     const b = await team('SD3');

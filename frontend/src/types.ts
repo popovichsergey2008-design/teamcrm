@@ -296,7 +296,7 @@ export interface SupportMessage {
   createdAt: string;
 }
 
-export interface SupportConversation {
+export interface SupportConversation extends SupportAiState {
   id: string;
   subject: string;
   status: string;
@@ -318,6 +318,18 @@ export interface SupportConversation {
     status: 'proposed' | 'done' | 'declined' | 'undone'; approved: boolean; createdAt: string;
   }[];
   messages: SupportMessage[];
+}
+
+/** Что помощник понял об обращении и кто сейчас говорит с клиентом. */
+export interface SupportAiState {
+  /** `agent` — отвечает помощник, `copilot` — молчит и работает на специалиста. */
+  aiMode?: 'agent' | 'copilot';
+  aiFirstResponseAt?: string | null;
+  intent?: string | null;
+  requiredSkill?: string | null;
+  aiSummary?: string | null;
+  /** Записка «что уже пробовали» — только тому, кто работает в разговоре. */
+  handoffNote?: string | null;
 }
 
 /** Раздел справочника продукта: загружен ли в базу знаний и не отстал ли от системы. */
@@ -351,6 +363,9 @@ export interface SupportDesk {
 
 export interface SupportQueueItem {
   id: string; subject: string; status: string; statusText: string;
+  /** Что помощник понял об обращении: по этому его и маршрутизируют. */
+  requiredSkill?: string | null;
+  aiSummary?: string | null;
   userName: string;
   /** Организация обратившегося: очередь техотдела общая на всех клиентов. */
   orgName?: string;

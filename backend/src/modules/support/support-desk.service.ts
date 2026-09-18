@@ -13,8 +13,10 @@ import { ContextInput, ConversationRow, SupportDeskRepository } from './support-
 import { ForecastService } from '../forecast/forecast.service';
 import { HandbookService } from '../knowledge/handbook.service';
 import { PlatformService } from '../platform/platform.service';
+import { AiService } from '../ai/ai.service';
 import { ActionRequest, describeAction, isUndoable, validAction } from './support-actions';
 import { humanStatus, wantsHuman } from './support-text';
+import { MAYBE_SUFFIX, META_RULES, NO_ANSWER_PHRASE, parseAnswer } from './support-ai';
 
 /**
  * Служба заботы: живой разговор вместо заявок (ТЗ-8).
@@ -66,6 +68,7 @@ export class SupportDeskService implements OnModuleInit {
     private readonly tasksRepo: TasksRepository,
     private readonly handbook: HandbookService,
     private readonly platform: PlatformService,
+    private readonly ai: AiService,
   ) {}
 
   /**
@@ -187,7 +190,16 @@ export class SupportDeskService implements OnModuleInit {
       agentId: conv.assigned_agent_id ? String(conv.assigned_agent_id) : null,
       userId: String(conv.user_id),
       createdAt: conv.created_at,
-      firstResponseAt: conv.first_response_at,
+      /** Первый ответ ЧЕЛОВЕКА; ответ помощника — рядом и отдельно. */
+      firstResponseAt: conv.human_first_response_at,
+      aiFirstResponseAt: conv.ai_first_response_at,
+      /** `agent` — отвечает помощник, `copilot` — молчит и работает на специалиста. */
+      aiMode: conv.ai_mode,
+      intent: conv.intent,
+      requiredSkill: conv.required_skill,
+      aiSummary: conv.ai_summary,
+      /** Записку видит только тот, кто работает в разговоре: клиенту она не уходит. */
+      handoffNote: conv.handoff_note,
       resolvedAt: conv.resolved_at,
       closedAt: conv.closed_at,
       csat: conv.csat_score,
@@ -273,8 +285,15 @@ export class SupportDeskService implements OnModuleInit {
       }
     }
 
-    // Пока специалист не подключился, отвечает помощник — он и есть первая линия.
-    if (!conv.assigned_agent_id) {
+    /*
+      Помощник отвечает, только пока он СОБЕСЕДНИК (02_ANTHILLBOT §7).
+
+      Раньше условием было «специалист ещё не назначен» — и пока обращение ждало в
+      очереди, помощник продолжал говорить поверх уже позванного человека. Теперь режим
+      живёт в самом разговоре: попросили специалиста — помощник замолчал, даже если тот
+      ещё не взял разговор.
+    */
+    if (conv.ai_mode === 'agent' && !conv.assigned_agent_id) {
       if (fresh) await this.repo.setStatus(tenantId, String(conv.id), 'ai');
       void this.answerByAi(tenantId, user, String(conv.id), body, ctx ?? null);
     } else if (conv.status === 'waiting_user') {
@@ -324,16 +343,39 @@ export class SupportDeskService implements OnModuleInit {
         + `(Это вопрос в службу заботы ANTHILL. Отвечай коротко и по делу: что нажать и где `
         + `это находится. Про устройство системы отвечай по справочнику ANTHILL из базы знаний `
         + `и называй раздел, откуда взят ответ. Если ответа там нет или нужна правка в системе — `
-        + `скажи прямо и предложи позвать специалиста.${where}${err})`,
+        + `скажи прямо и предложи позвать специалиста.${where}${err})\n\n${META_RULES}`,
         null,
         (e) => { if (e.type === 'delta') text += e.text; },
         () => false,
       );
-      const answer = text.trim();
-      if (!answer) throw new Error('пустой ответ');
+      const verdict = parseAnswer(text);
+      if (!verdict.text) throw new Error('пустой ответ');
+      // Что помощник понял — в само обращение: по этому его потом маршрутизировать.
+      await this.repo.saveAiVerdict(tenantId, conversationId, {
+        confidence: verdict.confidence, intent: verdict.intent, skill: verdict.skill,
+        priority: verdict.priority, summary: verdict.summary,
+      });
+
+      /*
+        Низкая уверенность — не повод придумывать (02_ANTHILLBOT §5).
+
+        Догадка с оговорками выглядит как ответ, и человек уходит её проверять вместо
+        того, чтобы получить помощь. Честнее сказать прямо и позвать специалиста.
+      */
+      if (verdict.confidence === 'low') {
+        await this.repo.addMessage({
+          tenantId, conversationId, authorId: null, kind: 'ai', body: NO_ANSWER_PHRASE,
+        });
+        await this.repo.markAiResponse(tenantId, conversationId);
+        await this.callHuman(tenantId, user, conversationId, 'low_confidence');
+        return;
+      }
+
+      const answer = verdict.confidence === 'medium' ? verdict.text + MAYBE_SUFFIX : verdict.text;
       const msg = await this.repo.addMessage({
         tenantId, conversationId, authorId: null, kind: 'ai', body: answer,
       });
+      await this.repo.markAiResponse(tenantId, conversationId);
       const after = await this.repo.byId(tenantId, conversationId);
       if (after) this.emit(tenantId, after, 'support.message.created', { conversationId, messageId: String(msg?.id) });
     } catch (e) {
@@ -342,7 +384,7 @@ export class SupportDeskService implements OnModuleInit {
         tenantId, conversationId, authorId: null, kind: 'system',
         body: 'Помощник сейчас не отвечает — зову специалиста.',
       });
-      await this.callHuman(tenantId, user, conversationId).catch(() => undefined);
+      await this.callHuman(tenantId, user, conversationId, 'ai_error').catch(() => undefined);
     }
   }
 
@@ -352,12 +394,23 @@ export class SupportDeskService implements OnModuleInit {
    * Никакой повторной анкеты: специалист получает разговор целиком — переписку,
    * контекст, что уже пробовал помощник.
    */
-  async callHuman(tenantId: string, user: { userId: string; role: string }, id: string) {
+  async callHuman(
+    tenantId: string, user: { userId: string; role: string }, id: string,
+    reason: 'requested' | 'low_confidence' | 'ai_error' = 'requested',
+  ) {
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
     await this.assertCanSee(tenantId, user, conv);
     if (conv.assigned_agent_id) return this.view(tenantId, conv);
 
+    /*
+      С этой минуты помощник — копилот, а не собеседник.
+
+      Человека уже позвали: ещё один ответ бота поверх этого читается как «тебя не
+      услышали». Дальше он работает на специалиста и молчит, пока его не вернут явно.
+    */
+    await this.repo.setAiMode(tenantId, id, 'copilot', reason);
+    void this.writeHandoffNote(tenantId, id, reason);
     const next = (await this.repo.setStatus(tenantId, id, 'waiting_agent'))!;
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: null, kind: 'system',
@@ -367,6 +420,62 @@ export class SupportDeskService implements OnModuleInit {
     await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
     this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: next.status });
     return this.view(tenantId, next);
+  }
+
+  /**
+   * Записка специалисту: что уже было до него.
+   *
+   * Иначе первый вопрос живого человека — «расскажите, что случилось», хотя человек
+   * уже всё рассказал боту. Готовим в стороне от ответа: обращение должно встать в
+   * очередь немедленно, а не ждать модель (02_ANTHILLBOT §14).
+   */
+  private async writeHandoffNote(
+    tenantId: string, id: string, reason: string,
+  ): Promise<void> {
+    try {
+      const messages = await this.repo.messages(id);
+      const talk = messages
+        .filter((m) => m.author_kind === 'user' || m.author_kind === 'ai')
+        .slice(-12)
+        .map((m) => `${m.author_kind === 'user' ? 'Человек' : 'Помощник'}: ${String(m.body ?? '').slice(0, 400)}`)
+        .join('\n');
+      if (!talk.trim()) return;
+      const why = reason === 'low_confidence' ? 'помощник не был уверен в ответе'
+        : reason === 'ai_error' ? 'помощник не смог ответить'
+          : 'человек попросил специалиста';
+      const note = await this.ai.generate(
+        tenantId,
+        'Ты готовишь записку специалисту поддержки перед тем, как он вступит в разговор. '
+        + 'Три коротких пункта по-русски, без вступлений и без выдумок: '
+        + '«Суть», «Что уже предложил помощник», «Что человек уже пробовал». '
+        + 'Если чего-то в переписке не было — так и напиши «не пробовали». Максимум 60 слов.',
+        `Причина передачи: ${why}.\n\nПереписка:\n${talk}`,
+        'support_handoff',
+      );
+      if (note?.trim()) await this.repo.saveHandoffNote(tenantId, id, note.trim());
+    } catch (e) {
+      // Записка — удобство, а не условие передачи: без неё специалист прочитает переписку.
+      this.log.warn(`записка о передаче ${id}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Вернуть помощника в разговор.
+   *
+   * Только явным решением специалиста (02_ANTHILLBOT §9): после подключения человека
+   * бот по умолчанию остаётся копилотом, и «сам вернулся» — худшее, что он может
+   * сделать посреди живого разговора.
+   */
+  async returnAi(tenantId: string, user: { userId: string; role: string }, id: string) {
+    await this.assertCanWork(tenantId, user, id);
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    await this.repo.setAiMode(tenantId, id, 'agent');
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: user.userId, kind: 'system',
+      body: 'вернул помощника в разговор — дальше отвечает он',
+    });
+    return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
   }
 
   // ── сторона специалиста ──
@@ -387,6 +496,9 @@ export class SupportDeskService implements OnModuleInit {
       statusText: humanStatus(c.status),
       userName: c.user_name,
       orgName: c.tenant_name,
+      /** Что помощник понял: по этому обращение маршрутизируют и по нему же его узнают. */
+      requiredSkill: c.required_skill,
+      aiSummary: c.ai_summary,
       agentName: c.agent_name,
       waitingSince: c.created_at,
       lastAt: c.last_at,
@@ -399,6 +511,7 @@ export class SupportDeskService implements OnModuleInit {
     await this.assertAgent(tenantId, user);
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
+    await this.repo.setAiMode(tenantId, id, 'copilot');
     const next = (await this.repo.assign(tenantId, id, user.userId))!;
     await this.repo.addParticipant(id, user.userId, 'agent');
     await this.repo.addMessage({
@@ -800,7 +913,8 @@ export class SupportDeskService implements OnModuleInit {
       })),
       sla: {
         createdAt: conv.created_at,
-        firstResponseAt: conv.first_response_at,
+        aiFirstResponseAt: conv.ai_first_response_at,
+        firstResponseAt: conv.human_first_response_at,
         resolvedAt: conv.resolved_at,
         reopens: conv.reopens,
       },
@@ -823,7 +937,12 @@ export class SupportDeskService implements OnModuleInit {
       active: Number(d?.active ?? 0),
       waiting: Number(d?.waiting ?? 0),
       resolved: Number(d?.resolved ?? 0),
+      /** Первый ответ ЧЕЛОВЕКА — скорость живой команды, не смазанная секундами бота. */
       firstResponseSeconds: num(d?.first_median) ? Math.round(num(d?.first_median)!) : null,
+      aiResponseSeconds: num(d?.ai_median) ? Math.round(num(d?.ai_median)!) : null,
+      /** Сколько разговоров помощник не закрыл сам и сколько из них — из-за неуверенности. */
+      escalated: Number(d?.escalated ?? 0),
+      escalatedUnsure: Number(d?.escalated_unsure ?? 0),
       resolutionSeconds: num(d?.resolution_median) ? Math.round(num(d?.resolution_median)!) : null,
       csatAvg: num(d?.csat_avg) ? Number(num(d?.csat_avg)!.toFixed(2)) : null,
       csatCount: Number(d?.csat_count ?? 0),

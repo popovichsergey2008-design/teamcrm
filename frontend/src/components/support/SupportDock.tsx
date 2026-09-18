@@ -211,6 +211,15 @@ export function SupportDock() {
     finally { setBusy(false); }
   };
 
+  /** Вернуть помощника: после подключения человека он молчит, пока его не позовут. */
+  const returnAi = async () => {
+    if (!conv) return;
+    setBusy(true);
+    try { setConv(await api.supportReturnAi(conv.id)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
+    finally { setBusy(false); }
+  };
+
   /** Копилот: готовит специалисту то, на что уходит первая пара минут разговора. */
   const loadGrants = async (id: string) => {
     setGrants(await api.supportEngineers(id).catch(() => []));
@@ -646,6 +655,20 @@ export function SupportDock() {
                     <b>Диагностика</b>
                     <span className="dim">видно только специалисту</span>
                   </div>
+
+                  {/*
+                    Записка помощника — первым делом.
+
+                    Человек уже рассказал боту, что случилось и что пробовал. Первый
+                    вопрос живого специалиста «расскажите, что у вас» — ровно та потеря,
+                    ради которой эта записка и готовится.
+                  */}
+                  {conv.handoffNote && (
+                    <div className="support-handoff">
+                      <b>Что было до вас</b>
+                      <span>{conv.handoffNote}</span>
+                    </div>
+                  )}
                   <dl className="support-diag">
                     <dt>Адрес</dt><dd>{diag?.context?.url ?? '—'}</dd>
                     <dt>Раздел</dt>
@@ -677,6 +700,19 @@ export function SupportDock() {
                     <button className="btn btn-sm" disabled={busy} onClick={() => void askCopilot()}>
                       <Icon name="sparkles" size={13} /> Подсказка помощника
                     </button>
+                    {/*
+                      Режим помощника виден и переключается только здесь.
+
+                      «Копилот» означает, что клиенту он не пишет. Вернуть его — решение
+                      специалиста: сам он посреди живого разговора не возвращается.
+                    */}
+                    {conv.aiMode === 'copilot' ? (
+                      <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void returnAi()}>
+                        Вернуть помощника в разговор
+                      </button>
+                    ) : (
+                      <span className="badge badge-info">помощник отвечает сам</span>
+                    )}
                     {copilot?.known && (
                       <span className="badge badge-warn" title={`Задача #${copilot.known.taskId}`}>
                         похоже на известную: {copilot.known.title}

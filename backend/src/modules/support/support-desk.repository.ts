@@ -10,7 +10,17 @@ export interface ConversationRow {
   assigned_agent_id: string | null;
   subject: string;
   ai_session_id: string | null;
-  first_response_at: Date | null;
+  /** `agent` — помощник говорит с клиентом; `copilot` — молчит и работает на специалиста. */
+  ai_mode: string;
+  intent: string | null;
+  required_skill: string | null;
+  ai_confidence: string | null;
+  ai_summary: string | null;
+  /** Записка специалисту: что уже пробовали, чтобы он не спрашивал заново. */
+  handoff_note: string | null;
+  escalated_reason: string | null;
+  ai_first_response_at: Date | null;
+  human_first_response_at: Date | null;
   resolved_at: Date | null;
   closed_at: Date | null;
   csat_score: number | null;
@@ -159,11 +169,70 @@ export class SupportDeskRepository {
   }
 
   /** Первый ответ фиксируем один раз: это и есть измеряемая величина SLA. */
+  /** Первый ответ ЧЕЛОВЕКА: по нему считается скорость живой команды. */
   async markFirstResponse(tenantId: string, id: string): Promise<void> {
     await this.db.query(
-      `UPDATE support_conversations SET first_response_at = COALESCE(first_response_at, now())
+      `UPDATE support_conversations
+          SET human_first_response_at = COALESCE(human_first_response_at, now())
         WHERE tenant_id=$1 AND id=$2`,
       [tenantId, id],
+    );
+  }
+
+  /**
+   * Первый ответ ПОМОЩНИКА — отдельной отметкой.
+   *
+   * В одной колонке с человеческим ответом он маскировал скорость живой команды: бот
+   * отвечает за секунды, и медиана переставала значить что-либо (02_ANTHILLBOT §16).
+   */
+  async markAiResponse(tenantId: string, id: string): Promise<void> {
+    await this.db.query(
+      `UPDATE support_conversations
+          SET ai_first_response_at = COALESCE(ai_first_response_at, now())
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id],
+    );
+  }
+
+  /** Что помощник понял об обращении: тема, навык, срочность, суть. */
+  async saveAiVerdict(
+    tenantId: string, id: string,
+    v: { confidence: string; intent: string | null; skill: string | null; priority: string; summary: string | null },
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE support_conversations
+          SET ai_confidence = $3,
+              intent         = COALESCE($4, intent),
+              required_skill = COALESCE($5, required_skill),
+              ai_summary     = COALESCE($6, ai_summary),
+              -- Срочность только повышаем: первое «критично» не должно теряться из-за
+              -- спокойного уточняющего вопроса следом.
+              priority = CASE
+                WHEN $7 = 'critical' THEN 'critical'
+                WHEN $7 = 'high' AND priority <> 'critical' THEN 'high'
+                ELSE priority END,
+              updated_at = now()
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id, v.confidence, v.intent, v.skill, v.summary, v.priority],
+    );
+  }
+
+  /** Кто теперь разговаривает с клиентом — помощник или специалист. */
+  async setAiMode(tenantId: string, id: string, mode: 'agent' | 'copilot', reason?: string | null): Promise<void> {
+    await this.db.query(
+      `UPDATE support_conversations
+          SET ai_mode = $3,
+              escalated_reason = COALESCE($4, escalated_reason),
+              updated_at = now()
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id, mode, reason ?? null],
+    );
+  }
+
+  async saveHandoffNote(tenantId: string, id: string, note: string): Promise<void> {
+    await this.db.query(
+      `UPDATE support_conversations SET handoff_note = $3 WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id, note.slice(0, 4000)],
     );
   }
 
@@ -619,7 +688,8 @@ export class SupportDeskRepository {
   dashboard(tenantId: string | null) {
     return this.db.one<{
       total: string; active: string; waiting: string; resolved: string;
-      first_median: string | null; resolution_median: string | null;
+      first_median: string | null; ai_median: string | null; resolution_median: string | null;
+      escalated: string; escalated_unsure: string;
       csat_avg: string | null; csat_count: string; reopened: string; ai_only: string;
     }>(
       `WITH win AS (
@@ -632,8 +702,14 @@ export class SupportDeskRepository {
               COUNT(*) FILTER (WHERE status = 'waiting_agent')::text AS waiting,
               COUNT(*) FILTER (WHERE closed_at IS NOT NULL)::text AS resolved,
               percentile_cont(0.5) WITHIN GROUP (
-                ORDER BY EXTRACT(EPOCH FROM (first_response_at - created_at))
-              ) FILTER (WHERE first_response_at IS NOT NULL)::text AS first_median,
+                ORDER BY EXTRACT(EPOCH FROM (human_first_response_at - created_at))
+              ) FILTER (WHERE human_first_response_at IS NOT NULL)::text AS first_median,
+              percentile_cont(0.5) WITHIN GROUP (
+                ORDER BY EXTRACT(EPOCH FROM (ai_first_response_at - created_at))
+              ) FILTER (WHERE ai_first_response_at IS NOT NULL)::text AS ai_median,
+              -- Доля эскалаций: сколько разговоров помощник не закрыл сам.
+              COUNT(*) FILTER (WHERE escalated_reason IS NOT NULL)::text AS escalated,
+              COUNT(*) FILTER (WHERE escalated_reason = 'low_confidence')::text AS escalated_unsure,
               percentile_cont(0.5) WITHIN GROUP (
                 ORDER BY EXTRACT(EPOCH FROM (closed_at - created_at))
               ) FILTER (WHERE closed_at IS NOT NULL)::text AS resolution_median,
@@ -656,11 +732,11 @@ export class SupportDeskRepository {
   async medianFirstResponse(tenantId: string | null): Promise<number | null> {
     const row = await this.db.one<{ sec: string | null }>(
       `SELECT percentile_cont(0.5) WITHIN GROUP (
-                ORDER BY EXTRACT(EPOCH FROM (first_response_at - created_at))
+                ORDER BY EXTRACT(EPOCH FROM (human_first_response_at - created_at))
               )::text AS sec
          FROM support_conversations
         WHERE ($1::bigint IS NULL OR tenant_id = $1::bigint)
-          AND first_response_at IS NOT NULL
+          AND human_first_response_at IS NOT NULL
           AND created_at > now() - interval '14 days'`,
       [tenantId],
     );

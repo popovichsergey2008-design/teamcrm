@@ -318,6 +318,18 @@ export class SupportDeskController {
     return this.desk.undoAction(await this.desk.deskTenant(u, id), u, id, actionId);
   }
 
+  /**
+   * Вернуть помощника в разговор.
+   *
+   * Только явным решением специалиста: после подключения человека бот по умолчанию
+   * остаётся копилотом, и «сам вернулся» посреди живого разговора — худшее, что он
+   * может сделать.
+   */
+  @Post(':id/ai/return')
+  async returnAi(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.returnAi(await this.desk.deskTenant(u, id), u, id);
+  }
+
   /** Копилот дежурного: суть, что проверить, что сказать человеку. */
   @Post(':id/copilot')
   async copilot(@CurrentUser() u: AuthUser, @Param('id') id: string) {
