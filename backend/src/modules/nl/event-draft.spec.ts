@@ -122,14 +122,14 @@ describe('Надиктованная встреча — разбор', () => {
 
   it('человек находится, даже если в базе он записан латиницей', () => {
     const mixed = [{ id: '9', name: 'Boris Petrov' }, { id: '8', name: 'Юрий Про' }];
-    expect(matchPeople('созвон с Борисом по TeamCRM', mixed).ids).toEqual(['9']);
+    expect(matchPeople('созвон с Борисом по ANTHILL', mixed).ids).toEqual(['9']);
     expect(matchPeople('созвон с Boris', mixed).ids).toEqual(['9']);
   });
 
   it('короткая фамилия не ловит обычные слова', () => {
     const mixed = [{ id: '8', name: 'Юрий Про' }];
     // «Проект» — не Юрий Про: на этом живой пользователь получил постороннего участника
-    expect(matchPeople('созвон с Борисом по TeamCRM. Проект TeamCRM. Доработка функционала.', mixed).ids)
+    expect(matchPeople('созвон с Борисом по ANTHILL. Проект ANTHILL. Доработка функционала.', mixed).ids)
       .toEqual([]);
     expect(matchPeople('позвать Юрия', mixed).ids).toEqual(['8']);
     expect(matchPeople('позвать Про', mixed).ids).toEqual(['8']);

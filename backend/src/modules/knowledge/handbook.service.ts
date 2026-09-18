@@ -5,7 +5,7 @@ import { DbService } from '../../database/db.service';
 import { KnowledgeService } from './knowledge.service';
 
 /** Приставка к названию регламента: по ней справочник видно среди своих документов. */
-const PREFIX = 'Справочник TeamCRM · ';
+const PREFIX = 'Справочник ANTHILL · ';
 /** Пауза после старта: выкладка не должна ждать индексации справочника. */
 const BOOT_DELAY_MS = 30_000;
 /** Как часто сверяться потом: организации заводятся и после выкладки. */
@@ -163,6 +163,29 @@ export class HandbookService implements OnModuleInit {
   }
 
   /**
+   * Разделы, потерявшие поисковый индекс, — обратно в очередь.
+   *
+   * Текст документа и его куски в поиске живут отдельно: документ можно переименовать
+   * (как при смене названия продукта) или потерять индекс, и тогда справочник есть, а
+   * найти его нельзя — помощник снова отвечает «не нашёл». Сверяем наличие кусков и
+   * ставим потерянные на индексацию: это дешевле, чем разбираться потом по жалобе.
+   */
+  private async reindexLost(): Promise<void> {
+    const rows = await this.db.many<{ id: string; tenant_id: string }>(
+      `SELECT r.id::text, r.tenant_id::text
+         FROM regulations r
+        WHERE r.title LIKE $1
+          AND NOT EXISTS (
+            SELECT 1 FROM knowledge_chunks k
+             WHERE k.tenant_id = r.tenant_id AND k.source_type = 'regulation' AND k.source_id = r.id
+          )`,
+      [`${PREFIX}%`],
+    );
+    for (const r of rows) this.knowledge.enqueue(r.tenant_id, 'regulation', r.id);
+    if (rows.length) this.log.log(`справочник: заново индексируем разделов ${rows.length}`);
+  }
+
+  /**
    * Держим справочник равным выложенному — по всем организациям.
    *
    * Иначе документация живёт в репозитории, а помощник отвечает по прошлогодней:
@@ -183,6 +206,7 @@ export class HandbookService implements OnModuleInit {
         if (!owner) continue;
         await this.load(t.id, owner.id);
       }
+      await this.reindexLost();
     } catch (e) {
       this.log.warn(`справочник не синхронизирован: ${(e as Error).message}`);
     }

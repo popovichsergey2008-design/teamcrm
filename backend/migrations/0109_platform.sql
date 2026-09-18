@@ -54,4 +54,4 @@ CREATE INDEX idx_platform_staff_live ON platform_staff (active, tenant_id);
   должна затирать его правки. Пометка делает его в базе знаний read-only.
 */
 ALTER TABLE regulations ADD COLUMN is_system BOOLEAN NOT NULL DEFAULT FALSE;
-UPDATE regulations SET is_system = TRUE WHERE title LIKE 'Справочник TeamCRM · %';
+UPDATE regulations SET is_system = TRUE WHERE title LIKE 'Справочник ANTHILL · %';

@@ -1,4 +1,4 @@
-# ТЗ-6 — AnthillBot: персональный AI-агент TeamCRM
+# ТЗ-6 — AnthillBot: персональный AI-агент ANTHILL
 
 Источник: `TZ/AnthillBot_Technical_Specification.md` (14.09.2026). Ключевой принцип
 (разд. 68): не «ChatGPT внутри CRM», а LLM + контекст CRM + поиск + права + память +

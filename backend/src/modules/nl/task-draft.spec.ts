@@ -4,7 +4,7 @@ import {
 
 const PROJECTS = [
   { id: '1', name: 'Сайт клиента' },
-  { id: '2', name: 'TeamCRM' },
+  { id: '2', name: 'ANTHILL' },
   { id: '3', name: 'Мобильное приложение' },
 ];
 
@@ -15,7 +15,7 @@ describe('проект задачи', () => {
   });
 
   it('находится, когда название записано латиницей', () => {
-    expect(matchProjectInText('поправить отчёты в TeamCRM', PROJECTS)).toBe('2');
+    expect(matchProjectInText('поправить отчёты в ANTHILL', PROJECTS)).toBe('2');
   });
 
   it('половина названия проектом не считается', () => {

@@ -367,7 +367,7 @@ export function SupportDock() {
         <button
           className="support-fab"
           onClick={() => setOpen(true)}
-          title="Служба заботы TeamCRM"
+          title="Служба заботы ANTHILL"
           aria-label="Служба заботы"
         >
           <Icon name="support" size={20} />

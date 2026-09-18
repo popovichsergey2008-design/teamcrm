@@ -284,7 +284,7 @@ describe('служба заботы (e2e)', () => {
 
     // в базе знаний он системный: правка и удаление запрещены — выкладка всё равно затрёт
     const regs = (await http.get('/api/regulations').set(O).expect(200)).body.data;
-    const sys = regs.find((r: any) => String(r.title).startsWith('Справочник TeamCRM'));
+    const sys = regs.find((r: any) => String(r.title).startsWith('Справочник ANTHILL'));
     expect(sys).toBeTruthy();
     expect(sys.is_system).toBe(true);
     await http.put(`/api/regulations/${sys.id}`).set(O)

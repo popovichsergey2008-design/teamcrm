@@ -43,7 +43,7 @@ export class NlController {
   async transcribe(@CurrentUser() u: AuthUser, @UploadedFile() file?: Express.Multer.File) {
     if (!file?.buffer?.length) throw AppException.validation('Аудио не получено');
     // словарь компании: без него названия и имена латиницей превращаются в похожие
-    // по звучанию русские слова — «TeamCRM» в «Тим Сирей», «Boris» в «Борисом»
+    // по звучанию русские слова — «ANTHILL» в «Тим Сирей», «Boris» в «Борисом»
     const hint = await this.nl.speechHint(u.tenantId).catch(() => undefined);
     const text = await this.ai.transcribeAudio(u.tenantId, file.buffer, file.originalname || 'audio.webm', hint);
     return { text: (text || '').trim() };

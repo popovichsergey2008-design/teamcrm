@@ -53,12 +53,12 @@ describe('Сайдбар чата (e2e)', () => {
     const O = H(owner.accessToken);
 
     const group = (await http$.post('/api/chats/groups').set(O)
-      .send({ title: 'TeamCRM Development', userIds: [gleb.id, yura.id] }).expect(201)).body.data;
+      .send({ title: 'ANTHILL Development', userIds: [gleb.id, yura.id] }).expect(201)).body.data;
 
     // сведения: тип, приватность, автор, участники по ролям
     const info = (await http$.get(`/api/chats/${group.id}/info`).set(H(gleb.token)).expect(200)).body.data;
     expect(info.chat.kind).toBe('group');
-    expect(info.chat.title).toBe('TeamCRM Development');
+    expect(info.chat.title).toBe('ANTHILL Development');
     expect(String(info.chat.createdBy)).toBe(String(owner.user.id));
     expect(info.members.find((m: any) => String(m.userId) === String(owner.user.id)).role).toBe('owner');
     expect(info.members.find((m: any) => m.userId === gleb.id).role).toBe('member');
