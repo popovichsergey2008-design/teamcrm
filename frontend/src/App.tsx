@@ -38,6 +38,7 @@ import { InboxPanel } from './components/InboxPanel';
 import { ClientPortal } from './pages/ClientPortal';
 import { Toasts } from './components/Toasts';
 import { isConsoleHost, mainSiteHref, navigate, parsePath, Section, useRoute } from './lib/router';
+import { lastProject } from './lib/last-project';
 import { dropCache } from './lib/cache';
 import { START_CALL_EVENT, StartCallRequest } from './lib/notifications';
 import { useShortcuts } from './hooks/useShortcuts';
@@ -125,6 +126,22 @@ export function App() {
   };
   // ушли в мессенджер — окно поверх больше не нужно, чат и так перед глазами
   useEffect(() => { if (route.section === 'chat') setOverlayChat(null); }, [route.section]);
+  /*
+    «Проекты и доски» открываются там, где работу оставили.
+
+    Человек весь день сидит в одном проекте: показывать ему таблицу всех досок при
+    каждом возвращении — лишний шаг к каждому заходу. Память живёт сутки и своя у
+    каждой организации (см. lib/last-project), а «Все проекты» в переключателе её
+    забывает — иначе список было бы не открыть вовсе.
+
+    replace, а не переход: в истории браузера не должно остаться шага «/projects»,
+    с которого «назад» тут же возвращало бы сюда же.
+  */
+  useEffect(() => {
+    if (route.section !== 'projects' || route.projectId) return;
+    const back = lastProject(user?.tenantId);
+    if (back) navigate({ section: 'projects', projectId: back }, { replace: true });
+  }, [route.section, route.projectId, user?.tenantId]);
   /*
     Консоль техподдержки — не для клиентов.
 

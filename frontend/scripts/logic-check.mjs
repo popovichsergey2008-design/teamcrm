@@ -1019,6 +1019,43 @@ test('вкладка мигает только о новом и называет
   assert.equal(tabAlertMessage(was, was), null);
 });
 
+test('память о доске: сутки, своя организация, «Все проекты» забывают', async () => {
+  /*
+    Кук в node нет, поэтому подменяем `document.cookie` простейшей заглушкой: она
+    хранит значение и уважает `max-age=0`. Проверяем не браузер, а наши правила —
+    привязку к организации и забывание по просьбе человека.
+  */
+  let jar = '';
+  globalThis.document = {
+    get cookie() { return jar; },
+    set cookie(v) {
+      const [pair, ...attrs] = v.split('; ');
+      const dead = attrs.some((a) => a.toLowerCase() === 'max-age=0');
+      const name = pair.split('=')[0];
+      const rest = jar.split('; ').filter((c) => c && !c.startsWith(`${name}=`));
+      jar = dead ? rest.join('; ') : [...rest, pair].join('; ');
+    },
+  };
+
+  const { rememberProject, lastProject, forgetProject } = await load('lib/last-project.ts');
+
+  // пусто — возвращать некуда
+  assert.equal(lastProject('7'), null);
+
+  rememberProject('7', '130');
+  assert.equal(lastProject('7'), '130');
+  // чужая организация: вернуть человека в чужой проект хуже, чем не вернуть никуда
+  assert.equal(lastProject('8'), null);
+  // без организации или без проекта не запоминаем вовсе
+  rememberProject(undefined, '131');
+  rememberProject('7', null);
+  assert.equal(lastProject('7'), '130');
+
+  // «Все проекты» — человек попросил список
+  forgetProject();
+  assert.equal(lastProject('7'), null);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

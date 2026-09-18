@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
+import { forgetProject, lastProject, rememberProject } from '../lib/last-project';
 import { getSocket } from '../lib/socket';
 import { useAuth } from '../state/auth';
 import type { Board, BoardColumn, CostOfWork, Pnl, Project, Task, User } from '../types';
@@ -161,9 +162,6 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   const closeSwitch = useCallback(() => setSwitchOpen(false), []);
   useDismiss(switchOpen, closeSwitch, '.board-switch-btn');
   const [showFeed, setShowFeed] = useState(false);
-  // Ключ памяти о проекте — свой на каждую организацию: при переключении
-  // компании возврат должен вести в её проект, а не в чужой.
-  const lastProjectKey = `teamcrm.lastProject.${user?.tenantId ?? 'anon'}`;
   const subscribedRef = useRef<string | null>(null);
   // поле создания проекта живёт внизу сайдбара — с пустого экрана до него ведёт кнопка
 
@@ -177,11 +175,16 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, isClient]);
 
-  // Запоминаем выбор при каждой смене — одним местом на все пути:
-  // клик по проекту, переход из «Моих задач», удаление и архивация соседнего.
+  /*
+    Запоминаем выбор при каждой смене — одним местом на все пути: клик по проекту,
+    переход из «Моих задач», удаление и архивация соседнего.
+
+    Память общая с разделом «Проекты и доски» (см. lib/last-project) и живёт сутки:
+    возвращать человека в проект, который он бросил неделю назад, — решать за него.
+  */
   useEffect(() => {
-    if (selected) localStorage.setItem(lastProjectKey, String(selected));
-  }, [selected, lastProjectKey]);
+    rememberProject(user?.tenantId, selected);
+  }, [selected, user?.tenantId]);
 
   // Адрес догоняет экран: открытый проект и карточка видны в строке браузера,
   // поэтому ссылку на задачу можно просто скопировать и отправить.
@@ -213,7 +216,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
         } else if (!selected) {
           // после F5 возвращаемся в последний открытый проект, а не в начало списка;
           // если его больше нет (удалён, сменилась организация) — первый активный
-          const savedId = localStorage.getItem(lastProjectKey);
+          const savedId = lastProject(user?.tenantId);
           const restored = savedId ? ps.find((p) => String(p.id) === savedId) : undefined;
           const pick = restored ?? ps.find((p) => p.status !== 'archived') ?? null;
           setSelected(pick?.id ?? null);
@@ -530,7 +533,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                         ))}
                       <button
                         className="chat-pop-row board-switch-all"
-                        onClick={() => { setSwitchOpen(false); navigate({ section: 'projects' }); }}
+                        onClick={() => { setSwitchOpen(false); forgetProject(); navigate({ section: 'projects' }); }}
                       >
                         <Icon name="list" size={13} /> Все проекты
                       </button>
