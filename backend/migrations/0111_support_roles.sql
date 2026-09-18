@@ -26,6 +26,11 @@
 UPDATE platform_staff SET role = 'support' WHERE role = 'agent';
 -- прежний 'admin' — это владелец платформы, он и остаётся admin
 
+-- Умолчание колонки осталось от прежней модели ('agent') — с новой проверкой обычная
+-- вставка без роли падала бы. По умолчанию человек приходит первой линией: это самая
+-- частая роль и самая безобидная из возможных ошибок.
+ALTER TABLE platform_staff ALTER COLUMN role SET DEFAULT 'support';
+
 ALTER TABLE platform_staff
     ADD CONSTRAINT platform_staff_role_check
     CHECK (role IN ('support', 'support_admin', 'engineer', 'incident_manager', 'admin'));

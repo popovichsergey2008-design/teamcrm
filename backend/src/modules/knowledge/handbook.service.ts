@@ -206,6 +206,9 @@ export class HandbookService implements OnModuleInit {
       `SELECT r.id::text, r.tenant_id::text
          FROM regulations r
         WHERE r.title LIKE $1
+          -- Только что записанное не трогаем: его уже поставила в очередь загрузка,
+          -- а два воркера на один источник дерутся за уникальный ключ кусков.
+          AND r.updated_at < now() - interval '1 minute'
           AND NOT EXISTS (
             SELECT 1 FROM knowledge_chunks k
              WHERE k.tenant_id = r.tenant_id AND k.source_type = 'regulation' AND k.source_id = r.id

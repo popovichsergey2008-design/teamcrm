@@ -277,7 +277,7 @@ export class PlatformService implements OnModuleInit {
     */
     await this.db.query(
       `INSERT INTO platform_staff (user_id, tenant_id, role, active, skills, created_by)
-       VALUES ($1, $2, COALESCE($3::varchar, 'agent'), COALESCE($4::boolean, TRUE),
+       VALUES ($1, $2, COALESCE($3::varchar, 'support'), COALESCE($4::boolean, TRUE),
                COALESCE($5::text[], '{}'), $6)
        ON CONFLICT (user_id) DO UPDATE
           SET role   = COALESCE($3::varchar, platform_staff.role),
