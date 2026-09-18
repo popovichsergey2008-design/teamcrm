@@ -1,4 +1,5 @@
-import { Controller, Get, Header } from '@nestjs/common';
+import { Controller, Get, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { Public } from '../../common/auth/decorators';
 import { DbService } from '../../database/db.service';
@@ -18,6 +19,10 @@ import { AiGateway } from '../ai/ai-gateway';
  * приложение только `/api/`, `/socket.io/` и `/ws/meet`. Значит снаружи её нет — она
  * доступна только изнутри docker-сети, где и стоит Prometheus. Проверять токен здесь
  * значит завести ещё один секрет ради двери, которой нет.
+ *
+ * Отвечаем через `res` напрямую, в обход общего конверта `{ok, data}`: для приложения
+ * конверт правильный, но Prometheus ждёт голый текст и в конверте не разбирает ни одной
+ * метрики — он видит одну строку с экранированными переносами.
  */
 @ApiExcludeController()
 @Controller()
@@ -29,8 +34,7 @@ export class MetricsController {
 
   @Public()
   @Get('/metrics')
-  @Header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
-  async metrics(): Promise<string> {
+  async metrics(@Res() res: Response): Promise<void> {
     const s = await this.db.one<{
       open: string; queued: string; unassigned: string; oldest: string | null;
       engineer: string; fixing: string; waiting_user: string;
@@ -84,6 +88,9 @@ export class MetricsController {
     gauge('ai_requests_waiting', 'Обращений к модели в очереди', ai.waiting);
     gauge('ai_requests_shed', 'Фоновых обращений к модели отложено с момента запуска', ai.shed);
 
-    return `${lines.join('\n')}\n`;
+    res
+      .status(200)
+      .type('text/plain; version=0.0.4; charset=utf-8')
+      .send(`${lines.join('\n')}\n`);
   }
 }
