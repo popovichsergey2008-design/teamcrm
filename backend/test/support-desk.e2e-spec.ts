@@ -23,6 +23,23 @@ describe('служба заботы (e2e)', () => {
   const uniq = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
   const H = (t: string) => ({ Authorization: `Bearer ${t}` });
 
+  /*
+    Дождаться того, что делается фоном.
+
+    Назначение исполнителя ушло из пути запроса (этап 6): человек, попросивший
+    специалиста, не ждёт, пока мы переберём дежурных. Тест поэтому не проверяет
+    результат сразу — он его ДОЖИДАЕТСЯ, как дождался бы живой дежурный, глядя в
+    очередь. Пустой ответ через три секунды — уже настоящая поломка.
+  */
+  const waitFor = async <T>(probe: () => Promise<T | null | undefined>, what: string): Promise<T> => {
+    for (let i = 0; i < 30; i += 1) {
+      const v = await probe();
+      if (v) return v;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`не дождались: ${what}`);
+  };
+
   beforeAll(async () => {
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = mod.createNestApplication();
@@ -542,10 +559,12 @@ describe('служба заботы (e2e)', () => {
       const conv = (await http.post('/api/support/desk/messages').set(client.M)
         .send({ text: 'Позовите специалиста: не идёт импорт' }).expect(201)).body.data;
 
-      // обращение уже у кого-то: его не нужно «замечать» в очереди
-      const queue = (await http.get('/api/support/desk/queue').set(vendor.O).expect(200)).body.data;
-      const row = queue.find((q: any) => String(q.id) === String(conv.id));
-      expect(row).toBeTruthy();
+      // обращение уходит дежурному само — его не нужно «замечать» в очереди
+      const row = await waitFor(async () => {
+        const queue = (await http.get('/api/support/desk/queue').set(vendor.O).expect(200)).body.data;
+        const hit = queue.find((q: any) => String(q.id) === String(conv.id));
+        return hit?.agentId ? hit : null;
+      }, 'назначения исполнителя');
       expect(row.agentId).toBeTruthy();
 
       // и видно, почему он у этого человека
@@ -589,16 +608,23 @@ describe('служба заботы (e2e)', () => {
 
       const first = (await http.post('/api/support/desk/messages').set(client.M)
         .send({ text: 'Позовите специалиста, первая беда' }).expect(201)).body.data;
-      expect(first.agentId).toBeTruthy();
+      await waitFor(async () => {
+        const c = (await http.get(`/api/support/desk/${first.id}`).set(vendor.O).expect(200)).body.data;
+        return c.agentId ? c : null;
+      }, 'назначения первого обращения');
 
-      // второй человек той же компании пишет своё обращение — свободных нет
+      // второй человек той же компании пишет своё — свободных дежурных больше нет
       const second = (await http.post('/api/support/desk/messages').set(client.O)
         .send({ text: 'Позовите специалиста, вторая беда' }).expect(201)).body.data;
-      expect(second.agentId).toBeNull();
 
-      // но оно видно в очереди как ничьё: проблема на виду, а не спрятана
-      const free = (await http.get('/api/support/desk/queue?assigned=none').set(vendor.O).expect(200)).body.data;
+      // оно остаётся ничьим и видно в очереди: проблема на виду, а не спрятана
+      const free = await waitFor(async () => {
+        const rows = (await http.get('/api/support/desk/queue?assigned=none').set(vendor.O).expect(200)).body.data;
+        return rows.some((q: any) => String(q.id) === String(second.id)) ? rows : null;
+      }, 'второго обращения в очереди ничьих');
       expect(free.some((q: any) => String(q.id) === String(second.id))).toBe(true);
+      const still = (await http.get(`/api/support/desk/${second.id}`).set(vendor.O).expect(200)).body.data;
+      expect(still.agentId).toBeNull();
     } finally {
       await platform.clearPlatform();
     }
