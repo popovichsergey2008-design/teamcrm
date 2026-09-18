@@ -501,6 +501,15 @@ export class SupportDeskService implements OnModuleInit {
   private async route(tenantId: string, conv: ConversationRow): Promise<void> {
     try {
       if (conv.assigned_agent_id) return;
+      /*
+        Назначаем только настоящему дежурству.
+
+        Без назначенной платформы обращения принимает владелец организации — но он
+        ПОЛУЧАТЕЛЬ, а не исполнитель: он нигде не говорил «я на дежурстве» и не
+        задавал себе предел загрузки. Повесить разговор на него значит показать человеку
+        «мы уже разбираемся», когда никто ещё не разбирается.
+      */
+      if (!(await this.platform.tenantId())) return;
       const people = await this.deskPeople(tenantId);
       if (!people.length) return;
 
