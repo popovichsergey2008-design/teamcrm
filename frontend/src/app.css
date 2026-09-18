@@ -4690,6 +4690,23 @@ button.chat-pop-row:hover { background: var(--hover); }
 .support-hb { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /*
+  Заметки для своих и лента событий.
+
+  Заметки — другим цветом и своей лентой: перепутать их с ответом клиенту нельзя даже
+  мельком. Лента событий отвечает на «что с обращением происходило» вместо чтения всей
+  переписки, поэтому она плотная и без украшений.
+*/
+.support-notes, .support-timeline {
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  background: var(--warn-soft); border: 1px solid var(--warn-line);
+  border-radius: var(--radius-sm); font-size: var(--fs-xs);
+}
+.support-timeline { background: var(--bg-elev-2); border-color: var(--border); }
+.support-note { display: flex; flex-direction: column; gap: 1px; }
+.support-tl-row { display: flex; gap: 8px; }
+.support-tl-row .dim { flex: 0 0 96px; }
+
+/*
   Доступ инженера к разговору — со сроком и кнопкой «Закрыть».
 
   Право читать чужую переписку выдаётся на время эскалации. Специалист должен видеть,

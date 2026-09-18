@@ -62,6 +62,16 @@ class AssignDto {
   @IsOptional() @IsString() agentId?: string;
 }
 
+class StatusDto {
+  @IsString() @MaxLength(32) to!: string;
+  /** Что сказать человеку вместо стандартной фразы перехода. */
+  @IsOptional() @IsString() @MaxLength(2000) note?: string;
+}
+
+class NoteDto {
+  @IsString() @MaxLength(4000) text!: string;
+}
+
 class ReopenDto {
   @IsOptional() @IsString() @MaxLength(8000) text?: string;
 }
@@ -320,6 +330,42 @@ export class SupportDeskController {
   @Post(':id/huddle')
   async huddle(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: HuddleDto) {
     return this.desk.startHuddle(await this.desk.deskTenant(u, id), u, id, dto.roomId);
+  }
+
+  /**
+   * Перевести обращение в другое состояние.
+   *
+   * Одна ручка на все переходы: правила «кто что может» живут в таблице переходов, а не
+   * в отдельных ручках, каждая со своим исключением.
+   */
+  @Post(':id/status')
+  async status(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: StatusDto) {
+    return this.desk.moveStatus(
+      await this.desk.deskTenant(u, id), u, id, dto.to as never, dto.note,
+    );
+  }
+
+  /** Внутренние заметки: их не видит клиент — никогда и никаким путём. */
+  @Get(':id/notes')
+  async notes(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.notes(await this.desk.deskTenant(u, id), u, id);
+  }
+
+  @Post(':id/notes')
+  async addNote(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: NoteDto) {
+    return this.desk.addNote(await this.desk.deskTenant(u, id), u, id, dto.text);
+  }
+
+  /** Кто в разговоре: автор, дежурный, инженеры. */
+  @Get(':id/participants')
+  async participants(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.participants(await this.desk.deskTenant(u, id), u, id);
+  }
+
+  /** Лента событий: что с обращением происходило — одним экраном. */
+  @Get(':id/timeline')
+  async timeline(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.timeline(await this.desk.deskTenant(u, id), u, id);
   }
 
   /** Диагностика для специалиста: контекст, заведённые баги и время ответов. */

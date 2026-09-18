@@ -649,6 +649,66 @@ describe('служба заботы (e2e)', () => {
     expect(started.messages.some((m: any) => String(m.body).includes('может записываться'))).toBe(true);
   }, 60000);
 
+  /*
+    Этап 5: статусы, лента событий и внутренние заметки.
+
+    Главные обещания: статус отвечает на вопрос «что сейчас» без чтения переписки,
+    недопустимый переход отклоняется словами, а заметка для своих не уходит клиенту ни
+    одним путём.
+  */
+  it('состояния переключаются по правилам, а недопустимое — отклоняется словами', async () => {
+    const { O, M } = await team('SDS');
+    const conv = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'Позовите специалиста' }).expect(201)).body.data;
+    await http.post(`/api/support/desk/${conv.id}/join`).set(O).expect(201);
+
+    // дежурный передаёт инженерам и отмечает починку
+    const esc = (await http.post(`/api/support/desk/${conv.id}/status`).set(O)
+      .send({ to: 'engineer_escalated' }).expect(201)).body.data;
+    expect(esc.status).toBe('engineer_escalated');
+    expect(esc.statusText).toBe('Разбираются инженеры');
+
+    const fixing = (await http.post(`/api/support/desk/${conv.id}/status`).set(O)
+      .send({ to: 'fix_in_progress' }).expect(201)).body.data;
+    expect(fixing.status).toBe('fix_in_progress');
+
+    // клиент не может закрыть обращение через переход статуса мимо подтверждения…
+    const denied = await http.post(`/api/support/desk/${conv.id}/status`).set(O)
+      .send({ to: 'closed' }).expect(409);
+    expect(String(denied.body.error.message)).toContain('только тот, кто обратился');
+
+    // …и специалист не может перевести в состояние, которого из текущего не бывает
+    await http.post(`/api/support/desk/${conv.id}/status`).set(O)
+      .send({ to: 'ai' }).expect(409);
+
+    // лента событий рассказывает историю обращения
+    const tl = (await http.get(`/api/support/desk/${conv.id}/timeline`).set(O).expect(200)).body.data;
+    expect(tl.events.length).toBeGreaterThanOrEqual(3);
+    expect(tl.events.some((e: any) => e.kind === 'conversation.created')).toBe(true);
+    expect(tl.events.some((e: any) => e.kind === 'agent.assigned')).toBe(true);
+    // и участники видны отдельной ручкой
+    const parts = (await http.get(`/api/support/desk/${conv.id}/participants`).set(O).expect(200)).body.data;
+    expect(parts.length).toBeGreaterThanOrEqual(2);
+  }, 60000);
+
+  it('заметка для своих не уходит клиенту ни одним путём', async () => {
+    const { O, M } = await team('SDN');
+    const conv = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'Позовите специалиста' }).expect(201)).body.data;
+    await http.post(`/api/support/desk/${conv.id}/join`).set(O).expect(201);
+
+    const secret = 'внутреннее: у них старая сборка, сказать мягко';
+    const notes = (await http.post(`/api/support/desk/${conv.id}/notes`).set(O)
+      .send({ text: secret }).expect(201)).body.data;
+    expect(notes.length).toBe(1);
+
+    // клиенту заметки не отдаются вовсе
+    await http.get(`/api/support/desk/${conv.id}/notes`).set(M).expect(403);
+    // и в самом разговоре её нет — ни в сообщениях, ни в любом другом поле
+    const seen = (await http.get(`/api/support/desk/${conv.id}`).set(M).expect(200)).body.data;
+    expect(JSON.stringify(seen)).not.toContain('старая сборка');
+  }, 60000);
+
   it('чужое обращение не прочитать', async () => {
     const a = await team('SD2');
     const b = await team('SD3');

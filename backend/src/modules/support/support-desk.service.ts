@@ -18,6 +18,7 @@ import { ActionRequest, describeAction, isUndoable, validAction } from './suppor
 import { humanStatus, wantsHuman } from './support-text';
 import { MAYBE_SUFFIX, META_RULES, NO_ANSWER_PHRASE, parseAnswer } from './support-ai';
 import { Candidate, pickAgent } from './support-routing';
+import { Actor, canTransition, Status, whyNot } from './support-status';
 
 /**
  * Служба заботы: живой разговор вместо заявок (ТЗ-8).
@@ -635,6 +636,142 @@ export class SupportDeskService implements OnModuleInit {
     return this.view(tenantId, next);
   }
 
+  // ── состояния, заметки и лента событий (этап 5) ──
+  /**
+   * В каком качестве человек действует в ЭТОМ разговоре.
+   *
+   * Не роль в системе, а роль в разговоре: один и тот же человек бывает автором
+   * обращения в своей компании и дежурным в чужом. Правила переходов написаны про
+   * вторую, а не про запись в справочнике сотрудников.
+   */
+  private async actorIn(tenantId: string, user: { userId: string; role: string }, conv: ConversationRow): Promise<Actor> {
+    if (String(conv.user_id) === String(user.userId)) return 'client';
+    if (await this.platform.isEngineer(user.userId)) return 'engineer';
+    if (await this.isAgent(tenantId, user)) return 'agent';
+    return 'client';
+  }
+
+  /**
+   * Перевести обращение в другое состояние.
+   *
+   * Одно место на все переходы: пока они были присваиваниями по коду, каждый новый путь
+   * добавлял к правилам своё исключение. Недопустимый переход — понятный отказ, а не
+   * молчаливое изменение.
+   */
+  async moveStatus(tenantId: string, user: { userId: string; role: string }, id: string, to: Status, note?: string) {
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    await this.assertCanSee(tenantId, user, conv);
+    const actor = await this.actorIn(tenantId, user, conv);
+    const from = conv.status as Status;
+    if (!canTransition(from, to, actor)) throw AppException.conflict(whyNot(from, to, actor));
+    if (from === to) return this.view(tenantId, conv);
+
+    const next = (await this.repo.setStatus(tenantId, id, to))!;
+    const said: Record<string, string> = {
+      engineer_escalated: 'передал инженерам — разбираемся глубже',
+      fix_in_progress: 'работаем над исправлением',
+      waiting_reply: 'ждём ответа от вас',
+      in_progress: 'вернулись к разговору',
+      waiting_agent: 'вернул разговор в очередь',
+    };
+    const body = note?.trim() || said[to];
+    if (body) {
+      await this.repo.addMessage({
+        tenantId, conversationId: id, authorId: user.userId, kind: 'system', body,
+      });
+    }
+    if (to === 'engineer_escalated' || to === 'fix_in_progress') {
+      await this.repo.bumpEscalation(tenantId, id);
+    }
+    this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: to });
+    return this.view(tenantId, next);
+  }
+
+  /**
+   * Внутренняя заметка специалиста.
+   *
+   * Её не видит клиент — никогда и никаким путём: она живёт в своей таблице и отдаётся
+   * только этой ручкой, за проверкой прав на разговор.
+   */
+  async addNote(tenantId: string, user: { userId: string; role: string }, id: string, text: string) {
+    await this.assertCanWork(tenantId, user, id);
+    const body = String(text ?? '').trim();
+    if (!body) throw AppException.validation('Пустая заметка');
+    await this.repo.addNote(id, user.userId, body);
+    return this.notes(tenantId, user, id);
+  }
+
+  async notes(tenantId: string, user: { userId: string; role: string }, id: string) {
+    await this.assertCanWork(tenantId, user, id);
+    const rows = await this.repo.notes(id);
+    return rows.map((n) => ({
+      id: n.id, authorId: n.author_id, authorName: n.full_name, body: n.body, createdAt: n.created_at,
+    }));
+  }
+
+  /** Кто в разговоре: автор, дежурный, инженеры. */
+  async participants(tenantId: string, user: { userId: string; role: string }, id: string) {
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    await this.assertCanSee(tenantId, user, conv);
+    return this.repo.participants(id);
+  }
+
+  /**
+   * Лента событий обращения (06_STATE_MACHINE §11).
+   *
+   * Собирается из того, что уже записано, — отдельного журнала не заводим: он разошёлся
+   * бы с фактами при первой же ошибке. Отвечает на вопрос «что с этим обращением
+   * происходило» одним экраном вместо чтения всей переписки.
+   */
+  async timeline(tenantId: string, user: { userId: string; role: string }, id: string) {
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    await this.assertCanSee(tenantId, user, conv);
+
+    const [assignments, huddles, grants, issues] = await Promise.all([
+      this.repo.assignmentsOf(id), this.repo.huddlesOf(id),
+      this.repo.grantsHistory(id), this.repo.issues(id),
+    ]);
+
+    const events: { at: Date; kind: string; text: string }[] = [];
+    const add = (at: Date | null | undefined, kind: string, text: string) => {
+      if (at) events.push({ at: new Date(at), kind, text });
+    };
+
+    add(conv.created_at, 'conversation.created', 'Обращение заведено');
+    add(conv.ai_first_response_at, 'ai.replied', 'Помощник ответил');
+    add(conv.human_requested_at, 'human.requested', 'Попросили специалиста');
+    add(conv.queued_at, 'queued', 'Встало в очередь');
+    for (const a of assignments) {
+      add(a.created_at, a.agent_id ? 'agent.assigned' : 'agent.unassigned',
+        a.agent_id ? `Назначен ${a.full_name ?? 'специалист'} (${a.reason})` : 'Вернулось в очередь');
+    }
+    add(conv.human_first_response_at, 'agent.replied', 'Специалист ответил');
+    for (const g of grants) {
+      add(g.created_at, 'engineer.joined', `Инженер ${g.full_name} допущен к обращению`);
+      add(g.revoked_at, 'engineer.revoked', `Доступ инженера ${g.full_name} закрыт`);
+    }
+    for (const h of huddles) {
+      add(h.started_at, 'call.started', 'Созвон начался');
+      add(h.ended_at, 'call.ended', 'Созвон завершён');
+    }
+    for (const i of issues) {
+      add(conv.updated_at, 'bug.created', `Заведена задача #${i.task_id} — «${i.title}»`);
+      if (i.closed_at) add(i.closed_at, 'fix.released', `Исправление по задаче #${i.task_id} выпущено`);
+    }
+    add(conv.resolved_at, 'resolve.requested', 'Специалист попросил подтвердить решение');
+    add(conv.closed_at, 'client.confirmed', 'Человек закрыл обращение');
+
+    events.sort((a, b) => a.at.getTime() - b.at.getTime());
+    return {
+      escalationLevel: conv.escalation_level,
+      reopens: conv.reopens,
+      events,
+    };
+  }
+
   // ── сторона специалиста ──
   /**
    * Очередь дежурного: кто ждёт, с чем и сколько уже.
@@ -1213,6 +1350,8 @@ export class SupportDeskService implements OnModuleInit {
       /** Первый ответ ЧЕЛОВЕКА — скорость живой команды, не смазанная секундами бота. */
       firstResponseSeconds: num(d?.first_median) ? Math.round(num(d?.first_median)!) : null,
       aiResponseSeconds: num(d?.ai_median) ? Math.round(num(d?.ai_median)!) : null,
+      /** Ожидание в очереди: это не то же самое, что ждать ответа уже взятого разговора. */
+      queueWaitSeconds: num(d?.queue_median) ? Math.round(num(d?.queue_median)!) : null,
       /** Сколько разговоров помощник не закрыл сам и сколько из них — из-за неуверенности. */
       escalated: Number(d?.escalated ?? 0),
       escalatedUnsure: Number(d?.escalated_unsure ?? 0),

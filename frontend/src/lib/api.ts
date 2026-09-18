@@ -1189,7 +1189,8 @@ export const api = {
   /** Сводка службы заботы — для руководителя. */
   supportDashboard: () => request<{
     total: number; active: number; waiting: number; resolved: number;
-    firstResponseSeconds: number | null; aiResponseSeconds: number | null; resolutionSeconds: number | null;
+    firstResponseSeconds: number | null; aiResponseSeconds: number | null;
+    queueWaitSeconds: number | null; resolutionSeconds: number | null;
     escalated: number; escalatedUnsure: number;
     csatAvg: number | null; csatCount: number; reopened: number; solvedByAi: number;
   }>('GET', '/support/desk/dashboard'),
@@ -1205,6 +1206,26 @@ export const api = {
   /** Вернуть помощника в разговор — явным решением специалиста. */
   supportReturnAi: (id: string) =>
     request<SupportConversation>('POST', `/support/desk/${id}/ai/return`, {}),
+  /**
+   * Перевести обращение в другое состояние.
+   *
+   * Правила «кто что может» проверяет сервер: недопустимый переход возвращает понятный
+   * отказ, а не молчаливое изменение.
+   */
+  supportSetStatus: (id: string, to: string, note?: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/status`, { to, note }),
+  /** Внутренние заметки специалиста: клиенту они не отдаются ни одной ручкой. */
+  supportNotes: (id: string) => request<{
+    id: string; authorId: string; authorName: string; body: string; createdAt: string;
+  }[]>('GET', `/support/desk/${id}/notes`),
+  supportAddNote: (id: string, text: string) => request<{
+    id: string; authorId: string; authorName: string; body: string; createdAt: string;
+  }[]>('POST', `/support/desk/${id}/notes`, { text }),
+  /** Лента событий обращения: что с ним происходило — одним экраном. */
+  supportTimeline: (id: string) => request<{
+    escalationLevel: number; reopens: number;
+    events: { at: string; kind: string; text: string }[];
+  }>('GET', `/support/desk/${id}/timeline`),
   /** Копилот дежурного: суть, что проверить, что сказать человеку. */
   supportCopilot: (id: string) => request<{
     summary: string | null;

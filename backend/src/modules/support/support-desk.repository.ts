@@ -813,6 +813,60 @@ export class SupportDeskRepository {
     );
   }
 
+  // ── внутренние заметки и лента событий (этап 5) ──
+  /**
+   * Внутренняя заметка специалиста.
+   *
+   * Отдельная таблица, а не вид сообщения: сообщение с флагом «внутреннее» однажды
+   * уедет клиенту из-за забытого условия в выборке, и это будет очень плохой день.
+   */
+  addNote(conversationId: string, authorId: string, body: string) {
+    return this.db.one<{ id: string; created_at: Date }>(
+      `INSERT INTO support_internal_notes (conversation_id, author_id, body)
+       VALUES ($1,$2,$3) RETURNING id::text, created_at`,
+      [conversationId, authorId, body.slice(0, 4000)],
+    );
+  }
+
+  notes(conversationId: string) {
+    return this.db.many<{ id: string; author_id: string; full_name: string; body: string; created_at: Date }>(
+      `SELECT n.id::text, n.author_id::text, u.full_name, n.body, n.created_at
+         FROM support_internal_notes n JOIN users u ON u.id = n.author_id
+        WHERE n.conversation_id=$1
+        ORDER BY n.created_at`,
+      [conversationId],
+    );
+  }
+
+  /** Созвоны обращения: из чего складывается лента событий. */
+  huddlesOf(conversationId: string) {
+    return this.db.many<{ room_id: string; started_at: Date; ended_at: Date | null; meeting_id: string | null }>(
+      `SELECT room_id, started_at, ended_at, meeting_id::text
+         FROM support_huddles WHERE conversation_id=$1 ORDER BY started_at`,
+      [conversationId],
+    );
+  }
+
+  /** История назначений — кого и почему ставили на разговор. */
+  assignmentsOf(conversationId: string) {
+    return this.db.many<{ agent_id: string | null; full_name: string | null; reason: string; created_at: Date }>(
+      `SELECT a.agent_id::text, u.full_name, a.reason, a.created_at
+         FROM support_assignments a LEFT JOIN users u ON u.id = a.agent_id
+        WHERE a.conversation_id=$1 ORDER BY a.created_at`,
+      [conversationId],
+    );
+  }
+
+  /** Все доступы инженеров: и живые, и отозванные — лента должна помнить оба события. */
+  grantsHistory(conversationId: string) {
+    return this.db.many<{ full_name: string; created_at: Date; revoked_at: Date | null }>(
+      `SELECT u.full_name, g.created_at, g.revoked_at
+         FROM support_engineer_grants g JOIN users u ON u.id = g.engineer_id
+        WHERE g.conversation_id=$1 ORDER BY g.created_at`,
+      [conversationId],
+    );
+  }
+
   // ── просьба о созвоне (этап 4) ──
   /**
    * Попросить созвон.
@@ -923,7 +977,8 @@ export class SupportDeskRepository {
   dashboard(tenantId: string | null) {
     return this.db.one<{
       total: string; active: string; waiting: string; resolved: string;
-      first_median: string | null; ai_median: string | null; resolution_median: string | null;
+      first_median: string | null; ai_median: string | null; queue_median: string | null;
+      resolution_median: string | null;
       escalated: string; escalated_unsure: string;
       csat_avg: string | null; csat_count: string; reopened: string; ai_only: string;
     }>(
@@ -942,6 +997,10 @@ export class SupportDeskRepository {
               percentile_cont(0.5) WITHIN GROUP (
                 ORDER BY EXTRACT(EPOCH FROM (ai_first_response_at - created_at))
               ) FILTER (WHERE ai_first_response_at IS NOT NULL)::text AS ai_median,
+              -- Сколько обращение ждёт в очереди: это не то же самое, что ждать ответа.
+              percentile_cont(0.5) WITHIN GROUP (
+                ORDER BY EXTRACT(EPOCH FROM (assigned_at - queued_at))
+              ) FILTER (WHERE assigned_at IS NOT NULL AND queued_at IS NOT NULL)::text AS queue_median,
               -- Доля эскалаций: сколько разговоров помощник не закрыл сам.
               COUNT(*) FILTER (WHERE escalated_reason IS NOT NULL)::text AS escalated,
               COUNT(*) FILTER (WHERE escalated_reason = 'low_confidence')::text AS escalated_unsure,

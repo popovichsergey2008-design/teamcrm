@@ -73,6 +73,11 @@ export function SupportDock() {
   const [diag, setDiag] = useState<Awaited<ReturnType<typeof api.supportDiagnostics>> | null>(null);
   const [tools, setTools] = useState(false);
   const [people, setPeople] = useState<{ id: string; fullName: string }[]>([]);
+  /** Внутренние заметки: их не видит клиент — ни здесь, ни одной ручкой. */
+  const [notes, setNotes] = useState<Awaited<ReturnType<typeof api.supportNotes>>>([]);
+  const [noteText, setNoteText] = useState('');
+  /** Лента событий: что с обращением происходило — вместо чтения всей переписки. */
+  const [timeline, setTimeline] = useState<Awaited<ReturnType<typeof api.supportTimeline>> | null>(null);
   /** Кому из инженеров открыт разговор: доступ выдаётся на срок и отзывается. */
   const [grants, setGrants] = useState<Awaited<ReturnType<typeof api.supportEngineers>>>([]);
   /** Подсказка копилота дежурному: суть, что проверить, что сказать человеку. */
@@ -133,6 +138,8 @@ export function SupportDock() {
     setDiag(d);
     setPeople(users);
     await loadGrants(id);
+    setNotes(await api.supportNotes(id).catch(() => []));
+    setTimeline(await api.supportTimeline(id).catch(() => null));
   };
 
   /** Позвать инженера — в ТОТ ЖЕ разговор: объяснять второй раз человек не должен. */
@@ -246,6 +253,29 @@ export function SupportDock() {
   /** Копилот: готовит специалисту то, на что уходит первая пара минут разговора. */
   const loadGrants = async (id: string) => {
     setGrants(await api.supportEngineers(id).catch(() => []));
+  };
+
+  /** Заметка специалиста. Отправляется отдельной ручкой — в ленту клиента не попадает. */
+  const addNote = async () => {
+    const text = noteText.trim();
+    if (!conv || !text) return;
+    setBusy(true);
+    try { setNotes(await api.supportAddNote(conv.id, text)); setNoteText(''); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Заметка не сохранилась'); }
+    finally { setBusy(false); }
+  };
+
+  /**
+   * Перевести обращение в другое состояние.
+   *
+   * Правила «кто что может» проверяет сервер: отказ приходит словами, и его видно.
+   */
+  const setStatus = async (to: string) => {
+    if (!conv) return;
+    setBusy(true); setErr('');
+    try { setConv(await api.supportSetStatus(conv.id, to)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
+    finally { setBusy(false); }
   };
 
   const revokeEngineer = async (engineerId: string) => {
@@ -793,6 +823,85 @@ export function SupportDock() {
                       <Icon name="alert" size={13} /> Завести задачу
                     </button>
                   </div>
+
+                  {/*
+                    Куда двигать обращение.
+
+                    Состояние должно отвечать на вопрос «что с ним сейчас» без чтения
+                    переписки: работа инженера и ожидание ответа клиента выглядели
+                    одинаково — «в работе». Кнопки показываем те, что разрешены из
+                    текущего состояния; остальное сервер всё равно отклонит словами.
+                  */}
+                  <div className="support-tools-acts">
+                    {conv.status !== 'engineer_escalated' && conv.status !== 'fix_in_progress' && (
+                      <button className="btn btn-sm" disabled={busy} onClick={() => void setStatus('engineer_escalated')}>
+                        Передал инженерам
+                      </button>
+                    )}
+                    {(conv.status === 'engineer_escalated' || conv.status === 'fix_in_progress') && (
+                      <button className="btn btn-sm" disabled={busy} onClick={() => void setStatus(conv.status === 'fix_in_progress' ? 'in_progress' : 'fix_in_progress')}>
+                        {conv.status === 'fix_in_progress' ? 'Вернуть в работу' : 'Чиним'}
+                      </button>
+                    )}
+                    {conv.status !== 'waiting_reply' && (
+                      <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void setStatus('waiting_reply')}>
+                        Жду ответа
+                      </button>
+                    )}
+                  </div>
+
+                  {/*
+                    Внутренние заметки.
+
+                    Отдельной лентой и другим цветом, чтобы никто не перепутал их с
+                    ответом клиенту. Живут в своей таблице и отдаются своей ручкой —
+                    «сообщение с флагом внутреннее» однажды уехало бы наружу.
+                  */}
+                  <div className="support-notes">
+                    <div className="support-tools-head">
+                      <b>Заметки для своих</b>
+                      <span className="dim">клиент их не видит</span>
+                    </div>
+                    {notes.map((n) => (
+                      <div key={n.id} className="support-note">
+                        <span className="dim">{n.authorName} · {stampLabel(n.createdAt)}</span>
+                        <span>{n.body}</span>
+                      </div>
+                    ))}
+                    <div className="support-tools-acts">
+                      <input
+                        className="input"
+                        value={noteText}
+                        placeholder="Что важно знать тому, кто продолжит"
+                        onChange={(e) => setNoteText(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addNote(); } }}
+                      />
+                      <button className="btn btn-sm" disabled={busy || !noteText.trim()} onClick={() => void addNote()}>
+                        Записать
+                      </button>
+                    </div>
+                  </div>
+
+                  {/*
+                    Лента событий: вся жизнь обращения одним экраном.
+
+                    Собирается из уже записанного, а не из отдельного журнала: тот
+                    разошёлся бы с фактами при первой же ошибке.
+                  */}
+                  {!!timeline?.events.length && (
+                    <div className="support-timeline">
+                      <div className="support-tools-head">
+                        <b>Что происходило</b>
+                        {timeline.reopens > 0 && <span className="dim">открывали заново: {timeline.reopens}</span>}
+                      </div>
+                      {timeline.events.map((e, i) => (
+                        <div key={`${e.kind}-${i}`} className="support-tl-row">
+                          <span className="dim">{stampLabel(e.at)}</span>
+                          <span>{e.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/*
                     Доступ инженеров — со сроком и кнопкой «Закрыть».
