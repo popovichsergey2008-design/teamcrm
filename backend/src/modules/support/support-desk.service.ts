@@ -9,7 +9,7 @@ import { ProjectsService } from '../projects/projects.service';
 import { TasksRepository } from '../tasks/tasks.repository';
 import { TasksService } from '../tasks/tasks.service';
 import { SupportRepository } from './support.repository';
-import { ContextInput, ConversationRow, SupportDeskRepository } from './support-desk.repository';
+import { ContextInput, ConversationRow, QueueFilter, SupportDeskRepository } from './support-desk.repository';
 import { ForecastService } from '../forecast/forecast.service';
 import { HandbookService } from '../knowledge/handbook.service';
 import { PlatformService } from '../platform/platform.service';
@@ -17,6 +17,7 @@ import { AiService } from '../ai/ai.service';
 import { ActionRequest, describeAction, isUndoable, validAction } from './support-actions';
 import { humanStatus, wantsHuman } from './support-text';
 import { MAYBE_SUFFIX, META_RULES, NO_ANSWER_PHRASE, parseAnswer } from './support-ai';
+import { Candidate, pickAgent } from './support-routing';
 
 /**
  * Служба заботы: живой разговор вместо заявок (ТЗ-8).
@@ -411,6 +412,7 @@ export class SupportDeskService implements OnModuleInit {
     */
     await this.repo.setAiMode(tenantId, id, 'copilot', reason);
     void this.writeHandoffNote(tenantId, id, reason);
+    await this.repo.markQueued(tenantId, id, reason === 'requested');
     const next = (await this.repo.setStatus(tenantId, id, 'waiting_agent'))!;
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: null, kind: 'system',
@@ -419,7 +421,15 @@ export class SupportDeskService implements OnModuleInit {
     // Дежурным — сразу, событием: очередь должна оживать без перезагрузки страницы.
     await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
     this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: next.status });
-    return this.view(tenantId, next);
+    /*
+      Ищем исполнителя сразу.
+
+      Обращение, лежащее в очереди «пока кто-нибудь заметит», — и есть та поддержка, от
+      которой уходят. Выбор делается по навыку и загрузке; не нашли — разговор остаётся
+      видимым в очереди, и его возьмут руками.
+    */
+    await this.route(tenantId, next);
+    return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
   }
 
   /**
@@ -478,6 +488,132 @@ export class SupportDeskService implements OnModuleInit {
     return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
   }
 
+  /**
+   * Назначить обращение самому подходящему дежурному.
+   *
+   * Зовётся, когда обращение встаёт в очередь. Выбор — чистой функцией (support-routing),
+   * здесь только сбор данных и запись решения. Никого не нашли — обращение остаётся в
+   * очереди: молча повесить его на перегруженного хуже, чем оставить видимым.
+   *
+   * Ошибка маршрутизатора не должна ломать эскалацию: человек позвал специалиста, и это
+   * должно случиться, даже если выбрать исполнителя не удалось.
+   */
+  private async route(tenantId: string, conv: ConversationRow): Promise<void> {
+    try {
+      if (conv.assigned_agent_id) return;
+      const people = await this.deskPeople(tenantId);
+      if (!people.length) return;
+
+      const [loads, previousAgentId, tenantAgentIds, staff] = await Promise.all([
+        this.repo.loadByAgent(),
+        this.repo.previousAgent(String(conv.user_id), String(conv.id)),
+        this.repo.agentsOfTenant(String(conv.tenant_id)),
+        this.platform.onDuty(),
+      ]);
+      const load = new Map(loads.map((l) => [String(l.agent_id), Number(l.n)]));
+      const limits = new Map(staff.map((x) => [String(x.user_id), Number(x.max_conversations ?? 5)]));
+      const online = new Set<string>();
+      for (const t of new Set(people.map((p) => p.tenantId))) {
+        for (const id of this.realtime.onlineUsers(t)) online.add(id);
+      }
+
+      const candidates: Candidate[] = people.map((p) => ({
+        userId: p.userId,
+        skills: p.skills ?? [],
+        onDuty: true, // deskPeople отдаёт только дежурящих
+        online: online.has(p.userId),
+        load: load.get(p.userId) ?? 0,
+        maxLoad: limits.get(p.userId) ?? 5,
+      }));
+
+      const decision = pickAgent(
+        { requiredSkill: conv.required_skill, previousAgentId, tenantAgentIds },
+        candidates,
+      );
+      await this.repo.logRouting({
+        conversationId: String(conv.id), agentId: decision.agentId, reason: decision.reason,
+        skill: conv.required_skill, candidates: decision.considered,
+      });
+      if (!decision.agentId) return;
+
+      const next = await this.repo.assignIfFree(tenantId, String(conv.id), decision.agentId, decision.reason);
+      if (!next) return; // кто-то успел взять руками — так и надо
+      await this.repo.addParticipant(String(conv.id), decision.agentId, 'agent');
+      await this.repo.logAssignment(String(conv.id), decision.agentId, decision.reason, null);
+      const who = await this.repo.userNameAny(decision.agentId);
+      await this.repo.addMessage({
+        tenantId, conversationId: String(conv.id), authorId: null, kind: 'system',
+        body: `Разговор ведёт ${who ?? 'специалист'} — подключится сейчас.`,
+      });
+      const home = await this.platform.tenantId();
+      this.realtime.emitToUsers(home ?? tenantId, [decision.agentId], 'support.assignment.created', {
+        conversationId: String(conv.id),
+      });
+      this.emit(tenantId, next, 'support.agent.joined', {
+        conversationId: String(conv.id), agentId: decision.agentId,
+      });
+    } catch (e) {
+      // Человек позвал специалиста — это должно случиться, даже если выбрать некого.
+      this.log.warn(`маршрутизация обращения ${conv.id}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Назначить руками.
+   *
+   * Маршрутизатор ошибается, и человек обязан иметь возможность его поправить. Себе
+   * разговор берёт любой дежурный, на другого — только руководство: перекидывать чужую
+   * работу через всю службу не должен тот, кто просто мимо проходил.
+   */
+  async assign(tenantId: string, user: { userId: string; role: string }, id: string, agentId?: string | null) {
+    await this.assertAgent(tenantId, user);
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    const target = String(agentId ?? user.userId);
+    if (target !== String(user.userId)) await this.assertManage(tenantId, user);
+    if (await this.platform.tenantId()) {
+      if (!(await this.platform.canDesk(target))) {
+        throw AppException.validation('Назначать можно только на дежурного первой линии');
+      }
+    }
+
+    if (conv.assigned_agent_id && String(conv.assigned_agent_id) !== target) {
+      await this.repo.unassign(tenantId, id);
+    }
+    const next = await this.repo.assignIfFree(tenantId, id, target, 'вручную');
+    if (!next) return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
+    await this.repo.addParticipant(id, target, 'agent');
+    await this.repo.logAssignment(id, target, 'вручную', user.userId);
+    const who = await this.repo.userNameAny(target);
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: null, kind: 'system',
+      body: `Разговор ведёт ${who ?? 'специалист'}.`,
+    });
+    await this.notifyDesk(tenantId, 'support.assignment.changed', { conversationId: id });
+    this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: target });
+    return this.view(tenantId, next);
+  }
+
+  /** Снять с себя: обращение возвращается в очередь и может уйти другому. */
+  async unassign(tenantId: string, user: { userId: string; role: string }, id: string) {
+    await this.assertAgent(tenantId, user);
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    if (String(conv.assigned_agent_id ?? '') !== String(user.userId)) {
+      await this.assertManage(tenantId, user);
+    }
+    const next = (await this.repo.unassign(tenantId, id))!;
+    await this.repo.logAssignment(id, null, 'снят', user.userId);
+    await this.repo.addMessage({
+      tenantId, conversationId: id, authorId: null, kind: 'system',
+      body: 'Ищем другого специалиста — разговор вернулся в очередь.',
+    });
+    await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
+    // Вернулось в очередь — сразу пробуем найти кому: ждать человека незачем.
+    void this.route(tenantId, next);
+    return this.view(tenantId, next);
+  }
+
   // ── сторона специалиста ──
   /**
    * Очередь дежурного: кто ждёт, с чем и сколько уже.
@@ -485,10 +621,12 @@ export class SupportDeskService implements OnModuleInit {
    * У техотдела она одна на всех клиентов — потому рядом с именем человека стоит
    * название его организации: без него специалист не понимает, у кого сломалось.
    */
-  async queue(tenantId: string, user: { userId: string; role: string }) {
+  async queue(tenantId: string, user: { userId: string; role: string }, filter: QueueFilter = {}) {
     await this.assertAgent(tenantId, user);
     const platform = await this.platform.tenantId();
-    const rows = await this.repo.queue(platform ? null : tenantId);
+    // «Только мои» разбирается здесь: номер человека знает сервис, а не запрос из браузера.
+    const f: QueueFilter = { ...filter, assignedTo: filter.assignedTo === 'me' ? user.userId : null };
+    const rows = await this.repo.queue(platform ? null : tenantId, f);
     return rows.map((c) => ({
       id: String(c.id),
       subject: c.subject,
@@ -500,6 +638,7 @@ export class SupportDeskService implements OnModuleInit {
       requiredSkill: c.required_skill,
       aiSummary: c.ai_summary,
       agentName: c.agent_name,
+      agentId: c.assigned_agent_id ? String(c.assigned_agent_id) : null,
       waitingSince: c.created_at,
       lastAt: c.last_at,
       priority: c.priority,
@@ -514,6 +653,7 @@ export class SupportDeskService implements OnModuleInit {
     await this.repo.setAiMode(tenantId, id, 'copilot');
     const next = (await this.repo.assign(tenantId, id, user.userId))!;
     await this.repo.addParticipant(id, user.userId, 'agent');
+    await this.repo.logAssignment(id, user.userId, 'взял себе', user.userId);
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: user.userId, kind: 'system', body: 'подключился к разговору',
     });
@@ -582,6 +722,7 @@ export class SupportDeskService implements OnModuleInit {
       throw AppException.forbidden('Закрыть разговор может только тот, кто обратился');
     }
     if (!ok) {
+      await this.repo.bumpEscalation(tenantId, id);
       const back = (await this.repo.reopen(tenantId, id))!;
       await this.repo.addMessage({
         tenantId, conversationId: id, authorId: null, kind: 'system',
@@ -602,6 +743,7 @@ export class SupportDeskService implements OnModuleInit {
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
     if (String(conv.user_id) !== String(user.userId)) throw AppException.forbidden('Это не ваш разговор');
+    await this.repo.bumpEscalation(tenantId, id);
     const next = (await this.repo.reopen(tenantId, id))!;
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: user.userId, kind: 'user',
@@ -904,15 +1046,24 @@ export class SupportDeskService implements OnModuleInit {
     await this.assertCanWork(tenantId, user, id);
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
-    const [ctx, issues] = await Promise.all([this.repo.context(id), this.repo.issues(id)]);
+    const [ctx, issues, routing] = await Promise.all([
+      this.repo.context(id), this.repo.issues(id), this.repo.routingOf(id),
+    ]);
     return {
       context: ctx ?? null,
       issues: issues.map((i) => ({
         taskId: i.task_id, projectId: i.project_id, title: i.title,
         type: i.issue_type, closed: !!i.closed_at,
       })),
+      /** Почему обращение у этого человека: первое, что спросят при неудачном выборе. */
+      routing: routing.map((r) => ({
+        reason: r.reason, agentName: r.full_name, skill: r.required_skill, at: r.created_at,
+      })),
       sla: {
         createdAt: conv.created_at,
+        queuedAt: conv.queued_at,
+        assignedAt: conv.assigned_at,
+        escalationLevel: conv.escalation_level,
         aiFirstResponseAt: conv.ai_first_response_at,
         firstResponseAt: conv.human_first_response_at,
         resolvedAt: conv.resolved_at,

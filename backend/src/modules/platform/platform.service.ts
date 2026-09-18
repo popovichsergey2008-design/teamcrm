@@ -39,6 +39,8 @@ export interface StaffRow {
   role: string;
   active: boolean;
   skills: string[];
+  /** Сколько разговоров тянет одновременно: больше — новые не назначаются. */
+  max_conversations: number;
 }
 
 /** Пауза перед разметкой платформы: база к этому моменту уже накатила миграции. */
@@ -157,7 +159,8 @@ export class PlatformService implements OnModuleInit {
   /** Весь техотдел, включая снятых с дежурства: список для консоли. */
   staffAll(): Promise<StaffRow[]> {
     return this.db.many<StaffRow>(
-      `SELECT s.user_id::text, s.tenant_id::text, u.full_name, s.role, s.active, s.skills
+      `SELECT s.user_id::text, s.tenant_id::text, u.full_name, s.role, s.active, s.skills,
+              s.max_conversations
          FROM platform_staff s JOIN users u ON u.id = s.user_id
         WHERE u.is_active
         ORDER BY s.active DESC, u.full_name`,
@@ -249,7 +252,7 @@ export class PlatformService implements OnModuleInit {
    */
   async setStaff(
     actor: { userId: string }, userId: string,
-    patch: { active?: boolean; role?: string; skills?: string[]; remove?: boolean },
+    patch: { active?: boolean; role?: string; skills?: string[]; maxConversations?: number; remove?: boolean },
   ): Promise<StaffRow[]> {
     await this.assertAdmin(actor.userId);
     const platform = await this.tenantId();
@@ -276,19 +279,21 @@ export class PlatformService implements OnModuleInit {
       NULL-а в COALESCE и роняет весь запрос, а не только эту строку.
     */
     await this.db.query(
-      `INSERT INTO platform_staff (user_id, tenant_id, role, active, skills, created_by)
+      `INSERT INTO platform_staff (user_id, tenant_id, role, active, skills, created_by, max_conversations)
        VALUES ($1, $2, COALESCE($3::varchar, 'support'), COALESCE($4::boolean, TRUE),
-               COALESCE($5::text[], '{}'), $6)
+               COALESCE($5::text[], '{}'), $6, COALESCE($7::smallint, 5))
        ON CONFLICT (user_id) DO UPDATE
           SET role   = COALESCE($3::varchar, platform_staff.role),
               active = COALESCE($4::boolean, platform_staff.active),
-              skills = COALESCE($5::text[], platform_staff.skills)`,
+              skills = COALESCE($5::text[], platform_staff.skills),
+              max_conversations = COALESCE($7::smallint, platform_staff.max_conversations)`,
       [
         userId, platform,
         patch.role && (PLATFORM_ROLES as string[]).includes(patch.role) ? patch.role : null,
         patch.active ?? null,
         patch.skills ? patch.skills.slice(0, 12) : null,
         actor.userId,
+        patch.maxConversations && patch.maxConversations > 0 ? Math.min(patch.maxConversations, 50) : null,
       ],
     );
     return this.staffAll();

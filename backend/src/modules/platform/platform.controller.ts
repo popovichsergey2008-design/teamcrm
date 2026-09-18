@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { CurrentUser } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { PLATFORM_ROLES, PlatformService, ROLE_TITLES } from './platform.service';
@@ -11,6 +11,8 @@ class StaffDto {
   @IsOptional() @IsBoolean() active?: boolean;
   @IsOptional() @IsIn(PLATFORM_ROLES) role?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) skills?: string[];
+  /** Сколько разговоров тянет одновременно: больше — новые не назначаются. */
+  @IsOptional() @IsInt() @Min(1) @Max(50) maxConversations?: number;
   /** Совсем убрать из техотдела. */
   @IsOptional() @IsBoolean() remove?: boolean;
 }
@@ -64,7 +66,7 @@ export class PlatformController {
     return rows.map((s) => ({
       userId: s.user_id, name: s.full_name, role: s.role,
       roleTitle: ROLE_TITLES[s.role as keyof typeof ROLE_TITLES] ?? s.role,
-      onDuty: s.active, skills: s.skills ?? [],
+      onDuty: s.active, skills: s.skills ?? [], maxConversations: Number(s.max_conversations ?? 5),
     }));
   }
 
@@ -83,12 +85,13 @@ export class PlatformController {
   @Post('staff')
   async setStaff(@CurrentUser() u: AuthUser, @Body() dto: StaffDto) {
     const rows = await this.platform.setStaff(u, dto.userId, {
-      active: dto.active, role: dto.role, skills: dto.skills, remove: dto.remove,
+      active: dto.active, role: dto.role, skills: dto.skills,
+      maxConversations: dto.maxConversations, remove: dto.remove,
     });
     return rows.map((s) => ({
       userId: s.user_id, name: s.full_name, role: s.role,
       roleTitle: ROLE_TITLES[s.role as keyof typeof ROLE_TITLES] ?? s.role,
-      onDuty: s.active, skills: s.skills ?? [],
+      onDuty: s.active, skills: s.skills ?? [], maxConversations: Number(s.max_conversations ?? 5),
     }));
   }
 

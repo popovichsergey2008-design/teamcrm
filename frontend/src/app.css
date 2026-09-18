@@ -4765,6 +4765,26 @@ button.chat-pop-row:hover { background: var(--hover); }
 .console-sum { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Роль в техотделе меняется там же, где дежурство: это одно решение, а не два. */
 .console-role { flex: 0 0 auto; max-width: 190px; font-size: var(--fs-xs); }
+/* Навыки и предел загрузки — по ним маршрутизатор и выбирает исполнителя. */
+.console-skills { flex: 1 1 140px; min-width: 0; max-width: 240px; font-size: var(--fs-xs); }
+.console-limit { flex: 0 0 62px; font-size: var(--fs-xs); }
+
+/*
+  Отборы очереди: «мои», «ничьи», навык, срочность, долгое ожидание.
+
+  Строкой над списком, а не в выпадающем окне: дежурный переключает их десятки раз за
+  смену, и каждый лишний клик здесь — минус к тому, что ими вообще будут пользоваться.
+*/
+.console-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.console-chip {
+  padding: 5px 11px; cursor: pointer; font: inherit; font-size: var(--fs-sm);
+  color: var(--text-dim); background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 999px;
+}
+.console-chip:hover { border-color: var(--accent-line); color: var(--text); }
+.console-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.console-chip.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--text); }
+.console-row-acts { display: flex; align-items: center; gap: 6px; }
 .console-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .console-form .input { flex: 1 1 200px; min-width: 0; }
 .console-form .console-num { flex: 0 0 90px; }

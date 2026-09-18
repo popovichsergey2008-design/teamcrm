@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Ip, Param, Post, Req, Res, UploadedFile, UseInterceptors,
+  Body, Controller, Get, Ip, Param, Post, Query, Req, Res, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -55,6 +55,11 @@ class ConfirmDto {
 
 class CloseDto {
   @IsOptional() @IsInt() @Min(1) @Max(4) csat?: number;
+}
+
+class AssignDto {
+  /** Кого назначить. Пусто — себя: обычный случай «беру этот разговор». */
+  @IsOptional() @IsString() agentId?: string;
 }
 
 class ReopenDto {
@@ -134,10 +139,29 @@ export class SupportDeskController {
     return this.desk.dashboard(u.tenantId, u);
   }
 
-  /** Очередь дежурного — раньше «:id», иначе слово «queue» примут за номер разговора. */
+  /**
+   * Очередь дежурного — раньше «:id», иначе слово «queue» примут за номер разговора.
+   *
+   * Отборы необязательные: пустая строка запроса отдаёт очередь целиком, как раньше.
+   * `assigned=me` разбирается на сервере — номер человека знает он, а не браузер.
+   */
   @Get('queue')
-  queue(@CurrentUser() u: AuthUser) {
-    return this.desk.queue(u.tenantId, u);
+  queue(
+    @CurrentUser() u: AuthUser,
+    @Query('skill') skill?: string,
+    @Query('priority') priority?: string,
+    @Query('org') org?: string,
+    @Query('assigned') assigned?: string,
+    @Query('waiting') waiting?: string,
+  ) {
+    return this.desk.queue(u.tenantId, u, {
+      skill: skill?.trim() || null,
+      priority: priority?.trim() || null,
+      orgId: org?.trim() || null,
+      assignedTo: assigned === 'me' ? 'me' : null,
+      onlyFree: assigned === 'none' ? true : null,
+      waitingMinutes: waiting && /^\d+$/.test(waiting) ? Number(waiting) : null,
+    });
   }
 
   /**
@@ -187,6 +211,23 @@ export class SupportDeskController {
   @Post(':id/join')
   async join(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.desk.join(await this.desk.deskTenant(u, id), u, id);
+  }
+
+  /**
+   * Назначить обращение.
+   *
+   * Себе — любой дежурный, на другого — руководство: перекидывать чужую работу через
+   * всю службу не должен тот, кто просто мимо проходил.
+   */
+  @Post(':id/assign')
+  async assign(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AssignDto) {
+    return this.desk.assign(await this.desk.deskTenant(u, id), u, id, dto.agentId ?? null);
+  }
+
+  /** Снять с себя: обращение возвращается в очередь и сразу ищет нового исполнителя. */
+  @Post(':id/unassign')
+  async unassign(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.unassign(await this.desk.deskTenant(u, id), u, id);
   }
 
   /** Ответ специалиста. */

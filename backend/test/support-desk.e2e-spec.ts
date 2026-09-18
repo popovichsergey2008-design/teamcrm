@@ -521,6 +521,89 @@ describe('служба заботы (e2e)', () => {
     expect(Number(d.escalated)).toBeGreaterThanOrEqual(1);
   }, 60000);
 
+  /*
+    Этап 3: очередь, навыки и назначение.
+
+    Проверяем обещание раздела 05_SCALING §4–§7: обращение не лежит «пока кто-нибудь
+    заметит», а уходит дежурному само; перегруженному не достаётся; поправить выбор
+    можно руками.
+  */
+  it('обращение назначается само, а поправить выбор можно руками', async () => {
+    const vendor = await team('SDQ');
+    const client = await team('SDQC');
+    await platform.declarePlatform(String(vendor.owner.user.tenantId), String(vendor.owner.user.id));
+
+    try {
+      // в отделе двое: владелец (админ) и первая линия
+      await http.post('/api/platform/staff').set(vendor.O)
+        .send({ userId: String(vendor.mate.id), active: true, role: 'support', skills: ['imports'] })
+        .expect(201);
+
+      const conv = (await http.post('/api/support/desk/messages').set(client.M)
+        .send({ text: 'Позовите специалиста: не идёт импорт' }).expect(201)).body.data;
+
+      // обращение уже у кого-то: его не нужно «замечать» в очереди
+      const queue = (await http.get('/api/support/desk/queue').set(vendor.O).expect(200)).body.data;
+      const row = queue.find((q: any) => String(q.id) === String(conv.id));
+      expect(row).toBeTruthy();
+      expect(row.agentId).toBeTruthy();
+
+      // и видно, почему он у этого человека
+      const diag = (await http.get(`/api/support/desk/${conv.id}/diagnostics`).set(vendor.O).expect(200)).body.data;
+      expect(diag.routing.length).toBeGreaterThanOrEqual(1);
+      expect(diag.sla.queuedAt).toBeTruthy();
+      expect(diag.sla.assignedAt).toBeTruthy();
+
+      // «ничьи» его больше не показывают
+      const free = (await http.get('/api/support/desk/queue?assigned=none').set(vendor.O).expect(200)).body.data;
+      expect(free.some((q: any) => String(q.id) === String(conv.id))).toBe(false);
+
+      // выбор поправим руками: возвращаем в очередь и назначаем на другого
+      await http.post(`/api/support/desk/${conv.id}/unassign`).set(vendor.O).send({}).expect(201);
+      const back = (await http.get('/api/support/desk/queue').set(vendor.O).expect(200)).body.data;
+      expect(back.find((q: any) => String(q.id) === String(conv.id))).toBeTruthy();
+
+      const assigned = (await http.post(`/api/support/desk/${conv.id}/assign`).set(vendor.O)
+        .send({ agentId: String(vendor.mate.id) }).expect(201)).body.data;
+      expect(String(assigned.agentId)).toBe(String(vendor.mate.id));
+
+      // «мои» у назначенного его видят, а у другого — нет
+      const mine = (await http.get('/api/support/desk/queue?assigned=me').set(vendor.M).expect(200)).body.data;
+      expect(mine.some((q: any) => String(q.id) === String(conv.id))).toBe(true);
+      const notMine = (await http.get('/api/support/desk/queue?assigned=me').set(vendor.O).expect(200)).body.data;
+      expect(notMine.some((q: any) => String(q.id) === String(conv.id))).toBe(false);
+    } finally {
+      await platform.clearPlatform();
+    }
+  }, 90000);
+
+  it('перегруженному дежурному новые обращения не назначаются', async () => {
+    const vendor = await team('SDL');
+    const client = await team('SDLC');
+    await platform.declarePlatform(String(vendor.owner.user.tenantId), String(vendor.owner.user.id));
+
+    try {
+      // единственный дежурный тянет ровно один разговор
+      await http.post('/api/platform/staff').set(vendor.O)
+        .send({ userId: String(vendor.owner.user.id), maxConversations: 1 }).expect(201);
+
+      const first = (await http.post('/api/support/desk/messages').set(client.M)
+        .send({ text: 'Позовите специалиста, первая беда' }).expect(201)).body.data;
+      expect(first.agentId).toBeTruthy();
+
+      // второй человек той же компании пишет своё обращение — свободных нет
+      const second = (await http.post('/api/support/desk/messages').set(client.O)
+        .send({ text: 'Позовите специалиста, вторая беда' }).expect(201)).body.data;
+      expect(second.agentId).toBeNull();
+
+      // но оно видно в очереди как ничьё: проблема на виду, а не спрятана
+      const free = (await http.get('/api/support/desk/queue?assigned=none').set(vendor.O).expect(200)).body.data;
+      expect(free.some((q: any) => String(q.id) === String(second.id))).toBe(true);
+    } finally {
+      await platform.clearPlatform();
+    }
+  }, 90000);
+
   it('чужое обращение не прочитать', async () => {
     const a = await team('SD2');
     const b = await team('SD3');

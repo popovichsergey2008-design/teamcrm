@@ -8,7 +8,8 @@ import { stampLabel } from '../lib/chat-text';
 import { navigate, Route } from '../lib/router';
 import { useAuth } from '../state/auth';
 import type {
-  PlatformCandidate, PlatformStaff, PlatformTenant, SupportEscalation, SupportHandbook, SupportQueueItem,
+  PlatformCandidate, PlatformStaff, PlatformTenant,
+  SupportEscalation, SupportHandbook, SupportQueueFilter, SupportQueueItem,
 } from '../types';
 
 /** Секунды человеческими словами: «28 сек», «4 мин», «1 ч 10 мин». */
@@ -66,6 +67,8 @@ export function ConsolePage({ route }: { route: Route }) {
   const [hb, setHb] = useState<SupportHandbook | null>(null);
   const [clients, setClients] = useState<PlatformTenant[]>([]);
   const [escalations, setEscalations] = useState<SupportEscalation[]>([]);
+  /** Отбор очереди: пустой означает «вся очередь», как было до этапа 3. */
+  const [filter, setFilter] = useState<SupportQueueFilter>({});
   const [roles, setRoles] = useState<{ id: string; title: string }[]>([]);
   const [incident, setIncident] = useState({ title: '', message: '' });
   const [issue, setIssue] = useState({ taskId: '', title: '' });
@@ -81,7 +84,7 @@ export function ConsolePage({ route }: { route: Route }) {
       return;
     }
     const [q, d, s, k, h, c] = await Promise.all([
-      api.supportQueue().catch(() => []),
+      api.supportQueue(filter).catch(() => []),
       api.supportDashboard().catch(() => null),
       api.platformStaff().catch(() => []),
       api.supportKnownIssues().catch(() => []),
@@ -94,7 +97,7 @@ export function ConsolePage({ route }: { route: Route }) {
       setRoles(await api.platformRoles().catch(() => []));
     }
     setReady(true);
-  }, [isAdmin, isEngineer]);
+  }, [isAdmin, isEngineer, filter]);
   useEffect(() => { void load(); }, [load]);
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -199,6 +202,64 @@ export function ConsolePage({ route }: { route: Route }) {
               </div>
             )}
 
+            {/*
+              Отборы очереди (06_STATE_MACHINE §6).
+
+              «Мои» и «ничьи» — то, что дежурный спрашивает у очереди чаще всего:
+              первое отвечает «чем я занят», второе — «что никто не взял». Навык
+              собираем из самой очереди, а не из справочника: показывать пустые
+              варианты, которых сейчас нет, — заставлять человека проверять их руками.
+            */}
+            <div className="console-filters">
+              <button
+                className={`console-chip${!filter.assigned ? ' active' : ''}`}
+                onClick={() => setFilter({ ...filter, assigned: undefined })}
+              >
+                Все
+              </button>
+              <button
+                className={`console-chip${filter.assigned === 'me' ? ' active' : ''}`}
+                onClick={() => setFilter({ ...filter, assigned: 'me' })}
+              >
+                Мои
+              </button>
+              <button
+                className={`console-chip${filter.assigned === 'none' ? ' active' : ''}`}
+                onClick={() => setFilter({ ...filter, assigned: 'none' })}
+              >
+                Ничьи
+              </button>
+              <select
+                className="input console-role"
+                value={filter.skill ?? ''}
+                aria-label="Навык"
+                onChange={(e) => setFilter({ ...filter, skill: e.target.value || undefined })}
+              >
+                <option value="">Любой навык</option>
+                {[...new Set(queue.map((q) => q.requiredSkill).filter(Boolean))].map((sk) => (
+                  <option key={String(sk)} value={String(sk)}>{sk}</option>
+                ))}
+              </select>
+              <select
+                className="input console-role"
+                value={filter.priority ?? ''}
+                aria-label="Срочность"
+                onChange={(e) => setFilter({ ...filter, priority: e.target.value || undefined })}
+              >
+                <option value="">Любая срочность</option>
+                <option value="critical">Критично</option>
+                <option value="high">Срочно</option>
+                <option value="normal">Обычные</option>
+              </select>
+              <button
+                className={`console-chip${filter.waiting ? ' active' : ''}`}
+                onClick={() => setFilter({ ...filter, waiting: filter.waiting ? undefined : 30 })}
+                title="Ждут дольше получаса"
+              >
+                Ждут &gt; 30 мин
+              </button>
+            </div>
+
             <div className="support-block">
               <div className="drawer-section-title">Ждут ответа</div>
               {!queue.length && (
@@ -213,7 +274,37 @@ export function ConsolePage({ route }: { route: Route }) {
                 <button key={q.id} className="support-queue-row" onClick={openSupport}>
                   <span className="support-queue-head">
                     <b>{q.subject || 'Обращение'}</b>
-                    <span className="dim">{stampLabel(q.waitingSince)}</span>
+                    <span className="console-row-acts">
+                      {/*
+                        Взять и вернуть — прямо из очереди.
+
+                        Маршрутизатор ошибается, и поправить его человек должен одним
+                        нажатием, не открывая разговор: иначе он просто не станет.
+                      */}
+                      {!q.agentId && (
+                        <span
+                          className="btn btn-sm"
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => { e.stopPropagation(); void act(() => api.supportAssign(q.id)); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); void act(() => api.supportAssign(q.id)); } }}
+                        >
+                          Взять
+                        </span>
+                      )}
+                      {q.agentId === user?.id && (
+                        <span
+                          className="btn btn-ghost btn-sm"
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => { e.stopPropagation(); void act(() => api.supportUnassign(q.id)); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); void act(() => api.supportUnassign(q.id)); } }}
+                        >
+                          Вернуть в очередь
+                        </span>
+                      )}
+                      <span className="dim">{stampLabel(q.waitingSince)}</span>
+                    </span>
                   </span>
                   <span className="dim">
                     {q.orgName ? <b className="console-org">{q.orgName}</b> : null} {q.userName} · {q.statusText}
@@ -312,6 +403,46 @@ export function ConsolePage({ route }: { route: Route }) {
                       >
                         {roles.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
                       </select>
+                    )}
+                    {/*
+                      Навыки и предел загрузки — там же, где роль.
+
+                      По ним маршрутизатор и выбирает: без навыков обращение уйдёт
+                      «свободнее всех», а без предела один человек наберёт двадцать
+                      разговоров и ни одному не ответит вовремя.
+                    */}
+                    {isAdmin && (
+                      <input
+                        className="input console-skills"
+                        defaultValue={s.skills.join(', ')}
+                        placeholder="навыки через запятую"
+                        aria-label={`Навыки: ${s.name}`}
+                        onClick={(e) => e.preventDefault()}
+                        onBlur={(e) => {
+                          const next = e.target.value.split(',').map((x) => x.trim()).filter(Boolean);
+                          if (next.join(',') !== s.skills.join(',')) {
+                            void act(() => api.platformSetStaff(s.userId, { skills: next }));
+                          }
+                        }}
+                      />
+                    )}
+                    {isAdmin && (
+                      <input
+                        className="input console-limit"
+                        type="number"
+                        min={1}
+                        max={50}
+                        defaultValue={s.maxConversations}
+                        title="Сколько разговоров тянет одновременно"
+                        aria-label={`Предел разговоров: ${s.name}`}
+                        onClick={(e) => e.preventDefault()}
+                        onBlur={(e) => {
+                          const n = Number(e.target.value);
+                          if (n > 0 && n !== s.maxConversations) {
+                            void act(() => api.platformSetStaff(s.userId, { maxConversations: n }));
+                          }
+                        }}
+                      />
                     )}
                     {isAdmin && s.userId !== user?.id && (
                       <button

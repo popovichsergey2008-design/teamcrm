@@ -19,6 +19,11 @@ export interface ConversationRow {
   /** Записка специалисту: что уже пробовали, чтобы он не спрашивал заново. */
   handoff_note: string | null;
   escalated_reason: string | null;
+  human_requested_at: Date | null;
+  queued_at: Date | null;
+  assigned_at: Date | null;
+  routing_reason: string | null;
+  escalation_level: number;
   ai_first_response_at: Date | null;
   human_first_response_at: Date | null;
   resolved_at: Date | null;
@@ -43,6 +48,19 @@ export interface MessageRow {
   author_name: string | null;
   created_at: Date;
   edited_at: Date | null;
+}
+
+/** Отбор очереди: все поля необязательные, пустые просто не сужают выборку. */
+export interface QueueFilter {
+  skill?: string | null;
+  priority?: string | null;
+  orgId?: string | null;
+  /** Разговоры конкретного специалиста («только мои»). */
+  assignedTo?: string | null;
+  /** Только ничьи — то, что ждёт, пока кто-нибудь возьмёт. */
+  onlyFree?: boolean | null;
+  /** Ждут дольше N минут. */
+  waitingMinutes?: number | null;
 }
 
 /** Технический контекст обращения — ровно то, что видно на экране (ТЗ-8, разд. 15). */
@@ -134,10 +152,17 @@ export class SupportDeskRepository {
    * Название организации идёт рядом с именем человека: без него специалист не
    * понимает, у кого именно сломалось.
    */
-  queue(tenantId: string | null) {
+  queue(tenantId: string | null, f: QueueFilter = {}) {
     return this.db.many<ConversationRow & {
       user_name: string; agent_name: string | null; last_at: Date | null; tenant_name: string;
     }>(
+      /*
+        Отборы очереди (06_STATE_MACHINE §6).
+
+        Все необязательные и проверяются через «параметр пуст ИЛИ совпадает»: так один
+        запрос обслуживает и пустую форму, и любую комбинацию полей. Приведения типов
+        обязательны — без них Postgres не выводит тип NULL-а и роняет ВЕСЬ запрос.
+      */
       `SELECT c.*, u.full_name AS user_name, a.full_name AS agent_name, t.name AS tenant_name,
               (SELECT MAX(m.created_at) FROM support_messages m WHERE m.conversation_id = c.id) AS last_at
          FROM support_conversations c
@@ -146,8 +171,145 @@ export class SupportDeskRepository {
          LEFT JOIN users a ON a.id = c.assigned_agent_id
         WHERE ($1::bigint IS NULL OR c.tenant_id = $1::bigint)
           AND c.closed_at IS NULL AND c.status <> 'ai'
+          AND ($2::varchar IS NULL OR c.required_skill = $2::varchar)
+          AND ($3::varchar IS NULL OR c.priority = $3::varchar)
+          AND ($4::bigint IS NULL OR c.tenant_id = $4::bigint)
+          AND ($5::bigint IS NULL OR c.assigned_agent_id = $5::bigint)
+          AND ($6::boolean IS NOT TRUE OR c.assigned_agent_id IS NULL)
+          AND ($7::int IS NULL OR c.created_at < now() - ($7 || ' minutes')::interval)
         ORDER BY (c.status = 'waiting_agent') DESC, c.priority = 'critical' DESC, c.created_at`,
+      [
+        tenantId, f.skill ?? null, f.priority ?? null, f.orgId ?? null,
+        f.assignedTo ?? null, f.onlyFree ?? null, f.waitingMinutes ?? null,
+      ],
+    );
+  }
+
+  /**
+   * Назначить, ЕСЛИ обращение ещё свободно.
+   *
+   * Условие в самом UPDATE, а не проверкой перед ним: маршрутизатор и человек могут
+   * взять один разговор одновременно, и «проверил, потом записал» здесь означает двух
+   * специалистов в одном обращении.
+   */
+  assignIfFree(tenantId: string, id: string, agentId: string, reason: string): Promise<ConversationRow | null> {
+    return this.db.one<ConversationRow>(
+      `UPDATE support_conversations
+          SET assigned_agent_id = $3, assigned_at = now(), routing_reason = $4,
+              status = CASE WHEN status = 'waiting_agent' THEN 'in_progress' ELSE status END,
+              updated_at = now()
+        WHERE tenant_id=$1 AND id=$2 AND assigned_agent_id IS NULL AND closed_at IS NULL
+        RETURNING *`,
+      [tenantId, id, agentId, reason.slice(0, 48)],
+    );
+  }
+
+  /** Снять исполнителя: обращение возвращается в очередь. */
+  unassign(tenantId: string, id: string): Promise<ConversationRow | null> {
+    return this.db.one<ConversationRow>(
+      `UPDATE support_conversations
+          SET assigned_agent_id = NULL, assigned_at = NULL, routing_reason = NULL,
+              status = CASE WHEN closed_at IS NULL THEN 'waiting_agent' ELSE status END,
+              queued_at = COALESCE(queued_at, now()), updated_at = now()
+        WHERE tenant_id=$1 AND id=$2 RETURNING *`,
+      [tenantId, id],
+    );
+  }
+
+  /** Обращение встало в очередь: с этой минуты считается ожидание. */
+  async markQueued(tenantId: string, id: string, humanRequested: boolean): Promise<void> {
+    await this.db.query(
+      `UPDATE support_conversations
+          SET queued_at = COALESCE(queued_at, now()),
+              human_requested_at = CASE WHEN $3 THEN COALESCE(human_requested_at, now()) ELSE human_requested_at END
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id, humanRequested],
+    );
+  }
+
+  /** Второй круг: вернули в работу или открыли заново. */
+  async bumpEscalation(tenantId: string, id: string): Promise<void> {
+    await this.db.query(
+      `UPDATE support_conversations SET escalation_level = escalation_level + 1
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, id],
+    );
+  }
+
+  // ── кому отдавать: загрузка, знакомство, журнал решений ──
+  /**
+   * Сколько незакрытых разговоров у каждого специалиста — по ВСЕМ организациям.
+   *
+   * Загрузка человека общая: он не становится свободнее оттого, что его пять обращений
+   * пришли из пяти разных компаний.
+   */
+  loadByAgent() {
+    return this.db.many<{ agent_id: string; n: string }>(
+      `SELECT assigned_agent_id::text AS agent_id, count(*)::text AS n
+         FROM support_conversations
+        WHERE closed_at IS NULL AND assigned_agent_id IS NOT NULL
+        GROUP BY 1`,
+    );
+  }
+
+  /** Кто вёл прошлое обращение этого человека. */
+  async previousAgent(userId: string, exceptId: string): Promise<string | null> {
+    const row = await this.db.one<{ assigned_agent_id: string }>(
+      `SELECT assigned_agent_id::text FROM support_conversations
+        WHERE user_id=$1 AND id <> $2 AND assigned_agent_id IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1`,
+      [userId, exceptId],
+    );
+    return row?.assigned_agent_id ?? null;
+  }
+
+  /** Кто уже работал с этой организацией за последний месяц. */
+  async agentsOfTenant(tenantId: string): Promise<string[]> {
+    const rows = await this.db.many<{ agent_id: string }>(
+      `SELECT DISTINCT assigned_agent_id::text AS agent_id
+         FROM support_conversations
+        WHERE tenant_id=$1 AND assigned_agent_id IS NOT NULL
+          AND created_at > now() - interval '30 days'`,
       [tenantId],
+    );
+    return rows.map((r) => r.agent_id);
+  }
+
+  async logRouting(i: {
+    conversationId: string; agentId: string | null; reason: string; skill: string | null;
+    candidates: unknown; byUserId?: string | null;
+  }): Promise<void> {
+    await this.db.query(
+      `INSERT INTO support_routing_events
+         (conversation_id, chosen_agent_id, reason, required_skill, candidates, by_user_id)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6)`,
+      [
+        i.conversationId, i.agentId, i.reason.slice(0, 48), i.skill,
+        JSON.stringify(i.candidates ?? []), i.byUserId ?? null,
+      ],
+    );
+  }
+
+  async logAssignment(conversationId: string, agentId: string | null, reason: string, by: string | null): Promise<void> {
+    await this.db.query(
+      `INSERT INTO support_assignments (conversation_id, agent_id, reason, by_user_id)
+       VALUES ($1,$2,$3,$4)`,
+      [conversationId, agentId, reason.slice(0, 48), by],
+    );
+  }
+
+  /** Почему обращение у этого человека — показывается специалисту в диагностике. */
+  routingOf(conversationId: string) {
+    return this.db.many<{
+      reason: string; chosen_agent_id: string | null; full_name: string | null;
+      required_skill: string | null; created_at: Date;
+    }>(
+      `SELECT e.reason, e.chosen_agent_id::text, u.full_name, e.required_skill, e.created_at
+         FROM support_routing_events e
+         LEFT JOIN users u ON u.id = e.chosen_agent_id
+        WHERE e.conversation_id=$1
+        ORDER BY e.created_at DESC LIMIT 5`,
+      [conversationId],
     );
   }
 

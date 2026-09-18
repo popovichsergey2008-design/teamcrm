@@ -1,7 +1,8 @@
 import type {
   Agenda, AiAction, Approval, AssistantMode, AuthResult, Board, Focus, GateSettings, Ping,
   Project, Proposal, SearchResults, SemanticHit, SupportContextInput, SupportConversation,
-  PlatformCandidate, PlatformStaff, PlatformTenant, SupportEngineerGrant, SupportEscalation,
+  PlatformCandidate, PlatformStaff, PlatformTenant,
+  SupportEngineerGrant, SupportEscalation, SupportQueueFilter,
   SupportDesk, SupportHandbook, SupportQueueItem, Task,
 } from '../types';
 
@@ -1115,7 +1116,27 @@ export const api = {
   supportReopen: (id: string, text?: string) =>
     request<SupportConversation>('POST', `/support/desk/${id}/reopen`, { text }),
   /** Сторона дежурного: очередь, подключение, ответ, «кажется, решено». */
-  supportQueue: () => request<SupportQueueItem[]>('GET', '/support/desk/queue'),
+  /**
+   * Очередь дежурного с отборами.
+   *
+   * Пустой отбор отдаёт очередь целиком — так же, как раньше. `assigned: 'me'`
+   * разбирается на сервере: номер человека знает он, а не браузер.
+   */
+  supportQueue: (f: SupportQueueFilter = {}) => {
+    const q = new URLSearchParams();
+    if (f.skill) q.set('skill', f.skill);
+    if (f.priority) q.set('priority', f.priority);
+    if (f.assigned) q.set('assigned', f.assigned);
+    if (f.waiting) q.set('waiting', String(f.waiting));
+    const tail = q.toString();
+    return request<SupportQueueItem[]>('GET', `/support/desk/queue${tail ? `?${tail}` : ''}`);
+  },
+  /** Назначить обращение: себе или, если можно, другому. */
+  supportAssign: (id: string, agentId?: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/assign`, { agentId }),
+  /** Снять с себя: разговор вернётся в очередь и сразу поищет нового исполнителя. */
+  supportUnassign: (id: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/unassign`, {}),
   supportJoin: (id: string) => request<SupportConversation>('POST', `/support/desk/${id}/join`, {}),
   supportReply: (id: string, text: string) =>
     request<SupportConversation>('POST', `/support/desk/${id}/reply`, { text }),
@@ -1225,7 +1246,10 @@ export const api = {
   platformStaff: () => request<PlatformStaff[]>('GET', '/platform/staff'),
   platformRoles: () => request<{ id: string; title: string }[]>('GET', '/platform/roles'),
   platformCandidates: () => request<PlatformCandidate[]>('GET', '/platform/staff/candidates'),
-  platformSetStaff: (userId: string, patch: { active?: boolean; role?: string; skills?: string[]; remove?: boolean }) =>
+  platformSetStaff: (
+    userId: string,
+    patch: { active?: boolean; role?: string; skills?: string[]; maxConversations?: number; remove?: boolean },
+  ) =>
     request<PlatformStaff[]>('POST', '/platform/staff', { userId, ...patch }),
   platformTenants: () => request<PlatformTenant[]>('GET', '/platform/tenants'),
 

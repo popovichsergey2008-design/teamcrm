@@ -371,11 +371,23 @@ export interface SupportQueueItem {
   orgName?: string;
   agentName: string | null; waitingSince: string;
   lastAt: string | null; priority: string;
+  /** Номер назначенного: по нему в консоли видно «моё / чужое». */
+  agentId?: string | null;
 }
 
 /** Сотрудник техотдела вендора. */
 export interface PlatformStaff {
   userId: string; name: string; role: string; roleTitle: string; onDuty: boolean; skills: string[];
+  /** Сколько разговоров тянет одновременно: больше — новые не назначаются. */
+  maxConversations: number;
+}
+
+/** Отбор очереди: пустые поля просто не сужают выборку. */
+export interface SupportQueueFilter {
+  skill?: string;
+  priority?: string;
+  assigned?: 'me' | 'none';
+  waiting?: number;
 }
 
 /** Обращение, открытое инженеру по эскалации: общей очереди у него нет. */
