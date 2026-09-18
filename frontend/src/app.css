@@ -4690,6 +4690,30 @@ button.chat-pop-row:hover { background: var(--hover); }
 .support-hb { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /*
+  Оболочка консоли: рабочее место одной задачи.
+
+  Вместо левой панели на двенадцать разделов — строка сверху. Всё, что не относится к
+  разбору обращений, здесь не спрятано, а отсутствует: доски и календарь сотрудника
+  вендора живут на основном домене, и путать их с чужими обращениями незачем.
+*/
+.console-shell { flex-direction: column; }
+.console-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--bg-elev);
+}
+.console-brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.console-brand .dim { font-size: var(--fs-sm); }
+.console-bar-right { display: flex; align-items: center; gap: 10px; }
+.console-me { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); }
+.console-me-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console-main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.console-denied { gap: 12px; text-align: center; }
+.console-denied p { margin: 0 0 10px; color: var(--text-dim); }
+@media (max-width: 560px) {
+  .console-me-name, .console-brand .dim { display: none; }
+}
+
+/*
   Консоль техотдела: кабинет вендора внутри той же CRM.
 
   Нарочно скромная: это рабочий экран для своих, а не витрина. Вкладками, потому что

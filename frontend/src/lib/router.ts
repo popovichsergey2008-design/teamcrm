@@ -64,6 +64,19 @@ export function isConsoleHost(): boolean {
  * Имя выводим из текущего домена, а не пишем строкой: установок у продукта будет
  * больше одной, и «anthill.team» в коде фронта — чужое имя в чужой копии.
  */
+/**
+ * Обратный путь: с консоли — в саму CRM.
+ *
+ * Сотруднику техотдела иногда нужна обычная система (своя доска, задача по багу из
+ * обращения). Открывается она на основном домене отдельной вкладкой: смешивать два
+ * разных рабочих места в одном окне — ровно то, от чего мы уходим.
+ */
+export function mainSiteHref(): string {
+  const host = window.location.hostname;
+  if (!isConsoleHost()) return '/';
+  return `${window.location.protocol}//${host.slice(CONSOLE_HOST.length)}/`;
+}
+
 export function consoleHref(): string {
   const host = window.location.hostname;
   const local = host === 'localhost' || host === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(host);

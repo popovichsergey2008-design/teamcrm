@@ -166,11 +166,26 @@ export function SupportDock() {
     try {
       const room = await api.startCall(undefined, true);
       await api.supportHuddle(conv.id, String(room.id));
-      const to = conv.participants
-        .map((p) => String(p.user_id))
-        .filter((uid) => uid !== String(user?.id ?? ''));
+      /*
+        Ссылку на комнату кладём в разговор — гостевую.
+
+        Специалист и человек в РАЗНЫХ организациях: обычное приглашение на созвон до
+        собеседника не дойдёт, оно ходит внутри компании. Гостевая ссылка работает
+        всегда и не даёт ничего, кроме этой комнаты: вход через комнату ожидания, и
+        её можно отозвать.
+      */
+      const link = await api.createGuestLink({
+        roomId: String(room.id),
+        label: `Служба заботы · ${conv.subject}`.slice(0, 80),
+        ttlHours: 4,
+      });
+      const invite = `Созвон начат — подключайтесь: ${link.url}`;
+      setConv(mineConversation ? await api.supportSend(invite) : await api.supportReply(conv.id, invite));
+      // Своим (когда обращение внутри одной организации) звоним и обычным приглашением.
+      const to = mineConversation
+        ? conv.participants.map((p) => String(p.user_id)).filter((uid) => uid !== String(user?.id ?? ''))
+        : [];
       requestCall({ memberIds: to, title: `Служба заботы · ${conv.subject}`.slice(0, 80) });
-      setConv(await api.supportConversation(conv.id));
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Созвон не начался');
     } finally { setBusy(false); }

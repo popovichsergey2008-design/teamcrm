@@ -37,7 +37,7 @@ import { SecretaryPanel } from './components/SecretaryPanel';
 import { InboxPanel } from './components/InboxPanel';
 import { ClientPortal } from './pages/ClientPortal';
 import { Toasts } from './components/Toasts';
-import { navigate, parsePath, Section, useRoute } from './lib/router';
+import { isConsoleHost, mainSiteHref, navigate, parsePath, Section, useRoute } from './lib/router';
 import { dropCache } from './lib/cache';
 import { START_CALL_EVENT, StartCallRequest } from './lib/notifications';
 import { useShortcuts } from './hooks/useShortcuts';
@@ -47,6 +47,7 @@ import { prefetchRadar } from './pages/RadarPage';
 import { ChatBar } from './components/chatbar/ChatBar';
 import { SupportDock } from './components/support/SupportDock';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
+import { ConsoleTopBar } from './components/console/ConsoleTopBar';
 
 /**
  * Обёртка раздела, который остаётся жить после ухода с него.
@@ -326,6 +327,57 @@ export function App() {
 
   // клиент видит отдельный портал (без внутренних досок/финансов)
   if (user.role === 'client') return <ClientPortal />;
+
+  /*
+    Консоль техотдела — своё рабочее место, а не CRM со скрытой строкой меню.
+
+    На этом адресе человек занят одним: разбирает обращения клиентов. Доски, задачи,
+    календарь, лента, панель чатов и диктовка задач голосом здесь не просто лишние —
+    они путают: сотрудник вендора видел бы СВОЮ компанию рядом с чужими обращениями и
+    легко принял бы одно за другое. Поэтому от оболочки остаются три вещи: консоль,
+    панель разговора и созвон. Остальное — на основном домене, отдельной вкладкой.
+
+    Тем, кто не в техотделе, этот адрес не показывает ничего: не пустой каркас и не
+    отказ на пол-экрана, а строчка с дорогой обратно.
+  */
+  if (isConsoleHost()) {
+    if (!user.platformStaff) {
+      return (
+        <div className="center-screen console-denied">
+          <p>Этот адрес — рабочее место службы заботы.</p>
+          <a className="btn btn-primary btn-sm" href={mainSiteHref()}>Перейти в CRM</a>
+        </div>
+      );
+    }
+    return (
+      <div className="shell console-shell">
+        <ConsoleTopBar name={user.fullName} avatarPath={avatarPath} onLogout={logout} />
+        <main className="console-main">
+          <ConsolePage route={route} />
+        </main>
+
+        {/* Панель разговора — та же, что у человека: второго мессенджера с той же лентой не заводим. */}
+        <SupportDock />
+
+        {/* Созвон по обращению обязан работать и здесь: без него «позвоните мне» упирается в никуда. */}
+        {callId && (
+          <CallPanel
+            meetingId={callId}
+            inviteUserIds={callInvite}
+            withCamera={callCamera}
+            onClose={() => { setCallId(null); setCallInvite([]); setCallCamera(false); }}
+          />
+        )}
+        {incoming && !callId && (
+          <IncomingCallDialog
+            call={incoming}
+            onAccept={() => { const id = accept(); if (id) { setCallInvite([]); setCallId(id); } }}
+            onDecline={decline}
+          />
+        )}
+      </div>
+    );
+  }
 
   const canManage = user.role === 'owner' || user.role === 'manager';
 
