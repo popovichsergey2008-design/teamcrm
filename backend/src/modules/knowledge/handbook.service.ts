@@ -3,6 +3,7 @@ import { readdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { DbService } from '../../database/db.service';
 import { KnowledgeService } from './knowledge.service';
+import { KnowledgeRepository } from './knowledge.repository';
 
 /** Приставка к названию регламента: по ней справочник видно среди своих документов. */
 const PREFIX = 'Справочник ANTHILL · ';
@@ -41,6 +42,7 @@ export class HandbookService implements OnModuleInit {
   constructor(
     private readonly db: DbService,
     private readonly knowledge: KnowledgeService,
+    private readonly kRepo: KnowledgeRepository,
   ) {}
 
   onModuleInit(): void {
@@ -158,8 +160,37 @@ export class HandbookService implements OnModuleInit {
         added += 1;
       }
     }
-    if (added || updated) this.log.log(`справочник: ${added} новых, ${updated} обновлено, ${unchanged} без изменений`);
-    return { added, updated, unchanged, total: files.length, ...(await this.state(tenantId)) };
+    const removed = await this.prune(tenantId, files.map((f) => PREFIX + f.title));
+    if (added || updated || removed) {
+      this.log.log(`справочник: ${added} новых, ${updated} обновлено, ${unchanged} без изменений, ${removed} убрано`);
+    }
+    return { added, updated, unchanged, removed, total: files.length, ...(await this.state(tenantId)) };
+  }
+
+  /**
+   * Убрать разделы, которых в справочнике больше нет.
+   *
+   * Раздел узнаётся по названию, а название берётся из заголовка файла — значит, любая
+   * его правка заводит НОВЫЙ документ, а прежний остаётся сиротой. Ровно это и
+   * случилось при переименовании продукта: «Начало работы в TeamCRM» стало «Начало
+   * работы в ANTHILL», и в каждой организации осталось по лишнему документу, который
+   * помощник по-прежнему находил и цитировал.
+   *
+   * Поэтому уборка — часть загрузки, а не разовая миграция: переименуют заголовок ещё
+   * раз, и всё сойдётся само.
+   */
+  private async prune(tenantId: string, keep: string[]): Promise<number> {
+    if (!keep.length) return 0; // файлов не нашли — не время сносить загруженное
+    const stale = await this.db.many<{ id: string }>(
+      `SELECT id::text FROM regulations
+        WHERE tenant_id=$1 AND title LIKE $2 AND NOT (title = ANY($3::text[]))`,
+      [tenantId, `${PREFIX}%`, keep],
+    );
+    for (const r of stale) {
+      await this.kRepo.deleteBySource(tenantId, 'regulation', r.id);
+      await this.db.query(`DELETE FROM regulations WHERE tenant_id=$1 AND id=$2`, [tenantId, r.id]);
+    }
+    return stale.length;
   }
 
   /**
@@ -194,7 +225,12 @@ export class HandbookService implements OnModuleInit {
   async syncAll(): Promise<void> {
     try {
       const tenants = await this.db.many<{ id: string }>(`SELECT id::text FROM tenants`);
+      const titles = (await this.read()).map((f) => PREFIX + f.title);
       for (const t of tenants) {
+        // Сироты убираются и там, где тексты не менялись: переименованный раздел
+        // оставляет прежний документ на месте, а «нестарым» он выглядит как раз потому,
+        // что новый уже загружен.
+        await this.prune(t.id, titles);
         const st = await this.state(t.id);
         if (!st.stale) continue;
         // Автор регламента — владелец организации: у справочника должен быть хозяин.
