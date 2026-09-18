@@ -300,15 +300,16 @@ export class SupportDeskRepository {
   // ── действия с разрешения человека, известные проблемы, сбой (MVP 3) ──
   /** Предложенное действие: пока человек не разрешил, оно только предложение. */
   proposeAction(i: {
-    conversationId: string; actorId: string; action: string; entityType: string;
+    conversationId: string; actorId: string; actorRole: string | null; action: string; entityType: string;
     entityId: string; preview: string; params: Record<string, unknown>; before: Record<string, unknown> | null;
   }) {
     return this.db.one<{ id: string }>(
       `INSERT INTO support_actions
-         (conversation_id, actor_id, action, entity_type, entity_id, preview, params_json, before_json, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'proposed') RETURNING id::text`,
+         (conversation_id, actor_id, actor_role, action, entity_type, entity_id,
+          preview, params_json, before_json, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'proposed') RETURNING id::text`,
       [
-        i.conversationId, i.actorId, i.action, i.entityType, i.entityId,
+        i.conversationId, i.actorId, i.actorRole, i.action, i.entityType, i.entityId,
         i.preview.slice(0, 500), JSON.stringify(i.params), i.before ? JSON.stringify(i.before) : null,
       ],
     );
@@ -340,13 +341,27 @@ export class SupportDeskRepository {
     );
   }
 
-  /** Решение человека по действию: сделано, отклонено или отменено. */
-  async decideAction(id: string, status: string, approved: boolean, after: Record<string, unknown> | null): Promise<void> {
+  /**
+   * Решение человека по действию: сделано, отклонено или отменено.
+   *
+   * Адрес и устройство пишем здесь, а не при предложении: значим момент СОГЛАСИЯ —
+   * именно его придётся однажды показывать, объясняя, почему в чужой задаче поменялся
+   * срок.
+   */
+  async decideAction(
+    id: string, status: string, approved: boolean, after: Record<string, unknown> | null,
+    sign?: { ip?: string | null; userAgent?: string | null },
+  ): Promise<void> {
     await this.db.query(
       `UPDATE support_actions
-          SET status=$2, approved_by_user=$3, after_json=$4, decided_at=now()
+          SET status=$2, approved_by_user=$3, after_json=$4, decided_at=now(),
+              approved_ip = COALESCE($5, approved_ip),
+              approved_ua = COALESCE($6, approved_ua)
         WHERE id=$1`,
-      [id, status, approved, after ? JSON.stringify(after) : null],
+      [
+        id, status, approved, after ? JSON.stringify(after) : null,
+        sign?.ip ?? null, sign?.userAgent?.slice(0, 256) ?? null,
+      ],
     );
   }
 
@@ -416,6 +431,79 @@ export class SupportDeskRepository {
       `SELECT id::text, tenant_id::text, user_id::text FROM support_conversations
         WHERE ($1::bigint IS NULL OR tenant_id = $1::bigint) AND closed_at IS NULL`,
       [tenantId],
+    );
+  }
+
+  // ── срочный доступ инженера (этап 1 коммерческой архитектуры) ──
+  /**
+   * Выдать инженеру доступ к обращению на срок.
+   *
+   * Повторная выдача продлевает: инженера зовут в разговор, а не «выписывают пропуск»,
+   * и второе нажатие «Подключить инженера» должно означать «он всё ещё нужен».
+   */
+  grantEngineer(conversationId: string, engineerId: string, by: string, hours: number) {
+    return this.db.one<{ id: string; expires_at: Date }>(
+      `INSERT INTO support_engineer_grants (conversation_id, engineer_id, granted_by, expires_at)
+       VALUES ($1, $2, $3, now() + ($4 || ' hours')::interval)
+       RETURNING id::text, expires_at`,
+      [conversationId, engineerId, by, String(hours)],
+    );
+  }
+
+  /** Есть ли у инженера ЖИВОЙ доступ: не отозван и не истёк. */
+  async hasLiveGrant(conversationId: string, engineerId: string): Promise<boolean> {
+    const row = await this.db.one<{ id: string }>(
+      `SELECT id::text FROM support_engineer_grants
+        WHERE conversation_id=$1 AND engineer_id=$2
+          AND revoked_at IS NULL AND expires_at > now()
+        LIMIT 1`,
+      [conversationId, engineerId],
+    );
+    return !!row;
+  }
+
+  /** Кому из инженеров открыт разговор — показывается специалисту в панели. */
+  grantsOf(conversationId: string) {
+    return this.db.many<{
+      id: string; engineer_id: string; full_name: string; expires_at: Date; revoked_at: Date | null;
+    }>(
+      `SELECT g.id::text, g.engineer_id::text, u.full_name, g.expires_at, g.revoked_at
+         FROM support_engineer_grants g JOIN users u ON u.id = g.engineer_id
+        WHERE g.conversation_id=$1
+        ORDER BY g.created_at DESC`,
+      [conversationId],
+    );
+  }
+
+  async revokeGrants(conversationId: string, engineerId: string, by: string): Promise<number> {
+    const res = await this.db.query(
+      `UPDATE support_engineer_grants SET revoked_at = now(), revoked_by = $3
+        WHERE conversation_id=$1 AND engineer_id=$2 AND revoked_at IS NULL`,
+      [conversationId, engineerId, by],
+    );
+    return res.rowCount ?? 0;
+  }
+
+  /**
+   * Обращения, открытые инженеру сейчас.
+   *
+   * Это вся его видимость: общей очереди у инженера нет — он не первая линия
+   * (01_ARCHITECTURE §3, 03_RBAC §3).
+   */
+  escalationsOf(engineerId: string) {
+    return this.db.many<ConversationRow & {
+      user_name: string; tenant_name: string; agent_name: string | null; expires_at: Date;
+    }>(
+      `SELECT c.*, u.full_name AS user_name, t.name AS tenant_name, a.full_name AS agent_name,
+              g.expires_at
+         FROM support_engineer_grants g
+         JOIN support_conversations c ON c.id = g.conversation_id
+         JOIN users u ON u.id = c.user_id
+         JOIN tenants t ON t.id = c.tenant_id
+         LEFT JOIN users a ON a.id = c.assigned_agent_id
+        WHERE g.engineer_id=$1 AND g.revoked_at IS NULL AND g.expires_at > now()
+        ORDER BY c.updated_at DESC`,
+      [engineerId],
     );
   }
 

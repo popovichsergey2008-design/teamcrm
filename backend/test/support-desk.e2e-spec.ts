@@ -379,6 +379,99 @@ describe('служба заботы (e2e)', () => {
     expect(back.messages.length).toBeGreaterThan(1);
   }, 30000);
 
+  /*
+    Этап 1 коммерческой архитектуры: роли техотдела и срочный доступ инженера.
+
+    Проверяем главное обещание раздела 03_RBAC: инженер — не первая линия. Он не видит
+    очередь, не может открыть обращение без доступа, получает его на срок и теряет
+    после отзыва.
+  */
+  it('инженер видит только то, куда его позвали, и только пока доступ жив', async () => {
+    const vendor = await team('SDE');
+    const client = await team('SDEC');
+    await platform.declarePlatform(String(vendor.owner.user.tenantId), String(vendor.owner.user.id));
+
+    try {
+      // второй человек платформы — инженер
+      await http.post('/api/platform/staff').set(vendor.O)
+        .send({ userId: String(vendor.mate.id), active: true, role: 'engineer' }).expect(201);
+
+      const conv = (await http.post('/api/support/desk/messages').set(client.M)
+        .send({ text: 'Позовите специалиста: не грузится импорт' }).expect(201)).body.data;
+
+      // инженер не видит ни очереди, ни сводки, ни самого обращения
+      await http.get('/api/support/desk/queue').set(vendor.M).expect(403);
+      await http.get('/api/support/desk/dashboard').set(vendor.M).expect(403);
+      await http.get(`/api/support/desk/${conv.id}`).set(vendor.M).expect(404);
+      // и настройками службы не распоряжается
+      await http.post('/api/support/desk/incident').set(vendor.M)
+        .send({ title: 'Тест', message: 'Тест' }).expect(403);
+
+      // зато видит пустой список своих эскалаций
+      const empty = (await http.get('/api/support/desk/escalations').set(vendor.M).expect(200)).body.data;
+      expect(empty).toEqual([]);
+
+      // дежурный берёт разговор и зовёт инженера
+      await http.post(`/api/support/desk/${conv.id}/join`).set(vendor.O).expect(201);
+      await http.post(`/api/support/desk/${conv.id}/engineer`).set(vendor.O)
+        .send({ userId: String(vendor.mate.id) }).expect(201);
+
+      // теперь обращение открыто — и видно, до какого времени
+      const seen = (await http.get(`/api/support/desk/${conv.id}`).set(vendor.M).expect(200)).body.data;
+      expect(String(seen.id)).toBe(String(conv.id));
+      const mine = (await http.get('/api/support/desk/escalations').set(vendor.M).expect(200)).body.data;
+      expect(mine.length).toBe(1);
+      expect(mine[0].accessUntil).toBeTruthy();
+      // но очередь ему по-прежнему не положена
+      await http.get('/api/support/desk/queue').set(vendor.M).expect(403);
+
+      // инженер может ответить в своём разговоре
+      await http.post(`/api/support/desk/${conv.id}/reply`).set(vendor.M)
+        .send({ text: 'Смотрю логи импорта' }).expect(201);
+
+      // доступ отозвали — обращение снова не существует для него
+      await http.post(`/api/support/desk/${conv.id}/engineer/${vendor.mate.id}/revoke`)
+        .set(vendor.O).send({}).expect(201);
+      await http.get(`/api/support/desk/${conv.id}`).set(vendor.M).expect(404);
+      const after = (await http.get('/api/support/desk/escalations').set(vendor.M).expect(200)).body.data;
+      expect(after).toEqual([]);
+
+      // а переписка инженера осталась в разговоре: история не переписывается
+      const asAgent = (await http.get(`/api/support/desk/${conv.id}`).set(vendor.O).expect(200)).body.data;
+      expect(asAgent.messages.some((m: any) => String(m.body).includes('логи импорта'))).toBe(true);
+    } finally {
+      await platform.clearPlatform();
+    }
+  }, 90000);
+
+  it('настройки службы — руководителю поддержки, а не всякому в отделе', async () => {
+    const vendor = await team('SDR');
+    await platform.declarePlatform(String(vendor.owner.user.tenantId), String(vendor.owner.user.id));
+
+    try {
+      // первая линия: очередь видит, состав отдела и справочник — нет
+      await http.post('/api/platform/staff').set(vendor.O)
+        .send({ userId: String(vendor.mate.id), active: true, role: 'support' }).expect(201);
+      await http.get('/api/support/desk/queue').set(vendor.M).expect(200);
+      await http.get('/api/support/desk/handbook/state').set(vendor.M).expect(403);
+      await http.post('/api/platform/staff').set(vendor.M)
+        .send({ userId: String(vendor.mate.id), active: false }).expect(403);
+
+      // руководитель поддержки: и очередь, и настройки
+      await http.post('/api/platform/staff').set(vendor.O)
+        .send({ userId: String(vendor.mate.id), role: 'support_admin' }).expect(201);
+      await http.get('/api/support/desk/handbook/state').set(vendor.M).expect(200);
+
+      // роль видна в составе отдела человеческим словом
+      const staff = (await http.get('/api/platform/staff').set(vendor.O).expect(200)).body.data;
+      const mate = staff.find((x: any) => String(x.userId) === String(vendor.mate.id));
+      expect(mate.role).toBe('support_admin');
+      expect(mate.roleTitle).toBeTruthy();
+    } finally {
+      await platform.clearPlatform();
+    }
+  }, 60000);
+
   it('чужое обращение не прочитать', async () => {
     const a = await team('SD2');
     const b = await team('SD3');

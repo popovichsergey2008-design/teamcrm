@@ -1,7 +1,7 @@
 import type {
   Agenda, AiAction, Approval, AssistantMode, AuthResult, Board, Focus, GateSettings, Ping,
   Project, Proposal, SearchResults, SemanticHit, SupportContextInput, SupportConversation,
-  PlatformCandidate, PlatformStaff, PlatformTenant,
+  PlatformCandidate, PlatformStaff, PlatformTenant, SupportEngineerGrant, SupportEscalation,
   SupportDesk, SupportHandbook, SupportQueueItem, Task,
 } from '../types';
 
@@ -1173,6 +1173,19 @@ export const api = {
     summary: string | null;
     known: { id: string; taskId: string; title: string } | null;
   }>('POST', `/support/desk/${id}/copilot`, {}),
+  /**
+   * Инженер: только те обращения, куда его позвали.
+   *
+   * Общей очереди у инженера нет намеренно — он подключается по эскалации, а не
+   * разбирает поток обращений.
+   */
+  supportEscalations: () => request<SupportEscalation[]>('GET', '/support/desk/escalations'),
+  /** Кому из инженеров открыт разговор и до какого времени. */
+  supportEngineers: (id: string) => request<SupportEngineerGrant[]>('GET', `/support/desk/${id}/engineers`),
+  /** Закрыть инженеру доступ: эскалация кончилась — кончается и право читать. */
+  supportRevokeEngineer: (id: string, engineerId: string) =>
+    request<SupportConversation>('POST', `/support/desk/${id}/engineer/${engineerId}/revoke`, {}),
+
   /** Известные проблемы. */
   supportKnownIssues: () => request<{
     id: string; taskId: string; title: string; pattern: string; active: boolean; fixed: boolean;
@@ -1206,6 +1219,7 @@ export const api = {
    */
   platformMe: () => request<{ staff: boolean; admin: boolean; configured: boolean }>('GET', '/platform/me'),
   platformStaff: () => request<PlatformStaff[]>('GET', '/platform/staff'),
+  platformRoles: () => request<{ id: string; title: string }[]>('GET', '/platform/roles'),
   platformCandidates: () => request<PlatformCandidate[]>('GET', '/platform/staff/candidates'),
   platformSetStaff: (userId: string, patch: { active?: boolean; role?: string; skills?: string[]; remove?: boolean }) =>
     request<PlatformStaff[]>('POST', '/platform/staff', { userId, ...patch }),

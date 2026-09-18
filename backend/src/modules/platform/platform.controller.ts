@@ -3,13 +3,13 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
 import { CurrentUser } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
-import { PlatformService } from './platform.service';
+import { PLATFORM_ROLES, PlatformService, ROLE_TITLES } from './platform.service';
 
 class StaffDto {
   @IsString() userId!: string;
   /** Дежурит ли сейчас: снятый остаётся в техотделе и не теряет историю. */
   @IsOptional() @IsBoolean() active?: boolean;
-  @IsOptional() @IsIn(['admin', 'agent']) role?: string;
+  @IsOptional() @IsIn(PLATFORM_ROLES) role?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) skills?: string[];
   /** Совсем убрать из техотдела. */
   @IsOptional() @IsBoolean() remove?: boolean;
@@ -31,15 +31,29 @@ class StaffDto {
 export class PlatformController {
   constructor(private readonly platform: PlatformService) {}
 
-  /** Кто я для платформы: по этому фронт решает, показывать ли консоль вообще. */
+  /** Кто я для платформы: по этому фронт решает, что вообще показывать в консоли. */
   @Get('me')
   async me(@CurrentUser() u: AuthUser) {
-    const [staff, admin, tenantId] = await Promise.all([
-      this.platform.isStaff(u.userId),
-      this.platform.isAdmin(u.userId),
+    const [role, tenantId] = await Promise.all([
+      this.platform.roleOf(u.userId),
       this.platform.tenantId(),
     ]);
-    return { staff, admin, configured: !!tenantId };
+    return {
+      staff: !!role,
+      role,
+      roleTitle: role ? ROLE_TITLES[role] : null,
+      admin: role === 'admin' || role === 'support_admin',
+      /** Инженер видит не очередь, а свои эскалации. */
+      engineer: role === 'engineer',
+      configured: !!tenantId,
+    };
+  }
+
+  /** Роли техотдела с человеческими названиями — для выбора в консоли. */
+  @Get('roles')
+  async roles(@CurrentUser() u: AuthUser) {
+    await this.platform.assertStaff(u.userId);
+    return PLATFORM_ROLES.map((id) => ({ id, title: ROLE_TITLES[id] }));
   }
 
   /** Техотдел: кто в нём, кто дежурит, кто администратор. */
@@ -48,7 +62,9 @@ export class PlatformController {
     await this.platform.assertStaff(u.userId);
     const rows = await this.platform.staffAll();
     return rows.map((s) => ({
-      userId: s.user_id, name: s.full_name, role: s.role, onDuty: s.active, skills: s.skills ?? [],
+      userId: s.user_id, name: s.full_name, role: s.role,
+      roleTitle: ROLE_TITLES[s.role as keyof typeof ROLE_TITLES] ?? s.role,
+      onDuty: s.active, skills: s.skills ?? [],
     }));
   }
 
@@ -70,7 +86,9 @@ export class PlatformController {
       active: dto.active, role: dto.role, skills: dto.skills, remove: dto.remove,
     });
     return rows.map((s) => ({
-      userId: s.user_id, name: s.full_name, role: s.role, onDuty: s.active, skills: s.skills ?? [],
+      userId: s.user_id, name: s.full_name, role: s.role,
+      roleTitle: ROLE_TITLES[s.role as keyof typeof ROLE_TITLES] ?? s.role,
+      onDuty: s.active, skills: s.skills ?? [],
     }));
   }
 

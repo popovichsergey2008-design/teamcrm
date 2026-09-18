@@ -8,7 +8,7 @@ import { stampLabel } from '../lib/chat-text';
 import { navigate, Route } from '../lib/router';
 import { useAuth } from '../state/auth';
 import type {
-  PlatformCandidate, PlatformStaff, PlatformTenant, SupportHandbook, SupportQueueItem,
+  PlatformCandidate, PlatformStaff, PlatformTenant, SupportEscalation, SupportHandbook, SupportQueueItem,
 } from '../types';
 
 /** Секунды человеческими словами: «28 сек», «4 мин», «1 ч 10 мин». */
@@ -20,11 +20,11 @@ function dur(sec: number | null): string {
   return `${h} ч ${Math.round((sec - h * 3600) / 60)} мин`;
 }
 
-const TABS: { id: string; label: string; icon: string }[] = [
+const TABS: { id: string; label: string; icon: string; manage?: boolean }[] = [
   { id: 'queue', label: 'Обращения', icon: 'support' },
   { id: 'team', label: 'Техотдел', icon: 'users' },
-  { id: 'known', label: 'Известные проблемы', icon: 'alert' },
-  { id: 'handbook', label: 'Справочник', icon: 'book' },
+  { id: 'known', label: 'Известные проблемы', icon: 'alert', manage: true },
+  { id: 'handbook', label: 'Справочник', icon: 'book', manage: true },
   { id: 'clients', label: 'Организации', icon: 'building' },
 ];
 
@@ -44,8 +44,19 @@ const TABS: { id: string; label: string; icon: string }[] = [
  */
 export function ConsolePage({ route }: { route: Route }) {
   const { user } = useAuth();
-  const tab = route.tab && TABS.some((t) => t.id === route.tab) ? route.tab : 'queue';
   const isAdmin = !!user?.platformAdmin;
+  /*
+    Инженер — не первая линия (01_ARCHITECTURE §3, 03_RBAC §3).
+
+    Общей очереди у него нет, состав отдела и известные проблемы — не его дело.
+    Консоль для него сворачивается в один экран: обращения, куда его позвали, и до
+    какого времени они ему открыты.
+  */
+  const isEngineer = user?.platformRole === 'engineer';
+  const tabs = isEngineer ? [] : TABS.filter((t) => !t.manage || isAdmin);
+  const tab = isEngineer
+    ? 'escalations'
+    : (route.tab && tabs.some((t) => t.id === route.tab) ? route.tab : 'queue');
 
   const [queue, setQueue] = useState<SupportQueueItem[]>([]);
   const [stats, setStats] = useState<Awaited<ReturnType<typeof api.supportDashboard>> | null>(null);
@@ -54,6 +65,8 @@ export function ConsolePage({ route }: { route: Route }) {
   const [known, setKnown] = useState<Awaited<ReturnType<typeof api.supportKnownIssues>>>([]);
   const [hb, setHb] = useState<SupportHandbook | null>(null);
   const [clients, setClients] = useState<PlatformTenant[]>([]);
+  const [escalations, setEscalations] = useState<SupportEscalation[]>([]);
+  const [roles, setRoles] = useState<{ id: string; title: string }[]>([]);
   const [incident, setIncident] = useState({ title: '', message: '' });
   const [issue, setIssue] = useState({ taskId: '', title: '' });
   const [busy, setBusy] = useState(false);
@@ -61,6 +74,12 @@ export function ConsolePage({ route }: { route: Route }) {
   const [ready, setReady] = useState(false);
 
   const load = useCallback(async () => {
+    // Инженеру не за чем ходить в очередь и настройки — там для него отказ.
+    if (isEngineer) {
+      setEscalations(await api.supportEscalations().catch(() => []));
+      setReady(true);
+      return;
+    }
     const [q, d, s, k, h, c] = await Promise.all([
       api.supportQueue().catch(() => []),
       api.supportDashboard().catch(() => null),
@@ -70,9 +89,12 @@ export function ConsolePage({ route }: { route: Route }) {
       api.platformTenants().catch(() => []),
     ]);
     setQueue(q); setStats(d); setStaff(s); setKnown(k); setHb(h); setClients(c);
-    if (isAdmin) setPeople(await api.platformCandidates().catch(() => []));
+    if (isAdmin) {
+      setPeople(await api.platformCandidates().catch(() => []));
+      setRoles(await api.platformRoles().catch(() => []));
+    }
     setReady(true);
-  }, [isAdmin]);
+  }, [isAdmin, isEngineer]);
   useEffect(() => { void load(); }, [load]);
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -89,12 +111,16 @@ export function ConsolePage({ route }: { route: Route }) {
       <div className="page-head">
         <h2 className="page-title"><Icon name="lock" size={18} /> Консоль техподдержки</h2>
         <div className="page-head-actions">
-          <span className="dim">{onDuty.length ? `на дежурстве: ${onDuty.length}` : 'дежурных нет'}</span>
+          <span className="dim">
+            {isEngineer
+              ? `открыто обращений: ${escalations.length}`
+              : (onDuty.length ? `на дежурстве: ${onDuty.length}` : 'дежурных нет')}
+          </span>
         </div>
       </div>
 
       <nav className="console-tabs" aria-label="Разделы консоли">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             className={`console-tab${tab === t.id ? ' active' : ''}`}
@@ -111,12 +137,45 @@ export function ConsolePage({ route }: { route: Route }) {
         {!ready && <SkeletonList rows={4} />}
 
         {/*
+          Экран инженера: только то, куда его позвали.
+
+          Вместо очереди — список эскалаций со сроком доступа: инженер должен видеть,
+          что право читать это обращение кончится, и не удивляться, когда оно кончится.
+        */}
+        {ready && isEngineer && (
+          <div className="support-block">
+            <div className="drawer-section-title">Мои эскалации</div>
+            {!escalations.length && (
+              <EmptyState
+                compact
+                icon="check"
+                title="Эскалаций нет"
+                hint="Обращение появится здесь, когда специалист поддержки позовёт вас в разговор."
+              />
+            )}
+            {escalations.map((e) => (
+              <button key={e.id} className="support-queue-row" onClick={openSupport}>
+                <span className="support-queue-head">
+                  <b>{e.subject || 'Обращение'}</b>
+                  <span className="dim">{stampLabel(e.waitingSince)}</span>
+                </span>
+                <span className="dim">
+                  {e.orgName ? <b className="console-org">{e.orgName}</b> : null} {e.userName} · {e.statusText}
+                  {e.agentName ? ` · ведёт ${e.agentName}` : ''}
+                  {` · доступ до ${new Date(e.accessUntil).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/*
           Обращения — очередь ВСЕХ организаций.
 
           Рядом с именем человека стоит его организация: без неё специалист не
           понимает, у кого сломалось, и первым делом спрашивает об этом сам.
         */}
-        {ready && tab === 'queue' && (
+        {ready && !isEngineer && tab === 'queue' && (
           <>
             {stats && (
               <div className="support-stats">
@@ -204,7 +263,7 @@ export function ConsolePage({ route }: { route: Route }) {
           Галочка «дежурит» — то, что меняется каждую неделю; состав — то, что меняется
           раз в полгода. Поэтому галочка видна всем в отделе, а состав правит админ.
         */}
-        {ready && tab === 'team' && (
+        {ready && !isEngineer && tab === 'team' && (
           <>
             <div className="support-block">
               <div className="drawer-section-title">Кто дежурит</div>
@@ -224,9 +283,26 @@ export function ConsolePage({ route }: { route: Route }) {
                     />
                     <span className="support-duty-name">
                       {s.name}
-                      {s.role === 'admin' && <span className="dim"> · администратор</span>}
+                      <span className="dim"> · {s.roleTitle}</span>
                       {!!s.skills.length && <span className="dim"> · {s.skills.join(', ')}</span>}
                     </span>
+                    {/*
+                      Роль решает, что человек увидит: первая линия — очередь, инженер —
+                      только свои эскалации. Поэтому меняется здесь же, где дежурство, а
+                      не в отдельном экране настроек.
+                    */}
+                    {isAdmin && (
+                      <select
+                        className="input console-role"
+                        value={s.role}
+                        disabled={busy}
+                        aria-label={`Роль: ${s.name}`}
+                        onClick={(e) => e.preventDefault()}
+                        onChange={(e) => void act(() => api.platformSetStaff(s.userId, { role: e.target.value }))}
+                      >
+                        {roles.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
+                      </select>
+                    )}
                     {isAdmin && s.userId !== user?.id && (
                       <button
                         className="btn btn-ghost btn-sm"
@@ -278,7 +354,7 @@ export function ConsolePage({ route }: { route: Route }) {
           Слова-приметы сравниваются с текстом обращения — совпало, и человек узнаёт о
           поломке в первую же минуту, вместо того чтобы доказывать её специалисту.
         */}
-        {ready && tab === 'known' && (
+        {ready && !isEngineer && tab === 'known' && (
           <div className="support-block">
             <div className="drawer-section-title">Известные проблемы</div>
             <p className="dim">
@@ -334,7 +410,7 @@ export function ConsolePage({ route }: { route: Route }) {
           Лежит в репозитории рядом с кодом и грузится в базу знаний каждой организации:
           иначе помощник клиента не найдёт его своим же поиском.
         */}
-        {ready && tab === 'handbook' && (
+        {ready && !isEngineer && tab === 'handbook' && (
           <div className="support-block">
             <div className="drawer-section-title">Справочник по системе</div>
             <p className="dim">
@@ -374,7 +450,7 @@ export function ConsolePage({ route }: { route: Route }) {
           Содержимого чужих досок и переписок здесь нет и не будет, сколько бы это ни
           было удобно поддержке: доступ к данным клиента даёт только его обращение.
         */}
-        {ready && tab === 'clients' && (
+        {ready && !isEngineer && tab === 'clients' && (
           <div className="support-block">
             <div className="drawer-section-title">Организации</div>
             <p className="dim">

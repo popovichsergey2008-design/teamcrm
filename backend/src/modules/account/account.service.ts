@@ -32,10 +32,7 @@ export class AccountService {
       Консоль техподдержки продукта не должна появляться у владельца клиентской
       организации: «owner» там означает хозяина компании, а не разработчика CRM.
     */
-    const [platformStaff, platformAdmin] = await Promise.all([
-      this.platform.isStaff(userId),
-      this.platform.isAdmin(userId),
-    ]);
+    const platformRole = await this.platform.roleOf(userId);
     return {
       id: p.id,
       // Клиенты и сделки — дело того, кто завёл компанию; приглашённым сотрудникам
@@ -66,8 +63,10 @@ export class AccountService {
       birthDate: p.birth_date ? String(p.birth_date).slice(0, 10) : null,
       groups,
       /** Я из техотдела вендора: по этому фронт решает, показывать ли консоль. */
-      platformStaff,
-      platformAdmin,
+      platformStaff: !!platformRole,
+      platformAdmin: platformRole === 'admin' || platformRole === 'support_admin',
+      /** Роль в техотделе: у инженера консоль другая — не очередь, а его эскалации. */
+      platformRole,
     };
   }
 

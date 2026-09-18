@@ -73,6 +73,8 @@ export function SupportDock() {
   const [diag, setDiag] = useState<Awaited<ReturnType<typeof api.supportDiagnostics>> | null>(null);
   const [tools, setTools] = useState(false);
   const [people, setPeople] = useState<{ id: string; fullName: string }[]>([]);
+  /** Кому из инженеров открыт разговор: доступ выдаётся на срок и отзывается. */
+  const [grants, setGrants] = useState<Awaited<ReturnType<typeof api.supportEngineers>>>([]);
   /** Подсказка копилота дежурному: суть, что проверить, что сказать человеку. */
   const [copilot, setCopilot] = useState<Awaited<ReturnType<typeof api.supportCopilot>> | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
@@ -130,13 +132,14 @@ export function SupportDock() {
     ]);
     setDiag(d);
     setPeople(users);
+    await loadGrants(id);
   };
 
   /** Позвать инженера — в ТОТ ЖЕ разговор: объяснять второй раз человек не должен. */
   const addEngineer = async (userId: string) => {
     if (!conv || !userId) return;
     setBusy(true);
-    try { setConv(await api.supportAddEngineer(conv.id, userId)); }
+    try { setConv(await api.supportAddEngineer(conv.id, userId)); await loadGrants(conv.id); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось подключить'); }
     finally { setBusy(false); }
   };
@@ -209,6 +212,18 @@ export function SupportDock() {
   };
 
   /** Копилот: готовит специалисту то, на что уходит первая пара минут разговора. */
+  const loadGrants = async (id: string) => {
+    setGrants(await api.supportEngineers(id).catch(() => []));
+  };
+
+  const revokeEngineer = async (engineerId: string) => {
+    if (!conv) return;
+    setBusy(true);
+    try { setConv(await api.supportRevokeEngineer(conv.id, engineerId)); await loadGrants(conv.id); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось закрыть доступ'); }
+    finally { setBusy(false); }
+  };
+
   const askCopilot = async () => {
     if (!conv) return;
     setBusy(true); setErr('');
@@ -687,6 +702,33 @@ export function SupportDock() {
                       <Icon name="alert" size={13} /> Завести задачу
                     </button>
                   </div>
+
+                  {/*
+                    Доступ инженеров — со сроком и кнопкой «Закрыть».
+
+                    Право читать чужую переписку выдаётся на время эскалации, а не
+                    навсегда. Специалист должен видеть, кому сейчас открыт разговор, —
+                    иначе отозвать доступ не придёт в голову никому.
+                  */}
+                  {!!grants.length && (
+                    <div className="support-grants">
+                      {grants.map((g) => (
+                        <span key={g.engineerId} className={`support-grant${g.live ? ' live' : ''}`}>
+                          <Icon name="user" size={12} /> {g.name}
+                          <span className="dim">
+                            {g.live
+                              ? ` до ${new Date(g.expiresAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+                              : ' доступ закрыт'}
+                          </span>
+                          {g.live && (
+                            <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void revokeEngineer(g.engineerId)}>
+                              Закрыть
+                            </button>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -39,6 +39,15 @@ import { humanStatus, wantsHuman } from './support-text';
  * назначена, работает прежний порядок: обращения принимает владелец организации —
  * выкладка не должна оставить людей без поддержки из-за незаполненной настройки.
  */
+/**
+ * На сколько инженеру открывается обращение.
+ *
+ * Двое суток: эскалация редко решается за час и почти никогда не живёт дольше двух
+ * дней. Нужно ещё — специалист зовёт инженера повторно, и это осознанное действие, а
+ * не молчаливое продление бессрочного пропуска.
+ */
+const GRANT_HOURS = 48;
+
 @Injectable()
 export class SupportDeskService implements OnModuleInit {
   private readonly log = new Logger('SupportDesk');
@@ -90,7 +99,11 @@ export class SupportDeskService implements OnModuleInit {
    * вместо проверки, размазанной по двум десяткам методов.
    */
   async deskTenant(user: { userId: string; tenantId: string }, id: string): Promise<string> {
-    if (!(await this.platform.isStaff(user.userId))) return user.tenantId;
+    const role = await this.platform.roleOf(user.userId);
+    if (!role) return user.tenantId;
+    // Инженеру чужой разговор открывается только с живым доступом; без него обращение
+    // для него не существует — запрос уйдёт в его организацию и вернёт «не найдено».
+    if (role === 'engineer' && !(await this.repo.hasLiveGrant(id, user.userId))) return user.tenantId;
     const conv = await this.repo.byIdAny(id);
     return conv ? String(conv.tenant_id) : user.tenantId;
   }
@@ -399,7 +412,8 @@ export class SupportDeskService implements OnModuleInit {
   async reply(tenantId: string, user: { userId: string; role: string }, id: string, text: string, fileId?: string | null) {
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
-    await this.assertAgent(tenantId, user);
+    // Инженер отвечает только там, куда его позвали; дежурный — в любом разговоре.
+    await this.assertCanWork(tenantId, user, id);
     const body = String(text ?? '').trim();
     if (!body && !fileId) throw AppException.validation('Пустое сообщение');
 
@@ -547,9 +561,8 @@ export class SupportDeskService implements OnModuleInit {
     if (!conv) throw AppException.notFound('Разговор не найден');
     // Инженер приходит из техотдела вендора — он в другой организации, чем обращение.
     if (await this.platform.tenantId()) {
-      if (!(await this.platform.isStaff(engineerId))) {
-        throw AppException.validation('В разговор зовём только людей техотдела');
-      }
+      const role = await this.platform.roleOf(engineerId);
+      if (!role) throw AppException.validation('В разговор зовём только людей техотдела');
     }
     const who = await this.repo.userNameAny(engineerId);
     if (!who) throw AppException.notFound('Такого сотрудника нет');
@@ -558,16 +571,73 @@ export class SupportDeskService implements OnModuleInit {
       throw AppException.validation('Этот человек и есть автор обращения');
     }
 
+    /*
+      Доступ выдаётся на срок, а не навсегда (03_RBAC §5).
+
+      Инженера зовут починить конкретную поломку. Право читать чужую переписку,
+      выданное «на всякий случай» и бессрочно, — ровно то, чего коммерческая поддержка
+      себе позволить не может. Участником разговора он останется и после: он тут писал,
+      это история; читать обращение позволяет только живой доступ.
+    */
+    const grant = await this.repo.grantEngineer(id, engineerId, user.userId, GRANT_HOURS);
     await this.repo.addParticipant(id, engineerId, 'engineer');
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: user.userId, kind: 'system',
-      body: `добавил в разговор: ${who} — инженер видит всю переписку и контекст`,
+      body: `добавил в разговор: ${who} — инженер видит переписку и контекст этого обращения`,
     });
+    this.log.log(`инженер ${engineerId} допущен к обращению ${id} до ${grant?.expires_at?.toISOString?.() ?? '—'}`);
     const home = await this.platform.tenantId();
     this.realtime.emitToUsers(home ?? tenantId, [engineerId], 'support.agent.joined', { conversationId: id });
     const next = (await this.repo.byId(tenantId, id))!;
     this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: engineerId });
     return this.view(tenantId, next);
+  }
+
+  /**
+   * Отозвать доступ инженера.
+   *
+   * Эскалация кончилась — кончается и право читать обращение. Из участников разговора
+   * его не убираем: переписка должна остаться читаемой как она была.
+   */
+  async revokeEngineer(tenantId: string, user: { userId: string; role: string }, id: string, engineerId: string) {
+    await this.assertAgent(tenantId, user);
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    const n = await this.repo.revokeGrants(id, engineerId, user.userId);
+    if (n) {
+      const who = await this.repo.userNameAny(engineerId);
+      await this.repo.addMessage({
+        tenantId, conversationId: id, authorId: user.userId, kind: 'system',
+        body: `доступ инженера${who ? ` ${who}` : ''} к обращению закрыт`,
+      });
+    }
+    return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
+  }
+
+  /**
+   * Что открыто инженеру прямо сейчас.
+   *
+   * Вся его видимость: общей очереди у инженера нет — он подключается по эскалации, а
+   * не разбирает поток обращений (01_ARCHITECTURE §3).
+   */
+  async escalations(user: { userId: string; role: string }) {
+    if (!(await this.platform.isEngineer(user.userId))) {
+      throw AppException.forbidden('Это список эскалаций инженера');
+    }
+    const rows = await this.repo.escalationsOf(user.userId);
+    return rows.map((c) => ({
+      id: String(c.id),
+      subject: c.subject,
+      status: c.status,
+      statusText: humanStatus(c.status),
+      userName: c.user_name,
+      orgName: c.tenant_name,
+      agentName: c.agent_name,
+      waitingSince: c.created_at,
+      lastAt: c.updated_at,
+      priority: c.priority,
+      accessUntil: c.expires_at,
+    }));
   }
 
   /**
@@ -579,7 +649,7 @@ export class SupportDeskService implements OnModuleInit {
    * поддержка и собирает контекст.
    */
   async createBug(tenantId: string, user: { userId: string; role: string }, id: string, title?: string) {
-    await this.assertAgent(tenantId, user);
+    await this.assertCanWork(tenantId, user, id);
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
 
@@ -703,9 +773,22 @@ export class SupportDeskService implements OnModuleInit {
     }
   }
 
+  /** Кому из инженеров открыт разговор: видно тому, кто в нём работает. */
+  async grants(tenantId: string, user: { userId: string; role: string }, id: string) {
+    await this.assertCanWork(tenantId, user, id);
+    const rows = await this.repo.grantsOf(id);
+    return rows.map((g) => ({
+      engineerId: g.engineer_id,
+      name: g.full_name,
+      expiresAt: g.expires_at,
+      revokedAt: g.revoked_at,
+      live: !g.revoked_at && new Date(g.expires_at).getTime() > Date.now(),
+    }));
+  }
+
   /** Диагностика для специалиста (разд. 17): весь технический контекст одним местом. */
   async diagnostics(tenantId: string, user: { userId: string; role: string }, id: string) {
-    await this.assertAgent(tenantId, user);
+    await this.assertCanWork(tenantId, user, id);
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
     const [ctx, issues] = await Promise.all([this.repo.context(id), this.repo.issues(id)]);
@@ -757,7 +840,7 @@ export class SupportDeskService implements OnModuleInit {
    * подписью, которую он читает. Это и отличает помощь от доступа к чужому аккаунту.
    */
   async proposeAction(tenantId: string, user: { userId: string; role: string }, id: string, req: ActionRequest) {
-    await this.assertAgent(tenantId, user);
+    await this.assertCanWork(tenantId, user, id);
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
     if (!validAction(req)) throw AppException.validation('Непонятно, что именно сделать');
@@ -765,7 +848,11 @@ export class SupportDeskService implements OnModuleInit {
     const before = await this.currentState(tenantId, req);
     const preview = describeAction({ ...req, labels: { ...req.labels, entity: before.label ?? req.labels?.entity } });
     const row = await this.repo.proposeAction({
-      conversationId: id, actorId: user.userId, action: req.kind,
+      conversationId: id, actorId: user.userId,
+      // В какой роли человек предложил правку в чужой системе — половина ответа на
+      // вопрос «почему это произошло», который однажды зададут.
+      actorRole: await this.platform.roleOf(user.userId),
+      action: req.kind,
       entityType: req.kind.startsWith('task') ? 'task' : 'project',
       entityId: String(req.entityId), preview,
       params: { value: req.value ?? null, labels: req.labels ?? {} },
@@ -788,6 +875,7 @@ export class SupportDeskService implements OnModuleInit {
    */
   async decideAction(
     tenantId: string, user: { userId: string; role: string }, id: string, actionId: string, allow: boolean,
+    sign?: { ip?: string | null; userAgent?: string | null },
   ) {
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
@@ -799,7 +887,7 @@ export class SupportDeskService implements OnModuleInit {
     if (act.status !== 'proposed') throw AppException.conflict('Это действие уже решено');
 
     if (!allow) {
-      await this.repo.decideAction(actionId, 'declined', false, null);
+      await this.repo.decideAction(actionId, 'declined', false, null, sign);
       await this.repo.addMessage({
         tenantId, conversationId: id, authorId: user.userId, kind: 'system', body: 'не разрешил это действие',
       });
@@ -814,7 +902,7 @@ export class SupportDeskService implements OnModuleInit {
     await this.runAction(tenantId, user, req);
     // Действие выполнено в организации обращения и от имени того, кто его разрешил.
     const after = await this.currentState(tenantId, req);
-    await this.repo.decideAction(actionId, 'done', true, after.state);
+    await this.repo.decideAction(actionId, 'done', true, after.state, sign);
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: null, kind: 'system',
       body: `Сделано: ${act.preview}${isUndoable(req.kind) ? ' Можно вернуть как было.' : ''}`,
@@ -912,13 +1000,13 @@ export class SupportDeskService implements OnModuleInit {
     tenantId: string, user: { userId: string; role: string },
     taskId: string, title: string, pattern: string,
   ) {
-    await this.assertAgent(tenantId, user);
+    await this.assertManage(tenantId, user);
     const row = await this.repo.addKnownIssue(await this.deskHome(tenantId), taskId, title, pattern, user.userId);
     return { id: String(row?.id), taskId };
   }
 
   async setKnownIssueActive(tenantId: string, user: { userId: string; role: string }, id: string, active: boolean) {
-    await this.assertAgent(tenantId, user);
+    await this.assertManage(tenantId, user);
     await this.repo.setKnownIssueActive(await this.deskHome(tenantId), id, active);
     return this.knownIssues(tenantId, user);
   }
@@ -949,7 +1037,7 @@ export class SupportDeskService implements OnModuleInit {
    * кого открыт разговор, и все, кто откроет панель.
    */
   async declareIncident(tenantId: string, user: { userId: string; role: string }, title: string, message: string) {
-    await this.assertAgent(tenantId, user);
+    await this.assertIncident(tenantId, user);
     const platform = await this.platform.tenantId();
     const inc = await this.repo.createIncident(platform ?? tenantId, title, message, user.userId);
     // Авария у вендора касается ВСЕХ клиентов сразу, а не той организации, из которой её заметили.
@@ -968,7 +1056,7 @@ export class SupportDeskService implements OnModuleInit {
 
   /** Починили — сказать всем, кому говорили о сбое. */
   async resolveIncident(tenantId: string, user: { userId: string; role: string }, id: string) {
-    await this.assertAgent(tenantId, user);
+    await this.assertIncident(tenantId, user);
     const platform = await this.platform.tenantId();
     const inc = await this.repo.resolveIncident(platform ?? tenantId, id);
     if (!inc) throw AppException.notFound('Открытого сбоя с таким номером нет');
@@ -993,7 +1081,7 @@ export class SupportDeskService implements OnModuleInit {
    * не отправляет — после подключения человека ИИ молчит, пока его не попросят.
    */
   async copilot(tenantId: string, user: { userId: string; role: string; tenantId?: string }, id: string) {
-    await this.assertAgent(tenantId, user);
+    await this.assertCanWork(tenantId, user, id);
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
     const [messages, ctx] = await Promise.all([this.repo.messages(id), this.repo.context(id)]);
@@ -1068,13 +1156,13 @@ export class SupportDeskService implements OnModuleInit {
    * сто одинаковых состояний незачем.
    */
   async handbookState(tenantId: string, user: { userId: string; role: string }) {
-    await this.assertAgent(tenantId, user);
+    await this.assertManage(tenantId, user);
     return this.handbook.state(await this.deskHome(tenantId));
   }
 
   /** Обновить справочник во всех организациях — право техотдела. */
   async loadHandbook(tenantId: string, user: { userId: string; role: string }) {
-    await this.assertAgent(tenantId, user);
+    await this.assertManage(tenantId, user);
     const home = await this.deskHome(tenantId);
     const mine = await this.handbook.load(home, user.userId);
     // Клиентам справочник нужен не меньше: их помощник ищет ответ в их же базе знаний.
@@ -1107,6 +1195,14 @@ export class SupportDeskService implements OnModuleInit {
         skills: a.skills ?? [], status: a.presence_status,
       }));
     }
+    /*
+      Владелец организации как приёмщик обращений — только вне боя (03_RBAC §18).
+
+      В коробочном продукте это недопустимо: владелец компании-клиента получил бы права
+      нашей поддержки только потому, что переменную окружения забыли прописать. В бою
+      пустой список честнее — он виден сразу, а тихая раздача прав не видна никогда.
+    */
+    if (!this.platform.fallbackAllowed()) return [];
     const owner = await this.repo.owner(tenantId);
     return owner
       ? [{ userId: String(owner.id), name: owner.full_name, tenantId, skills: [], status: null }]
@@ -1126,10 +1222,54 @@ export class SupportDeskService implements OnModuleInit {
     }
   }
 
+  /**
+   * Работа с очередью и обращениями.
+   *
+   * Инженера здесь нет намеренно: он не первая линия и общей очереди не видит
+   * (01_ARCHITECTURE §3 и §8, 03_RBAC §3). Ему открыты только те разговоры, куда его
+   * позвали, — см. `canWork`.
+   */
   private async isAgent(tenantId: string, user: { userId: string; role: string }): Promise<boolean> {
-    if (await this.platform.tenantId()) return this.platform.isStaff(user.userId);
+    if (await this.platform.tenantId()) return this.platform.canDesk(user.userId);
     const people = await this.deskPeople(tenantId);
     return people.some((p) => p.userId === String(user.userId));
+  }
+
+  /**
+   * Право работать в КОНКРЕТНОМ разговоре.
+   *
+   * Дежурный первой линии работает в любом; инженер — только там, где у него живой
+   * доступ. Проверка по разговору, а не по человеку: право инженера кончается вместе
+   * с эскалацией, ради которой его позвали.
+   */
+  private async canWork(tenantId: string, user: { userId: string; role: string }, conversationId: string): Promise<boolean> {
+    if (await this.isAgent(tenantId, user)) return true;
+    if (!(await this.platform.isEngineer(user.userId))) return false;
+    return this.repo.hasLiveGrant(conversationId, user.userId);
+  }
+
+  private async assertCanWork(tenantId: string, user: { userId: string; role: string }, conversationId: string): Promise<void> {
+    if (!(await this.canWork(tenantId, user, conversationId))) {
+      throw AppException.forbidden('Это разговор службы заботы');
+    }
+  }
+
+  /** Настройки службы: состав отдела, известные проблемы, справочник. */
+  private async assertManage(tenantId: string, user: { userId: string; role: string }): Promise<void> {
+    if (await this.platform.tenantId()) {
+      if (await this.platform.canManage(user.userId)) return;
+      throw AppException.forbidden('Это настройки службы заботы');
+    }
+    await this.assertAgent(tenantId, user);
+  }
+
+  /** Массовый сбой объявляет и закрывает дежурный по авариям или руководство службы. */
+  private async assertIncident(tenantId: string, user: { userId: string; role: string }): Promise<void> {
+    if (await this.platform.tenantId()) {
+      if (await this.platform.canIncident(user.userId)) return;
+      throw AppException.forbidden('Сбой объявляет дежурный по авариям');
+    }
+    await this.assertAgent(tenantId, user);
   }
 
   private async assertAgent(tenantId: string, user: { userId: string; role: string }): Promise<void> {
@@ -1139,7 +1279,7 @@ export class SupportDeskService implements OnModuleInit {
   /** Разговор видит тот, кто обратился, и дежурные: чужие обращения не читают. */
   private async assertCanSee(tenantId: string, user: { userId: string; role: string }, conv: ConversationRow): Promise<void> {
     if (String(conv.user_id) === String(user.userId)) return;
-    await this.assertAgent(tenantId, user);
+    await this.assertCanWork(tenantId, user, String(conv.id));
   }
 
   /** Событие — участникам разговора и дежурным: панель оживает без перезагрузки. */

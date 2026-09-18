@@ -1,7 +1,7 @@
 import {
-  Body, Controller, Get, Param, Post, Res, UploadedFile, UseInterceptors,
+  Body, Controller, Get, Ip, Param, Post, Req, Res, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import {
@@ -140,6 +140,16 @@ export class SupportDeskController {
     return this.desk.queue(u.tenantId, u);
   }
 
+  /**
+   * Эскалации инженера — всё, что ему открыто.
+   *
+   * Раньше «:id», как и очередь: иначе слово «escalations» примут за номер разговора.
+   */
+  @Get('escalations')
+  escalations(@CurrentUser() u: AuthUser) {
+    return this.desk.escalations(u);
+  }
+
   @Get(':id')
   async conversation(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.desk.conversation(await this.desk.deskTenant(u, id), u, id);
@@ -215,6 +225,20 @@ export class SupportDeskController {
     return this.desk.addEngineer(await this.desk.deskTenant(u, id), u, id, dto.userId);
   }
 
+  /** Кому из инженеров открыт разговор и до какого времени. */
+  @Get(':id/engineers')
+  async engineers(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.desk.grants(await this.desk.deskTenant(u, id), u, id);
+  }
+
+  /** Закрыть инженеру доступ: эскалация кончилась — кончается и право читать. */
+  @Post(':id/engineer/:engineerId/revoke')
+  async revokeEngineer(
+    @CurrentUser() u: AuthUser, @Param('id') id: string, @Param('engineerId') engineerId: string,
+  ) {
+    return this.desk.revokeEngineer(await this.desk.deskTenant(u, id), u, id, engineerId);
+  }
+
   /** Завести баг из разговора: контекст уезжает в задачу сам. */
   @Post(':id/bug')
   async bug(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: BugDto) {
@@ -270,12 +294,22 @@ export class SupportDeskController {
     });
   }
 
+  /*
+    Решение человека по действию — с подписью.
+
+    Адрес и устройство берём именно здесь: значим момент СОГЛАСИЯ. Это та запись,
+    которую придётся однажды показать, объясняя, почему в чужой задаче поменялся срок.
+  */
   @Post(':id/actions/:actionId')
   async decide(
     @CurrentUser() u: AuthUser, @Param('id') id: string,
     @Param('actionId') actionId: string, @Body() dto: DecideActionDto,
+    @Ip() ip: string, @Req() req: Request,
   ) {
-    return this.desk.decideAction(await this.desk.deskTenant(u, id), u, id, actionId, dto.allow);
+    return this.desk.decideAction(
+      await this.desk.deskTenant(u, id), u, id, actionId, dto.allow,
+      { ip, userAgent: String(req.headers['user-agent'] ?? '') },
+    );
   }
 
   /** Вернуть как было — там, где это осмысленно. */

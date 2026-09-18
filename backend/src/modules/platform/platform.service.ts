@@ -2,6 +2,35 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { AppException } from '../../common/http/app-exception';
 
+/**
+ * Роли техотдела (03_SUPPORT_RBAC_AND_SECURITY).
+ *
+ * Плоского «сотрудника техотдела» недостаточно для коммерческой поддержки: дежурный
+ * первой линии и инженер занимаются разным и должны видеть разное. Инженер, которого
+ * позвали починить одну поломку, не должен получать очередь всех клиентов.
+ */
+export type PlatformRole = 'support' | 'support_admin' | 'engineer' | 'incident_manager' | 'admin';
+
+export const PLATFORM_ROLES: PlatformRole[] = [
+  'support', 'support_admin', 'engineer', 'incident_manager', 'admin',
+];
+
+/** Кто работает с очередью и обращениями. Инженера здесь нет намеренно. */
+export const DESK_ROLES: PlatformRole[] = ['support', 'support_admin', 'incident_manager', 'admin'];
+/** Кто настраивает службу: состав отдела, известные проблемы, справочник. */
+export const MANAGE_ROLES: PlatformRole[] = ['support_admin', 'admin'];
+/** Кто объявляет и закрывает массовый сбой. */
+export const INCIDENT_ROLES: PlatformRole[] = ['support_admin', 'incident_manager', 'admin'];
+
+/** Человеческие названия — для консоли. */
+export const ROLE_TITLES: Record<PlatformRole, string> = {
+  support: 'первая линия',
+  support_admin: 'руководитель поддержки',
+  engineer: 'инженер',
+  incident_manager: 'дежурный по авариям',
+  admin: 'администратор платформы',
+};
+
 /** Сотрудник техотдела: где живёт его учётка, что ему можно и дежурит ли он сейчас. */
 export interface StaffRow {
   user_id: string;
@@ -93,7 +122,15 @@ export class PlatformService implements OnModuleInit {
       if (await this.tenantId()) return;
       const byId = process.env.PLATFORM_TENANT_ID?.trim();
       const byEmail = process.env.PLATFORM_ADMIN_EMAIL?.trim();
-      if (!byId && !byEmail) return;
+      if (!byId && !byEmail) {
+        if (!this.fallbackAllowed()) {
+          this.log.error(
+            'PLATFORM_TENANT_ID не задан, а запасной путь в бою выключен: '
+            + 'обращения в службу заботы принимать НЕКОМУ. Укажите организацию-вендора.',
+          );
+        }
+        return;
+      }
 
       const owner = byEmail
         ? await this.db.one<{ id: string; tenant_id: string }>(
@@ -132,18 +169,64 @@ export class PlatformService implements OnModuleInit {
     return (await this.staffAll()).filter((s) => s.active);
   }
 
-  async isStaff(userId: string): Promise<boolean> {
-    const row = await this.db.one<{ user_id: string }>(
-      `SELECT user_id::text FROM platform_staff WHERE user_id=$1`, [userId],
+  /**
+   * Роль человека в техотделе — или null, если он не наш.
+   *
+   * Сверяем и организацию: право читать чужие обращения не должно достаться человеку
+   * клиентской компании ни по ошибке в данных, ни после переезда учётки. Раньше это
+   * держалось на проверке в соседнем методе — теперь на самом правиле.
+   */
+  async roleOf(userId: string): Promise<PlatformRole | null> {
+    const platform = await this.tenantId();
+    if (!platform) return null;
+    const row = await this.db.one<{ role: string }>(
+      `SELECT s.role FROM platform_staff s JOIN users u ON u.id = s.user_id
+        WHERE s.user_id=$1 AND s.tenant_id=$2 AND u.tenant_id=$2 AND u.is_active`,
+      [userId, platform],
     );
-    return !!row;
+    return row && (PLATFORM_ROLES as string[]).includes(row.role) ? (row.role as PlatformRole) : null;
+  }
+
+  async isStaff(userId: string): Promise<boolean> {
+    return (await this.roleOf(userId)) !== null;
+  }
+
+  /** Работает с очередью и обращениями (инженер — нет). */
+  async canDesk(userId: string): Promise<boolean> {
+    const role = await this.roleOf(userId);
+    return !!role && DESK_ROLES.includes(role);
+  }
+
+  /** Настраивает службу: состав отдела, известные проблемы, справочник. */
+  async canManage(userId: string): Promise<boolean> {
+    const role = await this.roleOf(userId);
+    return !!role && MANAGE_ROLES.includes(role);
+  }
+
+  /** Объявляет и закрывает массовый сбой. */
+  async canIncident(userId: string): Promise<boolean> {
+    const role = await this.roleOf(userId);
+    return !!role && INCIDENT_ROLES.includes(role);
+  }
+
+  async isEngineer(userId: string): Promise<boolean> {
+    return (await this.roleOf(userId)) === 'engineer';
+  }
+
+  /**
+   * Запасной путь «обращения принимает владелец организации».
+   *
+   * В коробочном продукте он недопустим (03_RBAC §18): владелец компании-клиента не
+   * должен получать права нашей поддержки только потому, что переменную окружения
+   * забыли прописать. В разработке и standalone-режиме — наоборот, единственный
+   * способ работать без настройки платформы.
+   */
+  fallbackAllowed(): boolean {
+    return process.env.NODE_ENV !== 'production';
   }
 
   async isAdmin(userId: string): Promise<boolean> {
-    const row = await this.db.one<{ role: string }>(
-      `SELECT role FROM platform_staff WHERE user_id=$1`, [userId],
-    );
-    return row?.role === 'admin';
+    return (await this.roleOf(userId)) === 'admin';
   }
 
   /** Права техотдела: без них консоли не существует. */
@@ -151,8 +234,11 @@ export class PlatformService implements OnModuleInit {
     if (!(await this.isStaff(userId))) throw AppException.forbidden('Это консоль техподдержки продукта');
   }
 
+  /** Состав отдела и настройки службы — руководителю поддержки и администратору. */
   async assertAdmin(userId: string): Promise<void> {
-    if (!(await this.isAdmin(userId))) throw AppException.forbidden('Состав техотдела меняет его администратор');
+    if (!(await this.canManage(userId))) {
+      throw AppException.forbidden('Состав техотдела меняет руководитель поддержки');
+    }
   }
 
   /**
@@ -199,7 +285,7 @@ export class PlatformService implements OnModuleInit {
               skills = COALESCE($5::text[], platform_staff.skills)`,
       [
         userId, platform,
-        patch.role === 'admin' || patch.role === 'agent' ? patch.role : null,
+        patch.role && (PLATFORM_ROLES as string[]).includes(patch.role) ? patch.role : null,
         patch.active ?? null,
         patch.skills ? patch.skills.slice(0, 12) : null,
         actor.userId,

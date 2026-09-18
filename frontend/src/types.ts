@@ -15,6 +15,8 @@ export interface User {
    */
   platformStaff?: boolean;
   platformAdmin?: boolean;
+  /** Роль в техотделе: у инженера консоль другая — не очередь, а его эскалации. */
+  platformRole?: 'support' | 'support_admin' | 'engineer' | 'incident_manager' | 'admin' | null;
   /** Отделы и группы человека. Приходят из GET /users; в токене авторизации их нет. */
   groups?: { id: string; name: string; kind: string }[];
   /** Путь к аватару (`/api/files/:id`) — файл лежит за авторизацией, тянется через Avatar. */
@@ -358,7 +360,18 @@ export interface SupportQueueItem {
 
 /** Сотрудник техотдела вендора. */
 export interface PlatformStaff {
-  userId: string; name: string; role: string; onDuty: boolean; skills: string[];
+  userId: string; name: string; role: string; roleTitle: string; onDuty: boolean; skills: string[];
+}
+
+/** Обращение, открытое инженеру по эскалации: общей очереди у него нет. */
+export interface SupportEscalation extends SupportQueueItem {
+  /** До какого времени открыт доступ. */
+  accessUntil: string;
+}
+
+/** Кому из инженеров открыт разговор. */
+export interface SupportEngineerGrant {
+  engineerId: string; name: string; expiresAt: string; revokedAt: string | null; live: boolean;
 }
 
 /** Кандидат в техотдел — сотрудник организации-платформы. */
