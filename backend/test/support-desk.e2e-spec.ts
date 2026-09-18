@@ -709,6 +709,48 @@ describe('служба заботы (e2e)', () => {
     expect(JSON.stringify(seen)).not.toContain('старая сборка');
   }, 60000);
 
+  /*
+    Этап 6: масштаб.
+
+    Проверяем два обещания, которые видны снаружи: при массовой аварии очередь не
+    забивается одинаковыми обращениями, а поток сообщений ограничен — но «позвать
+    человека» не ограничен никогда.
+  */
+  it('при массовом сбое одинаковые обращения не идут в очередь', async () => {
+    const { O, M } = await team('SDI');
+    await http.post('/api/support/desk/incident').set(O)
+      .send({ title: 'Не отправляются сообщения', message: 'Инженеры уже работают, ждём к 15:00' })
+      .expect(201);
+
+    const conv = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'У меня не отправляются сообщения' }).expect(201)).body.data;
+
+    // человек сразу узнал о сбое и НЕ встал в очередь к специалисту
+    expect(conv.messages.some((m: any) => String(m.body).includes('Не отправляются сообщения'))).toBe(true);
+    expect(conv.status).not.toBe('waiting_agent');
+
+    // но позвать человека он по-прежнему может — авария этого не отменяет
+    const asked = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'Позовите специалиста, у меня другое' }).expect(201)).body.data;
+    expect(asked.status).toBe('waiting_agent');
+  }, 60000);
+
+  it('поток сообщений ограничен, а просьба о человеке — нет', async () => {
+    const { M } = await team('SDX2');
+    // предел — 30 сообщений за пять минут; 31-е отбивается человеческой фразой
+    for (let i = 0; i < 30; i += 1) {
+      await http.post('/api/support/desk/messages').set(M).send({ text: `сообщение ${i}` }).expect(201);
+    }
+    const over = await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'ещё одно' }).expect(409);
+    expect(String(over.body.error.message)).toContain('Слишком много сообщений');
+
+    // а эскалация проходит даже за пределом: отказать в помощи из-за счётчика нельзя
+    const asked = (await http.post('/api/support/desk/messages').set(M)
+      .send({ text: 'позовите специалиста' }).expect(201)).body.data;
+    expect(asked.status).toBe('waiting_agent');
+  }, 90000);
+
   it('чужое обращение не прочитать', async () => {
     const a = await team('SD2');
     const b = await team('SD3');

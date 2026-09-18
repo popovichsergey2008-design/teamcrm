@@ -10,7 +10,15 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
   const config = app.get(ConfigService);
 
-  app.setGlobalPrefix('api');
+  /*
+    Всё приложение живёт под `/api`, кроме метрик.
+
+    Наружный nginx проксирует в приложение только `/api/`, `/socket.io/` и `/ws/meet`.
+    Оставив метрики под общим префиксом, мы бы выставили наружу длину очереди поддержки
+    и состояние модели. Вне префикса они доступны только изнутри docker-сети, где и
+    стоит Prometheus, — это дешевле и надёжнее ещё одного секрета.
+  */
+  app.setGlobalPrefix('api', { exclude: ['metrics'] });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

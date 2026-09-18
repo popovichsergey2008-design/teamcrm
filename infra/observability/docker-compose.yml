@@ -10,6 +10,11 @@ x-restart: &restart
 networks:
   obs-net:
     driver: bridge
+  # Сеть приложения: Prometheus заходит в неё, чтобы дотянуться до edge-nginx с
+  # метриками. Внешняя и уже существующая — наблюдаемость не поднимает её и не роняет.
+  crm-net:
+    external: true
+    name: teamcrm_crm-net
 
 volumes:
   prometheus-data:
@@ -27,7 +32,7 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules.yml:/etc/prometheus/rules.yml:ro
       - prometheus-data:/prometheus
-    networks: [obs-net]
+    networks: [obs-net, crm-net]
     ports:
       - "${ADMIN_BIND}:9090:9090"
 

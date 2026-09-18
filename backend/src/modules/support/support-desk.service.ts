@@ -19,6 +19,9 @@ import { humanStatus, wantsHuman } from './support-text';
 import { MAYBE_SUFFIX, META_RULES, NO_ANSWER_PHRASE, parseAnswer } from './support-ai';
 import { Candidate, pickAgent } from './support-routing';
 import { Actor, canTransition, Status, whyNot } from './support-status';
+import { LIMITS, LimitKind, limitKey } from './support-limits';
+import { RedisService } from '../../cache/redis.service';
+import { Q_SUPPORT_ROUTING, RabbitMQService } from '../../messaging/rabbitmq.service';
 
 /**
  * Служба заботы: живой разговор вместо заявок (ТЗ-8).
@@ -71,7 +74,32 @@ export class SupportDeskService implements OnModuleInit {
     private readonly handbook: HandbookService,
     private readonly platform: PlatformService,
     private readonly ai: AiService,
+    private readonly redis: RedisService,
+    private readonly mq: RabbitMQService,
   ) {}
+
+  /**
+   * Предел частоты.
+   *
+   * Счётчик в Redis с окном: ключ живёт ровно столько, сколько окно, и истекает сам —
+   * чистить нечего. Сбой Redis не должен мешать людям писать в поддержку, поэтому при
+   * любой ошибке просто пропускаем: отказать человеку из-за нашей инфраструктуры хуже,
+   * чем пропустить лишнее сообщение.
+   *
+   * Эскалация к человеку сюда НЕ попадает никогда — см. support-limits.
+   */
+  private async assertUnderLimit(kind: LimitKind, userId: string): Promise<void> {
+    const limit = LIMITS[kind];
+    try {
+      const key = limitKey(kind, userId);
+      const n = await this.redis.client.incr(key);
+      if (n === 1) await this.redis.client.expire(key, limit.perSeconds);
+      if (n > limit.times) throw AppException.conflict(limit.say);
+    } catch (e) {
+      if (e instanceof AppException) throw e;
+      this.log.warn(`счётчик ${kind}: ${(e as Error).message}`);
+    }
+  }
 
   /**
    * Подписываемся на разбор созвонов.
@@ -90,6 +118,19 @@ export class SupportDeskService implements OnModuleInit {
       своей инициативе. Подписка по той же причине, что и на разбор созвона.
     */
     this.tasks.onTaskClosed(async (e) => { await this.notifyFixDeployed(e.taskId, e.title); });
+
+    /*
+      Назначение — фоном (05_SCALING §4).
+
+      Человек, попросивший специалиста, не должен ждать, пока мы переберём дежурных и
+      посчитаем их загрузку. Обращение встаёт в очередь сразу, а выбор исполнителя
+      происходит следом отдельной задачей — и он же переживает работу двух экземпляров
+      приложения: занятость обращения проверяется блокировкой и условным UPDATE.
+    */
+    void this.mq.consume(Q_SUPPORT_ROUTING, async (msg: { tenantId: string; conversationId: string }) => {
+      const conv = await this.repo.byId(msg.tenantId, msg.conversationId);
+      if (conv) await this.route(msg.tenantId, conv);
+    }, 2);
   }
 
   /**
@@ -254,8 +295,19 @@ export class SupportDeskService implements OnModuleInit {
     const body = String(text ?? '').trim();
     if (!body && !fileId) throw AppException.validation('Напишите, что случилось');
 
+    /*
+      Пределы стоят на потоке, но не на просьбе о помощи.
+
+      Слова «позовите человека» проверяются ниже и проходят всегда: отказать человеку в
+      эскалации из-за счётчика — худшее, что служба заботы может сделать.
+    */
+    if (!wantsHuman(body)) {
+      await this.assertUnderLimit(fileId ? 'attachment' : 'message', user.userId);
+    }
+
     let conv = await this.repo.activeOf(tenantId, user.userId);
     const fresh = !conv;
+    if (fresh && !wantsHuman(body)) await this.assertUnderLimit('conversation', user.userId);
     if (!conv) {
       conv = (await this.repo.create(tenantId, user.userId, body || 'Вложение'))!;
       await this.repo.addParticipant(String(conv.id), user.userId, 'user');
@@ -279,6 +331,28 @@ export class SupportDeskService implements OnModuleInit {
     if (wantsHuman(body)) {
       await this.callHuman(tenantId, user, String(conv.id));
       return this.conversation(tenantId, user, String(conv.id));
+    }
+
+    /*
+      Массовый сбой: одинаковые обращения не забивают очередь (05_SCALING §22).
+
+      При аварии в поддержку приходят десятки человек с одним и тем же. Отвечать каждому
+      моделью — платить за один ответ сорок раз; ставить каждого в очередь — похоронить
+      под ними те обращения, которые к аварии отношения не имеют. Человек получает
+      честный ответ сразу, а «позвать специалиста» у него по-прежнему работает: просьба
+      о человеке проверяется выше и проходит всегда.
+    */
+    if (!conv.assigned_agent_id) {
+      const incident = await this.repo.openIncident(await this.deskHome(tenantId));
+      if (incident) {
+        await this.repo.addMessage({
+          tenantId, conversationId: String(conv.id), authorId: null, kind: 'system',
+          body: `${incident.title}. ${incident.message}
+`
+            + 'Сообщим здесь же, как только починим. Если у вас что-то другое — напишите, позовём специалиста.',
+        });
+        return this.conversation(tenantId, user, String(conv.id));
+      }
     }
 
     /*
@@ -435,13 +509,15 @@ export class SupportDeskService implements OnModuleInit {
     await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
     this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: next.status });
     /*
-      Ищем исполнителя сразу.
+      Ищем исполнителя — отдельной задачей.
 
-      Обращение, лежащее в очереди «пока кто-нибудь заметит», — и есть та поддержка, от
-      которой уходят. Выбор делается по навыку и загрузке; не нашли — разговор остаётся
-      видимым в очереди, и его возьмут руками.
+      Обращение, лежащее в очереди «пока кто-нибудь заметит», — та самая поддержка, от
+      которой уходят. Но и ждать выбора человек не должен: он попросил специалиста, и
+      это уже случилось. Очередь недоступна — выбираем прямо здесь: назначить с задержкой
+      лучше, чем не назначить вовсе.
     */
-    await this.route(tenantId, next);
+    const queued = await this.mq.publish(Q_SUPPORT_ROUTING, { tenantId, conversationId: id });
+    if (!queued) await this.route(tenantId, next);
     return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
   }
 
@@ -512,6 +588,20 @@ export class SupportDeskService implements OnModuleInit {
    * должно случиться, даже если выбрать исполнителя не удалось.
    */
   private async route(tenantId: string, conv: ConversationRow): Promise<void> {
+    /*
+      Блокировка на обращение.
+
+      Два экземпляра приложения могут взяться за одно обращение одновременно — тогда
+      оба честно выберут исполнителя, и один из выборов окажется лишним сообщением в
+      разговоре. Ключ живёт полминуты и истекает сам: зависший экземпляр не запирает
+      обращение навсегда.
+    */
+    const lock = `support:route:${conv.id}`;
+    try {
+      const got = await this.redis.client.set(lock, '1', 'EX', 30, 'NX');
+      if (!got) return;
+    } catch { /* Redis недоступен — назначаем без блокировки, это лучше, чем не назначать */ }
+
     try {
       if (conv.assigned_agent_id) return;
       /*
@@ -1180,6 +1270,7 @@ export class SupportDeskService implements OnModuleInit {
     if (!conv) throw AppException.notFound('Разговор не найден');
     await this.assertCanSee(tenantId, user, conv);
 
+    await this.assertUnderLimit('call', user.userId);
     const mine = String(conv.user_id) === String(user.userId);
     const row = await this.repo.requestCall(id, user.userId, mine ? 'user' : 'agent');
     await this.repo.addMessage({

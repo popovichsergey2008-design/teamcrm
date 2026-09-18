@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AiGateway, AiPriority } from './ai-gateway';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { RedisService } from '../../cache/redis.service';
@@ -28,6 +29,7 @@ export class AiService {
     private readonly db: DbService,
     private readonly settings: AiSettingsService,
     private readonly prompts: PromptsService,
+    private readonly gateway: AiGateway,
   ) {
     this.parserModel = config.get<string>('AI_PARSER_MODEL') ?? 'claude-haiku-4-5';
   }
@@ -78,6 +80,21 @@ export class AiService {
    * Аналитическая генерация (AI Brain): маскирование PII + метеринг.
    * opts (PromptOps): переопределение модели/лимита и привязка расхода к версии промпта.
    */
+  /**
+   * Что важнее при заторе.
+   *
+   * Модель — общий и узкий ресурс, и очередь «кто пришёл, того и обслужили» означает,
+   * что человек в поддержке ждёт, пока досчитается ночная сводка. Уровень выводим из
+   * названия возможности: так его не нужно проставлять в тридцати местах вызова, и он
+   * не разойдётся с правдой, когда появится тридцать первое.
+   */
+  private priorityOf(feature: string): AiPriority {
+    if (feature.startsWith('support')) return 'support';
+    if (feature === 'embedding') return 'index';
+    if (feature.includes('summary') || feature.includes('digest') || feature.includes('standup')) return 'background';
+    return 'user';
+  }
+
   async generate(
     tenantId: string, system: string, user: string, feature = 'brain',
     opts?: {
@@ -90,9 +107,9 @@ export class AiService {
     const masked = maskPII(user).masked;
     const model = opts?.model || brainModel;
     const maxTokens = typeof opts?.params?.max_tokens === 'number' ? (opts.params.max_tokens as number) : undefined;
-    const text = await provider.generate(system, masked, {
+    const text = await this.gateway.run(this.priorityOf(feature), () => provider.generate(system, masked, {
       model: opts?.model || undefined, maxTokens, images: opts?.images,
-    });
+    }));
     // Пишем ту модель, которая ОТВЕТИЛА, а не ту, которую просили: при отказе
     // выбранной модели включается фолбэк, и отчёт о расходе показывал бы красивую
     // неправду — «работает gpt-5», хотя отвечала совсем другая.
@@ -112,7 +129,10 @@ export class AiService {
     const masked = maskPII(user).masked;
     const model = opts?.model || brainModel;
     const maxTokens = typeof opts?.params?.max_tokens === 'number' ? (opts.params.max_tokens as number) : undefined;
-    const text = await provider.generateStream(system, masked, { model: opts?.model || undefined, maxTokens }, onDelta);
+    const text = await this.gateway.run(
+      this.priorityOf(feature),
+      () => provider.generateStream(system, masked, { model: opts?.model || undefined, maxTokens }, onDelta),
+    );
     await this.recordUsage(
       tenantId, feature, provider.lastModel || model,
       estimateTokens(system + masked), estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
@@ -124,7 +144,8 @@ export class AiService {
   async embed(tenantId: string, text: string, feature = 'embedding'): Promise<number[]> {
     const { provider, embedModel } = await this.providerFor(tenantId);
     const { masked } = maskPII(text);
-    const vec = await provider.embed(masked);
+    // Индексация — самая терпеливая работа в системе: пропускаем вперёд всех живых.
+    const vec = await this.gateway.run(this.priorityOf(feature), () => provider.embed(masked));
     await this.recordUsage(tenantId, feature, embedModel, estimateTokens(masked), 0, false);
     return vec;
   }

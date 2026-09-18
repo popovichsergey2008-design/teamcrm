@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { AiGateway } from './ai-gateway';
 import { AiService } from './ai.service';
 import { AiSettingsService } from './ai-settings.service';
 import { AiUsageController } from './ai-usage.controller';
@@ -8,7 +9,7 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
 @Global()
 @Module({
   controllers: [AiUsageController],
-  providers: [AiService, AiSettingsService, IntegrationCryptoService],
-  exports: [AiService, AiSettingsService],
+  providers: [AiService, AiSettingsService, IntegrationCryptoService, AiGateway],
+  exports: [AiService, AiSettingsService, AiGateway],
 })
 export class AiModule {}

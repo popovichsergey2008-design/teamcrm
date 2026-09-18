@@ -17,3 +17,9 @@ scrape_configs:
   - job_name: cadvisor
     static_configs:
       - targets: ["cadvisor:8080"]
+
+  # Метрики самого приложения: очередь поддержки и обращения к модели.
+  # Ходим через edge-nginx — он один знает, какой цвет сейчас живой (blue или green).
+  - job_name: teamcrm-api
+    static_configs:
+      - targets: ["crm-edge:9113"]
