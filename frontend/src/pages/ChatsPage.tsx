@@ -409,6 +409,35 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   } | null>(null);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
+  /*
+    Какое из совпадений показано.
+
+    Число «4 совпадения» само по себе — упрёк: нашли, а где — не скажем (задача
+    #1340). Поэтому рядом стрелки, как в мессенджерах: начинаем с ПОСЛЕДНЕГО
+    совпадения (в открытом чате ищут недавнее), стрелка вверх ведёт к более
+    старому, вниз — к более новому, Enter в поле — то же, что стрелка вверх.
+    Индекс — в ленте совпадений, она в порядке ленты сообщений.
+  */
+  const [inChatPos, setInChatPos] = useState(-1);
+  const goToHit = useCallback((pos: number) => {
+    const hit = inChatHits[pos];
+    if (!hit) return;
+    setInChatPos(pos);
+    const id = String(hit.id);
+    feedRef.current?.querySelector(`[data-msg="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setHighlight(id);
+  }, [inChatHits]);
+  // Новый запрос — новый набор совпадений: становимся на последнее и показываем его.
+  useEffect(() => {
+    if (!inChatHits.length) { setInChatPos(-1); return; }
+    goToHit(inChatHits.length - 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inChatQuery]);
+  // Лента дополнилась (пришло сообщение, подгрузили старое) — держимся за то же сообщение, а не за номер.
+  useEffect(() => {
+    if (inChatPos < 0 || inChatHits[inChatPos]) return;
+    setInChatPos(inChatHits.length ? inChatHits.length - 1 : -1);
+  }, [inChatHits, inChatPos]);
 
   const reload = useCallback(
     () => api.listChats().then(setChats).catch(() => undefined).finally(() => setChatsLoaded(true)),
@@ -1967,15 +1996,44 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                     placeholder={`Поиск в «${active.title ?? 'чате'}»`}
                     value={inChatQuery}
                     onChange={(e) => setInChatQuery(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Escape') { setInChatSearch(false); setInChatQuery(''); } }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') { setInChatSearch(false); setInChatQuery(''); setHighlight(null); return; }
+                      // Enter — к более старому совпадению, Shift+Enter — к более новому: как в мессенджерах.
+                      if (e.key === 'Enter' && inChatHits.length) {
+                        e.preventDefault();
+                        goToHit(e.shiftKey
+                          ? Math.min(inChatHits.length - 1, inChatPos + 1)
+                          : Math.max(0, inChatPos - 1));
+                      }
+                    }}
                   />
-                  <span className="dim">
+                  <span className="dim chat-insearch-count">
                     {inChatQuery.trim().length < 2 ? 'введите два знака'
-                      : `${inChatHits.length} ${plural(inChatHits.length, 'совпадение', 'совпадения', 'совпадений')}`}
+                      : !inChatHits.length ? 'нет совпадений'
+                        : `${inChatPos + 1} из ${inChatHits.length}`}
                   </span>
+                  {/* Стрелки — и есть «показать совпадение»: вверх к старому, вниз к новому. */}
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={() => { setInChatSearch(false); setInChatQuery(''); }}
+                    disabled={!inChatHits.length || inChatPos <= 0}
+                    onClick={() => goToHit(inChatPos - 1)}
+                    title="Предыдущее совпадение (старее) — Enter"
+                    aria-label="Предыдущее совпадение"
+                  >
+                    <Icon name="arrow-up" size={14} />
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    disabled={!inChatHits.length || inChatPos >= inChatHits.length - 1}
+                    onClick={() => goToHit(inChatPos + 1)}
+                    title="Следующее совпадение (новее) — Shift+Enter"
+                    aria-label="Следующее совпадение"
+                  >
+                    <Icon name="arrow-down" size={14} />
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => { setInChatSearch(false); setInChatQuery(''); setHighlight(null); }}
                     title="Закрыть поиск"
                     aria-label="Закрыть поиск"
                   >
@@ -2183,7 +2241,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                     {unreadFrom === String(m.id) && <div className="chat-unread-line">Непрочитанные сообщения</div>}
                     {/* Время — ПОД плашкой, а не внутри неё: серая строчка на цветном
                         пузыре не читалась вовсе, а место в углу отъедала. */}
-                    <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === m.id) ? ' chat-match' : ''}${isNew ? ' chat-new' : ''}`}>
+                    <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === m.id) ? ' chat-match' : ''}${inChatHits[inChatPos]?.id === m.id ? ' chat-match-current' : ''}${isNew ? ' chat-new' : ''}`}>
                       <div
                         className={`chat-msg ${mine && !m.is_ai ? 'mine' : ''}${m.is_ai ? ' chat-msg-ai' : ''}`
                           + `${ctxFor?.id === String(m.id) ? ' msg-ctx-open' : ''}`}

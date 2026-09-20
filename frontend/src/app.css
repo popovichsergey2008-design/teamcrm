@@ -2748,8 +2748,10 @@
 /* Поиск в открытом чате: строка занимает шапку целиком, пока ищут. */
 .chat-insearch { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .chat-insearch .input { flex: 1; min-width: 0; font-size: var(--fs-sm); padding: 5px 8px; }
-/* Найденное в этом чате подсвечено рамкой — глаз находит его прокруткой. */
+.chat-insearch-count { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Найденное в этом чате подсвечено рамкой; то, на котором стоим, — рамкой поярче. */
 .chat-match .chat-msg { box-shadow: 0 0 0 2px var(--accent-line); }
+.chat-match-current .chat-msg { box-shadow: 0 0 0 2px var(--accent); }
 
 /* Правка сообщения прямо в пузыре: отдельное окно ради опечатки — лишний шаг. */
 .chat-edit { display: flex; flex-direction: column; gap: 6px; min-width: 260px; }
