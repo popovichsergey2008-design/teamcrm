@@ -764,6 +764,12 @@ export class SupportDeskRepository {
     return row?.full_name ?? null;
   }
 
+  /** Название организации: специалисту в шапке разговора важно, у кого сломалось. */
+  async tenantName(tenantId: string): Promise<string | null> {
+    const row = await this.db.one<{ name: string }>(`SELECT name FROM tenants WHERE id=$1`, [tenantId]);
+    return row?.name ?? null;
+  }
+
   /** То же, но про человека из другой организации: инженер вендора в чужом обращении. */
   async userNameAny(userId: string): Promise<string | null> {
     const row = await this.db.one<{ full_name: string }>(

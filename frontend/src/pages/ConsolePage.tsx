@@ -4,6 +4,7 @@ import { EmptyState } from '../components/EmptyState';
 import { SkeletonList } from '../components/Skeleton';
 import { openSupport } from '../components/support/SupportDock';
 import { api, ApiError } from '../lib/api';
+import { getSocket } from '../lib/socket';
 import { stampLabel } from '../lib/chat-text';
 import { navigate, Route } from '../lib/router';
 import { useAuth } from '../state/auth';
@@ -100,6 +101,30 @@ export function ConsolePage({ route }: { route: Route }) {
   }, [isAdmin, isEngineer, filter]);
   useEffect(() => { void load(); }, [load]);
 
+  /*
+    Очередь живёт сама.
+
+    Обещание в пустом состоянии — «новые появятся здесь сами» — держится на этом:
+    человек позвал специалиста, обращение взяли, вернули, закрыли — очередь
+    перечитывается по событию, а не по F5. Перечитываем целиком, а не правим
+    строку: событий несколько видов, и ни одно из них не несёт всей строки.
+  */
+  useEffect(() => {
+    const socket = getSocket();
+    const refresh = () => {
+      // По событию перечитываем только очередь и цифры: состав отдела и справочник от сообщения не меняются.
+      if (isEngineer) { api.supportEscalations().then(setEscalations).catch(() => undefined); return; }
+      api.supportQueue(filter).then(setQueue).catch(() => undefined);
+      api.supportDashboard().then(setStats).catch(() => undefined);
+    };
+    const events = [
+      'support.queue.changed', 'support.assignment.changed', 'support.assignment.created',
+      'support.agent.joined', 'support.status.changed', 'support.message.created', 'support.resolved',
+    ];
+    for (const ev of events) socket.on(ev, refresh);
+    return () => { for (const ev of events) socket.off(ev, refresh); };
+  }, [isEngineer, filter]);
+
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true); setErr('');
     try { await fn(); await load(); }
@@ -157,7 +182,7 @@ export function ConsolePage({ route }: { route: Route }) {
               />
             )}
             {escalations.map((e) => (
-              <button key={e.id} className="support-queue-row" onClick={openSupport}>
+              <button key={e.id} className="support-queue-row" onClick={() => openSupport(e.id)}>
                 <span className="support-queue-head">
                   <b>{e.subject || 'Обращение'}</b>
                   <span className="dim">{stampLabel(e.waitingSince)}</span>
@@ -272,7 +297,7 @@ export function ConsolePage({ route }: { route: Route }) {
                 />
               )}
               {queue.map((q) => (
-                <button key={q.id} className="support-queue-row" onClick={openSupport}>
+                <button key={q.id} className="support-queue-row" onClick={() => openSupport(q.id)} title="Открыть разговор">
                   <span className="support-queue-head">
                     <b>{q.subject || 'Обращение'}</b>
                     <span className="console-row-acts">

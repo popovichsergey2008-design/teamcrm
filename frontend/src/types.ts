@@ -299,6 +299,8 @@ export interface SupportMessage {
 export interface SupportConversation extends SupportAiState {
   id: string;
   subject: string;
+  /** Организация обратившегося: специалист вендора видит чужие компании рядом. */
+  orgName?: string | null;
   status: string;
   statusText: string;
   priority: string;

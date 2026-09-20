@@ -19,8 +19,12 @@ import type { SupportConversation, SupportDesk, SupportQueueItem } from '../../t
  */
 export const SUPPORT_OPEN = 'teamcrm:support-open';
 
-export function openSupport(): void {
-  window.dispatchEvent(new Event(SUPPORT_OPEN));
+/**
+ * Без номера — своя панель (написать в поддержку). С номером — ЭТО обращение:
+ * так консоль техотдела открывает разговор, по которому щёлкнули в очереди.
+ */
+export function openSupport(conversationId?: string): void {
+  window.dispatchEvent(new CustomEvent<{ conversationId?: string }>(SUPPORT_OPEN, { detail: { conversationId } }));
 }
 
 /** Оценка: четыре лица вместо звёзд — на них отвечают, не задумываясь (ТЗ-8, разд. 31). */
@@ -57,7 +61,13 @@ function etaText(sec: number | null): string {
  * 3. Что уходит специалисту — видно до отправки: строка контекста внизу (разд. 50).
  * 4. Закрывает разговор сам человек: «всё работает?» с оценкой (разд. 21, 31).
  */
-export function SupportDock() {
+export function SupportDock({ embedded = false }: {
+  /**
+   * Консоль техотдела: панель стоит колонкой рядом с очередью, а не окошком поверх
+   * страницы, и без кнопки-кружка — там специалист не просит помощи, а оказывает её.
+   */
+  embedded?: boolean;
+} = {}) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [desk, setDesk] = useState<SupportDesk | null>(null);
@@ -83,26 +93,60 @@ export function SupportDock() {
   /** Подсказка копилота дежурному: суть, что проверить, что сказать человеку. */
   const [copilot, setCopilot] = useState<Awaited<ReturnType<typeof api.supportCopilot>> | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
+  /*
+    Чужое обращение, открытое специалистом.
+
+    Панель по любому событию перечитывает «свой» разговор; без этой отметки взятое из
+    очереди обращение при первом же ответе клиента подменялось бы пустой панелью «что
+    случилось?» — и специалист терял разговор ровно в момент, когда в нём появлялось
+    новое. Пока отметка стоит, перечитываем именно это обращение.
+  */
+  const foreignId = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const d = await api.supportDesk();
       setDesk(d);
-      setConv(d.conversation);
+      if (foreignId.current) {
+        setConv(await api.supportConversation(foreignId.current));
+      } else {
+        setConv(d.conversation);
+      }
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Служба заботы сейчас недоступна');
     }
   }, []);
+
+  /** Открыть конкретное обращение — из очереди консоли или по всплывашке. */
+  const openConversation = useCallback(async (id: string) => {
+    foreignId.current = id;
+    setOpen(true);
+    setView('chat');
+    setTools(false);
+    setErr('');
+    try { setConv(await api.supportConversation(id)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть обращение'); }
+  }, []);
+
+  /** Вернуться к своему разговору: чужое обращение больше не держим. */
+  const leaveForeign = () => {
+    foreignId.current = null;
+    setConv(desk?.conversation ?? null);
+    setTools(false);
+  };
 
   // Панель узнаёт о себе, только когда её открыли: фоновые запросы ради кнопки не нужны.
   useEffect(() => { if (open && !desk) void load(); }, [open, desk, load]);
 
   // Позвали снаружи — из меню, командной строки или пустого экрана.
   useEffect(() => {
-    const show = () => setOpen(true);
+    const show = (e: Event) => {
+      const id = (e as CustomEvent<{ conversationId?: string }>).detail?.conversationId;
+      if (id) void openConversation(id); else setOpen(true);
+    };
     window.addEventListener(SUPPORT_OPEN, show);
     return () => window.removeEventListener(SUPPORT_OPEN, show);
-  }, []);
+  }, [openConversation]);
 
   /*
     Очередь дежурного.
@@ -218,7 +262,8 @@ export function SupportDock() {
       const to = mineConversation
         ? conv.participants.map((p) => String(p.user_id)).filter((uid) => uid !== String(user?.id ?? ''))
         : [];
-      requestCall({ memberIds: to, title: `Служба заботы · ${conv.subject}`.slice(0, 80) });
+      // Входим в ТУ ЖЕ комнату, на которую выписана ссылка: вторую оболочка поднимать не должна.
+      requestCall({ memberIds: to, roomId: String(room.id), title: `Служба заботы · ${conv.subject}`.slice(0, 80) });
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось начать созвон. Разговор сохранён — попробуйте ещё раз.');
     } finally { setBusy(false); }
@@ -298,6 +343,7 @@ export function SupportDock() {
   const takeConversation = async (id: string) => {
     setBusy(true); setErr('');
     try {
+      foreignId.current = id;
       setConv(await api.supportJoin(id));
       setView('chat');
       loadQueue();
@@ -423,12 +469,24 @@ export function SupportDock() {
   };
 
   const online = desk?.team.filter((t) => t.online) ?? [];
-  const agent = conv?.participants.find((p) => p.role === 'agent');
+  // Кто ведёт разговор СЕЙЧАС: участников-специалистов может быть несколько (передавали друг другу).
+  const agent = conv?.participants.find((p) => (conv.agentId
+    ? String(p.user_id) === String(conv.agentId)
+    : p.role === 'agent'));
   /** Ждём ответа человека о результате — тогда лента уступает место вопросу. */
   const asksResult = conv?.status === 'waiting_user' && String(conv?.userId) === String(user?.id ?? '');
   /** Чей разговор открыт: свой — пишем как человек, чужой — отвечаем как дежурный. */
   const mineConversation = !conv || String(conv.userId) === String(user?.id ?? '');
+  /** Кто обратился — специалисту в шапке нужен клиент и его организация, а не «Служба заботы». */
+  const client = conv?.participants.find((p) => String(p.user_id) === String(conv.userId));
+  const clientLine = [client?.full_name, conv?.orgName].filter(Boolean).join(' · ');
+  /** Разговор ведёт кто-то другой: взять можно, но стоит знать, у кого забираешь. */
+  const heldByOther = !!conv?.agentId && String(conv.agentId) !== String(user?.id ?? '');
   const ctx = describeContext(collectSupportContext());
+  /** Контекст клиента для специалиста: где он был, когда написал (собран на его стороне). */
+  const clientCtx = !mineConversation && conv?.context
+    ? describeContext(conv.context as Parameters<typeof describeContext>[0])
+    : [];
 
   if (!user || user.role === 'client') return null;
 
@@ -440,7 +498,7 @@ export function SupportDock() {
         Не в меню и не в настройках: у человека, у которого что-то сломалось, нет сил
         искать, где тут просят о помощи (разд. 3.1).
       */}
-      {!open && (
+      {!open && !embedded && (
         <button
           className="support-fab"
           onClick={() => setOpen(true)}
@@ -453,19 +511,32 @@ export function SupportDock() {
       )}
 
       {open && (
-        <aside className="support-dock" role="dialog" aria-label="Служба заботы">
+        <aside className={`support-dock${embedded ? ' support-dock-embedded' : ''}`} role="dialog" aria-label="Служба заботы">
           <header className="support-head">
-            <span className="support-head-mark" aria-hidden="true"><Icon name="support" size={18} /></span>
+            <span className="support-head-mark" aria-hidden="true"><Icon name={mineConversation ? 'support' : 'user'} size={18} /></span>
             <div className="support-head-title">
-              <b>{agent ? agent.full_name : 'Служба заботы'}</b>
-              <span className="dim support-head-sub">
-                {agent
-                  ? 'Специалист на связи'
-                  : conv?.status === 'waiting_agent'
-                    ? 'Ищем свободного специалиста'
-                    : etaText(desk?.etaSeconds ?? null)}
-                {online.length > 0 && !agent && <span className="support-online"> · {online.length} на связи</span>}
-              </span>
+              {mineConversation ? (
+                <>
+                  <b>{agent ? agent.full_name : 'Служба заботы'}</b>
+                  <span className="dim support-head-sub">
+                    {agent
+                      ? 'Специалист на связи'
+                      : conv?.status === 'waiting_agent'
+                        ? 'Ищем свободного специалиста'
+                        : etaText(desk?.etaSeconds ?? null)}
+                    {online.length > 0 && !agent && <span className="support-online"> · {online.length} на связи</span>}
+                  </span>
+                </>
+              ) : (
+                <>
+                  {/* Специалист смотрит на клиента: имя, организация, чем занят разговор. */}
+                  <b>{clientLine || 'Обращение'}</b>
+                  <span className="dim support-head-sub">
+                    {conv?.subject}{conv?.statusText ? ` · ${conv.statusText}` : ''}
+                    {agent ? (String(agent.user_id) === String(user?.id ?? '') ? ' · ведёте вы' : ` · ведёт ${agent.full_name}`) : ''}
+                  </span>
+                </>
+              )}
             </div>
             {conv && (
               <button
@@ -510,10 +581,40 @@ export function SupportDock() {
             >
               <Icon name="clock" size={15} />
             </button>
-            <button className="msg-icon" onClick={() => setOpen(false)} title="Закрыть" aria-label="Закрыть">
+            <button
+              className="msg-icon"
+              onClick={() => { if (foreignId.current) leaveForeign(); setOpen(false); }}
+              title="Закрыть"
+              aria-label="Закрыть"
+            >
               <Icon name="close" size={15} />
             </button>
           </header>
+
+          {/*
+            Первый шаг специалиста — взять обращение.
+
+            Кнопка стоит над лентой, а не прячется в очереди: специалист открыл разговор
+            и должен сразу видеть, что делать. Пока он не взял, поле ответа внизу тоже
+            работает — сервер сам назначит ответившего; но взять явно честнее для
+            клиента: он видит имя того, кто ему поможет, до первого ответа.
+          */}
+          {!mineConversation && conv && conv.status !== 'closed' && String(conv.agentId ?? '') !== String(user?.id ?? '') && (
+            <div className="support-take">
+              <span className="dim">
+                {heldByOther ? `Ведёт ${agent?.full_name ?? 'другой специалист'}` : 'Обращение никто не взял'}
+              </span>
+              <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void takeConversation(conv.id)}>
+                {heldByOther ? 'Взять себе' : 'Взять себе и ответить'}
+              </button>
+            </div>
+          )}
+          {/* Записка помощника «что уже пробовали» — только тому, кто работает в разговоре. */}
+          {!mineConversation && conv?.handoffNote && (
+            <div className="support-handoff">
+              <Icon name="info" size={13} /> <span>{conv.handoffNote}</span>
+            </div>
+          )}
 
           {/*
             Массовый сбой — первым делом и для всех (разд. 43).
@@ -543,13 +644,16 @@ export function SupportDock() {
                     {q.userName} · {q.statusText}
                     {q.agentName ? ` · ведёт ${q.agentName}` : ''}
                   </div>
-                  <button
-                    className={q.agentName ? 'btn btn-sm' : 'btn btn-primary btn-sm'}
-                    disabled={busy}
-                    onClick={() => void takeConversation(q.id)}
-                  >
-                    {q.agentName ? 'Открыть' : 'Взять себе'}
-                  </button>
+                  <span className="support-ask-row">
+                    <button className="btn btn-sm" disabled={busy} onClick={() => void openConversation(q.id)}>
+                      Открыть
+                    </button>
+                    {!q.agentName && (
+                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void takeConversation(q.id)}>
+                        Взять себе
+                      </button>
+                    )}
+                  </span>
                 </div>
               ))}
             </div>
@@ -595,9 +699,17 @@ export function SupportDock() {
                       {m.authorName ? `${m.authorName} ${m.body}` : m.body}
                     </div>
                   ) : (
-                    <div key={m.id} className={`support-msg support-msg-${m.kind}`}>
+                    <div
+                      key={m.id}
+                      className={`support-msg support-msg-${m.kind}${
+                        // Справа — свои слова, чьи бы они ни были: у клиента его, у специалиста его.
+                        m.authorId && String(m.authorId) === String(user?.id ?? '') ? ' support-msg-mine' : ''
+                      }`}
+                    >
                       <div className="support-msg-who">
-                        {m.kind === 'user' ? 'Вы' : m.kind === 'ai' ? 'AnthillBot' : m.authorName ?? 'Специалист'}
+                        {m.authorId && String(m.authorId) === String(user?.id ?? '')
+                          ? 'Вы'
+                          : m.kind === 'ai' ? 'AnthillBot' : m.authorName ?? (m.kind === 'user' ? 'Клиент' : 'Специалист')}
                         <span className="dim support-msg-time">{stampLabel(m.createdAt)}</span>
                       </div>
                       {m.body && <MessageText text={m.body} className="support-msg-text" />}
@@ -945,7 +1057,7 @@ export function SupportDock() {
                   className="input"
                   value={text}
                   rows={1}
-                  placeholder="Что случилось?"
+                  placeholder={mineConversation ? 'Что случилось?' : 'Ответ клиенту… (Enter — отправить)'}
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key !== 'Enter' || e.shiftKey) return;
@@ -966,9 +1078,15 @@ export function SupportDock() {
 
               <footer className="support-foot">
                 {/* Человек вправе знать, что уходит вместе с сообщением (разд. 50). */}
-                <span className="dim support-ctx" title="Эти данные уйдут специалисту вместе с сообщением">
-                  <Icon name="info" size={12} /> {ctx.join(' · ')}
-                </span>
+                {mineConversation ? (
+                  <span className="dim support-ctx" title="Эти данные уйдут специалисту вместе с сообщением">
+                    <Icon name="info" size={12} /> {ctx.join(' · ')}
+                  </span>
+                ) : (
+                  <span className="dim support-ctx" title="Где был клиент, когда написал">
+                    <Icon name="info" size={12} /> {clientCtx.length ? clientCtx.join(' · ') : 'контекст клиента не передан'}
+                  </span>
+                )}
                 {conv && mineConversation && !conv.agentId && conv.status !== 'closed' && (
                   <button className="btn btn-sm support-human" disabled={busy} onClick={() => void callHuman()}>
                     <Icon name="user" size={13} /> Позвать человека

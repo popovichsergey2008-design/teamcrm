@@ -46,7 +46,8 @@ import { ShortcutsHelp } from './components/ShortcutsHelp';
 import { prefetchFocus } from './pages/FocusPage';
 import { prefetchRadar } from './pages/RadarPage';
 import { ChatBar } from './components/chatbar/ChatBar';
-import { SupportDock } from './components/support/SupportDock';
+import { openSupport, SupportDock } from './components/support/SupportDock';
+import { useConsoleAlerts } from './hooks/useConsoleAlerts';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { ConsoleTopBar } from './components/console/ConsoleTopBar';
 
@@ -62,6 +63,17 @@ function Pane({ active, children }: { active: boolean; children: ReactNode }) {
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
   const route = useRoute();
+  /*
+    Консоль техотдела — автономное рабочее место (см. ветку ниже).
+
+    Всё, что живёт в оболочке ради CRM — входящие звонки коллег, уведомления чатов,
+    напоминания календаря, пинги секретаря, счётчики меню, — на поддомене консоли
+    НЕ запускается: сотрудник вендора разбирает чужие обращения, и звонок из своей
+    компании там не просто лишний — он выглядит как звонок клиента. Признак — адрес,
+    он не меняется за время жизни страницы.
+  */
+  const consoleMode = isConsoleHost();
+  const crmAlive = !!user && user.role !== 'client' && !consoleMode;
 
   /**
    * Доска умеет принимать «куда прыгнуть» только при монтировании, поэтому переход
@@ -192,12 +204,12 @@ export function App() {
   // Кто-то уже созванивается — показываем вход в комнату. Опрос, а не push:
   // постоянное WS-соединение ради этого держать не нужно.
   useEffect(() => {
-    if (!user || user.role === 'client') return;
+    if (!crmAlive) return;
     const poll = () => api.activeCalls().then(setActiveCalls).catch(() => undefined);
     poll();
     const t = setInterval(poll, 10_000);
     return () => clearInterval(t);
-  }, [user]);
+  }, [crmAlive]);
 
   // Адрес сменился извне доски (клик по разделу, «назад», уведомление) — пересобираем доску.
   // Подраздел («Клиенты») адрес занимает под себя, доска под ним остаётся как есть.
@@ -218,7 +230,7 @@ export function App() {
     }
   }, [user, route.section, route.tab]);
 
-  useShortcuts(!!user && user.role !== 'client', {
+  useShortcuts(crmAlive, {
     newTask: () => setNl({}),
     palette: () => setPaletteOpen({}),
     help: () => setHelpOpen((v) => !v),
@@ -280,10 +292,12 @@ export function App() {
       const req = (e as CustomEvent<StartCallRequest>).detail;
       if (!req || callId) return;
       try {
-        const room = await api.startCall(req.projectId ?? undefined, false, undefined, req.taskId ?? undefined);
+        // Комната уже есть (созвон из службы заботы) — входим в неё, второй не поднимаем.
+        const roomId = req.roomId
+          ?? (await api.startCall(req.projectId ?? undefined, false, undefined, req.taskId ?? undefined)).id;
         setCallInvite(req.memberIds);
         setCallCamera(req.video === true);
-        setCallId(room.id);
+        setCallId(roomId);
       } catch { /* недоступность медиа покажет само окно звонка */ }
     };
     window.addEventListener(START_CALL_EVENT, onRequest);
@@ -300,29 +314,31 @@ export function App() {
     } catch { /* недоступность медиа покажет само окно звонка */ }
   };
 
-  const counters = useNavCounters(!!user && user.role !== 'client', route.section);
-  const { incoming, accept, decline } = useIncomingCalls(!!user && user.role !== 'client');
+  const counters = useNavCounters(crmAlive, route.section);
+  const { incoming, accept, decline } = useIncomingCalls(crmAlive);
   // напоминания о встречах приходят в любой раздел: календарь для этого открывать не нужно
-  useCalendarReminders(!!user && user.role !== 'client');
+  useCalendarReminders(crmAlive);
   // позвали через @ в ленте — узнать об этом человек должен из любого раздела
-  useFeedMentions(!!user && user.role !== 'client', () => navigate({ section: 'news' }));
+  useFeedMentions(crmAlive, () => navigate({ section: 'news' }));
   // напоминание о просроченном должно догонять человека в любом разделе
-  useAssistantPings(!!user && user.role !== 'client', () => navigate({ section: 'focus' }));
+  useAssistantPings(crmAlive, () => navigate({ section: 'focus' }));
   // повестка встречи и итог её разбора приходят в любой раздел
   useMeetingModerator(
-    !!user && user.role !== 'client',
+    crmAlive,
     () => navigate({ section: 'focus' }),
     () => navigate({ section: 'chat', view: 'meetings' }),
   );
   const { unread } = useChatNotifications(
-    !!user && user.role !== 'client',
+    crmAlive,
     user?.id ? String(user.id) : null,
     // открытый чат — в разделе или в окне поверх CRM: по нему всплывашки не нужны
     route.section === 'chat' && !route.view ? openChatId : overlayActive,
     () => navigate({ section: 'chat' }),
   );
   // заголовок вкладки мигает, когда появилось новое: в соседней вкладке иначе не видно
-  useTabAlert(!!user && user.role !== 'client', counters, unread);
+  useTabAlert(crmAlive, counters, unread);
+  // консоль: новые обращения и ответы клиентов — единственное, о чём здесь сообщают
+  useConsoleAlerts(!!user && !!user.platformStaff && consoleMode);
 
   // Гость по ссылке `/meet/<токен>` — до всякой авторизации: у него нет учётной записи,
   // и экран входа на его пути означал бы «встреча только для сотрудников».
@@ -357,7 +373,7 @@ export function App() {
     Тем, кто не в техотделе, этот адрес не показывает ничего: не пустой каркас и не
     отказ на пол-экрана, а строчка с дорогой обратно.
   */
-  if (isConsoleHost()) {
+  if (consoleMode) {
     if (!user.platformStaff) {
       return (
         <div className="center-screen console-denied">
@@ -369,27 +385,35 @@ export function App() {
     return (
       <div className="shell console-shell">
         <ConsoleTopBar name={user.fullName} avatarPath={avatarPath} onLogout={logout} />
-        <main className="console-main">
-          <ConsolePage route={route} />
-        </main>
+        <div className="console-body">
+          <main className="console-main">
+            <ConsolePage route={route} />
+          </main>
 
-        {/* Панель разговора — та же, что у человека: второго мессенджера с той же лентой не заводим. */}
-        <SupportDock />
+          {/*
+            Разговор — правой колонкой рядом с очередью, а не окошком поверх страницы.
 
-        {/* Созвон по обращению обязан работать и здесь: без него «позвоните мне» упирается в никуда. */}
+            Панель та же, что у человека (второго мессенджера с той же лентой не заводим),
+            но здесь она открывается на ВЫБРАННОМ обращении: щёлкнул в очереди — справа
+            переписка с этим клиентом, кнопка «Взять себе» и поле ответа.
+          */}
+          <SupportDock embedded />
+        </div>
+
+        {/* Всплывашки консоли: «новое обращение», «клиент ответил» — щелчок открывает разговор. */}
+        <Toasts onOpenChat={() => undefined} onOpenSupport={(id) => openSupport(id)} />
+
+        {/*
+          Созвон по обращению обязан работать и здесь: без него «позвоните мне» упирается
+          в никуда. А вот ВХОДЯЩИХ звонков в консоли нет: сюда не звонят коллеги из своей
+          компании — созвон с клиентом начинается из разговора по согласию обеих сторон.
+        */}
         {callId && (
           <CallPanel
             meetingId={callId}
             inviteUserIds={callInvite}
             withCamera={callCamera}
             onClose={() => { setCallId(null); setCallInvite([]); setCallCamera(false); }}
-          />
-        )}
-        {incoming && !callId && (
-          <IncomingCallDialog
-            call={incoming}
-            onAccept={() => { const id = accept(); if (id) { setCallInvite([]); setCallId(id); } }}
-            onDecline={decline}
           />
         )}
       </div>

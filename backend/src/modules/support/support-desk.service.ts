@@ -218,16 +218,19 @@ export class SupportDeskService implements OnModuleInit {
   }
 
   private async view(tenantId: string, conv: ConversationRow) {
-    const [messages, participants, context, actions, call] = await Promise.all([
+    const [messages, participants, context, actions, call, orgName] = await Promise.all([
       this.repo.messages(String(conv.id)),
       this.repo.participants(String(conv.id)),
       this.repo.context(String(conv.id)),
       this.repo.actions(String(conv.id)),
       this.repo.liveCallRequest(String(conv.id)),
+      this.repo.tenantName(String(conv.tenant_id)),
     ]);
     return {
       id: String(conv.id),
       subject: conv.subject,
+      /** Чьё обращение: специалист в консоли видит чужие организации рядом и обязан их различать. */
+      orgName,
       status: conv.status,
       statusText: humanStatus(conv.status),
       priority: conv.priority,
@@ -319,7 +322,14 @@ export class SupportDeskService implements OnModuleInit {
     const msg = await this.repo.addMessage({
       tenantId, conversationId: String(conv.id), authorId: user.userId, kind: 'user', body, fileId,
     });
-    this.emit(tenantId, conv, 'support.message.created', { conversationId: String(conv.id), messageId: String(msg?.id) });
+    /*
+      Кто написал — в самом событии: консоли специалиста нужно отличать «клиент ответил»
+      (об этом стоит сказать вслух) от «я сам только что написал» (о нём молчат).
+    */
+    await this.emit(tenantId, conv, 'support.message.created', {
+      conversationId: String(conv.id), messageId: String(msg?.id), kind: 'user', authorId: user.userId,
+      subject: conv.subject, preview: body.slice(0, 120),
+    });
 
     /*
       Просьба о человеке слышна сразу.
@@ -465,7 +475,11 @@ export class SupportDeskService implements OnModuleInit {
       });
       await this.repo.markAiResponse(tenantId, conversationId);
       const after = await this.repo.byId(tenantId, conversationId);
-      if (after) this.emit(tenantId, after, 'support.message.created', { conversationId, messageId: String(msg?.id) });
+      if (after) {
+        await this.emit(tenantId, after, 'support.message.created', {
+          conversationId, messageId: String(msg?.id), kind: 'ai', authorId: null,
+        });
+      }
     } catch (e) {
       this.log.warn(`ИИ не ответил в разговоре ${conversationId}: ${(e as Error).message}`);
       await this.repo.addMessage({
@@ -506,8 +520,13 @@ export class SupportDeskService implements OnModuleInit {
       body: 'Зовём специалиста — он подключится к этому разговору.',
     });
     // Дежурным — сразу, событием: очередь должна оживать без перезагрузки страницы.
-    await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
-    this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: next.status });
+    // С темой и именем: консоль скажет «Ольга из Ромашки ждёт специалиста», а не «очередь изменилась».
+    await this.notifyDesk(tenantId, 'support.queue.changed', {
+      conversationId: id, waiting: true, subject: conv.subject,
+      userName: await this.repo.userName(tenantId, String(conv.user_id)),
+      orgName: await this.repo.tenantName(tenantId),
+    });
+    await this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: next.status });
     /*
       Ищем исполнителя — отдельной задачей.
 
@@ -661,7 +680,7 @@ export class SupportDeskService implements OnModuleInit {
       this.realtime.emitToUsers(home ?? tenantId, [decision.agentId], 'support.assignment.created', {
         conversationId: String(conv.id),
       });
-      this.emit(tenantId, next, 'support.agent.joined', {
+      await this.emit(tenantId, next, 'support.agent.joined', {
         conversationId: String(conv.id), agentId: decision.agentId,
       });
     } catch (e) {
@@ -702,7 +721,7 @@ export class SupportDeskService implements OnModuleInit {
       body: `Разговор ведёт ${who ?? 'специалист'}.`,
     });
     await this.notifyDesk(tenantId, 'support.assignment.changed', { conversationId: id });
-    this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: target });
+    await this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: target });
     return this.view(tenantId, next);
   }
 
@@ -774,7 +793,7 @@ export class SupportDeskService implements OnModuleInit {
     if (to === 'engineer_escalated' || to === 'fix_in_progress') {
       await this.repo.bumpEscalation(tenantId, id);
     }
-    this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: to });
+    await this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: to });
     return this.view(tenantId, next);
   }
 
@@ -905,7 +924,7 @@ export class SupportDeskService implements OnModuleInit {
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: user.userId, kind: 'system', body: 'подключился к разговору',
     });
-    this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: user.userId });
+    await this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: user.userId });
     return this.view(tenantId, next);
   }
 
@@ -925,7 +944,9 @@ export class SupportDeskService implements OnModuleInit {
       tenantId, conversationId: id, authorId: user.userId, kind: 'agent', body, fileId,
     });
     const next = (await this.repo.setStatus(tenantId, id, 'in_progress'))!;
-    this.emit(tenantId, next, 'support.message.created', { conversationId: id, messageId: String(msg?.id) });
+    await this.emit(tenantId, next, 'support.message.created', {
+      conversationId: id, messageId: String(msg?.id), kind: 'agent', authorId: user.userId,
+    });
     return this.view(tenantId, next);
   }
 
@@ -950,7 +971,7 @@ export class SupportDeskService implements OnModuleInit {
       tenantId, conversationId: id, authorId: null, kind: 'system',
       body: 'Проверьте, пожалуйста: всё работает?',
     });
-    this.emit(tenantId, next, 'support.resolved', { conversationId: id });
+    await this.emit(tenantId, next, 'support.resolved', { conversationId: id });
     return this.view(tenantId, next);
   }
 
@@ -977,12 +998,12 @@ export class SupportDeskService implements OnModuleInit {
         body: 'Человек ответил, что проблема осталась — разговор снова в работе.',
       });
       await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
-      this.emit(tenantId, back, 'support.status.changed', { conversationId: id, status: back.status });
+      await this.emit(tenantId, back, 'support.status.changed', { conversationId: id, status: back.status });
       return this.view(tenantId, back);
     }
     const score = csat && csat >= 1 && csat <= 4 ? csat : null;
     const next = (await this.repo.close(tenantId, id, score, reason?.slice(0, 64) ?? null))!;
-    this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: 'closed' });
+    await this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: 'closed' });
     return this.view(tenantId, next);
   }
 
@@ -998,7 +1019,7 @@ export class SupportDeskService implements OnModuleInit {
       body: text?.trim() || 'Эта проблема снова появилась.',
     });
     await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
-    this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: next.status });
+    await this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: next.status });
     return this.view(tenantId, next);
   }
 
@@ -1092,7 +1113,7 @@ export class SupportDeskService implements OnModuleInit {
     const home = await this.platform.tenantId();
     this.realtime.emitToUsers(home ?? tenantId, [engineerId], 'support.agent.joined', { conversationId: id });
     const next = (await this.repo.byId(tenantId, id))!;
-    this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: engineerId });
+    await this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: engineerId });
     return this.view(tenantId, next);
   }
 
@@ -1209,7 +1230,7 @@ export class SupportDeskService implements OnModuleInit {
       body: `завёл задачу #${task.id} — «${task.title}». Сообщим, когда исправление выйдет.`,
     });
     const next = (await this.repo.byId(tenantId, id))!;
-    this.emit(tenantId, next, 'support.issue.linked', { conversationId: id, taskId: String(task.id) });
+    await this.emit(tenantId, next, 'support.issue.linked', { conversationId: id, taskId: String(task.id) });
     return { taskId: String(task.id), projectId: String(project.id), conversation: await this.view(tenantId, next) };
   }
 
@@ -1253,7 +1274,7 @@ export class SupportDeskService implements OnModuleInit {
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: user.userId, kind: 'system', body: 'начал созвон',
     });
-    this.emit(tenantId, conv, 'support.call.started', { conversationId: id, roomId });
+    await this.emit(tenantId, conv, 'support.call.started', { conversationId: id, roomId });
     return { roomId };
   }
 
@@ -1277,8 +1298,9 @@ export class SupportDeskService implements OnModuleInit {
       tenantId, conversationId: id, authorId: user.userId, kind: 'system',
       body: mine ? 'просит созвон' : 'предлагает созвониться',
     });
-    this.emit(tenantId, conv, 'support.call.requested', { conversationId: id, requestId: String(row?.id) });
-    if (mine) await this.notifyDesk(tenantId, 'support.call.requested', { conversationId: id });
+    const byRole = mine ? 'user' : 'agent';
+    await this.emit(tenantId, conv, 'support.call.requested', { conversationId: id, requestId: String(row?.id), byRole });
+    if (mine) await this.notifyDesk(tenantId, 'support.call.requested', { conversationId: id, byRole });
     return this.view(tenantId, conv);
   }
 
@@ -1321,8 +1343,8 @@ export class SupportDeskService implements OnModuleInit {
       body: 'Разговор может записываться: расшифровка и итог вернутся сюда же.',
     });
     await this.repo.markRecordingNotice(id, room.roomId);
-    this.emit(tenantId, conv, 'support.call.accepted', { conversationId: id, roomId: room.roomId });
-    this.emit(tenantId, conv, 'support.call.started', { conversationId: id, roomId: room.roomId });
+    await this.emit(tenantId, conv, 'support.call.accepted', { conversationId: id, roomId: room.roomId });
+    await this.emit(tenantId, conv, 'support.call.started', { conversationId: id, roomId: room.roomId });
     return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
   }
 
@@ -1344,7 +1366,7 @@ export class SupportDeskService implements OnModuleInit {
       tenantId, conversationId: id, authorId: user.userId, kind: 'system',
       body: 'сейчас неудобно созваниваться — продолжаем перепиской',
     });
-    this.emit(tenantId, conv, 'support.call.declined', { conversationId: id });
+    await this.emit(tenantId, conv, 'support.call.declined', { conversationId: id });
     return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
   }
 
@@ -1368,9 +1390,9 @@ export class SupportDeskService implements OnModuleInit {
       });
       const conv = await this.repo.byId(h.tenant_id, h.conversation_id);
       if (conv) {
-        this.emit(h.tenant_id, conv, 'support.call.ended', { conversationId: h.conversation_id });
+        await this.emit(h.tenant_id, conv, 'support.call.ended', { conversationId: h.conversation_id });
         if (summary?.trim()) {
-          this.emit(h.tenant_id, conv, 'support.call.summary.ready', { conversationId: h.conversation_id });
+          await this.emit(h.tenant_id, conv, 'support.call.summary.ready', { conversationId: h.conversation_id });
         }
       }
     } catch (e) {
@@ -1485,7 +1507,7 @@ export class SupportDeskService implements OnModuleInit {
       body: `предлагает: ${preview}${isUndoable(req.kind) ? ' Если что — вернём как было.' : ''}`,
     });
     const next = (await this.repo.byId(tenantId, id))!;
-    this.emit(tenantId, next, 'support.action.proposed', { conversationId: id, actionId: String(row?.id) });
+    await this.emit(tenantId, next, 'support.action.proposed', { conversationId: id, actionId: String(row?.id) });
     return this.view(tenantId, next);
   }
 
@@ -1530,7 +1552,7 @@ export class SupportDeskService implements OnModuleInit {
       body: `Сделано: ${act.preview}${isUndoable(req.kind) ? ' Можно вернуть как было.' : ''}`,
     });
     const next = (await this.repo.byId(tenantId, id))!;
-    this.emit(tenantId, next, 'support.action.done', { conversationId: id, actionId });
+    await this.emit(tenantId, next, 'support.action.done', { conversationId: id, actionId });
     return this.view(tenantId, next);
   }
 
@@ -1766,7 +1788,7 @@ export class SupportDeskService implements OnModuleInit {
     const score = csat && csat >= 1 && csat <= 4 ? csat : null;
     const next = (await this.repo.close(tenantId, id, score, null))!;
     await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
-    this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: 'closed' });
+    await this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: 'closed' });
     return this.view(tenantId, next);
   }
 
@@ -1904,10 +1926,18 @@ export class SupportDeskService implements OnModuleInit {
     await this.assertCanWork(tenantId, user, String(conv.id));
   }
 
-  /** Событие — участникам разговора и дежурным: панель оживает без перезагрузки. */
-  private emit(tenantId: string, conv: ConversationRow, event: string, payload: Record<string, unknown>): void {
-    const to = [String(conv.user_id)];
-    if (conv.assigned_agent_id) to.push(String(conv.assigned_agent_id));
-    this.realtime.emitToUsers(tenantId, to, event, payload);
+  /**
+   * Событие — участникам разговора: панель оживает без перезагрузки.
+   *
+   * Человеку — в его организацию, специалисту — в ЕГО: комната присутствия строится
+   * из пары «организация + человек», а техотдел сидит в организации вендора. Слать
+   * специалисту в организацию клиента значило бы слать в пустоту — ответ клиента он
+   * увидел бы только по F5, а очередь в консоли не шевелилась бы вовсе.
+   */
+  private async emit(tenantId: string, conv: ConversationRow, event: string, payload: Record<string, unknown>): Promise<void> {
+    this.realtime.emitToUsers(tenantId, [String(conv.user_id)], event, payload);
+    if (!conv.assigned_agent_id) return;
+    const home = (await this.platform.tenantId()) ?? tenantId;
+    this.realtime.emitToUsers(home, [String(conv.assigned_agent_id)], event, payload);
   }
 }

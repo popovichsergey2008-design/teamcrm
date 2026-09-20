@@ -60,7 +60,7 @@ export function SupportPage() {
               <Icon name="lock" size={14} /> Консоль техподдержки
             </a>
           )}
-          <button className="btn btn-primary btn-sm" onClick={openSupport}>
+          <button className="btn btn-primary btn-sm" onClick={() => openSupport()}>
             <Icon name="chat" size={15} /> Написать
           </button>
         </div>
@@ -123,7 +123,7 @@ export function SupportPage() {
                 {h.csat ? ` · оценка ${h.csat}/4` : ''}
               </div>
               <div className="support-history-acts">
-                <button className="btn btn-ghost btn-sm" onClick={openSupport}>Открыть разговор</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => openSupport()}>Открыть разговор</button>
                 {h.closedAt && (
                   <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void reopen(h.id)}>
                     Проблема снова появилась

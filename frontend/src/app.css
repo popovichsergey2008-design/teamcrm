@@ -4581,7 +4581,8 @@ button.chat-pop-row:hover { background: var(--hover); }
 .support-empty { padding: 12px; }
 
 .support-msg { max-width: 92%; padding: 8px 12px; border-radius: 14px; background: var(--bg-elev); border: 1px solid var(--border); }
-.support-msg-user { align-self: flex-end; background: var(--accent-soft); border-color: var(--accent-line); }
+/* Справа — свои слова: у клиента его, у специалиста его. Чужие, чьи бы ни были, — слева. */
+.support-msg-mine { align-self: flex-end; background: var(--accent-soft); border-color: var(--accent-line); }
 .support-msg-ai { border-color: var(--ok-line); }
 .support-msg-who { display: flex; gap: 6px; align-items: baseline; font-size: var(--fs-xs); font-weight: 600; margin-bottom: 2px; }
 .support-msg-time { font-weight: 400; }
@@ -4631,6 +4632,37 @@ button.chat-pop-row:hover { background: var(--hover); }
 }
 .support-history-head { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); }
 .support-history-sub { font-size: var(--fs-xs); }
+
+/*
+  Первый шаг специалиста: «Взять себе». Полосой над лентой, а не кнопкой в очереди —
+  открыв разговор, человек должен сразу видеть, что делать дальше.
+*/
+.support-take {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--warn-soft);
+  font-size: var(--fs-sm);
+}
+/* Записка помощника «что уже пробовали» — тому, кто продолжает разговор. */
+.support-handoff {
+  flex: 0 0 auto; display: flex; gap: 6px; align-items: flex-start;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs); color: var(--text-dim); background: var(--bg-elev);
+}
+
+/*
+  Консоль техотдела: панель разговора — колонка справа от очереди.
+
+  Не окошко поверх страницы: здесь разговор — главная работа, а очередь — то, откуда
+  его берут. Стоят рядом, и ни одно не накрывает другое.
+*/
+.console-body { flex: 1; min-height: 0; display: flex; flex-direction: row; }
+.support-dock-embedded {
+  position: static; flex: 0 0 min(460px, 50vw); width: auto; height: auto;
+  border-radius: 0; border: none; border-left: 1px solid var(--border); box-shadow: none;
+}
+@media (max-width: 900px) {
+  .support-dock-embedded { position: fixed; inset: 0; flex: none; width: 100vw; height: 100dvh; border-left: none; }
+}
 
 /* На узком экране панель занимает его целиком: разговор о поломке важнее фона. */
 /* Панели чатов справа нет — кнопке и окну больше не от чего отступать. */
