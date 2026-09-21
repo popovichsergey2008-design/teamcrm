@@ -31,6 +31,17 @@ describe('Ringing — учёт идущих вызовов', () => {
     expect(r.waiting('11')).toEqual(['3']);
   });
 
+  it('по человеку видно, из каких комнат его зовут — телефон, открывшийся по push, получит вызов заново', () => {
+    const r = new Ringing();
+    r.add('10', '2');
+    r.add('11', '2');
+    r.add('11', '3');
+    expect(r.roomsFor('2').sort()).toEqual(['10', '11']);
+    r.stop('11', '2');
+    expect(r.roomsFor('2')).toEqual(['10']);
+    expect(r.roomsFor('9')).toEqual([]);
+  });
+
   it('закрытая комната больше ничего не помнит — второй раз гасить некого', () => {
     const r = new Ringing();
     r.add('10', '2');

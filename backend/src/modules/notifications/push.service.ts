@@ -96,6 +96,38 @@ export class PushService {
     }
   }
 
+  /**
+   * Входящий звонок (ТЗ-9, волна 7): push с высоким приоритетом всем устройствам человека.
+   *
+   * В ящик не пишем — звонок не новость, а событие на минуту: пропущенный виден в
+   * митах. Один push на звонок на человека (дедуп в Redis на минуту): звонящий может
+   * дёргать приглашение несколько раз, телефон должен зазвонить один раз.
+   * Что видно на экране блокировки — по политике организации: имя звонящего или
+   * просто «Входящий звонок».
+   */
+  async callInvite(m: { tenantId: string; userId: string; meetingId: string; callerName: string }): Promise<void> {
+    if (!this.fcm.enabled) return;
+    try {
+      const targets = await this.inbox.pushTargets(m.userId);
+      if (!targets.length) return;
+      try {
+        const r = await this.redis.client.set(`push:call:${m.userId}:${m.meetingId}`, '1', 'EX', 60, 'NX');
+        if (r !== 'OK') return;
+      } catch { /* без Redis — шлём */ }
+      const privacy = await this.inbox.pushPrivacyOf(m.tenantId);
+      const title = privacy === 'hide' ? 'ANTHILL' : `Входящий звонок · ${m.callerName}`;
+      const body = privacy === 'hide' ? 'Входящий звонок' : 'Откройте, чтобы ответить';
+      for (const t of targets) {
+        const outcome = await this.fcm.send(t.push_token, {
+          title, body, data: { type: 'call', meetingId: m.meetingId, path: '/chat', eventKey: 'meet.incoming-call' },
+        });
+        if (outcome === 'invalid_token') await this.inbox.dropPushToken(t.id);
+      }
+    } catch (e) {
+      this.log.warn(`push о звонке ${m.meetingId}: ${(e as Error).message}`);
+    }
+  }
+
   private async allowChatPush(userId: string, chatId: string): Promise<boolean> {
     try {
       const r = await this.redis.client.set(`push:chat:${userId}:${chatId}`, '1', 'EX', CHAT_PUSH_THROTTLE_S, 'NX');

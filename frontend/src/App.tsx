@@ -147,6 +147,12 @@ export function App() {
   const [callInvite, setCallInvite] = useState<string[]>([]);
   /** Видеозвонок: камера включается сразу. Комната та же — разница только в этом. */
   const [callCamera, setCallCamera] = useState(false);
+  // Идёт созвон — ОС не должна усыпить приложение (ТЗ-9, волна 7); в браузере это ничего не делает.
+  useEffect(() => {
+    if (!callId) return;
+    void platform.calls.keepAwake(true);
+    return () => { void platform.calls.keepAwake(false); };
+  }, [callId]);
   // какой чат открыт — чтобы не слать уведомление о сообщении, которое человек и так видит
   const [openChatId, setOpenChatId] = useState<string | null>(null);
   const [activeCalls, setActiveCalls] = useState<{ id: string; participants: { userId?: string; displayName: string }[] }[]>([]);

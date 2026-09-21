@@ -14,6 +14,7 @@ import { DiagService } from '../diagnostics/diag.service';
 import { AI_PARTICIPANT, MeetingRoom } from './media.types';
 import { GuestLinksService, GuestTokenPayload } from './guest-links.service';
 import { Ringing } from './ringing';
+import { PushService } from '../notifications/push.service';
 
 const PATH = '/ws/meet';
 
@@ -66,6 +67,7 @@ export class MeetGateway implements OnModuleInit {
     private readonly meetings: MeetingsService,
     private readonly diag: DiagService,
     private readonly guests: GuestLinksService,
+    private readonly push: PushService,
   ) {}
 
   /**
@@ -147,6 +149,20 @@ export class MeetGateway implements OnModuleInit {
       isGuest: false,
     };
     this.wire(client);
+    /*
+      Телефон открылся по push «входящий звонок» (ТЗ-9): сам вызов ушёл в сокет, которого
+      тогда не было. Если звонок ещё идёт — показываем его заново в новое соединение.
+    */
+    for (const roomId of this.ringing.roomsFor(client.userId)) {
+      const room = this.media.getRoom(roomId);
+      if (!room || room.tenantId !== client.tenantId || !room.participants.size) continue;
+      // звонящий — первый живой человек в комнате (ИИ-участник — не он)
+      const caller = [...room.participants.values()].find((x) => x.userId !== 'ai');
+      this.send(ws, 'meet.incoming-call', {
+        meeting_id: room.id, project_id: room.projectId,
+        caller_id: caller?.userId ?? null, caller_name: caller?.displayName ?? 'Коллега',
+      });
+    }
   }
 
   /**
@@ -486,6 +502,11 @@ export class MeetGateway implements OnModuleInit {
           this.toUser(c.tenantId, String(target), 'meet.incoming-call', {
             meeting_id: room.id, project_id: room.projectId,
             caller_id: c.userId, caller_name: c.displayName,
+          });
+          // Телефон в кармане: push с высоким приоритетом, по нажатию приложение откроется и
+          // получит вызов заново через сокет (см. onConnect). Не ждём и не роняем приглашение.
+          void this.push.callInvite({
+            tenantId: c.tenantId, userId: String(target), meetingId: room.id, callerName: c.displayName,
           });
         }
         return;

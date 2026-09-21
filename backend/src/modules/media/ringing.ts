@@ -37,4 +37,14 @@ export class Ringing {
   waiting(roomId: string): string[] {
     return [...(this.byRoom.get(roomId) ?? [])];
   }
+
+  /**
+   * В какие комнаты зовут этого человека — для телефона, который открылся по push
+   * (ТЗ-9): пока он подключался, звонок уже шёл, и его надо показать заново.
+   */
+  roomsFor(userId: string): string[] {
+    const out: string[] = [];
+    for (const [roomId, set] of this.byRoom) if (set.has(userId)) out.push(roomId);
+    return out;
+  }
 }

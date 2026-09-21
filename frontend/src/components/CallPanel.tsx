@@ -718,9 +718,13 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           <button className={`btn btn-sm ${camOn ? '' : 'call-off'}`} onClick={toggleCam}>
             <Icon name={camOn ? 'video' : 'video-off'} size={15} />{camOn ? 'Камера' : 'Включить камеру'}
           </button>
+          {/* Показ экрана — только там, где браузер его умеет: в WebView Android getDisplayMedia нет,
+              и кнопка обещала бы то, что кончится ошибкой (нативный показ — отдельным мостом, волна 11). */}
+          {typeof navigator.mediaDevices?.getDisplayMedia === 'function' && (
           <button className={`btn btn-sm ${screenOn ? '' : 'call-off'}`} onClick={toggleScreen}>
             <Icon name="screen" size={15} />{screenOn ? 'Показ идёт' : 'Показать экран'}
           </button>
+          )}
           <button className={`btn btn-sm ${hand ? '' : 'call-off'}`} onClick={() => { setHand(!hand); client.current?.raiseHand(!hand); }}>
             <Icon name="hand" size={15} /> Рука
           </button>

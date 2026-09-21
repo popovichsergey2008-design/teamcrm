@@ -8,6 +8,9 @@ project(':aparajita-capacitor-biometric-auth').projectDir = new File('../../node
 include ':aparajita-capacitor-secure-storage'
 project(':aparajita-capacitor-secure-storage').projectDir = new File('../../node_modules/@aparajita/capacitor-secure-storage/android')
 
+include ':capacitor-community-keep-awake'
+project(':capacitor-community-keep-awake').projectDir = new File('../../node_modules/@capacitor-community/keep-awake/android')
+
 include ':capacitor-community-privacy-screen'
 project(':capacitor-community-privacy-screen').projectDir = new File('../../node_modules/@capacitor-community/privacy-screen/android')
 
@@ -34,3 +37,6 @@ project(':capacitor-share').projectDir = new File('../../node_modules/@capacitor
 
 include ':capacitor-status-bar'
 project(':capacitor-status-bar').projectDir = new File('../../node_modules/@capacitor/status-bar/android')
+
+include ':capawesome-team-capacitor-android-foreground-service'
+project(':capawesome-team-capacitor-android-foreground-service').projectDir = new File('../../node_modules/@capawesome-team/capacitor-android-foreground-service/android')

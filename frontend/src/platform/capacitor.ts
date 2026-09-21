@@ -7,6 +7,8 @@ import { SecureStorage } from '@aparajita/capacitor-secure-storage';
 import { BiometricAuth } from '@aparajita/capacitor-biometric-auth';
 import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { PushNotifications } from '@capacitor/push-notifications';
+import { ForegroundService, ServiceType } from '@capawesome-team/capacitor-android-foreground-service';
+import { KeepAwake } from '@capacitor-community/keep-awake';
 import { browserBridge, BUNDLE_VERSION } from './browser';
 import type { PlatformBridge, PlatformInfo } from './types';
 
@@ -149,6 +151,30 @@ export const capacitorBridge: PlatformBridge = {
       void CapApp.getLaunchUrl().then((l) => { const p = l?.url ? toPath(l.url) : null; if (p) handler(p); });
       deepLinkHandlers.add(handler); // нажатие на push ведёт туда же
       return () => { void sub.then((h) => h.remove()); deepLinkHandlers.delete(handler); };
+    },
+  },
+
+  calls: {
+    ...browserBridge.calls,
+    /*
+      Созвон в фоне (волна 7). Android с 14-й версии глушит микрофон свернувшегося
+      приложения через минуту — если у него нет foreground service нужного типа.
+      Поднимаем его вместе с уведомлением «Идёт созвон» на всё время звонка и не
+      даём экрану уснуть; iOS держит звук сам, пока сессия активна (CallKit — позже).
+    */
+    async keepAwake(on) {
+      try { if (on) await KeepAwake.keepAwake(); else await KeepAwake.allowSleep(); } catch { /* не критично */ }
+      if (deviceInfo?.os !== 'android') return;
+      try {
+        if (on) {
+          await ForegroundService.startForegroundService({
+            id: 1, title: 'Идёт созвон', body: 'ANTHILL держит микрофон включённым',
+            smallIcon: 'ic_stat_call', serviceType: ServiceType.Microphone,
+          });
+        } else {
+          await ForegroundService.stopForegroundService();
+        }
+      } catch { /* без сервиса звонок всё равно идёт, пока приложение на экране */ }
     },
   },
 
