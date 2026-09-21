@@ -29,6 +29,7 @@ import { useMeetingModerator } from './hooks/useMeetingModerator';
 import { useNavCounters } from './hooks/useNavCounters';
 import { useTabAlert } from './hooks/useTabAlert';
 import { Sidebar } from './components/Sidebar';
+import { BottomNav } from './components/BottomNav';
 import { Icon } from './components/Icon';
 import { ProfilePanel } from './components/ProfilePanel';
 import { NlCommandModal } from './components/NlCommandModal';
@@ -60,9 +61,32 @@ function Pane({ active, children }: { active: boolean; children: ReactNode }) {
   return <div className="pane" style={{ display: active ? 'flex' : 'none' }}>{children}</div>;
 }
 
+/*
+  Высота экрана на телефоне — по visualViewport (ТЗ-9, волна 1).
+
+  Safari на iPhone не сжимает страницу под клавиатуру: `100dvh` остаётся прежним, а
+  поле ввода уезжает под клавиатуру. visualViewport знает настоящую видимую высоту —
+  кладём её в CSS-переменную, и полноэкранные листы (чат, поддержка, диктовка) держат
+  композер над клавиатурой. На компьютере переменная равна высоте окна и ничего не меняет.
+*/
+function useAppHeight(): void {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const apply = () => {
+      const h = Math.round(vv?.height ?? window.innerHeight);
+      document.documentElement.style.setProperty('--app-h', `${h}px`);
+    };
+    apply();
+    vv?.addEventListener('resize', apply);
+    window.addEventListener('resize', apply);
+    return () => { vv?.removeEventListener('resize', apply); window.removeEventListener('resize', apply); };
+  }, []);
+}
+
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
   const route = useRoute();
+  useAppHeight();
   /*
     Консоль техотдела — автономное рабочее место (см. ветку ниже).
 
@@ -614,6 +638,18 @@ export function App() {
       <button className="voice-fab" onClick={() => setPaletteOpen({ voice: true })} aria-label="Продиктовать">
         <Icon name="mic" size={22} />
       </button>
+
+      {/*
+        Нижние вкладки — только на телефоне (CSS прячет их шире 720px).
+
+        «Ещё» открывает ту же панель разделов, что и раньше, — второго меню нет.
+      */}
+      <BottomNav
+        route={route}
+        unread={unread}
+        counters={counters}
+        onMore={() => window.dispatchEvent(new Event('teamcrm:toggle-sidebar'))}
+      />
 
       {paletteOpen && (
         <CommandPalette

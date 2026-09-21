@@ -2,7 +2,10 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: рисуем под «чёлку» и полосу жестов и сами отступаем на
+         safe-area; interactive-widget=resizes-content: открытая клавиатура сжимает
+         страницу, а не накрывает поле ввода (Chrome на Android). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>ANTHILL</title>
 
     <!-- Знак вкладки — фирменный ANTHILL.TEAM. Только png: знак растровый, и svg-версии

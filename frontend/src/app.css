@@ -395,6 +395,43 @@
 /* меню профиля раскрывается вверх: снизу панели места нет */
 .nav-menu-pop { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; min-width: 210px; }
 
+/*
+  ───── Телефон: нижние вкладки (ТЗ-9, волна 1) ─────
+
+  На узком экране разделы — внизу, под большим пальцем: Фокус · Проекты · Чаты · Миты ·
+  Ещё. «Гамбургер» в верхнем углу на телефоне убран — его роль у «Ещё». Высота вкладок
+  и safe-area внизу (полоса жестов iPhone) — одной переменной, чтобы всё, что стоит
+  над ними (кнопка диктовки, окно чата, панель поддержки), отступало одинаково.
+*/
+:root { --bottom-nav-h: 0px; }
+.bottom-nav { display: none; }
+@media (max-width: 720px) {
+  :root { --bottom-nav-h: calc(56px + env(safe-area-inset-bottom, 0px)); }
+  .bottom-nav {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+    height: var(--bottom-nav-h); padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--bg-elev); border-top: 1px solid var(--border);
+  }
+  .bottom-nav-item {
+    flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    padding: 6px 2px 4px; background: none; border: none; cursor: pointer;
+    color: var(--text-mut); font: inherit; font-size: var(--fs-xs);
+  }
+  .bottom-nav-item.active { color: var(--accent); }
+  .bottom-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
+  .bottom-nav-icon { position: relative; display: grid; place-items: center; width: 28px; height: 24px; }
+  .bottom-nav-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bottom-nav-badge {
+    position: absolute; top: -4px; right: -8px; min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 8px; font-size: 10px; line-height: 16px; text-align: center; font-weight: 600;
+    background: var(--fill-danger); color: var(--on-fill);
+  }
+  /* содержимое не прячется под вкладками */
+  .app-main { padding-bottom: var(--bottom-nav-h); }
+  /* высота экрана телефона — без адресной строки и без клавиатуры (см. useAppHeight) */
+  .shell, .app-shell { height: var(--app-h, 100dvh); }
+}
+
 /* кнопка «меню» и подложка — только на узком экране */
 .nav-open-btn { display: none; }
 .nav-backdrop { display: none; }
@@ -411,6 +448,11 @@
   }
   .nav-backdrop { display: block; position: fixed; inset: 0; background: var(--overlay); z-index: 65; }
   .app-main { padding-top: 52px; }
+}
+/* На телефоне «гамбургер» не нужен: панель открывает «Ещё» в нижних вкладках. */
+@media (max-width: 720px) {
+  .nav-open-btn { display: none; }
+  .app-main { padding-top: 0; }
 }
 
 /* полноэкранная страница (личный кабинет и т.п.) — под топбаром */
@@ -1082,6 +1124,11 @@
   width: 420px; max-width: 92vw; height: 100%; overflow-y: auto;
   background: var(--bg-elev); border-left: 1px solid var(--border);
   padding: 20px; box-shadow: var(--shadow-lg);
+}
+/* Телефон: боковая панель занимает экран целиком, высотой в видимую область (над клавиатурой). */
+@media (max-width: 720px) {
+  .drawer-overlay { align-items: stretch; }
+  .drawer { width: 100vw; max-width: 100vw; height: var(--app-h, 100dvh); border-left: none; padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px)); }
 }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .drawer-head h3 { margin: 0; font-size: calc(18px * var(--fs-scale)); }
@@ -2168,6 +2215,9 @@
 .modal-overlay {
   position: fixed; inset: 0; background: var(--overlay); z-index: 60;
   display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+@media (max-width: 720px) {
+  .modal-overlay { padding: 8px; align-items: flex-end; height: var(--app-h, 100dvh); }
 }
 .modal-card {
   width: 520px; max-width: 100%; max-height: 90vh; overflow-y: auto;
@@ -3540,7 +3590,7 @@
 .voice-fab { display: none; }
 @media (max-width: 1100px) {
   .voice-fab {
-    display: grid; place-items: center; position: fixed; right: 16px; bottom: 16px; z-index: 60;
+    display: grid; place-items: center; position: fixed; right: 16px; bottom: calc(16px + var(--bottom-nav-h)); z-index: 44;
     width: 52px; height: 52px; border-radius: 50%; cursor: pointer;
     background: var(--accent-2); color: var(--on-accent); border: none; box-shadow: var(--shadow-lg);
   }
@@ -3936,6 +3986,10 @@
   .chat-bar { display: none; }
   .chat-overlay, .shell:has(.chat-bar.expanded) .chat-overlay { right: 0; left: 0; width: auto; }
   .chat-overlay-grip { display: none; }
+}
+/* Телефон: окно чата — полноэкранный лист над нижними вкладками, высотой в видимую область. */
+@media (max-width: 720px) {
+  .chat-overlay { top: 0; bottom: var(--bottom-nav-h); height: auto; max-height: calc(var(--app-h, 100dvh) - var(--bottom-nav-h)); border-left: none; }
 }
 
 /*
@@ -4691,7 +4745,7 @@ button.chat-pop-row:hover { background: var(--hover); }
   border-radius: 0; border: none; border-left: 1px solid var(--border); box-shadow: none;
 }
 @media (max-width: 900px) {
-  .support-dock-embedded { position: fixed; inset: 0; flex: none; width: 100vw; height: 100dvh; border-left: none; }
+  .support-dock-embedded { position: fixed; inset: 0; flex: none; width: 100vw; height: var(--app-h, 100dvh); border-left: none; }
 }
 
 /* На узком экране панель занимает его целиком: разговор о поломке важнее фона. */
@@ -4699,8 +4753,8 @@ button.chat-pop-row:hover { background: var(--hover); }
 @media (max-width: 900px) {
   .support-dock { right: 14px; }
 }
-@media (max-width: 560px) {
-  .support-dock { right: 0; bottom: 0; width: 100vw; height: 100dvh; border-radius: 0; }
+@media (max-width: 720px) {
+  .support-dock { right: 0; bottom: var(--bottom-nav-h); width: 100vw; height: calc(var(--app-h, 100dvh) - var(--bottom-nav-h)); border-radius: 0; border: none; }
 }
 
 /* Раздел «Служба заботы»: состояние службы, очередь дежурного и своя история. */
