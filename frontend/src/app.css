@@ -3331,6 +3331,11 @@
   background: var(--bg-elev); border: 1px solid var(--border-2);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden;
 }
+/* Телефон: командная строка — сверху экрана во всю ширину, список под клавиатуру не уезжает. */
+@media (max-width: 720px) {
+  .palette-overlay { align-items: flex-start; padding: 8px; height: var(--app-h, 100dvh); }
+  .palette { max-width: none; max-height: calc(var(--app-h, 100dvh) - 16px); }
+}
 .palette-input-row {
   display: flex; align-items: center; gap: var(--sp-2);
   padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); color: var(--text-mut);
