@@ -4,6 +4,8 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { SessionsService } from '../auth/sessions.service';
 import { DeviceInput, MobileDevicesRepository } from './mobile-devices.repository';
 import { InboxRepository } from '../notifications/inbox.repository';
+import { TasksRepository } from '../tasks/tasks.repository';
+import { ApprovalsRepository } from '../approvals/approvals.repository';
 
 @Injectable()
 export class MobileService {
@@ -11,7 +13,27 @@ export class MobileService {
     private readonly devices: MobileDevicesRepository,
     private readonly sessions: SessionsService,
     private readonly inbox: InboxRepository,
+    private readonly tasks: TasksRepository,
+    private readonly approvals: ApprovalsRepository,
   ) {}
+
+  /**
+   * «Фокус дня» одним запросом (ТЗ-9, волна 5).
+   *
+   * Экран собирался четырьмя запросами: мои задачи, порученные, на проверке,
+   * согласования. На телефоне четыре запроса — четыре шанса поймать таймаут в
+   * лифте. Логика та же, что у отдельных ручек: те же репозитории, те же права —
+   * здесь только параллельный вызов и один конверт.
+   */
+  async focus(tenantId: string, userId: string) {
+    const [mine, delegated, review, approvals] = await Promise.all([
+      this.tasks.listForUser(tenantId, userId, 'mine', true),
+      this.tasks.listForUser(tenantId, userId, 'delegated', false),
+      this.tasks.listForUser(tenantId, userId, 'review', false),
+      this.approvals.inbox(tenantId, userId),
+    ]);
+    return { mine, delegated, review, approvals };
+  }
 
   /**
    * Ящик уведомлений по курсору (ТЗ-9): push — сигнал, ящик — правда.

@@ -64,6 +64,12 @@ export class MobileController {
     return this.cfg.config(u.tenantId);
   }
 
+  /** «Фокус дня» одним ответом: мои, порученные, на проверке, согласования. */
+  @Get('focus')
+  focus(@CurrentUser() u: AuthUser) {
+    return this.mobile.focus(u.tenantId, u.userId);
+  }
+
   /** Ящик уведомлений: после курсора — или последние, если курсора ещё нет. */
   @Get('notifications')
   notifications(@CurrentUser() u: AuthUser, @Query() q: ListQuery) {

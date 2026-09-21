@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../components/Icon';
+import { BottomSheet, SheetAction } from '../components/BottomSheet';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonList } from '../components/Skeleton';
 import { api, ApiError } from '../lib/api';
@@ -71,8 +72,43 @@ function FocusCard({ task, side, onOpen, onPlan }: {
     ? `${task.checklistDone ?? 0} из ${task.checklistTotal}`
     : null;
 
+  /*
+    Быстрые действия — нижним листом (ТЗ-9, волна 5).
+
+    Мелкие кнопки «В сегодня / На завтра» на телефоне — цель для мыши, не для пальца.
+    Кнопка «⋯» открывает лист с теми же действиями крупно; на компьютере она тоже есть,
+    а мелкие кнопки остаются — они быстрее одним щелчком.
+  */
+  const [sheet, setSheet] = useState(false);
+  const planToday = task.focus_date === localDay();
   return (
-    <button className={`focus-card${isOverdue(task) ? ' focus-card-late' : ''}`} onClick={onOpen}>
+    <div
+      className={`focus-card${isOverdue(task) ? ' focus-card-late' : ''}`}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+    >
+      {onPlan && (
+        <button
+          className="focus-card-more"
+          onClick={(e) => { e.stopPropagation(); setSheet(true); }}
+          title="Действия"
+          aria-label="Действия с задачей"
+          aria-haspopup="dialog"
+        >
+          <Icon name="more" size={16} />
+        </button>
+      )}
+      {sheet && onPlan && (
+        <BottomSheet title={task.title} onClose={() => setSheet(false)}>
+          <SheetAction icon={<Icon name="board" size={18} />} label="Открыть карточку" hint={task.project_name} onClick={() => { setSheet(false); onOpen(); }} />
+          {planToday
+            ? <SheetAction icon={<Icon name="close" size={18} />} label="Убрать из плана на сегодня" onClick={() => { setSheet(false); onPlan(null); }} />
+            : <SheetAction icon={<Icon name="target" size={18} />} label="В план на сегодня" hint="личный план, не срок" onClick={() => { setSheet(false); onPlan(localDay()); }} />}
+          <SheetAction icon={<Icon name="calendar" size={18} />} label="На завтра" onClick={() => { setSheet(false); onPlan(localDay(1)); }} />
+        </BottomSheet>
+      )}
       <span className="focus-card-title">{task.title}</span>
       <span className="focus-card-meta">
         <span className="badge badge-muted" title="Проект">{task.project_name}</span>
@@ -84,7 +120,7 @@ function FocusCard({ task, side, onOpen, onPlan }: {
         // Планирование — отдельной строкой и явными словами: «сегодня» это личный план,
         // а не срок. Кнопка не должна читаться как перенос обязательства перед другими.
         <span className="focus-plan" onClick={(e) => e.stopPropagation()}>
-          {task.focus_date === localDay()
+          {planToday
             ? <button className="focus-plan-btn active" onClick={() => onPlan(null)}>Убрать из дня</button>
             : <button className="focus-plan-btn" onClick={() => onPlan(localDay())}>В сегодня</button>}
           <button className="focus-plan-btn" onClick={() => onPlan(localDay(1))}>На завтра</button>
@@ -99,16 +135,13 @@ function FocusCard({ task, side, onOpen, onPlan }: {
           )}
         </span>
       )}
-    </button>
+    </div>
   );
 }
 
 /** Прогрев по наведению на пункт меню: к клику данные уже здесь. */
 export function prefetchFocus() {
-  cached('focus:mine', () => api.myTasks('mine', true));
-  cached('focus:delegated', () => api.myTasks('delegated'));
-  cached('focus:review', () => api.myTasks('review'));
-  cached('focus:approvals', () => api.approvalsInbox());
+  cached('focus:all', () => api.mobileFocus());
 }
 
 export function FocusPage({ onOpenTask, onJoinCall, active = true }: {
@@ -133,14 +166,10 @@ export function FocusPage({ onOpenTask, onJoinCall, active = true }: {
     setErr('');
     if (fresh) dropCache('focus:');
     try {
-      // closed=1 в своей выборке: закрытые сегодня нужны для полосы прогресса дня
-      const [m, d, r, a] = await Promise.all([
-        cached('focus:mine', () => api.myTasks('mine', true)),
-        cached('focus:delegated', () => api.myTasks('delegated')),
-        cached('focus:review', () => api.myTasks('review')),
-        cached('focus:approvals', () => api.approvalsInbox()),
-      ]);
-      setMine(m); setDelegated(d); setReview(r); setApprovals(a);
+      // Одним запросом (ТЗ-9): четыре отдельных на телефоне — четыре шанса поймать
+      // таймаут в лифте. Закрытые в «моих» нужны для полосы прогресса дня.
+      const all = await cached('focus:all', () => api.mobileFocus());
+      setMine(all.mine); setDelegated(all.delegated); setReview(all.review); setApprovals(all.approvals);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить задачи');
     } finally {

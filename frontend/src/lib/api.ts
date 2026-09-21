@@ -1654,6 +1654,8 @@ export const api = {
   leftovers: (today: string) =>
     request<(Task & { project_name: string })[]>('GET', `/tasks/my/leftovers?today=${today}`),
 
+  /** «Фокус дня» одним запросом (ТЗ-9): мои (с закрытыми — для полосы дня), порученные, на проверке, согласования. */
+  mobileFocus: () => request<{ mine: any[]; delegated: any[]; review: any[]; approvals: Approval[] }>('GET', '/mobile/focus'),
   myTasks: (scope: 'mine' | 'delegated' | 'review', closed = false) =>
     request<any[]>('GET', `/tasks/my?scope=${scope}${closed ? '&closed=1' : ''}`),
 
