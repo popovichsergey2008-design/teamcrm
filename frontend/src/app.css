@@ -360,8 +360,9 @@
 .nav-call { color: var(--ok); }
 .nav-call:hover { color: var(--ok); }
 
-/* Служба заботы — строкой над AI Секретарём: значок акцентного цвета, чтобы находился глазом. */
-.nav-support .icon { color: var(--accent-2); }
+/* Служба заботы — строкой над AI Секретарём: значок акцентным, чтобы находился глазом
+   (--accent, не --accent-2: второй в тёмной теме не проходит контраст AA). */
+.nav-support .icon { color: var(--accent); }
 /* нижний блок */
 .nav-bottom { display: flex; flex-direction: column; gap: 2px; padding-top: var(--sp-2); border-top: 1px solid var(--border); }
 .nav-profile { position: relative; }
