@@ -432,6 +432,23 @@
   .shell, .app-shell { height: var(--app-h, 100dvh); }
 }
 
+/*
+  Touch-экраны: цели для пальца (ТЗ-9, волна 1).
+
+  Кнопки под мышь — 28 точек; палец промахивается. На устройствах без наведения
+  поднимаем минимальные размеры кликабельного до 40 точек и даём полям ввода 16px:
+  меньше — Safari на iPhone масштабирует страницу при каждом фокусе, и после
+  отправки сообщения экран остаётся увеличенным.
+*/
+@media (hover: none) and (pointer: coarse) {
+  .btn { min-height: 40px; }
+  .btn-sm { min-height: 36px; }
+  .btn-icon.btn-sm, .msg-icon { width: 36px; height: 36px; }
+  .chat-tool { width: 40px; height: 40px; }
+  .input, .input:focus, select.input, textarea.input { font-size: 16px; }
+  .menu-item { min-height: 40px; }
+}
+
 /* кнопка «меню» и подложка — только на узком экране */
 .nav-open-btn { display: none; }
 .nav-backdrop { display: none; }
@@ -4548,6 +4565,28 @@ button.chat-pop-row:hover { background: var(--hover); }
 .projects-overdue { color: var(--danger); font-weight: 600; }
 .projects-origin { margin-left: 6px; }
 .projects-table .badge { margin-left: 6px; }
+
+/*
+  Телефон: таблица проектов — карточками (ТЗ-9, волна 1).
+
+  Семь колонок в 360 точек не помещаются никак. Каждая строка становится карточкой:
+  название сверху, цифры строками «подпись — значение» из data-label; нули и прочерки
+  не прячем — «просрочено: —» читается быстрее, чем пустое место.
+*/
+@media (max-width: 720px) {
+  .table-wrap { padding: 0 12px 12px; }
+  .projects-table, .projects-table tbody, .projects-table tr, .projects-table td { display: block; }
+  .projects-table thead { display: none; }
+  .projects-row {
+    margin: 10px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--bg-elev);
+  }
+  .projects-table td { padding: 3px 0; border-bottom: none; }
+  .projects-table td:first-child { padding-bottom: 6px; font-weight: 600; }
+  .projects-table td[data-label] { display: flex; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); }
+  .projects-table td[data-label]::before { content: attr(data-label); color: var(--text-dim); font-weight: 400; }
+  .projects-table .num { text-align: right; }
+}
 
 /* Переключатель досок в названии проекта. */
 .board-switch { position: relative; display: inline-flex; }

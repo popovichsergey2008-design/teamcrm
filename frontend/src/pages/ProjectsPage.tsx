@@ -167,12 +167,12 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
                     {p.origin_label && <span className="dim projects-origin" title="Импортированный проект">· {p.origin_label}</span>}
                     {!!p.unread && <span className="badge badge-info" title="Новое в ваших задачах">{p.unread}</span>}
                   </td>
-                  <td className="num">{p.tasks_total}</td>
-                  <td className="num">{p.tasks_open}</td>
-                  <td className={`num${p.tasks_overdue ? ' projects-overdue' : ''}`}>{p.tasks_overdue || '—'}</td>
-                  <td>{deadline(p.next_deadline)}</td>
-                  <td>{p.owner_name ?? <span className="dim">не назначен</span>}</td>
-                  <td>
+                  <td className="num" data-label="Задач">{p.tasks_total}</td>
+                  <td className="num" data-label="Открыто">{p.tasks_open}</td>
+                  <td className={`num${p.tasks_overdue ? ' projects-overdue' : ''}`} data-label="Просрочено">{p.tasks_overdue || '—'}</td>
+                  <td data-label="Ближайший срок">{deadline(p.next_deadline)}</td>
+                  <td data-label="Ответственный">{p.owner_name ?? <span className="dim">не назначен</span>}</td>
+                  <td data-label="Доступ">
                     {p.visibility === 'members'
                       ? (
                         <span className="badge badge-muted" title={`Видят только участники: ${p.members_count}`}>
