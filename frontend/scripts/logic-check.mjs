@@ -1103,6 +1103,24 @@ test('блокировка приложения: политика читаетс
   assert.equal(shouldLock('15', now - 5 * 60_000, now), false);
 });
 
+test('конфиг оболочки: сравнение версий, вердикт об обновлении, политика организации не мягче своей', async () => {
+  const { compareVersions, updateVerdict, effectiveLockPolicy } = await load('lib/mobile-config.ts');
+  assert.ok(compareVersions('1.2.0', '1.10.0') < 0);   // по числам, а не по строкам
+  assert.equal(compareVersions('1.0 (3)', '1.0'), 3);  // сборка в скобках — тоже число
+  assert.equal(compareVersions('', '1.0') < 0, true);
+  const rel = { latestNative: '1.4.0', minimumNative: '1.2.0', apkUrl: 'u', sha256: 's', force: true };
+  assert.equal(updateVerdict('1.4.0', rel), 'none');
+  assert.equal(updateVerdict('1.3.0', rel), 'available');
+  assert.equal(updateVerdict('1.1.9', rel), 'required');
+  assert.equal(updateVerdict('1.1.9', { ...rel, force: false }), 'available'); // без force не запираем
+  assert.equal(updateVerdict(null, rel), 'none');
+  assert.equal(updateVerdict('1.0', null), 'none');
+  assert.equal(effectiveLockPolicy('15', '5'), '5');
+  assert.equal(effectiveLockPolicy('1', '5'), '1');
+  assert.equal(effectiveLockPolicy('off', 'immediately'), 'immediately');
+  assert.equal(effectiveLockPolicy('5', undefined), '5');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

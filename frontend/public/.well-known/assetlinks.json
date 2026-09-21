@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "team.anthill.app",
+      "sha256_cert_fingerprints": [
+        "C4:97:F3:7D:97:29:EB:2D:5C:CD:97:A9:16:5D:FB:64:FA:3E:3B:A1:90:5A:93:13:1C:2A:E5:F2:44:76:FD:72"
+      ]
+    }
+  }
+]

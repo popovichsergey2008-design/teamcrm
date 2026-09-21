@@ -1,9 +1,42 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Query } from '@nestjs/common';
+import { Type } from 'class-transformer';
+import { MobileConfigService } from './mobile-config.service';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { MobileService } from './mobile.service';
+
+class ReadDto {
+  @IsString() upTo!: string;
+}
+class ListQuery {
+  @IsOptional() @IsString() after?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
+}
+class OrgPolicyDto {
+  @IsOptional() @IsIn(['hide', 'sender_only', 'full']) pushPrivacy?: string;
+  @IsOptional() @IsIn(['off', 'immediately', '1', '5', '15']) minLockPolicy?: string;
+}
+class AndroidReleaseDto {
+  @IsString() @MaxLength(32) latestNative!: string;
+  @IsString() @MaxLength(32) minimumNative!: string;
+  @IsString() @MaxLength(500) apkUrl!: string;
+  @IsString() @MaxLength(80) sha256!: string;
+  @IsBoolean() force!: boolean;
+  @IsOptional() @IsString() @MaxLength(1000) notes?: string;
+}
+class BundleDto {
+  @IsString() @MaxLength(64) version!: string;
+  @IsString() @MaxLength(32) minNative!: string;
+  @IsString() @MaxLength(500) url!: string;
+  @IsString() @MaxLength(80) sha256!: string;
+  @IsBoolean() mandatory!: boolean;
+}
+class FeaturesDto {
+  @IsObject() flags!: Record<string, boolean>;
+}
 
 class RegisterDeviceDto {
   @IsString() @MinLength(8) @MaxLength(128) deviceUuid!: string;
@@ -23,7 +56,52 @@ class RegisterDeviceDto {
 @Controller('mobile')
 @Roles('owner', 'manager', 'member')
 export class MobileController {
-  constructor(private readonly mobile: MobileService) {}
+  constructor(private readonly mobile: MobileService, private readonly cfg: MobileConfigService) {}
+
+  /** Всё, что клиенту нужно при старте: версии, флаги, политики, авария. */
+  @Get('config')
+  config(@CurrentUser() u: AuthUser) {
+    return this.cfg.config(u.tenantId);
+  }
+
+  /** Ящик уведомлений: после курсора — или последние, если курсора ещё нет. */
+  @Get('notifications')
+  notifications(@CurrentUser() u: AuthUser, @Query() q: ListQuery) {
+    return this.mobile.notifications(u.userId, q.after ?? null, q.limit ?? 50);
+  }
+
+  @Post('notifications/read')
+  async read(@CurrentUser() u: AuthUser, @Body() dto: ReadDto) {
+    await this.mobile.markRead(u.userId, dto.upTo);
+    return { ok: true };
+  }
+
+  /** Политика организации: приватность push и нижняя граница блокировки (читают все, меняет владелец). */
+  @Get('org-policy')
+  orgPolicy(@CurrentUser() u: AuthUser) {
+    return this.cfg.orgPolicy(u.tenantId);
+  }
+
+  @Post('org-policy')
+  setOrgPolicy(@CurrentUser() u: AuthUser, @Body() dto: OrgPolicyDto) {
+    return this.cfg.setOrgPolicy(u.tenantId, u.role, dto);
+  }
+
+  // ── выпуски — техотдел платформы ──
+  @Post('admin/android-release')
+  setAndroid(@CurrentUser() u: AuthUser, @Body() dto: AndroidReleaseDto) {
+    return this.cfg.setAndroidRelease(u.userId, dto);
+  }
+
+  @Post('admin/bundle')
+  setBundle(@CurrentUser() u: AuthUser, @Body() dto: BundleDto) {
+    return this.cfg.setBundle(u.userId, dto);
+  }
+
+  @Post('admin/features')
+  setFeatures(@CurrentUser() u: AuthUser, @Body() dto: FeaturesDto) {
+    return this.cfg.setFeatures(u.userId, dto.flags);
+  }
 
   /** Регистрация устройства после входа и при каждом запуске: версии, push-токен, привязка к сессии. */
   @Post('devices')

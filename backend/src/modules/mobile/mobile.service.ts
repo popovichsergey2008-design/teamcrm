@@ -3,13 +3,36 @@ import { AppException } from '../../common/http/app-exception';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { SessionsService } from '../auth/sessions.service';
 import { DeviceInput, MobileDevicesRepository } from './mobile-devices.repository';
+import { InboxRepository } from '../notifications/inbox.repository';
 
 @Injectable()
 export class MobileService {
   constructor(
     private readonly devices: MobileDevicesRepository,
     private readonly sessions: SessionsService,
+    private readonly inbox: InboxRepository,
   ) {}
+
+  /**
+   * Ящик уведомлений по курсору (ТЗ-9): push — сигнал, ящик — правда.
+   * Без курсора — последние записи; `cursor` в ответе клиент хранит и присылает дальше.
+   */
+  async notifications(userId: string, after: string | null, limit: number) {
+    const rows = after ? await this.inbox.after(userId, after, limit) : (await this.inbox.latest(userId, limit)).reverse();
+    const unread = await this.inbox.unreadCount(userId);
+    return {
+      items: rows.map((r) => ({
+        id: String(r.id), eventKey: r.event_key, title: r.title, body: r.body, path: r.path,
+        createdAt: r.created_at, readAt: r.read_at,
+      })),
+      cursor: rows.length ? String(rows[rows.length - 1].id) : after,
+      unread,
+    };
+  }
+
+  markRead(userId: string, upTo: string) {
+    return this.inbox.markRead(userId, upTo);
+  }
 
   /**
    * Устройство + текущая сессия.

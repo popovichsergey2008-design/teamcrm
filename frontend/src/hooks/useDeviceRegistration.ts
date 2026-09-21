@@ -20,6 +20,8 @@ export function useDeviceRegistration(signedIn: boolean): void {
       const uuid = await platform.deviceUuid();
       if (!uuid || !alive) return;
       const info = platform.info();
+      // Push-токен спрашиваем здесь же: разрешение — сразу после входа, а не в случайный момент.
+      const pushToken = await platform.notifications.pushToken();
       try {
         const r = await api.registerDevice({
           deviceUuid: uuid,
@@ -27,6 +29,7 @@ export function useDeviceRegistration(signedIn: boolean): void {
           model: info.model ?? undefined,
           nativeVersion: info.nativeVersion ?? undefined,
           webBundleVersion: info.bundleVersion,
+          pushToken: pushToken ?? undefined,
         });
         platform.secureStorage.set(DEVICE_KEY, r.id);
       } catch { /* сервер недоступен — представимся в следующий раз */ }

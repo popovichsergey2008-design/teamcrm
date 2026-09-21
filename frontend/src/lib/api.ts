@@ -6,6 +6,7 @@ import type {
   SupportDesk, SupportHandbook, SupportQueueItem, Task,
 } from '../types';
 import { platform } from '../platform';
+import type { MobileConfig } from './mobile-config';
 import { apiUrl } from './origin';
 
 const ACCESS_KEY = 'teamcrm.access';
@@ -31,6 +32,12 @@ export const tokens = {
     platform.secureStorage.remove(REFRESH_KEY);
   },
 };
+
+/** Запись ящика уведомлений (ТЗ-9). */
+export interface InboxItem {
+  id: string; eventKey: string; title: string; body: string; path: string | null; createdAt: string; readAt: string | null;
+}
+export interface OrgPolicy { pushPrivacy: 'hide' | 'sender_only' | 'full'; minLockPolicy: 'off' | 'immediately' | '1' | '5' | '15' }
 
 /** Сессия в списке устройств: своя или сотрудника (руководству). */
 export interface SessionInfo {
@@ -446,6 +453,15 @@ export const api = {
     nativeVersion?: string; webBundleVersion?: string; pushToken?: string;
   }) => request<{ id: string; platform: string; model: string | null }>('POST', '/mobile/devices', b),
   unregisterDevice: (id: string) => request<{ revoked: boolean }>('DELETE', `/mobile/devices/${id}`),
+  /** Конфиг оболочки: версии, флаги, политики, авария (ТЗ-9). */
+  mobileConfig: () => request<MobileConfig>('GET', '/mobile/config'),
+  /** Ящик уведомлений по курсору: push — сигнал, ящик — правда. */
+  mobileNotifications: (after: string | null) =>
+    request<{ items: InboxItem[]; cursor: string | null; unread: number }>('GET', `/mobile/notifications${after ? `?after=${encodeURIComponent(after)}` : ''}`),
+  mobileNotificationsRead: (upTo: string) => request<{ ok: boolean }>('POST', '/mobile/notifications/read', { upTo }),
+  /** Политика организации: приватность push и нижняя граница блокировки (владелец). */
+  orgPolicy: () => request<OrgPolicy>('GET', '/mobile/org-policy'),
+  setOrgPolicy: (b: Partial<OrgPolicy>) => request<OrgPolicy>('POST', '/mobile/org-policy', b),
   /** Устройства и сессии сотрудника — руководству; отзыв гасит сессию сразу. */
   employeeSessions: (userId: string) => request<SessionInfo[]>('GET', `/team/${userId}/sessions`),
   revokeEmployeeSession: (userId: string, sessionId: string) =>

@@ -1,0 +1,18 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.team.anthill.app"],
+        "components": [
+          { "/": "/projects/*", "comment": "доска и задача" },
+          { "/": "/chat/*", "comment": "чаты, ветки, миты" },
+          { "/": "/tasks/*" },
+          { "/": "/calendar/*" },
+          { "/": "/meet/*", "exclude": true, "comment": "гостевой созвон открывается в браузере: у гостя нет приложения" },
+          { "/": "/api/*", "exclude": true }
+        ]
+      }
+    ]
+  },
+  "webcredentials": { "apps": ["TEAMID.team.anthill.app"] }
+}

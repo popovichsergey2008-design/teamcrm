@@ -9,6 +9,8 @@ export interface MailRow {
   event_key: string; attempts: number;
   /** Когда дубль ушёл в Telegram: повтор письма не должен слать второе сообщение. */
   tg_sent_at: Date | null;
+  /** Когда ушёл push (ТЗ-9): тот же принцип. */
+  push_sent_at: Date | null;
   /** Вложения письма: приглашение календаря возит с собой .ics. */
   attachments: { name: string; content: string }[] | null;
 }

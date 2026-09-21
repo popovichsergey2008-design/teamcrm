@@ -447,6 +447,10 @@
   .menu-item { min-height: 40px; }
 }
 
+/* Политика мобильных приложений в «Команде»: два выбора владельца. */
+.team-policy { margin-bottom: 10px; }
+.team-policy .field { display: flex; flex-direction: column; gap: 4px; }
+
 /* Список сессий: значок «телефон/браузер», подпись, когда были, «Выйти». */
 .sessions-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .sessions-main { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-sm); }

@@ -45,9 +45,12 @@ export interface ToastPayload {
   body: string;
   chatId?: string;
   /** Куда ведёт щелчок. По умолчанию — в чаты: с них уведомления и начинались. */
-  section?: 'chat' | 'feed' | 'focus' | 'meetings' | 'support';
+  section?: 'chat' | 'feed' | 'focus' | 'meetings' | 'support' | 'inbox' | 'update';
   /** Обращение службы заботы, которое откроет щелчок (для `section: 'support'`). */
   conversationId?: string;
+  /** Запись ящика уведомлений (оболочка): куда вести и что отметить прочитанным. */
+  inboxPath?: string;
+  inboxId?: string;
   /**
    * `saved` — короткий ответ на действие человека: «сохранено», «отправлено».
    * Такая всплывашка никуда не ведёт и живёт вдвое меньше: она отвечает на вопрос

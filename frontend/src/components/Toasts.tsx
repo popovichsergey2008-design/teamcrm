@@ -14,13 +14,17 @@ const MAX_VISIBLE = 3;
  * браузера — а его разрешение обычно не выдают, и человек не узнавал ни о чём.
  * Это видно всегда: клик открывает чаты.
  */
-export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, onOpenSupport }: {
+export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, onOpenSupport, onOpenInbox, onOpenUpdate }: {
   onOpenChat: (chatId?: string) => void;
   onOpenFeed?: () => void;
   onOpenFocus?: () => void;
   onOpenMeetings?: () => void;
   /** Служба заботы: щелчок открывает разговор — в консоли это единственный вид новостей. */
   onOpenSupport?: (conversationId?: string) => void;
+  /** Ящик уведомлений оболочки: перейти по пути и отметить прочитанным. */
+  onOpenInbox?: (id?: string, path?: string) => void;
+  /** Доступно обновление приложения: скачать. */
+  onOpenUpdate?: () => void;
 }) {
   const [items, setItems] = useState<Toast[]>([]);
 
@@ -55,6 +59,8 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
             else if (t.section === 'focus') onOpenFocus?.();
             else if (t.section === 'meetings') onOpenMeetings?.();
             else if (t.section === 'support') onOpenSupport?.(t.conversationId);
+            else if (t.section === 'inbox') onOpenInbox?.(t.inboxId, t.inboxPath);
+            else if (t.section === 'update') onOpenUpdate?.();
             else onOpenChat(t.chatId);
             setItems((prev) => prev.filter((x) => x.id !== t.id));
           }}
@@ -62,7 +68,9 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
             : t.section === 'feed' ? 'Открыть ленту'
             : t.section === 'focus' ? 'Открыть фокус дня'
               : t.section === 'meetings' ? 'Открыть встречи'
-                : t.section === 'support' ? 'Открыть обращение' : 'Открыть чаты'}
+                : t.section === 'support' ? 'Открыть обращение'
+                  : t.section === 'inbox' ? 'Открыть'
+                    : t.section === 'update' ? 'Скачать обновление' : 'Открыть чаты'}
         >
           <Icon
             name={t.kind === 'saved' ? 'check' : t.section === 'support' ? 'support' : t.section === 'chat' || !t.section ? 'chat' : 'bell'}

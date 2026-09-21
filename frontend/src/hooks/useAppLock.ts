@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { platform, isNativeShell } from '../platform';
 import { readLockPolicy, shouldLock } from '../lib/app-lock';
+import { effectiveLockPolicy, mobileConfig } from '../lib/mobile-config';
+
+/** Своя политика, но не мягче той, что задала организация (приходит с /mobile/config). */
+const policy = () => effectiveLockPolicy(readLockPolicy(), mobileConfig()?.biometrics.minLockPolicy);
 
 /**
  * Когда показывать экран блокировки (ТЗ-9, волна 3).
@@ -24,7 +28,7 @@ export function useAppLock(signedIn: boolean): { locked: boolean; unlock: () => 
       available.current = ok;
       // холодный старт: свернули давно — запираем сразу
       const hiddenAt = Number(localStorage.getItem(HIDDEN_KEY) ?? '') || null;
-      if (ok && shouldLock(readLockPolicy(), hiddenAt, Date.now())) setLocked(true);
+      if (ok && shouldLock(policy(), hiddenAt, Date.now())) setLocked(true);
     });
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
@@ -32,7 +36,7 @@ export function useAppLock(signedIn: boolean): { locked: boolean; unlock: () => 
         return;
       }
       const hiddenAt = Number(localStorage.getItem(HIDDEN_KEY) ?? '') || null;
-      if (available.current && shouldLock(readLockPolicy(), hiddenAt, Date.now())) setLocked(true);
+      if (available.current && shouldLock(policy(), hiddenAt, Date.now())) setLocked(true);
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => { alive = false; document.removeEventListener('visibilitychange', onVisibility); };

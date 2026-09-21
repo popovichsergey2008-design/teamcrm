@@ -52,6 +52,9 @@ import { platform } from './platform';
 import { useAppLock } from './hooks/useAppLock';
 import { useDeviceRegistration } from './hooks/useDeviceRegistration';
 import { LockScreen } from './components/LockScreen';
+import { UpdateScreen } from './components/UpdateScreen';
+import { useMobileConfig } from './hooks/useMobileConfig';
+import { openInboxItem, useMobileInbox } from './hooks/useMobileInbox';
 import { useConsoleAlerts } from './hooks/useConsoleAlerts';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { ConsoleTopBar } from './components/console/ConsoleTopBar';
@@ -111,6 +114,8 @@ export function App() {
   useDeepLinks(!!user);
   useDeviceRegistration(!!user);
   const lock = useAppLock(!!user);
+  const mobile = useMobileConfig(!!user);
+  useMobileInbox(!!user);
   /*
     Консоль техотдела — автономное рабочее место (см. ветку ниже).
 
@@ -408,6 +413,8 @@ export function App() {
 
   // Заблокировано: ничего из содержимого не рисуем — ни в переключателе приложений, ни глазу соседа.
   if (lock.locked) return <LockScreen onUnlock={lock.unlock} />;
+  // Версия оболочки ниже минимальной — только «скачать обновление».
+  if (mobile.verdict === 'required' && mobile.config?.android) return <UpdateScreen release={mobile.config.android} />;
 
   // клиент видит отдельный портал (без внутренних досок/финансов)
   if (user.role === 'client') return <ClientPortal />;
@@ -645,6 +652,8 @@ export function App() {
         onOpenFeed={() => navigate({ section: 'news' })}
         onOpenFocus={() => navigate({ section: 'focus' })}
         onOpenMeetings={() => navigate({ section: 'chat', view: 'meetings' })}
+        onOpenInbox={openInboxItem}
+        onOpenUpdate={() => { const url = mobile.config?.android?.apkUrl; if (url) platform.openExternal(url); }}
       />
       {callId && (
         <CallPanel

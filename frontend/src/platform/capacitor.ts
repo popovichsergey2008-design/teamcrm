@@ -6,6 +6,7 @@ import { Share } from '@capacitor/share';
 import { SecureStorage } from '@aparajita/capacitor-secure-storage';
 import { BiometricAuth } from '@aparajita/capacitor-biometric-auth';
 import { PrivacyScreen } from '@capacitor-community/privacy-screen';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { browserBridge, BUNDLE_VERSION } from './browser';
 import type { PlatformBridge, PlatformInfo } from './types';
 
@@ -26,6 +27,44 @@ const cache = new Map<string, string>();
 const KEYS = ['teamcrm.access', 'teamcrm.refresh'];
 
 let deviceInfo: PlatformInfo | null = null;
+
+/*
+  Push (ТЗ-9, волна 4).
+
+  Токен FCM/APNs приходит событием после `register()`; держим его в обещании, чтобы
+  регистрация устройства могла его дождаться. Нажатие на уведомление — тот же путь,
+  что deep link (`data.path`); push в открытое приложение — событие в окно, по нему
+  ящик догоняется с сервера (сам push — не источник истины).
+*/
+let pushToken: Promise<string | null> | null = null;
+const deepLinkHandlers = new Set<(path: string) => void>();
+
+function requestPushToken(): Promise<string | null> {
+  if (pushToken) return pushToken;
+  pushToken = (async () => {
+    try {
+      const perm = await PushNotifications.requestPermissions();
+      if (perm.receive !== 'granted') return null;
+      const token = new Promise<string | null>((resolve) => {
+        void PushNotifications.addListener('registration', (t) => resolve(t.value || null));
+        void PushNotifications.addListener('registrationError', () => resolve(null));
+        setTimeout(() => resolve(null), 15_000); // FCM не ответил — представимся без токена
+      });
+      await PushNotifications.createChannel({ id: 'anthill', name: 'ANTHILL', importance: 4, sound: 'default' }).catch(() => undefined);
+      await PushNotifications.register();
+      return await token;
+    } catch { return null; }
+  })();
+  return pushToken;
+}
+
+void PushNotifications.addListener('pushNotificationActionPerformed', (e) => {
+  const path = String(e.notification.data?.path ?? '');
+  if (path) for (const h of deepLinkHandlers) h(path);
+}).catch(() => undefined);
+void PushNotifications.addListener('pushNotificationReceived', () => {
+  window.dispatchEvent(new Event('teamcrm:push-foreground'));
+}).catch(() => undefined);
 
 async function warmUp(): Promise<void> {
   await SecureStorage.setKeyPrefix('anthill.');
@@ -51,6 +90,11 @@ export const capacitorBridge: PlatformBridge = {
 
   info: () => deviceInfo ?? { ...browserBridge.info(), kind: 'capacitor' },
   deviceUuid: () => Device.getId().then((r) => r.identifier || null).catch(() => null),
+
+  notifications: {
+    ...browserBridge.notifications,
+    pushToken: requestPushToken,
+  },
 
   biometrics: {
     async available() {
@@ -103,7 +147,8 @@ export const capacitorBridge: PlatformBridge = {
       };
       const sub = CapApp.addListener('appUrlOpen', (e) => { const p = toPath(e.url); if (p) handler(p); });
       void CapApp.getLaunchUrl().then((l) => { const p = l?.url ? toPath(l.url) : null; if (p) handler(p); });
-      return () => { void sub.then((h) => h.remove()); };
+      deepLinkHandlers.add(handler); // нажатие на push ведёт туда же
+      return () => { void sub.then((h) => h.remove()); deepLinkHandlers.delete(handler); };
     },
   },
 

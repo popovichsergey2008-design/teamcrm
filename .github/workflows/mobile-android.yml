@@ -41,13 +41,29 @@ jobs:
         run: npm run build:capacitor
       - name: Бандл и плагины → нативный проект
         run: npx cap sync android
-      - name: Сборка APK
+      - name: Ключ подписи из секретов
+        # Релизный ключ живёт в секретах репозитория (и у заказчика в резерве). Потерять его —
+        # значит не суметь обновить уже установленные приложения: App Links и обновления
+        # сверяются по отпечатку именно этого ключа.
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+      - name: Сборка APK (debug + подписанный release)
         working-directory: frontend/native/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug assembleRelease --no-daemon
+          sha256sum app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
           name: anthill-android-debug
           path: frontend/native/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anthill-android-release
+          path: frontend/native/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30

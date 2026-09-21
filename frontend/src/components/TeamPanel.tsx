@@ -6,7 +6,8 @@ import { ASSIGNABLE_ROLES, roleLabel } from '../lib/labels';
 import { MONETIZATION_ENABLED } from '../config';
 import { useAuth } from '../state/auth';
 import { SessionsList } from './SessionsList';
-import type { SessionInfo } from '../lib/api';
+import type { OrgPolicy, SessionInfo } from '../lib/api';
+import { toastSaved } from '../lib/notifications';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 
@@ -45,6 +46,13 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
     отзывается отсюда и гаснет сразу. Грузится по нажатию: список нужен редко.
   */
   const [devicesOf, setDevicesOf] = useState<{ userId: string; list: SessionInfo[] } | null>(null);
+  const [policy, setPolicy] = useState<OrgPolicy | null>(null);
+  useEffect(() => {
+    if (me?.role === 'owner') api.orgPolicy().then(setPolicy).catch(() => undefined);
+  }, [me?.role]);
+  const savePolicy = async (next: Partial<OrgPolicy>) => {
+    try { setPolicy(await api.setOrgPolicy(next)); toastSaved(); } catch { /* показал бы toast, но ошибка редкая */ }
+  };
   const [devicesBusy, setDevicesBusy] = useState(false);
   const showDevices = async (userId: string) => {
     if (devicesOf?.userId === userId) { setDevicesOf(null); return; }
@@ -185,6 +193,36 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
 
         {tab === 'people' && (
           <>
+            {/*
+              Политика безопасности на телефонах сотрудников (ТЗ-9): что видно в push на
+              экране блокировки и как быстро приложение запирается. Владелец задаёт нижнюю
+              границу — сотрудник может только ужесточить у себя.
+            */}
+            {me?.role === 'owner' && policy && (
+              <div className="invite-box team-policy">
+                <div className="team-head"><b>Мобильные приложения сотрудников</b></div>
+                <div className="drawer-grid2">
+                  <label className="field">
+                    <span className="dim">Что показывать в push на экране блокировки</span>
+                    <select className="input" value={policy.pushPrivacy} onChange={(e) => void savePolicy({ pushPrivacy: e.target.value as OrgPolicy['pushPrivacy'] })}>
+                      <option value="hide">только «есть новое»</option>
+                      <option value="sender_only">заголовок без текста</option>
+                      <option value="full">заголовок и текст</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span className="dim">Блокировка биометрией — не мягче, чем</span>
+                    <select className="input" value={policy.minLockPolicy} onChange={(e) => void savePolicy({ minLockPolicy: e.target.value as OrgPolicy['minLockPolicy'] })}>
+                      <option value="off">на усмотрение сотрудника</option>
+                      <option value="15">через 15 минут в фоне</option>
+                      <option value="5">через 5 минут в фоне</option>
+                      <option value="1">через минуту в фоне</option>
+                      <option value="immediately">сразу, как свернули</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            )}
             <div className="panel-toolbar">
               <div className="drawer-section-title" style={{ margin: 0 }}>Сотрудники ({users.length})</div>
               <button className="btn btn-primary btn-sm" onClick={() => setShowAdd((v) => !v)}>{showAdd ? 'Скрыть' : '＋ Добавить людей'}</button>
