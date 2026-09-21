@@ -4640,6 +4640,8 @@ button.chat-pop-row:hover { background: var(--hover); }
   background: var(--bg-elev); border: 1px solid var(--border-2); border-radius: 20px;
 }
 .support-compose:focus-within { border-color: var(--accent); }
+/* Состояние микрофона — над полем, тем же видом, что в чатах: «говорите…», счётчик, ошибка. */
+.support-voice { margin: 6px 12px 0; }
 .support-compose .input {
   flex: 1 1 auto; min-width: 0; min-height: 36px; max-height: 140px; padding: 8px 6px;
   border: none; background: none; resize: none; font-size: var(--fs-md);

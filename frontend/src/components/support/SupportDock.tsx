@@ -6,7 +6,9 @@ import { shrinkImage } from '../../lib/image-shrink';
 import { requestCall } from '../../lib/notifications';
 import { stampLabel } from '../../lib/chat-text';
 import { useAuth } from '../../state/auth';
+import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { Icon } from '../Icon';
+import { VoiceStatus } from '../VoiceStatus';
 import { MessageText } from '../MessageText';
 import type { SupportConversation, SupportDesk, SupportQueueItem } from '../../types';
 
@@ -93,6 +95,15 @@ export function SupportDock({ embedded = false }: {
   /** Подсказка копилота дежурному: суть, что проверить, что сказать человеку. */
   const [copilot, setCopilot] = useState<Awaited<ReturnType<typeof api.supportCopilot>> | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
+  /*
+    Голосом — в любую службу заботы (задача #1345).
+
+    Человек, у которого что-то сломалось, часто не может или не хочет печатать: с
+    телефона, на бегу, с трясущимися руками. Тот же микрофон, что в чатах и быстрой
+    команде: сказал — текст лёг в поле, проверил, отправил. Одна и та же кнопка у
+    клиента в CRM и у специалиста в консоли: панель одна, микрофон один.
+  */
+  const voice = useVoiceInput((said) => setText((prev) => (prev.trim() ? `${prev.trim()} ${said}` : said)));
   /*
     Чужое обращение, открытое специалистом.
 
@@ -1067,7 +1078,17 @@ export function SupportDock({ embedded = false }: {
                 </div>
               )}
 
+              <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="support-voice" />
               <div className="support-compose">
+                <button
+                  className={`chat-tool${voice.recording ? ' recording' : ''}`}
+                  onClick={voice.toggle}
+                  disabled={busy || voice.transcribing}
+                  title={voice.recording ? 'Остановить запись' : 'Сказать голосом — текст появится в поле'}
+                  aria-label={voice.recording ? 'Остановить запись' : 'Сказать голосом'}
+                >
+                  <Icon name={voice.recording ? 'stop' : 'mic'} size={17} />
+                </button>
                 <label className="chat-tool" title="Приложить снимок экрана или файл">
                   <Icon name="paperclip" size={17} />
                   <input
