@@ -5,6 +5,18 @@ import { useVoiceInput } from '../hooks/useVoiceInput';
 import { DatePicker } from './DatePicker';
 import { VoiceStatus } from './VoiceStatus';
 import { overlayProps } from '../lib/overlay';
+import { navigate } from '../lib/router';
+import { plural } from '../lib/chat-text';
+
+/** Что создали в этом заходе — для итоговой страницы: куда ушло и как открыть. */
+interface CreatedTask {
+  taskId: string;
+  projectId: string;
+  title: string;
+  projectName: string | null;
+  assigneeName: string | null;
+  deadline: string | null;
+}
 
 /**
  * NL-команда / Zero-UI: сказал или написал обычным языком → готовые черновики → подтвердил.
@@ -53,16 +65,43 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   const [job, setJob] = useState<VoiceJob | null>(null);
   /** Что уже создано в этом заходе — чтобы не создать дважды и видеть движение. */
   const [done, setDone] = useState<number[]>([]);
+  /*
+    Итоговая страница (задача #1344).
+
+    Когда задач несколько, после «Создать все» человек оставался на том же экране с
+    тремя строчками «Создано: …» и не понимал, куда они делись. Теперь второй шаг:
+    список созданных задач — куда, кому, к какому сроку — каждая открывается, и одна
+    кнопка ведёт туда, где они все лежат.
+  */
+  const [created, setCreated] = useState<CreatedTask[]>([]);
+  const [stage, setStage] = useState<'compose' | 'done'>('compose');
 
   const parse = async (raw?: string) => {
     const command = (raw ?? text).trim();
     if (command.length < 3) return setMsg('Слишком короткая команда');
-    setBusy(true); setMsg(''); setDrafts([]); setDone([]); setJob(null);
+    setBusy(true); setMsg(''); setDrafts([]); setDone([]); setCreated([]); setStage('compose'); setJob(null);
     try {
-      setDrafts([await api.nlParse(command, currentProjectId)]);
+      // Несколько поручений в одной строке — несколько черновиков, как и у надиктовки.
+      setDrafts(await api.nlParseMany(command, currentProjectId));
       setHeard(command);
     } catch (e) { setMsg(e instanceof ApiError ? e.message : 'Ошибка распознавания'); }
     finally { setBusy(false); }
+  };
+
+  /** Запомнить созданную задачу для итоговой страницы: имена берём из обстановки черновика. */
+  const remember = (draft: any, task: any) => {
+    if (!task) return;
+    const ctx = draft?.context ?? { projects: [], users: [] };
+    const projectId = String(task.project_id ?? task.projectId ?? draft.task?.projectId ?? '');
+    const assigneeId = task.assignee_id ?? task.assigneeId ?? draft.task?.assigneeId;
+    setCreated((list) => [...list, {
+      taskId: String(task.id),
+      projectId,
+      title: String(task.title ?? draft.task?.title ?? 'Задача'),
+      projectName: ctx.projects?.find((p: any) => String(p.id) === projectId)?.name ?? null,
+      assigneeName: assigneeId ? (ctx.users?.find((u: any) => String(u.id) === String(assigneeId))?.name ?? null) : null,
+      deadline: task.deadline_at ?? task.deadlineAt ?? draft.task?.deadline ?? null,
+    }]);
   };
 
   /**
@@ -164,6 +203,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
       const taskId = res?.task ? String(res.task.id) : '';
       const failed = taskId ? await uploadFiles(taskId, draft.files ?? []) : [];
       setDone((d) => [...d, index]);
+      remember(draft, res?.task);
       if (failed.length) {
         // Задача создана — предлагать создать её второй раз нельзя, это дубль.
         setMsg(`Задача создана, но не загрузились файлы: ${failed.join(', ')}. Прикрепите их в карточке, на вкладке «Файлы».`);
@@ -191,6 +231,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         const res: any = await api.nlApply(bodyOf(d));
         if (res?.task && d.files?.length) lostFiles.push(...await uploadFiles(String(res.task.id), d.files));
         setDone((list) => [...list, i]);
+        remember(d, res?.task);
       } catch { failed++; }
     }
     setBusy(false);
@@ -199,6 +240,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
       lostFiles.length ? `Не загрузились файлы: ${lostFiles.join(', ')}. Прикрепите их в карточках, на вкладке «Файлы».` : '',
     ].filter(Boolean);
     if (notes.length) setMsg(notes.join(' '));
+    // Всё создано без потерь — сразу на итоговую страницу; с ошибками остаёмся: их видно здесь.
+    if (!failed && !lostFiles.length) setStage('done');
   };
 
   const retry = async () => {
@@ -211,6 +254,69 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   const working = !!job && job.status !== 'ready' && job.status !== 'error';
   const readyCount = drafts
     .filter((d, i) => !done.includes(i) && d.intent === 'create_task' && d.task?.projectId).length;
+
+  // Создавали по одной и добили последнюю — итог показываем сами, кнопку искать не надо.
+  useEffect(() => {
+    if (stage === 'compose' && !busy && drafts.length > 1 && created.length > 1 && readyCount === 0) setStage('done');
+  }, [stage, busy, drafts.length, created.length, readyCount]);
+
+  /** Открыть одну из созданных: карточка задачи на её доске. */
+  const openCreated = (t: CreatedTask) => {
+    if (onCreated) onCreated(t.projectId, t.taskId); else navigate({ section: 'projects', projectId: t.projectId, taskId: t.taskId });
+    onClose();
+  };
+  /** Все созданные разом: одна доска — на неё, разные — в реестр «От меня», там они все. */
+  const openAllCreated = () => {
+    const projects = new Set(created.map((t) => t.projectId));
+    if (projects.size === 1) navigate({ section: 'projects', projectId: created[0].projectId });
+    else navigate({ section: 'tasks', view: 'delegated' });
+    onClose();
+  };
+  const fmtDeadline = (v: string | null) => {
+    if (!v) return '';
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+  };
+
+  if (stage === 'done') {
+    const sameProject = new Set(created.map((t) => t.projectId)).size === 1;
+    return (
+      <div className="drawer-overlay" {...overlayProps(onClose)}>
+        <aside className="drawer" onClick={(e) => e.stopPropagation()}>
+          <div className="drawer-head">
+            <h3><Icon name="check" size={18} /> Создано: {created.length} {plural(created.length, 'задача', 'задачи', 'задач')}</h3>
+            <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+          </div>
+          {msg && <div className="error-text">{msg}</div>}
+          <div className="dim" style={{ fontSize: 12 }}>
+            Задачи уже на досках и у исполнителей. Нажмите на любую, чтобы открыть карточку.
+          </div>
+          <div className="nl-created-list">
+            {created.map((t) => (
+              <button key={t.taskId} className="nl-created" onClick={() => openCreated(t)} title="Открыть задачу">
+                <span className="nl-created-title"><Icon name="check" size={14} /> {t.title}</span>
+                <span className="dim nl-created-sub">
+                  {[t.projectName, t.assigneeName ?? 'без исполнителя', t.deadline ? `до ${fmtDeadline(t.deadline)}` : 'без срока']
+                    .filter(Boolean).join(' · ')}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="nl-actions">
+            <button className="btn btn-primary btn-sm" onClick={openAllCreated}>
+              <Icon name={sameProject ? 'board' : 'list'} size={14} /> {sameProject ? 'Открыть доску' : 'Показать в «Задачах»'}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => { setStage('compose'); setDrafts([]); setDone([]); setCreated([]); setText(''); setHeard(''); setMsg(''); }}
+            >
+              <Icon name="zap" size={14} /> Ещё команда
+            </button>
+          </div>
+        </aside>
+      </div>
+    );
+  }
 
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
@@ -299,6 +405,12 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         {drafts.length > 1 && readyCount > 1 && (
           <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={applyAll} disabled={busy}>
             {busy ? 'Создаю…' : `Создать все (${readyCount})`}
+          </button>
+        )}
+        {/* Часть создали, часть нет (ошибка или выбросили) — к созданным всё равно можно перейти. */}
+        {drafts.length > 1 && created.length > 0 && readyCount > 0 && !busy && (
+          <button className="btn btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={() => setStage('done')}>
+            Показать созданные ({created.length})
           </button>
         )}
       </aside>

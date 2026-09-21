@@ -1895,6 +1895,19 @@
   border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
 .nl-draft.created { display: flex; align-items: center; gap: 6px; color: var(--ok); font-size: calc(14px * var(--fs-scale)); }
+
+/* Итог быстрой команды: созданные задачи списком, каждая — кнопка в карточку. */
+.nl-created-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.nl-created {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%;
+  padding: 8px 10px; cursor: pointer; text-align: left; font: inherit; color: var(--text);
+  background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.nl-created:hover { border-color: var(--accent-line); }
+.nl-created:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.nl-created-title { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); }
+.nl-created-title svg { color: var(--ok); flex: 0 0 auto; }
+.nl-created-sub { font-size: var(--fs-xs); }
 .nl-draft-drop { float: right; }
 
 /* Шаг чек-листа в предпросмотре голосовой задачи. */

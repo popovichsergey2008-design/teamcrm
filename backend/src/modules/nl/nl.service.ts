@@ -289,6 +289,17 @@ export class NlService {
     const today = new Date().toISOString().slice(0, 10);
     const userMsg = JSON.stringify({ text: clean, projects, users, clients, today });
 
+    /*
+      Счёт задач и одиночный разбор идут ОДНОВРЕМЕННО.
+
+      Этим путём теперь ходит и набранная быстрая команда (задача #1344), а там чаще
+      всего одна задача: ждать сначала «сколько их», а потом «оформи одну» — значит
+      удвоить время ответа ради редкого случая. Одиночный черновик всё равно нужен как
+      запасной, поэтому считаем его сразу и отдаём, если поручение оказалось одно.
+    */
+    const single = this.parse(tenantId, userId, clean, currentProjectId);
+    // Если пачка собралась, одиночный ответ не нужен — но его отказ не должен всплыть необработанным.
+    single.catch(() => undefined);
     let items: any[] = [];
     try {
       const raw = await this.ai.generate(tenantId, MANY_SYSTEM, userMsg, 'nl_command');
@@ -300,25 +311,26 @@ export class NlService {
 
     // Модель промолчала или услышала одну задачу — идём обычным путём: он умеет
     // собрать черновик правилами и без ИИ.
-    if (items.length < 2) return [await this.parse(tenantId, userId, clean, currentProjectId)];
+    if (items.length < 2) return [await single];
 
-    const drafts: NlDraft[] = [];
-    for (const item of items.slice(0, 10)) {
+    // Каждую задачу пачки оформляем параллельно: три поручения не должны ждать втрое дольше.
+    const parsedItems = await Promise.all(items.slice(0, 10).map(async (item) => {
       const title = String(item?.title ?? '').trim();
-      if (!title) continue;
+      if (!title) return null;
       // Кусок исходной речи, из которого выросла задача: по нему человек проверяет,
       // не выдумал ли ИИ, и правит формулировку осмысленно.
       const source = String(item?.source ?? '').trim() || clean;
-      const draft = await this.parse(tenantId, userId, source, currentProjectId);
-      if (!draft.task) continue;
+      const draft = await this.parse(tenantId, userId, source, currentProjectId).catch(() => null);
+      if (!draft?.task) return null;
       draft.task.title = cleanTitle(title, item?.description ? String(item.description) : null).slice(0, 255);
       if (item?.description) draft.task.description = String(item.description);
       if (Array.isArray(item?.checklist)) {
         draft.task.checklist = item.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 12);
       }
-      drafts.push(draft);
-    }
-    return drafts.length ? drafts : [await this.parse(tenantId, userId, clean, currentProjectId)];
+      return draft;
+    }));
+    const drafts = parsedItems.filter((d): d is NlDraft => !!d);
+    return drafts.length ? drafts : [await single];
   }
 
   /** Применяет подтверждённый (возможно отредактированный) черновик — создаёт сущность. */

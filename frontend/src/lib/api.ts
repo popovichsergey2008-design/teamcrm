@@ -784,6 +784,9 @@ export const api = {
   // на который человек в этот момент смотрит.
   nlParse: (text: string, currentProjectId?: string | null) =>
     request<any>('POST', '/nl/parse', currentProjectId ? { text, currentProjectId } : { text }),
+  /** Та же команда, но с несколькими поручениями сразу: черновиков столько, сколько задач. */
+  nlParseMany: (text: string, currentProjectId?: string | null) =>
+    request<any[]>('POST', '/nl/parse-many', currentProjectId ? { text, currentProjectId } : { text }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),
   /** Голосовая команда: аудио-запись → Whisper → распознанный текст. */
   /**

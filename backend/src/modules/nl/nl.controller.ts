@@ -87,6 +87,18 @@ export class NlController {
     return this.nl.parse(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null);
   }
 
+  /**
+   * Набранная команда с НЕСКОЛЬКИМИ поручениями → список черновиков.
+   *
+   * То же, что делает длинная надиктовка, только для текста: «Глебу форму, Юре
+   * страницу, Алине тексты» из быстрой команды раньше сворачивалось в одну задачу.
+   * Одно поручение — один черновик, как и прежде.
+   */
+  @Post('parse-many')
+  parseMany(@CurrentUser() u: AuthUser, @Body() dto: ParseDto) {
+    return this.nl.parseMany(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null);
+  }
+
   /** Надиктованная встреча → заполненный черновик события (ничего не создаёт). */
   @Post('parse-event')
   parseEvent(@CurrentUser() u: AuthUser, @Body() dto: ParseEventDto) {
