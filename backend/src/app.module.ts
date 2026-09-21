@@ -4,7 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { DatabaseModule } from './database/database.module';
-import { CacheModule } from './cache/redis.service';
+import { CacheModule } from './cache/cache.module';
 import { MessagingModule } from './messaging/rabbitmq.service';
 import { AllExceptionsFilter } from './common/http/all-exceptions.filter';
 import { ResponseInterceptor } from './common/http/response.interceptor';
