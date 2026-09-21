@@ -360,9 +360,26 @@
 .nav-call { color: var(--ok); }
 .nav-call:hover { color: var(--ok); }
 
-/* Служба заботы — строкой над AI Секретарём: значок акцентным, чтобы находился глазом
-   (--accent, не --accent-2: второй в тёмной теме не проходит контраст AA). */
+/*
+  Служба заботы в подвале панели: кружок и строка под ним.
+
+  Кружок — тот самый, что раньше висел в правом нижнем углу: заказчик просил его
+  вернуть, только в левой панели. Строка под ним подписывает кружок словами; в
+  свёрнутой панели остаётся один кружок — он и так узнаваем.
+*/
+.nav-support-wrap { display: flex; justify-content: center; padding: 4px 0 2px; }
+.nav-support-fab {
+  display: inline-grid; place-items: center;
+  width: 42px; height: 42px; padding: 0;
+  border: none; border-radius: 50%; cursor: pointer;
+  background: var(--accent-2); color: var(--on-accent);
+  box-shadow: var(--shadow-lg);
+  transition: transform .12s, filter .15s;
+}
+.nav-support-fab:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.nav-support-fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .nav-support .icon { color: var(--accent); }
+.nav-collapsed .nav-support { display: none; }
 /* нижний блок */
 .nav-bottom { display: flex; flex-direction: column; gap: 2px; padding-top: var(--sp-2); border-top: 1px solid var(--border); }
 .nav-profile { position: relative; }

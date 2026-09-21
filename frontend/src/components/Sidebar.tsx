@@ -698,6 +698,12 @@ export function Sidebar({
             и мешал печатать. Строка в панели видна из любого раздела и ничему не мешает;
             сама панель разговора открывается, как и прежде, поверх страницы.
           */}
+          {/* Тот же кружок, что был в углу, — теперь здесь, над строкой: заказчик хотел именно его. */}
+          <div className="nav-support-wrap">
+            <button className="nav-support-fab" onClick={() => openSupport()} title="Служба заботы ANTHILL" aria-label="Служба заботы">
+              <Icon name="support" size={20} />
+            </button>
+          </div>
           <button className="nav-item nav-support" onClick={() => openSupport()} title="Служба заботы ANTHILL: написать специалисту">
             <Icon name="support" size={18} />
             <span className="nav-label">Служба заботы</span>
