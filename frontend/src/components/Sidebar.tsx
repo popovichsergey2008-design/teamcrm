@@ -7,6 +7,7 @@ import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { Logo } from './Logo';
 import { buildPath, isConsoleHost, navigate, Route, Section } from '../lib/router';
+import { openSupport } from './support/SupportDock';
 import { roleLabel } from '../lib/labels';
 import { NavCounters } from '../hooks/useNavCounters';
 import { useEscape } from '../hooks/useEscape';
@@ -690,6 +691,17 @@ export function Sidebar({
 
         {/* ── нижний блок ── */}
         <div className="nav-bottom">
+          {/*
+            Служба заботы — над AI Секретарём (просьба заказчика).
+
+            Раньше это был кружок в правом нижнем углу: он висел над полем ввода чатов
+            и мешал печатать. Строка в панели видна из любого раздела и ничему не мешает;
+            сама панель разговора открывается, как и прежде, поверх страницы.
+          */}
+          <button className="nav-item nav-support" onClick={() => openSupport()} title="Служба заботы ANTHILL: написать специалисту">
+            <Icon name="support" size={18} />
+            <span className="nav-label">Служба заботы</span>
+          </button>
           {/* AI Секретарь: показываем ровно то, что записано в журнале действий.
               Ноль тоже показываем — это честнее, чем прятать виджет, обещавший пользу. */}
           <button className="nav-secretary" onClick={onOpenSecretary} title="Что система сделала за вас сама">

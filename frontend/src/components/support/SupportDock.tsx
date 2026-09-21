@@ -524,23 +524,10 @@ export function SupportDock({ embedded = false }: {
   return (
     <>
       {/*
-        Кнопка службы заботы — всегда под рукой, в правом нижнем углу.
-
-        Не в меню и не в настройках: у человека, у которого что-то сломалось, нет сил
-        искать, где тут просят о помощи (разд. 3.1).
+        Кнопки-кружка в углу больше нет: вход в службу заботы — строкой в левой панели,
+        над AI Секретарём (просьба заказчика). Кружок висел над полем ввода чатов и
+        мешал печатать; строка в панели видна всегда и ничему не мешает.
       */}
-      {!open && !embedded && (
-        <button
-          className="support-fab"
-          onClick={() => setOpen(true)}
-          title="Служба заботы ANTHILL"
-          aria-label="Служба заботы"
-        >
-          <Icon name="support" size={20} />
-          {online.length > 0 && <span className="support-fab-dot" aria-hidden="true" />}
-        </button>
-      )}
-
       {open && (
         <aside className={`support-dock${embedded ? ' support-dock-embedded' : ''}`} role="dialog" aria-label="Служба заботы">
           <header className="support-head">
