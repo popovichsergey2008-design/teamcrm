@@ -27,7 +27,11 @@ export function detectOs(ua = navigator.userAgent): PlatformOs {
   return 'other';
 }
 
-/** Короткое имя устройства для диагностики: «iPhone», «Android · Chrome 141», «Windows · Edge 141». */
+/** Короткое имя устройства по user-agent: «iPhone · Safari 17», «Компьютер · Edge 141». */
+export function describeUserAgent(ua: string): string {
+  return deviceModel(ua);
+}
+
 function deviceModel(ua = navigator.userAgent): string {
   const browser = /(Edg|OPR|Chrome|Firefox|Safari)\/(\d+)/.exec(ua);
   const b = browser ? `${({ Edg: 'Edge', OPR: 'Opera' } as Record<string, string>)[browser[1]] ?? browser[1]} ${browser[2]}` : 'браузер';

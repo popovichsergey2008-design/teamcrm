@@ -1,6 +1,7 @@
 import { Icon } from './Icon';
 import { stampLabel } from '../lib/chat-text';
 import type { SessionInfo } from '../lib/api';
+import { describeUserAgent } from '../platform/browser';
 
 /** «Pixel 7 · Android · оболочка 1.0 (1)» или «Chrome 141 · 10.0.0.1»: человек должен узнать своё устройство. */
 export function sessionLabel(s: SessionInfo): string {
@@ -8,7 +9,7 @@ export function sessionLabel(s: SessionInfo): string {
     const os = s.device.platform === 'ios' ? 'iPhone' : s.device.platform === 'android' ? 'Android' : 'веб';
     return [s.device.model ?? os, s.device.nativeVersion ? `приложение ${s.device.nativeVersion}` : os].join(' · ');
   }
-  return [(s.userAgent ?? 'устройство').slice(0, 38), s.ip ?? ''].filter(Boolean).join(' · ');
+  return [s.userAgent ? describeUserAgent(s.userAgent) : 'устройство', s.ip ?? ''].filter(Boolean).join(' · ');
 }
 
 /**

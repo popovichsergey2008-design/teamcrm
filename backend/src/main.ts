@@ -9,6 +9,12 @@ import { RedisIoAdapter } from './common/auth/redis-io.adapter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
   const config = app.get(ConfigService);
+  /*
+    API стоит за edge-nginx: без доверия к первому прокси @Ip() отдаёт адрес контейнера
+    (172.18.x.x), и в списке устройств у всех сессий один и тот же «IP». Один прокси —
+    один уровень доверия; заголовок X-Forwarded-For nginx выставляет сам.
+  */
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
   /*
     Всё приложение живёт под `/api`, кроме метрик.
