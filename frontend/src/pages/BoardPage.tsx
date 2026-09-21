@@ -646,6 +646,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                     onMoveColumn={moveColumn}
                     onDeleteColumn={deleteColumn}
                     onColumnDrop={reorderColumns}
+                    columns={board.columns.map((c) => ({ id: c.id, name: c.name, count: c.tasks.length }))}
                   />
                 ))}
                 {canManageBoard && (

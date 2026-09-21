@@ -1019,6 +1019,27 @@
 }
 .task-card:hover { border-color: var(--accent); }
 /*
+  Кнопка «переместить» на карточке (ТЗ-9): перенос без перетаскивания.
+
+  На компьютере появляется при наведении и фокусе, чтобы не засорять доску; на
+  телефоне наведения нет — видна всегда. Стоит в правом верхнем углу, поверх текста.
+*/
+.task-card { position: relative; }
+.task-card-move { position: absolute; top: 6px; right: 6px; z-index: 2; }
+.task-card-move-btn {
+  display: grid; place-items: center; width: 24px; height: 24px; padding: 0;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;
+  background: var(--bg-elev); color: var(--text-dim); opacity: 0; transition: opacity .12s;
+}
+.task-card:hover .task-card-move-btn, .task-card-move-btn:focus-visible, .task-card-move[aria-expanded="true"] .task-card-move-btn { opacity: 1; }
+.task-card-move-btn:hover { color: var(--text); border-color: var(--border-2); }
+.task-card-move-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 1; }
+.task-card-move-pop { right: 0; left: auto; min-width: 160px; }
+@media (hover: none), (max-width: 720px) {
+  .task-card-move-btn { opacity: 1; }
+  .task-card { cursor: default; }
+}
+/*
   Что нового в задаче лично для меня.
 
   Значки внизу карточки («💬 3», «📎 2») показывают, сколько ВСЕГО, — и задача с тремя

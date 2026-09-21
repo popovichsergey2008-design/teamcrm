@@ -1,4 +1,4 @@
-import { DragEvent, useState } from 'react';
+import { DragEvent, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import type { BoardColumn, Task, User } from '../types';
 import { MONETIZATION_ENABLED } from '../config';
@@ -21,6 +21,12 @@ interface Props {
   onMoveColumn?: (columnId: string, direction: 'left' | 'right') => void;
   onDeleteColumn?: (columnId: string, name: string) => void;
   onColumnDrop?: (sourceId: string, targetId: string) => void;
+  /**
+   * Все колонки доски — для переноса задачи без перетаскивания (ТЗ-9, волна 1).
+   * HTML5 drag-and-drop на телефоне не работает вовсе; кнопка «переместить» на
+   * карточке даёт тот же перенос одним нажатием и с клавиатуры.
+   */
+  columns?: { id: string; name: string; count: number }[];
 }
 
 const COL_DND = 'application/x-teamcrm-column';
@@ -41,6 +47,7 @@ export function ColumnView({
   onMoveColumn,
   onDeleteColumn,
   onColumnDrop,
+  columns,
 }: Props) {
   const [over, setOver] = useState(false);
   const [colOver, setColOver] = useState(false);
@@ -161,6 +168,8 @@ export function ColumnView({
             timerActive={activeTimerTask === t.id}
             onOpen={() => onOpenTask(t)}
             onDropBefore={(e) => onDropCard(e, i)}
+            moveTargets={columns?.filter((c) => c.id !== column.id)}
+            onMoveTo={(columnId) => onMoveTask(t.id, columnId, columns?.find((c) => c.id === columnId)?.count ?? 0)}
           />
         ))}
       </div>
@@ -182,6 +191,8 @@ function TaskCard({
   timerActive,
   onOpen,
   onDropBefore,
+  moveTargets,
+  onMoveTo,
 }: {
   task: Task;
   assigneeName: string | null;
@@ -191,10 +202,27 @@ function TaskCard({
   timerActive: boolean;
   onOpen: () => void;
   onDropBefore: (e: DragEvent) => void;
+  /** Куда можно перенести без перетаскивания: остальные колонки доски. */
+  moveTargets?: { id: string; name: string; count: number }[];
+  onMoveTo?: (columnId: string) => void;
 }) {
   const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
   const prio = priorityBadge(task.priority);
   const due = deadlineBadge(task.deadline_at, !!task.closed_at);
+  /*
+    «Переместить» — кнопка на карточке.
+
+    Перетаскивание остаётся для мыши; на телефоне и с клавиатуры до колонки иначе не
+    добраться. Список колонок открывается по нажатию и закрывается щелчком мимо.
+  */
+  const [moveOpen, setMoveOpen] = useState(false);
+  const moveRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!moveOpen) return;
+    const onDoc = (e: MouseEvent) => { if (moveRef.current && !moveRef.current.contains(e.target as Node)) setMoveOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [moveOpen]);
   return (
     <div
       className={`task-card ${timerActive ? 'task-tracking' : ''}${task.unread ? ' task-card-new' : ''}`}
@@ -204,6 +232,29 @@ function TaskCard({
       onDrop={canEdit ? onDropBefore : undefined}
       onDragOver={(e) => canEdit && e.preventDefault()}
     >
+      {canEdit && !!moveTargets?.length && (
+        <div className="task-card-move" ref={moveRef} onClick={(e) => e.stopPropagation()}>
+          <button
+            className="task-card-move-btn"
+            title="Переместить в другую колонку"
+            aria-label="Переместить в другую колонку"
+            aria-haspopup="menu"
+            aria-expanded={moveOpen}
+            onClick={() => setMoveOpen((v) => !v)}
+          >
+            <Icon name="arrow-right" size={13} />
+          </button>
+          {moveOpen && (
+            <div className="menu-pop task-card-move-pop" role="menu">
+              {moveTargets.map((c) => (
+                <button key={c.id} className="menu-item" role="menuitem" onClick={() => { setMoveOpen(false); onMoveTo?.(c.id); }}>
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {task.labels && task.labels.length > 0 && (
         <div className="card-labels">
           {task.labels.map((l) => <span key={l.id} className="card-label" style={{ background: l.color }} title={l.name} />)}
