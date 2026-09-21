@@ -76,6 +76,8 @@ export interface Task {
   project_id: string;
   column_id: string;
   position: number;
+  /** Версия содержимого — растёт на каждом изменении; правка сверяется через If-Match (волна 9). */
+  version?: number;
   title: string;
   description: string | null;
   assignee_id: string | null;

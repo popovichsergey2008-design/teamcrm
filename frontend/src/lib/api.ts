@@ -7,6 +7,7 @@ import type {
 } from '../types';
 import { platform } from '../platform';
 import type { MobileConfig } from './mobile-config';
+import { enqueue, newChangeId, type QueuedChange } from './offline-queue';
 import { apiUrl } from './origin';
 
 const ACCESS_KEY = 'teamcrm.access';
@@ -151,20 +152,32 @@ interface Envelope<T> {
 
 const BASE = apiUrl('/api');
 
+/** Дополнительные заголовки одного запроса: ключ идемпотентности, версия для If-Match. */
+export interface RequestExtra { idempotencyKey?: string; ifMatch?: number | null }
+
 async function rawRequest<T>(
   method: string,
   path: string,
   body?: unknown,
   withAuth = true,
+  extra?: RequestExtra,
 ): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (withAuth && tokens.access) headers['Authorization'] = `Bearer ${tokens.access}`;
+  if (extra?.idempotencyKey) headers['Idempotency-Key'] = extra.idempotencyKey;
+  if (extra?.ifMatch !== undefined && extra.ifMatch !== null) headers['If-Match'] = String(extra.ifMatch);
 
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // fetch падает без ответа только по сети: нет соединения, DNS, обрыв. Это не ошибка сервера.
+    throw new ApiError('OFFLINE', 'Нет сети');
+  }
 
   let env: Envelope<T>;
   try {
@@ -267,13 +280,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * уже дошёл до сервера, и повтор завёл бы вторую задачу. Здесь честнее сказать
  * человеку «сервер обновляется, повторите», чем молча сделать что-то дважды.
  */
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, extra?: RequestExtra): Promise<T> {
   // запоминаем, с каким токеном шли: по нему видно, обновил ли его кто-то параллельно
   const access = tokens.access;
   const retries = method === 'GET' ? 2 : 0;
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await rawRequest<T>(method, path, body);
+      const res = await rawRequest<T>(method, path, body, true, extra);
       announceTaskChange(method, path);
       return res;
     } catch (e) {
@@ -281,7 +294,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       if (e instanceof ApiError && e.code === 'SESSION_REVOKED') signOut();
       if (e instanceof ApiError && e.code === 'UNAUTHORIZED') {
         await tryRefresh(access);
-        const res = await rawRequest<T>(method, path, body);
+        const res = await rawRequest<T>(method, path, body, true, extra);
         announceTaskChange(method, path);
         return res;
       }
@@ -297,7 +310,55 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 }
 
+/** Сеть не ответила: соединения нет или сервер обновляется. Такое повторяют, а не показывают ошибкой. */
+export function isNetworkError(e: unknown): boolean {
+  return e instanceof ApiError && (e.code === 'OFFLINE' || e.code === 'UNAVAILABLE');
+}
+
+/** Изменение легло в очередь и уйдёт, когда появится сеть (волна 9). Для вызывающего — «почти успех». */
+export const QUEUED = 'QUEUED';
+
+/**
+ * Изменение с ключом идемпотентности и очередью на случай отсутствия сети (ТЗ-9, волна 9).
+ *
+ * Сначала пробуем отправить сразу — с тем же uuid, что ляжет в очередь: если ответ
+ * потерялся по дороге, повтор из очереди сервер узнает по ключу и не сделает дважды.
+ * Сети нет — запись в очередь и `ApiError(QUEUED)`: вызывающий очищает поле ввода и
+ * показывает «отправится позже», а не красную ошибку.
+ */
+async function queued<T>(
+  method: QueuedChange['method'],
+  path: string,
+  body: unknown,
+  meta: { label: string; preview?: string; ifMatch?: number | null },
+): Promise<T> {
+  const id = newChangeId();
+  try {
+    return await request<T>(method, path, body, { idempotencyKey: id, ifMatch: meta.ifMatch });
+  } catch (e) {
+    if (!isNetworkError(e)) throw e;
+    enqueue({ id, method, path, body, ifMatch: meta.ifMatch ?? null, label: meta.label, preview: meta.preview });
+    throw new ApiError(QUEUED, 'Нет сети — отправится, когда сеть появится', { id });
+  }
+}
+
+/** Изменения после курсора (delta-sync, волна 9): ссылки, не содержимое. */
+export interface SyncChange {
+  id: string;
+  entity_type: 'task' | 'task_comment' | 'chat_message' | 'checklist_item';
+  entity_id: string;
+  parent_id: string | null;
+  op: 'insert' | 'update' | 'delete';
+  version: number | null;
+  at: string;
+}
+export interface SyncPage { cursor: string; reset: boolean; more: boolean; changes: SyncChange[] }
+
 export const api = {
+  /** Повтор записи из офлайн-очереди — тем же ключом, той же версией. */
+  replay: (c: QueuedChange) => request<unknown>(c.method, c.path, c.body, { idempotencyKey: c.id, ifMatch: c.ifMatch }),
+  mobileSync: (cursor: string | null, limit = 200) =>
+    request<SyncPage>('GET', `/mobile/sync?limit=${limit}${cursor ? `&cursor=${cursor}` : ''}`),
   // auth
   register: (b: { tenantName: string; email: string; password: string; fullName: string; dataRegion?: string }) =>
     rawRequest<AuthResult>('POST', '/auth/register', b, false),
@@ -338,11 +399,12 @@ export const api = {
     taskId: string, body: string, isClientVisible?: boolean, replyToId?: string, replyExcerpt?: string,
     thread?: { rootId?: string | null; alsoInChannel?: boolean },
   ) =>
-    request<any>('POST', `/tasks/${taskId}/comments`, {
+    // текст уходит через офлайн-очередь: без сети ляжет и отправится позже (волна 9)
+    queued<any>('POST', `/tasks/${taskId}/comments`, {
       body, isClientVisible, replyToId, replyExcerpt,
       threadRootId: thread?.rootId ?? undefined,
       alsoInChannel: thread?.alsoInChannel || undefined,
-    }),
+    }, { label: 'Сообщение в задаче', preview: body }),
   /** «Дочитал до сюда»: по этим отметкам собирается строка «Просмотрено». */
   markTaskChatRead: (taskId: string, lastReadId: string) =>
     request<{ ok: true; lastReadId: string }>('POST', `/tasks/${taskId}/comments/read`, { lastReadId }),
@@ -578,11 +640,15 @@ export const api = {
     requiresApproval?: boolean; checklist?: string[];
   }) =>
     request<Task>('POST', '/tasks', b),
+  /**
+   * Правка полей задачи. `version` — на какую версию правили: сервер сверит (If-Match)
+   * и при расхождении ответит 409 с текущей задачей. Без сети — в очередь.
+   */
   updateTask: (id: string, b: Partial<{
     title: string; description: string; isBlocked: boolean; priority: string;
     managerId: string | null; assigneeId: string | null;
-  }>) =>
-    request<Task>('PATCH', `/tasks/${id}`, b),
+  }>, version?: number | null) =>
+    queued<Task>('PATCH', `/tasks/${id}`, b, { label: 'Правка задачи', preview: b.title ?? b.description ?? undefined, ifMatch: version ?? null }),
   moveTask: (id: string, b: { columnId: string; position: number; confirmGate?: boolean }) =>
     request<Task>('POST', `/tasks/${id}/move`, b),
 
@@ -1007,10 +1073,10 @@ export const api = {
     mentionIds?: string[],
     reply?: { toId?: string | null; excerpt?: string | null },
   ) =>
-    request<any>('POST', `/chats/${chatId}/messages`, {
+    queued<any>('POST', `/chats/${chatId}/messages`, {
       body, threadRootId: thread?.rootId, alsoInChannel: thread?.alsoInChannel, mentionIds,
       replyToId: reply?.toId ?? undefined, replyExcerpt: reply?.excerpt ?? undefined,
-    }),
+    }, { label: 'Сообщение в чате', preview: body }),
   markChatRead: (chatId: string) => request<any>('POST', `/chats/${chatId}/read`),
   chatMembers: (chatId: string) => request<{
     canManage: boolean; createdBy: string | null; members: { userId: string; fullName: string }[];

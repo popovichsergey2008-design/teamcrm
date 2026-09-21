@@ -5149,3 +5149,47 @@ button.chat-pop-row:hover { background: var(--hover); }
   white-space: pre-wrap; padding: 8px; font-size: var(--fs-xs);
   background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
+
+/*
+  Полоса сети и очереди (ТЗ-9, волна 9). Пастельная подложка и цветной текст — как у
+  остальных статусов: в тёмной теме статусные цвета пастельные, белым по ним нельзя.
+*/
+.offline-bar {
+  display: flex; align-items: center; gap: 8px; width: 100%; flex: 0 0 auto;
+  padding: 6px 12px; font-size: var(--fs-xs); font-weight: 600; text-align: left; cursor: pointer;
+  border: 0; border-bottom: 1px solid var(--warn-line); background: var(--warn-soft); color: var(--warn);
+}
+.offline-bar-sending { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok); }
+.offline-bar-attention { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+.offline-bar span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.offline-bar-more { text-decoration: underline; font-weight: 500; }
+.offline-bar:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.offline-list { display: flex; flex-direction: column; gap: 8px; padding: 4px 12px 12px; }
+.offline-empty { color: var(--text-dim); font-size: var(--fs-sm); padding: 8px 0; }
+.offline-item {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev);
+}
+.offline-item-failed { border-color: var(--danger-line); }
+.offline-item-conflict { border-color: var(--warn-line); }
+.offline-item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.offline-item-label { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.offline-item-hint { font-size: var(--fs-xs); color: var(--text-dim); }
+.offline-item-failed .offline-item-hint { color: var(--danger); }
+.offline-item-conflict .offline-item-hint { color: var(--warn); }
+.offline-item-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+
+/* Конфликт версий: два варианта рядом, решает человек */
+.conflict-body { display: flex; flex-direction: column; gap: 12px; padding: 4px 12px 12px; }
+.conflict-hint { margin: 0; font-size: var(--fs-sm); color: var(--text-dim); }
+.conflict-field { display: flex; flex-direction: column; gap: 6px; }
+.conflict-field-name { font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .02em; }
+.conflict-side { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--bg-elev); }
+.conflict-side-title { font-size: var(--fs-xs); color: var(--text-dim); margin-bottom: 4px; }
+.conflict-side-text { font-size: var(--fs-sm); white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
+.conflict-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (min-width: 721px) {
+  .conflict-field { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .conflict-field-name { grid-column: 1 / -1; }
+}

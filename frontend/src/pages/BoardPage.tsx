@@ -22,6 +22,7 @@ import { EmptyState } from '../components/EmptyState';
 import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
 import { navigate } from '../lib/router';
 import { useDismiss } from '../hooks/useDismiss';
+import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync';
 import { SkeletonBoard } from '../components/Skeleton';
 import { MONETIZATION_ENABLED } from '../config';
 
@@ -290,8 +291,15 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
     socket.on('alert.raised', onAlert);
     socket.on('alert.resolved', onAlertResolved);
     socket.on('column.updated', onColumns);
+    // Догнали пропущенное после разрыва (delta-sync, волна 9): перечитываем доску,
+    // только если среди изменений есть задачи этого проекта.
+    const onSync = (e: Event) => {
+      if (syncTouches((e as CustomEvent<SyncDetail>).detail, { type: 'task', parentId: selected })) reloadBoard();
+    };
+    window.addEventListener(SYNC_EVENT, onSync);
 
     return () => {
+      window.removeEventListener(SYNC_EVENT, onSync);
       if (subscribedRef.current) socket.emit('project.unsubscribe', { projectId: subscribedRef.current });
       socket.off('connect', subscribe);
       socket.off('task.created', onUpsert);

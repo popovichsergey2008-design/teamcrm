@@ -22,6 +22,8 @@ export interface TaskRow {
   /** личный план: на какой день человек взял задачу (не срок) */
   focus_date: string | null;
   updated_at: Date;
+  /** Растёт на каждом содержательном изменении (триггер); телефон сверяет через If-Match. */
+  version: number;
   closed_at: Date | null;
   /** Нужно ли подтверждение постановщика, чтобы задача считалась завершённой. */
   requires_approval: boolean;

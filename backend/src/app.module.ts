@@ -8,6 +8,7 @@ import { CacheModule } from './cache/cache.module';
 import { MessagingModule } from './messaging/rabbitmq.service';
 import { AllExceptionsFilter } from './common/http/all-exceptions.filter';
 import { ResponseInterceptor } from './common/http/response.interceptor';
+import { IdempotencyInterceptor } from './common/http/idempotency.interceptor';
 import { JwtAuthGuard } from './common/auth/jwt-auth.guard';
 import { RolesGuard } from './common/auth/roles.guard';
 
@@ -138,6 +139,7 @@ import { FeedModule } from './modules/feed/feed.module';
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

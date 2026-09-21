@@ -8,12 +8,14 @@ import { ApprovalsModule } from '../approvals/approvals.module';
 import { MobileController } from './mobile.controller';
 import { MobileService } from './mobile.service';
 import { MobileDevicesRepository } from './mobile-devices.repository';
+import { ChangeLogRepository } from './change-log.repository';
+import { ChangeLogPruner } from './change-log.pruner';
 
 /** Мобильная инфраструктура (ТЗ-9): устройства; дальше — конфиг, ящик уведомлений, sync. */
 @Module({
   imports: [AuthModule, NotificationsModule, PlatformModule, TasksModule, ApprovalsModule],
   controllers: [MobileController],
-  providers: [MobileService, MobileDevicesRepository, MobileConfigService],
+  providers: [MobileService, MobileDevicesRepository, MobileConfigService, ChangeLogRepository, ChangeLogPruner],
   exports: [MobileDevicesRepository],
 })
 export class MobileModule {}

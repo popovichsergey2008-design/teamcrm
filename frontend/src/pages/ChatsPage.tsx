@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
-import { api, ApiError, Scheduled } from '../lib/api';
+import { api, ApiError, QUEUED, Scheduled } from '../lib/api';
+import { OFFLINE_FLUSHED_EVENT, useQueuedFor } from '../hooks/useOfflineQueue';
+import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync';
 import { getSocket } from '../lib/socket';
 import { navigate } from '../lib/router';
 import { useClipRecorder } from '../hooks/useClipRecorder';
@@ -208,6 +210,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     [messages, unreadFrom],
   );
   const [draft, setDraft] = useState('');
+  /** Написанное без сети: лежит в очереди и показывается в ленте на месте (волна 9). */
+  const queued = useQueuedFor(activeId ? `/chats/${activeId}/messages` : null);
   /*
     Черновик — свой у каждого чата и переживает перезагрузку (ТЗ-9): при смене чата
     текст подставляется из хранилища, при наборе — сохраняется, при отправке — стирается.
@@ -722,7 +726,25 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       }
     };
     socket.on('connect', onReconnect);
+    // Догнали пропущенное после разрыва (delta-sync) или ушла офлайн-очередь —
+    // перечитываем открытую переписку, только если изменения касаются её.
+    const onSync = (e: Event) => {
+      const d = (e as CustomEvent<SyncDetail>).detail;
+      if (d.reset) { onReconnect(); return; }
+      if (activeId && syncTouches(d, { type: 'chat_message', parentId: activeId })) {
+        api.chatMessages(activeId).then(setMessages).catch(() => undefined);
+        reload();
+      }
+    };
+    const onFlushed = () => {
+      if (activeId) api.chatMessages(activeId).then(setMessages).catch(() => undefined);
+      reload();
+    };
+    window.addEventListener(SYNC_EVENT, onSync);
+    window.addEventListener(OFFLINE_FLUSHED_EVENT, onFlushed);
     return () => {
+      window.removeEventListener(SYNC_EVENT, onSync);
+      window.removeEventListener(OFFLINE_FLUSHED_EVENT, onFlushed);
       socket.off('chat.typing', onTyping);
       socket.off('connect', onReconnect);
       socket.off('chat.read', onRead);
@@ -913,6 +935,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       appendMessage(message);
       reload();
     } catch (e) {
+      // Сети нет — сообщение легло в очередь и висит в ленте с пометкой «ожидает сети»:
+      // это не ошибка, набранное возвращать в поле не нужно.
+      if (e instanceof ApiError && e.code === QUEUED) { setMentioned([]); setReplyTo(null); return; }
       setErr(e instanceof ApiError ? e.message : files.length ? 'Файл не отправлен' : 'Сообщение не отправлено');
       setDraft(text); // не теряем набранное
       if (files.length) void attach(files); // и вложения возвращаем в очередь — переснимать экран обидно
@@ -2446,6 +2471,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   </div>
                 );
               })}
+              {/* Написанное без сети: висит в ленте своим пузырём, пока не уйдёт из очереди (волна 9) */}
+              {queued.map((q) => (
+                <div key={q.id} className="chat-line mine msg-queued">
+                  <div className="chat-msg mine msg-sending">
+                    <MessageText text={String((q.body as { body?: string })?.body ?? '')} className="chat-body" />
+                  </div>
+                  <div className="chat-under">
+                    <span className="chat-time">{q.status === 'pending' ? 'ожидает сети' : 'не отправлено'}</span>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Идёт запись — это должно быть видно без сомнений: человек говорит вслух,

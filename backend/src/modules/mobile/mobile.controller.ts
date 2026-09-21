@@ -15,6 +15,10 @@ class ListQuery {
   @IsOptional() @IsString() after?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
 }
+class SyncQuery {
+  @IsOptional() @IsString() @MaxLength(20) cursor?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(500) limit?: number;
+}
 class OrgPolicyDto {
   @IsOptional() @IsIn(['hide', 'sender_only', 'full']) pushPrivacy?: string;
   @IsOptional() @IsIn(['off', 'immediately', '1', '5', '15']) minLockPolicy?: string;
@@ -74,6 +78,13 @@ export class MobileController {
   @Get('notifications')
   notifications(@CurrentUser() u: AuthUser, @Query() q: ListQuery) {
     return this.mobile.notifications(u.userId, q.after ?? null, q.limit ?? 50);
+  }
+
+  /** Delta-sync: ссылки на изменившееся после курсора (волна 9). */
+  @Get('sync')
+  sync(@CurrentUser() u: AuthUser, @Query() q: SyncQuery) {
+    const cursor = q.cursor && /^\d{1,18}$/.test(q.cursor) ? q.cursor : null;
+    return this.mobile.sync(u, cursor, q.limit ?? 200);
   }
 
   @Post('notifications/read')

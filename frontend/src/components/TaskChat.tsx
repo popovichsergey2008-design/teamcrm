@@ -5,7 +5,9 @@ import { MentionField } from './MentionField';
 import { VoiceStatus } from './VoiceStatus';
 import { ChatAttachment } from './ChatAttachment';
 import { Lightbox } from './Lightbox';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, QUEUED } from '../lib/api';
+import { OFFLINE_FLUSHED_EVENT, useQueuedFor } from '../hooks/useOfflineQueue';
+import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync';
 import { dayLabel, plural, sameGroup, stampLabel } from '../lib/chat-text';
 import { MessageText } from './MessageText';
 import { longPressProps, MenuAt, MessageMenu } from './MessageMenu';
@@ -233,6 +235,8 @@ export function TaskChat({
   const [typing, setTyping] = useState<Record<string, { name: string; until: number }>>({});
   /** Отправляемое сообщение — на экране сразу, с пометкой «отправляется». */
   const [sending, setSending] = useState<{ body: string; at: string } | null>(null);
+  /** Сообщения, написанные без сети: лежат в очереди и показываются на месте (волна 9). */
+  const queued = useQueuedFor(`/tasks/${taskId}/comments`);
   /** Когда последний раз сказали «печатаю»: чаще раза в две секунды незачем. */
   const typingSentAt = useRef(0);
 
@@ -377,7 +381,18 @@ export function TaskChat({
       if (!id || String(id) === String(taskId)) reload();
     };
     window.addEventListener('teamcrm:task-chat-reload', onExternal);
-    return () => window.removeEventListener('teamcrm:task-chat-reload', onExternal);
+    // Догнали пропущенное после разрыва или ушла офлайн-очередь — перечитать, если касается нас.
+    const onSync = (e: Event) => {
+      if (syncTouches((e as CustomEvent<SyncDetail>).detail, { type: ['task_comment', 'checklist_item'], parentId: taskId })) reload();
+    };
+    const onFlushed = () => reload();
+    window.addEventListener(SYNC_EVENT, onSync);
+    window.addEventListener(OFFLINE_FLUSHED_EVENT, onFlushed);
+    return () => {
+      window.removeEventListener('teamcrm:task-chat-reload', onExternal);
+      window.removeEventListener(SYNC_EVENT, onSync);
+      window.removeEventListener(OFFLINE_FLUSHED_EVENT, onFlushed);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
   useEffect(() => {
@@ -493,7 +508,11 @@ export function TaskChat({
       }
       setReplyTo(null);
       setBody(''); clearDraft(`task:${taskId}`); reload(); onRefresh();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не отправилось'); }
+    } catch (e) {
+      // Сети нет — сообщение легло в очередь и показано в ленте: это не ошибка, поле можно очистить.
+      if (e instanceof ApiError && e.code === QUEUED) { setReplyTo(null); setBody(''); clearDraft(`task:${taskId}`); }
+      else setErr(e instanceof ApiError ? e.message : 'Не отправилось');
+    }
     finally { setBusy(false); setSending(null); }
   };
 
@@ -1137,6 +1156,19 @@ export function TaskChat({
             </div>
           </div>
         )}
+        {/* Написанное без сети: висит в ленте, пока не уйдёт из очереди (волна 9) */}
+        {queued.map((q) => (
+          <div key={q.id} className="msg msg-mine msg-sending msg-queued">
+            <div className="msg-avatar" aria-hidden="true">{initials(meName)}</div>
+            <div className="msg-main">
+              <div className="msg-head">
+                <b className="msg-name">{meName}</b>
+                <span className="msg-time">{q.status === 'pending' ? 'ожидает сети' : 'не отправлено'}</span>
+              </div>
+              <MessageText text={String((q.body as { body?: string })?.body ?? '')} className="msg-text" />
+            </div>
+          </div>
+        ))}
         {shown.map((c, i) => {
           const prev = shown[i - 1];
           const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(c.created_at).toDateString();

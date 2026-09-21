@@ -6,6 +6,17 @@ import { DeviceInput, MobileDevicesRepository } from './mobile-devices.repositor
 import { InboxRepository } from '../notifications/inbox.repository';
 import { TasksRepository } from '../tasks/tasks.repository';
 import { ApprovalsRepository } from '../approvals/approvals.repository';
+import { ChangeLogRepository, ChangeRef } from './change-log.repository';
+
+export interface SyncPage {
+  /** С чего продолжать в следующий раз. */
+  cursor: string;
+  /** Курсор клиента старше журнала: локальный кэш выбросить и загрузить всё заново. */
+  reset: boolean;
+  /** Есть ли ещё — клиент зовёт снова с новым курсором. */
+  more: boolean;
+  changes: ChangeRef[];
+}
 
 @Injectable()
 export class MobileService {
@@ -15,7 +26,35 @@ export class MobileService {
     private readonly inbox: InboxRepository,
     private readonly tasks: TasksRepository,
     private readonly approvals: ApprovalsRepository,
+    private readonly changes: ChangeLogRepository,
   ) {}
+
+  /**
+   * Delta-sync (ТЗ-9, волна 9): «что изменилось после моего курсора».
+   *
+   * Отдаём ссылки, не содержимое: задача №N обновлена до версии 9, сообщение M
+   * удалено. Клиент перечитывает нужное обычными ручками — с их правами и форматом,
+   * второй «мобильный» формат задачи нам не нужен. Первый заход без курсора — не
+   * история, а просто «вот голова журнала», дальше клиент читает разделы как обычно.
+   *
+   * Журнал живёт 30 дней. Курсор старше — честно говорим `reset`: делать вид, что
+   * ничего не пропущено, хуже, чем один раз перечитать.
+   */
+  async sync(user: AuthUser, cursor: string | null, limit: number): Promise<SyncPage> {
+    if (!cursor) {
+      return { cursor: await this.changes.head(user.tenantId), reset: false, more: false, changes: [] };
+    }
+    const oldest = await this.changes.oldest(user.tenantId);
+    // журнал начинается позже курсора — между ними могло быть что угодно
+    if (oldest && BigInt(oldest) > BigInt(cursor) + BigInt(1)) {
+      return { cursor: await this.changes.head(user.tenantId), reset: true, more: false, changes: [] };
+    }
+    const rows = await this.changes.after(user.tenantId, user, cursor, limit + 1);
+    const more = rows.length > limit;
+    const page = more ? rows.slice(0, limit) : rows;
+    const next = page.length ? page[page.length - 1].id : (more ? cursor : await this.changes.head(user.tenantId));
+    return { cursor: next, reset: false, more, changes: page };
+  }
 
   /**
    * «Фокус дня» одним запросом (ТЗ-9, волна 5).

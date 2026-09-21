@@ -4,7 +4,10 @@ import { useAuth } from '../state/auth';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { GateBlock, HandoffGateDialog, gateFromError } from './HandoffGateDialog';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, QUEUED } from '../lib/api';
+import { enqueueConflict, newChangeId, type QueuedChange } from '../lib/offline-queue';
+import { flushOffline } from '../hooks/useOfflineQueue';
+import { ConflictSheet } from './OfflineBar';
 import type { Task, User } from '../types';
 import { Lightbox } from './Lightbox';
 import { DatePicker } from './DatePicker';
@@ -92,6 +95,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const [projectList, setProjectList] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => { api.listProjects().then(setProjectList).catch(() => undefined); }, []);
   const [err, setErr] = useState('');
+  /** Правка полей столкнулась с чужой (409 по версии): два варианта рядом, решает человек (волна 9). */
+  const [conflict, setConflict] = useState<QueuedChange | null>(null);
   const [desc, setDesc] = useState(task.description ?? '');
   /** Название правится прямо в карточке: раньше его можно было изменить только заново создав задачу. */
   const [title, setTitle] = useState(task.title ?? '');
@@ -260,7 +265,28 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
       if (desc !== (task.description ?? '')) patch.description = desc;
       if (String(priority ?? 'normal') !== String(task.priority ?? 'normal')) patch.priority = priority;
       if (String(managerId ?? '') !== String(task.created_by ?? '')) patch.managerId = managerId || null;
-      if (Object.keys(patch).length) await api.updateTask(task.id, patch);
+      // Поля идут с версией задачи (If-Match): если её тем временем правил кто-то ещё,
+      // сервер ответит 409, а не перезапишет чужое молча.
+      if (Object.keys(patch).length) {
+        try { await api.updateTask(task.id, patch, task.version); } catch (e) {
+          // Сети нет — правка легла в очередь и уйдёт сама; для человека это «сохранено».
+          if (e instanceof ApiError && e.code === QUEUED) {
+            toastSaved('Сохранится, когда появится сеть');
+            return;
+          }
+          const d = (e instanceof ApiError && e.code === 'CONFLICT' ? e.details : null) as
+            { reason?: string; task?: Record<string, unknown>; fields?: string[] } | null;
+          if (d?.reason === 'version' && d.task) {
+            setConflict(enqueueConflict({
+              id: newChangeId(), method: 'PATCH', path: `/tasks/${task.id}`, body: patch,
+              ifMatch: task.version ?? null, label: `Правка задачи #${task.id}`,
+              preview: String(patch.title ?? patch.description ?? ''),
+            }, d.task, d.fields ?? []));
+            return;
+          }
+          throw e;
+        }
+      }
 
       if (approval !== initialApproval) await api.setTaskApproval(task.id, approval);
 
@@ -1014,6 +1040,14 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           />
         </div>
       </aside>
+
+      {conflict && (
+        <ConflictSheet
+          item={conflict}
+          onClose={() => setConflict(null)}
+          onDone={() => { setConflict(null); void flushOffline().finally(onRefresh); }}
+        />
+      )}
 
       {merging && (
         <TaskMergeModal

@@ -1149,6 +1149,41 @@ test('роутер: ветка чата — своим путём /chat/:id/thre
   assert.deepEqual(parsePath('/chat/88'), { section: 'chat', chatId: '88' });
 });
 
+// ── офлайн-очередь (волна 9) ──────────────────────────────────────────────────
+test('офлайн-очередь: исход записи — ушла/повторить/провал/конфликт', async () => {
+  const { applyOutcome } = await load('lib/offline-queue.ts');
+  const q = (id, status = 'pending') => ({ id, method: 'POST', path: '/x', label: id, createdAt: '', status });
+  const items = [q('a'), q('b'), q('c')];
+  assert.deepEqual(applyOutcome(items, 'b', { kind: 'sent' }).map((c) => c.id), ['a', 'c'], 'ушла — вычёркиваем');
+  assert.equal(applyOutcome(items, 'b', { kind: 'retry' }), items, 'нет сети — ничего не трогаем');
+  const failed = applyOutcome(items, 'b', { kind: 'failed', error: 'Нет прав' });
+  assert.equal(failed[1].status, 'failed');
+  assert.equal(failed[1].error, 'Нет прав');
+  assert.equal(failed[0].status, 'pending', 'соседей не задело');
+  const conflict = applyOutcome(items, 'c', { kind: 'conflict', error: 'Уже изменили', current: { version: 7 }, fields: ['title'] });
+  assert.equal(conflict[2].status, 'conflict');
+  assert.deepEqual(conflict[2].conflict, { current: { version: 7 }, fields: ['title'] });
+});
+
+test('офлайн-очередь: сводка и текст полосы — склонения и приоритет', async () => {
+  const { summarize, queueBanner } = await load('lib/offline-queue.ts');
+  const q = (id, status) => ({ id, method: 'POST', path: '/x', label: id, createdAt: '', status });
+  const s = summarize([q('1', 'pending'), q('2', 'pending'), q('3', 'failed'), q('4', 'conflict')]);
+  assert.deepEqual(s, { pending: 2, failed: 1, conflict: 1, total: 4 });
+  assert.equal(queueBanner(true, summarize([])), null, 'нечего показывать — полосы нет');
+  assert.equal(queueBanner(false, summarize([])), 'Нет сети · изменения сохранятся и отправятся позже');
+  assert.equal(queueBanner(false, summarize([q('1', 'pending')])), 'Нет сети · 1 изменение ожидает отправки');
+  assert.equal(queueBanner(false, summarize([q('1', 'pending'), q('2', 'pending')])), 'Нет сети · 2 изменения ожидают отправки');
+  const five = Array.from({ length: 5 }, (_, i) => q(String(i), 'pending'));
+  assert.equal(queueBanner(false, summarize(five)), 'Нет сети · 5 изменений ожидают отправки');
+  const eleven = Array.from({ length: 11 }, (_, i) => q(String(i), 'pending'));
+  assert.equal(queueBanner(false, summarize(eleven)), 'Нет сети · 11 изменений ожидают отправки', '11 — не «1 изменение»');
+  assert.equal(queueBanner(true, summarize([q('1', 'pending')])), 'Отправляем 1 изменение…');
+  // конфликт важнее провала, провал важнее отправки: сначала то, что требует человека
+  assert.equal(queueBanner(true, s), 'Есть изменения, столкнувшиеся с чужими: 1');
+  assert.equal(queueBanner(true, summarize([q('1', 'pending'), q('3', 'failed')])), 'Не отправилось: 1');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

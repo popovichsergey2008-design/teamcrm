@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -13,6 +13,13 @@ import {
 /** Пустую или кривую дату не подставляем молча: считаем, что клиент имел в виду сегодня. */
 function isoDate(value?: string): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(value ?? '') ? (value as string) : new Date().toISOString().slice(0, 10);
+}
+
+/** Версия из `If-Match`: число, допускаем кавычки как в ETag. Мусор — как отсутствие заголовка. */
+function parseIfMatch(raw?: string): number | null {
+  const v = String(raw ?? '').trim().replace(/^W\//, '').replace(/^"|"$/g, '');
+  if (!/^\d{1,9}$/.test(v)) return null;
+  return Number(v);
 }
 
 @ApiTags('tasks')
@@ -155,13 +162,18 @@ export class TasksController {
     return this.tasks.create(user.tenantId, dto, user.userId);
   }
 
+  /**
+   * `If-Match: <version>` — телефон говорит, какую версию задачи он правил (волна 9).
+   * Разошлись — 409 с текущей задачей. Без заголовка — как всегда.
+   */
   @Patch(':id')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: UpdateTaskDto,
+    @Headers('if-match') ifMatch?: string,
   ) {
-    return this.tasks.update(user.tenantId, id, dto, user.userId);
+    return this.tasks.update(user.tenantId, id, dto, user.userId, parseIfMatch(ifMatch));
   }
 
   /**
@@ -191,8 +203,9 @@ export class TasksController {
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: MoveTaskDto,
+    @Headers('if-match') ifMatch?: string,
   ) {
-    return this.tasks.move(user.tenantId, id, dto, user.userId);
+    return this.tasks.move(user.tenantId, id, dto, user.userId, parseIfMatch(ifMatch));
   }
 
   /**

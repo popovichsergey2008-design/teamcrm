@@ -258,9 +258,16 @@ export class TasksService {
     return { cleared: true };
   }
 
-  async update(tenantId: string, id: string, dto: UpdateTaskDto, actorId: string | null = null): Promise<TaskRow> {
+  async update(
+    tenantId: string,
+    id: string,
+    dto: UpdateTaskDto,
+    actorId: string | null = null,
+    expectedVersion: number | null = null,
+  ): Promise<TaskRow> {
     const existing = await this.repo.findById(tenantId, id);
     if (!existing) throw AppException.notFound('Task not found');
+    this.assertVersion(existing, expectedVersion, dto);
 
     const updated = await this.repo.update(tenantId, id, {
       title: dto.title,
@@ -337,9 +344,38 @@ export class TasksService {
     return { deleted: true };
   }
 
-  async move(tenantId: string, id: string, dto: MoveTaskDto, actorId: string | null = null): Promise<TaskRow> {
+  /**
+   * Сверка версии перед записью (ТЗ-9, волна 9 — offline).
+   *
+   * Телефон привёз правку, сделанную без сети «на версию 7», а задача уже на 9-й:
+   * пока человек был в метро, коллега переписал описание. Молча затереть — потерять
+   * чужую работу; молча выбросить — потерять свою. Отвечаем 409 и отдаём ТЕКУЩУЮ
+   * задачу и поля, по которым разошлись: клиент показывает оба варианта, решает человек.
+   *
+   * Без заголовка (веб, старые клиенты) — как раньше, последний пишущий побеждает.
+   */
+  private assertVersion(existing: TaskRow, expected: number | null, dto: Partial<UpdateTaskDto> = {}): void {
+    if (expected === null || Number(existing.version) === expected) return;
+    const fields = Object.keys(dto).filter((k) => (dto as Record<string, unknown>)[k] !== undefined);
+    throw AppException.conflict('Задачу уже изменили — сверьте версии', {
+      reason: 'version',
+      expected,
+      current: Number(existing.version),
+      task: existing,
+      fields,
+    });
+  }
+
+  async move(
+    tenantId: string,
+    id: string,
+    dto: MoveTaskDto,
+    actorId: string | null = null,
+    expectedVersion: number | null = null,
+  ): Promise<TaskRow> {
     const task = await this.repo.findById(tenantId, id);
     if (!task) throw AppException.notFound('Task not found');
+    this.assertVersion(task, expectedVersion);
 
     const column = await this.projects.findColumn(tenantId, task.project_id, dto.columnId);
     if (!column) throw AppException.notFound('Target column not found');

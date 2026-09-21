@@ -55,6 +55,9 @@ import { LockScreen } from './components/LockScreen';
 import { UpdateScreen } from './components/UpdateScreen';
 import { useMobileConfig } from './hooks/useMobileConfig';
 import { openInboxItem, useMobileInbox } from './hooks/useMobileInbox';
+import { useOfflineQueue } from './hooks/useOfflineQueue';
+import { useDeltaSync } from './hooks/useDeltaSync';
+import { OfflineBar } from './components/OfflineBar';
 import { useConsoleAlerts } from './hooks/useConsoleAlerts';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { ConsoleTopBar } from './components/console/ConsoleTopBar';
@@ -127,6 +130,9 @@ export function App() {
   */
   const consoleMode = isConsoleHost();
   const crmAlive = !!user && user.role !== 'client' && !consoleMode;
+  // Работа без сети (волна 9): очередь изменений и догон пропущенного после разрыва.
+  const offline = useOfflineQueue(crmAlive);
+  useDeltaSync(crmAlive);
 
   /**
    * Доска умеет принимать «куда прыгнуть» только при монтировании, поэтому переход
@@ -516,6 +522,7 @@ export function App() {
         человек увидит данные чужой компании.
       */}
       <main className="app-main" key={user.tenantId}>
+        <OfflineBar online={offline.online} items={offline.items} summary={offline.summary} onRetry={offline.flush} />
         {visited.has('focus') && (
           <Pane active={route.section === 'focus'}>
             <FocusPage
