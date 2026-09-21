@@ -37,12 +37,21 @@ describe('Mobile — ящик уведомлений и конфиг (e2e)', () 
   });
   afterAll(async () => app?.close());
 
-  async function waitMail(email: string): Promise<void> {
-    for (let i = 0; i < 40; i++) {
-      const rows = await db.many(`SELECT id FROM mail_outbox WHERE to_email=$1`, [email]);
+  /*
+    Письмо рождается фоном (событие → RabbitMQ → очередь писем), и на загруженном
+    раннере CI это занимает больше четырёх секунд. Ждём до десяти (два ожидания
+    укладываются в 30 с теста) и падаем с именем: молчаливый выход отсюда
+    превращался в «items.length: 0» строкой ниже.
+  */
+  async function waitMail(email: string, eventKey?: string): Promise<void> {
+    for (let i = 0; i < 100; i++) {
+      const rows = await db.many(
+        `SELECT id FROM mail_outbox WHERE to_email=$1 AND ($2::text IS NULL OR event_key=$2)`, [email, eventKey ?? null],
+      );
       if (rows.length) return;
       await new Promise((r) => setTimeout(r, 100));
     }
+    throw new Error(`не дождались письма ${eventKey ?? ''} для ${email}`);
   }
 
   it('событие ложится в ящик с путём внутри приложения; курсор отдаёт только новое; прочитанное считается', async () => {
@@ -85,11 +94,7 @@ describe('Mobile — ящик уведомлений и конфиг (e2e)', () 
     expect(after.items).toEqual([]);
 
     await http.post(`/api/tasks/${task.id}/comments`).set(H(owner.accessToken)).send({ body: 'Уточнение' }).expect(201);
-    for (let i = 0; i < 40; i++) {
-      const rows = await db.many(`SELECT id FROM mail_outbox WHERE to_email=$1 AND event_key='task.commented'`, [execEmail]);
-      if (rows.length) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    await waitMail(execEmail, 'task.commented');
     await worker.tick();
     const next = (await http.get(`/api/mobile/notifications?after=${cursor}`).set(H(execTok)).expect(200)).body.data;
     expect(next.items.length).toBe(1);
