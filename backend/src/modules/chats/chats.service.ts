@@ -6,6 +6,7 @@ import { CustomResponsesService } from './custom-responses.service';
 import { DiagService } from '../diagnostics/diag.service';
 import { FilesService } from '../files/files.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { PushService } from '../notifications/push.service';
 import { ChatRow, ChatsRepository, MessageRow } from './chats.repository';
 import { ScheduledRepository, ScheduledRow } from './scheduled.repository';
 
@@ -44,6 +45,7 @@ export class ChatsService {
     private readonly nl: NlService,
     private readonly chatAi: ChatsAiService,
     private readonly responses: CustomResponsesService,
+    private readonly push: PushService,
   ) {}
 
   /** Список чатов + кто сейчас в сети (точка рядом с именем). */
@@ -325,6 +327,12 @@ export class ChatsService {
     // Кого позвали — вместе с сообщением: у получателя может стоять «только
     // упоминания», и решать, звучать ли, он должен сразу, без второго запроса.
     this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message, mentionIds: mentioned });
+    // Тем, кого нет в сети, — push и запись в ящик (ТЗ-9): не ждём и не роняем отправку.
+    void this.repo.notifyModes(chatId).then((modes) => this.push.chatMessage({
+      tenantId, chatId, chatKind: chat.kind, chatTitle: chat.title,
+      authorId: user.userId, authorName: message.author_name ?? null, text,
+      recipients: to, mentioned, modes, threadRootId: rootId,
+    })).catch(() => undefined);
     // В журнал — только факт и адресаты: по нему видно, ушло ли сообщение и кому,
     // когда человек говорит «мне не пришло». Текста сообщения здесь нет.
     this.diag.write({

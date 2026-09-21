@@ -5,6 +5,7 @@ import { api, ApiError, Scheduled } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { navigate } from '../lib/router';
 import { useClipRecorder } from '../hooks/useClipRecorder';
+import { clearDraft, readDraft, writeDraft } from '../lib/chat-drafts';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { notificationPermission, notifyChatsChanged, requestNotificationPermission } from '../lib/notifications';
 import { useAuth } from '../state/auth';
@@ -127,7 +128,7 @@ const laterLabel = (x: { sendAt: string; repeat: 'none' | 'daily' }) => {
  * Мессенджер: слева люди и группы, справа переписка. Звонок — из шапки чата,
  * то есть звонишь конкретному человеку, а не в общую комнату.
  */
-export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 'page', onClose, context }: {
+export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId, inCall, mode = 'page', onClose, context }: {
   onCall: (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null; withAi?: boolean }) => void;
   /** Уже идёт созвон — второй начинать нельзя, кнопка гасится. */
   inCall?: boolean;
@@ -135,6 +136,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   onActiveChat?: (chatId: string | null) => void;
   /** Чат, который просили открыть снаружи — например кликом по уведомлению. */
   initialChatId?: string | null;
+  /** Ветка в нём — из push «ответили в ветке» и ссылок `/chat/:id/thread/:rootId` (ТЗ-9). */
+  initialThreadId?: string | null;
   /**
    * `overlay` — окно чата поверх CRM (ТЗ-5): одна переписка без списка и разделов,
    * ветка раскрывается поверх ленты. Вся механика — та же, что в разделе: это тот
@@ -205,6 +208,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     [messages, unreadFrom],
   );
   const [draft, setDraft] = useState('');
+  /*
+    Черновик — свой у каждого чата и переживает перезагрузку (ТЗ-9): при смене чата
+    текст подставляется из хранилища, при наборе — сохраняется, при отправке — стирается.
+  */
+  useEffect(() => { setDraft(activeId ? readDraft(`chat:${activeId}`) : ''); }, [activeId]);
+  useEffect(() => { if (activeId) writeDraft(`chat:${activeId}`, draft); }, [activeId, draft]);
   const [query, setQuery] = useState('');
   /**
    * Поиск по ПЕРЕПИСКЕ, а не только по названиям чатов.
@@ -463,12 +472,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * прослушать себя перед отправкой всё равно никто не станет, а лишний шаг убивает
    * весь смысл «быстрее, чем печатать».
    */
+  /**
+   * Запись не пропадает из-за упавшей отправки (ТЗ-9): в лифте сеть уходит ровно
+   * когда нажали «отправить». Неотправленная запись остаётся в панели с кнопками
+   * «Повторить» и «Удалить» — повторить можно, когда сеть вернётся.
+   */
+  const [failedClip, setFailedClip] = useState<{ blob: Blob; kind: 'voice' | 'screen'; chatId: string } | null>(null);
+  const sendClip = async (blob: Blob, kind: 'voice' | 'screen', chatId: string) => {
+    setClipBusy(true);
+    try { await api.sendChatClip(chatId, blob, kind); setFailedClip(null); }
+    catch (e) { setFailedClip({ blob, kind, chatId }); setErr(e instanceof ApiError ? e.message : 'Запись не отправлена'); }
+    finally { setClipBusy(false); }
+  };
   const clip = useClipRecorder(async (blob, kind) => {
     if (!activeId) return;
-    setClipBusy(true);
-    try { await api.sendChatClip(activeId, blob, kind); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : 'Запись не отправлена'); }
-    finally { setClipBusy(false); }
+    await sendClip(blob, kind, activeId);
   });
 
   /** Закрепить чат сверху или снять: порядок личный, у каждого свои четыре. */
@@ -787,8 +805,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   useEffect(() => {
     if (!initialChatId) return;
     if (String(initialChatId) === 'anthill') { setActiveId(null); setMessages([]); setView('anthill'); return; }
-    openChat(String(initialChatId));
-  }, [initialChatId, openChat]);
+    void openChat(String(initialChatId)).then(() => {
+      // Ветку открываем после чата: её лента живёт внутри него.
+      if (initialThreadId) void openThread(String(initialThreadId), String(initialChatId));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialChatId, initialThreadId, openChat]);
 
   useEffect(() => {
     onActiveChat?.(activeId);
@@ -869,6 +891,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
     setUnreadFrom(null); // ответил — значит, дочитал: черта больше не нужна
     const files = pending.map((p) => p.file);
     setDraft('');
+    clearDraft(`chat:${activeId}`);
     clearPending();
     try {
       // «@AI» — обращение к помощнику, а не к человеку: ответ придёт в этот же чат
@@ -1072,6 +1095,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
         mentionIds: stillMentioned(mentioned, text, mentionUsers),
       });
       setDraft('');
+      clearDraft(`chat:${activeId}`);
       setMentioned([]);
       loadScheduled(activeId);
       toastSaved(
@@ -1312,12 +1336,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
       : m)));
   };
 
-  const openThread = async (rootId: string) => {
-    if (!activeId) return;
+  const openThread = async (rootId: string, chatId: string | null = activeId) => {
+    if (!chatId) return;
     setInfoOpen(false); // правый слот один: ветка вытесняет сведения
     setThreadBody(''); setAlsoInChannel(false);
     try {
-      const messages = await api.chatThread(activeId, rootId);
+      const messages = await api.chatThread(chatId, rootId);
       setThread({ rootId: String(rootId), messages });
       notifyChatsChanged();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть ветку'); }
@@ -2426,7 +2450,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
 
             {/* Идёт запись — это должно быть видно без сомнений: человек говорит вслух,
                 и «пишется или нет» он обязан понимать сразу. */}
-            {(clip.recording || clipBusy || clip.error) && (
+            {(clip.recording || clipBusy || clip.error || failedClip) && (
               <div className="chat-clip-state">
                 {clip.recording && (
                   <>
@@ -2437,6 +2461,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                 )}
                 {clipBusy && <span className="dim">Отправляю и расшифровываю…</span>}
                 {clip.error && <span className="error-text">{clip.error}</span>}
+                {failedClip && !clipBusy && (
+                  <>
+                    <span className="error-text">Запись не отправлена — она сохранена.</span>
+                    <button className="msg-act" onClick={() => void sendClip(failedClip.blob, failedClip.kind, failedClip.chatId)}>Повторить</button>
+                    <button className="msg-act" onClick={() => setFailedClip(null)}>Удалить</button>
+                  </>
+                )}
               </div>
             )}
 

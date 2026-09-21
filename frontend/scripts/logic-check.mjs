@@ -1121,6 +1121,34 @@ test('конфиг оболочки: сравнение версий, верди
   assert.equal(effectiveLockPolicy('5', undefined), '5');
 });
 
+test('черновики чатов: свои у каждого чата, пустой стирает, старые вытесняются', async () => {
+  const { readDraft, writeDraft, clearDraft } = await load('lib/chat-drafts.ts');
+  const mem = new Map();
+  const storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+  writeDraft('chat:1', 'привет', storage);
+  writeDraft('task:7', 'готово', storage);
+  assert.equal(readDraft('chat:1', storage), 'привет');
+  assert.equal(readDraft('task:7', storage), 'готово');
+  assert.equal(readDraft('chat:2', storage), '');
+  writeDraft('chat:1', '   ', storage);           // пустой = стереть
+  assert.equal(readDraft('chat:1', storage), '');
+  clearDraft('task:7', storage);
+  assert.equal(readDraft('task:7', storage), '');
+  for (let i = 0; i < 60; i++) writeDraft(`chat:${i}`, `текст ${i}`, storage);
+  assert.equal(readDraft('chat:0', storage), '');   // вытеснен: держим 50
+  assert.equal(readDraft('chat:59', storage), 'текст 59');
+  // битое хранилище — не падение, а пустой черновик
+  const broken = { getItem: () => '{oops', setItem: () => undefined };
+  assert.equal(readDraft('chat:1', broken), '');
+});
+
+test('роутер: ветка чата — своим путём /chat/:id/thread/:root', async () => {
+  const { parsePath, buildPath } = await load('lib/router.ts');
+  assert.deepEqual(parsePath('/chat/88/thread/1234'), { section: 'chat', chatId: '88', threadId: '1234' });
+  assert.equal(buildPath({ section: 'chat', chatId: '88', threadId: '1234' }), '/chat/88/thread/1234');
+  assert.deepEqual(parsePath('/chat/88'), { section: 'chat', chatId: '88' });
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

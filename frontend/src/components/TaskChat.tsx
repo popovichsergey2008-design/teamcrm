@@ -15,6 +15,7 @@ import { shrinkImage } from '../lib/image-shrink';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { orderMentions } from '../lib/task-mentions';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { clearDraft, readDraft, writeDraft } from '../lib/chat-drafts';
 import { useAuth } from '../state/auth';
 import { getSocket } from '../lib/socket';
 import { requestCall } from '../lib/notifications';
@@ -144,7 +145,7 @@ export function TaskChat({
   const [comments, setComments] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
   const [users, setUsers] = useState<{ id: string; fullName: string }[]>([]);
-  const [body, setBody] = useState('');
+  const [body, setBody] = useState(() => readDraft(`task:${taskId}`));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   /** Поиск по обсуждению: в переписке на сотню сообщений нужное иначе не найти. */
@@ -154,6 +155,8 @@ export function TaskChat({
 
   /** Правка своего сообщения: сказанное вслух не переписывают, написанное — да. */
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
+  // Черновик обсуждения задачи — локально и по задаче (ТЗ-9): закрыл карточку, открыл — текст на месте.
+  useEffect(() => { if (!editing) writeDraft(`task:${taskId}`, body); }, [taskId, body, editing]); // правка сообщения — не черновик
   /**
    * Ответ на сообщение В ЛЕНТЕ — как в Telegram.
    *
@@ -489,7 +492,7 @@ export function TaskChat({
         await api.addComment(taskId, text, undefined, replyTo?.id, replyTo?.excerpt);
       }
       setReplyTo(null);
-      setBody(''); reload(); onRefresh();
+      setBody(''); clearDraft(`task:${taskId}`); reload(); onRefresh();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не отправилось'); }
     finally { setBusy(false); setSending(null); }
   };

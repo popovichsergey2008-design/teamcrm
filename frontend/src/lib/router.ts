@@ -27,6 +27,8 @@ export type Route = {
   projectId?: string;
   taskId?: string;
   chatId?: string;
+  /** ветка в чате: `/chat/:id/thread/:rootId` — из push и ссылок (ТЗ-9) */
+  threadId?: string;
   /** вкладка настроек */
   tab?: string;
 };
@@ -116,6 +118,7 @@ export function parsePath(pathname: string): Route {
       // Лента переехала из чатов в свой раздел «Новости»: она не переписка, а издание.
       // Старый адрес разослан в письмах и лежит в закладках — ведём его на новый.
       if (seg[1] === 'feed') return { section: 'news' };
+      if (seg[1] && seg[2] === 'thread' && seg[3]) return { section, chatId: seg[1], threadId: seg[3] };
       return seg[1] ? { section, chatId: seg[1] } : { section };
     case 'settings':
     case 'console':
@@ -140,6 +143,7 @@ export function buildPath(r: Route): string {
     case 'chat':
       if (r.view === 'meetings') return '/chat/meetings';
       if (r.view === 'feed') return '/chat/feed';
+      if (r.chatId && r.threadId) return `/chat/${enc(r.chatId)}/thread/${enc(r.threadId)}`;
       return r.chatId ? `/chat/${enc(r.chatId)}` : '/chat';
     case 'settings':
       return r.tab ? `/settings/${enc(r.tab)}` : '/settings';

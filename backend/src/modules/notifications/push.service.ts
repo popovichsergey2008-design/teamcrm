@@ -1,7 +1,32 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { RedisService } from '../../cache/redis.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { FcmSender } from './fcm.sender';
 import { InboxRepository, InboxRow } from './inbox.repository';
 import { MailRow } from './notifications.repository';
+
+/** Сообщение чата для push: кому, откуда, что показать (ТЗ-9, волна 6). */
+export interface ChatPushInput {
+  tenantId: string;
+  chatId: string;
+  /** dm | group | channel | project | task */
+  chatKind: string;
+  chatTitle: string | null;
+  authorId: string;
+  authorName: string | null;
+  text: string;
+  /** Все получатели сообщения (без автора отфильтруем сами). */
+  recipients: string[];
+  /** Кого упомянули: им шлём и при режиме «только упоминания». */
+  mentioned: string[];
+  /** Режимы уведомлений участников: all | mentions | none (нет строки — all). */
+  modes: { user_id: string; notify: string }[];
+  /** Ветка — в путь, чтобы открыть её сразу. */
+  threadRootId?: string | null;
+}
+
+/** Не чаще одного push по одному чату одному человеку за это время — иначе оживлённая группа шлёт очередь. */
+const CHAT_PUSH_THROTTLE_S = 120;
 
 /**
  * Ящик + push для каждого письма из очереди (ТЗ-9, волна 4).
@@ -14,7 +39,69 @@ import { MailRow } from './notifications.repository';
 export class PushService {
   private readonly log = new Logger('Push');
 
-  constructor(private readonly inbox: InboxRepository, private readonly fcm: FcmSender) {}
+  constructor(
+    private readonly inbox: InboxRepository,
+    private readonly fcm: FcmSender,
+    private readonly realtime: RealtimeService,
+    private readonly redis: RedisService,
+  ) {}
+
+  /**
+   * Сообщение чата → тем, кого нет в сети (ТЗ-9, волна 6).
+   *
+   * Письмами чаты не ходят (это был бы спам), поэтому сюда — напрямую, минуя очередь.
+   * Правила: автору не шлём; кто сейчас в приложении — видит сообщение сам; режим
+   * «только упоминания» уважаем; «выключено» — молчим; по одному чату одному человеку
+   * — не чаще раза в две минуты (дедуп в Redis), чтобы живая группа не заваливала
+   * телефон. Запись в ящик — всегда (без письма, mail_id пуст): по курсору телефон
+   * увидит её, даже если push сглотнули.
+   */
+  async chatMessage(m: ChatPushInput): Promise<void> {
+    try {
+      const privacy = await this.inbox.pushPrivacyOf(m.tenantId);
+      const modes = new Map(m.modes.map((x) => [String(x.user_id), x.notify]));
+      const mentioned = new Set(m.mentioned.map(String));
+      const path = m.threadRootId ? `/chat/${m.chatId}/thread/${m.threadRootId}` : `/chat/${m.chatId}`;
+      const isDm = m.chatKind === 'dm';
+      const who = m.authorName ?? 'Сообщение';
+      const where = isDm ? who : `${m.chatTitle ?? 'Чат'} · ${who}`;
+      for (const userId of new Set(m.recipients.map(String))) {
+        if (userId === String(m.authorId)) continue;
+        const mode = modes.get(userId) ?? 'all';
+        if (mode === 'none') continue;
+        if (mode === 'mentions' && !mentioned.has(userId)) continue;
+        if (this.realtime.isOnline(m.tenantId, userId)) continue;
+
+        const item = await this.inbox.record({
+          tenantId: m.tenantId, userId, mailId: null, eventKey: mentioned.has(userId) ? 'chat.mention' : 'chat.message',
+          title: where, body: PushService.previewOf(m.text), path,
+        });
+        if (!item || !this.fcm.enabled) continue;
+        if (!(await this.allowChatPush(userId, m.chatId))) continue;
+
+        const targets = await this.inbox.pushTargets(userId);
+        if (!targets.length) continue;
+        const badge = await this.inbox.unreadCount(userId);
+        const title = privacy === 'hide' ? 'ANTHILL' : where;
+        const body = privacy === 'full' ? item.body : privacy === 'sender_only' ? 'Новое сообщение' : 'Есть новое';
+        for (const t of targets) {
+          const outcome = await this.fcm.send(t.push_token, {
+            title, body, badge, data: { path, inboxId: String(item.id), eventKey: item.event_key, chatId: m.chatId },
+          });
+          if (outcome === 'invalid_token') await this.inbox.dropPushToken(t.id);
+        }
+      }
+    } catch (e) {
+      this.log.warn(`push по чату ${m.chatId}: ${(e as Error).message}`);
+    }
+  }
+
+  private async allowChatPush(userId: string, chatId: string): Promise<boolean> {
+    try {
+      const r = await this.redis.client.set(`push:chat:${userId}:${chatId}`, '1', 'EX', CHAT_PUSH_THROTTLE_S, 'NX');
+      return r === 'OK';
+    } catch { return true; }
+  }
 
   /** Путь внутри приложения из первой ссылки на наш домен в письме. */
   static pathOf(text: string): string | null {
