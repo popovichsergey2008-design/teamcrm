@@ -48,6 +48,7 @@ import { prefetchFocus } from './pages/FocusPage';
 import { prefetchRadar } from './pages/RadarPage';
 import { ChatBar } from './components/chatbar/ChatBar';
 import { openSupport, SupportDock } from './components/support/SupportDock';
+import { platform } from './platform';
 import { useConsoleAlerts } from './hooks/useConsoleAlerts';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { ConsoleTopBar } from './components/console/ConsoleTopBar';
@@ -83,10 +84,28 @@ function useAppHeight(): void {
   }, []);
 }
 
+/*
+  Ссылка, по которой открыли приложение (ТЗ-9): Universal Link / App Link в оболочке.
+
+  Путь тот же, что в вебе, — роутер разбирает его как обычный адрес. Если человек ещё
+  не вошёл, ссылку держим до входа и открываем после: «нажал в push, вошёл, попал в
+  задачу», а не «вошёл и оказался на главной». В браузере событий нет — хук молчит.
+*/
+function useDeepLinks(signedIn: boolean): void {
+  const pending = useRef<string | null>(null);
+  useEffect(() => platform.deepLinks.onOpen((path) => {
+    if (signedIn) navigate(parsePath(path)); else pending.current = path;
+  }), [signedIn]);
+  useEffect(() => {
+    if (signedIn && pending.current) { navigate(parsePath(pending.current)); pending.current = null; }
+  }, [signedIn]);
+}
+
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
   const route = useRoute();
   useAppHeight();
+  useDeepLinks(!!user);
   /*
     Консоль техотдела — автономное рабочее место (см. ветку ниже).
 

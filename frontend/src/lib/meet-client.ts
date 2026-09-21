@@ -1,4 +1,5 @@
 import { Device, types } from 'mediasoup-client';
+import { wsUrl } from './origin';
 import { diag, flushDiag } from './diag';
 
 export interface RemoteTrack {
@@ -110,8 +111,7 @@ export class MeetClient {
 
   async join(): Promise<void> {
     this.ev.onState('connecting');
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    this.ws = new WebSocket(`${proto}://${window.location.host}/ws/meet?token=${encodeURIComponent(this.token)}`);
+    this.ws = new WebSocket(`${wsUrl('/ws/meet')}?token=${encodeURIComponent(this.token)}`);
 
     this.ws.onmessage = (e) => {
       let msg: any;

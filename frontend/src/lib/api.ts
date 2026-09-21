@@ -6,6 +6,7 @@ import type {
   SupportDesk, SupportHandbook, SupportQueueItem, Task,
 } from '../types';
 import { platform } from '../platform';
+import { apiUrl } from './origin';
 
 const ACCESS_KEY = 'teamcrm.access';
 const REFRESH_KEY = 'teamcrm.refresh';
@@ -129,7 +130,7 @@ interface Envelope<T> {
   error?: { code: string; message: string; details?: unknown };
 }
 
-const BASE = '/api';
+const BASE = apiUrl('/api');
 
 async function rawRequest<T>(
   method: string,
@@ -290,7 +291,8 @@ export const api = {
   me: () => request<any>('GET', '/me'),
   /** Скачивает защищённый файл (нужен Bearer) как Blob — файлы за JwtAuthGuard, прямая ссылка даёт 401. */
   authedBlob: async (path: string): Promise<Blob> => {
-    const res = await fetch(path, { headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {} });
+    // путь приходит относительным (`/api/files/…`) — в оболочке ему нужен origin сервера
+    const res = await fetch(path.startsWith('/') ? apiUrl(path) : path, { headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {} });
     if (!res.ok) throw new ApiError('INTERNAL', `Не удалось загрузить файл (${res.status})`);
     return res.blob();
   },
@@ -343,7 +345,7 @@ export const api = {
   deleteAttachment: (taskId: string, aid: string) => request<any>('DELETE', `/tasks/${taskId}/attachments/${aid}`),
   uploadAttachment: async (taskId: string, file: File) => {
     const fd = new FormData(); fd.append('file', file);
-    const res = await fetch(`/api/tasks/${taskId}/attachments`, { method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd });
+    const res = await fetch(apiUrl(`/api/tasks/${taskId}/attachments`), { method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd });
     const env = await res.json();
     if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Upload error');
     return env.data;
@@ -429,7 +431,7 @@ export const api = {
   uploadAvatar: async (file: File) => {
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch('/api/me/avatar', {
+    const res = await fetch(apiUrl('/api/me/avatar'), {
       method: 'POST',
       headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
       body: fd,
@@ -1021,7 +1023,7 @@ export const api = {
     const ext = kind === 'voice' ? 'webm' : 'webm';
     fd.append('file', blob, `${kind === 'voice' ? 'Голосовое' : 'Запись экрана'} ${new Date().toLocaleString('ru-RU')}.${ext}`);
     fd.append('kind', kind);
-    const res = await fetch(`/api/chats/${chatId}/clip`, {
+    const res = await fetch(apiUrl(`/api/chats/${chatId}/clip`), {
       method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
     });
     const env = await res.json();
@@ -1159,7 +1161,7 @@ export const api = {
     if (text) fd.append('text', text);
     // Специалист прикладывает файл в чужой разговор — он должен лечь туда же.
     if (conversationId) fd.append('conversationId', conversationId);
-    const res = await fetch('/api/support/desk/messages/file', {
+    const res = await fetch(apiUrl('/api/support/desk/messages/file'), {
       method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
     });
     const env = await res.json();
@@ -1413,7 +1415,7 @@ export const api = {
     if (reply?.toId) fd.append('replyToId', String(reply.toId));
     if (reply?.excerpt) fd.append('replyExcerpt', String(reply.excerpt).slice(0, 600));
     if (body) fd.append('body', body);
-    const res = await fetch(`/api/chats/${chatId}/files`, {
+    const res = await fetch(apiUrl(`/api/chats/${chatId}/files`), {
       method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
     });
     const env = await res.json();
@@ -1455,7 +1457,7 @@ export const api = {
   /** Вложение прикладывается к УЖЕ опубликованному посту: сорвётся загрузка — текст не пропадёт. */
   feedAttach: async (postId: string, file: File) => {
     const fd = new FormData(); fd.append('file', file);
-    const res = await fetch(`/api/feed/${postId}/files`, {
+    const res = await fetch(apiUrl(`/api/feed/${postId}/files`), {
       method: 'POST',
       headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
       body: fd,
@@ -1533,7 +1535,7 @@ export const api = {
   calendarWork: () => request<any>('GET', '/calendar/work'),
   /** Файл встречи: за авторизацией, поэтому тянем с токеном и отдаём как blob. */
   calendarIcs: async (id: string) => {
-    const res = await fetch(`/api/calendar/events/${id}/ics`, {
+    const res = await fetch(apiUrl(`/api/calendar/events/${id}/ics`), {
       headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
     });
     if (!res.ok) throw new ApiError('INTERNAL', 'Не удалось получить файл встречи');
@@ -1575,7 +1577,7 @@ export const api = {
   listMeetings: () => request<any[]>('GET', '/meetings'),
   meetingDetails: (id: string) => request<{ meeting: any; segments: any[]; summary: any; drafts: any[] }>('GET', `/meetings/${id}`),
   uploadMeeting: async (form: FormData) => {
-    const res = await fetch('/api/meetings', {
+    const res = await fetch(apiUrl('/api/meetings'), {
       method: 'POST',
       headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
       body: form,
@@ -1706,7 +1708,7 @@ export const api = {
     if (replyToId) fd.append('replyToId', replyToId);
     if (replyExcerpt) fd.append('replyExcerpt', replyExcerpt);
     if (threadRootId) fd.append('threadRootId', threadRootId);
-    const res = await fetch(`/api/tasks/${taskId}/comments/file`, {
+    const res = await fetch(apiUrl(`/api/tasks/${taskId}/comments/file`), {
       method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
     });
     const env = await res.json();
@@ -1790,7 +1792,7 @@ export const api = {
   importPreview: async (file: File) => {
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch('/api/integrations/file/preview', {
+    const res = await fetch(apiUrl('/api/integrations/file/preview'), {
       method: 'POST',
       headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
       body: fd,

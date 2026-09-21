@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ANTHILL</string>
+    <string name="title_activity_main">ANTHILL</string>
+    <string name="package_name">team.anthill.app</string>
+    <string name="custom_url_scheme">team.anthill.app</string>
+</resources>

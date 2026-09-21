@@ -1,4 +1,5 @@
 import { tokens } from './api';
+import { apiUrl } from './origin';
 
 /**
  * Отправка событий браузера в диагностический журнал.
@@ -35,11 +36,11 @@ async function flush(useBeacon = false): Promise<void> {
   // Уход со страницы: обычный запрос браузер отменит, маячок — доставит.
   // Именно последние события перед закрытием обычно и объясняют поломку.
   if (useBeacon && navigator.sendBeacon) {
-    const ok = navigator.sendBeacon('/api/diag/events', new Blob([body], { type: 'application/json' }));
+    const ok = navigator.sendBeacon(apiUrl('/api/diag/events'), new Blob([body], { type: 'application/json' }));
     if (ok) return;
   }
   try {
-    await fetch('/api/diag/events', {
+    await fetch(apiUrl('/api/diag/events'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokens.access}` },
       body,

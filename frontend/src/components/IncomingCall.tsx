@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { wsUrl } from '../lib/origin';
 import { Icon } from './Icon';
 import { tokens } from '../lib/api';
 import { startRingtone, stopRingtone } from '../lib/sound';
@@ -29,8 +30,7 @@ export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null;
 
     const connect = () => {
       if (closed) return;
-      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      const socket = new WebSocket(`${proto}://${window.location.host}/ws/meet?token=${encodeURIComponent(tokens.access ?? '')}`);
+      const socket = new WebSocket(`${wsUrl('/ws/meet')}?token=${encodeURIComponent(tokens.access ?? '')}`);
       ws.current = socket;
       socket.onmessage = (e) => {
         let msg: any;

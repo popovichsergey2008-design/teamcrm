@@ -6,6 +6,7 @@ import { shrinkImage } from '../../lib/image-shrink';
 import { requestCall } from '../../lib/notifications';
 import { stampLabel } from '../../lib/chat-text';
 import { useAuth } from '../../state/auth';
+import { apiUrl } from '../../lib/origin';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { Icon } from '../Icon';
 import { VoiceStatus } from '../VoiceStatus';
@@ -741,7 +742,7 @@ export function SupportDock({ embedded = false }: {
                         общему адресу его не откроет, а по разговору — да.
                       */}
                       {m.fileId && (
-                        <a className="support-file" href={`/api/support/desk/${conv?.id}/files/${m.fileId}`} target="_blank" rel="noreferrer">
+                        <a className="support-file" href={apiUrl(`/api/support/desk/${conv?.id}/files/${m.fileId}`)} target="_blank" rel="noreferrer">
                           <Icon name="paperclip" size={13} /> {m.fileName ?? 'файл'}
                         </a>
                       )}
