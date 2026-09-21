@@ -195,6 +195,8 @@ export function TaskChat({
   const [quickOpen, setQuickOpen] = useState(false);
   /** Куда прокрутили из истории — подсвечиваем, иначе непонятно, что именно нашли. */
   const [highlight, setHighlight] = useState<string | null>(null);
+  /** Процитированный кусок внутри найденного сообщения — подсвечен отдельно (задача #1338). */
+  const [quoteMark, setQuoteMark] = useState<{ id: string; text: string } | null>(null);
   /** У какого сообщения открыт выбор реакции: набор из шести эмодзи в каждой строке — мусор. */
   /**
    * Меню сообщения по правой кнопке — как в Telegram.
@@ -763,7 +765,9 @@ export function TaskChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [comments.length]);
 
-  const goToMessage = async (id: string) => {
+  const goToMessage = async (id: string, excerpt?: string | null) => {
+    setQuoteMark(excerpt ? { id, text: excerpt } : null);
+    window.setTimeout(() => setQuoteMark((cur) => (cur?.id === id ? null : cur)), 4000);
     let el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
     if (!el && !fullyLoaded) {
       const rows = await api.listComments(taskId, true).catch(() => null);
@@ -1173,13 +1177,19 @@ export function TaskChat({
                   {/* Цитата: без неё «да, согласен» через десять реплик — согласие
                       неизвестно с чем. Клик ведёт к исходному сообщению. */}
                   {c.reply_to_id && c.reply_body && (
-                    <button className="msg-quote" onClick={() => goToMessage(String(c.reply_to_id))} title="Перейти к сообщению">
+                    <button className="msg-quote" onClick={() => goToMessage(String(c.reply_to_id), c.reply_body)} title="Перейти к сообщению">
                       <b className="msg-quote-author">{c.reply_author}</b>
                       <span className="msg-quote-text">{String(c.reply_body).slice(0, 200)}</span>
                     </button>
                   )}
 
-                  {c.body && <MessageText text={c.body} className="msg-text" />}
+                  {c.body && (
+                    <MessageText
+                      text={c.body}
+                      className="msg-text"
+                      mark={quoteMark?.id === String(c.id) ? quoteMark.text : null}
+                    />
+                  )}
 
                   {c.file_id && (
                     <ChatAttachment

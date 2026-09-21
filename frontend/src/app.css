@@ -1339,6 +1339,15 @@
 .msg-ai .msg-avatar { border-color: var(--accent-line); color: var(--accent); }
 /* Пришли из истории — сообщение подсвечено, иначе непонятно, куда именно прокрутили. */
 .msg-found .msg-main { background: var(--warn-soft); box-shadow: 0 0 0 2px var(--warn-line); }
+/*
+  Процитированный кусок внутри найденного сообщения — ещё одним слоем, как в Telegram:
+  цитируют абзац, а не всё сообщение, и человек должен видеть, о каком именно речь.
+*/
+.msg-quote-mark {
+  /* Полупрозрачный жёлтый: текст остаётся своего цвета в обеих темах, контраст не страдает. */
+  background: rgba(255, 196, 0, .38); color: inherit;
+  border-radius: 3px; padding: 0 1px; box-decoration-break: clone; -webkit-box-decoration-break: clone;
+}
 
 /*
   Цитата в пузыре — шапкой ответа, как в Telegram.

@@ -1056,6 +1056,27 @@ test('память о доске: сутки, своя организация, �
   assert.equal(lastProject('7'), null);
 });
 
+test('цитата внутри сообщения: находится сквозь переносы, не находится целиком и не выдумывается', async () => {
+  const { findFragment } = await load('lib/quote-mark.ts');
+
+  const text = ['Первый абзац про сроки.', 'Второй абзац  про бюджет и людей.', 'Третий.'].join('\n');
+  // обычный кусок
+  assert.deepEqual(findFragment(text, 'абзац про бюджет'), { start: 31, end: 48 });
+  // цитата с одинарным пробелом, в тексте — двойной: пробелы не мешают
+  assert.deepEqual(findFragment(text, 'Второй абзац про бюджет'), { start: 24, end: 48 });
+  // цитата, пересекающая перенос строки
+  assert.ok(findFragment(text, 'сроки. Второй'));
+  // регистр не важен: человек мог править цитату
+  assert.ok(findFragment(text, 'ПЕРВЫЙ АБЗАЦ'));
+  // цитата равна всему сообщению — сообщение и так подсвечено, второй слой не нужен
+  assert.equal(findFragment(text, text), null);
+  // чужой текст и пустая цитата — ничего
+  assert.equal(findFragment(text, 'про деньги'), null);
+  assert.equal(findFragment(text, '   '), null);
+  // спецсимволы в цитате — не регулярка
+  assert.ok(findFragment('Цена (руб.) — 100', '(руб.)'));
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

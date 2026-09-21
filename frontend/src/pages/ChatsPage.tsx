@@ -299,6 +299,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
   /** Куда прокрутили из закреплённого — подсвечиваем, иначе непонятно, что нашли. */
   const [highlight, setHighlight] = useState<string | null>(null);
   /**
+   * Какой кусок подсветить внутри найденного сообщения (задача #1338).
+   *
+   * По нажатию на цитату сообщение вспыхивает целиком — и внутри него отдельно
+   * тот абзац, который процитировали, как в Telegram. Гаснет вместе с подсветкой.
+   */
+  const [quoteMark, setQuoteMark] = useState<{ id: string; text: string } | null>(null);
+  /**
    * Меню сообщения по правой кнопке — как в Telegram.
    *
    * Просьба заказчика: «убрать эти троеточия везде и сделать один в один как в
@@ -988,7 +995,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
    * перезагруженной ленты в ответ на нажатие выглядит как сбой. Если его в ленте
    * нет (разговор длинный, а цитата — из глубины), поднимаем окно вокруг него.
    */
-  const goToQuoted = async (id: string) => {
+  const goToQuoted = async (id: string, excerpt?: string | null) => {
+    // Кусок цитаты подсвечиваем и там, где сообщение уже в ленте, и там, где его подгружаем.
+    setQuoteMark(excerpt ? { id, text: excerpt } : null);
+    window.setTimeout(() => setQuoteMark((cur) => (cur?.id === id ? null : cur)), 4000);
     const el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
     if (el) {
       el.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -2262,7 +2272,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                         {m.reply_to_id && m.reply_body && (
                           <button
                             className="msg-quote"
-                            onClick={() => void goToQuoted(String(m.reply_to_id))}
+                            onClick={() => void goToQuoted(String(m.reply_to_id), m.reply_body)}
                             title="Перейти к исходному сообщению"
                           >
                             <b className="msg-quote-author">{m.reply_author ?? 'Собеседник'}</b>
@@ -2271,7 +2281,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, inCall, mode = 
                         )}
                         {/* Ссылку в переписке нажимают, а не выделяют и копируют:
                             разбор тот же, что в карточке задачи. */}
-                        {m.body && editing !== String(m.id) && <MessageText text={m.body} className="chat-body" />}
+                        {m.body && editing !== String(m.id) && (
+                          <MessageText
+                            text={m.body}
+                            className="chat-body"
+                            mark={quoteMark?.id === String(m.id) ? quoteMark.text : null}
+                          />
+                        )}
                         {/* Правка своего сообщения — прямо в пузыре: уводить человека
                             в отдельное окно ради опечатки незачем. */}
                         {editing === String(m.id) && (

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { mdToHtml } from '../lib/rich-text';
+import { markFragment } from '../lib/quote-mark';
 import { hydrateImages } from './RichText';
 
 /**
@@ -14,7 +15,12 @@ import { hydrateImages } from './RichText';
  * Хранится по-прежнему ТЕКСТ с лёгкой разметкой: сообщения уходят в письма, в
  * Telegram, в поиск и к ИИ — там HTML был бы мусором.
  */
-export function MessageText({ text, className }: { text: string; className?: string }) {
+export function MessageText({ text, className, mark }: {
+  text: string;
+  className?: string;
+  /** Процитированный кусок — подсветить его внутри текста, пока сообщение «найдено». */
+  mark?: string | null;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const html = mdToHtml(text);
 
@@ -24,6 +30,13 @@ export function MessageText({ text, className }: { text: string; className?: str
     if (!root) return;
     return hydrateImages(root);
   }, [html]);
+
+  // Подсветка цитаты живёт поверх готовой разметки и снимается, не оставляя следа.
+  useEffect(() => {
+    const root = ref.current;
+    if (!root || !mark) return;
+    return markFragment(root, mark);
+  }, [html, mark]);
 
   return <div ref={ref} className={`msg-rich ${className ?? ''}`} dangerouslySetInnerHTML={{ __html: html }} />;
 }
