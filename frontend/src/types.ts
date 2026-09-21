@@ -366,6 +366,8 @@ export interface SupportDesk {
   /** Секунды до первого ответа или null — обещать нечего (ТЗ-8, разд. 6). */
   etaSeconds: number | null;
   isAgent: boolean;
+  /** Под каким именем отвечает первая линия: клиент видит сотрудника, а не бота. */
+  persona?: { name: string };
 }
 
 export interface SupportQueueItem {

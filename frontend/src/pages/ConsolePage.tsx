@@ -72,6 +72,8 @@ export function ConsolePage({ route }: { route: Route }) {
   const [filter, setFilter] = useState<SupportQueueFilter>({});
   const [roles, setRoles] = useState<{ id: string; title: string }[]>([]);
   const [incident, setIncident] = useState({ title: '', message: '' });
+  /** Первая линия: имя и тон, под которыми модель говорит с клиентами. */
+  const [persona, setPersona] = useState<{ name: string; tone: string } | null>(null);
   const [issue, setIssue] = useState({ taskId: '', title: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -96,6 +98,7 @@ export function ConsolePage({ route }: { route: Route }) {
     if (isAdmin) {
       setPeople(await api.platformCandidates().catch(() => []));
       setRoles(await api.platformRoles().catch(() => []));
+      setPersona(await api.supportPersona().catch(() => null));
     }
     setReady(true);
   }, [isAdmin, isEngineer, filter]);
@@ -484,6 +487,50 @@ export function ConsolePage({ route }: { route: Route }) {
                 {!staff.length && <p className="dim">В техотделе пока никого.</p>}
               </div>
             </div>
+
+            {/*
+              Первая линия — под человеческим именем.
+
+              Клиент не должен видеть, что разговор начинает бот: «AnthillBot» в шапке
+              читается как автоответчик, и человек либо сразу зовёт специалиста, либо
+              уходит. Имя и тон задаёт руководство службы; что за именем модель — знает
+              только техотдел, в разговоре это помечено.
+            */}
+            {isAdmin && persona && (
+              <div className="support-block">
+                <div className="drawer-section-title">Первая линия</div>
+                <p className="dim">
+                  Под этим именем первая линия здоровается и отвечает клиентам. Она никогда не
+                  называет себя ботом; когда не уверена — подключает старшего специалиста.
+                </p>
+                <div className="console-persona">
+                  <input
+                    className="input"
+                    value={persona.name}
+                    maxLength={40}
+                    placeholder="Имя, например Анна"
+                    aria-label="Имя первой линии"
+                    onChange={(e) => setPersona({ ...persona, name: e.target.value })}
+                  />
+                  <textarea
+                    className="input"
+                    rows={2}
+                    value={persona.tone}
+                    maxLength={600}
+                    placeholder="Тон: тепло и по-деловому, на «вы», без канцелярита"
+                    aria-label="Тон первой линии"
+                    onChange={(e) => setPersona({ ...persona, tone: e.target.value })}
+                  />
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={busy || !persona.name.trim()}
+                    onClick={() => void act(() => api.supportSetPersona({ name: persona.name.trim(), tone: persona.tone.trim() }))}
+                  >
+                    Сохранить
+                  </button>
+                </div>
+              </div>
+            )}
 
             {isAdmin && (
               <div className="support-block">

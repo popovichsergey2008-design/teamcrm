@@ -1268,6 +1268,10 @@ export const api = {
    * помощник и AnthillBot читают один источник, а не каждый свой.
    */
   supportHandbook: () => request<SupportHandbook>('GET', '/support/desk/handbook/state'),
+  /** Под каким именем и каким тоном первая линия говорит с клиентами (руководству службы). */
+  supportPersona: () => request<{ name: string; tone: string }>('GET', '/support/desk/settings/persona'),
+  supportSetPersona: (body: { name: string; tone?: string }) =>
+    request<{ name: string; tone: string }>('POST', '/support/desk/settings/persona', body),
   supportLoadHandbook: () =>
     request<SupportHandbook & { added: number; updated: number; total: number }>(
       'POST', '/support/desk/handbook/load', {},

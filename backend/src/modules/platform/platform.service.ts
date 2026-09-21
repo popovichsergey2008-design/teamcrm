@@ -15,6 +15,26 @@ export const PLATFORM_ROLES: PlatformRole[] = [
   'support', 'support_admin', 'engineer', 'incident_manager', 'admin',
 ];
 
+/**
+ * Первая линия службы заботы — под человеческим именем.
+ *
+ * Люди не должны видеть, что разговор начинается с бота: «AnthillBot» в шапке
+ * читается как «вам ответит автоответчик», и человек либо сразу зовёт специалиста,
+ * либо уходит. Первая линия представляется по имени и говорит как живой сотрудник;
+ * что за ней модель — знает только техотдел (в консоли это помечено).
+ */
+export interface SupportPersona {
+  /** Имя, под которым первая линия говорит с клиентами. */
+  name: string;
+  /** Как держаться: доп. указания к тону — техотдел правит в консоли. */
+  tone: string;
+}
+
+export const DEFAULT_PERSONA: SupportPersona = {
+  name: 'Анна',
+  tone: 'Тепло и по-деловому, на «вы», без канцелярита и без лишних извинений.',
+};
+
 /** Кто работает с очередью и обращениями. Инженера здесь нет намеренно. */
 export const DESK_ROLES: PlatformRole[] = ['support', 'support_admin', 'incident_manager', 'admin'];
 /** Кто настраивает службу: состав отдела, известные проблемы, справочник. */
@@ -68,12 +88,54 @@ const CACHE_MS = 60_000;
 export class PlatformService implements OnModuleInit {
   private readonly log = new Logger('Platform');
   private cache: { id: string | null; at: number } = { id: null, at: 0 };
+  private personaCache: { value: SupportPersona; at: number } | null = null;
 
   constructor(private readonly db: DbService) {}
 
   onModuleInit(): void {
     const timer = setTimeout(() => void this.seed(), SEED_DELAY_MS);
     timer.unref?.(); // не держим процесс в тестах и консольных запусках
+  }
+
+  // ── настройки платформы ──
+  /** Значение по ключу или запасное: настроек может не быть вовсе. */
+  async setting<T>(key: string, fallback: T): Promise<T> {
+    const row = await this.db.one<{ value: T }>(
+      `SELECT value FROM platform_settings WHERE key=$1`, [key],
+    ).catch(() => null);
+    return row?.value ?? fallback;
+  }
+
+  async setSetting(key: string, value: unknown, by: string | null): Promise<void> {
+    await this.db.query(
+      `INSERT INTO platform_settings (key, value, updated_by, updated_at)
+       VALUES ($1, $2::jsonb, $3, now())
+       ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_by=EXCLUDED.updated_by, updated_at=now()`,
+      [key, JSON.stringify(value), by],
+    );
+  }
+
+  /**
+   * Как представляется первая линия. Пустое имя — запасное: без имени она снова «бот».
+   * Спрашивается на каждое сообщение разговора, поэтому держится в памяти минуту.
+   */
+  async persona(): Promise<SupportPersona> {
+    if (this.personaCache && Date.now() - this.personaCache.at < CACHE_MS) return this.personaCache.value;
+    const saved = await this.setting<Partial<SupportPersona>>('support_persona', {});
+    const value = {
+      name: String(saved.name ?? '').trim().slice(0, 40) || DEFAULT_PERSONA.name,
+      tone: String(saved.tone ?? '').trim().slice(0, 600) || DEFAULT_PERSONA.tone,
+    };
+    this.personaCache = { value, at: Date.now() };
+    return value;
+  }
+
+  async setPersona(next: Partial<SupportPersona>, by: string | null): Promise<SupportPersona> {
+    const name = String(next.name ?? '').trim().slice(0, 40);
+    if (!name) throw AppException.validation('Укажите имя первой линии');
+    await this.setSetting('support_persona', { name, tone: String(next.tone ?? '').trim().slice(0, 600) }, by);
+    this.personaCache = null;
+    return this.persona();
   }
 
   // ── кто платформа ──

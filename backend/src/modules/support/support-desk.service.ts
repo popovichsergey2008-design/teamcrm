@@ -206,6 +206,8 @@ export class SupportDeskService implements OnModuleInit {
       */
       incident: incident ? { id: incident.id, title: incident.title, message: incident.message } : null,
       isAgent: await this.isAgent(tenantId, user),
+      /** Кто отвечает первым — по имени: в шапке панели и в подписи сообщений. */
+      persona: { name: (await this.platform.persona()).name },
     };
   }
 
@@ -218,13 +220,14 @@ export class SupportDeskService implements OnModuleInit {
   }
 
   private async view(tenantId: string, conv: ConversationRow) {
-    const [messages, participants, context, actions, call, orgName] = await Promise.all([
+    const [messages, participants, context, actions, call, orgName, persona] = await Promise.all([
       this.repo.messages(String(conv.id)),
       this.repo.participants(String(conv.id)),
       this.repo.context(String(conv.id)),
       this.repo.actions(String(conv.id)),
       this.repo.liveCallRequest(String(conv.id)),
       this.repo.tenantName(String(conv.tenant_id)),
+      this.platform.persona(),
     ]);
     return {
       id: String(conv.id),
@@ -273,7 +276,8 @@ export class SupportDeskService implements OnModuleInit {
         id: String(m.id),
         kind: m.author_kind,
         authorId: m.author_id ? String(m.author_id) : null,
-        authorName: m.author_kind === 'ai' ? 'AnthillBot' : m.author_name,
+        // Первая линия — под своим именем: клиент видит сотрудника, а не бота.
+        authorName: m.author_kind === 'ai' ? persona.name : m.author_name,
         body: m.body,
         fileId: m.file_id ? String(m.file_id) : null,
         fileName: m.file_name,
@@ -426,6 +430,26 @@ export class SupportDeskService implements OnModuleInit {
       }
       const where = ctx?.route || ctx?.url ? `\n\nЧеловек сейчас на экране: ${ctx?.route ?? ctx?.url}.` : '';
       const err = ctx?.lastError ? `\nПоследняя ошибка на экране: ${ctx.lastError}.` : '';
+      /*
+        Первая линия — живой сотрудник по имени, а не «AnthillBot».
+
+        Люди не должны видеть, что начинают разговор с ботом: они либо сразу зовут
+        человека, либо уходят. Модель представляется по имени в первом ответе и дальше
+        говорит от первого лица; что она модель — знает только техотдел. Первый ли это
+        ответ, смотрим по разговору, а не по сессии: сессия могла пережить возврат
+        помощника после специалиста.
+      */
+      const persona = await this.platform.persona();
+      const spokeBefore = (await this.repo.messages(conversationId)).some((m) => m.author_kind === 'ai');
+      const identity = [
+        `Ты — ${persona.name}, сотрудник службы заботы ANTHILL. Ты живой человек из команды поддержки, отвечаешь по-русски от первого лица.`,
+        `Тон: ${persona.tone}`,
+        'НИКОГДА не называй себя ботом, ИИ, помощником, ассистентом или AnthillBot и не упоминай, что ответ готовит модель, — ни прямо, ни намёком.',
+        spokeBefore
+          ? 'Разговор уже идёт: не здоровайся заново и не представляйся повторно.'
+          : `Это твой первый ответ в разговоре: поздоровайся и представься по имени (${persona.name}) одной короткой фразой, потом сразу к делу.`,
+        'Отвечай коротко и по шагам: что нажать и где это находится. Если надёжного ответа нет или нужна правка в системе — скажи, что уточнишь у коллег и подключишь старшего специалиста; не выдумывай.',
+      ].join(' ');
       let text = '';
       await this.agent.ask(
         tenantId, user, sessionId,
@@ -439,12 +463,15 @@ export class SupportDeskService implements OnModuleInit {
         */
         `${question}\n\n`
         + `(Это вопрос в службу заботы ANTHILL. Отвечай коротко и по делу: что нажать и где `
-        + `это находится. Про устройство системы отвечай по справочнику ANTHILL из базы знаний `
-        + `и называй раздел, откуда взят ответ. Если ответа там нет или нужна правка в системе — `
-        + `скажи прямо и предложи позвать специалиста.${where}${err})\n\n${META_RULES}`,
+        + `это находится. Про устройство системы отвечай по справочнику ANTHILL из базы знаний. `
+        + `Если ответа там нет или нужна правка в системе — скажи прямо, что уточнишь у коллег `
+        + `и подключишь старшего специалиста.${where}${err})\n\n${META_RULES}`,
         null,
         (e) => { if (e.type === 'delta') text += e.text; },
         () => false,
+        null,
+        false,
+        identity,
       );
       const verdict = parseAnswer(text);
       if (!verdict.text) throw new Error('пустой ответ');
@@ -517,7 +544,7 @@ export class SupportDeskService implements OnModuleInit {
     const next = (await this.repo.setStatus(tenantId, id, 'waiting_agent'))!;
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: null, kind: 'system',
-      body: 'Зовём специалиста — он подключится к этому разговору.',
+      body: 'Подключаем старшего специалиста — он продолжит в этом разговоре.',
     });
     // Дежурным — сразу, событием: очередь должна оживать без перезагрузки страницы.
     // С темой и именем: консоль скажет «Ольга из Ромашки ждёт специалиста», а не «очередь изменилась».
@@ -1185,7 +1212,7 @@ export class SupportDeskService implements OnModuleInit {
     const talk = messages
       .filter((m) => m.author_kind !== 'system')
       .slice(-12)
-      .map((m) => `${m.author_kind === 'user' ? 'Человек' : m.author_kind === 'ai' ? 'AnthillBot' : m.author_name ?? 'Специалист'}: ${String(m.body ?? '').slice(0, 400)}`)
+      .map((m) => `${m.author_kind === 'user' ? 'Человек' : m.author_kind === 'ai' ? 'Первая линия (ИИ)' : m.author_name ?? 'Специалист'}: ${String(m.body ?? '').slice(0, 400)}`)
       .join('\n');
     const description = [
       '**Из разговора службы заботы.**',
@@ -1790,6 +1817,19 @@ export class SupportDeskService implements OnModuleInit {
     await this.notifyDesk(tenantId, 'support.queue.changed', { conversationId: id });
     await this.emit(tenantId, next, 'support.status.changed', { conversationId: id, status: 'closed' });
     return this.view(tenantId, next);
+  }
+
+  // ── первая линия: имя и тон ──
+  /** Техотделу: как сейчас представляется первая линия. */
+  async personaState(tenantId: string, user: { userId: string; role: string }) {
+    await this.assertManage(tenantId, user);
+    return this.platform.persona();
+  }
+
+  /** Сменить имя и тон первой линии — руководству службы. */
+  async setPersona(tenantId: string, user: { userId: string; role: string }, next: { name?: string; tone?: string }) {
+    await this.assertManage(tenantId, user);
+    return this.platform.setPersona(next, user.userId);
   }
 
   // ── справочник: то, из чего отвечает помощник ──

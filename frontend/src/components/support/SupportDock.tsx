@@ -57,7 +57,7 @@ function etaText(sec: number | null): string {
  *
  * 1. Никакой анкеты. Поле ввода и «Отправить» — всё. Тема, категория и номер
  *    обращения человеку не нужны (разд. 2.2).
- * 2. Кнопка «Позвать человека» видна всегда, пока разговор ведёт помощник (разд. 8).
+ * 2. Кнопка «Позвать старшего специалиста» видна всегда, пока разговор ведёт первая линия (разд. 8).
  * 3. Что уходит специалисту — видно до отправки: строка контекста внизу (разд. 50).
  * 4. Закрывает разговор сам человек: «всё работает?» с оценкой (разд. 21, 31).
  */
@@ -102,6 +102,8 @@ export function SupportDock({ embedded = false }: {
     новое. Пока отметка стоит, перечитываем именно это обращение.
   */
   const foreignId = useRef<string | null>(null);
+  /** То же — состоянием: от него зависит, с какой стороны стола сидит человек. */
+  const [foreign, setForeign] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -120,6 +122,7 @@ export function SupportDock({ embedded = false }: {
   /** Открыть конкретное обращение — из очереди консоли или по всплывашке. */
   const openConversation = useCallback(async (id: string) => {
     foreignId.current = id;
+    setForeign(id);
     setOpen(true);
     setView('chat');
     setTools(false);
@@ -131,6 +134,7 @@ export function SupportDock({ embedded = false }: {
   /** Вернуться к своему разговору: чужое обращение больше не держим. */
   const leaveForeign = () => {
     foreignId.current = null;
+    setForeign(null);
     setConv(desk?.conversation ?? null);
     setTools(false);
   };
@@ -344,6 +348,7 @@ export function SupportDock({ embedded = false }: {
     setBusy(true); setErr('');
     try {
       foreignId.current = id;
+      setForeign(id);
       setConv(await api.supportJoin(id));
       setView('chat');
       loadQueue();
@@ -473,10 +478,25 @@ export function SupportDock({ embedded = false }: {
   const agent = conv?.participants.find((p) => (conv.agentId
     ? String(p.user_id) === String(conv.agentId)
     : p.role === 'agent'));
+  /*
+    С какой стороны стола сидит человек.
+
+    Раньше сторона выводилась из того, чей это разговор (userId === я). Это ломалось,
+    когда один и тот же человек — и клиент, и специалист (техотдел проверяет службу на
+    себе): в консоли его же реплики показывались как «Вы», кнопки были клиентские, а
+    ответ специалиста в CRM выглядел как своё сообщение. Сторона — это МЕСТО, а не
+    личность: в консоли и в чужом разговоре из очереди — специалист, иначе — клиент.
+  */
+  const agentSide = embedded || (!!foreign && !!desk?.isAgent);
+  const mineConversation = !agentSide;
   /** Ждём ответа человека о результате — тогда лента уступает место вопросу. */
-  const asksResult = conv?.status === 'waiting_user' && String(conv?.userId) === String(user?.id ?? '');
-  /** Чей разговор открыт: свой — пишем как человек, чужой — отвечаем как дежурный. */
-  const mineConversation = !conv || String(conv.userId) === String(user?.id ?? '');
+  const asksResult = conv?.status === 'waiting_user' && !agentSide;
+  /** Имя первой линии — из настроек службы; до загрузки панели — нейтральное. */
+  const personaName = desk?.persona?.name ?? 'Служба заботы';
+  /** Свои ли слова: у клиента — все его реплики, у специалиста — его собственные ответы. */
+  const isMine = (m: { kind: string; authorId: string | null }) => (agentSide
+    ? m.kind === 'agent' && !!m.authorId && String(m.authorId) === String(user?.id ?? '')
+    : m.kind === 'user');
   /** Кто обратился — специалисту в шапке нужен клиент и его организация, а не «Служба заботы». */
   const client = conv?.participants.find((p) => String(p.user_id) === String(conv.userId));
   const clientLine = [client?.full_name, conv?.orgName].filter(Boolean).join(' · ');
@@ -517,14 +537,17 @@ export function SupportDock({ embedded = false }: {
             <div className="support-head-title">
               {mineConversation ? (
                 <>
-                  <b>{agent ? agent.full_name : 'Служба заботы'}</b>
+                  {/* Клиент видит сотрудника по имени — и первую линию, и подключившегося специалиста. */}
+                  <b>{agent ? agent.full_name : personaName}</b>
                   <span className="dim support-head-sub">
                     {agent
                       ? 'Специалист на связи'
                       : conv?.status === 'waiting_agent'
-                        ? 'Ищем свободного специалиста'
-                        : etaText(desk?.etaSeconds ?? null)}
-                    {online.length > 0 && !agent && <span className="support-online"> · {online.length} на связи</span>}
+                        ? 'Подключаем старшего специалиста'
+                        : conv
+                          ? 'Служба заботы · на связи'
+                          : etaText(desk?.etaSeconds ?? null)}
+                    {online.length > 0 && !agent && !conv && <span className="support-online"> · {online.length} на связи</span>}
                   </span>
                 </>
               ) : (
@@ -688,8 +711,8 @@ export function SupportDock({ embedded = false }: {
                   <div className="support-hello">
                     <p><b>Расскажите, что случилось.</b></p>
                     <p className="dim">
-                      Сначала ответит AnthillBot — он видит, на каком вы экране, и знает систему.
-                      Если не поможет, позовём живого специалиста: контекст не потеряется.
+                      Ответит {personaName} из службы заботы — она видит, на каком вы экране, и знает систему.
+                      Если понадобится, подключит старшего специалиста: повторять ничего не придётся.
                     </p>
                   </div>
                 )}
@@ -701,15 +724,15 @@ export function SupportDock({ embedded = false }: {
                   ) : (
                     <div
                       key={m.id}
-                      className={`support-msg support-msg-${m.kind}${
-                        // Справа — свои слова, чьи бы они ни были: у клиента его, у специалиста его.
-                        m.authorId && String(m.authorId) === String(user?.id ?? '') ? ' support-msg-mine' : ''
-                      }`}
+                      className={`support-msg support-msg-${m.kind}${isMine(m) ? ' support-msg-mine' : ''}`}
                     >
                       <div className="support-msg-who">
-                        {m.authorId && String(m.authorId) === String(user?.id ?? '')
+                        {isMine(m)
                           ? 'Вы'
-                          : m.kind === 'ai' ? 'AnthillBot' : m.authorName ?? (m.kind === 'user' ? 'Клиент' : 'Специалист')}
+                          : m.kind === 'ai'
+                            // Клиенту — имя сотрудника; техотделу — то же имя с пометкой, что за ним модель.
+                            ? (agentSide ? `${m.authorName ?? personaName} · первая линия (ИИ)` : (m.authorName ?? personaName))
+                            : m.authorName ?? (m.kind === 'user' ? 'Клиент' : 'Специалист')}
                         <span className="dim support-msg-time">{stampLabel(m.createdAt)}</span>
                       </div>
                       {m.body && <MessageText text={m.body} className="support-msg-text" />}
@@ -1088,8 +1111,13 @@ export function SupportDock({ embedded = false }: {
                   </span>
                 )}
                 {conv && mineConversation && !conv.agentId && conv.status !== 'closed' && (
-                  <button className="btn btn-sm support-human" disabled={busy} onClick={() => void callHuman()}>
-                    <Icon name="user" size={13} /> Позвать человека
+                  <button
+                    className="btn btn-sm support-human"
+                    disabled={busy}
+                    onClick={() => void callHuman()}
+                    title="Подключить старшего специалиста к этому разговору"
+                  >
+                    <Icon name="user" size={13} /> Позвать старшего специалиста
                   </button>
                 )}
                 {conv && mineConversation && conv.status !== 'closed' && !asksResult && (

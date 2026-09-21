@@ -4836,6 +4836,10 @@ button.chat-pop-row:hover { background: var(--hover); }
 .console-org { color: var(--text); }
 /* Суть обращения строкой под шапкой: специалист понимает, о чём оно, не открывая. */
 .console-sum { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Имя и тон первой линии: два поля и кнопка, ничего лишнего. */
+.console-persona { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
+.console-persona .input { font-size: var(--fs-sm); }
+.console-persona .btn { align-self: flex-start; }
 /* Роль в техотделе меняется там же, где дежурство: это одно решение, а не два. */
 .console-role { flex: 0 0 auto; max-width: 190px; font-size: var(--fs-xs); }
 /* Навыки и предел загрузки — по ним маршрутизатор и выбирает исполнителя. */

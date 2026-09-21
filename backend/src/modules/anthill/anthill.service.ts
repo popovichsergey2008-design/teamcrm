@@ -119,6 +119,14 @@ export class AnthillService {
     forcedSkillId?: string | null,
     /** «Глубокий анализ» (ТЗ-6, разд. 25): несколько волн поиска и отчёт по разделам. */
     deep = false,
+    /**
+     * Под чьим именем отвечать.
+
+     * Служба заботы говорит с клиентами не как «AnthillBot», а как сотрудник по имени:
+     * инструменты, поиск и правила про факты — те же, меняется только то, кем модель
+     * себя называет и как держится. Указание приходит целиком, готовой строкой.
+     */
+    identity?: string | null,
   ): Promise<void> {
     const text = String(question ?? '').trim();
     if (text.length < 2) throw AppException.validation('Слишком короткий вопрос');
@@ -282,7 +290,8 @@ export class AnthillService {
     });
     let answer = '';
     try {
-      answer = await this.ai.generateStream(tenantId, deep ? DEEP_SYSTEM : ANSWER_SYSTEM, payload, (d) => { if (!aborted()) { answer += d; emit({ type: 'delta', text: d }); } }, deep ? 'anthill_deep' : 'anthill_answer');
+      const system = deep ? DEEP_SYSTEM : identity ? `${identity} ${ANSWER_RULES}` : ANSWER_SYSTEM;
+      answer = await this.ai.generateStream(tenantId, system, payload, (d) => { if (!aborted()) { answer += d; emit({ type: 'delta', text: d }); } }, deep ? 'anthill_deep' : 'anthill_answer');
     } catch (e) {
       this.log.warn(`answer: ${(e as Error).message}`);
       if (!answer) { emit({ type: 'error', text: 'Не удалось получить ответ от модели. Попробуйте снова.' }); return; }
@@ -826,8 +835,8 @@ const PLAN_SYSTEM = [
   'Даты вычисляй от now. Номера задач бери из вопроса или page — не придумывай.',
 ].join(' ');
 
-const ANSWER_SYSTEM = [
-  'Ты — AnthillBot, персональный AI-помощник в ANTHILL. Отвечай по-русски, коротко и по делу, как коллега.',
+/** Правила ответа без строки «кто ты»: под чужим именем (служба заботы) они те же. */
+const ANSWER_RULES = [
   'Отвечай ТОЛЬКО по findings и page: это данные, собранные для этого человека с его правами. Чего там нет — не выдумывай.',
   'Никогда не придумывай номера задач, имена, сроки, решения и ссылки. Если данных не хватает, так и скажи: «Я не нашёл подтверждения этого в доступных данных ANTHILL».',
   'Эта оговорка — про ФАКТЫ (задачи, сроки, люди, решения). На вопрос о том, как работает система '
@@ -839,3 +848,5 @@ const ANSWER_SYSTEM = [
   'memory — что известно об этом человеке: учитывай его предпочтения и текущие темы, но НЕ пересказывай их и не считай фактами о CRM.',
   'skill — порядок работы для этого запроса: если он задан, иди по его шагам и приведи результат к описанной форме output.',
 ].join(' ');
+
+const ANSWER_SYSTEM = `Ты — AnthillBot, персональный AI-помощник в ANTHILL. Отвечай по-русски, коротко и по делу, как коллега. ${ANSWER_RULES}`;

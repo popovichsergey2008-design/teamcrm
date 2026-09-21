@@ -72,6 +72,12 @@ class NoteDto {
   @IsString() @MaxLength(4000) text!: string;
 }
 
+/** Имя и тон первой линии: под этим именем модель говорит с клиентами. */
+class PersonaDto {
+  @IsString() @MaxLength(40) name!: string;
+  @IsOptional() @IsString() @MaxLength(600) tone?: string;
+}
+
 class ReopenDto {
   @IsOptional() @IsString() @MaxLength(8000) text?: string;
 }
@@ -490,5 +496,16 @@ export class SupportDeskController {
   @Post('handbook/load')
   loadHandbook(@CurrentUser() u: AuthUser) {
     return this.desk.loadHandbook(u.tenantId, u);
+  }
+
+  /** Как представляется первая линия: имя и тон (руководству службы). Два сегмента — мимо «:id». */
+  @Get('settings/persona')
+  persona(@CurrentUser() u: AuthUser) {
+    return this.desk.personaState(u.tenantId, u);
+  }
+
+  @Post('settings/persona')
+  setPersona(@CurrentUser() u: AuthUser, @Body() dto: PersonaDto) {
+    return this.desk.setPersona(u.tenantId, u, dto);
   }
 }
