@@ -118,7 +118,8 @@ describe('Mobile — offline: Idempotency-Key, If-Match, sync (e2e)', () => {
     await http.post(`/api/tasks/${task.id}/comments`).set(H(owner.accessToken)).send({ body: 'привет' }).expect(201);
 
     // приватный проект без участника — его задачи в выдачу члена не попадают
-    const priv = (await http.post('/api/projects').set(H(owner.accessToken)).send({ name: 'Тайный', visibility: 'members' }).expect(201)).body.data;
+    const priv = (await http.post('/api/projects').set(H(owner.accessToken)).send({ name: 'Тайный' }).expect(201)).body.data;
+    await http.patch(`/api/projects/${priv.id}`).set(H(owner.accessToken)).send({ visibility: 'members' }).expect(200);
     const pboard = (await http.get(`/api/projects/${priv.id}/board`).set(H(owner.accessToken)).expect(200)).body.data;
     const secret = (await http.post('/api/tasks').set(H(owner.accessToken))
       .send({ projectId: priv.id, columnId: pboard.columns[0].id, title: 'Секрет' }).expect(201)).body.data;
