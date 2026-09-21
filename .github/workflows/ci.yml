@@ -114,6 +114,8 @@ jobs:
       - name: focus (видимое кольцо у всего кликабельного)
         run: npm run a11y
       - run: npm run build
+      - name: build:mobile (тот же код в режиме телефона — ТЗ-9)
+        run: npm run build:mobile
 
   deploy:
     name: Deploy to staging

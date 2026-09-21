@@ -5,24 +5,29 @@ import type {
   SupportEngineerGrant, SupportEscalation, SupportQueueFilter,
   SupportDesk, SupportHandbook, SupportQueueItem, Task,
 } from '../types';
+import { platform } from '../platform';
 
 const ACCESS_KEY = 'teamcrm.access';
 const REFRESH_KEY = 'teamcrm.refresh';
 
+/*
+  Токены живут в надёжном хранилище платформы (ТЗ-9): в браузере это localStorage,
+  как и было, в нативной оболочке — Keychain/Keystore. Клиент API об этом не знает.
+*/
 export const tokens = {
   get access() {
-    return localStorage.getItem(ACCESS_KEY);
+    return platform.secureStorage.get(ACCESS_KEY);
   },
   get refresh() {
-    return localStorage.getItem(REFRESH_KEY);
+    return platform.secureStorage.get(REFRESH_KEY);
   },
   set(access: string, refresh: string) {
-    localStorage.setItem(ACCESS_KEY, access);
-    localStorage.setItem(REFRESH_KEY, refresh);
+    platform.secureStorage.set(ACCESS_KEY, access);
+    platform.secureStorage.set(REFRESH_KEY, refresh);
   },
   clear() {
-    localStorage.removeItem(ACCESS_KEY);
-    localStorage.removeItem(REFRESH_KEY);
+    platform.secureStorage.remove(ACCESS_KEY);
+    platform.secureStorage.remove(REFRESH_KEY);
   },
 };
 

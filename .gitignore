@@ -1,6 +1,7 @@
 # dependencies / build
 node_modules/
 dist/
+dist-*/
 build/
 coverage/
 *.tsbuildinfo
@@ -9,6 +10,9 @@ coverage/
 .env
 .env.*
 !.env.example
+# режимы сборки фронта — не секреты, а конфигурация (ТЗ-9, src/platform)
+!frontend/.env.mobile-web
+!frontend/.env.capacitor
 
 # infra secrets / generated artifacts
 infra/secrets/

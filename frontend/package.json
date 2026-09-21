@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:mobile": "vite build --mode mobile-web --outDir dist-mobile",
+    "build:capacitor": "vite build --mode capacitor --outDir dist-capacitor",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings 0",
     "contrast": "node scripts/contrast-audit.mjs",

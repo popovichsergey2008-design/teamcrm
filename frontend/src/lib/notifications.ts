@@ -1,3 +1,5 @@
+import { platform } from '../platform';
+
 /**
  * Уведомления о новых сообщениях.
  *
@@ -7,27 +9,27 @@
  * некоторых браузерах и окружениях его вообще нет.
  */
 
+/*
+  Системные уведомления ходят через мост платформы (ТЗ-9): в браузере — Notification
+  API, в оболочке — центр уведомлений ОС. Имена функций прежние, чтобы места вызова
+  не переписывать.
+*/
 export function notificationsSupported(): boolean {
-  return typeof window !== 'undefined' && 'Notification' in window;
+  return platform.notifications.permission() !== 'unsupported';
 }
 
 export function notificationPermission(): NotificationPermission | 'unsupported' {
-  return notificationsSupported() ? Notification.permission : 'unsupported';
+  return platform.notifications.permission();
 }
 
 /** Разрешение запрашиваем только по явному действию: непрошеный запрос браузеры глушат. */
-export async function requestNotificationPermission(): Promise<NotificationPermission | 'unsupported'> {
-  if (!notificationsSupported()) return 'unsupported';
-  try { return await Notification.requestPermission(); } catch { return Notification.permission; }
+export function requestNotificationPermission(): Promise<NotificationPermission | 'unsupported'> {
+  return platform.notifications.requestPermission();
 }
 
 /** Показ уведомления. Молча ничего не делает, если разрешения нет. */
 export function showNotification(title: string, body: string, onClick?: () => void): void {
-  if (!notificationsSupported() || Notification.permission !== 'granted') return;
-  try {
-    const n = new Notification(title, { body, tag: 'teamcrm-chat', renotify: true } as NotificationOptions);
-    n.onclick = () => { window.focus(); n.close(); onClick?.(); };
-  } catch { /* некоторые браузеры запрещают конструктор вне service worker */ }
+  platform.notifications.show(title, body, onClick);
 }
 
 /**

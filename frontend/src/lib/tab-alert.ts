@@ -1,3 +1,5 @@
+import { platform } from '../platform';
+
 /**
  * Мигание заголовка вкладки: «появилось что-то новое».
  *
@@ -41,10 +43,11 @@ function listen(): void {
   document.addEventListener('visibilitychange', back);
 }
 
-/** Счётчик непрочитанных сообщений в заголовке. */
+/** Счётчик непрочитанных сообщений в заголовке — и на значке приложения, где ОС это умеет. */
 export function setTitleUnread(count: number): void {
   unread = count;
   render();
+  platform.notifications.setBadge(count);
 }
 
 /**

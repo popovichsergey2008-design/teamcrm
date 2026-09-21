@@ -1077,6 +1077,17 @@ test('цитата внутри сообщения: находится скво�
   assert.ok(findFragment('Цена (руб.) — 100', '(руб.)'));
 });
 
+test('мост платформы: режим сборки по умолчанию web, ОС узнаётся по user-agent', async () => {
+  const { buildKind, detectOs } = await load('platform/browser.ts');
+  // вне Vite окружения нет — режим web, а не падение
+  assert.equal(buildKind(), 'web');
+  assert.equal(detectOs('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Safari/605'), 'ios');
+  assert.equal(detectOs('Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/141'), 'android');
+  assert.equal(detectOs('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/141'), 'desktop');
+  assert.equal(detectOs('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) Safari/605'), 'desktop');
+  assert.equal(detectOs('SomethingElse/1.0'), 'other');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
