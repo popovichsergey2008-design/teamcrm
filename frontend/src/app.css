@@ -447,6 +447,19 @@
   .menu-item { min-height: 40px; }
 }
 
+/* Список сессий: значок «телефон/браузер», подпись, когда были, «Выйти». */
+.sessions-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.sessions-main { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-sm); }
+.sessions-main .icon { flex: 0 0 auto; color: var(--text-dim); }
+.sessions-when { font-size: var(--fs-xs); }
+
+/* Экран блокировки (ТЗ-9): пусто, знак, одна кнопка. */
+.lock-screen {
+  position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 24px; background: var(--bg); text-align: center;
+}
+.lock-title { font-size: var(--fs-lg); }
+
 /* кнопка «меню» и подложка — только на узком экране */
 .nav-open-btn { display: none; }
 .nav-backdrop { display: none; }

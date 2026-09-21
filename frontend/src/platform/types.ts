@@ -104,6 +104,8 @@ export interface FilesystemBridge {
 
 export interface PlatformBridge {
   info(): PlatformInfo;
+  /** Стабильный id установки от ОС — им телефон представляется серверу; в браузере null. */
+  deviceUuid(): Promise<string | null>;
   secureStorage: SecureStorageBridge;
   notifications: NotificationsBridge;
   biometrics: BiometricsBridge;

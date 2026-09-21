@@ -6,11 +6,13 @@ import { AuthService } from './auth.service';
 import { RefreshTokenRepository } from './refresh-token.repository';
 import { PasswordResetService } from './password-reset.service';
 import { PasswordResetRepository } from './password-reset.repository';
+import { SessionsService } from './sessions.service';
+import { SessionsController } from './sessions.controller';
 
 @Module({
   imports: [TenantsModule, UsersModule],
-  controllers: [AuthController],
-  providers: [AuthService, RefreshTokenRepository, PasswordResetService, PasswordResetRepository],
-  exports: [AuthService, RefreshTokenRepository],
+  controllers: [AuthController, SessionsController],
+  providers: [AuthService, RefreshTokenRepository, PasswordResetService, PasswordResetRepository, SessionsService],
+  exports: [AuthService, RefreshTokenRepository, SessionsService],
 })
 export class AuthModule {}

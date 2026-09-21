@@ -49,6 +49,9 @@ import { prefetchRadar } from './pages/RadarPage';
 import { ChatBar } from './components/chatbar/ChatBar';
 import { openSupport, SupportDock } from './components/support/SupportDock';
 import { platform } from './platform';
+import { useAppLock } from './hooks/useAppLock';
+import { useDeviceRegistration } from './hooks/useDeviceRegistration';
+import { LockScreen } from './components/LockScreen';
 import { useConsoleAlerts } from './hooks/useConsoleAlerts';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { ConsoleTopBar } from './components/console/ConsoleTopBar';
@@ -106,6 +109,8 @@ export function App() {
   const route = useRoute();
   useAppHeight();
   useDeepLinks(!!user);
+  useDeviceRegistration(!!user);
+  const lock = useAppLock(!!user);
   /*
     Консоль техотдела — автономное рабочее место (см. ветку ниже).
 
@@ -400,6 +405,9 @@ export function App() {
   }
 
   if (!user) return <LoginPage />;
+
+  // Заблокировано: ничего из содержимого не рисуем — ни в переключателе приложений, ни глазу соседа.
+  if (lock.locked) return <LockScreen onUnlock={lock.unlock} />;
 
   // клиент видит отдельный портал (без внутренних досок/финансов)
   if (user.role === 'client') return <ClientPortal />;

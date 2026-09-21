@@ -5,6 +5,7 @@ import { UsersRepository } from '../users/users.repository';
 import { GroupsRepository } from '../team/groups.repository';
 import { FilesService } from '../files/files.service';
 import { RefreshTokenRepository } from '../auth/refresh-token.repository';
+import { SessionsService } from '../auth/sessions.service';
 import { AccountsRepository } from '../auth/accounts.repository';
 import { VelocityService } from '../velocity/velocity.service';
 import { PlatformService } from '../platform/platform.service';
@@ -16,6 +17,7 @@ export class AccountService {
     private readonly groups: GroupsRepository,
     private readonly files: FilesService,
     private readonly refresh: RefreshTokenRepository,
+    private readonly sessionsSvc: SessionsService,
     private readonly accounts: AccountsRepository,
     private readonly velocity: VelocityService,
     private readonly platform: PlatformService,
@@ -99,7 +101,7 @@ export class AccountService {
       throw AppException.validation('Текущий пароль неверный');
     }
     await this.accounts.updatePassword(account.id, await argon2.hash(newPassword)); // пароль — на уровне аккаунта
-    await this.refresh.revokeAllExcept(userId, sessionId); // прочие устройства разлогиниваются
+    await this.sessionsSvc.revokeOthers(userId, sessionId); // прочие устройства разлогиниваются — сразу
     return { changed: true };
   }
 
@@ -138,23 +140,15 @@ export class AccountService {
   }
 
   // sessions
-  async sessions(userId: string, currentSid?: string) {
-    const rows = await this.refresh.listActive(userId);
-    return rows.map((r) => ({
-      id: r.id,
-      userAgent: r.user_agent,
-      ip: r.ip,
-      lastUsedAt: r.last_used_at,
-      createdAt: r.created_at,
-      current: currentSid !== undefined && String(r.id) === String(currentSid),
-    }));
+  sessions(userId: string, currentSid?: string) {
+    return this.sessionsSvc.mine(userId, currentSid);
   }
   async revokeSession(userId: string, id: string) {
-    await this.refresh.revokeOwned(userId, id);
+    await this.sessionsSvc.revokeMine(userId, id);
     return { revoked: true };
   }
   async revokeOtherSessions(userId: string, currentSid?: string) {
-    await this.refresh.revokeAllExcept(userId, currentSid);
+    await this.sessionsSvc.revokeOthers(userId, currentSid);
     return { revoked: true };
   }
 }

@@ -4,6 +4,8 @@ import { Device } from '@capacitor/device';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { SecureStorage } from '@aparajita/capacitor-secure-storage';
+import { BiometricAuth } from '@aparajita/capacitor-biometric-auth';
+import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { browserBridge, BUNDLE_VERSION } from './browser';
 import type { PlatformBridge, PlatformInfo } from './types';
 
@@ -32,6 +34,8 @@ async function warmUp(): Promise<void> {
     if (v != null) cache.set(k, v);
   }));
   const [d, a] = await Promise.all([Device.getInfo().catch(() => null), CapApp.getInfo().catch(() => null)]);
+  // Содержимое не попадает в переключатель приложений и на снимки экрана (ТЗ-9, D-07).
+  void PrivacyScreen.enable().catch(() => undefined);
   deviceInfo = {
     kind: 'capacitor',
     os: d?.platform === 'ios' ? 'ios' : d?.platform === 'android' ? 'android' : 'other',
@@ -46,6 +50,20 @@ export const capacitorBridge: PlatformBridge = {
   ...browserBridge,
 
   info: () => deviceInfo ?? { ...browserBridge.info(), kind: 'capacitor' },
+  deviceUuid: () => Device.getId().then((r) => r.identifier || null).catch(() => null),
+
+  biometrics: {
+    async available() {
+      try { return (await BiometricAuth.checkBiometry()).isAvailable; } catch { return false; }
+    },
+    async authenticate(reason) {
+      try {
+        // Код устройства как запасной путь: биометрия могла не сработать (перчатки, маска).
+        await BiometricAuth.authenticate({ reason, allowDeviceCredential: true, cancelTitle: 'Отмена' });
+        return true;
+      } catch { return false; }
+    },
+  },
 
   secureStorage: {
     ready: () => ready,

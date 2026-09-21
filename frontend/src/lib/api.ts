@@ -32,6 +32,18 @@ export const tokens = {
   },
 };
 
+/** Сессия в списке устройств: своя или сотрудника (руководству). */
+export interface SessionInfo {
+  id: string;
+  userAgent: string | null;
+  ip: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  current: boolean;
+  /** Мобильное устройство, если вход был из оболочки (ТЗ-9). */
+  device: { id: string; platform: string; model: string | null; nativeVersion: string | null; bundleVersion: string | null } | null;
+}
+
 /** Состояние обработки надиктовки: аудио сохранено, разбор идёт в фоне. */
 export interface VoiceJob {
   id: string;
@@ -258,6 +270,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       announceTaskChange(method, path);
       return res;
     } catch (e) {
+      // Сессию отозвали (руководство или сам человек с другого устройства): не обновляться, а выйти.
+      if (e instanceof ApiError && e.code === 'SESSION_REVOKED') signOut();
       if (e instanceof ApiError && e.code === 'UNAUTHORIZED') {
         await tryRefresh(access);
         const res = await rawRequest<T>(method, path, body);
@@ -425,7 +439,19 @@ export const api = {
   myAvailability: () => request<any[]>('GET', '/me/availability'),
   addMyAvailability: (b: { kind: string; fromDate: string; toDate: string }) => request<any>('POST', '/me/availability', b),
   removeMyAvailability: (id: string) => request<any>('DELETE', `/me/availability/${id}`),
-  listSessions: () => request<any[]>('GET', '/me/sessions'),
+  listSessions: () => request<SessionInfo[]>('GET', '/me/sessions'),
+  /** Мобильное устройство (ТЗ-9): регистрация после входа, снятие при выходе. */
+  registerDevice: (b: {
+    deviceUuid: string; platform: 'android' | 'ios' | 'web'; model?: string; osVersion?: string;
+    nativeVersion?: string; webBundleVersion?: string; pushToken?: string;
+  }) => request<{ id: string; platform: string; model: string | null }>('POST', '/mobile/devices', b),
+  unregisterDevice: (id: string) => request<{ revoked: boolean }>('DELETE', `/mobile/devices/${id}`),
+  /** Устройства и сессии сотрудника — руководству; отзыв гасит сессию сразу. */
+  employeeSessions: (userId: string) => request<SessionInfo[]>('GET', `/team/${userId}/sessions`),
+  revokeEmployeeSession: (userId: string, sessionId: string) =>
+    request<{ revoked: boolean }>('DELETE', `/team/${userId}/sessions/${sessionId}`),
+  revokeEmployeeSessions: (userId: string) =>
+    request<{ revoked: boolean }>('POST', `/team/${userId}/sessions/revoke-all`, {}),
   revokeSession: (id: string) => request<any>('DELETE', `/me/sessions/${id}`),
   revokeOtherSessions: () => request<any>('POST', '/me/sessions/revoke-all'),
   uploadAvatar: async (file: File) => {

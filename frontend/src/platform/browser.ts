@@ -47,6 +47,7 @@ export const browserBridge: PlatformBridge = {
   info(): PlatformInfo {
     return { kind: buildKind(), os: detectOs(), nativeVersion: null, bundleVersion: BUNDLE_VERSION, model: deviceModel() };
   },
+  deviceUuid: () => Promise.resolve(null),
 
   secureStorage: {
     ready: () => Promise.resolve(),

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { api, SIGNED_OUT_EVENT, tokens } from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
+import { forgetRegisteredDevice, registeredDeviceId } from '../hooks/useDeviceRegistration';
 import type { OrgRef, User } from '../types';
 
 interface AuthState {
@@ -92,6 +93,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // Телефон снимается с учёта до выхода: после выхода токена уже нет (ТЗ-9)
+    const device = registeredDeviceId();
+    if (device) { await api.unregisterDevice(device).catch(() => undefined); forgetRegisteredDevice(); }
     try {
       await api.logout();
     } catch {

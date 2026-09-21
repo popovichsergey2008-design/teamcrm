@@ -1088,6 +1088,21 @@ test('мост платформы: режим сборки по умолчани
   assert.equal(detectOs('SomethingElse/1.0'), 'other');
 });
 
+test('блокировка приложения: политика читается с запасом, «пора запирать» считается по минутам', async () => {
+  const { readLockPolicy, shouldLock, DEFAULT_LOCK_POLICY } = await load('lib/app-lock.ts');
+  const mem = (v) => ({ getItem: () => v });
+  assert.equal(readLockPolicy(mem(null)), DEFAULT_LOCK_POLICY);
+  assert.equal(readLockPolicy(mem('мусор')), DEFAULT_LOCK_POLICY);
+  assert.equal(readLockPolicy(mem('off')), 'off');
+  const now = 10 * 60_000;
+  assert.equal(shouldLock('off', 0, now), false);
+  assert.equal(shouldLock('5', null, now), false);           // в фон не уходили
+  assert.equal(shouldLock('immediately', now - 1, now), true);
+  assert.equal(shouldLock('5', now - 4 * 60_000, now), false); // четыре минуты — рано
+  assert.equal(shouldLock('5', now - 5 * 60_000, now), true);
+  assert.equal(shouldLock('15', now - 5 * 60_000, now), false);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

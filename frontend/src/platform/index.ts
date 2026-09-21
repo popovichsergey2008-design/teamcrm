@@ -18,6 +18,7 @@ export function setPlatformBridge(bridge: PlatformBridge): void {
 
 export const platform: PlatformBridge = {
   info: () => current.info(),
+  deviceUuid: () => current.deviceUuid(),
   get secureStorage() { return current.secureStorage; },
   get notifications() { return current.notifications; },
   get biometrics() { return current.biometrics; },

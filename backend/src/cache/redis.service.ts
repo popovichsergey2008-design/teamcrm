@@ -1,6 +1,7 @@
 import { Global, Injectable, Module, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
+import { SessionRevocationService } from '../common/auth/session-revocation.service';
 
 /** Общий Redis-клиент: кэш аналитики (P&L), pub/sub presence (через адаптер отдельно). */
 @Injectable()
@@ -35,7 +36,8 @@ export class RedisService implements OnModuleDestroy {
 
 @Global()
 @Module({
-  providers: [RedisService],
-  exports: [RedisService],
+  // Отзыв сессий живёт рядом с Redis и виден отовсюду: его спрашивает глобальный guard.
+  providers: [RedisService, SessionRevocationService],
+  exports: [RedisService, SessionRevocationService],
 })
 export class CacheModule {}

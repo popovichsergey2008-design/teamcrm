@@ -5,6 +5,8 @@ import { api, ApiError } from '../lib/api';
 import { ASSIGNABLE_ROLES, roleLabel } from '../lib/labels';
 import { MONETIZATION_ENABLED } from '../config';
 import { useAuth } from '../state/auth';
+import { SessionsList } from './SessionsList';
+import type { SessionInfo } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 
@@ -38,6 +40,26 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
   const [showAdd, setShowAdd] = useState(false);
   // сброс пароля сотруднику — только владелец (эндпоинт закрыт ролью owner)
   const { user: me } = useAuth();
+  /*
+    Устройства сотрудника (ТЗ-9): потерянный телефон или уволенный человек — сессия
+    отзывается отсюда и гаснет сразу. Грузится по нажатию: список нужен редко.
+  */
+  const [devicesOf, setDevicesOf] = useState<{ userId: string; list: SessionInfo[] } | null>(null);
+  const [devicesBusy, setDevicesBusy] = useState(false);
+  const showDevices = async (userId: string) => {
+    if (devicesOf?.userId === userId) { setDevicesOf(null); return; }
+    setDevicesBusy(true);
+    try { setDevicesOf({ userId, list: await api.employeeSessions(userId) }); }
+    catch { setDevicesOf({ userId, list: [] }); }
+    finally { setDevicesBusy(false); }
+  };
+  const revokeDevice = async (userId: string, sessionId: string | null) => {
+    setDevicesBusy(true);
+    try {
+      if (sessionId) await api.revokeEmployeeSession(userId, sessionId); else await api.revokeEmployeeSessions(userId);
+      setDevicesOf({ userId, list: await api.employeeSessions(userId) });
+    } finally { setDevicesBusy(false); }
+  };
   const [reset, setReset] = useState<{ userId: string; link: string; alsoAffectsOrgs: string[] } | null>(null);
 
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 2500); };
@@ -281,7 +303,25 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                   {me?.role === 'owner' && (
                     <button className="btn btn-ghost btn-sm" onClick={() => makeResetLink(u.id)} title="Выдать ссылку на смену пароля">Сброс пароля</button>
                   )}
+                  {String(u.id) !== String(me?.id ?? '') && (
+                    <button className="btn btn-ghost btn-sm" disabled={devicesBusy} onClick={() => void showDevices(u.id)} title="Где сотрудник вошёл: телефоны и браузеры; отзыв гасит сессию сразу">
+                      Устройства
+                    </button>
+                  )}
                 </div>
+                {devicesOf && devicesOf.userId === u.id && (
+                  <div className="invite-box">
+                    <div className="team-head">
+                      <b>Устройства и сессии</b>
+                      {devicesOf.list.length > 0 && (
+                        <button className="btn btn-ghost btn-sm" disabled={devicesBusy} onClick={() => void revokeDevice(u.id, null)}>
+                          Выйти везде
+                        </button>
+                      )}
+                    </div>
+                    <SessionsList sessions={devicesOf.list} busy={devicesBusy} onRevoke={(id) => void revokeDevice(u.id, id)} />
+                  </div>
+                )}
                 {reset && reset.userId === u.id && (
                   <div className="invite-box">
                     Ссылка на смену пароля (действует 2 часа, одноразовая). Передайте её сотруднику — пароль он задаст сам:

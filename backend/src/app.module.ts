@@ -19,6 +19,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { SupportModule } from './modules/support/support.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { MobileModule } from './modules/mobile/mobile.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { AnthillModule } from './modules/anthill/anthill.module';
 import { DealsModule } from './modules/deals/deals.module';
@@ -84,6 +85,7 @@ import { FeedModule } from './modules/feed/feed.module';
     UsersModule,
     TenantsModule,
     PlatformModule,
+    MobileModule,
     MetricsModule,
     ProjectsModule,
     TasksModule,

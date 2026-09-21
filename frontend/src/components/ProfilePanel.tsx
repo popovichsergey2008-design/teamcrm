@@ -3,7 +3,10 @@ import { EmptyState } from './EmptyState';
 import { ClientsPanel } from './ClientsPanel';
 import { previewSound, setSoundPref, soundPrefs } from '../lib/sound';
 import { Icon } from './Icon';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, type SessionInfo } from '../lib/api';
+import { SessionsList } from './SessionsList';
+import { isNativeShell } from '../platform';
+import { LOCK_POLICIES, LockPolicy, readLockPolicy, writeLockPolicy } from '../lib/app-lock';
 import { browserTimezone, listTimezones } from '../lib/timezones';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
@@ -107,7 +110,9 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
 
   // security
   const [pw, setPw] = useState({ currentPassword: '', newPassword: '' });
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  /** Блокировка биометрией — только в оболочке (ТЗ-9): в браузере запирать нечем. */
+  const [lockPolicy, setLockPolicy] = useState<LockPolicy>(() => readLockPolicy());
   const loadSessions = () => api.listSessions().then(setSessions).catch(() => undefined);
   useEffect(() => { if (tab === 'security') loadSessions(); }, [tab]);
   const changePw = async () => {
@@ -363,16 +368,29 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             <div className="field"><label>Новый пароль</label><input className="input" type="password" value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} /></div>
             <button className="btn btn-primary" style={{ width: '100%' }} onClick={changePw}>Сменить пароль</button>
 
-            <div className="drawer-section-title" style={{ marginTop: 18 }}>Активные сессии</div>
+            {isNativeShell() && (
+              <>
+                <div className="drawer-section-title" style={{ marginTop: 18 }}>Блокировка приложения</div>
+                <div className="field">
+                  <label>Просить Face ID / отпечаток</label>
+                  <select
+                    className="input"
+                    value={lockPolicy}
+                    onChange={(e) => { const v = e.target.value as LockPolicy; setLockPolicy(v); writeLockPolicy(v); }}
+                  >
+                    {LOCK_POLICIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  </select>
+                  <span className="dim" style={{ fontSize: 12 }}>
+                    Свернули приложение и вернулись позже — оно попросит подтвердить, что это вы. Содержимое в переключателе
+                    приложений скрыто всегда.
+                  </span>
+                </div>
+              </>
+            )}
+
+            <div className="drawer-section-title" style={{ marginTop: 18 }}>Устройства и сессии</div>
             <button className="btn btn-ghost btn-sm" onClick={async () => { await api.revokeOtherSessions(); loadSessions(); }}>Выйти на других устройствах</button>
-            {sessions.map((s) => (
-              <div key={s.id} className="team-row team-head">
-                <span className="dim" style={{ fontSize: 13 }}>
-                  {s.current && <span className="badge pnl-good">текущая</span>} {(s.userAgent ?? 'устройство').slice(0, 38)} · {s.ip ?? ''}
-                </span>
-                {!s.current && <button className="btn btn-ghost btn-sm" onClick={async () => { await api.revokeSession(s.id); loadSessions(); }}>Выйти</button>}
-              </div>
-            ))}
+            <SessionsList sessions={sessions} onRevoke={async (id) => { await api.revokeSession(id); loadSessions(); }} />
           </>
         )}
 
