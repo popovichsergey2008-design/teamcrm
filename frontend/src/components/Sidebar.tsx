@@ -321,7 +321,13 @@ export function Sidebar({
       return !v;
     });
     window.addEventListener('teamcrm:toggle-sidebar', toggle);
-    return () => window.removeEventListener('teamcrm:toggle-sidebar', toggle);
+    // «Ещё» в нижних вкладках телефона: выдвинуть панель поверх экрана (ТЗ-9)
+    const openDrawer = () => setOpen(true);
+    window.addEventListener('teamcrm:open-sidebar', openDrawer);
+    return () => {
+      window.removeEventListener('teamcrm:toggle-sidebar', toggle);
+      window.removeEventListener('teamcrm:open-sidebar', openDrawer);
+    };
   }, []);
 
   useEffect(() => {
@@ -500,14 +506,14 @@ export function Sidebar({
           ))}
 
           <div className="nav-search-row">
-            <button className="nav-search" onClick={() => onSearch()} title="Поиск и команды (Ctrl+K)">
+            <button className="nav-search" onClick={() => { setOpen(false); onSearch(); }} title="Поиск и команды (Ctrl+K)">
               <Icon name="search" size={16} />
               <span className="nav-label">Поиск…</span>
               <kbd className="nav-kbd">Ctrl K</kbd>
             </button>
             <button
               className="nav-search-mic"
-              onClick={() => onSearch(true)}
+              onClick={() => { setOpen(false); onSearch(true); }}
               title="Сказать, что найти или что сделать"
               aria-label="Голосовой поиск"
             >
@@ -698,19 +704,19 @@ export function Sidebar({
             и мешал печатать. Строка в панели видна из любого раздела и ничему не мешает;
             сама панель разговора открывается, как и прежде, поверх страницы.
           */}
-          {/* Тот же кружок, что был в углу, — теперь здесь, над строкой: заказчик хотел именно его. */}
+          {/*
+            Тот же кружок, что был в углу, — теперь здесь, над AI Секретарём (заказчик
+            хотел именно его). Строки с подписью под ним нет: раздел «Служба заботы» и так
+            есть в списке разделов выше, и две одинаковые строки подряд читались как ошибка.
+          */}
           <div className="nav-support-wrap">
-            <button className="nav-support-fab" onClick={() => openSupport()} title="Служба заботы ANTHILL" aria-label="Служба заботы">
+            <button className="nav-support-fab" onClick={() => { setOpen(false); openSupport(); }} title="Написать в службу заботы" aria-label="Написать в службу заботы">
               <Icon name="support" size={20} />
             </button>
           </div>
-          <button className="nav-item nav-support" onClick={() => openSupport()} title="Служба заботы ANTHILL: написать специалисту">
-            <Icon name="support" size={18} />
-            <span className="nav-label">Служба заботы</span>
-          </button>
           {/* AI Секретарь: показываем ровно то, что записано в журнале действий.
               Ноль тоже показываем — это честнее, чем прятать виджет, обещавший пользу. */}
-          <button className="nav-secretary" onClick={onOpenSecretary} title="Что система сделала за вас сама">
+          <button className="nav-secretary" onClick={() => { setOpen(false); onOpenSecretary(); }} title="Что система сделала за вас сама">
             <Icon name="sparkles" size={18} />
             <span className="nav-label nav-secretary-text">
               <span>AI Секретарь · {secretary?.actions ?? 0}</span>

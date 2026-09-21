@@ -648,7 +648,7 @@ export function App() {
         route={route}
         unread={unread}
         counters={counters}
-        onMore={() => window.dispatchEvent(new Event('teamcrm:toggle-sidebar'))}
+        onMore={() => window.dispatchEvent(new Event('teamcrm:open-sidebar'))}
       />
 
       {paletteOpen && (

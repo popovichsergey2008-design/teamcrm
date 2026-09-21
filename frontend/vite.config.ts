@@ -18,14 +18,20 @@ function bundleVersion(): string {
 
 // Dev: проксируем API и WebSocket на локальный backend (Этап 0 docker / nest start).
 // Prod: SPA и API за общим edge nginx (один origin) — прокси не нужен.
+//
+// API_TARGET=https://anthill.team — прогон локального фронта поверх боевого API
+// (мобильная раскладка в Playwright с эмуляцией телефона): бэкенд со всеми хранилищами
+// локально не поднять, а верстку проверять надо до выкладки.
+const apiTarget = process.env.API_TARGET ?? 'http://localhost:3000';
 export default defineConfig({
   plugins: [react()],
   define: { 'import.meta.env.VITE_BUNDLE_VERSION': JSON.stringify(bundleVersion()) },
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://localhost:3000', changeOrigin: true },
-      '/socket.io': { target: 'http://localhost:3000', ws: true, changeOrigin: true },
+      '/api': { target: apiTarget, changeOrigin: true, secure: true },
+      '/socket.io': { target: apiTarget, ws: true, changeOrigin: true, secure: true },
+      '/ws': { target: apiTarget, ws: true, changeOrigin: true, secure: true },
     },
   },
   build: { outDir: 'dist', sourcemap: false },

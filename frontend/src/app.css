@@ -378,8 +378,6 @@
 }
 .nav-support-fab:hover { filter: brightness(1.08); transform: translateY(-1px); }
 .nav-support-fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.nav-support .icon { color: var(--accent); }
-.nav-collapsed .nav-support { display: none; }
 /* нижний блок */
 .nav-bottom { display: flex; flex-direction: column; gap: 2px; padding-top: var(--sp-2); border-top: 1px solid var(--border); }
 .nav-profile { position: relative; }
@@ -1043,6 +1041,8 @@
 */
 .task-card { position: relative; }
 .task-card-move { position: absolute; top: 6px; right: 6px; z-index: 2; }
+/* Заголовок не заходит под кнопку «переместить» — иначе последнее слово первой строки прячется. */
+.task-card:has(.task-card-move) .task-title { padding-right: 30px; }
 .task-card-move-btn {
   display: grid; place-items: center; width: 24px; height: 24px; padding: 0;
   border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;
@@ -1271,6 +1271,24 @@
   .drawer-task { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); overflow-y: auto; }
   .task-chat { border-left: none; border-top: 1px solid var(--border); height: min(78vh, 620px); }
   .task-main { overflow: visible; }
+  /*
+    Вкладка «Чат» на телефоне — мессенджер во весь экран (ТЗ-9): карточка не
+    прокручивается целиком, лента живёт внутри, поле ввода прижато к низу. Иначе
+    композер оказывался в самом конце длинной прокрутки, под полосой «Сохранено».
+  */
+  .drawer-task.drawer-task-chat { overflow: hidden; grid-template-rows: minmax(0, 1fr); }
+  .drawer-task-chat .task-main { overflow: hidden; }
+  /* Полоса сохранения на вкладке чата — только если есть что сохранять. */
+  .drawer-task-chat .task-save-bar:not(.is-dirty) { display: none; }
+}
+/* Телефон, вкладка «Чат»: статус, приоритет и метки прячем — они на вкладке «Обзор», а экрану нужна лента. */
+@media (max-width: 720px) {
+  .drawer-task-chat .status-bar, .drawer-task-chat .task-actions-row, .drawer-task-chat .labels-row,
+  .drawer-task-chat .card-meta { display: none; }
+  .drawer-task-chat .task-main { padding: 12px 12px 0; }
+  /* Лента ужимается под поле ввода: min-height в 320 точек выталкивал композер за экран. */
+  .drawer-task-chat .task-chat-wide .msg-feed { min-height: 0; }
+  .drawer-task-chat .task-chat-wide .comment-input textarea { max-height: 96px; }
 }
 
 /* Чат задачи: цитата, реакции, действия над сообщением, поиск. */
@@ -3751,8 +3769,10 @@
 .support-ticket-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .support-ticket-when { grid-column: 2; font-size: var(--fs-xs); }
 .registry-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
-/* Постановка задачи в шапке реестра: пара «текстом · голосом» одним блоком. */
-.registry-new { display: inline-flex; gap: 6px; align-items: center; }
+/* Постановка задачи в шапке реестра: пара «текстом · голосом» одним блоком.
+   (Класс свой: `.registry-new` — красный кружок непрочитанного, и кнопки на нём красили
+   в красную плашку — нашлось только на телефоне.) */
+.registry-create { display: inline-flex; gap: 6px; align-items: center; }
 .registry-title h1 { margin: 0; font-size: var(--fs-lg); font-weight: 700; }
 .registry-sub { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-dim); }
 
@@ -3876,6 +3896,9 @@
 @media (max-width: 720px) {
   .registry-row { grid-template-columns: minmax(0, 1fr) 100px; }
   .registry-row > *:nth-child(3), .registry-row > *:nth-child(4) { display: none; }
+  /* Заголовки колонок на телефоне не нужны: строка читается как карточка, а «Срок» переносился на свою строку. */
+  .registry-header { display: none; }
+  .registry-row > *:nth-child(5) { grid-column: 1 / -1; }
 }
 /* Клавиатура: строка, вкладка и номер страницы — обычные кнопки, и обводка фокуса у
    них обязана быть видна (проверяется npm run a11y). Внутри списка обводку убираем

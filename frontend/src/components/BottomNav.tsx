@@ -12,11 +12,11 @@ import type { NavCounters } from '../hooks/useNavCounters';
  * календарь, новости, служба заботы, секретарь, кабинет и аккаунт. Второго меню не
  * заводим: панель одна, и настроенный человеком порядок разделов живёт в ней.
  */
-const TABS: { key: string; label: string; icon: 'target' | 'board' | 'chat' | 'record' | 'more'; go: () => void; match: (r: Route) => boolean }[] = [
+const TABS: { key: string; label: string; icon: 'target' | 'board' | 'chat' | 'video' | 'more'; go: () => void; match: (r: Route) => boolean }[] = [
   { key: 'focus', label: 'Фокус', icon: 'target', go: () => navigate({ section: 'focus' }), match: (r) => r.section === 'focus' },
   { key: 'projects', label: 'Проекты', icon: 'board', go: () => navigate({ section: 'projects' }), match: (r) => r.section === 'projects' },
   { key: 'chat', label: 'Чаты', icon: 'chat', go: () => navigate({ section: 'chat' }), match: (r) => r.section === 'chat' && !r.view },
-  { key: 'meetings', label: 'Миты', icon: 'record', go: () => navigate({ section: 'chat', view: 'meetings' }), match: (r) => r.section === 'chat' && r.view === 'meetings' },
+  { key: 'meetings', label: 'Миты', icon: 'video', go: () => navigate({ section: 'chat', view: 'meetings' }), match: (r) => r.section === 'chat' && r.view === 'meetings' },
 ];
 
 export function BottomNav({ route, unread, counters, onMore }: {

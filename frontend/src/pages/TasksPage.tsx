@@ -178,7 +178,7 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
           двух таких мест (второе — доска проекта).
         */}
         {(onNewTask || onVoiceTask) && (
-          <span className="registry-new">
+          <span className="registry-create">
             {onNewTask && (
               <button className="btn btn-primary btn-sm" onClick={onNewTask} title="Новая задача — текстом (клавиша C)">
                 <Icon name="plus" size={15} /> Новая задача
