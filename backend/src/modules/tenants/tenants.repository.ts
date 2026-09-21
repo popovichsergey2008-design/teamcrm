@@ -25,4 +25,12 @@ export class TenantsRepository {
     }
     return (await this.db.one<TenantRow>(text, [name, dataRegion])) as TenantRow;
   }
+
+  /** Переименовать пространство. Возвращает новое имя или null, если организации нет. */
+  async rename(id: string, name: string): Promise<TenantRow | null> {
+    return this.db.one<TenantRow>(
+      `UPDATE tenants SET name=$2, updated_at=now() WHERE id=$1 RETURNING *`,
+      [id, name],
+    );
+  }
 }

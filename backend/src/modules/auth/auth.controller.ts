@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Ip, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Ip, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
@@ -9,6 +9,9 @@ import { LoginDto, LogoutDto, RefreshDto, RegisterDto } from './auth.dto';
 
 class SwitchOrgDto {
   @IsString() tenantId!: string;
+}
+class RenameOrgDto {
+  @IsString() @MinLength(2) @MaxLength(160) name!: string;
 }
 class CreateOrgDto {
   @IsString() @MinLength(2) @MaxLength(160) name!: string;
@@ -90,6 +93,13 @@ export class AuthController {
   @Post('auth/switch-org')
   switchOrg(@CurrentUser() user: AuthUser, @Body() dto: SwitchOrgDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
     return this.auth.switchOrg(user.tenantId, user.userId, dto.tenantId, this.meta(ua, ip));
+  }
+
+  /** Переименовать текущее пространство — только его создателю (владельцу). */
+  @ApiBearerAuth()
+  @Patch('auth/organizations/current')
+  renameOrg(@CurrentUser() user: AuthUser, @Body() dto: RenameOrgDto) {
+    return this.auth.renameOrg(user.tenantId, user.role, dto.name);
   }
 
   @ApiBearerAuth()

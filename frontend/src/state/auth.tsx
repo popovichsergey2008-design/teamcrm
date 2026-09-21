@@ -12,6 +12,8 @@ interface AuthState {
   logout: () => Promise<void>;
   switchOrg: (tenantId: string) => Promise<void>;
   createOrg: (name: string) => Promise<void>;
+  /** Переименовать текущее пространство (только создатель): панель обновится сразу. */
+  renameOrg: (name: string) => Promise<void>;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -84,6 +86,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api.organizations().then(setOrganizations).catch(() => undefined);
   };
 
+  const renameOrg = async (name: string) => {
+    const r = await api.renameOrg(name);
+    setOrganizations((list) => list.map((o) => (o.tenantId === r.tenantId ? { ...o, name: r.name } : o)));
+  };
+
   const logout = async () => {
     try {
       await api.logout();
@@ -97,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ user, organizations, loading, login, register, logout, switchOrg, createOrg }}>
+    <Ctx.Provider value={{ user, organizations, loading, login, register, logout, switchOrg, createOrg, renameOrg }}>
       {children}
     </Ctx.Provider>
   );

@@ -9,6 +9,7 @@ import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { FontSizeSwitch } from './FontSizeSwitch';
 import { DatePicker } from './DatePicker';
+import { useAuth } from '../state/auth';
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients';
 
@@ -25,6 +26,25 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
     setSound(next);
   };
   const [me, setMe] = useState<any>(null);
+  /*
+    Название пространства правит только его создатель — здесь, в профиле.
+
+    Раньше переименовать организацию было негде вовсе: имя задавалось при регистрации
+    и оставалось навсегда. Поле показываем владельцу — им становится тот, кто создал
+    пространство; остальные видят название в панели и менять его не должны.
+  */
+  const { user, organizations, renameOrg } = useAuth();
+  const isOwner = user?.role === 'owner';
+  const currentOrgName = organizations.find((o) => o.tenantId === user?.tenantId)?.name ?? '';
+  const [orgName, setOrgName] = useState('');
+  useEffect(() => { setOrgName(currentOrgName); }, [currentOrgName]);
+  const saveOrgName = async () => {
+    const next = orgName.trim();
+    if (next.length < 2) return flash('Название слишком короткое');
+    if (next === currentOrgName) return;
+    try { await renameOrg(next); flash('Пространство переименовано'); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
   const [msg, setMsg] = useState('');
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [mailPrefs, setMailPrefs] = useState<{ eventKey: string; title: string; enabled: boolean }[]>([]);
@@ -177,6 +197,30 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 на большом мониторе можно оставить обычный размер.
               </span>
             </div>
+            {isOwner && (
+              <div className="field">
+                <label>Название пространства</label>
+                <div className="profile-org-row">
+                  <input
+                    className="input"
+                    value={orgName}
+                    maxLength={160}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void saveOrgName(); } }}
+                  />
+                  <button
+                    className="btn btn-sm"
+                    disabled={orgName.trim().length < 2 || orgName.trim() === currentOrgName}
+                    onClick={() => void saveOrgName()}
+                  >
+                    Переименовать
+                  </button>
+                </div>
+                <span className="dim" style={{ fontSize: 12 }}>
+                  Это название видят все участники — в панели слева и в письмах. Менять его может только создатель пространства.
+                </span>
+              </div>
+            )}
             <div className="field"><label>Имя</label><input className="input" value={me.fullName ?? ''} onChange={(e) => setMe({ ...me, fullName: e.target.value })} /></div>
             <div className="field"><label>E-mail</label><input className="input" value={me.email} disabled /></div>
             <div className="field"><label>Должность</label><input className="input" value={me.positionName ?? '—'} disabled /></div>

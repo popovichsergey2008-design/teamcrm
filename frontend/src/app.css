@@ -86,7 +86,10 @@
 }
 .nav-sidebar.nav-collapsed { width: 68px; padding-left: 8px; padding-right: 8px; }
 .nav-collapsed .nav-label, .nav-collapsed .nav-kbd, .nav-collapsed .nav-user-text { display: none; }
-.nav-collapsed .nav-org-select { opacity: 0; pointer-events: none; }
+/* В свёрнутой панели верхняя строка складывается: знак и стрелка, ниже — только аватар. */
+.nav-collapsed .nav-org { flex-wrap: wrap; height: auto; justify-content: center; row-gap: var(--sp-1); }
+.nav-collapsed .nav-org .nav-user { order: 3; flex: 0 0 100%; padding: 6px 0; }
+.nav-collapsed .nav-cabinet { justify-content: center; }
 .nav-collapsed .nav-item, .nav-collapsed .nav-search, .nav-collapsed .nav-user { justify-content: center; }
 
 /*
@@ -100,7 +103,11 @@
 .nav-top .nav-search, .nav-top .nav-search-mic {
   height: 34px; padding-top: 0; padding-bottom: 0;
 }
-.nav-org { display: flex; align-items: center; gap: var(--sp-2); position: relative; height: 34px; }
+.nav-org { display: flex; align-items: center; gap: var(--sp-2); position: relative; min-height: 34px; }
+/* Аккаунт в верхней строке занимает всё между знаком и стрелкой; плотнее, чем в подвале. */
+.nav-org .nav-user { flex: 1; min-width: 0; padding: 4px 6px; }
+/* Меню аккаунта раскрывается ВНИЗ: оно теперь наверху, и сверху места нет. */
+.nav-org .nav-menu-pop { top: calc(100% + 6px); bottom: auto; left: 0; right: auto; z-index: 30; }
 /* Знак сам цветной: подкладывать под него плашку акцента — значит спорить с ним. */
 /*
   Знак-кнопка «на главную».
@@ -115,15 +122,11 @@
   background: none; border: none; border-radius: var(--radius-sm); cursor: pointer;
 }
 .nav-org-mark:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Название организации читается заголовком панели: рамки и фона у него нет,
-   но стрелка остаётся — по ней видно, что организацию можно сменить. */
-.nav-org-select {
-  flex: 1; min-width: 0; background: none; border: none; color: var(--text);
-  font-weight: 600; font-size: var(--fs-sm); padding: 4px 2px;
-  border-radius: var(--radius-sm); cursor: pointer;
-  text-overflow: ellipsis;
-}
-.nav-org-select:hover { background: var(--bg-elev-2); }
+/* Переименование пространства в профиле: поле и кнопка в одну строку. */
+.profile-org-row { display: flex; gap: var(--sp-2); align-items: center; }
+.profile-org-row .input { flex: 1; min-width: 0; }
+/* Переключатель пространства живёт в меню аккаунта: обычное поле, во всю ширину строки. */
+.nav-org-select { flex: 1; min-width: 0; font-size: var(--fs-sm); text-overflow: ellipsis; }
 .nav-collapse {
   background: none; border: none; color: var(--text-mut); cursor: pointer;
   padding: 4px; border-radius: var(--radius-sm); display: grid; place-items: center;

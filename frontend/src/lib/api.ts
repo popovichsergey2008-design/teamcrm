@@ -280,6 +280,8 @@ export const api = {
   organizations: () => request<import('../types').OrgRef[]>('GET', '/auth/organizations'),
   switchOrg: (tenantId: string) => request<AuthResult>('POST', '/auth/switch-org', { tenantId }),
   createOrg: (name: string) => request<AuthResult>('POST', '/auth/organizations', { name }),
+  /** Переименовать текущее пространство — только создателю. */
+  renameOrg: (name: string) => request<{ tenantId: string; name: string }>('PATCH', '/auth/organizations/current', { name }),
   me: () => request<any>('GET', '/me'),
   /** Скачивает защищённый файл (нужен Bearer) как Blob — файлы за JwtAuthGuard, прямая ссылка даёт 401. */
   authedBlob: async (path: string): Promise<Blob> => {

@@ -137,6 +137,22 @@ export class AuthService {
     return { user: toPublicUser(member), ...tokens };
   }
 
+  /**
+   * Переименовать текущее пространство.
+   *
+   * Только владелец — тот, кто его создал (создатель и получает роль owner). Название
+   * видят все участники в панели и в письмах, поэтому менять его должен один человек,
+   * а не каждый, кому дали доступ.
+   */
+  async renameOrg(tenantId: string, role: string, name: string) {
+    if (role !== 'owner') throw AppException.forbidden('Переименовать пространство может только его создатель');
+    const clean = String(name ?? '').trim();
+    if (clean.length < 2) throw AppException.validation('Название слишком короткое');
+    const row = await this.tenants.rename(tenantId, clean.slice(0, 160));
+    if (!row) throw AppException.notFound('Пространство не найдено');
+    return { tenantId: String(row.id), name: row.name };
+  }
+
   /** Ротация: проверяет refresh, отзывает старый, выдаёт новую пару. */
   async refresh(refreshToken: string, meta?: SessionMeta): Promise<TokenPair> {
     let payload: { sub: string; tenantId: string };

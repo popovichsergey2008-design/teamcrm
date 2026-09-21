@@ -378,7 +378,7 @@ export function Sidebar({
       >
         {/* ── верхний блок ── */}
         <div className="nav-top">
-          <div className="nav-org">
+          <div className="nav-org nav-profile" ref={menuRef}>
             {/*
               Знак вместо буквы организации.
 
@@ -401,24 +401,32 @@ export function Sidebar({
             >
               <Logo size={30} />
             </button>
-            <select
-              className="nav-org-select"
-              value={user.tenantId}
-              onChange={(e) => onSwitchOrg(e.target.value)}
-              title={`Организация: ${orgName}`}
-              aria-label="Организация"
+            {/*
+              Аккаунт — наверху, над поиском (задача #1348).
+
+              Заказчик: «в левом сайдбаре вместо названия организации — аккаунт, а
+              личный кабинет поднять из самого низа наверх». Человек начинает день с
+              себя: кто он, какой у него статус, куда зайти за настройками. Название
+              пространства не пропало — оно второй строкой, когда пространств несколько,
+              и сменить его можно в этом же меню.
+            */}
+            <button
+              className={`nav-user${route.section === 'profile' ? ' active' : ''}`}
+              onClick={() => setMenuOpen((v) => !v)}
+              title={`Аккаунт: ${user.fullName} — профиль, статус, тема, пространство`}
+              aria-label="Аккаунт"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
             >
-              {/* Роль дописываем, только когда организаций несколько: тогда она и различает
-                  строки. В единственной организации это лишнее слово, которое к тому же
-                  съедает название — в закрытом виде видно именно текст выбранной строки. */}
-              {organizations.map((o) => (
-                <option key={o.tenantId} value={o.tenantId}>
-                  {organizations.length > 1 ? `${o.name} · ${roleLabel(o.role)}` : o.name}
-                </option>
-              ))}
-              {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
-              <option value="__new__">+ Создать организацию…</option>
-            </select>
+              <Avatar path={avatarPath} fallback={user.fullName?.[0] ?? '?'} className="avatar-sm" />
+              <span className={`nav-dot nav-dot-${focus?.kind ?? 'free'}`} aria-hidden="true" />
+              <span className="nav-user-text">
+                <span className="nav-user-name">{user.fullName}</span>
+                <span className="nav-user-role" title={organizations.length > 1 ? `Пространство: ${orgName}` : focusLine(focus)}>
+                  {organizations.length > 1 ? orgName : focusLine(focus)}
+                </span>
+              </span>
+            </button>
             <button
               className="nav-collapse"
               onClick={toggleCollapsed}
@@ -427,7 +435,68 @@ export function Sidebar({
             >
               <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
             </button>
+            {menuOpen && (
+              <div className="menu-pop nav-menu-pop" role="menu">
+                <FocusMenu focus={focus} onChange={(f) => { setFocus(f); setMenuOpen(false); }} />
+                <button
+                  className="menu-item"
+                  role="menuitem"
+                  onClick={() => { setMenuOpen(false); go({ section: 'profile' }); }}
+                >
+                  <Icon name="user" size={15} /> Профиль
+                </button>
+                {/* Пространство — здесь же: переключить или создать. Переименовать — в профиле, у создателя. */}
+                <div className="menu-theme">
+                  <span className="dim">Пространство</span>
+                  <select
+                    className="input nav-org-select"
+                    value={user.tenantId}
+                    onChange={(e) => { setMenuOpen(false); onSwitchOrg(e.target.value); }}
+                    aria-label="Пространство"
+                  >
+                    {organizations.map((o) => (
+                      <option key={o.tenantId} value={o.tenantId}>
+                        {organizations.length > 1 ? `${o.name} · ${roleLabel(o.role)}` : o.name}
+                      </option>
+                    ))}
+                    {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
+                    <option value="__new__">+ Создать пространство…</option>
+                  </select>
+                </div>
+                {/* Свой статус для коллег — только руками (решение заказчика):
+                    «занят» ставят нарочно, чтобы к тебе не шли, и снимают сами. */}
+                <div className="menu-theme">
+                  <span className="dim">Статус</span>
+                  <span className="menu-status" role="group" aria-label="Статус для коллег">
+                    {([['', 'обычный'], ['busy', 'занят'], ['away', 'отошёл']] as const).map(([v, label]) => (
+                      <button
+                        key={v}
+                        className={`menu-status-btn${(myStatus ?? '') === v ? ' active' : ''}`}
+                        onClick={() => setStatus(v === '' ? null : v)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+                <div className="menu-theme">
+                  <span className="dim">Тема</span>
+                  <ThemeSwitch />
+                </div>
+                <button className="menu-item menu-danger" role="menuitem" onClick={() => { setMenuOpen(false); onLogout(); }}>
+                  <Icon name="logout" size={15} /> Выйти
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Личный кабинет — сразу под аккаунтом, над поиском: настройки ищут рядом с собой, а не в подвале. */}
+          {link({ section: 'settings' }, route.section === 'settings', 'nav-item nav-cabinet', 'Личный кабинет: профиль, команда, интеграции, настройки', (
+            <>
+              <Icon name="settings" size={18} />
+              <span className="nav-label">Личный кабинет</span>
+            </>
+          ))}
 
           <div className="nav-search-row">
             <button className="nav-search" onClick={() => onSearch()} title="Поиск и команды (Ctrl+K)">
@@ -633,64 +702,6 @@ export function Sidebar({
             </span>
           </button>
 
-          {link({ section: 'settings' }, route.section === 'settings', 'nav-item', 'Личный кабинет: профиль, команда, интеграции, настройки', (
-            <>
-              <Icon name="settings" size={18} />
-              <span className="nav-label">Личный кабинет</span>
-            </>
-          ))}
-
-          <div className="nav-profile" ref={menuRef}>
-            <button
-              className={`nav-user${route.section === 'profile' ? ' active' : ''}`}
-              onClick={() => setMenuOpen((v) => !v)}
-              title={`${user.fullName} — профиль и тема`}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-            >
-              <Avatar path={avatarPath} fallback={user.fullName?.[0] ?? '?'} className="avatar-sm" />
-              <span className={`nav-dot nav-dot-${focus?.kind ?? 'free'}`} aria-hidden="true" />
-              <span className="nav-user-text">
-                <span className="nav-user-name">{user.fullName}</span>
-                <span className="nav-user-role" title={focusLine(focus)}>{focusLine(focus)}</span>
-              </span>
-            </button>
-            {menuOpen && (
-              <div className="menu-pop nav-menu-pop" role="menu">
-                <FocusMenu focus={focus} onChange={(f) => { setFocus(f); setMenuOpen(false); }} />
-                <button
-                  className="menu-item"
-                  role="menuitem"
-                  onClick={() => { setMenuOpen(false); go({ section: 'profile' }); }}
-                >
-                  <Icon name="user" size={15} /> Профиль
-                </button>
-                {/* Свой статус для коллег — только руками (решение заказчика):
-                    «занят» ставят нарочно, чтобы к тебе не шли, и снимают сами. */}
-                <div className="menu-theme">
-                  <span className="dim">Статус</span>
-                  <span className="menu-status" role="group" aria-label="Статус для коллег">
-                    {([['', 'обычный'], ['busy', 'занят'], ['away', 'отошёл']] as const).map(([v, label]) => (
-                      <button
-                        key={v}
-                        className={`menu-status-btn${(myStatus ?? '') === v ? ' active' : ''}`}
-                        onClick={() => setStatus(v === '' ? null : v)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </span>
-                </div>
-                <div className="menu-theme">
-                  <span className="dim">Тема</span>
-                  <ThemeSwitch />
-                </div>
-                <button className="menu-item menu-danger" role="menuitem" onClick={() => { setMenuOpen(false); onLogout(); }}>
-                  <Icon name="logout" size={15} /> Выйти
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </aside>
     </>
