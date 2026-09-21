@@ -1298,6 +1298,13 @@
   /* Полоса сохранения на вкладке чата — только если есть что сохранять. */
   .drawer-task-chat .task-save-bar:not(.is-dirty) { display: none; }
 }
+/* Телефон: карточка задачи компактнее — заголовок мельче, вкладки одной прокручиваемой строкой. */
+@media (max-width: 720px) {
+  .drawer-task .drawer-head h3, .drawer-task .drawer-title-input { font-size: var(--fs-md); line-height: 1.3; }
+  .drawer-task .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-bottom: 10px; }
+  .drawer-task .tabs::-webkit-scrollbar { display: none; }
+  .drawer-task .tab { padding: 8px 10px; flex: 0 0 auto; }
+}
 /* Телефон, вкладка «Чат»: статус, приоритет и метки прячем — они на вкладке «Обзор», а экрану нужна лента. */
 @media (max-width: 720px) {
   .drawer-task-chat .status-bar, .drawer-task-chat .task-actions-row, .drawer-task-chat .labels-row,
