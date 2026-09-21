@@ -437,4 +437,8 @@ export interface SupportContextInput {
   lastError?: string;
   requestId?: string;
   network?: string;
+  /** Мобильная оболочка (волна 10): где запущен фронт, версия оболочки, модель устройства. */
+  platform?: 'web' | 'mobile-web' | 'capacitor';
+  nativeVersion?: string;
+  device?: string;
 }

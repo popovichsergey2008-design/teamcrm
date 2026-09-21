@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { RedisIoAdapter } from './common/auth/redis-io.adapter';
+import { REQUEST_ID_HEADER, requestId } from './common/http/request-id.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
@@ -15,6 +16,8 @@ async function bootstrap() {
     один уровень доверия; заголовок X-Forwarded-For nginx выставляет сам.
   */
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  // Номер каждого запроса — в ответ и в журнал: нитка между экраном человека и логом.
+  app.use(requestId);
 
   /*
     Всё приложение живёт под `/api`, кроме метрик.
@@ -42,6 +45,8 @@ async function bootstrap() {
   app.enableCors({
     origin: corsList.length > 1 ? corsList : corsList[0],
     credentials: true,
+    // Иначе браузер спрячет заголовок от скрипта, и клиент номер не увидит.
+    exposedHeaders: [REQUEST_ID_HEADER],
   });
 
   app.useWebSocketAdapter(new RedisIoAdapter(app));

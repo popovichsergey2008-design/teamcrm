@@ -6,8 +6,9 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { ApiError, ErrorCode } from './api-response';
+import { requestIdOf } from './request-id.middleware';
 
 /** Приводит любое исключение к конверту {ok:false,error:{code,message,details}}. */
 @Catch()
@@ -17,6 +18,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const res = ctx.getResponse<Response>();
+    const requestId = requestIdOf(ctx.getRequest<Request>());
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code: ErrorCode = 'INTERNAL';
@@ -45,12 +47,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
         }
       }
     } else {
-      this.logger.error(exception instanceof Error ? exception.stack : String(exception));
+      // Номер запроса — в журнал: по нему обращение в поддержку сходится с этой строкой.
+      this.logger.error(`[${requestId ?? '-'}] ${exception instanceof Error ? exception.stack : String(exception)}`);
     }
 
     const payload: ApiError = {
       ok: false,
-      error: { code, message, ...(details ? { details } : {}) },
+      error: { code, message, ...(details ? { details } : {}), ...(requestId ? { requestId } : {}) },
     };
     res.status(status).json(payload);
   }

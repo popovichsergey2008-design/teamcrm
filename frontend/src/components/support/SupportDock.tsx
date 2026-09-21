@@ -897,6 +897,16 @@ export function SupportDock({ embedded = false }: {
                     </dd>
                     <dt>Браузер</dt><dd>{diag?.context?.browser ?? '—'} · {diag?.context?.os ?? '—'}</dd>
                     <dt>Сборка</dt><dd>{diag?.context?.app_version ?? '—'}{diag?.context?.build_id ? ` (${diag.context.build_id})` : ''}</dd>
+                    {/* Телефон: приложение или сайт, версия оболочки, модель — первые вопросы к мобильному багу (волна 10) */}
+                    {diag?.context?.platform && diag.context.platform !== 'web' && (
+                      <>
+                        <dt>Где</dt>
+                        <dd>
+                          {diag.context.platform === 'capacitor' ? `Приложение ${diag.context.native_version ?? ''}`.trim() : 'Сайт в телефоне'}
+                          {diag.context.device ? ` · ${diag.context.device}` : ''}
+                        </dd>
+                      </>
+                    )}
                     <dt>Ошибка</dt><dd>{diag?.context?.last_error ?? 'не было'}</dd>
                     <dt>Сеть</dt><dd>{diag?.context?.network ?? '—'}</dd>
                   </dl>

@@ -11,6 +11,8 @@ export interface ApiError {
     code: ErrorCode;
     message: string;
     details?: Record<string, unknown>;
+    /** Номер запроса — по нему специалист находит строку в журнале (волна 10). */
+    requestId?: string;
   };
 }
 

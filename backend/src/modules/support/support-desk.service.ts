@@ -22,6 +22,7 @@ import { Actor, canTransition, Status, whyNot } from './support-status';
 import { LIMITS, LimitKind, limitKey } from './support-limits';
 import { RedisService } from '../../cache/redis.service';
 import { Q_SUPPORT_ROUTING, RabbitMQService } from '../../messaging/rabbitmq.service';
+import { PushService } from '../notifications/push.service';
 
 /**
  * Служба заботы: живой разговор вместо заявок (ТЗ-8).
@@ -76,6 +77,7 @@ export class SupportDeskService implements OnModuleInit {
     private readonly ai: AiService,
     private readonly redis: RedisService,
     private readonly mq: RabbitMQService,
+    private readonly push: PushService,
   ) {}
 
   /**
@@ -506,6 +508,7 @@ export class SupportDeskService implements OnModuleInit {
         await this.emit(tenantId, after, 'support.message.created', {
           conversationId, messageId: String(msg?.id), kind: 'ai', authorId: null,
         });
+        this.pushClient(tenantId, after, 'reply', 'Служба заботы ответила', answer);
       }
     } catch (e) {
       this.log.warn(`ИИ не ответил в разговоре ${conversationId}: ${(e as Error).message}`);
@@ -710,6 +713,7 @@ export class SupportDeskService implements OnModuleInit {
       await this.emit(tenantId, next, 'support.agent.joined', {
         conversationId: String(conv.id), agentId: decision.agentId,
       });
+      this.pushClient(tenantId, next, 'agent_joined', 'Служба заботы', `Разговор ведёт ${who ?? 'специалист'} — подключится сейчас`);
     } catch (e) {
       // Человек позвал специалиста — это должно случиться, даже если выбрать некого.
       this.log.warn(`маршрутизация обращения ${conv.id}: ${(e as Error).message}`);
@@ -749,6 +753,7 @@ export class SupportDeskService implements OnModuleInit {
     });
     await this.notifyDesk(tenantId, 'support.assignment.changed', { conversationId: id });
     await this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: target });
+    this.pushClient(tenantId, next, 'agent_joined', 'Служба заботы', `Разговор ведёт ${who ?? 'специалист'}`);
     return this.view(tenantId, next);
   }
 
@@ -952,6 +957,7 @@ export class SupportDeskService implements OnModuleInit {
       tenantId, conversationId: id, authorId: user.userId, kind: 'system', body: 'подключился к разговору',
     });
     await this.emit(tenantId, next, 'support.agent.joined', { conversationId: id, agentId: user.userId });
+    this.pushClient(tenantId, next, 'agent_joined', 'Служба заботы', 'К разговору подключился специалист');
     return this.view(tenantId, next);
   }
 
@@ -974,6 +980,7 @@ export class SupportDeskService implements OnModuleInit {
     await this.emit(tenantId, next, 'support.message.created', {
       conversationId: id, messageId: String(msg?.id), kind: 'agent', authorId: user.userId,
     });
+    this.pushClient(tenantId, next, 'reply', 'Служба заботы ответила', body || 'Вам прислали файл');
     return this.view(tenantId, next);
   }
 
@@ -999,6 +1006,7 @@ export class SupportDeskService implements OnModuleInit {
       body: 'Проверьте, пожалуйста: всё работает?',
     });
     await this.emit(tenantId, next, 'support.resolved', { conversationId: id });
+    this.pushClient(tenantId, next, 'resolved', 'Служба заботы', 'Кажется, решено — проверьте, пожалуйста: всё работает?');
     return this.view(tenantId, next);
   }
 
@@ -1225,6 +1233,7 @@ export class SupportDeskService implements OnModuleInit {
       `Раздел: ${c.route ?? '—'}${c.entity_type ? ` · ${c.entity_type} #${c.entity_id}` : ''}`,
       `Браузер: ${c.browser ?? '—'} · ${c.os ?? '—'}`,
       `Сборка: ${c.app_version ?? '—'}${c.build_id ? ` (${c.build_id})` : ''}`,
+      c.platform && c.platform !== 'web' ? `Где: ${c.platform === 'capacitor' ? `приложение ${c.native_version ?? ''}`.trim() : 'сайт в телефоне'}${c.device ? ` · ${c.device}` : ''}` : '',
       c.last_error ? `Последняя ошибка: ${c.last_error}` : '',
       c.request_id ? `Request ID: ${c.request_id}` : '',
       '',
@@ -1279,6 +1288,10 @@ export class SupportDeskService implements OnModuleInit {
         this.realtime.emitToUsers(r.tenant_id, [r.user_id], 'support.status.changed', {
           conversationId: r.conversation_id, status: 'waiting_user',
         });
+        void this.push.supportEvent({
+          tenantId: r.tenant_id, userId: String(r.user_id), conversationId: String(r.conversation_id), kind: 'fix',
+          title: 'Мы выпустили исправление', body: `По «${taskTitle}». Обновите приложение и проверьте, пожалуйста`,
+        });
       }
     } catch (e) {
       // Весть о починке — приятная мелочь, а не причина ронять закрытие задачи.
@@ -1328,6 +1341,7 @@ export class SupportDeskService implements OnModuleInit {
     const byRole = mine ? 'user' : 'agent';
     await this.emit(tenantId, conv, 'support.call.requested', { conversationId: id, requestId: String(row?.id), byRole });
     if (mine) await this.notifyDesk(tenantId, 'support.call.requested', { conversationId: id, byRole });
+    else this.pushClient(tenantId, conv, 'call', 'Служба заботы', 'Специалист предлагает созвониться — откройте, чтобы согласиться');
     return this.view(tenantId, conv);
   }
 
@@ -1372,6 +1386,7 @@ export class SupportDeskService implements OnModuleInit {
     await this.repo.markRecordingNotice(id, room.roomId);
     await this.emit(tenantId, conv, 'support.call.accepted', { conversationId: id, roomId: room.roomId });
     await this.emit(tenantId, conv, 'support.call.started', { conversationId: id, roomId: room.roomId });
+    if (String(user.userId) !== String(conv.user_id)) this.pushClient(tenantId, conv, 'call', 'Служба заботы', 'Специалист готов созвониться — откройте разговор');
     return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
   }
 
@@ -1974,6 +1989,18 @@ export class SupportDeskService implements OnModuleInit {
    * специалисту в организацию клиента значило бы слать в пустоту — ответ клиента он
    * увидел бы только по F5, а очередь в консоли не шевелилась бы вовсе.
    */
+  /**
+   * Push человеку, который обратился (ТЗ-9, волна 10): ответ, специалист, созвон,
+   * «проверьте», починка. Кто в приложении — увидит панель сам; остальным —
+   * уведомление на телефон и запись в ящик. Не ждём: push — не часть ответа.
+   */
+  private pushClient(tenantId: string, conv: ConversationRow, kind: 'reply' | 'agent_joined' | 'call' | 'resolved' | 'fix', title: string, body: string): void {
+    void this.push.supportEvent({
+      tenantId, userId: String(conv.user_id), conversationId: String(conv.id), kind,
+      title, body: String(body ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
+    });
+  }
+
   private async emit(tenantId: string, conv: ConversationRow, event: string, payload: Record<string, unknown>): Promise<void> {
     this.realtime.emitToUsers(tenantId, [String(conv.user_id)], event, payload);
     if (!conv.assigned_agent_id) return;

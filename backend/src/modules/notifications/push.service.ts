@@ -128,6 +128,53 @@ export class PushService {
     }
   }
 
+  /**
+   * Служба заботы (ТЗ-9, волна 10): человеку, который написал в поддержку и ушёл.
+   *
+   * Разговор с поддержкой не чат: ответ приходит через минуты или часы, и человек
+   * к этому моменту закрыл приложение. Без push он узнаёт об ответе, когда сам
+   * вспомнит. Шлём то, что требует его внимания: ответ, «подключился специалист»,
+   * предложение созвона, «проверьте, всё работает?» и «мы выпустили исправление».
+   * Кто сейчас в приложении — видит панель сам. Ответы подряд — один push на минуту
+   * по разговору (дедуп в Redis); звонок и починка идут всегда. В ящик — всегда.
+   */
+  async supportEvent(m: {
+    tenantId: string; userId: string; conversationId: string;
+    kind: 'reply' | 'agent_joined' | 'call' | 'resolved' | 'fix';
+    title: string; body: string;
+  }): Promise<void> {
+    try {
+      if (this.realtime.isOnline(m.tenantId, m.userId)) return;
+      const path = `/support/${m.conversationId}`;
+      const item = await this.inbox.record({
+        tenantId: m.tenantId, userId: m.userId, mailId: null, eventKey: `support.${m.kind}`,
+        title: m.title, body: m.body, path,
+      });
+      if (!item || !this.fcm.enabled) return;
+      if (m.kind === 'reply' || m.kind === 'agent_joined') {
+        try {
+          const r = await this.redis.client.set(`push:support:${m.userId}:${m.conversationId}`, '1', 'EX', 60, 'NX');
+          if (r !== 'OK') return;
+        } catch { /* без Redis — шлём */ }
+      }
+      const targets = await this.inbox.pushTargets(m.userId);
+      if (!targets.length) return;
+      const badge = await this.inbox.unreadCount(m.userId);
+      const privacy = await this.inbox.pushPrivacyOf(m.tenantId);
+      const title = privacy === 'hide' ? 'ANTHILL' : m.title;
+      const body = privacy === 'full' ? m.body : 'Служба заботы: есть новое';
+      for (const t of targets) {
+        const outcome = await this.fcm.send(t.push_token, {
+          title, body, badge,
+          data: { type: 'support', path, inboxId: String(item.id), eventKey: item.event_key, conversationId: m.conversationId },
+        });
+        if (outcome === 'invalid_token') await this.inbox.dropPushToken(t.id);
+      }
+    } catch (e) {
+      this.log.warn(`push по обращению ${m.conversationId}: ${(e as Error).message}`);
+    }
+  }
+
   private async allowChatPush(userId: string, chatId: string): Promise<boolean> {
     try {
       const r = await this.redis.client.set(`push:chat:${userId}:${chatId}`, '1', 'EX', CHAT_PUSH_THROTTLE_S, 'NX');

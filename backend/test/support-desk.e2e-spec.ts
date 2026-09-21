@@ -151,7 +151,12 @@ describe('служба заботы (e2e)', () => {
     const conv = (await http.post('/api/support/desk/messages').set(M)
       .send({
         text: 'Задача не сохраняется, жму «Сохранить» — ничего',
-        context: { url: 'https://anthill.team/projects/3/task/9', route: 'projects', entityType: 'task', entityId: '9', browser: 'Chrome 141', os: 'Windows', lastError: 'PATCH /api/tasks/9 500' },
+        context: {
+          url: 'https://anthill.team/projects/3/task/9', route: 'projects', entityType: 'task', entityId: '9',
+          browser: 'Chrome 141', os: 'Android', lastError: 'PATCH /api/tasks/9 500',
+          // с телефона (ТЗ-9, волна 10): приложение, версия оболочки, модель
+          platform: 'capacitor', nativeVersion: '1.4 (12)', device: 'Samsung SM-A525F · android 14',
+        },
       }).expect(201)).body.data;
     await http.post(`/api/support/desk/${conv.id}/join`).set(O).expect(201);
 
@@ -171,11 +176,16 @@ describe('служба заботы (e2e)', () => {
       .columns.flatMap((c: any) => c.tasks).find((t: any) => String(t.id) === String(bug.taskId));
     expect(task.description).toContain('PATCH /api/tasks/9 500');
     expect(task.description).toContain('Chrome 141');
+    expect(task.description).toContain('приложение 1.4 (12)');
+    expect(task.description).toContain('Samsung SM-A525F');
     expect(task.description).toContain(`Обращение №${conv.id}`);
 
-    // диагностика собрана для специалиста в одном месте
+    // диагностика собрана для специалиста в одном месте — с мобильными полями
     const diag = (await http.get(`/api/support/desk/${conv.id}/diagnostics`).set(O).expect(200)).body.data;
     expect(diag.context.route).toBe('projects');
+    expect(diag.context.platform).toBe('capacitor');
+    expect(diag.context.native_version).toBe('1.4 (12)');
+    expect(diag.context.device).toContain('SM-A525F');
     expect(diag.issues.some((i: any) => String(i.taskId) === String(bug.taskId))).toBe(true);
 
     // задачу закрыли — человеку приходит весть об исправлении, разговор ждёт проверки

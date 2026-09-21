@@ -5,7 +5,7 @@ import { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import {
-  IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min,
+  IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min,
 } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -31,6 +31,10 @@ class ContextDto {
   @IsOptional() @IsString() @MaxLength(1000) lastError?: string;
   @IsOptional() @IsString() @MaxLength(64) requestId?: string;
   @IsOptional() @IsString() @MaxLength(24) network?: string;
+  /** Мобильная оболочка (волна 10): где запущен фронт, версия оболочки, модель устройства. */
+  @IsOptional() @IsIn(['web', 'mobile-web', 'capacitor']) platform?: 'web' | 'mobile-web' | 'capacitor';
+  @IsOptional() @IsString() @MaxLength(40) nativeVersion?: string;
+  @IsOptional() @IsString() @MaxLength(80) device?: string;
 }
 
 class SendDto {

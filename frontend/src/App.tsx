@@ -102,11 +102,16 @@ function useAppHeight(): void {
 */
 function useDeepLinks(signedIn: boolean): void {
   const pending = useRef<string | null>(null);
+  const go = (path: string) => {
+    navigate(parsePath(path));
+    // Push от службы заботы ведёт в /support/<обращение>: раздел плюс сама панель разговора.
+    if (/^\/support\/\d+/.test(path)) openSupport();
+  };
   useEffect(() => platform.deepLinks.onOpen((path) => {
-    if (signedIn) navigate(parsePath(path)); else pending.current = path;
+    if (signedIn) go(path); else pending.current = path;
   }), [signedIn]);
   useEffect(() => {
-    if (signedIn && pending.current) { navigate(parsePath(pending.current)); pending.current = null; }
+    if (signedIn && pending.current) { go(pending.current); pending.current = null; }
   }, [signedIn]);
 }
 

@@ -1184,6 +1184,21 @@ test('офлайн-очередь: сводка и текст полосы — �
   assert.equal(queueBanner(true, summarize([q('1', 'pending'), q('3', 'failed')])), 'Не отправилось: 1');
 });
 
+// ── контекст обращения в службу заботы (волна 10) ─────────────────────────────
+test('контекст обращения: человеку показывают, что уйдёт, — с оболочкой и устройством', async () => {
+  const { describeContext } = await load('lib/support-context.ts');
+  assert.deepEqual(
+    describeContext({ route: 'projects', entityType: 'task', entityId: '15', browser: 'Chrome 141', os: 'Windows 10/11' }),
+    ['раздел: projects', 'задача: 15', 'Chrome 141', 'Windows 10/11'],
+  );
+  assert.deepEqual(
+    describeContext({ platform: 'capacitor', nativeVersion: '1.2 (7)', device: 'Samsung SM-A52 · android 14', os: 'Android', lastError: 'x' }),
+    ['приложение 1.2 (7)', 'Samsung SM-A52 · android 14', 'Android', 'последняя ошибка на экране'],
+  );
+  // сайт в телефоне — без «приложение», но с устройством
+  assert.deepEqual(describeContext({ platform: 'mobile-web', device: 'iPhone · Safari 17' }), ['iPhone · Safari 17']);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

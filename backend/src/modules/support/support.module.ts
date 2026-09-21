@@ -14,6 +14,7 @@ import { SupportDeskRepository } from './support-desk.repository';
 import { SupportDeskService } from './support-desk.service';
 import { SupportRepository } from './support.repository';
 import { SupportService } from './support.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 /**
  * Служба заботы (ТЗ-8) и старая кнопка «Поддержка».
@@ -25,6 +26,8 @@ import { SupportService } from './support.service';
   imports: [
     ProjectsModule, TasksModule, RealtimeModule, FilesModule, AnthillModule, MeetingsModule,
     ForecastModule, KnowledgeModule,
+    // Push человеку, который ушёл из приложения, не дождавшись ответа (волна 10).
+    NotificationsModule,
     // Записка специалисту о том, что уже пробовали, — короткий вызов модели напрямую.
     AiModule,
   ],

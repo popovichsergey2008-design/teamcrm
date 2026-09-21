@@ -9,11 +9,13 @@ import { initFontScale } from './lib/font-scale';
 import { initRouter } from './lib/router';
 import { unlockAudio } from './lib/sound';
 import { platform, platformKind, setPlatformBridge } from './platform';
+import { installSupportErrorCapture } from './lib/support-context';
 
 initTheme(); // до первой отрисовки: иначе тёмная тема мигнёт светлым
 initFontScale(); // тоже до отрисовки: увеличенный шрифт не должен моргать обычным
 initRouter(); // адрес должен быть разобран до первого рендера, иначе экран мигнёт разделом по умолчанию
 unlockAudio(); // браузер не даст звучать до первого касания страницы — готовимся заранее
+installSupportErrorCapture(); // сбои окна — в контекст обращения в службу заботы
 
 /*
   Мост в ОС подменяется ДО первого рендера (ТЗ-9).

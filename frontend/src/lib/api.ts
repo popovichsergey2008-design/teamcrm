@@ -8,6 +8,7 @@ import type {
 import { platform } from '../platform';
 import type { MobileConfig } from './mobile-config';
 import { enqueue, newChangeId, type QueuedChange } from './offline-queue';
+import { noteRequestId, noteSupportError } from './support-context';
 import { apiUrl } from './origin';
 
 const ACCESS_KEY = 'teamcrm.access';
@@ -147,7 +148,7 @@ export class ApiError extends Error {
 interface Envelope<T> {
   ok: boolean;
   data?: T;
-  error?: { code: string; message: string; details?: unknown };
+  error?: { code: string; message: string; details?: unknown; requestId?: string };
 }
 
 const BASE = apiUrl('/api');
@@ -176,8 +177,12 @@ async function rawRequest<T>(
     });
   } catch {
     // fetch падает без ответа только по сети: нет соединения, DNS, обрыв. Это не ошибка сервера.
+    noteSupportError(`Нет сети: ${method} ${path.split('?')[0]}`);
     throw new ApiError('OFFLINE', 'Нет сети');
   }
+  // Номер запроса — для службы заботы: по нему специалист находит строку в журнале (волна 10).
+  const requestId = res.headers.get('X-Request-Id');
+  noteRequestId(requestId);
 
   let env: Envelope<T>;
   try {
@@ -195,6 +200,8 @@ async function rawRequest<T>(
     throw new ApiError('INTERNAL', `Bad response (${res.status})`);
   }
   if (!env.ok) {
+    // Последняя ошибка на экране — в контекст обращения; истёкшая сессия не ошибка, она обновится.
+    if (env.error?.code !== 'UNAUTHORIZED') noteSupportError(`${env.error?.message ?? 'Error'} (${method} ${path.split('?')[0]})`, env.error?.requestId ?? requestId ?? undefined);
     throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Error', env.error?.details);
   }
   return env.data as T;
