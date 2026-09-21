@@ -1,5 +1,7 @@
 import { DragEvent, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { BottomSheet, SheetAction } from './BottomSheet';
+import { useIsPhone } from '../hooks/useMediaQuery';
 import type { BoardColumn, Task, User } from '../types';
 import { MONETIZATION_ENABLED } from '../config';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
@@ -216,6 +218,7 @@ function TaskCard({
     добраться. Список колонок открывается по нажатию и закрывается щелчком мимо.
   */
   const [moveOpen, setMoveOpen] = useState(false);
+  const phone = useIsPhone();
   const moveRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!moveOpen) return;
@@ -244,7 +247,15 @@ function TaskCard({
           >
             <Icon name="arrow-right" size={13} />
           </button>
-          {moveOpen && (
+          {/* На телефоне — нижний лист с крупными строками; на компьютере — выпадашка у кнопки. */}
+          {moveOpen && phone && (
+            <BottomSheet title={`Переместить: ${task.title}`} onClose={() => setMoveOpen(false)}>
+              {moveTargets.map((c) => (
+                <SheetAction key={c.id} icon={<Icon name="arrow-right" size={18} />} label={c.name} onClick={() => { setMoveOpen(false); onMoveTo?.(c.id); }} />
+              ))}
+            </BottomSheet>
+          )}
+          {moveOpen && !phone && (
             <div className="menu-pop task-card-move-pop" role="menu">
               {moveTargets.map((c) => (
                 <button key={c.id} className="menu-item" role="menuitem" onClick={() => { setMoveOpen(false); onMoveTo?.(c.id); }}>

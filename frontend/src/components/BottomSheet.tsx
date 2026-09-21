@@ -12,8 +12,14 @@ import { overlayProps } from '../lib/overlay';
  */
 export function BottomSheet({ title, onClose, children }: { title?: string; onClose: () => void; children: ReactNode }) {
   useEscape(onClose);
+  const overlay = overlayProps(onClose);
   return (
-    <div className="sheet-overlay" {...overlayProps(onClose)}>
+    // Щелчки листа не всплывают к карточке, из которой он открыт: иначе закрытие листа открывало бы задачу.
+    <div
+      className="sheet-overlay"
+      onMouseDown={(e) => { overlay.onMouseDown(e); e.stopPropagation(); }}
+      onClick={(e) => { overlay.onClick(e); e.stopPropagation(); }}
+    >
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title ?? 'Действия'} onClick={(e) => e.stopPropagation()}>
         <span className="sheet-grip" aria-hidden="true" />
         {title && <div className="sheet-title">{title}</div>}
