@@ -5204,5 +5204,6 @@ button.chat-pop-row:hover { background: var(--hover); }
 .getapp-notes { margin: 0 0 10px; white-space: pre-line; }
 .getapp-steps { margin: 0 0 10px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
 .getapp-verify summary { cursor: pointer; color: var(--accent); }
+.getapp-verify summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
 .getapp-sha { display: block; padding: 8px 10px; margin: 6px 0; font-size: var(--fs-sm); word-break: break-all; background: var(--bg-elev-2); border-radius: var(--radius-sm); }
 .getapp-foot { text-align: center; }
