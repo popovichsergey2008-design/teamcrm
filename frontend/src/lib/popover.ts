@@ -37,12 +37,23 @@ export function placePopover(
   height: number,
   viewportWidth: number,
   width = 232,
+  viewportHeight?: number,
 ): PopoverPlace {
+  const x = Math.max(EDGE, Math.min(rect.left, viewportWidth - width - EDGE));
   // Места сверху должно хватить на саму всплывашку и на зазор — иначе вниз.
   const up = rect.top > height + GAP + EDGE;
-  return {
-    x: Math.max(EDGE, Math.min(rect.left, viewportWidth - width - EDGE)),
-    y: up ? rect.top - GAP : rect.bottom + GAP,
-    up,
-  };
+  if (viewportHeight === undefined) return { x, y: up ? rect.top - GAP : rect.bottom + GAP, up };
+
+  /*
+    Высота окна известна — не даём меню уехать за нижний край.
+
+    Длинное меню (реакции плюс десяток действий) не помещается ни сверху, ни снизу:
+    над репликой в середине ленты места мало, под ней — экран кончается, и половина
+    пунктов оказывалась за краем. Мессенджеры в таком случае просто сдвигают меню
+    вверх, пока оно не поместится целиком; делаем так же. Раскрытие вниз считаем
+    от верхнего края, вверх — от нижнего (его сдвигает translateY(-100%)).
+  */
+  const top = up ? rect.top - GAP - height : rect.bottom + GAP;
+  const fitted = Math.max(EDGE, Math.min(top, viewportHeight - height - EDGE));
+  return { x, y: up ? fitted + height : fitted, up };
 }

@@ -53,7 +53,13 @@ export class FilesController {
   @Get(':id')
   async download(@CurrentUser() user: AuthUser, @Param('id') id: string, @Res() res: Response) {
     const { file, stream } = await this.files.getForDownload(user.tenantId, id);
-    const inline = file.content_type.startsWith('image/') || file.content_type === 'application/pdf';
+    /*
+      Показываем в окне браузера только то, что безопасно показать. SVG — это документ
+      со скриптами внутри: открытый по нашему адресу, он получил бы и наши cookie.
+      Картинки и PDF смотрят как есть, остальное скачивается.
+    */
+    const inline = (file.content_type.startsWith('image/') && file.content_type !== 'image/svg+xml')
+      || file.content_type === 'application/pdf';
     res.setHeader('Content-Type', file.content_type);
     res.setHeader('Content-Length', file.size_bytes);
     res.setHeader(

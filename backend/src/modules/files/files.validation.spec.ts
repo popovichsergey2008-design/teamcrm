@@ -15,6 +15,21 @@ describe('validateUpload', () => {
   it('отклоняет пустой файл', () => {
     expect(validateUpload('image/png', 0).ok).toBe(false);
   });
+  it('пропускает архивы и незнакомые типы: они идут вложением, а не открываются', () => {
+    // задача #1361: один такой файл рядом со снимком ронял ВСЁ сообщение
+    for (const t of ['application/vnd.rar', 'application/x-7z-compressed', 'application/octet-stream', 'application/gzip']) {
+      expect(validateUpload(t, 1000).ok).toBe(true);
+    }
+  });
+  it('в отказе называет файл и причину по-русски', () => {
+    const r = validateUpload('application/x-msdownload', 1000, MAX_FILE_BYTES, 'вирус.exe');
+    expect(r.ok).toBe(false);
+    expect((r as { reason: string }).reason).toContain('вирус.exe');
+    expect((r as { reason: string }).reason).toContain('тип файла');
+    const big = validateUpload('image/png', MAX_FILE_BYTES + 1, MAX_FILE_BYTES, 'макет.png');
+    expect((big as { reason: string }).reason).toContain('макет.png');
+    expect((big as { reason: string }).reason).toContain('25 МБ');
+  });
 });
 
 describe('sanitizeFileName', () => {

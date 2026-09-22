@@ -6,6 +6,7 @@ import type { User } from '../types';
 import { labelTextColor } from '../lib/labels';
 import { navigate } from '../lib/router';
 import { overlayProps } from '../lib/overlay';
+import { isAnonymousClipboardName, screenshotName } from '../lib/attachments';
 
 interface Props {
   projectId: string;
@@ -84,7 +85,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const toggleLabel = (id: string) =>
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
-  const addFiles = (list: FileList | null) => {
+  const addFiles = (list: FileList | File[] | null) => {
     if (!list?.length) return;
     // одноимённые не копим: человек выбирает файл дважды чаще, чем прикладывает два одинаковых
     setFiles((prev) => {
@@ -138,7 +139,27 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const finishAfterPartial = () => { onCreated(); onClose(); };
 
   return (
-    <div className="modal-overlay" {...overlayProps(onClose)}>
+    <div
+      className="modal-overlay"
+      data-paste-scope
+      /*
+        Снимок из буфера — прямо в задачу (задача #1367).
+
+        Раньше Ctrl+V здесь не делал ничего, а слушатель открытой позади переписки
+        уносил снимок в чат, из которого человек только что вышел. Теперь верхний
+        слой забирает вставку себе — и это окно тоже умеет её принимать.
+      */
+      onPaste={(e) => {
+        const images = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
+        if (!images.length) return;
+        e.preventDefault();
+        // «image.png» из буфера — это дата и время снимка, иначе в списке десяток одинаковых имён
+        addFiles(images.map((f) => (isAnonymousClipboardName(f.name)
+          ? new File([f], screenshotName(new Date(), f.type), { type: f.type })
+          : f)));
+      }}
+      {...overlayProps(onClose)}
+    >
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3>Новая задача · {columnName}</h3>

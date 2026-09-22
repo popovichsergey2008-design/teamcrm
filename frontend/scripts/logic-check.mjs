@@ -1199,6 +1199,38 @@ test('контекст обращения: человеку показывают
   assert.deepEqual(describeContext({ platform: 'mobile-web', device: 'iPhone · Safari 17' }), ['iPhone · Safari 17']);
 });
 
+// ── правки по задачам 1349–1374 ────────────────────────────────────────────────
+test('меню сообщения не уезжает за нижний край экрана (задача #1365)', async () => {
+  const { placePopover } = await load('lib/popover.ts');
+  const H = 364; // реакции плюс девять пунктов — обычное меню своего сообщения
+  // клик в середине экрана: места сверху хватает — раскрываем вверх, как раньше
+  const mid = placePopover({ left: 100, top: 500, bottom: 520 }, H, 1200, 232, 800);
+  assert.equal(mid.up, true);
+  assert.ok(mid.y - H >= 8, 'верх меню не выше края экрана');
+  // клик у самого низа: вниз не помещается — сдвигаем так, чтобы поместилось целиком
+  const low = placePopover({ left: 100, top: 300, bottom: 320 }, H, 1200, 232, 560);
+  const top = low.up ? low.y - H : low.y;
+  assert.ok(top >= 8, `верх ${top} внутри экрана`);
+  assert.ok(top + H <= 560 - 8, `низ ${top + H} внутри экрана 560`);
+  // короткое меню у верхнего края раскрывается вниз и тоже помещается
+  const high = placePopover({ left: 100, top: 20, bottom: 40 }, 120, 1200, 232, 800);
+  assert.equal(high.up, false);
+  assert.ok(high.y + 120 <= 800 - 8);
+  // без высоты окна поведение прежнее — старые вызовы не трогаем
+  assert.deepEqual(placePopover({ left: 100, top: 500, bottom: 520 }, H, 1200), { x: 100, y: 494, up: true });
+});
+
+test('вставка из буфера достаётся верхнему открытому слою (задача #1367)', async () => {
+  const { topmostIsMine } = await load('lib/paste-scope.ts');
+  const chat = { id: 'chat' };
+  const modal = { id: 'modal' };
+  assert.equal(topmostIsMine([], null), true, 'слоёв нет — вставка наша');
+  assert.equal(topmostIsMine([chat], chat), true, 'открыт только чат');
+  assert.equal(topmostIsMine([chat, modal], chat), false, 'поверх чата окно задачи — молчим');
+  assert.equal(topmostIsMine([chat, modal], modal), true, 'окно задачи сверху — вставка его');
+  assert.equal(topmostIsMine([modal], null), false, 'наш слой не нашёлся, а чужой открыт');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

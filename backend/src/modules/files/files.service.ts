@@ -25,7 +25,7 @@ export class FilesService {
     /** Записи встреч заметно тяжелее обычных вложений — лимит задаётся вызывающим. */
     maxBytes?: number;
   }): Promise<FileRow> {
-    const v = validateUpload(input.contentType, input.buffer.length, input.maxBytes);
+    const v = validateUpload(input.contentType, input.buffer.length, input.maxBytes, input.fileName);
     if (!v.ok) throw AppException.validation(v.reason);
 
     const safeName = sanitizeFileName(decodeUploadName(input.fileName));

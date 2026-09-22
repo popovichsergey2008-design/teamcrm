@@ -2560,7 +2560,28 @@
 .presence { width: 7px; height: 7px; border-radius: 50%; background: var(--border-2); flex-shrink: 0; }
 .presence.on { background: var(--ok); }
 
-.chat-view { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.chat-view { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+/*
+  Кнопка «вниз» — как в мессенджерах (задача #1362).
+
+  Висит над лентой у правого края, чуть выше поля ввода; число на ней — сколько
+  пришло, пока человек читал старое. Позиционируется от контейнера переписки, а не
+  от самой ленты: внутри прокручиваемой области она уезжала бы вместе с прокруткой.
+*/
+.chat-jump {
+  position: absolute; right: 18px; bottom: 96px; z-index: 6;
+  display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+  background: var(--bg-elev); color: var(--text); border: 1px solid var(--border-2);
+  box-shadow: var(--shadow); cursor: pointer;
+}
+.chat-jump:hover { background: var(--bg-elev-2); }
+.chat-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-jump-count {
+  position: absolute; top: -6px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px;
+  display: grid; place-items: center; border-radius: 9px;
+  background: var(--fill-info); color: #fff; font-size: var(--fs-xs); font-weight: 600;
+}
+@media (max-width: 720px) { .chat-jump { bottom: calc(96px + var(--safe-bottom)); } }
 .chat-empty { margin: auto; }
 
 /*
@@ -2938,9 +2959,21 @@
   что увидит собеседник, и только потом решать — отправить сейчас, перенести или
   удалить.
 */
+/*
+  Отложенные сообщения идут списком, и между ними нужен воздух (задача #1349):
+  без него три карточки читались как одна простыня, и было непонятно, где кончается
+  одно сообщение и начинается другое.
+*/
 .later-item {
-  display: flex; flex-direction: column; gap: 6px; padding: 10px;
+  display: flex; flex-direction: column; gap: 6px; padding: 12px;
   border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev);
+}
+.later-item + .later-item { margin-top: 10px; }
+.later-item:first-of-type { margin-top: 12px; }
+/* Состояние отложенного: ждёт отправки или сколько раз уже ушло. */
+.later-state {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--fs-xs); color: var(--text-mut);
 }
 .later-when { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--accent); }
 .later-text { white-space: pre-wrap; word-break: break-word; }
@@ -5247,3 +5280,7 @@ button.chat-pop-row:hover { background: var(--hover); }
 .getapp-verify summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
 .getapp-sha { display: block; padding: 8px 10px; margin: 6px 0; font-size: var(--fs-sm); word-break: break-all; background: var(--bg-elev-2); border-radius: var(--radius-sm); }
 .getapp-foot { text-align: center; }
+
+/* «Все проекты» рядом с переключателем доски (задача #1374): не теряется, но и не спорит с названием. */
+.board-all-btn { flex: 0 0 auto; white-space: nowrap; }
+@media (max-width: 720px) { .board-all-btn span, .board-all-btn { font-size: var(--fs-sm); } }

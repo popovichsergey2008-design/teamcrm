@@ -548,6 +548,20 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                     </span>
                   )}
                 </span>
+                {/*
+                  «Все проекты» рядом с названием доски (задача #1374).
+
+                  Раньше выход к таблице проектов был спрятан в самом низу списка досок:
+                  доска открывается на последней, и человек, которому нужен общий список,
+                  сначала открывал выпадашку, потом искал в ней строку. Одно нажатие вместо трёх.
+                */}
+                <button
+                  className="btn btn-ghost btn-sm board-all-btn"
+                  onClick={() => { forgetProject(); navigate({ section: 'projects' }); }}
+                  title="Таблица со всеми проектами"
+                >
+                  <Icon name="list" size={14} /> Все проекты
+                </button>
                 <span className="view-switch" role="tablist" aria-label="Вид доски">
                   <button className={`view-btn ${view === 'board' ? 'active' : ''}`} onClick={() => switchView('board')} title="Канбан-доска"><Icon name="board" size={14} /> Доска</button>
                   <button className={`view-btn ${view === 'list' ? 'active' : ''}`} onClick={() => switchView('list')} title="Список"><Icon name="list" size={14} /> Список</button>

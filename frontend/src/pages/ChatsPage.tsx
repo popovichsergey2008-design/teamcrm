@@ -36,6 +36,7 @@ import { applyOrder, moveItem } from '../lib/menu-order';
 import { firstUnreadId } from '../lib/unread-line';
 import { showToast, toastSaved } from '../lib/notifications';
 import { overlayProps } from '../lib/overlay';
+import { pasteBelongsHere } from '../lib/paste-scope';
 import type { User } from '../types';
 
 interface Chat {
@@ -429,6 +430,30 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   } | null>(null);
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
+  /*
+    Лента у нижнего края (задачи #1373, #1362).
+
+    Раньше любое новое сообщение мотало ленту вниз — человек, читавший вчерашнее,
+    терял место по нескольку раз подряд. Теперь вниз мотаем, только если человек и
+    так стоит внизу (или написал сам), а если он выше — показываем кнопку со
+    счётчиком: «вниз, там N новых».
+  */
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
+  const [missed, setMissed] = useState(0);
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    const el = feedRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    setMissed(0);
+  };
+  const onFeedScroll = (el: HTMLDivElement) => {
+    // 120 точек — примерно строка-полторы: человек «внизу», даже если чуть отмотал.
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    atBottomRef.current = bottom;
+    setAtBottom(bottom);
+    if (bottom) setMissed(0);
+  };
   /*
     Какое из совпадений показано.
 
@@ -852,6 +877,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       // Все картинки из буфера, а не первая: вставляют и по нескольку снимков сразу.
       const images = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
       if (!images.length) return;
+      // Поверх переписки открыли задачу или окно — снимок нужен ИМ, а не нам (задача #1367).
+      if (!pasteBelongsHere(feedRef.current)) return;
       e.preventDefault();
       // Открыта ветка — вставляем в НЕЁ: человек смотрит туда, туда и кладём.
       if (thread) { attachToThread(images); return; }
@@ -866,11 +893,22 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => clearPending, [activeId]);
 
-  // лента всегда прокручена вниз: читают последнее, а не начало переписки
+  /*
+    Куда смотреть после новой реплики.
+
+    Внизу — доматываем до низа (читают последнее). Выше — НЕ трогаем прокрутку:
+    человек читает старое, и уезжающая из-под пальца лента — худшее, что можно
+    сделать. Пропущенное считаем, чтобы показать его числом на кнопке.
+  */
+  const lastCount = useRef(0);
   useEffect(() => {
-    if (keepScroll.current) { keepScroll.current = false; return; }
+    if (keepScroll.current) { keepScroll.current = false; lastCount.current = messages.length; return; }
     const el = feedRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    const grew = messages.length - lastCount.current;
+    lastCount.current = messages.length;
+    if (!el) return;
+    if (atBottomRef.current) { el.scrollTop = el.scrollHeight; return; }
+    if (grew > 0) setMissed((n) => n + grew);
   }, [messages]);
 
   /** Докрутили до верха — подшиваем страницу старше, не сдвигая то, что перед глазами. */
@@ -932,6 +970,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         : await api.sendChatMessage(activeId, text, undefined, calls, reply);
       setMentioned([]);
       setReplyTo(null);
+      // Своё сообщение всегда доматываем: человек нажал «отправить» и ждёт его увидеть.
+      atBottomRef.current = true;
       appendMessage(message);
       reload();
     } catch (e) {
@@ -2235,7 +2275,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               );
             })()}
 
-            <div className="chat-feed" ref={feedRef} onScroll={(e) => { closePops(); if (e.currentTarget.scrollTop < 80) void loadOlder(); }}>
+            <div
+              className="chat-feed"
+              ref={feedRef}
+              onScroll={(e) => { closePops(); onFeedScroll(e.currentTarget); if (e.currentTarget.scrollTop < 80) void loadOlder(); }}
+            >
               {olderBusy && <div className="dim chat-older">Загружаю более ранние…</div>}
               {msgLoading && <div style={{ padding: 12 }}><SkeletonList rows={4} /></div>}
               {!msgLoading && messages.length === 0 && (
@@ -2483,6 +2527,25 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 </div>
               ))}
             </div>
+
+            {/*
+              «Вниз» — как в мессенджерах (задача #1362).
+
+              Появляется, когда человек отмотал ленту вверх, и уносит к последним
+              репликам одним нажатием. Пришедшее, пока он читал старое, показано
+              числом: без него непонятно, ради чего возвращаться.
+            */}
+            {!atBottom && (
+              <button
+                className="chat-jump"
+                onClick={() => scrollToBottom()}
+                title="К последним сообщениям"
+                aria-label="К последним сообщениям"
+              >
+                <Icon name="chevron-down" size={18} />
+                {missed > 0 && <span className="chat-jump-count">{missed > 99 ? '99+' : missed}</span>}
+              </button>
+            )}
 
             {/* Идёт запись — это должно быть видно без сомнений: человек говорит вслух,
                 и «пишется или нет» он обязан понимать сразу. */}
@@ -2963,11 +3026,22 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               <div key={x.id} className="later-item">
                 <div className="later-when">
                   <Icon name={x.repeat === 'daily' ? 'refresh' : 'clock'} size={13} /> Отправлю {laterLabel(x)}
-                  {x.sentCount > 0 && (
-                    <span className="dim"> · уже отправлено раз: {x.sentCount}</span>
-                  )}
                 </div>
                 <div className="chat-body later-text">{x.body}</div>
+                {/*
+                  Состояние отложенного (задача #1349).
+
+                  Галочек «прочитано» здесь быть не может: сообщения ещё нет в
+                  переписке, читать нечего. Поэтому говорим правду — «ждёт отправки»,
+                  а для повторяющегося ещё и сколько раз уже ушло. Прочтение видно
+                  после отправки, в самой ленте, обычными галочками.
+                */}
+                <div className="later-state">
+                  <Icon name="clock" size={12} />
+                  {x.sentCount > 0
+                    ? `Отправлено раз: ${x.sentCount} · следующее ${laterLabel(x)}`
+                    : 'Ждёт отправки · в переписке пока не видно, прочитать нельзя'}
+                </div>
                 <div className="later-actions">
                   <button className="btn btn-primary btn-sm" onClick={() => sendScheduledNow(x.id)}>
                     <Icon name="send" size={13} /> Отправить сейчас

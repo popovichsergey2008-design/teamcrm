@@ -9,6 +9,13 @@ const ALLOWED = new Set([
   'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4', 'audio/webm', 'audio/x-m4a', 'audio/flac',
   'application/pdf', 'text/plain', 'text/csv', 'text/markdown',
   'application/zip', 'application/x-zip-compressed',
+  // Архивы, которые шлют вместе со снимком: раньше один такой файл ронял ВСЁ сообщение.
+  'application/vnd.rar', 'application/x-rar-compressed', 'application/x-7z-compressed',
+  'application/x-tar', 'application/gzip', 'application/x-gzip',
+  // Тип, которым браузер помечает всё незнакомое (.dwg, .psd, .sql, файл без расширения).
+  // Отдаём такие только вложением (см. files.controller), поэтому опасности не добавляют.
+  'application/octet-stream',
+  'application/json', 'application/xml', 'text/xml', 'text/html', 'application/rtf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
@@ -25,10 +32,22 @@ export interface ValidationOk {
   ok: true;
 }
 
-export function validateUpload(contentType: string, sizeBytes: number, maxBytes = MAX_FILE_BYTES): ValidationOk | ValidationError {
-  if (sizeBytes <= 0) return { ok: false, reason: 'empty file' };
-  if (sizeBytes > maxBytes) return { ok: false, reason: `file too large (>${maxBytes} bytes)` };
-  if (!ALLOWED.has(contentType)) return { ok: false, reason: `content-type not allowed: ${contentType}` };
+/**
+ * Проверка одного файла.
+ *
+ * Сообщение об отказе читает человек, а не разработчик: он приложил к снимку договор
+ * и получил «content-type not allowed» — из этого не следует, что делать. Поэтому
+ * называем сам файл и говорим по-русски; имя необязательное, чтобы старые вызовы
+ * не переписывать.
+ */
+export function validateUpload(
+  contentType: string, sizeBytes: number, maxBytes = MAX_FILE_BYTES, fileName?: string,
+): ValidationOk | ValidationError {
+  const who = fileName ? `«${fileName}»: ` : '';
+  const mb = Math.round(maxBytes / (1024 * 1024));
+  if (sizeBytes <= 0) return { ok: false, reason: `${who}пустой файл` };
+  if (sizeBytes > maxBytes) return { ok: false, reason: `${who}файл больше ${mb} МБ` };
+  if (!ALLOWED.has(contentType)) return { ok: false, reason: `${who}такой тип файла не принимаем (${contentType})` };
   return { ok: true };
 }
 

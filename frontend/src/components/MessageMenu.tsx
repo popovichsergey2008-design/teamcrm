@@ -50,7 +50,7 @@ export function MessageMenu({ at, reactions, onReact, items, onClose }: {
   }, [onClose]);
 
   const height = items.length * 34 + (reactions?.length ? 46 : 0) + 12;
-  const place = placePopover({ left: at.x, top: at.y, bottom: at.y }, height, window.innerWidth, 232);
+  const place = placePopover({ left: at.x, top: at.y, bottom: at.y }, height, window.innerWidth, 232, window.innerHeight);
 
   return (
     <>

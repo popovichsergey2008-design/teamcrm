@@ -11,6 +11,7 @@ import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync'
 import { dayLabel, plural, sameGroup, stampLabel } from '../lib/chat-text';
 import { MessageText } from './MessageText';
 import { longPressProps, MenuAt, MessageMenu } from './MessageMenu';
+import { pasteBelongsHere } from '../lib/paste-scope';
 import { useDismiss } from '../hooks/useDismiss';
 import { selectionIn } from '../lib/selection';
 import { shrinkImage } from '../lib/image-shrink';
@@ -412,6 +413,8 @@ export function TaskChat({
     const onPaste = (e: ClipboardEvent) => {
       const file = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'));
       if (!file) return;
+      // Поверх карточки открыли окно — снимок нужен ему (задача #1367).
+      if (!pasteBelongsHere(composeRef.current)) return;
       e.preventDefault();
       void attach(file);
     };
