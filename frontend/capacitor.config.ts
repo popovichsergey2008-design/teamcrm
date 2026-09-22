@@ -31,6 +31,8 @@ const config: CapacitorConfig = {
   plugins: {
     SplashScreen: { launchAutoHide: true, launchShowDuration: 600, backgroundColor: '#0b0d12' },
     Keyboard: { resize: 'body' },
+    // Переключатель приложений содержимое не показывает, снимки экрана — можно (D-07 с поправкой).
+    PrivacyScreen: { enable: true, preventScreenshots: false },
   },
 };
 

@@ -9,7 +9,7 @@ import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { ForegroundService, ServiceType } from '@capawesome-team/capacitor-android-foreground-service';
 import { KeepAwake } from '@capacitor-community/keep-awake';
-import { registerPlugin } from '@capacitor/core';
+import { registerPlugin, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { browserBridge, BUNDLE_VERSION } from './browser';
 import type { PlatformBridge, PlatformInfo } from './types';
 
@@ -79,6 +79,23 @@ void PushNotifications.addListener('pushNotificationReceived', () => {
   window.dispatchEvent(new Event('teamcrm:push-foreground'));
 }).catch(() => undefined);
 
+/**
+ * Значки в строке состояния — под тему приложения, а не системы (волна 12).
+ * Приложение тёмное, система светлая — без этого часы на тёмной шапке не видны.
+ */
+function syncSystemBars(): void {
+  const apply = () => {
+    const explicit = document.documentElement.getAttribute('data-theme');
+    const dark = explicit ? explicit === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    void SystemBars.setStyle({ style: dark ? SystemBarsStyle.Dark : SystemBarsStyle.Light }).catch(() => undefined);
+  };
+  apply();
+  try {
+    new MutationObserver(apply).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', apply);
+  } catch { /* старый WebView */ }
+}
+
 async function warmUp(): Promise<void> {
   await SecureStorage.setKeyPrefix('anthill.');
   await Promise.all(KEYS.map(async (k) => {
@@ -86,8 +103,13 @@ async function warmUp(): Promise<void> {
     if (v != null) cache.set(k, v);
   }));
   const [d, a] = await Promise.all([Device.getInfo().catch(() => null), CapApp.getInfo().catch(() => null)]);
-  // Содержимое не попадает в переключатель приложений и на снимки экрана (ТЗ-9, D-07).
+  /*
+    Содержимое не попадает в переключатель приложений (ТЗ-9, D-07). Снимки экрана при этом
+    разрешены (preventScreenshots: false в capacitor.config): без них человек не может
+    показать, что у него сломалось, — это мешало больше, чем защищало.
+  */
   void PrivacyScreen.enable().catch(() => undefined);
+  syncSystemBars();
   deviceInfo = {
     kind: 'capacitor',
     os: d?.platform === 'ios' ? 'ios' : d?.platform === 'android' ? 'android' : 'other',
