@@ -74,6 +74,15 @@ jobs:
           sed -i "s/versionName \"[^\"]*\"/versionName \"${{ inputs.version }}\"/" app/build.gradle
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" app/build.gradle
           grep -E "versionName|versionCode" app/build.gradle
+      - name: Firebase для push (google-services.json из секретов)
+        # Файл не секрет в строгом смысле, но репозиторий публичный — ключи проекта Firebase
+        # наружу не выкладываем. Без него сборка проходит, push выключен (см. app/build.gradle).
+        env:
+          GS_B64: ${{ secrets.ANDROID_GOOGLE_SERVICES_B64 }}
+        run: |
+          if [ -z "$GS_B64" ]; then echo "секрета нет — сборка без push"; exit 0; fi
+          echo "$GS_B64" | base64 -d > native/android/app/google-services.json
+          node -e "const j=require('./native/android/app/google-services.json'); console.log('firebase project:', j.project_info.project_id)"
       - name: Ключ подписи из секретов
         # Релизный ключ живёт в секретах репозитория (и у заказчика в резерве). Потерять его —
         # значит не суметь обновить уже установленные приложения: App Links и обновления
