@@ -19,7 +19,8 @@ const MAX_ATTEMPTS = 6;
 export class MailWorker implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('MailWorker');
   private timer?: NodeJS.Timeout;
-  private busy = false;
+  /** Идущий проход: второй вызов не запускает параллельный, а ждёт этот. */
+  private inflight: Promise<number> | null = null;
   private transport: MailTransport = createTransport(process.env);
 
   constructor(
@@ -40,10 +41,20 @@ export class MailWorker implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
   }
 
-  /** Один проход очереди. Публичный — тесты зовут напрямую, не дожидаясь таймера. */
-  async tick(): Promise<number> {
-    if (this.busy) return 0;
-    this.busy = true;
+  /**
+   * Один проход очереди. Публичный — тесты зовут напрямую, не дожидаясь таймера.
+   *
+   * Если проход уже идёт (таймер успел раньше), возвращаем ЕГО обещание, а не ноль:
+   * вызвавший ждёт, пока письмо ляжет в ящик и уйдёт. Раньше такой вызов был холостым,
+   * и тест читал пустой ящик за мгновение до того, как фоновый проход его заполнил.
+   */
+  tick(): Promise<number> {
+    if (this.inflight) return this.inflight;
+    this.inflight = this.pass().finally(() => { this.inflight = null; });
+    return this.inflight;
+  }
+
+  private async pass(): Promise<number> {
     let sent = 0;
     try {
       for (const row of await this.repo.claim(BATCH)) {
@@ -68,8 +79,6 @@ export class MailWorker implements OnModuleInit, OnModuleDestroy {
       }
     } catch (e) {
       this.log.warn(`проход очереди не удался: ${(e as Error).message}`);
-    } finally {
-      this.busy = false;
     }
     return sent;
   }
