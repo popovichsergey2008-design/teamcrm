@@ -61,7 +61,7 @@ export function SupportPage() {
             </a>
           )}
           <button className="btn btn-primary btn-sm" onClick={() => openSupport()}>
-            <Icon name="chat" size={15} /> Написать
+            <Icon name="support" size={15} /> Обратиться в службу заботы
           </button>
         </div>
       </div>
