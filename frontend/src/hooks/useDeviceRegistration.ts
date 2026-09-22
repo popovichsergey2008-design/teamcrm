@@ -20,7 +20,9 @@ export function useDeviceRegistration(signedIn: boolean): void {
       const uuid = await platform.deviceUuid();
       if (!uuid || !alive) return;
       const info = platform.info();
-      // Push-токен спрашиваем здесь же: разрешение — сразу после входа, а не в случайный момент.
+      // Разрешение на уведомления — сразу после входа, а не в случайный момент; без него
+      // молчат и push, и уведомления самого приложения (волна 12).
+      if (platform.notifications.permission() === 'default') await platform.notifications.requestPermission();
       const pushToken = await platform.notifications.pushToken();
       try {
         const r = await api.registerDevice({

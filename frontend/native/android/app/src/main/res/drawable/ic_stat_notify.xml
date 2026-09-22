@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Значок уведомлений в строке состояния: только белый силуэт, как требует Android —
+     шестигранник марки ANTHILL с точкой в центре. Цветная иконка здесь превращается в белый квадрат. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,2.2 L20.5,7.1 L20.5,16.9 L12,21.8 L3.5,16.9 L3.5,7.1 Z M12,4.5 L5.5,8.25 L5.5,15.75 L12,19.5 L18.5,15.75 L18.5,8.25 Z"
+        android:fillType="evenOdd" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,8.5 L15.2,10.3 L15.2,13.7 L12,15.5 L8.8,13.7 L8.8,10.3 Z" />
+</vector>

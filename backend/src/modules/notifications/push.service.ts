@@ -213,6 +213,8 @@ export class PushService {
       this.log.warn(`ящик для письма #${row.id}: ${(e as Error).message}`);
       return;
     }
+    // Живому приложению (сокет открыт, пусть и в фоне) — сигнал без push: оно само догонит ящик (волна 12).
+    if (item) this.realtime.emitToUsers(row.tenant_id, [row.user_id], 'inbox.item', { id: String(item.id), eventKey: item.event_key });
     if (!item || row.push_sent_at || !this.fcm.enabled) return;
 
     try {

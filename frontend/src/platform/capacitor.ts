@@ -9,6 +9,7 @@ import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { ForegroundService, ServiceType } from '@capawesome-team/capacitor-android-foreground-service';
 import { KeepAwake } from '@capacitor-community/keep-awake';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import { registerPlugin, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { browserBridge, BUNDLE_VERSION } from './browser';
 import type { PlatformBridge, PlatformInfo } from './types';
@@ -41,6 +42,38 @@ let deviceInfo: PlatformInfo | null = null;
 */
 let pushToken: Promise<string | null> | null = null;
 const deepLinkHandlers = new Set<(path: string) => void>();
+
+/*
+  Уведомления самого приложения (волна 12).
+
+  Push через Firebase будит закрытое приложение, но Firebase у нас пока нет. Пока
+  процесс жив — открыт или свёрнут — события приходят по сокету, и показать их в
+  центре уведомлений ОС можно без всякого Firebase: `LocalNotifications`. Браузерный
+  `new Notification()` в WebView не работает вовсе — поэтому в оболочке молчало всё.
+  Разрешение кэшируем: интерфейс моста читает его синхронно.
+*/
+type Perm = 'granted' | 'denied' | 'default' | 'unsupported';
+let localPerm: Perm = 'default';
+let nextLocalId = 1;
+const clickHandlers = new Map<number, () => void>();
+const CALL_NOTIFICATION_ID = 900_001;
+
+function toPerm(v: string | undefined): Perm {
+  return v === 'granted' ? 'granted' : v === 'denied' ? 'denied' : 'default';
+}
+async function prepareLocalNotifications(): Promise<void> {
+  try {
+    localPerm = toPerm((await LocalNotifications.checkPermissions()).display);
+    await LocalNotifications.createChannel({ id: 'anthill', name: 'ANTHILL', importance: 4, sound: 'default', description: 'Сообщения, задачи, напоминания' });
+    await LocalNotifications.createChannel({ id: 'anthill-calls', name: 'Звонки', importance: 5, sound: 'default', vibration: true, description: 'Входящие созвоны' });
+    await LocalNotifications.addListener('localNotificationActionPerformed', (e) => {
+      const h = clickHandlers.get(e.notification.id);
+      clickHandlers.delete(e.notification.id);
+      if (h) h();
+      else if (e.notification.id === CALL_NOTIFICATION_ID) for (const d of deepLinkHandlers) d('/chat');
+    });
+  } catch { /* старый WebView или iOS без разрешения */ }
+}
 
 /** Свой плагин оболочки (native/android/.../AnthillNativePlugin.java). */
 const AnthillNative = registerPlugin<{ pushAvailable(): Promise<{ available: boolean }> }>('AnthillNative');
@@ -103,6 +136,7 @@ async function warmUp(): Promise<void> {
     if (v != null) cache.set(k, v);
   }));
   const [d, a] = await Promise.all([Device.getInfo().catch(() => null), CapApp.getInfo().catch(() => null)]);
+  await prepareLocalNotifications();
   /*
     Содержимое не попадает в переключатель приложений (ТЗ-9, D-07). Снимки экрана при этом
     разрешены (preventScreenshots: false в capacitor.config): без них человек не может
@@ -127,7 +161,20 @@ export const capacitorBridge: PlatformBridge = {
   deviceUuid: () => Device.getId().then((r) => r.identifier || null).catch(() => null),
 
   notifications: {
-    ...browserBridge.notifications,
+    permission: () => localPerm,
+    async requestPermission() {
+      try { localPerm = toPerm((await LocalNotifications.requestPermissions()).display); } catch { localPerm = 'denied'; }
+      return localPerm;
+    },
+    show(title, body, onClick) {
+      if (localPerm !== 'granted') return;
+      const id = nextLocalId++;
+      if (onClick) clickHandlers.set(id, onClick);
+      void LocalNotifications.schedule({
+        notifications: [{ id, title, body, channelId: 'anthill', smallIcon: 'ic_stat_notify' }],
+      }).catch(() => undefined);
+    },
+    setBadge: browserBridge.notifications.setBadge,
     pushToken: requestPushToken,
   },
 
@@ -189,6 +236,25 @@ export const capacitorBridge: PlatformBridge = {
 
   calls: {
     ...browserBridge.calls,
+    /*
+      Входящий звонок, когда приложение свёрнуто: своё окно вызова человек не увидит,
+      а уведомление с высоким приоритетом и звуком — увидит. Нажатие открывает приложение.
+      Полноэкранный входящий и CallKit — позже, когда будет Firebase и Apple Developer.
+    */
+    async reportIncoming(call) {
+      if (localPerm !== 'granted') return;
+      try {
+        await LocalNotifications.schedule({
+          notifications: [{
+            id: CALL_NOTIFICATION_ID, title: `Входящий звонок · ${call.title}`, body: 'Откройте, чтобы ответить',
+            channelId: 'anthill-calls', smallIcon: 'ic_stat_call', ongoing: true, autoCancel: true,
+          }],
+        });
+      } catch { /* не критично */ }
+    },
+    async reportEnded() {
+      try { await LocalNotifications.cancel({ notifications: [{ id: CALL_NOTIFICATION_ID }] }); } catch { /* уже нет */ }
+    },
     /*
       Созвон в фоне (волна 7). Android с 14-й версии глушит микрофон свернувшегося
       приложения через минуту — если у него нет foreground service нужного типа.

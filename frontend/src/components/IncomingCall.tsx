@@ -3,6 +3,7 @@ import { wsUrl } from '../lib/origin';
 import { Icon } from './Icon';
 import { tokens } from '../lib/api';
 import { startRingtone, stopRingtone } from '../lib/sound';
+import { platform } from '../platform';
 
 export interface Incoming {
   meetingId: string;
@@ -43,13 +44,16 @@ export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null;
           });
           // звонок слышно, даже когда вкладка свёрнута: окно вызова человек попросту не увидит
           startRingtone();
+          // …а в оболочке свёрнутое приложение ещё и показывает уведомление ОС (волна 12)
+          if (document.hidden) void platform.calls.reportIncoming({ id: String(msg.payload?.meeting_id), title: msg.payload?.caller_name ?? 'Коллега', video: false });
         }
         // ответили с другого устройства — гасим окно здесь
-        if (msg.type === 'meet.call-answered-elsewhere') { show(null); stopRingtone(); }
+        if (msg.type === 'meet.call-answered-elsewhere') { show(null); stopRingtone(); void platform.calls.reportEnded(String(msg.payload?.meeting_id ?? '')); }
         // звонящий передумал и вышел: окно должно закрыться само, а не звенеть в пустоту
         if (msg.type === 'meet.call-cancelled' && shown.current?.meetingId === String(msg.payload?.meeting_id)) {
           show(null);
           stopRingtone();
+          void platform.calls.reportEnded(String(msg.payload?.meeting_id));
         }
       };
       // сеть моргнула — переподключаемся, иначе звонки перестанут доходить молча

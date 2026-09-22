@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { api } from '../lib/api';
-import { showToast } from '../lib/notifications';
+import { showNotification, showToast } from '../lib/notifications';
+import { getSocket } from '../lib/socket';
 import { navigate, parsePath } from '../lib/router';
 import { playMessageChime } from '../lib/sound';
 import { platform, isNativeShell } from '../platform';
@@ -34,7 +35,9 @@ export function useMobileInbox(signedIn: boolean): void {
         // без курсора это первый запуск: не заваливать человека всей историей
         const fresh = cursor ? r.items : [];
         for (const it of fresh.slice(-3)) {
-          showToast({ title: it.title, body: it.body, section: 'inbox', inboxPath: it.path ?? undefined, inboxId: it.id });
+          // приложение свёрнуто — всплывашку никто не увидит: в центр уведомлений ОС (волна 12)
+          if (document.hidden) showNotification(it.title, it.body, () => openInboxItem(it.id, it.path ?? undefined));
+          else showToast({ title: it.title, body: it.body, section: 'inbox', inboxPath: it.path ?? undefined, inboxId: it.id });
         }
         if (fresh.length) playMessageChime();
       } catch { /* нет сети — догоним в следующий раз */ }
@@ -45,10 +48,14 @@ export function useMobileInbox(signedIn: boolean): void {
     const onPush = () => { void sync(); };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener(PUSH_FOREGROUND_EVENT, onPush);
+    // Сервер положил запись в ящик — говорит об этом по сокету: пока процесс жив, push не нужен.
+    const socket = getSocket();
+    socket.on('inbox.item', onPush);
     return () => {
       alive = false;
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener(PUSH_FOREGROUND_EVENT, onPush);
+      socket.off('inbox.item', onPush);
     };
   }, [signedIn]);
 }
