@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 
-export type DiagScope = 'meet' | 'chat';
+export type DiagScope = 'meet' | 'chat' | 'app';
 export type DiagSide = 'server' | 'client';
 
 export interface DiagEntry {

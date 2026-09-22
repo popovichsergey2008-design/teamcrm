@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Ip, Logger, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Query } from '@nestjs/common';
@@ -7,6 +7,7 @@ import { MobileConfigService } from './mobile-config.service';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { MobileService } from './mobile.service';
+import { DiagService } from '../diagnostics/diag.service';
 
 class ReadDto {
   @IsString() upTo!: string;
@@ -14,6 +15,13 @@ class ReadDto {
 class ListQuery {
   @IsOptional() @IsString() after?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
+}
+class CrashDto {
+  @IsString() @MaxLength(40) appVersion!: string;
+  @IsOptional() @IsString() @MaxLength(120) device?: string;
+  @IsOptional() @IsString() @MaxLength(40) os?: string;
+  @IsString() @MaxLength(16_000) stack!: string;
+  @IsOptional() @IsString() @MaxLength(40) at?: string;
 }
 class SyncQuery {
   @IsOptional() @IsString() @MaxLength(20) cursor?: string;
@@ -62,7 +70,37 @@ class RegisterDeviceDto {
 @Controller('mobile')
 @Roles('owner', 'manager', 'member')
 export class MobileController {
-  constructor(private readonly mobile: MobileService, private readonly cfg: MobileConfigService) {}
+  private readonly log = new Logger('MobileCrash');
+  /** Отчёты о падениях — не чаще десяти в минуту с адреса: ручка открытая. */
+  private readonly crashHits = new Map<string, { n: number; since: number }>();
+
+  constructor(private readonly mobile: MobileService, private readonly cfg: MobileConfigService, private readonly diag: DiagService) {}
+
+  /**
+   * Падение нативной оболочки (ТЗ-9, волна 12).
+   *
+   * Приложение закрылось при запуске — до входа и до того, как заработал JS. Единственный
+   * свидетель — сам процесс в последнюю секунду жизни: обработчик исключений в оболочке
+   * шлёт сюда стек до того, как умрёт. Без входа, потому что падение бывает и до него.
+   * Ложится в ленту диагностики (scope `app`, ref = версия) и в журнал сервера.
+   */
+  @Public()
+  @Post('crash')
+  crash(@Ip() ip: string, @Body() dto: CrashDto) {
+    const now = Date.now();
+    const hit = this.crashHits.get(ip) ?? { n: 0, since: now };
+    if (now - hit.since > 60_000) { hit.n = 0; hit.since = now; }
+    hit.n += 1;
+    this.crashHits.set(ip, hit);
+    if (hit.n > 10) return { ok: false };
+    const head = dto.stack.split('\n').slice(0, 3).join(' | ');
+    this.log.warn(`падение ${dto.appVersion} · ${dto.device ?? '?'} · ${dto.os ?? '?'}: ${head}`);
+    this.diag.write({
+      scope: 'app', refId: dto.appVersion.slice(0, 64), side: 'client', event: 'crash',
+      data: { device: dto.device, os: dto.os, stack: dto.stack }, at: dto.at ?? null,
+    });
+    return { ok: true };
+  }
 
   /**
    * Страница раздачи «Скачать приложение» — без входа (волна 12): человек ещё не в

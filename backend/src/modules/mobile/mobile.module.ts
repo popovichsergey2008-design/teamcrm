@@ -10,10 +10,11 @@ import { MobileService } from './mobile.service';
 import { MobileDevicesRepository } from './mobile-devices.repository';
 import { ChangeLogRepository } from './change-log.repository';
 import { ChangeLogPruner } from './change-log.pruner';
+import { DiagModule } from '../diagnostics/diag.module';
 
 /** Мобильная инфраструктура (ТЗ-9): устройства; дальше — конфиг, ящик уведомлений, sync. */
 @Module({
-  imports: [AuthModule, NotificationsModule, PlatformModule, TasksModule, ApprovalsModule],
+  imports: [DiagModule, AuthModule, NotificationsModule, PlatformModule, TasksModule, ApprovalsModule],
   controllers: [MobileController],
   providers: [MobileService, MobileDevicesRepository, MobileConfigService, ChangeLogRepository, ChangeLogPruner],
   exports: [MobileDevicesRepository],

@@ -7,7 +7,7 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { DiagScope, DiagService } from './diag.service';
 
 class ClientEventDto {
-  @IsIn(['meet', 'chat']) scope!: DiagScope;
+  @IsIn(['meet', 'chat', 'app']) scope!: DiagScope;
   @IsOptional() @IsString() @MaxLength(64) refId?: string;
   @IsString() @MaxLength(48) event!: string;
   @IsOptional() data?: unknown;
@@ -52,7 +52,7 @@ export class DiagController {
     @Param('refId') refId: string,
     @Query('limit') limit?: string,
   ) {
-    const s: DiagScope = scope === 'chat' ? 'chat' : 'meet';
+    const s: DiagScope = scope === 'chat' ? 'chat' : scope === 'app' ? 'app' : 'meet';
     return this.diag.timeline(s, refId, limit ? Number(limit) : undefined);
   }
 
@@ -60,7 +60,7 @@ export class DiagController {
   @Get(':scope')
   @Roles('owner', 'manager')
   recent(@Param('scope') scope: string, @Query('limit') limit?: string) {
-    const s: DiagScope = scope === 'chat' ? 'chat' : 'meet';
+    const s: DiagScope = scope === 'chat' ? 'chat' : scope === 'app' ? 'app' : 'meet';
     return this.diag.recentRooms(s, limit ? Number(limit) : undefined);
   }
 }
