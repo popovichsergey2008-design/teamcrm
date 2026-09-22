@@ -32,6 +32,8 @@ x-restart: &restart
 x-api-env: &api-env
   NODE_ENV: production
   PORT: 3000
+  # Каталог раздачи Android-приложения (ТЗ-9, волна 12): API читает оттуда latest.json.
+  ANDROID_RELEASES_DIR: /srv/releases
   DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@crm-postgres:5432/${POSTGRES_DB}
   REDIS_URL: redis://:${REDIS_PASSWORD}@crm-redis:6379
   RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@crm-rabbitmq:5672
@@ -74,6 +76,9 @@ x-api: &api
     context: ./backend
   image: teamcrm-crm-api
   <<: *restart
+  volumes:
+    # APK и latest.json кладёт CI в nginx/html/app — только для чтения, чтобы знать текущий выпуск.
+    - ./nginx/html/app:/srv/releases:ro
   depends_on:
     crm-postgres: { condition: service_healthy }
     crm-redis: { condition: service_healthy }

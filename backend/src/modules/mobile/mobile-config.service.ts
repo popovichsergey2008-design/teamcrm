@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { readFile, stat } from 'fs/promises';
+import { join } from 'path';
 import { AppException } from '../../common/http/app-exception';
 import { DbService } from '../../database/db.service';
 import { PlatformService } from '../platform/platform.service';
@@ -12,6 +14,9 @@ export interface AndroidRelease {
   /** Обновление обязательное: ниже минимума приложение не работает, только «скачать». */
   force: boolean;
   notes?: string;
+  /** Размер файла и дата выпуска — для страницы раздачи; CI пишет их в latest.json. */
+  sizeBytes?: number;
+  publishedAt?: string;
 }
 
 /** Веб-бандл для OTA внутри оболочки: версия, совместимость с оболочкой, где взять, хэш. */
@@ -41,11 +46,62 @@ const FEATURE_DEFAULTS: Record<string, boolean> = {
  */
 @Injectable()
 export class MobileConfigService {
+  private readonly log = new Logger('MobileConfig');
+  /** latest.json читается с диска не чаще раза в минуту: он меняется раз в выпуск. */
+  private fileCache: { at: number; mtime: number; value: AndroidRelease | null } | null = null;
+
   constructor(private readonly db: DbService, private readonly platform: PlatformService) {}
+
+  /**
+   * Что сейчас выпущено для Android (ТЗ-9, волна 12).
+   *
+   * Два источника, и порядок важен. CI при выпуске кладёт APK и `latest.json` в каталог
+   * раздачи nginx (он смонтирован сюда только для чтения) — это обычный путь, ничьих рук
+   * не требует. Настройка платформы `mobile_android_release` — ручной ход техотдела
+   * поверх: поднять минимальную версию, объявить обновление обязательным, отозвать
+   * выпуск. Если она задана — она главнее файла.
+   */
+  async androidRelease(): Promise<AndroidRelease | null> {
+    const manual = await this.platform.setting<AndroidRelease | null>('mobile_android_release', null);
+    if (manual) return manual;
+    return this.latestFromFile();
+  }
+
+  private async latestFromFile(): Promise<AndroidRelease | null> {
+    const dir = process.env.ANDROID_RELEASES_DIR;
+    if (!dir) return null;
+    const path = join(dir, 'latest.json');
+    const now = Date.now();
+    if (this.fileCache && now - this.fileCache.at < 60_000) return this.fileCache.value;
+    try {
+      const mtime = (await stat(path)).mtimeMs;
+      if (this.fileCache && this.fileCache.mtime === mtime) {
+        this.fileCache.at = now;
+        return this.fileCache.value;
+      }
+      const raw = JSON.parse(await readFile(path, 'utf8')) as Partial<AndroidRelease>;
+      const value = raw.latestNative && raw.apkUrl && raw.sha256
+        ? {
+          latestNative: String(raw.latestNative), minimumNative: String(raw.minimumNative ?? raw.latestNative),
+          apkUrl: String(raw.apkUrl), sha256: String(raw.sha256), force: !!raw.force,
+          notes: raw.notes ? String(raw.notes) : undefined,
+          sizeBytes: typeof raw.sizeBytes === 'number' ? raw.sizeBytes : undefined,
+          publishedAt: raw.publishedAt ? String(raw.publishedAt) : undefined,
+        }
+        : null;
+      this.fileCache = { at: now, mtime, value };
+      return value;
+    } catch (e) {
+      // нет файла — выпусков ещё не было; битый файл — не наш повод падать при старте
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') this.log.warn(`latest.json не прочитан: ${(e as Error).message}`);
+      this.fileCache = { at: now, mtime: 0, value: null };
+      return null;
+    }
+  }
 
   async config(tenantId: string) {
     const [android, bundle, features, org, incident] = await Promise.all([
-      this.platform.setting<AndroidRelease | null>('mobile_android_release', null),
+      this.androidRelease(),
       this.platform.setting<BundleRelease | null>('mobile_bundle', null),
       this.platform.setting<Record<string, boolean>>('mobile_features', {}),
       this.orgPolicy(tenantId),

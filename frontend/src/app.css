@@ -5193,3 +5193,16 @@ button.chat-pop-row:hover { background: var(--hover); }
   .conflict-field { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .conflict-field-name { grid-column: 1 / -1; }
 }
+
+/* ── Страница «Скачать приложение» /get (ТЗ-9, волна 12) ── */
+.getapp { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; display: flex; flex-direction: column; gap: 14px; }
+.getapp .auth-sub { text-align: center; margin: 0 0 6px; }
+.getapp-card { padding: 20px; }
+.getapp-card h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: var(--fs-lg); }
+.getapp-note { display: flex; align-items: center; gap: 8px; color: var(--ok); background: var(--ok-soft); border-color: var(--ok-line); }
+.getapp-download { display: inline-flex; align-items: center; gap: 8px; margin: 4px 0 10px; }
+.getapp-notes { margin: 0 0 10px; white-space: pre-line; }
+.getapp-steps { margin: 0 0 10px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.getapp-verify summary { cursor: pointer; color: var(--accent); }
+.getapp-sha { display: block; padding: 8px 10px; margin: 6px 0; font-size: var(--fs-sm); word-break: break-all; background: var(--bg-elev-2); border-radius: var(--radius-sm); }
+.getapp-foot { text-align: center; }

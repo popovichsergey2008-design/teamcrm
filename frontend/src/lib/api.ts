@@ -524,6 +524,8 @@ export const api = {
   unregisterDevice: (id: string) => request<{ revoked: boolean }>('DELETE', `/mobile/devices/${id}`),
   /** Конфиг оболочки: версии, флаги, политики, авария (ТЗ-9). */
   mobileConfig: () => request<MobileConfig>('GET', '/mobile/config'),
+  /** Текущий выпуск Android — для страницы «Скачать приложение», без входа (волна 12). */
+  mobileRelease: () => rawRequest<{ android: MobileConfig['android'] }>('GET', '/mobile/release', undefined, false),
   /** Ящик уведомлений по курсору: push — сигнал, ящик — правда. */
   mobileNotifications: (after: string | null) =>
     request<{ items: InboxItem[]; cursor: string | null; unread: number }>('GET', `/mobile/notifications${after ? `?after=${encodeURIComponent(after)}` : ''}`),

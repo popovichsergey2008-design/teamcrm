@@ -8,7 +8,11 @@ import type { LockPolicy } from './app-lock';
  * читают синхронно, а перезапрос делает хук.
  */
 export interface MobileConfig {
-  android: { latestNative: string; minimumNative: string; apkUrl: string; sha256: string; force: boolean; notes?: string } | null;
+  android: {
+    latestNative: string; minimumNative: string; apkUrl: string; sha256: string; force: boolean; notes?: string;
+    /** Для страницы раздачи: размер файла и дата выпуска (пишет CI в latest.json). */
+    sizeBytes?: number; publishedAt?: string;
+  } | null;
   bundle: { version: string; minNative: string; url: string; sha256: string; mandatory: boolean } | null;
   features: Record<string, boolean>;
   privacy: { push: 'hide' | 'sender_only' | 'full' };

@@ -1,8 +1,13 @@
 name: Mobile — Android APK
 
 # Оболочка Capacitor (ТЗ-9, волна 2): собираем веб-бандл в режиме capacitor, кладём его в
-# нативный проект и собираем отладочный APK. Артефакт — для установки на телефон и проверки.
-# Подписанный release-APK и раздача с сайта — волна 12.
+# нативный проект и собираем APK. На каждый push — артефакты (debug и подписанный release)
+# для установки на телефон и проверки.
+#
+# Выпуск на сайт (волна 12) — запуск руками с номером версии: тот же подписанный APK
+# уезжает на сервер в каталог раздачи вместе с latest.json (версия, минимальная
+# совместимая, хэш, размер, заметки). Страница «Скачать приложение» и проверка версии
+# в самом приложении читают именно его. Магазинов нет намеренно (D-03).
 on:
   push:
     branches: [main]
@@ -10,6 +15,24 @@ on:
       - 'frontend/**'
       - '.github/workflows/mobile-android.yml'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Выпустить на сайт с этой версией (например 1.1). Пусто — только собрать'
+        required: false
+        default: ''
+      minimum:
+        description: 'Минимальная версия, которая ещё работает с сервером'
+        required: false
+        default: '1.0'
+      force:
+        description: 'Обновление обязательное: ниже минимума приложение не работает'
+        type: boolean
+        required: false
+        default: false
+      notes:
+        description: 'Что нового — одной-двумя строками, для страницы раздачи'
+        required: false
+        default: ''
 
 jobs:
   android:
@@ -41,6 +64,16 @@ jobs:
         run: npm run build:capacitor
       - name: Бандл и плагины → нативный проект
         run: npx cap sync android
+      - name: Версия приложения
+        # versionName — из запуска, versionCode — номер прогона: он растёт монотонно, а
+        # Android не ставит APK с кодом не выше установленного. Для сборок «на проверку»
+        # версия остаётся из репозитория.
+        if: inputs.version != ''
+        working-directory: frontend/native/android
+        run: |
+          sed -i "s/versionName \"[^\"]*\"/versionName \"${{ inputs.version }}\"/" app/build.gradle
+          sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" app/build.gradle
+          grep -E "versionName|versionCode" app/build.gradle
       - name: Ключ подписи из секретов
         # Релизный ключ живёт в секретах репозитория (и у заказчика в резерве). Потерять его —
         # значит не суметь обновить уже установленные приложения: App Links и обновления
@@ -67,3 +100,48 @@ jobs:
           name: anthill-android-release
           path: frontend/native/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
+
+      # ── Выпуск на сайт ──
+      - name: latest.json
+        if: inputs.version != ''
+        working-directory: frontend/native/android/app/build/outputs/apk/release
+        env:
+          VERSION: ${{ inputs.version }}
+          MINIMUM: ${{ inputs.minimum }}
+          FORCE: ${{ inputs.force }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          cp app-release.apk "anthill-$VERSION.apk"
+          SHA=$(sha256sum "anthill-$VERSION.apk" | cut -d' ' -f1)
+          SIZE=$(stat -c %s "anthill-$VERSION.apk")
+          node -e '
+            const [v, min, force, notes, sha, size] = process.argv.slice(1);
+            const out = {
+              latestNative: v, minimumNative: min, force: force === "true",
+              apkUrl: `https://anthill.team/app/anthill-${v}.apk`, sha256: sha, sizeBytes: Number(size),
+              notes: notes || undefined, publishedAt: new Date().toISOString(),
+            };
+            require("fs").writeFileSync("latest.json", JSON.stringify(out, null, 2) + "\n");
+          ' "$VERSION" "$MINIMUM" "$FORCE" "$NOTES" "$SHA" "$SIZE"
+          cat latest.json
+      - name: Ключ деплоя
+        if: inputs.version != ''
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: APK и latest.json → каталог раздачи на сервере
+        # Сначала APK, потом latest.json: страница и приложение узнают о версии только
+        # тогда, когда файл уже лежит и скачивается. Прежние версии не удаляем — откат
+        # руками это просто latest.json с прежним номером.
+        if: inputs.version != ''
+        working-directory: frontend/native/android/app/build/outputs/apk/release
+        env:
+          TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$TARGET" 'mkdir -p /opt/teamcrm/nginx/html/app'
+          scp -i ~/.ssh/deploy_key "anthill-$VERSION.apk" "$TARGET:/opt/teamcrm/nginx/html/app/anthill-$VERSION.apk"
+          scp -i ~/.ssh/deploy_key latest.json "$TARGET:/opt/teamcrm/nginx/html/app/latest.json"
+          curl -fsS "https://anthill.team/app/latest.json"

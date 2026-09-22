@@ -4,7 +4,7 @@ import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength,
 import { Query } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { MobileConfigService } from './mobile-config.service';
-import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { MobileService } from './mobile.service';
 
@@ -30,6 +30,8 @@ class AndroidReleaseDto {
   @IsString() @MaxLength(80) sha256!: string;
   @IsBoolean() force!: boolean;
   @IsOptional() @IsString() @MaxLength(1000) notes?: string;
+  @IsOptional() @IsInt() @Min(0) sizeBytes?: number;
+  @IsOptional() @IsString() @MaxLength(40) publishedAt?: string;
 }
 class BundleDto {
   @IsString() @MaxLength(64) version!: string;
@@ -61,6 +63,16 @@ class RegisterDeviceDto {
 @Roles('owner', 'manager', 'member')
 export class MobileController {
   constructor(private readonly mobile: MobileService, private readonly cfg: MobileConfigService) {}
+
+  /**
+   * Страница раздачи «Скачать приложение» — без входа (волна 12): человек ещё не в
+   * системе, ему нужны только версия, ссылка на APK и хэш для проверки.
+   */
+  @Public()
+  @Get('release')
+  async release() {
+    return { android: await this.cfg.androidRelease() };
+  }
 
   /** Всё, что клиенту нужно при старте: версии, флаги, политики, авария. */
   @Get('config')

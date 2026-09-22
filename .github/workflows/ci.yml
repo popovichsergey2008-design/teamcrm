@@ -142,11 +142,12 @@ jobs:
         # html/.well-known/ (webroot ACME — снести его значит убить автопродление
         # сертификата teamsmrt.com). Оба защищены исключениями — с путём: голое
         # `.well-known` ловило и frontend/public/.well-known (App Links, AASA), и они
-        # не доезжали до сервера.
+        # не доезжали до сервера. nginx/html/app — раздача Android-приложения, туда кладёт
+        # выпуски mobile-android.yml.
         run: |
           rsync -az --delete \
             --exclude node_modules --exclude dist --exclude coverage \
-            --exclude .git --exclude '.env' --exclude 'nginx/certs' --exclude 'nginx/html/.well-known' \
+            --exclude .git --exclude '.env' --exclude 'nginx/certs' --exclude 'nginx/html/.well-known' --exclude 'nginx/html/app' \
             -e "ssh -i ~/.ssh/deploy_key" \
             backend frontend infra/docker-compose.yml infra/nginx infra/deploy \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/teamcrm/"

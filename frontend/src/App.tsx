@@ -7,6 +7,7 @@ import { ProjectsPage } from './pages/ProjectsPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { JoinOrgPage } from './pages/JoinOrgPage';
 import { GuestMeetPage } from './pages/GuestMeetPage';
+import { GetAppPage } from './pages/GetAppPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { FeedPage } from './pages/FeedPage';
@@ -413,6 +414,8 @@ export function App() {
   // Гость по ссылке `/meet/<токен>` — до всякой авторизации: у него нет учётной записи,
   // и экран входа на его пути означал бы «встреча только для сотрудников».
   if (guestMeetToken) return <GuestMeetPage token={guestMeetToken} />;
+  // «Скачать приложение» — тоже до входа: ссылку присылают новому сотруднику (волна 12).
+  if (window.location.pathname.replace(/\/+$/, '') === '/get') return <GetAppPage />;
 
   if (inviteToken) return <AcceptInvitePage token={inviteToken} />;
   if (joinToken) return <JoinOrgPage token={joinToken} />;

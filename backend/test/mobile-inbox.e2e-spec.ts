@@ -1,6 +1,9 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { AddressInfo } from 'net';
+import { mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import request from 'supertest';
 
 import { AppModule } from '../src/app.module';
@@ -23,6 +26,14 @@ describe('Mobile — ящик уведомлений и конфиг (e2e)', () 
   const H = (t: string) => ({ Authorization: `Bearer ${t}` });
 
   beforeAll(async () => {
+    // Каталог раздачи Android (волна 12): в бою его наполняет CI, здесь — временный с одним выпуском.
+    const releases = mkdtempSync(join(tmpdir(), 'anthill-releases-'));
+    writeFileSync(join(releases, 'latest.json'), JSON.stringify({
+      latestNative: '1.4', minimumNative: '1.2', force: true,
+      apkUrl: 'https://anthill.team/app/anthill-1.4.apk', sha256: 'ab'.repeat(32), sizeBytes: 12345678,
+      notes: 'Звонки в фоне', publishedAt: '2026-09-22T00:00:00.000Z',
+    }));
+    process.env.ANDROID_RELEASES_DIR = releases;
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = mod.createNestApplication();
     app.setGlobalPrefix('api');
@@ -129,7 +140,11 @@ describe('Mobile — ящик уведомлений и конфиг (e2e)', () 
     expect(cfg.features.mobile_offline_v2).toBe(false);
     expect(cfg.privacy.push).toBe('sender_only');
     expect(cfg.biometrics.minLockPolicy).toBe('off');
-    expect(cfg.android).toBeNull();
+    // выпуск Android — из latest.json каталога раздачи (волна 12), и тот же — открытой ручкой без входа
+    expect(cfg.android).toMatchObject({ latestNative: '1.4', minimumNative: '1.2', force: true, sizeBytes: 12345678, notes: 'Звонки в фоне' });
+    const pub = (await http.get('/api/mobile/release').expect(200)).body.data;
+    expect(pub.android.apkUrl).toBe('https://anthill.team/app/anthill-1.4.apk');
+    expect(pub.android.sha256).toBe('ab'.repeat(32));
 
     const policy = (await http.post('/api/mobile/org-policy').set(H(owner.accessToken))
       .send({ pushPrivacy: 'hide', minLockPolicy: '5' }).expect(201)).body.data;
