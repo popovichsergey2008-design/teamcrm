@@ -9,6 +9,7 @@ import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { ForegroundService, ServiceType } from '@capawesome-team/capacitor-android-foreground-service';
 import { KeepAwake } from '@capacitor-community/keep-awake';
+import { registerPlugin } from '@capacitor/core';
 import { browserBridge, BUNDLE_VERSION } from './browser';
 import type { PlatformBridge, PlatformInfo } from './types';
 
@@ -41,10 +42,20 @@ let deviceInfo: PlatformInfo | null = null;
 let pushToken: Promise<string | null> | null = null;
 const deepLinkHandlers = new Set<(path: string) => void>();
 
+/** Свой плагин оболочки (native/android/.../AnthillNativePlugin.java). */
+const AnthillNative = registerPlugin<{ pushAvailable(): Promise<{ available: boolean }> }>('AnthillNative');
+
 function requestPushToken(): Promise<string | null> {
   if (pushToken) return pushToken;
   pushToken = (async () => {
     try {
+      /*
+        Без Firebase (нет google-services.json) `register()` не возвращает ошибку, а
+        роняет процесс — первый выпуск закрывался сразу после входа. Спрашиваем оболочку
+        заранее; появится файл — push включится сам, без правок здесь.
+      */
+      const { available } = await AnthillNative.pushAvailable().catch(() => ({ available: false }));
+      if (!available) return null;
       const perm = await PushNotifications.requestPermissions();
       if (perm.receive !== 'granted') return null;
       const token = new Promise<string | null>((resolve) => {
