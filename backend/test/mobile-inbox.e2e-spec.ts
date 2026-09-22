@@ -54,6 +54,24 @@ describe('Mobile — ящик уведомлений и конфиг (e2e)', () 
     throw new Error(`не дождались письма ${eventKey ?? ''} для ${email}`);
   }
 
+  /*
+    Ждём не письма, а записи в ящике.
+
+    С `--runInBand` все наборы живут в одном процессе, и воркеры приложений, которые
+    не закрыли `app`, продолжают тикать: чужой воркер забирает письмо и висит на зеркале
+    в Telegram, а наш `tick()` уже ничего не находит. Обещание продукта — «событие ляжет
+    в ящик», а не «наш проход его положит», его и проверяем: тикаем и опрашиваем до 10 с.
+  */
+  async function waitInbox(tok: string, after: string | null, eventKey: string): Promise<any> {
+    for (let i = 0; i < 100; i++) {
+      await worker.tick();
+      const page = (await http.get(`/api/mobile/notifications${after ? `?after=${after}` : ''}`).set(H(tok)).expect(200)).body.data;
+      if (page.items.some((x: any) => x.eventKey === eventKey)) return page;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`не дождались записи ${eventKey} в ящике`);
+  }
+
   it('событие ложится в ящик с путём внутри приложения; курсор отдаёт только новое; прочитанное считается', async () => {
     const ownerEmail = `own_${uniq()}@t.test`;
     const owner = (await http.post('/api/auth/register')
@@ -74,9 +92,7 @@ describe('Mobile — ящик уведомлений и конфиг (e2e)', () 
       .send({ projectId: proj.id, columnId: board.columns[0].id, title: 'Обновить прайс', assigneeId: exec.id }).expect(201)).body.data;
 
     await waitMail(execEmail);
-    await worker.tick(); // воркер: ящик + push + письмо
-
-    const first = (await http.get('/api/mobile/notifications').set(H(execTok)).expect(200)).body.data;
+    const first = await waitInbox(execTok, null, 'task.created'); // воркер: ящик + push + письмо
     expect(first.items.length).toBe(1);
     expect(first.items[0].eventKey).toBe('task.created');
     expect(first.items[0].title).toContain('Обновить прайс');
@@ -95,8 +111,7 @@ describe('Mobile — ящик уведомлений и конфиг (e2e)', () 
 
     await http.post(`/api/tasks/${task.id}/comments`).set(H(owner.accessToken)).send({ body: 'Уточнение' }).expect(201);
     await waitMail(execEmail, 'task.commented');
-    await worker.tick();
-    const next = (await http.get(`/api/mobile/notifications?after=${cursor}`).set(H(execTok)).expect(200)).body.data;
+    const next = await waitInbox(execTok, cursor, 'task.commented');
     expect(next.items.length).toBe(1);
     expect(next.items[0].eventKey).toBe('task.commented');
     expect(next.unread).toBe(2);
