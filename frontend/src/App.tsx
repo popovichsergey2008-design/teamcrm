@@ -693,12 +693,10 @@ export function App() {
         />
       )}
       {/* Кнопка диктовки под большим пальцем: на телефоне до Ctrl+K не дотянуться.
-          В открытой переписке её нет — там свой микрофон в поле ввода, а кружок ложился на «Отправить». */}
-      {!(route.section === 'chat' && route.chatId) && (
-        <button className="voice-fab" onClick={() => setPaletteOpen({ voice: true })} aria-label="Продиктовать">
-          <Icon name="mic" size={22} />
-        </button>
-      )}
+          Где есть своё поле ввода (переписка, чат задачи, бот, поддержка) — прячется в CSS по DOM. */}
+      <button className="voice-fab" onClick={() => setPaletteOpen({ voice: true })} aria-label="Продиктовать">
+        <Icon name="mic" size={22} />
+      </button>
 
       {/*
         Нижние вкладки — только на телефоне (CSS прячет их шире 720px).

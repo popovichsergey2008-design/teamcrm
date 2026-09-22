@@ -3756,6 +3756,12 @@
     width: 52px; height: 52px; border-radius: 50%; cursor: pointer;
     background: var(--accent-2); color: var(--on-accent); border: none; box-shadow: var(--shadow-lg);
   }
+  /*
+    Где на экране есть своё поле ввода с микрофоном — переписка, чат задачи, AnthillBot,
+    служба заботы — кружок не нужен: он ложился на правый край поля и кнопку «Отправить».
+    Решаем по DOM, а не по маршруту: бот и карточка задачи адреса не меняют.
+  */
+  body:has(.chat-input, .comment-input, .support-compose) .voice-fab { display: none; }
 }
 
 /* планирование дня на карточке: намеренно неброско — это личный план, а не срок */
