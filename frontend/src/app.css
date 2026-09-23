@@ -5352,16 +5352,25 @@ button.chat-pop-row:hover { background: var(--hover); }
 }
 .batch-list { display: flex; flex-direction: column; gap: 8px; padding: 14px 20px 24px; }
 .batch-item {
-  display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left;
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
   padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--bg-elev); color: inherit; font: inherit; cursor: pointer;
+  background: var(--bg-elev); color: inherit; font: inherit;
 }
 .batch-item:hover { background: var(--bg-elev-2); }
-.batch-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.batch-item:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Строка задачи: нажатие открывает карточку прямо здесь, значок справа уводит на доску. */
+.batch-item-main {
+  display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0;
+  padding: 0; border: none; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.batch-item-main:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
 .batch-item-title { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .batch-item-sub { font-size: var(--fs-sm); }
 /* Не создалось — не кликается целиком: действие здесь одно, кнопкой. */
-.batch-item-failed { cursor: default; align-items: flex-start; border-color: var(--danger-line); background: var(--danger-soft); }
+.batch-item-failed {
+  cursor: default; flex-direction: column; align-items: flex-start; gap: 4px;
+  border-color: var(--danger-line); background: var(--danger-soft);
+}
 .batch-item-failed:hover { background: var(--danger-soft); }
 .batch-item-failed .btn { margin-top: 6px; }
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonList } from '../components/Skeleton';
+import { TaskCardWindow } from '../components/TaskCardWindow';
 import { api, ApiError, TaskBatch } from '../lib/api';
 import { navigate } from '../lib/router';
 import { plural } from '../lib/chat-text';
@@ -21,6 +22,13 @@ export function TaskBatchPage({ batchId }: { batchId: string }) {
   const [batch, setBatch] = useState<TaskBatch | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  /*
+    Какая задача открыта карточкой ПОВЕРХ списка (жалоба «создал три — не могу
+    зайти в каждую»). Раньше строка уводила на доску: список созданного пропадал,
+    и к следующей задаче человек возвращался кнопкой «назад». Теперь карточка
+    закрывается обратно в список — и сразу следующая.
+  */
+  const [openTask, setOpenTask] = useState<{ projectId: string; taskId: string } | null>(null);
 
   const load = useCallback(() => {
     api.taskBatch(batchId)
@@ -81,22 +89,32 @@ export function TaskBatchPage({ batchId }: { batchId: string }) {
 
       <div className="batch-list">
         {batch.tasks.map((t) => (
-          <button
-            key={t.taskId}
-            className="batch-item"
-            onClick={() => navigate({ section: 'projects', projectId: t.projectId, taskId: t.taskId })}
-            title="Открыть задачу"
-          >
-            <span className="batch-item-title"><Icon name="check" size={14} /> {t.title}</span>
-            <span className="dim batch-item-sub">
-              {[
-                t.projectName,
-                t.assigneeName ?? 'без исполнителя',
-                t.deadlineAt ? `до ${new Date(t.deadlineAt).toLocaleDateString('ru-RU')}` : 'без срока',
-                t.status,
-              ].filter(Boolean).join(' · ')}
-            </span>
-          </button>
+          <div key={t.taskId} className="batch-item">
+            <button
+              className="batch-item-main"
+              onClick={() => setOpenTask({ projectId: t.projectId, taskId: t.taskId })}
+              title="Открыть карточку: правки, файлы, обсуждение"
+            >
+              <span className="batch-item-title"><Icon name="check" size={14} /> {t.title}</span>
+              <span className="dim batch-item-sub">
+                {[
+                  t.projectName,
+                  t.assigneeName ?? 'без исполнителя',
+                  t.deadlineAt ? `до ${new Date(t.deadlineAt).toLocaleDateString('ru-RU')}` : 'без срока',
+                  t.status,
+                ].filter(Boolean).join(' · ')}
+              </span>
+            </button>
+            {/* Уйти на доску — отдельным действием: иногда нужно именно к соседям по колонке. */}
+            <button
+              className="btn btn-ghost btn-sm"
+              title="Показать на доске"
+              aria-label="Показать на доске"
+              onClick={() => navigate({ section: 'projects', projectId: t.projectId, taskId: t.taskId })}
+            >
+              <Icon name="board" size={14} />
+            </button>
+          </div>
         ))}
 
         {/* Не получилось — видно отдельно и с причиной: человек решает, повторять или бросить. */}
@@ -110,6 +128,14 @@ export function TaskBatchPage({ batchId }: { batchId: string }) {
           </div>
         ))}
       </div>
+
+      {openTask && (
+        <TaskCardWindow
+          projectId={openTask.projectId}
+          taskId={openTask.taskId}
+          onClose={() => { setOpenTask(null); load(); }}
+        />
+      )}
 
       {batch.tasks.length === 0 && batch.failed.length === 0 && (
         <EmptyState icon="list" title="Пакет пуст" hint="В нём нет ни созданных задач, ни ошибок." />

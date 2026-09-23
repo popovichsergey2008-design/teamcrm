@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { TaskCardWindow } from './TaskCardWindow';
 import { api, ApiError, VoiceJob } from '../lib/api';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { DatePicker } from './DatePicker';
@@ -76,6 +77,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   */
   const [created, setCreated] = useState<CreatedTask[]>([]);
   const [stage, setStage] = useState<'compose' | 'done'>('compose');
+  /** Задача, открытая карточкой поверх списка созданных. */
+  const [cardTask, setCardTask] = useState<{ projectId: string; taskId: string } | null>(null);
 
   const parse = async (raw?: string) => {
     const command = (raw ?? text).trim();
@@ -314,10 +317,14 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   }, [stage, busy, drafts.length, created.length, readyCount]);
 
   /** Открыть одну из созданных: карточка задачи на её доске. */
-  const openCreated = (t: CreatedTask) => {
-    if (onCreated) onCreated(t.projectId, t.taskId); else navigate({ section: 'projects', projectId: t.projectId, taskId: t.taskId });
-    onClose();
-  };
+  /*
+    Открыть созданную задачу.
+
+    Карточкой ПОВЕРХ списка, а не уходом на доску: человек только что создал три
+    задачи и хочет пройти по ним — поправить формулировку, приложить файл. Уход на
+    доску закрывал список, и к следующей задаче приходилось возвращаться «назад».
+  */
+  const openCreated = (t: CreatedTask) => setCardTask({ projectId: t.projectId, taskId: t.taskId });
   /** Все созданные разом: одна доска — на неё, разные — в реестр «От меня», там они все. */
   const openAllCreated = () => {
     const projects = new Set(created.map((t) => t.projectId));
@@ -344,6 +351,13 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           <div className="dim" style={{ fontSize: 12 }}>
             Задачи уже на досках и у исполнителей. Нажмите на любую, чтобы открыть карточку.
           </div>
+          {cardTask && (
+            <TaskCardWindow
+              projectId={cardTask.projectId}
+              taskId={cardTask.taskId}
+              onClose={() => setCardTask(null)}
+            />
+          )}
           <div className="nl-created-list">
             {created.map((t) => (
               <button key={t.taskId} className="nl-created" onClick={() => openCreated(t)} title="Открыть задачу">
