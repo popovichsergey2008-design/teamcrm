@@ -369,7 +369,8 @@ export class NlService {
       if (Array.isArray(item?.checklist)) {
         draft.task.checklist = item.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 12);
       }
-      this.route(draft, item, candidates);
+      // Имя, названное в самой команде: только оно считается явной волей человека.
+      this.route(draft, item, candidates, matchUserInText(source, users));
       return draft;
     }));
     const drafts = parsedItems.filter((d): d is NlDraft => !!d);
@@ -403,7 +404,7 @@ export class NlService {
    * Исполнителя, названного в самой команде («поставь Глебу»), НЕ трогаем: явная
    * воля человека главнее любой рекомендации. Подставляем только туда, где его нет.
    */
-  private route(draft: NlDraft, item: any, candidates: AssigneeCandidate[]): void {
+  private route(draft: NlDraft, item: any, candidates: AssigneeCandidate[], namedAssigneeId: string | null): void {
     if (!draft.task) return;
     const department: Department = isDepartment(item?.department) ? item.department : 'unknown';
     const skill: Skill | null = isSkill(item?.specialization) ? item.specialization : null;
@@ -418,11 +419,19 @@ export class NlService {
       reason: pick.reason,
       sure: confidence >= SURE_CONFIDENCE,
     };
-    // Человек назвал исполнителя сам — рекомендация остаётся видимой, но поле не трогаем.
-    if (!draft.task.assigneeId && pick.userId) {
-      draft.task.assigneeId = pick.userId;
-      draft.task.assigneeName = pick.name;
-    }
+    /*
+      Кто в итоге стоит исполнителем.
+
+      Названный в команде человек («поставь Глебу») главнее всего: это прямая воля
+      постановщика. Если имени не было, берём рекомендацию — она построена на
+      направлениях и загрузке. А вот исполнителя, которого модель выбрала САМА при
+      разборе одной задачи, не оставляем: живая проверка показала, как фронтовая
+      задача уходила контентщику «потому что модель так решила», и объяснить это
+      было нечем. Нет рекомендации — задача остаётся ничьей, это видно и поправимо.
+    */
+    if (namedAssigneeId) return;
+    draft.task.assigneeId = pick.userId;
+    draft.task.assigneeName = pick.name;
   }
 
   /** Применяет подтверждённый (возможно отредактированный) черновик — создаёт сущность. */
