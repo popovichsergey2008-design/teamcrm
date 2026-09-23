@@ -27,6 +27,27 @@ export function topmostIsMine(scopes: readonly unknown[], mine: unknown): boolea
   return scopes[scopes.length - 1] === mine;
 }
 
+/** Места, которые разбирают вставку сами: текстовые поля и визуальный редактор. */
+const EDITABLE = 'input, textarea, [contenteditable="true"]';
+
+/**
+ * Вставили в чужое поле ввода.
+ *
+ * Живая жалоба: человек вставляет снимок в ОПИСАНИЕ задачи, а тот попадает ещё и в
+ * чат задачи — оба слушают вставку, и оба на одном слое. Правило: если вставка
+ * пришла в поле ввода, которое лежит вне нашей области, — она не наша, чем бы мы
+ * ни были. Своё поле (подпись к вложению) при этом работает как прежде.
+ */
+export function pasteInForeignField(target: EventTarget | null, mine: Element | null): boolean {
+  // Проверяем по способностям, а не через instanceof: так правило живёт и вне браузера,
+  // и его проверяет logic-check.
+  const el = target && typeof (target as Element).closest === 'function' ? (target as Element) : null;
+  if (!el) return false;
+  const field = el.closest(EDITABLE);
+  if (!field) return false;
+  return !mine || !mine.contains(field);
+}
+
 /**
  * Обрабатывать ли вставку в этом слое. `el` — любой узел внутри нашего слоя
  * (поле ввода, лента); null — слоя нет, значит мы на самой странице.

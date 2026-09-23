@@ -11,7 +11,7 @@ import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync'
 import { dayLabel, plural, sameGroup, stampLabel } from '../lib/chat-text';
 import { MessageText } from './MessageText';
 import { longPressProps, MenuAt, MessageMenu } from './MessageMenu';
-import { pasteBelongsHere } from '../lib/paste-scope';
+import { pasteBelongsHere, pasteInForeignField } from '../lib/paste-scope';
 import { useDismiss } from '../hooks/useDismiss';
 import { selectionIn } from '../lib/selection';
 import { shrinkImage } from '../lib/image-shrink';
@@ -434,6 +434,8 @@ export function TaskChat({
       if (!file) return;
       // Поверх карточки открыли окно — снимок нужен ему (задача #1367).
       if (!pasteBelongsHere(composeRef.current)) return;
+      // Вставили в описание задачи или другое поле — там своя обработка, не мешаем.
+      if (pasteInForeignField(e.target, composeRef.current)) return;
       e.preventDefault();
       void attach(file);
     };

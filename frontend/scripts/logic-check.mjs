@@ -1231,6 +1231,25 @@ test('вставка из буфера достаётся верхнему от�
   assert.equal(topmostIsMine([modal], null), false, 'наш слой не нашёлся, а чужой открыт');
 });
 
+test('вставка в чужое поле ввода не достаётся чату (задача #1367)', async () => {
+  const { pasteInForeignField } = await load('lib/paste-scope.ts');
+  // подделка DOM: у элемента есть closest и contains — этого правилу достаточно
+  const mk = (matches, inside) => ({
+    closest: (sel) => (matches ? { sel, mark: 'field' } : null),
+    contains: () => inside,
+  });
+  const chat = { contains: (f) => f?.mark === 'mine' };
+  // вставили в описание задачи (поле вне области чата) — не наше
+  assert.equal(pasteInForeignField(mk(true, false), chat), true);
+  // вставили в подпись к вложению (наше поле) — обрабатываем
+  const myField = { closest: () => ({ mark: 'mine' }), contains: () => true };
+  assert.equal(pasteInForeignField(myField, chat), false);
+  // вставили мимо полей (по ленте) — обрабатываем, так и работает Ctrl+V из любого места
+  assert.equal(pasteInForeignField(mk(false, false), chat), false);
+  // цели нет вовсе — не мешаем себе работать
+  assert.equal(pasteInForeignField(null, chat), false);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

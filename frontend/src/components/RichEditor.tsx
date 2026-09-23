@@ -88,6 +88,19 @@ export function RichEditor({ value, onChange, onUploadImage, placeholder, autoFo
     // Абзацем, а не внутри строки: снимок, слипшийся с текстом, не разглядеть.
     document.execCommand('insertHTML', false, `<p><img data-file-id="${up.fileId}" alt="${alt}"></p><p><br></p>`);
     const root = ref.current;
+    /*
+      Пока шла загрузка, выделение могло пропасть — человек щёлкнул мимо, переключил
+      окно. Тогда `insertHTML` не вставляет ничего, и снимок пропадает молча: файл
+      уже приложен к задаче, а в описании его нет. Проверяем и дописываем в конец.
+    */
+    if (root && !root.querySelector(`img[data-file-id="${up.fileId}"]`)) {
+      const p = document.createElement('p');
+      const img = document.createElement('img');
+      img.dataset.fileId = String(up.fileId);
+      img.alt = alt;
+      p.appendChild(img);
+      root.appendChild(p);
+    }
     if (root) cleanups.current.push(hydrateImages(root));
     emit();
   };

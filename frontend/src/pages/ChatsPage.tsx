@@ -36,7 +36,7 @@ import { applyOrder, moveItem } from '../lib/menu-order';
 import { firstUnreadId } from '../lib/unread-line';
 import { showToast, toastSaved } from '../lib/notifications';
 import { overlayProps } from '../lib/overlay';
-import { pasteBelongsHere } from '../lib/paste-scope';
+import { pasteBelongsHere, pasteInForeignField } from '../lib/paste-scope';
 import type { User } from '../types';
 
 interface Chat {
@@ -437,6 +437,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    */
   const [preview, setPreview] = useState<{ items: LightboxItem[]; index: number } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
+  /** Вся область переписки: по ней отличаем свою вставку от вставки в чужое поле. */
+  const chatPaneRef = useRef<HTMLElement | null>(null);
   /*
     Лента у нижнего края (задачи #1373, #1362).
 
@@ -886,6 +888,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       if (!images.length) return;
       // Поверх переписки открыли задачу или окно — снимок нужен ИМ, а не нам (задача #1367).
       if (!pasteBelongsHere(feedRef.current)) return;
+      // Вставили в чужое поле ввода (описание, поиск) — там своя обработка, не мешаем.
+      if (pasteInForeignField(e.target, chatPaneRef.current)) return;
       e.preventDefault();
       // Открыта ветка — вставляем в НЕЁ: человек смотрит туда, туда и кладём.
       if (thread) { attachToThread(images); return; }
@@ -1814,7 +1818,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       </aside>
       )}
 
-      <section className="chat-view">
+      <section className="chat-view" ref={chatPaneRef}>
         {/*
           Созвон и внешняя ссылка — постоянно, а не только при открытом чате.
           Человек заходит в раздел, чтобы поговорить; заставлять его сначала выбрать
