@@ -5378,7 +5378,16 @@ button.chat-pop-row:hover { background: var(--hover); }
   Просмотр вложений галереей (как в мессенджерах): стрелки по бокам, счётчик в шапке.
   Стрелки — поверх картинки и полупрозрачные: они не должны спорить с самим снимком.
 */
-.lightbox-stage { position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; }
+/*
+  Сцена просмотра: держит размер, даже пока картинка не загрузилась.
+
+  Без своей высоты окно схлопывалось в полоску с одной шапкой — и человек видел
+  вместо снимка пустую плашку, пока идёт загрузка.
+*/
+.lightbox-stage {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  min-width: min(60vw, 520px); min-height: min(50vh, 360px); flex: 1; min-width: 0;
+}
 .lightbox-loading { padding: 40px; }
 .lightbox-count { margin-left: 10px; font-size: var(--fs-xs); }
 .lightbox-nav {
