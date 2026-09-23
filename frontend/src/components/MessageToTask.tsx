@@ -213,12 +213,15 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
               </select>
             </div>
             <div className="drawer-row">
-              <div className="field" style={{ flex: 1 }}>
-                <label>Исполнитель{draft.assigneeReason ? ` · ${draft.assigneeReason}` : ''}</label>
+              <div className="field" style={{ flex: '1 1 200px', minWidth: 0 }}>
+                <label>Исполнитель</label>
                 <select className="input" value={draft.assigneeId ?? ''} onChange={(e) => void patch({ assigneeId: e.target.value || null })}>
                   <option value="">— не назначен —</option>
                   {ctx.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
+                {/* Почему предложен именно он — строкой под полем: в подписи длинное
+                    объяснение рвало ряд на три строки и сплющивало сам выбор. */}
+                {draft.assigneeReason && <span className="dim nl-hint">{draft.assigneeReason}</span>}
               </div>
               <div className="field" style={{ flex: 1 }}>
                 <label>Срок</label>
@@ -268,7 +271,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
             <div className="field">
               <label>Шаги</label>
               {draft.checklist.map((step, i) => (
-                <div key={i} className="drawer-row">
+                <div key={i} className="task-step-row">
                   <input
                     className="input"
                     value={step}

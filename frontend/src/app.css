@@ -2752,6 +2752,11 @@
 .chat-ctx-overdue { color: var(--danger); }
 /* Исходная фраза в окне создания задачи: правя формулировку, легко уехать от того,
    о чём вообще была речь. */
+/* Шаг черновика: поле и «убрать» одной строкой — в общем ряду они вставали в столбик. */
+.task-step-row { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+.task-step-row .input { flex: 1; min-width: 0; }
+.task-step-row .btn { flex: 0 0 auto; }
+
 /* «Не понял, к какому проекту» — с кнопкой «спросить автора» прямо в окне черновика. */
 .task-draft-ask {
   display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; margin-bottom: 10px;
