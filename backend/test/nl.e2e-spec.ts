@@ -154,4 +154,70 @@ describe('NL-команда (e2e)', () => {
     // слишком короткая команда — отказ, а не пустой черновик
     await http$.post('/api/nl/parse-event').set(H(tok)).send({ text: 'ок' }).expect(400);
   });
+
+  /*
+    Пакет задач (ТЗ-10, этап 2). Обещание продукта: одна операция — один результат,
+    который можно открыть снова; повтор не плодит дубли; упавшая задача не отменяет
+    остальные и её можно повторить отдельно.
+  */
+  it('пакет: результат живёт по номеру, повтор не плодит дубли, упавшую можно повторить', async () => {
+    const email = `batch_${uniq()}@t.test`;
+    const reg = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Пакет', email, password: 'password123', fullName: 'Ольга' }).expect(201)).body.data;
+    const tok = reg.accessToken;
+    const proj = (await http$.post('/api/projects').set(H(tok)).send({ name: 'Сайт' }).expect(201)).body.data;
+    const requestId = `qc-${uniq()}`;
+
+    const drafts = [
+      { intent: 'create_task', task: { projectId: String(proj.id), title: 'Исправить форму регистрации' } },
+      { intent: 'create_task', task: { projectId: String(proj.id), title: 'Написать текст для лендинга' } },
+      // третья без проекта — сервер её не создаст, но и остальные не отменит
+      { intent: 'create_task', task: { title: 'Обновить документацию' } },
+    ];
+    const batch = (await http$.post('/api/nl/batches').set(H(tok))
+      .send({ drafts, sourceType: 'text', sourceText: 'три поручения', clientRequestId: requestId })
+      .expect(201)).body.data;
+
+    expect(batch.requested).toBe(3);
+    expect(batch.created).toBe(2);
+    expect(batch.failedCount).toBe(1);
+    expect(batch.status).toBe('partial');
+    expect(batch.tasks).toHaveLength(2);
+    expect(batch.tasks[0].projectName).toBe('Сайт');
+    expect(batch.failed[0].title).toBe('Обновить документацию');
+    expect(batch.failed[0].error).toContain('проект');
+
+    // результат открывается по номеру — это и есть адрес страницы результата
+    const again = (await http$.get(`/api/nl/batches/${batch.batchId}`).set(H(tok)).expect(200)).body.data;
+    expect(again.batchId).toBe(batch.batchId);
+    expect(again.tasks).toHaveLength(2);
+
+    // повтор с тем же ключом — ТОТ ЖЕ пакет, новых задач нет
+    const repeat = (await http$.post('/api/nl/batches').set(H(tok))
+      .send({ drafts, sourceType: 'text', clientRequestId: requestId }).expect(201)).body.data;
+    expect(repeat.batchId).toBe(batch.batchId);
+    expect(repeat.created).toBe(2);
+
+    // упавшую повторяем отдельно, с исправленным черновиком — успешные не трогаются
+    const fixed = (await http$.post(`/api/nl/batches/${batch.batchId}/items/${batch.failed[0].itemId}/retry`)
+      .set(H(tok))
+      .send({ task: { projectId: String(proj.id), title: 'Обновить документацию' } })
+      .expect(201)).body.data;
+    expect(fixed.created).toBe(3);
+    expect(fixed.failedCount).toBe(0);
+    expect(fixed.status).toBe('completed');
+    expect(new Set(fixed.tasks.map((t: any) => t.taskId)).size).toBe(3);
+
+    // задачи помечены пакетом: видно, откуда они взялись
+    const board = (await http$.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
+    const titles = board.columns.flatMap((c: any) => c.tasks).map((t: any) => t.title);
+    expect(titles).toContain('Исправить форму регистрации');
+    expect(titles.filter((t: string) => t === 'Обновить документацию')).toHaveLength(1);
+
+    // чужой пакет не показываем
+    const other = `other_${uniq()}@t.test`;
+    const reg2 = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Чужие', email: other, password: 'password123', fullName: 'Пётр' }).expect(201)).body.data;
+    await http$.get(`/api/nl/batches/${batch.batchId}`).set(H(reg2.accessToken)).expect(404);
+  });
 });

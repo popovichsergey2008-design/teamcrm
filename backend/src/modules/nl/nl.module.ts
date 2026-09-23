@@ -6,6 +6,8 @@ import { NlService } from './nl.service';
 import { VoiceRepository } from './voice.repository';
 import { VoiceService } from './voice.service';
 import { FilesModule } from '../files/files.module';
+import { BatchRepository } from './batch.repository';
+import { BatchService } from './batch.service';
 
 /** NL-команда / Zero-UI: естественный язык → создание задачи/сделки (с подтверждением). */
 @Module({
@@ -13,7 +15,7 @@ import { FilesModule } from '../files/files.module';
   // любую ошибку разбора, иначе человек диктует десять минут заново
   imports: [TasksModule, DealsModule, FilesModule],
   controllers: [NlController],
-  providers: [NlService, VoiceService, VoiceRepository],
+  providers: [NlService, VoiceService, VoiceRepository, BatchService, BatchRepository],
   exports: [NlService],
 })
 export class NlModule {}

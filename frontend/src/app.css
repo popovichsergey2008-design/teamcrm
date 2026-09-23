@@ -5296,3 +5296,30 @@ button.chat-pop-row:hover { background: var(--hover); }
   border: 1px solid var(--warn-line); border-radius: var(--radius-sm);
   background: var(--warn-soft); color: var(--warn); font-size: var(--fs-sm);
 }
+
+/*
+  Страница результата пакетного создания задач (ТЗ-10, этап 2).
+
+  Задачи — строками, по которым можно перейти в карточку; неудавшиеся отдельно,
+  с причиной и кнопкой повтора: человек видит, что именно осталось сделать.
+*/
+.batch-page { overflow-y: auto; }
+.batch-source {
+  display: flex; align-items: flex-start; gap: 8px; margin: 14px 20px 0; padding: 10px 12px;
+  border-left: 3px solid var(--accent-line); background: var(--bg-elev);
+  border-radius: var(--radius-sm); color: var(--text-dim); font-size: var(--fs-sm);
+}
+.batch-list { display: flex; flex-direction: column; gap: 8px; padding: 14px 20px 24px; }
+.batch-item {
+  display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elev); color: inherit; font: inherit; cursor: pointer;
+}
+.batch-item:hover { background: var(--bg-elev-2); }
+.batch-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.batch-item-title { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.batch-item-sub { font-size: var(--fs-sm); }
+/* Не создалось — не кликается целиком: действие здесь одно, кнопкой. */
+.batch-item-failed { cursor: default; align-items: flex-start; border-color: var(--danger-line); background: var(--danger-soft); }
+.batch-item-failed:hover { background: var(--danger-soft); }
+.batch-item-failed .btn { margin-top: 6px; }

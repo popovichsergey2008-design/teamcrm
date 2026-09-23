@@ -117,6 +117,24 @@ export interface Scheduled {
   sentCount: number;
 }
 
+/** Пакет задач из быстрой команды: итог, созданные задачи и то, что не получилось (ТЗ-10). */
+export interface TaskBatch {
+  batchId: string;
+  status: 'completed' | 'partial' | 'failed';
+  requested: number;
+  created: number;
+  failedCount: number;
+  sourceType: 'text' | 'voice';
+  sourceText: string | null;
+  createdAt: string;
+  tasks: {
+    taskId: string; title: string; projectId: string; projectName: string | null;
+    assigneeId: string | null; assigneeName: string | null;
+    deadlineAt: string | null; priority: string | null; status: string | null;
+  }[];
+  failed: { itemId: string; position: number; error: string | null; title: string }[];
+}
+
 /** Сторона объединения задач: та, что остаётся, и та, что помечается объединённой. */
 export interface MergeSide {
   id: string;
@@ -914,6 +932,22 @@ export const api = {
   nlParseMany: (text: string, currentProjectId?: string | null) =>
     request<any[]>('POST', '/nl/parse-many', currentProjectId ? { text, currentProjectId } : { text }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),
+  /**
+   * Пакет задач из одной команды (ТЗ-10, этап 2).
+   *
+   * Одна операция вместо N отдельных: у результата есть номер и адрес. Ключ запроса
+   * идёт и в заголовке, и в теле — повтор после обрыва связи возвращает тот же пакет,
+   * а не создаёт дубли.
+   */
+  createTaskBatch: (body: {
+    drafts: { intent?: string; task?: any }[];
+    sourceType?: 'text' | 'voice';
+    sourceText?: string;
+    clientRequestId: string;
+  }) => request<TaskBatch>('POST', '/nl/batches', body, { idempotencyKey: body.clientRequestId }),
+  taskBatch: (id: string) => request<TaskBatch>('GET', `/nl/batches/${id}`),
+  retryBatchItem: (id: string, itemId: string, task?: any) =>
+    request<TaskBatch>('POST', `/nl/batches/${id}/items/${itemId}/retry`, task ? { task } : {}),
   /** Голосовая команда: аудио-запись → Whisper → распознанный текст. */
   /**
    * Длинная надиктовка: отправляем запись и следим за обработкой.

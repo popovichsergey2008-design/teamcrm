@@ -31,6 +31,8 @@ export type Route = {
   threadId?: string;
   /** вкладка настроек */
   tab?: string;
+  /** пакет задач из быстрой команды: `/tasks/batch/:id` (ТЗ-10) */
+  batchId?: string;
 };
 
 const SECTIONS: Section[] = [
@@ -106,6 +108,8 @@ export function parsePath(pathname: string): Route {
     // Реестр задач: срез живёт в адресе, чтобы ссылкой делились вкладкой
     // («вот всё, что я поставил»), а не чьим-то временным набором фильтров.
     case 'tasks':
+      // Результат пакетного создания живёт по адресу: переживает перезагрузку и ссылку.
+      if (seg[1] === 'batch' && seg[2]) return { section, view: 'batch', batchId: seg[2] };
       return seg[1] ? { section, view: seg[1] } : { section };
     case 'projects': {
       if (!seg[1]) return { section };
@@ -134,6 +138,7 @@ export function buildPath(r: Route): string {
       if (r.view === 'inbox') return '/focus/inbox';
       return '/focus';
     case 'tasks':
+      if (r.view === 'batch' && r.batchId) return `/tasks/batch/${enc(r.batchId)}`;
       return r.view ? `/tasks/${enc(r.view)}` : '/tasks';
     case 'projects':
       if (!r.projectId) return '/projects';

@@ -6,6 +6,7 @@ import { DatePicker } from './DatePicker';
 import { VoiceStatus } from './VoiceStatus';
 import { overlayProps } from '../lib/overlay';
 import { navigate } from '../lib/router';
+import { newChangeId } from '../lib/offline-queue';
 import { plural } from '../lib/chat-text';
 
 /** Что создали в этом заходе — для итоговой страницы: куда ушло и как открыть. */
@@ -225,42 +226,65 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     finally { setBusy(false); }
   };
 
+  /*
+    Ключ этой отправки. Один на попытку: нажали «создать» второй раз после обрыва
+    связи — сервер узнает ключ и вернёт ТОТ ЖЕ пакет, а не создаст дубли (ТЗ-10).
+    Меняется, только когда человек начинает новую команду.
+  */
+  const requestId = useRef(newChangeId());
+
   /**
-   * Создать все проверенные разом: по одной, чтобы упавшая не отменяла созданные.
+   * Создать все проверенные — одной пакетной операцией (ТЗ-10, этап 2).
    *
-   * Ничего не пропускаем молча (ТЗ-10, этап 1): задача без проекта остаётся на экране
-   * с просьбой выбрать проект, ошибка по конкретной задаче пишется в неё саму, и
-   * человек видит, что именно осталось сделать.
+   * Раньше окно слало N отдельных запросов и держало результат в памяти: перезагрузка
+   * теряла его, а повтор после обрыва плодил дубли. Теперь сервер заводит пакет с
+   * номером, сам создаёт задачи и возвращает, что получилось, а что нет; человек
+   * уходит на страницу результата, которая живёт по адресу.
+   *
+   * Ничего не пропускаем молча: задача без проекта остаётся на экране с просьбой
+   * выбрать проект — в пакет уходят только готовые.
    */
   const applyAll = async () => {
     setBusy(true); setMsg('');
-    let failed = 0;
+    const ready: { index: number; draft: any }[] = [];
     let skipped = 0;
-    const lostFiles: string[] = [];
     for (let i = 0; i < drafts.length; i++) {
       const d = drafts[i];
       if (done.includes(i) || d.intent !== 'create_task') continue;
       if (!d.task?.projectId) { skipped++; patchDraft(i, { error: 'Выберите проект — без него задачу не создать' }); continue; }
-      try {
-        const res: any = await api.nlApply(bodyOf(d));
-        if (res?.task && d.files?.length) lostFiles.push(...await uploadFiles(String(res.task.id), d.files));
-        setDone((list) => [...list, i]);
-        patchDraft(i, { error: null });
-        remember(d, res?.task);
-      } catch (e) {
-        failed++;
-        patchDraft(i, { error: e instanceof ApiError ? e.message : 'Не удалось создать' });
-      }
+      ready.push({ index: i, draft: d });
     }
-    setBusy(false);
-    const notes = [
-      failed ? `Не удалось создать: ${failed} — причина написана в самой задаче.` : '',
-      skipped ? `Ждут проекта: ${skipped}. Выберите проект и нажмите «Создать» у такой задачи.` : '',
-      lostFiles.length ? `Не загрузились файлы: ${lostFiles.join(', ')}. Прикрепите их в карточках, на вкладке «Файлы».` : '',
-    ].filter(Boolean);
-    if (notes.length) setMsg(notes.join(' '));
-    // Всё создано без потерь — сразу на итоговую страницу; осталось нерешённое — остаёмся: его видно здесь.
-    if (!failed && !skipped && !lostFiles.length) setStage('done');
+    if (!ready.length) {
+      setBusy(false);
+      setMsg(skipped ? `Ждут проекта: ${skipped}. Выберите проект в каждой задаче.` : 'Нечего создавать.');
+      return;
+    }
+    try {
+      const batch = await api.createTaskBatch({
+        drafts: ready.map((r) => bodyOf(r.draft)),
+        sourceType: job ? 'voice' : 'text',
+        sourceText: (heard || text).slice(0, 4000) || undefined,
+        clientRequestId: requestId.current,
+      });
+      // Файлы к задачам грузим после: они идут по одному и не должны задерживать пакет.
+      const lostFiles: string[] = [];
+      for (let k = 0; k < ready.length && k < batch.tasks.length; k++) {
+        const files = ready[k].draft.files ?? [];
+        if (files.length) lostFiles.push(...await uploadFiles(batch.tasks[k].taskId, files));
+      }
+      setDone((list) => [...list, ...ready.map((r) => r.index)]);
+      if (batch.failedCount) {
+        setMsg(`Создано ${batch.created} из ${batch.requested}. Что не получилось — видно на странице результата.`);
+      }
+      if (lostFiles.length) setMsg((m) => `${m} Не загрузились файлы: ${lostFiles.join(', ')}.`.trim());
+      // Уходим на страницу результата: она переживает перезагрузку и ссылку.
+      onClose();
+      navigate({ section: 'tasks', view: 'batch', batchId: batch.batchId });
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : 'Не удалось создать задачи');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const retry = async () => {
@@ -337,7 +361,10 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             </button>
             <button
               className="btn btn-ghost btn-sm"
-              onClick={() => { setStage('compose'); setDrafts([]); setDone([]); setCreated([]); setText(''); setHeard(''); setMsg(''); }}
+              onClick={() => {
+              requestId.current = newChangeId();
+              setStage('compose'); setDrafts([]); setDone([]); setCreated([]); setText(''); setHeard(''); setMsg('');
+            }}
             >
               <Icon name="zap" size={14} /> Ещё команда
             </button>

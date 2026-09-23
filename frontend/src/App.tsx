@@ -8,6 +8,7 @@ import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { JoinOrgPage } from './pages/JoinOrgPage';
 import { GuestMeetPage } from './pages/GuestMeetPage';
 import { GetAppPage } from './pages/GetAppPage';
+import { TaskBatchPage } from './pages/TaskBatchPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { FeedPage } from './pages/FeedPage';
@@ -598,17 +599,22 @@ export function App() {
           и страница обязаны выжить переход в задачу и обратно — иначе человек, открыв
           третью задачу из списка, каждый раз начинает отбор заново.
         */}
+        {/* Пакет задач — отдельный экран той же секции: реестр под ним не показываем. */}
         {visited.has('tasks') && (
-          <Pane active={route.section === 'tasks'}>
+          <Pane active={route.section === 'tasks' && route.view !== 'batch'}>
             <TasksPage
-              active={route.section === 'tasks'}
+              active={route.section === 'tasks' && route.view !== 'batch'}
               onNewTask={() => setNl({})}
               onVoiceTask={() => setNl({ voice: true })}
-              scope={toScope(route.view)}
+              scope={toScope(route.view === 'batch' ? undefined : route.view)}
               onScope={(scope) => navigate({ section: 'tasks', view: scope === 'all' ? undefined : scope })}
               onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
             />
           </Pane>
+        )}
+        {/* Результат пакетного создания задач: свой адрес, переживает перезагрузку (ТЗ-10). */}
+        {route.section === 'tasks' && route.view === 'batch' && route.batchId && (
+          <TaskBatchPage batchId={route.batchId} />
         )}
         {route.section === 'radar' && canManage && <RadarPage />}
         {route.section === 'support' && (
