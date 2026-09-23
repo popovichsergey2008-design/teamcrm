@@ -5284,3 +5284,15 @@ button.chat-pop-row:hover { background: var(--hover); }
 /* «Все проекты» рядом с переключателем доски (задача #1374): не теряется, но и не спорит с названием. */
 .board-all-btn { flex: 0 0 auto; white-space: nowrap; }
 @media (max-width: 720px) { .board-all-btn span, .board-all-btn { font-size: var(--fs-sm); } }
+
+/*
+  «Задачам без проекта: N» в быстрой команде (ТЗ-10, этап 1).
+
+  Раньше такие задачи молча пропускались при создании, и человек видел «Создано: 0»
+  без объяснений. Теперь их число сказано ДО нажатия, рядом с кнопкой создания.
+*/
+.nl-need-project {
+  display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 8px 10px;
+  border: 1px solid var(--warn-line); border-radius: var(--radius-sm);
+  background: var(--warn-soft); color: var(--warn); font-size: var(--fs-sm);
+}

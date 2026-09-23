@@ -198,8 +198,14 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
 
   const applyOne = async (draft: any, index: number) => {
     setBusy(true); setMsg('');
+    if (!draft?.task?.projectId) {
+      patchDraft(index, { error: 'Выберите проект — без него задачу не создать' });
+      setBusy(false);
+      return;
+    }
     try {
       const res: any = await api.nlApply(bodyOf(draft));
+      patchDraft(index, { error: null });
       const taskId = res?.task ? String(res.task.id) : '';
       const failed = taskId ? await uploadFiles(taskId, draft.files ?? []) : [];
       setDone((d) => [...d, index]);
@@ -215,33 +221,46 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         onCreated(String(res.task.project_id ?? res.task.projectId), String(res.task.id));
         onClose();
       }
-    } catch (e) { setMsg(e instanceof ApiError ? e.message : 'Ошибка создания'); }
+    } catch (e) { patchDraft(index, { error: e instanceof ApiError ? e.message : 'Не удалось создать' }); }
     finally { setBusy(false); }
   };
 
-  /** Создать все проверенные разом: по одной, чтобы упавшая не отменяла созданные. */
+  /**
+   * Создать все проверенные разом: по одной, чтобы упавшая не отменяла созданные.
+   *
+   * Ничего не пропускаем молча (ТЗ-10, этап 1): задача без проекта остаётся на экране
+   * с просьбой выбрать проект, ошибка по конкретной задаче пишется в неё саму, и
+   * человек видит, что именно осталось сделать.
+   */
   const applyAll = async () => {
     setBusy(true); setMsg('');
     let failed = 0;
+    let skipped = 0;
     const lostFiles: string[] = [];
     for (let i = 0; i < drafts.length; i++) {
       const d = drafts[i];
-      if (done.includes(i) || d.intent !== 'create_task' || !d.task?.projectId) continue;
+      if (done.includes(i) || d.intent !== 'create_task') continue;
+      if (!d.task?.projectId) { skipped++; patchDraft(i, { error: 'Выберите проект — без него задачу не создать' }); continue; }
       try {
         const res: any = await api.nlApply(bodyOf(d));
         if (res?.task && d.files?.length) lostFiles.push(...await uploadFiles(String(res.task.id), d.files));
         setDone((list) => [...list, i]);
+        patchDraft(i, { error: null });
         remember(d, res?.task);
-      } catch { failed++; }
+      } catch (e) {
+        failed++;
+        patchDraft(i, { error: e instanceof ApiError ? e.message : 'Не удалось создать' });
+      }
     }
     setBusy(false);
     const notes = [
-      failed ? `Не удалось создать: ${failed}. Остальные на доске.` : '',
+      failed ? `Не удалось создать: ${failed} — причина написана в самой задаче.` : '',
+      skipped ? `Ждут проекта: ${skipped}. Выберите проект и нажмите «Создать» у такой задачи.` : '',
       lostFiles.length ? `Не загрузились файлы: ${lostFiles.join(', ')}. Прикрепите их в карточках, на вкладке «Файлы».` : '',
     ].filter(Boolean);
     if (notes.length) setMsg(notes.join(' '));
-    // Всё создано без потерь — сразу на итоговую страницу; с ошибками остаёмся: их видно здесь.
-    if (!failed && !lostFiles.length) setStage('done');
+    // Всё создано без потерь — сразу на итоговую страницу; осталось нерешённое — остаёмся: его видно здесь.
+    if (!failed && !skipped && !lostFiles.length) setStage('done');
   };
 
   const retry = async () => {
@@ -254,6 +273,16 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   const working = !!job && job.status !== 'ready' && job.status !== 'error';
   const readyCount = drafts
     .filter((d, i) => !done.includes(i) && d.intent === 'create_task' && d.task?.projectId).length;
+  /*
+    Задачи, которым не хватает проекта (ТЗ-10, этап 1).
+
+    Раньше такие молча пропускались при создании: `continue` без счётчика и без слова
+    человеку. Команда из трёх поручений превращалась в «Создано: 0», и было непонятно,
+    сломалось ли что-то. Теперь их видно числом, и кнопка создания честно говорит,
+    сколько уйдёт, а сколько ждёт проекта.
+  */
+  const needProject = drafts
+    .filter((d, i) => !done.includes(i) && d.intent === 'create_task' && d.task && !d.task.projectId).length;
 
   // Создавали по одной и добили последнюю — итог показываем сами, кнопку искать не надо.
   useEffect(() => {
@@ -404,8 +433,17 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
 
         {drafts.length > 1 && readyCount > 1 && (
           <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={applyAll} disabled={busy}>
-            {busy ? 'Создаю…' : `Создать все (${readyCount})`}
+            {busy ? 'Создаю…' : `Создать ${readyCount} ${plural(readyCount, 'задачу', 'задачи', 'задач')}`}
           </button>
+        )}
+        {/* Сколько задач ждёт проекта — видно до нажатия, а не после (ТЗ-10, этап 1). */}
+        {needProject > 0 && !busy && (
+          <div className="nl-need-project">
+            <Icon name="alert" size={13} />
+            {needProject === 1
+              ? 'Одной задаче не хватает проекта — выберите его в карточке ниже.'
+              : `Задачам без проекта: ${needProject}. Выберите проект в каждой — иначе они не создадутся.`}
+          </div>
         )}
         {/* Часть создали, часть нет (ошибка или выбросили) — к созданным всё равно можно перейти. */}
         {drafts.length > 1 && created.length > 0 && readyCount > 0 && !busy && (
@@ -466,6 +504,9 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
             <Icon name="close" size={13} />
           </button>
         </div>
+        {draft.error && (
+          <div className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {draft.error}</div>
+        )}
         {draft.warnings?.map((w: string, i: number) => (
           <div key={i} className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {w}</div>
         ))}

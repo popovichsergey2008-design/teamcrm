@@ -7,6 +7,7 @@ import { TasksService } from '../tasks/tasks.service';
 import { DealsService } from '../deals/deals.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { matchUserInText, normalizeDeadline } from './nl.match';
+import { splitCommand } from './split-command';
 import {
   chooseProject, cleanTitle, matchProjectInText, pickApproval, pickDeadline, pickPriority,
   PROJECT_HINT, taskTitleFrom,
@@ -309,9 +310,24 @@ export class NlService {
       this.log.warn(`разбор пачки задач без модели: ${(e as Error).message}`);
     }
 
-    // Модель промолчала или услышала одну задачу — идём обычным путём: он умеет
-    // собрать черновик правилами и без ИИ.
-    if (items.length < 2) return [await single];
+    /*
+      Модель промолчала или услышала одну задачу.
+
+      Раньше здесь всегда отдавался один черновик — и три поручения, написанные
+      человеком через «вторая задача», склеивались в одну бессмысленную задачу с
+      заголовком во всю фразу (ТЗ-10, этап 1). Теперь пробуем разделить правилами:
+      они берут только явные разделители — нумерацию, «вторая задача», «также»,
+      перечисление строками. Не нашлось — прежний путь, один черновик.
+    */
+    if (items.length < 2) {
+      const byRules = splitCommand(clean);
+      if (byRules.length < 2) return [await single];
+      this.log.log(`команда разделена правилами на ${byRules.length}: модель не ответила`);
+      const ruleDrafts = (await Promise.all(
+        byRules.map((part) => this.parse(tenantId, userId, part, currentProjectId).catch(() => null)),
+      )).filter((d): d is NlDraft => !!d?.task);
+      return ruleDrafts.length > 1 ? ruleDrafts : [await single];
+    }
 
     // Каждую задачу пачки оформляем параллельно: три поручения не должны ждать втрое дольше.
     const parsedItems = await Promise.all(items.slice(0, 10).map(async (item) => {
