@@ -1,5 +1,17 @@
 /* TEAMCRM layout */
-.center-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+/*
+  Одиночный экран по центру: вход, спиннер, обязательное обновление.
+
+  Высота — по ВИДИМОЙ части окна (--app-h из visualViewport), а не 100vh: в приложении
+  WebView рисуется от края до края, и 100vh включает полосу под часами и полосу кнопок.
+  Из-за этого короткая форма входа оказывалась «выше экрана» и появлялась прокрутка на
+  пустом месте. На компьютере переменная равна высоте окна — там ничего не меняется.
+
+  Центрируем полями, а не align-items: длинную форму (регистрация, мелкий экран) при
+  центрировании обрезает сверху и до начала не докрутить.
+*/
+.center-screen { min-height: var(--app-h, 100dvh); display: flex; padding: 24px; overflow: auto; }
+.center-screen > * { margin: auto; }
 
 .spinner {
   width: 34px; height: 34px; border-radius: 50%;
@@ -416,6 +428,19 @@
   .palette-overlay { padding-top: calc(8px + var(--safe-top)); }
   /* Всплывашки и «таблетка» созвона — над нижними вкладками, а не под ними. */
   .toasts, .call-pill { bottom: calc(16px + var(--bottom-nav-h)); }
+  /* Вход и экран блокировки: под часами и над полосой кнопок, с полями поменьше. */
+  .center-screen, .lock-screen { padding: calc(12px + var(--safe-top)) 12px calc(12px + var(--safe-bottom)); }
+  /*
+    Карточка входа на телефоне собрана плотнее: со знаком в 88 пикселей и полями по 32
+    даже короткая форма входа не помещалась между часами и полосой кнопок — человек
+    видел прокрутку на первом же экране. Знак остаётся крупным (его и запоминают), но
+    соразмерным экрану.
+  */
+  .auth-card { padding: 20px; }
+  .auth-logo { gap: 8px; margin-bottom: 6px; }
+  .auth-logo .logo-mark { width: 64px; height: 64px; }
+  .auth-logo .logo-word { font-size: calc(24px * var(--fs-scale)); }
+  .auth-sub { margin-bottom: 14px; }
 }
 
 /*
@@ -486,6 +511,8 @@
 .lock-screen {
   position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 14px; padding: 24px; background: var(--bg); text-align: center;
+  /* Содержимое бывает длиннее экрана (заметки к обязательному обновлению) — тогда прокрутка. */
+  overflow: auto;
 }
 .lock-title { font-size: var(--fs-lg); }
 
