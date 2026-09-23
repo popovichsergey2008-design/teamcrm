@@ -31,6 +31,16 @@ describe('splitCommand', () => {
     expect(one).toHaveLength(1);
   });
 
+  it('ловит порядковое слово с двоеточием без слова «задача»', () => {
+    const parts = splitCommand('Написать текст для лендинга. Третья: обновить документацию по API.');
+    expect(parts).toHaveLength(2);
+    expect(parts[1]).toBe('обновить документацию по API');
+  });
+
+  it('«Первая попытка не удалась» — не разделитель, а продолжение мысли', () => {
+    expect(splitCommand('Починить выгрузку отчётов. Первая попытка не удалась, падает на большом файле.')).toHaveLength(1);
+  });
+
   it('короткую команду отдаёт как есть', () => {
     expect(splitCommand('Позвонить Сергею')).toEqual(['Позвонить Сергею']);
     expect(splitCommand('  ')).toEqual([]);
