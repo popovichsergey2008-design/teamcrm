@@ -5333,3 +5333,14 @@ button.chat-pop-row:hover { background: var(--hover); }
 /* Кольцо — на самой метке: с клавиатуры фокус приходит на галочку внутри неё. */
 .team-auto:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
 .team-auto:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+/*
+  Строка распределения в предпросмотре быстрой команды (ТЗ-10, этап 4):
+  отдел, направление и почему предложен этот исполнитель. Уверенная рекомендация —
+  обычным цветом, предположение — приглушённым: интонация должна совпадать с уверенностью.
+*/
+.nl-routing {
+  display: flex; align-items: center; gap: 6px; margin-top: 6px;
+  font-size: var(--fs-xs); color: var(--accent);
+}
+.nl-routing-guess { color: var(--text-mut); }

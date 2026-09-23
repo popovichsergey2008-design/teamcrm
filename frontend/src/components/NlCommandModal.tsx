@@ -483,6 +483,15 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   );
 }
 
+/** Названия отделов и направлений — те же, что у сервера (backend/src/modules/team/skills.ts). */
+const DEPARTMENTS: Record<string, string> = {
+  development: 'Программирование', content: 'Контент', unknown: 'Отдел не определён',
+};
+const SKILL_LABELS: Record<string, string> = {
+  backend: 'Бэкенд', frontend: 'Фронтенд', fullstack: 'Фулстек', content: 'Контент',
+  design: 'Дизайн', qa: 'Тестирование', analytics: 'Аналитика', other: 'Другое',
+};
+
 /** Одна задача из записи: правится целиком до создания. */
 function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraft, onDrop, onApply }: {
   draft: any;
@@ -553,6 +562,27 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
           <option value="">— исполнитель —</option>
           {ctx.users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
+        {/*
+          Кого и почему предложил ИИ (ТЗ-10, этап 4).
+
+          Это рекомендация, а не решение: строка объясняет выбор — «Программирование ·
+          Бэкенд · по направлению работы», — и её видно рядом с полем, которое можно
+          поменять. Не уверен в направлении или некого предложить — так и написано;
+          молча оставить задачу ничьей, не объяснив почему, было бы хуже всего.
+        */}
+        {draft.routing && (
+          <div className={`nl-routing${draft.routing.sure ? '' : ' nl-routing-guess'}`}>
+            <Icon name={draft.routing.suggestedAssigneeId ? 'sparkles' : 'alert'} size={12} />
+            <span>
+              {[
+                DEPARTMENTS[draft.routing.department] ?? null,
+                draft.routing.skill ? SKILL_LABELS[draft.routing.skill] : null,
+                draft.routing.reason,
+              ].filter(Boolean).join(' · ')}
+              {!draft.routing.sure && draft.routing.suggestedAssigneeId ? ' (ИИ предполагает)' : ''}
+            </span>
+          </div>
+        )}
         {/* Постановщик не выбирается: им становится тот, кто говорит. Сказать об этом
             нужно прямо — иначе человек ищет поле «от кого» и не находит. */}
         <div className="dim nl-hint">Постановщик — вы: задача записывается от вашего имени</div>

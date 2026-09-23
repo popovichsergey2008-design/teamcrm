@@ -6,8 +6,11 @@ import { PromptsService } from '../prompts/prompts.service';
 import { TasksService } from '../tasks/tasks.service';
 import { DealsService } from '../deals/deals.service';
 import { SecretaryService } from '../secretary/secretary.service';
+import { UsersRepository } from '../users/users.repository';
 import { matchUserInText, normalizeDeadline } from './nl.match';
 import { splitCommand } from './split-command';
+import { AssigneeCandidate, pickAssignee, SURE_CONFIDENCE } from './assignee-pick';
+import { Department, isDepartment, isSkill, Skill, skillsCatalog } from '../team/skills';
 import {
   chooseProject, cleanTitle, matchProjectInText, pickApproval, pickDeadline, pickPriority,
   PROJECT_HINT, taskTitleFrom,
@@ -33,6 +36,25 @@ export interface NlDraft {
     requiresApproval: boolean;
     /** Шаги выполнения: ИИ разбивает работу, человек правит перед созданием. */
     checklist: string[];
+  };
+  /**
+   * Кому и почему предлагаем поручить задачу (ТЗ-10, этап 4).
+   *
+   * Это РЕКОМЕНДАЦИЯ: до нажатия «создать» её можно изменить, и решение человека
+   * считается окончательным. Показываем и то, что предложила модель, — чтобы
+   * постановщик видел, с чем он спорит.
+   */
+  routing?: {
+    department: Department;
+    skill: Skill | null;
+    confidence: number;
+    /** Кого предлагаем; null — никого не нашли, и это нормальный исход. */
+    suggestedAssigneeId: string | null;
+    suggestedAssigneeName: string | null;
+    /** Словами: «по направлению работы», «нет свободного специалиста». */
+    reason: string;
+    /** Уверенная рекомендация или предположение: от этого зависит подача в интерфейсе. */
+    sure: boolean;
   };
   deal?: { title: string; amount: number | null; plannedMargin: number | null; clientId: string | null; clientName: string | null; stage: string };
   context: { projects: { id: string; name: string }[]; users: { id: string; name: string }[]; clients: { id: string; name: string }[] };
@@ -84,6 +106,7 @@ export class NlService {
     private readonly tasks: TasksService,
     private readonly deals: DealsService,
     private readonly secretary: SecretaryService,
+    private readonly users: UsersRepository,
   ) {}
 
   private async context(tenantId: string) {
@@ -288,7 +311,8 @@ export class NlService {
 
     const { users, projects, clients } = await this.context(tenantId);
     const today = new Date().toISOString().slice(0, 10);
-    const userMsg = JSON.stringify({ text: clean, projects, users, clients, today });
+    // Справочник отделов — модели, а не в коде промпта: список меняется, промпт нет.
+    const userMsg = JSON.stringify({ text: clean, projects, users, clients, today, catalog: skillsCatalog() });
 
     /*
       Счёт задач и одиночный разбор идут ОДНОВРЕМЕННО.
@@ -329,6 +353,8 @@ export class NlService {
       return ruleDrafts.length > 1 ? ruleDrafts : [await single];
     }
 
+    // Кандидаты на исполнение — один раз на всю пачку: список один и тот же.
+    const candidates = await this.autoCandidates(tenantId);
     // Каждую задачу пачки оформляем параллельно: три поручения не должны ждать втрое дольше.
     const parsedItems = await Promise.all(items.slice(0, 10).map(async (item) => {
       const title = String(item?.title ?? '').trim();
@@ -343,10 +369,60 @@ export class NlService {
       if (Array.isArray(item?.checklist)) {
         draft.task.checklist = item.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 12);
       }
+      this.route(draft, item, candidates);
       return draft;
     }));
     const drafts = parsedItems.filter((d): d is NlDraft => !!d);
     return drafts.length ? drafts : [await single];
+  }
+
+  /**
+   * Кандидаты для автоподбора: только те, кому разрешено ставить задачи (ТЗ-10, разд. 36).
+   *
+   * Список нужен и подбору, и промпту; берём его раз на всю пачку. Ошибка здесь не
+   * должна ронять разбор: без кандидатов просто не будет рекомендации.
+   */
+  private async autoCandidates(tenantId: string): Promise<AssigneeCandidate[]> {
+    try {
+      const rows = await this.users.autoCandidates(tenantId);
+      return rows.map((r) => ({
+        userId: String(r.id), name: r.full_name,
+        skills: (r.skills as string[]) ?? [],
+        openTasks: Number(r.open_tasks ?? 0),
+        weight: Number(r.weight ?? 1),
+      }));
+    } catch (e) {
+      this.log.warn(`кандидаты для автоподбора не получены: ${(e as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Отдел, направление и рекомендуемый исполнитель для одной задачи (ТЗ-10, этап 4).
+   *
+   * Исполнителя, названного в самой команде («поставь Глебу»), НЕ трогаем: явная
+   * воля человека главнее любой рекомендации. Подставляем только туда, где его нет.
+   */
+  private route(draft: NlDraft, item: any, candidates: AssigneeCandidate[]): void {
+    if (!draft.task) return;
+    const department: Department = isDepartment(item?.department) ? item.department : 'unknown';
+    const skill: Skill | null = isSkill(item?.specialization) ? item.specialization : null;
+    const raw = Number(item?.confidence);
+    const confidence = Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0;
+
+    const pick = pickAssignee({ skill, confidence }, candidates);
+    draft.routing = {
+      department, skill, confidence,
+      suggestedAssigneeId: pick.userId,
+      suggestedAssigneeName: pick.name,
+      reason: pick.reason,
+      sure: confidence >= SURE_CONFIDENCE,
+    };
+    // Человек назвал исполнителя сам — рекомендация остаётся видимой, но поле не трогаем.
+    if (!draft.task.assigneeId && pick.userId) {
+      draft.task.assigneeId = pick.userId;
+      draft.task.assigneeName = pick.name;
+    }
   }
 
   /** Применяет подтверждённый (возможно отредактированный) черновик — создаёт сущность. */
@@ -416,7 +492,14 @@ const MANY_SYSTEM = [
   'checklist — 3–6 шагов ПРОВЕРКИ «как понять, что сделано», выведенных из самой задачи;',
   'source — дословный кусок исходной речи, относящийся ИМЕННО к этой задаче.',
   'Ничего не выдумывай и не теряй названные условия. Не объединяй задачи разных людей.',
-  'Верни СТРОГО JSON: {"tasks":[{"title":"","description":"","checklist":[],"source":""}]}',
+  // Классификация идёт ТЕМ ЖЕ вызовом (ТЗ-10, разд. 49): отдельная ручка стоила бы
+  // лишнего запроса к модели на каждую задачу и рассинхрона с разбором.
+  'Ещё для каждой задачи определи отдел и направление из справочника, который придёт во входных данных:',
+  'department — код отдела или "unknown", если не относится ни к одному;',
+  'specialization — направление из этого отдела или null;',
+  'confidence — насколько ты уверен в этом (0..1, честно: не уверен — ставь низкое).',
+  'Верни СТРОГО JSON: {"tasks":[{"title":"","description":"","checklist":[],"source":"",',
+  '"department":"","specialization":null,"confidence":0}]}',
 ].join(' ');
 
 /**
