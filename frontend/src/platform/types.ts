@@ -74,9 +74,30 @@ export interface ShareBridge {
   share(data: { title?: string; text?: string; url?: string }): Promise<boolean>;
 }
 
+/**
+ * Чем кончилась попытка поставить обновление.
+ *
+ * `installing` — файл скачан и проверен, дальше спрашивает система; `needs_permission` —
+ * человек ещё не разрешил установку из нашего приложения; `unsupported` — платформа так
+ * не умеет (браузер, iOS), остаётся обычная ссылка.
+ */
+export type InstallUpdateResult = 'installing' | 'needs_permission' | 'unsupported' | 'failed';
+
 export interface AppUpdateBridge {
   /** Есть ли новая версия (оболочки или веб-бандла); в браузере всегда null. */
   check(): Promise<{ version: string; mandatory: boolean } | null>;
+  /** Умеет ли оболочка обновить себя сама. Нет — показываем ссылку на скачивание. */
+  canInstall(): Promise<boolean>;
+  /**
+   * Скачать выпуск и отдать системному установщику. `onProgress` — доля от 0 до 1;
+   * файл сверяется с контрольной суммой до установки.
+   */
+  install(
+    release: { url: string; sha256: string; version: string },
+    onProgress?: (share: number) => void,
+  ): Promise<InstallUpdateResult>;
+  /** Открыть системную настройку «разрешать установку из этого источника». */
+  requestInstallPermission(): Promise<void>;
   /** Скачать и применить: оболочка перезапустит веб-бандл сама. */
   apply(): Promise<void>;
 }

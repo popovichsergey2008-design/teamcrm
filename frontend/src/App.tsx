@@ -54,7 +54,7 @@ import { platform } from './platform';
 import { useAppLock } from './hooks/useAppLock';
 import { useDeviceRegistration } from './hooks/useDeviceRegistration';
 import { LockScreen } from './components/LockScreen';
-import { UpdateScreen } from './components/UpdateScreen';
+import { UpdateSheet } from './components/UpdateSheet';
 import { useMobileConfig } from './hooks/useMobileConfig';
 import { openInboxItem, useMobileInbox } from './hooks/useMobileInbox';
 import { useOfflineQueue } from './hooks/useOfflineQueue';
@@ -435,7 +435,9 @@ export function App() {
   // Заблокировано: ничего из содержимого не рисуем — ни в переключателе приложений, ни глазу соседа.
   if (lock.locked) return <LockScreen onUnlock={lock.unlock} />;
   // Версия оболочки ниже минимальной — только «скачать обновление».
-  if (mobile.verdict === 'required' && mobile.config?.android) return <UpdateScreen release={mobile.config.android} />;
+  if (mobile.verdict === 'required' && mobile.config?.android) {
+    return <UpdateSheet release={mobile.config.android} required onClose={() => undefined} />;
+  }
 
   // клиент видит отдельный портал (без внутренних досок/финансов)
   if (user.role === 'client') return <ClientPortal />;
@@ -681,8 +683,16 @@ export function App() {
         onOpenFocus={() => navigate({ section: 'focus' })}
         onOpenMeetings={() => navigate({ section: 'chat', view: 'meetings' })}
         onOpenInbox={openInboxItem}
-        onOpenUpdate={() => { const url = mobile.config?.android?.apkUrl; if (url) platform.openExternal(url); }}
       />
+
+      {/*
+        Обновление приложения (просьба заказчика): вышла новая сборка — лист снизу,
+        одно нажатие, приложение скачивает и ставит себя само. «Позже» молчит до
+        следующего выпуска, чтобы окно не стало привычным шумом.
+      */}
+      {mobile.offer && mobile.config?.android && (
+        <UpdateSheet release={mobile.config.android} onClose={mobile.skip} />
+      )}
       {callId && (
         <CallPanel
           meetingId={callId}

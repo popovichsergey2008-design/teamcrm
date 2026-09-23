@@ -76,7 +76,50 @@ async function prepareLocalNotifications(): Promise<void> {
 }
 
 /** Свой плагин оболочки (native/android/.../AnthillNativePlugin.java). */
-const AnthillNative = registerPlugin<{ pushAvailable(): Promise<{ available: boolean }> }>('AnthillNative');
+const AnthillNative = registerPlugin<{
+  pushAvailable(): Promise<{ available: boolean }>;
+  canInstall(): Promise<{ supported: boolean; allowed: boolean }>;
+  requestInstallPermission(): Promise<void>;
+  installUpdate(o: { url: string; sha256: string; version: string }): Promise<{ status: string; message?: string }>;
+  addListener(
+    event: 'updateProgress',
+    cb: (e: { loaded: number; total: number }) => void,
+  ): Promise<{ remove(): Promise<void> }>;
+}>('AnthillNative');
+
+/*
+  Обновление приложения изнутри (просьба заказчика).
+
+  Магазинов у нас нет намеренно, и раньше обновление означало: открыть браузер, скачать
+  APK, найти его в загрузках, разрешить установку, нажать. Люди застревали на этом пути и
+  оставались на старой сборке. Теперь оболочка качает файл сама, сверяет с контрольной
+  суммой из latest.json и отдаёт системному установщику — остаётся одно нажатие.
+
+  Ставит всё равно система и показывает, что именно ставится: молча подменить приложение
+  ни мы, ни кто-либо другой не можем.
+*/
+async function installUpdate(
+  release: { url: string; sha256: string; version: string },
+  onProgress?: (share: number) => void,
+): Promise<'installing' | 'needs_permission' | 'unsupported' | 'failed'> {
+  let watch: { remove(): Promise<void> } | null = null;
+  try {
+    const can = await AnthillNative.canInstall().catch(() => ({ supported: false, allowed: false }));
+    if (!can.supported) return 'unsupported';
+    if (onProgress) {
+      watch = await AnthillNative.addListener('updateProgress', (e) => {
+        if (e.total > 0) onProgress(Math.min(1, e.loaded / e.total));
+      });
+    }
+    const r = await AnthillNative.installUpdate(release);
+    const status = r?.status;
+    return status === 'installing' || status === 'needs_permission' ? status : 'failed';
+  } catch {
+    return 'failed';
+  } finally {
+    await watch?.remove().catch(() => undefined);
+  }
+}
 
 function requestPushToken(): Promise<string | null> {
   if (pushToken) return pushToken;
@@ -176,6 +219,17 @@ export const capacitorBridge: PlatformBridge = {
     },
     setBadge: browserBridge.notifications.setBadge,
     pushToken: requestPushToken,
+  },
+
+  appUpdate: {
+    ...browserBridge.appUpdate,
+    async canInstall() {
+      try { return (await AnthillNative.canInstall()).supported; } catch { return false; }
+    },
+    install: installUpdate,
+    async requestInstallPermission() {
+      try { await AnthillNative.requestInstallPermission(); } catch { /* настройки нет — останется ссылка */ }
+    },
   },
 
   biometrics: {

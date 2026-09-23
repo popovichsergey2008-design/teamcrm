@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { MobileConfig, setMobileConfig, updateVerdict } from '../lib/mobile-config';
-import { showToast } from '../lib/notifications';
+import { MobileConfig, setMobileConfig, shouldOfferUpdate, updateVerdict } from '../lib/mobile-config';
 import { platform, isNativeShell } from '../platform';
+
+/** Версия, которую человек отложил: до следующего выпуска об обновлении не напоминаем. */
+const SKIPPED = 'anthill.update.skipped';
+function skippedVersion(): string | null {
+  try { return localStorage.getItem(SKIPPED); } catch { return null; }
+}
 
 /**
  * Конфиг оболочки при старте и при каждом возврате в приложение (ТЗ-9, волна 4).
@@ -11,14 +16,21 @@ import { platform, isNativeShell } from '../platform';
  * `available` — одна всплывашка со ссылкой на APK за запуск. Флаги функций и политика
  * организации оседают в lib/mobile-config для всех остальных.
  */
-export function useMobileConfig(signedIn: boolean): { verdict: 'none' | 'available' | 'required'; config: MobileConfig | null } {
+export function useMobileConfig(signedIn: boolean): {
+  verdict: 'none' | 'available' | 'required';
+  config: MobileConfig | null;
+  /** Показать окно обновления: обязательное — всегда, обычное — раз на версию. */
+  offer: boolean;
+  /** «Позже»: молчим до следующего выпуска. */
+  skip: () => void;
+} {
   const [config, setConfig] = useState<MobileConfig | null>(null);
   const [verdict, setVerdict] = useState<'none' | 'available' | 'required'>('none');
+  const [offer, setOffer] = useState(false);
 
   useEffect(() => {
     if (!signedIn || !isNativeShell()) return;
     let alive = true;
-    let told = false;
     const load = async () => {
       try {
         const c = await api.mobileConfig();
@@ -26,10 +38,12 @@ export function useMobileConfig(signedIn: boolean): { verdict: 'none' | 'availab
         setMobileConfig(c); setConfig(c);
         const v = updateVerdict(platform.info().nativeVersion, c.android);
         setVerdict(v);
-        if (v === 'available' && !told && c.android) {
-          told = true;
-          showToast({ title: `Доступна версия ${c.android.latestNative}`, body: 'Нажмите, чтобы скачать обновление', section: 'update' });
-        }
+        /*
+          Раньше здесь была всплывашка со ссылкой на файл — и дальше человек оставался
+          один на один с браузером, загрузками и настройками Android. Теперь показываем
+          окно, которое умеет обновить приложение само (см. UpdateSheet).
+        */
+        setOffer(shouldOfferUpdate(v, c.android, skippedVersion()));
       } catch { /* нет сети — работаем с тем, что есть */ }
     };
     void load();
@@ -38,5 +52,10 @@ export function useMobileConfig(signedIn: boolean): { verdict: 'none' | 'availab
     return () => { alive = false; document.removeEventListener('visibilitychange', onVisible); };
   }, [signedIn]);
 
-  return { verdict, config };
+  const skip = () => {
+    setOffer(false);
+    try { if (config?.android) localStorage.setItem(SKIPPED, config.android.latestNative); } catch { /* приват-режим */ }
+  };
+
+  return { verdict, config, offer, skip };
 }

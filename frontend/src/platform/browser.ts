@@ -98,6 +98,10 @@ export const browserBridge: PlatformBridge = {
 
   appUpdate: {
     check: () => Promise.resolve(null),
+    // В браузере и в PWA приложение не переустанавливают: обновляется сама страница.
+    canInstall: () => Promise.resolve(false),
+    install: () => Promise.resolve('unsupported' as const),
+    requestInstallPermission: () => Promise.resolve(),
     apply: () => Promise.resolve(),
   },
 

@@ -1121,6 +1121,17 @@ test('конфиг оболочки: сравнение версий, верди
   assert.equal(effectiveLockPolicy('5', undefined), '5');
 });
 
+test('предложение обновиться: обязательное всегда, обычное — один раз на версию', async () => {
+  const { shouldOfferUpdate } = await load('lib/mobile-config.ts');
+  const rel = { latestNative: '1.9', minimumNative: '1.0', apkUrl: 'u', sha256: 's', force: false };
+  assert.equal(shouldOfferUpdate('available', rel, null), true);      // ещё не откладывали
+  assert.equal(shouldOfferUpdate('available', rel, '1.9'), false);    // эту уже отложили
+  assert.equal(shouldOfferUpdate('available', rel, '1.8'), true);     // откладывали прошлую, вышла новая
+  assert.equal(shouldOfferUpdate('required', rel, '1.9'), true);      // без обязательного не работает
+  assert.equal(shouldOfferUpdate('none', rel, null), false);
+  assert.equal(shouldOfferUpdate('available', null, null), false);    // сервер не сказал о выпуске
+});
+
 test('черновики чатов: свои у каждого чата, пустой стирает, старые вытесняются', async () => {
   const { readDraft, writeDraft, clearDraft } = await load('lib/chat-drafts.ts');
   const mem = new Map();

@@ -51,6 +51,25 @@ export function updateVerdict(native: string | null, release: MobileConfig['andr
   return 'none';
 }
 
+/**
+ * Предлагать ли обновление прямо сейчас.
+ *
+ * Обязательное — всегда: без него приложение всё равно не работает. Обычное — один раз
+ * на версию: человек нажал «Позже», и до следующего выпуска мы молчим. Иначе окно
+ * обновления встречало бы его при каждом запуске, и его научились бы закрывать не глядя.
+ */
+export function shouldOfferUpdate(
+  verdict: 'none' | 'available' | 'required',
+  release: MobileConfig['android'],
+  skipped: string | null,
+): boolean {
+  if (!release) return false;
+  if (verdict === 'required') return true;
+  if (verdict !== 'available') return false;
+  // Отложена именно эта версия — а вышла следующая, значит показываем снова.
+  return compareVersions(skipped, release.latestNative) < 0;
+}
+
 /** Политика блокировки с учётом организации: своя не мягче организационной. */
 const ORDER: LockPolicy[] = ['off', '15', '5', '1', 'immediately'];
 export function effectiveLockPolicy(own: LockPolicy, orgMin: LockPolicy | undefined): LockPolicy {

@@ -489,6 +489,20 @@
 }
 .lock-title { font-size: var(--fs-lg); }
 
+/* Обновление приложения: лист снизу на телефоне, тот же блок — на экране обязательного. */
+.update-body { display: flex; flex-direction: column; gap: 10px; padding: 4px 12px 12px; text-align: left; max-width: 420px; }
+.update-head { display: flex; align-items: center; gap: 12px; }
+.update-badge {
+  display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 auto;
+  border-radius: var(--radius-sm); background: var(--fill-info); color: #fff;
+}
+.update-size { font-size: var(--fs-sm); }
+.update-notes { margin: 0; font-size: var(--fs-sm); color: var(--text-dim); }
+.update-progress { height: 6px; border-radius: 999px; background: var(--bg-elev-2); overflow: hidden; }
+.update-progress span { display: block; height: 100%; background: var(--fill-info); transition: width .2s; }
+.update-actions { display: flex; gap: 8px; margin-top: 4px; }
+.update-actions .btn { flex: 1; justify-content: center; }
+
 /* кнопка «меню» и подложка — только на узком экране */
 .nav-open-btn { display: none; }
 .nav-backdrop { display: none; }

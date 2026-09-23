@@ -14,7 +14,7 @@ const MAX_VISIBLE = 3;
  * браузера — а его разрешение обычно не выдают, и человек не узнавал ни о чём.
  * Это видно всегда: клик открывает чаты.
  */
-export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, onOpenSupport, onOpenInbox, onOpenUpdate }: {
+export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, onOpenSupport, onOpenInbox }: {
   onOpenChat: (chatId?: string) => void;
   onOpenFeed?: () => void;
   onOpenFocus?: () => void;
@@ -23,8 +23,6 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
   onOpenSupport?: (conversationId?: string) => void;
   /** Ящик уведомлений оболочки: перейти по пути и отметить прочитанным. */
   onOpenInbox?: (id?: string, path?: string) => void;
-  /** Доступно обновление приложения: скачать. */
-  onOpenUpdate?: () => void;
 }) {
   const [items, setItems] = useState<Toast[]>([]);
 
@@ -60,7 +58,6 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
             else if (t.section === 'meetings') onOpenMeetings?.();
             else if (t.section === 'support') onOpenSupport?.(t.conversationId);
             else if (t.section === 'inbox') onOpenInbox?.(t.inboxId, t.inboxPath);
-            else if (t.section === 'update') onOpenUpdate?.();
             else onOpenChat(t.chatId);
             setItems((prev) => prev.filter((x) => x.id !== t.id));
           }}
@@ -70,7 +67,7 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
               : t.section === 'meetings' ? 'Открыть встречи'
                 : t.section === 'support' ? 'Открыть обращение'
                   : t.section === 'inbox' ? 'Открыть'
-                    : t.section === 'update' ? 'Скачать обновление' : 'Открыть чаты'}
+                    : 'Открыть чаты'}
         >
           <Icon
             name={t.kind === 'saved' ? 'check' : t.section === 'support' ? 'support' : t.section === 'chat' || !t.section ? 'chat' : 'bell'}
