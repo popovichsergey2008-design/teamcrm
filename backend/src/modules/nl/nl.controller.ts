@@ -20,6 +20,12 @@ class ParseEventDto {
   /** Местное «сейчас» клиента: «завтра в 15» — это его завтра, а не серверное. */
   @IsOptional() @IsString() @MaxLength(32) now?: string;
 }
+class SuggestDto {
+  @IsString() @MaxLength(255) title!: string;
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
+  @IsOptional() @IsString() projectId?: string;
+}
+
 class BatchDto {
   @IsArray() @ArrayMaxSize(10) drafts!: { intent?: string; task?: Record<string, unknown> }[];
   @IsOptional() @IsIn(['text', 'voice']) sourceType?: string;
@@ -146,6 +152,15 @@ export class NlController {
     @Body() dto: RetryItemDto,
   ) {
     return this.batches.retry(u.tenantId, u.userId, id, itemId, dto?.task);
+  }
+
+  /**
+   * «Подобрать исполнителя» для обычной задачи: отдел, направление и кандидат.
+   * Ничего не создаёт и не меняет — только советует (ТЗ-10).
+   */
+  @Post('suggest-assignee')
+  suggestAssignee(@CurrentUser() u: AuthUser, @Body() dto: SuggestDto) {
+    return this.nl.suggestAssignee(u.tenantId, dto);
   }
 
   @Post('apply')

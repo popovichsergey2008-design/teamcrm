@@ -434,6 +434,57 @@ export class NlService {
     draft.task.assigneeName = pick.name;
   }
 
+  /**
+   * «Подобрать исполнителя» для обычной задачи (ТЗ-10, продолжение этапа 4).
+   *
+   * Быстрая команда классифицирует задачи заодно с разбором текста. В обычном окне
+   * разбора нет: человек уже написал название. Поэтому отдельная ручка — и только по
+   * нажатию кнопки, а не на каждую букву: решение заказчика, чтобы не тратить токены
+   * на каждую создаваемую задачу.
+   *
+   * Модель молчит — отвечаем честно: «не смог определить», а не подставляем наугад.
+   */
+  async suggestAssignee(
+    tenantId: string, input: { title: string; description?: string | null; projectId?: string | null },
+  ) {
+    const title = String(input.title ?? '').trim();
+    if (title.length < 3) throw AppException.validation('Слишком короткое название задачи');
+
+    const text = [title, input.description ? String(input.description).slice(0, 1000) : ''].filter(Boolean).join('. ');
+    let department: Department = 'unknown';
+    let skill: Skill | null = null;
+    let confidence = 0;
+    try {
+      const raw = await this.ai.generate(tenantId, SUGGEST_SYSTEM, JSON.stringify({ text, catalog: skillsCatalog() }), 'nl_command');
+      const parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+      if (isDepartment(parsed?.department)) department = parsed.department;
+      if (isSkill(parsed?.specialization)) skill = parsed.specialization;
+      const c = Number(parsed?.confidence);
+      confidence = Number.isFinite(c) ? Math.min(1, Math.max(0, c)) : 0;
+    } catch (e) {
+      this.log.warn(`подбор исполнителя без модели: ${(e as Error).message}`);
+    }
+
+    const candidates = await this.autoCandidates(tenantId);
+    // Свой человек в проекте быстрее входит в курс дела — это учитывает подбор.
+    if (input.projectId) {
+      const members = await this.db.many<{ user_id: string }>(
+        `SELECT user_id::text FROM project_members WHERE project_id=$1`, [input.projectId],
+      ).catch(() => []);
+      const inProject = new Set(members.map((m) => String(m.user_id)));
+      for (const c of candidates) c.inProject = inProject.has(c.userId);
+    }
+
+    const pick = pickAssignee({ skill, confidence }, candidates);
+    return {
+      department, skill, confidence,
+      suggestedAssigneeId: pick.userId,
+      suggestedAssigneeName: pick.name,
+      reason: pick.reason,
+      sure: confidence >= SURE_CONFIDENCE,
+    };
+  }
+
   /** Применяет подтверждённый (возможно отредактированный) черновик — создаёт сущность. */
   async apply(tenantId: string, userId: string, body: { intent: Intent; task?: any; deal?: any }) {
     if (body.intent === 'create_task') {
@@ -492,6 +543,16 @@ export class NlService {
  * не терять. `source` — кусок речи про эту задачу; по нему дальше работают правила
  * (исполнитель, срок, приоритет, согласование), и он же показывается человеку.
  */
+/** Классификация ОДНОЙ готовой задачи: отдел, направление, уверенность. Больше ничего. */
+const SUGGEST_SYSTEM = [
+  'Ты распределяешь задачи по отделам. На входе — название задачи и справочник отделов.',
+  'Определи: department — код отдела из справочника или "unknown";',
+  'specialization — направление из этого отдела или null;',
+  'confidence — насколько ты уверен (0..1). Не уверен — ставь низкое, это нормально.',
+  'Ничего не выдумывай и не предлагай исполнителя: людей ты не видишь.',
+  'Верни СТРОГО JSON: {"department":"","specialization":null,"confidence":0}',
+].join(' ');
+
 const MANY_SYSTEM = [
   'Ты — постановщик задач. В сообщении человека может быть НЕСКОЛЬКО поручений разным людям.',
   'Раздели их: одна мысль о работе — одна задача. Если поручение одно, верни одну задачу.',

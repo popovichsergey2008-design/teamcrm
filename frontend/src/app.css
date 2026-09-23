@@ -5344,3 +5344,16 @@ button.chat-pop-row:hover { background: var(--hover); }
   font-size: var(--fs-xs); color: var(--accent);
 }
 .nl-routing-guess { color: var(--text-mut); }
+
+/*
+  «Подобрать исполнителя» под полем выбора (ТЗ-10).
+
+  Кнопка и ответ живут одной строкой: совет не должен раздвигать форму и отвлекать
+  от неё. Неуверенный совет — приглушённым цветом: интонация совпадает с уверенностью.
+*/
+.suggest-assignee {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 6px;
+}
+.suggest-line { font-size: var(--fs-xs); color: var(--accent); }
+.suggest-guess { color: var(--text-mut); }
+.suggest-apply { margin-left: 6px; }

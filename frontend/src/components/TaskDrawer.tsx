@@ -17,6 +17,7 @@ import { TaskMergeModal } from './TaskMergeModal';
 import { AuthedMedia } from './AuthedMedia';
 import { RichText } from './RichText';
 import { RichEditor } from './RichEditor';
+import { SuggestAssignee } from './SuggestAssignee';
 import { MONETIZATION_ENABLED } from '../config';
 import { labelTextColor } from '../lib/labels';
 import { overlayProps } from '../lib/overlay';
@@ -915,6 +916,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                     <option value="">— не назначен —</option>
                     {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
                   </select>
+                  {/* Совет «кому поручить» — по кнопке; поле остаётся за человеком (ТЗ-10). */}
+                  <SuggestAssignee title={title} description={desc} projectId={String(task.project_id)} onPick={setAssigneeId} />
                 </div>
                 <div className="field"><label title="Кто ставит задачу и принимает результат">Постановщик</label>
                   <select className="input" value={managerId} onChange={(e) => setManagerId(e.target.value)}>

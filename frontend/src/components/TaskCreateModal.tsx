@@ -6,6 +6,7 @@ import type { User } from '../types';
 import { labelTextColor } from '../lib/labels';
 import { navigate } from '../lib/router';
 import { overlayProps } from '../lib/overlay';
+import { SuggestAssignee } from './SuggestAssignee';
 import { isAnonymousClipboardName, screenshotName } from '../lib/attachments';
 
 interface Props {
@@ -219,6 +220,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
               <option value="">— не назначен —</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
             </select>
+            {/* Совет по названию задачи — по кнопке, а не на каждую букву (ТЗ-10). */}
+            <SuggestAssignee title={title} description={description} projectId={projectId} onPick={setAssigneeId} />
           </div>
           <div className="field"><label title="Кто ставит задачу и принимает результат">Постановщик</label>
             <select className="input" value={managerId} onChange={(e) => setManagerId(e.target.value)}>

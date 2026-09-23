@@ -117,6 +117,17 @@ export interface Scheduled {
   sentCount: number;
 }
 
+/** Совет «кому поручить»: отдел, направление и кандидат. Ничего не меняет (ТЗ-10). */
+export interface AssigneeSuggestion {
+  department: 'development' | 'content' | 'unknown';
+  skill: string | null;
+  confidence: number;
+  suggestedAssigneeId: string | null;
+  suggestedAssigneeName: string | null;
+  reason: string;
+  sure: boolean;
+}
+
 /** Пакет задач из быстрой команды: итог, созданные задачи и то, что не получилось (ТЗ-10). */
 export interface TaskBatch {
   batchId: string;
@@ -946,6 +957,9 @@ export const api = {
     clientRequestId: string;
   }) => request<TaskBatch>('POST', '/nl/batches', body, { idempotencyKey: body.clientRequestId }),
   taskBatch: (id: string) => request<TaskBatch>('GET', `/nl/batches/${id}`),
+  /** «Подобрать исполнителя» по названию задачи — только по нажатию кнопки. */
+  suggestAssignee: (b: { title: string; description?: string; projectId?: string }) =>
+    request<AssigneeSuggestion>('POST', '/nl/suggest-assignee', b),
   retryBatchItem: (id: string, itemId: string, task?: any) =>
     request<TaskBatch>('POST', `/nl/batches/${id}/items/${itemId}/retry`, task ? { task } : {}),
   /** Голосовая команда: аудио-запись → Whisper → распознанный текст. */
