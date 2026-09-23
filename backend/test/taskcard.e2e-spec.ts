@@ -136,6 +136,21 @@ describe('Enhancements v1 — Task card (e2e)', () => {
     const files = (await http.get(`/api/tasks/${taskId}/attachments`).set(A()).expect(200)).body.data;
     expect(files.some((f: any) => f.file_name === 'screen.png')).toBe(true);
 
+
+    // в истории ОДНА новая запись — про сообщение, и по её commentId строится ссылка
+    const after = (await http.get(`/api/tasks/${taskId}/activity`).set(A()).expect(200)).body.data;
+    expect(after.length).toBe(before + 1);
+    expect(after[0].kind).toBe('commented');
+    expect(String(after[0].detail.commentId)).toBe(String(msg.id));
+
+    // ответ на выделенный кусок цитирует именно его, а не всё сообщение
+    const reply = (await http.post(`/api/tasks/${taskId}/comments`).set(A())
+      .send({ body: 'да, согласен', replyToId: String(msg.id), replyExcerpt: 'как это выглядит' })
+      .expect(201)).body.data;
+    const list2 = (await http.get(`/api/tasks/${taskId}/comments`).set(A()).expect(200)).body.data;
+    const shown = list2.find((c: any) => String(c.id) === String(reply.id));
+    expect(shown.reply_body).toBe('как это выглядит');
+
     /*
       Несколько снимков — ОДНО сообщение (как в переписке).
 
@@ -159,20 +174,6 @@ describe('Enhancements v1 — Task card (e2e)', () => {
 
     // сообщение с одним файлом тоже отдаёт список — интерфейс не разбирает два случая
     expect(withFile.files.map((f: any) => f.name)).toEqual(['screen.png']);
-
-    // в истории ОДНА новая запись — про сообщение, и по её commentId строится ссылка
-    const after = (await http.get(`/api/tasks/${taskId}/activity`).set(A()).expect(200)).body.data;
-    expect(after.length).toBe(before + 1);
-    expect(after[0].kind).toBe('commented');
-    expect(String(after[0].detail.commentId)).toBe(String(msg.id));
-
-    // ответ на выделенный кусок цитирует именно его, а не всё сообщение
-    const reply = (await http.post(`/api/tasks/${taskId}/comments`).set(A())
-      .send({ body: 'да, согласен', replyToId: String(msg.id), replyExcerpt: 'как это выглядит' })
-      .expect(201)).body.data;
-    const list2 = (await http.get(`/api/tasks/${taskId}/comments`).set(A()).expect(200)).body.data;
-    const shown = list2.find((c: any) => String(c.id) === String(reply.id));
-    expect(shown.reply_body).toBe('как это выглядит');
   });
 
   /**
