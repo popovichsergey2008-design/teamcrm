@@ -418,7 +418,7 @@ describe('треды в чатах (e2e)', () => {
     await http.post('/api/projects').set(O).send({ name: 'Складской учёт' }).expect(201);
 
     // Групповой чат: проекта у него нет — значит, определить его можно только из текста.
-    const chat = (await http.post('/api/chats/group').set(O)
+    const chat = (await http.post('/api/chats/groups').set(O)
       .send({ title: 'Общий', userIds: [] }).expect(201)).body.data;
     const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
       .send({ body: 'Фильтр на мобилке открывается криво, сделай чтобы снизу выезжал' }).expect(201)).body.data;
