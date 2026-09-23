@@ -7,6 +7,7 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { NotificationsRepository } from './notifications.repository';
 import {
   EVENT_TITLE, EventKey, FEED_ANNOUNCEMENT_KEY, FEED_ANNOUNCEMENT_TITLE,
+  CHAT_DIRECT_KEY, CHAT_DIRECT_TITLE,
   FEED_MENTION_KEY, FEED_MENTION_TITLE, MIRROR_EVENT_KEY, MIRROR_EVENT_TITLE,
   OWN_EVENT_KEY, OWN_EVENT_TITLE,
 } from './mail.templates';
@@ -20,6 +21,7 @@ import {
 const EVENT_KEYS = Object.keys(EVENT_TITLE) as EventKey[];
 const ALL_KEYS: string[] = [
   ...EVENT_KEYS, FEED_ANNOUNCEMENT_KEY, FEED_MENTION_KEY, OWN_EVENT_KEY, MIRROR_EVENT_KEY,
+  CHAT_DIRECT_KEY,
 ];
 const TITLE: Record<string, string> = {
   ...EVENT_TITLE,
@@ -27,6 +29,7 @@ const TITLE: Record<string, string> = {
   [FEED_MENTION_KEY]: FEED_MENTION_TITLE,
   [OWN_EVENT_KEY]: OWN_EVENT_TITLE,
   [MIRROR_EVENT_KEY]: MIRROR_EVENT_TITLE,
+  [CHAT_DIRECT_KEY]: CHAT_DIRECT_TITLE,
 };
 
 class PrefDto {

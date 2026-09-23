@@ -130,7 +130,7 @@ describe('Почтовые уведомления (e2e)', () => {
     // Список полный: новый повод для письма обязан появиться и здесь, иначе человек
     // получает письма, которые нечем выключить.
     expect(prefs.map((p: any) => p.eventKey).sort()).toEqual([
-      'feed.announcement', 'feed.mention',
+      'chat.direct', 'feed.announcement', 'feed.mention',
       'task.commented', 'task.created', 'task.own', 'task.status', 'telegram.mirror',
     ]);
     // По умолчанию письма приходят — кроме одного: о СВОИХ действиях их нет.

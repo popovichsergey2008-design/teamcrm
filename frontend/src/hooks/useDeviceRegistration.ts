@@ -38,6 +38,29 @@ export function useDeviceRegistration(signedIn: boolean): void {
     })();
     return () => { alive = false; };
   }, [signedIn]);
+
+  /*
+    Сообщаем серверу, открыто приложение или свёрнуто (жалоба «push не приходит вообще»).
+
+    По этому признаку сервер решает, нужен ли push ИМЕННО этому телефону. Раньше он
+    смотрел, «в сети» ли человек вообще, — и открытая на компьютере вкладка глушила
+    телефон весь день. Теперь молчит только тот экран, в который человек смотрит.
+  */
+  useEffect(() => {
+    if (!signedIn || !isNativeShell()) return;
+    const tell = (foreground: boolean) => {
+      const id = platform.secureStorage.get(DEVICE_KEY);
+      if (!id) return;
+      void api.setDeviceState(id, foreground).catch(() => undefined);
+    };
+    const onVisible = () => tell(document.visibilityState === 'visible');
+    // При запуске приложение открыто — говорим сразу, не дожидаясь первого переключения.
+    onVisible();
+    document.addEventListener('visibilitychange', onVisible);
+    // Закрытие приложения: последнее слово — «я свернулось», иначе push молчал бы минуту.
+    window.addEventListener('pagehide', () => tell(false));
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [signedIn]);
 }
 
 /** Id устройства на сервере — чтобы при выходе снять его с учёта. */

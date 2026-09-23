@@ -109,6 +109,14 @@ export class MobileService {
     return { id: String(row.id), platform: row.platform, model: row.model };
   }
 
+  /** Состояние оболочки: открыта или свёрнута. Чужое устройство трогать нельзя. */
+  async setDeviceState(userId: string, id: string, foreground: boolean) {
+    const row = await this.devices.byIdOwned(userId, id);
+    if (!row) throw AppException.notFound('Устройство не найдено');
+    await this.inbox.setForeground(String(row.id), foreground);
+    return { ok: true };
+  }
+
   async mine(userId: string) {
     return (await this.devices.listMine(userId)).map((r) => ({
       id: String(r.id), platform: r.platform, model: r.model, osVersion: r.os_version,

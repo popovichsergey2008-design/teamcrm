@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { TelegramSender } from '../telegram/telegram.sender';
 import { TelegramService } from '../telegram/telegram.service';
 import { MailRow, NotificationsRepository } from './notifications.repository';
-import { MIRROR_EVENT_KEY } from './mail.templates';
+import { CHAT_DIRECT_KEY, MIRROR_EVENT_KEY } from './mail.templates';
 import { mirrorText } from './telegram-mirror.text';
 
 /**
@@ -47,6 +47,38 @@ export class TelegramMirror {
       return true;
     } catch (e) {
       this.log.warn(`сообщение в Telegram не ушло: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Личное сообщение или упоминание — сразу в Telegram (просьба заказчика).
+   *
+   * Писем о переписке мы не шлём: это был бы спам на каждое «ок». Но личное
+   * обращение и «@имя» — не шум, их ждут. Поэтому отдельный повод и отдельный
+   * переключатель в профиле; групповые чаты сюда не идут.
+   *
+   * Молча ничего не делает, если Telegram не привязан или повод выключен.
+   */
+  async chatMessage(m: {
+    tenantId: string; userId: string; authorName: string | null;
+    chatTitle: string | null; text: string; mention: boolean; path: string;
+  }): Promise<boolean> {
+    if (!this.sender.enabled || !m.userId) return false;
+    try {
+      if (!(await this.repo.prefEnabled(m.tenantId, m.userId, CHAT_DIRECT_KEY))) return false;
+      const chatId = await this.telegram.chatIdOf(m.tenantId, m.userId);
+      if (!chatId) return false;
+      const who = m.authorName ?? 'Коллега';
+      const head = m.mention
+        ? `${who} упомянул вас${m.chatTitle ? ` в «${m.chatTitle}»` : ''}`
+        : `Личное сообщение от ${who}`;
+      const body = String(m.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 400) || 'вложение';
+      const base = (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, '');
+      await this.sender.sendMessage(chatId, `${head}:\n${body}\n${base}${m.path}`);
+      return true;
+    } catch (e) {
+      this.log.warn(`сообщение чата в Telegram не ушло: ${(e as Error).message}`);
       return false;
     }
   }

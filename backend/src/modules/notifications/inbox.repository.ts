@@ -67,11 +67,29 @@ export class InboxRepository {
   }
 
   /** Устройства человека с push-токеном — кого будить. */
+  /**
+   * Куда слать push (ТЗ-9, волна 4; исправлено по жалобе «не приходит вообще»).
+   *
+   * `active` — человек смотрит именно в это устройство прямо сейчас: приложение
+   * открыто и сказало об этом не позже минуты назад. Такому телефону push не нужен —
+   * сообщение и так на экране. Всем остальным нужен, даже если у человека открыт
+   * компьютер: раньше открытая на компьютере вкладка глушила телефон на весь день.
+   */
   pushTargets(userId: string) {
-    return this.db.many<{ id: string; push_token: string; platform: string }>(
-      `SELECT id::text, push_token, platform FROM mobile_devices
+    return this.db.many<{ id: string; push_token: string; platform: string; active: boolean }>(
+      `SELECT id::text, push_token, platform,
+              (foreground AND foreground_at > now() - interval '60 seconds') AS active
+         FROM mobile_devices
         WHERE user_id=$1 AND revoked_at IS NULL AND push_token IS NOT NULL`,
       [userId],
+    );
+  }
+
+  /** Оболочка сообщает, открыта она сейчас или свёрнута. */
+  setForeground(deviceId: string, foreground: boolean) {
+    return this.db.query(
+      `UPDATE mobile_devices SET foreground=$2, foreground_at=now(), last_seen_at=now() WHERE id=$1`,
+      [deviceId, foreground],
     );
   }
 

@@ -70,8 +70,7 @@ export class PushService {
         const mode = modes.get(userId) ?? 'all';
         if (mode === 'none') continue;
         if (mode === 'mentions' && !mentioned.has(userId)) continue;
-        if (this.realtime.isOnline(m.tenantId, userId)) continue;
-
+        // Своё сообщение автор видит сам; в ящик пишем всегда — это правда о событии.
         const item = await this.inbox.record({
           tenantId: m.tenantId, userId, mailId: null, eventKey: mentioned.has(userId) ? 'chat.mention' : 'chat.message',
           title: where, body: PushService.previewOf(m.text), path,
@@ -79,7 +78,14 @@ export class PushService {
         if (!item || !this.fcm.enabled) continue;
         if (!(await this.allowChatPush(userId, m.chatId))) continue;
 
-        const targets = await this.inbox.pushTargets(userId);
+        /*
+          Куда слать.
+
+          Раньше здесь стояла проверка «человек в сети» — и открытая на компьютере
+          вкладка глушила телефон весь день: уведомления не приходили вообще. Теперь
+          молчит только то устройство, в которое человек смотрит прямо сейчас.
+        */
+        const targets = (await this.inbox.pushTargets(userId)).filter((t) => !t.active);
         if (!targets.length) continue;
         const badge = await this.inbox.unreadCount(userId);
         const title = privacy === 'hide' ? 'ANTHILL' : where;
@@ -144,7 +150,6 @@ export class PushService {
     title: string; body: string;
   }): Promise<void> {
     try {
-      if (this.realtime.isOnline(m.tenantId, m.userId)) return;
       const path = `/support/${m.conversationId}`;
       const item = await this.inbox.record({
         tenantId: m.tenantId, userId: m.userId, mailId: null, eventKey: `support.${m.kind}`,
@@ -157,7 +162,8 @@ export class PushService {
           if (r !== 'OK') return;
         } catch { /* без Redis — шлём */ }
       }
-      const targets = await this.inbox.pushTargets(m.userId);
+      // Молчит только то устройство, в которое человек смотрит прямо сейчас.
+      const targets = (await this.inbox.pushTargets(m.userId)).filter((t) => !t.active);
       if (!targets.length) return;
       const badge = await this.inbox.unreadCount(m.userId);
       const privacy = await this.inbox.pushPrivacyOf(m.tenantId);
@@ -218,7 +224,7 @@ export class PushService {
     if (!item || row.push_sent_at || !this.fcm.enabled) return;
 
     try {
-      const targets = await this.inbox.pushTargets(row.user_id);
+      const targets = (await this.inbox.pushTargets(row.user_id)).filter((t) => !t.active);
       if (!targets.length) return;
       const privacy = await this.inbox.pushPrivacyOf(row.tenant_id);
       const badge = await this.inbox.unreadCount(row.user_id);

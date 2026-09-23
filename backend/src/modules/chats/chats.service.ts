@@ -7,6 +7,7 @@ import { DiagService } from '../diagnostics/diag.service';
 import { FilesService } from '../files/files.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { PushService } from '../notifications/push.service';
+import { TelegramMirror } from '../notifications/telegram-mirror.service';
 import { ChatRow, ChatsRepository, MessageRow } from './chats.repository';
 import { ScheduledRepository, ScheduledRow } from './scheduled.repository';
 
@@ -46,6 +47,7 @@ export class ChatsService {
     private readonly chatAi: ChatsAiService,
     private readonly responses: CustomResponsesService,
     private readonly push: PushService,
+    private readonly mirror: TelegramMirror,
   ) {}
 
   /** Список чатов + кто сейчас в сети (точка рядом с именем). */
@@ -333,6 +335,23 @@ export class ChatsService {
       authorId: user.userId, authorName: message.author_name ?? null, text,
       recipients: to, mentioned, modes, threadRootId: rootId,
     })).catch(() => undefined);
+    /*
+      Личное сообщение и упоминание — ещё и в Telegram (просьба заказчика).
+
+      Писем о переписке нет и не будет: это спам на каждое «ок». Но личное обращение
+      и «@имя» пропускать нельзя — человек ждёт ответа. Групповую болтовню сюда не
+      тащим: туда пишут весь день.
+    */
+    const tgPath = rootId ? `/chat/${chatId}/thread/${rootId}` : `/chat/${chatId}`;
+    for (const rid of to) {
+      if (String(rid) === String(user.userId)) continue;
+      const isMention = mentioned.map(String).includes(String(rid));
+      if (chat.kind !== 'dm' && !isMention) continue;
+      void this.mirror.chatMessage({
+        tenantId, userId: String(rid), authorName: message.author_name ?? null,
+        chatTitle: chat.kind === 'dm' ? null : chat.title, text, mention: isMention, path: tgPath,
+      }).catch(() => undefined);
+    }
     // В журнал — только факт и адресаты: по нему видно, ушло ли сообщение и кому,
     // когда человек говорит «мне не пришло». Текста сообщения здесь нет.
     this.diag.write({

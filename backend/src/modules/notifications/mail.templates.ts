@@ -42,6 +42,17 @@ export const OWN_EVENT_TITLE = 'Письма о моих собственных 
 export const MIRROR_EVENT_KEY = 'telegram.mirror';
 export const MIRROR_EVENT_TITLE = 'Дублировать уведомления в Telegram';
 
+/**
+ * Личное сообщение и упоминание — в Telegram (просьба заказчика).
+ *
+ * Отдельно от общего дубля писем: письма о переписке мы не шлём вовсе (это был бы
+ * спам), а личное обращение или «@имя» пропустить нельзя — человек ждёт ответа.
+ * По умолчанию включено: привязавший Telegram сделал это ради таких сообщений.
+ * Групповые чаты сюда не идут намеренно — там пишут весь день, и это шум.
+ */
+export const CHAT_DIRECT_KEY = 'chat.direct';
+export const CHAT_DIRECT_TITLE = 'Личные сообщения и упоминания — в Telegram';
+
 const BRAND = {
   ink: '#101623',
   soft: '#4d5768',

@@ -16,6 +16,10 @@ class ListQuery {
   @IsOptional() @IsString() after?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
 }
+class DeviceStateDto {
+  @IsBoolean() foreground!: boolean;
+}
+
 class CrashDto {
   @IsString() @MaxLength(40) appVersion!: string;
   @IsOptional() @IsString() @MaxLength(120) device?: string;
@@ -174,6 +178,17 @@ export class MobileController {
   @Post('devices')
   register(@CurrentUser() u: AuthUser, @Body() dto: RegisterDeviceDto) {
     return this.mobile.register(u, dto);
+  }
+
+  /**
+   * Оболочка сообщает, открыта она или свёрнута (исправление «push не приходит»).
+   *
+   * По этому признаку сервер решает, нужен ли push ИМЕННО этому телефону: человек,
+   * который смотрит в экран, уже видит сообщение, всем остальным устройствам оно нужно.
+   */
+  @Post('devices/:id/state')
+  deviceState(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: DeviceStateDto) {
+    return this.mobile.setDeviceState(u.userId, id, dto.foreground === true);
   }
 
   @Get('devices')

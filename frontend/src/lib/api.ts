@@ -393,6 +393,9 @@ export interface SyncPage { cursor: string; reset: boolean; more: boolean; chang
 export const api = {
   /** Повтор записи из офлайн-очереди — тем же ключом, той же версией. */
   replay: (c: QueuedChange) => request<unknown>(c.method, c.path, c.body, { idempotencyKey: c.id, ifMatch: c.ifMatch }),
+  /** Оболочка говорит, открыта она или свёрнута: по этому решается, слать ли push. */
+  setDeviceState: (deviceId: string, foreground: boolean) =>
+    request<{ ok: true }>('POST', `/mobile/devices/${deviceId}/state`, { foreground }),
   mobileSync: (cursor: string | null, limit = 200) =>
     request<SyncPage>('GET', `/mobile/sync?limit=${limit}${cursor ? `&cursor=${cursor}` : ''}`),
   // auth
