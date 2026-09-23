@@ -4,6 +4,7 @@ import { AppException } from '../../common/http/app-exception';
 import { RoleCode } from '../../common/auth/jwt.types';
 import { PositionsRepository } from '../team/positions.repository';
 import { GroupsRepository } from '../team/groups.repository';
+import { isSkill, SKILLS } from '../team/skills';
 import { AccountsRepository } from '../auth/accounts.repository';
 import { UserRow, UsersRepository } from './users.repository';
 import { isAssignableTeamRole, removesLastActiveOwner, Role } from './team-invariants';
@@ -112,7 +113,10 @@ export class UsersService {
   async updateUser(
     tenantId: string,
     id: string,
-    patch: { roleCode?: Role; positionId?: string | null; groupIds?: string[]; isActive?: boolean },
+    patch: {
+      roleCode?: Role; positionId?: string | null; groupIds?: string[]; isActive?: boolean;
+      skills?: string[]; canReceiveAutoTasks?: boolean; autoAssignmentWeight?: number;
+    },
     actor?: { actorId: string; actorRole: string },
   ): Promise<PublicUser> {
     const target = await this.repo.findById(tenantId, id);
@@ -167,6 +171,18 @@ export class UsersService {
       isActive: patch.isActive,
     });
     if (patch.groupIds !== undefined) await this.groups.setUserGroups(tenantId, id, patch.groupIds);
+    // Направления и автоназначение (ТЗ-10, этап 3): чужие значения до базы не доходят.
+    if (patch.skills !== undefined) {
+      await this.repo.setSkills(tenantId, id, patch.skills.filter(isSkill).slice(0, SKILLS.length));
+    }
+    if (patch.canReceiveAutoTasks !== undefined || patch.autoAssignmentWeight !== undefined) {
+      await this.repo.setAutoAssignment(tenantId, id, {
+        canReceive: patch.canReceiveAutoTasks,
+        weight: patch.autoAssignmentWeight === undefined
+          ? undefined
+          : Math.min(2, Math.max(0.5, Number(patch.autoAssignmentWeight) || 1)),
+      });
+    }
     return toPublicUser(updated as UserRow);
   }
 
@@ -185,6 +201,10 @@ export class UsersService {
       // человека узнают по лицу: где показываем имя — показываем и аватар
       avatarUrl: u.avatar_file_id ? `/api/files/${u.avatar_file_id}` : null,
       groups: byUser.get(String(u.id)) ?? [],
+      // Чем занимается и можно ли ставить задачи автоматически (ТЗ-10, этап 3).
+      skills: (u.skills as string[]) ?? [],
+      canReceiveAutoTasks: u.can_receive_auto_tasks !== false,
+      autoAssignmentWeight: Number(u.auto_assignment_weight ?? 1),
     }));
   }
 }

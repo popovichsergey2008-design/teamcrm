@@ -5323,3 +5323,13 @@ button.chat-pop-row:hover { background: var(--hover); }
 .batch-item-failed { cursor: default; align-items: flex-start; border-color: var(--danger-line); background: var(--danger-soft); }
 .batch-item-failed:hover { background: var(--danger-soft); }
 .batch-item-failed .btn { margin-top: 6px; }
+
+/* «ИИ может предлагать исполнителем» в карточке сотрудника (ТЗ-10, этап 3). */
+.team-auto {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  color: var(--text-dim); font-size: var(--fs-sm); cursor: pointer;
+}
+.team-auto input { cursor: pointer; }
+/* Кольцо — на самой метке: с клавиатуры фокус приходит на галочку внутри неё. */
+.team-auto:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+.team-auto:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }

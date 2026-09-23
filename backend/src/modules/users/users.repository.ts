@@ -64,11 +64,66 @@ export class UsersRepository {
   listEnriched(tenantId: string) {
     return this.db.many(
       `SELECT u.id, u.email, u.full_name, u.is_active, u.position_id, u.avatar_file_id,
-              r.code AS role_code, p.name AS position_name
+              r.code AS role_code, p.name AS position_name,
+              u.can_receive_auto_tasks, u.auto_assignment_weight,
+              COALESCE(
+                (SELECT array_agg(s.skill ORDER BY s.skill) FROM user_skills s WHERE s.user_id = u.id),
+                '{}'
+              ) AS skills
          FROM users u
          JOIN roles r ON r.id = u.role_id
          LEFT JOIN positions p ON p.id = u.position_id
         WHERE u.tenant_id = $1 ORDER BY u.created_at ASC`,
+      [tenantId],
+    );
+  }
+
+  /**
+   * Чем занимается человек и можно ли ставить ему задачи автоматически (ТЗ-10, этап 3).
+   *
+   * Направления переписываем целиком: «снять фронтенд» — это тот же жест, что
+   * «добавить бэкенд», и разбирать разницу между ними в интерфейсе незачем.
+   */
+  async setSkills(tenantId: string, userId: string, skills: string[]): Promise<void> {
+    await this.db.query(`DELETE FROM user_skills WHERE user_id=$1`, [userId]);
+    if (!skills.length) return;
+    const values = skills.map((_, i) => `($1,$2,$${i + 3})`).join(',');
+    await this.db.query(
+      `INSERT INTO user_skills (tenant_id, user_id, skill) VALUES ${values} ON CONFLICT DO NOTHING`,
+      [tenantId, userId, ...skills],
+    );
+  }
+
+  async setAutoAssignment(tenantId: string, userId: string, patch: { canReceive?: boolean; weight?: number }) {
+    await this.db.query(
+      `UPDATE users SET
+         can_receive_auto_tasks = COALESCE($3, can_receive_auto_tasks),
+         auto_assignment_weight = COALESCE($4, auto_assignment_weight)
+       WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, userId, patch.canReceive ?? null, patch.weight ?? null],
+    );
+  }
+
+  /**
+   * Кандидаты для автоподбора: только те, кому МОЖНО ставить задачи (ТЗ-10, разд. 36).
+   *
+   * Фильтруем в запросе, а не после: список кандидатов уходит в промпт, и человек,
+   * которому автоматические задачи не ставят, не должен там оказаться вовсе.
+   */
+  autoCandidates(tenantId: string) {
+    return this.db.many<{
+      id: string; full_name: string; skills: string[]; weight: string;
+      open_tasks: string; capacity: string;
+    }>(
+      `SELECT u.id::text, u.full_name,
+              COALESCE((SELECT array_agg(s.skill) FROM user_skills s WHERE s.user_id = u.id), '{}') AS skills,
+              u.auto_assignment_weight::text AS weight,
+              u.weekly_capacity_hours::text AS capacity,
+              (SELECT count(*) FROM tasks t
+                WHERE t.assignee_id = u.id AND t.tenant_id = u.tenant_id AND t.closed_at IS NULL)::text AS open_tasks
+         FROM users u
+        WHERE u.tenant_id=$1 AND u.is_active = true AND u.can_receive_auto_tasks = true
+        ORDER BY u.full_name`,
       [tenantId],
     );
   }

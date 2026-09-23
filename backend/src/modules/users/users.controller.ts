@@ -5,11 +5,15 @@ import {
   IsBoolean,
   IsEmail,
   IsIn,
+  IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
+import { SKILLS } from '../team/skills';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser, RoleCode } from '../../common/auth/jwt.types';
 import { UsersService } from './users.service';
@@ -29,6 +33,10 @@ class UpdateUserDto {
   @IsOptional() @IsString() positionId?: string | null;
   @IsOptional() @IsArray() @IsString({ each: true }) groupIds?: string[];
   @IsOptional() @IsBoolean() isActive?: boolean;
+  /** Чем занимается: направления из справочника (ТЗ-10, этап 3). */
+  @IsOptional() @IsArray() @IsIn(SKILLS as unknown as string[], { each: true }) skills?: string[];
+  @IsOptional() @IsBoolean() canReceiveAutoTasks?: boolean;
+  @IsOptional() @IsNumber() @Min(0.5) @Max(2) autoAssignmentWeight?: number;
 }
 
 @ApiTags('users')
@@ -60,6 +68,9 @@ export class UsersController {
       positionId: dto.positionId,
       groupIds: dto.groupIds,
       isActive: dto.isActive,
+      skills: dto.skills,
+      canReceiveAutoTasks: dto.canReceiveAutoTasks,
+      autoAssignmentWeight: dto.autoAssignmentWeight,
     }, { actorId: user.userId, actorRole: user.role });
   }
 }

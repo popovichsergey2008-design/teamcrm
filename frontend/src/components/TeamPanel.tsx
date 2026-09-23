@@ -15,6 +15,16 @@ type Tab = 'people' | 'positions' | 'groups';
 const roleOptions = ASSIGNABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>);
 
 /** kind приходит из базы по-английски — в интерфейсе он не нужен в таком виде. */
+/**
+ * Направления работы — тот же список, что у сервера (backend/src/modules/team/skills.ts).
+ * Держим рядом с разметкой: это словарь интерфейса, а не бизнес-правило.
+ */
+const SKILLS: [string, string][] = [
+  ['backend', 'Бэкенд'], ['frontend', 'Фронтенд'], ['fullstack', 'Фулстек'],
+  ['content', 'Контент'], ['design', 'Дизайн'], ['qa', 'Тестирование'],
+  ['analytics', 'Аналитика'], ['other', 'Другое'],
+];
+
 const KIND_LABEL: Record<string, string> = { department: 'отдел', group: 'группа' };
 const inGroup = (user: any, groupId: string) =>
   (user.groups ?? []).some((g: any) => String(g.id) === String(groupId));
@@ -309,6 +319,45 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                   <select className="input" value={u.role} onChange={(e) => patchUser(u.id, { role: e.target.value })}>{roleOptions}</select>
                   <select className="input" value={u.positionId ?? ''} onChange={(e) => patchUser(u.id, { positionId: e.target.value || null })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
                 </div>
+                {/*
+                  Чем человек занимается (ТЗ-10, этап 3).
+
+                  Должность называют как угодно — «Разработчик», «Специалист», — и по
+                  ней нельзя понять, бэкенд это или контент. Направления отмечают
+                  галочками из общего списка: по ним ИИ подбирает исполнителя, и они же
+                  уходят в подсказку модели. Несколько сразу — обычное дело.
+                */}
+                <div className="chip-row" style={{ marginTop: 6 }}>
+                  {SKILLS.map(([code, label]) => {
+                    const on = (u.skills ?? []).includes(code);
+                    return (
+                      <button
+                        key={code}
+                        className={`group-chip ${on ? 'group-chip-on' : ''}`}
+                        title={on ? `Убрать «${label}»` : `Отметить «${label}»`}
+                        onClick={() => patchUser(u.id, {
+                          skills: on ? (u.skills ?? []).filter((s: string) => s !== code) : [...(u.skills ?? []), code],
+                        })}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/*
+                  «ИИ может ставить задачи» — выключатель для тех, кому автоматические
+                  поручения не нужны: руководителя, стажёра, человека в отпуске.
+                  По умолчанию включено у всех — иначе функция молчит, пока владелец
+                  не пройдёт по всей команде руками.
+                */}
+                <label className="team-auto">
+                  <input
+                    type="checkbox"
+                    checked={u.canReceiveAutoTasks !== false}
+                    onChange={(e) => patchUser(u.id, { canReceiveAutoTasks: e.target.checked })}
+                  />
+                  <span>ИИ может предлагать его исполнителем</span>
+                </label>
                 {/* Группы правятся прямо здесь: думают о них обычно от человека
                     («куда его определить»), а не от списка отделов. */}
                 {groups.length > 0 && (

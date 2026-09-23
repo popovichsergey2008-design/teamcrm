@@ -1063,8 +1063,11 @@ export const api = {
   listUsers: () => request<any[]>('GET', '/users'),
   createUser: (b: { email: string; fullName: string; password: string; role?: string; positionId?: string; groupIds?: string[] }) =>
     request<any>('POST', '/users', b),
-  updateUser: (id: string, b: { role?: string; positionId?: string | null; groupIds?: string[]; isActive?: boolean }) =>
-    request<any>('PATCH', `/users/${id}`, b),
+  updateUser: (id: string, b: {
+    role?: string; positionId?: string | null; groupIds?: string[]; isActive?: boolean;
+    /** Чем занимается и можно ли ставить задачи автоматически (ТЗ-10, этап 3). */
+    skills?: string[]; canReceiveAutoTasks?: boolean; autoAssignmentWeight?: number;
+  }) => request<any>('PATCH', `/users/${id}`, b),
   // positions
   listPositions: () => request<any[]>('GET', '/positions'),
   createPosition: (name: string) => request<any>('POST', '/positions', { name }),
