@@ -5357,3 +5357,19 @@ button.chat-pop-row:hover { background: var(--hover); }
 .suggest-line { font-size: var(--fs-xs); color: var(--accent); }
 .suggest-guess { color: var(--text-mut); }
 .suggest-apply { margin-left: 6px; }
+
+/*
+  Задачи из сводки секретаря — строками с действием (задача #1368).
+
+  Сводка остаётся текстом, который читают одним взглядом, а под ней — сами задачи:
+  щелчок открывает карточку, кнопка ставит задачу в план на сегодня.
+*/
+.ping-items { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 2px 14px; }
+.ping-item { display: flex; align-items: center; gap: 8px; }
+.ping-item-title {
+  flex: 1; min-width: 0; text-align: left; padding: 4px 0;
+  background: none; border: none; color: var(--text); font: inherit; font-size: var(--fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+}
+.ping-item-title:hover { color: var(--accent); }
+.ping-item-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }

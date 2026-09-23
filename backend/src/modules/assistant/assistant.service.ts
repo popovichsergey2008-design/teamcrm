@@ -4,7 +4,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { AssistantMode, AssistantRepository, PingRow } from './assistant.repository';
 import {
-  digestKey, digestText, greetingFor, INSTANT_KINDS, KindStats, mutedKinds, PingCandidate,
+  digestItems, digestKey, digestText, greetingFor, INSTANT_KINDS, KindStats, mutedKinds, PingCandidate,
   PingKind, pingKey, pingText, reactionRate, repeatDue, withinWorkHours,
 } from './ping-rules';
 import { TelegramMirror } from '../notifications/telegram-mirror.service';
@@ -209,6 +209,8 @@ export class AssistantService {
     if (!text) return false;
     const row = await this.repo.create({
       tenantId, userId, kind: 'digest', taskId: null, text, status: 'sent', dedupKey: key,
+      // Состав сводки списком: по нему панель даёт нажать «Сделаю сегодня» у своей задачи (#1368).
+      items: digestItems(items),
     });
     if (!row) return false; // сводку сегодня уже присылали
 
@@ -269,5 +271,10 @@ function view(r: PingRow) {
     /** Кому адресовано — нужно постановщику в списке предложений. */
     toName: r.user_name,
     assigneeName: r.assignee_name,
+    /**
+     * Состав сводки (задача #1368): по нему панель рисует строку на задачу и даёт
+     * нажать «Сделаю сегодня» там, где человек — исполнитель. У обычного повода пусто.
+     */
+    items: r.items ?? null,
   };
 }

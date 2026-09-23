@@ -38,6 +38,8 @@ export function AssistantPings({ today, onOpenTask, onPlanned }: {
 }) {
   const [items, setItems] = useState<Ping[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  /** Задачи из сводки, уже поставленные на сегодня: строка исчезает без перезагрузки. */
+  const [planned, setPlanned] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
 
   const load = useCallback(() => {
@@ -56,6 +58,25 @@ export function AssistantPings({ today, onOpenTask, onPlanned }: {
     drop(p.id); // сразу: человек нажал «скрыть» и должен увидеть результат
     setBusy(p.id);
     try { await api.dismissPing(p.id); } catch { load(); } finally { setBusy(null); }
+  };
+
+  /**
+   * Одна задача из сводки — сразу в план на сегодня (задача #1368).
+   *
+   * Сводку не гасим: в ней несколько дел, и закрыть её из-за одного было бы потерей
+   * остальных. Вместо этого строка помечается сделанной и исчезает из списка.
+   */
+  const planFromDigest = async (pingId: string, taskId: string) => {
+    setBusy(pingId + ':' + taskId);
+    try {
+      await api.setFocusDate(taskId, today);
+      setPlanned((prev) => [...prev, taskId]);
+      onPlanned();
+    } catch {
+      load();
+    } finally {
+      setBusy(null);
+    }
   };
 
   const planToday = async (p: Ping) => {
@@ -124,6 +145,40 @@ export function AssistantPings({ today, onOpenTask, onPlanned }: {
           Скрыть
         </button>
       </span>
+
+      {/*
+        Задачи из сводки — отдельными строками (задача #1368).
+
+        Текст сводки читается одним взглядом, но действовать по нему было нечем:
+        «Просрочено (2): «А», «Б»» — и только «Скрыть» на всю строку. Теперь каждая
+        задача своей строкой: щелчок открывает её, кнопка ставит на сегодня. У задач,
+        где человек не исполнитель («ждёт вашей проверки»), кнопки нет — планировать
+        чужой день нельзя, и показывать кнопку, которая откажет, хуже, чем не показывать.
+      */}
+      {p.kind === 'digest' && !!p.items?.length && (
+        <div className="ping-items">
+          {p.items.filter((it) => !planned.includes(it.taskId)).map((it) => (
+            <div key={it.taskId} className="ping-item">
+              <button
+                className="ping-item-title"
+                onClick={() => (it.projectId ? onOpenTask(it.projectId, it.taskId) : undefined)}
+                title="Открыть задачу"
+              >
+                {it.title}
+              </button>
+              {it.mine && (
+                <button
+                  className="btn btn-sm"
+                  disabled={busy === p.id + ':' + it.taskId}
+                  onClick={() => planFromDigest(p.id, it.taskId)}
+                >
+                  Сделаю сегодня
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 

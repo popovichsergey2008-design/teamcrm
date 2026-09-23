@@ -33,6 +33,8 @@ export interface PingCandidate {
   subjectId: string;
   title: string;
   projectName: string | null;
+  /** Куда вести из сводки: без проекта карточку задачи не открыть (задача #1368). */
+  projectId?: string | null;
   /** Часы: просрочки, до срока или без движения — смотря по поводу. */
   hours: number;
   /** Пояс получателя из профиля. Пустой — считаем по московскому времени. */
@@ -241,6 +243,50 @@ const DIGEST_TITLE: Record<PingKind, string> = {
  * Больше трёх задач в строке не перечисляем — сводку читают за десять секунд,
  * и длинный список превращает её в ту же простыню, от которой уходим.
  */
+/**
+ * Кто из перечисленных в сводке — моя задача (задача #1368).
+ *
+ * Сводка собирается из поводов разного рода: по просрочке и молчанию адресат —
+ * исполнитель, по «ждёт вашей проверки» и «ждёт решения» — постановщик. Планировать
+ * день можно только своей задачей, поэтому различие видно сразу, а не после отказа
+ * сервера.
+ */
+const MY_TASK_KINDS: PingKind[] = ['overdue', 'due_soon', 'silent'];
+
+export interface DigestItem {
+  taskId: string;
+  projectId: string | null;
+  title: string;
+  kind: PingKind;
+  /** Я исполнитель — значит, задачу можно поставить себе на сегодня. */
+  mine: boolean;
+}
+
+/**
+ * Состав сводки — теми же поводами, что и текст (задача #1368).
+ *
+ * Текст сводки читают одним взглядом, но действовать по нему было нечем: строка
+ * «Просрочено (2): «А», «Б»» не даёт нажать ничего. Поэтому рядом с текстом храним
+ * список задач — по нему панель рисует строки с кнопкой «Сделаю сегодня».
+ */
+export function digestItems(items: PingCandidate[]): DigestItem[] {
+  const order: PingKind[] = ['overdue', 'due_soon', 'approval_stuck', 'mention_silent', 'stuck_review', 'silent'];
+  const out: DigestItem[] = [];
+  const seen = new Set<string>();
+  for (const kind of order) {
+    for (const c of items.filter((i) => i.kind === kind)) {
+      if (!c.taskId || seen.has(c.taskId)) continue;
+      seen.add(c.taskId);
+      out.push({
+        taskId: c.taskId, projectId: c.projectId ?? null, title: c.title, kind,
+        mine: MY_TASK_KINDS.includes(kind),
+      });
+    }
+  }
+  // Больше двух десятков — это уже не сводка, а список дел: остальное человек увидит в разделах.
+  return out.slice(0, 20);
+}
+
 export function digestText(items: PingCandidate[], greeting = 'Доброе утро'): string {
   // Порядок — по тому, кого держит промедление: сорванный срок, потом чужое ожидание
   // вашего ответа, и только потом собственные молчащие задачи.

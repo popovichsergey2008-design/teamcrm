@@ -15,6 +15,8 @@ export interface PingRow {
   project_id: string | null;
   assignee_name: string | null;
   user_name: string | null;
+  /** Состав сводки: задачи, о которых она говорит (задача #1368). У обычных поводов — null. */
+  items: { taskId: string; title: string; kind: string; mine: boolean }[] | null;
 }
 
 /** Рабочие часы по умолчанию — те же, что в календаре: организация их могла и не задавать. */
@@ -103,24 +105,24 @@ export class AssistantRepository {
        SELECT * FROM (
          SELECT 'overdue' AS kind, t.assignee_id::text AS "userId", t.id::text AS "taskId",
                 t.id::text AS "subjectId",
-                t.title, t.project_name AS "projectName",
+                t.title, t.project_name AS "projectName", t.project_id::text AS "projectId",
                 EXTRACT(EPOCH FROM (now() - t.deadline_at)) / 3600 AS hours, u.timezone
            FROM live t JOIN users u ON u.id = t.assignee_id AND u.is_active
           WHERE t.deadline_at < now() AND lower(t.column_name) <> ALL($2::text[])
          UNION ALL
-         SELECT 'due_soon', t.assignee_id::text, t.id::text, t.id::text, t.title, t.project_name,
+         SELECT 'due_soon', t.assignee_id::text, t.id::text, t.id::text, t.title, t.project_name, t.project_id::text,
                 EXTRACT(EPOCH FROM (t.deadline_at - now())) / 3600, u.timezone
            FROM live t JOIN users u ON u.id = t.assignee_id AND u.is_active
           WHERE t.deadline_at BETWEEN now() AND now() + interval '24 hours'
             AND lower(t.column_name) <> ALL($2::text[])
          UNION ALL
-         SELECT 'stuck_review', t.created_by::text, t.id::text, t.id::text, t.title, t.project_name,
+         SELECT 'stuck_review', t.created_by::text, t.id::text, t.id::text, t.title, t.project_name, t.project_id::text,
                 EXTRACT(EPOCH FROM (now() - t.updated_at)) / 3600, u.timezone
            FROM live t JOIN users u ON u.id = t.created_by AND u.is_active
           WHERE lower(t.column_name) = ANY($2::text[])
             AND t.updated_at < now() - make_interval(hours => $3::int)
          UNION ALL
-         SELECT 'silent', t.assignee_id::text, t.id::text, t.id::text, t.title, t.project_name,
+         SELECT 'silent', t.assignee_id::text, t.id::text, t.id::text, t.title, t.project_name, t.project_id::text,
                 EXTRACT(EPOCH FROM (now() - t.updated_at)) / 3600, u.timezone
            FROM live t JOIN users u ON u.id = t.assignee_id AND u.is_active
           WHERE t.deadline_at IS NULL
@@ -130,7 +132,7 @@ export class AssistantRepository {
          -- Согласование, которое ждёт решения. Забывается чаще срока: у задачи есть
          -- доска и календарь, а у вопроса «подтверди» — только тот, кто его задал.
          SELECT 'approval_stuck', a.approver_id::text, a.task_id::text, a.id::text,
-                a.subject, NULL,
+                a.subject, NULL, (SELECT t.project_id::text FROM tasks t WHERE t.id = a.task_id),
                 EXTRACT(EPOCH FROM (now() - a.created_at)) / 3600, u.timezone
            FROM approvals a JOIN users u ON u.id = a.approver_id AND u.is_active
           WHERE a.tenant_id = $1 AND a.status = 'pending'
@@ -139,7 +141,7 @@ export class AssistantRepository {
          -- Позвали в ленте и не дождались ответа. Ответом считаем ЛЮБОЙ его комментарий
          -- к этому посту после упоминания: «прочитал и промолчал» и «ответил» — разное.
          SELECT 'mention_silent', m.user_id::text, NULL, m.id::text,
-                left(fp.body, 80), NULL,
+                left(fp.body, 80), NULL, NULL,
                 EXTRACT(EPOCH FROM (now() - m.created_at)) / 3600, u.timezone
            FROM feed_mentions m
            JOIN feed_posts fp ON fp.id = m.post_id
@@ -165,17 +167,22 @@ export class AssistantRepository {
   create(input: {
     tenantId: string; userId: string; kind: string; taskId: string | null; text: string;
     status: 'proposed' | 'sent'; dedupKey: string;
+    /** Состав сводки: задачи, о которых она говорит (задача #1368). */
+    items?: unknown;
   }): Promise<{ id: string } | null> {
     // Время отправки считаем здесь, а не в SQL: тот же параметр в роли значения
     // колонки И в сравнении внутри CASE Postgres отказывается типизировать —
     // «inconsistent types deduced for parameter», и весь проход планировщика падал.
     const sentAt = input.status === 'sent' ? new Date() : null;
     return this.db.one<{ id: string }>(
-      `INSERT INTO assistant_pings (tenant_id, user_id, kind, task_id, text, status, dedup_key, last_sent_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO assistant_pings (tenant_id, user_id, kind, task_id, text, status, dedup_key, last_sent_at, items)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
        ON CONFLICT (tenant_id, dedup_key) DO NOTHING
        RETURNING id`,
-      [input.tenantId, input.userId, input.kind, input.taskId, input.text, input.status, input.dedupKey, sentAt],
+      [
+        input.tenantId, input.userId, input.kind, input.taskId, input.text, input.status,
+        input.dedupKey, sentAt, input.items ? JSON.stringify(input.items) : null,
+      ],
     );
   }
 
@@ -232,7 +239,7 @@ export class AssistantRepository {
    */
   listForUser(tenantId: string, userId: string): Promise<PingRow[]> {
     return this.db.many<PingRow>(
-      `SELECT pg.id, pg.kind, pg.task_id, pg.text, pg.status, pg.created_at,
+      `SELECT pg.id, pg.kind, pg.task_id, pg.text, pg.status, pg.created_at, pg.items,
               t.project_id, u.full_name AS assignee_name, NULL::text AS user_name
          FROM assistant_pings pg
          LEFT JOIN tasks t ON t.id = pg.task_id

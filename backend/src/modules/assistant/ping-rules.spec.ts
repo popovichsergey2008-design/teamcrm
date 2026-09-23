@@ -1,4 +1,5 @@
 import {
+  digestItems,
   digestKey, digestText, greetingFor, humanHours, KindStats, localParts, mutedKinds, PingCandidate,
   pingKey, pingText, reactionRate, repeatDue, withinWorkHours, WorkHours,
 } from './ping-rules';
@@ -190,5 +191,34 @@ describe('Приветствие сводки', () => {
     expect(greetingFor(morning, 'Europe/Moscow')).toBe('Доброе утро');
     expect(greetingFor(morning, 'Asia/Novosibirsk')).toBe('Добрый день');
     expect(greetingFor(new Date('2026-08-26T16:00:00Z'), 'Europe/Moscow')).toBe('Добрый вечер');
+  });
+});
+
+/** Состав сводки (задача #1368): по нему панель даёт действие на каждую задачу. */
+describe('digestItems', () => {
+  it('перечисляет задачи и помечает свои', () => {
+    const items = digestItems([
+      candidate({ kind: 'overdue', title: 'Сверстать форму', taskId: '10', projectId: '1' }),
+      candidate({ kind: 'stuck_review', title: 'Проверить макет', taskId: '11', projectId: '1' }),
+      candidate({ kind: 'silent', title: 'Обновить справку', taskId: '12', projectId: '2' }),
+    ]);
+    // порядок — как в тексте сводки: сначала то, что держит других
+    expect(items.map((i) => i.title)).toEqual(['Сверстать форму', 'Проверить макет', 'Обновить справку']);
+    // «ждёт вашей проверки» — задача чужая: планировать её себе нельзя
+    expect(items.find((i) => i.taskId === '11')?.mine).toBe(false);
+    expect(items.find((i) => i.taskId === '10')?.mine).toBe(true);
+    expect(items.find((i) => i.taskId === '12')?.projectId).toBe('2');
+  });
+
+  it('одна задача — одна строка, даже если поводов несколько', () => {
+    const items = digestItems([
+      candidate({ kind: 'overdue', title: 'Сверстать форму', taskId: '10', projectId: '1' }),
+      candidate({ kind: 'silent', title: 'Сверстать форму', taskId: '10', projectId: '1' }),
+    ]);
+    expect(items).toHaveLength(1);
+  });
+
+  it('поводы без задачи в список не попадают', () => {
+    expect(digestItems([candidate({ kind: 'mention_silent', taskId: null })])).toHaveLength(0);
   });
 });

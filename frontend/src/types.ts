@@ -253,6 +253,11 @@ export interface Ping {
   /** Кому адресовано — нужно постановщику в списке предложений. */
   toName: string | null;
   assigneeName: string | null;
+  /**
+   * Состав сводки: задачи, о которых она говорит (задача #1368).
+   * `mine` — я исполнитель, значит задачу можно поставить себе на сегодня.
+   */
+  items?: { taskId: string; projectId: string | null; title: string; kind: string; mine: boolean }[] | null;
 }
 
 /** Повестка встречи, собранная модератором за пять минут до начала. */
