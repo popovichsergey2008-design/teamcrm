@@ -1259,6 +1259,25 @@ export const api = {
    */
   messageTaskDraft: (chatId: string, messageId: string) =>
     request<any>('POST', `/chats/${chatId}/messages/${messageId}/task/draft`, {}),
+  /*
+    Черновик задачи из сообщения (ТЗ «Создание задач из сообщений в чате»).
+
+    Живёт на сервере, а не в окне: между «Создать задачу» и «Создать» бот может спросить
+    автора о проекте и ждать ответа, и всё это обязано пережить перезагрузку страницы.
+  */
+  startMessageTaskDraft: (chatId: string, messageId: string) =>
+    request<any>('POST', `/chats/${chatId}/messages/${messageId}/task-draft`, {}),
+  messageTaskDraftById: (draftId: string) => request<any>('GET', `/chats/task-drafts/${draftId}`),
+  patchMessageTaskDraft: (draftId: string, body: Record<string, unknown>) =>
+    request<any>('PATCH', `/chats/task-drafts/${draftId}`, body),
+  askMessageTaskDraft: (draftId: string) => request<any>('POST', `/chats/task-drafts/${draftId}/ask`, {}),
+  confirmMessageTaskDraft: (draftId: string) =>
+    request<{ taskId: string; title: string; projectId: string; already: boolean }>(
+      'POST', `/chats/task-drafts/${draftId}/confirm`, {},
+    ),
+  cancelMessageTaskDraft: (draftId: string) => request<any>('POST', `/chats/task-drafts/${draftId}/cancel`, {}),
+  /** Незавершённые черновики чата — строки состояния под сообщениями. */
+  openTaskDrafts: (chatId: string) => request<{ items: any[] }>('GET', `/chats/${chatId}/task-drafts`),
   createTaskFromMessage: (chatId: string, messageId: string, task: Record<string, unknown>) =>
     request<{ taskId: string; title: string; projectId: string }>('POST', `/chats/${chatId}/messages/${messageId}/task`, task),
   /**

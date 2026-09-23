@@ -401,6 +401,80 @@ describe('треды в чатах (e2e)', () => {
   }, 60000);
 
   /**
+   * Задача из сообщения с уточнением: главный сценарий нового ТЗ.
+   *
+   * Поручение сказано в ГРУППОВОМ чате — проекта в нём нет, и угадывать его нельзя.
+   * Значит: черновик ждёт, бот спрашивает автора прямо в чате, ответ автора обычной
+   * репликой дозаполняет черновик, и только после этого задача создаётся. Проверяем
+   * всю цепочку и то, ради чего она затевалась: черновик переживает перезагрузку
+   * (лежит на сервере), второй по той же фразе не заводится, вложение уезжает в задачу.
+   */
+  it('задача из сообщения: бот спрашивает о проекте, ответ автора дозаполняет черновик', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'Draft', email: `dr_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const project = (await http.post('/api/projects').set(O).send({ name: 'Панорама' }).expect(201)).body.data;
+    await http.post('/api/projects').set(O).send({ name: 'Складской учёт' }).expect(201);
+
+    // Групповой чат: проекта у него нет — значит, определить его можно только из текста.
+    const chat = (await http.post('/api/chats/group').set(O)
+      .send({ title: 'Общий', userIds: [] }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'Фильтр на мобилке открывается криво, сделай чтобы снизу выезжал' }).expect(201)).body.data;
+
+    const started = (await http.post(`/api/chats/${chat.id}/messages/${msg.id}/task-draft`).set(O).expect(201)).body.data;
+    expect(started.draft.draftId).toBeTruthy();
+    expect(started.draft.status).toBe('needs_clarification'); // проект не назван — ждём ответа
+    expect(started.draft.projectId).toBeFalsy();
+    const draftId = started.draft.draftId;
+
+    // Повторное нажатие не плодит второй черновик по той же фразе.
+    const again = (await http.post(`/api/chats/${chat.id}/messages/${msg.id}/task-draft`).set(O).expect(201)).body.data;
+    expect(again.draft.draftId).toBe(draftId);
+
+    // Бот спрашивает в том же чате — вопрос виден в ленте.
+    await http.post(`/api/chats/task-drafts/${draftId}/ask`).set(O).expect(201);
+    const feed = (await http.get(`/api/chats/${chat.id}/messages`).set(O).expect(200)).body.data;
+    const question = feed.find((m: any) => m.is_ai && String(m.body).includes('какому проекту'));
+    expect(question).toBeTruthy();
+
+    // Автор отвечает обычной репликой — и черновик дозаполняется сам.
+    await http.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'Панорама' }).expect(201);
+    await new Promise((r) => setTimeout(r, 500)); // ответ разбирается в стороне от отправки
+    const afterAnswer = (await http.get(`/api/chats/task-drafts/${draftId}`).set(O).expect(200)).body.data;
+    expect(String(afterAnswer.draft.projectId)).toBe(String(project.id));
+    expect(afterAnswer.draft.status).toBe('ready');
+
+    // Черновик живёт на сервере: он есть в списке открытых по чату (это и переживает F5).
+    const open = (await http.get(`/api/chats/${chat.id}/task-drafts`).set(O).expect(200)).body.data;
+    expect(open.items.some((d: any) => String(d.draftId) === String(draftId))).toBe(true);
+
+    // Постановщик поправил название — правка уходит на сервер, а не живёт в окне.
+    await http.patch(`/api/chats/task-drafts/${draftId}`).set(O)
+      .send({ title: 'Исправить мобильный фильтр' }).expect(200);
+
+    const done = (await http.post(`/api/chats/task-drafts/${draftId}/confirm`).set(O).expect(201)).body.data;
+    expect(done.taskId).toBeTruthy();
+    expect(done.already).toBe(false);
+    // Повтор возвращает ТУ ЖЕ задачу, а не создаёт вторую: защита от двойного нажатия.
+    const repeat = (await http.post(`/api/chats/task-drafts/${draftId}/confirm`).set(O).expect(201)).body.data;
+    expect(String(repeat.taskId)).toBe(String(done.taskId));
+    expect(repeat.already).toBe(true);
+
+    // Под сообщением видна задача, у задачи — исходная фраза.
+    const feed2 = (await http.get(`/api/chats/${chat.id}/messages`).set(O).expect(200)).body.data;
+    const linked = feed2.find((m: any) => String(m.id) === String(msg.id));
+    expect(String(linked.task_id)).toBe(String(done.taskId));
+    const src = (await http.get(`/api/chats/of-task/${done.taskId}`).set(O).expect(200)).body.data;
+    expect(src.body).toContain('Фильтр на мобилке');
+
+    // Черновик закрыт: строка «идёт работа» под сообщением больше не нужна.
+    const openAfter = (await http.get(`/api/chats/${chat.id}/task-drafts`).set(O).expect(200)).body.data;
+    expect(openAfter.items.some((d: any) => String(d.draftId) === String(draftId))).toBe(false);
+  }, 90000);
+
+  /**
    * Слой 4: каналы, избранное, чат с собой.
    *
    * Главное правило каналов — приватный не должен даже упоминаться у того, кому он

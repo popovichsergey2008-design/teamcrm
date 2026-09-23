@@ -762,6 +762,22 @@ export class ChatsRepository {
   }
 
   /** Сотрудники этой компании из присланных id: чужие и выдуманные отсеиваются. */
+  /** Сотрудники организации — для выпадающих списков предпросмотра задачи. */
+  tenantUsers(tenantId: string): Promise<{ id: string; full_name: string }[]> {
+    return this.db.many(
+      `SELECT id::text, full_name FROM users WHERE tenant_id=$1 AND is_active=TRUE ORDER BY full_name`,
+      [tenantId],
+    );
+  }
+
+  /** Как зовут человека: обращение в вопросе бота без имени звучит как объявление. */
+  async userName(tenantId: string, userId: string): Promise<string | null> {
+    const row = await this.db.one<{ full_name: string }>(
+      `SELECT full_name FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, userId],
+    );
+    return row?.full_name ?? null;
+  }
+
   tenantUserIds(tenantId: string, ids: string[]): Promise<{ id: string }[]> {
     return this.db.many<{ id: string }>(
       `SELECT id::text FROM users WHERE tenant_id=$1 AND id = ANY($2::bigint[])`,

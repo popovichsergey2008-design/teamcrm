@@ -3,6 +3,28 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { humanSize } from '../lib/attachments';
+
+/** Черновик задачи из сообщения — то, что отдаёт сервер и правит человек. */
+export interface MessageTaskDraft {
+  draftId: string;
+  chatId: string;
+  messageId: string;
+  status: 'analyzing' | 'needs_clarification' | 'ready' | 'created' | 'cancelled' | 'failed';
+  title: string;
+  description: string;
+  projectId: string | null;
+  assigneeId: string | null;
+  assigneeReason: string | null;
+  deadline: string | null;
+  priority: string;
+  checklist: string[];
+  files: { fileId: string; name: string | null; mime: string | null; include: boolean; size?: number }[];
+  analysis: Record<string, unknown>;
+  authorId: string | null;
+  initiatorId: string;
+  taskId: string | null;
+}
 
 /**
  * Задача из сообщения — то, ради чего чат живёт внутри CRM, а не рядом с ней.
@@ -10,91 +32,109 @@ import { overlayProps } from '../lib/overlay';
  * Самый частый способ появления задачи — фраза в переписке: «на мобильной версии блок
  * съезжает и кнопка закрывает текст». Раньше её переписывали руками в форму создания,
  * теряя половину смысла и весь контекст. Теперь ИИ раскладывает фразу на постановку,
- * шаги и срок, а человек правит и подтверждает.
+ * шаги и срок, подбирает проект и исполнителя, а человек правит и подтверждает.
+ *
+ * Чего в переписке чаще всего не хватает — проекта: «поправь фильтр» сказано в общем
+ * чате, а проектов семь. Тогда черновик ждёт: бот спрашивает автора прямо в чате, и
+ * как только тот отвечает названием, окно дозаполняется само. Поэтому черновик живёт
+ * на сервере и переживает перезагрузку страницы.
  *
  * ИИ здесь не ставит задачи за человека: он готовит черновик. Разница принципиальная —
  * ответственность за формулировку остаётся на том, кто нажал «Создать».
  */
-export function MessageToTask({ chatId, messageId, messageText, onClose, onCreated }: {
+export function MessageToTask({ chatId, messageId, messageText, draft: outside, onClose, onCreated }: {
   chatId: string;
   messageId: string;
   /** Исходная фраза: она же запасной вариант, если разбор не удался. */
   messageText: string;
+  /** Черновик, приехавший событием, — окно открыто и показывает свежее состояние. */
+  draft?: MessageTaskDraft | null;
   onClose: () => void;
   onCreated: (taskId: string, title: string, projectId: string) => void;
 }) {
   useEscape(onClose);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [projectId, setProjectId] = useState('');
-  const [assigneeId, setAssigneeId] = useState('');
-  const [deadline, setDeadline] = useState('');
-  const [priority, setPriority] = useState('normal');
-  const [checklist, setChecklist] = useState<string[]>([]);
-  /** Что приедет в задачу из самого сообщения: автор, файл и подсказка по исполнителю. */
-  const [source, setSource] = useState<{
-    authorName: string | null; fileName: string | null; assigneeReason: string | null;
-  }>({ authorName: null, fileName: null, assigneeReason: null });
+  const [draft, setDraft] = useState<MessageTaskDraft | null>(null);
   const [ctx, setCtx] = useState<{ projects: { id: string; name: string }[]; users: { id: string; name: string }[] }>({
     projects: [], users: [],
   });
+  const [already, setAlready] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [asked, setAsked] = useState(false);
 
   useEffect(() => {
     let dead = false;
-    api.messageTaskDraft(chatId, messageId)
-      .then((d: any) => {
+    api.startMessageTaskDraft(chatId, messageId)
+      .then((r) => {
         if (dead) return;
-        const t = d.task ?? {};
-        // Разбор мог не сработать (нет ключа, модель вернула мусор) — но человек уже
-        // нажал «Создать задачу», и пустое окно был бы худший ответ. Ставим саму фразу.
-        setTitle(String(t.title ?? messageText).slice(0, 255));
-        setDescription(String(t.description ?? ''));
-        setProjectId(t.projectId ? String(t.projectId) : '');
-        /*
-          Исполнитель подставляется, только когда он назван однозначно: позвали через
-          @ либо это личная переписка (адресат — второй собеседник). Автор фразы
-          исполнителем НЕ становится: он просит, то есть ставит задачу.
-
-          Догадки разбора здесь не годятся — назначенная не тому задача выглядит как
-          поручение, которого человек не получал, и разбирать это приходится людям.
-        */
-        setAssigneeId(String(d.source?.assigneeId ?? ''));
-        setSource({
-          authorName: d.source?.authorName ?? null,
-          fileName: d.source?.fileName ?? null,
-          assigneeReason: d.source?.assigneeReason ?? null,
-        });
-        setDeadline(t.deadline ? String(t.deadline) : '');
-        setPriority(String(t.priority ?? 'normal'));
-        setChecklist(Array.isArray(t.checklist) ? t.checklist.map(String) : []);
-        setCtx({ projects: d.context?.projects ?? [], users: d.context?.users ?? [] });
+        setDraft(r.draft); setCtx(r.context); setAlready(r.already ?? null);
       })
       .catch((e) => { if (!dead) setErr(e instanceof ApiError ? e.message : 'Не удалось разобрать сообщение'); })
       .finally(() => { if (!dead) setLoading(false); });
     return () => { dead = true; };
-  }, [chatId, messageId, messageText]);
+  }, [chatId, messageId]);
 
-  const create = async () => {
-    if (!projectId) return setErr('Выберите проект');
-    if (!title.trim()) return setErr('Назовите задачу');
+  /*
+    Ответ автора о проекте приходит событием. Подхватываем его прямо в открытом окне:
+    человек, который ждёт ответа, не должен закрывать и открывать окно, чтобы узнать,
+    что ответ уже был.
+  */
+  useEffect(() => {
+    if (outside && draft && outside.draftId === draft.draftId) setDraft(outside);
+  }, [outside, draft]);
+
+  /** Правку отправляем сразу: черновик на сервере, и вкладка может закрыться в любой момент. */
+  const patch = async (body: Record<string, unknown>) => {
+    if (!draft) return;
+    setDraft({ ...draft, ...(body as Partial<MessageTaskDraft>) });
+    try {
+      const r = await api.patchMessageTaskDraft(draft.draftId, body);
+      setDraft(r.draft);
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Правка не сохранилась'); }
+  };
+
+  const ask = async () => {
+    if (!draft) return;
     setBusy(true); setErr('');
     try {
-      const res = await api.createTaskFromMessage(chatId, messageId, {
-        projectId,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        assigneeId: assigneeId || undefined,
-        deadline: deadline || undefined,
-        priority,
-        checklist: checklist.filter((x) => x.trim()),
-      });
-      onCreated(String(res.taskId), res.title, String(res.projectId ?? projectId));
+      const r = await api.askMessageTaskDraft(draft.draftId);
+      setDraft(r.draft); setAsked(true);
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Вопрос не отправился'); }
+    finally { setBusy(false); }
+  };
+
+  const create = async () => {
+    if (!draft) return;
+    if (!draft.projectId) return setErr('Выберите проект или спросите автора');
+    if (!draft.title.trim()) return setErr('Назовите задачу');
+    setBusy(true); setErr('');
+    try {
+      const res = await api.confirmMessageTaskDraft(draft.draftId);
+      onCreated(String(res.taskId), res.title, String(res.projectId ?? draft.projectId));
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Задача не создалась');
     } finally { setBusy(false); }
+  };
+
+  /*
+    Закрыть окно — не то же самое, что отказаться от задачи.
+
+    Черновик может ждать ответа автора о проекте; человек закрывает окно и идёт
+    работать дальше — отменять начатое за него нельзя. Отказ — отдельная кнопка, после
+    неё строка под сообщением исчезает.
+  */
+  const cancel = async () => {
+    if (!draft) return onClose();
+    setBusy(true);
+    try { await api.cancelMessageTaskDraft(draft.draftId); } catch { /* нет сети — закроем окно */ }
+    setBusy(false);
+    onClose();
+  };
+
+  const toggleFile = (fileId: string, include: boolean) => {
+    if (!draft) return;
+    void patch({ files: draft.files.map((f) => (f.fileId === fileId ? { ...f, include } : f)) });
   };
 
   return (
@@ -110,48 +150,88 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
         {/* Исходная фраза перед глазами: правя формулировку, легко уехать от того,
             о чём вообще была речь. */}
         <div className="msg-quote-src">«{messageText.slice(0, 300)}»</div>
-        {/* Файл из сообщения уедет во вложения задачи — об этом надо сказать до
-            нажатия «Создать», иначе скриншот приложат руками второй раз. */}
-        {source.fileName && (
+
+        {/* По этому сообщению задача уже была: молча заводить вторую нельзя. */}
+        {already && (
           <div className="dim msg-quote-file">
-            <Icon name="paperclip" size={12} /> {source.fileName} — приложится к задаче
+            <Icon name="alert" size={12} /> По этому сообщению уже создана задача #{already} — эта будет второй.
           </div>
         )}
 
         {loading && <div className="dim">ИИ раскладывает фразу на постановку и шаги…</div>}
 
-        {!loading && (
+        {!loading && draft && (
           <>
+            {/*
+              Проект не определился — это и есть тот случай, ради которого черновик
+              живёт на сервере: бот спрашивает автора в чате, а окно ждёт ответа.
+            */}
+            {draft.status === 'needs_clarification' && (
+              <div className="task-draft-ask">
+                <Icon name="alert" size={14} />
+                <div>
+                  <b>Не понял, к какому проекту это относится.</b>
+                  <div className="dim">
+                    {asked
+                      ? 'Спросил автора в чате — как ответит, черновик дозаполнится сам. Можно и выбрать проект руками.'
+                      : 'Выберите проект ниже или попросите автора уточнить — вопрос уйдёт в тот же чат.'}
+                  </div>
+                </div>
+                {!asked && (
+                  <button className="btn btn-sm" onClick={() => void ask()} disabled={busy}>
+                    <Icon name="chat" size={13} /> Спросить автора
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="field">
               <label>Название</label>
-              <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={255} />
+              <input
+                className="input"
+                value={draft.title}
+                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                onBlur={(e) => void patch({ title: e.target.value })}
+                maxLength={255}
+              />
             </div>
             <div className="field">
               <label>Описание</label>
-              <textarea className="input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+              <textarea
+                className="input"
+                rows={3}
+                value={draft.description}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                onBlur={(e) => void patch({ description: e.target.value })}
+              />
             </div>
             <div className="field">
               <label>Проект</label>
-              <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <select className="input" value={draft.projectId ?? ''} onChange={(e) => void patch({ projectId: e.target.value || null })}>
                 <option value="">— выберите —</option>
                 {ctx.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div className="drawer-row">
               <div className="field" style={{ flex: 1 }}>
-                <label>Исполнитель{source.assigneeReason ? ` · ${source.assigneeReason}` : ''}</label>
-                <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+                <label>Исполнитель{draft.assigneeReason ? ` · ${draft.assigneeReason}` : ''}</label>
+                <select className="input" value={draft.assigneeId ?? ''} onChange={(e) => void patch({ assigneeId: e.target.value || null })}>
                   <option value="">— не назначен —</option>
                   {ctx.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>
               <div className="field" style={{ flex: 1 }}>
                 <label>Срок</label>
-                <input className="input" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+                <input
+                  className="input"
+                  type="date"
+                  value={draft.deadline ?? ''}
+                  onChange={(e) => void patch({ deadline: e.target.value || null })}
+                />
               </div>
               <div className="field" style={{ flex: 1 }}>
                 <label>Приоритет</label>
-                <select className="input" value={priority} onChange={(e) => setPriority(e.target.value)}>
+                <select className="input" value={draft.priority} onChange={(e) => void patch({ priority: e.target.value })}>
                   <option value="low">Низкий</option>
                   <option value="normal">Обычный</option>
                   <option value="high">Высокий</option>
@@ -160,20 +240,46 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
               </div>
             </div>
 
+            {/*
+              Вложения сообщения. Скриншоты и видео отмечены сразу: обычно они и есть
+              половина постановки. Файл не копируется — в задаче он тот же самый.
+            */}
+            {draft.files.length > 0 && (
+              <div className="field">
+                <label>Вложения сообщения</label>
+                {draft.files.map((f) => (
+                  <label key={f.fileId} className="notify-row" style={{ cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={f.include !== false}
+                      onChange={(e) => toggleFile(f.fileId, e.target.checked)}
+                    />
+                    <span>
+                      {f.name ?? 'вложение'}
+                      {f.size ? <span className="dim"> · {humanSize(f.size)}</span> : null}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+
             {/* Шаги правятся здесь же: чек-лист, который нельзя поправить до создания,
                 приходится переделывать в карточке — то же время, только позже. */}
             <div className="field">
               <label>Шаги</label>
-              {checklist.map((step, i) => (
+              {draft.checklist.map((step, i) => (
                 <div key={i} className="drawer-row">
                   <input
                     className="input"
                     value={step}
-                    onChange={(e) => setChecklist((prev) => prev.map((x, k) => (k === i ? e.target.value : x)))}
+                    onChange={(e) => setDraft({
+                      ...draft, checklist: draft.checklist.map((x, k) => (k === i ? e.target.value : x)),
+                    })}
+                    onBlur={() => void patch({ checklist: draft.checklist })}
                   />
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={() => setChecklist((prev) => prev.filter((_, k) => k !== i))}
+                    onClick={() => void patch({ checklist: draft.checklist.filter((_, k) => k !== i) })}
                     title="Убрать шаг"
                     aria-label="Убрать шаг"
                   >
@@ -181,15 +287,21 @@ export function MessageToTask({ chatId, messageId, messageText, onClose, onCreat
                   </button>
                 </div>
               ))}
-              <button className="btn btn-ghost btn-sm" onClick={() => setChecklist((prev) => [...prev, ''])}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setDraft({ ...draft, checklist: [...draft.checklist, ''] })}>
                 <Icon name="plus" size={13} /> Шаг
               </button>
             </div>
 
             {err && <div className="error-text">{err}</div>}
-            <button className="btn btn-primary" onClick={create} disabled={busy}>
-              {busy ? 'Создаю…' : 'Создать задачу'}
-            </button>
+            <div className="drawer-row">
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => void create()} disabled={busy}>
+                {busy ? 'Создаю…' : 'Создать задачу'}
+              </button>
+              {/* Отказ — явным действием: закрытое окно черновик не отменяет, он может ждать ответа. */}
+              <button className="btn btn-ghost" onClick={() => void cancel()} disabled={busy} title="Не создавать задачу по этому сообщению">
+                Отказаться
+              </button>
+            </div>
           </>
         )}
         {loading && err && <div className="error-text">{err}</div>}

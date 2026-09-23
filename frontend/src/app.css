@@ -2752,6 +2752,15 @@
 .chat-ctx-overdue { color: var(--danger); }
 /* Исходная фраза в окне создания задачи: правя формулировку, легко уехать от того,
    о чём вообще была речь. */
+/* «Не понял, к какому проекту» — с кнопкой «спросить автора» прямо в окне черновика. */
+.task-draft-ask {
+  display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; margin-bottom: 10px;
+  border: 1px solid var(--warn-line); border-radius: var(--radius-sm); background: var(--warn-soft);
+  font-size: var(--fs-sm);
+}
+.task-draft-ask > div { flex: 1; min-width: 0; }
+.task-draft-ask .btn { flex: 0 0 auto; }
+
 .msg-quote-src {
   margin: 0 0 12px; padding: 8px 10px; font-size: calc(13px * var(--fs-scale)); color: var(--text-dim);
   background: var(--bg-elev-2); border-left: 3px solid var(--accent-line);

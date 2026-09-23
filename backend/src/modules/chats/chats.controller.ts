@@ -6,6 +6,7 @@ import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
 import { ChatsService } from './chats.service';
+import { ChatTaskDraftService } from './chat-task-draft.service';
 
 class OpenDmDto {
   @IsString() userId!: string;
@@ -113,7 +114,11 @@ class DescriptionDto {
 @Controller('chats')
 @Roles('owner', 'manager', 'member')
 export class ChatsController {
-  constructor(private readonly chats: ChatsService) {}
+  constructor(
+    private readonly chats: ChatsService,
+    /** Задача из сообщения: разбор, уточнение в чате, предпросмотр и создание. */
+    private readonly drafts: ChatTaskDraftService,
+  ) {}
 
   @Get()
   list(@CurrentUser() u: AuthUser) {
@@ -216,6 +221,41 @@ export class ChatsController {
   @Get('inbox')
   inbox(@CurrentUser() u: AuthUser) {
     return this.chats.inbox(u.tenantId, u);
+  }
+
+  /*
+    ───── Задача из сообщения: черновик с разбором и уточнением ─────
+
+    Маршруты черновика объявлены ВЫШЕ `:id`-маршрутов намеренно: иначе «task-drafts»
+    попадёт в параметр идентификатора чата. На этом мы уже спотыкались в реестре задач.
+  */
+  @Get('task-drafts/:draftId')
+  taskDraftById(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string) {
+    return this.drafts.get(u.tenantId, u, draftId);
+  }
+
+  @Patch('task-drafts/:draftId')
+  patchTaskDraft(
+    @CurrentUser() u: AuthUser, @Param('draftId') draftId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.drafts.patch(u.tenantId, u, draftId, body ?? {});
+  }
+
+  /** Спросить автора сообщения о проекте — вопросом в тот же чат. */
+  @Post('task-drafts/:draftId/ask')
+  askTaskDraft(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string) {
+    return this.drafts.ask(u.tenantId, u, draftId);
+  }
+
+  @Post('task-drafts/:draftId/confirm')
+  confirmTaskDraft(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string) {
+    return this.drafts.confirm(u.tenantId, u, draftId);
+  }
+
+  @Post('task-drafts/:draftId/cancel')
+  cancelTaskDraft(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string) {
+    return this.drafts.cancel(u.tenantId, u, draftId);
   }
 
   @Get(':id/messages')
@@ -328,6 +368,18 @@ export class ChatsController {
   @Post(':id/messages/:mid/pin')
   pin(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string, @Body() dto: PinDto) {
     return this.chats.pin(u.tenantId, id, u, mid, dto.pinned !== false);
+  }
+
+  /** «Создать задачу» по сообщению: заводит черновик и сразу его разбирает. */
+  @Post(':id/messages/:mid/task-draft')
+  startTaskDraft(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string) {
+    return this.drafts.start(u.tenantId, id, u, mid);
+  }
+
+  /** Незавершённые черновики чата: по ним рисуются строки состояния под сообщениями. */
+  @Get(':id/task-drafts')
+  openTaskDrafts(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.drafts.openInChat(u.tenantId, id, u);
   }
 
   @Get(':id/pinned')

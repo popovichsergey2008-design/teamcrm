@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { NlService } from '../nl/nl.service';
 import { ChatsAiService } from './chats-ai.service';
+import { ChatTaskDraftService } from './chat-task-draft.service';
 import { CustomResponsesService } from './custom-responses.service';
 import { DiagService } from '../diagnostics/diag.service';
 import { FilesService } from '../files/files.service';
@@ -48,6 +49,8 @@ export class ChatsService {
     private readonly responses: CustomResponsesService,
     private readonly push: PushService,
     private readonly mirror: TelegramMirror,
+    /** Черновики задач из сообщений: сюда уходит ответ автора о проекте. */
+    private readonly drafts: ChatTaskDraftService,
   ) {}
 
   /** Список чатов + кто сейчас в сети (точка рядом с именем). */
@@ -365,6 +368,14 @@ export class ChatsService {
     // включено отдельно (ТЗ-6, разд. 38). В стороне от отправки: сообщение человека
     // не должно ждать бота и не должно упасть из-за него.
     if (text) void this.autoRespond(tenantId, chat, text, to, user.userId).catch(() => undefined);
+    /*
+      Не ответ ли это на вопрос бота о проекте.
+
+      Когда в поручении не назван проект, бот спрашивает о нём прямо в чате и ждёт
+      обычной реплики — кнопок в переписке у нас нет. Проверка идёт в стороне от
+      отправки: сообщение человека не должно ни ждать разбора, ни падать из-за него.
+    */
+    if (text) void this.drafts.noticeAnswer(tenantId, chatId, user.userId, text).catch(() => undefined);
     return message;
   }
 

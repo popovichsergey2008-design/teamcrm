@@ -10,6 +10,8 @@ import { ChatsAiService } from './chats-ai.service';
 import { CustomResponsesService } from './custom-responses.service';
 import { ScheduledRepository } from './scheduled.repository';
 import { ScheduledMessagesScheduler } from './scheduled.scheduler';
+import { ChatTaskDraftService } from './chat-task-draft.service';
+import { ChatTaskDraftRepository } from './chat-task-draft.repository';
 import { AiModule } from '../ai/ai.module';
 
 /**
@@ -25,6 +27,7 @@ import { AiModule } from '../ai/ai.module';
   providers: [
     ChatsService, ChatsRepository, RemindersScheduler, ChatsAiService, CustomResponsesService,
     ScheduledRepository, ScheduledMessagesScheduler,
+    ChatTaskDraftService, ChatTaskDraftRepository,
   ],
   exports: [ChatsService, CustomResponsesService],
 })

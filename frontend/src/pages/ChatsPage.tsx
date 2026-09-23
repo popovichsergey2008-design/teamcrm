@@ -28,7 +28,7 @@ import { longPressProps, MenuAt, MessageMenu } from '../components/MessageMenu';
 import { useDismiss } from '../hooks/useDismiss';
 import { selectionIn } from '../lib/selection';
 import { shrinkAll } from '../lib/image-shrink';
-import { MessageToTask } from '../components/MessageToTask';
+import { MessageToTask, MessageTaskDraft } from '../components/MessageToTask';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
 import { plural, stampLabel } from '../lib/chat-text';
@@ -422,6 +422,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   } | null>(null);
   /** Из какого сообщения делаем задачу: окно с черновиком от ИИ. */
   const [toTask, setToTask] = useState<Message | null>(null);
+  /*
+    Черновики задач по сообщениям этого чата (ТЗ «задача из сообщения»).
+
+    Строка под сообщением должна быть видна ВСЕМ участникам, а не только тому, кто
+    нажал: пока бот ждёт ответа о проекте, остальные должны понимать, что по этой
+    фразе уже идёт работа, — иначе по ней заведут вторую задачу.
+  */
+  const [taskDrafts, setTaskDrafts] = useState<Record<string, MessageTaskDraft>>({});
   /** Какое сообщение сейчас правим и что в поле правки. */
   const [editing, setEditing] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -781,6 +789,20 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       Отмечаем вторую галочку сразу: без этого она появлялась только после
       перезагрузки переписки, и «прочитано» узнавалось с опозданием на час.
     */
+    /*
+      Черновик задачи изменился: разбор закончился, автор ответил о проекте, черновик
+      отменили. Готовые и отменённые из списка убираем — строка под сообщением нужна,
+      только пока что-то происходит.
+    */
+    const onTaskDraft = (d: MessageTaskDraft) => {
+      if (String(d.chatId) !== String(activeId)) return;
+      setTaskDrafts((prev) => {
+        const next = { ...prev };
+        if (['created', 'cancelled', 'failed'].includes(d.status)) delete next[String(d.messageId)];
+        else next[String(d.messageId)] = d;
+        return next;
+      });
+    };
     const onRead = (p: { chatId: string; at: string }) => {
       if (String(p.chatId) !== String(activeId)) return;
       const at = new Date(p.at).getTime();
@@ -804,6 +826,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     socket.on('chat.reminder', onReminder);
     socket.on('chat.mention', onMention);
     socket.on('chat.pinned', onPinned);
+    socket.on('chat.task_draft', onTaskDraft);
     // «печатает…»: состояние на три секунды, продлевается каждым событием
     const onTyping = (p: { chatId: string; userId: string; name: string }) => {
       if (String(p.chatId) !== String(activeId) || String(p.userId) === String(user?.id)) return;
@@ -866,6 +889,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       socket.off('chat.reminder', onReminder);
       socket.off('chat.mention', onMention);
       socket.off('chat.pinned', onPinned);
+      socket.off('chat.task_draft', onTaskDraft);
       socket.off('chat.message', onMessage);
       socket.off('chat.message_deleted', onDeleted);
       socket.off('chat.created', reload);
@@ -904,6 +928,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       setHasNewer(false);             // это хвост переписки: ниже ничего нет
       setUnreadFrom(firstUnreadId(list, unreadBefore, user?.id));
       loadPinned(id);
+      // Незавершённые черновики задач: по ним рисуются строки под сообщениями.
+      api.openTaskDrafts(id)
+        .then((r) => setTaskDrafts(Object.fromEntries(r.items.map((d: any) => [String(d.messageId), d]))))
+        .catch(() => setTaskDrafts({}));
       loadScheduled(id); // что я отложил в этот чат — видно сразу, а не после отправки
       // Шапка чата проекта должна отвечать «что это за чат» без похода в карточку проекта.
       api.chatContext(id).then(setCtx).catch(() => setCtx(null));
@@ -1487,7 +1515,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     }] : []),
     ...(m.task_id
       ? [{ label: `Задача #${m.task_id}`, icon: 'check' as const, onClick: () => openTask(m) }]
-      : [{ label: 'Создать задачу', icon: 'sparkles' as const, onClick: () => setToTask(m) }]),
+      : [{
+        // По начатому черновику открывается он же, а не новый разбор: иначе по одной
+        // фразе получаются два черновика и две одинаковые задачи.
+        label: taskDrafts[String(m.id)] ? 'Продолжить черновик задачи' : 'Создать задачу',
+        icon: 'sparkles' as const,
+        onClick: () => setToTask(m),
+      }]),
     ...(mine ? [
       {
         label: 'Изменить',
@@ -2634,6 +2668,24 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                             <Icon name="check" size={12} /> Задача #{m.task_id}
                           </button>
                         )}
+                        {/*
+                          По этой фразе уже делают задачу. Видно всем участникам: пока
+                          бот ждёт ответа о проекте, по ней не должны завести вторую.
+                        */}
+                        {taskDrafts[String(m.id)] && (
+                          <button
+                            className="chat-thread-link"
+                            onClick={() => setToTask(m)}
+                            title="Открыть черновик задачи"
+                          >
+                            <Icon name="sparkles" size={12} />
+                            {taskDrafts[String(m.id)].status === 'needs_clarification'
+                              ? ' Жду ответ: к какому проекту?'
+                              : taskDrafts[String(m.id)].status === 'analyzing'
+                                ? ' ИИ разбирает сообщение…'
+                                : ' Черновик задачи готов'}
+                          </button>
+                        )}
                         {m.pinned_at && <span className="dim chat-under-mark"><Icon name="flag" size={11} /> закреплено</span>}
 
                         {/* Выбор времени напоминания разворачивается на месте: отдельное
@@ -3147,6 +3199,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
           chatId={activeId}
           messageId={String(toTask.id)}
           messageText={String(toTask.body || toTask.file_name || '')}
+          draft={taskDrafts[String(toTask.id)] ?? null}
           onClose={() => setToTask(null)}
           onCreated={(taskId, title, projectId) => {
             setMessages((prev) => prev.map((m) => (String(m.id) === String(toTask.id)
