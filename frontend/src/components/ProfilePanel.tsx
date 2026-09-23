@@ -19,6 +19,10 @@ type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'cli
 
 /** Ключ настройки «дублировать в Telegram» — тот же, что в API уведомлений. */
 const TG_MIRROR = 'telegram.mirror';
+/** Ключ «личка и упоминания в Telegram» — тоже свойство канала, не повод для письма. */
+const TG_DIRECT = 'chat.direct';
+/** Поводы, которые живут в разделе Telegram, а не в списке писем. */
+const TG_KEYS: readonly string[] = [TG_MIRROR, TG_DIRECT];
 
 export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAvatar: (url: string | null) => void }) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -306,7 +310,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 Приходят на {me.email ?? 'вашу почту'} — по задачам, где вы исполнитель или постановщик.
                 О собственных действиях писем нет.
               </div>
-              {mailPrefs.filter((p) => p.eventKey !== TG_MIRROR).map((p) => (
+              {mailPrefs.filter((p) => !TG_KEYS.includes(p.eventKey)).map((p) => (
                 <label key={p.eventKey} className="notify-row" style={{ cursor: 'pointer' }}>
                   <input
                     type="checkbox"
@@ -328,9 +332,10 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                   : 'Привяжите Telegram, чтобы сдавать дейлики боту (голосом или текстом) и получать уведомления в чат, не дожидаясь письма.'}
               </div>
 
-              {/* Дубль уведомлений — свойство канала, поэтому переключатель стоит здесь,
-                  рядом с привязкой, а не в списке поводов для письма. */}
-              {tgLinked && mailPrefs.filter((p) => p.eventKey === TG_MIRROR).map((p) => (
+              {/* Дубль уведомлений и личные сообщения — свойство канала, поэтому переключатели
+                  стоят здесь, рядом с привязкой, а не в списке поводов для письма.
+                  Писем о переписке нет вовсе: это был бы спам на каждое «ок». */}
+              {tgLinked && mailPrefs.filter((p) => TG_KEYS.includes(p.eventKey)).map((p) => (
                 <label key={p.eventKey} className="notify-row" style={{ cursor: 'pointer' }}>
                   <input
                     type="checkbox"
