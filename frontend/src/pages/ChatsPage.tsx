@@ -19,7 +19,7 @@ import { GuestLinkButton } from '../components/GuestLinkButton';
 import { ChatInfoPanel } from '../components/chat/ChatInfoPanel';
 import { AnthillPanel } from '../components/anthill/AnthillPanel';
 import { ChatAttachment } from '../components/ChatAttachment';
-import { Lightbox } from '../components/Lightbox';
+import { Lightbox, LightboxItem } from '../components/Lightbox';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { remindLabel, remindOptions } from '../lib/remind-times';
 import { MentionField } from '../components/MentionField';
@@ -428,7 +428,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     open_tasks: number; overdue: number; client_name: string | null;
     nearest_deadline?: string | null; owner_name?: string | null; owner_id?: string | null;
   } | null>(null);
-  const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
+  /**
+   * Просмотр вложений — галереей по всей переписке, как в мессенджерах.
+   *
+   * Раньше открывалась ровно одна картинка: чтобы увидеть второй снимок, надо было
+   * закрыть окно и нажать на следующий. Теперь открытая картинка листается стрелками
+   * и смахиванием — и не только внутри своего сообщения, а по всему разговору.
+   */
+  const [preview, setPreview] = useState<{ items: LightboxItem[]; index: number } | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
   /*
     Лента у нижнего края (задачи #1373, #1362).
@@ -1010,6 +1017,28 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       ...prev,
       ...named.map((f) => ({ file: f, url: isImageName(f.name) ? URL.createObjectURL(f) : '' })),
     ].slice(0, 10));
+  };
+
+
+  /*
+    Все картинки разговора по порядку — материал для галереи.
+
+    Собираем из того, что уже загружено в ленту: листать можно ровно то, что человек
+    мог увидеть. Не-картинки (документы, архивы) в галерею не берём — их открывают
+    скачиванием.
+  */
+  const galleryOf = (list: typeof messages): LightboxItem[] => list.flatMap((m: any) => {
+    const files = m.files?.length ? m.files : (m.file_id ? [{ fileId: String(m.file_id), name: m.file_name, mime: m.file_mime }] : []);
+    return files
+      .filter((f: any) => String(f.mime ?? '').startsWith('image/') || String(f.mime ?? '').startsWith('video/') || isImageName(String(f.name ?? '')))
+      .map((f: any) => ({ fileId: String(f.fileId), name: String(f.name ?? 'файл'), mime: f.mime }));
+  });
+
+  /** Открыть просмотр с нужной картинки: индекс ищем по номеру файла. */
+  const openPreview = (list: typeof messages, fileId: string) => {
+    const items = galleryOf(list);
+    const index = Math.max(0, items.findIndex((x) => x.fileId === String(fileId)));
+    if (items.length) setPreview({ items, index });
   };
 
   const clearPending = () => setPending((prev) => {
@@ -2427,7 +2456,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                             key={f.fileId}
                             fileId={f.fileId}
                             fileName={f.name ?? 'файл'}
-                            onOpen={(url, name, mime) => setPreview({ url, name, mime })}
+                            onOpen={() => openPreview(messages, String(f.fileId))}
                           />
                         ))}
                       </div>
@@ -2636,11 +2665,25 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               className="chat-input"
               // Файл можно и перетащить — то же действие, что и вставка из буфера.
               onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); void attach(f); } }}
+              // Перетащить можно и пачку: снимки экрана носят по нескольку сразу.
+              onDrop={(e) => {
+                const list = Array.from(e.dataTransfer.files ?? []);
+                if (list.length) { e.preventDefault(); void attach(list); }
+              }}
             >
               <label className="btn btn-ghost btn-sm" title="Прикрепить файл" style={{ cursor: 'pointer' }}>
                 <Icon name="paperclip" size={16} />
-                <input type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void attach(f); e.currentTarget.value = ''; }} />
+                {/* multiple: выбрать сразу несколько снимков — обычное дело, а уходил только первый. */}
+                <input
+                  type="file"
+                  hidden
+                  multiple
+                  onChange={(e) => {
+                    const list = Array.from(e.target.files ?? []);
+                    if (list.length) void attach(list);
+                    e.currentTarget.value = '';
+                  }}
+                />
               </label>
               {/*
                 Подсказка по «@» — как в ленте компании и в чате задачи.
@@ -2894,7 +2937,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                         key={f.fileId}
                         fileId={f.fileId}
                         fileName={f.name ?? 'файл'}
-                        onOpen={(url, name, mime) => setPreview({ url, name, mime })}
+                        onOpen={() => openPreview(thread?.messages ?? [], String(f.fileId))}
                       />
                     ))}
                   </div>
@@ -3093,10 +3136,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         />
       )}
 
-      {/* Картинку смотрят целиком, не уходя из переписки. Блоб уже загружен лентой —
-          повторно за ним не ходим, поэтому просмотр открывается мгновенно. */}
+      {/* Картинки смотрят целиком, не уходя из переписки, и листают стрелками —
+          как в мессенджерах. Просмотр забирает соседние снимки заранее. */}
       {preview && (
-        <Lightbox url={preview.url} name={preview.name} mime={preview.mime} onClose={() => setPreview(null)} />
+        <Lightbox items={preview.items} index={preview.index} onClose={() => setPreview(null)} />
       )}
     </div>
   );

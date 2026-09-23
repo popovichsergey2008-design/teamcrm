@@ -761,12 +761,7 @@ function PostModal({ post, team, onChanged, onClose }: {
         </div>
       )}
       {preview && (
-        <Lightbox
-          url={preview.url}
-          name={preview.name}
-          mime={preview.mime}
-          onClose={() => setPreview(null)}
-        />
+        <Lightbox items={[{ url: preview.url, name: preview.name, mime: preview.mime }]} onClose={() => setPreview(null)} />
       )}
 
       {/* Подтверждение прочтения — суть объявления, у обычной новости этой строки нет */}

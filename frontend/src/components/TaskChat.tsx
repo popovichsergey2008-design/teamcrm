@@ -4,7 +4,7 @@ import { Icon } from './Icon';
 import { MentionField } from './MentionField';
 import { VoiceStatus } from './VoiceStatus';
 import { ChatAttachment } from './ChatAttachment';
-import { Lightbox } from './Lightbox';
+import { Lightbox, LightboxItem } from './Lightbox';
 import { api, ApiError, QUEUED } from '../lib/api';
 import { OFFLINE_FLUSHED_EVENT, useQueuedFor } from '../hooks/useOfflineQueue';
 import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync';
@@ -213,7 +213,22 @@ export function TaskChat({
    */
   const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt; picked: string } | null>(null);
   const [allHistory, setAllHistory] = useState(false);
-  const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
+  /**
+   * Просмотр вложений — галереей по всему обсуждению (как в мессенджерах).
+   * Открыли один снимок — остальные листаются стрелками и смахиванием.
+   */
+  const [preview, setPreview] = useState<{ items: LightboxItem[]; index: number } | null>(null);
+
+  /** Картинки обсуждения по порядку: документы в галерею не берём, их скачивают. */
+  const galleryItems = (): LightboxItem[] => comments
+    .filter((c: any) => c.file_id && isImageName(String(c.file_name ?? '')))
+    .map((c: any) => ({ fileId: String(c.file_id), name: String(c.file_name ?? 'файл') }));
+
+  const openPreview = (fileId: string) => {
+    const items = galleryItems();
+    const index = Math.max(0, items.findIndex((x) => x.fileId === String(fileId)));
+    setPreview(items.length ? { items, index } : { items: [{ fileId, name: 'файл' }], index: 0 });
+  };
   const [advice, setAdvice] = useState<{
     answer: string; checklist: string[]; suggestion: { field: string; value: string; label: string } | null;
   } | null>(null);
@@ -1233,7 +1248,7 @@ export function TaskChat({
                     <ChatAttachment
                       fileId={String(c.file_id)}
                       fileName={c.file_name ?? 'файл'}
-                      onOpen={(url, fname, mime) => setPreview({ url, name: fname, mime })}
+                      onOpen={() => openPreview(String(c.file_id))}
                     />
                   )}
 
@@ -1299,7 +1314,7 @@ export function TaskChat({
                               <ChatAttachment
                                 fileId={String(r.file_id)}
                                 fileName={r.file_name ?? 'файл'}
-                                onOpen={(url, fname, m) => setPreview({ url, name: fname, mime: m })}
+                                onOpen={() => openPreview(String(r.file_id))}
                               />
                             )}
                           </div>
@@ -1612,7 +1627,7 @@ export function TaskChat({
       )}
       <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="nl-voice" />
 
-      {preview && <Lightbox url={preview.url} name={preview.name} mime={preview.mime} onClose={() => setPreview(null)} />}
+      {preview && <Lightbox items={preview.items} index={preview.index} onClose={() => setPreview(null)} />}
     </div>
   );
 }

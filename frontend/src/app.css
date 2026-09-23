@@ -5373,3 +5373,21 @@ button.chat-pop-row:hover { background: var(--hover); }
 }
 .ping-item-title:hover { color: var(--accent); }
 .ping-item-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+/*
+  Просмотр вложений галереей (как в мессенджерах): стрелки по бокам, счётчик в шапке.
+  Стрелки — поверх картинки и полупрозрачные: они не должны спорить с самим снимком.
+*/
+.lightbox-stage { position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.lightbox-loading { padding: 40px; }
+.lightbox-count { margin-left: 10px; font-size: var(--fs-xs); }
+.lightbox-nav {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(0, 0, 0, .55); color: #fff; border: none; cursor: pointer;
+}
+.lightbox-nav:hover { background: rgba(0, 0, 0, .75); }
+.lightbox-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lightbox-prev { left: 8px; }
+.lightbox-next { right: 8px; }
+@media (max-width: 720px) { .lightbox-nav { width: 38px; height: 38px; } }

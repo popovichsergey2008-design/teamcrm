@@ -905,7 +905,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 <TaskDescription text={desc} onEmptyClick={() => setEditingDesc(true)} onOpenImage={setDescPreview} />
               )}
               {descPreview && (
-                <Lightbox url={descPreview.url} name={descPreview.name} mime={descPreview.mime} onClose={() => setDescPreview(null)} />
+                <Lightbox items={[{ url: descPreview.url, name: descPreview.name, mime: descPreview.mime }]} onClose={() => setDescPreview(null)} />
               )}
             </div>
             <div className="drawer-section">
@@ -1420,7 +1420,7 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
         <EmptyState compact icon="paperclip" title="Файлов нет"
           hint="Прикрепите документы, макеты или скриншоты — они останутся в задаче и будут видны всем участникам." />
       )}
-      {preview && <Lightbox url={preview.url} name={preview.name} mime={preview.mime} onClose={closePreview} />}
+      {preview && <Lightbox items={[{ url: preview.url, name: preview.name, mime: preview.mime }]} onClose={closePreview} />}
     </>
   );
 }
