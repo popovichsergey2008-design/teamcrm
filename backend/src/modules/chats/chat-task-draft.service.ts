@@ -164,6 +164,23 @@ export class ChatTaskDraftService {
       .join(' ');
     const forParse = context ? `${base}\n(в ответ на: ${context.slice(0, 400)})` : base;
 
+    /*
+      Проект берём НЕ у модели.
+
+      В быстрой команде догадке модели верить можно: человек стоит на доске и диктует
+      задачу — обстановка сама подсказывает проект. В переписке обстановки нет, и модель
+      на фразе «тут всё съезжает, поправь» уверенно называет первый попавшийся проект.
+      Задача, уехавшая не в тот проект, хуже, чем задача, о которой переспросили, —
+      поэтому берём только твёрдые основания: чат проекта, название проекта прямо в
+      тексте или единственный проект в компании. Иначе спрашиваем автора.
+    */
+    const projects = await this.repo.projects(tenantId);
+    const named = matchProjectInText(base, projects);
+    const projectId = src.projectHint
+      ?? named
+      ?? (projects.length === 1 ? String(projects[0].id) : null);
+    const projectSource = src.projectHint ? 'chat' : named ? 'text' : projects.length === 1 ? 'only' : 'none';
+
     let patch: Parameters<ChatTaskDraftRepository['patch']>[2] = {};
     try {
       const parsed: any = await this.nl.parse(tenantId, userId, forParse, src.projectHint);
@@ -171,17 +188,21 @@ export class ChatTaskDraftService {
       patch = {
         title: String(t.title ?? base).slice(0, 255),
         description: String(t.description ?? ''),
-        projectId: t.projectId ? String(t.projectId) : null,
+        projectId,
         deadline: /^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? '')) ? String(t.deadline) : null,
         priority: String(t.priority ?? 'normal'),
         checklist: Array.isArray(t.checklist) ? t.checklist.map(String).slice(0, 12) : [],
-        analysis: { note: parsed?.note ?? null, projectHint: src.projectHint ?? null },
+        analysis: { note: parsed?.note ?? null, project: projectSource },
       };
     } catch (e) {
       // Модель недоступна — человек уже нажал «Создать задачу», и пустое окно было бы
       // худшим ответом. Ставим саму фразу: правится руками за пять секунд.
       this.log.warn(`разбор сообщения без модели: ${(e as Error).message}`);
-      patch = { title: base.slice(0, 255), analysis: { note: 'ИИ недоступен — собрал по самой фразе' } };
+      patch = {
+        title: base.slice(0, 255),
+        projectId,
+        analysis: { note: 'ИИ недоступен — собрал по самой фразе', project: projectSource },
+      };
     }
 
     const assignee = await this.pickAssignee(tenantId, draft, {
