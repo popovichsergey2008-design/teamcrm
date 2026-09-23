@@ -1868,12 +1868,13 @@ export const api = {
   markTaskRead: (id: string) => request<{ read: true }>('POST', `/tasks/${id}/read`, {}),
 
   /** Файл сообщением в чат задачи: скриншот показывают в разговоре, а не «см. вложение». */
+  /** Файлы сообщением в обсуждение задачи: можно несколько сразу, как в переписке. */
   addCommentFile: async (
-    taskId: string, file: File, body: string, replyToId?: string, replyExcerpt?: string,
+    taskId: string, file: File | File[], body: string, replyToId?: string, replyExcerpt?: string,
     threadRootId?: string | null,
   ) => {
     const fd = new FormData();
-    fd.append('file', file);
+    for (const f of Array.isArray(file) ? file : [file]) fd.append('files', f);
     if (body) fd.append('body', body);
     if (replyToId) fd.append('replyToId', replyToId);
     if (replyExcerpt) fd.append('replyExcerpt', replyExcerpt);

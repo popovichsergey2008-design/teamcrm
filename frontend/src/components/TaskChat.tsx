@@ -169,7 +169,8 @@ export function TaskChat({
    */
   const [replyTo, setReplyTo] = useState<{ id: string; author: string; excerpt: string } | null>(null);
   /** Файл, выбранный или вставленный, но ещё не отправленный. */
-  const [pending, setPending] = useState<{ file: File; url: string } | null>(null);
+  /** Вложения, ожидающие отправки. Список, а не один файл: снимков прикладывают по нескольку. */
+  const [pending, setPending] = useState<{ file: File; url: string }[]>([]);
   /** Записанное голосовое: его сначала слушают, а потом отправляют или стирают. */
   const [note, setNote] = useState<{ blob: Blob; url: string } | null>(null);
   const [noteBusy, setNoteBusy] = useState(false);
@@ -220,9 +221,12 @@ export function TaskChat({
   const [preview, setPreview] = useState<{ items: LightboxItem[]; index: number } | null>(null);
 
   /** Картинки обсуждения по порядку: документы в галерею не берём, их скачивают. */
-  const galleryItems = (): LightboxItem[] => comments
-    .filter((c: any) => c.file_id && isImageName(String(c.file_name ?? '')))
-    .map((c: any) => ({ fileId: String(c.file_id), name: String(c.file_name ?? 'файл') }));
+  const galleryItems = (): LightboxItem[] => comments.flatMap((c: any) => {
+    const files = c.files?.length ? c.files : (c.file_id ? [{ fileId: String(c.file_id), name: c.file_name }] : []);
+    return files
+      .filter((f: any) => String(f.mime ?? '').startsWith('image/') || isImageName(String(f.name ?? '')))
+      .map((f: any) => ({ fileId: String(f.fileId), name: String(f.name ?? 'файл'), mime: f.mime }));
+  });
 
   const openPreview = (fileId: string) => {
     const items = galleryItems();
@@ -470,19 +474,29 @@ export function TaskChat({
     Фотография с телефона весит мегабайты и уходит полминуты. Пока человек пишет
     подпись, снимок уже пережат, и отправка занимает секунду.
   */
-  const attach = async (file: File) => {
-    const small = await shrinkImage(file);
-    const named = isAnonymousClipboardName(small.name) && small.type.startsWith('image/')
-      ? new File([small], screenshotName(new Date(), small.type), { type: small.type })
-      : small;
-    setPending((prev) => {
-      if (prev?.url) URL.revokeObjectURL(prev.url);
+  const attach = async (files: File | File[]) => {
+    const list = Array.isArray(files) ? files : [files];
+    const prepared = await Promise.all(list.map(async (file) => {
+      const small = await shrinkImage(file);
+      const named = isAnonymousClipboardName(small.name) && small.type.startsWith('image/')
+        ? new File([small], screenshotName(new Date(), small.type), { type: small.type })
+        : small;
       return { file: named, url: isImageName(named.name) ? URL.createObjectURL(named) : '' };
-    });
+    }));
+    // Десять — предел одного сообщения: дальше это уже архив, а не обсуждение.
+    setPending((prev) => [...prev, ...prepared].slice(0, 10));
   };
+
+  /** Убрать одно вложение: приложил лишнее — не отправлять же всё заново. */
+  const dropPending = (idx: number) => setPending((prev) => {
+    const out = prev.filter((_, i) => i !== idx);
+    const gone = prev[idx];
+    if (gone?.url) URL.revokeObjectURL(gone.url);
+    return out;
+  });
   const clearPending = () => setPending((prev) => {
-    if (prev?.url) URL.revokeObjectURL(prev.url);
-    return null;
+    for (const p of prev) if (p.url) URL.revokeObjectURL(p.url);
+    return [];
   });
 
   const ask = async (question: string) => {
@@ -499,18 +513,18 @@ export function TaskChat({
 
   const send = async () => {
     const text = body.trim();
-    if (!text && !pending) return;
+    if (!text && !pending.length) return;
     // Помощника зовут упоминанием, как коллегу: «@AI-помощник, что тут по срокам».
     // Ищем в любом месте строки: в живой переписке обращение идёт после слов
     // «Борис, глянь, и @AI тоже».
-    if (!pending && MENTIONS_AI.test(text)) return ask(text.replace(MENTIONS_AI, ' ').trim() || text);
+    if (!pending.length && MENTIONS_AI.test(text)) return ask(text.replace(MENTIONS_AI, ' ').trim() || text);
     setBusy(true);
     try {
       if (editing) {
         await api.editComment(taskId, editing.id, text);
         setEditing(null);
-      } else if (pending) {
-        await api.addCommentFile(taskId, pending.file, text, replyTo?.id, replyTo?.excerpt);
+      } else if (pending.length) {
+        await api.addCommentFile(taskId, pending.map((p) => p.file), text, replyTo?.id, replyTo?.excerpt);
         clearPending();
       } else {
         /*
@@ -1147,7 +1161,10 @@ export function TaskChat({
         }}
         // Файл можно перетащить прямо в переписку — то же, что вставка из буфера.
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); void attach(f); } }}
+        onDrop={(e) => {
+          const list = Array.from(e.dataTransfer.files ?? []);
+          if (list.length) { e.preventDefault(); void attach(list); }
+        }}
       >
         {/* Показан хвост переписки — остальное поднимается кнопкой. Появляется, только
             когда наверху действительно что-то есть. */}
@@ -1244,13 +1261,19 @@ export function TaskChat({
                     />
                   )}
 
-                  {c.file_id && (
+                  {/* Несколько файлов — одно сообщение, как в переписке. Старые сообщения
+                      приходят с одним файлом и показываются так же. */}
+                  {((c as any).files?.length
+                    ? (c as any).files
+                    : c.file_id ? [{ fileId: String(c.file_id), name: c.file_name ?? 'файл' }] : []
+                  ).map((f: any) => (
                     <ChatAttachment
-                      fileId={String(c.file_id)}
-                      fileName={c.file_name ?? 'файл'}
-                      onOpen={() => openPreview(String(c.file_id))}
+                      key={String(f.fileId)}
+                      fileId={String(f.fileId)}
+                      fileName={f.name ?? 'файл'}
+                      onOpen={() => openPreview(String(f.fileId))}
                     />
-                  )}
+                  ))}
 
                   {/* Время — в углу пузыря, как в мессенджере: в строке с именем оно
                       отодвигало подпись, а взгляд ищет его именно справа внизу. */}
@@ -1509,20 +1532,20 @@ export function TaskChat({
         </div>
       )}
 
-      {/* Вложение перед отправкой: видно, что уйдёт, и можно подписать. */}
-      {pending && (
-        <div className="chat-pending">
-          {pending.url
-            ? <img className="chat-pending-img" src={pending.url} alt={pending.file.name} />
+      {/* Вложения перед отправкой: видно, что уйдёт, и каждое можно убрать по отдельности. */}
+      {pending.map((p, i) => (
+        <div className="chat-pending" key={`${p.file.name}:${p.file.size}:${i}`}>
+          {p.url
+            ? <img className="chat-pending-img" src={p.url} alt={p.file.name} />
             : <Icon name="paperclip" size={16} />}
           <span className="chat-pending-name">
-            {pending.file.name} <span className="dim">· {humanSize(pending.file.size)}</span>
+            {p.file.name} <span className="dim">· {humanSize(p.file.size)}</span>
           </span>
-          <button className="btn btn-ghost btn-sm" onClick={clearPending} title="Убрать вложение" aria-label="Убрать вложение">
+          <button className="btn btn-ghost btn-sm" onClick={() => dropPending(i)} title="Убрать вложение" aria-label="Убрать вложение">
             <Icon name="close" size={14} />
           </button>
         </div>
-      )}
+      ))}
 
       {/*
         Поле ввода — одной «таблеткой» внизу, как в мессенджере.
@@ -1534,10 +1557,16 @@ export function TaskChat({
       <div className="comment-input" ref={composeRef}>
         <label className="chat-tool" title="Прикрепить файл — или просто вставьте скриншот через Ctrl+V">
           <Icon name="paperclip" size={17} />
+          {/* multiple: выбрать сразу несколько снимков — обычное дело, а уходил только первый. */}
           <input
             type="file"
             hidden
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void attach(f); e.currentTarget.value = ''; }}
+            multiple
+            onChange={(e) => {
+              const list = Array.from(e.target.files ?? []);
+              if (list.length) void attach(list);
+              e.currentTarget.value = '';
+            }}
           />
         </label>
         <MentionField

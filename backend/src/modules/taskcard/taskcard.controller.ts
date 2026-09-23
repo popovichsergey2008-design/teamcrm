@@ -1,7 +1,8 @@
 import {
-  Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors,
+  Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile,
+  UploadedFiles, UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
@@ -102,18 +103,25 @@ export class TaskCardController {
    *
    * Подпись необязательна — картинка часто говорит сама за себя.
    */
+  /**
+   * Файлы сообщением в обсуждение задачи: одним запросом можно прислать несколько.
+   *
+   * Поле называется `files`, но принимаем и старое `file` — на него ходят страницы,
+   * открытые до выкладки, и ронять им отправку нельзя.
+   */
   @Post(':id/comments/file')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'files', maxCount: 10 }, { name: 'file', maxCount: 1 }]))
   addCommentFile(
     @CurrentUser() u: AuthUser,
     @Param('id') id: string,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles() got: { files?: Express.Multer.File[]; file?: Express.Multer.File[] },
     @Body() body: { body?: string; replyToId?: string; replyExcerpt?: string; threadRootId?: string },
   ) {
-    if (!file) throw AppException.validation('file is required');
+    const list = [...(got?.files ?? []), ...(got?.file ?? [])];
+    if (!list.length) throw AppException.validation('Файл не приложен');
     return this.svc.addCommentWithFile(
-      u.tenantId, id, u.userId, file,
+      u.tenantId, id, u.userId, list,
       String(body?.body ?? '').slice(0, 5000),
       body?.replyToId ?? null,
       body?.replyExcerpt ?? null,

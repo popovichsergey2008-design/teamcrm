@@ -6,22 +6,39 @@ export class TaskCardRepository {
   constructor(private readonly db: DbService) {}
 
   // ---- comments ----
-  addComment(
+  async addComment(
     tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean,
     replyToId?: string | null,
-    extra?: { fileId?: string | null; replyExcerpt?: string | null; threadRootId?: string | null; alsoInChannel?: boolean },
+    extra?: {
+      fileId?: string | null; replyExcerpt?: string | null; threadRootId?: string | null; alsoInChannel?: boolean;
+      /** Все файлы сообщения по порядку (задача про несколько снимков). */
+      fileIds?: string[];
+    },
   ) {
-    return this.db.one(
+    const row: any = await this.db.one(
       `INSERT INTO task_comments
          (tenant_id, task_id, author_id, body, is_client_visible, reply_to_id, file_id, reply_excerpt,
           thread_root_id, also_in_channel)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [
         tenantId, taskId, authorId, body, clientVisible, replyToId ?? null,
-        extra?.fileId ?? null, extra?.replyExcerpt ?? null,
+        // В старом поле остаётся ПЕРВЫЙ файл: на него завязаны лента, поиск и импорты.
+        extra?.fileIds?.[0] ?? extra?.fileId ?? null, extra?.replyExcerpt ?? null,
         extra?.threadRootId ?? null, extra?.alsoInChannel === true,
       ],
     );
+    // Все вложения — отдельной таблицей, с сохранением порядка (миграция 0124).
+    const files = extra?.fileIds?.length ? extra.fileIds : (extra?.fileId ? [extra.fileId] : []);
+    if (files.length && row?.id) {
+      await this.db.query(
+        `INSERT INTO task_comment_files (comment_id, file_id, tenant_id, position)
+              SELECT $1, x.id, $2, x.pos
+                FROM unnest($3::bigint[]) WITH ORDINALITY AS x(id, pos)
+         ON CONFLICT DO NOTHING`,
+        [row.id, tenantId, files],
+      );
+    }
+    return row;
   }
 
   // ---- отметки о прочтении ----
@@ -131,6 +148,14 @@ export class TaskCardRepository {
       // на каждое сообщение слишком дорого.
       `SELECT c.id, c.author_id, c.body, c.is_client_visible, c.is_ai, c.created_at, c.edited_at,
               c.reply_to_id, c.file_id, c.pinned_at, c.pinned_by, f.file_name,
+              -- Все вложения сообщения: несколько снимков — одно сообщение, как в переписке.
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                         'fileId', cf.file_id::text, 'name', ff.file_name,
+                         'mime', ff.content_type, 'size', ff.size_bytes) ORDER BY cf.position, cf.file_id)
+                  FROM task_comment_files cf JOIN files ff ON ff.id = cf.file_id
+                 WHERE cf.comment_id = c.id
+              ), '[]'::json) AS files,
               -- Сколько ответов в ветке и когда был последний: по ним на корневом
               -- сообщении рисуется «3 ответа · 10 минут назад», и лезть за этим
               -- отдельным запросом на каждую строку слишком дорого.

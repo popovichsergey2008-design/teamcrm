@@ -136,6 +136,30 @@ describe('Enhancements v1 — Task card (e2e)', () => {
     const files = (await http.get(`/api/tasks/${taskId}/attachments`).set(A()).expect(200)).body.data;
     expect(files.some((f: any) => f.file_name === 'screen.png')).toBe(true);
 
+    /*
+      Несколько снимков — ОДНО сообщение (как в переписке).
+
+      Раньше три файла превращались в три комментария подряд: обсуждение
+      разваливалось на обрывки, а подпись относилась только к первому.
+    */
+    const many = (await http.post(`/api/tasks/${taskId}/comments/file`).set(A())
+      .field('body', 'три снимка одним сообщением')
+      .attach('files', png, { filename: 'a.png', contentType: 'image/png' })
+      .attach('files', png, { filename: 'b.png', contentType: 'image/png' })
+      .attach('files', png, { filename: 'c.png', contentType: 'image/png' })
+      .expect(201)).body.data;
+
+    const listMany = (await http.get(`/api/tasks/${taskId}/comments`).set(A()).expect(200)).body.data;
+    const multi = listMany.find((c: any) => String(c.id) === String(many.id));
+    expect(multi.files.map((f: any) => f.name)).toEqual(['a.png', 'b.png', 'c.png']);
+    // в старом поле — первый файл: на него завязаны лента, поиск и импорты
+    expect(multi.file_name).toBe('a.png');
+    // и это ОДНО сообщение, а не три
+    expect(listMany.filter((c: any) => c.body === 'три снимка одним сообщением')).toHaveLength(1);
+
+    // сообщение с одним файлом тоже отдаёт список — интерфейс не разбирает два случая
+    expect(withFile.files.map((f: any) => f.name)).toEqual(['screen.png']);
+
     // в истории ОДНА новая запись — про сообщение, и по её commentId строится ссылка
     const after = (await http.get(`/api/tasks/${taskId}/activity`).set(A()).expect(200)).body.data;
     expect(after.length).toBe(before + 1);

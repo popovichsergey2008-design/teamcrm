@@ -61,7 +61,10 @@ export class TaskCardService {
   async addComment(
     tenantId: string, taskId: string, authorId: string, body: string, clientVisible: boolean,
     replyToId?: string | null,
-    extra?: { fileId?: string | null; replyExcerpt?: string | null; threadRootId?: string | null; alsoInChannel?: boolean },
+    extra?: {
+      fileId?: string | null; replyExcerpt?: string | null; threadRootId?: string | null; alsoInChannel?: boolean;
+      fileIds?: string[];
+    },
   ) {
     const task = await this.task(tenantId, taskId);
     await this.repo.addWatcher(tenantId, taskId, authorId); // автор — наблюдатель
@@ -129,14 +132,27 @@ export class TaskCardService {
    */
   async addCommentWithFile(
     tenantId: string, taskId: string, userId: string,
-    file: { buffer: Buffer; originalname: string; mimetype: string },
+    files: { buffer: Buffer; originalname: string; mimetype: string }[],
     body: string, replyToId?: string | null, replyExcerpt?: string | null,
     /** Файл в ветку: картинку показывают там же, где о ней спорят. */
     threadRootId?: string | null,
   ) {
-    const uploaded = await this.attachUploaded(tenantId, taskId, userId, file, { silent: true });
+    if (!files.length) throw AppException.validation('Файл не приложен');
+    /*
+      Несколько файлов — ОДНО сообщение (как в переписке).
+
+      Раньше три снимка превращались в три комментария подряд: обсуждение
+      разваливалось на обрывки, и подпись относилась только к первому. Грузим по
+      очереди — параллельная отправка десятка вложений забивает канал и делает
+      порядок случайным, а он здесь значим.
+    */
+    const ids: string[] = [];
+    for (const f of files.slice(0, 10)) {
+      const uploaded = await this.attachUploaded(tenantId, taskId, userId, f, { silent: true });
+      ids.push(String(uploaded.fileId));
+    }
     return this.addComment(tenantId, taskId, userId, body, false, replyToId, {
-      fileId: String(uploaded.fileId), replyExcerpt: replyExcerpt ?? null, threadRootId: threadRootId ?? null,
+      fileIds: ids, replyExcerpt: replyExcerpt ?? null, threadRootId: threadRootId ?? null,
     });
   }
 
