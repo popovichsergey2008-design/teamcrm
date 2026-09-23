@@ -70,6 +70,19 @@ export const REGISTRY_DUES: { key: string; label: string }[] = [
   { key: 'none', label: 'Без срока' },
 ];
 
+/** Направление сортировки по столбцу: А→Я или Я→А. */
+export type SortDir = 'asc' | 'desc';
+
+/**
+ * Столбцы реестра, по которым сортирует заголовок (просьба заказчика: нажатие по
+ * шапке — А→Я, второе — Я→А, третье — обычный порядок).
+ *
+ * `who` — это один столбец, но разные поля: в срезе «От меня» в нём постановщик, в
+ * остальных исполнитель. Что именно показано, знает экран, поэтому ключ он и выбирает.
+ */
+export const SORT_COLUMNS = ['title', 'project', 'status', 'assignee', 'manager', 'deadline'] as const;
+export type SortColumn = typeof SORT_COLUMNS[number];
+
 export interface RegistryFilters {
   scope: RegistryScope;
   q: string;
@@ -78,6 +91,7 @@ export interface RegistryFilters {
   priority: string;
   due: string;
   sort: string;
+  dir: SortDir;
   /**
    * «В работе» — переключатель, а не фильтр «показать завершённые».
    *
@@ -91,8 +105,29 @@ export interface RegistryFilters {
 
 export const EMPTY_FILTERS: RegistryFilters = {
   scope: 'all', q: '', projectId: '', assigneeId: '', priority: '', due: 'any',
-  sort: 'deadline', inWork: true, page: 1,
+  sort: 'deadline', dir: 'asc', inWork: true, page: 1,
 };
+
+/**
+ * Следующее состояние сортировки при нажатии на заголовок столбца.
+ *
+ * Три положения по кругу: А→Я, Я→А, обычный порядок (по сроку — то, с чем реестр
+ * открывается). Нажали по ДРУГОМУ столбцу — начинаем с А→Я: продолжать чужое
+ * направление некорректно, человек выбирает новый признак, а не переворачивает старый.
+ */
+export function nextSortState(
+  current: { sort: string; dir: SortDir },
+  column: SortColumn,
+): { sort: string; dir: SortDir } {
+  if (current.sort !== column) return { sort: column, dir: 'asc' };
+  if (current.dir === 'asc') return { sort: column, dir: 'desc' };
+  return { sort: EMPTY_FILTERS.sort, dir: EMPTY_FILTERS.dir };
+}
+
+/** Что рисовать в заголовке столбца: стрелку вверх, вниз или ничего. */
+export function sortMark(current: { sort: string; dir: SortDir }, column: SortColumn): SortDir | null {
+  return current.sort === column ? current.dir : null;
+}
 
 export function isScope(value: string | undefined | null): value is RegistryScope {
   return REGISTRY_TABS.some((t) => t.key === value);
@@ -143,6 +178,8 @@ export function registryQuery(f: RegistryFilters, now = new Date()): string {
   if (f.priority) p.set('priority', f.priority);
   if (f.due && f.due !== 'any') p.set('due', f.due);
   if (f.sort && f.sort !== 'deadline') p.set('sort', f.sort);
+  // Направление отправляем только у сортировки по столбцу: у наборов из списка своё.
+  if (f.dir === 'desc') p.set('dir', 'desc');
   // «В работе» выключили — просим у сервера всё: и завершённое, и архивные проекты
   if (!f.inWork) p.set('closed', '1');
   if (f.page > 1) p.set('page', String(f.page));

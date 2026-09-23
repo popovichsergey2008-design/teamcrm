@@ -4038,6 +4038,17 @@
   font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); font-weight: 600;
 }
 .registry-header:hover { background: var(--bg-elev-2); }
+/* Заголовок-кнопка: сортирует столбец. Стрелка бледная, пока сортируют не по нему. */
+.registry-sort {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; margin: -2px -4px;
+  border: none; border-radius: var(--radius-sm); background: none; color: inherit;
+  font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer;
+}
+.registry-sort:hover { color: var(--text); background: var(--hover); }
+.registry-sort:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.registry-sort svg { opacity: .25; }
+.registry-sort.on { color: var(--text); }
+.registry-sort.on svg { opacity: 1; }
 /* Просрочка — полоской слева, а не красным фоном: фон на половине строк превращает
    список в кашу, а полоска читается и не мешает читать текст. */
 .registry-row.late { box-shadow: inset 3px 0 0 var(--danger); }

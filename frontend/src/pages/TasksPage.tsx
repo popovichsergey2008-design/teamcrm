@@ -6,7 +6,8 @@ import { api } from '../lib/api';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import {
   EMPTY_FILTERS, REGISTRY_DUES, REGISTRY_SORTS, RegistryFilters, RegistryScope, ROLE_TABS,
-  activeFilterCount, emptyHint, pageWindow, rangeLabel, registryQuery, scopeHint,
+  SortColumn, activeFilterCount, emptyHint, nextSortState, pageWindow, rangeLabel,
+  registryQuery, scopeHint, sortMark,
 } from '../lib/task-registry-view';
 import type { Project } from '../types';
 
@@ -39,6 +40,34 @@ const PRIORITIES = [
   { key: 'normal', label: 'Обычный' },
   { key: 'low', label: 'Низкий' },
 ];
+
+/**
+ * Заголовок столбца, который сортирует.
+ *
+ * Стрелка показывает не «куда нажать», а текущий порядок — иначе после перезагрузки
+ * непонятно, почему список выглядит именно так. `aria-sort` говорит то же самое тем,
+ * кто читает экран с голоса.
+ */
+function SortHead({ column, label, filters, onSort }: {
+  column: SortColumn;
+  label: string;
+  filters: { sort: string; dir: 'asc' | 'desc' };
+  onSort: (column: SortColumn) => void;
+}) {
+  const mark = sortMark(filters, column);
+  return (
+    <span role="columnheader" aria-sort={mark === 'asc' ? 'ascending' : mark === 'desc' ? 'descending' : 'none'}>
+      <button
+        className={`registry-sort${mark ? ' on' : ''}`}
+        onClick={() => onSort(column)}
+        title={mark === 'asc' ? 'Сейчас А→Я, нажмите для Я→А' : mark === 'desc' ? 'Сейчас Я→А, нажмите для обычного порядка' : `Сортировать по столбцу «${label}»`}
+      >
+        {label}
+        <Icon name={mark === 'desc' ? 'chevron-down' : 'chevron-up'} size={12} />
+      </button>
+    </span>
+  );
+}
 
 /** Короткая дата: в списке нужен день и месяц, год — только если он не этот. */
 function shortDate(iso?: string | null): string {
@@ -162,6 +191,11 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
   const toggleAll = (on: boolean) => setScopes(on ? ['all'] : ROLE_TABS.map((t) => t.key));
   const filterCount = activeFilterCount(request);
   const showWho: 'assignee' | 'manager' = picked.length === 1 && picked[0] === 'delegated' ? 'assignee' : 'manager';
+  /*
+    Нажали по заголовку столбца. Страницу сбрасываем на первую: человек сменил порядок
+    и ждёт начало списка, а не тридцатую страницу прежнего.
+  */
+  const sortBy = (column: SortColumn) => setFilters((f) => ({ ...f, ...nextSortState(f, column), page: 1 }));
 
   return (
     <div className="page registry-page">
@@ -311,12 +345,22 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
 
       {rows.length > 0 && (
         <div className="registry-list" role="table">
+          {/*
+            Шапка сортирует нажатием (просьба заказчика): А→Я, Я→А, обычный порядок.
+            Считает сервер — сортировать на клиенте нельзя, на экране лишь страница из
+            пятидесяти строк, и «по алфавиту» получилось бы в пределах страницы.
+          */}
           <div className="registry-row registry-header" role="row">
-            <span role="columnheader">Задача</span>
-            <span role="columnheader">Проект</span>
-            <span role="columnheader">Статус</span>
-            <span role="columnheader">{showWho === 'assignee' ? 'Исполнитель' : 'Постановщик'}</span>
-            <span role="columnheader">Срок</span>
+            <SortHead column="title" label="Задача" filters={filters} onSort={sortBy} />
+            <SortHead column="project" label="Проект" filters={filters} onSort={sortBy} />
+            <SortHead column="status" label="Статус" filters={filters} onSort={sortBy} />
+            <SortHead
+              column={showWho === 'assignee' ? 'assignee' : 'manager'}
+              label={showWho === 'assignee' ? 'Исполнитель' : 'Постановщик'}
+              filters={filters}
+              onSort={sortBy}
+            />
+            <SortHead column="deadline" label="Срок" filters={filters} onSort={sortBy} />
           </div>
           {rows.map((t) => {
             const prio = priorityBadge(t.priority);

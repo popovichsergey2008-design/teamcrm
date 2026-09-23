@@ -27,7 +27,19 @@ export type RegistryScope = 'doing' | 'helping' | 'mine' | 'delegated' | 'watchi
 /** Отбор по сроку. `none` — задачи вообще без срока: их легко потерять. */
 export type RegistryDue = 'any' | 'overdue' | 'today' | 'week' | 'none';
 
-export type RegistrySort = 'deadline' | 'created' | 'updated' | 'priority' | 'project';
+/**
+ * Чем упорядочить реестр.
+ *
+ * Первые пять — готовые наборы из выпадающего списка («по сроку», «по приоритету»…).
+ * Остальные — столбцы таблицы: заказчик попросил сортировать нажатием на заголовок,
+ * как в таблице, с направлением А→Я, Я→А и возвратом к обычному порядку.
+ */
+export type RegistrySort =
+  | 'deadline' | 'created' | 'updated' | 'priority' | 'project'
+  | 'title' | 'status' | 'assignee' | 'manager';
+
+/** Направление для сортировки по столбцу. Наборы из списка своё направление знают сами. */
+export type RegistryDir = 'asc' | 'desc';
 
 export interface RegistryFilters {
   scope?: string | null;
@@ -48,6 +60,8 @@ export interface RegistryFilters {
    */
   closed?: boolean;
   sort?: string | null;
+  /** Направление сортировки по столбцу: `asc` — А→Я и раньше→позже, `desc` — наоборот. */
+  dir?: string | null;
   page?: number | null;
   /**
    * Конец «сегодня» у ЧЕЛОВЕКА, ISO-строкой с клиента. День на сервере и день у
@@ -70,7 +84,10 @@ export const REGISTRY_PAGE_SIZE = 50;
 
 const SCOPES: RegistryScope[] = ['doing', 'helping', 'mine', 'delegated', 'watching', 'all'];
 const DUES: RegistryDue[] = ['any', 'overdue', 'today', 'week', 'none'];
-const SORTS: RegistrySort[] = ['deadline', 'created', 'updated', 'priority', 'project'];
+const SORTS: RegistrySort[] = [
+  'deadline', 'created', 'updated', 'priority', 'project',
+  'title', 'status', 'assignee', 'manager',
+];
 const PRIORITIES = ['urgent', 'high', 'normal', 'low'];
 
 export function normalizeScope(value?: string | null): RegistryScope {
@@ -102,6 +119,10 @@ function normalizeDue(value?: string | null): RegistryDue {
 
 function normalizeSort(value?: string | null): RegistrySort {
   return SORTS.includes(value as RegistrySort) ? (value as RegistrySort) : 'deadline';
+}
+
+function normalizeDir(value?: string | null): RegistryDir {
+  return value === 'desc' ? 'desc' : 'asc';
 }
 
 /**
@@ -141,10 +162,27 @@ function scopeCondition(scope: RegistryScope): string {
  * работа впереди истории. Задачи без срока в сортировке по сроку — тоже в конце, иначе
  * NULL'ы в Postgres встают первыми и закрывают собой всё срочное.
  */
-function orderClause(sort: RegistrySort): string {
+function orderClause(sort: RegistrySort, dir: RegistryDir): string {
   const priority = `CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`;
   const tail = `${priority}, t.created_at DESC`;
+  /*
+    Сортировка по столбцу.
+
+    `lower()` — потому что «Актуализировать» и «актуализировать» для человека одно и то
+    же слово, а без него строчные уезжают за прописные отдельной пачкой. Пустые клетки
+    (нет исполнителя, нет срока) всегда в конце: в начале списка они закрывают собой то,
+    ради чего в реестр и заходят.
+  */
+  const by = (expr: string) => `t.closed_at IS NOT NULL, ${expr} ${dir.toUpperCase()} NULLS LAST, ${tail}`;
   switch (sort) {
+    case 'title':
+      return by('lower(t.title)');
+    case 'status':
+      return by('lower(bc.name)');
+    case 'assignee':
+      return by('lower(ua.full_name)');
+    case 'manager':
+      return by('lower(um.full_name)');
     case 'created':
       return `t.closed_at IS NOT NULL, t.created_at DESC`;
     case 'updated':
@@ -152,9 +190,10 @@ function orderClause(sort: RegistrySort): string {
     case 'priority':
       return `t.closed_at IS NOT NULL, ${priority}, t.deadline_at IS NULL, t.deadline_at ASC, t.created_at DESC`;
     case 'project':
-      return `t.closed_at IS NOT NULL, p.name ASC, ${tail}`;
+      return by('lower(p.name)');
     default:
-      return `t.closed_at IS NOT NULL, t.deadline_at IS NULL, t.deadline_at ASC, ${tail}`;
+      // Срок: по возрастанию — ближайший первым; по убыванию — самый дальний.
+      return `t.closed_at IS NOT NULL, t.deadline_at ${dir.toUpperCase()} NULLS LAST, ${tail}`;
   }
 }
 
@@ -219,7 +258,7 @@ export function buildRegistry(tenantId: string, userId: string, f: RegistryFilte
   const page = Math.max(1, Math.trunc(Number(f.page) || 1));
   return {
     where: where.join('\n          AND '),
-    orderBy: orderClause(normalizeSort(f.sort)),
+    orderBy: orderClause(normalizeSort(f.sort), normalizeDir(f.dir)),
     params,
     limit: REGISTRY_PAGE_SIZE,
     offset: (page - 1) * REGISTRY_PAGE_SIZE,

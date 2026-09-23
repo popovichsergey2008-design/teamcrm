@@ -126,11 +126,26 @@ describe('buildRegistry: сортировка и страницы', () => {
   it('завершённые всегда в конце, задачи без срока — тоже', () => {
     const q = buildRegistry('1', '7', base);
     expect(q.orderBy.startsWith('t.closed_at IS NOT NULL')).toBe(true);
-    expect(q.orderBy).toContain('t.deadline_at IS NULL');
+    expect(q.orderBy).toContain('NULLS LAST');
   });
 
   it('сортировка по проекту идёт по имени, а не по идентификатору', () => {
-    expect(buildRegistry('1', '7', { ...base, sort: 'project' }).orderBy).toContain('p.name ASC');
+    expect(buildRegistry('1', '7', { ...base, sort: 'project' }).orderBy).toContain('lower(p.name) ASC');
+  });
+
+  it('сортировка по столбцу: регистр не разводит одинаковые слова, направление слушается', () => {
+    expect(buildRegistry('1', '7', { ...base, sort: 'title' }).orderBy).toContain('lower(t.title) ASC');
+    expect(buildRegistry('1', '7', { ...base, sort: 'title', dir: 'desc' }).orderBy).toContain('lower(t.title) DESC');
+    expect(buildRegistry('1', '7', { ...base, sort: 'status' }).orderBy).toContain('lower(bc.name) ASC');
+    expect(buildRegistry('1', '7', { ...base, sort: 'assignee' }).orderBy).toContain('lower(ua.full_name) ASC');
+    expect(buildRegistry('1', '7', { ...base, sort: 'manager', dir: 'desc' }).orderBy).toContain('lower(um.full_name) DESC');
+    // Пустые клетки — всегда в конце, в обе стороны: иначе они закрывают собой начало списка.
+    expect(buildRegistry('1', '7', { ...base, sort: 'assignee', dir: 'desc' }).orderBy).toContain('NULLS LAST');
+  });
+
+  it('мусор в направлении считается возрастанием', () => {
+    expect(buildRegistry('1', '7', { ...base, sort: 'title', dir: 'вниз' }).orderBy)
+      .toBe(buildRegistry('1', '7', { ...base, sort: 'title' }).orderBy);
   });
 
   it('неизвестная сортировка — по сроку', () => {

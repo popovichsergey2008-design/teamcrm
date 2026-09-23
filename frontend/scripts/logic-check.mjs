@@ -1121,6 +1121,27 @@ test('конфиг оболочки: сравнение версий, верди
   assert.equal(effectiveLockPolicy('5', undefined), '5');
 });
 
+test('сортировка реестра по заголовку: А→Я, Я→А, обычный порядок', async () => {
+  const { nextSortState, sortMark, EMPTY_FILTERS, registryQuery } = await load('lib/task-registry-view.ts');
+  let cur = { sort: EMPTY_FILTERS.sort, dir: EMPTY_FILTERS.dir };
+  cur = nextSortState(cur, 'title');
+  assert.deepEqual(cur, { sort: 'title', dir: 'asc' });
+  assert.equal(sortMark(cur, 'title'), 'asc');
+  assert.equal(sortMark(cur, 'project'), null);        // чужой столбец стрелку не рисует
+  cur = nextSortState(cur, 'title');
+  assert.deepEqual(cur, { sort: 'title', dir: 'desc' });
+  cur = nextSortState(cur, 'title');
+  assert.deepEqual(cur, { sort: EMPTY_FILTERS.sort, dir: 'asc' });  // третий клик — как было
+  // Нажали по другому столбцу — начинаем с А→Я, а не продолжаем чужое направление.
+  cur = nextSortState({ sort: 'title', dir: 'desc' }, 'project');
+  assert.deepEqual(cur, { sort: 'project', dir: 'asc' });
+  // Направление уезжает на сервер только когда оно не обычное.
+  const q = (f) => registryQuery({ ...EMPTY_FILTERS, ...f }, new Date('2026-09-23T10:00:00'));
+  assert.ok(!q({}).includes('dir='));
+  assert.ok(q({ sort: 'title', dir: 'desc' }).includes('sort=title'));
+  assert.ok(q({ sort: 'title', dir: 'desc' }).includes('dir=desc'));
+});
+
 test('предложение обновиться: обязательное всегда, обычное — один раз на версию', async () => {
   const { shouldOfferUpdate } = await load('lib/mobile-config.ts');
   const rel = { latestNative: '1.9', minimumNative: '1.0', apkUrl: 'u', sha256: 's', force: false };

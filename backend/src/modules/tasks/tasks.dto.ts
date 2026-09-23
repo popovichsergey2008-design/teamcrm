@@ -222,9 +222,17 @@ export class TaskRegistryQueryDto {
   @IsIn(['any', 'overdue', 'today', 'week', 'none'])
   due?: string;
 
+  /*
+    Готовые наборы из списка плюс столбцы таблицы: заголовок реестра сортирует
+    нажатием (А→Я, Я→А, обычный порядок) — просьба заказчика.
+  */
   @IsOptional()
-  @IsIn(['deadline', 'created', 'updated', 'priority', 'project'])
+  @IsIn(['deadline', 'created', 'updated', 'priority', 'project', 'title', 'status', 'assignee', 'manager'])
   sort?: string;
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  dir?: string;
 
   @IsOptional()
   @IsString()
