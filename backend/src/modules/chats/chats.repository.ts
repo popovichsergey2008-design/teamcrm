@@ -229,7 +229,17 @@ export class ChatsRepository {
    * остаётся читаемой. Исключение — сообщения, которые автор попросил продублировать
    * в канал («Также отправить в основной чат»).
    */
-  messages(tenantId: string, chatId: string, beforeId: string | null, limit: number, viewerId: string): Promise<MessageRow[]> {
+  /**
+   * Страница ленты: по умолчанию хвост, `beforeId` — страница выше, `afterId` — ниже.
+   *
+   * Страница ВНИЗ появилась из живой жалобы: после перехода к старому сообщению лента
+   * показывает окно вокруг него, и дальше человек упирался в его нижний край — до
+   * сегодняшних сообщений добраться было нечем.
+   */
+  messages(
+    tenantId: string, chatId: string, beforeId: string | null, limit: number, viewerId: string,
+    afterId: string | null = null,
+  ): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
@@ -274,9 +284,11 @@ export class ChatsRepository {
         WHERE m.tenant_id=$1 AND m.chat_id=$2 AND m.deleted_at IS NULL
           AND (m.thread_root_id IS NULL OR m.also_in_channel)
           AND ($3::bigint IS NULL OR m.id < $3::bigint)
-        ORDER BY m.id DESC LIMIT $4`,
-      [tenantId, chatId, beforeId, limit, viewerId],
-    ).then((rows) => rows.reverse()); // наружу отдаём по возрастанию: так рисует лента
+          AND ($6::bigint IS NULL OR m.id > $6::bigint)
+        ORDER BY m.id ${afterId ? 'ASC' : 'DESC'} LIMIT $4`,
+      [tenantId, chatId, beforeId, limit, viewerId, afterId],
+      // Наружу всегда по возрастанию — так рисует лента; вниз страница уже в этом порядке.
+    ).then((rows) => (afterId ? rows : rows.reverse()));
   }
 
   /** Ветка целиком: корневое сообщение и ответы по возрастанию. */

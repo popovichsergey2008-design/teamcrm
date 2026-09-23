@@ -219,8 +219,11 @@ export class ChatsController {
   }
 
   @Get(':id/messages')
-  messages(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('before') before?: string) {
-    return this.chats.messages(u.tenantId, id, u, before);
+  messages(
+    @CurrentUser() u: AuthUser, @Param('id') id: string,
+    @Query('before') before?: string, @Query('after') after?: string,
+  ) {
+    return this.chats.messages(u.tenantId, id, u, before, after);
   }
 
   @Post(':id/messages')

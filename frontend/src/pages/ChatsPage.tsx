@@ -166,8 +166,31 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    */
   const [hasOlder, setHasOlder] = useState(false);
   const [olderBusy, setOlderBusy] = useState(false);
+  /*
+    Ниже загруженного тоже есть сообщения.
+
+    Так бывает после перехода к старому сообщению: сервер отдаёт ОКНО вокруг него, а не
+    ленту до сегодняшнего дня. Раньше такого состояния не было вовсе — и человек, прыгнув
+    к сентябрьской реплике, оставался в этом окне навсегда: стрелка «вниз» упиралась в
+    край окна («самый низ — 21 сентября, а сегодня 23-е»), и вернуться к живой переписке
+    было нечем.
+  */
+  const [hasNewer, setHasNewer] = useState(false);
+  const [newerBusy, setNewerBusy] = useState(false);
+  /** То же значение для обработчиков сокета: они живут со своим набором зависимостей. */
+  const hasNewerRef = useRef(false);
   /** Пока подшиваем старое сверху, прокрутку вниз не трогаем — иначе прыжок к концу. */
   const keepScroll = useRef(false);
+  /*
+    Идёт переход к сообщению.
+
+    На это время глушим всё, что само двигает ленту: подгрузку краёв и прыжок к черте
+    непрочитанного. Без этого получалось ровно то, на что жаловались: нажимаешь на
+    цитату — и тебя уносит вверх, мимо нужного сообщения. Виновата была плавная
+    прокрутка: по дороге она проходит верхний край, оттуда срабатывала подгрузка старой
+    страницы, лента подрастала сверху — и анимация приезжала не туда.
+  */
+  const jumping = useRef(false);
   /**
    * Секции списка чатов: порядок и свёрнутые — личные, на сервере (ТЗ-5, раздел 38).
    * Ключи фиксированы: по ним же строится порядок, чужие ключи игнорируются.
@@ -451,11 +474,61 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const atBottomRef = useRef(true);
   const [missed, setMissed] = useState(0);
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    // Стоим в окне вокруг старого сообщения — «вниз» значит «к сегодняшним», а не
+    // «к нижнему краю окна»: за ним в ленте ничего нет, и упираться в него бессмысленно.
+    if (hasNewer) { void goToLatest(); return; }
     const el = feedRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior });
     setMissed(0);
   };
+
+  /** Вернуться к живой ленте: перечитываем хвост и встаём в самый низ. */
+  const goToLatest = async () => {
+    if (!activeId) return;
+    try {
+      const list = await api.chatMessages(activeId);
+      keepScroll.current = true;           // ставим прокрутку сами, ниже
+      setMessages(list);
+      setHasOlder(list.length >= 50);
+      setHasNewer(false);
+      setMissed(0);
+      requestAnimationFrame(() => {
+        const el = feedRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    } catch { /* нет сети — остаёмся там, где стояли */ }
+  };
+  /**
+   * Поставить ленту на сообщение и подсветить его.
+   *
+   * Прокрутка МГНОВЕННАЯ, а не плавная, и это осознанно: плавная идёт полсекунды, по
+   * дороге задевает край ленты, оттуда срабатывает подгрузка соседней страницы — лента
+   * подрастает, и анимация приезжает мимо. Ровно на это и жаловались: «нажимаешь на
+   * ссылку — выбрасывает вверх». Подсветка заменяет анимацию: видно, куда попал.
+   *
+   * Узел может быть ещё не отрисован (окно только что пришло с сервера) — ждём его
+   * несколько кадров, а не гадаем с таймером.
+   */
+  const scrollToMessage = (id: string, tries = 20): void => {
+    const el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
+    if (!el) {
+      if (tries > 0) requestAnimationFrame(() => scrollToMessage(id, tries - 1));
+      return;
+    }
+    jumping.current = true;
+    el.scrollIntoView({ block: 'center' });
+    setHighlight(id);
+    window.setTimeout(() => { jumping.current = false; }, 300);
+    window.setTimeout(() => setHighlight((cur) => (cur === id ? null : cur)), 2600);
+  };
+
+  /** Есть ли это сообщение в загруженной ленте прямо сейчас. */
+  const inFeed = (id: string) => !!feedRef.current?.querySelector(`[data-msg="${id}"]`);
+
+  // Обработчики сокета читают признак из ref: пересобирать их на каждое изменение незачем.
+  useEffect(() => { hasNewerRef.current = hasNewer; }, [hasNewer]);
+
   const onFeedScroll = (el: HTMLDivElement) => {
     // 120 точек — примерно строка-полторы: человек «внизу», даже если чуть отмотал.
     const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
@@ -477,9 +550,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     const hit = inChatHits[pos];
     if (!hit) return;
     setInChatPos(pos);
-    const id = String(hit.id);
-    feedRef.current?.querySelector(`[data-msg="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    setHighlight(id);
+    scrollToMessage(String(hit.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inChatHits]);
   // Новый запрос — новый набор совпадений: становимся на последнее и показываем его.
   useEffect(() => {
@@ -629,6 +701,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             ? { ...prev, messages: prev.messages.some((x) => String(x.id) === String(p.message.id))
               ? prev.messages : [...prev.messages, p.message] }
             : prev));
+        } else if (hasNewerRef.current) {
+          /*
+            Мы стоим в окне вокруг старого сообщения: между ним и новой репликой есть
+            неподгруженные. Подшить её прямо сюда — значит показать разговор с дырой,
+            поэтому только считаем пропущенное; «вниз» вернёт к живой ленте целиком.
+          */
+          setMissed((n) => n + 1);
         } else {
           appendMessage(p.message);
         }
@@ -822,6 +901,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       const list = await api.chatMessages(id); // чтение помечается на сервере этим же запросом
       setMessages(list);
       setHasOlder(list.length >= 50); // страница полная — значит, выше ещё есть
+      setHasNewer(false);             // это хвост переписки: ниже ничего нет
       setUnreadFrom(firstUnreadId(list, unreadBefore, user?.id));
       loadPinned(id);
       loadScheduled(id); // что я отложил в этот чат — видно сразу, а не после отправки
@@ -924,7 +1004,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
 
   /** Докрутили до верха — подшиваем страницу старше, не сдвигая то, что перед глазами. */
   const loadOlder = async () => {
-    if (!activeId || olderBusy || !hasOlder || !messages.length) return;
+    // Во время перехода к сообщению край ленты трогать нельзя: см. `jumping`.
+    if (!activeId || olderBusy || !hasOlder || !messages.length || jumping.current) return;
     const el = feedRef.current;
     const before = el?.scrollHeight ?? 0;
     setOlderBusy(true);
@@ -939,11 +1020,28 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     } catch { /* следующая прокрутка попробует снова */ }
     finally { setOlderBusy(false); }
   };
+  /** Докрутили до низа окна — подшиваем страницу ниже; кончились — лента снова живая. */
+  const loadNewer = async () => {
+    if (!activeId || newerBusy || !hasNewer || !messages.length) return;
+    setNewerBusy(true);
+    try {
+      const newer = await api.chatMessages(activeId, undefined, String(messages[messages.length - 1].id));
+      if (newer.length < 50) setHasNewer(false);
+      if (newer.length) {
+        keepScroll.current = true;         // низ не приклеиваем: человек читает здесь
+        setMessages((prev) => [...prev, ...newer]);
+      }
+    } catch { /* следующая прокрутка попробует снова */ }
+    finally { setNewerBusy(false); }
+  };
+
   // …кроме случая, когда есть непрочитанное: тогда — к черте, чтобы читать с неё,
   // а не мотать вверх в поисках, откуда начинается новое
   useEffect(() => {
     if (!unreadFrom) return;
     const t = window.setTimeout(() => {
+      // Идёт переход к сообщению — черта подождёт: иначе два разных места спорят за ленту.
+      if (jumping.current) return;
       feedRef.current?.querySelector('.chat-unread-line')?.scrollIntoView({ block: 'center' });
     }, 30);
     return () => window.clearTimeout(t);
@@ -1120,23 +1218,22 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     // Кусок цитаты подсвечиваем и там, где сообщение уже в ленте, и там, где его подгружаем.
     setQuoteMark(excerpt ? { id, text: excerpt } : null);
     window.setTimeout(() => setQuoteMark((cur) => (cur?.id === id ? null : cur)), 4000);
-    const el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
-    if (el) {
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      setHighlight(id);
-      window.setTimeout(() => setHighlight((cur) => (cur === id ? null : cur)), 2600);
-      return;
-    }
+    if (inFeed(id)) { scrollToMessage(id); return; }
     if (activeId) await openFound({ chatId: String(activeId), messageId: id, threadRootId: null });
   };
 
-  /** Переход к сообщению из закреплённого: если оно ещё не подгружено, просто подсветим. */
-  const goToMessage = (id: string) => {
+  /**
+   * Переход к закреплённому сообщению.
+   *
+   * Раньше здесь была только прокрутка по загруженной ленте — и работал лишь тот
+   * закреп, который в неё попал: свежий. Остальные (а закрепляют как раз важное из
+   * глубины разговора) не делали ничего, и это выглядело как «закрепы сломаны».
+   * Теперь тот же путь, что у цитаты: нет в ленте — поднимаем окно вокруг него.
+   */
+  const goToMessage = async (id: string) => {
     setPinsOpen(false);
-    const el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
-    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    setHighlight(String(id));
-    window.setTimeout(() => setHighlight(null), 2200);
+    if (inFeed(id)) { scrollToMessage(id); return; }
+    if (activeId) await openFound({ chatId: String(activeId), messageId: String(id), threadRootId: null });
   };
 
   /** Открыть ветку сообщения: подгружаем целиком, сервер тем же запросом её и отмечает. */
@@ -1274,24 +1371,25 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       const list = hit.threadRootId
         ? await api.chatMessages(hit.chatId)
         : await api.chatMessagesAround(hit.chatId, hit.messageId);
+      /*
+        Лента заменяется целиком, и прокрутку мы ставим сами — на найденное сообщение.
+        Без этой отметки общий обработчик «пришло новое» уносил ленту в конец окна, и
+        переход заканчивался не там, куда человек нажимал.
+      */
+      keepScroll.current = true;
       setMessages(list);
+      setHasOlder(true);
+      /*
+        Это ОКНО вокруг сообщения, а не хвост переписки: сервер добавил к нему лишь
+        два десятка более новых реплик. Значит, ниже есть ещё — и стрелка «вниз»
+        обязана вернуть к сегодняшним, а не упереться в край окна.
+      */
+      setHasNewer(!hit.threadRootId);
       loadPinned(hit.chatId);
       api.chatContext(hit.chatId).then(setCtx).catch(() => setCtx(null));
       if (hit.threadRootId) await openThread(hit.threadRootId);
-      setHighlight(hit.messageId);
-      /*
-        И прокручиваем к нему.
-
-        Раньше сообщение только подсвечивалось, а лента оставалась там, где была:
-        человек нажимал на цитату и не понимал, произошло ли хоть что-то. Ждём
-        отрисовку: до неё узла с этим id в ленте ещё нет.
-      */
-      window.setTimeout(() => {
-        feedRef.current?.querySelector(`[data-msg="${hit.messageId}"]`)
-          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      }, 80);
-      // Подсветка гаснет сама: постоянная метка на сообщении ничего не значит.
-      setTimeout(() => setHighlight((cur) => (cur === hit.messageId ? null : cur)), 4000);
+      // Прокрутка и подсветка — общим путём: он дожидается отрисовки и глушит подгрузку краёв.
+      scrollToMessage(hit.messageId);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось открыть сообщение');
     }
@@ -2270,7 +2368,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             {pinsOpen && pinned.length > 0 && (
               <div className="chat-pins" data-pop>
                 {pinned.map((m) => (
-                  <button key={m.id} className="chat-pin-item" onClick={() => goToMessage(String(m.id))}>
+                  <button key={m.id} className="chat-pin-item" onClick={() => void goToMessage(String(m.id))}>
                     <b>{m.author_name}</b>: {String(m.body || m.file_name || 'вложение').slice(0, 120)}
                   </button>
                 ))}
@@ -2311,7 +2409,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             <div
               className="chat-feed"
               ref={feedRef}
-              onScroll={(e) => { closePops(); onFeedScroll(e.currentTarget); if (e.currentTarget.scrollTop < 80) void loadOlder(); }}
+              onScroll={(e) => {
+                closePops();
+                const el = e.currentTarget;
+                onFeedScroll(el);
+                if (el.scrollTop < 80) void loadOlder();
+                // Низ окна вокруг старого сообщения — не конец переписки: тянем следующую страницу.
+                if (hasNewer && el.scrollHeight - el.scrollTop - el.clientHeight < 200) void loadNewer();
+              }}
             >
               {olderBusy && <div className="dim chat-older">Загружаю более ранние…</div>}
               {msgLoading && <div style={{ padding: 12 }}><SkeletonList rows={4} /></div>}
@@ -2568,7 +2673,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               репликам одним нажатием. Пришедшее, пока он читал старое, показано
               числом: без него непонятно, ради чего возвращаться.
             */}
-            {!atBottom && (
+            {(!atBottom || hasNewer) && (
               <button
                 className="chat-jump"
                 onClick={() => scrollToBottom()}

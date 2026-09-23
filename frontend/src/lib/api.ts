@@ -1121,8 +1121,11 @@ export const api = {
   openDm: (userId: string) => request<{ id: string; kind: string }>('POST', '/chats/dm', { userId }),
   createChatGroup: (title: string, userIds: string[]) => request<any>('POST', '/chats/groups', { title, userIds }),
   openProjectChat: (projectId: string) => request<{ id: string; kind: string }>('POST', `/chats/project/${projectId}`),
-  chatMessages: (chatId: string, before?: string) =>
-    request<any[]>('GET', `/chats/${chatId}/messages${before ? `?before=${before}` : ''}`),
+  /** Лента чата: без ключей — хвост, `before` — страница выше, `after` — страница ниже. */
+  chatMessages: (chatId: string, before?: string, after?: string) => {
+    const q = before ? `?before=${before}` : after ? `?after=${after}` : '';
+    return request<any[]>('GET', `/chats/${chatId}/messages${q}`);
+  },
   /**
    * Сообщение в чат.
    *

@@ -239,9 +239,12 @@ export class ChatsService {
     return { id: chat.id, kind: chat.kind };
   }
 
-  async messages(tenantId: string, chatId: string, user: { userId: string; role: string }, beforeId?: string) {
+  async messages(
+    tenantId: string, chatId: string, user: { userId: string; role: string },
+    beforeId?: string, afterId?: string,
+  ) {
     const chat = await this.access(tenantId, chatId, user);
-    const rows = await this.repo.messages(tenantId, chatId, beforeId ?? null, PAGE, user.userId);
+    const rows = await this.repo.messages(tenantId, chatId, beforeId ?? null, PAGE, user.userId, afterId ?? null);
     /*
       Прочитанным считаем ТОЛЬКО открытие чата, а не подгрузку старого.
 
@@ -249,7 +252,7 @@ export class ChatsService {
       гасились счётчики новых сообщений, до которых он ещё не дошёл. То же самое
       делает и переход к сообщению из поиска.
     */
-    if (!beforeId) await this.repo.markRead(tenantId, chatId, user.userId);
+    if (!beforeId && !afterId) await this.repo.markRead(tenantId, chatId, user.userId);
     /*
       Открыли чат — значит прочитали, и собеседник должен увидеть вторую галочку СЕЙЧАС.
 
@@ -259,7 +262,7 @@ export class ChatsService {
 
       Только при первой странице: подгрузка старого вверх чтением не является.
     */
-    if (!beforeId) await this.announceRead(tenantId, chat, user.userId);
+    if (!beforeId && !afterId) await this.announceRead(tenantId, chat, user.userId);
     return rows;
   }
 
