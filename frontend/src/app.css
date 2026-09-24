@@ -2930,14 +2930,52 @@
 }
 .chat-file:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Картинка видна прямо в переписке — обсуждают то, что на ней, а не имя файла. */
+/*
+  Картинка в ленте занимает ПОСТОЯННОЕ место (жалоба «изображение перепрыгивает»).
+
+  Раньше под загрузку резервировалась коробка 200×120, а пришедшая картинка могла
+  вырасти до 320 в высоту — лента удлинялась прямо под курсором, и человек терял то
+  место, которое читал. Теперь коробка одна и та же до и после загрузки, а картинка
+  вписывается в неё целиком; полный размер открывается по нажатию.
+*/
 .chat-img {
-  display: block; margin-top: 4px; padding: 0; border: none; background: none;
+  display: block; width: 320px; height: 220px; margin-top: 4px; padding: 0;
+  border: none; background: var(--bg-elev-2);
   border-radius: 10px; overflow: hidden; line-height: 0; cursor: pointer;
 }
-.chat-img img { display: block; max-width: 320px; max-height: 320px; border-radius: 10px; }
+.chat-img img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 10px; }
 .chat-img:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Место под картинку занято, пока она грузится: иначе лента прыгает под курсором. */
-.chat-img-wait { width: 200px; height: 120px; background: var(--bg-elev-2); }
+.chat-img-wait { background: var(--bg-elev-2); }
+
+/*
+  Троеточие у сообщения: те же действия, что по правой кнопке.
+
+  Бледное, пока на сообщение не навели, — но видимое: меню, которое открывается только
+  правой кнопкой, для половины людей не существует. На касании держится всегда: там
+  наведения нет вовсе.
+*/
+.msg-dots {
+  position: absolute; top: 2px; right: 2px; z-index: 2;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
+  background: none; color: var(--text-mut); cursor: pointer; opacity: .45; transition: opacity .15s;
+}
+.msg:hover .msg-dots, .chat-msg:hover .msg-dots, .msg-dots:hover { opacity: 1; background: var(--hover); }
+.msg-dots:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 1; }
+@media (hover: none) { .msg-dots { opacity: .8; } }
+/* Место под кнопку, чтобы она не легла на текст. */
+.msg-main, .chat-msg { position: relative; }
+.msg-main { padding-right: 22px; }
+.chat-msg { padding-right: 26px; }
+
+/* Файл тянут на карточку задачи: рамка подсвечена, и видно, что будет по отпусканию. */
+.drawer-drag { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.drawer-drop-hint {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30;
+  display: flex; align-items: center; gap: 8px; padding: 12px 18px;
+  border-radius: var(--radius-sm); background: var(--fill-info); color: var(--on-fill);
+  font-size: var(--fs-sm); box-shadow: var(--shadow); pointer-events: none;
+}
 
 /* Вложение до отправки: что уйдёт, видно заранее, и к нему можно написать подпись. */
 .chat-pending {
@@ -4441,7 +4479,11 @@
 .chat-older { text-align: center; font-size: var(--fs-xs); padding: 4px 0; }
 
 /* «Печатает…» — строка над полем ввода с бегущими точками; исчезает сама. */
-.chat-typing { display: flex; align-items: center; gap: 8px; padding: 2px 16px 0; font-size: var(--fs-xs); color: var(--text-mut); }
+/* Место под строку занято всегда: появление «печатает…» не должно двигать поле ввода. */
+.chat-typing {
+  display: flex; align-items: center; gap: 8px; min-height: 16px;
+  padding: 2px 16px 0; font-size: var(--fs-xs); color: var(--text-mut);
+}
 .chat-typing-dots { display: inline-flex; gap: 3px; }
 .chat-typing-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-mut); animation: chat-typing 1.2s infinite ease-in-out; }
 .chat-typing-dots i:nth-child(2) { animation-delay: .2s; }
@@ -4816,8 +4858,8 @@ button.chat-pop-row:hover { background: var(--hover); }
 .task-chat-wide .msg-text { font-size: calc(15px * var(--fs-scale)); line-height: 1.5; }
 .task-chat-wide .msg-avatar { width: 30px; height: 30px; }
 /* Картинка в широкой ленте показывается картинкой, а не маркой. */
-.task-chat-wide .chat-img { max-width: 520px; }
-.task-chat-wide .chat-img img { max-width: 520px; max-height: 420px; }
+/* В широком обсуждении задачи коробка больше — но тоже постоянная. */
+.task-chat-wide .chat-img { width: 520px; height: 340px; }
 
 @media (max-width: 720px) {
   .task-chat-head { position: sticky; top: 0; z-index: 2; background: var(--bg-elev); }

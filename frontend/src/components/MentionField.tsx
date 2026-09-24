@@ -14,7 +14,7 @@ import { activeQuery, MentionUser, suggest } from '../lib/mentions';
 const MAX_SUGGESTIONS = 6;
 
 export function MentionField({
-  value, users, onChange, onMention, placeholder, rows, autoGrow, onEnter, disabled, className,
+  value, users, onChange, onMention, placeholder, rows, autoGrow, onEnter, disabled, className, focusKey,
 }: {
   value: string;
   users: MentionUser[];
@@ -35,8 +35,30 @@ export function MentionField({
   onEnter?: () => void;
   disabled?: boolean;
   className?: string;
+  /**
+   * Смена значения переводит курсор в поле.
+   *
+   * Нужно там, где действие происходит НЕ в поле: нажал «Ответить» в меню сообщения —
+   * и сразу пиши. Раньше курсор оставался на странице, человек начинал печатать, и
+   * текст уходил в никуда (жалоба заказчика).
+   */
+  focusKey?: number;
 }) {
   const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null);
+
+  /*
+    Фокус по просьбе снаружи. Курсор ставим В КОНЕЦ набранного: человек продолжает
+    писать, а не переписывает начатое.
+  */
+  useEffect(() => {
+    if (!focusKey) return;
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    const end = el.value.length;
+    try { el.setSelectionRange(end, end); } catch { /* input без выделения — не беда */ }
+  }, [focusKey]);
+
   const [caret, setCaret] = useState(0);
   const [active, setActive] = useState(0);
   const [open, setOpen] = useState(false);

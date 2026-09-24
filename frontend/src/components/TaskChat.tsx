@@ -1236,6 +1236,26 @@ export function TaskChat({
                 <div className="msg-avatar" aria-hidden="true">
                   {grouped ? '' : c.is_ai ? <Icon name="robot" size={14} /> : initials(name)}
                 </div>
+                {/*
+                  Видимое троеточие — те же действия, что по правой кнопке.
+
+                  Раньше меню открывалось только правой кнопкой и долгим нажатием, и
+                  найти его было нельзя: заказчик потратил десять минут, пытаясь понять,
+                  как исправить своё сообщение. Кнопка бледная, пока на сообщение не
+                  навели, но она ЕСТЬ и на ощупь, и на вид.
+                */}
+                <button
+                  className="msg-dots"
+                  title="Действия с сообщением"
+                  aria-label="Действия с сообщением"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setCtxFor({ id: String(c.id), at: { x: r.left, y: r.bottom + 4 }, picked: '' });
+                  }}
+                >
+                  <Icon name="more" size={14} />
+                </button>
                 <div className="msg-main">
                   {/*
                     Имя автора — цветом, как в любом мессенджере.

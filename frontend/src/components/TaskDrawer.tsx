@@ -506,6 +506,28 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   /** Где задача стоит сейчас — подпись в шапке чата: «о чём разговор и на каком этапе». */
   const columnName = columns.find((c) => String(c.id) === String(task.column_id))?.name ?? null;
 
+  /*
+    Файл, перетащенный НА КАРТОЧКУ (жалоба: «в задаче не удаётся приложить файл
+    переносом из папки»).
+
+    Раньше приём перетаскивания был только внутри вкладки «Файлы», в небольшой рамке.
+    Человек тянет файл на карточку целиком — и попадает мимо; браузер при этом
+    открывает файл в соседней вкладке, то есть выглядит это как «ничего не работает».
+    Теперь карточка принимает файл в любом месте и говорит об этом, пока его тянут.
+  */
+  const [dragOver, setDragOver] = useState(false);
+  const dropOnCard = async (list: FileList | null) => {
+    const picked = Array.from(list ?? []);
+    if (!picked.length) return;
+    setErr('');
+    for (const f of picked) {
+      try { await api.uploadAttachment(task.id, f); setFileCount((n) => n + 1); }
+      catch (e) { setErr(e instanceof ApiError ? e.message : `Не удалось приложить ${f.name}`); }
+    }
+    onRefresh();
+    toastSaved('Файл приложен', picked.length > 1 ? `${picked.length} шт. — во вкладке «Файлы»` : picked[0].name);
+  };
+
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       {/*
@@ -515,9 +537,29 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
         их в голове и прыгать туда-обратно. Окно от этого шире обычного — и должно быть.
       */}
       <aside
-        className={`drawer drawer-task${tab === 'chat' ? ' drawer-task-chat' : ''}`}
+        className={`drawer drawer-task${tab === 'chat' ? ' drawer-task-chat' : ''}${dragOver ? ' drawer-drag' : ''}`}
         onClick={(e) => e.stopPropagation()}
+        onDragOver={(e) => {
+          // Реагируем только на файлы: перетаскивание текста или карточки внутри окна
+          // к вложениям отношения не имеет.
+          if (!Array.from(e.dataTransfer.types ?? []).includes('Files')) return;
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
+        onDrop={(e) => {
+          if (!Array.from(e.dataTransfer.types ?? []).includes('Files')) return;
+          e.preventDefault();
+          setDragOver(false);
+          void dropOnCard(e.dataTransfer.files);
+        }}
       >
+        {/* Пока файл над карточкой — говорим, что с ним будет. */}
+        {dragOver && (
+          <div className="drawer-drop-hint" aria-hidden="true">
+            <Icon name="paperclip" size={18} /> Отпустите — приложу к задаче
+          </div>
+        )}
         <div className="task-main">
         {gate && (
           <HandoffGateDialog

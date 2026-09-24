@@ -317,6 +317,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    * и особо оговорил, что они должны уживаться.
    */
   const [replyTo, setReplyTo] = useState<{ id: string; author: string; excerpt: string } | null>(null);
+  /*
+    Курсор в поле ввода после действия из меню.
+
+    «Ответить» и «Ответить с цитатой» вызываются из контекстного меню — то есть курсор
+    в этот момент не в поле. Человек сразу начинает печатать, а текст уходит в никуда:
+    ровно на это и пожаловался заказчик. Меняем ключ — поле забирает фокус себе.
+  */
+  const [composerFocus, setComposerFocus] = useState(0);
+  const focusComposer = () => setComposerFocus((n) => n + 1);
   /**
    * Сайдбар чата ⓘ (ТЗ-5, этап 2). Занимает тот же правый слот, что и ветка:
    * два столбца справа не поместятся, и открытие одного закрывает другой.
@@ -1476,12 +1485,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     {
       label: picked ? 'Ответить с цитатой' : 'Ответить',
       icon: 'reply' as const,
-      onClick: () => setReplyTo({
-        id: String(m.id),
-        author: m.is_ai ? 'AnthillBot' : (m.author_name ?? m.guest_name ?? 'Собеседник'),
-        // Цитируем ИМЕННО выделенный кусок: спорят обычно об одном абзаце.
-        excerpt: picked || String(m.body ?? 'вложение').slice(0, 600),
-      }),
+      onClick: () => {
+        setReplyTo({
+          id: String(m.id),
+          author: m.is_ai ? 'AnthillBot' : (m.author_name ?? m.guest_name ?? 'Собеседник'),
+          // Цитируем ИМЕННО выделенный кусок: спорят обычно об одном абзаце.
+          excerpt: picked || String(m.body ?? 'вложение').slice(0, 600),
+        });
+        focusComposer();
+      },
     },
     { label: 'Ответить в ветке', icon: 'chat' as const, onClick: () => { void openThread(String(m.id)); } },
     /*
@@ -2522,6 +2534,24 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                           + `${ctxFor?.id === String(m.id) ? ' msg-ctx-open' : ''}`}
                         {...messageMenuProps(m)}
                       >
+                        {/*
+                          Видимое троеточие — те же действия, что по правой кнопке.
+                          Меню, которое открывается только правой кнопкой, для половины
+                          людей не существует: заказчик искал «изменить сообщение»
+                          десять минут и не нашёл.
+                        */}
+                        <button
+                          className="msg-dots"
+                          title="Действия с сообщением"
+                          aria-label="Действия с сообщением"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const r = e.currentTarget.getBoundingClientRect();
+                            setCtxFor({ id: String(m.id), at: { x: r.left, y: r.bottom + 4 }, picked: '' });
+                          }}
+                        >
+                          <Icon name="more" size={14} />
+                        </button>
                         {m.is_ai && <div className="chat-author"><Icon name="robot" size={11} /> AnthillBot</div>}
                         {/* Кто именно писал со стороны: через месяц «внешний участник»
                             без имени в переписке не значит ничего. */}
@@ -2534,14 +2564,24 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                         {!mine && !m.is_ai && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
                         {/* Шапка ответа: кому отвечают и что именно сказали. Нажатие
                             ведёт к исходной реплике — иначе цитата обрывается ни на чём. */}
-                        {m.reply_to_id && m.reply_body && (
+                        {/*
+                          Ответ ВСЕГДА показывает, на что отвечают.
+
+                          Раньше блок рисовался, только если пришёл текст цитаты, — а он
+                          пустой, когда отвечают на сообщение без слов (один снимок) или
+                          когда кусок не сохранился. Ответ висел сам по себе, и понять, к
+                          чему он, было нельзя (жалоба заказчика).
+                        */}
+                        {m.reply_to_id && (
                           <button
                             className="msg-quote"
                             onClick={() => void goToQuoted(String(m.reply_to_id), m.reply_body)}
                             title="Перейти к исходному сообщению"
                           >
                             <b className="msg-quote-author">{m.reply_author ?? 'Собеседник'}</b>
-                            <span className="msg-quote-text">{String(m.reply_body).slice(0, 200)}</span>
+                            <span className="msg-quote-text">
+                              {String(m.reply_body ?? '').trim().slice(0, 200) || 'вложение'}
+                            </span>
                           </button>
                         )}
                         {/* Ссылку в переписке нажимают, а не выделяют и копируют:
@@ -2788,12 +2828,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               </div>
             )}
 
-            {typingNames.length > 0 && (
-              <div className="chat-typing" aria-live="polite">
-                <span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
-                {typingNames.length === 1 ? `${typingNames[0]} печатает…` : `${typingNames.slice(0, 2).join(', ')}${typingNames.length > 2 ? ` и ещё ${typingNames.length - 2}` : ''} печатают…`}
-              </div>
-            )}
+            {/*
+              Строка «печатает» стоит ВСЕГДА, просто пустая.
+
+              Раньше она появлялась и исчезала вместе с собеседником, а вместе с ней
+              прыгало поле ввода и вся лента — заказчик назвал это раздражающим. Место
+              под неё занято постоянно, поэтому ничего не сдвигается.
+            */}
+            <div className="chat-typing" aria-live="polite">
+              {typingNames.length > 0 && (
+                <>
+                  <span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
+                  {typingNames.length === 1 ? `${typingNames[0]} печатает…` : `${typingNames.slice(0, 2).join(', ')}${typingNames.length > 2 ? ` и ещё ${typingNames.length - 2}` : ''} печатают…`}
+                </>
+              )}
+            </div>
             {/* Контекст страницы: задача или проект под окном — в чат одной кнопкой (ТЗ-5, раздел 30). */}
             {overlay && context && (context.taskId || context.projectId) && (
               <div className="chat-context-row">
@@ -2853,6 +2902,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               */}
               <MentionField
                 className="chat-mention-input"
+                focusKey={composerFocus}
                 value={draft}
                 users={mentionUsers}
                 onChange={(v) => { setDraft(v); if (v.trim()) noteTyping(); }}

@@ -245,7 +245,7 @@ export class ChatsRepository {
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
-              m.reply_to_id, COALESCE(m.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author,
+              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body, ru.full_name AS reply_author,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.is_ai, m.guest_name,
               -- Две галочки, как в мессенджерах: сколько СОБЕСЕДНИКОВ уже открывали
               -- чат после этого сообщения и сколько их всего. Считаем от отметки
@@ -298,7 +298,7 @@ export class ChatsRepository {
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
-              m.reply_to_id, COALESCE(m.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author,
+              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body, ru.full_name AS reply_author,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.is_ai, m.guest_name,
               -- Две галочки, как в мессенджерах: сколько СОБЕСЕДНИКОВ уже открывали
               -- чат после этого сообщения и сколько их всего. Считаем от отметки
@@ -456,7 +456,7 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at,
-              m.reply_to_id, COALESCE(m.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author
+              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body, ru.full_name AS reply_author
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
@@ -665,7 +665,7 @@ export class ChatsRepository {
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
-              m.reply_to_id, COALESCE(m.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author,
+              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body, ru.full_name AS reply_author,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id,
               m.meeting_id, m.is_ai, m.guest_name,
               (SELECT COUNT(*)::int FROM chat_members cm
