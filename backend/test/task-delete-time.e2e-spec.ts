@@ -108,18 +108,23 @@ describe('Удаление задачи с учтённым временем (e2
     expect(pointsBefore).toBeGreaterThan(0);
     expect(costBefore).toBeGreaterThan(0);
 
-    // 1. Учтённое время больше не запирает задачу за владельцем: удалять их могут все
-    //    сотрудники. Но предупреждение получает каждый — и руководитель тоже.
-    await http.delete(`/api/tasks/${task.id}`).set(H(bossToken)).expect(409);
+    /*
+      1. Обычное удаление кладёт задачу в КОРЗИНУ (слой безопасности, 0129): ничего не
+         теряется, и спрашивать не о чем — предупреждение здесь стало бы шумом.
+    */
+    await http.delete(`/api/tasks/${task.id}`).set(H(bossToken)).expect(200);
+    await http.post(`/api/tasks/${task.id}/restore`).set(H(ownerToken)).expect(201);
 
-    // 2. И владельцу сначала говорят, сколько по задаче учтено
-    const asked = await http.delete(`/api/tasks/${task.id}`).set(H(ownerToken)).expect(409);
+    // 2. А вот стирая НАСОВСЕМ, человек должен знать, сколько по задаче учтено:
+    //    вернуть стёртое нельзя, а часы и деньги останутся в себестоимости проекта.
+    await http.delete(`/api/tasks/${task.id}?permanent=1`).set(H(bossToken)).expect(403);
+    const asked = await http.delete(`/api/tasks/${task.id}?permanent=1`).set(H(ownerToken)).expect(409);
     expect(asked.body.error.details.timeLoss.seconds).toBeGreaterThan(0);
     expect(asked.body.error.details.timeLoss.text).toBeTruthy();
     expect(asked.body.error.message).toContain('себестоимости проекта');
 
-    // 3. С подтверждением задача уходит
-    await http.delete(`/api/tasks/${task.id}?confirmTimeLoss=1`).set(H(ownerToken)).expect(200);
+    // 3. С подтверждением задача уходит насовсем
+    await http.delete(`/api/tasks/${task.id}?permanent=1&confirmTimeLoss=1`).set(H(ownerToken)).expect(200);
     const board = (await http.get(`/api/projects/${projectId}/board`).set(H(ownerToken)).expect(200)).body.data;
     expect(board.columns.flatMap((c: any) => c.tasks).some((t: any) => String(t.id) === String(task.id))).toBe(false);
 

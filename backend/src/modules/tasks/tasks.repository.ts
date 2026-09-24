@@ -7,6 +7,10 @@ import { buildRegistry, RegistryFilters } from './task-registry';
 export interface TaskRow {
   id: string;
   tenant_id: string;
+  /** Задача в корзине: для человека она удалена, вернуть её можно оттуда (0129). */
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
   project_id: string;
   column_id: string;
   position: number;
@@ -48,7 +52,22 @@ export interface TaskRow {
 export class TasksRepository {
   constructor(private readonly db: DbService) {}
 
+  /**
+   * Задача по номеру.
+   *
+   * Удалённая в корзину считается отсутствующей: её нельзя открыть, двигать,
+   * комментировать и удалить второй раз. Так и должно быть — для человека она
+   * удалена; вернуть её можно только через корзину.
+   */
   findById(tenantId: string, id: string): Promise<TaskRow | null> {
+    return this.db.one<TaskRow>(
+      `SELECT * FROM tasks WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [tenantId, id],
+    );
+  }
+
+  /** Та же задача, но включая корзину — для восстановления и окончательного удаления. */
+  findAny(tenantId: string, id: string): Promise<TaskRow | null> {
     return this.db.one<TaskRow>(
       `SELECT * FROM tasks WHERE tenant_id = $1 AND id = $2`,
       [tenantId, id],
@@ -66,18 +85,36 @@ export class TasksRepository {
     Стереть насовсем — отдельное право и прежний, физический путь.
   */
   async trash(tenantId: string, taskId: string, actorId: string, reason: string | null): Promise<void> {
-    await this.db.query(
+    const row = await this.db.one<{ project_id: string }>(
       `UPDATE tasks SET deleted_at = now(), deleted_by = $3::bigint, delete_reason = $4
-        WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+        WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+        RETURNING project_id::text`,
       [tenantId, taskId, actorId, reason],
+    );
+    if (!row) return;
+    /*
+      Журнал изменений: для базы это обычная правка, а для телефона — исчезновение.
+      Без этой записи задача осталась бы на экране приложения до полной перезагрузки.
+    */
+    await this.db.query(
+      `INSERT INTO change_log (tenant_id, entity_type, entity_id, parent_id, op)
+       VALUES ($1, 'task', $2::bigint, $3::bigint, 'delete')`,
+      [tenantId, taskId, row.project_id],
     );
   }
 
   async restore(tenantId: string, taskId: string): Promise<void> {
-    await this.db.query(
+    const row = await this.db.one<{ project_id: string }>(
       `UPDATE tasks SET deleted_at = NULL, deleted_by = NULL, delete_reason = NULL
-        WHERE tenant_id = $1 AND id = $2`,
+        WHERE tenant_id = $1 AND id = $2
+        RETURNING project_id::text`,
       [tenantId, taskId],
+    );
+    if (!row) return;
+    await this.db.query(
+      `INSERT INTO change_log (tenant_id, entity_type, entity_id, parent_id, op)
+       VALUES ($1, 'task', $2::bigint, $3::bigint, 'insert')`,
+      [tenantId, taskId, row.project_id],
     );
   }
 

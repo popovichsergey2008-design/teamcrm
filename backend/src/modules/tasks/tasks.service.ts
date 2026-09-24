@@ -365,8 +365,10 @@ export class TasksService {
     tenantId: string, id: string, user: { userId: string; role: string },
     actor?: { confirmTimeLoss?: boolean; permanent?: boolean; reason?: string },
   ): Promise<{ deleted: true; trashed?: boolean }> {
-    const task = await this.repo.findById(tenantId, id);
+    // Стереть насовсем можно и то, что уже в корзине, — поэтому ищем везде.
+    const task = await this.repo.findAny(tenantId, id);
     if (!task) throw AppException.notFound('Task not found');
+    if (task.deleted_at && actor?.permanent !== true) throw AppException.notFound('Task not found');
 
     const policy = await this.security.policyOf(tenantId);
     if (policy.tasks.deleteMode === 'owner_only' && user.role !== 'owner') {
@@ -385,6 +387,13 @@ export class TasksService {
     });
     if (!mine) throw AppException.forbidden('Эту задачу удалять вам не разрешено — она не ваша');
 
+    /*
+      Предупреждение об учтённом времени — только для окончательного удаления.
+      Раньше оно останавливало любое удаление, потому что задача исчезала навсегда.
+      Теперь обычное удаление кладёт её в корзину: ничего не теряется, и спрашивать
+      не о чем. А вот стирая насовсем, человек по-прежнему должен знать, что часы и
+      деньги останутся в себестоимости проекта.
+    */
     const permanent = actor?.permanent === true;
     if (permanent) {
       await this.security.require(tenantId, user.userId, 'task.delete_permanently',
@@ -430,7 +439,8 @@ export class TasksService {
     tenantId: string, id: string, actorId: string | null = null,
     actor?: { confirmTimeLoss?: boolean },
   ): Promise<{ deleted: true }> {
-    const task = await this.repo.findById(tenantId, id);
+    // `findAny`: стирают насовсем и то, что уже лежит в корзине.
+    const task = await this.repo.findAny(tenantId, id);
     if (!task) throw AppException.notFound('Task not found');
 
     // Учтённое время больше не запрещает удаление никому: заказчик решил, что задачи
