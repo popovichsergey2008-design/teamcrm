@@ -2963,8 +2963,15 @@
 .msg:hover .msg-dots, .chat-msg:hover .msg-dots, .msg-dots:hover { opacity: 1; background: var(--hover); }
 .msg-dots:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 1; }
 @media (hover: none) { .msg-dots { opacity: .8; } }
-/* Место под кнопку, чтобы она не легла на текст. */
-.msg-main, .chat-msg { position: relative; }
+/*
+  Место под кнопку, чтобы она не легла на текст.
+
+  `position: relative` нужен именно тому узлу, внутри которого лежит кнопка: в
+  обсуждении задачи это `.msg` целиком, в чате — сам пузырь. Без этого кнопка
+  считает координаты от дальнего предка, и все троеточия ленты сваливаются в один
+  угол экрана — нажимается только верхнее.
+*/
+.msg, .msg-main, .chat-msg { position: relative; }
 .msg-main { padding-right: 22px; }
 .chat-msg { padding-right: 26px; }
 
