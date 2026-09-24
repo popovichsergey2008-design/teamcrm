@@ -136,11 +136,18 @@ describe('Enhancements v1 — Task roles (e2e)', () => {
     expect(findTask(board, task.id)).toBeUndefined();
     await http.delete(`/api/tasks/${task.id}`).set(H(tok)).expect(404); // второй раз удалять уже нечего
 
-    // с учтённым временем задача уже попала в себестоимость — такую не удаляем
+    /*
+      Задача с учтённым временем: в корзину уходит как обычная — ничего не теряется и
+      возвращается назад. А вот стереть её насовсем без подтверждения нельзя: часы и
+      деньги останутся в себестоимости проекта, и человек должен узнать об этом до,
+      а не после (слой безопасности, 0129).
+    */
     const paid = (await http.post('/api/tasks').set(H(tok)).send({ projectId: proj.id, columnId: col, title: 'С временем' }).expect(201)).body.data;
     await http.post(`/api/tasks/${paid.id}/timer/start`).set(H(tok)).expect(201);
     await http.post(`/api/tasks/${paid.id}/timer/stop`).set(H(tok)).expect(201);
-    await http.delete(`/api/tasks/${paid.id}`).set(H(tok)).expect(409);
+    await http.delete(`/api/tasks/${paid.id}?permanent=1`).set(H(tok)).expect(409);
+    await http.delete(`/api/tasks/${paid.id}`).set(H(tok)).expect(200);
+    await http.post(`/api/tasks/${paid.id}/restore`).set(H(tok)).expect(201);
     const after = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
     expect(findTask(after, paid.id)).toBeDefined();
   });
