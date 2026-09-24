@@ -735,6 +735,47 @@ export class ChatsService {
     return { taskId: String(created.id), title: created.title, projectId };
   }
 
+  /**
+   * Переслать сообщение в другой чат (просьба заказчика: «как в Telegram»).
+   *
+   * Пересылают, чтобы показать чужие слова своей команде. Поэтому у пересланного
+   * виден АВТОР ОРИГИНАЛА — иначе выходит, что это слова того, кто переслал, и
+   * разговор идёт не о том. Вложения переезжают той же привязкой: файл тот же самый,
+   * второй копии в хранилище не нужно.
+   *
+   * Доступ проверяем к ОБОИМ чатам: и туда, откуда берём, и туда, куда кладём.
+   * Пересылка не должна становиться способом вынести чужую переписку.
+   */
+  async forward(
+    tenantId: string, fromChatId: string, messageId: string,
+    user: { userId: string; role: string }, toChatId: string,
+  ) {
+    await this.access(tenantId, fromChatId, user);
+    const target = await this.access(tenantId, toChatId, user);
+    const src = await this.repo.forwardSource(tenantId, messageId);
+    if (!src || String(src.chat_id) !== String(fromChatId)) throw AppException.notFound('Сообщение не найдено');
+
+    // Пересылают уже пересланное — автор остаётся первоначальный, а не посредник.
+    const author = src.forwarded_author ?? src.author_name ?? 'Собеседник';
+    const message = await this.repo.addMessage({
+      tenantId,
+      chatId: toChatId,
+      authorId: user.userId,
+      body: String(src.body ?? ''),
+      fileId: src.fileIds[0] ?? null,
+      fileIds: src.fileIds,
+      forwarded: { author, fromId: String(src.id), chatId: String(fromChatId) },
+    });
+    const to = await this.recipients(target, tenantId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId: toChatId, message });
+    void this.push.chatMessage({
+      tenantId, chatId: toChatId, chatKind: target.kind, chatTitle: target.title,
+      authorId: user.userId, authorName: null, text: String(src.body ?? 'вложение'),
+      recipients: to, mentioned: [], modes: await this.repo.notifyModes(toChatId), threadRootId: null,
+    }).catch(() => undefined);
+    return message;
+  }
+
   /** Откуда взялась задача: чат, автор и сама фраза. */
   sourceMessage(tenantId: string, taskId: string) {
     return this.repo.sourceMessage(tenantId, taskId);
@@ -938,7 +979,13 @@ export class ChatsService {
 
     // Расшифровка своих ошибок наружу не поднимает: клип уходит и без текста —
     // запись ценнее расшифровки, и терять её из-за отсутствия ключа нельзя.
-    const text = (await this.chatAi.transcribe(tenantId, file.buffer, file.originalname)).trim();
+    const heard = (await this.chatAi.transcribe(tenantId, file.buffer, file.originalname)).trim();
+    /*
+      И причёсываем: Whisper отдаёт поток слов без знаков препинания, читать такое
+      невозможно. Модель только расставляет знаки и чинит ослышки — не пересказывает.
+      Автор всё равно может поправить сообщение, как любое своё (просьба заказчика).
+    */
+    const text = heard ? await this.chatAi.tidyTranscript(tenantId, heard) : '';
     // Подпись нужна и без расшифровки: в ленте «вложение» без слова не отличить
     // от документа, а голосовое от записи экрана — тем более.
     const body = text || (kind === 'voice' ? 'Голосовое сообщение' : 'Запись экрана');

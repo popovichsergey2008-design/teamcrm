@@ -11,6 +11,8 @@ import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync'
 import { dayLabel, plural, sameGroup, stampLabel } from '../lib/chat-text';
 import { MessageText } from './MessageText';
 import { longPressProps, MenuAt, MessageMenu } from './MessageMenu';
+import { EmojiPicker } from './EmojiPicker';
+import { QUICK_REACTIONS } from '../lib/emoji';
 import { pasteBelongsHere, pasteInForeignField } from '../lib/paste-scope';
 import { useDismiss } from '../hooks/useDismiss';
 import { selectionIn } from '../lib/selection';
@@ -37,7 +39,7 @@ function whoColor(id: string): number {
 }
 
 /** Реакции: ответить «ок» знаком, не засоряя обсуждение и не будя участников. */
-const REACTIONS = ['👍', '❤️', '🔥', '👏', '😁', '🤔'];
+const REACTIONS = QUICK_REACTIONS;
 
 /**
  * Помощник в списке упоминаний.
@@ -213,6 +215,8 @@ export function TaskChat({
    * попросил убрать их и сделать «один в один как в телеграме».
    */
   const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt; picked: string } | null>(null);
+  /** Палитра эмодзи: реакция на сообщение (`id`) либо вставка в текст (`id: null`). */
+  const [emojiFor, setEmojiFor] = useState<{ id: string | null; at: { x: number; y: number } } | null>(null);
   const [allHistory, setAllHistory] = useState(false);
   /**
    * Просмотр вложений — галереей по всему обсуждению (как в мессенджерах).
@@ -1466,6 +1470,7 @@ export function TaskChat({
             at={ctxFor.at}
             reactions={REACTIONS}
             onReact={(emoji) => react(String(c.id), emoji)}
+            onMoreEmoji={(at) => setEmojiFor({ id: String(c.id), at })}
             items={items}
             onClose={() => setCtxFor(null)}
           />
@@ -1677,6 +1682,18 @@ export function TaskChat({
         </div>
       )}
       <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="nl-voice" />
+
+      {/* Палитра эмодзи: реакция на сообщение либо вставка знака в набранный текст. */}
+      {emojiFor && (
+        <EmojiPicker
+          at={emojiFor.at}
+          onPick={(emoji) => {
+            if (emojiFor.id) react(emojiFor.id, emoji);
+            else setBody((b) => b + emoji);
+          }}
+          onClose={() => setEmojiFor(null)}
+        />
+      )}
 
       {preview && <Lightbox items={preview.items} index={preview.index} onClose={() => setPreview(null)} />}
     </div>

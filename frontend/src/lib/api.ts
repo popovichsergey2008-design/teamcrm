@@ -1171,7 +1171,10 @@ export const api = {
     rawRequest<any>('POST', '/invites/links/accept', b, false),
 
   // мессенджер команды
-  listChats: () => request<any[]>('GET', '/chats'),
+  listChats: () => request<any>('GET', '/chats'),
+  /** Переслать сообщение в другой чат — с автором оригинала и вложениями. */
+  forwardMessage: (chatId: string, messageId: string, toChatId: string) =>
+    request<any>('POST', `/chats/${chatId}/messages/${messageId}/forward`, { toChatId }),
   openDm: (userId: string) => request<{ id: string; kind: string }>('POST', '/chats/dm', { userId }),
   createChatGroup: (title: string, userIds: string[]) => request<any>('POST', '/chats/groups', { title, userIds }),
   openProjectChat: (projectId: string) => request<{ id: string; kind: string }>('POST', `/chats/project/${projectId}`),

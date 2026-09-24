@@ -41,6 +41,9 @@ class RemindDto {
 class ReactionDto {
   @IsString() @MaxLength(16) emoji!: string;
 }
+class ForwardDto {
+  @IsString() @MaxLength(32) toChatId!: string;
+}
 class PinDto {
   @IsOptional() @IsBoolean() pinned?: boolean;
 }
@@ -365,6 +368,15 @@ export class ChatsController {
   @Post(':id/messages/:mid/unread')
   unreadFrom(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string) {
     return this.chats.markUnreadFrom(u.tenantId, id, u, mid);
+  }
+
+  /** Переслать сообщение в другой чат — как в Telegram. */
+  @Post(':id/messages/:mid/forward')
+  forward(
+    @CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string,
+    @Body() dto: ForwardDto,
+  ) {
+    return this.chats.forward(u.tenantId, id, mid, u, String(dto.toChatId));
   }
 
   /** Закрепить сообщение в шапке чата или снять закрепление. */

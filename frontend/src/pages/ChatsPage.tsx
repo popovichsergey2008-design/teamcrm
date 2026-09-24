@@ -29,6 +29,9 @@ import { useDismiss } from '../hooks/useDismiss';
 import { selectionIn } from '../lib/selection';
 import { shrinkAll } from '../lib/image-shrink';
 import { MessageToTask, MessageTaskDraft } from '../components/MessageToTask';
+import { EmojiPicker } from '../components/EmojiPicker';
+import { ForwardDialog } from '../components/ForwardDialog';
+import { QUICK_REACTIONS } from '../lib/emoji';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
 import { plural, stampLabel } from '../lib/chat-text';
@@ -73,6 +76,10 @@ interface Message {
   is_ai?: boolean;
   /** Имя внешнего собеседника: учётной записи у него нет. */
   guest_name?: string | null;
+  /** Пересланное сообщение: чьи это слова и откуда. */
+  forwarded_author?: string | null;
+  forwarded_from_id?: string | null;
+  forwarded_chat_id?: string | null;
   /** Задача, заведённая по этому сообщению: чтобы вторую по той же фразе не завели. */
   task_id?: string | null;
   task_title?: string | null;
@@ -107,7 +114,7 @@ const SECTIONS: { key: 'inbox' | 'threads' | 'saved'; title: string; hint: strin
 ];
 
 /** Реакции: ответить «понял», не засоряя переписку и не будя всех уведомлением. */
-const REACTIONS = ['👍', '❤️', '🔥', '👏', '😁', '🤔'];
+const REACTIONS = QUICK_REACTIONS;
 
 /** «@AI», «@ии», «@ai-помощник» — человек пишет как придётся. */
 const MENTIONS_AI = /@(anthillbot|ai|ии|ai-помощник|бот)(?![\wа-яё-])/gi;
@@ -325,6 +332,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     ровно на это и пожаловался заказчик. Меняем ключ — поле забирает фокус себе.
   */
   const [composerFocus, setComposerFocus] = useState(0);
+  /*
+    Палитра эмодзи: для реакции на сообщение (`id`) и для вставки в текст (`id: null`).
+    Одна палитра на оба случая — две разошлись бы на первой правке.
+  */
+  const [emojiFor, setEmojiFor] = useState<{ id: string | null; at: { x: number; y: number } } | null>(null);
+  /** Какое сообщение пересылаем и что показать в подтверждении. */
+  const [forwardOf, setForwardOf] = useState<{ id: string; preview: string } | null>(null);
   const focusComposer = () => setComposerFocus((n) => n + 1);
   /**
    * Сайдбар чата ⓘ (ТЗ-5, этап 2). Занимает тот же правый слот, что и ветка:
@@ -1519,6 +1533,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       icon: 'star' as const,
       onClick: () => toggleSaved(m),
     },
+    {
+      // Пересылка: чужие слова в свой чат — без «скопировать и вставить», которое
+      // теряет и вложения, и автора.
+      label: 'Переслать',
+      icon: 'reply' as const,
+      onClick: () => setForwardOf({ id: String(m.id), preview: String(m.body ?? m.file_name ?? 'вложение') }),
+    },
     { label: 'Напомнить', icon: 'clock' as const, onClick: () => setRemindFor(String(m.id)) },
     ...(!mine && !m.is_ai && !m.thread_root_id ? [{
       label: 'Пометить как непрочитанное',
@@ -2446,6 +2467,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   at={ctxFor.at}
                   reactions={REACTIONS}
                   onReact={(emoji) => react(String(m.id), emoji)}
+                  onMoreEmoji={(at) => setEmojiFor({ id: String(m.id), at })}
                   items={messageMenuItems(m, String(m.author_id) === String(user?.id), ctxFor.picked)}
                   onClose={() => setCtxFor(null)}
                 />
@@ -2572,6 +2594,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                           когда кусок не сохранился. Ответ висел сам по себе, и понять, к
                           чему он, было нельзя (жалоба заказчика).
                         */}
+                        {/* Пересланное: чьи это слова на самом деле. */}
+                        {m.forwarded_author && (
+                          <div className="msg-forwarded">
+                            <Icon name="reply" size={11} /> Переслано от {m.forwarded_author}
+                          </div>
+                        )}
                         {m.reply_to_id && (
                           <button
                             className="msg-quote"
@@ -2900,6 +2928,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 Позвать человека по имени в чате на сто сообщений в день — единственный
                 способ до него достучаться; сам он это сообщение не найдёт.
               */}
+              {/* Смайл рядом с полем: за эмодзи не должно приходиться лезть в меню сообщения. */}
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setEmojiFor({ id: null, at: { x: r.left, y: r.top } });
+                }}
+                title="Эмодзи"
+                aria-label="Эмодзи"
+              >
+                <Icon name="smile" size={16} />
+              </button>
               <MentionField
                 className="chat-mention-input"
                 focusKey={composerFocus}
@@ -3242,6 +3282,36 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             </button>
           </div>
         </section>
+      )}
+
+      {forwardOf && activeId && (
+        <ForwardDialog
+          chatId={String(activeId)}
+          messageId={forwardOf.id}
+          preview={forwardOf.preview}
+          onClose={() => setForwardOf(null)}
+          onDone={(toChatId, title) => {
+            setForwardOf(null);
+            toastSaved('Переслано', title);
+            // Переслали в открытый чат — показываем сразу, иначе придёт только сокетом.
+            if (String(toChatId) === String(activeId)) reload();
+          }}
+        />
+      )}
+
+      {/*
+        Палитра эмодзи. Для сообщения — ставит реакцию, для поля ввода — дописывает
+        знак к набранному и возвращает курсор в поле.
+      */}
+      {emojiFor && (
+        <EmojiPicker
+          at={emojiFor.at}
+          onPick={(emoji) => {
+            if (emojiFor.id) react(emojiFor.id, emoji);
+            else { setDraft((d) => d + emoji); focusComposer(); }
+          }}
+          onClose={() => setEmojiFor(null)}
+        />
       )}
 
       {toTask && activeId && (

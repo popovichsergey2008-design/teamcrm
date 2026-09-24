@@ -27,11 +27,18 @@ export interface MenuAt { x: number; y: number }
  * Высота считается по числу пунктов: меню должно раскрываться вверх, когда снизу
  * места нет, — иначе у нижних сообщений оно уезжает за край ленты.
  */
-export function MessageMenu({ at, reactions, onReact, items, onClose }: {
+export function MessageMenu({ at, reactions, onReact, onMoreEmoji, items, onClose }: {
   at: MenuAt;
   /** Быстрые реакции строкой сверху. Пустой список — строки не будет. */
   reactions?: string[];
   onReact?: (emoji: string) => void;
+  /**
+   * «Ещё» — вся палитра эмодзи.
+   *
+   * Шесть быстрых закрывают девять случаев из десяти, но заказчик справедливо просил
+   * «как в Slack»: остальное должно быть в одном нажатии, а не отсутствовать вовсе.
+   */
+  onMoreEmoji?: (at: MenuAt) => void;
   items: MsgMenuItem[];
   onClose: () => void;
 }) {
@@ -78,6 +85,20 @@ export function MessageMenu({ at, reactions, onReact, items, onClose }: {
                 {emoji}
               </button>
             ))}
+            {onMoreEmoji && (
+              <button
+                className="react-pop-btn react-pop-more"
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  onClose();
+                  onMoreEmoji({ x: r.left, y: r.bottom + 4 });
+                }}
+                title="Все эмодзи"
+                aria-label="Все эмодзи"
+              >
+                <Icon name="plus" size={14} />
+              </button>
+            )}
           </span>
         )}
         {items.map((it) => (

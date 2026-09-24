@@ -245,7 +245,8 @@ export class ChatsRepository {
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
-              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body, ru.full_name AS reply_author,
+              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
+              m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.is_ai, m.guest_name,
               -- Две галочки, как в мессенджерах: сколько СОБЕСЕДНИКОВ уже открывали
               -- чат после этого сообщения и сколько их всего. Считаем от отметки
@@ -298,7 +299,8 @@ export class ChatsRepository {
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
-              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body, ru.full_name AS reply_author,
+              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
+              m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.is_ai, m.guest_name,
               -- Две галочки, как в мессенджерах: сколько СОБЕСЕДНИКОВ уже открывали
               -- чат после этого сообщения и сколько их всего. Считаем от отметки
@@ -420,16 +422,19 @@ export class ChatsRepository {
     replyToId?: string | null; replyExcerpt?: string | null;
     /** Ответ помощника: в ленте он помечен, чтобы его не спутали со словами коллеги. */
     isAi?: boolean;
+    /** Пересланное: чьи это слова на самом деле и откуда они. */
+    forwarded?: { author: string; fromId: string; chatId: string } | null;
   }): Promise<MessageRow> {
     const row = await this.db.one<{ id: string }>(
       `INSERT INTO chat_messages
          (tenant_id, chat_id, author_id, body, file_id, thread_root_id, also_in_channel, is_ai,
-          reply_to_id, reply_excerpt)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+          reply_to_id, reply_excerpt, forwarded_author, forwarded_from_id, forwarded_chat_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::bigint,$13::bigint) RETURNING id`,
       [
         i.tenantId, i.chatId, i.authorId, i.body, i.fileId,
         i.threadRootId ?? null, i.alsoInChannel === true, i.isAi === true,
         i.replyToId ?? null, i.replyExcerpt?.slice(0, 600) ?? null,
+        i.forwarded?.author ?? null, i.forwarded?.fromId ?? null, i.forwarded?.chatId ?? null,
       ],
     );
     // Все вложения сообщения — отдельной таблицей, с сохранением порядка.
@@ -456,7 +461,8 @@ export class ChatsRepository {
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at,
-              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body, ru.full_name AS reply_author
+              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
+              m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
@@ -665,7 +671,8 @@ export class ChatsRepository {
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
-              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body, ru.full_name AS reply_author,
+              m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
+              m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id,
               m.meeting_id, m.is_ai, m.guest_name,
               (SELECT COUNT(*)::int FROM chat_members cm
@@ -976,6 +983,28 @@ export class ChatsRepository {
    * Кроме текста нужны автор (он становится исполнителем по умолчанию) и файл:
    * скриншот едет в задачу вложением, иначе половина постановки остаётся в чате.
    */
+  /** Сообщение целиком — для пересылки: текст, автор и все его вложения. */
+  async forwardSource(tenantId: string, messageId: string) {
+    const row = await this.db.one<{
+      id: string; chat_id: string; body: string; author_name: string | null;
+      forwarded_author: string | null; file_id: string | null;
+    }>(
+      `SELECT m.id::text, m.chat_id::text, m.body, u.full_name AS author_name,
+              m.forwarded_author, m.file_id::text
+         FROM chat_messages m
+         LEFT JOIN users u ON u.id = m.author_id
+        WHERE m.tenant_id=$1 AND m.id=$2 AND m.deleted_at IS NULL`,
+      [tenantId, messageId],
+    );
+    if (!row) return null;
+    const files = await this.db.many<{ file_id: string }>(
+      `SELECT file_id::text FROM chat_message_files WHERE tenant_id=$1 AND message_id=$2 ORDER BY position, file_id`,
+      [tenantId, messageId],
+    );
+    const ids = files.map((f) => String(f.file_id));
+    return { ...row, fileIds: ids.length ? ids : (row.file_id ? [String(row.file_id)] : []) };
+  }
+
   messageBody(tenantId: string, id: string) {
     return this.db.one<{
       id: string; chat_id: string; body: string; task_id: string | null;
