@@ -3460,6 +3460,29 @@
 .tags-ok { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); }
 .tags-compact { margin: 6px 0; }
 
+/* Центр безопасности: люди, права, журнал и просмотры контактов. */
+.sec-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.sec-member {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elev); color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.sec-member:hover { background: var(--hover); }
+.sec-member:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sec-member-name { font-weight: 500; }
+.sec-perms { display: flex; flex-direction: column; gap: 8px; }
+.sec-group { padding-top: 6px; border-top: 1px solid var(--border); }
+.sec-policy { display: flex; flex-direction: column; }
+.sec-audit {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 0;
+  border-bottom: 1px solid var(--border); font-size: var(--fs-sm);
+}
+.sec-audit:last-child { border-bottom: 0; }
+.sec-audit-event { font-weight: 500; }
+/* Контакт под маской: значение и кнопка «показать» в одну строку. */
+.contact-masked { display: inline-flex; align-items: center; gap: 6px; }
+.contact-masked-value { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+
 /* Список тегов в настройках: плашка, счётчик задач и действия. */
 .tag-row {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;

@@ -252,9 +252,20 @@ export function mergePolicy(saved: unknown): SecurityPolicy {
  * Показываем ровно столько, чтобы человек узнал знакомый номер и не путал записи:
  * начало и хвост. Середину не отдаём вовсе — ни в поле, ни в ответе сервера.
  */
-export function maskContact(value: string | null | undefined, kind: 'phone' | 'email' | 'text'): string | null {
+export function maskContact(value: string | null | undefined, kind: 'phone' | 'email' | 'text' | 'auto'): string | null {
   const raw = String(value ?? '').trim();
   if (!raw) return null;
+  /*
+    Вид значения важнее имени поля.
+
+    В старом поле «контакт» лежит вперемешку всё: телефон, почта, «спросить у Пети».
+    Замаскированный как текст телефон превращался в «+•••» — по такой маске нельзя
+    узнать даже свою запись. Смотрим на само значение.
+  */
+  if (kind === 'auto') {
+    if (raw.includes('@')) kind = 'email';
+    else kind = raw.replace(/\D/g, '').length >= 7 ? 'phone' : 'text';
+  }
   if (kind === 'email') {
     const [name, domain] = raw.split('@');
     if (!domain) return `${raw.slice(0, 1)}•••`;

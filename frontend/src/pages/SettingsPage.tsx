@@ -2,6 +2,7 @@ import { Icon, IconName } from '../components/Icon';
 import { IntegrationsPanel } from '../components/IntegrationsPanel';
 import { AssistantPanel } from '../components/AssistantPanel';
 import { HandoffGatePanel } from '../components/HandoffGatePanel';
+import { SecurityPanel } from '../components/SecurityPanel';
 import { TagsSettingsPanel } from '../components/TagsSettingsPanel';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { AiUsagePanel } from '../components/AiUsagePanel';
@@ -75,6 +76,15 @@ const CARDS: Card[] = [
     icon: 'clock',
   },
   {
+    tab: 'security',
+    title: 'Безопасность',
+    hint: 'Кто что может, скрытые контакты, корзина задач и журнал действий',
+    icon: 'lock',
+    // Карточку видит владелец: правила компании задаёт он, и содержимое всё равно
+    // закрыто сервером — прятать её от остальных незачем, но и показывать нечего.
+    roles: ['owner'],
+  },
+  {
     tab: 'tags',
     title: 'Теги задач',
     hint: 'Классификация задач компании и разметка через ИИ с подтверждением',
@@ -90,6 +100,7 @@ const CARDS: Card[] = [
 
 /** Разделы с ограничением по роли: адрес открывается, а содержимое — нет. */
 const DENIED: [string, string[]][] = [
+  ['security', ['owner']],
   ['team', ['owner', 'manager']],
   ['integrations', ['owner']],
   ['ai-usage', ['owner', 'manager']],
@@ -130,6 +141,8 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'work' && <WorkSettingsPanel canManage={role === 'owner'} onClose={close} />}
       {/* Список тегов видят все (по ним фильтруют), правит — руководитель. */}
       {route.tab === 'tags' && <TagsSettingsPanel canManage={canManage} onClose={close} />}
+      {/* Центр безопасности: права, правила компании, журнал и просмотры контактов. */}
+      {route.tab === 'security' && <SecurityPanel onClose={close} />}
 
       {/*
         Раздел есть, а прав нет.

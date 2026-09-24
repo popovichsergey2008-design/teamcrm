@@ -130,6 +130,25 @@ export interface AssigneeSuggestion {
 
 /** Пакет задач из быстрой команды: итог, созданные задачи и то, что не получилось (ТЗ-10). */
 /** Тег организации. `used` — сколько задач им помечено (нужно в настройках). */
+/** Политика безопасности организации (ТЗ «Central Security System»). */
+export interface SecurityPolicy {
+  twoFactor: 'off' | 'optional' | 'required_for_admins' | 'required_for_all';
+  contacts: { defaultAccess: 'full' | 'masked'; requireReason: boolean; revealTtlSeconds: number };
+  tasks: { deleteMode: 'permission' | 'owner_only'; protectClosed: boolean };
+  integrations: { mode: 'all' | 'allow_list' | 'off'; allowList: string[] };
+}
+
+export interface SecurityMember {
+  id: string;
+  full_name: string;
+  email: string;
+  base_role: string;
+  role_id: string | null;
+  role_name: string | null;
+  /** Сколько прав ограничено лично у этого человека. */
+  limited: number;
+}
+
 export interface TagItem {
   id: string;
   name: string;
@@ -521,6 +540,36 @@ export const api = {
     для ИИ, архивом вместо удаления и политикой компании. Список приходит вместе с
     настройками — иначе каждое окно спрашивало бы их вторым запросом.
   */
+  /*
+    Слой безопасности (ТЗ «Централизованная система безопасности»).
+
+    `securityMe` интерфейс спрашивает на входе: по нему он решает, что показывать.
+    Решение всё равно принимает сервер на каждом действии — здесь только вид.
+  */
+  securityMe: () => request<{ permissions: Record<string, { allowed: boolean; scope?: string }>; policy: SecurityPolicy }>('GET', '/security/me'),
+  securityRoles: () => request<{ items: any[]; members: SecurityMember[] }>('GET', '/security/roles'),
+  memberPermissions: (userId: string) =>
+    request<{ permissions: Record<string, unknown> }>('POST', `/security/users/${userId}/permissions`, {}),
+  setMemberPermissions: (userId: string, patch: Record<string, unknown>) =>
+    request<{ permissions: Record<string, unknown> }>('POST', `/security/users/${userId}/permissions`, patch),
+  securityPolicy: () => request<SecurityPolicy>('GET', '/security/policy'),
+  saveSecurityPolicy: (patch: Record<string, unknown>) => request<SecurityPolicy>('POST', '/security/policy', patch),
+  securityAudit: (params = '') => request<{ items: any[] }>('GET', `/security/audit${params}`),
+  contactReveals: () => request<{ items: any[] }>('GET', '/security/contact-reveals'),
+  /** Контакты клиента: замаскированные значения считает сервер. */
+  clientContacts: (clientId: string) =>
+    request<{
+      id: string; name: string; canReveal: boolean; requireReason: boolean;
+      fields: Record<string, { value: string | null; masked: boolean }>;
+    }>('GET', `/security/clients/${clientId}/contacts`),
+  revealContact: (clientId: string, field: string, reason?: string) =>
+    request<{ field: string; value: string | null; ttlSeconds: number }>(
+      'POST', `/security/clients/${clientId}/reveal`, { field, ...(reason ? { reason } : {}) },
+    ),
+  /** Корзина задач: что удалено и возврат. */
+  taskTrash: () => request<{ items: any[] }>('GET', '/tasks/trash'),
+  restoreTask: (id: string) => request<{ restored: boolean }>('POST', `/tasks/${id}/restore`, {}),
+
   listTags: (archived = false) =>
     request<{ items: TagItem[]; settings: TagSettings }>('GET', `/tags${archived ? '?archived=1' : ''}`),
   createTag: (b: { name: string; color?: string; aiDescription?: string; force?: boolean }) =>

@@ -208,7 +208,8 @@ export class SecurityService {
       { key: 'phone', kind: 'phone' as const, value: client.phone },
       { key: 'email', kind: 'email' as const, value: client.email },
       { key: 'telegram', kind: 'text' as const, value: client.telegram },
-      { key: 'contact', kind: 'text' as const, value: client.contact },
+      // Старое поле «контакт» — что угодно: вид определяем по самому значению.
+      { key: 'contact', kind: 'auto' as const, value: client.contact },
     ];
     const out: Record<string, { value: string | null; masked: boolean }> = {};
     for (const f of fields) {

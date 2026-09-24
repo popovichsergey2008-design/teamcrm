@@ -75,6 +75,11 @@ describe('права: слои, потолок, области и маскиро
     const email = maskContact('sergey@company.com', 'email');
     expect(email).toBe('s•••@company.com');
     expect(maskContact('', 'phone')).toBeNull();
+    // Вид по значению: в старом поле «контакт» лежит что угодно, и телефон в нём
+    // должен маскироваться как телефон, а не превращаться в «+•••».
+    expect(maskContact('+79995554433', 'auto')).toBe(maskContact('+79995554433', 'phone'));
+    expect(maskContact('sergey@company.com', 'auto')).toBe('s•••@company.com');
+    expect(maskContact('спросить у Пети', 'auto')).toBe('с•••');
   });
 
   it('политика: в базе лежит только изменённое, остальное — умолчания', () => {
