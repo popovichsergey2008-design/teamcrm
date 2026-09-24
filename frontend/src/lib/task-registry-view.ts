@@ -92,6 +92,8 @@ export interface RegistryFilters {
   due: string;
   sort: string;
   dir: SortDir;
+  /** Отмеченные теги: «хотя бы один из выбранных» (ТЗ по тегам, п. 12). */
+  tagIds: string[];
   /**
    * «В работе» — переключатель, а не фильтр «показать завершённые».
    *
@@ -105,7 +107,7 @@ export interface RegistryFilters {
 
 export const EMPTY_FILTERS: RegistryFilters = {
   scope: 'all', q: '', projectId: '', assigneeId: '', priority: '', due: 'any',
-  sort: 'deadline', dir: 'asc', inWork: true, page: 1,
+  sort: 'deadline', dir: 'asc', tagIds: [], inWork: true, page: 1,
 };
 
 /**
@@ -180,6 +182,8 @@ export function registryQuery(f: RegistryFilters, now = new Date()): string {
   if (f.sort && f.sort !== 'deadline') p.set('sort', f.sort);
   // Направление отправляем только у сортировки по столбцу: у наборов из списка своё.
   if (f.dir === 'desc') p.set('dir', 'desc');
+  // Теги — строкой «2,4»: так фильтр живёт в адресе и делится ссылкой.
+  if (f.tagIds.length) p.set('tagIds', f.tagIds.join(','));
   // «В работе» выключили — просим у сервера всё: и завершённое, и архивные проекты
   if (!f.inWork) p.set('closed', '1');
   if (f.page > 1) p.set('page', String(f.page));
@@ -195,6 +199,7 @@ export function activeFilterCount(f: RegistryFilters): number {
   if (f.assigneeId) n++;
   if (f.priority) n++;
   if (f.due && f.due !== 'any') n++;
+  if (f.tagIds.length) n++;
   if (!f.inWork) n++;
   return n;
 }

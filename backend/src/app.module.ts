@@ -39,6 +39,7 @@ import { TeamModule } from './modules/team/team.module';
 import { InvitesModule } from './modules/team/invites.module';
 import { AccountModule } from './modules/account/account.module';
 import { TaskCardModule } from './modules/taskcard/taskcard.module';
+import { TagsModule } from './modules/tags/tags.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DiagModule } from './modules/diagnostics/diag.module';
 import { BitrixModule } from './modules/integrations/bitrix/bitrix.module';
@@ -110,6 +111,7 @@ import { FeedModule } from './modules/feed/feed.module';
     InvitesModule,
     AccountModule,
     TaskCardModule,
+    TagsModule,
     BitrixModule,
     YougileModule,
     FileImportModule,

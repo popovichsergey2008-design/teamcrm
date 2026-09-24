@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { TagsService } from '../tags/tags.service';
 import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
 import { PromptsService } from '../prompts/prompts.service';
@@ -105,6 +106,7 @@ export class NlService {
     private readonly prompts: PromptsService,
     private readonly tasks: TasksService,
     private readonly deals: DealsService,
+    private readonly tags: TagsService,
     private readonly secretary: SecretaryService,
     private readonly users: UsersRepository,
   ) {}
@@ -491,6 +493,16 @@ export class NlService {
       const t = body.task ?? {};
       if (!t.projectId) throw AppException.validation('Выберите проект для задачи');
       if (!String(t.title ?? '').trim()) throw AppException.validation('Укажите название задачи');
+      /*
+        Теги подтверждены (ТЗ по тегам, п. 34 и 52).
+
+        Через этот путь задача рождается из быстрой команды, голоса, пакета и разбора
+        сообщения в чате — одна проверка на все четыре. Задачи, которые заводит сама
+        система (импорты, повторы, встречи), идут мимо: подтверждать там некому.
+      */
+      await this.tags.assertGate(tenantId, {
+        tagIds: t.tagIds, tagsConfirmed: t.tagsConfirmed, confirmedWithoutTags: t.confirmedWithoutTags,
+      });
       // Срок раньше дописывался строкой в описание («Срок: 2026-08-17») — задача выходила
       // без даты, и ни светофор, ни «просрочено» её не видели. Теперь это настоящее поле.
       const deadlineAt = /^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? ''))
@@ -509,6 +521,10 @@ export class NlService {
           ? t.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean)
           : undefined,
       } as any, userId);
+      await this.tags.applyToNewTask(tenantId, { userId }, String(task.id), String(task.project_id), {
+        tagIds: Array.isArray(t.tagIds) ? t.tagIds.map(String) : [],
+        suggestedTagIds: Array.isArray(t.suggestedTagIds) ? t.suggestedTagIds.map(String) : [],
+      });
       void this.secretary.record({
         tenantId, userId, kind: 'nl_task',
         summary: `Задача из фразы: «${task.title}»`, subjectType: 'task', subjectId: task.id,

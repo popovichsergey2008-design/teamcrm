@@ -159,7 +159,7 @@ export class TasksController {
 
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateTaskDto) {
-    return this.tasks.create(user.tenantId, dto, user.userId);
+    return this.tasks.createByPerson(user.tenantId, dto, user);
   }
 
   /**

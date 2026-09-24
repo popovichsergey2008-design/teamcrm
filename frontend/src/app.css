@@ -3337,6 +3337,52 @@
 /* цвет метки задаёт пользователь, поэтому текст всегда белый */
 .label-chip { font-size: calc(11px * var(--fs-scale)); padding: 3px 9px; border-radius: 999px; color: #fff; border: 1px solid transparent; cursor: pointer; }
 .label-off { color: var(--text-dim); }
+/* Теги (ТЗ по тегам): плашка с крестиком, предложение ИИ — пунктиром и со значком. */
+.label-chip-sm { font-size: calc(10px * var(--fs-scale)); padding: 2px 7px; }
+.tag-ai { border-style: dashed; border-color: currentColor; }
+.tag-chip-x {
+  display: inline-flex; align-items: center; margin-left: 4px; padding: 0;
+  border: none; background: none; color: inherit; cursor: pointer; opacity: .75;
+}
+.tag-chip-x:hover { opacity: 1; }
+.tag-chip-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 50%; }
+
+.tags-field { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.tags-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.tags-head label { font-size: var(--fs-sm); color: var(--text-dim); }
+.tags-ai-note { font-size: var(--fs-xs); }
+.tags-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tags-maybe, .tags-proposed, .tags-similar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-sm); }
+.tags-pick { flex-direction: column; align-items: stretch; }
+.tags-pick-list { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Подтверждение тегов: без него задача не создаётся, поэтому строка заметная. */
+.tags-confirm {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px;
+  border: 1px solid var(--warn-line); border-radius: var(--radius-sm); background: var(--warn-soft);
+  font-size: var(--fs-sm);
+}
+.tags-ok { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); }
+.tags-compact { margin: 6px 0; }
+
+/* Список тегов в настройках: плашка, счётчик задач и действия. */
+.tag-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.tag-row:last-child { border-bottom: 0; }
+.tag-archived { opacity: .6; }
+.tag-row-sub { font-size: var(--fs-sm); }
+.tag-row-actions { margin-left: auto; display: flex; gap: 4px; }
+.tag-color {
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
+}
+.tag-color.on { border-color: var(--text); }
+.tag-color:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Отбор по тегам над списком задач и плашки в строках. */
+.registry-tagfilter { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.registry-cell-tags { display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; }
+.registry-tags-more { font-size: var(--fs-xs); color: var(--text-mut); }
 .label-pick { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--bg-elev-2); border-radius: var(--radius-sm); margin-top: 6px; }
 .comment { border-bottom: 1px solid var(--border); padding: 8px 0; font-size: calc(14px * var(--fs-scale)); }
 .comment-head { margin-bottom: 4px; font-size: calc(13px * var(--fs-scale)); }
@@ -4040,7 +4086,7 @@
 
 .registry-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
 .registry-row {
-  display: grid; grid-template-columns: minmax(0, 1fr) 150px 130px 170px 110px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 150px 130px 170px 110px 150px;
   align-items: center; gap: var(--sp-3); width: 100%; text-align: left;
   padding: 9px var(--sp-3); border: 0; border-bottom: 1px solid var(--border);
   background: transparent; color: var(--text); font: inherit; cursor: pointer;
@@ -4101,7 +4147,10 @@
 /* Узкий экран: столбцы «статус» и «кто» уходят — на телефоне важны название и срок. */
 @media (max-width: 720px) {
   .registry-row { grid-template-columns: minmax(0, 1fr) 100px; }
-  .registry-row > *:nth-child(3), .registry-row > *:nth-child(4) { display: none; }
+  /* На телефоне из строки остаются название и срок: проект, статус, люди и теги
+     не влезают, а строка должна читаться как карточка, а не как таблица. */
+  .registry-row > *:nth-child(3), .registry-row > *:nth-child(4),
+  .registry-row > *:nth-child(6) { display: none; }
   /* Заголовки колонок на телефоне не нужны: строка читается как карточка, а «Срок» переносился на свою строку. */
   .registry-header { display: none; }
   .registry-row > *:nth-child(5) { grid-column: 1 / -1; }

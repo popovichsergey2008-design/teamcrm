@@ -2,6 +2,7 @@ import { Icon, IconName } from '../components/Icon';
 import { IntegrationsPanel } from '../components/IntegrationsPanel';
 import { AssistantPanel } from '../components/AssistantPanel';
 import { HandoffGatePanel } from '../components/HandoffGatePanel';
+import { TagsSettingsPanel } from '../components/TagsSettingsPanel';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { AiUsagePanel } from '../components/AiUsagePanel';
 import { KnowledgePanel } from '../components/KnowledgePanel';
@@ -74,6 +75,12 @@ const CARDS: Card[] = [
     icon: 'clock',
   },
   {
+    tab: 'tags',
+    title: 'Теги задач',
+    hint: 'Классификация задач компании и разметка через ИИ с подтверждением',
+    icon: 'tag',
+  },
+  {
     tab: 'assistant',
     title: 'Напоминания ассистента',
     hint: 'О чём AI Секретарь напоминает сам, а о чём спрашивает разрешения',
@@ -121,6 +128,8 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}
       {route.tab === 'assistant' && <AssistantPanel canManage={role === 'owner'} onClose={close} />}
       {route.tab === 'work' && <WorkSettingsPanel canManage={role === 'owner'} onClose={close} />}
+      {/* Список тегов видят все (по ним фильтруют), правит — руководитель. */}
+      {route.tab === 'tags' && <TagsSettingsPanel canManage={canManage} onClose={close} />}
 
       {/*
         Раздел есть, а прав нет.

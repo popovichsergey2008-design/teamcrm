@@ -5,6 +5,7 @@ import * as argon2 from 'argon2';
 import { createHash, randomUUID } from 'crypto';
 
 import { DbService } from '../../database/db.service';
+import { TagsService } from '../tags/tags.service';
 import { AppException } from '../../common/http/app-exception';
 import {
   AccessTokenPayload,
@@ -44,6 +45,8 @@ export class AuthService {
     private readonly users: UsersRepository,
     private readonly refreshTokens: RefreshTokenRepository,
     private readonly accounts: AccountsRepository,
+    /** Базовый набор тегов новой организации: без него первый же фильтр пустой. */
+    private readonly tags: TagsService,
   ) {}
 
   private orgRefs(rows: any[]): OrgRef[] {
@@ -73,6 +76,9 @@ export class AuthService {
       return res.rows[0];
     });
 
+    // Пять базовых тегов — в стороне от регистрации: сбой в них не должен мешать
+    // человеку войти, а список тегов он увидит в первой же задаче.
+    void this.tags.seedDefaults(String(user.tenant_id));
     const tokens = await this.issueTokens(user, meta);
     const orgs = this.orgRefs(await this.users.membershipsByAccount(user.account_id as string));
     return { user: toPublicUser(user), organizations: orgs, ...tokens };
@@ -133,6 +139,7 @@ export class AuthService {
       );
       return res.rows[0];
     });
+    void this.tags.seedDefaults(String(member.tenant_id));
     const tokens = await this.issueTokens(member, meta);
     return { user: toPublicUser(member), ...tokens };
   }

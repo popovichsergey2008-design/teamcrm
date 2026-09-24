@@ -17,6 +17,28 @@ export class CreateTaskDto {
   @IsString()
   projectId!: string;
 
+  /*
+    Теги и их подтверждение (ТЗ по тегам, п. 20 и 52).
+
+    `labelIds` — выбранный набор (теги и метки — одна сущность), `tagsConfirmed` —
+    постановщик видел предложения ИИ и согласился с итогом, `confirmedWithoutTags` —
+    он же, но сознательно оставил задачу без тегов. Разница между «человек решил» и
+    «интерфейс не спросил» принципиальна, поэтому проверяет это сервер, а не экран:
+    иначе правило обходится старым клиентом или чужим скриптом.
+  */
+  @IsOptional()
+  @IsBoolean()
+  tagsConfirmed?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  confirmedWithoutTags?: boolean;
+
+  /** Какие из тегов предложил ИИ: по ним видно, что человек поправил. */
+  @IsOptional()
+  @IsArray()
+  suggestedTagIds?: string[];
+
   @IsOptional()
   @IsString()
   columnId?: string; // по умолчанию — первая колонка проекта
@@ -233,6 +255,12 @@ export class TaskRegistryQueryDto {
   @IsOptional()
   @IsIn(['asc', 'desc'])
   dir?: string;
+
+  /** Теги через запятую: «2,4». Отбор «хотя бы один из выбранных». */
+  @IsOptional()
+  @Matches(/^\d+(,\d+)*$/, { message: 'tagIds: номера тегов через запятую' })
+  @MaxLength(200)
+  tagIds?: string;
 
   @IsOptional()
   @IsString()

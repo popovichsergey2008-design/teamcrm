@@ -19,7 +19,8 @@ import { RichText } from './RichText';
 import { RichEditor } from './RichEditor';
 import { SuggestAssignee } from './SuggestAssignee';
 import { MONETIZATION_ENABLED } from '../config';
-import { labelTextColor } from '../lib/labels';
+import { TaskTagsField } from './TaskTagsField';
+import { EMPTY_TAGS, TagsValue } from '../lib/tags';
 import { overlayProps } from '../lib/overlay';
 import { showToast, toastSaved } from '../lib/notifications';
 
@@ -1070,43 +1071,46 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   );
 }
 
+/**
+ * Теги живой задачи.
+ *
+ * Тем же полем, что и при создании, но в режиме `edit`: подтверждение здесь не нужно
+ * (задача уже есть), а подсказки ИИ приходят только по кнопке — молча перетегировать
+ * живую задачу после правки названия нельзя, человек этого не просил (ТЗ, п. 39).
+ *
+ * Сохраняем сразу, набором: «снял один, добавил два» — это одно решение, и при обрыве
+ * связи посередине задача не должна остаться размеченной наполовину.
+ */
 function LabelsRow({ task, onRefresh }: { task: Task; onRefresh: () => void }) {
-  const [labels, setLabels] = useState<any[]>(task.labels ?? []);
-  const [all, setAll] = useState<any[]>([]);
-  const [open, setOpen] = useState(false);
-  const reload = () => api.taskLabels(task.id).then(setLabels).catch(() => undefined);
-  useEffect(() => { if (open) api.listLabels().then(setAll).catch(() => undefined); }, [open, task.id]);
-  const toggle = async (id: string, has: boolean) => {
-    if (has) await api.unassignLabel(task.id, id); else await api.assignLabel(task.id, id);
-    reload(); onRefresh();
+  const [value, setValue] = useState<TagsValue>({
+    ...EMPTY_TAGS,
+    tagIds: (task.labels ?? []).map((l: { id: string | number }) => String(l.id)),
+  });
+
+  useEffect(() => {
+    api.taskTags(task.id)
+      .then((items) => setValue({ ...EMPTY_TAGS, tagIds: items.map((t) => String(t.id)) }))
+      .catch(() => undefined);
+  }, [task.id]);
+
+  const change = (next: TagsValue) => {
+    setValue(next);
+    api.setTaskTags(task.id, next.tagIds, next.suggested)
+      .then(() => onRefresh())
+      .catch(() => undefined); // теги — не то, ради чего стоит ронять карточку ошибкой
   };
+
   return (
     <div className="labels-row">
-      {labels.map((l) => <span key={l.id} className="label-chip" style={{ background: l.color, color: labelTextColor(l.color) }}>{l.name}</span>)}
-      <button className="btn btn-ghost btn-sm" onClick={() => setOpen(!open)}>+ метка</button>
-      {open && (
-        <div className="label-pick">
-          {all.length === 0 && <span className="dim">Меток пока нет — создайте первую полем ниже. Метки общие для всех проектов.</span>}
-          {all.map((l) => {
-            const has = labels.some((x) => x.id === l.id);
-            return <button key={l.id} className={`label-chip ${has ? '' : 'label-off'}`} style={{ background: has ? l.color : 'transparent', borderColor: l.color, color: has ? labelTextColor(l.color) : undefined }} onClick={() => toggle(l.id, has)}>{l.name}</button>;
-          })}
-          <NewLabel onCreated={() => api.listLabels().then(setAll)} />
-        </div>
-      )}
+      <TaskTagsField
+        mode="edit"
+        task={{ title: task.title, description: task.description ?? undefined }}
+        value={value}
+        onChange={change}
+      />
     </div>
   );
 }
-function NewLabel({ onCreated }: { onCreated: () => void }) {
-  const [name, setName] = useState('');
-  return (
-    <div className="team-rate" style={{ marginTop: 6 }}>
-      <input className="input" placeholder="новая метка" value={name} onChange={(e) => setName(e.target.value)} />
-      <button className="btn btn-sm" onClick={async () => { if (name.trim()) { await api.createLabel({ name: name.trim() }); setName(''); onCreated(); } }}>+</button>
-    </div>
-  );
-}
-
 function ChecklistTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
   const [items, setItems] = useState<any[]>([]);
   const [text, setText] = useState('');

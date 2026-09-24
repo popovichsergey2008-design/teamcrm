@@ -62,6 +62,14 @@ export interface RegistryFilters {
   sort?: string | null;
   /** Направление сортировки по столбцу: `asc` — А→Я и раньше→позже, `desc` — наоборот. */
   dir?: string | null;
+  /**
+   * Отбор по тегам, «хотя бы один из выбранных» (ТЗ по тегам, п. 12).
+   *
+   * Именно «любой», а не «все»: человек выбирает два-три тега, чтобы РАСШИРИТЬ выборку
+   * («покажи программные и дизайнерские»), а не сузить её до задач, помеченных всеми
+   * сразу, — таких обычно нет вовсе, и фильтр выглядел бы сломанным.
+   */
+  tagIds?: string | null;
   page?: number | null;
   /**
    * Конец «сегодня» у ЧЕЛОВЕКА, ISO-строкой с клиента. День на сервере и день у
@@ -230,6 +238,13 @@ export function buildRegistry(tenantId: string, userId: string, f: RegistryFilte
   else if (f.assigneeId) where.push(`t.assignee_id = ${add(f.assigneeId)}`);
 
   if (f.priority && PRIORITIES.includes(f.priority)) where.push(`t.priority = ${add(f.priority)}`);
+
+  // Теги приходят строкой «2,4»: так фильтр живёт в адресе и делится ссылкой.
+  const tagIds = String(f.tagIds ?? '').split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x));
+  if (tagIds.length) {
+    where.push(`EXISTS (SELECT 1 FROM task_labels tl
+                         WHERE tl.task_id = t.id AND tl.label_id = ANY(${add(tagIds)}::bigint[]))`);
+  }
 
   // Границы дня считаем от присланного конца суток: начало «сегодня» — минус день,
   // конец недели — плюс семь. Второй параметр под это заводить незачем.

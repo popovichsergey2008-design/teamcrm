@@ -1121,6 +1121,26 @@ test('конфиг оболочки: сравнение версий, верди
   assert.equal(effectiveLockPolicy('5', undefined), '5');
 });
 
+test('теги: пока не подтвердили — задача не создаётся, «без тегов» подтверждают отдельно', async () => {
+  const { tagsReady, confirmTags, pendingTagCount, EMPTY_TAGS } = await load('lib/tags.ts');
+  const on = { aiTagging: true, requireConfirmation: true, whoCanCreate: 'all' };
+  assert.equal(tagsReady(on, EMPTY_TAGS), false);
+  assert.equal(tagsReady(on, { ...EMPTY_TAGS, tagIds: ['1'] }), false);          // выбрали, но не подтвердили
+  assert.equal(tagsReady(on, { ...EMPTY_TAGS, tagIds: ['1'], confirmed: true }), true);
+  assert.equal(tagsReady(on, { ...EMPTY_TAGS, confirmedWithoutTags: true }), true);
+  // Организация выключила разметку — ничего подтверждать не нужно.
+  assert.equal(tagsReady({ ...on, aiTagging: false }, EMPTY_TAGS), true);
+  assert.equal(tagsReady(null, EMPTY_TAGS), true);
+
+  // «Подтвердить у всех»: пустой набор превращается именно в «без тегов», а не в «подтверждено».
+  assert.deepEqual(confirmTags({ ...EMPTY_TAGS, tagIds: ['2'] }), { tagIds: ['2'], suggested: [], confirmed: true, confirmedWithoutTags: false });
+  assert.deepEqual(confirmTags(EMPTY_TAGS), { tagIds: [], suggested: [], confirmed: false, confirmedWithoutTags: true });
+
+  // Сколько задач пакета ещё ждут подтверждения — это число видно на кнопке.
+  assert.equal(pendingTagCount(on, [EMPTY_TAGS, { ...EMPTY_TAGS, confirmedWithoutTags: true }]), 1);
+  assert.equal(pendingTagCount({ ...on, requireConfirmation: false }, [EMPTY_TAGS, EMPTY_TAGS]), 0);
+});
+
 test('сортировка реестра по заголовку: А→Я, Я→А, обычный порядок', async () => {
   const { nextSortState, sortMark, EMPTY_FILTERS, registryQuery } = await load('lib/task-registry-view.ts');
   let cur = { sort: EMPTY_FILTERS.sort, dir: EMPTY_FILTERS.dir };

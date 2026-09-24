@@ -129,6 +129,32 @@ export interface AssigneeSuggestion {
 }
 
 /** Пакет задач из быстрой команды: итог, созданные задачи и то, что не получилось (ТЗ-10). */
+/** Тег организации. `used` — сколько задач им помечено (нужно в настройках). */
+export interface TagItem {
+  id: string;
+  name: string;
+  color: string;
+  is_default?: boolean;
+  ai_description?: string | null;
+  archived_at?: string | null;
+  used?: number;
+  /** Откуда тег на задаче: поставил человек, предложил ИИ, проставила система. */
+  source?: string;
+}
+
+export interface TagSettings {
+  aiTagging: boolean;
+  requireConfirmation: boolean;
+  whoCanCreate: 'all' | 'managers' | 'admins';
+}
+
+export interface TagSuggestion {
+  tagId: string;
+  name: string;
+  color: string;
+  confidence: number;
+}
+
 export interface TaskBatch {
   batchId: string;
   status: 'completed' | 'partial' | 'failed';
@@ -488,6 +514,32 @@ export const api = {
   patchChecklist: (taskId: string, iid: string, b: { text?: string; isDone?: boolean }) => request<any>('PATCH', `/tasks/${taskId}/checklist/${iid}`, b),
   deleteChecklist: (taskId: string, iid: string) => request<any>('DELETE', `/tasks/${taskId}/checklist/${iid}`),
   listLabels: () => request<any[]>('GET', '/labels'),
+  /*
+    Теги задач (ТЗ «Теги задач + автоматическая AI-разметка»).
+
+    Это те же метки, выросшие до тегов: свои у каждой организации, с цветом, описанием
+    для ИИ, архивом вместо удаления и политикой компании. Список приходит вместе с
+    настройками — иначе каждое окно спрашивало бы их вторым запросом.
+  */
+  listTags: (archived = false) =>
+    request<{ items: TagItem[]; settings: TagSettings }>('GET', `/tags${archived ? '?archived=1' : ''}`),
+  createTag: (b: { name: string; color?: string; aiDescription?: string; force?: boolean }) =>
+    request<TagItem>('POST', '/tags', b),
+  updateTag: (id: string, b: { name?: string; color?: string; aiDescription?: string }) =>
+    request<TagItem>('PATCH', `/tags/${id}`, b),
+  archiveTag: (id: string) => request<{ ok: boolean }>('POST', `/tags/${id}/archive`, {}),
+  restoreTag: (id: string) => request<{ ok: boolean }>('POST', `/tags/${id}/restore`, {}),
+  tagSettings: () => request<TagSettings>('GET', '/tags/settings'),
+  saveTagSettings: (b: Partial<TagSettings>) => request<TagSettings>('POST', '/tags/settings', b),
+  /** Подсказки ИИ по тексту задачи: ничего не сохраняют, решает человек. */
+  suggestTags: (b: { title: string; description?: string; checklist?: string[]; projectName?: string }) =>
+    request<{
+      suggestions: TagSuggestion[]; maybe: TagSuggestion[]; proposed: string | null;
+      aiTagging: boolean; offline?: boolean;
+    }>('POST', '/tags/suggest', b),
+  taskTags: (taskId: string) => request<TagItem[]>('GET', `/tasks/${taskId}/tags`),
+  setTaskTags: (taskId: string, tagIds: string[], suggestedTagIds: string[] = []) =>
+    request<{ items: TagItem[] }>('POST', `/tasks/${taskId}/tags`, { tagIds, suggestedTagIds }),
   createLabel: (b: { name: string; color?: string }) => request<any>('POST', '/labels', b),
   taskLabels: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/labels`),
   assignLabel: (taskId: string, labelId: string) => request<any>('POST', `/tasks/${taskId}/labels/${labelId}`),
@@ -679,6 +731,8 @@ export const api = {
     assigneeId?: string; managerId?: string;
     priority?: string; deadlineAt?: string; estimateHours?: number; labelIds?: string[];
     requiresApproval?: boolean; checklist?: string[];
+    /* Теги: что предложил ИИ и что подтвердил человек (ТЗ по тегам, п. 52). */
+    suggestedTagIds?: string[]; tagsConfirmed?: boolean; confirmedWithoutTags?: boolean;
   }) =>
     request<Task>('POST', '/tasks', b),
   /**
@@ -1271,9 +1325,12 @@ export const api = {
   patchMessageTaskDraft: (draftId: string, body: Record<string, unknown>) =>
     request<any>('PATCH', `/chats/task-drafts/${draftId}`, body),
   askMessageTaskDraft: (draftId: string) => request<any>('POST', `/chats/task-drafts/${draftId}/ask`, {}),
-  confirmMessageTaskDraft: (draftId: string) =>
+  confirmMessageTaskDraft: (
+    draftId: string,
+    tags?: { tagIds?: string[]; suggestedTagIds?: string[]; tagsConfirmed?: boolean; confirmedWithoutTags?: boolean },
+  ) =>
     request<{ taskId: string; title: string; projectId: string; already: boolean }>(
-      'POST', `/chats/task-drafts/${draftId}/confirm`, {},
+      'POST', `/chats/task-drafts/${draftId}/confirm`, tags ?? {},
     ),
   cancelMessageTaskDraft: (draftId: string) => request<any>('POST', `/chats/task-drafts/${draftId}/cancel`, {}),
   /** Незавершённые черновики чата — строки состояния под сообщениями. */
@@ -1819,6 +1876,8 @@ export const api = {
       items: (Task & {
         project_name: string; column_name: string; assignee_name: string | null;
         manager_name: string | null; is_mine: boolean; overdue: boolean; unread: number;
+        /** Теги строки: их рисуют плашками прямо в списке. */
+        tags: { id: string; name: string; color: string }[];
       })[];
       total: number; page: number; pageSize: number; pages: number;
     }>('GET', `/tasks/registry?${query}`),

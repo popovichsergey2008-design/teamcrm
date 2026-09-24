@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
+import { TagsService } from '../tags/tags.service';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TaskRow, TasksRepository } from './tasks.repository';
@@ -47,6 +48,8 @@ export class TasksService {
     private readonly outbox: IntegrationOutboxService,
     private readonly notify: NotificationsService,
     private readonly recurrence: TaskRecurrenceRepository,
+    /** Теги: плашки в реестре и проверка «подтвердил ли постановщик» при создании. */
+    private readonly tags: TagsService,
   ) {}
 
   /**
@@ -78,11 +81,24 @@ export class TasksService {
     for (const u of await this.reads.byIds(tenantId, userId, rows.map((r) => String(r.id)))) {
       unread.set(String(u.task_id), Number(u.n));
     }
+    /*
+      Теги строк — одним запросом на страницу, а не по запросу на задачу.
+
+      Их рисуют плашками прямо в списке, и без этого пятьдесят строк означали бы
+      пятьдесят обращений в базу ради пяти слов в каждой.
+    */
+    const tagsByTask = new Map<string, { id: string; name: string; color: string }[]>();
+    for (const t of await this.tags.ofTasks(tenantId, rows.map((r) => String(r.id)))) {
+      const arr = tagsByTask.get(String(t.task_id)) ?? [];
+      arr.push({ id: String(t.id), name: t.name, color: t.color });
+      tagsByTask.set(String(t.task_id), arr);
+    }
     const page = Math.max(1, Math.trunc(Number(filters.page) || 1));
     return {
       // total из строки убираем: он одинаков во всех и относится к выборке, а не к задаче
       items: rows.map((r) => ({
         ...r, total: undefined, unread: unread.get(String(r.id)) ?? 0,
+        tags: tagsByTask.get(String(r.id)) ?? [],
       })),
       total,
       page,
@@ -139,6 +155,26 @@ export class TasksService {
    */
   leftovers(tenantId: string, userId: string, today: string) {
     return this.repo.leftovers(tenantId, userId, today);
+  }
+
+  /**
+   * Задача, которую заводит ЧЕЛОВЕК из формы.
+   *
+   * Отличается от `create` одним: проверкой тегов. Импорты, повторяющиеся задачи,
+   * разбор встреч и служба заботы создают задачи тем же `create`, и требовать от них
+   * подтверждения тегов нельзя — подтверждать там некому, а работа встанет.
+   */
+  async createByPerson(tenantId: string, dto: CreateTaskDto, user: { userId: string; role: string }): Promise<TaskRow> {
+    await this.tags.assertGate(tenantId, {
+      tagIds: dto.labelIds, tagsConfirmed: dto.tagsConfirmed, confirmedWithoutTags: dto.confirmedWithoutTags,
+    });
+    const task = await this.create(tenantId, dto, user.userId);
+    // Источник тега и поправки человека — сразу после создания: через месяц по задаче
+    // видно, поставил тег человек или предложил ИИ.
+    await this.tags.applyToNewTask(tenantId, user, String(task.id), String(task.project_id), {
+      tagIds: dto.labelIds, suggestedTagIds: dto.suggestedTagIds,
+    });
+    return task;
   }
 
   async create(tenantId: string, dto: CreateTaskDto, actorId: string | null = null): Promise<TaskRow> {

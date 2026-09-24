@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonList } from '../components/Skeleton';
-import { api } from '../lib/api';
-import { deadlineBadge, priorityBadge } from '../lib/labels';
+import { api, TagItem } from '../lib/api';
+import { deadlineBadge, labelTextColor, priorityBadge } from '../lib/labels';
 import {
   EMPTY_FILTERS, REGISTRY_DUES, REGISTRY_SORTS, RegistryFilters, RegistryScope, ROLE_TABS,
   SortColumn, activeFilterCount, emptyHint, nextSortState, pageWindow, rangeLabel,
@@ -96,6 +96,9 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
   const [projects, setProjects] = useState<Project[]>([]);
   const [people, setPeople] = useState<{ id: string; full_name: string }[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  /** Теги компании — для фильтра и плашек в строках. */
+  const [tags, setTags] = useState<TagItem[]>([]);
+  useEffect(() => { api.listTags().then((r) => setTags(r.items)).catch(() => setTags([])); }, []);
 
   // Срез приходит из адреса: по ссылке /tasks/delegated экран обязан открыться на
   // «От меня», а не на том, что было выбрано в прошлый раз.
@@ -307,6 +310,38 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
           {REGISTRY_DUES.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
         </select>
 
+        {/*
+          Теги отбором «любой из выбранных»: человек отмечает два-три, чтобы РАСШИРИТЬ
+          выборку («покажи программные и дизайнерские»), а не сузить её до задач,
+          помеченных всеми сразу, — таких обычно нет вовсе.
+        */}
+        {tags.length > 0 && (
+          <div className="registry-tagfilter">
+            {tags.slice(0, 12).map((t) => {
+              const on = filters.tagIds.includes(String(t.id));
+              return (
+                <button
+                  key={t.id}
+                  className={`label-chip ${on ? '' : 'label-off'}`}
+                  style={{
+                    background: on ? t.color : 'transparent',
+                    borderColor: t.color,
+                    color: on ? labelTextColor(t.color) : undefined,
+                  }}
+                  aria-pressed={on}
+                  onClick={() => patch({
+                    tagIds: on
+                      ? filters.tagIds.filter((x) => x !== String(t.id))
+                      : [...filters.tagIds, String(t.id)],
+                  })}
+                >
+                  {t.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <select value={filters.sort} onChange={(e) => patch({ sort: e.target.value })} aria-label="Сортировка">
           {REGISTRY_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
@@ -361,6 +396,8 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
               onSort={sortBy}
             />
             <SortHead column="deadline" label="Срок" filters={filters} onSort={sortBy} />
+            {/* Теги — последним столбцом: по ним ищут глазами, но читают строку слева направо. */}
+            <span role="columnheader">Теги</span>
           </div>
           {rows.map((t) => {
             const prio = priorityBadge(t.priority);
@@ -401,6 +438,30 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
                   {due
                     ? <span className={due.cls} title={due.title}>{due.text}</span>
                     : <span className="registry-nobody">{shortDate(t.deadline_at) || 'без срока'}</span>}
+                </span>
+                {/*
+                  Теги плашками. Не кнопками: строка сама по себе кнопка, а кнопка
+                  внутри кнопки — сломанная разметка и ловушка для клавиатуры. Отбор по
+                  тегу делается плашками в фильтрах над списком.
+
+                  Больше двух не показываем: иначе одна задача с шестью тегами
+                  растягивает столбец и ломает всю таблицу.
+                */}
+                <span className="registry-cell-tags" role="cell">
+                  {(t.tags ?? []).slice(0, 2).map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="label-chip label-chip-sm"
+                      style={{ background: tag.color, color: labelTextColor(tag.color) }}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                  {(t.tags?.length ?? 0) > 2 && (
+                    <span className="registry-tags-more" title={(t.tags ?? []).map((x) => x.name).join(', ')}>
+                      +{(t.tags?.length ?? 0) - 2}
+                    </span>
+                  )}
                 </span>
               </button>
             );

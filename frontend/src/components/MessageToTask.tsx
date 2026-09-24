@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, TagSettings } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { humanSize } from '../lib/attachments';
+import { TaskTagsField } from './TaskTagsField';
+import { EMPTY_TAGS, tagsReady, TagsValue } from '../lib/tags';
 
 /** Черновик задачи из сообщения — то, что отдаёт сервер и правит человек. */
 export interface MessageTaskDraft {
@@ -62,6 +64,10 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [asked, setAsked] = useState(false);
+  /** Теги задачи: тем же полем, что в форме и в быстрой команде. */
+  const [tags, setTags] = useState<TagsValue>(EMPTY_TAGS);
+  const [tagSettings, setTagSettings] = useState<TagSettings | null>(null);
+  useEffect(() => { api.tagSettings().then(setTagSettings).catch(() => setTagSettings(null)); }, []);
 
   useEffect(() => {
     let dead = false;
@@ -110,7 +116,12 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
     if (!draft.title.trim()) return setErr('Назовите задачу');
     setBusy(true); setErr('');
     try {
-      const res = await api.confirmMessageTaskDraft(draft.draftId);
+      const res = await api.confirmMessageTaskDraft(draft.draftId, {
+        tagIds: tags.tagIds,
+        suggestedTagIds: tags.suggested,
+        tagsConfirmed: tags.confirmed,
+        confirmedWithoutTags: tags.confirmedWithoutTags,
+      });
       onCreated(String(res.taskId), res.title, String(res.projectId ?? draft.projectId));
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Задача не создалась');
@@ -295,9 +306,21 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
               </button>
             </div>
 
+            <TaskTagsField
+              task={{ title: draft.title, description: draft.description, checklist: draft.checklist }}
+              value={tags}
+              onChange={setTags}
+            />
+
             {err && <div className="error-text">{err}</div>}
             <div className="drawer-row">
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => void create()} disabled={busy}>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={() => void create()}
+                disabled={busy || !tagsReady(tagSettings, tags)}
+                title={tagsReady(tagSettings, tags) ? undefined : 'Подтвердите теги задачи'}
+              >
                 {busy ? 'Создаю…' : 'Создать задачу'}
               </button>
               {/* Отказ — явным действием: закрытое окно черновик не отменяет, он может ждать ответа. */}

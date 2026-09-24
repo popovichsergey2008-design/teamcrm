@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { TaskCardWindow } from './TaskCardWindow';
-import { api, ApiError, VoiceJob } from '../lib/api';
+import { TaskTagsField } from './TaskTagsField';
+import { confirmTags, EMPTY_TAGS, pendingTagCount } from '../lib/tags';
+import { api, ApiError, TagSettings, VoiceJob } from '../lib/api';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { DatePicker } from './DatePicker';
 import { VoiceStatus } from './VoiceStatus';
@@ -79,6 +81,9 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   const [stage, setStage] = useState<'compose' | 'done'>('compose');
   /** Задача, открытая карточкой поверх списка созданных. */
   const [cardTask, setCardTask] = useState<{ projectId: string; taskId: string } | null>(null);
+  /** Политика компании по тегам: от неё зависит, ждать ли подтверждения. */
+  const [tagSettings, setTagSettings] = useState<TagSettings | null>(null);
+  useEffect(() => { api.tagSettings().then(setTagSettings).catch(() => setTagSettings(null)); }, []);
 
   const parse = async (raw?: string) => {
     const command = (raw ?? text).trim();
@@ -179,6 +184,11 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         ...draft.task,
         // пустые строки в шагах — след правки, а не шаг: до задачи они не доходят
         checklist: (draft.task.checklist ?? []).map((x: string) => x.trim()).filter(Boolean),
+        // Теги и подтверждение постановщика: без них сервер задачу не создаст.
+        tagIds: (draft.tags ?? EMPTY_TAGS).tagIds,
+        suggestedTagIds: (draft.tags ?? EMPTY_TAGS).suggested,
+        tagsConfirmed: (draft.tags ?? EMPTY_TAGS).confirmed,
+        confirmedWithoutTags: (draft.tags ?? EMPTY_TAGS).confirmedWithoutTags,
       },
     }
     : { intent: 'create_deal', deal: draft.deal });
@@ -310,6 +320,18 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   */
   const needProject = drafts
     .filter((d, i) => !done.includes(i) && d.intent === 'create_task' && d.task && !d.task.projectId).length;
+  /*
+    Теги, которые ещё не подтвердил постановщик (ТЗ по тегам, п. 34).
+
+    Пакет не создаётся, пока хотя бы у одной задачи теги «ожидают»: иначе половина
+    уедет с подтверждёнными тегами, половина — без, и разобрать это потом нельзя.
+    Кнопка честно говорит, сколько задач ждёт.
+  */
+  const pendingTags = pendingTagCount(
+    tagSettings,
+    drafts.filter((d, i) => !done.includes(i) && d.intent === 'create_task' && d.task?.projectId)
+      .map((d) => d.tags ?? EMPTY_TAGS),
+  );
 
   // Создавали по одной и добили последнюю — итог показываем сами, кнопку искать не надо.
   useEffect(() => {
@@ -472,10 +494,35 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           />
         ))}
 
+        {/* Большой пакет: подтвердить подсказки разом, увидев их все (ТЗ, п. 35). */}
+        {drafts.length > 1 && pendingTags > 0 && !busy && (
+          <button
+            className="btn btn-sm"
+            style={{ width: '100%', marginTop: 8 }}
+            onClick={() => setDrafts((prev) => prev.map((d) => (d.intent === 'create_task'
+              ? { ...d, tags: confirmTags(d.tags ?? EMPTY_TAGS) } : d)))}
+          >
+            <Icon name="check" size={13} /> Подтвердить теги у всех ({pendingTags})
+          </button>
+        )}
         {drafts.length > 1 && readyCount > 1 && (
-          <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={applyAll} disabled={busy}>
+          <button
+            className="btn btn-primary btn-sm"
+            style={{ width: '100%', marginTop: 8 }}
+            onClick={applyAll}
+            disabled={busy || pendingTags > 0}
+            title={pendingTags > 0 ? `Подтвердите теги у ${pendingTags} задач` : undefined}
+          >
             {busy ? 'Создаю…' : `Создать ${readyCount} ${plural(readyCount, 'задачу', 'задачи', 'задач')}`}
           </button>
+        )}
+        {pendingTags > 0 && !busy && (
+          <div className="nl-need-project">
+            <Icon name="alert" size={13} />
+            {pendingTags === 1
+              ? 'У одной задачи не подтверждены теги — подтвердите их в карточке ниже.'
+              : `Задач с неподтверждёнными тегами: ${pendingTags}.`}
+          </div>
         )}
         {/* Сколько задач ждёт проекта — видно до нажатия, а не после (ТЗ-10, этап 1). */}
         {needProject > 0 && !busy && (
@@ -607,6 +654,17 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
           </select>
           <DatePicker value={draft.task.deadline ?? ''} onChange={(v) => onPatchTask({ deadline: v || null })} placeholder="срок не задан" />
         </div>
+
+        <TaskTagsField
+          compact
+          task={{
+            title: String(draft.task.title ?? ''),
+            description: String(draft.task.description ?? ''),
+            checklist: draft.task.checklist ?? [],
+          }}
+          value={draft.tags ?? EMPTY_TAGS}
+          onChange={(tags) => onPatchDraft({ tags })}
+        />
 
         <label className="notify-row" title="Исполнитель сдаст работу, а завершите её вы">
           <input type="checkbox" checked={draft.task.requiresApproval !== false}

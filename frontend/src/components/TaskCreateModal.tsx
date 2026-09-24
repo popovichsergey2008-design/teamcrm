@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { DatePicker } from './DatePicker';
 import { Icon } from './Icon';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, TagSettings } from '../lib/api';
 import type { User } from '../types';
-import { labelTextColor } from '../lib/labels';
+import { TaskTagsField } from './TaskTagsField';
+import { EMPTY_TAGS, tagsReady, TagsValue } from '../lib/tags';
 import { navigate } from '../lib/router';
 import { overlayProps } from '../lib/overlay';
 import { SuggestAssignee } from './SuggestAssignee';
@@ -36,8 +37,14 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const [priority, setPriority] = useState('normal');
   const [deadline, setDeadline] = useState('');
   const [estimate, setEstimate] = useState('');
-  const [labels, setLabels] = useState<any[]>([]);
-  const [picked, setPicked] = useState<string[]>([]);
+  /*
+    Теги задачи (ТЗ по тегам). Старый выбор меток заменён общим полем: ИИ подбирает,
+    человек подтверждает, и до подтверждения задача не создаётся. Одно поле на все
+    места, где рождается задача, — иначе правила в форме, в быстрой команде и в чате
+    неизбежно разойдутся.
+  */
+  const [tags, setTags] = useState<TagsValue>(EMPTY_TAGS);
+  const [tagSettings, setTagSettings] = useState<TagSettings | null>(null);
   /**
    * «Не завершать без согласования» — по умолчанию включено.
    *
@@ -68,7 +75,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const [dupes, setDupes] = useState<Awaited<ReturnType<typeof api.taskDuplicates>>['items']>([]);
   const [dupesHidden, setDupesHidden] = useState(false);
 
-  useEffect(() => { api.listLabels().then(setLabels).catch(() => undefined); }, []);
+  // Политика компании по тегам: от неё зависит, ждать ли подтверждения перед созданием.
+  useEffect(() => { api.tagSettings().then(setTagSettings).catch(() => setTagSettings(null)); }, []);
 
   // Запрос с задержкой и только на осмысленное название: на каждую букву ходить
   // в базу незачем, а по двум словам похоже вообще всё.
@@ -82,9 +90,6 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
     }, 600);
     return () => clearTimeout(t);
   }, [title, description]);
-
-  const toggleLabel = (id: string) =>
-    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   const addFiles = (list: FileList | File[] | null) => {
     if (!list?.length) return;
@@ -111,7 +116,10 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         // поле даёт локальное время без зоны — приводим к ISO, как это делает карточка
         deadlineAt: deadline ? new Date(deadline).toISOString() : undefined,
         estimateHours: estimate ? Number(estimate) : undefined,
-        labelIds: picked.length ? picked : undefined,
+        labelIds: tags.tagIds.length ? tags.tagIds : undefined,
+        suggestedTagIds: tags.suggested.length ? tags.suggested : undefined,
+        tagsConfirmed: tags.confirmed,
+        confirmedWithoutTags: tags.confirmedWithoutTags,
         requiresApproval,
       });
       setCreatedId(String(created.id));
@@ -247,26 +255,11 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
           <DatePicker value={deadline} onChange={setDeadline} withTime warnPast placeholder="срок не задан" />
         </div>
 
-        {labels.length > 0 && (
-          <div className="field"><label>Метки</label>
-            <div className="label-pick">
-              {labels.map((l) => {
-                const has = picked.includes(String(l.id));
-                return (
-                  <button
-                    key={l.id}
-                    type="button"
-                    className={`label-chip ${has ? '' : 'label-off'}`}
-                    style={{ background: has ? l.color : 'transparent', borderColor: l.color, color: has ? labelTextColor(l.color) : undefined }}
-                    onClick={() => toggleLabel(String(l.id))}
-                  >
-                    {l.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        <TaskTagsField
+          task={{ title, description, projectName: null }}
+          value={tags}
+          onChange={setTags}
+        />
 
         <label className="notify-row" title="Исполнитель сдаст работу, а завершите её вы">
           <input
@@ -327,7 +320,14 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
             Готово — открыть доску
           </button>
         ) : (
-          <button className="btn btn-primary" style={{ width: '100%', marginTop: 6 }} disabled={busy} onClick={submit}>
+          <button
+            className="btn btn-primary"
+            style={{ width: '100%', marginTop: 6 }}
+            /* Теги не подтверждены — создавать нельзя: то же правило проверяет сервер. */
+            disabled={busy || !tagsReady(tagSettings, tags)}
+            onClick={submit}
+            title={tagsReady(tagSettings, tags) ? undefined : 'Подтвердите теги задачи'}
+          >
             {busy
               ? (files.length ? 'Создаём и грузим файлы…' : 'Создаём…')
               : (files.length ? `Создать задачу и прикрепить ${files.length}` : 'Создать задачу')}

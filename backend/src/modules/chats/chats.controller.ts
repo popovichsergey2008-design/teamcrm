@@ -249,8 +249,11 @@ export class ChatsController {
   }
 
   @Post('task-drafts/:draftId/confirm')
-  confirmTaskDraft(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string) {
-    return this.drafts.confirm(u.tenantId, u, draftId);
+  confirmTaskDraft(
+    @CurrentUser() u: AuthUser, @Param('draftId') draftId: string,
+    @Body() body: { tagIds?: string[]; suggestedTagIds?: string[]; tagsConfirmed?: boolean; confirmedWithoutTags?: boolean },
+  ) {
+    return this.drafts.confirm(u.tenantId, u, draftId, body ?? {});
   }
 
   @Post('task-drafts/:draftId/cancel')

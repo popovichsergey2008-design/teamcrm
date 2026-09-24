@@ -13,9 +13,10 @@ import { TaskReadsModule } from './task-reads.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { IntegrationOutboxModule } from '../integrations/outbox/integration-outbox.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { TagsModule } from '../tags/tags.module';
 
 @Module({
-  imports: [ProjectsModule, KnowledgeModule, IntegrationOutboxModule, NotificationsModule, TaskReadsModule],
+  imports: [ProjectsModule, KnowledgeModule, IntegrationOutboxModule, NotificationsModule, TaskReadsModule, TagsModule],
   controllers: [TasksController, HandoffGateController],
   providers: [
     TasksService, TasksRepository, TaskActivityRepository, TaskRecurrenceRepository, RecurrenceScheduler,

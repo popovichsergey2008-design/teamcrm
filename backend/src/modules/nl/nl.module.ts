@@ -9,13 +9,15 @@ import { FilesModule } from '../files/files.module';
 import { UsersModule } from '../users/users.module';
 import { BatchRepository } from './batch.repository';
 import { BatchService } from './batch.service';
+import { TagsModule } from '../tags/tags.module';
 
 /** NL-команда / Zero-UI: естественный язык → создание задачи/сделки (с подтверждением). */
 @Module({
   // FilesModule — чтобы сохранить надиктовку до обработки: аудио должно пережить
   // любую ошибку разбора, иначе человек диктует десять минут заново
   // UsersModule — кандидаты для автоподбора исполнителя (ТЗ-10, этап 4).
-  imports: [TasksModule, DealsModule, FilesModule, UsersModule],
+  // TagsModule — подтверждение тегов перед созданием задачи (ТЗ по тегам).
+  imports: [TasksModule, DealsModule, FilesModule, UsersModule, TagsModule],
   controllers: [NlController],
   providers: [NlService, VoiceService, VoiceRepository, BatchService, BatchRepository],
   exports: [NlService],

@@ -390,7 +390,11 @@ export class ChatTaskDraftService {
    * Повтор безопасен: у черновика уже есть номер задачи — возвращаем его, а не создаём
    * вторую. Это и есть защита от дублей при двойном нажатии и обрыве связи.
    */
-  async confirm(tenantId: string, user: { userId: string; role: string }, draftId: string) {
+  async confirm(
+    tenantId: string, user: { userId: string; role: string }, draftId: string,
+    /** Теги и подтверждение постановщика: без них сервер задачу не создаст (ТЗ по тегам). */
+    tags?: { tagIds?: string[]; suggestedTagIds?: string[]; tagsConfirmed?: boolean; confirmedWithoutTags?: boolean },
+  ) {
     const draft = await this.mine(tenantId, user, draftId);
     if (draft.task_id) {
       return { taskId: String(draft.task_id), title: draft.title, projectId: draft.project_id, already: true };
@@ -408,6 +412,10 @@ export class ChatTaskDraftService {
         deadline: draft.deadline ?? undefined,
         priority: draft.priority,
         checklist: draft.checklist,
+        tagIds: tags?.tagIds ?? [],
+        suggestedTagIds: tags?.suggestedTagIds ?? [],
+        tagsConfirmed: tags?.tagsConfirmed === true,
+        confirmedWithoutTags: tags?.confirmedWithoutTags === true,
       },
     });
     const created = res?.task;

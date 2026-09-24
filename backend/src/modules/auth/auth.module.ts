@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TagsModule } from '../tags/tags.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
@@ -10,7 +11,7 @@ import { SessionsService } from './sessions.service';
 import { SessionsController } from './sessions.controller';
 
 @Module({
-  imports: [TenantsModule, UsersModule],
+  imports: [TenantsModule, UsersModule, TagsModule],
   controllers: [AuthController, SessionsController],
   providers: [AuthService, RefreshTokenRepository, PasswordResetService, PasswordResetRepository, SessionsService],
   exports: [AuthService, RefreshTokenRepository, SessionsService],
