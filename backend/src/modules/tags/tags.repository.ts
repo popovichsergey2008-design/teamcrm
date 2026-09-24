@@ -153,10 +153,13 @@ export class TagsRepository {
     await this.db.query(`DELETE FROM task_labels WHERE tenant_id=$1 AND task_id=$2`, [o.tenantId, o.taskId]);
     for (const t of o.tags) {
       await this.db.query(
+        // Приведение типов обязательно: в INSERT ... SELECT Postgres не выводит тип
+        // параметра из столбца, и NULL без приведения роняет запрос целиком.
         `INSERT INTO task_labels (tenant_id, task_id, label_id, source, ai_confidence, confirmed_by, confirmed_at)
-              SELECT $1, $2, l.id, $4, $5, $6, CASE WHEN $6 IS NULL THEN NULL ELSE now() END
+              SELECT $1::bigint, $2::bigint, l.id, $4::text, $5::numeric, $6::bigint,
+                     CASE WHEN $6::bigint IS NULL THEN NULL ELSE now() END
                 FROM labels l
-               WHERE l.id = $3::bigint AND l.tenant_id = $1
+               WHERE l.id = $3::bigint AND l.tenant_id = $1::bigint
          ON CONFLICT (task_id, label_id) DO NOTHING`,
         [o.tenantId, o.taskId, t.tagId, t.source ?? 'manual', t.confidence ?? null, o.confirmedBy],
       );
@@ -174,9 +177,9 @@ export class TagsRepository {
     for (const d of defaults) {
       await this.db.query(
         `INSERT INTO labels (tenant_id, name, color, is_default, normalized_name, ai_description)
-              SELECT $1, $2, $3, TRUE, $4, $5
+              SELECT $1::bigint, $2::text, $3::text, TRUE, $4::text, $5::text
                WHERE NOT EXISTS (
-                 SELECT 1 FROM labels WHERE tenant_id=$1 AND normalized_name=$4
+                 SELECT 1 FROM labels WHERE tenant_id=$1::bigint AND normalized_name=$4::text
                )`,
         [tenantId, d.name, d.color, normalizeTagName(d.name), d.hint],
       );

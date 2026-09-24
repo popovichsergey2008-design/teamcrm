@@ -46,7 +46,10 @@ describe('теги: имя, дубли, доверие к ИИ, право со�
     expect(tagsGatePassed(on, { tagIds: ['1'], confirmed: true })).toBe(true);
     expect(tagsGatePassed(on, { confirmedWithoutTags: true })).toBe(true);
     // Теги выбраны, но не подтверждены — это состояние «интерфейс не спросил».
-    expect(tagsGatePassed(on, { tagIds: ['1'] })).toBe(false);
+    // Один список тегов без подтверждения — это старый клиент (его шлёт и импорт):
+    // по нему нельзя судить, спрашивали ли человека, поэтому не мешаем.
+    expect(tagsGatePassed(on, { tagIds: ['1'] })).toBe(true);
+    expect(tagsGatePassed(on, { tagIds: ['1'], confirmed: false })).toBe(false);
     expect(tagsGatePassed(on, { confirmed: true, tagIds: [] })).toBe(false);
     expect(tagsGatePassed(on, { tagIds: [], confirmed: false })).toBe(false);
     /*

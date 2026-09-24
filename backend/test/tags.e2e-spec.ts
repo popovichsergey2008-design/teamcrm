@@ -77,10 +77,14 @@ describe('теги задач (e2e)', () => {
     /*
       А клиент, который о тегах не знает (уже установленное приложение на телефоне,
       импорт, интеграция), работает как раньше: правило появилось сегодня, и отнимать
-      у него постановку задач нельзя.
+      у него постановку задач нельзя. Даже если он присылает метки — их шлёт и старая
+      форма, и по ним нельзя судить, спрашивали ли человека.
     */
     await http.post('/api/tasks').set(O)
       .send({ projectId: String(project.id), title: 'Задача из старого клиента' }).expect(201);
+    await http.post('/api/tasks').set(O)
+      .send({ projectId: String(project.id), title: 'Старый клиент с метками', labelIds: [String(seo.id)] })
+      .expect(201);
 
     // Подтвердили набор — создаётся.
     const withTag = (await http.post('/api/tasks').set(O).send({
@@ -103,8 +107,11 @@ describe('теги задач (e2e)', () => {
     const filtered = (await http
       .get(`/api/tasks/registry?scope=all&tagIds=${seo.id}&dayEnd=${dayEnd}`)
       .set(O).expect(200)).body.data;
-    expect(filtered.items.map((t: any) => String(t.id))).toEqual([String(withTag.id)]);
-    expect(filtered.items[0].tags.map((t: any) => t.name)).toEqual(['SEO']);
+    const ids = filtered.items.map((t: any) => String(t.id));
+    expect(ids).toContain(String(withTag.id));
+    expect(ids).not.toContain(String(noTags.id));
+    // В выборке нет ни одной задачи без этого тега — иначе фильтр ничего не значит.
+    expect(filtered.items.every((t: any) => t.tags.some((x: any) => x.name === 'SEO'))).toBe(true);
 
     // Архив вместо удаления: тег остаётся у задачи, но исчезает из выбора новых.
     await http.post(`/api/tags/${seo.id}/archive`).set(O).expect(201);

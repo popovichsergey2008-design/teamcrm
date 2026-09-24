@@ -89,8 +89,12 @@ export function tagsGatePassed(
   input: { tagIds?: unknown[]; confirmed?: boolean; confirmedWithoutTags?: boolean },
 ): boolean {
   if (!policy.aiTagging || !policy.requireConfirmation) return true;
-  // Клиент вообще ничего не сказал о тегах — он их не умеет; не мешаем ему работать.
-  const aware = input.tagIds !== undefined || input.confirmed !== undefined || input.confirmedWithoutTags !== undefined;
+  /*
+    Знает ли клиент о правиле. Смотрим ТОЛЬКО на поля подтверждения: список тегов
+    (`labelIds`) присылают и старая форма, и импорты — по нему нельзя судить, спрашивали
+    ли человека. Поля подтверждения появились вместе с правилом, их шлёт наш интерфейс.
+  */
+  const aware = input.confirmed !== undefined || input.confirmedWithoutTags !== undefined;
   if (!aware) return true;
   if (input.confirmedWithoutTags === true) return true;
   const chosen = Array.isArray(input.tagIds) ? input.tagIds.filter(Boolean) : [];

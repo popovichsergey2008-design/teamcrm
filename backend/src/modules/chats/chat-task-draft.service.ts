@@ -412,10 +412,19 @@ export class ChatTaskDraftService {
         deadline: draft.deadline ?? undefined,
         priority: draft.priority,
         checklist: draft.checklist,
-        tagIds: tags?.tagIds ?? [],
-        suggestedTagIds: tags?.suggestedTagIds ?? [],
-        tagsConfirmed: tags?.tagsConfirmed === true,
-        confirmedWithoutTags: tags?.confirmedWithoutTags === true,
+        /*
+          Теги передаём ровно так, как их прислал клиент. Подставлять `false` за тех,
+          кто о тегах не знает, нельзя: для сервера это означало бы «спросили и не
+          подтвердили», и старое приложение потеряло бы возможность заводить задачи.
+        */
+        ...(tags?.tagsConfirmed !== undefined || tags?.confirmedWithoutTags !== undefined
+          ? {
+            tagIds: tags.tagIds ?? [],
+            suggestedTagIds: tags.suggestedTagIds ?? [],
+            tagsConfirmed: tags.tagsConfirmed === true,
+            confirmedWithoutTags: tags.confirmedWithoutTags === true,
+          }
+          : {}),
       },
     });
     const created = res?.task;
