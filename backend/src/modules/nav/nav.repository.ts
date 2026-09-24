@@ -28,7 +28,7 @@ export class NavRepository {
          (SELECT COUNT(*) FROM tasks t
             JOIN projects p ON p.id = t.project_id
             JOIN board_columns bc ON bc.id = t.column_id
-           WHERE t.tenant_id = $1
+           WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
              AND t.created_by = $2
              AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
              AND t.closed_at IS NULL
@@ -36,7 +36,7 @@ export class NavRepository {
              AND lower(bc.name) = ANY($4::text[]))::int AS decide,
          (SELECT COUNT(*) FROM tasks t
             JOIN projects p ON p.id = t.project_id
-           WHERE t.tenant_id = $1
+           WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
              AND t.assignee_id = $2
              AND t.closed_at IS NULL
              AND p.status <> 'archived'
@@ -45,7 +45,7 @@ export class NavRepository {
          (CASE WHEN $5 THEN (
             SELECT COUNT(*) FROM tasks t
               JOIN projects p ON p.id = t.project_id
-             WHERE t.tenant_id = $1
+             WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
                AND t.closed_at IS NULL
                AND p.status <> 'archived'
                AND t.deadline_at IS NOT NULL

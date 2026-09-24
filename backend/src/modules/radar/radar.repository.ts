@@ -72,7 +72,7 @@ export class RadarRepository {
            SELECT t.id, t.assignee_id, t.deadline_at
              FROM tasks t
              JOIN projects p ON p.id = t.project_id
-            WHERE t.tenant_id = $1 AND t.closed_at IS NULL AND p.status <> 'archived'
+            WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at IS NULL AND p.status <> 'archived'
          ) t ON t.assignee_id = u.id
          JOIN roles r ON r.id = u.role_id
         WHERE u.tenant_id = $1 AND u.is_active AND r.code <> 'client'
@@ -97,7 +97,7 @@ export class RadarRepository {
          JOIN projects p ON p.id = t.project_id
          JOIN board_columns bc ON bc.id = t.column_id
          LEFT JOIN users u ON u.id = t.assignee_id
-        WHERE t.tenant_id = $1
+        WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
           AND t.closed_at IS NULL
           AND p.status <> 'archived'
           AND lower(bc.name) = ANY($3::text[])

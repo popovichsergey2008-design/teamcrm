@@ -166,7 +166,7 @@ export class CalendarRepository {
       `SELECT t.id, t.title, t.deadline_at, t.project_id, t.status, t.priority, t.closed_at
          FROM tasks t
          JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
-        WHERE t.tenant_id = $1 AND t.deadline_at IS NOT NULL
+        WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.deadline_at IS NOT NULL
           AND t.deadline_at >= $3::timestamptz AND t.deadline_at < $4::timestamptz
           AND (t.assignee_id = $2 OR t.created_by = $2)
         ORDER BY t.deadline_at`,

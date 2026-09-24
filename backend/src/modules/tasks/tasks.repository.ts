@@ -55,6 +55,52 @@ export class TasksRepository {
     );
   }
 
+  /*
+    ───── Корзина (ТЗ «Central Security System», п. 22) ─────
+
+    Удалённая задача не исчезает: она получает `deleted_at` и пропадает из всех
+    человеческих списков — доска, реестр, фокус, поиск, счётчики. По номеру она
+    по-прежнему доступна: иначе её нельзя будет вернуть, а ссылки в переписке
+    («задача #1234») перестанут открываться.
+
+    Стереть насовсем — отдельное право и прежний, физический путь.
+  */
+  async trash(tenantId: string, taskId: string, actorId: string, reason: string | null): Promise<void> {
+    await this.db.query(
+      `UPDATE tasks SET deleted_at = now(), deleted_by = $3::bigint, delete_reason = $4
+        WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [tenantId, taskId, actorId, reason],
+    );
+  }
+
+  async restore(tenantId: string, taskId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE tasks SET deleted_at = NULL, deleted_by = NULL, delete_reason = NULL
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, taskId],
+    );
+  }
+
+  findTrashed(tenantId: string, taskId: string): Promise<TaskRow | null> {
+    return this.db.one<TaskRow>(
+      `SELECT * FROM tasks WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NOT NULL`,
+      [tenantId, taskId],
+    );
+  }
+
+  trashList(tenantId: string) {
+    return this.db.many<{ id: string; title: string; project_name: string; deleted_at: string; deleted_by_name: string | null; delete_reason: string | null }>(
+      `SELECT t.id::text, t.title, p.name AS project_name, t.deleted_at, u.full_name AS deleted_by_name, t.delete_reason
+         FROM tasks t
+         JOIN projects p ON p.id = t.project_id
+         LEFT JOIN users u ON u.id = t.deleted_by
+        WHERE t.tenant_id = $1 AND t.deleted_at IS NOT NULL
+        ORDER BY t.deleted_at DESC
+        LIMIT 200`,
+      [tenantId],
+    );
+  }
+
   // ---- перенос срока «Сделал» ----
   /** Предложить новый срок: сам deadline_at не трогаем, пока постановщик не ответил. */
   askDeadlineShift(tenantId: string, id: string, to: Date, byUserId: string): Promise<TaskRow | null> {
@@ -100,7 +146,8 @@ export class TasksRepository {
 
   listByProject(tenantId: string, projectId: string): Promise<TaskRow[]> {
     return this.db.many<TaskRow>(
-      `SELECT * FROM tasks WHERE tenant_id = $1 AND project_id = $2
+      // Удалённые в корзину на доске не показываем — см. `trash`.
+      `SELECT * FROM tasks WHERE tenant_id = $1 AND project_id = $2 AND deleted_at IS NULL
         ORDER BY column_id, position ASC`,
       [tenantId, projectId],
     );
@@ -172,7 +219,7 @@ export class TasksRepository {
       `SELECT t.*, p.name AS project_name
          FROM tasks t
          JOIN projects p ON p.id = t.project_id
-        WHERE t.tenant_id = $1 AND t.assignee_id = $2
+        WHERE t.tenant_id = $1 AND t.assignee_id = $2 AND t.deleted_at IS NULL
           AND t.closed_at IS NULL
           AND t.focus_date IS NOT NULL AND t.focus_date < $3::date
           AND p.status <> 'archived'

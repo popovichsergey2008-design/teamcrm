@@ -187,14 +187,36 @@ export class TasksController {
    * «вы уверены» — часы и их стоимость остаются в себестоимости проекта, но задача
    * с доски исчезает навсегда, и знать об этом человек должен ДО нажатия.
    */
+  /** Корзина: задачи, удалённые в последние дни, и возврат из неё. */
+  @Get('trash')
+  trash(@CurrentUser() user: AuthUser) {
+    return this.tasks.trashList(user.tenantId, user);
+  }
+
+  @Post(':id/restore')
+  restore(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.tasks.restore(user.tenantId, id, user);
+  }
+
+  /**
+   * Удаление задачи человеком.
+   *
+   * Обычное удаление кладёт задачу в корзину; `permanent=1` стирает насовсем и
+   * требует отдельного права (по умолчанию — только у владельца). Права, политика
+   * компании и запись в журнал — в слое безопасности.
+   */
   @Delete(':id')
   remove(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Query('confirmTimeLoss') confirmTimeLoss?: string,
+    @Query('permanent') permanent?: string,
+    @Query('reason') reason?: string,
   ) {
-    return this.tasks.remove(user.tenantId, id, user.userId, {
+    return this.tasks.removeByPerson(user.tenantId, id, user, {
       confirmTimeLoss: confirmTimeLoss === '1' || confirmTimeLoss === 'true',
+      permanent: permanent === '1' || permanent === 'true',
+      reason: reason ? String(reason).slice(0, 200) : undefined,
     });
   }
 

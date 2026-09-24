@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { TagsService } from '../tags/tags.service';
+import { SecurityService } from '../security/security.service';
+import { inScope, scopeOf } from '../security/permissions';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TaskRow, TasksRepository } from './tasks.repository';
@@ -50,6 +52,8 @@ export class TasksService {
     private readonly recurrence: TaskRecurrenceRepository,
     /** Теги: плашки в реестре и проверка «подтвердил ли постановщик» при создании. */
     private readonly tags: TagsService,
+    /** Права, политика и журнал: удаление задачи — действие из слоя безопасности. */
+    private readonly security: SecurityService,
   ) {}
 
   /**
@@ -348,6 +352,80 @@ export class TasksService {
    * по ней учтено, и подтверждает. Часы и стоимость при удалении не пропадают —
    * они переезжают в архив и продолжают считаться в себестоимости проекта.
    */
+  /**
+   * Удаление задачи человеком: право, корзина и запись в журнал безопасности.
+   *
+   * Раньше задача исчезала навсегда у любого сотрудника. Теперь у неё два пути:
+   * обычное удаление кладёт её в корзину (восстановить может тот, кому это
+   * разрешено), а стереть насовсем вправе только тот, у кого есть отдельное право —
+   * по умолчанию владелец. Причина простая: восстановить удалённое можно, а вернуть
+   * стёртое нельзя, и цена ошибки здесь несимметрична.
+   */
+  async removeByPerson(
+    tenantId: string, id: string, user: { userId: string; role: string },
+    actor?: { confirmTimeLoss?: boolean; permanent?: boolean; reason?: string },
+  ): Promise<{ deleted: true; trashed?: boolean }> {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+
+    const policy = await this.security.policyOf(tenantId);
+    if (policy.tasks.deleteMode === 'owner_only' && user.role !== 'owner') {
+      throw AppException.forbidden('В этой компании задачи удаляет только владелец');
+    }
+    if (policy.tasks.protectClosed && task.closed_at) {
+      throw AppException.forbidden('Завершённые задачи в этой компании не удаляют — они уходят в архив');
+    }
+
+    const perms = await this.security.require(tenantId, user.userId, 'task.delete', 'Удалять задачи вам не разрешено');
+    // Область права: «только свои» значит свои — и по постановщику, и по исполнителю.
+    const scope = scopeOf(perms, 'task.delete');
+    const mine = inScope(scope, {
+      isCreator: String(task.created_by ?? '') === String(user.userId),
+      isAssignee: String(task.assignee_id ?? '') === String(user.userId),
+    });
+    if (!mine) throw AppException.forbidden('Эту задачу удалять вам не разрешено — она не ваша');
+
+    const permanent = actor?.permanent === true;
+    if (permanent) {
+      await this.security.require(tenantId, user.userId, 'task.delete_permanently',
+        'Стереть задачу насовсем может только владелец — обычное удаление кладёт её в корзину');
+    } else {
+      await this.repo.trash(tenantId, id, user.userId, actor?.reason ?? null);
+      await this.security.record({
+        tenantId, actorId: user.userId, event: 'task.deleted', resourceType: 'task', resourceId: id,
+        metadata: { title: task.title, projectId: String(task.project_id), reason: actor?.reason ?? null },
+      });
+      this.realtime.emit(tenantId, task.project_id, 'task.deleted', { id, project_id: task.project_id } as any);
+      return { deleted: true, trashed: true };
+    }
+
+    await this.security.record({
+      tenantId, actorId: user.userId, event: 'task.permanently_deleted', resourceType: 'task', resourceId: id,
+      metadata: { title: task.title, projectId: String(task.project_id) },
+    });
+    return this.remove(tenantId, id, user.userId, actor);
+  }
+
+  /** Вернуть задачу из корзины. */
+  async restore(tenantId: string, id: string, user: { userId: string; role: string }) {
+    await this.security.require(tenantId, user.userId, 'task.restore', 'Восстанавливать задачи вам не разрешено');
+    const task = await this.repo.findTrashed(tenantId, id);
+    if (!task) throw AppException.notFound('Задача не найдена в корзине');
+    await this.repo.restore(tenantId, id);
+    await this.security.record({
+      tenantId, actorId: user.userId, event: 'task.restored', resourceType: 'task', resourceId: id,
+      metadata: { title: task.title },
+    });
+    this.realtime.emit(tenantId, task.project_id, 'task.updated', { id } as any);
+    return { restored: true };
+  }
+
+  /** Корзина: что удалено и кем. Видит тот, кому разрешено восстанавливать. */
+  async trashList(tenantId: string, user: { userId: string; role: string }) {
+    await this.security.require(tenantId, user.userId, 'task.restore', 'Корзина открыта тем, кто может восстанавливать');
+    return { items: await this.repo.trashList(tenantId) };
+  }
+
   async remove(
     tenantId: string, id: string, actorId: string | null = null,
     actor?: { confirmTimeLoss?: boolean },

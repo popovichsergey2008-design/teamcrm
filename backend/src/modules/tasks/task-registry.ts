@@ -217,7 +217,8 @@ export function buildRegistry(tenantId: string, userId: string, f: RegistryFilte
   const params: unknown[] = [tenantId, userId, f.dayEnd];
   // Роли объединяются через ИЛИ: задача попадает в список, если человек в ней
   // хоть кто-то из отмеченного.
-  const where: string[] = ['t.tenant_id = $1', `(${scopes.map(scopeCondition).join(' OR ')})`];
+  // Удалённое в корзину в реестре не показываем (слой безопасности, миграция 0129).
+  const where: string[] = ['t.tenant_id = $1', 't.deleted_at IS NULL', `(${scopes.map(scopeCondition).join(' OR ')})`];
 
   // Рабочий список — только живое: незакрытые задачи в неархивных проектах. Архивные
   // проекты иначе всплывали бы в каждом фильтре. Сняли «В работе» — показываем всё,

@@ -43,6 +43,7 @@ export class SearchRepository {
          JOIN board_columns bc ON bc.id = t.column_id
          LEFT JOIN users u ON u.id = t.assignee_id
         WHERE t.tenant_id = $1
+          AND t.deleted_at IS NULL
           AND p.status <> 'archived'
           AND (t.title ILIKE $2 ESCAPE '\\' OR t.description ILIKE $2 ESCAPE '\\' OR t.id::text = $3)
         ORDER BY (t.id::text = $3) DESC,
