@@ -56,7 +56,7 @@ describe('перенос срока «Сделал» (e2e)', () => {
     await http.post(`/api/tasks/${task.id}/assign`).set(O)
       .send({ assigneeId: String(mate.id), confirmOverload: true }).expect(201);
     // кнопка живёт только у повторяющихся дел — заводим повтор
-    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3] }).expect(200);
+    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3], atTime: '17:00' }).expect(200);
 
     // исполнитель нажал «Сделал»
     const asked = (await http.post(`/api/tasks/${task.id}/deadline-shift`).set(M).expect(201)).body.data;
@@ -102,7 +102,7 @@ describe('перенос срока «Сделал» (e2e)', () => {
       .send({ projectId: proj.id, columnId: board.columns[0].id, title: 'Отчёт', deadlineAt: was }).expect(201)).body.data;
     await http.post(`/api/tasks/${task.id}/assign`).set(O)
       .send({ assigneeId: String(mate.id), confirmOverload: true }).expect(201);
-    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3] }).expect(200);
+    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3], atTime: '17:00' }).expect(200);
 
     await http.post(`/api/tasks/${task.id}/deadline-shift`).set(M).expect(201);
     const no = (await http.post(`/api/tasks/${task.id}/deadline-shift/decide`).set(O)
@@ -121,7 +121,7 @@ describe('перенос срока «Сделал» (e2e)', () => {
     const task = (await http.post('/api/tasks').set(O)
       .send({ projectId: proj.id, columnId: board.columns[0].id, title: 'Своя задача', deadlineAt: '2026-09-16T14:00:00.000Z' })
       .expect(201)).body.data;
-    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3] }).expect(200);
+    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3], atTime: '17:00' }).expect(200);
 
     const res = (await http.post(`/api/tasks/${task.id}/deadline-shift`).set(O).expect(201)).body.data;
     expect(res.deadline_shift_to).toBeNull();
@@ -149,7 +149,7 @@ describe('перенос срока «Сделал» (e2e)', () => {
     expect(res.body.error.message).toContain('повторяющихся');
 
     // завели повтор — и та же ручка работает
-    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3] }).expect(200);
+    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3], atTime: '17:00' }).expect(200);
     await http.post(`/api/tasks/${task.id}/deadline-shift`).set(O).expect(201);
   });
 });
