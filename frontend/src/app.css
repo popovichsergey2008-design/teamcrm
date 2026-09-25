@@ -3023,6 +3023,54 @@
 .emoji-btn:hover { background: var(--hover); }
 .emoji-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .emoji-empty { display: flex; align-items: center; gap: 6px; padding: 10px 2px; font-size: var(--fs-sm); }
+/*
+  Полный набор Unicode рисует готовая библиотека (emoji-mart) — своим окном со своей
+  разметкой. Размеры коробки повторяют те, что страница считает в коде: на телефоне
+  палитра ужимается по экрану, поэтому числа приходят переменными.
+*/
+.emoji-pop-full {
+  /* Рамку, скругление и тень оставляем свои — как у остальных всплывашек; палитра
+     внутри рисует только содержимое, поэтому отступов у коробки нет. */
+  width: var(--emoji-w, 352px); padding: 0; overflow: hidden;
+}
+.emoji-host { display: block; height: var(--emoji-h, 420px); }
+.emoji-host em-emoji-picker {
+  width: 100%; height: var(--emoji-h, 420px);
+  --font-family: var(--font);
+  --border-radius: var(--radius);
+  /*
+    Цвета библиотека принимает только тройками чисел, поэтому наши токены здесь
+    повторены цифрами. Держать их в согласии с index.css придётся руками — иначе
+    палитра будет заметно чужой на фоне остального окна.
+  */
+  --rgb-background: 255, 255, 255;
+  --rgb-color: 15, 21, 33;
+  --rgb-accent: 31, 111, 212;
+  --rgb-input: 238, 241, 247;
+  --color-border: rgba(15, 21, 33, .12);
+  --color-border-over: rgba(15, 21, 33, .06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .emoji-host em-emoji-picker {
+    --rgb-background: 17, 24, 39;
+    --rgb-color: 234, 247, 255;
+    --rgb-accent: 37, 99, 201;
+    --rgb-input: 31, 41, 55;
+    --color-border: rgba(234, 247, 255, .14);
+    --color-border-over: rgba(234, 247, 255, .07);
+  }
+}
+:root[data-theme="dark"] .emoji-host em-emoji-picker {
+  --rgb-background: 17, 24, 39;
+  --rgb-color: 234, 247, 255;
+  --rgb-accent: 37, 99, 201;
+  --rgb-input: 31, 41, 55;
+  --color-border: rgba(234, 247, 255, .14);
+  --color-border-over: rgba(234, 247, 255, .07);
+}
+/* Запасная сетка (полный набор не догрузился) держит прежний вид. */
+.emoji-fallback { display: flex; flex-direction: column; gap: 6px; }
+
 /* «Ещё эмодзи» в ряду быстрых реакций. */
 .react-pop-more { display: inline-flex; align-items: center; justify-content: center; color: var(--text-mut); }
 
