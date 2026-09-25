@@ -77,12 +77,8 @@ export function EmojiPicker({ at, onPick, onClose }: {
           skinTonePosition: 'search',
           navPosition: 'top',
           maxFrequentRows: 2,
-          /*
-            Курсор в поиск ставим только на большом экране. На телефоне это поднимает
-            клавиатуру, и та закрывает половину палитры — человек открыл её, чтобы
-            выбрать знак глазами, а не печатать.
-          */
-          autoFocus: window.innerWidth > PHONE_MAX_PX,
+          // Курсор ставим сами и позже — см. ниже.
+          autoFocus: false,
           onEmojiSelect: (e: { native?: string }) => {
             if (!e?.native) return;
             handlers.current.onPick(e.native);
@@ -91,6 +87,24 @@ export function EmojiPicker({ at, onPick, onClose }: {
         }) as unknown as HTMLElement;
 
         host.current?.replaceChildren(picker);
+
+        /*
+          Курсор в поиск — СЛЕДУЮЩИМ кадром и только на большом экране.
+
+          Своей настройкой библиотека ставит его прямо посреди сборки палитры, а
+          установка курсора заставляет браузер пересчитать раскладку всей страницы:
+          в замерах это стоило больше сотни миллисекунд, и палитра ровно на столько
+          позже появлялась на экране. Сначала показываем, потом ставим курсор.
+
+          На телефоне не ставим вовсе: там курсор поднимает клавиатуру, а она
+          закрывает половину палитры — её открыли, чтобы выбрать знак глазами.
+        */
+        if (window.innerWidth > PHONE_MAX_PX) {
+          requestAnimationFrame(() => {
+            const search = picker?.shadowRoot?.querySelector('input[type="search"]');
+            (search as HTMLInputElement | null)?.focus();
+          });
+        }
       } catch {
         // Набор не догрузился (нет сети, старый кэш) — работа не должна вставать:
         // показываем быстрый ряд, им отвечают в девяти случаях из десяти.

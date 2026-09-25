@@ -34,16 +34,31 @@ export function setSoundPref(kind: 'messages' | 'calls', enabled: boolean): void
 let ctx: AudioContext | null = null;
 let unlocked = false;
 
-function context(): AudioContext | null {
+/**
+ * Создать звуковой контекст, НЕ будя его.
+ *
+ * Вынесено отдельно, потому что стоит дорого: браузер поднимает звуковое устройство, и
+ * это сотни миллисекунд с замиранием страницы. Раньше всё это происходило внутри
+ * обработчика первого касания — и самое первое нажатие в CRM, каким бы оно ни было,
+ * подвисало на полсекунды. Сильнее всего это било по палитре эмодзи: её открывали
+ * первым же кликом, и задержка выглядела как «палитра думает».
+ */
+function create(): AudioContext | null {
+  if (ctx) return ctx;
   try {
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
-    ctx = ctx ?? new Ctor();
-    if (ctx.state === 'suspended') void ctx.resume();
+    ctx = new Ctor();
     return ctx;
   } catch {
     return null; // звук — дополнение; без него уведомление всё равно видно
   }
+}
+
+function context(): AudioContext | null {
+  const audio = create();
+  if (audio?.state === 'suspended') void audio.resume();
+  return audio;
 }
 
 /**
@@ -54,6 +69,15 @@ function context(): AudioContext | null {
  */
 export function unlockAudio(): void {
   if (unlocked) return;
+  /*
+    Сам контекст готовим заранее, в свободную минуту: на касании останется только
+    разбудить уже готовый, а это дёшево. Создавать его без жеста браузеры разрешают —
+    он просто рождается спящим, и до первого действия человека из него не слышно ни
+    звука.
+  */
+  const later = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));
+  later(() => { create(); });
+
   const wake = () => {
     unlocked = true;
     context();
