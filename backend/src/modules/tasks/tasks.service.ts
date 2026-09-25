@@ -686,6 +686,17 @@ export class TasksService {
   async askDeadlineShift(tenantId: string, id: string, actor: { userId: string; role: string }): Promise<TaskRow> {
     const task = await this.repo.findById(tenantId, id);
     if (!task) throw AppException.notFound('Task not found');
+    /*
+      Только для повторяющихся дел.
+
+      Кнопка и задумана под них: закончил круг — следующий срок сам встаёт на среду.
+      У разовой задачи «следующей среды» не существует, и кнопка там читалась как
+      «продлить себе срок» — заказчик попросил убрать её со всех прочих задач. Срок
+      разовой задачи правится в самой карточке, полем «Срок».
+    */
+    if (!task.recurrence_id) {
+      throw AppException.validation('«Сделал — срок на среду» работает только у повторяющихся задач. У разовой задачи срок меняется полем «Срок» в карточке.');
+    }
     const mine = String(task.assignee_id ?? '') === String(actor.userId)
       || String(task.created_by ?? '') === String(actor.userId);
     if (!mine && actor.role !== 'owner') {

@@ -55,6 +55,8 @@ describe('перенос срока «Сделал» (e2e)', () => {
       .expect(201)).body.data;
     await http.post(`/api/tasks/${task.id}/assign`).set(O)
       .send({ assigneeId: String(mate.id), confirmOverload: true }).expect(201);
+    // кнопка живёт только у повторяющихся дел — заводим повтор
+    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3] }).expect(200);
 
     // исполнитель нажал «Сделал»
     const asked = (await http.post(`/api/tasks/${task.id}/deadline-shift`).set(M).expect(201)).body.data;
@@ -100,6 +102,7 @@ describe('перенос срока «Сделал» (e2e)', () => {
       .send({ projectId: proj.id, columnId: board.columns[0].id, title: 'Отчёт', deadlineAt: was }).expect(201)).body.data;
     await http.post(`/api/tasks/${task.id}/assign`).set(O)
       .send({ assigneeId: String(mate.id), confirmOverload: true }).expect(201);
+    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3] }).expect(200);
 
     await http.post(`/api/tasks/${task.id}/deadline-shift`).set(M).expect(201);
     const no = (await http.post(`/api/tasks/${task.id}/deadline-shift/decide`).set(O)
@@ -118,10 +121,35 @@ describe('перенос срока «Сделал» (e2e)', () => {
     const task = (await http.post('/api/tasks').set(O)
       .send({ projectId: proj.id, columnId: board.columns[0].id, title: 'Своя задача', deadlineAt: '2026-09-16T14:00:00.000Z' })
       .expect(201)).body.data;
+    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3] }).expect(200);
 
     const res = (await http.post(`/api/tasks/${task.id}/deadline-shift`).set(O).expect(201)).body.data;
     expect(res.deadline_shift_to).toBeNull();
     // новый срок всегда в будущем — на какой бы день ни пришёлся прогон тестов
     expect(new Date(res.deadline_at).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  /*
+    Заказчик: «эта кнопка должна быть только для повторяющихся задач». Прятать её на
+    экране мало — ручка обязана отказывать сама, иначе она остаётся открытой из
+    приложения и по API.
+  */
+  it('у разовой задачи переносить нечего — ручка отказывает', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'DS4', email: `ds4_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const proj = (await http.post('/api/projects').set(O).send({ name: 'П' }).expect(201)).body.data;
+    const board = (await http.get(`/api/projects/${proj.id}/board`).set(O).expect(200)).body.data;
+    const task = (await http.post('/api/tasks').set(O)
+      .send({ projectId: proj.id, columnId: board.columns[0].id, title: 'Разовая', deadlineAt: '2026-09-16T14:00:00.000Z' })
+      .expect(201)).body.data;
+
+    const res = await http.post(`/api/tasks/${task.id}/deadline-shift`).set(O).expect(400);
+    expect(res.body.error.message).toContain('повторяющихся');
+
+    // завели повтор — и та же ручка работает
+    await http.put(`/api/tasks/${task.id}/recurrence`).set(O).send({ freq: 'weekly', weekdays: [3] }).expect(200);
+    await http.post(`/api/tasks/${task.id}/deadline-shift`).set(O).expect(201);
   });
 });
