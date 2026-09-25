@@ -3,6 +3,7 @@ import { navigate } from '../lib/router';
 import { useAuth } from '../state/auth';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
+import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { GateBlock, HandoffGateDialog, gateFromError } from './HandoffGateDialog';
 import { api, ApiError, QUEUED } from '../lib/api';
 import { enqueueConflict, newChangeId, type QueuedChange } from '../lib/offline-queue';
@@ -106,10 +107,19 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const { user } = useAuth();
   /** Решение принимает постановщик; владельцу тоже даём — он последняя инстанция. */
   const isManager = String(task.created_by ?? '') === String(user?.id ?? '') || user?.role === 'owner';
-  /** Перенести срок вправе исполнитель и постановщик — им кнопку и показываем. */
-  const canShift = String(task.assignee_id ?? '') === String(user?.id ?? '')
-    || String(task.created_by ?? '') === String(user?.id ?? '')
-    || user?.role === 'owner';
+  /**
+   * «Сделал — срок на среду»: кому и на каких задачах показывать.
+   *
+   * Только у ПОВТОРЯЮЩИХСЯ дел: кнопка задумана под них — закончил круг, следующий
+   * срок сам встаёт на среду. У разовой задачи «следующей среды» не существует, и
+   * кнопка там читалась как «продлить себе срок»; её срок правится полем «Срок».
+   *
+   * И только тем, кто вправе нажать: наблюдателю сервер вернул бы отказ.
+   */
+  const canShift = !!task.recurrence_id
+    && (String(task.assignee_id ?? '') === String(user?.id ?? '')
+      || String(task.created_by ?? '') === String(user?.id ?? '')
+      || user?.role === 'owner');
   /** Предложенный срок человеческой строкой: по ней и принимают решение. */
   const shiftLabel = (at: string) => new Date(at).toLocaleString('ru-RU', {
     weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
@@ -385,6 +395,16 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   // сменить статус = переместить в колонку доски (наверх колонки)
   const [moving, setMoving] = useState(false);
   /** Открыто окно объединения: поиск дубля и предпросмотр. */
+  /*
+    «Сохранить как шаблон» (просьба заказчика).
+
+    Закрепляет СПОСОБ ставить работу, которая повторяется: название, описание,
+    чек-лист, теги и привычный исполнитель. Имя шаблона спрашиваем отдельно — см.
+    SaveTemplateDialog.
+  */
+  const [saveTpl, setSaveTpl] = useState(false);
+  const [tplNote, setTplNote] = useState('');
+
   const [merging, setMerging] = useState(false);
   /** Идёт проверка ИИ: она читает вложения и занимает секунды, а не мгновение. */
   const [reviewing, setReviewing] = useState(false);
@@ -692,6 +712,16 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 <Icon name="refresh" size={14} /> Объединить
               </button>
             )}
+            {/* Шаблон — про СПОСОБ работы, поэтому стоит рядом с прочими действиями
+                над задачей целиком, а не среди её полей. */}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setSaveTpl(true)}
+              disabled={moving}
+              title="Закрепить эту задачу как образец: название, описание, чек-лист, теги и исполнитель"
+            >
+              <Icon name="copy" size={14} /> Сохранить как шаблон
+            </button>
             {canDelete && (
               <button className="btn btn-ghost btn-sm btn-delete" onClick={() => removeTask()} disabled={moving} title="Удалить задачу без возможности восстановления">
                 <Icon name="trash" size={14} /> Удалить
@@ -820,7 +850,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 {/* «Сделал» — про срок, а не про завершение: задача остаётся жить и
                     ждёт следующего круга. Поэтому кнопка стоит у таймера, а не рядом
                     с «Завершить», которую от неё надо отличать с первого взгляда.
-                    Видна тем, кто вправе её нажать: наблюдателю она вернула бы отказ. */}
+                    Кому и когда она видна — см. canShift. */}
                 {canShift && <button
                   className="btn btn-sm"
                   onClick={askShift}
@@ -834,6 +864,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               </div>
             </div>
             {shiftNote && <div className="dim task-shift-note"><Icon name="check" size={12} /> {shiftNote}</div>}
+            {tplNote && <div className="dim task-shift-note"><Icon name="check" size={12} /> {tplNote}</div>}
 
             {/*
               Просьба перенести срок — рядом с решением о приёмке, по тем же правилам:
@@ -1092,6 +1123,15 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           item={conflict}
           onClose={() => setConflict(null)}
           onDone={() => { setConflict(null); void flushOffline().finally(onRefresh); }}
+        />
+      )}
+
+      {saveTpl && (
+        <SaveTemplateDialog
+          task={task}
+          checklistCount={task.checklistTotal ?? 0}
+          onClose={() => setSaveTpl(false)}
+          onSaved={(name) => setTplNote(`Шаблон «${name}» сохранён — он появится в списке при создании задачи.`)}
         />
       )}
 

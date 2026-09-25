@@ -3,7 +3,7 @@ import type {
   Project, Proposal, SearchResults, SemanticHit, SupportContextInput, SupportConversation,
   PlatformCandidate, PlatformStaff, PlatformTenant,
   SupportEngineerGrant, SupportEscalation, SupportQueueFilter,
-  SupportDesk, SupportHandbook, SupportQueueItem, Task,
+  SupportDesk, SupportHandbook, SupportQueueItem, Task, TaskTemplate,
 } from '../types';
 import { platform } from '../platform';
 import type { MobileConfig } from './mobile-config';
@@ -618,6 +618,23 @@ export const api = {
    *
    * Ищет по набранному названию и описанию; пустой ответ — обычное дело и не ошибка.
    */
+  /*
+    Шаблоны задач (просьба заказчика: «кнопка сохранить как шаблон»).
+
+    Шаблон — на организацию: смысл в том, чтобы коллега поставил задачу так же, как
+    её поставили бы вы. В нём нет ни проекта, ни срока датой, ни файлов — только то,
+    что описывает СПОСОБ работы.
+  */
+  taskTemplates: () => request<TaskTemplate[]>('GET', '/task-templates'),
+  saveTaskTemplate: (taskId: string, body: { name: string; deadlineDays?: number | null }) =>
+    request<TaskTemplate>('POST', `/task-templates/from-task/${taskId}`, {
+      name: body.name,
+      // null — «без срока»; поле пропускаем, чтобы сервер не считал его по задаче
+      ...(body.deadlineDays === undefined ? {} : { deadlineDays: body.deadlineDays ?? 0 }),
+    }),
+  useTaskTemplate: (id: string) => request<{ used: boolean }>('POST', `/task-templates/${id}/used`),
+  deleteTaskTemplate: (id: string) => request<{ removed: boolean }>('DELETE', `/task-templates/${id}`),
+
   taskDuplicates: (title: string, description?: string) => request<{
     items: {
       id: string; title: string; projectId: string; projectName: string | null;

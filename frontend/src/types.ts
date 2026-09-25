@@ -71,6 +71,33 @@ export interface Project {
   is_support?: boolean;
 }
 
+/**
+ * Шаблон задачи: закреплённый способ ставить работу, которая повторяется.
+ *
+ * Ни проекта, ни срока датой, ни файлов: задача по шаблону заводится там и тогда,
+ * где её заводят. Срок относительный — «через N дней»; null означает «без срока».
+ */
+export interface TaskTemplate {
+  id: string;
+  /** Как шаблон называется в списке — не название задачи. */
+  name: string;
+  title: string;
+  description: string;
+  priority: string;
+  assignee_id: string | null;
+  assignee_name: string | null;
+  estimate_hours: string | null;
+  requires_approval: boolean;
+  deadline_days: number | null;
+  checklist: string[];
+  label_ids: string[];
+  created_by: string | null;
+  created_by_name: string | null;
+  /** Сколько раз им уже пользовались: частые стоят в списке выше. */
+  used_count: number;
+  created_at: string;
+}
+
 export interface Task {
   id: string;
   project_id: string;

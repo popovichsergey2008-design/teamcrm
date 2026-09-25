@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { DatePicker } from './DatePicker';
 import { Icon } from './Icon';
 import { api, ApiError, TagSettings } from '../lib/api';
-import type { User } from '../types';
+import type { TaskTemplate, User } from '../types';
 import { TaskTagsField } from './TaskTagsField';
 import { EMPTY_TAGS, tagsReady, TagsValue } from '../lib/tags';
 import { navigate } from '../lib/router';
@@ -18,6 +18,15 @@ interface Props {
   defaultManagerId?: string;
   onClose: () => void;
   onCreated: () => void;
+}
+
+/** «Через N дней» в значение поля срока: к 18:00, как и при ручной постановке. */
+function inDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  d.setHours(18, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 const PRIORITIES = [['low', 'низкий'], ['normal', 'обычный'], ['high', 'высокий'], ['urgent', 'срочно']];
@@ -53,6 +62,16 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
    * заранее и осознанно, а не в момент, когда работа уже сдана.
    */
   const [requiresApproval, setRequiresApproval] = useState(true);
+  /*
+    Шаблоны задач (просьба заказчика: «кнопка сохранить как шаблон»).
+
+    Шаблон заполняет форму — и на этом его участие кончается: человек волен поправить
+    что угодно перед созданием. Чек-лист заводится уже ПОСЛЕ задачи, как и файлы: до
+    неё пунктам не к чему прикрепиться.
+  */
+  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  const [tplId, setTplId] = useState('');
+  const [tplChecklist, setTplChecklist] = useState<string[]>([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   /**
@@ -77,6 +96,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
 
   // Политика компании по тегам: от неё зависит, ждать ли подтверждения перед созданием.
   useEffect(() => { api.tagSettings().then(setTagSettings).catch(() => setTagSettings(null)); }, []);
+  useEffect(() => { api.taskTemplates().then(setTemplates).catch(() => setTemplates([])); }, []);
 
   // Запрос с задержкой и только на осмысленное название: на каждую букву ходить
   // в базу незачем, а по двум словам похоже вообще всё.
@@ -99,6 +119,42 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
       return [...prev, ...Array.from(list).filter((f) => !seen.has(`${f.name}:${f.size}`))];
     });
   };
+
+  /**
+   * Применить шаблон к форме.
+   *
+   * Теги подставляем, но НЕ считаем подтверждёнными: подтверждает тот, кто ставит
+   * задачу сейчас, — так решила компания в настройках тегов, и шаблон это правило
+   * не отменяет.
+   */
+  const applyTemplate = (id: string) => {
+    setTplId(id);
+    const t = templates.find((x) => String(x.id) === id);
+    if (!t) { setTplChecklist([]); return; }
+    setTitle(t.title);
+    setDescription(t.description ?? '');
+    setPriority(t.priority || 'normal');
+    setAssigneeId(t.assignee_id ? String(t.assignee_id) : '');
+    setEstimate(t.estimate_hours ? String(Number(t.estimate_hours)) : '');
+    setRequiresApproval(t.requires_approval);
+    setTags({ ...EMPTY_TAGS, tagIds: (t.label_ids ?? []).map(String) });
+    setTplChecklist(t.checklist ?? []);
+    setDeadline(t.deadline_days ? inDays(t.deadline_days) : '');
+  };
+
+  /** Шаблон больше не нужен: убирает тот, кто его завёл, или владелец — решает сервер. */
+  const dropTemplate = async (t: TaskTemplate) => {
+    if (!window.confirm(`Удалить шаблон «${t.name}»? Уже созданные по нему задачи останутся.`)) return;
+    try {
+      await api.deleteTaskTemplate(String(t.id));
+      setTemplates((prev) => prev.filter((x) => String(x.id) !== String(t.id)));
+      if (String(t.id) === tplId) { setTplId(''); setTplChecklist([]); }
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Шаблон не удалился');
+    }
+  };
+
+  const chosenTpl = templates.find((t) => String(t.id) === tplId) ?? null;
 
   const submit = async () => {
     if (!title.trim()) return setErr('Введите название задачи');
@@ -123,12 +179,29 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         requiresApproval,
       });
       setCreatedId(String(created.id));
+      /*
+        Пункты чек-листа из шаблона — по порядку и по одному: отдельной ручки «создать
+        чек-лист целиком» нет, а параллельная отправка перемешала бы порядок.
+        Сорвался пункт — задача уже создана, и второй раз её заводить нельзя; молча
+        пропускаем и говорим об этом ниже, вместе с файлами.
+      */
+      const lostItems: string[] = [];
+      for (const text of tplChecklist) {
+        try { await api.addChecklist(String(created.id), text); }
+        catch { lostItems.push(text); }
+      }
+      if (tplId) void api.useTaskTemplate(tplId).catch(() => undefined);
       // Файлы грузим по одному и по порядку: параллельная отправка десятка вложений
       // с телефона рвётся на середине, и понять, что именно не долетело, нельзя.
       const failed: string[] = [];
       for (const f of files) {
         try { await api.uploadAttachment(String(created.id), f); }
         catch { failed.push(f.name); }
+      }
+      if (lostItems.length) {
+        setErr(`Задача создана (#${created.id}), но не добавились пункты чек-листа: ${lostItems.join('; ')}. Допишите их в карточке, на вкладке «Чеклист».`);
+        setBusy(false);
+        return;
       }
       if (failed.length) {
         // задача уже создана — предлагать «создать» второй раз нельзя, это дубль
@@ -174,6 +247,49 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
           <h3>Новая задача · {columnName}</h3>
           <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
+
+        {/*
+          Шаблон — ПЕРВЫМ полем: выбирать его после того, как форма заполнена руками,
+          поздно — он всё перезапишет. Список появляется, только когда шаблоны есть:
+          пустая строка выбора в форме ничего не объясняет и только мешает.
+        */}
+        {templates.length > 0 && (
+          <div className="field tpl-pick">
+            <label htmlFor="tpl-choose">Из шаблона</label>
+            <div className="tpl-pick-row">
+              <select
+                id="tpl-choose"
+                className="input"
+                value={tplId}
+                onChange={(e) => applyTemplate(e.target.value)}
+              >
+                <option value="">без шаблона</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={String(t.id)}>
+                    {t.name}{t.used_count ? ` · ${t.used_count}` : ''}
+                  </option>
+                ))}
+              </select>
+              {!!chosenTpl && (
+                <button
+                  className="btn btn-ghost btn-sm btn-delete"
+                  onClick={() => dropTemplate(chosenTpl)}
+                  title={`Удалить шаблон «${chosenTpl.name}»`}
+                  aria-label="Удалить шаблон"
+                >
+                  <Icon name="trash" size={14} />
+                </button>
+              )}
+            </div>
+            {!!chosenTpl && (
+              <span className="dim tpl-hint">
+                Поля заполнены по шаблону — поправьте что нужно.
+                {chosenTpl.checklist.length > 0 && ` Чек-лист (${chosenTpl.checklist.length}) добавится после создания.`}
+                {chosenTpl.created_by_name ? ` Шаблон завёл ${chosenTpl.created_by_name}.` : ''}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="field"><label>Название</label>
           <input
