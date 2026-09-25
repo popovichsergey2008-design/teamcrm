@@ -19,6 +19,7 @@ import { LEGACY_VIEWS, TASK_VIEWS } from '../lib/task-views';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
 import { EmptyState } from '../components/EmptyState';
+import { useDragEdgeScroll } from '../hooks/useDragEdgeScroll';
 import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
 import { navigate } from '../lib/router';
 import { useDismiss } from '../hooks/useDismiss';
@@ -122,10 +123,17 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   // чтобы «Сдать всё равно» повторило ровно тот же перенос
   const [gate, setGate] = useState<{ block: GateBlock; taskId: string; columnId: string; position: number } | null>(null);
   const [createIn, setCreateIn] = useState<{ columnId: string; columnName: string } | null>(null);
+  /*
+    Лента колонок: к ней привязано автоматическое движение при переносе карточки к краю
+    экрана — иначе до колонки, которой не видно, задачу не донести.
+  */
+  const columnsRef = useRef<HTMLDivElement>(null);
+
   const [view, setView] = useState<'board' | 'list'>(() =>
     localStorage.getItem('teamcrm.boardView') === 'list' ? 'list' : 'board',
   );
   const switchView = (v: 'board' | 'list') => { setView(v); localStorage.setItem('teamcrm.boardView', v); };
+  useDragEdgeScroll(columnsRef, view === 'board');
   /**
    * Чьи задачи показывать — фильтр, а не отдельный вид: человек остаётся там, где
    * работал, и просто перестаёт видеть чужое. На доске это доска, в списке — список.
@@ -649,7 +657,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                 onOpenTask={(t) => setOpenTaskId(t.id)}
               />
             ) : (
-              <div className="board-columns">
+              <div className="board-columns" ref={columnsRef}>
                 {(shownBoard ?? board).columns.map((col, idx) => (
                   <ColumnView
                     key={col.id}

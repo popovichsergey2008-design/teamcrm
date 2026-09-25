@@ -1302,6 +1302,45 @@ test('вставка в чужое поле ввода не достаётся �
   assert.equal(pasteInForeignField(null, chat), false);
 });
 
+// ── доска: лента колонок едет за карточкой ────────────────────────────────────
+test('лента колонок едет к краю, останавливается у конца и не дёргается', async () => {
+  const { edgeScrollStep } = await load('lib/board-dnd.ts');
+  // лента шириной 1000 (от 0 до 1000), прокрутить можно на 2000, полоса 100, скорость 20
+  const base = { start: 0, end: 1000, scroll: 500, maxScroll: 2000, zone: 100, maxSpeed: 20 };
+
+  // середина — стоим
+  assert.equal(edgeScrollStep({ ...base, pointer: 500 }), 0);
+  // у правого края — едем вправо, у самого края на полной скорости
+  assert.ok(edgeScrollStep({ ...base, pointer: 950 }) > 0);
+  assert.equal(edgeScrollStep({ ...base, pointer: 1000 }), 20);
+  // ЗА краем (карточку утащили за пределы видимого) — тоже полная скорость
+  assert.equal(edgeScrollStep({ ...base, pointer: 1400 }), 20);
+  // у левого края — едем влево
+  assert.equal(edgeScrollStep({ ...base, pointer: 0 }), -20);
+  assert.ok(edgeScrollStep({ ...base, pointer: 50 }) < 0);
+  // ближе к границе полосы — медленнее: у крайней колонки нужна точность
+  assert.ok(Math.abs(edgeScrollStep({ ...base, pointer: 910 })) < Math.abs(edgeScrollStep({ ...base, pointer: 990 })));
+
+  // доехали до конца — стоим, а не упираемся с ненулевой скоростью
+  assert.equal(edgeScrollStep({ ...base, pointer: 1000, scroll: 2000 }), 0);
+  assert.equal(edgeScrollStep({ ...base, pointer: 0, scroll: 0 }), 0);
+  // последний кадр доводит ровно до края, а не перелетает
+  assert.equal(edgeScrollStep({ ...base, pointer: 1000, scroll: 1995 }), 5);
+  assert.equal(edgeScrollStep({ ...base, pointer: 0, scroll: 3 }), -3);
+  // прокручивать нечего — ленту не трогаем
+  assert.equal(edgeScrollStep({ ...base, pointer: 1000, scroll: 0, maxScroll: 0 }), 0);
+});
+
+test('своим переносом считаем только карточку и колонку', async () => {
+  const { isBoardDrag, TASK_DND, COL_DND } = await load('lib/board-dnd.ts');
+  assert.equal(isBoardDrag({ types: [TASK_DND, 'text/plain'] }), true);
+  assert.equal(isBoardDrag({ types: [COL_DND] }), true);
+  // выделенный на странице текст и файл с рабочего стола лентой не двигают
+  assert.equal(isBoardDrag({ types: ['text/plain'] }), false);
+  assert.equal(isBoardDrag({ types: ['Files'] }), false);
+  assert.equal(isBoardDrag(null), false);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

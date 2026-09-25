@@ -5,6 +5,7 @@ import { useIsPhone } from '../hooks/useMediaQuery';
 import type { BoardColumn, Task, User } from '../types';
 import { MONETIZATION_ENABLED } from '../config';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
+import { COL_DND, TASK_DND } from '../lib/board-dnd';
 
 interface Props {
   column: BoardColumn;
@@ -30,8 +31,6 @@ interface Props {
    */
   columns?: { id: string; name: string; count: number }[];
 }
-
-const COL_DND = 'application/x-teamcrm-column';
 
 export function ColumnView({
   column,
@@ -231,7 +230,12 @@ function TaskCard({
       className={`task-card ${timerActive ? 'task-tracking' : ''}${task.unread ? ' task-card-new' : ''}`}
       draggable={canEdit}
       onClick={onOpen}
-      onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', task.id);
+        // Своя пометка: по ней лента колонок понимает, что едет за нашей карточкой,
+        // а не за куском текста, выделенным на странице.
+        e.dataTransfer.setData(TASK_DND, task.id);
+      }}
       onDrop={canEdit ? onDropBefore : undefined}
       onDragOver={(e) => canEdit && e.preventDefault()}
     >
