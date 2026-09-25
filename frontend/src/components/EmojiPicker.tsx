@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Icon } from './Icon';
 import { QUICK_REACTIONS } from '../lib/emoji';
-import { loadEmojiSet } from '../lib/emoji-set';
+import { focusPaletteSearch, hidePalette, showPalette } from '../lib/emoji-palette';
 import { placePopover } from '../lib/popover';
 import { PHONE_MAX_PX } from '../hooks/useMediaQuery';
 
@@ -9,14 +9,10 @@ import { PHONE_MAX_PX } from '../hooks/useMediaQuery';
  * Палитра эмодзи: полный набор Unicode (просьба заказчика — «как в Slack, чтобы был
  * полный комплект»).
  *
- * Знаки, разделы, тона кожи, поиск и ряд «часто используемые» приносит готовая
- * библиотека emoji-mart. Сам набор и русский словарь к нему живут в `lib/emoji-set`:
- * там же решается, когда их грузить, — обычно к моменту открытия палитры они уже
- * разобраны, потому что экран чата просит их заранее.
- *
- * Никаких загрузок со стороны: набор уезжает в нашу сборку, картинки не
- * подтягиваются, знаки рисует сам телефон или компьютер. Приложение работает без
- * сети, и палитра, которая без интернета пуста, там бесполезна.
+ * Сами знаки рисует готовая библиотека emoji-mart, и живёт эта палитра НЕ здесь:
+ * она одна на весь сеанс и лежит в `lib/emoji-palette` (почему так — там же). Этот
+ * компонент отвечает за три вещи: посчитать, куда её поставить, закрыть по щелчку
+ * мимо и по Escape, и показать запасной ряд, если набор не догрузился.
  */
 export function EmojiPicker({ at, onPick, onClose }: {
   /** Откуда открыли: координаты на экране (как у меню сообщения). */
@@ -24,17 +20,27 @@ export function EmojiPicker({ at, onPick, onClose }: {
   onPick: (emoji: string) => void;
   onClose: () => void;
 }) {
-  const host = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
 
   /*
     Обработчики приходят новыми на каждую перерисовку родителя (набор текста в поле
     ввода перерисовывает всю страницу чатов). Если положить их в зависимости эффекта,
-    палитра будет пересобираться на каждую букву и терять введённый поиск, поэтому
+    палитра будет открываться заново на каждую букву и терять введённый поиск, поэтому
     храним их в ссылке, а эффект запускаем ровно один раз.
   */
   const handlers = useRef({ onPick, onClose });
   handlers.current = { onPick, onClose };
+
+  /*
+    Размер палитры постоянный: всплывашка, меняющая высоту по ходу поиска, читается
+    как поломка. Но на телефоне окно уже палитры, поэтому размер ещё и ужимается по
+    экрану — иначе правый край уезжает за пределы видимого.
+  */
+  const width = Math.min(352, window.innerWidth - 16);
+  const height = Math.min(420, window.innerHeight - 16);
+  const place = placePopover({ left: at.x, top: at.y, bottom: at.y }, height, window.innerWidth, width, window.innerHeight);
+  const spot = useRef({ ...place, width, height });
+  spot.current = { ...place, width, height };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') handlers.current.onClose(); };
@@ -49,98 +55,43 @@ export function EmojiPicker({ at, onPick, onClose }: {
 
   useEffect(() => {
     let dead = false;
-    let picker: HTMLElement | null = null;
+    const { x, y, up, width: w, height: h } = spot.current;
 
-    void (async () => {
-      try {
-        const { Picker, data, i18n } = await loadEmojiSet();
-        if (dead) return;
+    void showPalette({ x, y, up, width: w, height: h }, (emoji) => {
+      handlers.current.onPick(emoji);
+      handlers.current.onClose();
+    }).then((ok) => {
+      if (dead) return;
+      if (!ok) { setFailed(true); return; }
+      /*
+        Курсор в поиск — СЛЕДУЮЩИМ кадром и только на большом экране: установка курсора
+        заставляет браузер пересчитать раскладку всей страницы, и палитра ровно на
+        столько позже появляется. Сначала показываем, потом ставим курсор.
 
-        /*
-          Тёмная палитра в светлой теме (и наоборот) выглядит чужой заплаткой, поэтому
-          спрашиваем у самой страницы, в какой теме она сейчас. Цвета внутри задаёт
-          app.css — здесь только выбор между светлым и тёмным набором значков.
-        */
-        const theme = document.documentElement.dataset.theme
-          ?? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        На телефоне не ставим вовсе: там курсор поднимает клавиатуру, а она закрывает
+        половину палитры — её открыли, чтобы выбрать знак глазами.
+      */
+      if (window.innerWidth > PHONE_MAX_PX) requestAnimationFrame(focusPaletteSearch);
+    });
 
-        picker = new Picker({
-          data,
-          i18n,
-          locale: 'ru',
-          theme: theme === 'light' ? 'light' : 'dark',
-          // Знаки рисует система: картинки со стороннего адреса не тянем.
-          set: 'native',
-          // Ширину задаёт наша коробка, а не число знаков в ряду.
-          dynamicWidth: true,
-          previewPosition: 'none',
-          skinTonePosition: 'search',
-          navPosition: 'top',
-          maxFrequentRows: 2,
-          // Курсор ставим сами и позже — см. ниже.
-          autoFocus: false,
-          onEmojiSelect: (e: { native?: string }) => {
-            if (!e?.native) return;
-            handlers.current.onPick(e.native);
-            handlers.current.onClose();
-          },
-        }) as unknown as HTMLElement;
-
-        host.current?.replaceChildren(picker);
-
-        /*
-          Курсор в поиск — СЛЕДУЮЩИМ кадром и только на большом экране.
-
-          Своей настройкой библиотека ставит его прямо посреди сборки палитры, а
-          установка курсора заставляет браузер пересчитать раскладку всей страницы:
-          в замерах это стоило больше сотни миллисекунд, и палитра ровно на столько
-          позже появлялась на экране. Сначала показываем, потом ставим курсор.
-
-          На телефоне не ставим вовсе: там курсор поднимает клавиатуру, а она
-          закрывает половину палитры — её открыли, чтобы выбрать знак глазами.
-        */
-        if (window.innerWidth > PHONE_MAX_PX) {
-          requestAnimationFrame(() => {
-            const search = picker?.shadowRoot?.querySelector('input[type="search"]');
-            (search as HTMLInputElement | null)?.focus();
-          });
-        }
-      } catch {
-        // Набор не догрузился (нет сети, старый кэш) — работа не должна вставать:
-        // показываем быстрый ряд, им отвечают в девяти случаях из десяти.
-        if (!dead) setFailed(true);
-      }
-    })();
-
-    return () => { dead = true; picker?.remove(); };
+    return () => { dead = true; hidePalette(); };
   }, []);
-
-  /*
-    Размер палитры постоянный: всплывашка, меняющая высоту по ходу поиска, читается
-    как поломка. Но на телефоне окно уже палитры, поэтому размер ещё и ужимается по
-    экрану — иначе правый край уезжает за пределы видимого.
-  */
-  const width = Math.min(352, window.innerWidth - 16);
-  const height = Math.min(420, window.innerHeight - 16);
-  const place = placePopover({ left: at.x, top: at.y, bottom: at.y }, height, window.innerWidth, width, window.innerHeight);
 
   return (
     <>
       <span className="msg-ctx-veil" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} />
-      <div
-        className={failed ? 'emoji-pop' : 'emoji-pop emoji-pop-full'}
-        role="dialog"
-        aria-label="Выбор эмодзи"
-        style={{
-          left: place.x,
-          top: place.y,
-          transform: place.up ? 'translateY(-100%)' : undefined,
-          ['--emoji-w' as string]: `${width}px`,
-          ['--emoji-h' as string]: `${height}px`,
-        } as CSSProperties}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {failed ? (
+      {failed && (
+        <div
+          className="emoji-pop"
+          role="dialog"
+          aria-label="Выбор эмодзи"
+          style={{
+            left: place.x,
+            top: place.y,
+            transform: place.up ? 'translateY(-100%)' : undefined,
+          } as CSSProperties}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="emoji-fallback">
             <div className="dim emoji-empty">
               <Icon name="alert" size={14} /> Полный набор не загрузился — вот частые:
@@ -153,10 +104,8 @@ export function EmojiPicker({ at, onPick, onClose }: {
               ))}
             </div>
           </div>
-        ) : (
-          <div ref={host} className="emoji-host" />
-        )}
-      </div>
+        </div>
+      )}
     </>
   );
 }

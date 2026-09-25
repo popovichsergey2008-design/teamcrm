@@ -39,7 +39,7 @@ import { applyOrder, moveItem } from '../lib/menu-order';
 import { firstUnreadId } from '../lib/unread-line';
 import { showToast, toastSaved } from '../lib/notifications';
 import { overlayProps } from '../lib/overlay';
-import { warmEmojiSet } from '../lib/emoji-set';
+import { warmPalette } from '../lib/emoji-palette';
 import { pasteBelongsHere, pasteInForeignField } from '../lib/paste-scope';
 import type { User } from '../types';
 
@@ -235,10 +235,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   useEffect(() => { chatsRef.current = chats; }, [chats]);
 
   /*
-    Набор эмодзи просим заранее, в свободную минуту: он весит почти мегабайт, и если
-    начинать загрузку по нажатию, палитра появляется с заметной задержкой.
+    Палитру эмодзи готовим заранее, в свободную минуту: набор весит почти мегабайт, а
+    разделы библиотека рисует по мере захода. Если начинать всё это по нажатию, окно
+    появляется с задержкой, и дальше каждый раздел подгружается отдельно.
   */
-  useEffect(() => { warmEmojiSet(); }, []);
+  useEffect(() => { warmPalette(); }, []);
   const [users, setUsers] = useState<User[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);

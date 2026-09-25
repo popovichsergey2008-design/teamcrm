@@ -23,7 +23,7 @@ import { useVoiceInput } from '../hooks/useVoiceInput';
 import { clearDraft, readDraft, writeDraft } from '../lib/chat-drafts';
 import { useAuth } from '../state/auth';
 import { getSocket } from '../lib/socket';
-import { warmEmojiSet } from '../lib/emoji-set';
+import { warmPalette } from '../lib/emoji-palette';
 import { requestCall } from '../lib/notifications';
 
 /**
@@ -220,10 +220,11 @@ export function TaskChat({
   const [emojiFor, setEmojiFor] = useState<{ id: string | null; at: { x: number; y: number } } | null>(null);
 
   /*
-    Набор эмодзи просим заранее, в свободную минуту: он весит почти мегабайт, и если
-    начинать загрузку по нажатию, палитра появляется с заметной задержкой.
+    Палитру эмодзи готовим заранее, в свободную минуту: набор весит почти мегабайт, а
+    разделы библиотека рисует по мере захода. Если начинать всё это по нажатию, окно
+    появляется с задержкой, и дальше каждый раздел подгружается отдельно.
   */
-  useEffect(() => { warmEmojiSet(); }, []);
+  useEffect(() => { warmPalette(); }, []);
   const [allHistory, setAllHistory] = useState(false);
   /**
    * Просмотр вложений — галереей по всему обсуждению (как в мессенджерах).
