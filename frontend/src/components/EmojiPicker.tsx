@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Icon } from './Icon';
-import { QUICK_REACTIONS, WORK_WORDS } from '../lib/emoji';
+import { QUICK_REACTIONS } from '../lib/emoji';
+import { loadEmojiSet } from '../lib/emoji-set';
 import { placePopover } from '../lib/popover';
 import { PHONE_MAX_PX } from '../hooks/useMediaQuery';
 
@@ -8,23 +9,14 @@ import { PHONE_MAX_PX } from '../hooks/useMediaQuery';
  * Палитра эмодзи: полный набор Unicode (просьба заказчика — «как в Slack, чтобы был
  * полный комплект»).
  *
- * Берём готовую библиотеку emoji-mart: почти две тысячи знаков, разделы, тона кожи,
- * ряд «часто используемые» и поиск. Своими силами такой набор не поддержать — Unicode
- * пополняется каждый год, и список, набитый руками, устаревает с первого же дня.
+ * Знаки, разделы, тона кожи, поиск и ряд «часто используемые» приносит готовая
+ * библиотека emoji-mart. Сам набор и русский словарь к нему живут в `lib/emoji-set`:
+ * там же решается, когда их грузить, — обычно к моменту открытия палитры они уже
+ * разобраны, потому что экран чата просит их заранее.
  *
- * Два решения, которые пришлось принять отдельно.
- *
- * 1. Поиск по-РУССКИ. Библиотека ищет по английским словам («fire», «check mark»), а
- *    в рабочей переписке набирают «огонь» и «готово». Русские названия подмешиваем в
- *    данные перед запуском: словарь собран заранее (scripts/build-emoji-ru.mjs) и
- *    лежит рядом готовым файлом.
- *
- * 2. Никаких загрузок со стороны. Набор и словарь уезжают в сборку, картинки не
- *    подтягиваются: знаки рисует сам телефон или компьютер. Приложение работает без
- *    сети, и палитра, которая без интернета пуста, там бесполезна.
- *
- * Сама библиотека грузится отдельным куском и только при первом открытии палитры:
- * это треть мегабайта, и платить за неё при каждом входе в CRM незачем.
+ * Никаких загрузок со стороны: набор уезжает в нашу сборку, картинки не
+ * подтягиваются, знаки рисует сам телефон или компьютер. Приложение работает без
+ * сети, и палитра, которая без интернета пуста, там бесполезна.
  */
 export function EmojiPicker({ at, onPick, onClose }: {
   /** Откуда открыли: координаты на экране (как у меню сообщения). */
@@ -46,8 +38,13 @@ export function EmojiPicker({ at, onPick, onClose }: {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') handlers.current.onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    /*
+      Слушаем на перехвате: поле поиска внутри палитры само обрабатывает Escape
+      (очищает запрос) и дальше событие не пускает. Без перехвата палитра переставала
+      закрываться с клавиатуры — а курсор в этом поле стоит сразу после открытия.
+    */
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
   useEffect(() => {
@@ -56,17 +53,8 @@ export function EmojiPicker({ at, onPick, onClose }: {
 
     void (async () => {
       try {
-        const [{ Picker }, dataModule, i18nModule, ruModule] = await Promise.all([
-          import('emoji-mart'),
-          import('@emoji-mart/data'),
-          import('@emoji-mart/data/i18n/ru.json'),
-          import('../lib/emoji-ru.json'),
-        ]);
+        const { Picker, data, i18n } = await loadEmojiSet();
         if (dead) return;
-
-        const data = (dataModule as unknown as { default: EmojiData }).default;
-        const ru = (ruModule as unknown as { default: Record<string, string> }).default;
-        mergeRussianWords(data, ru);
 
         /*
           Тёмная палитра в светлой теме (и наоборот) выглядит чужой заплаткой, поэтому
@@ -78,7 +66,7 @@ export function EmojiPicker({ at, onPick, onClose }: {
 
         picker = new Picker({
           data,
-          i18n: (i18nModule as unknown as { default: unknown }).default,
+          i18n,
           locale: 'ru',
           theme: theme === 'light' ? 'light' : 'dark',
           // Знаки рисует система: картинки со стороннего адреса не тянем.
@@ -104,7 +92,7 @@ export function EmojiPicker({ at, onPick, onClose }: {
 
         host.current?.replaceChildren(picker);
       } catch {
-        // Кусок не догрузился (нет сети, старый кэш) — работа не должна вставать:
+        // Набор не догрузился (нет сети, старый кэш) — работа не должна вставать:
         // показываем быстрый ряд, им отвечают в девяти случаях из десяти.
         if (!dead) setFailed(true);
       }
@@ -157,44 +145,4 @@ export function EmojiPicker({ at, onPick, onClose }: {
       </div>
     </>
   );
-}
-
-/** Внутреннее устройство набора: нам нужны только знаки и их слова для поиска. */
-interface EmojiData {
-  emojis: Record<string, { keywords?: string[]; skins?: { native?: string }[] }>;
-}
-
-/**
- * Подмешать русские слова в поисковый указатель.
- *
- * Ключ словаря — сам знак без «вариационных селекторов»: в разных наборах они стоят
- * по-разному, и сравнение «как есть» промахивается на каждом втором знаке.
- *
- * Русские слова встают ПЕРЕД английскими: библиотека сортирует выдачу по тому,
- * насколько рано слово встретилось в описании знака, и в хвосте они проигрывали
- * любому английскому совпадению.
- *
- * Поверх общего словаря ложатся рабочие слова (WORK_WORDS): у своего знака такое
- * слово идёт первым, у всех прочих вычёркивается — иначе на «готово» первым выпадает
- * маникюр, а «срочно» и «баг» не находятся вовсе.
- */
-function mergeRussianWords(data: EmojiData, ru: Record<string, string>): void {
-  const clean = (s: string) => s.replace(/[\uFE0E\uFE0F]/g, '');
-  const owners = new Map<string, string[]>();
-  for (const [word, native] of Object.entries(WORK_WORDS)) {
-    const key = clean(native);
-    owners.set(key, [...(owners.get(key) ?? []), word]);
-  }
-  const pinned = new Set(Object.keys(WORK_WORDS));
-
-  for (const emoji of Object.values(data.emojis ?? {})) {
-    const native = emoji.skins?.[0]?.native;
-    if (!native) continue;
-    const key = clean(native);
-    const mine = owners.get(key) ?? [];
-    const words = (ru[key] ?? '').split(' ').filter(Boolean);
-    const rest = [...words, ...(emoji.keywords ?? [])]
-      .filter((w) => !pinned.has(w) || mine.includes(w));
-    emoji.keywords = [...new Set([...mine, ...rest])];
-  }
 }

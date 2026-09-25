@@ -39,6 +39,7 @@ import { applyOrder, moveItem } from '../lib/menu-order';
 import { firstUnreadId } from '../lib/unread-line';
 import { showToast, toastSaved } from '../lib/notifications';
 import { overlayProps } from '../lib/overlay';
+import { warmEmojiSet } from '../lib/emoji-set';
 import { pasteBelongsHere, pasteInForeignField } from '../lib/paste-scope';
 import type { User } from '../types';
 
@@ -232,6 +233,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const onScreen = () => !!feedRef.current?.offsetParent;
   const chatsRef = useRef<Chat[]>([]);
   useEffect(() => { chatsRef.current = chats; }, [chats]);
+
+  /*
+    Набор эмодзи просим заранее, в свободную минуту: он весит почти мегабайт, и если
+    начинать загрузку по нажатию, палитра появляется с заметной задержкой.
+  */
+  useEffect(() => { warmEmojiSet(); }, []);
   const [users, setUsers] = useState<User[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
