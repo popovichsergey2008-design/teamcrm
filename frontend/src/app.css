@@ -1465,7 +1465,6 @@
   border-bottom: 1px solid var(--border);
 }
 /* Сообщение, у которого открыто меню, слегка подсвечено: видно, о ком речь. */
-.msg-ctx-open { background: var(--accent-soft); border-radius: var(--radius-sm); }
 
 /* Редкие действия — списком, а не строкой кнопок под каждым сообщением. */
 .msg-menu {
@@ -2921,14 +2920,35 @@
 }
 .chat-author { font-size: calc(11px * var(--fs-scale)); color: var(--accent); margin-bottom: 2px; }
 .chat-body { font-size: calc(14px * var(--fs-scale)); word-break: break-word; }
-/* Файл больше не ссылка, а кнопка: он лежит за авторизацией и по прямому адресу
-   отдавал 401 — скачиваем с токеном. Цвет берём у плашки, чтобы читалось на обеих. */
+/*
+  Вложение-файл: заметная плашка, а не строчка текста.
+
+  Присланные документы пропускали — подчёркнутая строка того же цвета, что и
+  сообщение, в переписке не видна. Заметным его делает не подложка (её не подобрать
+  сразу под свой пузырь, чужой и ботовый — они разного цвета), а ЗАЛИТАЯ плитка со
+  скрепкой: она одинаково бросается в глаза на любом фоне и в обеих темах.
+
+  Файл — кнопка, а не ссылка: он лежит за авторизацией и по прямому адресу отдавал 401,
+  скачиваем с токеном.
+*/
 .chat-file {
-  display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; padding: 0;
-  font-size: calc(13px * var(--fs-scale)); background: none; border: none; color: inherit;
-  text-decoration: underline; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; max-width: 100%;
+  padding: 6px 10px 6px 6px; border: 1px solid var(--border-2); border-radius: var(--radius);
+  background: none; color: inherit; cursor: pointer; text-align: left;
 }
+.chat-file:hover { border-color: var(--accent); }
 .chat-file:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-file-icon {
+  flex: 0 0 auto; display: grid; place-items: center; width: 28px; height: 28px;
+  border-radius: var(--radius-sm); background: var(--accent-2); color: var(--on-accent);
+}
+.chat-file-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* Длинное имя не должно растягивать пузырь на всю ленту. */
+.chat-file-name {
+  font-size: calc(13px * var(--fs-scale)); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-file-hint { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); }
 /* Картинка видна прямо в переписке — обсуждают то, что на ней, а не имя файла. */
 /*
   Картинка в ленте занимает ПОСТОЯННОЕ место (жалоба «изображение перепрыгивает»).
@@ -2974,6 +2994,24 @@
 .msg, .msg-main, .chat-msg { position: relative; }
 .msg-main { padding-right: 22px; }
 .chat-msg { padding-right: 26px; }
+
+/*
+  Сообщение, по которому открыто меню.
+
+  Без пометки непонятно, к какому именно сообщению относятся пункты, — особенно на
+  телефоне, где меню занимает пол-экрана и закрывает ленту.
+
+  Раньше здесь была просто подложка, и правило стояло ВЫШЕ описания пузыря: по
+  порядку оно проигрывало `.chat-msg`, а у своих сообщений — ещё и по весу
+  (`.chat-msg.mine`). Выделения не было видно вовсе. Поэтому теперь кольцо, а не
+  заливка: оно заметно на любом пузыре — своём, чужом, ботовом — и не спорит с их
+  цветами. В обсуждении задачи пометка лежит на строке целиком, там подложка уместна.
+*/
+.chat-line .chat-msg.msg-ctx-open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.msg.msg-ctx-open { background: var(--accent-soft); border-radius: var(--radius-sm); }
 
 /* Пересланное: подпись с автором оригинала — иначе это выглядит как свои слова. */
 .msg-forwarded {
@@ -3075,6 +3113,25 @@
 .react-pop-more { display: inline-flex; align-items: center; justify-content: center; color: var(--text-mut); }
 
 /* Файл тянут на карточку задачи: рамка подсвечена, и видно, что будет по отпусканию. */
+/*
+  Шаблоны задач: выбор в форме создания и окно сохранения.
+
+  Выбор стоит первым полем и намеренно выглядит скромно: шаблон — подспорье, а не
+  обязательный шаг, и не должен перетягивать внимание с названия задачи.
+*/
+.tpl-pick-row { display: flex; align-items: center; gap: 6px; }
+.tpl-pick-row .input { flex: 1; min-width: 0; }
+.tpl-hint { display: block; margin-top: 4px; font-size: var(--fs-xs); line-height: 1.4; }
+.tpl-card { max-width: 480px; }
+.tpl-days { display: flex; align-items: center; gap: 8px; }
+.tpl-days .input { width: 86px; }
+/* Что уедет в шаблон — списком: человек должен увидеть это ДО сохранения. */
+.tpl-what {
+  margin-top: 4px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev-2);
+}
+.tpl-list { margin: 4px 0 6px; padding-left: 18px; font-size: var(--fs-sm); line-height: 1.6; }
+
 .drawer-drag { outline: 2px dashed var(--accent); outline-offset: -6px; }
 .drawer-drop-hint {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30;

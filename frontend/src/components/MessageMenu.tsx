@@ -116,6 +116,25 @@ export function MessageMenu({ at, reactions, onReact, onMoreEmoji, items, onClos
   );
 }
 
+/*
+  Состояние долгого нажатия — ОДНО на приложение, а не по сообщению.
+
+  Обработчики пересоздаются на каждой перерисовке (их раздаёт функция, которую зовут
+  прямо в разметке), а открытие меню перерисовку как раз и вызывает. Пока переменные
+  жили внутри замыкания, после открытия менялись местами старый и новый набор
+  обработчиков: отпускание пальца приходило уже в новый, где «мы открыли меню» не
+  записано. Палец одновременно держат только один раз, так что общего состояния хватает.
+*/
+let pressTimer: number | null = null;
+let pressStart: { x: number; y: number } | null = null;
+let pressOpened = false;
+
+function stopPress(): void {
+  if (pressTimer) window.clearTimeout(pressTimer);
+  pressTimer = null;
+  pressStart = null;
+}
+
 /**
  * Долгое нажатие — правая кнопка для пальца.
  *
@@ -123,22 +142,38 @@ export function MessageMenu({ at, reactions, onReact, onMoreEmoji, items, onClos
  * успевает решить, что не работает. Сдвинул палец — значит листает, а не зовёт меню.
  */
 export function longPressProps(open: (at: MenuAt) => void) {
-  let timer: number | null = null;
-  let start: { x: number; y: number } | null = null;
-  const stop = () => { if (timer) window.clearTimeout(timer); timer = null; start = null; };
   return {
     onTouchStart: (e: React.TouchEvent) => {
       const t = e.touches[0];
       if (!t) return;
-      start = { x: t.clientX, y: t.clientY };
-      timer = window.setTimeout(() => { open({ x: start!.x, y: start!.y }); stop(); }, 500);
+      pressOpened = false;
+      pressStart = { x: t.clientX, y: t.clientY };
+      pressTimer = window.setTimeout(() => {
+        pressOpened = true;
+        open({ x: pressStart!.x, y: pressStart!.y });
+        stopPress();
+      }, 500);
     },
     onTouchMove: (e: React.TouchEvent) => {
       const t = e.touches[0];
-      if (!t || !start) return;
-      if (Math.abs(t.clientX - start.x) > 10 || Math.abs(t.clientY - start.y) > 10) stop();
+      if (!t || !pressStart) return;
+      if (Math.abs(t.clientX - pressStart.x) > 10 || Math.abs(t.clientY - pressStart.y) > 10) stopPress();
     },
-    onTouchEnd: stop,
-    onTouchCancel: stop,
+    onTouchEnd: (e: React.TouchEvent) => {
+      /*
+        Меню уже открыто, палец подняли — гасим «призрачный» щелчок.
+
+        После касания браузер шлёт в ту же точку обычный щелчок. Меню к этому моменту
+        уже нарисовано, под пальцем оказывается его подложка — и меню закрывалось ровно
+        в тот миг, когда человек его увидел. Со стороны это и выглядело как «нажатие на
+        сообщение перестало работать»: окно мелькало и пропадало.
+      */
+      if (pressOpened) {
+        e.preventDefault();
+        pressOpened = false;
+      }
+      stopPress();
+    },
+    onTouchCancel: () => { pressOpened = false; stopPress(); },
   };
 }

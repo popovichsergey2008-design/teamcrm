@@ -104,9 +104,26 @@ export function ChatAttachment({ fileId, fileName, onOpen }: {
   // пока грузится — место под картинку занято, иначе лента прыгает при появлении
   if (isImage && !failed) return <span ref={holder} className="chat-img chat-img-wait" aria-hidden="true" />;
 
+  /*
+    Вложение-файл — заметной плашкой, а не строкой текста.
+
+    Раньше оно было подчёркнутой строчкой того же цвета, что и сообщение, и в длинной
+    переписке терялось: заказчик пропускал присланные документы. Теперь это плашка со
+    скрепкой на цветной подложке — она видна на любом пузыре: своём, чужом, ботовом.
+  */
   return (
-    <button className="chat-file" onClick={download} title="Скачать">
-      <Icon name="paperclip" size={14} /> {fileName}
+    <button className="chat-file" onClick={download} title={`Скачать «${fileName}»`}>
+      <span className="chat-file-icon" aria-hidden="true"><Icon name="paperclip" size={14} /></span>
+      <span className="chat-file-body">
+        <span className="chat-file-name">{fileName}</span>
+        <span className="chat-file-hint">{fileKind(fileName)} · нажмите, чтобы скачать</span>
+      </span>
     </button>
   );
+}
+
+/** Что это за файл — по расширению. Без него имя «отчёт» не говорит ничего. */
+function fileKind(name: string): string {
+  const ext = name.includes('.') ? name.split('.').pop() ?? '' : '';
+  return ext && ext.length <= 5 ? ext.toUpperCase() : 'Файл';
 }
