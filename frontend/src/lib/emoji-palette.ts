@@ -80,6 +80,13 @@ async function build(): Promise<Palette> {
   box.setAttribute('role', 'dialog');
   box.setAttribute('aria-label', 'Выбор эмодзи');
   /*
+    Пока палитра убрана, она остаётся в раскладке — а значит, её кнопки попадали бы под
+    Tab и в чтение экранным диктором. `inert` убирает и то, и другое, но не трогает
+    размеры: прогрев по разделам работает как прежде (нажатия из кода проходят).
+  */
+  box.inert = true;
+  box.setAttribute('aria-hidden', 'true');
+  /*
     Прогреваемся ЗА краем экрана, но в раскладке: у спрятанной через `display: none`
     ленты нулевая высота, и библиотека не нарисует ни одного ряда — весь смысл обхода
     разделов при этом пропадает.
@@ -205,6 +212,8 @@ export async function showPalette(place: PalettePlace, onPick: (emoji: string) =
   resetSearch(p);
   scrollToTop(p);
 
+  p.box.inert = false;
+  p.box.removeAttribute('aria-hidden');
   p.box.style.cssText = 'display:block';
   p.box.style.left = `${place.x}px`;
   p.box.style.top = `${place.y}px`;
@@ -222,6 +231,8 @@ export function hidePalette(): void {
 }
 
 function hide(p: Palette): void {
+  p.box.inert = true;
+  p.box.setAttribute('aria-hidden', 'true');
   p.box.style.cssText = HIDDEN;
 }
 
