@@ -3171,6 +3171,21 @@
 .onb-done .onb-hint { display: none; }
 .onb-skipped .onb-step-title { color: var(--text-mut); }
 .onb-dialog { max-width: 520px; }
+/* Логотип компании: в шапке — на месте знака ANTHILL, в окне настроек — предпросмотром. */
+.nav-org-logo { width: 30px; height: 30px; border-radius: var(--radius-sm); object-fit: contain; }
+.onb-logo { display: flex; align-items: center; gap: 10px; }
+/* Предложение подключить Telegram: строка с кнопкой, а не ещё один шаг пути. */
+.onb-tg {
+  display: flex; align-items: center; gap: 12px; margin: 4px 0 8px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg-elev-2);
+}
+.onb-tg > div { flex: 1; min-width: 0; }
+.onb-logo-img { width: 48px; height: 48px; border-radius: var(--radius-sm); object-fit: contain; background: var(--bg-elev-2); }
+.onb-logo-empty {
+  display: grid; place-items: center; width: 48px; height: 48px;
+  border: 1px dashed var(--border-2); border-radius: var(--radius-sm); color: var(--text-mut);
+}
 /* Отделы галочками: два столбца на широком экране, один на телефоне. */
 .onb-deps { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 12px; margin: 4px 0 8px; }
 .onb-dep { display: flex; align-items: center; gap: 8px; padding: 5px 2px; cursor: pointer; font-size: var(--fs-sm); }

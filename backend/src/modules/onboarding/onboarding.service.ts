@@ -3,6 +3,7 @@ import { AppException } from '../../common/http/app-exception';
 import { INDUSTRIES, industryByCode } from './industries';
 import { buildSteps, isComplete, nextStep, OnboardingStep, progress, StepKey } from './onboarding-steps';
 import { OnboardingRepository } from './onboarding.repository';
+import { FilesService } from '../files/files.service';
 
 export interface OnboardingView {
   steps: OnboardingStep[];
@@ -25,7 +26,10 @@ export interface OnboardingView {
  */
 @Injectable()
 export class OnboardingService {
-  constructor(private readonly repo: OnboardingRepository) {}
+  constructor(
+    private readonly repo: OnboardingRepository,
+    private readonly files: FilesService,
+  ) {}
 
   /** Состояние пути. Строку заводим на лету: организации бывают старше этого кода. */
   async view(tenantId: string, userId: string): Promise<OnboardingView> {
@@ -114,6 +118,32 @@ export class OnboardingService {
     await this.repo.ensure(tenantId, userId);
     await this.repo.saveCompany(tenantId, patch);
     await this.repo.confirmCompany(tenantId);
+  }
+
+  /**
+   * Логотип компании.
+   *
+   * Файл кладём в общее хранилище, а не в отдельную папку: так он живёт по тем же
+   * правилам доступа, что вложения задач, и отдаётся той же ручкой `/api/files/:id`.
+   */
+  async setLogo(tenantId: string, userId: string, file: { buffer: Buffer; originalname: string; mimetype: string }) {
+    if (!/^image\/(png|jpe?g|webp|svg\+xml)$/i.test(file.mimetype)) {
+      throw AppException.validation('Логотип: PNG, JPG, WEBP или SVG');
+    }
+    const row = await this.files.upload({
+      tenantId, userId, buffer: file.buffer,
+      fileName: file.originalname, contentType: file.mimetype,
+      ownerKind: 'logo',
+    });
+    await this.repo.setLogo(tenantId, String(row.id));
+    await this.repo.ensure(tenantId, userId);
+    await this.repo.confirmCompany(tenantId);
+    return { logoFileId: String(row.id), logoUrl: `/api/files/${row.id}` };
+  }
+
+  /** Убрать логотип: ссылку снимаем, сам файл остаётся в хранилище. */
+  async clearLogo(tenantId: string): Promise<void> {
+    await this.repo.setLogo(tenantId, null);
   }
 
   async skip(tenantId: string, userId: string, step: StepKey): Promise<void> {

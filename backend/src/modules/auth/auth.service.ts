@@ -33,6 +33,8 @@ export interface OrgRef {
   tenantId: string;
   name: string;
   role: string;
+  /** Логотип организации: рисуется в шапке вместо общего знака ANTHILL. */
+  logoFileId: string | null;
 }
 
 @Injectable()
@@ -50,7 +52,12 @@ export class AuthService {
   ) {}
 
   private orgRefs(rows: any[]): OrgRef[] {
-    return rows.map((m) => ({ tenantId: m.tenant_id, name: m.tenant_name, role: m.role_code }));
+    return rows.map((m) => ({
+      tenantId: m.tenant_id, name: m.tenant_name, role: m.role_code,
+      // Логотип показывается в шапке у всех, включая сотрудников: в онбординге
+      // он лежит за ручкой владельца, а знать «чьё это пространство» нужно всем.
+      logoFileId: m.tenant_logo_file_id ?? null,
+    }));
   }
 
   /**

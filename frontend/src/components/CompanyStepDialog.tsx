@@ -3,6 +3,8 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { AuthedMedia } from './AuthedMedia';
+import { navigate } from '../lib/router';
 import type { Industry, OnboardingView } from '../types';
 
 /**
@@ -19,7 +21,7 @@ import type { Industry, OnboardingView } from '../types';
  *     у строителей.
  */
 export function CompanyStepDialog({ company, onClose, onSaved }: {
-  company: { name: string; timezone: string; industry: string | null };
+  company: { name: string; timezone: string; industry: string | null; logoFileId: string | null };
   onClose: () => void;
   onSaved: (view: OnboardingView) => void;
 }) {
@@ -34,6 +36,7 @@ export function CompanyStepDialog({ company, onClose, onSaved }: {
   const guessed = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [timezone, setTimezone] = useState(company.timezone || guessed || 'Europe/Moscow');
   const [industry, setIndustry] = useState(company.industry ?? '');
+  const [logo, setLogo] = useState(company.logoFileId);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -90,6 +93,67 @@ export function CompanyStepDialog({ company, onClose, onSaved }: {
           <span className="dim tpl-hint">
             По отрасли на следующем шаге предложим отделы — останется подтвердить.
           </span>
+        </div>
+
+        {/*
+          Логотип — не украшение: он стоит в шапке и в гостевых экранах, где заказчик
+          видит систему впервые и должен понять, чьё это пространство.
+        */}
+        <div className="field">
+          <label>Логотип</label>
+          <div className="onb-logo">
+            {/* Файлы лежат за авторизацией: обычный <img src> получил бы отказ. */}
+            {logo
+              ? <AuthedMedia fileId={logo} name="Логотип компании" mime="image/png" className="onb-logo-img" />
+              : <span className="onb-logo-empty"><Icon name="building" size={20} /></span>}
+            <label className="btn btn-sm">
+              {logo ? 'Заменить' : 'Загрузить'}
+              <input
+                type="file"
+                hidden
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.currentTarget.value = '';
+                  if (!file) return;
+                  setErr('');
+                  try { setLogo((await api.uploadLogo(file)).logoFileId); }
+                  catch (ex) { setErr(ex instanceof ApiError ? ex.message : 'Логотип не загрузился'); }
+                }}
+              />
+            </label>
+            {logo && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => { void api.clearLogo().then(() => setLogo(null)).catch(() => undefined); }}
+              >
+                Убрать
+              </button>
+            )}
+          </div>
+          <span className="dim tpl-hint">PNG, JPG, WEBP или SVG. Виден в шапке и на гостевых экранах.</span>
+        </div>
+
+        {/*
+          Telegram — предложением, а не ещё одним шагом пути (ТЗ-11, разд. 19).
+
+          Привязка личная: бот пишет человеку в его чат, а не компании. Поэтому ведём
+          в профиль, где она уже живёт, вместо того чтобы заводить вторую такую же.
+        */}
+        <div className="onb-tg">
+          <div>
+            <b>Telegram</b>
+            <div className="dim tpl-hint">
+              Уведомления и сводки в личный чат, задачи и дейлики голосом. Подключается
+              каждым сотрудником отдельно — начните с себя.
+            </div>
+          </div>
+          <button
+            className="btn btn-sm"
+            onClick={() => { onClose(); navigate({ section: 'profile' }); }}
+          >
+            Подключить
+          </button>
         </div>
 
         {err && <div className="error-text">{err}</div>}

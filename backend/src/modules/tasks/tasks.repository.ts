@@ -174,6 +174,14 @@ export class TasksRepository {
   }
 
   /** Пояс исполнителя: «следующая среда 17:00» считается по его календарю, не по серверному. */
+  /** Пояс компании: запасной, когда у человека своего нет. */
+  async tenantTimezone(tenantId: string): Promise<string | null> {
+    const row = await this.db.one<{ timezone: string | null }>(
+      `SELECT timezone FROM tenants WHERE id=$1`, [tenantId],
+    );
+    return row?.timezone ?? null;
+  }
+
   async userTimezone(tenantId: string, userId: string): Promise<string | null> {
     const row = await this.db.one<{ timezone: string | null }>(
       `SELECT timezone FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, userId],

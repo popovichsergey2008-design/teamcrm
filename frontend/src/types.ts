@@ -36,6 +36,8 @@ export interface OrgRef {
   tenantId: string;
   name: string;
   role: string;
+  /** Логотип компании: рисуется в шапке вместо общего знака ANTHILL. */
+  logoFileId?: string | null;
 }
 
 export interface AuthResult {

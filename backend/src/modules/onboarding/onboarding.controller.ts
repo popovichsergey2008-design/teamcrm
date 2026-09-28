@@ -1,4 +1,7 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiConsumes } from '@nestjs/swagger';
+import { AppException } from '../../common/http/app-exception';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
@@ -68,6 +71,26 @@ export class OnboardingController {
       logoFileId: dto.logoFileId ?? null,
     });
     return this.onboarding.view(user.tenantId, user.userId);
+  }
+
+  /**
+   * Логотип компании.
+   *
+   * Отдельной ручкой, а не полем в настройках: это файл, и он идёт тем же путём, что
+   * аватар человека и вложения задач.
+   */
+  @Post('logo')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  logo(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw AppException.validation('Файл не выбран');
+    return this.onboarding.setLogo(user.tenantId, user.userId, file);
+  }
+
+  @Delete('logo')
+  async clearLogo(@CurrentUser() user: AuthUser) {
+    await this.onboarding.clearLogo(user.tenantId);
+    return { cleared: true };
   }
 
   @Post('skip')

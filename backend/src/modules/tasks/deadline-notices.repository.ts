@@ -13,6 +13,8 @@ export interface DeadlineCandidate {
   assignee_name: string | null;
   /** Часовой пояс исполнителя: срок в тексте должен читаться так же, как в карточке. */
   timezone: string | null;
+  /** Пояс компании — запасной, когда исполнителя нет вовсе. */
+  org_timezone: string | null;
   /** Про какие виды с ЭТИМ сроком уже говорили. */
   said: NoticeKind[];
 }
@@ -43,6 +45,7 @@ export class DeadlineNoticesRepository {
       `SELECT t.tenant_id::text, t.id::text AS task_id, t.project_id::text, t.title,
               t.deadline_at, (t.closed_at IS NOT NULL) AS closed,
               t.assignee_id::text, u.full_name AS assignee_name, u.timezone,
+              org.timezone AS org_timezone,
               COALESCE((
                 SELECT array_agg(n.kind)
                   FROM task_deadline_notices n
@@ -50,6 +53,7 @@ export class DeadlineNoticesRepository {
               ), ARRAY[]::text[]) AS said
          FROM tasks t
          LEFT JOIN users u ON u.id = t.assignee_id
+         JOIN tenants org ON org.id = t.tenant_id
          JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
         WHERE t.deadline_at IS NOT NULL
           AND t.closed_at IS NULL

@@ -273,9 +273,18 @@ export class UsersRepository {
     accountId?: string | null;
     clientId?: string | null;
   }): Promise<UserRow> {
+    /*
+      Часовой пояс новый сотрудник наследует от КОМПАНИИ, а не получает московский.
+
+      У колонки есть значение по умолчанию, и раньше каждый приглашённый жил по Москве,
+      пока сам не залезал в профиль. В компании из Владивостока это значило, что сроки,
+      напоминания и тихие часы у всей команды сдвинуты на семь часов — и замечали это
+      уже по сорванным договорённостям.
+    */
     const row = await this.db.one<UserRow>(
-      `INSERT INTO users (tenant_id, email, password_hash, full_name, role_id, account_id, client_id)
-       SELECT $1, $2, $3, $4, r.id, $6, $7 FROM roles r WHERE r.code = $5
+      `INSERT INTO users (tenant_id, email, password_hash, full_name, role_id, account_id, client_id, timezone)
+       SELECT $1, $2, $3, $4, r.id, $6, $7, COALESCE((SELECT timezone FROM tenants WHERE id = $1), 'Europe/Moscow')
+         FROM roles r WHERE r.code = $5
        RETURNING *, (SELECT code FROM roles WHERE id = role_id) AS role_code`,
       [input.tenantId, input.email, input.passwordHash, input.fullName, input.roleCode, input.accountId ?? null, input.clientId ?? null],
     );
@@ -285,7 +294,8 @@ export class UsersRepository {
   /** Все членства (организации) аккаунта — для списка организаций и переключения. */
   membershipsByAccount(accountId: string, activeOnly = true) {
     return this.db.many(
-      `SELECT u.id, u.tenant_id, u.is_active, r.code AS role_code, t.name AS tenant_name
+      `SELECT u.id, u.tenant_id, u.is_active, r.code AS role_code, t.name AS tenant_name,
+              t.logo_file_id::text AS tenant_logo_file_id
          FROM users u
          JOIN roles r ON r.id = u.role_id
          JOIN tenants t ON t.id = u.tenant_id

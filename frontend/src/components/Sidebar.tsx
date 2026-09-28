@@ -6,6 +6,7 @@ import { setDoNotDisturb } from '../lib/sound';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { Logo } from './Logo';
+import { AuthedMedia } from './AuthedMedia';
 import { buildPath, isConsoleHost, navigate, Route, Section } from '../lib/router';
 import { openSupport } from './support/SupportDock';
 import { roleLabel } from '../lib/labels';
@@ -189,7 +190,7 @@ export function Sidebar({
 }: {
   route: Route;
   user: { id: string; role: string; fullName: string; tenantId: string; platformStaff?: boolean; uiPrefs?: MenuPrefs };
-  organizations: { tenantId: string; name: string; role: string }[];
+  organizations: { tenantId: string; name: string; role: string; logoFileId?: string | null }[];
   avatarPath: string | null;
   unread: number;
   counters: NavCounters;
@@ -365,7 +366,16 @@ export function Sidebar({
     </a>
   );
 
-  const orgName = organizations.find((o) => o.tenantId === user.tenantId)?.name ?? 'Моя организация';
+  const org = organizations.find((o) => o.tenantId === user.tenantId);
+  const orgName = org?.name ?? 'Моя организация';
+  /*
+    Логотип компании вместо общего знака ANTHILL, если он загружен.
+
+    Человек работает в СВОЁМ пространстве, и знак чужого продукта в шапке — первое,
+    что отличает арендованную систему от своей. Знак ANTHILL остаётся на экране входа
+    и в приложении на телефоне: там он говорит, чем человек пользуется.
+  */
+  const orgLogo = org?.logoFileId ?? null;
 
   return (
     <>
@@ -406,7 +416,9 @@ export function Sidebar({
               title={`${orgName} · на главную`}
               aria-label="На главную"
             >
-              <Logo size={30} />
+              {orgLogo
+                ? <AuthedMedia fileId={orgLogo} name={orgName} mime="image/png" className="nav-org-logo" />
+                : <Logo size={30} />}
             </button>
             {/*
               Аккаунт — наверху, над поиском (задача #1348).

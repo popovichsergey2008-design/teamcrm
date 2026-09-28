@@ -640,6 +640,20 @@ export const api = {
   createDepartments: (names: string[]) => request<{ created: number }>('POST', '/onboarding/departments', { names }),
   saveCompany: (b: { name?: string; timezone?: string; industry?: string }) =>
     request<OnboardingView>('POST', '/onboarding/company', b),
+  /** Логотип компании: тем же путём, что аватар человека — файл в общее хранилище. */
+  uploadLogo: async (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(apiUrl('/api/onboarding/logo'), {
+      method: 'POST',
+      headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+      body: fd,
+    });
+    const env = await res.json();
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Логотип не загрузился');
+    return env.data as { logoFileId: string; logoUrl: string };
+  },
+  clearLogo: () => request<{ cleared: boolean }>('DELETE', '/onboarding/logo'),
   skipOnboardingStep: (step: string) => request<OnboardingView>('POST', '/onboarding/skip', { step }),
   dismissOnboarding: (dismissed: boolean) => request<OnboardingView>('POST', '/onboarding/dismiss', { dismissed }),
 

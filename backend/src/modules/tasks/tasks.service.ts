@@ -702,7 +702,8 @@ export class TasksService {
     if (!mine && actor.role !== 'owner') {
       throw AppException.forbidden('Перенести срок может исполнитель или постановщик задачи');
     }
-    const tz = (await this.repo.userTimezone(tenantId, actor.userId)) || 'Europe/Moscow';
+    const tz = (await this.repo.userTimezone(tenantId, actor.userId))
+      || (await this.repo.tenantTimezone(tenantId)) || 'Europe/Moscow';
     const to = nextWednesday(new Date(), tz);
 
     /*

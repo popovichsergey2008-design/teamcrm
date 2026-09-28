@@ -10,7 +10,7 @@ import { RealtimeService } from '../realtime/realtime.service';
  */
 const TICK_MS = 5 * 60_000;
 
-/** Пояс по умолчанию: у исполнителя он может быть не задан. */
+/** Совсем запасной пояс: не задан ни у исполнителя, ни у компании. */
 const FALLBACK_TZ = 'Europe/Moscow';
 
 /**
@@ -93,7 +93,13 @@ export class DeadlineNoticesScheduler implements OnModuleInit, OnModuleDestroy {
     const first = await this.repo.remember(row.tenant_id, row.task_id, kind, row.deadline_at);
     if (!first) return false;
 
-    const text = noticeText(kind, row.assignee_name, humanDeadline(deadline, row.timezone || FALLBACK_TZ));
+    /*
+      Пояс: сначала исполнителя, потом компании. У задачи без исполнителя своего пояса
+      нет вовсе, и «15:00» в такой строке означало московское время независимо от того,
+      где работает компания.
+    */
+    const tz = row.timezone || row.org_timezone || FALLBACK_TZ;
+    const text = noticeText(kind, row.assignee_name, humanDeadline(deadline, tz));
     const comment = await this.repo.addSystemComment(row.tenant_id, row.task_id, text);
 
     /*

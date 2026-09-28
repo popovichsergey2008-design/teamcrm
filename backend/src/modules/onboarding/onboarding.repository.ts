@@ -103,6 +103,14 @@ export class OnboardingRepository {
     );
   }
 
+  /** Логотип: ставим ссылку на уже загруженный файл. */
+  async setLogo(tenantId: string, fileId: string | null): Promise<void> {
+    await this.db.query(
+      `UPDATE tenants SET logo_file_id = $2::bigint, updated_at = now() WHERE id = $1`,
+      [tenantId, fileId],
+    );
+  }
+
   async confirmCompany(tenantId: string): Promise<void> {
     await this.db.query(
       `UPDATE tenant_onboarding

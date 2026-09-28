@@ -126,6 +126,21 @@ describe('онбординг владельца (e2e)', () => {
     expect(step(view, 'departments').done).toBe(true);
   });
 
+  it('новый сотрудник наследует часовой пояс компании, а не московский', async () => {
+    const O = await owner('ob8');
+    await http.post('/api/onboarding/company').set(O).send({ timezone: 'Asia/Vladivostok' }).expect(201);
+
+    const mateEmail = `ob8_m_${uniq()}@t.test`;
+    await http.post('/api/users').set(O)
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' }).expect(201);
+    const M = H((await http.post('/api/auth/login')
+      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+
+    // до этого каждый приглашённый жил по Москве, пока сам не залезал в профиль
+    const me = (await http.get('/api/me').set(M).expect(200)).body.data;
+    expect(me.timezone).toBe('Asia/Vladivostok');
+  });
+
   it('подсказку можно свернуть и открыть заново', async () => {
     const O = await owner('ob6');
     const off = (await http.post('/api/onboarding/dismiss').set(O).send({ dismissed: true }).expect(201)).body.data;
