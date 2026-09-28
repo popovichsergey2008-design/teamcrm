@@ -48,6 +48,22 @@ export interface AuthResult {
   organizations?: OrgRef[];
 }
 
+/** Какие входы включены на сервере: кнопки рисуются только по этому ответу. */
+export interface AuthProviders {
+  google: boolean;
+  telegram: boolean;
+  telegramBot: string | null;
+  googleClientId: string | null;
+}
+
+/**
+ * Ответ входа через Google или Telegram.
+ *
+ * Пришедшему впервые сервер не выдаёт сессию, а просит назвать организацию: название
+ * попадёт в шапку, в письма и в приглашения, придумывать его за человека нельзя.
+ */
+export type SocialAuthResult = AuthResult | { needsWorkspace: true; email: string; fullName: string };
+
 export interface Project {
   id: string;
   name: string;

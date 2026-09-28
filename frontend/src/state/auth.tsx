@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { api, SIGNED_OUT_EVENT, tokens } from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
 import { forgetRegisteredDevice, registeredDeviceId } from '../hooks/useDeviceRegistration';
-import type { OrgRef, User } from '../types';
+import type { AuthResult, OrgRef, User } from '../types';
 
 interface AuthState {
   user: User | null;
@@ -10,6 +10,8 @@ interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (b: { tenantName: string; email: string; password: string; fullName: string }) => Promise<void>;
+  /** Принять готовую сессию: так заходят через Google и Telegram — пароля там нет. */
+  applySession: (r: AuthResult) => void;
   logout: () => Promise<void>;
   switchOrg: (tenantId: string) => Promise<void>;
   createOrg: (name: string) => Promise<void>;
@@ -72,6 +74,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrganizations(r.organizations ?? []);
   };
 
+  const applySession = (r: AuthResult) => {
+    tokens.set(r.accessToken, r.refreshToken);
+    setUser(r.user);
+    setOrganizations(r.organizations ?? []);
+  };
+
   const switchOrg = async (tenantId: string) => {
     const r = await api.switchOrg(tenantId);
     tokens.set(r.accessToken, r.refreshToken);
@@ -108,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ user, organizations, loading, login, register, logout, switchOrg, createOrg, renameOrg }}>
+    <Ctx.Provider value={{ user, organizations, loading, login, register, applySession, logout, switchOrg, createOrg, renameOrg }}>
       {children}
     </Ctx.Provider>
   );

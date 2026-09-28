@@ -65,6 +65,12 @@ x-api-env: &api-env
   # для окружений без бота. Секрет проверяется на входящем вебхуке, если задан.
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
   TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+  # Вход через Google и Telegram (ТЗ-11). Пусто — кнопок на экране входа нет и ручки
+  # отвечают «не настроено»: провайдеры привязывают приложение к конкретному домену,
+  # поэтому ключи появятся после переезда. Имя бота нужно виджету входа отдельно от
+  # токена: по токену виджет не собрать.
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
   # Push на телефоны (ТЗ-9): сервисный аккаунт проекта Firebase, JSON или base64.
   # Не задан — push выключен, ящик уведомлений работает как прежде.
   FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}

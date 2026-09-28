@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { createHash, randomUUID } from 'crypto';
+import { PoolClient } from 'pg';
 
 import { DbService } from '../../database/db.service';
 import { TagsService } from '../tags/tags.service';
@@ -110,6 +111,64 @@ export class AuthService {
 
     const tokens = await this.issueTokens(user, meta);
     return { user: toPublicUser(user), organizations: this.orgRefs(memberships), ...tokens };
+  }
+
+  /**
+   * Собрать сессию для уже найденного сотрудника.
+   *
+   * Отдельный вход (через Google, Telegram) заканчивается тем же самым, что и вход по
+   * паролю: пара токенов и список организаций. Чтобы это «то же самое» не разошлось со
+   * временем, оно живёт здесь в одном месте, а не повторяется в каждом провайдере.
+   */
+  async sessionFor(user: UserRow, meta?: SessionMeta): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
+    const tokens = await this.issueTokens(user, meta);
+    const orgs = user.account_id
+      ? this.orgRefs(await this.users.membershipsByAccount(String(user.account_id)))
+      : [];
+    return { user: toPublicUser(user), organizations: orgs, ...tokens };
+  }
+
+  /** Найти членство аккаунта: активная организация — выбранная ранее или первая. */
+  async memberOf(accountId: string): Promise<UserRow | null> {
+    const memberships = await this.users.membershipsByAccount(accountId);
+    if (memberships.length === 0) return null;
+    return this.users.findActiveByAccountAndTenant(accountId, (memberships[0] as any).tenant_id);
+  }
+
+  /**
+   * Завести аккаунт и первую организацию человеку, пришедшему от провайдера.
+   *
+   * Пароля у него нет и не будет до тех пор, пока он сам его не назначит по ссылке
+   * восстановления: кладём хеш случайной строки, которую никто не видел. Пустой хеш или
+   * заранее известное значение сделали бы такой аккаунт открытым для входа по паролю.
+   */
+  async createOwnerAccount(
+    email: string,
+    fullName: string,
+    tenantName: string,
+    link?: (accountId: string, client: PoolClient) => Promise<void>,
+    meta?: SessionMeta,
+  ): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
+    if (await this.accounts.findByEmail(email)) {
+      throw AppException.conflict('Пользователь с таким e-mail уже зарегистрирован — войдите и привяжите вход в профиле');
+    }
+    const passwordHash = await argon2.hash(randomUUID() + randomUUID());
+
+    const user = await this.db.withTransaction(async (client) => {
+      const account = await this.accounts.create(email, passwordHash, fullName, client);
+      if (link) await link(String(account.id), client);
+      const tenant = await this.tenants.create(tenantName, 'eu', client);
+      const res = await client.query<UserRow>(
+        `INSERT INTO users (tenant_id, email, password_hash, full_name, role_id, account_id)
+         SELECT $1, $2, $3, $4, r.id, $5 FROM roles r WHERE r.code = 'owner'
+         RETURNING *, (SELECT code FROM roles WHERE code='owner') AS role_code`,
+        [tenant.id, email, passwordHash, fullName, account.id],
+      );
+      return res.rows[0];
+    });
+
+    void this.tags.seedDefaults(String(user.tenant_id));
+    return this.sessionFor(user, meta);
   }
 
   /** Список организаций аккаунта текущего пользователя. */

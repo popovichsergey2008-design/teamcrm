@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useAuth } from '../state/auth';
 import { Logo } from '../components/Logo';
 import { ApiError } from '../lib/api';
+import { SocialButtons } from '../components/SocialButtons';
 
 export function LoginPage() {
   const { login, register } = useAuth();
@@ -73,6 +74,9 @@ export function LoginPage() {
         <button className="btn btn-primary auth-submit" disabled={busy} type="submit">
           {busy ? '...' : mode === 'login' ? 'Войти' : 'Создать'}
         </button>
+
+        {/* Кнопки провайдеров появятся, только когда на сервере будут ключи. */}
+        <SocialButtons />
 
         {/* писем система не шлёт, поэтому честно: ссылку на смену пароля выдаёт владелец */}
         {mode === 'login' && (

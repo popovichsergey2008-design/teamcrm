@@ -448,6 +448,12 @@ export const api = {
     rawRequest<AuthResult>('POST', '/auth/register', b, false),
   login: (b: { email: string; password: string }) =>
     rawRequest<AuthResult>('POST', '/auth/login', b, false),
+  /** Что включено на сервере. Ключей может не быть вовсе — тогда кнопок не будет. */
+  authProviders: () => rawRequest<import('../types').AuthProviders>('GET', '/auth/providers', undefined, false),
+  googleLogin: (idToken: string, tenantName?: string) =>
+    rawRequest<import('../types').SocialAuthResult>('POST', '/auth/google', { idToken, tenantName }, false),
+  telegramLogin: (data: Record<string, string>) =>
+    rawRequest<import('../types').SocialAuthResult>('POST', '/auth/telegram', { data }, false),
   logout: () => (tokens.refresh ? rawRequest('POST', '/auth/logout', { refreshToken: tokens.refresh }, false) : Promise.resolve()),
   organizations: () => request<import('../types').OrgRef[]>('GET', '/auth/organizations'),
   switchOrg: (tenantId: string) => request<AuthResult>('POST', '/auth/switch-org', { tenantId }),

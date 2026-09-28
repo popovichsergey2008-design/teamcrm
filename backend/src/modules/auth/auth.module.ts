@@ -9,11 +9,13 @@ import { PasswordResetService } from './password-reset.service';
 import { PasswordResetRepository } from './password-reset.repository';
 import { SessionsService } from './sessions.service';
 import { SessionsController } from './sessions.controller';
+import { SocialService } from './social.service';
+import { SocialsRepository } from './socials.repository';
 
 @Module({
   imports: [TenantsModule, UsersModule, TagsModule],
   controllers: [AuthController, SessionsController],
-  providers: [AuthService, RefreshTokenRepository, PasswordResetService, PasswordResetRepository, SessionsService],
+  providers: [AuthService, SocialService, SocialsRepository, RefreshTokenRepository, PasswordResetService, PasswordResetRepository, SessionsService],
   exports: [AuthService, RefreshTokenRepository, SessionsService],
 })
 export class AuthModule {}
