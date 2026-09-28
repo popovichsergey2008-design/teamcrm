@@ -290,7 +290,22 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         setMsg(`Создано ${batch.created} из ${batch.requested}. Что не получилось — видно на странице результата.`);
       }
       if (lostFiles.length) setMsg((m) => `${m} Не загрузились файлы: ${lostFiles.join(', ')}.`.trim());
-      // Уходим на страницу результата: она переживает перезагрузку и ссылку.
+
+      /*
+        Часть задач человек мог создать из карточек ДО того, как нажал «создать
+        остальные»: их в пакете нет, и уход на страницу пакета показал бы половину
+        сделанного. В этом случае собираем итог этого захода целиком и показываем его
+        здесь. Когда пакетом создано всё — уходим на страницу пакета: она переживает
+        перезагрузку и ссылку.
+      */
+      if (created.length) {
+        setCreated((list) => [...list, ...batch.tasks.map((t) => ({
+          taskId: String(t.taskId), projectId: String(t.projectId), title: t.title,
+          projectName: t.projectName, assigneeName: t.assigneeName, deadline: t.deadlineAt,
+        }))]);
+        setStage('done');
+        return;
+      }
       onClose();
       navigate({ section: 'tasks', view: 'batch', batchId: batch.batchId });
     } catch (e) {
@@ -347,13 +362,17 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     доску закрывал список, и к следующей задаче приходилось возвращаться «назад».
   */
   const openCreated = (t: CreatedTask) => setCardTask({ projectId: t.projectId, taskId: t.taskId });
-  /** Все созданные разом: одна доска — на неё, разные — в реестр «От меня», там они все. */
-  const openAllCreated = () => {
-    const projects = new Set(created.map((t) => t.projectId));
-    if (projects.size === 1) navigate({ section: 'projects', projectId: created[0].projectId });
-    else navigate({ section: 'tasks', view: 'delegated' });
-    onClose();
-  };
+  /*
+    Куда вести с итогового экрана (просьба заказчика в #1344).
+
+    Раньше единственной кнопкой была «Открыть доску» — и человек, создавший три
+    задачи, попадал на доску, где их ещё надо найти глазами среди всех остальных.
+    Теперь главное действие — «Посмотреть задачи»: раздел «Задачи», список, а не
+    доска. Доска осталась второй кнопкой и только когда проект у всех один: вести на
+    доску, когда задачи разъехались по трём проектам, бессмысленно.
+  */
+  const openTaskList = () => { navigate({ section: 'tasks' }); onClose(); };
+  const openBoard = () => { navigate({ section: 'projects', projectId: created[0].projectId }); onClose(); };
   const fmtDeadline = (v: string | null) => {
     if (!v) return '';
     const d = new Date(v);
@@ -392,9 +411,14 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             ))}
           </div>
           <div className="nl-actions">
-            <button className="btn btn-primary btn-sm" onClick={openAllCreated}>
-              <Icon name={sameProject ? 'board' : 'list'} size={14} /> {sameProject ? 'Открыть доску' : 'Показать в «Задачах»'}
+            <button className="btn btn-primary btn-sm" onClick={openTaskList}>
+              <Icon name="list" size={14} /> Посмотреть задачи
             </button>
+            {sameProject && (
+              <button className="btn btn-ghost btn-sm" onClick={openBoard}>
+                <Icon name="board" size={14} /> Открыть доску
+              </button>
+            )}
             <button
               className="btn btn-ghost btn-sm"
               onClick={() => {
@@ -505,7 +529,14 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             <Icon name="check" size={13} /> Подтвердить теги у всех ({pendingTags})
           </button>
         )}
-        {drafts.length > 1 && readyCount > 1 && (
+        {/*
+          Кнопка живёт, пока есть что создавать (жалоба в #1344).
+
+          Раньше условие было `readyCount > 1`: стоило создать одну задачу из карточки —
+          и общая кнопка исчезала, а остальные приходилось нажимать по одной. Человек
+          видел это как «пакетное создание не работает».
+        */}
+        {drafts.length > 1 && readyCount > 0 && (
           <button
             className="btn btn-primary btn-sm"
             style={{ width: '100%', marginTop: 8 }}
@@ -513,7 +544,10 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             disabled={busy || pendingTags > 0}
             title={pendingTags > 0 ? `Подтвердите теги у ${pendingTags} задач` : undefined}
           >
-            {busy ? 'Создаю…' : `Создать ${readyCount} ${plural(readyCount, 'задачу', 'задачи', 'задач')}`}
+            {busy ? 'Создаю…'
+              : created.length
+                ? `Создать остальные (${readyCount})`
+                : `Создать ${readyCount} ${plural(readyCount, 'задачу', 'задачи', 'задач')}`}
           </button>
         )}
         {pendingTags > 0 && !busy && (

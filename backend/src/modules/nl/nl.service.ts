@@ -197,8 +197,23 @@ export class NlService {
    * контекст, из-за отсутствия которого голосовая постановка упиралась в пустой выбор
    * проекта: продиктовал задачу, стоя на нужной доске, и всё равно выбирай руками.
    */
-  async parse(tenantId: string, userId: string, text: string, currentProjectId?: string | null): Promise<NlDraft> {
+  /**
+   * Разобрать одно поручение.
+   *
+   * `whole` — вся команда целиком, когда поручение из неё вырезано (задача #1344).
+   * Человек называет проект, исполнителя и срок ОДИН раз на всю надиктовку: «Сергею
+   * в проект ANTHILL TEAM на завтра. Первая задача… Вторая задача…». Кусок «Первая
+   * задача — протестировать тест» не содержит ни проекта, ни имени, и правила,
+   * работавшие только по нему, теряли сказанное — задачи уходили не в тот проект.
+   * Поэтому: сначала ищем в самом поручении (своё сильнее общего), потом во всей фразе.
+   */
+  async parse(
+    tenantId: string, userId: string, text: string,
+    currentProjectId?: string | null, whole?: string | null,
+  ): Promise<NlDraft> {
     const clean = (text ?? '').trim();
+    /** Общая часть надиктовки: пусто, когда поручение и есть вся команда. */
+    const around = (whole ?? '').trim() && (whole ?? '').trim() !== clean ? String(whole).trim() : '';
     if (clean.length < 3) throw AppException.validation('Слишком короткая команда');
     const { users, projects, clients } = await this.context(tenantId);
     const today = new Date().toISOString().slice(0, 10);
@@ -244,7 +259,7 @@ export class NlService {
       if (!title) { base.intent = 'none'; warnings.push('Не понял, какую задачу создать'); return base; }
       // Проект — по всей доступной обстановке, а не только по ответу модели.
       const { projectId, source } = chooseProject({
-        spokenId: matchProjectInText(clean, projects),
+        spokenId: matchProjectInText(clean, projects) ?? (around ? matchProjectInText(around, projects) : null),
         modelId: idIn(t.projectId, projectSet),
         currentId: currentProjectId ? String(currentProjectId) : null,
         projects,
@@ -252,13 +267,17 @@ export class NlService {
       if (!projectId) warnings.push('Проект не распознан — выберите вручную');
       // Модель часто не возвращает исполнителя, хотя он назван прямым текстом,
       // — тогда ищем имя в команде сами.
-      const assigneeId = idIn(t.assigneeId, userSet) ?? matchUserInText(clean, users);
+      const assigneeId = idIn(t.assigneeId, userSet)
+        ?? matchUserInText(clean, users)
+        ?? (around ? matchUserInText(around, users) : null);
       if (t.assigneeId && !assigneeId) warnings.push('Исполнитель не распознан');
       // Срочность и срок модель нередко пропускает, хотя они сказаны прямым текстом
       // («срочно», «к пятнице»), — то же самое разбирают правила.
       const priority = PRIORITIES.includes(String(t.priority)) ? String(t.priority)
-        : pickPriority(clean) ?? 'normal';
-      const deadline = normalizeDeadline(t.deadline, today) ?? pickDeadline(clean, new Date());
+        : pickPriority(clean) ?? (around ? pickPriority(around) : null) ?? 'normal';
+      const deadline = normalizeDeadline(t.deadline, today)
+        ?? pickDeadline(clean, new Date())
+        ?? (around ? pickDeadline(around, new Date()) : null);
       if (t.deadline && !deadline) warnings.push('Срок не подставил: дата в прошлом или не распознана — выберите вручную');
       // Согласование считаем правилами: это переключатель права закрыть задачу,
       // и ошибка модели тут стоит дорого в обе стороны.
@@ -350,7 +369,7 @@ export class NlService {
       if (byRules.length < 2) return [await single];
       this.log.log(`команда разделена правилами на ${byRules.length}: модель не ответила`);
       const ruleDrafts = (await Promise.all(
-        byRules.map((part) => this.parse(tenantId, userId, part, currentProjectId).catch(() => null)),
+        byRules.map((part) => this.parse(tenantId, userId, part, currentProjectId, clean).catch(() => null)),
       )).filter((d): d is NlDraft => !!d?.task);
       return ruleDrafts.length > 1 ? ruleDrafts : [await single];
     }
@@ -364,7 +383,7 @@ export class NlService {
       // Кусок исходной речи, из которого выросла задача: по нему человек проверяет,
       // не выдумал ли ИИ, и правит формулировку осмысленно.
       const source = String(item?.source ?? '').trim() || clean;
-      const draft = await this.parse(tenantId, userId, source, currentProjectId).catch(() => null);
+      const draft = await this.parse(tenantId, userId, source, currentProjectId, clean).catch(() => null);
       if (!draft?.task) return null;
       draft.task.title = cleanTitle(title, item?.description ? String(item.description) : null).slice(0, 255);
       if (item?.description) draft.task.description = String(item.description);
@@ -372,7 +391,8 @@ export class NlService {
         draft.task.checklist = item.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 12);
       }
       // Имя, названное в самой команде: только оно считается явной волей человека.
-      this.route(draft, item, candidates, matchUserInText(source, users));
+      // Имя, названное в команде: в самом поручении или в общей части надиктовки.
+      this.route(draft, item, candidates, matchUserInText(source, users) ?? matchUserInText(clean, users));
       return draft;
     }));
     const drafts = parsedItems.filter((d): d is NlDraft => !!d);
