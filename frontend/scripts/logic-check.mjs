@@ -1341,6 +1341,24 @@ test('своим переносом считаем только карточку
   assert.equal(isBoardDrag(null), false);
 });
 
+// ── приглашения списком ───────────────────────────────────────────────────────
+test('почты вынимаются из того, что человек вставил, в любом виде', async () => {
+  const { parseEmails } = await load('lib/emails.ts');
+
+  // столбец из таблицы, список через запятую и «Имя <адрес>» — всё это обычная вставка
+  assert.deepEqual(parseEmails('petr@company.ru\nolga@company.ru'), ['petr@company.ru', 'olga@company.ru']);
+  assert.deepEqual(parseEmails('a@b.ru, c@d.ru;  e@f.ru'), ['a@b.ru', 'c@d.ru', 'e@f.ru']);
+  assert.deepEqual(parseEmails('Пётр <petr@company.ru>'), ['petr@company.ru']);
+
+  // повтор и регистр — это один и тот же человек, звать его дважды незачем
+  assert.deepEqual(parseEmails('A@B.ru\na@b.ru'), ['a@b.ru']);
+
+  // мусор адресом не считаем
+  assert.deepEqual(parseEmails('просто текст без почты'), []);
+  assert.deepEqual(parseEmails('петр@почта'), []);
+  assert.deepEqual(parseEmails(''), []);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

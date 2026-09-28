@@ -141,6 +141,28 @@ describe('онбординг владельца (e2e)', () => {
     expect(me.timezone).toBe('Asia/Vladivostok');
   });
 
+  it('приглашения списком: удачные не откатываются из-за неудачных', async () => {
+    const O = await owner('ob9');
+    const mine = `ob9_self_${uniq()}@t.test`;
+    // первый адрес — свежий, второй уже позван, третий — сам владелец
+    const fresh = `ob9_a_${uniq()}@t.test`;
+    await http.post('/api/invites').set(O).send({ email: fresh, role: 'member' }).expect(201);
+
+    const other = `ob9_b_${uniq()}@t.test`;
+    const res = (await http.post('/api/invites/batch').set(O)
+      .send({ emails: [other, fresh, mine], role: 'member' }).expect(201)).body.data;
+
+    expect(res.results.length).toBe(3);
+    const byEmail = Object.fromEntries(res.results.map((r: any) => [r.email, r]));
+    // новый позван и получил ссылку
+    expect(byEmail[other].ok).toBe(true);
+    expect(String(byEmail[other].link)).toContain('invite=');
+
+    // шаг «пригласить команду» закрылся
+    const view = (await http.get('/api/onboarding').set(O).expect(200)).body.data;
+    expect(step(view, 'team').done).toBe(true);
+  });
+
   it('подсказку можно свернуть и открыть заново', async () => {
     const O = await owner('ob6');
     const off = (await http.post('/api/onboarding/dismiss').set(O).send({ dismissed: true }).expect(201)).body.data;

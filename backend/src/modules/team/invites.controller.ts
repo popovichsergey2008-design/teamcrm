@@ -1,12 +1,19 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { InvitesService } from './invites.service';
 
 class CreateInviteDto {
   @IsEmail() email!: string;
+  @IsIn(['owner', 'manager', 'member']) role!: string;
+  @IsOptional() @IsString() positionId?: string;
+}
+
+class InviteManyDto {
+  /** До полусотни за раз: больше обычно значит, что человек вставил не тот столбец. */
+  @IsArray() @ArrayMaxSize(50) @IsEmail({}, { each: true }) emails!: string[];
   @IsIn(['owner', 'manager', 'member']) role!: string;
   @IsOptional() @IsString() positionId?: string;
 }
@@ -48,6 +55,21 @@ export class InvitesController {
   @Roles('owner', 'manager')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateInviteDto) {
     return this.invites.create(user.tenantId, user.userId, dto);
+  }
+
+  /**
+   * Позвать сразу нескольких.
+   *
+   * Ответ — по каждому адресу отдельно: часть приглашений может не уйти (человек уже
+   * в компании, адрес с опечаткой), и это не повод отменять остальные.
+   */
+  @ApiBearerAuth()
+  @Post('batch')
+  @Roles('owner', 'manager')
+  createMany(@CurrentUser() user: AuthUser, @Body() dto: InviteManyDto) {
+    return this.invites.inviteMany(user.tenantId, user.userId, {
+      emails: dto.emails, role: dto.role, positionId: dto.positionId ?? null,
+    });
   }
 
   @Public()

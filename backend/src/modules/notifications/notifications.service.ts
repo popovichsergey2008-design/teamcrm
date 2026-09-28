@@ -5,6 +5,7 @@ import {
   deadlineShiftAskLetter, deadlineShiftDecidedLetter,
   taskApprovalLetter, taskCommentedLetter, taskCreatedLetter, taskParticipantLetter,
   taskReturnedLetter, taskStatusLetter, taskMergedLetter, feedAnnouncementLetter, feedMentionLetter,
+  inviteLetter,
 } from './mail.templates';
 
 /**
@@ -78,6 +79,36 @@ export class NotificationsService {
     } catch (e) {
       // Уведомление — не причина ронять действие пользователя.
       this.log.warn(`${eventKey} для задачи ${taskId}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Приглашение в компанию письмом.
+   *
+   * Получателя как пользователя ещё нет, поэтому письмо кладётся в очередь без
+   * привязки к человеку: отписка ему не нужна (это не рассылка), а дубль в Telegram
+   * невозможен — привязывать нечего. Повтор приглашения на тот же адрес шлёт новое
+   * письмо: старая ссылка могла потеряться, и это обычная причина позвать второй раз.
+   */
+  async invite(input: {
+    tenantId: string; email: string; orgName: string; inviterName: string;
+    acceptUrl: string; expiresAt: Date; token: string;
+  }): Promise<void> {
+    try {
+      const letter = inviteLetter({
+        orgName: input.orgName, inviterName: input.inviterName,
+        acceptUrl: input.acceptUrl, expiresAt: input.expiresAt,
+      });
+      await this.repo.enqueue({
+        tenantId: input.tenantId, userId: null, toEmail: input.email,
+        subject: letter.subject, text: letter.text, html: letter.html,
+        eventKey: 'invite',
+        // Ключ по самому приглашению: два приглашения — два письма, повтор одного — одно.
+        dedupKey: `invite:${input.token.slice(0, 32)}`,
+      });
+    } catch (e) {
+      // Письмо — не причина не создать приглашение: ссылку человек может передать руками.
+      this.log.warn(`письмо-приглашение для ${input.email}: ${(e as Error).message}`);
     }
   }
 

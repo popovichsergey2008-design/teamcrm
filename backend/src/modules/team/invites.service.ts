@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'crypto';
 import { AppException } from '../../common/http/app-exception';
 import { UsersService } from '../users/users.service';
 import { InvitesRepository } from './invites.repository';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 дней
 
@@ -11,6 +12,7 @@ export class InvitesService {
   constructor(
     private readonly repo: InvitesRepository,
     private readonly users: UsersService,
+    private readonly notify: NotificationsService,
   ) {}
 
   private sha256(v: string) {
@@ -36,6 +38,71 @@ export class InvitesService {
       expiresAt,
     });
     return { token, email: input.email, expiresAt };
+  }
+
+  /**
+   * Позвать нескольких и разослать письма.
+   *
+   * Название организации и имя пригласившего нужны самому письму: «Пётр приглашает вас
+   * в „Ромашку“» человек понимает, а «приглашение в систему» — нет.
+   */
+  async inviteMany(
+    tenantId: string, invitedBy: string,
+    input: { emails: string[]; role: string; positionId?: string | null },
+  ) {
+    const who = await this.repo.inviterContext(tenantId, invitedBy);
+    const base = (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, '');
+    return this.createMany(tenantId, invitedBy, input, {
+      orgName: who?.org_name ?? 'компанию',
+      inviterName: who?.inviter_name ?? 'Коллега',
+      linkOf: (token) => `${base}/?invite=${encodeURIComponent(token)}`,
+    });
+  }
+
+  /**
+   * Позвать сразу нескольких (ТЗ-11, разд. 25).
+   *
+   * Почты вводят списком — из письма, из таблицы, из головы, — и половина адресов
+   * оказывается либо чужой, либо уже заведённой. Поэтому НЕ останавливаемся на первой
+   * ошибке и не откатываем удачные: возвращаем результат по каждому адресу отдельно.
+   * Человек должен увидеть «этих позвали, с этими вот что не так», а не одно общее
+   * «не получилось» (требование разд. 59).
+   *
+   * Письмо уходит каждому приглашённому; ссылку отдаём и в ответе — почта может быть
+   * не настроена, и тогда её передают любым другим способом.
+   */
+  async createMany(
+    tenantId: string, invitedBy: string,
+    input: { emails: string[]; role: string; positionId?: string | null },
+    mail?: { orgName: string; inviterName: string; linkOf: (token: string) => string },
+  ): Promise<{ results: { email: string; ok: boolean; link?: string; error?: string }[] }> {
+    const seen = new Set<string>();
+    const results: { email: string; ok: boolean; link?: string; error?: string }[] = [];
+
+    for (const raw of input.emails) {
+      const email = String(raw ?? '').trim().toLowerCase();
+      if (!email) continue;
+      // Повтор в одном списке — не ошибка человека, а описка: молча пропускаем второй.
+      if (seen.has(email)) continue;
+      seen.add(email);
+
+      try {
+        const res = await this.create(tenantId, invitedBy, {
+          email, role: input.role, positionId: input.positionId ?? null,
+        });
+        const link = mail?.linkOf(res.token);
+        if (mail && link) {
+          void this.notify?.invite({
+            tenantId, email, orgName: mail.orgName, inviterName: mail.inviterName,
+            acceptUrl: link, expiresAt: res.expiresAt, token: res.token,
+          });
+        }
+        results.push({ email, ok: true, link });
+      } catch (e) {
+        results.push({ email, ok: false, error: (e as Error).message });
+      }
+    }
+    return { results };
   }
 
   /** Принять приглашение: одноразово, с истечением; создаёт пользователя. */

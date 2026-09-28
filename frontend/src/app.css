@@ -3174,6 +3174,15 @@
 /* Логотип компании: в шапке — на месте знака ANTHILL, в окне настроек — предпросмотром. */
 .nav-org-logo { width: 30px; height: 30px; border-radius: var(--radius-sm); object-fit: contain; }
 .onb-logo { display: flex; align-items: center; gap: 10px; }
+/* Итог массового приглашения: по строке на адрес — видно, кого позвали, а кого нет. */
+.inv-results { display: flex; flex-direction: column; gap: 2px; margin: 8px 0; padding: 0; list-style: none; }
+.inv-results li { display: flex; align-items: center; gap: 8px; padding: 6px 2px; font-size: var(--fs-sm); }
+.inv-results li + li { border-top: 1px solid var(--border); }
+.inv-ok > svg { color: var(--ok); flex: 0 0 auto; }
+.inv-fail > svg { color: var(--warn); flex: 0 0 auto; }
+.inv-email { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-error { flex: 0 1 auto; font-size: var(--fs-xs); text-align: right; }
+
 /* Предложение подключить Telegram: строка с кнопкой, а не ещё один шаг пути. */
 .onb-tg {
   display: flex; align-items: center; gap: 12px; margin: 4px 0 8px;

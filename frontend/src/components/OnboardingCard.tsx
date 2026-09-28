@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import { CompanyStepDialog } from './CompanyStepDialog';
 import { DepartmentsStepDialog } from './DepartmentsStepDialog';
+import { InviteTeamDialog } from './InviteTeamDialog';
 import type { OnboardingStep, OnboardingView } from '../types';
 
 /**
@@ -29,7 +30,7 @@ export function OnboardingCard({ always = false }: {
 }) {
   const [view, setView] = useState<OnboardingView | null>(null);
   const [open, setOpen] = useState(true);
-  const [dialog, setDialog] = useState<'company' | 'departments' | null>(null);
+  const [dialog, setDialog] = useState<'company' | 'departments' | 'team' | null>(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
@@ -49,7 +50,7 @@ export function OnboardingCard({ always = false }: {
   const go = (step: OnboardingStep) => {
     if (step.key === 'company') return setDialog('company');
     if (step.key === 'departments') return setDialog('departments');
-    if (step.key === 'team') return navigate({ section: 'settings', tab: 'team' });
+    if (step.key === 'team') return setDialog('team');
     // Проект и задача заводятся там же, где их заводят всегда: отдельного «мастера
     // создания» нет намеренно — человек должен запомнить настоящий путь, а не учебный.
     return navigate({ section: 'projects' });
@@ -125,6 +126,12 @@ export function OnboardingCard({ always = false }: {
           company={view.company}
           onClose={() => setDialog(null)}
           onSaved={(v) => { setView(v); setDialog(null); }}
+        />
+      )}
+      {dialog === 'team' && (
+        <InviteTeamDialog
+          onClose={() => setDialog(null)}
+          onDone={() => act(() => api.onboarding())}
         />
       )}
       {dialog === 'departments' && (

@@ -654,6 +654,10 @@ export const api = {
     return env.data as { logoFileId: string; logoUrl: string };
   },
   clearLogo: () => request<{ cleared: boolean }>('DELETE', '/onboarding/logo'),
+  /** Позвать нескольких разом: ответ по каждому адресу отдельно (ТЗ-11, разд. 25). */
+  inviteMany: (emails: string[], role: string) => request<{
+    results: { email: string; ok: boolean; link?: string; error?: string }[];
+  }>('POST', '/invites/batch', { emails, role }),
   skipOnboardingStep: (step: string) => request<OnboardingView>('POST', '/onboarding/skip', { step }),
   dismissOnboarding: (dismissed: boolean) => request<OnboardingView>('POST', '/onboarding/dismiss', { dismissed }),
 

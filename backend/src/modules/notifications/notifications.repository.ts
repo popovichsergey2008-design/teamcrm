@@ -169,7 +169,8 @@ export class NotificationsRepository {
    * отбрасывается по ключу — вебхук или двойной клик не превратятся в два письма.
    */
   async enqueue(i: {
-    tenantId: string; userId: string; toEmail: string; subject: string;
+    /** Получателя-пользователя может не быть: приглашённый ещё не заведён. */
+    tenantId: string; userId: string | null; toEmail: string; subject: string;
     text: string; html: string; eventKey: string; dedupKey: string;
   }): Promise<void> {
     await this.db.query(

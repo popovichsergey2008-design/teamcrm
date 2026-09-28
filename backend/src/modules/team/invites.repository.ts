@@ -106,4 +106,14 @@ export class InvitesRepository {
   async deactivateLink(tenantId: string, id: string): Promise<void> {
     await this.db.query(`UPDATE invite_links SET is_active=FALSE WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
   }
+
+  /** Кто зовёт и куда: строки для письма-приглашения. */
+  inviterContext(tenantId: string, userId: string): Promise<{ org_name: string; inviter_name: string } | null> {
+    return this.db.one<{ org_name: string; inviter_name: string }>(
+      `SELECT t.name AS org_name, u.full_name AS inviter_name
+         FROM users u JOIN tenants t ON t.id = u.tenant_id
+        WHERE u.tenant_id = $1 AND u.id = $2`,
+      [tenantId, userId],
+    );
+  }
 }
