@@ -1665,6 +1665,8 @@ export const api = {
   ) =>
     request<PlatformStaff[]>('POST', '/platform/staff', { userId, ...patch }),
   platformTenants: () => request<PlatformTenant[]>('GET', '/platform/tenants'),
+  /** Воронка онбординга: считается по фактам, поэтому запрос не из дешёвых — берём по требованию. */
+  platformFunnel: () => request<import('../types').FunnelReport>('GET', '/platform/funnel'),
 
   supportOverview: () => request<{
     project: { id: string; name: string } | null;

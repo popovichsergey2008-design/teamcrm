@@ -5653,6 +5653,30 @@ button.chat-pop-row:hover { background: var(--hover); }
   .console-row span:nth-child(n+3) { display: none; }
 }
 
+/* Приживаемость (ТЗ-11): воронка онбординга в консоли вендора. */
+.funnel-main {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 14px 16px; margin: 10px 0 12px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-soft);
+}
+.funnel-main-value { font-size: 30px; font-weight: 700; line-height: 1.1; }
+.funnel-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.funnel-stats > div { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); }
+.funnel-stats b { font-size: var(--fs-lg); }
+.funnel-stats .dim { font-size: var(--fs-xs); white-space: normal; }
+.funnel-steps { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.funnel-step { display: grid; grid-template-columns: minmax(0, 190px) minmax(0, 1fr) 96px; gap: 10px; align-items: center; font-size: var(--fs-sm); }
+.funnel-step-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.funnel-bar { display: block; height: 10px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; }
+/* Заливка, а не текст поверх: белым по акценту в светлой теме читалось бы плохо. */
+.funnel-bar i { display: block; height: 100%; background: var(--accent-2); border-radius: 999px; }
+.funnel-step-num { text-align: right; font-size: var(--fs-xs); }
+.console-row.funnel-row { grid-template-columns: minmax(0, 2fr) 110px 90px minmax(0, 1.6fr); }
+@media (max-width: 640px) {
+  .funnel-step { grid-template-columns: minmax(0, 1fr) 80px; }
+  .funnel-step .funnel-bar { display: none; }
+}
+
 /* Инструменты специалиста в панели: диагностика, инженер, задача (ТЗ-8, разд. 17). */
 .support-tools {
   flex: 0 0 auto; margin: 0 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;

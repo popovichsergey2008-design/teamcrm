@@ -42,6 +42,7 @@ import { TaskCardModule } from './modules/taskcard/taskcard.module';
 import { TagsModule } from './modules/tags/tags.module';
 import { TemplatesModule } from './modules/templates/templates.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { SecurityModule } from './modules/security/security.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DiagModule } from './modules/diagnostics/diag.module';
@@ -117,6 +118,7 @@ import { FeedModule } from './modules/feed/feed.module';
     TagsModule,
     TemplatesModule,
     OnboardingModule,
+    AnalyticsModule,
     SecurityModule,
     BitrixModule,
     YougileModule,

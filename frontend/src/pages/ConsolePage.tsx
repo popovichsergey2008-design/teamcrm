@@ -9,7 +9,7 @@ import { stampLabel } from '../lib/chat-text';
 import { navigate, Route } from '../lib/router';
 import { useAuth } from '../state/auth';
 import type {
-  PlatformCandidate, PlatformStaff, PlatformTenant,
+  FunnelReport, PlatformCandidate, PlatformStaff, PlatformTenant,
   SupportEscalation, SupportHandbook, SupportQueueFilter, SupportQueueItem,
 } from '../types';
 
@@ -22,12 +22,30 @@ function dur(sec: number | null): string {
   return `${h} ч ${Math.round((sec - h * 3600) / 60)} мин`;
 }
 
+/**
+ * Длительности воронки — словами, к которым привык человек: «4 ч», «2 дня».
+ *
+ * Минуты в онбординге не значат ничего: между регистрацией и первой задачей проходят
+ * часы и дни, а точность до минуты создаёт вид измерения, которого тут нет.
+ */
+function span(ms: number | null): string {
+  if (ms === null) return '—';
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `${Math.max(min, 1)} мин`;
+  const h = Math.round(min / 60);
+  if (h < 36) return `${h} ч`;
+  return `${Math.round(h / 24)} дн`;
+}
+
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+
 const TABS: { id: string; label: string; icon: string; manage?: boolean }[] = [
   { id: 'queue', label: 'Обращения', icon: 'support' },
   { id: 'team', label: 'Техотдел', icon: 'users' },
   { id: 'known', label: 'Известные проблемы', icon: 'alert', manage: true },
   { id: 'handbook', label: 'Справочник', icon: 'book', manage: true },
   { id: 'clients', label: 'Организации', icon: 'building' },
+  { id: 'funnel', label: 'Приживаемость', icon: 'chart' },
 ];
 
 /**
@@ -68,6 +86,8 @@ export function ConsolePage({ route }: { route: Route }) {
   const [hb, setHb] = useState<SupportHandbook | null>(null);
   const [clients, setClients] = useState<PlatformTenant[]>([]);
   const [escalations, setEscalations] = useState<SupportEscalation[]>([]);
+  /** Воронка: грузится только на своей вкладке — запрос идёт по всем организациям. */
+  const [funnel, setFunnel] = useState<FunnelReport | null>(null);
   /** Отбор очереди: пустой означает «вся очередь», как было до этапа 3. */
   const [filter, setFilter] = useState<SupportQueueFilter>({});
   const [roles, setRoles] = useState<{ id: string; title: string }[]>([]);
@@ -103,6 +123,17 @@ export function ConsolePage({ route }: { route: Route }) {
     setReady(true);
   }, [isAdmin, isEngineer, filter]);
   useEffect(() => { void load(); }, [load]);
+
+  /*
+    Воронка считается по фактам всех организаций сразу, поэтому не грузим её вместе с
+    остальной консолью: пока на неё не зашли, она никому не нужна.
+  */
+  useEffect(() => {
+    if (tab !== 'funnel' || funnel) return;
+    let alive = true;
+    api.platformFunnel().then((r) => alive && setFunnel(r)).catch(() => undefined);
+    return () => { alive = false; };
+  }, [tab, funnel]);
 
   /*
     Очередь живёт сама.
@@ -685,6 +716,74 @@ export function ConsolePage({ route }: { route: Route }) {
               ))}
               {!clients.length && <p className="dim">Клиентов пока нет.</p>}
             </div>
+          </div>
+        )}
+
+        {/*
+          Приживаемость: продуктовая метрика, а не отчёт клиенту. Отвечает на один
+          вопрос — где новые организации застревают по пути к первой задаче.
+        */}
+        {ready && !isEngineer && tab === 'funnel' && (
+          <div className="support-block">
+            <div className="drawer-section-title">Приживаемость</div>
+            <p className="dim">
+              Докуда доходят новые организации и за сколько. Считается по фактам — заведён
+              проект, появилась задача, пришёл второй человек, — поэтому цифры верны и для
+              компаний, которые завелись до того, как появился этот экран.
+            </p>
+            {!funnel && <SkeletonList rows={4} />}
+            {funnel && !funnel.tenants.length && (
+              <EmptyState icon="chart" title="Считать пока нечего" hint="Первая организация появится здесь сама." />
+            )}
+            {funnel && !!funnel.tenants.length && (
+              <>
+                <div className="funnel-main">
+                  <span className="funnel-main-value">{span(funnel.summary.medians.toValue)}</span>
+                  <span className="dim">
+                    медиана до первой задачи по {funnel.summary.tenants} организациям — раньше
+                    этого продукт не дал ещё ничего
+                  </span>
+                </div>
+                <div className="funnel-stats">
+                  <div><b>{span(funnel.summary.medians.toProject)}</b><span className="dim">до первого проекта</span></div>
+                  <div><b>{span(funnel.summary.medians.toCollaboration)}</b><span className="dim">до второго человека</span></div>
+                  <div><b>{span(funnel.summary.medians.toInvite)}</b><span className="dim">до приглашения</span></div>
+                  <div><b>{pct(funnel.summary.completionRate)}</b><span className="dim">прошли путь до конца</span></div>
+                  <div>
+                    <b>{funnel.summary.inviteAcceptance === null ? '—' : pct(funnel.summary.inviteAcceptance)}</b>
+                    <span className="dim">приглашений приняли</span>
+                  </div>
+                  <div><b>{pct(funnel.summary.voiceAdoption)}</b><span className="dim">диктуют голосом</span></div>
+                </div>
+                <div className="funnel-steps">
+                  {funnel.summary.steps.map((st) => (
+                    <div key={st.key} className="funnel-step">
+                      <span className="funnel-step-title">{st.title}</span>
+                      <span className="funnel-bar"><i style={{ width: `${Math.round(st.share * 100)}%` }} /></span>
+                      <span className="funnel-step-num dim">{st.count} · {pct(st.share)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="console-table" role="table">
+                  <div className="console-row funnel-row console-row-head" role="row">
+                    <span>Организация</span><span>Заведена</span><span>До задачи</span><span>Где остановилась</span>
+                  </div>
+                  {funnel.tenants.map((t) => (
+                    <div key={t.tenantId} className="console-row funnel-row" role="row">
+                      <span>{t.name}</span>
+                      <span className="dim">{stampLabel(t.createdAt)}</span>
+                      <span>{span(t.durations.toTask)}</span>
+                      <span className="dim">
+                        {t.completed ? 'путь пройден'
+                          : t.steps.task ? 'работает, подсказка не закрыта'
+                          : t.steps.project ? 'проект без задач'
+                          : 'только заведена'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -64,6 +64,33 @@ export interface AuthProviders {
  */
 export type SocialAuthResult = AuthResult | { needsWorkspace: true; email: string; fullName: string };
 
+/** Воронка онбординга в консоли вендора (ТЗ-11): докуда доходят новые организации. */
+export interface FunnelDurations {
+  toInvite: number | null;
+  toProject: number | null;
+  toTask: number | null;
+  toCollaboration: number | null;
+  toValue: number | null;
+}
+export interface FunnelReport {
+  summary: {
+    tenants: number;
+    steps: { key: string; title: string; count: number; share: number }[];
+    medians: FunnelDurations;
+    completionRate: number;
+    inviteAcceptance: number | null;
+    voiceAdoption: number;
+  };
+  tenants: {
+    tenantId: string;
+    name: string;
+    createdAt: string;
+    steps: Record<string, string | null>;
+    durations: FunnelDurations;
+    completed: boolean;
+  }[];
+}
+
 export interface Project {
   id: string;
   name: string;
