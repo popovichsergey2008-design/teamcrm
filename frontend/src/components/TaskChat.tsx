@@ -1221,6 +1221,25 @@ export function TaskChat({
         {shown.map((c, i) => {
           const prev = shown[i - 1];
           const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(c.created_at).toDateString();
+          /*
+            Системная строка — предупреждение о сроке.
+
+            Рисуем её НЕ пузырём: у неё нет автора, отвечать на неё некому и реакции
+            ей ни к чему. Строка поперёк ленты читается как «система сообщает», а не
+            как чья-то реплика — так же, как объявления о входе и выходе в чатах.
+          */
+          if (c.is_system) {
+            return (
+              <div key={c.id}>
+                {newDay && <div className="chat-day">{dayLabel(c.created_at)}</div>}
+                <div className="msg-system" data-msg={String(c.id)}>
+                  <Icon name="alert" size={13} />
+                  <span>{c.body}</span>
+                  <time className="msg-time">{stampLabel(c.created_at)}</time>
+                </div>
+              </div>
+            );
+          }
           const grouped = !newDay && !q && sameGroup(prev, c);
           const mine = String(c.author_id) === String(user?.id ?? '') && !c.is_ai;
           const name = c.is_ai ? AI_MENTION_NAME : c.author_name;
@@ -1589,6 +1608,34 @@ export function TaskChat({
         Раньше кнопки стояли строкой ПОД полем и уезжали за край экрана вместе с
         ним: поле было частью прокручиваемой колонки, а не дном разговора.
       */}
+      {/*
+        Что с микрофоном и что записалось — НАД полем ввода.
+
+        Раньше оба блока стояли под ним, у самого низа экрана: человек нажимал
+        «остановить» и не видел, что запись готова и её надо отправить, — жалоба
+        заказчика «не сразу бросается в глаза». Теперь они там же, где показываются
+        прикреплённые файлы: между перепиской и полем, куда и смотрят.
+      */}
+      <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="nl-voice" />
+      {/* Записанное — сначала послушать. Отправлять вслепую то, что человек только что
+          наговорил, значит слать в задачу кашель и «эээ» без возможности передумать. */}
+      {note && (
+        <div className="voice-note">
+          <span className="voice-note-label"><Icon name="mic" size={14} /> Голосовое записано</span>
+          <audio className="voice-note-player" src={note.url} controls preload="metadata" />
+          {/* Кнопки одной группой: перенесутся на новую строку вместе, а не по одной. */}
+          <span className="voice-note-actions">
+            <button className="btn btn-primary btn-sm" onClick={() => { void sendNote(); }} disabled={noteBusy}>
+              {noteBusy ? 'Отправляю…' : 'Отправить'}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { void noteToText(); }} disabled={noteBusy} title="Распознать и положить текстом в поле ввода">
+              В текст
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={dropNote} disabled={noteBusy}>Удалить</button>
+          </span>
+        </div>
+      )}
+
       <div className="comment-input" ref={composeRef}>
         <label className="chat-tool" title="Прикрепить файл — или просто вставьте скриншот через Ctrl+V">
           <Icon name="paperclip" size={17} />
@@ -1621,7 +1668,9 @@ export function TaskChat({
           onEnter={send}
         />
         <div className="chat-tools">
-          <button
+          {/* Пока идёт запись, соседние кнопки прячем: пользы от них сейчас нет, а
+              место нужно подписи «Остановить» — особенно на телефоне. */}
+          {!voice.recording && <button
             className={`chat-tool${quickOpen ? ' active' : ''}`}
             onClick={() => { setQuickOpen((v) => !v); setEmojiOpen(false); }}
             disabled={busy}
@@ -1630,8 +1679,8 @@ export function TaskChat({
             aria-expanded={quickOpen}
           >
             <Icon name="sparkles" size={17} />
-          </button>
-          <span className="chat-tool-wrap">
+          </button>}
+          {!voice.recording && <span className="chat-tool-wrap">
             <button
               className={`chat-tool${emojiOpen ? ' active' : ''}`}
               onClick={() => { setEmojiOpen((v) => !v); setQuickOpen(false); }}
@@ -1654,15 +1703,23 @@ export function TaskChat({
                 ))}
               </span>
             )}
-          </span>
+          </span>}
+          {/*
+            Во время записи кнопка — с ПОДПИСЬЮ, а не один красный квадрат.
+
+            Квадратик без слова понятен только тому, кто уже знает, что он значит:
+            подпись была лишь в подсказке, которая появляется по наведению и которой
+            на телефоне нет вовсе (жалоба заказчика).
+          */}
           <button
-            className={`chat-tool${voice.recording ? ' recording' : ''}`}
+            className={`chat-tool${voice.recording ? ' chat-tool-stop' : ''}`}
             onClick={voice.toggle}
             disabled={busy || voice.transcribing}
             title={voice.recording ? 'Остановить запись' : 'Записать голосовое'}
             aria-label={voice.recording ? 'Остановить запись' : 'Записать голосовое'}
           >
             <Icon name={voice.recording ? 'stop' : 'mic'} size={17} />
+            {voice.recording && <span>Остановить</span>}
           </button>
           <button
             className="chat-send"
@@ -1675,21 +1732,6 @@ export function TaskChat({
           </button>
         </div>
       </div>
-      {/* Записанное — сначала послушать. Отправлять вслепую то, что человек только что
-          наговорил, значит слать в задачу кашель и «эээ» без возможности передумать. */}
-      {note && (
-        <div className="voice-note">
-          <audio className="voice-note-player" src={note.url} controls preload="metadata" />
-          <button className="btn btn-primary btn-sm" onClick={() => { void sendNote(); }} disabled={noteBusy}>
-            {noteBusy ? 'Отправляю…' : 'Отправить'}
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => { void noteToText(); }} disabled={noteBusy} title="Распознать и положить текстом в поле ввода">
-            В текст
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={dropNote} disabled={noteBusy}>Удалить</button>
-        </div>
-      )}
-      <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="nl-voice" />
 
       {/* Палитра эмодзи: реакция на сообщение либо вставка знака в набранный текст. */}
       {emojiFor && (

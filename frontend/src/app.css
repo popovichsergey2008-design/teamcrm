@@ -1523,6 +1523,22 @@
   display: flex; gap: 8px; padding: 1px 0; align-items: flex-end;
   transition: background .25s;
 }
+/*
+  Системная строка в обсуждении задачи: предупреждение о сроке.
+
+  Не пузырь: у неё нет автора, отвечать на неё некому. Поперёк ленты, приглушённым
+  фоном и с жёлтым знаком — заметно, но не спорит с разговором людей. Тот же приём,
+  что у объявлений о входе в чатах.
+*/
+.msg-system {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin: 8px 0; padding: 8px 12px; border-radius: var(--radius-sm);
+  background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--text);
+  font-size: calc(13px * var(--fs-scale)); line-height: 1.45;
+}
+.msg-system > svg { flex: 0 0 auto; color: var(--warn); align-self: center; }
+.msg-system > span { flex: 1 1 200px; min-width: 0; white-space: pre-line; }
+
 .msg-avatar {
   flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
   display: grid; place-items: center; font-size: calc(12px * var(--fs-scale)); font-weight: 600;
@@ -3654,6 +3670,35 @@
 .chat-tool.recording { color: var(--danger); }
 .chat-tool:disabled { opacity: .5; cursor: default; }
 .chat-tool:focus-visible, .chat-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/*
+  Идёт запись — кнопка с подписью «Остановить».
+
+  Красный квадрат без слова понятен только тому, кто уже знает, что он значит: подпись
+  жила в подсказке по наведению, а на телефоне наведения нет вовсе. Заливка, а не один
+  цвет значка: остановка — единственное, что сейчас можно сделать, и она должна быть
+  самым заметным местом строки.
+*/
+.chat-tool-stop {
+  width: auto; padding: 0 12px; height: 32px; gap: 6px;
+  display: inline-flex; align-items: center; border-radius: 16px;
+  /* Плотная заливка, а не --danger: в тёмной теме статусные цвета пастельные и белым
+     по ним нельзя (проверка контраста на сборке это и ловит). */
+  background: var(--fill-danger); color: var(--on-danger); font-size: calc(13px * var(--fs-scale)); font-weight: 600;
+}
+.chat-tool-stop:hover { background: var(--fill-danger); filter: brightness(1.1); color: var(--on-danger); }
+/* Пульс — чтобы было видно, что запись ИДЁТ, а не кнопка просто покрасилась. */
+@media (prefers-reduced-motion: no-preference) {
+  .chat-tool-stop { animation: stop-pulse 1.6s ease-in-out infinite; }
+}
+@keyframes stop-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, .45); }
+  50% { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); }
+}
+/* Подпись у записанного: что это вообще такое лежит над полем ввода. */
+.voice-note-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: calc(12px * var(--fs-scale)); font-weight: 600; color: var(--text-dim);
+}
 .chat-emoji-pop { bottom: calc(100% + 6px); left: auto; right: 0; }
 .chat-send {
   display: inline-grid; place-items: center; width: 36px; height: 36px; margin-left: 2px;
@@ -5137,12 +5182,23 @@ button.chat-pop-row:hover { background: var(--hover); }
 /* В широком режиме лента прокручивается сама, а не тянет за собой всю карточку. */
 .task-chat-wide .msg-feed { overflow-y: auto; }
 /* Записанное голосовое до отправки: плеер и три решения — послать, расшифровать, стереть. */
+/*
+  Записанное голосовое — НАД полем ввода и заметной плашкой.
+
+  Пока блок стоял под полем, у самого низа экрана, человек не понимал, что запись
+  готова и её надо отправить: нажал «остановить» — и внешне ничего не произошло.
+  Полоса слева цветом акцента говорит «здесь появилось новое, с этим надо что-то
+  сделать» — тем же приёмом, что и у прикреплённых файлов.
+*/
 .voice-note {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   margin: 6px 0; padding: 8px 10px; border-radius: var(--radius-sm);
   background: var(--bg-elev-2); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-2);
 }
-.voice-note-player { flex: 1 1 220px; min-width: 0; height: 34px; }
+/* Плеер ужимается первым: кнопки важнее, они и должны остаться на строке. */
+.voice-note-player { flex: 1 1 180px; min-width: 120px; max-width: 320px; height: 34px; }
+.voice-note-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 
 /* ───── Ветки и закреплённые в задаче (ТЗ-7, разд. 7 и 20) ───── */
 .task-thread {
