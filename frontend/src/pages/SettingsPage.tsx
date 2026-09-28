@@ -4,6 +4,7 @@ import { AssistantPanel } from '../components/AssistantPanel';
 import { HandoffGatePanel } from '../components/HandoffGatePanel';
 import { SecurityPanel } from '../components/SecurityPanel';
 import { TagsSettingsPanel } from '../components/TagsSettingsPanel';
+import { OnboardingPanel } from '../components/OnboardingPanel';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { AiUsagePanel } from '../components/AiUsagePanel';
 import { KnowledgePanel } from '../components/KnowledgePanel';
@@ -68,6 +69,13 @@ const CARDS: Card[] = [
     title: 'Приёмка работы',
     hint: 'Что спросить у исполнителя, когда он сдаёт задачу: чек-лист, отчёт, результат',
     icon: 'check',
+  },
+  {
+    tab: 'onboarding',
+    title: 'Настройка ANTHILL',
+    hint: 'Путь от пустого пространства до первой задачи: что уже сделано и что осталось',
+    icon: 'target',
+    roles: ['owner', 'manager'],
   },
   {
     tab: 'work',
@@ -138,6 +146,8 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'knowledge' && <KnowledgePanel canManage={canManage} onClose={close} />}
       {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}
       {route.tab === 'assistant' && <AssistantPanel canManage={role === 'owner'} onClose={close} />}
+      {/* Подсказку можно открыть заново, даже если её убрали с «Фокуса дня» (ТЗ-11, разд. 74). */}
+      {route.tab === 'onboarding' && <OnboardingPanel onClose={close} />}
       {route.tab === 'work' && <WorkSettingsPanel canManage={role === 'owner'} onClose={close} />}
       {/* Список тегов видят все (по ним фильтруют), правит — руководитель. */}
       {route.tab === 'tags' && <TagsSettingsPanel canManage={canManage} onClose={close} />}

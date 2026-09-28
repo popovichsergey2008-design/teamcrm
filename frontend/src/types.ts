@@ -98,6 +98,41 @@ export interface TaskTemplate {
   created_at: string;
 }
 
+/** Отрасль компании и отделы, которые для неё предлагаются (ТЗ-11). */
+export interface Industry {
+  code: string;
+  title: string;
+  departments: { name: string; common: boolean }[];
+}
+
+/** Один шаг пути владельца. */
+export interface OnboardingStep {
+  key: 'workspace' | 'company' | 'departments' | 'team' | 'project' | 'task';
+  title: string;
+  hint: string;
+  done: boolean;
+  /** Отложен кнопкой «Позже»: виден, но не зовёт. */
+  skipped: boolean;
+  /** Без него путь не завершается: пространство, проект, задача. */
+  required: boolean;
+}
+
+/**
+ * Путь владельца от регистрации до первой задачи.
+ *
+ * Шаги считает сервер по факту работы, а не по нажатиям в подсказке: проект, созданный
+ * мимо неё, всё равно закрывает шаг.
+ */
+export interface OnboardingView {
+  steps: OnboardingStep[];
+  done: number;
+  total: number;
+  completed: boolean;
+  dismissed: boolean;
+  next: OnboardingStep['key'] | null;
+  company: { name: string; timezone: string; industry: string | null; logoFileId: string | null };
+}
+
 export interface Task {
   id: string;
   project_id: string;

@@ -10,6 +10,7 @@ import { useAuth } from '../state/auth';
 import type { Approval, Task } from '../types';
 import { ApprovalCard } from '../components/ApprovalCard';
 import { LeftoversDialog, leftoversSeenToday } from '../components/LeftoversDialog';
+import { OnboardingCard } from '../components/OnboardingCard';
 import { AssistantPings } from '../components/AssistantPings';
 import { MeetingAgenda } from '../components/MeetingAgenda';
 
@@ -252,6 +253,15 @@ export function FocusPage({ onOpenTask, onJoinCall, active = true }: {
       </div>
 
       {err && <div className="error-text">{err}</div>}
+
+      {/*
+        Путь владельца — над всем остальным и только пока он не пройден (ТЗ-11).
+
+        Выше повестки и напоминаний: у того, кто вошёл впервые, ни встреч, ни
+        напоминаний ещё нет, а колонки пусты — и без подсказки экран отвечает
+        «у вас ничего нет» вместо «начните отсюда».
+      */}
+      <OnboardingCard />
 
       {/* Повестка — первой: встреча начнётся через пять минут, а списки подождут */}
       <MeetingAgenda onJoin={onJoinCall} />

@@ -3,7 +3,7 @@ import type {
   Project, Proposal, SearchResults, SemanticHit, SupportContextInput, SupportConversation,
   PlatformCandidate, PlatformStaff, PlatformTenant,
   SupportEngineerGrant, SupportEscalation, SupportQueueFilter,
-  SupportDesk, SupportHandbook, SupportQueueItem, Task, TaskTemplate,
+  Industry, OnboardingView, SupportDesk, SupportHandbook, SupportQueueItem, Task, TaskTemplate,
 } from '../types';
 import { platform } from '../platform';
 import type { MobileConfig } from './mobile-config';
@@ -625,6 +625,24 @@ export const api = {
     её поставили бы вы. В нём нет ни проекта, ни срока датой, ни файлов — только то,
     что описывает СПОСОБ работы.
   */
+  /*
+    Путь владельца от регистрации до первой задачи (ТЗ-11).
+
+    Шаги считает сервер по факту работы, а не по нажатиям в подсказке: человек мог
+    создать проект мимо неё, и шаг всё равно обязан быть отмечен.
+  */
+  onboarding: () => request<OnboardingView>('GET', '/onboarding'),
+  onboardingIndustries: () => request<Industry[]>('GET', '/onboarding/industries'),
+  onboardingDepartments: (industry: string) => request<{
+    industry: string; title: string;
+    departments: { name: string; checked: boolean; exists: boolean }[];
+  }>('GET', `/onboarding/departments/suggest?industry=${encodeURIComponent(industry)}`),
+  createDepartments: (names: string[]) => request<{ created: number }>('POST', '/onboarding/departments', { names }),
+  saveCompany: (b: { name?: string; timezone?: string; industry?: string }) =>
+    request<OnboardingView>('POST', '/onboarding/company', b),
+  skipOnboardingStep: (step: string) => request<OnboardingView>('POST', '/onboarding/skip', { step }),
+  dismissOnboarding: (dismissed: boolean) => request<OnboardingView>('POST', '/onboarding/dismiss', { dismissed }),
+
   taskTemplates: () => request<TaskTemplate[]>('GET', '/task-templates'),
   saveTaskTemplate: (taskId: string, body: { name: string; deadlineDays?: number | null }) =>
     request<TaskTemplate>('POST', `/task-templates/from-task/${taskId}`, {
