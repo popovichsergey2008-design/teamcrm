@@ -655,6 +655,9 @@ export const api = {
   },
   clearLogo: () => request<{ cleared: boolean }>('DELETE', '/onboarding/logo'),
   /** Позвать нескольких разом: ответ по каждому адресу отдельно (ТЗ-11, разд. 25). */
+  /** Ответ на догоняющий вопрос «как идёт работа» (ТЗ-11, разд. 50). */
+  answerFollowup: (taskId: string, answer: 'on_track' | 'blocked' | 'need_shift', shiftTo?: string) =>
+    request<{ answered: string }>('POST', `/tasks/${taskId}/followup`, { answer, shiftTo }),
   inviteMany: (emails: string[], role: string) => request<{
     results: { email: string; ok: boolean; link?: string; error?: string }[];
   }>('POST', '/invites/batch', { emails, role }),

@@ -7,7 +7,7 @@ import { TaskMergeService } from './task-merge.service';
 import {
   ApprovalRequiredDto, CreateTaskDto, DeadlineShiftDto, DuplicatesQueryDto, FocusDateDto, MergeTasksDto, MoveTaskDto,
   MoveToProjectDto, ParticipantDto,
-  ReturnTaskDto, TaskRecurrenceDto, TaskRegistryQueryDto, UpdateTaskDto,
+  ReturnTaskDto, TaskRecurrenceDto, TaskRegistryQueryDto, UpdateTaskDto, FollowupDto,
 } from './tasks.dto';
 
 /** Пустую или кривую дату не подставляем молча: считаем, что клиент имел в виду сегодня. */
@@ -278,6 +278,20 @@ export class TasksController {
    * Отдельной ручкой, а не правкой срока через PATCH: у переноса своя судьба —
    * подтверждение постановщика и сдвиг расписания у повторяющихся задач.
    */
+  /**
+   * Ответ на догоняющий вопрос «как идёт работа» (ТЗ-11, разд. 50).
+   *
+   * Отвечает исполнитель — тот, кого спросили. Постановщик узнаёт о блокере и о
+   * просьбе перенести срок, но отвечает за него не он.
+   */
+  @Post(':id/followup')
+  answerFollowup(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: FollowupDto) {
+    return this.tasks.answerFollowup(
+      user.tenantId, id, user, dto.answer,
+      dto.shiftTo ? new Date(dto.shiftTo) : null,
+    );
+  }
+
   @Post(':id/deadline-shift')
   askDeadlineShift(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.tasks.askDeadlineShift(user.tenantId, id, user);

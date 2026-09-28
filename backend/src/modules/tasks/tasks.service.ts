@@ -18,6 +18,8 @@ import { handoffGate } from './handoff-gate';
 import { REGISTRY_PAGE_SIZE, RegistryFilters } from './task-registry';
 import { NotificationsService } from '../notifications/notifications.service';
 import { nextWednesday } from './deadline-shift';
+import { effectsOf, FollowupAnswer, shiftTarget } from './followup-rules';
+import { FollowupsRepository } from './followups.repository';
 
 @Injectable()
 export class TasksService {
@@ -54,6 +56,8 @@ export class TasksService {
     private readonly tags: TagsService,
     /** Права, политика и журнал: удаление задачи — действие из слоя безопасности. */
     private readonly security: SecurityService,
+    /** Догоняющий вопрос «как идёт работа»: открытый вопрос и ответ на него. */
+    private readonly followups: FollowupsRepository,
   ) {}
 
   /**
@@ -683,18 +687,28 @@ export class TasksService {
    * Повторяющиеся задачи: у них после подтверждения уезжает и расписание (см. decide),
    * иначе планировщик тут же вернёт прежний срок и нажатие окажется бессмысленным.
    */
-  async askDeadlineShift(tenantId: string, id: string, actor: { userId: string; role: string }): Promise<TaskRow> {
+  async askDeadlineShift(
+    tenantId: string, id: string, actor: { userId: string; role: string },
+    /**
+     * Куда двигать срок.
+     *
+     * Без даты это кнопка «Сделал — срок на среду» у повторяющихся дел: она сама
+     * считает следующую среду. С датой — просьба перенести от ответа на догоняющий
+     * вопрос: там срок называет исполнитель, и задача может быть любой.
+     */
+    to?: Date,
+  ): Promise<TaskRow> {
     const task = await this.repo.findById(tenantId, id);
     if (!task) throw AppException.notFound('Task not found');
     /*
-      Только для повторяющихся дел.
+      Кнопка «Сделал — срок на среду» — только для повторяющихся дел.
 
-      Кнопка и задумана под них: закончил круг — следующий срок сам встаёт на среду.
-      У разовой задачи «следующей среды» не существует, и кнопка там читалась как
-      «продлить себе срок» — заказчик попросил убрать её со всех прочих задач. Срок
-      разовой задачи правится в самой карточке, полем «Срок».
+      Она и задумана под них: закончил круг — следующий срок сам встаёт на среду. У
+      разовой задачи «следующей среды» не существует, и кнопка там читалась как
+      «продлить себе срок» — заказчик попросил убрать её со всех прочих задач.
+      Просьба с ЯВНОЙ датой этим правилом не связана: там человек называет срок сам.
     */
-    if (!task.recurrence_id) {
+    if (!to && !task.recurrence_id) {
       throw AppException.validation('«Сделал — срок на среду» работает только у повторяющихся задач. У разовой задачи срок меняется полем «Срок» в карточке.');
     }
     const mine = String(task.assignee_id ?? '') === String(actor.userId)
@@ -704,7 +718,7 @@ export class TasksService {
     }
     const tz = (await this.repo.userTimezone(tenantId, actor.userId))
       || (await this.repo.tenantTimezone(tenantId)) || 'Europe/Moscow';
-    const to = nextWednesday(new Date(), tz);
+    const target = to ?? nextWednesday(new Date(), tz);
 
     /*
       Постановщик сам себе подтверждение не шлёт.
@@ -714,17 +728,55 @@ export class TasksService {
     */
     const decidesHimself = String(task.created_by ?? '') === String(actor.userId) || actor.role === 'owner';
     if (decidesHimself) {
-      await this.repo.setDeadline(tenantId, id, to);
-      await this.shiftRecurrence(tenantId, task, to);
-      await this.activity.log(tenantId, id, actor.userId, 'deadline_shifted', { to: to.toISOString() });
+      await this.repo.setDeadline(tenantId, id, target);
+      await this.shiftRecurrence(tenantId, task, target);
+      await this.activity.log(tenantId, id, actor.userId, 'deadline_shifted', { to: target.toISOString() });
     } else {
-      await this.repo.askDeadlineShift(tenantId, id, to, actor.userId);
-      await this.activity.log(tenantId, id, actor.userId, 'deadline_shift_asked', { to: to.toISOString() });
-      void this.notify.deadlineShiftAsked(tenantId, id, actor.userId, to);
+      await this.repo.askDeadlineShift(tenantId, id, target, actor.userId);
+      await this.activity.log(tenantId, id, actor.userId, 'deadline_shift_asked', { to: target.toISOString() });
+      void this.notify.deadlineShiftAsked(tenantId, id, actor.userId, target);
     }
     const updated = (await this.repo.findById(tenantId, id))!;
     this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
     return updated;
+  }
+
+  /**
+   * Ответ на догоняющий вопрос «как идёт работа» (ТЗ-11, разд. 50).
+   *
+   * Отвечает исполнитель, и каждый ответ что-то меняет:
+   *   успеваю   — только запись ответа. Это и есть обещание «спросим один раз»;
+   *   блокер    — задача помечается BLOCKED и постановщик узнаёт об этом сейчас,
+   *               а не из просроченной задачи завтра;
+   *   перенос   — просьба сдвинуть срок обычным путём, с подтверждением постановщика.
+   *               Срок при этом НЕ уезжает сам: иначе это кнопка «продлить себе срок».
+   */
+  async answerFollowup(
+    tenantId: string, taskId: string, actor: { userId: string; role: string },
+    answer: FollowupAnswer, shiftTo?: Date | null,
+  ): Promise<{ answered: FollowupAnswer }> {
+    const open = await this.followups.open(tenantId, taskId, actor.userId);
+    if (!open) throw AppException.notFound('Вопрос по этой задаче уже закрыт');
+
+    const task = await this.repo.findById(tenantId, taskId);
+    if (!task) throw AppException.notFound('Task not found');
+
+    const effects = effectsOf(answer);
+    await this.followups.saveAnswer(open.id, answer);
+    await this.followups.resolvePing(open.ping_id);
+    await this.activity.log(tenantId, taskId, actor.userId, `followup_${answer}`, {});
+
+    if (effects.markBlocked) {
+      await this.repo.update(tenantId, taskId, { is_blocked: true });
+    }
+    if (effects.askShift) {
+      const to = shiftTarget(shiftTo ?? null, new Date(open.deadline_at), new Date());
+      await this.askDeadlineShift(tenantId, taskId, actor, to);
+    }
+
+    const updated = (await this.repo.findById(tenantId, taskId))!;
+    this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
+    return { answered: answer };
   }
 
   /** Решение постановщика по переносу: согласиться или отказать. */

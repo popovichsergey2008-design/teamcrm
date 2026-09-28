@@ -11,7 +11,7 @@
  * срочного дела, счётчик, считающий сводку за задачу.
  */
 
-export type PingKind = 'overdue' | 'due_soon' | 'stuck_review' | 'silent' | 'digest' | string;
+export type PingKind = 'overdue' | 'due_soon' | 'stuck_review' | 'silent' | 'digest' | 'followup' | string;
 
 export interface PingLike {
   id: string;
@@ -29,6 +29,9 @@ export interface PingLike {
  */
 export const PING_GROUPS: { kinds: PingKind[]; title: string }[] = [
   { kinds: ['digest', 'evening'], title: 'Сводка' },
+  // Вопрос ждёт ответа — выше просроченного: ответить на него дело секунды,
+  // и именно ответ не даст задаче стать просроченной.
+  { kinds: ['followup'], title: 'Вопрос по срокам' },
   { kinds: ['overdue'], title: 'Просрочено' },
   { kinds: ['stuck_review'], title: 'Зависло на проверке' },
   { kinds: ['due_soon'], title: 'Скоро срок' },
@@ -70,7 +73,10 @@ export function pingPreview(items: PingLike[], limit = 90): string {
  * Сводка сюда не входит: это рассказ о дне, а не повод бросить дела. Если красным
  * горит всё подряд, цвет перестают замечать — на этом мы уже обожглись со счётчиками
  * непрочитанного на доске.
+ *
+ * Догоняющий вопрос входит: он живёт считаные часы до срока, и не ответить на него —
+ * значит лишить постановщика единственного шанса что-то успеть.
  */
 export function urgentPings(items: PingLike[]): number {
-  return items.filter((p) => p.kind === 'overdue' || p.kind === 'stuck_review').length;
+  return items.filter((p) => p.kind === 'overdue' || p.kind === 'stuck_review' || p.kind === 'followup').length;
 }

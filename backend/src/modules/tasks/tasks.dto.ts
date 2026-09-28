@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsDateString,
   IsIn,
   IsInt,
   IsNumber,
@@ -177,6 +178,21 @@ export class MoveToProjectDto {
 }
 
 /** Решение постановщика по переносу срока: да или нет. */
+/**
+ * Ответ на догоняющий вопрос «как идёт работа».
+ *
+ * Дата нужна только для «нужен перенос»; при остальных ответах она игнорируется —
+ * просить перенос и одновременно отвечать «успеваю» бессмысленно.
+ */
+export class FollowupDto {
+  @IsIn(['on_track', 'blocked', 'need_shift'])
+  answer!: 'on_track' | 'blocked' | 'need_shift';
+
+  @IsOptional()
+  @IsDateString()
+  shiftTo?: string;
+}
+
 export class DeadlineShiftDto {
   @IsBoolean()
   approve!: boolean;

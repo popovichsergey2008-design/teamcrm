@@ -11,6 +11,8 @@ import { TaskRecurrenceRepository } from './task-recurrence.repository';
 import { RecurrenceScheduler } from './recurrence.scheduler';
 import { DeadlineNoticesRepository } from './deadline-notices.repository';
 import { DeadlineNoticesScheduler } from './deadline-notices.scheduler';
+import { FollowupsRepository } from './followups.repository';
+import { FollowupsScheduler } from './followups.scheduler';
 import { TaskReadsModule } from './task-reads.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { IntegrationOutboxModule } from '../integrations/outbox/integration-outbox.module';
@@ -23,6 +25,7 @@ import { TagsModule } from '../tags/tags.module';
   providers: [
     TasksService, TasksRepository, TaskActivityRepository, TaskRecurrenceRepository, RecurrenceScheduler,
     DeadlineNoticesRepository, DeadlineNoticesScheduler,
+    FollowupsRepository, FollowupsScheduler,
     TaskMergeService, TaskMergeRepository,
   ],
   exports: [TasksService, TasksRepository, TaskActivityRepository, TaskRecurrenceRepository, TaskReadsModule],

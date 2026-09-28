@@ -61,6 +61,23 @@ export function AssistantPings({ today, onOpenTask, onPlanned }: {
   };
 
   /**
+   * Ответ на догоняющий вопрос.
+   *
+   * «Нужен перенос» без даты сервер трактует как «на сутки» — самый частый случай
+   * «не успеваю сегодня, доделаю завтра». Назвать другую дату можно в самой задаче:
+   * загромождать сводку календарём ради редкого случая незачем.
+   */
+  const answer = async (p: Ping, value: 'on_track' | 'blocked' | 'need_shift') => {
+    if (!p.taskId) return;
+    drop(p.id); // человек ответил — строка должна исчезнуть сразу
+    setBusy(p.id);
+    try {
+      await api.answerFollowup(p.taskId, value);
+      if (value !== 'on_track') window.dispatchEvent(new CustomEvent('teamcrm:tasks-changed'));
+    } catch { load(); } finally { setBusy(null); }
+  };
+
+  /**
    * Одна задача из сводки — сразу в план на сегодня (задача #1368).
    *
    * Сводку не гасим: в ней несколько дел, и закрыть её из-за одного было бы потерей
@@ -135,15 +152,38 @@ export function AssistantPings({ today, onOpenTask, onPlanned }: {
         {p.text}
       </button>
       <span className="ping-actions">
-        {/* «Сделаю сегодня» — только тем, кто задачу и делает: проверяющему план не нужен */}
-        {p.taskId && p.kind !== 'stuck_review' && (
-          <button className="btn btn-sm" disabled={busy === p.id} onClick={() => planToday(p)}>
-            Сделаю сегодня
-          </button>
+        {/*
+          Догоняющий вопрос отвечается ТРЕМЯ кнопками прямо здесь (ТЗ-11, разд. 50).
+
+          Смысл вопроса в том, чтобы постановщик узнал о срыве до срока. Если ради
+          ответа надо открыть задачу и что-то там найти, отвечать не станут —
+          поэтому ответ живёт в той же строке, что и вопрос.
+        */}
+        {p.kind === 'followup' ? (
+          <>
+            <button className="btn btn-sm" disabled={busy === p.id} onClick={() => answer(p, 'on_track')}>
+              Успеваю
+            </button>
+            <button className="btn btn-sm" disabled={busy === p.id} onClick={() => answer(p, 'blocked')}>
+              Есть блокер
+            </button>
+            <button className="btn btn-sm" disabled={busy === p.id} onClick={() => answer(p, 'need_shift')}>
+              Нужен перенос
+            </button>
+          </>
+        ) : (
+          <>
+            {/* «Сделаю сегодня» — только тем, кто задачу и делает: проверяющему план не нужен */}
+            {p.taskId && p.kind !== 'stuck_review' && (
+              <button className="btn btn-sm" disabled={busy === p.id} onClick={() => planToday(p)}>
+                Сделаю сегодня
+              </button>
+            )}
+            <button className="btn btn-ghost btn-sm" disabled={busy === p.id} onClick={() => dismiss(p)}>
+              Скрыть
+            </button>
+          </>
         )}
-        <button className="btn btn-ghost btn-sm" disabled={busy === p.id} onClick={() => dismiss(p)}>
-          Скрыть
-        </button>
       </span>
 
       {/*
