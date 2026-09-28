@@ -9,6 +9,8 @@ import { TaskMergeService } from './task-merge.service';
 import { TaskMergeRepository } from './task-merge.repository';
 import { TaskRecurrenceRepository } from './task-recurrence.repository';
 import { RecurrenceScheduler } from './recurrence.scheduler';
+import { DeadlineNoticesRepository } from './deadline-notices.repository';
+import { DeadlineNoticesScheduler } from './deadline-notices.scheduler';
 import { TaskReadsModule } from './task-reads.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { IntegrationOutboxModule } from '../integrations/outbox/integration-outbox.module';
@@ -20,6 +22,7 @@ import { TagsModule } from '../tags/tags.module';
   controllers: [TasksController, HandoffGateController],
   providers: [
     TasksService, TasksRepository, TaskActivityRepository, TaskRecurrenceRepository, RecurrenceScheduler,
+    DeadlineNoticesRepository, DeadlineNoticesScheduler,
     TaskMergeService, TaskMergeRepository,
   ],
   exports: [TasksService, TasksRepository, TaskActivityRepository, TaskRecurrenceRepository, TaskReadsModule],

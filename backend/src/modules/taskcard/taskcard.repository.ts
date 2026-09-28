@@ -90,7 +90,7 @@ export class TaskCardRepository {
   /** Ответы ветки — по порядку разговора. */
   threadReplies(tenantId: string, taskId: string, rootId: string, viewerId: string) {
     return this.db.many(
-      `SELECT c.id, c.author_id, c.body, c.is_client_visible, c.is_ai, c.created_at, c.edited_at,
+      `SELECT c.id, c.author_id, c.body, c.is_client_visible, c.is_ai, c.is_system, c.created_at, c.edited_at,
               c.reply_to_id, c.file_id, c.thread_root_id, c.also_in_channel, c.pinned_at, f.file_name,
               COALESCE(c.reply_excerpt, r.body) AS reply_body, ru.full_name AS reply_author,
               COALESCE((
@@ -104,7 +104,7 @@ export class TaskCardRepository {
               ), '[]'::json) AS reactions,
               u.full_name AS author_name
          FROM task_comments c
-         JOIN users u ON u.id=c.author_id
+         LEFT JOIN users u ON u.id=c.author_id
     LEFT JOIN task_comments r ON r.id = c.reply_to_id
     LEFT JOIN users ru ON ru.id = r.author_id
     LEFT JOIN files f ON f.id = c.file_id
@@ -146,7 +146,7 @@ export class TaskCardRepository {
       // Цитата приезжает вместе с сообщением: без неё «да, согласен» через десять
       // реплик — согласие неизвестно с чем, и лезть за ним отдельным запросом
       // на каждое сообщение слишком дорого.
-      `SELECT c.id, c.author_id, c.body, c.is_client_visible, c.is_ai, c.created_at, c.edited_at,
+      `SELECT c.id, c.author_id, c.body, c.is_client_visible, c.is_ai, c.is_system, c.created_at, c.edited_at,
               c.reply_to_id, c.file_id, c.pinned_at, c.pinned_by, f.file_name,
               -- Все вложения сообщения: несколько снимков — одно сообщение, как в переписке.
               COALESCE((
@@ -177,7 +177,7 @@ export class TaskCardRepository {
               ), '[]'::json) AS reactions,
               u.full_name AS author_name
          FROM task_comments c
-         JOIN users u ON u.id=c.author_id
+         LEFT JOIN users u ON u.id=c.author_id
     LEFT JOIN task_comments r ON r.id = c.reply_to_id
     LEFT JOIN users ru ON ru.id = r.author_id
     LEFT JOIN files f ON f.id = c.file_id

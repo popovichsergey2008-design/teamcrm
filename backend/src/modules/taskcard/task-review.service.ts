@@ -103,7 +103,7 @@ export class TaskReviewService {
       ),
       this.db.many<{ author_name: string; body: string; is_ai: boolean; created_at: Date }>(
         `SELECT u.full_name AS author_name, c.body, c.is_ai, c.created_at
-           FROM task_comments c JOIN users u ON u.id = c.author_id
+           FROM task_comments c LEFT JOIN users u ON u.id = c.author_id
           WHERE c.tenant_id=$1 AND c.task_id=$2
           ORDER BY c.created_at DESC LIMIT $3`,
         [tenantId, taskId, RECENT_MESSAGES],
@@ -279,7 +279,7 @@ export class TaskReviewService {
     if (need.tool === 'переписка') {
       const rows = await this.db.many<{ author_name: string; body: string; is_ai: boolean; created_at: Date }>(
         `SELECT u.full_name AS author_name, c.body, c.is_ai, c.created_at
-           FROM task_comments c JOIN users u ON u.id = c.author_id
+           FROM task_comments c LEFT JOIN users u ON u.id = c.author_id
           WHERE c.tenant_id=$1 AND c.task_id=$2
           ORDER BY c.created_at`,
         [tenantId, taskId],
