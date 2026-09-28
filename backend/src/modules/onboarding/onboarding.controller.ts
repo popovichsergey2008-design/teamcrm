@@ -61,7 +61,7 @@ export class OnboardingController {
 
   @Post('company')
   async saveCompany(@CurrentUser() user: AuthUser, @Body() dto: CompanyDto) {
-    await this.onboarding.saveCompany(user.tenantId, {
+    await this.onboarding.saveCompany(user.tenantId, user.userId, {
       name: dto.name,
       timezone: dto.timezone,
       industry: dto.industry ?? null,
@@ -72,14 +72,14 @@ export class OnboardingController {
 
   @Post('skip')
   async skip(@CurrentUser() user: AuthUser, @Body() dto: SkipDto) {
-    await this.onboarding.skip(user.tenantId, dto.step);
+    await this.onboarding.skip(user.tenantId, user.userId, dto.step);
     return this.onboarding.view(user.tenantId, user.userId);
   }
 
   /** Свернуть подсказку совсем или открыть её заново из настроек. */
   @Post('dismiss')
   async dismiss(@CurrentUser() user: AuthUser, @Body() dto: DismissDto) {
-    await this.onboarding.setDismissed(user.tenantId, dto.dismissed);
+    await this.onboarding.setDismissed(user.tenantId, user.userId, dto.dismissed);
     return this.onboarding.view(user.tenantId, user.userId);
   }
 }

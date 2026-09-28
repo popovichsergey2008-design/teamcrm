@@ -104,24 +104,29 @@ export class OnboardingService {
    */
   async saveCompany(
     tenantId: string,
+    userId: string,
     patch: { name?: string; timezone?: string; industry?: string | null; logoFileId?: string | null },
   ): Promise<void> {
     if (patch.industry && !INDUSTRIES.some((i) => i.code === patch.industry)) {
       throw AppException.validation('Неизвестная отрасль');
     }
+    // Строки состояния может не быть: сюда приходят и раньше первого просмотра пути.
+    await this.repo.ensure(tenantId, userId);
     await this.repo.saveCompany(tenantId, patch);
     await this.repo.confirmCompany(tenantId);
   }
 
-  async skip(tenantId: string, step: StepKey): Promise<void> {
+  async skip(tenantId: string, userId: string, step: StepKey): Promise<void> {
     // Обязательные шаги отложить нельзя: без проекта и задачи системой не пользуются,
     // и «позже» здесь означало бы «никогда».
     const required: StepKey[] = ['workspace', 'project', 'task'];
     if (required.includes(step)) throw AppException.validation('Этот шаг не пропускается');
+    await this.repo.ensure(tenantId, userId);
     await this.repo.skip(tenantId, step);
   }
 
-  async setDismissed(tenantId: string, dismissed: boolean): Promise<void> {
+  async setDismissed(tenantId: string, userId: string, dismissed: boolean): Promise<void> {
+    await this.repo.ensure(tenantId, userId);
     await this.repo.setDismissed(tenantId, dismissed);
   }
 }
