@@ -66,3 +66,29 @@ export function normalizeDeadline(raw: unknown, today: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
   return v >= today ? v : null;
 }
+
+/**
+ * Все сотрудники, чьи имена прозвучали в тексте (для участников встречи).
+ *
+ * Основа, общая для двоих («Сергей» при двух Сергеях), не засчитывается никому:
+ * позвать не того человека хуже, чем не позвать никого, — названного по фамилии
+ * найдём по фамилии.
+ */
+export function usersNamedInText(text: string, users: NamedUser[]): string[] {
+  const words = new Set(normalize(text).split(/[^a-zа-я-]+/).filter(Boolean).map(stem));
+  if (!words.size) return [];
+  const owners = new Map<string, Set<string>>();
+  for (const u of users) {
+    for (const s of nameStems(u.name ?? '')) {
+      if (!owners.has(s)) owners.set(s, new Set());
+      owners.get(s)!.add(String(u.id));
+    }
+  }
+  const out: string[] = [];
+  for (const [s, ids] of owners) {
+    if (ids.size !== 1 || !words.has(s)) continue;
+    const id = [...ids][0];
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}

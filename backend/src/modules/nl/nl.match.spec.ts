@@ -1,4 +1,4 @@
-import { matchUserInText, normalizeDeadline } from './nl.match';
+import { matchUserInText, normalizeDeadline, usersNamedInText } from './nl.match';
 
 const USERS = [
   { id: '2', name: 'Сергей Попович' },
@@ -44,5 +44,21 @@ describe('NL — исполнитель по имени в тексте', () => 
   it('не цепляется за случайные короткие совпадения', () => {
     expect(matchUserInText('про это писать не надо', [{ id: '1', name: 'Про' }])).toBeNull();
     expect(matchUserInText('обсудить на неделе', USERS)).toBeNull();
+  });
+});
+
+describe('usersNamedInText', () => {
+  const team = [
+    { id: '1', name: 'Сергей Попович' },
+    { id: '2', name: 'Сергей Иванов' },
+    { id: '3', name: 'Юрий Ким' },
+    { id: '4', name: 'Ольга Смирнова' },
+  ];
+  it('находит всех названных, в любом падеже', () => {
+    expect(usersNamedInText('позовите Юрия и Ольгу', team).sort()).toEqual(['3', '4']);
+  });
+  it('общее имя двоих не засчитывает никому, фамилия — засчитывает', () => {
+    expect(usersNamedInText('Сергей, подключайся', team)).toEqual([]);
+    expect(usersNamedInText('и Поповича позовите', team)).toEqual(['1']);
   });
 });

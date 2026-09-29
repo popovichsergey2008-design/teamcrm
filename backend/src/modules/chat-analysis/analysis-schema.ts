@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { durationOf, meetingDateOf } from './meeting-rules';
 
 /**
  * Разбор ответа модели о переписке (ТЗ-12, разд. 51–53).
@@ -49,6 +50,11 @@ export interface ExtractedAction {
   taskId: string | null;
   deadlineAt: Date | null;
   meetingAt: Date | null;
+  /** Встреча: названа дата без времени — время спросим (ТЗ разд. 35). */
+  meetingDate: string | null;
+  durationMinutes: number | null;
+  /** Кого звать. Модель их не называет: участников считаем сами по переписке. */
+  participantIds: string[];
   confidence: { intent: number; project: number; assigner: number; assignee: number; task: number };
   sources: { messageId: string; role: SourceRole }[];
   dedupKey: string;
@@ -170,6 +176,16 @@ export function parseAnalysis(raw: string, cat: RefCatalog, now = new Date()): E
       taskId,
       deadlineAt: when(item?.deadline, now),
       meetingAt: when(item?.meeting_at, now),
+      /*
+        Дату сверяем со вчерашним днём по UTC, а не с сегодняшним: «сегодня» организации
+        на востоке наступает раньше. Прошедшее время всё равно отсечётся, когда человек
+        назовёт час.
+      */
+      meetingDate: type === 'meeting' && !item?.meeting_at
+        ? meetingDateOf(item?.meeting_date, new Date(now.getTime() - 24 * 3600_000).toISOString().slice(0, 10))
+        : null,
+      durationMinutes: type === 'meeting' ? durationOf(item?.duration_minutes) : null,
+      participantIds: [],
       confidence: {
         intent: conf(c.intent), project: conf(c.project),
         assigner: conf(c.assigner), assignee: conf(c.assignee),

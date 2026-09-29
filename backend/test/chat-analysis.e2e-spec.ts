@@ -416,4 +416,101 @@ describe('разбор переписки (e2e)', () => {
       .filter((d: any) => d.meeting_id === meeting!.id);
     expect(again.map((d: any) => d.text)).toEqual(['Релиз в четверг']);
   }, 90000);
+
+  /**
+   * Этап 6: встреча из переписки — в календарь нажатием человека, организатором
+   * становится предложивший, событие помнит, где договорились.
+   */
+  const plantMeeting = async (o: {
+    tenantId: string; chatId: string; organizerId: string; participantIds: string[]; messageId: string;
+    meetingAt: Date | null; meetingDate: string | null; status: string;
+  }) => {
+    const id = await plant({
+      tenantId: o.tenantId, chatId: o.chatId, projectId: null, assignerId: o.organizerId, assigneeId: null,
+      messageId: o.messageId, type: 'meeting', title: 'Созвон по интеграции',
+    });
+    await db.query(
+      `UPDATE chat_extracted_actions SET meeting_at = $2, meeting_date = $3::date, duration_minutes = 45,
+              participant_ids = $4::bigint[], status = $5 WHERE id = $1`,
+      [id, o.meetingAt, o.meetingDate, o.participantIds, o.status],
+    );
+    return id;
+  };
+  const inDays = (n: number) => new Date(Date.now() + n * 24 * 3600_000);
+
+  it('встреча ставится в календарь от имени предложившего, с участниками и ссылкой на переписку', async () => {
+    const { owner, mate, O, M } = await team('CA12');
+    const chat = (await http.post('/api/chats/groups').set(O)
+      .send({ title: 'Интеграция', userIds: [String(mate.id)] }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'Давайте послезавтра в 15:00 созвонимся по интеграции' }).expect(201)).body.data;
+
+    const at = inDays(2);
+    const actionId = await plantMeeting({
+      tenantId: String(owner.user.tenantId), chatId: String(chat.id), organizerId: String(owner.user.id),
+      participantIds: [String(owner.user.id), String(mate.id)], messageId: String(msg.id),
+      meetingAt: at, meetingDate: null, status: 'ready',
+    });
+
+    // Ставит КОЛЛЕГА — а событие всё равно принадлежит предложившему.
+    const res = (await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(M).send({}).expect(201)).body.data;
+    const ev = await db.one<any>(
+      `SELECT owner_id::text, starts_at, ends_at, source_chat_id::text, source_chat_message_id::text
+         FROM calendar_events WHERE id = $1`,
+      [res.eventId],
+    );
+    expect(ev!.owner_id).toBe(String(owner.user.id));
+    expect(new Date(ev!.starts_at).getTime()).toBe(at.getTime());
+    expect(new Date(ev!.ends_at).getTime() - new Date(ev!.starts_at).getTime()).toBe(45 * 60_000);
+    expect(ev!.source_chat_id).toBe(String(chat.id));
+    expect(ev!.source_chat_message_id).toBe(String(msg.id));
+
+    const invited = await db.many<{ user_id: string }>(
+      `SELECT user_id::text FROM calendar_participants WHERE event_id = $1`, [res.eventId],
+    );
+    expect(invited.map((r) => r.user_id)).toContain(String(mate.id));
+
+    // Из карточки события видно, откуда встреча.
+    const card = (await http.get(`/api/calendar/events/${res.eventId}`).set(M).expect(200)).body.data;
+    expect(card.sourceChatId).toBe(String(chat.id));
+
+    await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(409);
+  }, 90000);
+
+  it('без времени встреча не ставится, пока его не назовут', async () => {
+    const { owner, mate, O } = await team('CA13');
+    await http.patch('/api/chat-analysis/settings').set(O).send({ enabled: true }).expect(200);
+    // Вопрос бот задаёт в рабочее время; здесь его имитируем, а проверяем приём ответа.
+    const chat = (await http.post('/api/chats/groups').set(O)
+      .send({ title: 'Созвон', userIds: [String(mate.id)] }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'Давайте послезавтра созвонимся по интеграции' }).expect(201)).body.data;
+
+    const date = inDays(2).toISOString().slice(0, 10);
+    const actionId = await plantMeeting({
+      tenantId: String(owner.user.tenantId), chatId: String(chat.id), organizerId: String(owner.user.id),
+      participantIds: [String(owner.user.id), String(mate.id)], messageId: String(msg.id),
+      meetingAt: null, meetingDate: date, status: 'needs_clarification',
+    });
+    await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(400);
+
+    await db.query(
+      `UPDATE chat_extracted_actions SET question_message_id = $2, asked_at = now() WHERE id = $1`,
+      [actionId, msg.id],
+    );
+    // Организатор отвечает временем — дата уже известна из разговора.
+    await http.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'в 15' }).expect(201);
+    await app.get(ChatAnalysisService).tick(new Date(), String(owner.user.tenantId));
+
+    const row = await db.one<any>(`SELECT status, meeting_at FROM chat_extracted_actions WHERE id = $1`, [actionId]);
+    expect(row!.status).toBe('ready');
+    expect(row!.meeting_at).toBeTruthy();
+    const said = await db.one<{ body: string }>(
+      `SELECT body FROM chat_messages WHERE chat_id = $1 AND is_ai ORDER BY id DESC LIMIT 1`, [chat.id],
+    );
+    expect(said!.body).toContain('15:00');
+
+    const res = (await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(201)).body.data;
+    expect(res.eventId).toBeTruthy();
+  }, 90000);
 });

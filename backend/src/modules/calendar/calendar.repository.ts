@@ -16,6 +16,9 @@ export interface EventRow {
   color: string | null;
   is_private: boolean;
   created_by: string;
+  /** Договорённость в чате, из которой событие выросло (ТЗ-12, этап 6). */
+  source_chat_id?: string | null;
+  source_chat_message_id?: string | null;
 }
 
 export interface ParticipantRow {

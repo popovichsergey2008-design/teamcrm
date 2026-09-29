@@ -34,6 +34,7 @@ const ONE_ACTION = `SELECT a.id::text, a.chat_id::text, a.action_type, a.title, 
         a.project_id::text, a.assigner_id::text, a.assignee_id::text,
         a.deadline_at, a.status, a.created_entity_type, a.created_entity_id::text, a.updated_at,
         a.intent_confidence, a.task_id::text, c.title AS chat_title,
+        a.meeting_at, a.meeting_date::text, a.duration_minutes, a.participant_ids::text[] AS participant_ids,
         (SELECT am.message_id::text FROM chat_extracted_action_messages am
           WHERE am.action_id = a.id AND am.role = 'instruction'
           ORDER BY am.message_id LIMIT 1) AS instruction_message_id
@@ -129,6 +130,11 @@ export interface AwaitingRow {
   assignee_confidence: string;
   kind: string;
   chat_project_id: string | null;
+  /** task — ждём проект/исполнителя; meeting — ждём время. */
+  action_type: string;
+  meeting_date: string | null;
+  participant_ids: string[];
+  timezone: string;
 }
 
 @Injectable()
@@ -345,8 +351,9 @@ export class ChatAnalysisRepository {
          tenant_id, run_id, chat_id, action_type, title, description,
          project_id, assigner_id, assignee_id, deadline_at, meeting_at,
          intent_confidence, project_confidence, assigner_confidence, assignee_confidence,
-         dedup_key, status, task_id, task_confidence)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+         dedup_key, status, task_id, task_confidence,
+         participant_ids, meeting_date, duration_minutes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::bigint[],$21::date,$22)
        ON CONFLICT (tenant_id, dedup_key) DO NOTHING
        RETURNING id::text`,
       [
@@ -354,6 +361,7 @@ export class ChatAnalysisRepository {
         a.projectId, a.assignerId, a.assigneeId, a.deadlineAt, a.meetingAt,
         a.confidence.intent, a.confidence.project, a.confidence.assigner, a.confidence.assignee,
         a.dedupKey, status, a.taskId, a.confidence.task ?? 0,
+        a.participantIds ?? [], a.meetingDate ?? null, a.durationMinutes ?? null,
       ],
     );
     if (!row) return null;
@@ -405,9 +413,11 @@ export class ChatAnalysisRepository {
               a.project_id::text, a.assignee_id::text, a.assigner_id::text,
               a.question_message_id::text,
               a.intent_confidence, a.project_confidence, a.assigner_confidence, a.assignee_confidence,
-              c.kind, c.project_id::text AS chat_project_id
+              c.kind, c.project_id::text AS chat_project_id,
+              a.action_type, a.meeting_date::text, a.participant_ids::text[] AS participant_ids, t.timezone
          FROM chat_extracted_actions a
          JOIN chats c ON c.id = a.chat_id
+         JOIN tenants t ON t.id = a.tenant_id
          JOIN chat_analysis_settings s ON s.tenant_id = a.tenant_id AND s.enabled
         WHERE a.question_message_id IS NOT NULL
           AND a.status = 'needs_clarification'
@@ -454,6 +464,10 @@ export class ChatAnalysisRepository {
               a.created_entity_type, a.created_entity_id::text,
               a.intent_confidence, a.project_confidence, a.assigner_confidence, a.assignee_confidence,
               a.task_id::text, a.task_confidence, tk.title AS task_title, tk.project_id::text AS task_project_id,
+              a.meeting_date::text, a.duration_minutes,
+              COALESCE((SELECT json_agg(json_build_object('id', pu.id::text, 'name', pu.full_name)
+                                        ORDER BY array_position(a.participant_ids, pu.id))
+                          FROM users pu WHERE pu.id = ANY(a.participant_ids)), '[]'::json) AS participants,
               c.title AS chat_title, c.kind AS chat_kind, pc.name AS chat_project_name,
               COALESCE((
                 SELECT json_agg(json_build_object('messageId', m.id::text, 'role', am.role, 'body', left(m.body, 400), 'at', m.created_at, 'author', au.full_name)
@@ -513,6 +527,35 @@ export class ChatAnalysisRepository {
           AND a.status = 'auto_created'
         ORDER BY a.id DESC LIMIT 1`,
       [tenantId, taskId],
+    );
+  }
+
+  // ── встречи ──
+
+  /** Пояс организации: время встречи в сообщении бота — по нему, а не по серверу. */
+  async timezoneOf(tenantId: string): Promise<string> {
+    const row = await this.db.one<{ timezone: string | null }>(`SELECT timezone FROM tenants WHERE id = $1`, [tenantId]);
+    return row?.timezone || 'Europe/Moscow';
+  }
+
+  /** Человек назвал время: встреча дозаполнена и, возможно, готова. */
+  async fillMeeting(tenantId: string, id: string, o: { meetingAt: Date; status: string }): Promise<void> {
+    await this.db.query(
+      `UPDATE chat_extracted_actions SET meeting_at = $3, status = $4, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id, o.meetingAt, o.status],
+    );
+  }
+
+  /**
+   * Событие календаря помнит договорённость, из которой выросло (ТЗ разд. 23). Отдельной
+   * записью, а не полем при создании: календарь о чатах ничего не знает и знать не должен.
+   */
+  async setEventSource(tenantId: string, eventId: string, chatId: string, messageId: string | null): Promise<void> {
+    await this.db.query(
+      `UPDATE calendar_events SET source_chat_id = $3, source_chat_message_id = $4
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, eventId, chatId, messageId],
     );
   }
 

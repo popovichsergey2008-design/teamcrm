@@ -108,7 +108,7 @@ function offsetMinutes(date: Date, tz: string): number {
 }
 
 /** Календарная дата в поясе человека: с неё и считаем «сегодня», «понедельник», «31-е». */
-function localDate(date: Date, tz: string): { y: number; m: number; d: number; minutes: number } {
+export function localDate(date: Date, tz: string): { y: number; m: number; d: number; minutes: number } {
   const fmt = new Intl.DateTimeFormat('en-CA', {
     timeZone: tz, hour12: false,
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
@@ -126,7 +126,7 @@ function localDate(date: Date, tz: string): { y: number; m: number; d: number; m
  * Смещение берём дважды: первое приближение может попасть в другую половину года
  * (переход на летнее время), и тогда пересчитываем по уточнённому моменту.
  */
-function zonedToUtc(y: number, m: number, d: number, atTime: string, tz: string): Date {
+export function zonedToUtc(y: number, m: number, d: number, atTime: string, tz: string): Date {
   const [hh, mm] = atTime.split(':').map(Number);
   const naive = Date.UTC(y, m - 1, d, hh, mm, 0, 0);
   const first = offsetMinutes(new Date(naive), tz);

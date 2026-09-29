@@ -1681,7 +1681,9 @@ export const api = {
     request<{ actionId: string; status: string }>('POST', `/chat-analysis/tasks/${taskId}/undo`, {}),
   runChatAnalysis: () => request<{ analyzed: number }>('POST', '/chat-analysis/run', {}),
   /** Завести задачу по наблюдению: постановщиком станет тот, кто поручил в переписке. */
-  confirmChatAction: (id: string, b: { projectId?: string; assigneeId?: string; title?: string; taskId?: string } = {}) =>
+  confirmChatAction: (id: string, b: {
+    projectId?: string; assigneeId?: string; title?: string; taskId?: string; startsAt?: string;
+  } = {}) =>
     request<{
       actionId: string;
       /** Поручение стало задачей. */
@@ -1690,6 +1692,8 @@ export const api = {
       decisionId?: string;
       /** Статус или блокер добавлен строкой в эту задачу. */
       taskId?: string;
+      /** Встреча поставлена в календарь. */
+      eventId?: string;
     }>('POST', `/chat-analysis/actions/${id}/confirm`, b),
   /** Журнал решений: из переписки — по видимым чатам, со встреч — всем сотрудникам. */
   decisions: (q: { chatId?: string; projectId?: string } = {}) => {

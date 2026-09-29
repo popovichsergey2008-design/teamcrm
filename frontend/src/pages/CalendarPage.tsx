@@ -30,6 +30,9 @@ export interface CalEvent {
   description: string | null;
   location: string | null;
   meetRoomId: string | null;
+  /** Встреча поставлена по договорённости в чате — отсюда в переписку (ТЗ-12, этап 6). */
+  sourceChatId?: string | null;
+  sourceMessageId?: string | null;
   startsAt: string;
   endsAt: string;
   allDay: boolean;
@@ -966,6 +969,25 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
           {value.meetRoomId && (
             <button className="btn btn-sm" onClick={() => { onStartCall(String(value.meetRoomId)); onClose(); }}>
               <Icon name="phone" size={14} /> Войти в созвон
+            </button>
+          )}
+          {/* Где договорились: встречу поставили по переписке — к ней одним нажатием */}
+          {value.sourceChatId && (
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                navigate({ section: 'chat', chatId: String(value.sourceChatId) });
+                // раздел откроется и сам подсветит строку — событием, адреса у сообщения нет
+                if (value.sourceMessageId) {
+                  window.setTimeout(() => window.dispatchEvent(new CustomEvent('teamcrm:chat-jump', {
+                    detail: { chatId: String(value.sourceChatId), messageId: String(value.sourceMessageId) },
+                  })), 300);
+                }
+                onClose();
+              }}
+              title="Встречу поставили по договорённости в чате"
+            >
+              <Icon name="chat" size={14} /> Открыть переписку
             </button>
           )}
           {/* Файл встречи: кладётся в Google, Outlook или календарь телефона одним щелчком */}

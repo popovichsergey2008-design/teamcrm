@@ -15,7 +15,14 @@ import { missingParts, resolveRoles, taskReadiness } from './roles-rules';
 import { autoCreateVerdict, overLimit, quality, undoVerdict } from './policy-rules';
 import { autoLogDecision, noteReadiness, noteText, participantsOf, resolveTask, taskNumbersIn } from './journal-rules';
 import { TaskActivityRepository } from '../tasks/task-activity.repository';
-import { ChatAnalysisRepository, DueChatRow, MessageRow } from './chat-analysis.repository';
+import {
+  meetingAskText, meetingDescription, meetingParticipants, meetingReadiness, MEETING_MIN_INTENT, parseTimeAnswer,
+  dayLabel,
+} from './meeting-rules';
+import { usersNamedInText } from '../nl/nl.match';
+import { zonedToUtc } from '../tasks/recurrence';
+import { CalendarService } from '../calendar/calendar.service';
+import { AwaitingRow, ChatAnalysisRepository, DueChatRow, MessageRow } from './chat-analysis.repository';
 import { closedSegments, Segment, SegmentMessage } from './segments';
 
 /**
@@ -65,6 +72,10 @@ const FALLBACK_SYSTEM = [
   '   старую форму?» — не решение; «решили: оставляем» — решение.',
   '9. Для status и blocker укажи task_ref из справочника tasks, если речь явно о',
   '   конкретной задаче. Не уверен — оставь пустым: о чужой задаче писать хуже, чем никуда.',
+  '10. meeting — только ДОГОВОРЁННОСТЬ о встрече, а не «надо бы как-нибудь созвониться».',
+  '   meeting_at — когда названы и дата, и время (в поясе timezone). Названа только дата —',
+  '   meeting_at пусто, а дата в meeting_date как "2026-10-01". duration_minutes — если',
+  '   сказали, сколько длится. Источник с предложением встречи — роль instruction.',
   '',
   'Формат ответа:',
   '{"actions":[{"type":"task","title":"...","description":"...","project_ref":"p1",',
@@ -89,6 +100,8 @@ export class ChatAnalysisService {
     private readonly realtime: RealtimeService,
     /** Журнал задачи: строка из переписки должна быть видна и в её истории. */
     private readonly activity: TaskActivityRepository,
+    /** Встречу ставим через обычный календарь: приглашения, напоминания, пересечения — его. */
+    private readonly calendar: CalendarService,
   ) {}
 
   /** Сообщение от бота всем, кто видит чат. */
@@ -165,7 +178,7 @@ export class ChatAnalysisService {
    */
   async confirm(
     tenantId: string, userId: string, id: string,
-    patch: { projectId?: string; assigneeId?: string; title?: string; taskId?: string } = {},
+    patch: { projectId?: string; assigneeId?: string; title?: string; taskId?: string; startsAt?: string } = {},
   ) {
     const a = await this.repo.one(tenantId, userId, id);
     if (!a) throw AppException.notFound('Наблюдение не найдено');
@@ -174,6 +187,7 @@ export class ChatAnalysisService {
     if (a.action_type === 'status' || a.action_type === 'blocker') {
       return this.noteToTask(tenantId, a, userId, patch.taskId ?? a.task_id ?? null);
     }
+    if (a.action_type === 'meeting') return this.scheduleMeeting(tenantId, a, userId, patch.startsAt ?? null);
     if (a.action_type !== 'task') throw AppException.validation('Задачей может стать только поручение');
     if (a.created_entity_id) throw AppException.conflict('Задача по этому наблюдению уже заведена');
     if (['rejected', 'cancelled'].includes(a.status)) throw AppException.conflict('Наблюдение уже закрыто');
@@ -268,6 +282,52 @@ export class ChatAnalysisService {
     await this.repo.markAction(tenantId, String(a.id), { status: 'confirmed', entityType: 'task_comment', entityId: comment?.id ?? null });
     await this.repo.setActionTask(tenantId, String(a.id), task.id);
     return { actionId: String(a.id), taskId: task.id, commentId: comment?.id ?? null };
+  }
+
+  /**
+   * Поставить встречу из переписки в календарь (ТЗ разд. 34–37).
+   *
+   * Только нажатием человека — даже в режиме автосоздания: приглашения уходят письмами,
+   * а письмо не отзовёшь. Организатор — автор предложения, а не нажавший: событие в
+   * календаре принадлежит ему, и переносить его вправе он. Пересечения, напоминания и
+   * приглашения — обычные календарные, со всеми их проверками.
+   *
+   * `startsAt` — время, которое человек поставил сам, если агент его не узнал.
+   */
+  private async scheduleMeeting(tenantId: string, a: any, userId: string, startsAt: string | null) {
+    if (a.created_entity_id) throw AppException.conflict('Эта встреча уже в календаре');
+    if (['rejected', 'cancelled'].includes(a.status)) throw AppException.conflict('Наблюдение уже закрыто');
+    const organizer = a.assigner_id ? String(a.assigner_id) : String(userId);
+    const participants: string[] = (a.participant_ids ?? []).map(String);
+    if (participants.length < 2) throw AppException.validation('Встрече нужны хотя бы двое участников');
+
+    const start = startsAt ? new Date(startsAt) : (a.meeting_at ? new Date(a.meeting_at) : null);
+    if (!start || Number.isNaN(start.getTime())) throw AppException.validation('Укажите, когда встреча');
+    if (start.getTime() <= Date.now()) throw AppException.validation('Это время уже прошло — выберите другое');
+    const end = new Date(start.getTime() + (Number(a.duration_minutes) || 30) * 60_000);
+
+    const sources = await this.repo.sourcesOf(String(a.id));
+    const main = sources.find((x) => x.role === 'instruction') ?? sources[0] ?? null;
+    const event = await this.calendar.create(tenantId, { userId: organizer, role: 'member' }, {
+      title: String(a.title).slice(0, 255),
+      description: meetingDescription({ chat: a.chat_title ?? null, quote: main?.body ?? null, details: String(a.description ?? '') }),
+      startsAt: start.toISOString(),
+      endsAt: end.toISOString(),
+      scope: 'personal',
+      participantIds: participants.filter((id) => id !== organizer),
+    });
+    const eventId = String((event as any).id);
+    await this.repo.setEventSource(tenantId, eventId, String(a.chat_id), main?.message_id ?? null);
+    await this.repo.markAction(tenantId, String(a.id), { status: 'confirmed', entityType: 'calendar_event', entityId: eventId });
+
+    // Участники договаривались в чате — там и узнают, что встреча в календаре.
+    const names = (await Promise.all(participants.map((id) => this.chats.userName(tenantId, id)))).filter(Boolean);
+    const when = start.toLocaleString('ru-RU', {
+      day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: await this.repo.timezoneOf(tenantId),
+    });
+    await this.say(tenantId, String(a.chat_id),
+      `Поставил встречу «${a.title}» на ${when}. Участники: ${names.join(', ')} — приглашения в календаре.`);
+    return { actionId: String(a.id), eventId };
   }
 
   // ── журнал решений ──
@@ -439,6 +499,23 @@ export class ChatAnalysisService {
     });
 
     for (const s of saved) {
+      /*
+        Встреча с датой, но без времени (ТЗ разд. 35): спрашиваем организатора. Те же
+        ограничения, что у поручений: уверенность, рабочее время, один раз, один вопрос
+        за проход.
+      */
+      if (s.action.type === 'meeting') {
+        if (!chat.ask_in_chat || !working || s.status !== 'needs_clarification' || !s.action.meetingDate) continue;
+        if (s.action.confidence.intent < MEETING_MIN_INTENT || !s.action.assignerId) continue;
+        const who = await this.chats.userName(chat.tenant_id, s.action.assignerId);
+        const message = await this.say(chat.tenant_id, chat.chat_id,
+          meetingAskText({ who, title: s.action.title, date: s.action.meetingDate }));
+        if (message) {
+          await this.repo.markAsked(chat.tenant_id, s.id, String(message.id));
+          this.log.log(`чат ${chat.chat_id}: спросили время встречи «${s.action.title}»`);
+        }
+        return; // один вопрос за проход
+      }
       const missing = missingParts({
         projectId: s.action.projectId, assigneeId: s.action.assigneeId,
         assignerId: s.action.assignerId, cancelled: s.cancelled,
@@ -564,6 +641,28 @@ export class ChatAnalysisService {
   }
 
   /**
+   * Время встречи из ответа организатора.
+   *
+   * Дата уже известна из разговора, время — из ответа, пояс — организации. Время в
+   * прошлом (ответили поздно) не принимаем: встреча остаётся ждать, её поставят руками.
+   */
+  private async fillMeetingTime(row: AwaitingRow, text: string, now: Date): Promise<boolean> {
+    const time = parseTimeAnswer(text);
+    if (!time || !row.meeting_date) return false;
+    const [y, m, d] = row.meeting_date.split('-').map(Number);
+    const at = zonedToUtc(y, m, d, time, row.timezone || 'Europe/Moscow');
+    const status = meetingReadiness({
+      intent: Number(row.intent_confidence), meetingAt: at, meetingDate: row.meeting_date,
+      participants: row.participant_ids ?? [], cancelled: false, now,
+    });
+    if (status !== 'ready') return false;
+    await this.repo.fillMeeting(row.tenant_id, row.id, { meetingAt: at, status });
+    await this.say(row.tenant_id, row.chat_id,
+      `Принял: ${dayLabel(row.meeting_date)}, ${time}. Встреча «${row.title}» готова — осталось поставить её в календарь.`);
+    return true;
+  }
+
+  /**
    * Не ответил ли кто-нибудь на наш вопрос.
    *
    * Ответ разбираем тем же сопоставлением, что и быстрая команда: название проекта
@@ -579,6 +678,13 @@ export class ChatAnalysisService {
         if (!mine.length) continue;
 
         const text = mine.map((m) => String(m.body ?? '')).join('\n');
+
+        // Встреча ждёт времени: берём его из ответа организатора и складываем с датой.
+        if (row.action_type === 'meeting') {
+          if (await this.fillMeetingTime(row, text, now)) filled++;
+          continue;
+        }
+
         const [people, projects] = await Promise.all([
           this.repo.people(row.tenant_id, row.chat_id, row.chat_project_id),
           this.repo.projects(row.tenant_id),
@@ -753,11 +859,36 @@ export class ChatAnalysisService {
           })
           : { taskId: null, confidence: 0 };
 
+        /*
+          Встреча: организатор — автор первого сообщения договорённости (предложил он),
+          участники — договаривавшиеся и названные по имени в этих сообщениях. Модель
+          участников не называет вовсе: звать людей по её догадке нельзя.
+        */
+        const isMeeting = a.type === 'meeting';
+        const meetingAuthors = isMeeting
+          ? a.sources.map((x) => messageById.get(x.messageId))
+            .filter((m): m is MessageRow => !!m && !m.is_ai)
+            .sort((x, y) => Number(x.id) - Number(y.id))
+            .map((m) => (m.author_id ? String(m.author_id) : null))
+          : [];
+        const organizerId = meetingAuthors.find((id) => !!id) ?? null;
+        const participantIds = isMeeting
+          ? meetingParticipants({
+            organizerId,
+            named: usersNamedInText(
+              a.sources.map((x) => String(messageById.get(x.messageId)?.body ?? '')).join('\n'),
+              people.map((pp) => ({ id: String(pp.id), name: pp.name })),
+            ),
+            authors: meetingAuthors,
+          })
+          : [];
+
         const fixed: ExtractedAction = {
           ...a,
           projectId: p.projectId,
-          assignerId: roles.assignerId,
-          assigneeId: roles.assigneeId,
+          assignerId: isMeeting ? organizerId : roles.assignerId,
+          assigneeId: isMeeting ? null : roles.assigneeId,
+          participantIds,
           taskId: t.taskId,
           confidence: {
             ...a.confidence,
@@ -779,9 +910,14 @@ export class ChatAnalysisService {
             projectId: fixed.projectId, assigneeId: fixed.assigneeId, assignerId: fixed.assignerId,
             cancelled: roles.cancelled, confidence: fixed.confidence,
           })
-          : noteReadiness({
-            type: fixed.type, intent: fixed.confidence.intent, taskId: fixed.taskId, cancelled: roles.cancelled,
-          });
+          : fixed.type === 'meeting'
+            ? meetingReadiness({
+              intent: fixed.confidence.intent, meetingAt: fixed.meetingAt, meetingDate: fixed.meetingDate,
+              participants: fixed.participantIds, cancelled: roles.cancelled, now: new Date(),
+            })
+            : noteReadiness({
+              type: fixed.type, intent: fixed.confidence.intent, taskId: fixed.taskId, cancelled: roles.cancelled,
+            });
         return { action: fixed, status, cancelled: roles.cancelled };
       });
 

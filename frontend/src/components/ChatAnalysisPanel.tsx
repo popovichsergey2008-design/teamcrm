@@ -47,6 +47,7 @@ const STATUS: Record<string, string> = {
 const STATUS_BY_TYPE: Record<string, Partial<Record<string, string>>> = {
   decision: { ready: 'готово записать', confirmed: 'в журнале', auto_created: 'агент записал сам' },
   status: { ready: 'готово добавить', confirmed: 'добавлено в задачу' },
+  meeting: { ready: 'готово поставить', confirmed: 'в календаре', needs_clarification: 'нет времени' },
   blocker: { ready: 'готово добавить', confirmed: 'добавлено в задачу' },
 };
 const statusLabel = (a: ChatAnalysisAction) => STATUS_BY_TYPE[a.action_type]?.[a.status] ?? STATUS[a.status] ?? a.status;
@@ -72,7 +73,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
   const [limit, setLimit] = useState('');
   const [open, setOpen] = useState<string | null>(null);
   /** Чем дополнить наблюдение перед заведением: проект и исполнитель, если их нет. */
-  const [patch, setPatch] = useState<Record<string, { projectId?: string; assigneeId?: string; taskId?: string }>>({});
+  const [patch, setPatch] = useState<Record<string, { projectId?: string; assigneeId?: string; taskId?: string; startsAt?: string }>>({});
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [people, setPeople] = useState<{ id: string; full_name: string }[]>([]);
@@ -149,6 +150,16 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
     const typed = taskNumber(patch[a.id]?.taskId ?? '');
     const r = await api.confirmChatAction(a.id, typed ? { taskId: typed } : {});
     setMsg(`Добавлено в обсуждение задачи #${r.taskId ?? typed}`);
+  });
+
+  /**
+   * Встречу — в календарь. Время агент узнал из переписки или его вписывает человек;
+   * организатором станет тот, кто предложил встречу, приглашения уйдут участникам.
+   */
+  const schedule = (a: ChatAnalysisAction) => act(async () => {
+    const typed = patch[a.id]?.startsAt;
+    await api.confirmChatAction(a.id, typed ? { startsAt: new Date(typed).toISOString() } : {});
+    setMsg(`Встреча «${a.title}» поставлена в календарь, участникам ушли приглашения`);
   });
 
   const revoke = (d: Decision) => act(async () => {
@@ -361,6 +372,9 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                     a.deadline_at ? `срок ${stampLabel(a.deadline_at)}` : null,
                     a.meeting_at ? `встреча ${stampLabel(a.meeting_at)}` : null,
                     a.task_id ? `к задаче #${a.task_id}${a.task_title ? ` «${a.task_title}»` : ''}` : null,
+                    a.action_type === 'meeting' && !a.meeting_at && a.meeting_date ? `встреча ${a.meeting_date}, время не названо` : null,
+                    a.action_type === 'meeting' && a.duration_minutes ? `${a.duration_minutes} мин` : null,
+                    a.action_type === 'meeting' && a.participants?.length ? `участники: ${a.participants.map((p) => p.name).join(', ')}` : null,
                   ].filter(Boolean).join(' · ')}
                 </div>
                 {/*
@@ -465,6 +479,41 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                         <Icon name="close" size={13} /> Не то
                       </button>
                     </>
+                  )}
+                  {/*
+                    Встреча ставится только нажатием — даже в режиме автосоздания:
+                    приглашения уходят письмами, а письмо не отзовёшь. Время не прозвучало —
+                    его вписывают здесь же.
+                  */}
+                  {a.action_type === 'meeting' && openAction(a) && (
+                    <>
+                      {!a.meeting_at && (
+                        <input
+                          className="input ca-when"
+                          type="datetime-local"
+                          aria-label="Когда встреча"
+                          value={patch[a.id]?.startsAt ?? ''}
+                          onChange={(e) => setPatch((p) => ({ ...p, [a.id]: { ...p[a.id], startsAt: e.target.value } }))}
+                        />
+                      )}
+                      <button
+                        className="btn btn-primary btn-sm"
+                        disabled={busy || (a.participants?.length ?? 0) < 2 || !(a.meeting_at || (patch[a.id]?.startsAt ?? '').length >= 16)}
+                        onClick={() => void schedule(a)}
+                        title={(a.participants?.length ?? 0) < 2 ? 'Встрече нужны хотя бы двое участников' : undefined}
+                      >
+                        <Icon name="calendar" size={13} /> Поставить в календарь
+                      </button>
+                      <button className="btn btn-ghost btn-sm" disabled={busy}
+                        onClick={() => void act(() => api.rejectChatAction(a.id))}>
+                        <Icon name="close" size={13} /> Не договорились
+                      </button>
+                    </>
+                  )}
+                  {a.created_entity_type === 'calendar_event' && (
+                    <button className="btn btn-sm" onClick={() => { navigate({ section: 'calendar' }); onClose(); }}>
+                      <Icon name="calendar" size={13} /> Открыть календарь
+                    </button>
                   )}
                   {/* Отмена — только у заведённого агентом и только сутки; остальное сервер проверит сам. */}
                   {a.status === 'auto_created'

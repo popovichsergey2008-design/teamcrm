@@ -159,6 +159,10 @@ export interface ChatAnalysisAction {
   task_title: string | null;
   task_project_id: string | null;
   task_confidence: string | number;
+  /** Встреча (этап 6): дата без времени — время спросили или впишет человек. */
+  meeting_date: string | null;
+  duration_minutes: number | null;
+  participants: { id: string; name: string }[];
   chat_title: string | null;
   chat_kind: string;
   chat_project_name: string | null;

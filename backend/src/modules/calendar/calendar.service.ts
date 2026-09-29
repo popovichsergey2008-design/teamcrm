@@ -357,6 +357,9 @@ export class CalendarService {
       description: hidden ? null : row.description,
       location: hidden ? null : row.location,
       meetRoomId: hidden ? null : row.meet_room_id,
+      // Откуда встреча: из карточки события — в переписку, где о ней договорились.
+      sourceChatId: hidden ? null : (row.source_chat_id != null ? String(row.source_chat_id) : null),
+      sourceMessageId: hidden ? null : (row.source_chat_message_id != null ? String(row.source_chat_message_id) : null),
       startsAt: row.starts_at,
       endsAt: row.ends_at,
       allDay: row.all_day,

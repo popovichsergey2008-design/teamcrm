@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Max, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Max, Min, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -31,6 +31,8 @@ class ConfirmDto {
   @IsOptional() @IsString() @MaxLength(1000) title?: string;
   /** Для статуса и блокера: задача, куда положить строку, если агент её не нашёл. */
   @IsOptional() @IsString() @MaxLength(20) taskId?: string;
+  /** Для встречи: время, которое человек поставил сам, если агент его не узнал. */
+  @IsOptional() @IsDateString() startsAt?: string;
 }
 
 /**
