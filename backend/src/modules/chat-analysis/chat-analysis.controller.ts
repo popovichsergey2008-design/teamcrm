@@ -27,7 +27,10 @@ class ChatFlagDto {
 class ConfirmDto {
   @IsOptional() @IsString() projectId?: string;
   @IsOptional() @IsString() assigneeId?: string;
-  @IsOptional() @IsString() @MaxLength(255) title?: string;
+  // Решение бывает длиннее названия задачи; задаче сервис всё равно обрежет до 255.
+  @IsOptional() @IsString() @MaxLength(1000) title?: string;
+  /** Для статуса и блокера: задача, куда положить строку, если агент её не нашёл. */
+  @IsOptional() @IsString() @MaxLength(20) taskId?: string;
 }
 
 /**
@@ -84,6 +87,30 @@ export class ChatAnalysisController {
   @Post('actions/:id/confirm')
   confirm(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ConfirmDto) {
     return this.svc.confirm(u.tenantId, u.userId, id, dto);
+  }
+
+  /**
+   * Журнал решений: из переписки — по чатам, которые человеку видны, со встреч — всем
+   * сотрудникам, как и сами встречи. Заказчику журнал не показываем.
+   */
+  @Get('decisions')
+  @Roles('owner', 'manager', 'member')
+  decisions(
+    @CurrentUser() u: AuthUser,
+    @Query('chatId') chatId?: string,
+    @Query('projectId') projectId?: string,
+    @Query('all') all?: string,
+  ) {
+    return this.svc.decisions(u.tenantId, u.userId, {
+      chatId: chatId || null, projectId: projectId || null, withRevoked: all === '1',
+    });
+  }
+
+  /** Снять решение: записано по ошибке или передумали. Строка остаётся с пометкой. */
+  @Post('decisions/:id/revoke')
+  @Roles('owner', 'manager', 'member')
+  revokeDecision(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.revokeDecision(u.tenantId, { userId: u.userId, role: u.role }, id);
   }
 
   /** «Это не задача». Наблюдение остаётся: по отказам видно, где агент ошибается. */

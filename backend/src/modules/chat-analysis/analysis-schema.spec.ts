@@ -30,7 +30,7 @@ describe('ответ модели о переписке', () => {
       type: 'task', title: 'Исправить API авторизации',
       projectId: '130', assignerId: '7', assigneeId: '18',
     });
-    expect(a.confidence).toEqual({ intent: 0.97, project: 0.93, assigner: 0.99, assignee: 0.91 });
+    expect(a.confidence).toEqual({ intent: 0.97, project: 0.93, assigner: 0.99, assignee: 0.91, task: 0 });
     expect(a.sources).toEqual([
       { messageId: '881', role: 'instruction' }, { messageId: '886', role: 'acceptance' },
     ]);
@@ -83,7 +83,7 @@ describe('ответ модели о переписке', () => {
     const [a] = parseAnalysis(answer([task({
       confidence: { intent: 5, project: -1, assigner: 'высокая', assignee: null },
     })]), cat(), now);
-    expect(a.confidence).toEqual({ intent: 1, project: 0, assigner: 0, assignee: 0 });
+    expect(a.confidence).toEqual({ intent: 1, project: 0, assigner: 0, assignee: 0, task: 0 });
   });
 
   it('ответ в обёртке ```json разбирается', () => {
@@ -147,5 +147,28 @@ describe('проект наблюдения', () => {
     */
     expect(resolveProject({ chatProjectId: null, spokenId: null }))
       .toEqual({ projectId: null, confidence: 0, ground: 'none' });
+  });
+});
+
+describe('задача статуса и блокера', () => {
+  const withTasks = (): RefCatalog => ({ ...cat(), tasks: new Map([['t1', '1344']]) });
+
+  it('пометка из справочника задач переводится в номер', () => {
+    const [a] = parseAnalysis(answer([task({ type: 'blocker', task_ref: 't1' })]), withTasks(), now);
+    expect(a.taskId).toBe('1344');
+    // уверенность в задаче модели не доверяем — её считают основания
+    expect(a.confidence.task).toBe(0);
+  });
+
+  it('выдуманная пометка и номер вместо пометки не принимаются', () => {
+    const [a] = parseAnalysis(answer([task({ type: 'status', task_ref: 't9' })]), withTasks(), now);
+    expect(a.taskId).toBeNull();
+    const [b] = parseAnalysis(answer([task({ type: 'status', task_ref: '1344' })]), withTasks(), now);
+    expect(b.taskId).toBeNull();
+  });
+
+  it('без справочника задач пометка ничего не значит', () => {
+    const [a] = parseAnalysis(answer([task({ type: 'blocker', task_ref: 't1' })]), cat(), now);
+    expect(a.taskId).toBeNull();
   });
 });

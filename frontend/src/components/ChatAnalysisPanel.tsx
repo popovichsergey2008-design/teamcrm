@@ -5,10 +5,10 @@ import { useEscape } from '../hooks/useEscape';
 import { navigate } from '../lib/router';
 import { stampLabel } from '../lib/chat-text';
 import type { IconName } from './Icon';
-import type { ChatAnalysisAction, ChatAnalysisRun, ChatAnalysisSettings, ChatAnalysisStats } from '../types';
+import type { ChatAnalysisAction, ChatAnalysisRun, ChatAnalysisSettings, ChatAnalysisStats, Decision } from '../types';
 
 /**
- * «Разбор переписки» в настройках (ТЗ-12, этапы 1–4).
+ * «Разбор переписки» в настройках (ТЗ-12, этапы 1–5).
  *
  * Агент читает ЗАТИХШИЕ разговоры в рабочих чатах и показывает, что в них понял. По
  * умолчанию он только предлагает — задачу заводит человек. Автосоздание владелец
@@ -43,6 +43,20 @@ const STATUS: Record<string, string> = {
   rejected: 'отклонено',
 };
 
+/** У решения и у статуса те же состояния значат другое: «заведена» про них неправда. */
+const STATUS_BY_TYPE: Record<string, Partial<Record<string, string>>> = {
+  decision: { ready: 'готово записать', confirmed: 'в журнале', auto_created: 'агент записал сам' },
+  status: { ready: 'готово добавить', confirmed: 'добавлено в задачу' },
+  blocker: { ready: 'готово добавить', confirmed: 'добавлено в задачу' },
+};
+const statusLabel = (a: ChatAnalysisAction) => STATUS_BY_TYPE[a.action_type]?.[a.status] ?? STATUS[a.status] ?? a.status;
+
+/** Наблюдение ещё можно пустить в дело: не закрыто и ничего по нему не сделано. */
+const openAction = (a: ChatAnalysisAction) => !a.created_entity_id && !['rejected', 'cancelled'].includes(a.status);
+
+/** Номер задачи, как его набирают: «#1344», «1344». */
+const taskNumber = (v: string) => v.replace(/[^\d]/g, '');
+
 const share = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
 
 const chatName = (a: { chat_project_name: string | null; chat_title: string | null }) =>
@@ -58,7 +72,8 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
   const [limit, setLimit] = useState('');
   const [open, setOpen] = useState<string | null>(null);
   /** Чем дополнить наблюдение перед заведением: проект и исполнитель, если их нет. */
-  const [patch, setPatch] = useState<Record<string, { projectId?: string; assigneeId?: string }>>({});
+  const [patch, setPatch] = useState<Record<string, { projectId?: string; assigneeId?: string; taskId?: string }>>({});
+  const [decisions, setDecisions] = useState<Decision[]>([]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [people, setPeople] = useState<{ id: string; full_name: string }[]>([]);
   const [busy, setBusy] = useState(false);
@@ -70,6 +85,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
     api.chatAnalysisActions().then(setActions).catch(() => setActions([]));
     api.chatAnalysisRuns().then(setRuns).catch(() => setRuns([]));
     api.chatAnalysisStats().then(setStats).catch(() => setStats(null));
+    api.decisions().then(setDecisions).catch(() => setDecisions([]));
   };
   useEffect(() => {
     setLimit(cfg?.monthly_limit_usd != null ? String(Number(cfg.monthly_limit_usd)) : '');
@@ -120,7 +136,24 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
       projectId: p.projectId ?? a.project_id ?? undefined,
       assigneeId: p.assigneeId ?? a.assignee_id ?? undefined,
     });
-    setMsg(`Задача «${r.task.title}» заведена`);
+    setMsg(`Задача «${r.task?.title ?? a.title}» заведена`);
+  });
+
+  const logDecision = (a: ChatAnalysisAction) => act(async () => {
+    await api.confirmChatAction(a.id);
+    setMsg(`Решение записано в журнал: «${a.title}»`);
+  });
+
+  /** Статус или блокер — в обсуждение задачи. Не нашёл агент задачу — номер вписывает человек. */
+  const addToTask = (a: ChatAnalysisAction) => act(async () => {
+    const typed = taskNumber(patch[a.id]?.taskId ?? '');
+    const r = await api.confirmChatAction(a.id, typed ? { taskId: typed } : {});
+    setMsg(`Добавлено в обсуждение задачи #${r.taskId ?? typed}`);
+  });
+
+  const revoke = (d: Decision) => act(async () => {
+    await api.revokeDecision(d.id);
+    setMsg(`Решение снято: «${d.text}»`);
   });
 
   const undo = (a: ChatAnalysisAction) => act(async () => {
@@ -315,7 +348,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                   <span className="ca-type"><Icon name={t.icon} size={13} /> {t.label}</span>
                   <span className="ca-title">{a.title}</span>
                   <span className="dim ca-status">
-                    {a.asked_at && a.status === 'needs_clarification' ? 'спросили в чате' : (STATUS[a.status] ?? a.status)}
+                    {a.asked_at && a.status === 'needs_clarification' ? 'спросили в чате' : statusLabel(a)}
                   </span>
                 </div>
                 <div className="dim ca-meta">
@@ -327,6 +360,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                       : (a.assignee_name ? `кому: ${a.assignee_name}` : null),
                     a.deadline_at ? `срок ${stampLabel(a.deadline_at)}` : null,
                     a.meeting_at ? `встреча ${stampLabel(a.meeting_at)}` : null,
+                    a.task_id ? `к задаче #${a.task_id}${a.task_title ? ` «${a.task_title}»` : ''}` : null,
                   ].filter(Boolean).join(' · ')}
                 </div>
                 {/*
@@ -334,8 +368,12 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                   обычный случай, и одним числом его не показать.
                 */}
                 <div className="dim ca-conf">
-                  смысл {pct(a.intent_confidence)} · проект {pct(a.project_confidence)}
-                  {' · '}постановщик {pct(a.assigner_confidence)} · исполнитель {pct(a.assignee_confidence)}
+                  смысл {pct(a.intent_confidence)}
+                  {a.action_type === 'task' && <>
+                    {' · '}проект {pct(a.project_confidence)}
+                    {' · '}постановщик {pct(a.assigner_confidence)} · исполнитель {pct(a.assignee_confidence)}
+                  </>}
+                  {(a.action_type === 'status' || a.action_type === 'blocker') && <> · задача {pct(a.task_confidence)}</>}
                 </div>
                 {/*
                   Поручению нужен проект и исполнитель. Чего агент не понял, человек
@@ -386,14 +424,64 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                       </button>
                     </>
                   )}
+                  {a.action_type === 'decision' && openAction(a) && (
+                    <>
+                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void logDecision(a)}>
+                        <Icon name="flag" size={13} /> В журнал решений
+                      </button>
+                      <button className="btn btn-ghost btn-sm" disabled={busy}
+                        onClick={() => void act(() => api.rejectChatAction(a.id))}>
+                        <Icon name="close" size={13} /> Это не решение
+                      </button>
+                    </>
+                  )}
+                  {/*
+                    Статус и блокер новых задач не порождают — они дописываются в ту, о
+                    которой речь. Нашёл её агент — одна кнопка; не нашёл — номер вписывает
+                    человек: угадывать чужую задачу хуже, чем спросить.
+                  */}
+                  {(a.action_type === 'status' || a.action_type === 'blocker') && openAction(a) && (
+                    <>
+                      {!a.task_id && (
+                        <input
+                          className="input ca-task-no"
+                          inputMode="numeric"
+                          placeholder="№ задачи"
+                          aria-label="Номер задачи"
+                          value={patch[a.id]?.taskId ?? ''}
+                          onChange={(e) => setPatch((p) => ({ ...p, [a.id]: { ...p[a.id], taskId: e.target.value } }))}
+                        />
+                      )}
+                      <button
+                        className="btn btn-primary btn-sm"
+                        disabled={busy || !(a.task_id || taskNumber(patch[a.id]?.taskId ?? ''))}
+                        onClick={() => void addToTask(a)}
+                        title={!a.task_id ? 'Впишите номер задачи, к которой это относится' : undefined}
+                      >
+                        <Icon name="chat" size={13} /> {a.task_id ? `Добавить в задачу #${a.task_id}` : 'Добавить в задачу'}
+                      </button>
+                      <button className="btn btn-ghost btn-sm" disabled={busy}
+                        onClick={() => void act(() => api.rejectChatAction(a.id))}>
+                        <Icon name="close" size={13} /> Не то
+                      </button>
+                    </>
+                  )}
                   {/* Отмена — только у заведённого агентом и только сутки; остальное сервер проверит сам. */}
                   {a.status === 'auto_created'
                     && Date.now() - new Date(a.updated_at).getTime() < 24 * 3600_000 && (
                     <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void undo(a)}>
-                      <Icon name="close" size={13} /> Отменить задачу
+                      <Icon name="close" size={13} /> {a.created_entity_type === 'decision' ? 'Убрать из журнала' : 'Отменить задачу'}
                     </button>
                   )}
-                  {a.created_entity_id && a.status !== 'cancelled' && (
+                  {a.created_entity_type === 'task_comment' && a.task_id && (
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => { navigate({ section: 'projects', projectId: String(a.task_project_id ?? ''), taskId: String(a.task_id) }); onClose(); }}
+                    >
+                      <Icon name="check" size={13} /> Открыть задачу
+                    </button>
+                  )}
+                  {a.created_entity_type === 'task' && a.created_entity_id && a.status !== 'cancelled' && (
                     <button
                       className="btn btn-sm"
                       onClick={() => { navigate({ section: 'projects', projectId: String(a.project_id ?? ''), taskId: String(a.created_entity_id) }); onClose(); }}
@@ -428,6 +516,59 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
               </div>
             );
           })}
+        </div>
+
+        {/*
+          Журнал решений (ТЗ разд. 24): одно место для решений и из переписки, и со
+          встреч. Снятое не стирается — «решали и передумали» тоже история, — но в
+          списке его нет.
+        */}
+        <div className="drawer-section-title">Журнал решений</div>
+        {!decisions.length && (
+          <p className="dim">
+            Решений пока нет. Сюда попадают решения со встреч и те, что вы записали из переписки.
+          </p>
+        )}
+        <div className="ca-list">
+          {decisions.map((d) => (
+            <div key={d.id} className="ca-item">
+              <div className="ca-item-head">
+                <span className="ca-type"><Icon name={d.meeting_id ? 'record' : 'flag'} size={13} /> Решение</span>
+                <span className="ca-title">{d.text}</span>
+              </div>
+              <div className="dim ca-meta">
+                {[
+                  stampLabel(d.decided_at),
+                  d.project_name,
+                  d.meeting_id ? `встреча «${d.meeting_title ?? 'без названия'}»` : (d.chat_title ? `чат «${d.chat_title}»` : 'переписка'),
+                  d.participants.length ? d.participants.map((p) => p.name).join(', ') : null,
+                  d.created_by ? null : (d.chat_id ? 'записал агент' : null),
+                ].filter(Boolean).join(' · ')}
+              </div>
+              <div className="ca-acts">
+                {d.chat_id && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      navigate({ section: 'chat', chatId: String(d.chat_id) });
+                      // раздел откроется и сам подсветит строку — событием, адреса у сообщения нет
+                      if (d.source_message_id) {
+                        window.setTimeout(() => window.dispatchEvent(new CustomEvent('teamcrm:chat-jump', {
+                          detail: { chatId: String(d.chat_id), messageId: String(d.source_message_id) },
+                        })), 300);
+                      }
+                      onClose();
+                    }}
+                  >
+                    <Icon name="chat" size={13} /> Где решили
+                  </button>
+                )}
+                <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void revoke(d)}>
+                  <Icon name="close" size={13} /> Снять
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </aside>
     </div>

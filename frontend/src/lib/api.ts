@@ -1681,9 +1681,23 @@ export const api = {
     request<{ actionId: string; status: string }>('POST', `/chat-analysis/tasks/${taskId}/undo`, {}),
   runChatAnalysis: () => request<{ analyzed: number }>('POST', '/chat-analysis/run', {}),
   /** Завести задачу по наблюдению: постановщиком станет тот, кто поручил в переписке. */
-  confirmChatAction: (id: string, b: { projectId?: string; assigneeId?: string; title?: string } = {}) =>
-    request<{ actionId: string; task: { id: string; project_id: string; title: string } }>(
-      'POST', `/chat-analysis/actions/${id}/confirm`, b),
+  confirmChatAction: (id: string, b: { projectId?: string; assigneeId?: string; title?: string; taskId?: string } = {}) =>
+    request<{
+      actionId: string;
+      /** Поручение стало задачей. */
+      task?: { id: string; project_id: string; title: string };
+      /** Решение записано в журнал. */
+      decisionId?: string;
+      /** Статус или блокер добавлен строкой в эту задачу. */
+      taskId?: string;
+    }>('POST', `/chat-analysis/actions/${id}/confirm`, b),
+  /** Журнал решений: из переписки — по видимым чатам, со встреч — всем сотрудникам. */
+  decisions: (q: { chatId?: string; projectId?: string } = {}) => {
+    const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => !!v) as [string, string][]).toString();
+    return request<import('../types').Decision[]>('GET', `/chat-analysis/decisions${qs ? `?${qs}` : ''}`);
+  },
+  revokeDecision: (id: string) =>
+    request<{ decisionId: string; revoked: boolean }>('POST', `/chat-analysis/decisions/${id}/revoke`, {}),
   rejectChatAction: (id: string) =>
     request<{ actionId: string; status: string }>('POST', `/chat-analysis/actions/${id}/reject`, {}),
   setChatAnalysisFlag: (chatId: string, enabled: boolean) =>

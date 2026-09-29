@@ -154,10 +154,32 @@ export interface ChatAnalysisAction {
   project_confidence: string | number;
   assigner_confidence: string | number;
   assignee_confidence: string | number;
+  /** Задача, о которой статус или блокер (ТЗ-12, этап 5): 1 — названа, 0.8 — задача автора. */
+  task_id: string | null;
+  task_title: string | null;
+  task_project_id: string | null;
+  task_confidence: string | number;
   chat_title: string | null;
   chat_kind: string;
   chat_project_name: string | null;
   sources: ChatAnalysisSource[];
+}
+/** Строка журнала решений: из переписки или со встречи (ТЗ-12, этап 5). */
+export interface Decision {
+  id: string;
+  text: string;
+  details: string;
+  project_id: string | null;
+  project_name: string | null;
+  chat_id: string | null;
+  chat_title: string | null;
+  meeting_id: string | null;
+  meeting_title: string | null;
+  source_message_id: string | null;
+  participants: { id: string; name: string }[];
+  decided_at: string;
+  created_by: string | null;
+  revoked_at: string | null;
 }
 export interface ChatAnalysisRun {
   id: string;

@@ -124,12 +124,33 @@ export class MeetingsRepository {
   }
 
   async saveSummary(tenantId: string, meetingId: string, summary: string, decisions: string[], risks: string[]): Promise<void> {
-    await this.db.query(
-      `INSERT INTO meeting_summaries (meeting_id, tenant_id, summary, decisions, risks)
-       VALUES ($1,$2,$3,$4::jsonb,$5::jsonb)
-       ON CONFLICT (meeting_id) DO UPDATE SET summary=EXCLUDED.summary, decisions=EXCLUDED.decisions, risks=EXCLUDED.risks`,
-      [meetingId, tenantId, summary, JSON.stringify(decisions), JSON.stringify(risks)],
-    );
+    await this.db.withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO meeting_summaries (meeting_id, tenant_id, summary, decisions, risks)
+         VALUES ($1,$2,$3,$4::jsonb,$5::jsonb)
+         ON CONFLICT (meeting_id) DO UPDATE SET summary=EXCLUDED.summary, decisions=EXCLUDED.decisions, risks=EXCLUDED.risks`,
+        [meetingId, tenantId, summary, JSON.stringify(decisions), JSON.stringify(risks)],
+      );
+      /*
+        Решения встречи — ещё и в общий журнал решений (ТЗ-12, этап 5), рядом с решениями
+        из переписки. Повторный разбор встречи пересобирает её строки; снятое человеком
+        решение при этом не возвращается — он уже сказал, что это не решение.
+      */
+      await client.query(
+        `DELETE FROM decisions WHERE tenant_id = $1 AND meeting_id = $2 AND revoked_at IS NULL`,
+        [tenantId, meetingId],
+      );
+      await client.query(
+        `INSERT INTO decisions (tenant_id, project_id, meeting_id, text, decided_at)
+         SELECT m.tenant_id, m.project_id, m.id, btrim(t.text), COALESCE(m.happened_at, m.created_at)
+           FROM meetings m
+          CROSS JOIN unnest($3::text[]) AS t(text)
+          WHERE m.tenant_id = $1 AND m.id = $2 AND btrim(t.text) <> ''
+            AND NOT EXISTS (SELECT 1 FROM decisions x
+                             WHERE x.meeting_id = m.id AND x.revoked_at IS NOT NULL AND x.text = btrim(t.text))`,
+        [tenantId, meetingId, decisions],
+      );
+    });
   }
 
   summary(tenantId: string, meetingId: string) {

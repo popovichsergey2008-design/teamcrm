@@ -59,7 +59,7 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
 }) {
   const [info, setInfo] = useState<ChatInfo | null>(null);
   const [err, setErr] = useState('');
-  const [open, setOpen] = useState<Record<string, boolean>>({ about: true, members: true, materials: false, tasks: true, meetings: false, pinned: false, saved: false, history: false });
+  const [open, setOpen] = useState<Record<string, boolean>>({ about: true, members: true, materials: false, tasks: true, meetings: false, decisions: false, pinned: false, saved: false, history: false });
   const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
 
   const load = useCallback(() => {
@@ -146,6 +146,13 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
         <Section title="Миты" open={open.meetings} onToggle={() => toggle('meetings')}>
           <MeetingsBlock chatId={chatId} />
         </Section>
+
+        {/* Решения появляются только в рабочих чатах: личные переписки агент не читает. */}
+        {(chat.kind === 'group' || chat.kind === 'project') && (
+          <Section title="Решения" open={open.decisions} onToggle={() => toggle('decisions')}>
+            <DecisionsBlock chatId={chatId} onJumpTo={onJumpTo} />
+          </Section>
+        )}
 
         <Section title="Закреплено" count={counts.pinned} open={open.pinned} onToggle={() => toggle('pinned')}>
           <PinnedBlock chatId={chatId} onJumpTo={onJumpTo} />
@@ -562,6 +569,38 @@ function MeetingsBlock({ chatId }: { chatId: string }) {
             </div>
           )}
         </div>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Решения, принятые в этом чате (ТЗ-12, этап 5): «что мы тут решили про форму?» —
+ * без прокрутки ленты на месяц назад. Строка ведёт к сообщению, где решили.
+ */
+function DecisionsBlock({ chatId, onJumpTo }: { chatId: string; onJumpTo: (id: string) => void }) {
+  const [items, setItems] = useState<Awaited<ReturnType<typeof api.decisions>> | null>(null);
+  useEffect(() => { api.decisions({ chatId }).then(setItems).catch(() => setItems([])); }, [chatId]);
+  if (!items) return <div className="dim">Загружаю…</div>;
+  if (!items.length) return <div className="dim">Записанных решений нет. Их находит разбор переписки, когда он включён.</div>;
+  return (
+    <>
+      {items.map((d) => (
+        <button
+          key={d.id}
+          className="ci-item"
+          onClick={() => { if (d.source_message_id) onJumpTo(String(d.source_message_id)); }}
+          title={d.source_message_id ? 'Показать в чате' : undefined}
+        >
+          <Icon name="flag" size={14} />
+          <span className="ci-item-main">
+            <span className="ci-item-name">{d.text}</span>
+            <span className="dim">
+              {stampLabel(d.decided_at)}
+              {d.participants.length ? ` · ${d.participants.map((p) => p.name).join(', ')}` : ''}
+            </span>
+          </span>
+        </button>
       ))}
     </>
   );

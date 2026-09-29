@@ -2395,6 +2395,7 @@
 .ca-limit { gap: 4px; }
 .ca-limit > span { font-size: var(--fs-xs); }
 .ca-limit-row { display: flex; gap: 8px; align-items: center; }
+.ca-task-no { width: 110px; flex: 0 0 auto; }
 .ca-limit-row .input { max-width: 140px; }
 .ca-list { display: flex; flex-direction: column; gap: 10px; }
 .ca-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-soft); }

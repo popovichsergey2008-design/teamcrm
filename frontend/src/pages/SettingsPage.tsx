@@ -155,7 +155,7 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'knowledge' && <KnowledgePanel canManage={canManage} onClose={close} />}
       {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}
       {route.tab === 'assistant' && <AssistantPanel canManage={role === 'owner'} onClose={close} />}
-      {/* Что агент понял в переписке. Создавать он пока ничего не умеет (ТЗ-12, этап 1). */}
+      {/* Что агент понял в переписке, журнал решений и счётчики попадания (ТЗ-12). */}
       {route.tab === 'chat-analysis' && canManage
         && <ChatAnalysisPanel canManage={role === 'owner'} onClose={close} />}
       {/* Подсказку можно открыть заново, даже если её убрали с «Фокуса дня» (ТЗ-11, разд. 74). */}

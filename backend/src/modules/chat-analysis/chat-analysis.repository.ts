@@ -29,6 +29,17 @@ const ANALYZABLE = `c.kind IN ('project', 'group') AND c.is_external = FALSE AND
 const VISIBLE = `(c.kind = 'project' OR EXISTS (
   SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.id AND cm.user_id = $2))`;
 
+/** Одно наблюдение со всем, что нужно, чтобы его завести, записать или отменить. */
+const ONE_ACTION = `SELECT a.id::text, a.chat_id::text, a.action_type, a.title, a.description,
+        a.project_id::text, a.assigner_id::text, a.assignee_id::text,
+        a.deadline_at, a.status, a.created_entity_type, a.created_entity_id::text, a.updated_at,
+        a.intent_confidence, a.task_id::text, c.title AS chat_title,
+        (SELECT am.message_id::text FROM chat_extracted_action_messages am
+          WHERE am.action_id = a.id AND am.role = 'instruction'
+          ORDER BY am.message_id LIMIT 1) AS instruction_message_id
+   FROM chat_extracted_actions a
+   JOIN chats c ON c.id = a.chat_id`;
+
 export interface SettingsRow {
   tenant_id: string;
   enabled: boolean;
@@ -70,6 +81,34 @@ export interface MessageRow {
   is_ai: boolean;
   reply_to_id: string | null;
   thread_root_id: string | null;
+  /** Карточка задачи, пересланная сообщением: самое твёрдое основание для статуса. */
+  task_id: string | null;
+}
+
+/** Задача из справочника, который видит модель, — с тем, чья она. */
+export interface CandidateTaskRow {
+  id: string;
+  title: string;
+  assignee_id: string | null;
+  created_by: string | null;
+}
+
+/** Строка журнала решений, как её видит человек. */
+export interface DecisionRow {
+  id: string;
+  text: string;
+  details: string;
+  project_id: string | null;
+  project_name: string | null;
+  chat_id: string | null;
+  chat_title: string | null;
+  meeting_id: string | null;
+  meeting_title: string | null;
+  source_message_id: string | null;
+  participants: { id: string; name: string }[];
+  decided_at: Date;
+  created_by: string | null;
+  revoked_at: Date | null;
 }
 
 export interface NamedRow { id: string; name: string }
@@ -187,7 +226,7 @@ export class ChatAnalysisRepository {
   messagesAfter(tenantId: string, chatId: string, afterId: string, limit = 400): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
       `SELECT m.id::text, m.author_id::text, u.full_name AS author_name, m.body, m.created_at,
-              m.is_ai, m.reply_to_id::text, m.thread_root_id::text
+              m.is_ai, m.reply_to_id::text, m.thread_root_id::text, m.task_id::text
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
         WHERE m.tenant_id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL AND m.id > $3
@@ -233,6 +272,37 @@ export class ChatAnalysisRepository {
     );
   }
 
+  /**
+   * Задачи, о которых может быть статус или блокер в этом разговоре.
+   *
+   * Только открытые и только тех, кто в разговоре писал, — исполнителем или постановщиком:
+   * о своей работе человек и говорит. Для чата проекта — только задачи этого проекта.
+   * Весь список задач организации модели не отдаём: чем шире выбор, тем вернее промах.
+   */
+  candidateTasks(tenantId: string, authorIds: string[], projectId: string | null, limit = 40): Promise<CandidateTaskRow[]> {
+    if (!authorIds.length) return Promise.resolve([]);
+    return this.db.many<CandidateTaskRow>(
+      `SELECT t.id::text, t.title, t.assignee_id::text, t.created_by::text
+         FROM tasks t
+        WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at IS NULL
+          AND (t.assignee_id = ANY($2::bigint[]) OR t.created_by = ANY($2::bigint[]))
+          AND ($3::bigint IS NULL OR t.project_id = $3::bigint)
+        ORDER BY t.updated_at DESC NULLS LAST, t.id DESC
+        LIMIT $4`,
+      [tenantId, authorIds, projectId, limit],
+    );
+  }
+
+  /** Какие из названных номеров — живые задачи этой организации. */
+  async aliveTasks(tenantId: string, ids: string[]): Promise<Set<string>> {
+    if (!ids.length) return new Set();
+    const rows = await this.db.many<{ id: string }>(
+      `SELECT id::text FROM tasks WHERE tenant_id = $1 AND id = ANY($2::bigint[]) AND deleted_at IS NULL`,
+      [tenantId, ids],
+    );
+    return new Set(rows.map((r) => r.id));
+  }
+
   // ── прогон ──
 
   async startRun(o: {
@@ -275,15 +345,15 @@ export class ChatAnalysisRepository {
          tenant_id, run_id, chat_id, action_type, title, description,
          project_id, assigner_id, assignee_id, deadline_at, meeting_at,
          intent_confidence, project_confidence, assigner_confidence, assignee_confidence,
-         dedup_key, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+         dedup_key, status, task_id, task_confidence)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        ON CONFLICT (tenant_id, dedup_key) DO NOTHING
        RETURNING id::text`,
       [
         tenantId, runId, chatId, a.type, a.title, a.description,
         a.projectId, a.assignerId, a.assigneeId, a.deadlineAt, a.meetingAt,
         a.confidence.intent, a.confidence.project, a.confidence.assigner, a.confidence.assignee,
-        a.dedupKey, status,
+        a.dedupKey, status, a.taskId, a.confidence.task ?? 0,
       ],
     );
     if (!row) return null;
@@ -383,6 +453,7 @@ export class ChatAnalysisRepository {
               a.deadline_at, a.meeting_at, a.status, a.created_at, a.updated_at, a.asked_at,
               a.created_entity_type, a.created_entity_id::text,
               a.intent_confidence, a.project_confidence, a.assigner_confidence, a.assignee_confidence,
+              a.task_id::text, a.task_confidence, tk.title AS task_title, tk.project_id::text AS task_project_id,
               c.title AS chat_title, c.kind AS chat_kind, pc.name AS chat_project_name,
               COALESCE((
                 SELECT json_agg(json_build_object('messageId', m.id::text, 'role', am.role, 'body', left(m.body, 400), 'at', m.created_at, 'author', au.full_name)
@@ -398,6 +469,7 @@ export class ChatAnalysisRepository {
          LEFT JOIN projects pc ON pc.id = c.project_id
          LEFT JOIN users ur ON ur.id = a.assigner_id
          LEFT JOIN users ue ON ue.id = a.assignee_id
+         LEFT JOIN tasks tk ON tk.id = a.task_id AND tk.deleted_at IS NULL
         WHERE a.tenant_id = $1 AND ${VISIBLE}
           AND ($3::bigint IS NULL OR a.chat_id = $3::bigint)
         ORDER BY a.created_at DESC, a.id DESC
@@ -408,17 +480,22 @@ export class ChatAnalysisRepository {
 
   /** Одно наблюдение — с проверкой, что человеку вообще видна эта переписка. */
   one(tenantId: string, userId: string, id: string): Promise<any | null> {
-    return this.db.one(
-      `SELECT a.id::text, a.chat_id::text, a.action_type, a.title, a.description,
-              a.project_id::text, a.assigner_id::text, a.assignee_id::text,
-              a.deadline_at, a.status, a.created_entity_id::text, a.updated_at,
-              (SELECT am.message_id::text FROM chat_extracted_action_messages am
-                WHERE am.action_id = a.id AND am.role = 'instruction'
-                ORDER BY am.message_id LIMIT 1) AS instruction_message_id
-         FROM chat_extracted_actions a
-         JOIN chats c ON c.id = a.chat_id
-        WHERE a.tenant_id = $1 AND a.id = $3 AND ${VISIBLE}`,
-      [tenantId, userId, id],
+    return this.db.one(`${ONE_ACTION} WHERE a.tenant_id = $1 AND a.id = $3 AND ${VISIBLE}`, [tenantId, userId, id]);
+  }
+
+  /**
+   * То же для прохода самого агента — без человека, значит, и без проверки видимости.
+   * Наружу из прохода ничего не уходит: он пишет только в журнал этой же организации.
+   */
+  oneForSystem(tenantId: string, id: string): Promise<any | null> {
+    return this.db.one(`${ONE_ACTION} WHERE a.tenant_id = $1 AND a.id = $2`, [tenantId, id]);
+  }
+
+  /** Задача, куда в итоге легла строка: человек мог указать другую, чем нашёл агент. */
+  async setActionTask(tenantId: string, id: string, taskId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE chat_extracted_actions SET task_id = $3 WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id, taskId],
     );
   }
 
@@ -436,6 +513,116 @@ export class ChatAnalysisRepository {
           AND a.status = 'auto_created'
         ORDER BY a.id DESC LIMIT 1`,
       [tenantId, taskId],
+    );
+  }
+
+  // ── журнал решений ──
+
+  /**
+   * Сообщения наблюдения с авторами — по порядку. Из них собираются участники решения
+   * и цитата для строки в задаче.
+   */
+  sourcesOf(actionId: string): Promise<{
+    message_id: string; role: string; author_id: string | null; author_name: string | null; body: string; created_at: Date;
+  }[]> {
+    return this.db.many(
+      `SELECT m.id::text AS message_id, am.role, m.author_id::text, u.full_name AS author_name, m.body, m.created_at
+         FROM chat_extracted_action_messages am
+         JOIN chat_messages m ON m.id = am.message_id
+         LEFT JOIN users u ON u.id = m.author_id
+        WHERE am.action_id = $1
+        ORDER BY m.id`,
+      [actionId],
+    );
+  }
+
+  async addDecision(o: {
+    tenantId: string; projectId: string | null; chatId: string; actionId: string;
+    sourceMessageId: string | null; text: string; details: string;
+    participants: string[]; decidedAt: Date; createdBy: string | null;
+  }): Promise<string> {
+    const row = await this.db.one<{ id: string }>(
+      `INSERT INTO decisions (tenant_id, project_id, chat_id, action_id, source_message_id, text, details,
+                              participants, decided_at, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::bigint[],$9,$10) RETURNING id::text`,
+      [o.tenantId, o.projectId, o.chatId, o.actionId, o.sourceMessageId, o.text, o.details,
+        o.participants, o.decidedAt, o.createdBy],
+    );
+    return String(row!.id);
+  }
+
+  /**
+   * Журнал решений — только то, что человеку и так видно: решения из переписки — по
+   * чатам, где он есть (то же условие, что у наблюдений), со встреч — как и сами встречи,
+   * всем сотрудникам. Иначе журнал стал бы обходным путём к чужому разговору.
+   */
+  decisions(
+    tenantId: string, userId: string,
+    o: { chatId?: string | null; projectId?: string | null; withRevoked?: boolean; limit?: number },
+  ): Promise<DecisionRow[]> {
+    return this.db.many<DecisionRow>(
+      `SELECT d.id::text, d.text, d.details, d.project_id::text, p.name AS project_name,
+              d.chat_id::text, c.title AS chat_title, d.meeting_id::text, mt.title AS meeting_title,
+              d.source_message_id::text, d.decided_at, d.created_by::text, d.revoked_at,
+              COALESCE((SELECT json_agg(json_build_object('id', u.id::text, 'name', u.full_name) ORDER BY u.full_name)
+                          FROM users u WHERE u.id = ANY(d.participants)), '[]'::json) AS participants
+         FROM decisions d
+         LEFT JOIN chats c     ON c.id = d.chat_id
+         LEFT JOIN meetings mt ON mt.id = d.meeting_id
+         LEFT JOIN projects p  ON p.id = d.project_id
+        WHERE d.tenant_id = $1
+          AND (d.chat_id IS NULL OR ${VISIBLE})
+          AND ($3::bigint IS NULL OR d.chat_id = $3::bigint)
+          AND ($4::bigint IS NULL OR d.project_id = $4::bigint)
+          AND ($5::boolean OR d.revoked_at IS NULL)
+        ORDER BY d.decided_at DESC, d.id DESC
+        LIMIT $6`,
+      [tenantId, userId, o.chatId ?? null, o.projectId ?? null, o.withRevoked === true,
+        Math.min(Math.max(o.limit ?? 50, 1), 200)],
+    );
+  }
+
+  oneDecision(tenantId: string, userId: string, id: string): Promise<{
+    id: string; created_by: string | null; participants: string[]; revoked_at: Date | null;
+  } | null> {
+    return this.db.one(
+      `SELECT d.id::text, d.created_by::text, d.participants::text[] AS participants, d.revoked_at
+         FROM decisions d
+         LEFT JOIN chats c ON c.id = d.chat_id
+        WHERE d.tenant_id = $1 AND d.id = $3 AND (d.chat_id IS NULL OR ${VISIBLE})`,
+      [tenantId, userId, id],
+    );
+  }
+
+  async revokeDecision(tenantId: string, id: string, userId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE decisions SET revoked_at = now(), revoked_by = $3
+        WHERE tenant_id = $1 AND id = $2 AND revoked_at IS NULL`,
+      [tenantId, id, userId],
+    );
+  }
+
+  // ── строка в задаче ──
+
+  /** Задача, куда ляжет статус или блокер: живая, с проектом — для события в комнату. */
+  noteTarget(tenantId: string, taskId: string): Promise<{ id: string; project_id: string; title: string } | null> {
+    return this.db.one(
+      `SELECT id::text, project_id::text, title FROM tasks
+        WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [tenantId, taskId],
+    );
+  }
+
+  /**
+   * Системная строка в обсуждении задачи — тот же вид, что у предупреждений о сроке:
+   * без автора и внутренняя (заказчику не видна).
+   */
+  addTaskNote(tenantId: string, taskId: string, body: string): Promise<{ id: string } | null> {
+    return this.db.one<{ id: string }>(
+      `INSERT INTO task_comments (tenant_id, task_id, author_id, body, is_client_visible, is_system)
+            VALUES ($1, $2, NULL, $3, FALSE, TRUE)
+         RETURNING id::text`,
+      [tenantId, taskId, body],
     );
   }
 
@@ -518,10 +705,11 @@ export class ChatAnalysisRepository {
          COUNT(*) FILTER (WHERE action_type = 'task')                                    AS "tasksDetected",
          COUNT(*) FILTER (WHERE action_type = 'task' AND status = 'ready')               AS "ready",
          COUNT(*) FILTER (WHERE action_type = 'task' AND status = 'needs_clarification') AS "needsClarification",
-         COUNT(*) FILTER (WHERE status = 'confirmed')                                    AS "confirmed",
-         COUNT(*) FILTER (WHERE status = 'auto_created' OR undone_at IS NOT NULL)        AS "autoCreated",
-         COUNT(*) FILTER (WHERE status = 'rejected')                                     AS "rejected",
-         COUNT(*) FILTER (WHERE undone_at IS NOT NULL)                                   AS "undone",
+         -- Попадание меряем по поручениям: решения и статусы — другая цена ошибки.
+         COUNT(*) FILTER (WHERE action_type = 'task' AND status = 'confirmed')           AS "confirmed",
+         COUNT(*) FILTER (WHERE action_type = 'task' AND (status = 'auto_created' OR undone_at IS NOT NULL)) AS "autoCreated",
+         COUNT(*) FILTER (WHERE action_type = 'task' AND status = 'rejected')            AS "rejected",
+         COUNT(*) FILTER (WHERE action_type = 'task' AND undone_at IS NOT NULL)          AS "undone",
          COUNT(*) FILTER (WHERE corrected_project)                                       AS "correctedProject",
          COUNT(*) FILTER (WHERE corrected_assignee)                                      AS "correctedAssignee",
          COUNT(*) FILTER (WHERE corrected_project OR corrected_assignee)                 AS "corrected",

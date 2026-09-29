@@ -10,6 +10,7 @@ import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
 import { DbService } from '../src/database/db.service';
 import { ChatAnalysisRepository } from '../src/modules/chat-analysis/chat-analysis.repository';
 import { ChatAnalysisService } from '../src/modules/chat-analysis/chat-analysis.service';
+import { MeetingsRepository } from '../src/modules/meetings/meetings.repository';
 
 /**
  * Разбор переписки (ТЗ-12, этапы 1–2).
@@ -151,7 +152,8 @@ describe('разбор переписки (e2e)', () => {
    */
   const plant = async (o: {
     tenantId: string; chatId: string; projectId: string | null;
-    assignerId: string; assigneeId: string | null; messageId: string;
+    assignerId: string | null; assigneeId: string | null; messageId: string;
+    type?: string; title?: string; taskId?: string | null; role?: string;
   }) => {
     const run = await db.one<{ id: string }>(
       `INSERT INTO chat_analysis_runs (tenant_id, chat_id, mode, status, messages)
@@ -162,15 +164,16 @@ describe('разбор переписки (e2e)', () => {
       `INSERT INTO chat_extracted_actions (
          tenant_id, run_id, chat_id, action_type, title, project_id, assigner_id, assignee_id,
          intent_confidence, project_confidence, assigner_confidence, assignee_confidence,
-         status, dedup_key)
-       VALUES ($1,$2,$3,'task','Сделать отчёт по складу',$4,$5,$6,0.95,1,0.95,0.95,'ready',$7)
+         status, dedup_key, task_id)
+       VALUES ($1,$2,$3,$8,$9,$4,$5,$6,0.95,1,0.95,0.95,'ready',$7,$10)
        RETURNING id::text`,
-      [o.tenantId, run!.id, o.chatId, o.projectId, o.assignerId, o.assigneeId, `qa-${Math.random()}`],
+      [o.tenantId, run!.id, o.chatId, o.projectId, o.assignerId, o.assigneeId, `qa-${Math.random()}`,
+        o.type ?? 'task', o.title ?? 'Сделать отчёт по складу', o.taskId ?? null],
     );
     await db.query(
       `INSERT INTO chat_extracted_action_messages (action_id, message_id, role)
-       VALUES ($1,$2,'instruction')`,
-      [action!.id, o.messageId],
+       VALUES ($1,$2,$3)`,
+      [action!.id, o.messageId, o.role ?? 'instruction'],
     );
     return String(action!.id);
   };
@@ -307,5 +310,110 @@ describe('разбор переписки (e2e)', () => {
       `SELECT COUNT(*)::text AS n FROM tasks WHERE tenant_id = $1`, [owner.user.tenantId],
     );
     expect(after!.n).toBe(before!.n);
+  }, 90000);
+
+  /**
+   * Этап 5: решение — в общий журнал, статус и блокер — строкой в существующую задачу.
+   */
+  it('решение из переписки ложится в журнал; кто решал — подписан, чужим не видно', async () => {
+    const { owner, mate, O, M } = await team('CA9');
+    const chat = (await http.post('/api/chats/groups').set(O).send({ title: 'Форма заказа' }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'Решили: оставляем старую форму до следующего релиза' }).expect(201)).body.data;
+
+    const actionId = await plant({
+      tenantId: String(owner.user.tenantId), chatId: String(chat.id), projectId: null,
+      assignerId: null, assigneeId: null, messageId: String(msg.id),
+      type: 'decision', title: 'Оставить старую форму до следующего релиза', role: 'decision',
+    });
+    const res = (await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(201)).body.data;
+    expect(res.decisionId).toBeTruthy();
+
+    const log = (await http.get(`/api/chat-analysis/decisions?chatId=${chat.id}`).set(O).expect(200)).body.data;
+    expect(log).toHaveLength(1);
+    expect(log[0].text).toBe('Оставить старую форму до следующего релиза');
+    expect(log[0].source_message_id).toBe(String(msg.id));
+    // Подписан тот, кто решал (автор сообщения), а не нажавший.
+    expect(log[0].participants.map((p: any) => p.id)).toEqual([String(owner.user.id)]);
+
+    // Коллеги в этом чате нет — и решения из него он не видит.
+    expect(mate.id).toBeTruthy();
+    const foreign = (await http.get(`/api/chat-analysis/decisions?chatId=${chat.id}`).set(M).expect(200)).body.data;
+    expect(foreign).toEqual([]);
+    await http.post(`/api/chat-analysis/decisions/${res.decisionId}/revoke`).set(M).send({}).expect(404);
+
+    // Дважды одно решение не записываем; снятое остаётся в истории.
+    await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(409);
+    await http.post(`/api/chat-analysis/decisions/${res.decisionId}/revoke`).set(O).send({}).expect(201);
+    expect((await http.get(`/api/chat-analysis/decisions?chatId=${chat.id}`).set(O).expect(200)).body.data).toEqual([]);
+    const all = (await http.get(`/api/chat-analysis/decisions?chatId=${chat.id}&all=1`).set(O).expect(200)).body.data;
+    expect(all[0].revoked_at).toBeTruthy();
+  }, 90000);
+
+  it('блокер ложится строкой в обсуждение задачи, новой задачи не появляется', async () => {
+    const { owner, mate, O } = await team('CA10');
+    const project = (await http.post('/api/projects').set(O).send({ name: 'Выгрузка' }).expect(201)).body.data;
+    const board = (await http.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
+    const target = (await http.post('/api/tasks').set(O).send({
+      projectId: String(project.id), columnId: board.columns[0].id, title: 'Выгрузка остатков', assigneeId: String(mate.id),
+    }).expect(201)).body.data;
+    const chat = (await http.post('/api/chats/groups').set(O)
+      .send({ title: 'Выгрузка', userIds: [String(mate.id)] }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: `по #${target.id} не могу закончить, пока клиент не пришлёт доступ` }).expect(201)).body.data;
+
+    const count = async () => (await db.one<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM tasks WHERE tenant_id = $1`, [owner.user.tenantId]))!.n;
+    const before = await count();
+
+    // Без задачи класть некуда — и ничего не пишется.
+    const lost = await plant({
+      tenantId: String(owner.user.tenantId), chatId: String(chat.id), projectId: null,
+      assignerId: null, assigneeId: null, messageId: String(msg.id), type: 'blocker', title: 'Ждём доступ',
+    });
+    await http.post(`/api/chat-analysis/actions/${lost}/confirm`).set(O).send({}).expect(400);
+
+    const actionId = await plant({
+      tenantId: String(owner.user.tenantId), chatId: String(chat.id), projectId: String(project.id),
+      assignerId: null, assigneeId: null, messageId: String(msg.id),
+      type: 'blocker', title: 'Ждём доступ от клиента', taskId: String(target.id), role: 'context',
+    });
+    const res = (await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(201)).body.data;
+    expect(res.taskId).toBe(String(target.id));
+
+    const note = await db.one<any>(
+      `SELECT body, author_id, is_system, is_client_visible FROM task_comments WHERE id = $1`, [res.commentId],
+    );
+    expect(note!.is_system).toBe(true);
+    expect(note!.author_id).toBeNull();
+    // Строка внутренняя: заказчику её не показываем.
+    expect(note!.is_client_visible).toBe(false);
+    expect(note!.body).toContain('Помеха в работе: Ждём доступ от клиента');
+    expect(note!.body).toContain('пишет Ольга Владелец');
+
+    expect(await count()).toBe(before);
+  }, 90000);
+
+  it('решения со встречи попадают в тот же журнал, снятое не возвращается при повторном разборе', async () => {
+    const { owner, O } = await team('CA11');
+    const meeting = await db.one<{ id: string }>(
+      `INSERT INTO meetings (tenant_id, title, source, status) VALUES ($1, 'Планёрка', 'transcript', 'done')
+       RETURNING id::text`,
+      [owner.user.tenantId],
+    );
+    const meetings = app.get(MeetingsRepository);
+    await meetings.saveSummary(String(owner.user.tenantId), meeting!.id, 'итоги', ['Релиз в четверг', 'Форму не трогаем'], []);
+
+    const log = (await http.get('/api/chat-analysis/decisions').set(O).expect(200)).body.data
+      .filter((d: any) => d.meeting_id === meeting!.id);
+    expect(log.map((d: any) => d.text).sort()).toEqual(['Релиз в четверг', 'Форму не трогаем']);
+
+    const wrong = log.find((d: any) => d.text === 'Форму не трогаем');
+    await http.post(`/api/chat-analysis/decisions/${wrong.id}/revoke`).set(O).send({}).expect(201);
+    await meetings.saveSummary(String(owner.user.tenantId), meeting!.id, 'итоги', ['Релиз в четверг', 'Форму не трогаем'], []);
+
+    const again = (await http.get('/api/chat-analysis/decisions').set(O).expect(200)).body.data
+      .filter((d: any) => d.meeting_id === meeting!.id);
+    expect(again.map((d: any) => d.text)).toEqual(['Релиз в четверг']);
   }, 90000);
 });

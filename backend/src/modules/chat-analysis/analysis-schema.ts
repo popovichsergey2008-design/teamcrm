@@ -32,6 +32,8 @@ export interface RefCatalog {
   /** Пометка вида `u3` → наш id сотрудника. */
   users: Map<string, string>;
   projects: Map<string, string>;
+  /** Пометка `t2` → номер задачи. Только для статуса и блокера; нет — модель задач не видит. */
+  tasks?: Map<string, string>;
   /** Сообщения этого отрезка: ссылаться можно только на них. */
   messageIds: Set<string>;
 }
@@ -43,9 +45,11 @@ export interface ExtractedAction {
   projectId: string | null;
   assignerId: string | null;
   assigneeId: string | null;
+  /** Задача, о которой статус или блокер. Выбор модели — ещё не привязка: её решает `resolveTask`. */
+  taskId: string | null;
   deadlineAt: Date | null;
   meetingAt: Date | null;
-  confidence: { intent: number; project: number; assigner: number; assignee: number };
+  confidence: { intent: number; project: number; assigner: number; assignee: number; task: number };
   sources: { messageId: string; role: SourceRole }[];
   dedupKey: string;
 }
@@ -153,6 +157,7 @@ export function parseAnalysis(raw: string, cat: RefCatalog, now = new Date()): E
     const projectId = cat.projects.get(String(item?.project_ref ?? '').trim()) ?? null;
     const assignerId = cat.users.get(String(item?.assigner_ref ?? '').trim()) ?? null;
     const assigneeId = cat.users.get(String(item?.assignee_ref ?? '').trim()) ?? null;
+    const taskId = cat.tasks?.get(String(item?.task_ref ?? '').trim()) ?? null;
     const c = item?.confidence ?? {};
 
     const action: ExtractedAction = {
@@ -162,11 +167,14 @@ export function parseAnalysis(raw: string, cat: RefCatalog, now = new Date()): E
       projectId,
       assignerId,
       assigneeId,
+      taskId,
       deadlineAt: when(item?.deadline, now),
       meetingAt: when(item?.meeting_at, now),
       confidence: {
         intent: conf(c.intent), project: conf(c.project),
         assigner: conf(c.assigner), assignee: conf(c.assignee),
+        // Уверенность в задаче считаем сами по основаниям, модельную не берём.
+        task: 0,
       },
       sources,
       dedupKey: '',

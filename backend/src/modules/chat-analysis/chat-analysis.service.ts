@@ -13,6 +13,8 @@ import { acceptedText, askText, shouldAsk } from './ask-rules';
 import { dedupKeyOf, ExtractedAction, parseAnalysis, RefCatalog, resolveProject } from './analysis-schema';
 import { missingParts, resolveRoles, taskReadiness } from './roles-rules';
 import { autoCreateVerdict, overLimit, quality, undoVerdict } from './policy-rules';
+import { autoLogDecision, noteReadiness, noteText, participantsOf, resolveTask, taskNumbersIn } from './journal-rules';
+import { TaskActivityRepository } from '../tasks/task-activity.repository';
 import { ChatAnalysisRepository, DueChatRow, MessageRow } from './chat-analysis.repository';
 import { closedSegments, Segment, SegmentMessage } from './segments';
 
@@ -59,10 +61,14 @@ const FALLBACK_SYSTEM = [
   '6. Уверенность ставь честно: 0.95 и выше — только когда сказано прямым текстом.',
   '7. Пустой список actions — нормальный и частый ответ. Обычная переписка не должна',
   '   порождать ничего.',
+  '8. decision — только ПРИНЯТОЕ решение, а не предложение и не спор. «Может, оставим',
+  '   старую форму?» — не решение; «решили: оставляем» — решение.',
+  '9. Для status и blocker укажи task_ref из справочника tasks, если речь явно о',
+  '   конкретной задаче. Не уверен — оставь пустым: о чужой задаче писать хуже, чем никуда.',
   '',
   'Формат ответа:',
   '{"actions":[{"type":"task","title":"...","description":"...","project_ref":"p1",',
-  '"assigner_ref":"u1","assignee_ref":"u2","deadline":"2026-10-02T18:00:00+03:00",',
+  '"assigner_ref":"u1","assignee_ref":"u2","task_ref":null,"deadline":"2026-10-02T18:00:00+03:00",',
   '"meeting_at":null,"confidence":{"intent":0.95,"project":0.9,"assigner":0.95,"assignee":0.9},',
   '"sources":[{"message_id":"881","role":"instruction"}]}]}',
 ].join('\n');
@@ -81,6 +87,8 @@ export class ChatAnalysisService {
     /** Чаты — только через репозиторий: службы связались бы в круг. */
     private readonly chats: ChatsRepository,
     private readonly realtime: RealtimeService,
+    /** Журнал задачи: строка из переписки должна быть видна и в её истории. */
+    private readonly activity: TaskActivityRepository,
   ) {}
 
   /** Сообщение от бота всем, кто видит чат. */
@@ -157,10 +165,15 @@ export class ChatAnalysisService {
    */
   async confirm(
     tenantId: string, userId: string, id: string,
-    patch: { projectId?: string; assigneeId?: string; title?: string } = {},
+    patch: { projectId?: string; assigneeId?: string; title?: string; taskId?: string } = {},
   ) {
     const a = await this.repo.one(tenantId, userId, id);
     if (!a) throw AppException.notFound('Наблюдение не найдено');
+    // Решение — в журнал, статус и блокер — в обсуждение задачи; задачей становится только поручение.
+    if (a.action_type === 'decision') return this.logDecision(tenantId, a, userId, patch.title);
+    if (a.action_type === 'status' || a.action_type === 'blocker') {
+      return this.noteToTask(tenantId, a, userId, patch.taskId ?? a.task_id ?? null);
+    }
     if (a.action_type !== 'task') throw AppException.validation('Задачей может стать только поручение');
     if (a.created_entity_id) throw AppException.conflict('Задача по этому наблюдению уже заведена');
     if (['rejected', 'cancelled'].includes(a.status)) throw AppException.conflict('Наблюдение уже закрыто');
@@ -193,6 +206,90 @@ export class ChatAnalysisService {
       summary: `Задача из переписки: «${task.title}»`, subjectType: 'task', subjectId: task.id,
     });
     return { actionId: id, task };
+  }
+
+  /**
+   * Записать решение в журнал (ТЗ разд. 24).
+   *
+   * `userId` пуст — записал агент сам (режим владельца). Участники решения — авторы
+   * сообщений, из которых оно выросло: кто решал, тот и подписан, а не нажавший.
+   */
+  private async logDecision(tenantId: string, a: any, userId: string | null, title?: string) {
+    if (a.created_entity_id) throw AppException.conflict('Это решение уже в журнале');
+    if (['rejected', 'cancelled'].includes(a.status)) throw AppException.conflict('Наблюдение уже закрыто');
+    const sources = await this.repo.sourcesOf(String(a.id));
+    const main = sources.find((x) => x.role === 'decision') ?? sources[sources.length - 1] ?? null;
+    const decisionId = await this.repo.addDecision({
+      tenantId,
+      projectId: a.project_id ?? null,
+      chatId: String(a.chat_id),
+      actionId: String(a.id),
+      sourceMessageId: main?.message_id ?? null,
+      text: String(title?.trim() || a.title).slice(0, 1000),
+      details: String(a.description ?? ''),
+      participants: participantsOf(sources.map((x) => ({ authorId: x.author_id }))),
+      decidedAt: main ? new Date(main.created_at) : new Date(),
+      createdBy: userId,
+    });
+    await this.repo.markAction(tenantId, String(a.id), {
+      status: userId ? 'confirmed' : 'auto_created', entityType: 'decision', entityId: decisionId,
+    });
+    return { actionId: String(a.id), decisionId };
+  }
+
+  /**
+   * Статус или блокер — строкой в обсуждение задачи (ТЗ разд. 5.8, 5.9).
+   *
+   * Новой задачи не заводим никогда. Пишем ТОЛЬКО по нажатию человека, даже в режиме
+   * автосоздания: это слова в чужой задаче, их видят все её участники, и ошибка тут —
+   * ложь о чужой работе.
+   */
+  private async noteToTask(tenantId: string, a: any, userId: string, taskId: string | null) {
+    if (a.created_entity_id) throw AppException.conflict('Это уже добавлено в задачу');
+    if (['rejected', 'cancelled'].includes(a.status)) throw AppException.conflict('Наблюдение уже закрыто');
+    if (!taskId) throw AppException.validation('Непонятно, к какой задаче это относится — укажите номер задачи');
+    const task = await this.repo.noteTarget(tenantId, String(taskId));
+    if (!task) throw AppException.notFound('Задача не найдена или в корзине');
+
+    const sources = await this.repo.sourcesOf(String(a.id));
+    const main = sources.find((x) => x.author_id) ?? sources[0] ?? null;
+    const body = noteText({
+      type: a.action_type, title: a.title, author: main?.author_name ?? null,
+      chat: a.chat_title ?? null, quote: main?.body ?? null,
+    });
+    const comment = await this.repo.addTaskNote(tenantId, task.id, body);
+    await this.activity.log(tenantId, task.id, userId, `chat_${a.action_type}`, {
+      commentId: comment?.id ?? null, actionId: String(a.id),
+    });
+    // false: строка внутренняя, в комнату заказчика её слать незачем
+    this.realtime.emitScoped(tenantId, task.project_id, 'task.comment_added',
+      { taskId: task.id, commentId: comment?.id ?? null, authorId: null }, false);
+
+    await this.repo.markAction(tenantId, String(a.id), { status: 'confirmed', entityType: 'task_comment', entityId: comment?.id ?? null });
+    await this.repo.setActionTask(tenantId, String(a.id), task.id);
+    return { actionId: String(a.id), taskId: task.id, commentId: comment?.id ?? null };
+  }
+
+  // ── журнал решений ──
+
+  decisions(tenantId: string, userId: string, o: { chatId?: string | null; projectId?: string | null; withRevoked?: boolean }) {
+    return this.repo.decisions(tenantId, userId, o);
+  }
+
+  /**
+   * Снять решение: записано по ошибке или передумали. Строка остаётся с пометкой —
+   * «решали и передумали» тоже история. Снять могут руководство, записавший и участники.
+   */
+  async revokeDecision(tenantId: string, user: { userId: string; role: string }, id: string) {
+    const d = await this.repo.oneDecision(tenantId, user.userId, id);
+    if (!d) throw AppException.notFound('Решение не найдено');
+    if (d.revoked_at) return { decisionId: id, revoked: true };
+    const me = String(user.userId);
+    const allowed = user.role === 'owner' || user.role === 'manager'
+      || String(d.created_by ?? '') === me || (d.participants ?? []).map(String).includes(me);
+    if (!allowed) throw AppException.forbidden('Снять решение могут участники, записавший или руководитель');
+    await this.repo.revokeDecision(tenantId, id, user.userId);
+    return { decisionId: id, revoked: true };
   }
 
   /** «Это не задача». Наблюдение не удаляем: по отказам видно, где агент ошибается. */
@@ -231,6 +328,17 @@ export class ChatAnalysisService {
 
   private async undoAction(tenantId: string, user: { userId: string; role: string }, a: any) {
     const id = String(a.id);
+    /*
+      Решение, которое агент записал сам, отменяется снятием из журнала — со своими
+      правами (участники решения тоже вправе) и без сообщения в чат: запись в журнале
+      ни на кого не ложилась, и шуметь об её снятии незачем.
+    */
+    if (a.created_entity_type === 'decision') {
+      if (a.status !== 'auto_created') throw AppException.conflict('Отменить можно только то, что агент записал сам');
+      await this.revokeDecision(tenantId, user, String(a.created_entity_id));
+      await this.repo.markUndone(tenantId, id, user.userId);
+      return { actionId: id, status: 'cancelled' };
+    }
     const verdict = undoVerdict({
       status: a.status, createdAt: new Date(a.updated_at), now: new Date(),
       userId: user.userId, role: user.role, assignerId: a.assigner_id, assigneeId: a.assignee_id,
@@ -434,6 +542,28 @@ export class ChatAnalysisService {
   }
 
   /**
+   * Записать принятые решения в журнал самому — в режиме, который включил владелец
+   * (ТЗ разд. 16: Decisions — AUTO LOG). В чат об этом не пишем: запись в журнале ни на
+   * кого не ложится, а сообщение бота после каждого решения было бы шумом.
+   */
+  private async autoLog(
+    chat: DueChatRow,
+    saved: { id: string; action: ExtractedAction; status: string; cancelled: boolean }[],
+  ): Promise<void> {
+    for (const s of saved) {
+      if (!autoLogDecision({ mode: chat.mode, type: s.action.type, status: s.status })) continue;
+      try {
+        const a = await this.repo.oneForSystem(chat.tenant_id, s.id);
+        if (!a) continue;
+        await this.logDecision(chat.tenant_id, a, null);
+        s.status = 'auto_created';
+      } catch (e) {
+        this.log.warn(`решение ${s.id} в журнал: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  /**
    * Не ответил ли кто-нибудь на наш вопрос.
    *
    * Ответ разбираем тем же сопоставлением, что и быстрая команда: название проекта
@@ -521,6 +651,21 @@ export class ChatAnalysisService {
         messageIds: new Set(messages.map((m) => String(m.id))),
       };
 
+      /*
+        Справочник задач — только для статуса и блокера, и узкий: открытые задачи тех, кто
+        в этом разговоре писал. Выбор модели из него ещё не привязка — её решает
+        `resolveTask` по основаниям.
+      */
+      const authorIds = [...new Set(messages.map((m) => m.author_id).filter((x): x is string => !!x))];
+      const candidates = await this.repo.candidateTasks(chat.tenant_id, authorIds, chat.project_id);
+      catalog.tasks = new Map(candidates.map((t, i) => [`t${i + 1}`, String(t.id)]));
+      const owners = new Map(candidates.map((t) => [String(t.id), { assigneeId: t.assignee_id, creatorId: t.created_by }]));
+      const named = [...new Set(messages.flatMap((m) => [
+        ...taskNumbersIn(String(m.body ?? '')), ...(m.task_id ? [String(m.task_id)] : []),
+      ]))];
+      const alive = await this.repo.aliveTasks(chat.tenant_id, named);
+      const messageById = new Map(messages.map((m) => [String(m.id), m]));
+
       const payload = {
         today: new Date().toISOString(),
         timezone: chat.timezone,
@@ -532,6 +677,10 @@ export class ChatAnalysisService {
         },
         people: people.map((p, i) => ({ ref: `u${i + 1}`, name: p.name })),
         projects: projects.map((p, i) => ({ ref: `p${i + 1}`, name: p.name })),
+        tasks: candidates.map((t, i) => ({
+          ref: `t${i + 1}`, number: `#${t.id}`, title: t.title,
+          assignee_ref: t.assignee_id ? userRef.get(String(t.assignee_id)) ?? null : null,
+        })),
         messages: messages.map((m) => ({
           id: String(m.id),
           at: m.created_at,
@@ -541,6 +690,8 @@ export class ChatAnalysisService {
           reply_to: m.reply_to_id,
           thread_root: m.thread_root_id,
           text: String(m.body ?? '').slice(0, 2000),
+          // Пересланная карточка задачи: о ней, скорее всего, и речь.
+          task: m.task_id ? `#${m.task_id}` : null,
         })),
       };
 
@@ -584,31 +735,53 @@ export class ChatAnalysisService {
           namedInText,
         });
 
+        /*
+          Задача статуса и блокера — по основаниям (journal-rules): пересланная карточка
+          или названный номер, иначе выбор модели, но только если это задача автора.
+        */
+        const onTask = a.type === 'status' || a.type === 'blocker';
+        const t = onTask
+          ? resolveTask({
+            sources: a.sources.map((x) => {
+              const m = messageById.get(x.messageId);
+              return {
+                messageId: x.messageId, authorId: m?.author_id ? String(m.author_id) : null,
+                sharedTaskId: m?.task_id ? String(m.task_id) : null, text: String(m?.body ?? ''),
+              };
+            }),
+            alive, modelTaskId: a.taskId, owners,
+          })
+          : { taskId: null, confidence: 0 };
+
         const fixed: ExtractedAction = {
           ...a,
           projectId: p.projectId,
           assignerId: roles.assignerId,
           assigneeId: roles.assigneeId,
+          taskId: t.taskId,
           confidence: {
             ...a.confidence,
             project: p.confidence,
             assigner: roles.assignerConfidence,
             assignee: roles.assigneeConfidence,
+            task: t.confidence,
           },
         };
         // Ключ от повторов считается в том числе по проекту и исполнителю — пересобираем.
         fixed.dedupKey = dedupKeyOf(fixed);
 
         /*
-          Состояние наблюдения. Поручению его считаем: «готово» — человеку остаётся
-          нажать «завести». Остальные виды на этом этапе просто замечены.
+          Состояние наблюдения: «готово» — человеку остаётся нажать одну кнопку. Решению
+          для этого хватает уверенности, статусу и блокеру нужна ещё задача.
         */
         const status = fixed.type === 'task'
           ? taskReadiness({
             projectId: fixed.projectId, assigneeId: fixed.assigneeId, assignerId: fixed.assignerId,
             cancelled: roles.cancelled, confidence: fixed.confidence,
           })
-          : 'detected';
+          : noteReadiness({
+            type: fixed.type, intent: fixed.confidence.intent, taskId: fixed.taskId, cancelled: roles.cancelled,
+          });
         return { action: fixed, status, cancelled: roles.cancelled };
       });
 
@@ -622,6 +795,7 @@ export class ChatAnalysisService {
         saved.push({ id, action: a, status, cancelled });
       }
       await this.autoCreate(chat, saved);
+      await this.autoLog(chat, saved);
       await this.askAbout(chat, saved);
 
       await this.repo.finishRun(runId, {
