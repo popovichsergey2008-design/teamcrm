@@ -97,6 +97,31 @@ export interface ChatAnalysisSettings {
   quiet_minutes: number;
   mode: string;
   ask_in_chat: boolean;
+  /** Потолок расхода на разбор в месяц, долларов; null — без потолка. */
+  monthly_limit_usd: string | null;
+}
+/** Счётчики попадания агента: по ним владелец решает, включать ли автосоздание. */
+export interface ChatAnalysisStats {
+  quality: {
+    tasksDetected: number;
+    ready: number;
+    needsClarification: number;
+    confirmed: number;
+    autoCreated: number;
+    rejected: number;
+    undone: number;
+    correctedProject: number;
+    correctedAssignee: number;
+    corrected: number;
+    duplicates: number;
+    reviewed: number;
+    rejectRate: number | null;
+    correctionRate: number | null;
+    enoughData: boolean;
+  };
+  spentUsd: number;
+  limitUsd: number | null;
+  limitReached: boolean;
 }
 export interface ChatAnalysisSource {
   messageId: string;
@@ -121,6 +146,7 @@ export interface ChatAnalysisAction {
   meeting_at: string | null;
   status: string;
   created_at: string;
+  updated_at: string;
   asked_at: string | null;
   created_entity_type: string | null;
   created_entity_id: string | null;
@@ -237,6 +263,9 @@ export interface OnboardingView {
 
 export interface Task {
   id: string;
+  /** Задачу завёл разбор переписки сам, без нажатия человека (ТЗ-12, этап 4). */
+  created_by_ai?: boolean;
+  created_at?: string;
   project_id: string;
   column_id: string;
   position: number;

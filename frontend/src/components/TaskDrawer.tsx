@@ -483,6 +483,21 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
    * именно. Тогда спрашиваем ещё раз — и повторяем удаление с подтверждением.
    * Часы при этом не пропадают: они остаются в себестоимости проекта.
    */
+  /** Отмена задачи, которую агент завёл сам по переписке: в корзину, промах засчитан. */
+  const undoAi = async () => {
+    if (!window.confirm(`Отменить задачу «${task.title}»? Она уйдёт в корзину, а в чате появится отметка об отмене.`)) return;
+    setErr(''); setMoving(true);
+    try {
+      await api.undoAiTask(task.id);
+      onRefresh();
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Не удалось отменить задачу');
+    } finally {
+      setMoving(false);
+    }
+  };
+
   const removeTask = async (confirmTimeLoss = false) => {
     if (!confirmTimeLoss
       && !window.confirm(`Удалить задачу «${task.title}»? Вместе с ней исчезнут комментарии, чек-лист и вложения. Отменить это будет нельзя.`)) return;
@@ -924,7 +939,11 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               // Из задачи видно, из какой фразы она выросла. Через неделю после
               // постановки «а это вообще откуда?» — самый частый вопрос на разборе.
               <div className="dim task-origin">
-                <Icon name="chat" size={12} /> Создано из сообщения{' '}
+                {/* Задачу, которую агент завёл сам, видно сразу: это не личное поручение
+                    из формы, и спорить о ней надо с перепиской, а не с постановщиком. */}
+                {task.created_by_ai
+                  ? <><Icon name="sparkles" size={12} /> Создано Anthill AI по итогам переписки{' '}</>
+                  : <><Icon name="chat" size={12} /> Создано из сообщения{' '}</>}
                 {fromMessage.author_name ? `(${fromMessage.author_name})` : ''}:{' '}
                 <button
                   className="link-btn"
@@ -939,6 +958,18 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 >
                   «{fromMessage.body.slice(0, 80)}»
                 </button>
+                {/* Ошибку агента отменяют здесь же: исполнителю раздел «Разбор переписки»
+                    не открыт, а обычное удаление не засчитало бы агенту промах.
+                    Окно — сутки; права сервер проверит сам. */}
+                {task.created_by_ai
+                  && (!task.created_at || Date.now() - new Date(task.created_at).getTime() < 24 * 3600_000) && (
+                  <>
+                    {' · '}
+                    <button className="link-btn" disabled={moving} onClick={() => void undoAi()}>
+                      Отменить — агент ошибся
+                    </button>
+                  </>
+                )}
               </div>
             )}
 

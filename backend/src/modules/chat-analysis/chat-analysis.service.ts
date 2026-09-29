@@ -12,6 +12,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { acceptedText, askText, shouldAsk } from './ask-rules';
 import { dedupKeyOf, ExtractedAction, parseAnalysis, RefCatalog, resolveProject } from './analysis-schema';
 import { missingParts, resolveRoles, taskReadiness } from './roles-rules';
+import { autoCreateVerdict, overLimit, quality, undoVerdict } from './policy-rules';
 import { ChatAnalysisRepository, DueChatRow, MessageRow } from './chat-analysis.repository';
 import { closedSegments, Segment, SegmentMessage } from './segments';
 
@@ -25,7 +26,9 @@ import { closedSegments, Segment, SegmentMessage } from './segments';
  * Границы, установленные заказчиком 29.09 и заложенные в код, а не в настройку:
  *   * личные переписки и заметки себе не разбираются вовсе (условие в репозитории);
  *   * мгновенного разбора каждого сообщения нет — только затихший разговор;
- *   * режим по умолчанию «только предлагать»: автосоздания в продукте пока нет.
+ *   * режим по умолчанию «только предлагать»; автосоздание (этап 4) — режим, который
+ *     владелец включает сам, и даже тогда оно срабатывает только на готовое поручение
+ *     после перепроверки по базе и отменяется одним нажатием в течение суток.
  */
 
 const FALLBACK_SYSTEM = [
@@ -100,8 +103,31 @@ export class ChatAnalysisService {
     return this.repo.settings(tenantId);
   }
 
-  saveSettings(tenantId: string, patch: { enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean }) {
+  saveSettings(
+    tenantId: string,
+    patch: { enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean; monthlyLimitUsd?: number | null },
+  ) {
     return this.repo.saveSettings(tenantId, patch);
+  }
+
+  /**
+   * Счётчики попадания и расход — то, на что владелец смотрит, прежде чем включать
+   * автосоздание (ТЗ разд. 58). Решение «включать или нет» должно опираться на цифры с
+   * его собственных переписок, а не на наше обещание.
+   */
+  async stats(tenantId: string) {
+    const [counts, settings, spent] = await Promise.all([
+      this.repo.qualityCounts(tenantId),
+      this.repo.settings(tenantId),
+      this.repo.spentThisMonth(tenantId),
+    ]);
+    const limit = settings.monthly_limit_usd != null ? Number(settings.monthly_limit_usd) : null;
+    return {
+      quality: quality(counts),
+      spentUsd: Math.round(spent * 100) / 100,
+      limitUsd: limit,
+      limitReached: overLimit(spent, limit),
+    };
   }
 
   setChatAnalysis(tenantId: string, chatId: string, on: boolean) {
@@ -149,13 +175,19 @@ export class ChatAnalysisService {
       assigneeId: (patch.assigneeId ?? a.assignee_id) ?? undefined,
       managerId: a.assigner_id ?? undefined,
       deadlineAt: a.deadline_at ?? undefined,
-    } as any, userId);
+      // Откуда задача взялась — в той же вставке: письмо уходит сразу и должно назвать
+      // постановщиком автора поручения, а не нажавшего кнопку.
+    } as any, userId, { sourceChatMessageId: a.instruction_message_id ?? null });
 
-    // Откуда задача взялась: по этому сообщению карточка открывает исходный разговор.
-    if (a.instruction_message_id) {
-      await this.repo.linkSourceMessage(tenantId, String(task.id), String(a.instruction_message_id));
-    }
     await this.repo.markAction(tenantId, id, { status: 'confirmed', entityType: 'task', entityId: String(task.id) });
+    /*
+      Поправка человека — это промах агента, и именно такие промахи в автосоздании ушли
+      бы людям. Заполненный пробел промахом не считаем: агент честно сказал «не знаю».
+    */
+    await this.repo.markCorrections(tenantId, id, {
+      project: !!(a.project_id && patch.projectId && String(patch.projectId) !== String(a.project_id)),
+      assignee: !!(a.assignee_id && patch.assigneeId && String(patch.assigneeId) !== String(a.assignee_id)),
+    });
     void this.secretary.record({
       tenantId, userId: a.assigner_id ?? userId, kind: 'nl_task',
       summary: `Задача из переписки: «${task.title}»`, subjectType: 'task', subjectId: task.id,
@@ -172,6 +204,50 @@ export class ChatAnalysisService {
     return { actionId: id, status: 'rejected' };
   }
 
+  /**
+   * Отменить задачу, которую агент завёл сам (ТЗ разд. 26).
+   *
+   * Задача уходит в корзину обычным удалением со всеми его проверками и журналом —
+   * отдельного «тихого» пути убрать задачу у агента нет. Наблюдение запоминает отмену:
+   * это самый дорогой вид промаха, и счётчик попадания его учитывает.
+   */
+  async undo(tenantId: string, user: { userId: string; role: string }, id: string) {
+    const a = await this.repo.one(tenantId, user.userId, id);
+    if (!a) throw AppException.notFound('Наблюдение не найдено');
+    return this.undoAction(tenantId, user, a);
+  }
+
+  /**
+   * То же из карточки задачи. Раздел «Разбор переписки» открыт только руководству, а
+   * исполнитель, которому агент по ошибке поручил работу, отменить её вправе — и должен
+   * мочь это сделать там, где задачу видит. Обычное удаление из карточки промах бы не
+   * засчитало.
+   */
+  async undoByTask(tenantId: string, user: { userId: string; role: string }, taskId: string) {
+    const a = await this.repo.byCreatedTask(tenantId, taskId);
+    if (!a) throw AppException.notFound('Эту задачу агент не заводил сам — её удаляют обычным способом');
+    return this.undoAction(tenantId, user, a);
+  }
+
+  private async undoAction(tenantId: string, user: { userId: string; role: string }, a: any) {
+    const id = String(a.id);
+    const verdict = undoVerdict({
+      status: a.status, createdAt: new Date(a.updated_at), now: new Date(),
+      userId: user.userId, role: user.role, assignerId: a.assigner_id, assigneeId: a.assignee_id,
+    });
+    if (!verdict.ok) throw AppException.conflict(verdict.reason);
+
+    if (a.created_entity_id) {
+      await this.tasks.removeByPerson(tenantId, String(a.created_entity_id), user, {
+        reason: 'Отмена задачи, заведённой разбором переписки',
+      });
+    }
+    await this.repo.markUndone(tenantId, id, user.userId);
+    const who = await this.chats.userName(tenantId, user.userId);
+    await this.say(tenantId, a.chat_id, `${who ?? 'Кто-то из команды'} отменил задачу «${a.title}» — убрал её в корзину.`);
+    return { actionId: id, status: 'cancelled' };
+  }
+
   // ── разбор ──
 
   /**
@@ -186,8 +262,21 @@ export class ChatAnalysisService {
   async tick(now = new Date(), tenantId: string | null = null): Promise<number> {
     let analyzed = 0;
     const chats = await this.repo.dueChats(now, tenantId);
+    /*
+      Потолок расхода. Достигнут — разбор организации стоит до следующего месяца, а экран
+      настроек говорит об этом прямо. Отметка «докуда разобрано» при этом не двигается:
+      переписка дождётся, когда владелец поднимет потолок.
+    */
+    const stopped = new Map<string, boolean>();
     for (const chat of chats) {
       try {
+        if (!stopped.has(chat.tenant_id)) {
+          const limit = chat.monthly_limit_usd != null ? Number(chat.monthly_limit_usd) : null;
+          const over = limit != null && overLimit(await this.repo.spentThisMonth(chat.tenant_id), limit);
+          stopped.set(chat.tenant_id, over);
+          if (over) this.log.warn(`организация ${chat.tenant_id}: потолок расхода на разбор исчерпан`);
+        }
+        if (stopped.get(chat.tenant_id)) continue;
         analyzed += await this.analyzeChat(chat, now);
       } catch (e) {
         this.log.warn(`чат ${chat.chat_id}: ${(e as Error).message}`);
@@ -268,6 +357,80 @@ export class ChatAnalysisService {
       }
       return; // один вопрос за проход
     }
+  }
+
+  /**
+   * Завести готовые поручения самому — только в режиме, который включил владелец
+   * (ТЗ-12, разд. 14–15, 53, 55).
+   *
+   * Задачу заводим от имени СИСТЕМЫ, а не постановщика: он её не заводил, и журнал
+   * задачи не должен приписывать ему нажатие. Постановщиком в самой задаче остаётся
+   * автор поручения — ему и исполнителю уходит письмо с пометкой «по итогам переписки».
+   *
+   * О заведённом говорим в чате одним сообщением на проход: участники разговора должны
+   * узнать, что из их переписки получилась задача, и где её отменить, если агент ошибся.
+   */
+  private async autoCreate(
+    chat: DueChatRow,
+    saved: { id: string; action: ExtractedAction; status: string; cancelled: boolean }[],
+  ): Promise<void> {
+    if (chat.mode !== 'auto_high') return;
+    const made: { title: string; number: string; assignee: string | null; assigner: string | null }[] = [];
+
+    for (const s of saved) {
+      if (s.action.type !== 'task' || s.status !== 'ready') continue;
+      try {
+        const messageId = await this.repo.instructionOf(s.id);
+        const facts = await this.repo.createFacts(chat.tenant_id, {
+          projectId: s.action.projectId, assignerId: s.action.assignerId,
+          assigneeId: s.action.assigneeId, messageId,
+        });
+        const verdict = autoCreateVerdict({ mode: chat.mode, type: s.action.type, status: s.status, facts });
+        if (!verdict.create) {
+          this.log.log(`наблюдение ${s.id}: не завожу сам — ${verdict.reason}`);
+          continue;
+        }
+
+        const task = await this.tasks.create(chat.tenant_id, {
+          projectId: String(s.action.projectId),
+          title: s.action.title.slice(0, 255),
+          description: s.action.description || undefined,
+          assigneeId: s.action.assigneeId ?? undefined,
+          managerId: s.action.assignerId ?? undefined,
+          deadlineAt: s.action.deadlineAt ?? undefined,
+        } as any, null, { sourceChatMessageId: messageId, createdByAi: true });
+
+        await this.repo.markAction(chat.tenant_id, s.id, {
+          status: 'auto_created', entityType: 'task', entityId: String(task.id),
+        });
+        s.status = 'auto_created';
+        void this.secretary.record({
+          tenantId: chat.tenant_id, userId: s.action.assignerId ?? null, kind: 'nl_task',
+          summary: `Задача из переписки заведена агентом: «${task.title}»`, subjectType: 'task', subjectId: task.id,
+        });
+        const [assignee, assigner] = await Promise.all([
+          s.action.assigneeId ? this.chats.userName(chat.tenant_id, s.action.assigneeId) : null,
+          s.action.assignerId ? this.chats.userName(chat.tenant_id, s.action.assignerId) : null,
+        ]);
+        made.push({ title: task.title, number: String(task.id), assignee, assigner });
+      } catch (e) {
+        // Не завелось — наблюдение остаётся «готовым», его заведут руками.
+        this.log.warn(`автосоздание по наблюдению ${s.id}: ${(e as Error).message}`);
+      }
+    }
+
+    if (!made.length) return;
+    const lines = made.map((m) => {
+      const who = m.assigner && m.assignee && m.assigner === m.assignee
+        ? `личная задача ${m.assignee}`
+        : `постановщик ${m.assigner ?? '—'}, исполнитель ${m.assignee ?? '—'}`;
+      return `• #${m.number} «${m.title}» — ${who}`;
+    });
+    await this.say(chat.tenant_id, chat.chat_id, [
+      made.length === 1 ? 'Завёл задачу по итогам переписки:' : 'Завёл задачи по итогам переписки:',
+      ...lines,
+      'Если я ошибся — отменить можно в течение суток прямо в карточке задачи.',
+    ].join('\n'));
   }
 
   /**
@@ -458,12 +621,15 @@ export class ChatAnalysisService {
         stored++;
         saved.push({ id, action: a, status, cancelled });
       }
+      await this.autoCreate(chat, saved);
       await this.askAbout(chat, saved);
 
       await this.repo.finishRun(runId, {
         status: 'done', model: prompt?.model ?? null,
         promptVersion: prompt?.version != null ? String(prompt.version) : null,
         actions: stored,
+        // Всё, что модель вернула, но ключ отсёк как уже виденное.
+        duplicates: actions.length - stored,
       });
       // Отметку двигаем только теперь: проход состоялся.
       await this.repo.moveCheckpoint(chat.tenant_id, chat.chat_id, seg.endId, runId);

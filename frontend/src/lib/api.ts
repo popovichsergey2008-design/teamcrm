@@ -1666,11 +1666,19 @@ export const api = {
     request<PlatformStaff[]>('POST', '/platform/staff', { userId, ...patch }),
   // Разбор переписки (ТЗ-12): агент читает затихшие разговоры и показывает, что понял.
   chatAnalysisSettings: () => request<import('../types').ChatAnalysisSettings>('GET', '/chat-analysis/settings'),
-  saveChatAnalysisSettings: (b: { enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean }) =>
+  saveChatAnalysisSettings: (b: {
+    enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean; monthlyLimitUsd?: number | null;
+  }) =>
     request<import('../types').ChatAnalysisSettings>('PATCH', '/chat-analysis/settings', b),
   chatAnalysisActions: (chatId?: string) =>
     request<import('../types').ChatAnalysisAction[]>('GET', `/chat-analysis/actions${chatId ? `?chatId=${chatId}` : ''}`),
   chatAnalysisRuns: () => request<import('../types').ChatAnalysisRun[]>('GET', '/chat-analysis/runs'),
+  chatAnalysisStats: () => request<import('../types').ChatAnalysisStats>('GET', '/chat-analysis/stats'),
+  undoChatAction: (id: string) =>
+    request<{ actionId: string; status: string }>('POST', `/chat-analysis/actions/${id}/undo`, {}),
+  /** Отмена из карточки: задача, которую агент завёл сам, уходит в корзину. */
+  undoAiTask: (taskId: string) =>
+    request<{ actionId: string; status: string }>('POST', `/chat-analysis/tasks/${taskId}/undo`, {}),
   runChatAnalysis: () => request<{ analyzed: number }>('POST', '/chat-analysis/run', {}),
   /** Завести задачу по наблюдению: постановщиком станет тот, кто поручил в переписке. */
   confirmChatAction: (id: string, b: { projectId?: string; assigneeId?: string; title?: string } = {}) =>

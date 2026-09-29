@@ -67,6 +67,9 @@ export class NotificationsService {
           columnName: card.column_name,
           priority: card.priority,
           deadlineAt: card.deadline_at,
+          fromChat: card.from_chat,
+          managerName: card.manager_name,
+          byAi: card.created_by_ai,
         };
         const letter = render(ctx, this.unsubscribeUrl(token));
         await this.repo.enqueue({

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { ExtractedAction } from './analysis-schema';
+import { CreateFacts, QualityCounts } from './policy-rules';
 
 /**
  * Хранение разбора переписки (ТЗ-12, этап 1).
@@ -35,6 +36,8 @@ export interface SettingsRow {
   mode: string;
   /** Бот вправе задать уточняющий вопрос в чате. */
   ask_in_chat: boolean;
+  /** Потолок расхода в месяц, долларов; пусто — без потолка. */
+  monthly_limit_usd: string | null;
 }
 
 export interface DueChatRow {
@@ -49,6 +52,9 @@ export interface DueChatRow {
   timezone: string;
   /** Вопросы в чатах включены владельцем. */
   ask_in_chat: boolean;
+  /** suggest | auto_high — заводить ли готовые поручения самому. */
+  mode: string;
+  monthly_limit_usd: string | null;
   work_start: string;
   work_end: string;
   weekend_days: number[];
@@ -94,31 +100,40 @@ export class ChatAnalysisRepository {
 
   async settings(tenantId: string): Promise<SettingsRow> {
     const row = await this.db.one<SettingsRow>(
-      `SELECT tenant_id::text, enabled, quiet_minutes, mode, ask_in_chat
+      `SELECT tenant_id::text, enabled, quiet_minutes, mode, ask_in_chat, monthly_limit_usd
          FROM chat_analysis_settings WHERE tenant_id = $1`,
       [tenantId],
     );
     // Нет строки — значит, владелец ничего не включал: выключено.
     return row ?? {
       tenant_id: String(tenantId), enabled: false, quiet_minutes: 20, mode: 'suggest', ask_in_chat: true,
+      monthly_limit_usd: null,
     };
   }
 
   async saveSettings(
     tenantId: string,
-    patch: { enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean },
+    patch: {
+      enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean;
+      /** undefined — не трогать; null — снять потолок. */
+      monthlyLimitUsd?: number | null;
+    },
   ): Promise<SettingsRow> {
     const row = await this.db.one<SettingsRow>(
-      `INSERT INTO chat_analysis_settings (tenant_id, enabled, quiet_minutes, mode, ask_in_chat)
-       VALUES ($1, COALESCE($2, FALSE), COALESCE($3, 20), COALESCE($4, 'suggest'), COALESCE($5, TRUE))
+      `INSERT INTO chat_analysis_settings (tenant_id, enabled, quiet_minutes, mode, ask_in_chat, monthly_limit_usd)
+       VALUES ($1, COALESCE($2, FALSE), COALESCE($3, 20), COALESCE($4, 'suggest'), COALESCE($5, TRUE),
+               CASE WHEN $6 THEN $7::numeric ELSE NULL END)
        ON CONFLICT (tenant_id) DO UPDATE SET
          enabled       = COALESCE($2, chat_analysis_settings.enabled),
          quiet_minutes = COALESCE($3, chat_analysis_settings.quiet_minutes),
          mode          = COALESCE($4, chat_analysis_settings.mode),
          ask_in_chat   = COALESCE($5, chat_analysis_settings.ask_in_chat),
+         monthly_limit_usd = CASE WHEN $6 THEN $7::numeric ELSE chat_analysis_settings.monthly_limit_usd END,
          updated_at    = now()
-       RETURNING tenant_id::text, enabled, quiet_minutes, mode, ask_in_chat`,
-      [tenantId, patch.enabled ?? null, patch.quietMinutes ?? null, patch.mode ?? null, patch.askInChat ?? null],
+       RETURNING tenant_id::text, enabled, quiet_minutes, mode, ask_in_chat, monthly_limit_usd`,
+      [tenantId, patch.enabled ?? null, patch.quietMinutes ?? null, patch.mode ?? null, patch.askInChat ?? null,
+        // «Снять потолок» и «не трогать» различаются: null — это тоже значение.
+        patch.monthlyLimitUsd !== undefined, patch.monthlyLimitUsd ?? null],
     );
     return row as SettingsRow;
   }
@@ -143,6 +158,7 @@ export class ChatAnalysisRepository {
     return this.db.many<DueChatRow>(
       `SELECT c.id::text AS chat_id, c.tenant_id::text, c.kind, c.title,
               c.project_id::text, s.quiet_minutes, t.timezone, s.ask_in_chat,
+              s.mode, s.monthly_limit_usd,
               COALESCE(w.work_start, TIME '09:00')::text AS work_start,
               COALESCE(w.work_end, TIME '18:00')::text AS work_end,
               COALESCE(w.weekend_days, ARRAY[0,6]) AS weekend_days,
@@ -231,13 +247,17 @@ export class ChatAnalysisRepository {
     return String(row!.id);
   }
 
-  async finishRun(runId: string, o: { status: string; model?: string | null; promptVersion?: string | null; actions?: number; error?: string | null }): Promise<void> {
+  async finishRun(runId: string, o: {
+    status: string; model?: string | null; promptVersion?: string | null;
+    actions?: number; duplicates?: number; error?: string | null;
+  }): Promise<void> {
     await this.db.query(
       `UPDATE chat_analysis_runs
           SET status = $2, model = $3, prompt_version = $4,
-              actions_count = COALESCE($5, 0), error = $6, completed_at = now()
+              actions_count = COALESCE($5, 0), error = $6, duplicates = COALESCE($7, 0),
+              completed_at = now()
         WHERE id = $1`,
-      [runId, o.status, o.model ?? null, o.promptVersion ?? null, o.actions ?? 0, o.error ?? null],
+      [runId, o.status, o.model ?? null, o.promptVersion ?? null, o.actions ?? 0, o.error ?? null, o.duplicates ?? 0],
     );
   }
 
@@ -360,7 +380,7 @@ export class ChatAnalysisRepository {
               a.project_id::text, p.name AS project_name,
               a.assigner_id::text, ur.full_name AS assigner_name,
               a.assignee_id::text, ue.full_name AS assignee_name,
-              a.deadline_at, a.meeting_at, a.status, a.created_at, a.asked_at,
+              a.deadline_at, a.meeting_at, a.status, a.created_at, a.updated_at, a.asked_at,
               a.created_entity_type, a.created_entity_id::text,
               a.intent_confidence, a.project_confidence, a.assigner_confidence, a.assignee_confidence,
               c.title AS chat_title, c.kind AS chat_kind, pc.name AS chat_project_name,
@@ -391,7 +411,7 @@ export class ChatAnalysisRepository {
     return this.db.one(
       `SELECT a.id::text, a.chat_id::text, a.action_type, a.title, a.description,
               a.project_id::text, a.assigner_id::text, a.assignee_id::text,
-              a.deadline_at, a.status, a.created_entity_id::text,
+              a.deadline_at, a.status, a.created_entity_id::text, a.updated_at,
               (SELECT am.message_id::text FROM chat_extracted_action_messages am
                 WHERE am.action_id = a.id AND am.role = 'instruction'
                 ORDER BY am.message_id LIMIT 1) AS instruction_message_id
@@ -403,16 +423,121 @@ export class ChatAnalysisRepository {
   }
 
   /**
-   * Откуда задача взялась: сообщение, которое было поручением.
-   *
-   * Тем же полем пользуется «создать задачу из сообщения» — карточка задачи умеет по
-   * нему открыть исходный разговор, и второго способа заводить незачем.
+   * Наблюдение, из которого агент сам завёл эту задачу. Без условия видимости чата:
+   * исполнитель мог и не состоять в разговоре, а отменить ошибку вправе — кто именно,
+   * решает `undoVerdict`, а наружу отсюда уходит только то, что и так есть в задаче.
    */
-  async linkSourceMessage(tenantId: string, taskId: string, messageId: string): Promise<void> {
-    await this.db.query(
-      `UPDATE tasks SET source_chat_message_id = $3 WHERE tenant_id = $1 AND id = $2`,
-      [tenantId, taskId, messageId],
+  byCreatedTask(tenantId: string, taskId: string): Promise<any | null> {
+    return this.db.one(
+      `SELECT a.id::text, a.chat_id::text, a.title, a.assigner_id::text, a.assignee_id::text,
+              a.status, a.created_entity_id::text, a.updated_at
+         FROM chat_extracted_actions a
+        WHERE a.tenant_id = $1 AND a.created_entity_type = 'task' AND a.created_entity_id = $2::bigint
+          AND a.status = 'auto_created'
+        ORDER BY a.id DESC LIMIT 1`,
+      [tenantId, taskId],
     );
+  }
+
+  // ── политика ──
+
+  /**
+   * Мир прямо перед созданием (ТЗ разд. 53): модель смотрела на переписку, а с тех пор
+   * проект могли закрыть, человека — уволить, сообщение — удалить.
+   */
+  async createFacts(
+    tenantId: string,
+    o: { projectId: string | null; assignerId: string | null; assigneeId: string | null; messageId: string | null },
+  ): Promise<CreateFacts> {
+    const row = await this.db.one<CreateFacts>(
+      `SELECT
+         EXISTS (SELECT 1 FROM projects p
+                  WHERE p.tenant_id = $1 AND p.id = $2::bigint AND p.status <> 'archived') AS "projectAlive",
+         EXISTS (SELECT 1 FROM users u JOIN roles r ON r.id = u.role_id
+                  WHERE u.tenant_id = $1 AND u.id = $3::bigint AND u.is_active AND r.code <> 'client') AS "assignerActive",
+         EXISTS (SELECT 1 FROM users u JOIN roles r ON r.id = u.role_id
+                  WHERE u.tenant_id = $1 AND u.id = $4::bigint AND u.is_active AND r.code <> 'client') AS "assigneeActive",
+         EXISTS (SELECT 1 FROM chat_messages m
+                  WHERE m.tenant_id = $1 AND m.id = $5::bigint AND m.deleted_at IS NULL) AS "instructionAlive"`,
+      [tenantId, o.projectId, o.assignerId, o.assigneeId, o.messageId],
+    );
+    return row ?? { projectAlive: false, assignerActive: false, assigneeActive: false, instructionAlive: false };
+  }
+
+  /** Сообщение-поручение наблюдения: откуда задача, если её заведут. */
+  async instructionOf(actionId: string): Promise<string | null> {
+    const row = await this.db.one<{ id: string }>(
+      `SELECT message_id::text AS id FROM chat_extracted_action_messages
+        WHERE action_id = $1 AND role = 'instruction'
+        ORDER BY message_id LIMIT 1`,
+      [actionId],
+    );
+    return row?.id ?? null;
+  }
+
+  /** Сколько разбор потратил в этом месяце (по оценке ai_usage). */
+  async spentThisMonth(tenantId: string): Promise<number> {
+    const row = await this.db.one<{ usd: string }>(
+      `SELECT COALESCE(SUM(cost_estimate), 0)::text AS usd FROM ai_usage
+        WHERE tenant_id = $1 AND feature = 'chat_analysis'
+          AND created_at >= date_trunc('month', now())`,
+      [tenantId],
+    );
+    return Number(row?.usd ?? 0);
+  }
+
+  /** Что человек поправил, заводя задачу: мера ошибки агента. */
+  async markCorrections(tenantId: string, id: string, o: { project: boolean; assignee: boolean }): Promise<void> {
+    if (!o.project && !o.assignee) return;
+    await this.db.query(
+      `UPDATE chat_extracted_actions
+          SET corrected_project = corrected_project OR $3,
+              corrected_assignee = corrected_assignee OR $4
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id, o.project, o.assignee],
+    );
+  }
+
+  /** Отменили автосозданную задачу: запоминаем кто — это промах агента. */
+  async markUndone(tenantId: string, id: string, userId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE chat_extracted_actions
+          SET status = 'cancelled', undone_at = now(), undone_by = $3, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id, userId],
+    );
+  }
+
+  /**
+   * Счётчики попадания за период (ТЗ разд. 58). По организации целиком: это цифры для
+   * решения владельца, а не просмотр чужих переписок — текстов здесь нет.
+   */
+  async qualityCounts(tenantId: string, days = 30): Promise<QualityCounts> {
+    const row = await this.db.one<Record<keyof QualityCounts, string>>(
+      `SELECT
+         COUNT(*) FILTER (WHERE action_type = 'task')                                    AS "tasksDetected",
+         COUNT(*) FILTER (WHERE action_type = 'task' AND status = 'ready')               AS "ready",
+         COUNT(*) FILTER (WHERE action_type = 'task' AND status = 'needs_clarification') AS "needsClarification",
+         COUNT(*) FILTER (WHERE status = 'confirmed')                                    AS "confirmed",
+         COUNT(*) FILTER (WHERE status = 'auto_created' OR undone_at IS NOT NULL)        AS "autoCreated",
+         COUNT(*) FILTER (WHERE status = 'rejected')                                     AS "rejected",
+         COUNT(*) FILTER (WHERE undone_at IS NOT NULL)                                   AS "undone",
+         COUNT(*) FILTER (WHERE corrected_project)                                       AS "correctedProject",
+         COUNT(*) FILTER (WHERE corrected_assignee)                                      AS "correctedAssignee",
+         COUNT(*) FILTER (WHERE corrected_project OR corrected_assignee)                 AS "corrected",
+         (SELECT COALESCE(SUM(duplicates), 0) FROM chat_analysis_runs
+           WHERE tenant_id = $1 AND started_at > now() - make_interval(days => $2))    AS "duplicates"
+         FROM chat_extracted_actions
+        WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2)`,
+      [tenantId, days],
+    );
+    const n = (k: keyof QualityCounts) => Number(row?.[k] ?? 0);
+    return {
+      tasksDetected: n('tasksDetected'), ready: n('ready'), needsClarification: n('needsClarification'),
+      confirmed: n('confirmed'), autoCreated: n('autoCreated'), rejected: n('rejected'), undone: n('undone'),
+      correctedProject: n('correctedProject'), correctedAssignee: n('correctedAssignee'),
+      corrected: n('corrected'), duplicates: n('duplicates'),
+    };
   }
 
   /** Отметить, чем кончилось наблюдение: завели задачу, отвергли, отменили. */

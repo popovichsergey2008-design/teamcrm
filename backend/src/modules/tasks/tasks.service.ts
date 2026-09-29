@@ -185,7 +185,15 @@ export class TasksService {
     return task;
   }
 
-  async create(tenantId: string, dto: CreateTaskDto, actorId: string | null = null): Promise<TaskRow> {
+  /**
+   * `origin` — откуда задача, если не из формы. Отдельным параметром, а не полем DTO:
+   * пометку «завёл ИИ» клиент ставить себе не должен. Записывается в той же вставке,
+   * потому что письмо о задаче уходит сразу и должно уже знать, откуда она.
+   */
+  async create(
+    tenantId: string, dto: CreateTaskDto, actorId: string | null = null,
+    origin: { sourceChatMessageId?: string | null; createdByAi?: boolean } = {},
+  ): Promise<TaskRow> {
     const project = await this.projects.findById(tenantId, dto.projectId);
     if (!project) throw AppException.notFound('Project not found');
 
@@ -211,6 +219,8 @@ export class TasksService {
       labelIds: dto.labelIds,
       // умолчание — «с согласованием»: явно снять его должен человек, а не забывчивость
       requiresApproval: dto.requiresApproval !== false,
+      sourceChatMessageId: origin.sourceChatMessageId ?? null,
+      createdByAi: origin.createdByAi === true,
     });
     // Чек-лист, если задачу собрали заранее — голосом или из встречи.
     if (dto.checklist?.length) await this.repo.addChecklist(tenantId, task.id, dto.checklist);

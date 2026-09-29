@@ -83,6 +83,15 @@ export interface TaskCtx {
   columnName?: string | null;
   priority?: string | null;
   deadlineAt?: Date | string | null;
+  /**
+   * Задача выросла из переписки. Тогда поручил её не тот, кто нажал кнопку, а автор
+   * поручения в чате — и письмо обязано назвать именно его (ТЗ-12, разд. 55).
+   */
+  fromChat?: boolean;
+  /** Постановщик задачи: для задачи из переписки это автор поручения. */
+  managerName?: string | null;
+  /** Задачу завёл ИИ сам, без нажатия человека. */
+  byAi?: boolean;
 }
 
 export interface Letter {
@@ -117,6 +126,7 @@ function metaRow(label: string, value: string, color = BRAND.ink): string {
 function metaTable(ctx: TaskCtx): string {
   const rows: string[] = [metaRow('Проект', escape(ctx.projectName))];
   if (ctx.columnName) rows.push(metaRow('Колонка', escape(ctx.columnName)));
+  if (ctx.fromChat && ctx.managerName) rows.push(metaRow('Постановщик', escape(ctx.managerName)));
   if (ctx.assigneeName) rows.push(metaRow('Исполнитель', escape(ctx.assigneeName)));
   const prio = ctx.priority ? PRIORITY_LABEL[ctx.priority] : undefined;
   if (prio) rows.push(metaRow('Приоритет', escape(prio.text), prio.color));
@@ -188,6 +198,7 @@ function shell(opts: {
 function plain(lead: string, ctx: TaskCtx, unsubscribeUrl: string, extra?: string): string {
   const lines = [lead, '', ctx.taskTitle, '', `Проект: ${ctx.projectName}`];
   if (ctx.columnName) lines.push(`Колонка: ${ctx.columnName}`);
+  if (ctx.fromChat && ctx.managerName) lines.push(`Постановщик: ${ctx.managerName}`);
   if (ctx.assigneeName) lines.push(`Исполнитель: ${ctx.assigneeName}`);
   const prio = ctx.priority ? PRIORITY_LABEL[ctx.priority] : undefined;
   if (prio) lines.push(`Приоритет: ${prio.text}`);
@@ -198,9 +209,27 @@ function plain(lead: string, ctx: TaskCtx, unsubscribeUrl: string, extra?: strin
   return lines.join('\n');
 }
 
-export function taskCreatedLetter(ctx: TaskCtx, unsubscribeUrl: string): Letter {
+function ownOr(ctx: TaskCtx): string {
   const own = ctx.assigneeName && ctx.actorName === ctx.assigneeName;
-  const lead = own ? 'Вы поставили себе задачу.' : `${ctx.actorName} поставил задачу на вас.`;
+  return own ? 'Вы поставили себе задачу.' : `${ctx.actorName} поставил задачу на вас.`;
+}
+
+/**
+ * Первая строка письма о задаче из переписки.
+ *
+ * Называем постановщика — автора поручения в чате, а не нажавшего кнопку: иначе
+ * человек получает «Юрий поставил задачу», хотя поручала Ольга, и спорить будет не
+ * с тем. Поручение самому себе — «личная задача», без «от вас вам» (разд. 57).
+ */
+function chatLead(ctx: TaskCtx): string {
+  const own = ctx.managerName && ctx.assigneeName && ctx.managerName === ctx.assigneeName;
+  const who = ctx.byAi ? 'Anthill AI завёл задачу по итогам переписки' : 'Задача по итогам переписки';
+  if (own) return `${who}: личная задача, которую вы взяли на себя.`;
+  return ctx.managerName ? `${who}. Поручение от ${ctx.managerName}.` : `${who}.`;
+}
+
+export function taskCreatedLetter(ctx: TaskCtx, unsubscribeUrl: string): Letter {
+  const lead = ctx.fromChat ? chatLead(ctx) : ownOr(ctx);
   return {
     subject: trim(`Новая задача: ${ctx.taskTitle}`, 120),
     text: plain(lead, ctx, unsubscribeUrl),

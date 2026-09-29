@@ -31,6 +31,22 @@ describe('письма по задачам', () => {
     expect(bare.html).not.toContain('Срок');
   });
 
+  it('задача из переписки называет автора поручения, а не нажавшего кнопку', () => {
+    const letter = taskCreatedLetter({
+      ...CTX, actorName: 'Юрий', assigneeName: 'Пётр', managerName: 'Ольга', fromChat: true, byAi: true,
+    }, UNSUB);
+    for (const part of [letter.html, letter.text]) {
+      expect(part).toContain('Anthill AI');
+      expect(part).toContain('Поручение от Ольга');
+      expect(part).toContain('Постановщик');
+      expect(part).not.toContain('Юрий');
+    }
+    // поручение себе — без «от вас вам»
+    const own = taskCreatedLetter({ ...CTX, assigneeName: 'Ольга', managerName: 'Ольга', fromChat: true }, UNSUB);
+    expect(own.text).toContain('личная задача');
+    expect(own.text).not.toContain('Поручение от');
+  });
+
   it('оформление не полагается на внешние ресурсы: их почтовики режут', () => {
     const letter = taskCreatedLetter(CTX, UNSUB);
     expect(letter.html).not.toMatch(/<img/i);

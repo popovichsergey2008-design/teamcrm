@@ -2388,6 +2388,14 @@
 .ca-quiet { gap: 4px; }
 .ca-quiet span { font-size: var(--fs-xs); color: var(--text-dim); }
 .ca-msg { font-size: var(--fs-xs); margin-bottom: 8px; }
+/* Режим и счётчики попадания (этап 4): цифры рядом с переключателем автосоздания. */
+.ca-mode { display: flex; flex-direction: column; gap: 6px; }
+.ca-quality { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.ca-quality-row { font-size: var(--fs-xs); line-height: 1.5; }
+.ca-limit { gap: 4px; }
+.ca-limit > span { font-size: var(--fs-xs); }
+.ca-limit-row { display: flex; gap: 8px; align-items: center; }
+.ca-limit-row .input { max-width: 140px; }
 .ca-list { display: flex; flex-direction: column; gap: 10px; }
 .ca-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-soft); }
 .ca-item-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }

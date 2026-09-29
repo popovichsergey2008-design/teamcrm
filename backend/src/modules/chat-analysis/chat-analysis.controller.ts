@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Max, Min, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -13,6 +13,10 @@ class SettingsDto {
   @IsOptional() @IsIn(['suggest', 'auto_high']) mode?: string;
   /** Бот вправе задать уточняющий вопрос прямо в чате. */
   @IsOptional() @IsBoolean() askInChat?: boolean;
+  /** Потолок расхода на разбор в месяц, долларов. null — снять потолок. */
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100000) @Type(() => Number)
+  monthlyLimitUsd?: number | null;
 }
 
 class ChatFlagDto {
@@ -86,6 +90,31 @@ export class ChatAnalysisController {
   @Post('actions/:id/reject')
   reject(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.svc.reject(u.tenantId, u.userId, id);
+  }
+
+  /**
+   * Отменить задачу, которую агент завёл сам. Сутки, и только тем, кого она касается:
+   * постановщику, исполнителю, руководству.
+   */
+  @Post('actions/:id/undo')
+  undo(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.undo(u.tenantId, { userId: u.userId, role: u.role }, id);
+  }
+
+  /** Та же отмена из карточки задачи — там, где её видит исполнитель. */
+  @Post('tasks/:taskId/undo')
+  undoByTask(@CurrentUser() u: AuthUser, @Param('taskId') taskId: string) {
+    return this.svc.undoByTask(u.tenantId, { userId: u.userId, role: u.role }, taskId);
+  }
+
+  /**
+   * Счётчики попадания и расход за месяц. Текстов переписки здесь нет — только цифры,
+   * по которым владелец решает, включать ли автосоздание.
+   */
+  @Get('stats')
+  @Roles('owner', 'manager')
+  stats(@CurrentUser() u: AuthUser) {
+    return this.svc.stats(u.tenantId);
   }
 
   /** Проходы разбора: по ним видно, что агент работает и на чём спотыкается. */

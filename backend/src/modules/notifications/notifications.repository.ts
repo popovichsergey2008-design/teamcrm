@@ -123,14 +123,19 @@ export class NotificationsRepository {
       title: string; project_id: string; project_name: string;
       column_name: string | null; assignee_name: string | null;
       priority: string | null; deadline_at: Date | null;
+      manager_name: string | null; from_chat: boolean; created_by_ai: boolean;
     }>(
       `SELECT t.title, t.project_id, p.name AS project_name,
               c.name AS column_name, a.full_name AS assignee_name,
-              t.priority, t.deadline_at
+              t.priority, t.deadline_at,
+              m.full_name AS manager_name,
+              (t.source_chat_message_id IS NOT NULL) AS from_chat,
+              t.created_by_ai
          FROM tasks t
          JOIN projects p ON p.id = t.project_id
     LEFT JOIN board_columns c ON c.id = t.column_id
     LEFT JOIN users a ON a.id = t.assignee_id
+    LEFT JOIN users m ON m.id = t.created_by
         WHERE t.tenant_id = $1 AND t.id = $2`,
       [tenantId, taskId],
     );

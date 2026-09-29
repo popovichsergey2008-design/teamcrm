@@ -5,16 +5,16 @@ import { useEscape } from '../hooks/useEscape';
 import { navigate } from '../lib/router';
 import { stampLabel } from '../lib/chat-text';
 import type { IconName } from './Icon';
-import type { ChatAnalysisAction, ChatAnalysisRun, ChatAnalysisSettings } from '../types';
+import type { ChatAnalysisAction, ChatAnalysisRun, ChatAnalysisSettings, ChatAnalysisStats } from '../types';
 
 /**
- * «Разбор переписки» в настройках (ТЗ-12, этап 1).
+ * «Разбор переписки» в настройках (ТЗ-12, этапы 1–4).
  *
- * Агент читает ЗАТИХШИЕ разговоры в рабочих чатах и показывает, что в них понял.
- * Задач, встреч и решений он пока не создаёт — этот экран существует ровно для того,
- * чтобы посмотреть на своих переписках, попадает ли он, прежде чем давать ему что-то
- * делать. Поэтому главное здесь не настройки, а список с сообщениями-источниками: по
- * ним видно, откуда взялся каждый вывод.
+ * Агент читает ЗАТИХШИЕ разговоры в рабочих чатах и показывает, что в них понял. По
+ * умолчанию он только предлагает — задачу заводит человек. Автосоздание владелец
+ * включает сам, и рядом с переключателем стоят счётчики попадания на ЕГО переписках:
+ * решение должно опираться на цифры, а не на наше обещание. Главное на экране — список
+ * с сообщениями-источниками: по ним видно, откуда взялся каждый вывод.
  *
  * Личные переписки и заметки себе не разбираются вовсе — это решение заказчика, и оно
  * стоит в коде сервера, а не переключателем.
@@ -38,8 +38,12 @@ const STATUS: Record<string, string> = {
   ready: 'готово завести',
   needs_clarification: 'не хватает данных',
   confirmed: 'задача заведена',
+  auto_created: 'агент завёл сам',
+  cancelled: 'отменено',
   rejected: 'отклонено',
 };
+
+const share = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
 
 const chatName = (a: { chat_project_name: string | null; chat_title: string | null }) =>
   a.chat_project_name ?? a.chat_title ?? 'без названия';
@@ -49,6 +53,9 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
   const [cfg, setCfg] = useState<ChatAnalysisSettings | null>(null);
   const [actions, setActions] = useState<ChatAnalysisAction[]>([]);
   const [runs, setRuns] = useState<ChatAnalysisRun[]>([]);
+  const [stats, setStats] = useState<ChatAnalysisStats | null>(null);
+  /** Потолок расхода, как его набирают: пустая строка — без потолка. */
+  const [limit, setLimit] = useState('');
   const [open, setOpen] = useState<string | null>(null);
   /** Чем дополнить наблюдение перед заведением: проект и исполнитель, если их нет. */
   const [patch, setPatch] = useState<Record<string, { projectId?: string; assigneeId?: string }>>({});
@@ -62,7 +69,11 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
     api.chatAnalysisSettings().then(setCfg).catch(() => setCfg(null));
     api.chatAnalysisActions().then(setActions).catch(() => setActions([]));
     api.chatAnalysisRuns().then(setRuns).catch(() => setRuns([]));
+    api.chatAnalysisStats().then(setStats).catch(() => setStats(null));
   };
+  useEffect(() => {
+    setLimit(cfg?.monthly_limit_usd != null ? String(Number(cfg.monthly_limit_usd)) : '');
+  }, [cfg?.monthly_limit_usd]);
   useEffect(() => {
     // Справочники нужны только там, где агенту чего-то не хватило.
     api.listProjects().then((r: any[]) => setProjects(r.map((p) => ({ id: String(p.id), name: p.name }))))
@@ -72,9 +83,14 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
   }, []);
   useEffect(() => { void load(); }, []);
 
-  const save = async (patch: { enabled?: boolean; quietMinutes?: number; askInChat?: boolean }) => {
+  const save = async (patch: {
+    enabled?: boolean; quietMinutes?: number; askInChat?: boolean; mode?: string; monthlyLimitUsd?: number | null;
+  }) => {
     setBusy(true); setErr(''); setMsg('');
-    try { setCfg(await api.saveChatAnalysisSettings(patch)); }
+    try {
+      setCfg(await api.saveChatAnalysisSettings(patch));
+      api.chatAnalysisStats().then(setStats).catch(() => undefined);
+    }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
     finally { setBusy(false); }
   };
@@ -107,7 +123,21 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
     setMsg(`Задача «${r.task.title}» заведена`);
   });
 
+  const undo = (a: ChatAnalysisAction) => act(async () => {
+    await api.undoChatAction(a.id);
+    setMsg(`Задача «${a.title}» отменена и убрана в корзину`);
+  });
+
+  const saveLimit = () => {
+    const v = limit.trim().replace(',', '.');
+    if (!v) return void save({ monthlyLimitUsd: null });
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) { setErr('Потолок — число долларов, например 20'); return; }
+    void save({ monthlyLimitUsd: Math.round(n * 100) / 100 });
+  };
+
   const failed = runs.filter((r) => r.status === 'failed').length;
+  const q = stats?.quality;
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
@@ -121,9 +151,10 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
 
         <p className="dim ca-intro">
           Агент читает разговоры в рабочих чатах, когда они затихают, и показывает, что понял:
-          поручения, решения, договорённости о встречах. <b>Ничего не создаёт</b> — пока это
-          только наблюдение, чтобы вы посмотрели, попадает ли он.
-          Личные переписки и заметки себе не разбираются.
+          поручения, решения, договорённости о встречах. {cfg?.mode === 'auto_high'
+            ? <>Готовые поручения <b>заводит сам</b> и пишет об этом в чат; ошибку можно отменить в течение суток.</>
+            : <><b>Сам ничего не создаёт</b> — задачу заводите вы, одним нажатием.</>}
+          {' '}Личные переписки и заметки себе не разбираются.
         </p>
 
         {cfg && (
@@ -172,6 +203,82 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                 </span>
               </span>
             </label>
+            {/*
+              Автосоздание — решение заказчика: по умолчанию выключено. Рядом стоят цифры
+              с переписок этой компании: включать его стоит, когда агент попадает, а не
+              когда поверили на слово.
+            */}
+            <div className="ca-mode">
+              <span className="gate-item-title">Что делать с понятым поручением</span>
+              {[
+                { v: 'suggest', t: 'Только предлагать', h: 'Задачу заводит человек в этом окне. Так по умолчанию.' },
+                {
+                  v: 'auto_high',
+                  t: 'Заводить самому, когда понятно всё',
+                  h: 'Только если ясно, что это поручение, в каком проекте, от кого и кому. Исполнитель и постановщик получат письмо с пометкой «по итогам переписки», в чате появится сообщение. Отменить можно в течение суток.',
+                },
+              ].map((o) => (
+                <label key={o.v} className={`gate-item${canManage ? '' : ' gate-item-ro'}`}>
+                  <input
+                    type="radio"
+                    name="ca-mode"
+                    checked={cfg.mode === o.v}
+                    disabled={!canManage || busy || !cfg.enabled}
+                    onChange={() => void save({ mode: o.v })}
+                  />
+                  <span>
+                    <span className="gate-item-title">{o.t}</span>
+                    <span className="dim gate-item-hint">{o.h}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            {q && (
+              <div className="ca-quality">
+                <div className="gate-item-title">Как агент попадает — за 30 дней</div>
+                <div className="dim ca-quality-row">
+                  Нашёл поручений: {q.tasksDetected} · заведено: {q.confirmed + q.autoCreated}
+                  {' '}· отклонено и отменено: {q.rejected + q.undone} · ждут: {q.ready + q.needsClarification}
+                </div>
+                <div className="dim ca-quality-row">
+                  Промахи: {share(q.rejectRate)} поручений оказались не задачей или отменены;
+                  {' '}{share(q.correctionRate)} заведённых пришлось поправить (проект или исполнитель).
+                  {q.duplicates > 0 && <> Повторов отсечено: {q.duplicates}.</>}
+                </div>
+                {!q.enoughData && (
+                  <div className="dim ca-quality-row">
+                    Рассмотрено {q.reviewed} из {20} нужных, чтобы этим цифрам верить.
+                    {cfg.mode !== 'auto_high' && ' Автосоздание разумно включать после.'}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {canManage && (
+              <label className="field ca-limit">
+                <span>Потолок расхода на разбор в месяц, $</span>
+                <span className="ca-limit-row">
+                  <input
+                    className="input"
+                    inputMode="decimal"
+                    placeholder="без потолка"
+                    value={limit}
+                    disabled={busy}
+                    onChange={(e) => setLimit(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') saveLimit(); }}
+                  />
+                  <button className="btn btn-sm" disabled={busy} onClick={saveLimit}>Сохранить</button>
+                </span>
+                {stats && (
+                  <span className={stats.limitReached ? 'error-text' : 'dim'}>
+                    Потрачено в этом месяце: ${stats.spentUsd.toFixed(2)}
+                    {stats.limitReached && ' — потолок достигнут, разбор стоит до следующего месяца. Переписка не теряется: её разберут, когда поднимете потолок.'}
+                  </span>
+                )}
+              </label>
+            )}
+
             {canManage && (
               <button className="btn btn-sm" disabled={busy || !cfg.enabled} onClick={() => void runNow()}>
                 <Icon name="refresh" size={14} /> Прогнать сейчас
@@ -235,7 +342,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                   дописывает здесь же — уводить его на другой экран ради двух полей
                   значит потерять половину по дороге.
                 */}
-                {a.action_type === 'task' && !a.created_entity_id && a.status !== 'rejected' && (
+                {a.action_type === 'task' && !a.created_entity_id && !['rejected', 'cancelled'].includes(a.status) && (
                   <div className="ca-fix">
                     {!a.project_id && (
                       <select
@@ -263,7 +370,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                 )}
 
                 <div className="ca-acts">
-                  {a.action_type === 'task' && !a.created_entity_id && a.status !== 'rejected' && (
+                  {a.action_type === 'task' && !a.created_entity_id && !['rejected', 'cancelled'].includes(a.status) && (
                     <>
                       <button
                         className="btn btn-primary btn-sm"
@@ -279,7 +386,14 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                       </button>
                     </>
                   )}
-                  {a.created_entity_id && (
+                  {/* Отмена — только у заведённого агентом и только сутки; остальное сервер проверит сам. */}
+                  {a.status === 'auto_created'
+                    && Date.now() - new Date(a.updated_at).getTime() < 24 * 3600_000 && (
+                    <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void undo(a)}>
+                      <Icon name="close" size={13} /> Отменить задачу
+                    </button>
+                  )}
+                  {a.created_entity_id && a.status !== 'cancelled' && (
                     <button
                       className="btn btn-sm"
                       onClick={() => { navigate({ section: 'projects', projectId: String(a.project_id ?? ''), taskId: String(a.created_entity_id) }); onClose(); }}
