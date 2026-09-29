@@ -94,6 +94,31 @@ export function dedupKeyOf(a: {
   return createHash('sha1').update(line).digest('hex');
 }
 
+
+/** Откуда взялся проект наблюдения: по этому видно, догадка это или факт. */
+export type ProjectGround = 'chat' | 'spoken' | 'none';
+
+/**
+ * Проект разговора — по твёрдым основаниям, а не по догадке модели (ТЗ-12, разд. 9, 68).
+ *
+ * Живая проверка 29.09 показала, почему это нельзя оставлять модели: в групповом чате,
+ * не привязанном ни к какому проекту, она уверенно (0.9) приписала задачу первому
+ * попавшемуся проекту организации. «AI не создаёт задачу в случайном проекте» — это
+ * прямое требование ТЗ, и одного слова в промпте для него мало.
+ *
+ * Порядок из ТЗ: чат проекта сильнее всего — люди в нём говорят «надо переделать фильтр»,
+ * имея в виду именно его. Дальше — название, прозвучавшее в самом разговоре. Больше
+ * никаких оснований нет: пусто честнее случайного.
+ */
+export function resolveProject(o: {
+  chatProjectId: string | null;
+  spokenId: string | null;
+}): { projectId: string | null; confidence: number; ground: ProjectGround } {
+  if (o.chatProjectId) return { projectId: String(o.chatProjectId), confidence: 1, ground: 'chat' };
+  if (o.spokenId) return { projectId: String(o.spokenId), confidence: 0.9, ground: 'spoken' };
+  return { projectId: null, confidence: 0, ground: 'none' };
+}
+
 /** Ответ модели: текст с возможной обёрткой ```json. Сбой разбора — это пустой список. */
 export function parseAnalysis(raw: string, cat: RefCatalog, now = new Date()): ExtractedAction[] {
   let parsed: any;

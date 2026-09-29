@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiService } from '../ai/ai.service';
 import { PromptsService } from '../prompts/prompts.service';
-import { ExtractedAction, parseAnalysis, RefCatalog } from './analysis-schema';
+import { matchProjectInText } from '../nl/task-draft';
+import { dedupKeyOf, ExtractedAction, parseAnalysis, RefCatalog, resolveProject } from './analysis-schema';
 import { ChatAnalysisRepository, DueChatRow, MessageRow } from './chat-analysis.repository';
 import { closedSegments, Segment, SegmentMessage } from './segments';
 
@@ -189,7 +190,31 @@ export class ChatAnalysisService {
         { promptVersionId: prompt?.versionId, model: prompt?.model, params: prompt?.params },
       );
 
-      const actions = parseAnalysis(raw, catalog);
+      /*
+        Проект берём САМИ, а не у модели.
+
+        Живая проверка показала, чем это кончается иначе: в групповом чате, ни к какому
+        проекту не привязанном, модель уверенно приписала задачу первому попавшемуся
+        проекту организации. Твёрдых оснований ровно два — чат проекта и название,
+        прозвучавшее в самом разговоре; остального не существует, и пусто честнее.
+      */
+      const spoken = matchProjectInText(
+        messages.map((m) => String(m.body ?? '')).join('\n'),
+        projects.map((p) => ({ id: String(p.id), name: p.name })),
+      );
+
+      const actions = parseAnalysis(raw, catalog).map((a) => {
+        const p = resolveProject({ chatProjectId: chat.project_id, spokenId: spoken });
+        const fixed: ExtractedAction = {
+          ...a,
+          projectId: p.projectId,
+          confidence: { ...a.confidence, project: p.confidence },
+        };
+        // Ключ от повторов считается в том числе по проекту — пересобираем его.
+        fixed.dedupKey = dedupKeyOf(fixed);
+        return fixed;
+      });
+
       let stored = 0;
       for (const a of actions) {
         if (await this.repo.addAction(chat.tenant_id, runId, chat.chat_id, a)) stored++;

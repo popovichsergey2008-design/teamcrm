@@ -1,4 +1,4 @@
-import { dedupKeyOf, MAX_ACTIONS, parseAnalysis, RefCatalog } from './analysis-schema';
+import { dedupKeyOf, MAX_ACTIONS, parseAnalysis, RefCatalog, resolveProject } from './analysis-schema';
 
 const now = new Date('2026-09-29T09:00:00.000Z');
 
@@ -125,5 +125,27 @@ describe('ключ от повторной обработки', () => {
 
   it('тот же текст в другом разговоре — другое наблюдение', () => {
     expect(dedupKeyOf({ ...base, sources: [{ messageId: '901' }] })).not.toBe(dedupKeyOf(base));
+  });
+});
+
+describe('проект наблюдения', () => {
+  it('чат проекта решает всё: в нём говорят именно о нём', () => {
+    expect(resolveProject({ chatProjectId: '130', spokenId: '131' }))
+      .toEqual({ projectId: '130', confidence: 1, ground: 'chat' });
+  });
+
+  it('вне чата проекта считается только название, прозвучавшее в разговоре', () => {
+    expect(resolveProject({ chatProjectId: null, spokenId: '131' }))
+      .toEqual({ projectId: '131', confidence: 0.9, ground: 'spoken' });
+  });
+
+  it('оснований нет — проекта нет', () => {
+    /*
+      Ровно тот случай, который поймала живая проверка: в групповом чате модель
+      уверенно приписала задачу первому попавшемуся проекту. Её догадка сюда не
+      попадает вовсе — пусто честнее случайного (ТЗ разд. 68).
+    */
+    expect(resolveProject({ chatProjectId: null, spokenId: null }))
+      .toEqual({ projectId: null, confidence: 0, ground: 'none' });
   });
 });
