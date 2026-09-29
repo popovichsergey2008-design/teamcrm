@@ -395,10 +395,15 @@ export class ChatAnalysisService {
         проекту организации. Твёрдых оснований ровно два — чат проекта и название,
         прозвучавшее в самом разговоре; остального не существует, и пусто честнее.
       */
-      const spoken = matchProjectInText(
-        messages.map((m) => String(m.body ?? '')).join('\n'),
-        projects.map((p) => ({ id: String(p.id), name: p.name })),
-      );
+      const said = messages.map((m) => String(m.body ?? '')).join('\n');
+      const spoken = matchProjectInText(said, projects.map((p) => ({ id: String(p.id), name: p.name })));
+      /*
+        Кто НАЗВАН в разговоре. Без этого модель сама подбирает исполнителя по профилю
+        («выгрузка» → бэкендщик), хотя в переписке его никто не упоминал, — поймано живой
+        проверкой 29.09. Подбор по навыкам это отдельное решение, и выдавать его за
+        прочитанное нельзя.
+      */
+      const namedInText = matchUserInText(said, people.map((p) => ({ id: String(p.id), name: p.name })));
 
       // Кто что написал: по авторству определяются постановщик и исполнитель.
       const authorOf = new Map(messages.map((m) => [String(m.id), m.author_id ? String(m.author_id) : null]));
@@ -413,6 +418,7 @@ export class ChatAnalysisService {
         const roles = resolveRoles({
           sources: a.sources.map((s) => ({ ...s, authorId: authorOf.get(s.messageId) ?? null })),
           modelAssigneeId: a.assigneeId,
+          namedInText,
         });
 
         const fixed: ExtractedAction = {

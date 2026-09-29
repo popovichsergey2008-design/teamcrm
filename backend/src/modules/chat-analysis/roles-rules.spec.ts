@@ -8,8 +8,10 @@ const PETR = '18';
 
 describe('кто поручил и кому', () => {
   it('прямое поручение: постановщик — автор сообщения с поручением', () => {
-    // «Юра, исправь API» — писала Ольга, названа модель исполнителем Пётр.
-    const r = resolveRoles({ sources: [src('1', 'instruction', OLGA)], modelAssigneeId: PETR });
+    // «Пётр, исправь API» — писала Ольга, имя Петра в переписке прозвучало.
+    const r = resolveRoles({
+      sources: [src('1', 'instruction', OLGA)], modelAssigneeId: PETR, namedInText: PETR,
+    });
     expect(r).toMatchObject({ assignerId: OLGA, assigneeId: PETR, pattern: 'named' });
     expect(r.assignerConfidence).toBeGreaterThanOrEqual(THRESHOLDS.assigner);
   });
@@ -31,7 +33,7 @@ describe('кто поручил и кому', () => {
     // Ольга сама себе поддакнула — исполнителем остаётся тот, кого назвали.
     const r = resolveRoles({
       sources: [src('1', 'instruction', OLGA), src('2', 'acceptance', OLGA)],
-      modelAssigneeId: PETR,
+      modelAssigneeId: PETR, namedInText: PETR,
     });
     expect(r).toMatchObject({ assigneeId: PETR, pattern: 'named' });
   });
@@ -62,10 +64,36 @@ describe('кто поручил и кому', () => {
     expect(r.assigneeConfidence).toBe(0);
   });
 
+  it('исполнителя, которого в переписке никто не называл, не назначаем', () => {
+    /*
+      Живая проверка 29.09: в разговоре «надо переделать выгрузку остатков» имён не было
+      вовсе, а модель сама подобрала бэкендщика по профилю. Подбор по навыкам — отдельное
+      решение, и выдавать его за прочитанное нельзя: спросим.
+    */
+    const r = resolveRoles({
+      sources: [src('1', 'instruction', OLGA)], modelAssigneeId: PETR, namedInText: null,
+    });
+    expect(r).toMatchObject({ assignerId: OLGA, assigneeId: null, pattern: 'unknown' });
+  });
+
+  it('модель назвала одного, а в переписке звучал другой — не верим модели', () => {
+    const r = resolveRoles({
+      sources: [src('1', 'instruction', OLGA)], modelAssigneeId: PETR, namedInText: '99',
+    });
+    expect(r.assigneeId).toBeNull();
+  });
+
+  it('задача себе не требует имени в тексте: «я подготовлю отчёт»', () => {
+    const r = resolveRoles({
+      sources: [src('1', 'instruction', PETR)], modelAssigneeId: PETR, namedInText: null,
+    });
+    expect(r).toMatchObject({ assigneeId: PETR, pattern: 'self' });
+  });
+
   it('отмену в разговоре замечаем', () => {
     const r = resolveRoles({
       sources: [src('1', 'instruction', OLGA), src('2', 'cancellation', OLGA)],
-      modelAssigneeId: PETR,
+      modelAssigneeId: PETR, namedInText: PETR,
     });
     expect(r.cancelled).toBe(true);
   });

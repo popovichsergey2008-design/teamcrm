@@ -56,6 +56,14 @@ export interface Roles {
 export function resolveRoles(o: {
   sources: SourceAuthor[];
   modelAssigneeId: string | null;
+  /**
+   * Кто НАЗВАН в самом разговоре — по тому же сопоставлению имён, что и в быстрой
+   * команде. Догадку модели принимаем только с этим подтверждением: живая проверка
+   * 29.09 показала, что иначе она сама подбирает исполнителя по профилю («выгрузка» →
+   * бэкендщик), хотя в переписке его никто не упоминал. Подбор по навыкам — отдельное
+   * решение, и принимать его молча, выдавая за прочитанное, нельзя.
+   */
+  namedInText?: string | null;
 }): Roles {
   const cancelled = o.sources.some((s) => s.role === 'cancellation');
   const instruction = o.sources.find((s) => s.role === 'instruction' && s.authorId) ?? null;
@@ -82,7 +90,15 @@ export function resolveRoles(o: {
     };
   }
 
-  const named = o.modelAssigneeId ? String(o.modelAssigneeId) : null;
+  /*
+    Исполнителя принимаем в двух случаях: его имя прозвучало в разговоре или это
+    поручение самому себе («я завтра подготовлю отчёт» — имени там нет и быть не может).
+    Всё остальное — «непонятно»: спросим, а не назначим.
+  */
+  const candidate = o.modelAssigneeId ? String(o.modelAssigneeId) : null;
+  const named = candidate
+    && (candidate === assignerId || (o.namedInText && candidate === String(o.namedInText)))
+    ? candidate : null;
   if (named) {
     return {
       assignerId, assigneeId: named,
