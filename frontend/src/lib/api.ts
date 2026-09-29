@@ -1664,6 +1664,16 @@ export const api = {
     patch: { active?: boolean; role?: string; skills?: string[]; maxConversations?: number; remove?: boolean },
   ) =>
     request<PlatformStaff[]>('POST', '/platform/staff', { userId, ...patch }),
+  // Разбор переписки (ТЗ-12): агент читает затихшие разговоры и показывает, что понял.
+  chatAnalysisSettings: () => request<import('../types').ChatAnalysisSettings>('GET', '/chat-analysis/settings'),
+  saveChatAnalysisSettings: (b: { enabled?: boolean; quietMinutes?: number; mode?: string }) =>
+    request<import('../types').ChatAnalysisSettings>('PATCH', '/chat-analysis/settings', b),
+  chatAnalysisActions: (chatId?: string) =>
+    request<import('../types').ChatAnalysisAction[]>('GET', `/chat-analysis/actions${chatId ? `?chatId=${chatId}` : ''}`),
+  chatAnalysisRuns: () => request<import('../types').ChatAnalysisRun[]>('GET', '/chat-analysis/runs'),
+  runChatAnalysis: () => request<{ analyzed: number }>('POST', '/chat-analysis/run', {}),
+  setChatAnalysisFlag: (chatId: string, enabled: boolean) =>
+    request<{ chatId: string; enabled: boolean }>('PATCH', `/chat-analysis/chats/${chatId}`, { enabled }),
   platformTenants: () => request<PlatformTenant[]>('GET', '/platform/tenants'),
   /** Воронка онбординга: считается по фактам, поэтому запрос не из дешёвых — берём по требованию. */
   platformFunnel: () => request<import('../types').FunnelReport>('GET', '/platform/funnel'),

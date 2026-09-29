@@ -43,6 +43,7 @@ import { TagsModule } from './modules/tags/tags.module';
 import { TemplatesModule } from './modules/templates/templates.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { ChatAnalysisModule } from './modules/chat-analysis/chat-analysis.module';
 import { SecurityModule } from './modules/security/security.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DiagModule } from './modules/diagnostics/diag.module';
@@ -119,6 +120,7 @@ import { FeedModule } from './modules/feed/feed.module';
     TemplatesModule,
     OnboardingModule,
     AnalyticsModule,
+    ChatAnalysisModule,
     SecurityModule,
     BitrixModule,
     YougileModule,

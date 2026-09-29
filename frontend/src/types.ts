@@ -91,6 +91,59 @@ export interface FunnelReport {
   }[];
 }
 
+/** Разбор переписки (ТЗ-12): что агент понял в затихшем разговоре. */
+export interface ChatAnalysisSettings {
+  enabled: boolean;
+  quiet_minutes: number;
+  mode: string;
+}
+export interface ChatAnalysisSource {
+  messageId: string;
+  role: string;
+  body: string;
+  at: string;
+  author: string | null;
+}
+export interface ChatAnalysisAction {
+  id: string;
+  chat_id: string;
+  action_type: string;
+  title: string;
+  description: string;
+  project_id: string | null;
+  project_name: string | null;
+  assigner_id: string | null;
+  assigner_name: string | null;
+  assignee_id: string | null;
+  assignee_name: string | null;
+  deadline_at: string | null;
+  meeting_at: string | null;
+  status: string;
+  created_at: string;
+  intent_confidence: string | number;
+  project_confidence: string | number;
+  assigner_confidence: string | number;
+  assignee_confidence: string | number;
+  chat_title: string | null;
+  chat_kind: string;
+  chat_project_name: string | null;
+  sources: ChatAnalysisSource[];
+}
+export interface ChatAnalysisRun {
+  id: string;
+  chat_id: string;
+  mode: string;
+  status: string;
+  messages: number;
+  actions_count: number;
+  model: string | null;
+  error: string | null;
+  started_at: string;
+  completed_at: string | null;
+  chat_title: string | null;
+  chat_project_name: string | null;
+}
+
 export interface Project {
   id: string;
   name: string;

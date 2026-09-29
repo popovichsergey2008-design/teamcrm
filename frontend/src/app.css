@@ -2382,6 +2382,29 @@
 .gate-item-title { display: block; font-size: var(--fs-sm); }
 .gate-item-hint { display: block; font-size: var(--fs-xs); margin-top: 3px; }
 
+/* Разбор переписки (ТЗ-12): что агент понял и откуда он это взял. */
+.ca-intro { font-size: var(--fs-sm); margin: 0 0 10px; }
+.ca-settings { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.ca-quiet { gap: 4px; }
+.ca-quiet span { font-size: var(--fs-xs); color: var(--text-dim); }
+.ca-msg { font-size: var(--fs-xs); margin-bottom: 8px; }
+.ca-list { display: flex; flex-direction: column; gap: 10px; }
+.ca-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-soft); }
+.ca-item-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+/* Вид наблюдения — обведённая метка, а не заливка: цветов тут семь, и белым по ним нельзя. */
+.ca-type {
+  display: inline-flex; align-items: center; gap: 4px; flex: none;
+  padding: 1px 7px; border: 1px solid var(--border-strong, var(--border)); border-radius: 999px;
+  font-size: var(--fs-xs); color: var(--text-dim); background: var(--bg);
+}
+.ca-title { font-size: var(--fs-sm); font-weight: 600; }
+.ca-meta, .ca-conf { font-size: var(--fs-xs); margin-top: 4px; }
+.ca-acts { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.ca-sources { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.ca-source { display: flex; flex-direction: column; gap: 2px; }
+.ca-source-who { font-size: var(--fs-xs); }
+.ca-source-body { font-size: var(--fs-sm); white-space: pre-wrap; word-break: break-word; }
+
 /* AI Brain чат */
 .brain-chat { display: flex; flex-direction: column; gap: 10px; max-height: 52vh; overflow-y: auto; padding: 8px 2px; margin-bottom: 8px; }
 .brain-msg { padding: 10px 12px; border-radius: var(--radius-sm); font-size: calc(14px * var(--fs-scale)); max-width: 92%; }

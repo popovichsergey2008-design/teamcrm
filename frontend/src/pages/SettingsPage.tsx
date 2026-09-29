@@ -5,6 +5,7 @@ import { HandoffGatePanel } from '../components/HandoffGatePanel';
 import { SecurityPanel } from '../components/SecurityPanel';
 import { TagsSettingsPanel } from '../components/TagsSettingsPanel';
 import { OnboardingPanel } from '../components/OnboardingPanel';
+import { ChatAnalysisPanel } from '../components/ChatAnalysisPanel';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { AiUsagePanel } from '../components/AiUsagePanel';
 import { KnowledgePanel } from '../components/KnowledgePanel';
@@ -99,6 +100,13 @@ const CARDS: Card[] = [
     icon: 'tag',
   },
   {
+    tab: 'chat-analysis',
+    title: 'Разбор переписки',
+    hint: 'Агент читает затихшие рабочие разговоры и показывает, что в них понял',
+    icon: 'chat',
+    roles: ['owner', 'manager'],
+  },
+  {
     tab: 'assistant',
     title: 'Напоминания ассистента',
     hint: 'О чём AI Секретарь напоминает сам, а о чём спрашивает разрешения',
@@ -108,6 +116,7 @@ const CARDS: Card[] = [
 
 /** Разделы с ограничением по роли: адрес открывается, а содержимое — нет. */
 const DENIED: [string, string[]][] = [
+  ['chat-analysis', ['owner', 'manager']],
   ['security', ['owner']],
   ['team', ['owner', 'manager']],
   ['integrations', ['owner']],
@@ -146,6 +155,9 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'knowledge' && <KnowledgePanel canManage={canManage} onClose={close} />}
       {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}
       {route.tab === 'assistant' && <AssistantPanel canManage={role === 'owner'} onClose={close} />}
+      {/* Что агент понял в переписке. Создавать он пока ничего не умеет (ТЗ-12, этап 1). */}
+      {route.tab === 'chat-analysis' && canManage
+        && <ChatAnalysisPanel canManage={role === 'owner'} onClose={close} />}
       {/* Подсказку можно открыть заново, даже если её убрали с «Фокуса дня» (ТЗ-11, разд. 74). */}
       {route.tab === 'onboarding' && <OnboardingPanel onClose={close} />}
       {route.tab === 'work' && <WorkSettingsPanel canManage={role === 'owner'} onClose={close} />}
