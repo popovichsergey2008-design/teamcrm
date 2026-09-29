@@ -33,6 +33,8 @@ export interface SettingsRow {
   enabled: boolean;
   quiet_minutes: number;
   mode: string;
+  /** Бот вправе задать уточняющий вопрос в чате. */
+  ask_in_chat: boolean;
 }
 
 export interface DueChatRow {
@@ -45,6 +47,12 @@ export interface DueChatRow {
   last_message_id: string;
   /** Пояс организации: по нему модель считает «завтра» и «до пятницы». */
   timezone: string;
+  /** Вопросы в чатах включены владельцем. */
+  ask_in_chat: boolean;
+  work_start: string;
+  work_end: string;
+  weekend_days: number[];
+  holidays: string[];
 }
 
 export interface MessageRow {
@@ -60,6 +68,24 @@ export interface MessageRow {
 
 export interface NamedRow { id: string; name: string }
 
+/** Наблюдение, ждущее ответа на вопрос бота. */
+export interface AwaitingRow {
+  id: string;
+  tenant_id: string;
+  chat_id: string;
+  title: string;
+  project_id: string | null;
+  assignee_id: string | null;
+  assigner_id: string | null;
+  question_message_id: string;
+  intent_confidence: string;
+  project_confidence: string;
+  assigner_confidence: string;
+  assignee_confidence: string;
+  kind: string;
+  chat_project_id: string | null;
+}
+
 @Injectable()
 export class ChatAnalysisRepository {
   constructor(private readonly db: DbService) {}
@@ -68,25 +94,31 @@ export class ChatAnalysisRepository {
 
   async settings(tenantId: string): Promise<SettingsRow> {
     const row = await this.db.one<SettingsRow>(
-      `SELECT tenant_id::text, enabled, quiet_minutes, mode
+      `SELECT tenant_id::text, enabled, quiet_minutes, mode, ask_in_chat
          FROM chat_analysis_settings WHERE tenant_id = $1`,
       [tenantId],
     );
     // Нет строки — значит, владелец ничего не включал: выключено.
-    return row ?? { tenant_id: String(tenantId), enabled: false, quiet_minutes: 20, mode: 'suggest' };
+    return row ?? {
+      tenant_id: String(tenantId), enabled: false, quiet_minutes: 20, mode: 'suggest', ask_in_chat: true,
+    };
   }
 
-  async saveSettings(tenantId: string, patch: { enabled?: boolean; quietMinutes?: number; mode?: string }): Promise<SettingsRow> {
+  async saveSettings(
+    tenantId: string,
+    patch: { enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean },
+  ): Promise<SettingsRow> {
     const row = await this.db.one<SettingsRow>(
-      `INSERT INTO chat_analysis_settings (tenant_id, enabled, quiet_minutes, mode)
-       VALUES ($1, COALESCE($2, FALSE), COALESCE($3, 20), COALESCE($4, 'suggest'))
+      `INSERT INTO chat_analysis_settings (tenant_id, enabled, quiet_minutes, mode, ask_in_chat)
+       VALUES ($1, COALESCE($2, FALSE), COALESCE($3, 20), COALESCE($4, 'suggest'), COALESCE($5, TRUE))
        ON CONFLICT (tenant_id) DO UPDATE SET
          enabled       = COALESCE($2, chat_analysis_settings.enabled),
          quiet_minutes = COALESCE($3, chat_analysis_settings.quiet_minutes),
          mode          = COALESCE($4, chat_analysis_settings.mode),
+         ask_in_chat   = COALESCE($5, chat_analysis_settings.ask_in_chat),
          updated_at    = now()
-       RETURNING tenant_id::text, enabled, quiet_minutes, mode`,
-      [tenantId, patch.enabled ?? null, patch.quietMinutes ?? null, patch.mode ?? null],
+       RETURNING tenant_id::text, enabled, quiet_minutes, mode, ask_in_chat`,
+      [tenantId, patch.enabled ?? null, patch.quietMinutes ?? null, patch.mode ?? null, patch.askInChat ?? null],
     );
     return row as SettingsRow;
   }
@@ -110,11 +142,16 @@ export class ChatAnalysisRepository {
   dueChats(now: Date, tenantId: string | null, limit = 20): Promise<DueChatRow[]> {
     return this.db.many<DueChatRow>(
       `SELECT c.id::text AS chat_id, c.tenant_id::text, c.kind, c.title,
-              c.project_id::text, s.quiet_minutes, t.timezone,
+              c.project_id::text, s.quiet_minutes, t.timezone, s.ask_in_chat,
+              COALESCE(w.work_start, TIME '09:00')::text AS work_start,
+              COALESCE(w.work_end, TIME '18:00')::text AS work_end,
+              COALESCE(w.weekend_days, ARRAY[0,6]) AS weekend_days,
+              COALESCE(w.holidays, ARRAY[]::date[])::text[] AS holidays,
               COALESCE(cp.last_message_id, 0)::text AS last_message_id
          FROM chats c
          JOIN chat_analysis_settings s ON s.tenant_id = c.tenant_id AND s.enabled
          JOIN tenants t ON t.id = c.tenant_id
+         LEFT JOIN org_work_settings w ON w.tenant_id = c.tenant_id
          LEFT JOIN chat_analysis_checkpoints cp ON cp.tenant_id = c.tenant_id AND cp.chat_id = c.id
         WHERE ${ANALYZABLE}
           AND c.last_message_at IS NOT NULL
@@ -253,6 +290,67 @@ export class ChatAnalysisRepository {
     );
   }
 
+  // ── вопрос в чате ──
+
+  /** Отметить, что спросили: второй раз к человеку не возвращаемся. */
+  async markAsked(tenantId: string, id: string, messageId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE chat_extracted_actions
+          SET question_message_id = $3, asked_at = now(), updated_at = now()
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id, messageId],
+    );
+  }
+
+  /**
+   * Наблюдения, ждущие ответа, вместе с обстановкой для его разбора.
+   *
+   * Ответ ловим в том же проходе, что и разбор, — раз в пять минут. Отдельный
+   * перехват каждого сообщения дал бы мгновенность, которой тут не нужно: разговор
+   * уже затих, а взамен пришлось бы связать модули в круг.
+   */
+  awaiting(now: Date, limit = 50): Promise<AwaitingRow[]> {
+    return this.db.many<AwaitingRow>(
+      `SELECT a.id::text, a.tenant_id::text, a.chat_id::text, a.title,
+              a.project_id::text, a.assignee_id::text, a.assigner_id::text,
+              a.question_message_id::text,
+              a.intent_confidence, a.project_confidence, a.assigner_confidence, a.assignee_confidence,
+              c.kind, c.project_id::text AS chat_project_id
+         FROM chat_extracted_actions a
+         JOIN chats c ON c.id = a.chat_id
+         JOIN chat_analysis_settings s ON s.tenant_id = a.tenant_id AND s.enabled
+        WHERE a.question_message_id IS NOT NULL
+          AND a.status = 'needs_clarification'
+          AND a.asked_at > $1::timestamptz - interval '3 days'
+        ORDER BY a.asked_at
+        LIMIT $2`,
+      [now, limit],
+    );
+  }
+
+  /** Ответ на вопрос: сообщения чата после вопроса. */
+  messagesAfterQuestion(tenantId: string, chatId: string, questionMessageId: string): Promise<MessageRow[]> {
+    return this.messagesAfter(tenantId, chatId, questionMessageId, 40);
+  }
+
+  /** Дозаполнить наблюдение тем, что человек ответил. */
+  async fill(
+    tenantId: string, id: string,
+    o: { projectId?: string | null; assigneeId?: string | null; projectConfidence?: number; assigneeConfidence?: number; status: string },
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE chat_extracted_actions
+          SET project_id = COALESCE($3::bigint, project_id),
+              assignee_id = COALESCE($4::bigint, assignee_id),
+              project_confidence = COALESCE($5, project_confidence),
+              assignee_confidence = COALESCE($6, assignee_confidence),
+              status = $7, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id, o.projectId ?? null, o.assigneeId ?? null,
+        o.projectConfidence ?? null, o.assigneeConfidence ?? null, o.status],
+    );
+  }
+
   // ── чтение ──
 
   /** Что агент понял: последние наблюдения организации или одного чата. */
@@ -262,7 +360,7 @@ export class ChatAnalysisRepository {
               a.project_id::text, p.name AS project_name,
               a.assigner_id::text, ur.full_name AS assigner_name,
               a.assignee_id::text, ue.full_name AS assignee_name,
-              a.deadline_at, a.meeting_at, a.status, a.created_at,
+              a.deadline_at, a.meeting_at, a.status, a.created_at, a.asked_at,
               a.created_entity_type, a.created_entity_id::text,
               a.intent_confidence, a.project_confidence, a.assigner_confidence, a.assignee_confidence,
               c.title AS chat_title, c.kind AS chat_kind, pc.name AS chat_project_name,

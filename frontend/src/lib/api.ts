@@ -1666,7 +1666,7 @@ export const api = {
     request<PlatformStaff[]>('POST', '/platform/staff', { userId, ...patch }),
   // Разбор переписки (ТЗ-12): агент читает затихшие разговоры и показывает, что понял.
   chatAnalysisSettings: () => request<import('../types').ChatAnalysisSettings>('GET', '/chat-analysis/settings'),
-  saveChatAnalysisSettings: (b: { enabled?: boolean; quietMinutes?: number; mode?: string }) =>
+  saveChatAnalysisSettings: (b: { enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean }) =>
     request<import('../types').ChatAnalysisSettings>('PATCH', '/chat-analysis/settings', b),
   chatAnalysisActions: (chatId?: string) =>
     request<import('../types').ChatAnalysisAction[]>('GET', `/chat-analysis/actions${chatId ? `?chatId=${chatId}` : ''}`),

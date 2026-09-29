@@ -3,6 +3,8 @@ import { AiModule } from '../ai/ai.module';
 import { PromptsModule } from '../prompts/prompts.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { SecretaryModule } from '../secretary/secretary.module';
+import { ChatsModule } from '../chats/chats.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { ChatAnalysisController } from './chat-analysis.controller';
 import { ChatAnalysisRepository } from './chat-analysis.repository';
 import { ChatAnalysisScheduler } from './chat-analysis.scheduler';
@@ -13,7 +15,7 @@ import { ChatAnalysisService } from './chat-analysis.service';
  * что понял. Ничего не создаёт — см. комментарий в службе.
  */
 @Module({
-  imports: [AiModule, PromptsModule, TasksModule, SecretaryModule],
+  imports: [AiModule, PromptsModule, TasksModule, SecretaryModule, ChatsModule, RealtimeModule],
   controllers: [ChatAnalysisController],
   providers: [ChatAnalysisService, ChatAnalysisRepository, ChatAnalysisScheduler],
   exports: [ChatAnalysisService],

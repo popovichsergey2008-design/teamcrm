@@ -11,6 +11,8 @@ class SettingsDto {
   /** Сколько тишины считать концом разговора. */
   @IsOptional() @IsInt() @Min(5) @Max(240) @Type(() => Number) quietMinutes?: number;
   @IsOptional() @IsIn(['suggest', 'auto_high']) mode?: string;
+  /** Бот вправе задать уточняющий вопрос прямо в чате. */
+  @IsOptional() @IsBoolean() askInChat?: boolean;
 }
 
 class ChatFlagDto {

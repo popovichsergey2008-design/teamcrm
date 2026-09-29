@@ -72,7 +72,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
   }, []);
   useEffect(() => { void load(); }, []);
 
-  const save = async (patch: { enabled?: boolean; quietMinutes?: number }) => {
+  const save = async (patch: { enabled?: boolean; quietMinutes?: number; askInChat?: boolean }) => {
     setBusy(true); setErr(''); setMsg('');
     try { setCfg(await api.saveChatAnalysisSettings(patch)); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
@@ -153,6 +153,25 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                 {[10, 15, 20, 30, 45, 60].map((m) => <option key={m} value={m}>{m} минут</option>)}
               </select>
             </label>
+            {/*
+              Вопрос в чате видят все участники — это должно быть решением владельца,
+              а не побочным действием включённого разбора.
+            */}
+            <label className={`gate-item${canManage ? '' : ' gate-item-ro'}`}>
+              <input
+                type="checkbox"
+                checked={cfg.ask_in_chat}
+                disabled={!canManage || busy || !cfg.enabled}
+                onChange={(e) => void save({ askInChat: e.target.checked })}
+              />
+              <span>
+                <span className="gate-item-title">Спрашивать в чате, когда непонятно</span>
+                <span className="dim gate-item-hint">
+                  Не хватило проекта или исполнителя — бот спросит автора поручения одним
+                  сообщением. Один раз: если не ответят, переспрашивать не станет.
+                </span>
+              </span>
+            </label>
             {canManage && (
               <button className="btn btn-sm" disabled={busy || !cfg.enabled} onClick={() => void runNow()}>
                 <Icon name="refresh" size={14} /> Прогнать сейчас
@@ -188,7 +207,9 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                 <div className="ca-item-head">
                   <span className="ca-type"><Icon name={t.icon} size={13} /> {t.label}</span>
                   <span className="ca-title">{a.title}</span>
-                  <span className="dim ca-status">{STATUS[a.status] ?? a.status}</span>
+                  <span className="dim ca-status">
+                    {a.asked_at && a.status === 'needs_clarification' ? 'спросили в чате' : (STATUS[a.status] ?? a.status)}
+                  </span>
                 </div>
                 <div className="dim ca-meta">
                   {[

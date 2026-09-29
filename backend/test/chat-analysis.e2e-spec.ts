@@ -9,6 +9,7 @@ import { ResponseInterceptor } from '../src/common/http/response.interceptor';
 import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
 import { DbService } from '../src/database/db.service';
 import { ChatAnalysisRepository } from '../src/modules/chat-analysis/chat-analysis.repository';
+import { ChatAnalysisService } from '../src/modules/chat-analysis/chat-analysis.service';
 
 /**
  * Разбор переписки (ТЗ-12, этапы 1–2).
@@ -237,6 +238,59 @@ describe('разбор переписки (e2e)', () => {
     // Отказы нужны: по ним видно, где агент ошибается.
     expect(row!.status).toBe('rejected');
     await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(409);
+  }, 90000);
+
+  it('вопрос в чате включается отдельно и по умолчанию разрешён', async () => {
+    const { O } = await team('CA10');
+    const off = (await http.get('/api/chat-analysis/settings').set(O).expect(200)).body.data;
+    // Разбор выключен, но если его включат — спрашивать бот вправе.
+    expect(off.ask_in_chat).toBe(true);
+
+    const on = (await http.patch('/api/chat-analysis/settings').set(O)
+      .send({ enabled: true, askInChat: false }).expect(200)).body.data;
+    expect(on).toMatchObject({ enabled: true, ask_in_chat: false });
+  }, 60000);
+
+  it('ответ на вопрос дозаполняет наблюдение и бот говорит, что принял', async () => {
+    const { owner, mate, O } = await team('CA11');
+    await http.patch('/api/chat-analysis/settings').set(O).send({ enabled: true }).expect(200);
+    const project = (await http.post('/api/projects').set(O).send({ name: 'Панорама' }).expect(201)).body.data;
+    const chat = (await http.post('/api/chats/groups').set(O)
+      .send({ title: 'Уточнение', userIds: [String(mate.id)] }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'надо переделать выгрузку остатков' }).expect(201)).body.data;
+
+    // Наблюдение без проекта и исполнителя — ровно то, о чём агент спрашивает.
+    const actionId = await plant({
+      tenantId: String(owner.user.tenantId), chatId: String(chat.id), projectId: null,
+      assignerId: String(owner.user.id), assigneeId: null, messageId: String(msg.id),
+    });
+    await db.query(
+      `UPDATE chat_extracted_actions SET status = 'needs_clarification', assignee_confidence = 0,
+              project_confidence = 0, question_message_id = $2, asked_at = now() WHERE id = $1`,
+      [actionId, msg.id],
+    );
+
+    // Автор поручения отвечает одним сообщением — проект и исполнитель в нём названы.
+    await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: `Панорама, ${mate.fullName ?? 'Пётр Коллега'}` }).expect(201);
+
+    await app.get(ChatAnalysisService).tick(new Date(), String(owner.user.tenantId));
+
+    const row = await db.one<any>(
+      `SELECT project_id::text, assignee_id::text, status FROM chat_extracted_actions WHERE id = $1`,
+      [actionId],
+    );
+    expect(row!.project_id).toBe(String(project.id));
+    expect(row!.assignee_id).toBe(String(mate.id));
+    expect(row!.status).toBe('ready');
+
+    // И в чате осталось человеческое подтверждение, а не молчание.
+    const said = await db.one<{ body: string }>(
+      `SELECT body FROM chat_messages WHERE chat_id = $1 AND is_ai ORDER BY id DESC LIMIT 1`,
+      [chat.id],
+    );
+    expect(said!.body).toContain('Принял');
   }, 90000);
 
   it('сам агент задач не заводит: без нажатия человека их не появляется', async () => {

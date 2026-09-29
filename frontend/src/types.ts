@@ -96,6 +96,7 @@ export interface ChatAnalysisSettings {
   enabled: boolean;
   quiet_minutes: number;
   mode: string;
+  ask_in_chat: boolean;
 }
 export interface ChatAnalysisSource {
   messageId: string;
@@ -120,6 +121,7 @@ export interface ChatAnalysisAction {
   meeting_at: string | null;
   status: string;
   created_at: string;
+  asked_at: string | null;
   created_entity_type: string | null;
   created_entity_id: string | null;
   intent_confidence: string | number;

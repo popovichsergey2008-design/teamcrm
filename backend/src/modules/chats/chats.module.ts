@@ -29,6 +29,10 @@ import { AiModule } from '../ai/ai.module';
     ScheduledRepository, ScheduledMessagesScheduler,
     ChatTaskDraftService, ChatTaskDraftRepository,
   ],
-  exports: [ChatsService, CustomResponsesService],
+  /*
+    ChatsRepository наружу нужен разбору переписки (ТЗ-12): бот пишет вопрос в чат.
+    Отдаём именно репозиторий, а не службу, — службы связались бы в круг.
+  */
+  exports: [ChatsService, CustomResponsesService, ChatsRepository],
 })
 export class ChatsModule {}

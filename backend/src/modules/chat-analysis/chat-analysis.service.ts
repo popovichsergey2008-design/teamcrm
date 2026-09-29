@@ -5,8 +5,13 @@ import { TasksService } from '../tasks/tasks.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { matchProjectInText } from '../nl/task-draft';
+import { matchUserInText } from '../nl/nl.match';
+import { withinWorkHours } from '../assistant/ping-rules';
+import { ChatsRepository } from '../chats/chats.repository';
+import { RealtimeService } from '../realtime/realtime.service';
+import { acceptedText, askText, shouldAsk } from './ask-rules';
 import { dedupKeyOf, ExtractedAction, parseAnalysis, RefCatalog, resolveProject } from './analysis-schema';
-import { resolveRoles, taskReadiness } from './roles-rules';
+import { missingParts, resolveRoles, taskReadiness } from './roles-rules';
 import { ChatAnalysisRepository, DueChatRow, MessageRow } from './chat-analysis.repository';
 import { closedSegments, Segment, SegmentMessage } from './segments';
 
@@ -70,7 +75,24 @@ export class ChatAnalysisService {
     private readonly tasks: TasksService,
     /** Журнал действий ИИ: по нему видно, сколько работы он снял с людей. */
     private readonly secretary: SecretaryService,
+    /** Чаты — только через репозиторий: службы связались бы в круг. */
+    private readonly chats: ChatsRepository,
+    private readonly realtime: RealtimeService,
   ) {}
+
+  /** Сообщение от бота всем, кто видит чат. */
+  private async say(tenantId: string, chatId: string, body: string) {
+    const chat = await this.chats.get(tenantId, chatId);
+    if (!chat) return null;
+    const message = await this.chats.addMessage({
+      tenantId, chatId, authorId: null as unknown as string, body, fileId: null, isAi: true,
+    });
+    const to = chat.kind === 'project'
+      ? await this.chats.teamIds(tenantId)
+      : await this.chats.memberIds(chatId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
+    return message;
+  }
 
   // ── настройки ──
 
@@ -78,7 +100,7 @@ export class ChatAnalysisService {
     return this.repo.settings(tenantId);
   }
 
-  saveSettings(tenantId: string, patch: { enabled?: boolean; quietMinutes?: number; mode?: string }) {
+  saveSettings(tenantId: string, patch: { enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean }) {
     return this.repo.saveSettings(tenantId, patch);
   }
 
@@ -171,6 +193,8 @@ export class ChatAnalysisService {
         this.log.warn(`чат ${chat.chat_id}: ${(e as Error).message}`);
       }
     }
+    // Ответы на прежние вопросы — в том же проходе: отдельного перехвата сообщений нет.
+    await this.collectAnswers(now).catch((e) => this.log.warn(`сбор ответов: ${(e as Error).message}`));
     return analyzed;
   }
 
@@ -197,6 +221,117 @@ export class ChatAnalysisService {
       done++;
     }
     return done;
+  }
+
+  /**
+   * Спросить в чате о непонятном поручении (ТЗ-12, разд. 17–18).
+   *
+   * Не больше ОДНОГО вопроса за проход, даже если непонятных поручений несколько: три
+   * подряд сообщения бота в рабочем чате выглядят как поломка, а не как помощь.
+   * Остальные останутся в разборе — их дооформят руками.
+   */
+  private async askAbout(
+    chat: DueChatRow,
+    saved: { id: string; action: ExtractedAction; status: string; cancelled: boolean }[],
+  ): Promise<void> {
+    const working = withinWorkHours(new Date(), chat.timezone, {
+      workStart: String(chat.work_start).slice(0, 5),
+      workEnd: String(chat.work_end).slice(0, 5),
+      weekendDays: chat.weekend_days ?? [0, 6],
+      holidays: chat.holidays ?? [],
+    });
+
+    for (const s of saved) {
+      const missing = missingParts({
+        projectId: s.action.projectId, assigneeId: s.action.assigneeId,
+        assignerId: s.action.assignerId, cancelled: s.cancelled,
+      });
+      const ok = shouldAsk({
+        type: s.action.type, status: s.status, intentConfidence: s.action.confidence.intent,
+        asked: false, missing, working, enabled: chat.ask_in_chat,
+      });
+      if (!ok) continue;
+
+      const who = s.action.assignerId ? await this.chats.userName(chat.tenant_id, s.action.assignerId) : null;
+      const projects = await this.repo.projects(chat.tenant_id, 5);
+      const body = askText({
+        who,
+        title: s.action.title,
+        needProject: !s.action.projectId,
+        needAssignee: !s.action.assigneeId,
+        projectNames: projects.map((p) => p.name),
+      });
+      const message = await this.say(chat.tenant_id, chat.chat_id, body);
+      if (message) {
+        await this.repo.markAsked(chat.tenant_id, s.id, String(message.id));
+        this.log.log(`чат ${chat.chat_id}: спросили о поручении «${s.action.title}»`);
+      }
+      return; // один вопрос за проход
+    }
+  }
+
+  /**
+   * Не ответил ли кто-нибудь на наш вопрос.
+   *
+   * Ответ разбираем тем же сопоставлением, что и быстрая команда: название проекта
+   * целиком и имя сотрудника по основе слова. Отвечать вправе тот, кого спросили, —
+   * автор поручения. Чужая реплика с похожим словом наблюдение не дозаполняет.
+   */
+  private async collectAnswers(now: Date): Promise<number> {
+    let filled = 0;
+    for (const row of await this.repo.awaiting(now)) {
+      try {
+        const after = await this.repo.messagesAfterQuestion(row.tenant_id, row.chat_id, row.question_message_id);
+        const mine = after.filter((m) => !m.is_ai && m.author_id && String(m.author_id) === String(row.assigner_id));
+        if (!mine.length) continue;
+
+        const text = mine.map((m) => String(m.body ?? '')).join('\n');
+        const [people, projects] = await Promise.all([
+          this.repo.people(row.tenant_id, row.chat_id, row.chat_project_id),
+          this.repo.projects(row.tenant_id),
+        ]);
+
+        const projectId = row.project_id
+          ? null
+          : matchProjectInText(text, projects.map((p) => ({ id: String(p.id), name: p.name })));
+        const assigneeId = row.assignee_id
+          ? null
+          : matchUserInText(text, people.map((p) => ({ id: String(p.id), name: p.name })));
+        if (!projectId && !assigneeId) continue;
+
+        const nextProject = row.project_id ?? projectId;
+        const nextAssignee = row.assignee_id ?? assigneeId;
+        const status = taskReadiness({
+          projectId: nextProject, assigneeId: nextAssignee, assignerId: row.assigner_id,
+          cancelled: false,
+          confidence: {
+            intent: Number(row.intent_confidence),
+            // Названное человеком считаем твёрдым: это не догадка, а ответ.
+            project: nextProject ? 1 : 0,
+            assigner: Number(row.assigner_confidence),
+            assignee: nextAssignee ? 1 : 0,
+          },
+        });
+
+        await this.repo.fill(row.tenant_id, row.id, {
+          projectId, assigneeId,
+          projectConfidence: nextProject ? 1 : undefined,
+          assigneeConfidence: nextAssignee ? 1 : undefined,
+          status,
+        });
+
+        await this.say(row.tenant_id, row.chat_id, acceptedText({
+          title: row.title,
+          projectName: projects.find((p) => String(p.id) === String(nextProject))?.name ?? null,
+          assigneeName: people.find((p) => String(p.id) === String(nextAssignee))?.name ?? null,
+          ready: status === 'ready',
+        }));
+        filled++;
+      } catch (e) {
+        this.log.warn(`ответ по наблюдению ${row.id}: ${(e as Error).message}`);
+      }
+    }
+    return filled;
   }
 
   /** Разобрать один отрезок. Возвращает false, если проход не удался. */
@@ -305,13 +440,19 @@ export class ChatAnalysisService {
             cancelled: roles.cancelled, confidence: fixed.confidence,
           })
           : 'detected';
-        return { action: fixed, status };
+        return { action: fixed, status, cancelled: roles.cancelled };
       });
 
       let stored = 0;
-      for (const { action: a, status } of actions) {
-        if (await this.repo.addAction(chat.tenant_id, runId, chat.chat_id, a, status)) stored++;
+      /** Что записали в этот проход: из этого выбираем, о чём спросить. */
+      const saved: { id: string; action: ExtractedAction; status: string; cancelled: boolean }[] = [];
+      for (const { action: a, status, cancelled } of actions) {
+        const id = await this.repo.addAction(chat.tenant_id, runId, chat.chat_id, a, status);
+        if (!id) continue;
+        stored++;
+        saved.push({ id, action: a, status, cancelled });
       }
+      await this.askAbout(chat, saved);
 
       await this.repo.finishRun(runId, {
         status: 'done', model: prompt?.model ?? null,
