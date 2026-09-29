@@ -163,6 +163,8 @@ export interface ChatAnalysisAction {
   meeting_date: string | null;
   duration_minutes: number | null;
   participants: { id: string; name: string }[];
+  /** Изменение уже заведённой задачи (этап 7): cancel | reassign | deadline. */
+  change_kind: string | null;
   chat_title: string | null;
   chat_kind: string;
   chat_project_name: string | null;

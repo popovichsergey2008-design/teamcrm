@@ -64,6 +64,17 @@ export function resolveRoles(o: {
    * решение, и принимать его молча, выдавая за прочитанное, нельзя.
    */
   namedInText?: string | null;
+  /**
+   * ВСЕ названные в разговоре (ТЗ разд. 31). «Юра, сделай API — нет, пусть Глеб
+   * возьмёт» называет двоих, и единственное совпадение из `namedInText` там пусто.
+   */
+  namedIds?: string[];
+  /**
+   * Единственный человек, названный в ПОСЛЕДНЕЙ правке (роль correction): «нет, пусть
+   * Глеб возьмёт». Это финальное состояние разговора, и оно сильнее имени из исходного
+   * поручения — если позже никто другой не сказал «беру».
+   */
+  correction?: { messageId: string; assigneeId: string } | null;
 }): Roles {
   const cancelled = o.sources.some((s) => s.role === 'cancellation');
   const instruction = o.sources.find((s) => s.role === 'instruction' && s.authorId) ?? null;
@@ -78,10 +89,22 @@ export function resolveRoles(o: {
   }
   const assignerId = String(instruction.authorId);
 
-  // «Ок, беру» — сильнее любого имени: человек сам взял работу.
-  const accepted = o.sources.find(
+  // «Ок, беру» — сильнее любого имени: человек сам взял работу. Берём ПОСЛЕДНЕЕ согласие.
+  const accepted = [...o.sources].reverse().find(
     (s) => s.role === 'acceptance' && s.authorId && String(s.authorId) !== assignerId,
   );
+  /*
+    Правка «нет, пусть Глеб возьмёт» после согласия Юры — финальное состояние: Глеб.
+    Согласие Глеба после правки — тоже Глеб. Побеждает то, что сказано позже.
+  */
+  const fix = o.correction && String(o.correction.assigneeId) !== assignerId ? o.correction : null;
+  if (fix && (!accepted || Number(fix.messageId) > Number(accepted.messageId))) {
+    return {
+      assignerId, assigneeId: String(fix.assigneeId),
+      assignerConfidence: 0.95, assigneeConfidence: 0.9,
+      pattern: 'named', cancelled,
+    };
+  }
   if (accepted?.authorId) {
     return {
       assignerId, assigneeId: String(accepted.authorId),
@@ -97,7 +120,9 @@ export function resolveRoles(o: {
   */
   const candidate = o.modelAssigneeId ? String(o.modelAssigneeId) : null;
   const named = candidate
-    && (candidate === assignerId || (o.namedInText && candidate === String(o.namedInText)))
+    && (candidate === assignerId
+      || (o.namedInText && candidate === String(o.namedInText))
+      || (o.namedIds ?? []).map(String).includes(candidate))
     ? candidate : null;
   if (named) {
     return {

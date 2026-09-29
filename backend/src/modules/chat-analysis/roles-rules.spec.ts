@@ -134,3 +134,41 @@ describe('готовность поручения', () => {
       .toEqual(['в разговоре есть отмена']);
   });
 });
+
+describe('финальное состояние разговора', () => {
+  it('«Юра, сделай — нет, пусть Глеб возьмёт»: исполнитель Глеб', () => {
+    const r = resolveRoles({
+      sources: [src('1', 'instruction', '10'), src('2', 'correction', '10')],
+      modelAssigneeId: '20',
+      namedIds: ['20', '30'],
+      correction: { messageId: '2', assigneeId: '30' },
+    });
+    expect(r.assigneeId).toBe('30');
+    expect(r.assignerId).toBe('10');
+  });
+
+  it('согласие после правки побеждает правку', () => {
+    const r = resolveRoles({
+      sources: [src('1', 'instruction', '10'), src('2', 'correction', '10'), src('3', 'acceptance', '40')],
+      modelAssigneeId: null,
+      correction: { messageId: '2', assigneeId: '30' },
+    });
+    expect(r.assigneeId).toBe('40');
+  });
+
+  it('правка после согласия побеждает согласие', () => {
+    const r = resolveRoles({
+      sources: [src('1', 'instruction', '10'), src('2', 'acceptance', '20'), src('3', 'correction', '10')],
+      modelAssigneeId: null,
+      correction: { messageId: '3', assigneeId: '30' },
+    });
+    expect(r.assigneeId).toBe('30');
+  });
+
+  it('когда названы двое, выбор модели принимается, если он среди названных', () => {
+    const r = resolveRoles({ sources: [src('1', 'instruction', '10')], modelAssigneeId: '30', namedIds: ['20', '30'] });
+    expect(r.assigneeId).toBe('30');
+    const miss = resolveRoles({ sources: [src('1', 'instruction', '10')], modelAssigneeId: '50', namedIds: ['20', '30'] });
+    expect(miss.assigneeId).toBeNull();
+  });
+});

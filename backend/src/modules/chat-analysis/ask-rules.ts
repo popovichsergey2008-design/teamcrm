@@ -13,6 +13,9 @@
  * Чистые функции; проверяются юнит-тестом рядом.
  */
 
+/** Так `missingParts` называет отмену в разговоре. */
+const CANCELLED = 'в разговоре есть отмена';
+
 /** Ниже этого в «это поручение» агент сам не уверен — спрашивать не о чем. */
 export const ASK_MIN_INTENT = 0.9;
 
@@ -32,6 +35,8 @@ export function shouldAsk(o: {
   if (!o.enabled || !o.working || o.asked) return false;
   if (o.type !== 'task' || o.status !== 'needs_clarification') return false;
   if (o.intentConfidence < ASK_MIN_INTENT) return false;
+  // Поручение отменили в том же разговоре — спрашивать «к какому проекту?» о нём нелепо.
+  if (o.missing.includes(CANCELLED)) return false;
   // Спрашиваем только о том, что человек может назвать одним словом.
   return o.missing.some((m) => m === 'проект' || m === 'исполнитель');
 }

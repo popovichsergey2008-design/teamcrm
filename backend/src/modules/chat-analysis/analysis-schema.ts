@@ -18,6 +18,8 @@ import { durationOf, meetingDateOf } from './meeting-rules';
 
 export const ACTION_TYPES = [
   'task', 'decision', 'meeting', 'question', 'status', 'blocker', 'idea',
+  // Изменение уже заведённой задачи: отменили, отдали другому, перенесли срок (этап 7).
+  'change',
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -55,6 +57,8 @@ export interface ExtractedAction {
   durationMinutes: number | null;
   /** Кого звать. Модель их не называет: участников считаем сами по переписке. */
   participantIds: string[];
+  /** Изменение: cancel | reassign | deadline. Для остальных видов пусто. */
+  changeKind: string | null;
   confidence: { intent: number; project: number; assigner: number; assignee: number; task: number };
   sources: { messageId: string; role: SourceRole }[];
   dedupKey: string;
@@ -186,6 +190,8 @@ export function parseAnalysis(raw: string, cat: RefCatalog, now = new Date()): E
         : null,
       durationMinutes: type === 'meeting' ? durationOf(item?.duration_minutes) : null,
       participantIds: [],
+      changeKind: type === 'change' && ['cancel', 'reassign', 'deadline'].includes(String(item?.change ?? ''))
+        ? String(item.change) : null,
       confidence: {
         intent: conf(c.intent), project: conf(c.project),
         assigner: conf(c.assigner), assignee: conf(c.assignee),

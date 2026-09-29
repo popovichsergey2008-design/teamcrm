@@ -513,4 +513,74 @@ describe('разбор переписки (e2e)', () => {
     const res = (await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(201)).body.data;
     expect(res.eventId).toBeTruthy();
   }, 90000);
+
+  /**
+   * Этап 7: задачу завели, а позже в том же чате её отменили или отдали другому.
+   * Молча агент её не трогает — меняет постановщик своими правами.
+   */
+  const bornTask = async (tag: string) => {
+    const t = await team(tag);
+    const project = (await http.post('/api/projects').set(t.O).send({ name: `Проект ${tag}` }).expect(201)).body.data;
+    const chat = (await http.post('/api/chats/groups').set(t.O)
+      .send({ title: `Чат ${tag}`, userIds: [String(t.mate.id)] }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(t.O)
+      .send({ body: 'Пётр, сделай форму до пятницы' }).expect(201)).body.data;
+    const born = await plant({
+      tenantId: String(t.owner.user.tenantId), chatId: String(chat.id), projectId: String(project.id),
+      assignerId: String(t.owner.user.id), assigneeId: String(t.mate.id), messageId: String(msg.id),
+    });
+    const task = (await http.post(`/api/chat-analysis/actions/${born}/confirm`).set(t.O).send({}).expect(201)).body.data.task;
+    const later = (await http.post(`/api/chats/${chat.id}/messages`).set(t.O)
+      .send({ body: 'Нет, пока не делай, клиент передумал' }).expect(201)).body.data;
+    const plantChange = async (kind: string, assigneeId: string | null) => {
+      const id = await plant({
+        tenantId: String(t.owner.user.tenantId), chatId: String(chat.id), projectId: null,
+        assignerId: String(t.owner.user.id), assigneeId, messageId: String(later.id),
+        type: 'change', title: 'Изменение формы', taskId: String(task.id), role: 'cancellation',
+      });
+      await db.query(`UPDATE chat_extracted_actions SET change_kind = $2, status = 'ready' WHERE id = $1`, [id, kind]);
+      return id;
+    };
+    return { ...t, chat, task, later, plantChange };
+  };
+
+  it('переназначить может постановщик, коллеге — отказ', async () => {
+    const { owner, O, M, task, plantChange } = await bornTask('CA14');
+    const id = await plantChange('reassign', String(owner.user.id));
+
+    await http.post(`/api/chat-analysis/actions/${id}/confirm`).set(M).send({}).expect(403);
+    await http.post(`/api/chat-analysis/actions/${id}/confirm`).set(O).send({}).expect(201);
+
+    const row = await db.one<any>(`SELECT assignee_id::text FROM tasks WHERE id = $1`, [task.id]);
+    expect(row!.assignee_id).toBe(String(owner.user.id));
+    // Рассмотренное повторно не применяется.
+    await http.post(`/api/chat-analysis/actions/${id}/confirm`).set(O).send({}).expect(409);
+  }, 90000);
+
+  it('«да» постановщика в чате отменяет задачу, «оставить» — оставляет', async () => {
+    const { owner, O, chat, task, later, plantChange } = await bornTask('CA15');
+    await http.patch('/api/chat-analysis/settings').set(O).send({ enabled: true }).expect(200);
+
+    // «Оставить» — задача цела, наблюдение закрыто.
+    const keep = await plantChange('cancel', null);
+    await db.query(`UPDATE chat_extracted_actions SET question_message_id = $2, asked_at = now() WHERE id = $1`, [keep, later.id]);
+    await http.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'оставить' }).expect(201);
+    await app.get(ChatAnalysisService).tick(new Date(), String(owner.user.tenantId));
+    expect((await db.one<any>(`SELECT status FROM chat_extracted_actions WHERE id = $1`, [keep]))!.status).toBe('rejected');
+    expect((await db.one<any>(`SELECT deleted_at FROM tasks WHERE id = $1`, [task.id]))!.deleted_at).toBeNull();
+
+    // «Да» — задача в корзине, в чате отчёт.
+    const drop = await plantChange('cancel', null);
+    const q = (await http.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'уточняю' }).expect(201)).body.data;
+    await db.query(`UPDATE chat_extracted_actions SET question_message_id = $2, asked_at = now() WHERE id = $1`, [drop, q.id]);
+    await http.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'да, отменяй' }).expect(201);
+    await app.get(ChatAnalysisService).tick(new Date(), String(owner.user.tenantId));
+
+    expect((await db.one<any>(`SELECT deleted_at FROM tasks WHERE id = $1`, [task.id]))!.deleted_at).toBeTruthy();
+    expect((await db.one<any>(`SELECT status FROM chat_extracted_actions WHERE id = $1`, [drop]))!.status).toBe('confirmed');
+    const said = await db.one<{ body: string }>(
+      `SELECT body FROM chat_messages WHERE chat_id = $1 AND is_ai ORDER BY id DESC LIMIT 1`, [chat.id],
+    );
+    expect(said!.body).toContain('отменена и убрана в корзину');
+  }, 90000);
 });

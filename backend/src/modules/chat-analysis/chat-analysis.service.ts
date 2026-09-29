@@ -22,6 +22,10 @@ import {
 import { usersNamedInText } from '../nl/nl.match';
 import { zonedToUtc } from '../tasks/recurrence';
 import { CalendarService } from '../calendar/calendar.service';
+import {
+  canApplyChange, changeAskText, changeDoneText, changeReadiness, ChangeKind, CHANGE_MIN_INTENT,
+  newAssigneeOf, parseYesNo, resolveChangeTarget,
+} from './change-rules';
 import { AwaitingRow, ChatAnalysisRepository, DueChatRow, MessageRow } from './chat-analysis.repository';
 import { closedSegments, Segment, SegmentMessage } from './segments';
 
@@ -76,6 +80,10 @@ const FALLBACK_SYSTEM = [
   '   meeting_at — когда названы и дата, и время (в поясе timezone). Названа только дата —',
   '   meeting_at пусто, а дата в meeting_date как "2026-10-01". duration_minutes — если',
   '   сказали, сколько длится. Источник с предложением встречи — роль instruction.',
+  '11. change — изменение УЖЕ ЗАВЕДЁННОЙ задачи из справочника tasks (from_this_chat —',
+  '   заведены из этого чата): "change":"cancel" — отменили, "reassign" — отдали другому',
+  '   (новый в assignee_ref), "deadline" — перенесли срок (новый в deadline). task_ref',
+  '   обязателен. Новое поручение — это task, а не change.',
   '',
   'Формат ответа:',
   '{"actions":[{"type":"task","title":"...","description":"...","project_ref":"p1",',
@@ -188,6 +196,7 @@ export class ChatAnalysisService {
       return this.noteToTask(tenantId, a, userId, patch.taskId ?? a.task_id ?? null);
     }
     if (a.action_type === 'meeting') return this.scheduleMeeting(tenantId, a, userId, patch.startsAt ?? null);
+    if (a.action_type === 'change') return this.applyChange(tenantId, a, { userId, role: await this.repo.roleOf(tenantId, userId) });
     if (a.action_type !== 'task') throw AppException.validation('Задачей может стать только поручение');
     if (a.created_entity_id) throw AppException.conflict('Задача по этому наблюдению уже заведена');
     if (['rejected', 'cancelled'].includes(a.status)) throw AppException.conflict('Наблюдение уже закрыто');
@@ -282,6 +291,47 @@ export class ChatAnalysisService {
     await this.repo.markAction(tenantId, String(a.id), { status: 'confirmed', entityType: 'task_comment', entityId: comment?.id ?? null });
     await this.repo.setActionTask(tenantId, String(a.id), task.id);
     return { actionId: String(a.id), taskId: task.id, commentId: comment?.id ?? null };
+  }
+
+  /**
+   * Применить изменение уже заведённой задачи (ТЗ разд. 30–32).
+   *
+   * Путь один и из чата («да» постановщика), и из панели: задачу меняет ЧЕЛОВЕК своими
+   * правами — постановщик или владелец. Отмена — обычное удаление в корзину со всеми
+   * проверками, переназначение — обычная правка, перенос — как решение о переносе срока.
+   * Своего «тихого» пути менять задачи у агента нет.
+   */
+  private async applyChange(tenantId: string, a: any, user: { userId: string; role: string }) {
+    if (a.created_entity_id || ['rejected', 'cancelled', 'confirmed'].includes(a.status)) {
+      throw AppException.conflict('Это изменение уже рассмотрено');
+    }
+    const kind = a.change_kind as ChangeKind | null;
+    if (!kind || !a.task_id) throw AppException.validation('Непонятно, что и в какой задаче поменять');
+    const state = (await this.repo.taskStates(tenantId, [String(a.task_id)])).get(String(a.task_id));
+    if (!state) throw AppException.notFound('Задача не найдена или уже в корзине');
+    if (!canApplyChange({ userId: user.userId, role: user.role, creatorId: state.created_by })) {
+      throw AppException.forbidden('Решает постановщик задачи или владелец');
+    }
+
+    const taskId = String(a.task_id);
+    if (kind === 'cancel') {
+      await this.tasks.removeByPerson(tenantId, taskId, user, { reason: 'Поручение отменили в переписке' });
+    } else if (kind === 'reassign') {
+      if (!a.assignee_id) throw AppException.validation('Непонятно, кому передать задачу');
+      await this.tasks.update(tenantId, taskId, { assigneeId: String(a.assignee_id) } as any, user.userId);
+    } else {
+      if (!a.deadline_at) throw AppException.validation('Непонятно, на какой срок перенести');
+      await this.tasks.setDeadlineByDecision(tenantId, taskId, user, new Date(a.deadline_at));
+    }
+    await this.repo.markAction(tenantId, String(a.id), { status: 'confirmed', entityType: 'task', entityId: taskId });
+
+    const tz = await this.repo.timezoneOf(tenantId);
+    await this.say(tenantId, String(a.chat_id), changeDoneText({
+      kind, taskId, title: state.title,
+      assigneeName: a.assignee_id ? await this.chats.userName(tenantId, String(a.assignee_id)) : null,
+      deadlineLabel: a.deadline_at ? deadlineLabel(new Date(a.deadline_at), tz) : null,
+    }));
+    return { actionId: String(a.id), taskId, change: kind };
   }
 
   /**
@@ -500,6 +550,29 @@ export class ChatAnalysisService {
 
     for (const s of saved) {
       /*
+        Изменение заведённой задачи (ТЗ разд. 30): молча не трогаем — спрашиваем
+        постановщика. Правила те же: уверенность, рабочее время, один вопрос за проход.
+      */
+      if (s.action.type === 'change') {
+        if (!chat.ask_in_chat || !working || s.status !== 'ready' || !s.action.changeKind) continue;
+        if (s.action.confidence.intent < CHANGE_MIN_INTENT || !s.action.assignerId || !s.action.taskId) continue;
+        const state = (await this.repo.taskStates(chat.tenant_id, [String(s.action.taskId)])).get(String(s.action.taskId));
+        if (!state) continue;
+        const [who, assigneeName] = await Promise.all([
+          this.chats.userName(chat.tenant_id, s.action.assignerId),
+          s.action.assigneeId ? this.chats.userName(chat.tenant_id, s.action.assigneeId) : null,
+        ]);
+        const message = await this.say(chat.tenant_id, chat.chat_id, changeAskText({
+          who, kind: s.action.changeKind as ChangeKind, taskId: String(s.action.taskId), title: state.title,
+          assigneeName, deadlineLabel: s.action.deadlineAt ? deadlineLabel(s.action.deadlineAt, chat.timezone) : null,
+        }));
+        if (message) {
+          await this.repo.markAsked(chat.tenant_id, s.id, String(message.id));
+          this.log.log(`чат ${chat.chat_id}: спросили об изменении задачи #${s.action.taskId}`);
+        }
+        return; // один вопрос за проход
+      }
+      /*
         Встреча с датой, но без времени (ТЗ разд. 35): спрашиваем организатора. Те же
         ограничения, что у поручений: уверенность, рабочее время, один раз, один вопрос
         за проход.
@@ -641,6 +714,35 @@ export class ChatAnalysisService {
   }
 
   /**
+   * Ответ постановщика на вопрос об изменении.
+   *
+   * «Да» — меняем его руками и с его правами (не сумели — говорим, почему, и изменение
+   * остаётся в разборе). «Оставить» — закрываем наблюдение: это тоже промах агента, и
+   * счётчики его видят. Непонятный ответ — не ответ.
+   */
+  private async answerChange(row: AwaitingRow, text: string): Promise<boolean> {
+    const verdict = parseYesNo(text);
+    if (!verdict) return false;
+    const a = await this.repo.oneForSystem(row.tenant_id, row.id);
+    if (!a) return false;
+    if (verdict === 'no') {
+      await this.repo.markAction(row.tenant_id, row.id, { status: 'rejected' });
+      await this.say(row.tenant_id, row.chat_id, 'Понял, оставляю задачу как есть.');
+      return true;
+    }
+    try {
+      const role = await this.repo.roleOf(row.tenant_id, String(row.assigner_id));
+      await this.applyChange(row.tenant_id, a, { userId: String(row.assigner_id), role });
+    } catch (e) {
+      await this.say(row.tenant_id, row.chat_id,
+        `Не получилось: ${(e as Error).message}. Изменение осталось в «Разборе переписки» — его можно применить оттуда.`);
+      // Второй раз не пробуем: вопрос снят, решать дальше — руками из разбора.
+      await this.repo.markAction(row.tenant_id, row.id, { status: 'detected' });
+    }
+    return true;
+  }
+
+  /**
    * Время встречи из ответа организатора.
    *
    * Дата уже известна из разговора, время — из ответа, пояс — организации. Время в
@@ -678,6 +780,12 @@ export class ChatAnalysisService {
         if (!mine.length) continue;
 
         const text = mine.map((m) => String(m.body ?? '')).join('\n');
+
+        // Изменение ждёт «да» или «оставить» постановщика.
+        if (row.action_type === 'change') {
+          if (await this.answerChange(row, text)) filled++;
+          continue;
+        }
 
         // Встреча ждёт времени: берём его из ответа организатора и складываем с датой.
         if (row.action_type === 'meeting') {
@@ -763,14 +871,23 @@ export class ChatAnalysisService {
         `resolveTask` по основаниям.
       */
       const authorIds = [...new Set(messages.map((m) => m.author_id).filter((x): x is string => !!x))];
-      const candidates = await this.repo.candidateTasks(chat.tenant_id, authorIds, chat.project_id);
+      /*
+        Плюс задачи, РОДИВШИЕСЯ в этом чате (этап 7): «не делай, клиент передумал» в том
+        же разговоре относится к ним. Только такие модель вправе выбрать для изменения.
+      */
+      const bornRows = await this.repo.bornHereTasks(chat.tenant_id, chat.chat_id);
+      const bornHere = new Set(bornRows.map((t) => String(t.id)));
+      const ownRows = await this.repo.candidateTasks(chat.tenant_id, authorIds, chat.project_id);
+      const candidates = [...bornRows, ...ownRows.filter((t) => !bornHere.has(String(t.id)))];
       catalog.tasks = new Map(candidates.map((t, i) => [`t${i + 1}`, String(t.id)]));
-      const owners = new Map(candidates.map((t) => [String(t.id), { assigneeId: t.assignee_id, creatorId: t.created_by }]));
+      const owners = new Map(ownRows.map((t) => [String(t.id), { assigneeId: t.assignee_id, creatorId: t.created_by }]));
       const named = [...new Set(messages.flatMap((m) => [
         ...taskNumbersIn(String(m.body ?? '')), ...(m.task_id ? [String(m.task_id)] : []),
       ]))];
       const alive = await this.repo.aliveTasks(chat.tenant_id, named);
       const messageById = new Map(messages.map((m) => [String(m.id), m]));
+      // Как задачи выглядят сейчас: изменение «на то же самое» — не изменение.
+      const states = await this.repo.taskStates(chat.tenant_id, [...bornHere, ...alive]);
 
       const payload = {
         today: new Date().toISOString(),
@@ -786,6 +903,7 @@ export class ChatAnalysisService {
         tasks: candidates.map((t, i) => ({
           ref: `t${i + 1}`, number: `#${t.id}`, title: t.title,
           assignee_ref: t.assignee_id ? userRef.get(String(t.assignee_id)) ?? null : null,
+          from_this_chat: bornHere.has(String(t.id)),
         })),
         messages: messages.map((m) => ({
           id: String(m.id),
@@ -824,6 +942,10 @@ export class ChatAnalysisService {
         прочитанное нельзя.
       */
       const namedInText = matchUserInText(said, people.map((p) => ({ id: String(p.id), name: p.name })));
+      // Все названные — для «Юра, сделай — нет, пусть Глеб» (ТЗ разд. 31), где имён два.
+      const peopleNamed = people.map((p) => ({ id: String(p.id), name: p.name }));
+      const namedIds = usersNamedInText(said, peopleNamed);
+      const textOf = (ids: string[]) => ids.map((id) => String(messageById.get(id)?.body ?? '')).join('\n');
 
       // Кто что написал: по авторству определяются постановщик и исполнитель.
       const authorOf = new Map(messages.map((m) => [String(m.id), m.author_id ? String(m.author_id) : null]));
@@ -835,10 +957,21 @@ export class ChatAnalysisService {
           отвечает на вопрос «где здесь поручение», а «чьё оно» видно по тому, кто
           написал это сообщение. Неверный постановщик — худшая из ошибок функции.
         */
+        /*
+          Последняя правка с одним названным человеком — финальный исполнитель: «нет,
+          пусть Глеб возьмёт». Автора правки не считаем: он говорит о другом, не о себе.
+        */
+        const lastFix = [...a.sources].reverse().find((x) => x.role === 'correction');
+        const fixNamed = lastFix
+          ? usersNamedInText(textOf([lastFix.messageId]), peopleNamed)
+            .filter((id) => id !== (authorOf.get(lastFix.messageId) ?? ''))
+          : [];
         const roles = resolveRoles({
           sources: a.sources.map((s) => ({ ...s, authorId: authorOf.get(s.messageId) ?? null })),
           modelAssigneeId: a.assigneeId,
           namedInText,
+          namedIds,
+          correction: lastFix && fixNamed.length === 1 ? { messageId: lastFix.messageId, assigneeId: fixNamed[0] } : null,
         });
 
         /*
@@ -846,18 +979,28 @@ export class ChatAnalysisService {
           или названный номер, иначе выбор модели, но только если это задача автора.
         */
         const onTask = a.type === 'status' || a.type === 'blocker';
+        const taskSources = a.sources.map((x) => {
+          const m = messageById.get(x.messageId);
+          return {
+            messageId: x.messageId, authorId: m?.author_id ? String(m.author_id) : null,
+            sharedTaskId: m?.task_id ? String(m.task_id) : null, text: String(m?.body ?? ''),
+          };
+        });
+        const isChange = a.type === 'change';
         const t = onTask
-          ? resolveTask({
-            sources: a.sources.map((x) => {
-              const m = messageById.get(x.messageId);
-              return {
-                messageId: x.messageId, authorId: m?.author_id ? String(m.author_id) : null,
-                sharedTaskId: m?.task_id ? String(m.task_id) : null, text: String(m?.body ?? ''),
-              };
-            }),
-            alive, modelTaskId: a.taskId, owners,
+          ? resolveTask({ sources: taskSources, alive, modelTaskId: a.taskId, owners })
+          : isChange
+            // Изменение — только к задаче, родившейся здесь, или к названной номером.
+            ? resolveChangeTarget({ sources: taskSources, alive, modelTaskId: a.taskId, bornHere })
+            : { taskId: null, confidence: 0 };
+        const current = isChange && t.taskId ? states.get(String(t.taskId)) ?? null : null;
+        const changeAssignee = isChange && a.changeKind === 'reassign'
+          ? newAssigneeOf({
+            modelAssigneeId: a.assigneeId,
+            named: usersNamedInText(textOf(a.sources.map((x) => x.messageId)), peopleNamed),
+            authors: taskSources.map((x) => x.authorId),
           })
-          : { taskId: null, confidence: 0 };
+          : null;
 
         /*
           Встреча: организатор — автор первого сообщения договорённости (предложил он),
@@ -886,8 +1029,13 @@ export class ChatAnalysisService {
         const fixed: ExtractedAction = {
           ...a,
           projectId: p.projectId,
-          assignerId: isMeeting ? organizerId : roles.assignerId,
-          assigneeId: isMeeting ? null : roles.assigneeId,
+          /*
+            У изменения «постановщик» — постановщик самой задачи: спрашивать будем его,
+            и только он (или владелец) вправе задачу поменять.
+          */
+          assignerId: isMeeting ? organizerId : isChange ? (current?.created_by ?? null) : roles.assignerId,
+          assigneeId: isMeeting ? null : isChange ? changeAssignee : roles.assigneeId,
+          deadlineAt: isChange && a.changeKind !== 'deadline' ? null : a.deadlineAt,
           participantIds,
           taskId: t.taskId,
           confidence: {
@@ -910,6 +1058,12 @@ export class ChatAnalysisService {
             projectId: fixed.projectId, assigneeId: fixed.assigneeId, assignerId: fixed.assignerId,
             cancelled: roles.cancelled, confidence: fixed.confidence,
           })
+          : fixed.type === 'change'
+            ? changeReadiness({
+              kind: fixed.changeKind, intent: fixed.confidence.intent, taskId: fixed.taskId,
+              newAssigneeId: fixed.assigneeId, newDeadline: fixed.deadlineAt,
+              current: current ? { assigneeId: current.assignee_id, deadline: current.deadline_at ? new Date(current.deadline_at) : null } : null,
+            })
           : fixed.type === 'meeting'
             ? meetingReadiness({
               intent: fixed.confidence.intent, meetingAt: fixed.meetingAt, meetingDate: fixed.meetingDate,
@@ -925,6 +1079,8 @@ export class ChatAnalysisService {
       /** Что записали в этот проход: из этого выбираем, о чём спросить. */
       const saved: { id: string; action: ExtractedAction; status: string; cancelled: boolean }[] = [];
       for (const { action: a, status, cancelled } of actions) {
+        // Изменение «на то же самое» не записываем: спрашивать о нём не о чем.
+        if (status === 'noop') continue;
         const id = await this.repo.addAction(chat.tenant_id, runId, chat.chat_id, a, status);
         if (!id) continue;
         stored++;
@@ -952,6 +1108,11 @@ export class ChatAnalysisService {
       return false;
     }
   }
+}
+
+/** «5 октября, 18:00» — срок словами, в поясе организации. */
+function deadlineLabel(d: Date, tz: string): string {
+  return d.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: tz || 'Europe/Moscow' });
 }
 
 function toSegmentMessage(m: MessageRow): SegmentMessage {

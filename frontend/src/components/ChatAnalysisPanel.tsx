@@ -28,6 +28,7 @@ const TYPES: Record<string, { label: string; icon: IconName }> = {
   status: { label: 'Статус', icon: 'info' },
   blocker: { label: 'Блокер', icon: 'alert' },
   idea: { label: 'Идея', icon: 'sparkles' },
+  change: { label: 'Изменение', icon: 'refresh' },
 };
 
 const pct = (v: string | number) => `${Math.round(Number(v ?? 0) * 100)}%`;
@@ -48,11 +49,20 @@ const STATUS_BY_TYPE: Record<string, Partial<Record<string, string>>> = {
   decision: { ready: 'готово записать', confirmed: 'в журнале', auto_created: 'агент записал сам' },
   status: { ready: 'готово добавить', confirmed: 'добавлено в задачу' },
   meeting: { ready: 'готово поставить', confirmed: 'в календаре', needs_clarification: 'нет времени' },
+  change: { ready: 'ждёт решения постановщика', confirmed: 'применено', rejected: 'оставили как есть', detected: 'замечено' },
   blocker: { ready: 'готово добавить', confirmed: 'добавлено в задачу' },
 };
 const statusLabel = (a: ChatAnalysisAction) => STATUS_BY_TYPE[a.action_type]?.[a.status] ?? STATUS[a.status] ?? a.status;
 
 /** Наблюдение ещё можно пустить в дело: не закрыто и ничего по нему не сделано. */
+/** Что предлагает изменение — словами, так же, как бот спрашивает в чате. */
+const changeText = (a: ChatAnalysisAction) => {
+  if (a.change_kind === 'cancel') return 'отменить задачу';
+  if (a.change_kind === 'reassign') return `передать ${a.assignee_name ?? 'другому исполнителю'}`;
+  if (a.change_kind === 'deadline') return `перенести срок на ${a.deadline_at ? stampLabel(a.deadline_at) : 'другую дату'}`;
+  return 'изменение неясно';
+};
+
 const openAction = (a: ChatAnalysisAction) => !a.created_entity_id && !['rejected', 'cancelled'].includes(a.status);
 
 /** Номер задачи, как его набирают: «#1344», «1344». */
@@ -160,6 +170,15 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
     const typed = patch[a.id]?.startsAt;
     await api.confirmChatAction(a.id, typed ? { startsAt: new Date(typed).toISOString() } : {});
     setMsg(`Встреча «${a.title}» поставлена в календарь, участникам ушли приглашения`);
+  });
+
+  /**
+   * Изменение заведённой задачи. Агент её сам не трогает — применяет человек, и сервер
+   * проверит, что это постановщик задачи или владелец.
+   */
+  const applyChange = (a: ChatAnalysisAction) => act(async () => {
+    await api.confirmChatAction(a.id);
+    setMsg(`Задача #${a.task_id}: ${changeText(a)} — применено`);
   });
 
   const revoke = (d: Decision) => act(async () => {
@@ -375,6 +394,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                     a.action_type === 'meeting' && !a.meeting_at && a.meeting_date ? `встреча ${a.meeting_date}, время не названо` : null,
                     a.action_type === 'meeting' && a.duration_minutes ? `${a.duration_minutes} мин` : null,
                     a.action_type === 'meeting' && a.participants?.length ? `участники: ${a.participants.map((p) => p.name).join(', ')}` : null,
+                    a.action_type === 'change' ? `предлагается ${changeText(a)}` : null,
                   ].filter(Boolean).join(' · ')}
                 </div>
                 {/*
@@ -507,6 +527,21 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                       <button className="btn btn-ghost btn-sm" disabled={busy}
                         onClick={() => void act(() => api.rejectChatAction(a.id))}>
                         <Icon name="close" size={13} /> Не договорились
+                      </button>
+                    </>
+                  )}
+                  {/*
+                    Изменение заведённой задачи: сам агент её не трогает (ТЗ разд. 30).
+                    Применяет постановщик или владелец — остальным сервер откажет.
+                  */}
+                  {a.action_type === 'change' && openAction(a) && a.task_id && a.change_kind && (
+                    <>
+                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void applyChange(a)}>
+                        <Icon name="check" size={13} /> Применить
+                      </button>
+                      <button className="btn btn-ghost btn-sm" disabled={busy}
+                        onClick={() => void act(() => api.rejectChatAction(a.id))}>
+                        <Icon name="close" size={13} /> Оставить как есть
                       </button>
                     </>
                   )}

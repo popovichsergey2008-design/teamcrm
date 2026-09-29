@@ -35,6 +35,7 @@ const ONE_ACTION = `SELECT a.id::text, a.chat_id::text, a.action_type, a.title, 
         a.deadline_at, a.status, a.created_entity_type, a.created_entity_id::text, a.updated_at,
         a.intent_confidence, a.task_id::text, c.title AS chat_title,
         a.meeting_at, a.meeting_date::text, a.duration_minutes, a.participant_ids::text[] AS participant_ids,
+        a.change_kind,
         (SELECT am.message_id::text FROM chat_extracted_action_messages am
           WHERE am.action_id = a.id AND am.role = 'instruction'
           ORDER BY am.message_id LIMIT 1) AS instruction_message_id
@@ -299,6 +300,47 @@ export class ChatAnalysisRepository {
     );
   }
 
+  /**
+   * Открытые задачи, заведённые из сообщений ЭТОГО чата за последний месяц (этап 7).
+   * «Не делай, клиент передумал» в том же разговоре относится к ним — и только их модель
+   * вправе выбрать как цель изменения.
+   */
+  bornHereTasks(tenantId: string, chatId: string, days = 30, limit = 30): Promise<CandidateTaskRow[]> {
+    return this.db.many<CandidateTaskRow>(
+      `SELECT t.id::text, t.title, t.assignee_id::text, t.created_by::text
+         FROM tasks t
+         JOIN chat_messages m ON m.id = t.source_chat_message_id
+        WHERE t.tenant_id = $1 AND m.chat_id = $2
+          AND t.deleted_at IS NULL AND t.closed_at IS NULL
+          AND t.created_at > now() - make_interval(days => $3)
+        ORDER BY t.id DESC
+        LIMIT $4`,
+      [tenantId, chatId, days, limit],
+    );
+  }
+
+  /** Как задачи выглядят сейчас: изменение «на то же самое» — не изменение. */
+  async taskStates(tenantId: string, ids: string[]): Promise<Map<string, {
+    title: string; assignee_id: string | null; created_by: string | null; deadline_at: Date | null;
+  }>> {
+    if (!ids.length) return new Map();
+    const rows = await this.db.many<{ id: string; title: string; assignee_id: string | null; created_by: string | null; deadline_at: Date | null }>(
+      `SELECT id::text, title, assignee_id::text, created_by::text, deadline_at
+         FROM tasks WHERE tenant_id = $1 AND id = ANY($2::bigint[]) AND deleted_at IS NULL`,
+      [tenantId, [...new Set(ids)]],
+    );
+    return new Map(rows.map((r) => [r.id, r]));
+  }
+
+  /** Роль человека: изменение применяется его правами, а права зависят от роли. */
+  async roleOf(tenantId: string, userId: string): Promise<string> {
+    const row = await this.db.one<{ code: string }>(
+      `SELECT r.code FROM users u JOIN roles r ON r.id = u.role_id WHERE u.tenant_id = $1 AND u.id = $2`,
+      [tenantId, userId],
+    );
+    return row?.code ?? 'member';
+  }
+
   /** Какие из названных номеров — живые задачи этой организации. */
   async aliveTasks(tenantId: string, ids: string[]): Promise<Set<string>> {
     if (!ids.length) return new Set();
@@ -352,8 +394,8 @@ export class ChatAnalysisRepository {
          project_id, assigner_id, assignee_id, deadline_at, meeting_at,
          intent_confidence, project_confidence, assigner_confidence, assignee_confidence,
          dedup_key, status, task_id, task_confidence,
-         participant_ids, meeting_date, duration_minutes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::bigint[],$21::date,$22)
+         participant_ids, meeting_date, duration_minutes, change_kind)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::bigint[],$21::date,$22,$23)
        ON CONFLICT (tenant_id, dedup_key) DO NOTHING
        RETURNING id::text`,
       [
@@ -361,7 +403,7 @@ export class ChatAnalysisRepository {
         a.projectId, a.assignerId, a.assigneeId, a.deadlineAt, a.meetingAt,
         a.confidence.intent, a.confidence.project, a.confidence.assigner, a.confidence.assignee,
         a.dedupKey, status, a.taskId, a.confidence.task ?? 0,
-        a.participantIds ?? [], a.meetingDate ?? null, a.durationMinutes ?? null,
+        a.participantIds ?? [], a.meetingDate ?? null, a.durationMinutes ?? null, a.changeKind ?? null,
       ],
     );
     if (!row) return null;
@@ -420,7 +462,8 @@ export class ChatAnalysisRepository {
          JOIN tenants t ON t.id = a.tenant_id
          JOIN chat_analysis_settings s ON s.tenant_id = a.tenant_id AND s.enabled
         WHERE a.question_message_id IS NOT NULL
-          AND a.status = 'needs_clarification'
+          -- изменение ждёт «да» постановщика в состоянии «готово», остальное — в «не хватает данных»
+          AND (a.status = 'needs_clarification' OR (a.action_type = 'change' AND a.status = 'ready'))
           AND a.asked_at > $1::timestamptz - interval '3 days'
         ORDER BY a.asked_at
         LIMIT $2`,
@@ -464,7 +507,7 @@ export class ChatAnalysisRepository {
               a.created_entity_type, a.created_entity_id::text,
               a.intent_confidence, a.project_confidence, a.assigner_confidence, a.assignee_confidence,
               a.task_id::text, a.task_confidence, tk.title AS task_title, tk.project_id::text AS task_project_id,
-              a.meeting_date::text, a.duration_minutes,
+              a.meeting_date::text, a.duration_minutes, a.change_kind,
               COALESCE((SELECT json_agg(json_build_object('id', pu.id::text, 'name', pu.full_name)
                                         ORDER BY array_position(a.participant_ids, pu.id))
                           FROM users pu WHERE pu.id = ANY(a.participant_ids)), '[]'::json) AS participants,

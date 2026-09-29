@@ -817,6 +817,27 @@ export class TasksService {
   }
 
   /**
+   * Перенести срок решением постановщика, без просьбы исполнителя.
+   *
+   * Нужен разбору переписки (ТЗ-12, этап 7): «давайте лучше до понедельника» прозвучало
+   * в чате уже после того, как задачу завели, и постановщик подтвердил перенос. Права и
+   * журнал — те же, что у решения по просьбе о переносе: решает постановщик или владелец.
+   */
+  async setDeadlineByDecision(
+    tenantId: string, id: string, actor: { userId: string; role: string }, to: Date,
+  ): Promise<TaskRow> {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    this.assertCanDecide(task, actor);
+    await this.repo.setDeadline(tenantId, id, to);
+    await this.shiftRecurrence(tenantId, task, to);
+    await this.activity.log(tenantId, id, actor.userId, 'deadline_shifted', { to: to.toISOString(), source: 'chat' });
+    const updated = (await this.repo.findById(tenantId, id))!;
+    this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
+    return updated;
+  }
+
+  /**
    * У повторяющейся задачи вместе со сроком уезжает и расписание.
    *
    * Иначе выходит так: человек перенёс срок на следующую среду, а планировщик той же

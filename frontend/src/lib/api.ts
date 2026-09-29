@@ -1694,6 +1694,8 @@ export const api = {
       taskId?: string;
       /** Встреча поставлена в календарь. */
       eventId?: string;
+      /** Изменение применено к задаче: cancel | reassign | deadline. */
+      change?: string;
     }>('POST', `/chat-analysis/actions/${id}/confirm`, b),
   /** Журнал решений: из переписки — по видимым чатам, со встреч — всем сотрудникам. */
   decisions: (q: { chatId?: string; projectId?: string } = {}) => {
