@@ -583,4 +583,76 @@ describe('разбор переписки (e2e)', () => {
     );
     expect(said!.body).toContain('отменена и убрана в корзину');
   }, 90000);
+
+  /**
+   * Этап 8: суточная сверка — один раз за местный день, сводка руководству не дублируется.
+   */
+  it('суточная сверка проходит один раз за день и присылает одну сводку', async () => {
+    const { owner, O } = await team('CA16');
+    await http.patch('/api/chat-analysis/settings').set(O).send({ enabled: true, dailyHour: 0 }).expect(200);
+    const chat = (await http.post('/api/chats/groups').set(O).send({ title: 'Сверка' }).expect(201)).body.data;
+    await http.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'обсудили макеты, всё ок' }).expect(201);
+    await quiet(String(chat.id), 120);
+
+    const svc = app.get(ChatAnalysisService);
+    const tenantId = String(owner.user.tenantId);
+    // Час сверки — полночь по поясу компании, то есть уже наступил в любое время суток.
+    expect(await svc.daily(new Date())).toBeGreaterThanOrEqual(1);
+    const first = await db.one<{ last_daily_date: string | null }>(
+      `SELECT last_daily_date::text FROM chat_analysis_settings WHERE tenant_id = $1`, [tenantId],
+    );
+    expect(first!.last_daily_date).toBeTruthy();
+
+    const pings = async () => (await db.one<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM assistant_pings WHERE tenant_id = $1 AND kind = 'chat_digest'`, [tenantId]))!.n;
+    expect(await pings()).toBe('1');
+
+    // Второй проход в тот же день — пустой, и сводка не повторяется.
+    await svc.daily(new Date());
+    expect(await pings()).toBe('1');
+
+    // Сверка по кнопке день не занимает и сводку не шлёт — возвращает её на экран.
+    const manual = (await http.post('/api/chat-analysis/daily').set(O).send({}).expect(201)).body.data;
+    expect(manual.digest).toContain('Итоги переписки за день');
+    expect(await pings()).toBe('1');
+  }, 90000);
+
+  /**
+   * Этап 9: «ИИ определил правильно?» — отзыв с известными причинами, в метриках и примерах.
+   */
+  it('отзыв о задаче из переписки сохраняется, попадает в метрики и в примеры', async () => {
+    const { owner, mate, O } = await team('CA17');
+    const project = (await http.post('/api/projects').set(O).send({ name: 'Отзывы' }).expect(201)).body.data;
+    const chat = (await http.post('/api/chats/groups').set(O)
+      .send({ title: 'Отзывы', userIds: [String(mate.id)] }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'Пётр, подготовь отчёт по отзывам' }).expect(201)).body.data;
+    const actionId = await plant({
+      tenantId: String(owner.user.tenantId), chatId: String(chat.id), projectId: String(project.id),
+      assignerId: String(owner.user.id), assigneeId: String(mate.id), messageId: String(msg.id),
+    });
+    const task = (await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(201)).body.data.task;
+
+    await http.post(`/api/chat-analysis/tasks/${task.id}/feedback`).set(O)
+      .send({ correct: false, reasons: ['wrong_assignee', 'выдумка'] }).expect(201);
+    const fb = await db.one<{ correct: boolean; reasons: string[] }>(
+      `SELECT correct, reasons FROM chat_action_feedback WHERE action_id = $1`, [actionId],
+    );
+    expect(fb!.correct).toBe(false);
+    expect(fb!.reasons).toEqual(['wrong_assignee']);
+
+    // Передумал — отзыв переписывается, а не копится.
+    await http.post(`/api/chat-analysis/actions/${actionId}/feedback`).set(O).send({ correct: true }).expect(201);
+    const n = await db.one<{ n: string }>(`SELECT COUNT(*)::text AS n FROM chat_action_feedback WHERE action_id = $1`, [actionId]);
+    expect(n!.n).toBe('1');
+
+    const stats = (await http.get('/api/chat-analysis/stats').set(O).expect(200)).body.data;
+    expect(stats.metrics.feedbackRight).toBe(1);
+    expect(Array.isArray(stats.versions)).toBe(true);
+
+    const examples = (await http.get('/api/chat-analysis/examples').set(O).expect(200)).body.data;
+    const ex = examples.find((e: any) => e.id === actionId);
+    expect(ex.messages[0].text).toContain('подготовь отчёт');
+    expect(ex.feedback[0].correct).toBe(true);
+  }, 90000);
 });

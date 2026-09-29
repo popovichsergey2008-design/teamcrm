@@ -5956,3 +5956,12 @@ button.chat-pop-row:hover { background: var(--hover); }
 .lightbox-prev { left: 8px; }
 .lightbox-next { right: 8px; }
 @media (max-width: 720px) { .lightbox-nav { width: 38px; height: 38px; } }
+
+/* «ИИ определил правильно?» — строка в панели разбора и в карточке задачи (ТЗ-12, этап 9). */
+.ai-fb { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: var(--fs-xs); }
+.ai-fb-why { display: flex; margin-top: 4px; }
+.ai-fb-reason { display: inline-flex; gap: 4px; align-items: center; }
+.ca-fb { margin-top: 4px; }
+.ca-daily { display: flex; flex-direction: column; gap: 8px; }
+.ca-versions { display: flex; flex-direction: column; gap: 2px; }
+.ca-digest { white-space: pre-wrap; font: inherit; font-size: var(--fs-xs); color: var(--text-dim); background: var(--bg-elev-2); padding: 8px; border-radius: 8px; margin: 0; }

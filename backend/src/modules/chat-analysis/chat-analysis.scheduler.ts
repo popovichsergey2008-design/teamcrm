@@ -34,6 +34,9 @@ export class ChatAnalysisScheduler implements OnModuleInit, OnModuleDestroy {
     try {
       const n = await this.svc.tick(now);
       if (n) this.log.log(`разобрано разговоров: ${n}`);
+      // Суточная сверка — в том же проходе: сама решает, наступил ли час у организации.
+      const d = await this.svc.daily(now);
+      if (d) this.log.log(`суточная сверка: организаций ${d}`);
       return n;
     } catch (e) {
       this.log.error(`проход не удался: ${(e as Error).message}`);

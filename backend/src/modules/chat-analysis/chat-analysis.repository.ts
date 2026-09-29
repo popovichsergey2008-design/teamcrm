@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { ExtractedAction } from './analysis-schema';
 import { CreateFacts, QualityCounts } from './policy-rules';
+import { DayStats, RULES_VERSION } from './daily-rules';
 
 /**
  * Хранение разбора переписки (ТЗ-12, этап 1).
@@ -29,6 +30,21 @@ const ANALYZABLE = `c.kind IN ('project', 'group') AND c.is_external = FALSE AND
 const VISIBLE = `(c.kind = 'project' OR EXISTS (
   SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.id AND cm.user_id = $2))`;
 
+/** Поля чата для прохода: одинаковы у разбора по затиханию и у суточной сверки. */
+const DUE_CHAT = `SELECT c.id::text AS chat_id, c.tenant_id::text, c.kind, c.title,
+        c.project_id::text, s.quiet_minutes, t.timezone, s.ask_in_chat,
+        s.mode, s.monthly_limit_usd,
+        COALESCE(w.work_start, TIME '09:00')::text AS work_start,
+        COALESCE(w.work_end, TIME '18:00')::text AS work_end,
+        COALESCE(w.weekend_days, ARRAY[0,6]) AS weekend_days,
+        COALESCE(w.holidays, ARRAY[]::date[])::text[] AS holidays,
+        COALESCE(cp.last_message_id, 0)::text AS last_message_id
+   FROM chats c
+   JOIN chat_analysis_settings s ON s.tenant_id = c.tenant_id AND s.enabled
+   JOIN tenants t ON t.id = c.tenant_id
+   LEFT JOIN org_work_settings w ON w.tenant_id = c.tenant_id
+   LEFT JOIN chat_analysis_checkpoints cp ON cp.tenant_id = c.tenant_id AND cp.chat_id = c.id`;
+
 /** Одно наблюдение со всем, что нужно, чтобы его завести, записать или отменить. */
 const ONE_ACTION = `SELECT a.id::text, a.chat_id::text, a.action_type, a.title, a.description,
         a.project_id::text, a.assigner_id::text, a.assignee_id::text,
@@ -51,6 +67,10 @@ export interface SettingsRow {
   ask_in_chat: boolean;
   /** Потолок расхода в месяц, долларов; пусто — без потолка. */
   monthly_limit_usd: string | null;
+  /** Суточная сверка (этап 8): включена, час по поясу организации, сводка руководству. */
+  daily_enabled: boolean;
+  daily_hour: number;
+  daily_summary: boolean;
 }
 
 export interface DueChatRow {
@@ -146,14 +166,15 @@ export class ChatAnalysisRepository {
 
   async settings(tenantId: string): Promise<SettingsRow> {
     const row = await this.db.one<SettingsRow>(
-      `SELECT tenant_id::text, enabled, quiet_minutes, mode, ask_in_chat, monthly_limit_usd
+      `SELECT tenant_id::text, enabled, quiet_minutes, mode, ask_in_chat, monthly_limit_usd,
+              daily_enabled, daily_hour, daily_summary
          FROM chat_analysis_settings WHERE tenant_id = $1`,
       [tenantId],
     );
     // Нет строки — значит, владелец ничего не включал: выключено.
     return row ?? {
       tenant_id: String(tenantId), enabled: false, quiet_minutes: 20, mode: 'suggest', ask_in_chat: true,
-      monthly_limit_usd: null,
+      monthly_limit_usd: null, daily_enabled: true, daily_hour: 23, daily_summary: true,
     };
   }
 
@@ -163,23 +184,31 @@ export class ChatAnalysisRepository {
       enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean;
       /** undefined — не трогать; null — снять потолок. */
       monthlyLimitUsd?: number | null;
+      dailyEnabled?: boolean; dailyHour?: number; dailySummary?: boolean;
     },
   ): Promise<SettingsRow> {
     const row = await this.db.one<SettingsRow>(
-      `INSERT INTO chat_analysis_settings (tenant_id, enabled, quiet_minutes, mode, ask_in_chat, monthly_limit_usd)
+      `INSERT INTO chat_analysis_settings (tenant_id, enabled, quiet_minutes, mode, ask_in_chat, monthly_limit_usd,
+                                          daily_enabled, daily_hour, daily_summary)
        VALUES ($1, COALESCE($2, FALSE), COALESCE($3, 20), COALESCE($4, 'suggest'), COALESCE($5, TRUE),
-               CASE WHEN $6 THEN $7::numeric ELSE NULL END)
+               CASE WHEN $6 THEN $7::numeric ELSE NULL END,
+               COALESCE($8, TRUE), COALESCE($9::smallint, 23), COALESCE($10, TRUE))
        ON CONFLICT (tenant_id) DO UPDATE SET
+         daily_enabled = COALESCE($8, chat_analysis_settings.daily_enabled),
+         daily_hour    = COALESCE($9::smallint, chat_analysis_settings.daily_hour),
+         daily_summary = COALESCE($10, chat_analysis_settings.daily_summary),
          enabled       = COALESCE($2, chat_analysis_settings.enabled),
          quiet_minutes = COALESCE($3, chat_analysis_settings.quiet_minutes),
          mode          = COALESCE($4, chat_analysis_settings.mode),
          ask_in_chat   = COALESCE($5, chat_analysis_settings.ask_in_chat),
          monthly_limit_usd = CASE WHEN $6 THEN $7::numeric ELSE chat_analysis_settings.monthly_limit_usd END,
          updated_at    = now()
-       RETURNING tenant_id::text, enabled, quiet_minutes, mode, ask_in_chat, monthly_limit_usd`,
+       RETURNING tenant_id::text, enabled, quiet_minutes, mode, ask_in_chat, monthly_limit_usd,
+                 daily_enabled, daily_hour, daily_summary`,
       [tenantId, patch.enabled ?? null, patch.quietMinutes ?? null, patch.mode ?? null, patch.askInChat ?? null,
         // «Снять потолок» и «не трогать» различаются: null — это тоже значение.
-        patch.monthlyLimitUsd !== undefined, patch.monthlyLimitUsd ?? null],
+        patch.monthlyLimitUsd !== undefined, patch.monthlyLimitUsd ?? null,
+        patch.dailyEnabled ?? null, patch.dailyHour ?? null, patch.dailySummary ?? null],
     );
     return row as SettingsRow;
   }
@@ -202,19 +231,7 @@ export class ChatAnalysisRepository {
    */
   dueChats(now: Date, tenantId: string | null, limit = 20): Promise<DueChatRow[]> {
     return this.db.many<DueChatRow>(
-      `SELECT c.id::text AS chat_id, c.tenant_id::text, c.kind, c.title,
-              c.project_id::text, s.quiet_minutes, t.timezone, s.ask_in_chat,
-              s.mode, s.monthly_limit_usd,
-              COALESCE(w.work_start, TIME '09:00')::text AS work_start,
-              COALESCE(w.work_end, TIME '18:00')::text AS work_end,
-              COALESCE(w.weekend_days, ARRAY[0,6]) AS weekend_days,
-              COALESCE(w.holidays, ARRAY[]::date[])::text[] AS holidays,
-              COALESCE(cp.last_message_id, 0)::text AS last_message_id
-         FROM chats c
-         JOIN chat_analysis_settings s ON s.tenant_id = c.tenant_id AND s.enabled
-         JOIN tenants t ON t.id = c.tenant_id
-         LEFT JOIN org_work_settings w ON w.tenant_id = c.tenant_id
-         LEFT JOIN chat_analysis_checkpoints cp ON cp.tenant_id = c.tenant_id AND cp.chat_id = c.id
+      `${DUE_CHAT}
         WHERE ${ANALYZABLE}
           AND c.last_message_at IS NOT NULL
           AND c.last_message_at <= $1::timestamptz - make_interval(mins => s.quiet_minutes)
@@ -227,6 +244,170 @@ export class ChatAnalysisRepository {
         LIMIT $3`,
       [now, tenantId, limit],
     );
+  }
+
+  // ── суточная сверка ──
+
+  /**
+   * Организации, где пора сверять: наступил час сверки по их поясу, а сегодняшний
+   * местный день ещё не сверяли. Местные дата и час считаются в самой базе.
+   */
+  dailyDue(now: Date): Promise<{ tenant_id: string; local_date: string; timezone: string; daily_summary: boolean; monthly_limit_usd: string | null }[]> {
+    return this.db.many(
+      `SELECT s.tenant_id::text, (($1::timestamptz) AT TIME ZONE COALESCE(t.timezone, 'Europe/Moscow'))::date::text AS local_date,
+              COALESCE(t.timezone, 'Europe/Moscow') AS timezone, s.daily_summary, s.monthly_limit_usd
+         FROM chat_analysis_settings s
+         JOIN tenants t ON t.id = s.tenant_id
+        WHERE s.enabled AND s.daily_enabled
+          AND EXTRACT(HOUR FROM ($1::timestamptz) AT TIME ZONE COALESCE(t.timezone, 'Europe/Moscow')) >= s.daily_hour
+          AND (s.last_daily_date IS NULL
+               OR s.last_daily_date < (($1::timestamptz) AT TIME ZONE COALESCE(t.timezone, 'Europe/Moscow'))::date)`,
+      [now],
+    );
+  }
+
+  /**
+   * Занять сегодняшнюю сверку. Отмечаем ДО прохода и условно: два экземпляра сервера
+   * не пройдут один день дважды, а упавший проход не повторится ночью по кругу.
+   */
+  async claimDaily(tenantId: string, localDate: string): Promise<boolean> {
+    const row = await this.db.one<{ tenant_id: string }>(
+      `UPDATE chat_analysis_settings SET last_daily_date = $2::date
+        WHERE tenant_id = $1 AND (last_daily_date IS NULL OR last_daily_date < $2::date)
+        RETURNING tenant_id::text`,
+      [tenantId, localDate],
+    );
+    return !!row;
+  }
+
+  /** Рабочие чаты организации, где за сутки была переписка. */
+  dailyChats(tenantId: string, since: Date): Promise<DueChatRow[]> {
+    return this.db.many<DueChatRow>(
+      `${DUE_CHAT}
+        WHERE ${ANALYZABLE} AND c.tenant_id = $1
+          AND c.last_message_at >= $2::timestamptz
+        ORDER BY c.last_message_at`,
+      [tenantId, since],
+    );
+  }
+
+  /**
+   * Сообщения дня: всё, что пришло за сутки, кроме живого хвоста — его разберут, когда
+   * разговор затихнет. Не больше 400: остальное уже видел разбор по затиханию.
+   */
+  messagesBetween(tenantId: string, chatId: string, since: Date, until: Date, limit = 400): Promise<MessageRow[]> {
+    return this.db.many<MessageRow>(
+      `SELECT m.id::text, m.author_id::text, u.full_name AS author_name, m.body, m.created_at,
+              m.is_ai, m.reply_to_id::text, m.thread_root_id::text, m.task_id::text
+         FROM chat_messages m
+         LEFT JOIN users u ON u.id = m.author_id
+        WHERE m.tenant_id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
+          AND m.created_at >= $3::timestamptz AND m.created_at < $4::timestamptz
+        ORDER BY m.id
+        LIMIT $5`,
+      [tenantId, chatId, since, until, limit],
+    );
+  }
+
+  /**
+   * Уже разобранное среди этих сообщений (ТЗ разд. 29): наблюдения, у которых хоть одно
+   * ключевое сообщение из списка. По ним новый проход узнаёт повтор.
+   */
+  async coveredBy(tenantId: string, messageIds: string[]): Promise<{ type: string; messageIds: string[] }[]> {
+    if (!messageIds.length) return [];
+    const rows = await this.db.many<{ type: string; ids: string[] }>(
+      `SELECT a.action_type AS type, array_agg(am.message_id::text) AS ids
+         FROM chat_extracted_actions a
+         JOIN chat_extracted_action_messages am ON am.action_id = a.id
+        WHERE a.tenant_id = $1 AND am.role <> 'context'
+          AND a.id IN (SELECT action_id FROM chat_extracted_action_messages WHERE message_id = ANY($2::bigint[]))
+        GROUP BY a.id, a.action_type`,
+      [tenantId, messageIds],
+    );
+    return rows.map((r) => ({ type: r.type, messageIds: r.ids ?? [] }));
+  }
+
+  /** Цифры дня для сводки (ТЗ разд. 27–28). Только рабочие чаты — личные не читаются вовсе. */
+  async dayStats(tenantId: string, since: Date): Promise<DayStats> {
+    const [counts, perChat] = await Promise.all([
+      this.db.one<Record<string, string>>(
+        `SELECT
+           (SELECT COUNT(*) FROM chat_messages m JOIN chats c ON c.id = m.chat_id
+             WHERE m.tenant_id = $1 AND m.created_at >= $2 AND m.deleted_at IS NULL AND NOT m.is_ai
+               AND ${ANALYZABLE}) AS messages,
+           (SELECT COUNT(DISTINCT am.message_id) FROM chat_extracted_action_messages am
+              JOIN chat_extracted_actions a ON a.id = am.action_id
+             WHERE a.tenant_id = $1 AND a.created_at >= $2) AS source_messages,
+           COUNT(*) FILTER (WHERE action_type = 'task' AND status IN ('confirmed','auto_created')) AS tasks_created,
+           COUNT(*) FILTER (WHERE action_type = 'meeting' AND status = 'confirmed') AS meetings,
+           COUNT(*) FILTER (WHERE action_type = 'decision' AND status IN ('confirmed','auto_created')) AS decisions,
+           COUNT(*) FILTER (WHERE action_type IN ('status','blocker') AND status = 'confirmed') AS notes,
+           COUNT(*) FILTER (WHERE status = 'ready') AS waiting,
+           COUNT(*) FILTER (WHERE status = 'needs_clarification') AS clarifications
+           FROM chat_extracted_actions
+          WHERE tenant_id = $1 AND updated_at >= $2`,
+        [tenantId, since],
+      ),
+      this.db.many<{ title: string; action_type: string; status: string; action_title: string; entity: string | null; missing: string | null }>(
+        `SELECT COALESCE(p.name, c.title, 'Без названия') AS title, a.action_type, a.status, a.title AS action_title,
+                a.created_entity_id::text AS entity,
+                CASE WHEN a.status = 'needs_clarification' AND a.action_type = 'task'
+                     THEN CASE WHEN a.project_id IS NULL THEN 'проект' ELSE 'исполнитель' END END AS missing
+           FROM chat_extracted_actions a
+           JOIN chats c ON c.id = a.chat_id
+           LEFT JOIN projects p ON p.id = c.project_id
+          WHERE a.tenant_id = $1 AND a.updated_at >= $2
+            AND (a.status IN ('confirmed','auto_created','ready','needs_clarification'))
+            AND a.action_type IN ('task','meeting','decision','change')
+          ORDER BY 1, a.id
+          LIMIT 200`,
+        [tenantId, since],
+      ),
+    ]);
+    const n = (k: string) => Number(counts?.[k] ?? 0);
+    const chats = new Map<string, { title: string; created: string[]; waiting: string[] }>();
+    for (const r of perChat) {
+      const c = chats.get(r.title) ?? { title: r.title, created: [], waiting: [] };
+      const label = { task: 'Задача', meeting: 'Встреча', decision: 'Решение', change: 'Изменение' }[r.action_type] ?? r.action_type;
+      if (r.status === 'confirmed' || r.status === 'auto_created') {
+        c.created.push(r.action_type === 'task' && r.entity ? `#${r.entity} ${r.action_title}` : `${label}: ${r.action_title}`);
+      } else if (r.status === 'needs_clarification') {
+        c.waiting.push(`${r.missing ? `не определён ${r.missing}` : 'не хватает данных'}: «${r.action_title}»`);
+      } else {
+        c.waiting.push(`${label} ждёт решения: «${r.action_title}»`);
+      }
+      chats.set(r.title, c);
+    }
+    return {
+      messages: n('messages'), sourceMessages: n('source_messages'), tasksCreated: n('tasks_created'),
+      meetings: n('meetings'), decisions: n('decisions'), notes: n('notes'), waiting: n('waiting'),
+      clarifications: n('clarifications'), chats: [...chats.values()],
+    };
+  }
+
+  /** Кому сводка: владелец и руководители — она о чужой работе, как и вечерний свод. */
+  async managers(tenantId: string): Promise<string[]> {
+    const rows = await this.db.many<{ id: string }>(
+      `SELECT u.id::text FROM users u JOIN roles r ON r.id = u.role_id
+        WHERE u.tenant_id = $1 AND u.is_active AND r.code IN ('owner','manager')`,
+      [tenantId],
+    );
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Сводка строкой ассистента — там же, где вечерний свод. Ключ на человека и день:
+   * повторный проход не пришлёт её второй раз.
+   */
+  async addDigestPing(tenantId: string, userId: string, text: string, localDate: string): Promise<string | null> {
+    const row = await this.db.one<{ id: string }>(
+      `INSERT INTO assistant_pings (tenant_id, user_id, kind, task_id, text, status, dedup_key, last_sent_at)
+       VALUES ($1, $2, 'chat_digest', NULL, $3, 'sent', $4, now())
+       ON CONFLICT (tenant_id, dedup_key) DO NOTHING
+       RETURNING id::text`,
+      [tenantId, userId, text.slice(0, 300), `chat-digest:${userId}:${localDate}`],
+    );
+    return row?.id ?? null;
   }
 
   /** Неразобранные сообщения чата по порядку. Удалённые в разбор не идут. */
@@ -373,9 +554,10 @@ export class ChatAnalysisRepository {
       `UPDATE chat_analysis_runs
           SET status = $2, model = $3, prompt_version = $4,
               actions_count = COALESCE($5, 0), error = $6, duplicates = COALESCE($7, 0),
-              completed_at = now()
+              rules_version = $8, completed_at = now()
         WHERE id = $1`,
-      [runId, o.status, o.model ?? null, o.promptVersion ?? null, o.actions ?? 0, o.error ?? null, o.duplicates ?? 0],
+      [runId, o.status, o.model ?? null, o.promptVersion ?? null, o.actions ?? 0, o.error ?? null, o.duplicates ?? 0,
+        RULES_VERSION],
     );
   }
 
@@ -812,6 +994,124 @@ export class ChatAnalysisRepository {
       correctedProject: n('correctedProject'), correctedAssignee: n('correctedAssignee'),
       corrected: n('corrected'), duplicates: n('duplicates'),
     };
+  }
+
+  // ── качество ──
+
+  /** Наблюдение, из которого завели эту задачу — человек или агент. */
+  actionOfTask(tenantId: string, taskId: string): Promise<{ id: string } | null> {
+    return this.db.one(
+      `SELECT id::text FROM chat_extracted_actions
+        WHERE tenant_id = $1 AND created_entity_type = 'task' AND created_entity_id = $2::bigint
+          AND action_type = 'task'
+        ORDER BY id DESC LIMIT 1`,
+      [tenantId, taskId],
+    );
+  }
+
+  /** «ИИ определил правильно?» — один отзыв от человека, передумал — переписывается. */
+  async saveFeedback(tenantId: string, actionId: string, userId: string, correct: boolean, reasons: string[]): Promise<void> {
+    await this.db.query(
+      `INSERT INTO chat_action_feedback (tenant_id, action_id, user_id, correct, reasons)
+       VALUES ($1,$2,$3,$4,$5::text[])
+       ON CONFLICT (action_id, user_id) DO UPDATE SET correct = EXCLUDED.correct, reasons = EXCLUDED.reasons, created_at = now()`,
+      [tenantId, actionId, userId, correct, reasons],
+    );
+  }
+
+  /**
+   * Отзывы и пропуски за период (ТЗ разд. 58).
+   *
+   * Пропуск агента — задача, которую человек завёл из сообщения рабочего чата руками
+   * («задача из сообщения»), хотя это сообщение не стало источником ни одного
+   * наблюдения. Отдельной кнопки «агент пропустил» не нужно: люди и так это делают.
+   */
+  async feedbackCounts(tenantId: string, days = 30): Promise<{
+    right: number; wrong: number; reasons: Record<string, number>; missed: number;
+  }> {
+    const [fb, reasons, missed] = await Promise.all([
+      this.db.one<{ right: string; wrong: string }>(
+        `SELECT COUNT(*) FILTER (WHERE correct) AS right, COUNT(*) FILTER (WHERE NOT correct) AS wrong
+           FROM chat_action_feedback WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2)`,
+        [tenantId, days],
+      ),
+      this.db.many<{ reason: string; n: string }>(
+        `SELECT r AS reason, COUNT(*) AS n
+           FROM chat_action_feedback f, unnest(f.reasons) r
+          WHERE f.tenant_id = $1 AND f.created_at > now() - make_interval(days => $2)
+          GROUP BY r`,
+        [tenantId, days],
+      ),
+      this.db.one<{ n: string }>(
+        `SELECT COUNT(*) AS n
+           FROM chat_task_drafts d
+           JOIN chats c ON c.id = d.chat_id
+          WHERE d.tenant_id = $1 AND d.status = 'created'
+            AND d.created_at > now() - make_interval(days => $2)
+            AND ${ANALYZABLE}
+            AND NOT EXISTS (SELECT 1 FROM chat_extracted_action_messages am WHERE am.message_id = d.message_id)`,
+        [tenantId, days],
+      ),
+    ]);
+    return {
+      right: Number(fb?.right ?? 0), wrong: Number(fb?.wrong ?? 0),
+      reasons: Object.fromEntries(reasons.map((r) => [r.reason, Number(r.n)])),
+      missed: Number(missed?.n ?? 0),
+    };
+  }
+
+  /**
+   * Качество по версиям (ТЗ разд. 60): модель, промпт и наши правила. Без этого не
+   * понять, стало ли лучше после обновления или просто переписка была другой.
+   */
+  byVersion(tenantId: string, days = 30): Promise<{
+    model: string | null; prompt_version: string | null; rules_version: string | null;
+    detected: string; reviewed: string; rejected: string; corrected: string; wrong: string;
+  }[]> {
+    return this.db.many(
+      `SELECT r.model, r.prompt_version, r.rules_version,
+              COUNT(*) FILTER (WHERE a.action_type = 'task') AS detected,
+              COUNT(*) FILTER (WHERE a.action_type = 'task' AND a.status IN ('confirmed','auto_created','rejected')) AS reviewed,
+              COUNT(*) FILTER (WHERE a.action_type = 'task' AND (a.status = 'rejected' OR a.undone_at IS NOT NULL)) AS rejected,
+              COUNT(*) FILTER (WHERE a.corrected_project OR a.corrected_assignee) AS corrected,
+              COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM chat_action_feedback f WHERE f.action_id = a.id AND NOT f.correct)) AS wrong
+         FROM chat_extracted_actions a
+         JOIN chat_analysis_runs r ON r.id = a.run_id
+        WHERE a.tenant_id = $1 AND a.created_at > now() - make_interval(days => $2)
+        GROUP BY 1, 2, 3
+        ORDER BY MAX(a.created_at) DESC
+        LIMIT 10`,
+      [tenantId, days],
+    );
+  }
+
+  /**
+   * Примеры для проверки (ТЗ разд. 59: eval dataset): рассмотренные людьми наблюдения —
+   * с сообщениями, вердиктом и версиями. Только по чатам, которые видны выгружающему.
+   */
+  examples(tenantId: string, userId: string, limit = 500): Promise<any[]> {
+    return this.db.many(
+      `SELECT a.id::text, a.action_type AS type, a.change_kind, a.title, a.status,
+              a.corrected_project, a.corrected_assignee, (a.undone_at IS NOT NULL) AS undone,
+              r.model, r.prompt_version, r.rules_version, a.created_at,
+              COALESCE((SELECT json_agg(json_build_object('correct', f.correct, 'reasons', f.reasons))
+                          FROM chat_action_feedback f WHERE f.action_id = a.id), '[]'::json) AS feedback,
+              COALESCE((SELECT json_agg(json_build_object('id', m.id::text, 'role', am.role, 'author', u.full_name, 'text', m.body)
+                                        ORDER BY m.id)
+                          FROM chat_extracted_action_messages am
+                          JOIN chat_messages m ON m.id = am.message_id
+                          LEFT JOIN users u ON u.id = m.author_id
+                         WHERE am.action_id = a.id), '[]'::json) AS messages
+         FROM chat_extracted_actions a
+         JOIN chats c ON c.id = a.chat_id
+         JOIN chat_analysis_runs r ON r.id = a.run_id
+        WHERE a.tenant_id = $1 AND ${VISIBLE}
+          AND (a.status IN ('confirmed','auto_created','rejected') OR a.undone_at IS NOT NULL
+               OR EXISTS (SELECT 1 FROM chat_action_feedback f WHERE f.action_id = a.id))
+        ORDER BY a.id DESC
+        LIMIT $3`,
+      [tenantId, userId, limit],
+    );
   }
 
   /** Отметить, чем кончилось наблюдение: завели задачу, отвергли, отменили. */

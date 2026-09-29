@@ -99,6 +99,10 @@ export interface ChatAnalysisSettings {
   ask_in_chat: boolean;
   /** Потолок расхода на разбор в месяц, долларов; null — без потолка. */
   monthly_limit_usd: string | null;
+  /** Суточная сверка (этап 8): включена, час по поясу организации, сводка руководству. */
+  daily_enabled: boolean;
+  daily_hour: number;
+  daily_summary: boolean;
 }
 /** Счётчики попадания агента: по ним владелец решает, включать ли автосоздание. */
 export interface ChatAnalysisStats {
@@ -122,6 +126,21 @@ export interface ChatAnalysisStats {
   spentUsd: number;
   limitUsd: number | null;
   limitReached: boolean;
+  /** Метрики ТЗ разд. 58 (этап 9). */
+  metrics: {
+    clarificationRate: number | null;
+    falsePositiveRate: number | null;
+    feedbackRight: number;
+    feedbackWrong: number;
+    reasons: Record<string, number>;
+    /** Задачи, заведённые из сообщения руками, которые агент не заметил. */
+    missed: number;
+  };
+  /** Качество по версиям модели, промпта и правил. */
+  versions: {
+    model: string | null; promptVersion: string | null; rulesVersion: string | null;
+    detected: number; reviewed: number; rejected: number; corrected: number; wrong: number;
+  }[];
 }
 export interface ChatAnalysisSource {
   messageId: string;

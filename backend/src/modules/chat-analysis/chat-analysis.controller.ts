@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Max, Min, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Max, Min, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -17,6 +17,16 @@ class SettingsDto {
   @ValidateIf((_, v) => v !== null && v !== undefined)
   @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100000) @Type(() => Number)
   monthlyLimitUsd?: number | null;
+  /** Суточная сверка: включена, час по поясу организации, сводка руководству. */
+  @IsOptional() @IsBoolean() dailyEnabled?: boolean;
+  @IsOptional() @IsInt() @Min(0) @Max(23) @Type(() => Number) dailyHour?: number;
+  @IsOptional() @IsBoolean() dailySummary?: boolean;
+}
+
+/** «ИИ определил правильно?» — причины из короткого списка, сервис отбросит чужие. */
+class FeedbackDto {
+  @IsBoolean() correct!: boolean;
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) reasons?: string[];
 }
 
 class ChatFlagDto {
@@ -128,6 +138,36 @@ export class ChatAnalysisController {
   @Post('actions/:id/undo')
   undo(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.svc.undo(u.tenantId, { userId: u.userId, role: u.role }, id);
+  }
+
+  /** «ИИ определил правильно?» — о наблюдении в панели разбора. */
+  @Post('actions/:id/feedback')
+  feedback(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: FeedbackDto) {
+    return this.svc.feedback(u.tenantId, u.userId, id, dto.correct, dto.reasons ?? []);
+  }
+
+  /** То же из карточки задачи, заведённой по переписке. Заказчику не показываем. */
+  @Post('tasks/:taskId/feedback')
+  @Roles('owner', 'manager', 'member')
+  feedbackByTask(@CurrentUser() u: AuthUser, @Param('taskId') taskId: string, @Body() dto: FeedbackDto) {
+    return this.svc.feedbackByTask(u.tenantId, u.userId, taskId, dto.correct, dto.reasons ?? []);
+  }
+
+  /**
+   * Примеры для проверки качества (ТЗ разд. 59): рассмотренные людьми наблюдения с
+   * сообщениями и вердиктами. Только владельцу и только по видным ему чатам.
+   */
+  @Get('examples')
+  @Roles('owner')
+  examples(@CurrentUser() u: AuthUser) {
+    return this.svc.examples(u.tenantId, u.userId);
+  }
+
+  /** Суточная сверка вручную — чтобы не ждать ночи, проверяя настройку. */
+  @Post('daily')
+  @Roles('owner')
+  async runDaily(@CurrentUser() u: AuthUser) {
+    return this.svc.dailyNow(u.tenantId);
   }
 
   /** Та же отмена из карточки задачи — там, где её видит исполнитель. */

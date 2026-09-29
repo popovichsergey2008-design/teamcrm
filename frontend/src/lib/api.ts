@@ -1668,11 +1668,21 @@ export const api = {
   chatAnalysisSettings: () => request<import('../types').ChatAnalysisSettings>('GET', '/chat-analysis/settings'),
   saveChatAnalysisSettings: (b: {
     enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean; monthlyLimitUsd?: number | null;
+    dailyEnabled?: boolean; dailyHour?: number; dailySummary?: boolean;
   }) =>
     request<import('../types').ChatAnalysisSettings>('PATCH', '/chat-analysis/settings', b),
   chatAnalysisActions: (chatId?: string) =>
     request<import('../types').ChatAnalysisAction[]>('GET', `/chat-analysis/actions${chatId ? `?chatId=${chatId}` : ''}`),
   chatAnalysisRuns: () => request<import('../types').ChatAnalysisRun[]>('GET', '/chat-analysis/runs'),
+  /** «ИИ определил правильно?» — о наблюдении или о задаче, заведённой по переписке. */
+  chatActionFeedback: (id: string, b: { correct: boolean; reasons?: string[] }) =>
+    request<{ actionId: string; correct: boolean }>('POST', `/chat-analysis/actions/${id}/feedback`, b),
+  aiTaskFeedback: (taskId: string, b: { correct: boolean; reasons?: string[] }) =>
+    request<{ actionId: string; correct: boolean }>('POST', `/chat-analysis/tasks/${taskId}/feedback`, b),
+  /** Примеры для проверки качества: рассмотренные наблюдения с сообщениями. */
+  chatAnalysisExamples: () => request<unknown[]>('GET', '/chat-analysis/examples'),
+  /** Суточная сверка по кнопке: сводку возвращает на экран, никому не шлёт. */
+  runChatDaily: () => request<{ chats: number; digest: string | null }>('POST', '/chat-analysis/daily', {}),
   chatAnalysisStats: () => request<import('../types').ChatAnalysisStats>('GET', '/chat-analysis/stats'),
   undoChatAction: (id: string) =>
     request<{ actionId: string; status: string }>('POST', `/chat-analysis/actions/${id}/undo`, {}),

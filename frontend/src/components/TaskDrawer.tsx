@@ -24,6 +24,7 @@ import { TaskTagsField } from './TaskTagsField';
 import { EMPTY_TAGS, TagsValue } from '../lib/tags';
 import { overlayProps } from '../lib/overlay';
 import { showToast, toastSaved } from '../lib/notifications';
+import { AiFeedback } from './AiFeedback';
 
 interface Props {
   task: Task;
@@ -961,6 +962,10 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 {/* Ошибку агента отменяют здесь же: исполнителю раздел «Разбор переписки»
                     не открыт, а обычное удаление не засчитало бы агенту промах.
                     Окно — сутки; права сервер проверит сам. */}
+                {/* Отзыв о задаче, которую завёл агент (ТЗ-12, разд. 59). */}
+                {task.created_by_ai && (
+                  <>{' · '}<AiFeedback send={(b) => api.aiTaskFeedback(task.id, b)} /></>
+                )}
                 {task.created_by_ai
                   && (!task.created_at || Date.now() - new Date(task.created_at).getTime() < 24 * 3600_000) && (
                   <>

@@ -6,6 +6,7 @@ import { SecretaryModule } from '../secretary/secretary.module';
 import { ChatsModule } from '../chats/chats.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { CalendarModule } from '../calendar/calendar.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ChatAnalysisController } from './chat-analysis.controller';
 import { ChatAnalysisRepository } from './chat-analysis.repository';
 import { ChatAnalysisScheduler } from './chat-analysis.scheduler';
@@ -16,7 +17,7 @@ import { ChatAnalysisService } from './chat-analysis.service';
  * что понял. Ничего не создаёт — см. комментарий в службе.
  */
 @Module({
-  imports: [AiModule, PromptsModule, TasksModule, SecretaryModule, ChatsModule, RealtimeModule, CalendarModule],
+  imports: [AiModule, PromptsModule, TasksModule, SecretaryModule, ChatsModule, RealtimeModule, CalendarModule, NotificationsModule],
   controllers: [ChatAnalysisController],
   providers: [ChatAnalysisService, ChatAnalysisRepository, ChatAnalysisScheduler],
   exports: [ChatAnalysisService],

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
+import { AiFeedback } from './AiFeedback';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { navigate } from '../lib/router';
@@ -112,6 +113,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
 
   const save = async (patch: {
     enabled?: boolean; quietMinutes?: number; askInChat?: boolean; mode?: string; monthlyLimitUsd?: number | null;
+    dailyEnabled?: boolean; dailyHour?: number; dailySummary?: boolean;
   }) => {
     setBusy(true); setErr(''); setMsg('');
     try {
@@ -191,6 +193,34 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
     setMsg(`Задача «${a.title}» отменена и убрана в корзину`);
   });
 
+  /** Сверка по кнопке: не ждать ночи, чтобы проверить настройку. Сводку показываем здесь. */
+  const [digest, setDigest] = useState<string | null>(null);
+  const runDaily = async () => {
+    setBusy(true); setErr(''); setMsg(''); setDigest(null);
+    try {
+      const r = await api.runChatDaily();
+      setMsg(`Сверено чатов: ${r.chats}. Ночная сверка и сводка придут как обычно.`);
+      setDigest(r.digest);
+      load();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
+    finally { setBusy(false); }
+  };
+
+  /** Примеры для проверки — файлом: их смотрят и прогоняют через новую версию промпта. */
+  const downloadExamples = async () => {
+    setBusy(true); setErr('');
+    try {
+      const rows = await api.chatAnalysisExamples();
+      const url = URL.createObjectURL(new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `razbor-perepiski-primery-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
+    finally { setBusy(false); }
+  };
+
   const saveLimit = () => {
     const v = limit.trim().replace(',', '.');
     if (!v) return void save({ monthlyLimitUsd: null });
@@ -201,6 +231,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
 
   const failed = runs.filter((r) => r.status === 'failed').length;
   const q = stats?.quality;
+  const m = stats?.metrics;
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
@@ -309,6 +340,27 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                   {' '}{share(q.correctionRate)} заведённых пришлось поправить (проект или исполнитель).
                   {q.duplicates > 0 && <> Повторов отсечено: {q.duplicates}.</>}
                 </div>
+                {m && (
+                  <div className="dim ca-quality-row">
+                    Не хватило данных: {share(m.clarificationRate)} · ложных срабатываний: {share(m.falsePositiveRate)}
+                    {' '}· отзывы «верно / неверно»: {m.feedbackRight} / {m.feedbackWrong}
+                    {m.missed > 0 && <> · пропущено агентом: {m.missed} (задачи из сообщения, заведённые руками)</>}
+                  </div>
+                )}
+                {/*
+                  Качество по версиям: после обновления промпта или модели видно, стало ли
+                  лучше, а не просто переписка была другой.
+                */}
+                {stats && stats.versions.length > 1 && (
+                  <div className="dim ca-quality-row ca-versions">
+                    {stats.versions.map((v) => (
+                      <div key={`${v.model}-${v.promptVersion}-${v.rulesVersion}`}>
+                        {v.model ?? 'модель ?'} · промпт {v.promptVersion ?? '—'} · правила {v.rulesVersion ?? '—'}:
+                        {' '}найдено {v.detected}, рассмотрено {v.reviewed}, промахов {v.rejected + v.corrected + v.wrong}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {!q.enoughData && (
                   <div className="dim ca-quality-row">
                     Рассмотрено {q.reviewed} из {20} нужных, чтобы этим цифрам верить.
@@ -341,6 +393,66 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                 )}
               </label>
             )}
+
+            {/*
+              Суточная сверка (ТЗ разд. 3.3, 27): ночью агент проходит весь день целиком и
+              присылает короткую сводку руководству. Уже разобранное заново не пишется.
+            */}
+            <div className="ca-daily">
+              <label className={`gate-item${canManage ? '' : ' gate-item-ro'}`}>
+                <input
+                  type="checkbox"
+                  checked={cfg.daily_enabled}
+                  disabled={!canManage || busy || !cfg.enabled}
+                  onChange={(e) => void save({ dailyEnabled: e.target.checked })}
+                />
+                <span>
+                  <span className="gate-item-title">Сверять переписку раз в сутки</span>
+                  <span className="dim gate-item-hint">
+                    Агент ещё раз проходит весь день целиком — так видны связи, которые по
+                    кусочкам разговора не видны. Повторно ничего не заводит и ночью не спрашивает.
+                  </span>
+                </span>
+              </label>
+              <label className="field ca-quiet">
+                <span>Во сколько (по времени компании)</span>
+                <select
+                  className="input"
+                  value={cfg.daily_hour}
+                  disabled={!canManage || busy || !cfg.enabled || !cfg.daily_enabled}
+                  onChange={(e) => void save({ dailyHour: Number(e.target.value) })}
+                >
+                  {[18, 19, 20, 21, 22, 23].map((h) => <option key={h} value={h}>{h}:00</option>)}
+                </select>
+              </label>
+              <label className={`gate-item${canManage ? '' : ' gate-item-ro'}`}>
+                <input
+                  type="checkbox"
+                  checked={cfg.daily_summary}
+                  disabled={!canManage || busy || !cfg.enabled || !cfg.daily_enabled}
+                  onChange={(e) => void save({ dailySummary: e.target.checked })}
+                />
+                <span>
+                  <span className="gate-item-title">Присылать сводку дня</span>
+                  <span className="dim gate-item-hint">
+                    Владельцу и руководителям: сколько задач, встреч и решений появилось из
+                    переписки и что ждёт решения. Кратко — в ассистенте, по чатам — в Telegram.
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            {canManage && (
+              <span className="ca-limit-row">
+                <button className="btn btn-sm" disabled={busy || !cfg.enabled} onClick={() => void runDaily()}>
+                  <Icon name="refresh" size={14} /> Сверить день сейчас
+                </button>
+                <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void downloadExamples()}>
+                  <Icon name="download" size={14} /> Примеры для проверки
+                </button>
+              </span>
+            )}
+            {digest && <pre className="ca-digest">{digest}</pre>}
 
             {canManage && (
               <button className="btn btn-sm" disabled={busy || !cfg.enabled} onClick={() => void runNow()}>
@@ -584,6 +696,12 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                     <Icon name="chat" size={13} /> Открыть чат
                   </button>
                 </div>
+                {/* Отзыв — о том, что уже стало задачей, решением или встречей (ТЗ разд. 59). */}
+                {['confirmed', 'auto_created'].includes(a.status) && (
+                  <div className="ca-fb">
+                    <AiFeedback send={(b) => api.chatActionFeedback(a.id, b)} />
+                  </div>
+                )}
                 {opened && (
                   <div className="ca-sources">
                     {a.sources.map((s) => (

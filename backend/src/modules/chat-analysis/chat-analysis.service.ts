@@ -22,6 +22,8 @@ import {
 import { usersNamedInText } from '../nl/nl.match';
 import { zonedToUtc } from '../tasks/recurrence';
 import { CalendarService } from '../calendar/calendar.service';
+import { TelegramMirror } from '../notifications/telegram-mirror.service';
+import { alreadyCovered, chunks, cleanReasons, dailyDigest, keyMessages, rate } from './daily-rules';
 import {
   canApplyChange, changeAskText, changeDoneText, changeReadiness, ChangeKind, CHANGE_MIN_INTENT,
   newAssigneeOf, parseYesNo, resolveChangeTarget,
@@ -110,6 +112,8 @@ export class ChatAnalysisService {
     private readonly activity: TaskActivityRepository,
     /** Встречу ставим через обычный календарь: приглашения, напоминания, пересечения — его. */
     private readonly calendar: CalendarService,
+    /** Полная сводка дня — в Telegram, как и вечерний свод. */
+    private readonly telegram: TelegramMirror,
   ) {}
 
   /** Сообщение от бота всем, кто видит чат. */
@@ -134,7 +138,10 @@ export class ChatAnalysisService {
 
   saveSettings(
     tenantId: string,
-    patch: { enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean; monthlyLimitUsd?: number | null },
+    patch: {
+      enabled?: boolean; quietMinutes?: number; mode?: string; askInChat?: boolean; monthlyLimitUsd?: number | null;
+      dailyEnabled?: boolean; dailyHour?: number; dailySummary?: boolean;
+    },
   ) {
     return this.repo.saveSettings(tenantId, patch);
   }
@@ -145,14 +152,35 @@ export class ChatAnalysisService {
    * его собственных переписок, а не на наше обещание.
    */
   async stats(tenantId: string) {
-    const [counts, settings, spent] = await Promise.all([
+    const [counts, settings, spent, feedback, versions] = await Promise.all([
       this.repo.qualityCounts(tenantId),
       this.repo.settings(tenantId),
       this.repo.spentThisMonth(tenantId),
+      this.repo.feedbackCounts(tenantId),
+      this.repo.byVersion(tenantId),
     ]);
     const limit = settings.monthly_limit_usd != null ? Number(settings.monthly_limit_usd) : null;
+    const q = quality(counts);
     return {
-      quality: quality(counts),
+      quality: q,
+      /*
+        Метрики ТЗ разд. 58 поверх счётчиков этапа 4: доля «не хватило данных», ложные
+        срабатывания (отвергнуто, отменено, «это не задача» в отзыве) и пропуски — задачи,
+        которые люди завели из сообщения руками, хотя агент это сообщение не отметил.
+      */
+      metrics: {
+        clarificationRate: rate(counts.needsClarification, counts.tasksDetected),
+        falsePositiveRate: rate(counts.rejected + counts.undone + (feedback.reasons.not_action ?? 0), q.reviewed),
+        feedbackRight: feedback.right,
+        feedbackWrong: feedback.wrong,
+        reasons: feedback.reasons,
+        missed: feedback.missed,
+      },
+      versions: versions.map((v) => ({
+        model: v.model, promptVersion: v.prompt_version, rulesVersion: v.rules_version,
+        detected: Number(v.detected), reviewed: Number(v.reviewed), rejected: Number(v.rejected),
+        corrected: Number(v.corrected), wrong: Number(v.wrong),
+      })),
       spentUsd: Math.round(spent * 100) / 100,
       limitUsd: limit,
       limitReached: overLimit(spent, limit),
@@ -378,6 +406,117 @@ export class ChatAnalysisService {
     await this.say(tenantId, String(a.chat_id),
       `Поставил встречу «${a.title}» на ${when}. Участники: ${names.join(', ')} — приглашения в календаре.`);
     return { actionId: String(a.id), eventId };
+  }
+
+  // ── качество ──
+
+  /**
+   * «ИИ определил правильно?» (ТЗ разд. 59). Отзыв о наблюдении — из панели разбора.
+   * Причины — из короткого списка: иначе их не посчитать и на них не поучиться.
+   */
+  async feedback(tenantId: string, userId: string, actionId: string, correct: boolean, reasons: unknown) {
+    const a = await this.repo.one(tenantId, userId, actionId);
+    if (!a) throw AppException.notFound('Наблюдение не найдено');
+    await this.repo.saveFeedback(tenantId, actionId, userId, correct, cleanReasons(correct, reasons));
+    return { actionId, correct };
+  }
+
+  /**
+   * То же из карточки задачи, заведённой по переписке. Карточку видит и тот, кто в
+   * исходном чате не состоит, — отзыв оставить он вправе, переписку от этого не увидит.
+   */
+  async feedbackByTask(tenantId: string, userId: string, taskId: string, correct: boolean, reasons: unknown) {
+    const a = await this.repo.actionOfTask(tenantId, taskId);
+    if (!a) throw AppException.notFound('Эта задача заведена не из разбора переписки');
+    await this.repo.saveFeedback(tenantId, String(a.id), userId, correct, cleanReasons(correct, reasons));
+    return { actionId: String(a.id), correct };
+  }
+
+  /** Примеры для проверки (ТЗ разд. 59) — только по чатам, видным выгружающему. */
+  examples(tenantId: string, userId: string) {
+    return this.repo.examples(tenantId, userId);
+  }
+
+  // ── суточная сверка ──
+
+  /**
+   * Суточная сверка (ТЗ разд. 3.3, 19, 27–29).
+   *
+   * В заданный владельцем час по поясу организации агент ещё раз проходит весь день
+   * переписки: разбор по затиханию видел её кусками. Уже разобранное узнаётся по
+   * сообщениям-источникам и заново не пишется. Потом — короткая сводка руководству.
+   *
+   * День занимается ДО прохода: второй экземпляр сервера или повторный запуск в ту же
+   * ночь не пройдут его ещё раз и не пришлют вторую сводку.
+   */
+  async daily(now = new Date()): Promise<number> {
+    let done = 0;
+    for (const t of await this.repo.dailyDue(now)) {
+      if (!(await this.repo.claimDaily(t.tenant_id, t.local_date))) continue;
+      try {
+        const limit = t.monthly_limit_usd != null ? Number(t.monthly_limit_usd) : null;
+        const over = limit != null && overLimit(await this.repo.spentThisMonth(t.tenant_id), limit);
+        // Потолок исчерпан — не читаем, но сводку о том, что уже сделано за день, шлём.
+        if (!over) await this.passDay(t.tenant_id, now);
+        if (t.daily_summary) await this.sendDigest(t.tenant_id, new Date(now.getTime() - 24 * 3600_000), t.local_date);
+        done++;
+      } catch (e) {
+        this.log.warn(`суточная сверка ${t.tenant_id}: ${(e as Error).message}`);
+      }
+    }
+    return done;
+  }
+
+  /**
+   * Сверка по кнопке — проверить настройку, не дожидаясь ночи. Сегодняшний день НЕ
+   * занимает и сводку никому не шлёт: ночная сверка и сводка придут как обычно, а
+   * сводку нажавший видит на экране.
+   */
+  async dailyNow(tenantId: string, now = new Date()) {
+    const settings = await this.repo.settings(tenantId);
+    if (!settings.enabled) throw AppException.conflict('Разбор переписки выключен');
+    const limit = settings.monthly_limit_usd != null ? Number(settings.monthly_limit_usd) : null;
+    if (limit != null && overLimit(await this.repo.spentThisMonth(tenantId), limit)) {
+      throw AppException.conflict('Потолок расхода на этот месяц исчерпан');
+    }
+    const chats = await this.passDay(tenantId, now);
+    const digest = dailyDigest(await this.repo.dayStats(tenantId, new Date(now.getTime() - 24 * 3600_000)));
+    return { chats, digest: digest?.long ?? null };
+  }
+
+  /** Проход по дню одной организации: рабочие чаты, где за сутки была переписка. */
+  private async passDay(tenantId: string, now: Date): Promise<number> {
+    const since = new Date(now.getTime() - 24 * 3600_000);
+    let chats = 0;
+    for (const chat of await this.repo.dailyChats(tenantId, since)) {
+      // Живой хвост не трогаем: его разберут, когда разговор затихнет.
+      const until = new Date(now.getTime() - Math.max(chat.quiet_minutes, 1) * 60_000);
+      const messages = await this.repo.messagesBetween(tenantId, chat.chat_id, since, until);
+      let ok = true;
+      for (const part of chunks(messages)) {
+        const last = part[part.length - 1];
+        const seg: Segment = {
+          startId: String(part[0].id), endId: String(last.id),
+          startedAt: new Date(part[0].created_at), endedAt: new Date(last.created_at), count: part.length,
+        };
+        ok = await this.analyzeSegment(chat, part, seg, 'daily');
+        if (!ok) break; // модель недоступна — остальное дождётся затихания и следующей ночи
+      }
+      if (messages.length && ok) chats++;
+    }
+    return chats;
+  }
+
+  /** Сводка дня руководству (ТЗ разд. 27–28): короткая — строкой ассистента, полная — в Telegram. */
+  private async sendDigest(tenantId: string, since: Date, localDate: string): Promise<void> {
+    const digest = dailyDigest(await this.repo.dayStats(tenantId, since));
+    if (!digest) return;
+    for (const userId of await this.repo.managers(tenantId)) {
+      const id = await this.repo.addDigestPing(tenantId, userId, digest.short, localDate);
+      if (!id) continue; // уже присылали сегодня
+      this.realtime.emitToUsers(tenantId, [userId], 'assistant.ping', { id, text: digest.short, taskId: null });
+      void this.telegram.push(tenantId, userId, digest.long);
+    }
   }
 
   // ── журнал решений ──
@@ -1078,9 +1217,18 @@ export class ChatAnalysisService {
       let stored = 0;
       /** Что записали в этот проход: из этого выбираем, о чём спросить. */
       const saved: { id: string; action: ExtractedAction; status: string; cancelled: boolean }[] = [];
+      /*
+        Уже разобранное (ТЗ разд. 29): суточная сверка видит те же сообщения, что и
+        разбор по затиханию, а модель на второй раз сформулирует то же иначе — ключ по
+        тексту тут не спасёт. Узнаём по ключевым сообщениям-источникам.
+      */
+      const covered = await this.repo.coveredBy(chat.tenant_id, messages.map((m) => String(m.id)));
       for (const { action: a, status, cancelled } of actions) {
         // Изменение «на то же самое» не записываем: спрашивать о нём не о чем.
         if (status === 'noop') continue;
+        const keys = keyMessages(a.sources);
+        if (alreadyCovered({ type: a.type, keys }, covered)) continue;
+        covered.push({ type: a.type, messageIds: keys });
         const id = await this.repo.addAction(chat.tenant_id, runId, chat.chat_id, a, status);
         if (!id) continue;
         stored++;
