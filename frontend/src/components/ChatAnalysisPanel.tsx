@@ -32,6 +32,15 @@ const TYPES: Record<string, { label: string; icon: IconName }> = {
 
 const pct = (v: string | number) => `${Math.round(Number(v ?? 0) * 100)}%`;
 
+/** Что с наблюдением: подпись понятна без расшифровки. */
+const STATUS: Record<string, string> = {
+  detected: 'замечено',
+  ready: 'готово завести',
+  needs_clarification: 'не хватает данных',
+  confirmed: 'задача заведена',
+  rejected: 'отклонено',
+};
+
 const chatName = (a: { chat_project_name: string | null; chat_title: string | null }) =>
   a.chat_project_name ?? a.chat_title ?? 'без названия';
 
@@ -41,6 +50,10 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
   const [actions, setActions] = useState<ChatAnalysisAction[]>([]);
   const [runs, setRuns] = useState<ChatAnalysisRun[]>([]);
   const [open, setOpen] = useState<string | null>(null);
+  /** Чем дополнить наблюдение перед заведением: проект и исполнитель, если их нет. */
+  const [patch, setPatch] = useState<Record<string, { projectId?: string; assigneeId?: string }>>({});
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [people, setPeople] = useState<{ id: string; full_name: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
@@ -50,6 +63,13 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
     api.chatAnalysisActions().then(setActions).catch(() => setActions([]));
     api.chatAnalysisRuns().then(setRuns).catch(() => setRuns([]));
   };
+  useEffect(() => {
+    // Справочники нужны только там, где агенту чего-то не хватило.
+    api.listProjects().then((r: any[]) => setProjects(r.map((p) => ({ id: String(p.id), name: p.name }))))
+      .catch(() => setProjects([]));
+    api.listUsers().then((r: any[]) => setPeople(r.map((u) => ({ id: String(u.id), full_name: u.full_name ?? u.fullName }))))
+      .catch(() => setPeople([]));
+  }, []);
   useEffect(() => { void load(); }, []);
 
   const save = async (patch: { enabled?: boolean; quietMinutes?: number }) => {
@@ -70,6 +90,22 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
     finally { setBusy(false); }
   };
+
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true); setErr(''); setMsg('');
+    try { await fn(); load(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
+    finally { setBusy(false); }
+  };
+
+  const confirm = (a: ChatAnalysisAction) => act(async () => {
+    const p = patch[a.id] ?? {};
+    const r = await api.confirmChatAction(a.id, {
+      projectId: p.projectId ?? a.project_id ?? undefined,
+      assigneeId: p.assigneeId ?? a.assignee_id ?? undefined,
+    });
+    setMsg(`Задача «${r.task.title}» заведена`);
+  });
 
   const failed = runs.filter((r) => r.status === 'failed').length;
 
@@ -152,6 +188,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                 <div className="ca-item-head">
                   <span className="ca-type"><Icon name={t.icon} size={13} /> {t.label}</span>
                   <span className="ca-title">{a.title}</span>
+                  <span className="dim ca-status">{STATUS[a.status] ?? a.status}</span>
                 </div>
                 <div className="dim ca-meta">
                   {[
@@ -172,7 +209,63 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                   смысл {pct(a.intent_confidence)} · проект {pct(a.project_confidence)}
                   {' · '}постановщик {pct(a.assigner_confidence)} · исполнитель {pct(a.assignee_confidence)}
                 </div>
+                {/*
+                  Поручению нужен проект и исполнитель. Чего агент не понял, человек
+                  дописывает здесь же — уводить его на другой экран ради двух полей
+                  значит потерять половину по дороге.
+                */}
+                {a.action_type === 'task' && !a.created_entity_id && a.status !== 'rejected' && (
+                  <div className="ca-fix">
+                    {!a.project_id && (
+                      <select
+                        className="input"
+                        aria-label="Проект задачи"
+                        value={patch[a.id]?.projectId ?? ''}
+                        onChange={(e) => setPatch((p) => ({ ...p, [a.id]: { ...p[a.id], projectId: e.target.value } }))}
+                      >
+                        <option value="">Проект не выбран</option>
+                        {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    )}
+                    {!a.assignee_id && (
+                      <select
+                        className="input"
+                        aria-label="Исполнитель задачи"
+                        value={patch[a.id]?.assigneeId ?? ''}
+                        onChange={(e) => setPatch((p) => ({ ...p, [a.id]: { ...p[a.id], assigneeId: e.target.value } }))}
+                      >
+                        <option value="">Исполнитель не выбран</option>
+                        {people.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )}
+
                 <div className="ca-acts">
+                  {a.action_type === 'task' && !a.created_entity_id && a.status !== 'rejected' && (
+                    <>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        disabled={busy || !(patch[a.id]?.projectId ?? a.project_id)}
+                        onClick={() => void confirm(a)}
+                        title={!(patch[a.id]?.projectId ?? a.project_id) ? 'Сначала выберите проект' : undefined}
+                      >
+                        <Icon name="check" size={13} /> Завести задачу
+                      </button>
+                      <button className="btn btn-ghost btn-sm" disabled={busy}
+                        onClick={() => void act(() => api.rejectChatAction(a.id))}>
+                        <Icon name="close" size={13} /> Это не задача
+                      </button>
+                    </>
+                  )}
+                  {a.created_entity_id && (
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => { navigate({ section: 'projects', projectId: String(a.project_id ?? ''), taskId: String(a.created_entity_id) }); onClose(); }}
+                    >
+                      <Icon name="check" size={13} /> Открыть задачу
+                    </button>
+                  )}
                   <button className="btn btn-ghost btn-sm" onClick={() => setOpen(opened ? null : a.id)}>
                     <Icon name={opened ? 'minus' : 'plus'} size={13} />
                     {' '}Откуда это ({a.sources.length})

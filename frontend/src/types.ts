@@ -120,6 +120,8 @@ export interface ChatAnalysisAction {
   meeting_at: string | null;
   status: string;
   created_at: string;
+  created_entity_type: string | null;
+  created_entity_id: string | null;
   intent_confidence: string | number;
   project_confidence: string | number;
   assigner_confidence: string | number;

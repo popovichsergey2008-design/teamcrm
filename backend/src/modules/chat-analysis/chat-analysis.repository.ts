@@ -210,20 +210,23 @@ export class ChatAnalysisRepository {
    * Повтор (тот же ключ) пропускаем молча: это и есть защита от двойной обработки — то
    * же самое придёт и с затихшим отрезком, и с ночной сверкой.
    */
-  async addAction(tenantId: string, runId: string, chatId: string, a: ExtractedAction): Promise<string | null> {
+  async addAction(
+    tenantId: string, runId: string, chatId: string, a: ExtractedAction, status = 'detected',
+  ): Promise<string | null> {
     const row = await this.db.one<{ id: string }>(
       `INSERT INTO chat_extracted_actions (
          tenant_id, run_id, chat_id, action_type, title, description,
          project_id, assigner_id, assignee_id, deadline_at, meeting_at,
-         intent_confidence, project_confidence, assigner_confidence, assignee_confidence, dedup_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         intent_confidence, project_confidence, assigner_confidence, assignee_confidence,
+         dedup_key, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        ON CONFLICT (tenant_id, dedup_key) DO NOTHING
        RETURNING id::text`,
       [
         tenantId, runId, chatId, a.type, a.title, a.description,
         a.projectId, a.assignerId, a.assigneeId, a.deadlineAt, a.meetingAt,
         a.confidence.intent, a.confidence.project, a.confidence.assigner, a.confidence.assignee,
-        a.dedupKey,
+        a.dedupKey, status,
       ],
     );
     if (!row) return null;
@@ -260,6 +263,7 @@ export class ChatAnalysisRepository {
               a.assigner_id::text, ur.full_name AS assigner_name,
               a.assignee_id::text, ue.full_name AS assignee_name,
               a.deadline_at, a.meeting_at, a.status, a.created_at,
+              a.created_entity_type, a.created_entity_id::text,
               a.intent_confidence, a.project_confidence, a.assigner_confidence, a.assignee_confidence,
               c.title AS chat_title, c.kind AS chat_kind, pc.name AS chat_project_name,
               COALESCE((
@@ -281,6 +285,49 @@ export class ChatAnalysisRepository {
         ORDER BY a.created_at DESC, a.id DESC
         LIMIT $4`,
       [tenantId, userId, o.chatId ?? null, Math.min(Math.max(o.limit ?? 50, 1), 200)],
+    );
+  }
+
+  /** Одно наблюдение — с проверкой, что человеку вообще видна эта переписка. */
+  one(tenantId: string, userId: string, id: string): Promise<any | null> {
+    return this.db.one(
+      `SELECT a.id::text, a.chat_id::text, a.action_type, a.title, a.description,
+              a.project_id::text, a.assigner_id::text, a.assignee_id::text,
+              a.deadline_at, a.status, a.created_entity_id::text,
+              (SELECT am.message_id::text FROM chat_extracted_action_messages am
+                WHERE am.action_id = a.id AND am.role = 'instruction'
+                ORDER BY am.message_id LIMIT 1) AS instruction_message_id
+         FROM chat_extracted_actions a
+         JOIN chats c ON c.id = a.chat_id
+        WHERE a.tenant_id = $1 AND a.id = $3 AND ${VISIBLE}`,
+      [tenantId, userId, id],
+    );
+  }
+
+  /**
+   * Откуда задача взялась: сообщение, которое было поручением.
+   *
+   * Тем же полем пользуется «создать задачу из сообщения» — карточка задачи умеет по
+   * нему открыть исходный разговор, и второго способа заводить незачем.
+   */
+  async linkSourceMessage(tenantId: string, taskId: string, messageId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE tasks SET source_chat_message_id = $3 WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, taskId, messageId],
+    );
+  }
+
+  /** Отметить, чем кончилось наблюдение: завели задачу, отвергли, отменили. */
+  async markAction(
+    tenantId: string, id: string,
+    o: { status: string; entityType?: string | null; entityId?: string | null },
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE chat_extracted_actions
+          SET status = $3, created_entity_type = COALESCE($4, created_entity_type),
+              created_entity_id = COALESCE($5, created_entity_id), updated_at = now()
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id, o.status, o.entityType ?? null, o.entityId ?? null],
     );
   }
 

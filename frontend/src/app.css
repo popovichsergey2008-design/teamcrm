@@ -2400,6 +2400,10 @@
 .ca-title { font-size: var(--fs-sm); font-weight: 600; }
 .ca-meta, .ca-conf { font-size: var(--fs-xs); margin-top: 4px; }
 .ca-acts { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+/* Чего агент не понял, человек дописывает здесь же — два поля, не отдельный экран. */
+.ca-fix { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.ca-fix .input { flex: 1 1 160px; min-width: 0; font-size: var(--fs-sm); }
+.ca-status { margin-left: auto; font-size: var(--fs-xs); white-space: nowrap; }
 .ca-sources { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .ca-source { display: flex; flex-direction: column; gap: 2px; }
 .ca-source-who { font-size: var(--fs-xs); }

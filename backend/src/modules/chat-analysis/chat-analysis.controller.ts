@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -15,6 +15,13 @@ class SettingsDto {
 
 class ChatFlagDto {
   @IsBoolean() enabled!: boolean;
+}
+
+/** Правка перед заведением: чего не хватило, человек дописывает прямо здесь. */
+class ConfirmDto {
+  @IsOptional() @IsString() projectId?: string;
+  @IsOptional() @IsString() assigneeId?: string;
+  @IsOptional() @IsString() @MaxLength(255) title?: string;
 }
 
 /**
@@ -60,6 +67,23 @@ export class ChatAnalysisController {
       chatId: chatId || null,
       limit: limit ? Number(limit) : undefined,
     });
+  }
+
+  /**
+   * Завести задачу по наблюдению.
+   *
+   * Единственный путь, которым разбор превращается в задачу: её заводит человек.
+   * Постановщиком становится тот, кто поручил в переписке, а не нажавший кнопку.
+   */
+  @Post('actions/:id/confirm')
+  confirm(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ConfirmDto) {
+    return this.svc.confirm(u.tenantId, u.userId, id, dto);
+  }
+
+  /** «Это не задача». Наблюдение остаётся: по отказам видно, где агент ошибается. */
+  @Post('actions/:id/reject')
+  reject(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.reject(u.tenantId, u.userId, id);
   }
 
   /** Проходы разбора: по ним видно, что агент работает и на чём спотыкается. */

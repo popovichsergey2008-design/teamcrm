@@ -1,8 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
+import { TasksService } from '../tasks/tasks.service';
+import { SecretaryService } from '../secretary/secretary.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { matchProjectInText } from '../nl/task-draft';
 import { dedupKeyOf, ExtractedAction, parseAnalysis, RefCatalog, resolveProject } from './analysis-schema';
+import { resolveRoles, taskReadiness } from './roles-rules';
 import { ChatAnalysisRepository, DueChatRow, MessageRow } from './chat-analysis.repository';
 import { closedSegments, Segment, SegmentMessage } from './segments';
 
@@ -63,6 +67,9 @@ export class ChatAnalysisService {
     private readonly repo: ChatAnalysisRepository,
     private readonly ai: AiService,
     private readonly prompts: PromptsService,
+    private readonly tasks: TasksService,
+    /** Журнал действий ИИ: по нему видно, сколько работы он снял с людей. */
+    private readonly secretary: SecretaryService,
   ) {}
 
   // ── настройки ──
@@ -86,6 +93,61 @@ export class ChatAnalysisService {
 
   runs(tenantId: string, userId: string, limit?: number) {
     return this.repo.runs(tenantId, userId, limit);
+  }
+
+  // ── что делать с наблюдением ──
+
+  /**
+   * Завести задачу по наблюдению.
+   *
+   * Единственный путь, которым разбор переписки превращается в задачу: её заводит
+   * ЧЕЛОВЕК, нажав кнопку. Сам агент ничего не создаёт — это решение заказчика.
+   *
+   * Постановщик — тот, кто поручил в переписке, а не тот, кто нажал «завести».
+   * Нажавший лишь подтвердил чужое поручение, и приписывать его себе неправильно
+   * (так же сделано в задачах со встреч).
+   */
+  async confirm(
+    tenantId: string, userId: string, id: string,
+    patch: { projectId?: string; assigneeId?: string; title?: string } = {},
+  ) {
+    const a = await this.repo.one(tenantId, userId, id);
+    if (!a) throw AppException.notFound('Наблюдение не найдено');
+    if (a.action_type !== 'task') throw AppException.validation('Задачей может стать только поручение');
+    if (a.created_entity_id) throw AppException.conflict('Задача по этому наблюдению уже заведена');
+    if (['rejected', 'cancelled'].includes(a.status)) throw AppException.conflict('Наблюдение уже закрыто');
+
+    const projectId = patch.projectId ?? a.project_id;
+    if (!projectId) throw AppException.validation('Выберите проект для задачи');
+
+    const task = await this.tasks.create(tenantId, {
+      projectId: String(projectId),
+      title: String(patch.title ?? a.title).slice(0, 255),
+      description: a.description || undefined,
+      assigneeId: (patch.assigneeId ?? a.assignee_id) ?? undefined,
+      managerId: a.assigner_id ?? undefined,
+      deadlineAt: a.deadline_at ?? undefined,
+    } as any, userId);
+
+    // Откуда задача взялась: по этому сообщению карточка открывает исходный разговор.
+    if (a.instruction_message_id) {
+      await this.repo.linkSourceMessage(tenantId, String(task.id), String(a.instruction_message_id));
+    }
+    await this.repo.markAction(tenantId, id, { status: 'confirmed', entityType: 'task', entityId: String(task.id) });
+    void this.secretary.record({
+      tenantId, userId: a.assigner_id ?? userId, kind: 'nl_task',
+      summary: `Задача из переписки: «${task.title}»`, subjectType: 'task', subjectId: task.id,
+    });
+    return { actionId: id, task };
+  }
+
+  /** «Это не задача». Наблюдение не удаляем: по отказам видно, где агент ошибается. */
+  async reject(tenantId: string, userId: string, id: string) {
+    const a = await this.repo.one(tenantId, userId, id);
+    if (!a) throw AppException.notFound('Наблюдение не найдено');
+    if (a.created_entity_id) throw AppException.conflict('По наблюдению уже заведена задача');
+    await this.repo.markAction(tenantId, id, { status: 'rejected' });
+    return { actionId: id, status: 'rejected' };
   }
 
   // ── разбор ──
@@ -203,21 +265,52 @@ export class ChatAnalysisService {
         projects.map((p) => ({ id: String(p.id), name: p.name })),
       );
 
+      // Кто что написал: по авторству определяются постановщик и исполнитель.
+      const authorOf = new Map(messages.map((m) => [String(m.id), m.author_id ? String(m.author_id) : null]));
+
       const actions = parseAnalysis(raw, catalog).map((a) => {
         const p = resolveProject({ chatProjectId: chat.project_id, spokenId: spoken });
+        /*
+          Роли — по самой переписке, а не по ответу модели (ТЗ разд. 10). Модель
+          отвечает на вопрос «где здесь поручение», а «чьё оно» видно по тому, кто
+          написал это сообщение. Неверный постановщик — худшая из ошибок функции.
+        */
+        const roles = resolveRoles({
+          sources: a.sources.map((s) => ({ ...s, authorId: authorOf.get(s.messageId) ?? null })),
+          modelAssigneeId: a.assigneeId,
+        });
+
         const fixed: ExtractedAction = {
           ...a,
           projectId: p.projectId,
-          confidence: { ...a.confidence, project: p.confidence },
+          assignerId: roles.assignerId,
+          assigneeId: roles.assigneeId,
+          confidence: {
+            ...a.confidence,
+            project: p.confidence,
+            assigner: roles.assignerConfidence,
+            assignee: roles.assigneeConfidence,
+          },
         };
-        // Ключ от повторов считается в том числе по проекту — пересобираем его.
+        // Ключ от повторов считается в том числе по проекту и исполнителю — пересобираем.
         fixed.dedupKey = dedupKeyOf(fixed);
-        return fixed;
+
+        /*
+          Состояние наблюдения. Поручению его считаем: «готово» — человеку остаётся
+          нажать «завести». Остальные виды на этом этапе просто замечены.
+        */
+        const status = fixed.type === 'task'
+          ? taskReadiness({
+            projectId: fixed.projectId, assigneeId: fixed.assigneeId, assignerId: fixed.assignerId,
+            cancelled: roles.cancelled, confidence: fixed.confidence,
+          })
+          : 'detected';
+        return { action: fixed, status };
       });
 
       let stored = 0;
-      for (const a of actions) {
-        if (await this.repo.addAction(chat.tenant_id, runId, chat.chat_id, a)) stored++;
+      for (const { action: a, status } of actions) {
+        if (await this.repo.addAction(chat.tenant_id, runId, chat.chat_id, a, status)) stored++;
       }
 
       await this.repo.finishRun(runId, {

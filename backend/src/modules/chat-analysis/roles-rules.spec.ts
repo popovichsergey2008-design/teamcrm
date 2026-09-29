@@ -1,0 +1,108 @@
+import { missingParts, resolveRoles, SourceAuthor, taskReadiness, THRESHOLDS } from './roles-rules';
+
+const src = (messageId: string, role: string, authorId: string | null): SourceAuthor =>
+  ({ messageId, role: role as SourceAuthor['role'], authorId });
+
+const OLGA = '7';
+const PETR = '18';
+
+describe('кто поручил и кому', () => {
+  it('прямое поручение: постановщик — автор сообщения с поручением', () => {
+    // «Юра, исправь API» — писала Ольга, названа модель исполнителем Пётр.
+    const r = resolveRoles({ sources: [src('1', 'instruction', OLGA)], modelAssigneeId: PETR });
+    expect(r).toMatchObject({ assignerId: OLGA, assigneeId: PETR, pattern: 'named' });
+    expect(r.assignerConfidence).toBeGreaterThanOrEqual(THRESHOLDS.assigner);
+  });
+
+  it('«ок, беру» сильнее любого имени: работу взял тот, кто согласился', () => {
+    /*
+      «Нужно переделать таблицу» (Ольга) → «Ок, беру» (Пётр). Модель может считать
+      исполнителем кого угодно — решает авторство согласия.
+    */
+    const r = resolveRoles({
+      sources: [src('1', 'instruction', OLGA), src('2', 'acceptance', PETR)],
+      modelAssigneeId: OLGA,
+    });
+    expect(r).toMatchObject({ assignerId: OLGA, assigneeId: PETR, pattern: 'accepted' });
+    expect(r.assigneeConfidence).toBeGreaterThanOrEqual(THRESHOLDS.assignee);
+  });
+
+  it('согласие того же человека не делает его исполнителем чужой работы', () => {
+    // Ольга сама себе поддакнула — исполнителем остаётся тот, кого назвали.
+    const r = resolveRoles({
+      sources: [src('1', 'instruction', OLGA), src('2', 'acceptance', OLGA)],
+      modelAssigneeId: PETR,
+    });
+    expect(r).toMatchObject({ assigneeId: PETR, pattern: 'named' });
+  });
+
+  it('задача себе: постановщик и исполнитель — один человек', () => {
+    const r = resolveRoles({ sources: [src('1', 'instruction', PETR)], modelAssigneeId: PETR });
+    expect(r).toMatchObject({ assignerId: PETR, assigneeId: PETR, pattern: 'self' });
+  });
+
+  it('без сообщения с поручением постановщика не выдумываем', () => {
+    // Разговор есть, поручения в нём нет: назначать кого-то начальником нельзя.
+    const r = resolveRoles({
+      sources: [src('1', 'context', OLGA), src('2', 'decision', PETR)],
+      modelAssigneeId: PETR,
+    });
+    expect(r).toMatchObject({ assignerId: null, assigneeId: null, pattern: 'unknown' });
+    expect(r.assignerConfidence).toBe(0);
+  });
+
+  it('поручение от бота постановщиком не делает никого', () => {
+    const r = resolveRoles({ sources: [src('1', 'instruction', null)], modelAssigneeId: PETR });
+    expect(r.assignerId).toBeNull();
+  });
+
+  it('поручение есть, исполнителя нет — так и говорим, а не подбираем по навыкам', () => {
+    const r = resolveRoles({ sources: [src('1', 'instruction', OLGA)], modelAssigneeId: null });
+    expect(r).toMatchObject({ assignerId: OLGA, assigneeId: null, pattern: 'unknown' });
+    expect(r.assigneeConfidence).toBe(0);
+  });
+
+  it('отмену в разговоре замечаем', () => {
+    const r = resolveRoles({
+      sources: [src('1', 'instruction', OLGA), src('2', 'cancellation', OLGA)],
+      modelAssigneeId: PETR,
+    });
+    expect(r.cancelled).toBe(true);
+  });
+});
+
+describe('готовность поручения', () => {
+  const full = {
+    projectId: '130', assigneeId: PETR, assignerId: OLGA, cancelled: false,
+    confidence: { intent: 0.95, project: 0.95, assigner: 0.95, assignee: 0.95 },
+  };
+
+  it('всё на месте — готово', () => {
+    expect(taskReadiness(full)).toBe('ready');
+  });
+
+  it('без проекта, исполнителя или постановщика — нужно уточнить', () => {
+    expect(taskReadiness({ ...full, projectId: null })).toBe('needs_clarification');
+    expect(taskReadiness({ ...full, assigneeId: null })).toBe('needs_clarification');
+    expect(taskReadiness({ ...full, assignerId: null })).toBe('needs_clarification');
+  });
+
+  it('низкая уверенность по любому полю снимает готовность', () => {
+    expect(taskReadiness({ ...full, confidence: { ...full.confidence, assigner: 0.9 } }))
+      .toBe('needs_clarification');
+    expect(taskReadiness({ ...full, confidence: { ...full.confidence, project: 0.5 } }))
+      .toBe('needs_clarification');
+  });
+
+  it('отменённое поручение готовым не бывает, даже когда поля заполнены', () => {
+    // Последнее слово в разговоре было «не делай» — это важнее заполненности.
+    expect(taskReadiness({ ...full, cancelled: true })).toBe('needs_clarification');
+  });
+
+  it('чего не хватает — говорим словами', () => {
+    expect(missingParts({ projectId: null, assigneeId: null, assignerId: OLGA, cancelled: false }))
+      .toEqual(['проект', 'исполнитель']);
+    expect(missingParts({ projectId: '1', assigneeId: PETR, assignerId: OLGA, cancelled: true }))
+      .toEqual(['в разговоре есть отмена']);
+  });
+});

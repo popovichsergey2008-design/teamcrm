@@ -1672,6 +1672,12 @@ export const api = {
     request<import('../types').ChatAnalysisAction[]>('GET', `/chat-analysis/actions${chatId ? `?chatId=${chatId}` : ''}`),
   chatAnalysisRuns: () => request<import('../types').ChatAnalysisRun[]>('GET', '/chat-analysis/runs'),
   runChatAnalysis: () => request<{ analyzed: number }>('POST', '/chat-analysis/run', {}),
+  /** Завести задачу по наблюдению: постановщиком станет тот, кто поручил в переписке. */
+  confirmChatAction: (id: string, b: { projectId?: string; assigneeId?: string; title?: string } = {}) =>
+    request<{ actionId: string; task: { id: string; project_id: string; title: string } }>(
+      'POST', `/chat-analysis/actions/${id}/confirm`, b),
+  rejectChatAction: (id: string) =>
+    request<{ actionId: string; status: string }>('POST', `/chat-analysis/actions/${id}/reject`, {}),
   setChatAnalysisFlag: (chatId: string, enabled: boolean) =>
     request<{ chatId: string; enabled: boolean }>('PATCH', `/chat-analysis/chats/${chatId}`, { enabled }),
   platformTenants: () => request<PlatformTenant[]>('GET', '/platform/tenants'),

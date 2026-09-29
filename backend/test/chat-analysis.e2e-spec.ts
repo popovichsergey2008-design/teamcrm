@@ -11,14 +11,15 @@ import { DbService } from '../src/database/db.service';
 import { ChatAnalysisRepository } from '../src/modules/chat-analysis/chat-analysis.repository';
 
 /**
- * Разбор переписки (ТЗ-12, этап 1).
+ * Разбор переписки (ТЗ-12, этапы 1–2).
  *
  * Проверяем обещания, а не внутренности:
  *   1. выключено по умолчанию — пока владелец не включил, не читается ничего;
  *   2. ЛИЧНЫЕ переписки не разбираются даже при включённом разборе и даже когда
  *      разговор затих: это решение заказчика, и оно не должно зависеть от настройки;
- *   3. агент ничего не создаёт — на этом этапе он только наблюдает;
- *   4. включать разбор вправе только владелец.
+ *   3. сам агент задач не заводит — это делает человек нажатием;
+ *   4. постановщиком становится тот, кто ПОРУЧИЛ в переписке, а не тот, кто нажал;
+ *   5. включать разбор вправе только владелец.
  */
 describe('разбор переписки (e2e)', () => {
   let app: INestApplication;
@@ -140,7 +141,105 @@ describe('разбор переписки (e2e)', () => {
     expect(await repo.dueChats(new Date(), String(owner.user.tenantId))).toEqual([]);
   }, 90000);
 
-  it('на этом этапе агент ничего не создаёт: наблюдений нет, задач не появилось', async () => {
+  /**
+   * Второй этап: наблюдение становится задачей ТОЛЬКО по нажатию человека, и
+   * постановщиком становится тот, кто поручил в переписке, а не тот, кто нажал.
+   *
+   * Наблюдение заводим напрямую: в прогоне участвует модель, а у проверки её нет —
+   * а проверяем мы здесь не разбор, а то, что с разбором делают дальше.
+   */
+  const plant = async (o: {
+    tenantId: string; chatId: string; projectId: string | null;
+    assignerId: string; assigneeId: string | null; messageId: string;
+  }) => {
+    const run = await db.one<{ id: string }>(
+      `INSERT INTO chat_analysis_runs (tenant_id, chat_id, mode, status, messages)
+       VALUES ($1,$2,'segment','done',2) RETURNING id::text`,
+      [o.tenantId, o.chatId],
+    );
+    const action = await db.one<{ id: string }>(
+      `INSERT INTO chat_extracted_actions (
+         tenant_id, run_id, chat_id, action_type, title, project_id, assigner_id, assignee_id,
+         intent_confidence, project_confidence, assigner_confidence, assignee_confidence,
+         status, dedup_key)
+       VALUES ($1,$2,$3,'task','Сделать отчёт по складу',$4,$5,$6,0.95,1,0.95,0.95,'ready',$7)
+       RETURNING id::text`,
+      [o.tenantId, run!.id, o.chatId, o.projectId, o.assignerId, o.assigneeId, `qa-${Math.random()}`],
+    );
+    await db.query(
+      `INSERT INTO chat_extracted_action_messages (action_id, message_id, role)
+       VALUES ($1,$2,'instruction')`,
+      [action!.id, o.messageId],
+    );
+    return String(action!.id);
+  };
+
+  it('задачу заводит человек, а постановщиком становится тот, кто поручил', async () => {
+    const { owner, mate, O, M } = await team('CA7');
+    const project = (await http.post('/api/projects').set(O).send({ name: 'Склад' }).expect(201)).body.data;
+    const chat = (await http.post('/api/chats/groups').set(O)
+      .send({ title: 'Склад', userIds: [String(mate.id)] }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'Пётр, сделай отчёт по складу до пятницы' }).expect(201)).body.data;
+
+    const actionId = await plant({
+      tenantId: String(owner.user.tenantId), chatId: String(chat.id), projectId: String(project.id),
+      assignerId: String(owner.user.id), assigneeId: String(mate.id), messageId: String(msg.id),
+    });
+
+    // Подтверждает КОЛЛЕГА — и постановщиком всё равно остаётся тот, кто поручил.
+    const res = (await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(M).send({}).expect(201)).body.data;
+    const task = await db.one<any>(
+      `SELECT assignee_id::text, created_by::text, source_chat_message_id::text FROM tasks WHERE id = $1`,
+      [res.task.id],
+    );
+    expect(task!.created_by).toBe(String(owner.user.id));
+    expect(task!.assignee_id).toBe(String(mate.id));
+    // Из задачи виден исходный разговор.
+    expect(task!.source_chat_message_id).toBe(String(msg.id));
+
+    // Дважды одну задачу не заводим.
+    await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(409);
+  }, 90000);
+
+  it('без проекта задача не заводится, а выбранный в ответе — принимается', async () => {
+    const { owner, mate, O } = await team('CA8');
+    const project = (await http.post('/api/projects').set(O).send({ name: 'Второй' }).expect(201)).body.data;
+    const chat = (await http.post('/api/chats/groups').set(O).send({ title: 'Без проекта' }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'Пётр, посчитай остатки' }).expect(201)).body.data;
+
+    const actionId = await plant({
+      tenantId: String(owner.user.tenantId), chatId: String(chat.id), projectId: null,
+      assignerId: String(owner.user.id), assigneeId: String(mate.id), messageId: String(msg.id),
+    });
+
+    await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(400);
+    const ok = (await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O)
+      .send({ projectId: String(project.id) }).expect(201)).body.data;
+    expect(ok.task.id).toBeTruthy();
+  }, 90000);
+
+  it('«это не задача» закрывает наблюдение, но не стирает его', async () => {
+    const { owner, O } = await team('CA9');
+    const chat = (await http.post('/api/chats/groups').set(O).send({ title: 'Отказ' }).expect(201)).body.data;
+    const msg = (await http.post(`/api/chats/${chat.id}/messages`).set(O)
+      .send({ body: 'может когда-нибудь переделаем шапку' }).expect(201)).body.data;
+    const actionId = await plant({
+      tenantId: String(owner.user.tenantId), chatId: String(chat.id), projectId: null,
+      assignerId: String(owner.user.id), assigneeId: null, messageId: String(msg.id),
+    });
+
+    await http.post(`/api/chat-analysis/actions/${actionId}/reject`).set(O).send({}).expect(201);
+    const row = await db.one<{ status: string }>(
+      `SELECT status FROM chat_extracted_actions WHERE id = $1`, [actionId],
+    );
+    // Отказы нужны: по ним видно, где агент ошибается.
+    expect(row!.status).toBe('rejected');
+    await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(409);
+  }, 90000);
+
+  it('сам агент задач не заводит: без нажатия человека их не появляется', async () => {
     const { owner, O } = await team('CA6');
     await http.patch('/api/chat-analysis/settings').set(O).send({ enabled: true }).expect(200);
 
