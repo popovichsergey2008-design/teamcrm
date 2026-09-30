@@ -85,7 +85,11 @@ const FALLBACK_SYSTEM = [
   '11. change — изменение УЖЕ ЗАВЕДЁННОЙ задачи из справочника tasks (from_this_chat —',
   '   заведены из этого чата): "change":"cancel" — отменили, "reassign" — отдали другому',
   '   (новый в assignee_ref), "deadline" — перенесли срок (новый в deadline). task_ref',
-  '   обязателен. Новое поручение — это task, а не change.',
+  '   обязателен. Новое поручение — это task, а не change. «По #1473 — пока не делай,',
+  '   клиент передумал» — это change cancel к задаче #1473, а НЕ status: статус говорит о ходе',
+  '   работы, а отмена, «не делай», «отбой», «пусть лучше X», «давайте до понедельника» о',
+  '   заведённой задаче — это изменение.',
+  '12. Сообщения бота (is_bot) — никогда не источник: он пересказывает уже сделанное.',
   '',
   'Формат ответа:',
   '{"actions":[{"type":"task","title":"...","description":"...","project_ref":"p1",',
@@ -1089,7 +1093,16 @@ export class ChatAnalysisService {
       // Кто что написал: по авторству определяются постановщик и исполнитель.
       const authorOf = new Map(messages.map((m) => [String(m.id), m.author_id ? String(m.author_id) : null]));
 
-      const actions = parseAnalysis(raw, catalog).map((a) => {
+      /*
+        Сообщения бота источником не бывают. Живая проверка 30.09: бот написал «Поставил
+        встречу … на 1 октября в 15:00», и модель завела из этого вторую встречу — а от
+        повтора ключ по источникам не спас, потому что источник был другой. Наблюдение,
+        у которого не осталось ни одного сообщения человека, выбрасываем целиком.
+      */
+      const human = parseAnalysis(raw, catalog)
+        .map((a) => ({ ...a, sources: a.sources.filter((x) => !messageById.get(x.messageId)?.is_ai) }))
+        .filter((a) => a.sources.length > 0);
+      const actions = human.map((a) => {
         const p = resolveProject({ chatProjectId: chat.project_id, spokenId: spoken });
         /*
           Роли — по самой переписке, а не по ответу модели (ТЗ разд. 10). Модель
