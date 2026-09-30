@@ -5986,3 +5986,42 @@ button.chat-pop-row:hover { background: var(--hover); }
   .chat-msg input, .chat-msg textarea, .msg input, .msg textarea { -webkit-user-select: text; user-select: text; }
   .chat-msg.is-pressing, .msg.is-pressing { transform: scale(0.985); filter: brightness(0.96); transition: transform 0.12s, filter 0.12s; }
 }
+
+/* Сброс созвона прямо из свёрнутой плашки (задача #1463): красная трубка. */
+.call-pill-hangup { background: #c62828; }
+.call-pill-hangup:hover { background: #b71c1c; }
+/* Громкая связь включена — кнопка «горит», как в звонилке. */
+.call-on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+/*
+  Созвон на телефоне (задачи #1463, #1465): окно на весь экран, отступы от системных
+  панелей — на неподвижной подложке (на прокручиваемом окне они не работают), в кнопках
+  только значки, длинные подписи шапки спрятаны. «Положить трубку» — большой красной
+  кнопкой, чтобы её не приходилось искать среди остальных.
+*/
+@media (max-width: 640px) {
+  .call-overlay { padding: var(--safe-top) 0 var(--safe-bottom); background: var(--bg-elev); }
+  .call-window {
+    width: 100%; height: 100%; max-height: none;
+    border: none; border-radius: 0; box-shadow: none;
+  }
+  .call-head { flex-wrap: wrap; gap: 6px; padding: 8px 10px; font-size: var(--fs-sm, 14px); }
+  .call-head > span:first-child { min-width: 0; flex: 1 1 auto; }
+  .call-ai-what, .call-head .badge { display: none; }
+  .call-head-actions { flex-wrap: wrap; }
+  .call-btn-label { display: none; }
+  .call-recording { margin: 0 8px 6px; font-size: var(--fs-xs); }
+  .call-stage { min-height: 0; padding: 8px; }
+  .call-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); align-content: start; }
+  .call-controls {
+    justify-content: center; gap: 12px; padding: 12px 10px 14px;
+  }
+  .call-controls .btn {
+    width: 50px; height: 50px; padding: 0; border-radius: 50%; justify-content: center;
+  }
+  .call-controls .call-leave {
+    margin-left: 0; width: 60px; height: 60px; order: 99;
+    background: #c62828; border-color: #c62828; color: #fff;
+  }
+  .call-controls .call-leave:hover { background: #b71c1c; color: #fff; }
+}

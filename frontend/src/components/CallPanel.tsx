@@ -12,6 +12,7 @@ import { watchSpeaking } from '../lib/speaking';
 import { diag } from '../lib/diag';
 import { playKnock, startRingback, stopRingback } from '../lib/sound';
 import { useAuth } from '../state/auth';
+import { platform } from '../platform';
 
 /**
  * Размер свёрнутого созвона по умолчанию.
@@ -68,6 +69,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   }, [inviteUserIds.length, peers.length, isGuest]);
   const [tracks, setTracks] = useState<RemoteTrack[]>([]);
   const [micOn, setMicOn] = useState(true);
+  /**
+   * Куда идёт звук (задача #1464): null — платформа не умеет выбирать (браузер), и
+   * кнопки громкой связи нет; иначе earpiece | speaker | headset.
+   */
+  const [audioRoute, setAudioRoute] = useState<string | null>(null);
   const [camOn, setCamOn] = useState(withCamera);
   const [screenOn, setScreenOn] = useState(false);
   const [hand, setHand] = useState(false);
@@ -409,6 +415,28 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
     }
   }, [screenOn, meetingId, stopScreen]);
 
+  /*
+    Звук к уху, как в Телеграме (задача #1464). Chromium в приложении при звонке сам
+    включает громкую связь, поэтому переключаем, когда разговор уже пошёл, и ещё раз
+    чуть позже: при старте звука он маршрут иногда переигрывает. После созвона —
+    как было, иначе у человека и музыка потом заиграет «в трубку».
+  */
+  const routedRef = useRef(false);
+  useEffect(() => {
+    if (state !== 'connected' || routedRef.current) return;
+    routedRef.current = true;
+    void platform.calls.setAudioRoute('earpiece').then(setAudioRoute);
+    const again = window.setTimeout(() => {
+      void platform.calls.setAudioRoute('earpiece').then(setAudioRoute);
+    }, 1500);
+    return () => window.clearTimeout(again);
+  }, [state]);
+  useEffect(() => () => { void platform.calls.setAudioRoute('normal'); }, []);
+  const toggleSpeaker = () => {
+    const next = audioRoute === 'speaker' ? 'earpiece' : 'speaker';
+    void platform.calls.setAudioRoute(next).then(setAudioRoute);
+  };
+
   const leave = () => {
     pipRef.current?.close();
     pipRef.current = null;
@@ -526,6 +554,16 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
                 иначе он стоит там, пока о нём не вспомнят. */}
             {knocks.length > 0 && <span className="call-pill-knock">{knocks.length}</span>}
           </button>
+          {/* Сбросить созвон прямо отсюда (задача #1463): раньше висящий в углу созвон
+              приходилось разворачивать, чтобы найти «Выйти». */}
+          <button
+            className="call-pill-btn call-pill-hangup"
+            onClick={leave}
+            title="Положить трубку — выйти из созвона"
+            aria-label="Положить трубку"
+          >
+            <Icon name="phone-off" size={14} />
+          </button>
         </div>
       </>
     );
@@ -607,7 +645,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
                   onClick={copyGuestLink}
                   title="Скопировать ссылку для внешнего гостя — он войдёт из браузера, без регистрации"
                 >
-                  <Icon name="link" size={15} /> Ссылка для гостя
+                  <Icon name="link" size={15} /><span className="call-btn-label"> Ссылка для гостя</span>
                 </button>
               </>
             )}
@@ -713,20 +751,34 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
 
         <div className="call-controls">
           <button className={`btn btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic}>
-            <Icon name={micOn ? 'mic' : 'mic-off'} size={15} />{micOn ? 'Микрофон' : 'Включить микрофон'}
+            <Icon name={micOn ? 'mic' : 'mic-off'} size={15} />
+            <span className="call-btn-label">{micOn ? 'Микрофон' : 'Включить микрофон'}</span>
           </button>
           <button className={`btn btn-sm ${camOn ? '' : 'call-off'}`} onClick={toggleCam}>
-            <Icon name={camOn ? 'video' : 'video-off'} size={15} />{camOn ? 'Камера' : 'Включить камеру'}
+            <Icon name={camOn ? 'video' : 'video-off'} size={15} />
+            <span className="call-btn-label">{camOn ? 'Камера' : 'Включить камеру'}</span>
           </button>
+          {/* Громкая связь — только там, где ОС даёт выбрать, куда идёт звук (приложение на Android). */}
+          {audioRoute !== null && audioRoute !== 'headset' && (
+            <button
+              className={`btn btn-sm ${audioRoute === 'speaker' ? 'call-on' : 'call-off'}`}
+              onClick={toggleSpeaker}
+              aria-pressed={audioRoute === 'speaker'}
+              title={audioRoute === 'speaker' ? 'Выключить громкую связь — звук к уху' : 'Включить громкую связь'}
+            >
+              <Icon name="volume" size={15} />
+              <span className="call-btn-label">{audioRoute === 'speaker' ? 'Громкая связь' : 'Громкая связь выкл.'}</span>
+            </button>
+          )}
           {/* Показ экрана — только там, где браузер его умеет: в WebView Android getDisplayMedia нет,
               и кнопка обещала бы то, что кончится ошибкой (нативный показ — отдельным мостом, волна 11). */}
           {typeof navigator.mediaDevices?.getDisplayMedia === 'function' && (
           <button className={`btn btn-sm ${screenOn ? '' : 'call-off'}`} onClick={toggleScreen}>
-            <Icon name="screen" size={15} />{screenOn ? 'Показ идёт' : 'Показать экран'}
+            <Icon name="screen" size={15} /><span className="call-btn-label">{screenOn ? 'Показ идёт' : 'Показать экран'}</span>
           </button>
           )}
           <button className={`btn btn-sm ${hand ? '' : 'call-off'}`} onClick={() => { setHand(!hand); client.current?.raiseHand(!hand); }}>
-            <Icon name="hand" size={15} /> Рука
+            <Icon name="hand" size={15} /><span className="call-btn-label"> Рука</span>
           </button>
           {/* Запись и приглашение гостей — права хозяина встречи, не гостя */}
           {!isGuest && (
@@ -735,10 +787,14 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
               onClick={() => client.current?.setRecording(!recording)}
               title={recording ? 'Остановить запись и получить стенограмму' : 'Записать созвон для стенограммы и задач'}
             >
-              <Icon name={recording ? 'stop' : 'record'} size={15} />AI-запись: {recording ? 'вкл' : 'выкл'}
+              <Icon name={recording ? 'stop' : 'record'} size={15} />
+              <span className="call-btn-label">AI-запись: {recording ? 'вкл' : 'выкл'}</span>
             </button>
           )}
-          <button className="btn btn-sm call-leave" onClick={leave}>Выйти</button>
+          {/* Выход — заметной красной кнопкой «положить трубку» (задача #1463). */}
+          <button className="btn btn-sm call-leave" onClick={leave} title="Выйти из созвона" aria-label="Выйти из созвона">
+            <Icon name="phone-off" size={16} /><span className="call-btn-label">Выйти</span>
+          </button>
         </div>
       </div>
     </div>

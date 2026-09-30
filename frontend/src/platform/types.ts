@@ -116,6 +116,12 @@ export interface CallIntegrationBridge {
   reportEnded(callId: string): Promise<void>;
   /** Во время активного звонка ОС не должна усыпить приложение. */
   keepAwake(on: boolean): Promise<void>;
+  /**
+   * Куда идёт звук созвона: к уху, в громкую связь или как было (после звонка).
+   * null — платформа этого не умеет (браузер): кнопку громкой связи не показываем.
+   * Возвращает, куда звук ушёл на деле: при наушниках — `headset`.
+   */
+  setAudioRoute(route: 'earpiece' | 'speaker' | 'normal'): Promise<string | null>;
 }
 
 export interface FilesystemBridge {

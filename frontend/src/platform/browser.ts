@@ -114,6 +114,8 @@ export const browserBridge: PlatformBridge = {
     reportIncoming: () => Promise.resolve(),
     reportEnded: () => Promise.resolve(),
     keepAwake: () => Promise.resolve(),
+    // Маршрутом звука в браузере управлять нельзя — выбирает ОС и сам браузер.
+    setAudioRoute: () => Promise.resolve(null),
   },
 
   filesystem: {

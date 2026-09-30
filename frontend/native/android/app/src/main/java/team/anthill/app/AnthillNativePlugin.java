@@ -2,6 +2,8 @@ package team.anthill.app;
 
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -42,6 +44,55 @@ import java.util.Locale;
  */
 @CapacitorPlugin(name = "AnthillNative")
 public class AnthillNativePlugin extends Plugin {
+
+    /**
+     * Куда идёт звук созвона (задача #1464): «как в Телеграме» — в разговорный динамик у
+     * уха, а громкая связь — кнопкой.
+     *
+     * Chromium, на котором работает WebView, при звонке сам включает громкую связь, если
+     * нет гарнитуры, — поэтому звук всегда шёл в громкий динамик. Веб повлиять на это не
+     * может: маршрут звука выбирает только ОС. route: earpiece | speaker | normal.
+     * Подключены проводные или Bluetooth-наушники — звук идёт в них, а не к уху.
+     * normal — вернуть как было после созвона.
+     */
+    @PluginMethod
+    public void setAudioRoute(PluginCall call) {
+        String route = call.getString("route", "earpiece");
+        JSObject r = new JSObject();
+        try {
+            AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            if ("normal".equals(route)) {
+                if (Build.VERSION.SDK_INT >= 31) am.clearCommunicationDevice();
+                am.setSpeakerphoneOn(false);
+                am.setMode(AudioManager.MODE_NORMAL);
+                r.put("route", "normal");
+                call.resolve(r);
+                return;
+            }
+            boolean speaker = "speaker".equals(route);
+            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            String applied = speaker ? "speaker" : "earpiece";
+            if (Build.VERSION.SDK_INT >= 31) {
+                AudioDeviceInfo headset = null, wanted = null;
+                for (AudioDeviceInfo d : am.getAvailableCommunicationDevices()) {
+                    int t = d.getType();
+                    if (t == AudioDeviceInfo.TYPE_WIRED_HEADSET || t == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                        || t == AudioDeviceInfo.TYPE_USB_HEADSET || t == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                        || t == AudioDeviceInfo.TYPE_BLE_HEADSET) headset = d;
+                    if (t == (speaker ? AudioDeviceInfo.TYPE_BUILTIN_SPEAKER : AudioDeviceInfo.TYPE_BUILTIN_EARPIECE)) wanted = d;
+                }
+                AudioDeviceInfo target = (!speaker && headset != null) ? headset : wanted;
+                if (target != null) am.setCommunicationDevice(target);
+                if (!speaker && headset != null) applied = "headset";
+            } else {
+                am.setSpeakerphoneOn(speaker);
+            }
+            r.put("route", applied);
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject("Не удалось переключить звук: " + e.getMessage());
+        }
+    }
 
     @PluginMethod
     public void pushAvailable(PluginCall call) {

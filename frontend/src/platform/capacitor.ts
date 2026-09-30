@@ -81,6 +81,7 @@ const AnthillNative = registerPlugin<{
   canInstall(): Promise<{ supported: boolean; allowed: boolean }>;
   requestInstallPermission(): Promise<void>;
   installUpdate(o: { url: string; sha256: string; version: string }): Promise<{ status: string; message?: string }>;
+  setAudioRoute(o: { route: string }): Promise<{ route: string }>;
   addListener(
     event: 'updateProgress',
     cb: (e: { loaded: number; total: number }) => void,
@@ -328,6 +329,15 @@ export const capacitorBridge: PlatformBridge = {
           await ForegroundService.stopForegroundService();
         }
       } catch { /* без сервиса звонок всё равно идёт, пока приложение на экране */ }
+    },
+    /*
+      Звук созвона к уху, а не в громкую связь (задача #1464). Только Android: там
+      Chromium сам включает громкую связь при звонке. Старая сборка без метода —
+      отвечаем «не умею», и кнопку громкой связи окно не покажет.
+    */
+    async setAudioRoute(route) {
+      if (deviceInfo?.os !== 'android') return null;
+      try { return (await AnthillNative.setAudioRoute({ route })).route; } catch { return null; }
     },
   },
 

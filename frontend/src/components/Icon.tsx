@@ -10,7 +10,7 @@
  */
 
 export type IconName =
-  | 'chat' | 'hash' | 'smile' | 'phone' | 'phone-off' | 'video' | 'video-off' | 'mic' | 'mic-off' | 'screen'
+  | 'chat' | 'hash' | 'smile' | 'phone' | 'phone-off' | 'volume' | 'video' | 'video-off' | 'mic' | 'mic-off' | 'screen'
   | 'record' | 'stop' | 'hand' | 'robot' | 'users' | 'user' | 'user-plus'
   | 'maximize' | 'minimize'
   | 'board' | 'list' | 'check' | 'check-circle' | 'close' | 'plus' | 'minus'
@@ -29,6 +29,7 @@ const PATHS: Record<IconName, string> = {
   chat: 'M21 12a8 8 0 0 1-8 8H7l-4 3v-4.6A8 8 0 0 1 5 5.5 8 8 0 0 1 13 4a8 8 0 0 1 8 8Z',
   phone: 'M6.5 3h3l1.5 4.5-2 1.3a12 12 0 0 0 6.2 6.2l1.3-2L21 14.5v3a2.5 2.5 0 0 1-2.7 2.5A16.5 16.5 0 0 1 3.5 5.7 2.5 2.5 0 0 1 6 3Z',
   'phone-off': 'M6.5 3h3l1.5 4.5-2 1.3a12 12 0 0 0 3 3.7M14 16.5l1.3-2L21 14.5v3a2.5 2.5 0 0 1-2.7 2.5 16.4 16.4 0 0 1-8.6-3.4M3 3l18 18',
+  volume: 'M11 5 6 9H3v6h3l5 4V5ZM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13',
   video: 'M3 7.5A1.5 1.5 0 0 1 4.5 6h9A1.5 1.5 0 0 1 15 7.5v9A1.5 1.5 0 0 1 13.5 18h-9A1.5 1.5 0 0 1 3 16.5ZM15 10.5l6-3.5v10l-6-3.5Z',
   'video-off': 'M3 7.5A1.5 1.5 0 0 1 4.5 6h5M15 10.5l6-3.5v10l-4-2.3M3 12v4.5A1.5 1.5 0 0 0 4.5 18h9a1.5 1.5 0 0 0 1.5-1.5M3 3l18 18',
   mic: 'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3ZM5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7',
