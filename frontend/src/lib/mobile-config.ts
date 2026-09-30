@@ -54,20 +54,23 @@ export function updateVerdict(native: string | null, release: MobileConfig['andr
 /**
  * Предлагать ли обновление прямо сейчас.
  *
- * Обязательное — всегда: без него приложение всё равно не работает. Обычное — один раз
- * на версию: человек нажал «Позже», и до следующего выпуска мы молчим. Иначе окно
- * обновления встречало бы его при каждом запуске, и его научились бы закрывать не глядя.
+ * Обязательное — всегда: без него приложение всё равно не работает. Обычное — пока
+ * не отложено: «Позже» даёт час тишины (UPDATE_SNOOZE_MS), и только в этом запуске.
+ * Раньше «Позже» глушило окно до следующего выпуска, и кто закрыл его случайно,
+ * оставался на старой сборке насовсем (просьба заказчика 30.09).
  */
+export const UPDATE_SNOOZE_MS = 60 * 60 * 1000;
+
 export function shouldOfferUpdate(
   verdict: 'none' | 'available' | 'required',
   release: MobileConfig['android'],
-  skipped: string | null,
+  snoozedUntil: number | null,
+  now: number,
 ): boolean {
   if (!release) return false;
   if (verdict === 'required') return true;
   if (verdict !== 'available') return false;
-  // Отложена именно эта версия — а вышла следующая, значит показываем снова.
-  return compareVersions(skipped, release.latestNative) < 0;
+  return snoozedUntil === null || now >= snoozedUntil;
 }
 
 /** Политика блокировки с учётом организации: своя не мягче организационной. */

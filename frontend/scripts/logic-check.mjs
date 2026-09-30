@@ -1162,15 +1162,17 @@ test('сортировка реестра по заголовку: А→Я, Я�
   assert.ok(q({ sort: 'title', dir: 'desc' }).includes('dir=desc'));
 });
 
-test('предложение обновиться: обязательное всегда, обычное — один раз на версию', async () => {
-  const { shouldOfferUpdate } = await load('lib/mobile-config.ts');
+test('предложение обновиться: обязательное всегда, обычное — снова через час после «Позже»', async () => {
+  const { shouldOfferUpdate, UPDATE_SNOOZE_MS } = await load('lib/mobile-config.ts');
   const rel = { latestNative: '1.9', minimumNative: '1.0', apkUrl: 'u', sha256: 's', force: false };
-  assert.equal(shouldOfferUpdate('available', rel, null), true);      // ещё не откладывали
-  assert.equal(shouldOfferUpdate('available', rel, '1.9'), false);    // эту уже отложили
-  assert.equal(shouldOfferUpdate('available', rel, '1.8'), true);     // откладывали прошлую, вышла новая
-  assert.equal(shouldOfferUpdate('required', rel, '1.9'), true);      // без обязательного не работает
-  assert.equal(shouldOfferUpdate('none', rel, null), false);
-  assert.equal(shouldOfferUpdate('available', null, null), false);    // сервер не сказал о выпуске
+  const now = 1_000_000;
+  const snoozed = now + UPDATE_SNOOZE_MS;
+  assert.equal(shouldOfferUpdate('available', rel, null, now), true);                        // не откладывали (или новый запуск)
+  assert.equal(shouldOfferUpdate('available', rel, snoozed, now + 1), false);                // только что нажал «Позже»
+  assert.equal(shouldOfferUpdate('available', rel, snoozed, now + UPDATE_SNOOZE_MS), true);  // прошёл час
+  assert.equal(shouldOfferUpdate('required', rel, snoozed, now), true);                      // без обязательного не работает
+  assert.equal(shouldOfferUpdate('none', rel, null, now), false);
+  assert.equal(shouldOfferUpdate('available', null, null, now), false);                      // сервер не сказал о выпуске
 });
 
 test('черновики чатов: свои у каждого чата, пустой стирает, старые вытесняются', async () => {

@@ -1,36 +1,45 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
-import { MobileConfig, setMobileConfig, shouldOfferUpdate, updateVerdict } from '../lib/mobile-config';
+import { MobileConfig, setMobileConfig, shouldOfferUpdate, updateVerdict, UPDATE_SNOOZE_MS } from '../lib/mobile-config';
 import { platform, isNativeShell } from '../platform';
 
-/** Версия, которую человек отложил: до следующего выпуска об обновлении не напоминаем. */
-const SKIPPED = 'anthill.update.skipped';
-function skippedVersion(): string | null {
-  try { return localStorage.getItem(SKIPPED); } catch { return null; }
-}
+/** Как часто без сети сверяемся, не кончился ли час после «Позже». */
+const SNOOZE_CHECK_MS = 60 * 1000;
 
 /**
  * Конфиг оболочки при старте и при каждом возврате в приложение (ТЗ-9, волна 4).
  *
  * Возвращает вердикт по версии: `required` — экран «обновите приложение» вместо CRM,
- * `available` — одна всплывашка со ссылкой на APK за запуск. Флаги функций и политика
- * организации оседают в lib/mobile-config для всех остальных.
+ * `available` — окно обновления. Флаги функций и политика организации оседают
+ * в lib/mobile-config для всех остальных.
  */
 export function useMobileConfig(signedIn: boolean): {
   verdict: 'none' | 'available' | 'required';
   config: MobileConfig | null;
-  /** Показать окно обновления: обязательное — всегда, обычное — раз на версию. */
+  /** Показать окно обновления: обязательное — всегда, обычное — если не отложено. */
   offer: boolean;
-  /** «Позже»: молчим до следующего выпуска. */
+  /** «Позже»: молчим час в этом запуске. */
   skip: () => void;
 } {
   const [config, setConfig] = useState<MobileConfig | null>(null);
   const [verdict, setVerdict] = useState<'none' | 'available' | 'required'>('none');
   const [offer, setOffer] = useState(false);
+  /*
+    Отсрочка живёт только в памяти, а не в localStorage — намеренно: новый запуск
+    приложения (или новый вход) снова напоминает об обновлении, даже если «Позже»
+    нажали случайно. В пределах запуска окно возвращается через час.
+  */
+  const snoozedUntil = useRef<number | null>(null);
+  const last = useRef<{ v: 'none' | 'available' | 'required'; release: MobileConfig['android'] } | null>(null);
 
   useEffect(() => {
     if (!signedIn || !isNativeShell()) return;
     let alive = true;
+    snoozedUntil.current = null;
+    const evaluate = () => {
+      if (!last.current) return;
+      setOffer(shouldOfferUpdate(last.current.v, last.current.release, snoozedUntil.current, Date.now()));
+    };
     const load = async () => {
       try {
         const c = await api.mobileConfig();
@@ -38,23 +47,27 @@ export function useMobileConfig(signedIn: boolean): {
         setMobileConfig(c); setConfig(c);
         const v = updateVerdict(platform.info().nativeVersion, c.android);
         setVerdict(v);
-        /*
-          Раньше здесь была всплывашка со ссылкой на файл — и дальше человек оставался
-          один на один с браузером, загрузками и настройками Android. Теперь показываем
-          окно, которое умеет обновить приложение само (см. UpdateSheet).
-        */
-        setOffer(shouldOfferUpdate(v, c.android, skippedVersion()));
+        last.current = { v, release: c.android };
+        evaluate();
       } catch { /* нет сети — работаем с тем, что есть */ }
     };
     void load();
     const onVisible = () => { if (document.visibilityState === 'visible') void load(); };
     document.addEventListener('visibilitychange', onVisible);
-    return () => { alive = false; document.removeEventListener('visibilitychange', onVisible); };
+    // Долгая работа без сворачивания: visibilitychange не придёт, час отсчитываем сами.
+    const timer = window.setInterval(() => {
+      if (snoozedUntil.current !== null && Date.now() >= snoozedUntil.current) evaluate();
+    }, SNOOZE_CHECK_MS);
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(timer);
+    };
   }, [signedIn]);
 
   const skip = () => {
     setOffer(false);
-    try { if (config?.android) localStorage.setItem(SKIPPED, config.android.latestNative); } catch { /* приват-режим */ }
+    snoozedUntil.current = Date.now() + UPDATE_SNOOZE_MS;
   };
 
   return { verdict, config, offer, skip };
