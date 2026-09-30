@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Icon, IconName } from './Icon';
 import { placePopover } from '../lib/popover';
 
@@ -42,10 +42,23 @@ export function MessageMenu({ at, reactions, onReact, onMoreEmoji, items, onClos
   items: MsgMenuItem[];
   onClose: () => void;
 }) {
+  /*
+    Первые мгновения после открытия меню «глухое» (задача #1443, вторая попытка).
+
+    На Android долгое нажатие само рождает системное contextmenu — примерно через
+    0,5–0,6 с после касания. Меню к этому моменту уже открыто нашим таймером, и событие
+    приходит в подложку, которая меню закрывала: со стороны «окно моментально пропадает».
+    Туда же — прокрутка: подсветка открытого сообщения может чуть сдвинуть ленту в тот же
+    миг. Поэтому эхо долгого нажатия и дрожь ленты в первые 900 мс не закрывают меню;
+    обычное касание мимо меню закрывает его как прежде.
+  */
+  const openedAt = useRef(Date.now());
+  const settling = () => Date.now() - openedAt.current < 900;
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     // Прокрутили ленту — меню осталось бы висеть в воздухе над чужой репликой.
-    const away = () => onClose();
+    const away = () => { if (!settling()) onClose(); };
     window.addEventListener('keydown', onKey);
     window.addEventListener('scroll', away, true);
     window.addEventListener('resize', away);
@@ -64,8 +77,8 @@ export function MessageMenu({ at, reactions, onReact, onMoreEmoji, items, onClos
       {/* Подложка ловит щелчок мимо меню и закрывает его — как в любом контекстном меню. */}
       <span
         className="msg-ctx-veil"
-        onClick={onClose}
-        onContextMenu={(e) => { e.preventDefault(); onClose(); }}
+        onClick={() => { if (!settling()) onClose(); }}
+        onContextMenu={(e) => { e.preventDefault(); if (!settling()) onClose(); }}
       />
       <span
         className="msg-ctx"
