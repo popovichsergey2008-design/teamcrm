@@ -13,8 +13,18 @@ import { activeQuery, MentionUser, suggest } from '../lib/mentions';
 
 const MAX_SUGGESTIONS = 6;
 
+/**
+ * «@все» — позвать всех участников общего чата (просьба заказчика). Не человек, а
+ * пункт подсказки: вставляет «@все», а кого звать, сервер решает сам по составу чата.
+ */
+const EVERYONE: MentionUser = { id: '__everyone__', fullName: 'все', hint: 'позвать всех в этом чате' };
+const matchesEveryone = (q: string) => {
+  const s = q.toLowerCase();
+  return 'все'.startsWith(s) || 'всем'.startsWith(s) || 'all'.startsWith(s);
+};
+
 export function MentionField({
-  value, users, onChange, onMention, placeholder, rows, autoGrow, onEnter, disabled, className, focusKey,
+  value, users, onChange, onMention, placeholder, rows, autoGrow, onEnter, disabled, className, focusKey, everyone,
 }: {
   value: string;
   users: MentionUser[];
@@ -43,6 +53,8 @@ export function MentionField({
    * текст уходил в никуда (жалоба заказчика).
    */
   focusKey?: number;
+  /** Общий чат: в подсказке есть «@все». В личке и в заметках себе — нет. */
+  everyone?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null);
 
@@ -80,15 +92,18 @@ export function MentionField({
   const found = useMemo(() => {
     if (!open) return [];
     const q = activeQuery(value, caret);
-    return q ? suggest(users, q.query, MAX_SUGGESTIONS) : [];
-  }, [open, value, caret, users]);
+    if (!q) return [];
+    const people = suggest(users, q.query, MAX_SUGGESTIONS);
+    return everyone && matchesEveryone(q.query) ? [EVERYONE, ...people].slice(0, MAX_SUGGESTIONS) : people;
+  }, [open, value, caret, users, everyone]);
 
   const pick = (user: MentionUser) => {
     const q = activeQuery(value, caret);
     if (!q) return;
     const next = `${value.slice(0, q.start)}@${user.fullName} ${value.slice(caret)}`;
     onChange(next);
-    onMention(user.id);
+    // «все» — не человек: адресатов по тексту определит сервер.
+    if (user.id !== EVERYONE.id) onMention(user.id);
     setOpen(false);
     setActive(0);
     // возвращаем курсор сразу за вставленным именем, иначе он прыгает в конец
@@ -176,7 +191,9 @@ export function MentionField({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(u)}
               >
-                <Avatar path={u.avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+                {u.id === EVERYONE.id
+                  ? <span className="avatar avatar-sm mention-all-icon" aria-hidden="true">@</span>
+                  : <Avatar path={u.avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />}
                 <span className="mention-name">{u.fullName}</span>
                 {/* Роль в задаче: по одному имени не понять, к кому обращаться
                     с вопросом «когда будет», а к кому — «так делать?». */}

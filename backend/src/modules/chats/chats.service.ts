@@ -34,6 +34,14 @@ export function extractLinks(body: string): string[] {
   return out;
 }
 
+/**
+ * Есть ли в тексте обращение ко всем: «@все», «@всем», «@all», «@everyone».
+ * Слово целиком: «@всеволод» — это человек, а не все.
+ */
+export function mentionsEveryone(text: string): boolean {
+  return /(^|[^\p{L}\d_])@(все|всем|all|everyone)(?![\p{L}\d_])/iu.test(String(text ?? ''));
+}
+
 @Injectable()
 export class ChatsService {
   constructor(
@@ -329,9 +337,18 @@ export class ChatsService {
     if (rootId) await this.repo.markThreadRead(tenantId, rootId, user.userId);
     await this.repo.markRead(tenantId, chatId, user.userId); // своё сообщение прочитанным считаем сразу
 
-    const mentioned = await this.mention(tenantId, String(message.id), mentionIds, user.userId, text);
-
     const to = await this.recipients(chat, tenantId);
+    /*
+      «@все» в общем чате — позвать всех участников разом (просьба заказчика). Это то же
+      упоминание, что по имени: уведомление, строка в «Упоминаниях», Telegram — просто
+      адресаты все, кто в чате, кроме автора. В личке «все» — это и так один человек.
+    */
+    const everyone = chat.kind !== 'dm' && mentionsEveryone(text);
+    const mentioned = await this.mention(
+      tenantId, String(message.id), everyone ? [...(mentionIds ?? []), ...to] : mentionIds, user.userId, text,
+      everyone ? 500 : 30,
+    );
+
     // Кого позвали — вместе с сообщением: у получателя может стоять «только
     // упоминания», и решать, звучать ли, он должен сразу, без второго запроса.
     this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message, mentionIds: mentioned });
@@ -405,8 +422,10 @@ export class ChatsService {
    */
   private async mention(
     tenantId: string, messageId: string, ids: string[] | undefined, actorId: string, body: string,
+    /** Потолок адресатов: 30 для имён, больше — для «@все». */
+    cap = 30,
   ): Promise<string[]> {
-    const wanted = (ids ?? []).map(String).filter((id) => id !== String(actorId)).slice(0, 30);
+    const wanted = [...new Set((ids ?? []).map(String))].filter((id) => id !== String(actorId)).slice(0, cap);
     if (!wanted.length) return [];
     const users = await this.repo.tenantUserIds(tenantId, wanted);
     if (!users.length) return [];

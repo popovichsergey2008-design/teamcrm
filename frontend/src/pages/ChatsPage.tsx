@@ -2976,6 +2976,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 focusKey={composerFocus}
                 value={draft}
                 users={mentionUsers}
+                everyone={!!active && active.kind !== 'dm' && active.kind !== 'self'}
                 onChange={(v) => { setDraft(v); if (v.trim()) noteTyping(); }}
                 onMention={(userId) => {
                   if (userId === 'ai') return; // помощник участником чата не становится

@@ -6025,3 +6025,6 @@ button.chat-pop-row:hover { background: var(--hover); }
   }
   .call-controls .call-leave:hover { background: #b71c1c; color: #fff; }
 }
+
+/* «@все» в подсказке упоминаний: значок вместо аватарки — это не человек. */
+.mention-all-icon { display: inline-grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
