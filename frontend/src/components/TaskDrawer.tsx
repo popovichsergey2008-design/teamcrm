@@ -1115,7 +1115,14 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
         )}
 
         {tab === 'files' && <FilesTab taskId={task.id} onRefresh={onRefresh} onCount={setFileCount} />}
-        {tab === 'checklist' && <ChecklistTab taskId={task.id} onRefresh={onRefresh} />}
+        {tab === 'checklist' && (
+          <ChecklistTab
+            taskId={task.id}
+            onRefresh={onRefresh}
+            required={task.checklist_required !== false}
+            canSetRequired={isManager || user?.role === 'manager'}
+          />
+        )}
 
         {/*
           Полоса сохранения — внизу карточки и всегда на виду, на любой вкладке.
@@ -1229,15 +1236,47 @@ function LabelsRow({ task, onRefresh }: { task: Task; onRefresh: () => void }) {
     </div>
   );
 }
-function ChecklistTab({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
+function ChecklistTab({ taskId, onRefresh, required, canSetRequired }: {
+  taskId: string; onRefresh: () => void;
+  /** Без выполненного чек-листа задачу не сдать (задача #1386). */
+  required: boolean;
+  /** Постановщик или руководство — им решать, обязателен ли чек-лист. */
+  canSetRequired: boolean;
+}) {
   const [items, setItems] = useState<any[]>([]);
   const [text, setText] = useState('');
+  const [strict, setStrict] = useState(required);
+  useEffect(() => { setStrict(required); }, [required]);
+  const toggleStrict = async (on: boolean) => {
+    setStrict(on);
+    try { await api.setChecklistRequired(taskId, on); onRefresh(); }
+    catch { setStrict(!on); }
+  };
   const reload = () => api.listChecklist(taskId).then(setItems).catch(() => undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reload(); }, [taskId]);
   const done = items.filter((i) => i.is_done).length;
   return (
     <>
+      {/*
+        Правило видно всем прямо над чек-листом (задача #1386): исполнитель заранее
+        знает, что без отмеченных пунктов задачу не сдать, а не узнаёт об этом из возврата.
+      */}
+      {canSetRequired ? (
+        <label className="gate-item checklist-rule">
+          <input type="checkbox" checked={strict} onChange={(e) => void toggleStrict(e.target.checked)} />
+          <span>
+            <span className="gate-item-title">Не принимать задачу без выполненного чек-листа</span>
+            <span className="dim gate-item-hint">
+              Исполнитель не сможет сдать задачу, пока не отметит все пункты. Включено по умолчанию.
+            </span>
+          </span>
+        </label>
+      ) : strict && items.length > 0 && (
+        <div className="checklist-rule checklist-rule-note">
+          <Icon name="lock" size={14} /> Задачу не сдать, пока не отмечены все пункты: постановщик не принимает без чек-листа.
+        </div>
+      )}
       {items.length > 0 && <div className="dim">{done} / {items.length} выполнено</div>}
       {items.length === 0 && (
         <EmptyState compact icon="check" title="Чек-листа нет"

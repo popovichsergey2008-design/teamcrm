@@ -14,7 +14,9 @@ import { overlayProps } from '../lib/overlay';
 
 export interface GateBlock {
   column: string;
-  missing: { code: string; text: string }[];
+  missing: { code: string; text: string; blocking?: boolean }[];
+  /** Есть нехватка, которую обойти нельзя: постановщик не принимает без чек-листа. */
+  blocking?: boolean;
 }
 
 /** Достаём подробности гейта из ответа сервера; не гейт — вернём null. */
@@ -29,10 +31,23 @@ export function HandoffGateDialog({ block, busy, onCancel, onForce }: {
   onCancel: () => void;
   onForce: () => void;
 }) {
+  /*
+    Обязательный чек-лист (задача #1386): тут не «сдать всё равно», а прямое «нельзя» —
+    и почему. Исполнитель должен понять правило сразу, а не из возврата задачи.
+  */
+  const locked = block.blocking || block.missing.some((m) => m.blocking);
   return (
     <div className="modal-overlay" {...overlayProps(onCancel)}>
       <div className="modal-card gate-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Приёмка работы">
-        <h3 className="gate-title"><Icon name="alert" size={18} /> Работа сдаётся не полностью</h3>
+        <h3 className="gate-title">
+          <Icon name={locked ? 'lock' : 'alert'} size={18} /> {locked ? 'Задачу нельзя сдать' : 'Работа сдаётся не полностью'}
+        </h3>
+        {locked && (
+          <div className="gate-locked">
+            Постановщик не принимает эту задачу без выполненного чек-листа. Отметьте все
+            пункты — тогда задачу можно будет сдать.
+          </div>
+        )}
         <div className="dim gate-hint">
           Задача уходит в «{block.column}». Проверяющий увидит только то, что есть в карточке:
         </div>
@@ -42,8 +57,10 @@ export function HandoffGateDialog({ block, busy, onCancel, onForce }: {
           ))}
         </ul>
         <div className="gate-actions">
-          <button className="btn btn-primary" onClick={onCancel} disabled={busy}>Вернуться и дополнить</button>
-          <button className="btn btn-sm gate-force" onClick={onForce} disabled={busy}>Сдать всё равно</button>
+          <button className="btn btn-primary" onClick={onCancel} disabled={busy}>
+            {locked ? 'Вернуться к чек-листу' : 'Вернуться и дополнить'}
+          </button>
+          {!locked && <button className="btn btn-sm gate-force" onClick={onForce} disabled={busy}>Сдать всё равно</button>}
         </div>
       </div>
     </div>

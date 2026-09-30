@@ -142,4 +142,26 @@ describe('Приёмка работы (e2e)', () => {
     await http.put('/api/handoff-gate').set(H(ownerTok))
       .send({ checklist: true, comment: true, attachment: false }).expect(200);
   });
+
+  it('обязательный чек-лист не обходится «сдать всё равно», снять требование может только постановщик', async () => {
+    const task = await newTask('Сдать с чек-листом');
+    await http.post(`/api/tasks/${task.id}/checklist`).set(H(memberTok)).send({ text: 'Проверить на телефоне' }).expect(201);
+    await http.post(`/api/tasks/${task.id}/comments`).set(H(memberTok)).send({ body: 'Сделал' }).expect(201);
+
+    // По умолчанию требование включено — и «сдать всё равно» не помогает.
+    const blocked = await http.post(`/api/tasks/${task.id}/move`).set(H(memberTok))
+      .send({ columnId: reviewColumn, position: 0, confirmGate: true }).expect(409);
+    expect(blocked.body.error.details.gate.blocking).toBe(true);
+    expect(blocked.body.error.details.gate.missing[0]).toMatchObject({ code: 'checklist', blocking: true });
+
+    // Исполнитель сам себе требование не снимает.
+    await http.patch(`/api/tasks/${task.id}/checklist-required`).set(H(memberTok)).send({ required: false }).expect(403);
+
+    // Постановщик снял — остаётся мягкая проверка, и «сдать всё равно» работает.
+    const off = (await http.patch(`/api/tasks/${task.id}/checklist-required`).set(H(ownerTok))
+      .send({ required: false }).expect(200)).body.data;
+    expect(off.checklist_required).toBe(false);
+    await http.post(`/api/tasks/${task.id}/move`).set(H(memberTok))
+      .send({ columnId: reviewColumn, position: 0, confirmGate: true }).expect(201);
+  });
 });

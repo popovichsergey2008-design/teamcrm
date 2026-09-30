@@ -6028,3 +6028,11 @@ button.chat-pop-row:hover { background: var(--hover); }
 
 /* «@все» в подсказке упоминаний: значок вместо аватарки — это не человек. */
 .mention-all-icon { display: inline-grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+
+/* Обязательный чек-лист (задача #1386): правило над списком и в диалоге сдачи. */
+.checklist-rule { margin-bottom: 10px; }
+.checklist-rule-note {
+  display: flex; gap: 6px; align-items: flex-start; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--accent-soft); color: var(--text); font-size: var(--fs-xs);
+}
+.gate-locked { margin: 0 0 8px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--danger-soft); color: var(--danger); }

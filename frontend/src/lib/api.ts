@@ -1687,6 +1687,9 @@ export const api = {
   undoChatAction: (id: string) =>
     request<{ actionId: string; status: string }>('POST', `/chat-analysis/actions/${id}/undo`, {}),
   /** Отмена из карточки: задача, которую агент завёл сам, уходит в корзину. */
+  /** «Не принимать без выполненного чек-листа» — решает постановщик. */
+  setChecklistRequired: (taskId: string, required: boolean) =>
+    request<import('../types').Task>('PATCH', `/tasks/${taskId}/checklist-required`, { required }),
   undoAiTask: (taskId: string) =>
     request<{ actionId: string; status: string }>('POST', `/chat-analysis/tasks/${taskId}/undo`, {}),
   runChatAnalysis: () => request<{ analyzed: number }>('POST', '/chat-analysis/run', {}),

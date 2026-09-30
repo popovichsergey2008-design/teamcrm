@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { IsBoolean } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { TasksService } from './tasks.service';
@@ -20,6 +21,10 @@ function parseIfMatch(raw?: string): number | null {
   const v = String(raw ?? '').trim().replace(/^W\//, '').replace(/^"|"$/g, '');
   if (!/^\d{1,9}$/.test(v)) return null;
   return Number(v);
+}
+
+class ChecklistRequiredDto {
+  @IsBoolean() required!: boolean;
 }
 
 @ApiTags('tasks')
@@ -290,6 +295,12 @@ export class TasksController {
       user.tenantId, id, user, dto.answer,
       dto.shiftTo ? new Date(dto.shiftTo) : null,
     );
+  }
+
+  /** «Не принимать без выполненного чек-листа» (задача #1386): решает постановщик. */
+  @Patch(':id/checklist-required')
+  setChecklistRequired(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ChecklistRequiredDto) {
+    return this.tasks.setChecklistRequired(user.tenantId, id, { userId: user.userId, role: user.role }, dto.required);
   }
 
   @Post(':id/deadline-shift')

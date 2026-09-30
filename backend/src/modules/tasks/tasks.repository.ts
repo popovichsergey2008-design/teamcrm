@@ -33,6 +33,8 @@ export interface TaskRow {
   requires_approval: boolean;
   /** Задачу завёл разбор переписки, а не человек (0137). */
   created_by_ai?: boolean;
+  /** Без выполненного чек-листа задачу не сдать (0142, по умолчанию да). */
+  checklist_required?: boolean;
   /** none | pending — работа сдана и ждёт ответа постановщика. */
   approval_state: string;
   approval_requested_at: Date | null;
@@ -158,6 +160,15 @@ export class TasksRepository {
           SET deadline_shift_to = NULL, deadline_shift_by = NULL, deadline_shift_at = NULL, updated_at = now()
         WHERE tenant_id = $1 AND id = $2 RETURNING *`,
       [tenantId, id],
+    );
+  }
+
+  /** «Не принимать без выполненного чек-листа» — решение постановщика в карточке. */
+  setChecklistRequired(tenantId: string, id: string, required: boolean): Promise<TaskRow | null> {
+    return this.db.one<TaskRow>(
+      `UPDATE tasks SET checklist_required = $3, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [tenantId, id, required],
     );
   }
 

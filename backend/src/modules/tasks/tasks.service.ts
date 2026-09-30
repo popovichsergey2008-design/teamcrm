@@ -519,6 +519,18 @@ export class TasksService {
     if (!column) throw AppException.notFound('Target column not found');
 
     const missing = await this.handoffMissing(tenantId, task, column.name, actorId);
+    /*
+      Обязательный чек-лист не обходится «сдать всё равно» (задача #1386): постановщик
+      сказал, что без него задачу не примет, и исполнитель должен это видеть сразу,
+      а не узнавать из возврата.
+    */
+    const blocking = missing.filter((m) => m.blocking);
+    if (blocking.length) {
+      throw AppException.conflict('Задачу нельзя сдать: не выполнен чек-лист', {
+        gate: { column: column.name, missing, blocking: true },
+        hint: 'отметьте все пункты чек-листа — постановщик не принимает задачу без него',
+      });
+    }
     if (missing.length && !dto.confirmGate) {
       throw AppException.conflict('Работа сдаётся не полностью', {
         gate: { column: column.name, missing },
@@ -943,7 +955,29 @@ export class TasksService {
       this.repo.gateSettings(tenantId),
       this.repo.handoffFacts(tenantId, task.id, actorId),
     ]);
-    return handoffGate(req, facts);
+    /*
+      Запрет — это «постановщик не примет без чек-листа». Своя собственная задача
+      (сам поставил, сам делаешь) — решение самого человека: там проверка мягкая.
+    */
+    const strict = task.checklist_required !== false && String(task.created_by ?? '') !== String(actorId);
+    return handoffGate(req, facts, strict);
+  }
+
+  /**
+   * «Не принимать без выполненного чек-листа» (задача #1386). Решает тот, кто задачу
+   * ставил, или руководство — исполнитель сам себе проверку не снимает.
+   */
+  async setChecklistRequired(tenantId: string, id: string, actor: { userId: string; role: string }, required: boolean) {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    const isSetter = task.created_by && String(task.created_by) === String(actor.userId);
+    if (!isSetter && actor.role !== 'owner' && actor.role !== 'manager') {
+      throw AppException.forbidden('Это решает постановщик задачи');
+    }
+    const updated = await this.repo.setChecklistRequired(tenantId, id, required);
+    await this.activity.log(tenantId, id, actor.userId, 'checklist_required', { required });
+    this.realtime.emit(tenantId, task.project_id, 'task.updated', updated as any);
+    return updated;
   }
 
   /** Условия приёмки компании: читают все, меняет владелец. */

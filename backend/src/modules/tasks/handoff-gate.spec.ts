@@ -34,3 +34,19 @@ describe('Приёмка работы', () => {
     expect(handoffGate(req, facts({ checklistTotal: 4, checklistDone: 0, ownComments: 0, attachments: 0 }))).toEqual([]);
   });
 });
+
+describe('обязательный чек-лист (задача #1386)', () => {
+  it('неотмеченный чек-лист запрещает сдачу, даже если мягкая проверка выключена', () => {
+    const req = { checklist: false, comment: false, attachment: false };
+    const miss = handoffGate(req, facts({ checklistTotal: 4, checklistDone: 3 }), true);
+    expect(miss).toEqual([{ code: 'checklist', text: 'Не отмечено пунктов чек-листа: 1 из 4', blocking: true }]);
+  });
+  it('выполненный или пустой чек-лист не мешает', () => {
+    expect(handoffGate(DEFAULT_GATE, facts({ checklistTotal: 4, checklistDone: 4 }), true)).toEqual([]);
+    expect(handoffGate(DEFAULT_GATE, facts({ checklistTotal: 0, checklistDone: 0 }), true)).toEqual([]);
+  });
+  it('без обязательности чек-лист остаётся мягкой нехваткой', () => {
+    const miss = handoffGate(DEFAULT_GATE, facts({ checklistTotal: 2, checklistDone: 0 }), false);
+    expect(miss[0].blocking).toBeUndefined();
+  });
+});

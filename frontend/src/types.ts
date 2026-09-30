@@ -313,6 +313,8 @@ export interface Task {
   /** Задачу завёл разбор переписки сам, без нажатия человека (ТЗ-12, этап 4). */
   created_by_ai?: boolean;
   created_at?: string;
+  /** Без выполненного чек-листа задачу не сдать (по умолчанию да, задача #1386). */
+  checklist_required?: boolean;
   project_id: string;
   column_id: string;
   position: number;
