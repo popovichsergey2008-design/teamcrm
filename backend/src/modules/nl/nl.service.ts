@@ -11,7 +11,8 @@ import { UsersRepository } from '../users/users.repository';
 import { matchUserInText, normalizeDeadline } from './nl.match';
 import { splitCommand } from './split-command';
 import { AssigneeCandidate, pickAssignee, SURE_CONFIDENCE } from './assignee-pick';
-import { Department, isDepartment, isSkill, Skill, skillsCatalog } from '../team/skills';
+import { Department, isDepartment, isSkill, Skill, SKILL_LABEL, skillsCatalog } from '../team/skills';
+import { directionsFromText, listItemsCount } from '../team/direction-rules';
 import {
   chooseProject, cleanTitle, matchProjectInText, pickApproval, pickDeadline, pickPriority,
   PROJECT_HINT, taskTitleFrom,
@@ -454,6 +455,48 @@ export class NlService {
     if (namedAssigneeId) return;
     draft.task.assigneeId = pick.userId;
     draft.task.assigneeName = pick.name;
+  }
+
+  /**
+   * Автоподбор без модели (задачи #1295, #1363): направления по словам текста и
+   * исполнитель среди людей с этим направлением, с учётом загрузки.
+   *
+   * Модель здесь не зовём намеренно — заказчик решил, что токены тратятся только по
+   * кнопке. Правила бесплатны, поэтому форма может спрашивать их на лету. Если
+   * направления заданы руками — берём их, а не угадываем по тексту.
+   */
+  async autoAssign(
+    tenantId: string,
+    input: { title: string; description?: string | null; projectId?: string | null; directions?: string[] | null },
+  ) {
+    const text = [input.title, input.description ?? ''].join('\n');
+    const given = (input.directions ?? []).filter(isSkill);
+    const directions = given.length ? given : directionsFromText(text);
+    const items = listItemsCount(String(input.description ?? ''));
+    if (!directions.length) {
+      return { directions, assigneeId: null, assigneeName: null, reason: 'по тексту направление не понять', items };
+    }
+    const candidates = await this.autoCandidates(tenantId);
+    if (input.projectId) {
+      const members = await this.db.many<{ user_id: string }>(
+        `SELECT user_id::text FROM project_members WHERE project_id=$1`, [input.projectId],
+      ).catch(() => []);
+      const inProject = new Set(members.map((m) => String(m.user_id)));
+      for (const c of candidates) c.inProject = inProject.has(c.userId);
+    }
+    // Главное направление — первое: по нему и исполнитель. Остальные видны отметками.
+    const pick = pickAssignee({ skill: directions[0] as Skill, confidence: 1 }, candidates);
+    const chosen = pick.considered.find((c) => c.userId === pick.userId);
+    return {
+      directions,
+      assigneeId: pick.userId,
+      assigneeName: pick.name,
+      // Словами, почему он: направление и сколько у него уже открытых задач.
+      reason: pick.userId
+        ? `${SKILL_LABEL[directions[0] as Skill]} · открытых задач: ${chosen?.openTasks ?? 0}`
+        : pick.reason,
+      items,
+    };
   }
 
   /**

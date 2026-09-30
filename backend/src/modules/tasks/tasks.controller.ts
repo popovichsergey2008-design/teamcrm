@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsBoolean } from 'class-validator';
+import { IsArray, IsBoolean, IsIn } from 'class-validator';
+import { SKILLS } from '../team/skills';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { TasksService } from './tasks.service';
@@ -25,6 +26,10 @@ function parseIfMatch(raw?: string): number | null {
 
 class ChecklistRequiredDto {
   @IsBoolean() required!: boolean;
+}
+
+class DirectionsDto {
+  @IsArray() @IsIn(SKILLS as unknown as string[], { each: true }) directions!: string[];
 }
 
 @ApiTags('tasks')
@@ -295,6 +300,12 @@ export class TasksController {
       user.tenantId, id, user, dto.answer,
       dto.shiftTo ? new Date(dto.shiftTo) : null,
     );
+  }
+
+  /** Направления задачи отметками (задача #1295). */
+  @Patch(':id/directions')
+  setDirections(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: DirectionsDto) {
+    return this.tasks.setDirections(user.tenantId, id, { userId: user.userId, role: user.role }, dto.directions);
   }
 
   /** «Не принимать без выполненного чек-листа» (задача #1386): решает постановщик. */

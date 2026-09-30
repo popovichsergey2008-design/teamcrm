@@ -26,6 +26,13 @@ class SuggestDto {
   @IsOptional() @IsString() projectId?: string;
 }
 
+class AutoAssignDto {
+  @IsString() @MaxLength(255) title!: string;
+  @IsOptional() @IsString() @MaxLength(8000) description?: string;
+  @IsOptional() @IsString() projectId?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) directions?: string[];
+}
+
 class BatchDto {
   @IsArray() @ArrayMaxSize(10) drafts!: { intent?: string; task?: Record<string, unknown> }[];
   @IsOptional() @IsIn(['text', 'voice']) sourceType?: string;
@@ -158,6 +165,15 @@ export class NlController {
    * «Подобрать исполнителя» для обычной задачи: отдел, направление и кандидат.
    * Ничего не создаёт и не меняет — только советует (ТЗ-10).
    */
+  /**
+   * Автоподбор без модели: направления по словам и исполнитель по ним (задачи #1295,
+   * #1363). Бесплатный, поэтому форма зовёт его на лету.
+   */
+  @Post('auto-assign')
+  autoAssign(@CurrentUser() u: AuthUser, @Body() dto: AutoAssignDto) {
+    return this.nl.autoAssign(u.tenantId, dto);
+  }
+
   @Post('suggest-assignee')
   suggestAssignee(@CurrentUser() u: AuthUser, @Body() dto: SuggestDto) {
     return this.nl.suggestAssignee(u.tenantId, dto);

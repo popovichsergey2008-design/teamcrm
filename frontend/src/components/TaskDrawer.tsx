@@ -19,6 +19,7 @@ import { AuthedMedia } from './AuthedMedia';
 import { RichText } from './RichText';
 import { RichEditor } from './RichEditor';
 import { SuggestAssignee } from './SuggestAssignee';
+import { DirectionsPicker } from './DirectionsPicker';
 import { MONETIZATION_ENABLED } from '../config';
 import { TaskTagsField } from './TaskTagsField';
 import { EMPTY_TAGS, TagsValue } from '../lib/tags';
@@ -1020,6 +1021,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             </div>
             <div className="drawer-section">
               <div className="drawer-section-title">Назначение и план</div>
+              {/* Направления — для кого работа (задача #1295); сохраняются сразу. */}
+              <TaskDirections taskId={String(task.id)} initial={task.directions ?? []} onRefresh={onRefresh} />
               <div className="drawer-grid2">
                 <div className="field"><label>Исполнитель</label>
                   <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
@@ -1236,6 +1239,25 @@ function LabelsRow({ task, onRefresh }: { task: Task; onRefresh: () => void }) {
     </div>
   );
 }
+/** Направления задачи в карточке: отметили — сохранили, без отдельной кнопки. */
+function TaskDirections({ taskId, initial, onRefresh }: { taskId: string; initial: string[]; onRefresh: () => void }) {
+  const [value, setValue] = useState<string[]>(initial);
+  const [err, setErr] = useState('');
+  useEffect(() => { setValue(initial); }, [initial.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  const change = async (next: string[]) => {
+    const prev = value;
+    setValue(next); setErr('');
+    try { await api.setTaskDirections(taskId, next); onRefresh(); }
+    catch (e) { setValue(prev); setErr(e instanceof ApiError ? e.message : 'Не сохранилось'); }
+  };
+  return (
+    <>
+      <DirectionsPicker value={value} onChange={(n) => void change(n)} />
+      {err && <div className="error-text">{err}</div>}
+    </>
+  );
+}
+
 function ChecklistTab({ taskId, onRefresh, required, canSetRequired }: {
   taskId: string; onRefresh: () => void;
   /** Без выполненного чек-листа задачу не сдать (задача #1386). */

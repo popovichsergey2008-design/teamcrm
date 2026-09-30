@@ -6036,3 +6036,15 @@ button.chat-pop-row:hover { background: var(--hover); }
   background: var(--accent-soft); color: var(--text); font-size: var(--fs-xs);
 }
 .gate-locked { margin: 0 0 8px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--danger-soft); color: var(--danger); }
+
+/* Направления задачи (задача #1295): галочки-плашки, выбранные подсвечены. */
+.directions-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.directions-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-elev-2); font-size: var(--fs-sm, 14px); user-select: none;
+}
+.directions-chip input { margin: 0; }
+.directions-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.directions-auto { font-weight: 400; }
+.split-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -4px 0 10px; }
+.directions-chip:focus-within, .directions-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

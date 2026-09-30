@@ -35,6 +35,8 @@ export interface TaskRow {
   created_by_ai?: boolean;
   /** Без выполненного чек-листа задачу не сдать (0142, по умолчанию да). */
   checklist_required?: boolean;
+  /** Направления задачи (0143): бэкенд, фронтенд, контент… */
+  directions?: string[];
   /** none | pending — работа сдана и ждёт ответа постановщика. */
   approval_state: string;
   approval_requested_at: Date | null;
@@ -160,6 +162,15 @@ export class TasksRepository {
           SET deadline_shift_to = NULL, deadline_shift_by = NULL, deadline_shift_at = NULL, updated_at = now()
         WHERE tenant_id = $1 AND id = $2 RETURNING *`,
       [tenantId, id],
+    );
+  }
+
+  /** Направления задачи — отметками в карточке (задача #1295). */
+  setDirections(tenantId: string, id: string, directions: string[]): Promise<TaskRow | null> {
+    return this.db.one<TaskRow>(
+      `UPDATE tasks SET directions = $3::text[], updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [tenantId, id, directions],
     );
   }
 
@@ -310,6 +321,7 @@ export class TasksRepository {
     sourceChatMessageId?: string | null;
     /** Задачу завёл ИИ (разбор переписки), а не человек из формы. */
     createdByAi?: boolean;
+    directions?: string[];
   }): Promise<TaskRow> {
     return this.db.withTransaction(async (client) => {
       const posRes = await client.query<{ next: number }>(
@@ -322,10 +334,10 @@ export class TasksRepository {
         `INSERT INTO tasks
            (tenant_id, project_id, column_id, position, title, description, assignee_id, status, created_by,
             priority, deadline_at, estimate_hours, requires_approval,
-            source_chat_message_id, created_by_ai)
+            source_chat_message_id, created_by_ai, directions)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
                  COALESCE($10::varchar, 'normal'), $11::timestamptz, $12::numeric,
-                 COALESCE($13::boolean, TRUE), $14::bigint, $15) RETURNING *`,
+                 COALESCE($13::boolean, TRUE), $14::bigint, $15, $16::text[]) RETURNING *`,
         [
           input.tenantId,
           input.projectId,
@@ -342,6 +354,7 @@ export class TasksRepository {
           input.requiresApproval ?? null,
           input.sourceChatMessageId ?? null,
           input.createdByAi === true,
+          input.directions ?? [],
         ],
       );
       const task = res.rows[0];

@@ -842,6 +842,8 @@ export const api = {
     assigneeId?: string; managerId?: string;
     priority?: string; deadlineAt?: string; estimateHours?: number; labelIds?: string[];
     requiresApproval?: boolean; checklist?: string[];
+    /** Направления задачи (задача #1295). */
+    directions?: string[];
     /* Теги: что предложил ИИ и что подтвердил человек (ТЗ по тегам, п. 52). */
     suggestedTagIds?: string[]; tagsConfirmed?: boolean; confirmedWithoutTags?: boolean;
   }) =>
@@ -1687,6 +1689,16 @@ export const api = {
   undoChatAction: (id: string) =>
     request<{ actionId: string; status: string }>('POST', `/chat-analysis/actions/${id}/undo`, {}),
   /** Отмена из карточки: задача, которую агент завёл сам, уходит в корзину. */
+  /** Направления задачи отметками (задача #1295). */
+  setTaskDirections: (taskId: string, directions: string[]) =>
+    request<import('../types').Task>('PATCH', `/tasks/${taskId}/directions`, { directions }),
+  /**
+   * Автоподбор без модели (задачи #1295, #1363): направления по словам текста и
+   * исполнитель по ним. Бесплатный — форма зовёт его на лету.
+   */
+  autoAssign: (b: { title: string; description?: string; projectId?: string; directions?: string[] }) =>
+    request<{ directions: string[]; assigneeId: string | null; assigneeName: string | null; reason: string; items: number }>(
+      'POST', '/nl/auto-assign', b),
   /** «Не принимать без выполненного чек-листа» — решает постановщик. */
   setChecklistRequired: (taskId: string, required: boolean) =>
     request<import('../types').Task>('PATCH', `/tasks/${taskId}/checklist-required`, { required }),

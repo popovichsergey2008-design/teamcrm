@@ -221,6 +221,7 @@ export class TasksService {
       requiresApproval: dto.requiresApproval !== false,
       sourceChatMessageId: origin.sourceChatMessageId ?? null,
       createdByAi: origin.createdByAi === true,
+      directions: [...new Set(dto.directions ?? [])],
     });
     // Чек-лист, если задачу собрали заранее — голосом или из встречи.
     if (dto.checklist?.length) await this.repo.addChecklist(tenantId, task.id, dto.checklist);
@@ -961,6 +962,24 @@ export class TasksService {
     */
     const strict = task.checklist_required !== false && String(task.created_by ?? '') !== String(actorId);
     return handoffGate(req, facts, strict);
+  }
+
+  /**
+   * Направления задачи (задача #1295). Меняют те, кто с задачей работает: постановщик,
+   * исполнитель и руководство, — как и остальные поля карточки.
+   */
+  async setDirections(tenantId: string, id: string, actor: { userId: string; role: string }, directions: string[]) {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    const me = String(actor.userId);
+    const involved = String(task.created_by ?? '') === me || String(task.assignee_id ?? '') === me;
+    if (!involved && actor.role !== 'owner' && actor.role !== 'manager') {
+      throw AppException.forbidden('Направления меняют постановщик, исполнитель или руководитель');
+    }
+    const updated = await this.repo.setDirections(tenantId, id, [...new Set(directions)]);
+    await this.activity.log(tenantId, id, actor.userId, 'directions', { directions });
+    this.realtime.emit(tenantId, task.project_id, 'task.updated', updated as any);
+    return updated;
   }
 
   /**

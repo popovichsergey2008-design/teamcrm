@@ -8,6 +8,8 @@ import { EMPTY_TAGS, tagsReady, TagsValue } from '../lib/tags';
 import { navigate } from '../lib/router';
 import { overlayProps } from '../lib/overlay';
 import { SuggestAssignee } from './SuggestAssignee';
+import { DirectionsPicker } from './DirectionsPicker';
+import { NlCommandModal } from './NlCommandModal';
 import { isAnonymousClipboardName, screenshotName } from '../lib/attachments';
 
 interface Props {
@@ -41,11 +43,43 @@ const PRIORITIES = [['low', 'низкий'], ['normal', 'обычный'], ['hig
 export function TaskCreateModal({ projectId, columnId, columnName, users, defaultManagerId, onClose, onCreated }: Props) {
   const [title, setTitle] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
+  /*
+    Автоподбор (задачи #1295, #1363): по словам в названии и описании отмечаем
+    направления и ставим исполнителя из людей этого направления с учётом загрузки.
+    Правилами, без модели — бесплатно, поэтому на лету. Как только человек сам тронул
+    поле, автоматика его больше не трогает: его выбор главнее.
+  */
+  const [directions, setDirections] = useState<string[]>([]);
+  const [dirsTouched, setDirsTouched] = useState(false);
+  const [assigneeTouched, setAssigneeTouched] = useState(false);
+  const [autoNote, setAutoNote] = useState('');
+  /** Пунктов в описании: два и больше — это ТЗ, его можно разложить по специалистам. */
+  const [items, setItems] = useState(0);
+  const [splitOpen, setSplitOpen] = useState(false);
   const [managerId, setManagerId] = useState(defaultManagerId ?? '');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('normal');
   const [deadline, setDeadline] = useState('');
   const [estimate, setEstimate] = useState('');
+  useEffect(() => {
+    const t = title.trim();
+    if (t.length < 3 && !description.trim()) return;
+    const timer = window.setTimeout(() => {
+      api.autoAssign({
+        title: t || description.trim().slice(0, 255), description: description || undefined,
+        projectId: projectId || undefined, directions: dirsTouched ? directions : undefined,
+      }).then((r) => {
+        setItems(r.items);
+        if (!dirsTouched) setDirections(r.directions);
+        if (!assigneeTouched && r.assigneeId) {
+          setAssigneeId(String(r.assigneeId));
+          setAutoNote(`Подобран автоматически: ${r.assigneeName} — ${r.reason}. Можно сменить.`);
+        }
+      }).catch(() => undefined);
+    }, 500);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, description, projectId, dirsTouched, dirsTouched ? directions.join(',') : '']);
   /*
     Теги задачи (ТЗ по тегам). Старый выбор меток заменён общим полем: ИИ подбирает,
     человек подтверждает, и до подтверждения задача не создаётся. Одно поле на все
@@ -135,6 +169,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
     setDescription(t.description ?? '');
     setPriority(t.priority || 'normal');
     setAssigneeId(t.assignee_id ? String(t.assignee_id) : '');
+    // Исполнитель из шаблона — выбор человека: автоподбор его не перебивает.
+    if (t.assignee_id) setAssigneeTouched(true);
     setEstimate(t.estimate_hours ? String(Number(t.estimate_hours)) : '');
     setRequiresApproval(t.requires_approval);
     setTags({ ...EMPTY_TAGS, tagIds: (t.label_ids ?? []).map(String) });
@@ -177,6 +213,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         tagsConfirmed: tags.confirmed,
         confirmedWithoutTags: tags.confirmedWithoutTags,
         requiresApproval,
+        directions: directions.length ? directions : undefined,
       });
       setCreatedId(String(created.id));
       /*
@@ -219,6 +256,21 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
 
   /** Задача создана, файлы — нет: выходим без повторного создания. */
   const finishAfterPartial = () => { onCreated(); onClose(); };
+
+  /*
+    «Разложить по специалистам» (задача #1363): ТЗ из нескольких пунктов уходит в быструю
+    команду — она уже умеет делить текст на задачи и каждой подбирать исполнителя по
+    направлению. Создали пакет — это окно больше не нужно.
+  */
+  if (splitOpen) {
+    return (
+      <NlCommandModal
+        initialText={[title.trim(), description.trim()].filter(Boolean).join('\n')}
+        currentProjectId={projectId}
+        onClose={() => { setSplitOpen(false); onClose(); onCreated(); }}
+      />
+    );
+  }
 
   return (
     <div
@@ -338,14 +390,31 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
           </div>
         )}
 
+        <DirectionsPicker
+          value={directions}
+          auto={!dirsTouched}
+          onChange={(next) => { setDirsTouched(true); setDirections(next); }}
+        />
+        {/* ТЗ из нескольких пунктов — разные специалисты: предлагаем разложить на задачи. */}
+        {items >= 2 && (
+          <div className="split-hint">
+            <span className="dim">В описании {items} пунктов — их можно раздать разным специалистам.</span>
+            <button type="button" className="btn btn-sm" onClick={() => setSplitOpen(true)}>
+              Разложить по специалистам
+            </button>
+          </div>
+        )}
+
         <div className="drawer-grid2">
           <div className="field"><label>Исполнитель</label>
-            <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+            <select className="input" value={assigneeId} onChange={(e) => { setAssigneeTouched(true); setAutoNote(''); setAssigneeId(e.target.value); }}>
               <option value="">— не назначен —</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
             </select>
-            {/* Совет по названию задачи — по кнопке, а не на каждую букву (ТЗ-10). */}
-            <SuggestAssignee title={title} description={description} projectId={projectId} onPick={setAssigneeId} />
+            {autoNote && <span className="dim suggest-line">{autoNote}</span>}
+            {/* Совет модели — по кнопке, для случаев, где слов не хватило (ТЗ-10). */}
+            <SuggestAssignee title={title} description={description} projectId={projectId}
+              onPick={(id) => { setAssigneeTouched(true); setAutoNote(''); setAssigneeId(id); }} />
           </div>
           <div className="field"><label title="Кто ставит задачу и принимает результат">Постановщик</label>
             <select className="input" value={managerId} onChange={(e) => setManagerId(e.target.value)}>

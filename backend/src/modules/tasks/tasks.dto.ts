@@ -1,4 +1,5 @@
 import { Type } from 'class-transformer';
+import { SKILLS } from '../team/skills';
 import {
   IsArray,
   IsBoolean,
@@ -65,6 +66,12 @@ export class CreateTaskDto {
   @IsOptional()
   @IsIn(['low', 'normal', 'high', 'urgent'])
   priority?: string;
+
+  /** Направления задачи: бэкенд, фронтенд, контент… (задача #1295). */
+  @IsOptional()
+  @IsArray()
+  @IsIn(SKILLS as unknown as string[], { each: true })
+  directions?: string[];
 
   @IsOptional()
   @IsString()
