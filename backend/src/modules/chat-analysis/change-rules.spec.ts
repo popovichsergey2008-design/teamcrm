@@ -1,5 +1,5 @@
 import {
-  canApplyChange, changeAskText, changeReadiness, newAssigneeOf, parseYesNo, resolveChangeTarget,
+  canApplyChange, changeAskText, changeReadiness, newAssigneeOf, parseYesNo, resolveChangeTarget, ruleCancellations,
 } from './change-rules';
 
 const src = (o: Partial<{ messageId: string; authorId: string | null; sharedTaskId: string | null; text: string }>) => ({
@@ -79,5 +79,25 @@ describe('changeAskText', () => {
     const t = changeAskText({ who: 'Ольга', kind: 'reassign', taskId: '7', title: 'API', assigneeName: 'Глеб', deadlineLabel: null });
     expect(t).toContain('Ольга, по задаче #7 «API» похоже, исполнителем теперь будет Глеб. Переназначить?');
     expect(t).toContain('«да» или «оставить»');
+  });
+});
+
+describe('ruleCancellations', () => {
+  const nums = (t: string) => [...t.matchAll(/#\s?(\d+)/g)].map((x) => x[1]);
+  const alive = new Set(['1473', '1474']);
+  const msg = (id: string, body: string, isAi = false) => ({ id, body, isAi });
+
+  it('явная отмена с номером — находится без модели', () => {
+    expect(ruleCancellations([msg('1', 'Коллеги, по #1473 отбой — клиент передумал, выгрузку не делаем')], alive, nums))
+      .toEqual([{ messageId: '1', taskId: '1473' }]);
+  });
+  it('без номера, с двумя номерами, с чужим номером — нет', () => {
+    expect(ruleCancellations([msg('1', 'отбой, не делаем')], alive, nums)).toEqual([]);
+    expect(ruleCancellations([msg('1', '#1473 и #1474 отменяем')], alive, nums)).toEqual([]);
+    expect(ruleCancellations([msg('1', '#9999 отменяем')], alive, nums)).toEqual([]);
+  });
+  it('отрицание и сообщения бота — нет', () => {
+    expect(ruleCancellations([msg('1', '#1473 не отменяем, делаем')], alive, nums)).toEqual([]);
+    expect(ruleCancellations([msg('1', '#1473 отменяем', true)], alive, nums)).toEqual([]);
   });
 });

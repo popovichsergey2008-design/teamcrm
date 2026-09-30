@@ -119,3 +119,34 @@ export function changeDoneText(o: { kind: ChangeKind; taskId: string; title: str
   if (o.kind === 'reassign') return `Готово: задача #${o.taskId} «${o.title}» теперь у ${o.assigneeName ?? 'нового исполнителя'}.`;
   return `Готово: срок задачи #${o.taskId} «${o.title}» — ${o.deadlineLabel ?? 'новый'}.`;
 }
+
+/**
+ * Отмена, названная прямым текстом, — правилом, а не моделью.
+ *
+ * Живая проверка 30.09: на одиночную реплику «по #1473 отбой — клиент передумал,
+ * выгрузку не делаем» модель не вернула ничего. Номер задачи и слово отмены — это не
+ * тонкость смысла, которую надо понимать; это видно по тексту. Страховка находит такие
+ * реплики и без модели. Решает всё равно постановщик: бот только спросит.
+ *
+ * Берём реплику человека, где назван РОВНО один живой номер и есть явное слово отмены.
+ * Отрицание («не отменяем», «отбой не нужен») отсекается.
+ */
+const CANCEL_WORDS = /(^|[^а-я])(отбой|отменяем|отменяется|отменить|отмена|не делаем|не делай|не надо делать|клиент передумал|передумали|снимаем)([^а-я]|$)/;
+const CANCEL_DENIED = /(^|[^а-я])(не отменя|отбой не|не снимаем)/;
+
+export function ruleCancellations(
+  messages: { id: string; body: string; isAi: boolean }[],
+  alive: Set<string>,
+  numbersIn: (text: string) => string[],
+): { messageId: string; taskId: string }[] {
+  const out: { messageId: string; taskId: string }[] = [];
+  for (const m of messages) {
+    if (m.isAi) continue;
+    const text = String(m.body ?? '').toLowerCase().replace(/ё/g, 'е');
+    if (!CANCEL_WORDS.test(text) || CANCEL_DENIED.test(text)) continue;
+    const ids = numbersIn(text).filter((id) => alive.has(id));
+    if (ids.length !== 1) continue;
+    out.push({ messageId: String(m.id), taskId: ids[0] });
+  }
+  return out;
+}

@@ -26,7 +26,7 @@ import { TelegramMirror } from '../notifications/telegram-mirror.service';
 import { alreadyCovered, chunks, cleanReasons, dailyDigest, keyMessages, rate } from './daily-rules';
 import {
   canApplyChange, changeAskText, changeDoneText, changeReadiness, ChangeKind, CHANGE_MIN_INTENT,
-  newAssigneeOf, parseYesNo, resolveChangeTarget,
+  newAssigneeOf, parseYesNo, resolveChangeTarget, ruleCancellations,
 } from './change-rules';
 import { AwaitingRow, ChatAnalysisRepository, DueChatRow, MessageRow } from './chat-analysis.repository';
 import { closedSegments, Segment, SegmentMessage } from './segments';
@@ -1103,6 +1103,30 @@ export class ChatAnalysisService {
       const human = parseAnalysis(raw, catalog)
         .map((a) => ({ ...a, sources: a.sources.filter((x) => !messageById.get(x.messageId)?.is_ai) }))
         .filter((a) => a.sources.length > 0);
+      /*
+        Страховка: отмену, названную прямым текстом с номером задачи, берём правилом, если
+        модель о ней промолчала (живая проверка 30.09). Дальше она идёт тем же путём, что
+        и найденная моделью: цель по номеру, вопрос постановщику, решает он.
+      */
+      for (const c of ruleCancellations(
+        messages.map((m) => ({ id: String(m.id), body: String(m.body ?? ''), isAi: m.is_ai })), alive, taskNumbersIn,
+      )) {
+        const seen = human.some((a) => a.type === 'change' && a.changeKind === 'cancel'
+          && (a.taskId === c.taskId || a.sources.some((x) => x.messageId === c.messageId)));
+        if (seen) continue;
+        const rule: ExtractedAction = {
+          type: 'change', title: `Отмена задачи #${c.taskId}`, description: '',
+          projectId: null, assignerId: null, assigneeId: null, taskId: c.taskId,
+          deadlineAt: null, meetingAt: null, meetingDate: null, durationMinutes: null, participantIds: [],
+          changeKind: 'cancel',
+          // Номер и слово отмены названы прямо — это не догадка.
+          confidence: { intent: 0.95, project: 0, assigner: 0, assignee: 0, task: 0 },
+          sources: [{ messageId: c.messageId, role: 'cancellation' }],
+          dedupKey: '',
+        };
+        rule.dedupKey = dedupKeyOf(rule);
+        human.push(rule);
+      }
       const actions = human.map((a) => {
         const p = resolveProject({ chatProjectId: chat.project_id, spokenId: spoken });
         /*
