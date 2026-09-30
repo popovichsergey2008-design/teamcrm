@@ -5974,3 +5974,15 @@ button.chat-pop-row:hover { background: var(--hover); }
   .batch-page .batch-close { order: 1; }
   .batch-page .page-head-actions { order: 2; width: 100%; margin-left: 0; flex-wrap: wrap; }
 }
+
+/*
+  Меню сообщения на телефоне (задача #1443). Долгое нажатие на текст запускало системное
+  выделение, и оно отнимало касание у нашего меню. На сенсорных экранах выделение и
+  системную «выноску» в пузыре выключаем — копируют пунктом меню «Копировать текст».
+  Пузырь под пальцем слегка проседает сразу: видно, что нажатие принято.
+*/
+@media (pointer: coarse) {
+  .chat-msg, .msg { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .chat-msg input, .chat-msg textarea, .msg input, .msg textarea { -webkit-user-select: text; user-select: text; }
+  .chat-msg.is-pressing, .msg.is-pressing { transform: scale(0.985); filter: brightness(0.96); transition: transform 0.12s, filter 0.12s; }
+}

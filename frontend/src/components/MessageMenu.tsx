@@ -128,36 +128,54 @@ export function MessageMenu({ at, reactions, onReact, onMoreEmoji, items, onClos
 let pressTimer: number | null = null;
 let pressStart: { x: number; y: number } | null = null;
 let pressOpened = false;
+/** Сообщение под пальцем: подсвечиваем сразу, не дожидаясь меню. */
+let pressEl: HTMLElement | null = null;
 
 function stopPress(): void {
   if (pressTimer) window.clearTimeout(pressTimer);
   pressTimer = null;
   pressStart = null;
+  pressEl?.classList.remove('is-pressing');
+  pressEl = null;
 }
+
+/** Сколько держать палец. 350 мс — как в мессенджерах: меньше путается с прокруткой. */
+const PRESS_MS = 350;
+/** Дрожание пальца — не прокрутка: до стольких точек сдвига меню всё ещё откроется. */
+const PRESS_SLOP = 14;
 
 /**
  * Долгое нажатие — правая кнопка для пальца.
  *
- * Полсекунды: меньше — меню выскакивает при обычной прокрутке, больше — человек
- * успевает решить, что не работает. Сдвинул палец — значит листает, а не зовёт меню.
+ * Задача #1443 («выделяется с долгой задержкой и не всегда»): на Android долгое нажатие
+ * на текст сначала запускает СИСТЕМНОЕ выделение текста, и WebView обрывает касание
+ * (touchcancel) — наш таймер гас, меню не открывалось, а иногда приходило позже через
+ * системный contextmenu. Поэтому на сенсорных экранах выделение текста в пузыре
+ * выключено стилем (скопировать можно пунктом меню «Копировать текст»), таймер короче,
+ * а пузырь подсвечивается сразу — видно, что нажатие принято.
+ * Сдвинул палец дальше допуска — значит листает, а не зовёт меню.
  */
 export function longPressProps(open: (at: MenuAt) => void) {
   return {
     onTouchStart: (e: React.TouchEvent) => {
       const t = e.touches[0];
       if (!t) return;
+      stopPress();
       pressOpened = false;
       pressStart = { x: t.clientX, y: t.clientY };
+      pressEl = e.currentTarget as HTMLElement;
+      pressEl.classList.add('is-pressing');
       pressTimer = window.setTimeout(() => {
         pressOpened = true;
         open({ x: pressStart!.x, y: pressStart!.y });
+        navigator.vibrate?.(10); // лёгкий отклик, как у системного меню
         stopPress();
-      }, 500);
+      }, PRESS_MS);
     },
     onTouchMove: (e: React.TouchEvent) => {
       const t = e.touches[0];
       if (!t || !pressStart) return;
-      if (Math.abs(t.clientX - pressStart.x) > 10 || Math.abs(t.clientY - pressStart.y) > 10) stopPress();
+      if (Math.abs(t.clientX - pressStart.x) > PRESS_SLOP || Math.abs(t.clientY - pressStart.y) > PRESS_SLOP) stopPress();
     },
     onTouchEnd: (e: React.TouchEvent) => {
       /*

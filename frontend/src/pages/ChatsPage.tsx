@@ -2581,7 +2581,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     {unreadFrom === String(m.id) && <div className="chat-unread-line">Непрочитанные сообщения</div>}
                     {/* Время — ПОД плашкой, а не внутри неё: серая строчка на цветном
                         пузыре не читалась вовсе, а место в углу отъедала. */}
-                    <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === m.id) ? ' chat-match' : ''}${inChatHits[inChatPos]?.id === m.id ? ' chat-match-current' : ''}${isNew ? ' chat-new' : ''}`}>
+                    <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === String(m.id)) ? ' chat-match' : ''}${inChatHits[inChatPos]?.id === String(m.id) ? ' chat-match-current' : ''}${isNew ? ' chat-new' : ''}`}>
                       <div
                         className={`chat-msg ${mine && !m.is_ai ? 'mine' : ''}${m.is_ai ? ' chat-msg-ai' : ''}`
                           + `${ctxFor?.id === String(m.id) ? ' msg-ctx-open' : ''}`}
