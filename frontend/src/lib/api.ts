@@ -1744,12 +1744,13 @@ export const api = {
    * Отличается от `chatAiSearch`: тот пересказывает найденное, а здесь нужно само
    * сообщение — человек помнит обрывок фразы и хочет увидеть её в разговоре.
    */
-  searchChatMessages: (q: string) => request<{
+  /** `chatId` — искать только в этом чате, по всей его переписке (лупа в шапке). */
+  searchChatMessages: (q: string, chatId?: string) => request<{
     items: {
       messageId: string; chatId: string; chatTitle: string; chatKind: string;
       authorName: string | null; body: string; createdAt: string; threadRootId: string | null;
     }[];
-  }>('GET', `/chats/search?q=${encodeURIComponent(q)}`),
+  }>('GET', `/chats/search?q=${encodeURIComponent(q)}${chatId ? `&chatId=${encodeURIComponent(chatId)}` : ''}`),
   /** Окно сообщений вокруг найденного: увидеть реплику в разговоре, а не в пустоте. */
   chatMessagesAround: (chatId: string, messageId: string) =>
     request<any[]>('GET', `/chats/${chatId}/around/${messageId}`),

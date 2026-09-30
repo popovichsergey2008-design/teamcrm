@@ -296,15 +296,36 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   /**
    * Что нашлось в этом разговоре.
    *
-   * Ищем по УЖЕ загруженной ленте, без похода на сервер: в открытом чате человек
-   * ищет то, что видел недавно, а за старым есть общий поиск слева. Заодно поиск
-   * работает мгновенно и без сети.
+   * По ВСЕЙ переписке, на сервере. Раньше искали только по загруженной ленте — а это
+   * последние полсотни сообщений, и из тридцати «врторг» в личке находилось одно
+   * (задача #1466). Пока ответ сервера не пришёл (или сети нет), показываем найденное
+   * в загруженной ленте — чтобы поле не молчало. Ответы из веток сюда не берём: в
+   * ленте их не видно, для них есть общий поиск слева.
    */
+  const [serverHits, setServerHits] = useState<{ q: string; chatId: string; ids: string[] } | null>(null);
+  useEffect(() => {
+    const q = inChatQuery.trim();
+    if (!inChatSearch || !activeId || q.length < 2) { setServerHits(null); return; }
+    const chatId = String(activeId);
+    const t = window.setTimeout(() => {
+      api.searchChatMessages(q, chatId)
+        .then((r) => setServerHits({
+          q, chatId,
+          ids: r.items.filter((x) => !x.threadRootId).map((x) => String(x.messageId))
+            .sort((a, b) => Number(a) - Number(b)),
+        }))
+        .catch(() => setServerHits(null));
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [inChatQuery, inChatSearch, activeId]);
   const inChatHits = useMemo(() => {
     const q = inChatQuery.trim().toLowerCase();
-    if (q.length < 2) return [];
-    return messages.filter((m) => String(m.body ?? '').toLowerCase().includes(q));
-  }, [inChatQuery, messages]);
+    if (q.length < 2) return [] as { id: string }[];
+    if (serverHits && serverHits.q.toLowerCase() === q && serverHits.chatId === String(activeId)) {
+      return serverHits.ids.map((id) => ({ id }));
+    }
+    return messages.filter((m) => String(m.body ?? '').toLowerCase().includes(q)).map((m) => ({ id: String(m.id) }));
+  }, [inChatQuery, messages, serverHits, activeId]);
   const [scheduled, setScheduled] = useState<Scheduled[]>([]);
   const [groupOpen, setGroupOpen] = useState(false);
   const [perm, setPerm] = useState(notificationPermission());
@@ -589,15 +610,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     const hit = inChatHits[pos];
     if (!hit) return;
     setInChatPos(pos);
-    scrollToMessage(String(hit.id));
+    // Совпадение может быть далеко за загруженной лентой — подгружаем окно вокруг него.
+    void goToMessage(String(hit.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inChatHits]);
-  // Новый запрос — новый набор совпадений: становимся на последнее и показываем его.
+  // Новый набор совпадений (запрос или ответ сервера): становимся на последнее и показываем его.
+  const hitsKey = inChatHits.map((h) => h.id).join(',');
   useEffect(() => {
     if (!inChatHits.length) { setInChatPos(-1); return; }
     goToHit(inChatHits.length - 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inChatQuery]);
+  }, [inChatQuery, hitsKey]);
   // Лента дополнилась (пришло сообщение, подгрузили старое) — держимся за то же сообщение, а не за номер.
   useEffect(() => {
     if (inChatPos < 0 || inChatHits[inChatPos]) return;

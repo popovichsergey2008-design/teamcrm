@@ -531,8 +531,8 @@ export class ChatsController {
    * «search» не должно приниматься за номер чата.
    */
   @Get('search')
-  searchMessages(@CurrentUser() u: AuthUser, @Query('q') q: string) {
-    return this.chats.searchMessages(u.tenantId, u, String(q ?? ''));
+  searchMessages(@CurrentUser() u: AuthUser, @Query('q') q: string, @Query('chatId') chatId?: string) {
+    return this.chats.searchMessages(u.tenantId, u, String(q ?? ''), chatId || null);
   }
 
   /** Окно сообщений вокруг найденного — переход из поиска. */

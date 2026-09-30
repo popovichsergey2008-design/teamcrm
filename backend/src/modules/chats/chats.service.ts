@@ -471,12 +471,17 @@ export class ChatsService {
    * Подпись чата собираем здесь: «Юрий Про» для личного, название группы, имя
    * проекта. В списке результатов без неё непонятно, где вообще это сказали.
    */
-  async searchMessages(tenantId: string, user: { userId: string; role: string }, query: string) {
+  async searchMessages(tenantId: string, user: { userId: string; role: string }, query: string, chatId: string | null = null) {
     if (user.role === 'client') throw AppException.forbidden('Чаты команды недоступны');
     const q = String(query ?? '').trim();
     // Одна буква находит всё и ничего не сообщает — не ищем.
     if (q.length < 2) return { items: [] };
-    const rows = await this.repo.searchMessages(tenantId, user.userId, q);
+    /*
+      Внутри одного чата отдаём все совпадения (до 500): раньше лупа в шапке искала
+      только по загруженной ленте, и из тридцати «врторг» находилось одно (#1466).
+    */
+    if (chatId) await this.access(tenantId, chatId, user);
+    const rows = await this.repo.searchMessages(tenantId, user.userId, q, chatId ? 500 : 40, chatId);
     return {
       items: rows.map((r) => ({
         messageId: String(r.id),

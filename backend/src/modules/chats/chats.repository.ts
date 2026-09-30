@@ -616,7 +616,11 @@ export class ChatsRepository {
    * куски не находит вовсе, а стоимость ILIKE на десятках тысяч строк ещё незаметна.
    * Когда станет заметной, здесь появится trigram-индекс, и запрос не изменится.
    */
-  searchMessages(tenantId: string, userId: string, query: string, limit = 40) {
+  /**
+   * `chatId` — поиск внутри одного разговора (лупа в шапке чата, задача #1466): там
+   * нужны ВСЕ совпадения, а не последние сорок по всей организации.
+   */
+  searchMessages(tenantId: string, userId: string, query: string, limit = 40, chatId: string | null = null) {
     return this.db.many<{
       id: string; chat_id: string; body: string; created_at: Date;
       author_id: string | null; author_name: string | null;
@@ -640,9 +644,10 @@ export class ChatsRepository {
           AND m.body ILIKE $3
           AND (c.kind = 'project' OR EXISTS (
                 SELECT 1 FROM chat_members mm WHERE mm.chat_id = c.id AND mm.user_id = $2))
+          AND ($5::bigint IS NULL OR m.chat_id = $5::bigint)
         ORDER BY m.id DESC
         LIMIT $4`,
-      [tenantId, userId, `%${query}%`, limit],
+      [tenantId, userId, `%${query}%`, limit, chatId],
     );
   }
 
