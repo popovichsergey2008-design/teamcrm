@@ -103,6 +103,20 @@ export class AiService {
       images?: { mime: string; base64: string }[];
     },
   ): Promise<string> {
+    return (await this.generateWithModel(tenantId, system, user, feature, opts)).text;
+  }
+
+  /**
+   * То же, но с моделью, которая ОТВЕТИЛА. Нужна там, где качество сравнивают по
+   * версиям (разбор переписки): модель из настроек и модель после фолбэка — не одно и то же.
+   */
+  async generateWithModel(
+    tenantId: string, system: string, user: string, feature = 'brain',
+    opts?: {
+      promptVersionId?: string | null; model?: string | null; params?: Record<string, unknown>;
+      images?: { mime: string; base64: string }[];
+    },
+  ): Promise<{ text: string; model: string }> {
     const { provider, brainModel } = await this.providerFor(tenantId);
     const masked = maskPII(user).masked;
     const model = opts?.model || brainModel;
@@ -117,7 +131,7 @@ export class AiService {
       tenantId, feature, provider.lastModel || model,
       estimateTokens(system + masked), estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
     );
-    return text;
+    return { text, model: provider.lastModel || model };
   }
 
   /** Потоковая генерация (Brain «печатается»): маскирование + метеринг как в generate(); onDelta — фрагменты. */

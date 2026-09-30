@@ -1063,7 +1063,8 @@ export class ChatAnalysisService {
       };
 
       const prompt = await this.prompts.resolve(chat.tenant_id, 'chat.analysis', {}, chat.chat_id);
-      const raw = await this.ai.generate(
+      // Модель — та, что ответила: по ней сравнивают качество версий (ТЗ разд. 60).
+      const { text: raw, model: usedModel } = await this.ai.generateWithModel(
         chat.tenant_id, prompt?.body ?? FALLBACK_SYSTEM, JSON.stringify(payload), 'chat_analysis',
         { promptVersionId: prompt?.versionId, model: prompt?.model, params: prompt?.params },
       );
@@ -1252,7 +1253,7 @@ export class ChatAnalysisService {
       await this.askAbout(chat, saved);
 
       await this.repo.finishRun(runId, {
-        status: 'done', model: prompt?.model ?? null,
+        status: 'done', model: usedModel ?? prompt?.model ?? null,
         promptVersion: prompt?.version != null ? String(prompt.version) : null,
         actions: stored,
         // Всё, что модель вернула, но ключ отсёк как уже виденное.

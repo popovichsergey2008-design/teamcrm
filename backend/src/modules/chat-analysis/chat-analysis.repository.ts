@@ -335,9 +335,12 @@ export class ChatAnalysisRepository {
            (SELECT COUNT(*) FROM chat_messages m JOIN chats c ON c.id = m.chat_id
              WHERE m.tenant_id = $1 AND m.created_at >= $2 AND m.deleted_at IS NULL AND NOT m.is_ai
                AND ${ANALYZABLE}) AS messages,
+           -- Источники — только сообщения людей за эти же сутки: иначе вчерашние
+           -- поручения съедали сегодняшнюю «обычную переписку» до нуля (живая проверка 30.09).
            (SELECT COUNT(DISTINCT am.message_id) FROM chat_extracted_action_messages am
               JOIN chat_extracted_actions a ON a.id = am.action_id
-             WHERE a.tenant_id = $1 AND a.created_at >= $2) AS source_messages,
+              JOIN chat_messages sm ON sm.id = am.message_id
+             WHERE a.tenant_id = $1 AND sm.created_at >= $2 AND NOT sm.is_ai) AS source_messages,
            COUNT(*) FILTER (WHERE action_type = 'task' AND status IN ('confirmed','auto_created')) AS tasks_created,
            COUNT(*) FILTER (WHERE action_type = 'meeting' AND status = 'confirmed') AS meetings,
            COUNT(*) FILTER (WHERE action_type = 'decision' AND status IN ('confirmed','auto_created')) AS decisions,
