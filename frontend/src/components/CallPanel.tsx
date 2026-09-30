@@ -753,10 +753,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           <button className={`btn btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic}>
             <Icon name={micOn ? 'mic' : 'mic-off'} size={15} />
             <span className="call-btn-label">{micOn ? 'Микрофон' : 'Включить микрофон'}</span>
+            <span className="call-btn-cap">Микрофон</span>
           </button>
           <button className={`btn btn-sm ${camOn ? '' : 'call-off'}`} onClick={toggleCam}>
             <Icon name={camOn ? 'video' : 'video-off'} size={15} />
             <span className="call-btn-label">{camOn ? 'Камера' : 'Включить камеру'}</span>
+            <span className="call-btn-cap">Камера</span>
           </button>
           {/* Громкая связь — только там, где ОС даёт выбрать, куда идёт звук (приложение на Android). */}
           {audioRoute !== null && audioRoute !== 'headset' && (
@@ -768,6 +770,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             >
               <Icon name="volume" size={15} />
               <span className="call-btn-label">{audioRoute === 'speaker' ? 'Громкая связь' : 'Громкая связь выкл.'}</span>
+              <span className="call-btn-cap">Динамик</span>
             </button>
           )}
           {/* Показ экрана — только там, где браузер его умеет: в WebView Android getDisplayMedia нет,
@@ -775,10 +778,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           {typeof navigator.mediaDevices?.getDisplayMedia === 'function' && (
           <button className={`btn btn-sm ${screenOn ? '' : 'call-off'}`} onClick={toggleScreen}>
             <Icon name="screen" size={15} /><span className="call-btn-label">{screenOn ? 'Показ идёт' : 'Показать экран'}</span>
+            <span className="call-btn-cap">Экран</span>
           </button>
           )}
           <button className={`btn btn-sm ${hand ? '' : 'call-off'}`} onClick={() => { setHand(!hand); client.current?.raiseHand(!hand); }}>
             <Icon name="hand" size={15} /><span className="call-btn-label"> Рука</span>
+            <span className="call-btn-cap">Рука</span>
           </button>
           {/* Запись и приглашение гостей — права хозяина встречи, не гостя */}
           {!isGuest && (
@@ -789,11 +794,14 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             >
               <Icon name={recording ? 'stop' : 'record'} size={15} />
               <span className="call-btn-label">AI-запись: {recording ? 'вкл' : 'выкл'}</span>
+              <span className="call-btn-cap">Запись</span>
             </button>
           )}
           {/* Выход — заметной красной кнопкой «положить трубку» (задача #1463). */}
           <button className="btn btn-sm call-leave" onClick={leave} title="Выйти из созвона" aria-label="Выйти из созвона">
-            <Icon name="phone-off" size={16} /><span className="call-btn-label">Выйти</span>
+            <span className="call-hangup-ico"><Icon name="phone" size={16} /></span>
+            <span className="call-btn-label">Выйти</span>
+            <span className="call-btn-cap">Завершить</span>
           </button>
         </div>
       </div>

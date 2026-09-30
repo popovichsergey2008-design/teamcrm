@@ -6013,18 +6013,41 @@ button.chat-pop-row:hover { background: var(--hover); }
   .call-recording { margin: 0 8px 6px; font-size: var(--fs-xs); }
   .call-stage { min-height: 0; padding: 8px; }
   .call-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); align-content: start; }
+  /*
+    Кнопки — как в звонилке телефона (жалоба заказчика: «страшная, растянутая и
+    непонятная»): ровный круг со значком и короткая подпись под ним. Кнопка — прозрачная
+    колонка, круг рисует сам значок, поэтому он не растягивается вместе с подписью.
+  */
   .call-controls {
-    justify-content: center; gap: 12px; padding: 12px 10px 14px;
+    justify-content: center; gap: 6px 4px; padding: 12px 6px 14px;
   }
   .call-controls .btn {
-    width: 50px; height: 50px; padding: 0; border-radius: 50%; justify-content: center;
+    flex-direction: column; align-items: center; gap: 5px;
+    flex: 0 0 auto; width: 64px; min-height: 0; height: auto; padding: 0; /* старое правило до 720px растягивало кнопки */
+    background: transparent; border: none; border-radius: 0; color: var(--text);
   }
-  .call-controls .call-leave {
-    margin-left: 0; width: 60px; height: 60px; order: 99;
+  .call-controls .btn > .icon, .call-controls .call-hangup-ico {
+    box-sizing: border-box; width: 52px; height: 52px; padding: 15px; flex: 0 0 auto;
+    border-radius: 50%; background: var(--bg-elev); border: 1px solid var(--border-2);
+  }
+  .call-controls .btn.call-off > .icon { background: transparent; }
+  .call-controls .btn.call-on > .icon { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .call-controls .btn-sm { font-size: calc(11px * var(--fs-scale)); }
+  .call-btn-cap { display: block; line-height: 1.2; text-align: center; white-space: nowrap; }
+  .call-controls .call-leave { margin-left: 0; order: 99; color: var(--text); }
+  .call-controls .call-hangup-ico {
+    display: grid; place-items: center; padding: 0;
     background: #c62828; border-color: #c62828; color: #fff;
   }
-  .call-controls .call-leave:hover { background: #b71c1c; color: #fff; }
+  .call-controls .call-hangup-ico .icon { width: 22px; height: 22px; transform: rotate(135deg); }
+  .call-controls .call-leave:hover { background: transparent; }
+  .call-controls .call-leave:hover .call-hangup-ico { background: #b71c1c; }
 }
+/* На компьютере короткой подписи нет: там длинная рядом со значком. */
+@media (min-width: 641px) { .call-btn-cap { display: none; } }
+/* Трубка на кнопке выхода — опущенная, как в любой звонилке. */
+.call-hangup-ico { display: inline-flex; }
+.call-hangup-ico .icon { transform: rotate(135deg); }
 
 /* «@все» в подсказке упоминаний: значок вместо аватарки — это не человек. */
 .mention-all-icon { display: inline-grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
