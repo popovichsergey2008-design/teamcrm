@@ -404,4 +404,46 @@ describe('AnthillBot (e2e)', () => {
     expect(Array.isArray(usage.days)).toBe(true);
     expect(Array.isArray(usage.errors)).toBe(true);
   });
+
+  /**
+   * Откат «создать задачу» — обычное удаление человека со всеми правилами компании.
+   * Раньше он шёл служебным удалением и обходил право, режим «удаляет только владелец»
+   * и журнал безопасности (найдено сверкой по ТЗ-13, 30.09).
+   */
+  it('откат созданной ботом задачи подчиняется правилам удаления компании и кладёт её в корзину', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'AB10', email: `ab10_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const mateEmail = `ab10m_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(O)
+      .send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    const project = (await http$.post('/api/projects').set(O).send({ name: 'Откат' }).expect(201)).body.data;
+    const tenantId = String(owner.user.tenantId);
+
+    const created = async (userId: string, auth: Record<string, string>, title: string) => {
+      const action = await repo.createAction({
+        tenantId, sessionId: null, userId, tool: 'create_task',
+        input: { intent: 'create_task', task: { title, projectId: String(project.id), requiresApproval: true } },
+      });
+      const done = (await http$.post(`/api/anthill/actions/${action.id}/confirm`).set(auth).expect(201)).body.data;
+      return { actionId: String(action.id), taskId: String(done.output.taskId) };
+    };
+
+    // Компания решила: задачи удаляет только владелец. Отмена действия бота — тоже удаление.
+    await http$.post('/api/security/policy').set(O).send({ tasks: { deleteMode: 'owner_only', protectClosed: false } }).expect(201);
+
+    const mine = await created(String(mate.id), M, 'Задача сотрудника через бота');
+    await http$.post(`/api/anthill/actions/${mine.actionId}/undo`).set(M).expect(403);
+
+    // Владельцу можно — и задача уходит в корзину, а не стирается насовсем.
+    const own = await created(String(owner.user.id), O, 'Задача владельца через бота');
+    await http$.post(`/api/anthill/actions/${own.actionId}/undo`).set(O).expect(201);
+    const trash = (await http$.get('/api/tasks/trash').set(O).expect(200)).body.data;
+    const items = Array.isArray(trash) ? trash : trash.items;
+    const ids = items.map((t: any) => String(t.id));
+    expect(ids).toContain(own.taskId);
+    // А задача сотрудника на месте: отказ в откате ничего не удалил.
+    expect(ids).not.toContain(mine.taskId);
+  });
 });

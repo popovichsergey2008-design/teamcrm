@@ -440,9 +440,18 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         const src = taskSource(ctx, { id: String(task.id), title: task.title, project_id: String(task.project_id ?? task.projectId) });
         return { text: `Задача #${task.id} «${task.title}» создана.`, output: { taskId: String(task.id), projectId: String(task.project_id ?? task.projectId), title: task.title }, sources: [src] };
       },
+      /*
+        Откат — обычным удалением человека, а не служебным: право task.delete, режим
+        удаления компании («удаляет только владелец»), защита завершённых и запись в
+        журнал безопасности. Раньше здесь стоял tasks.remove, и отмена действия бота
+        удаляла задачу мимо всех правил компании (найдено сверкой по ТЗ-13, 30.09).
+        Задача уходит в корзину — её можно вернуть, как любую удалённую руками.
+      */
       async undo(ctx, output) {
-        await tasks.remove(ctx.tenantId, String(output.taskId), ctx.user.userId, { confirmTimeLoss: true });
-        return `Задача #${output.taskId} удалена.`;
+        await tasks.removeByPerson(ctx.tenantId, String(output.taskId), ctx.user, {
+          reason: 'Отмена действия AnthillBot',
+        });
+        return `Задача #${output.taskId} убрана в корзину.`;
       },
     },
     {
