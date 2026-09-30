@@ -5965,3 +5965,12 @@ button.chat-pop-row:hover { background: var(--hover); }
 .ca-daily { display: flex; flex-direction: column; gap: 8px; }
 .ca-versions { display: flex; flex-direction: column; gap: 2px; }
 .ca-digest { white-space: pre-wrap; font: inherit; font-size: var(--fs-xs); color: var(--text-dim); background: var(--bg-elev-2); padding: 8px; border-radius: 8px; margin: 0; }
+
+/* Страница пакета задач: крестик выхода всегда в правом верхнем углу (задача #1467).
+   На узком экране кнопки уходят второй строкой, чтобы крестик не вытеснило за край. */
+@media (max-width: 640px) {
+  .batch-page .page-head { flex-wrap: wrap; padding: 12px 16px; }
+  .batch-page .page-head h2 { flex: 1 1 0; min-width: 0; }
+  .batch-page .batch-close { order: 1; }
+  .batch-page .page-head-actions { order: 2; width: 100%; margin-left: 0; flex-wrap: wrap; }
+}

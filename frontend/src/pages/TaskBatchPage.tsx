@@ -77,6 +77,21 @@ export function TaskBatchPage({ batchId }: { batchId: string }) {
             <Icon name="list" size={14} /> Все задачи
           </button>
         </div>
+        {/*
+          Выход — крестиком справа, как у карточки одной задачи (задача #1467): кнопки
+          «Открыть доску» и «Все задачи» выходом не выглядят, и люди застревали здесь.
+          Ведёт к проектам — туда, откуда обычно ставят задачи; один проект — сразу к нему.
+        */}
+        <button
+          className="drawer-close batch-close"
+          title="Закрыть и вернуться к проектам"
+          aria-label="Закрыть и вернуться к проектам"
+          onClick={() => navigate(projects.size === 1 && batch.tasks.length > 0
+            ? { section: 'projects', projectId: batch.tasks[0].projectId }
+            : { section: 'projects' })}
+        >
+          <Icon name="close" size={20} />
+        </button>
       </div>
 
       {batch.sourceText && (
