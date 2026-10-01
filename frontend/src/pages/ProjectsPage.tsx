@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { Icon } from '../components/Icon';
+import { navigate } from '../lib/router';
 import { EmptyState } from '../components/EmptyState';
 import { useAuth } from '../state/auth';
 import { PROJECTS_CHANGED } from '../components/ProjectsNav';
@@ -11,7 +12,7 @@ type Row = Awaited<ReturnType<typeof api.projectsStats>>[number];
 type Slice = 'active' | 'mine' | 'archived';
 
 /**
- * «Проекты и доски» — все проекты одной таблицей.
+ * «Проекты» — все проекты одной таблицей.
  *
  * Раньше проекты жили выпадающим списком в левой панели: на трёх досках это удобно,
  * на тридцати — стена ссылок, по которой ничего не найти и в которой не видно, где
@@ -83,8 +84,16 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
   return (
     <div className="page projects-page">
       <div className="page-head">
-        <h2 className="page-title"><Icon name="board" size={18} /> Проекты и доски</h2>
+        <h2 className="page-title"><Icon name="board" size={18} /> Проекты</h2>
         <div className="projects-tools">
+          {/* Реестр задач по всем проектам — часть «Проектов», а не отдельный раздел меню */}
+          <button
+            className="btn btn-ghost btn-sm board-all-btn"
+            onClick={() => navigate({ section: 'tasks' })}
+            title="Задачи по всем проектам: делаю, поручил, помогаю, наблюдаю"
+          >
+            <Icon name="check-circle" size={14} /> Все задачи
+          </button>
           <input
             className="input projects-search"
             value={q}

@@ -14,7 +14,7 @@ import type { NavCounters } from '../hooks/useNavCounters';
  */
 const TABS: { key: string; label: string; icon: 'target' | 'board' | 'chat' | 'video' | 'more'; go: () => void; match: (r: Route) => boolean }[] = [
   { key: 'focus', label: 'Фокус', icon: 'target', go: () => navigate({ section: 'focus' }), match: (r) => r.section === 'focus' },
-  { key: 'projects', label: 'Проекты', icon: 'board', go: () => navigate({ section: 'projects' }), match: (r) => r.section === 'projects' },
+  { key: 'projects', label: 'Проекты', icon: 'board', go: () => navigate({ section: 'projects' }), match: (r) => r.section === 'projects' || r.section === 'tasks' },
   { key: 'chat', label: 'Чаты', icon: 'chat', go: () => navigate({ section: 'chat' }), match: (r) => r.section === 'chat' && !r.view },
   { key: 'meetings', label: 'Миты', icon: 'video', go: () => navigate({ section: 'chat', view: 'meetings' }), match: (r) => r.section === 'chat' && r.view === 'meetings' },
 ];

@@ -4436,6 +4436,8 @@
    (Класс свой: `.registry-new` — красный кружок непрочитанного, и кнопки на нём красили
    в красную плашку — нашлось только на телефоне.) */
 .registry-create { display: inline-flex; gap: 6px; align-items: center; }
+/* «Все проекты» прижимается вправо, к постановке задачи: заголовок слева остаётся один */
+.registry-projects-btn { margin-left: auto; }
 .registry-title h1 { margin: 0; font-size: var(--fs-lg); font-weight: 700; }
 .registry-sub { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-dim); }
 

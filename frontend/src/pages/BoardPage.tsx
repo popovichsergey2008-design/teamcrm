@@ -188,7 +188,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
     Запоминаем выбор при каждой смене — одним местом на все пути: клик по проекту,
     переход из «Моих задач», удаление и архивация соседнего.
 
-    Память общая с разделом «Проекты и доски» (см. lib/last-project) и живёт сутки:
+    Память общая с разделом «Проекты» (см. lib/last-project) и живёт сутки:
     возвращать человека в проект, который он бросил неделю назад, — решать за него.
   */
   useEffect(() => {
@@ -499,7 +499,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                 : undefined}
             />
           ) : (
-            <EmptyState icon="arrow-left" title="Выберите проект" hint="Список проектов — в меню слева, под разделом «Проекты и доски»." />
+            <EmptyState icon="arrow-left" title="Выберите проект" hint="Список проектов — в меню слева, под разделом «Проекты»." />
           )
         )}
         {board && (
@@ -569,6 +569,14 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                   title="Таблица со всеми проектами"
                 >
                   <Icon name="list" size={14} /> Все проекты
+                </button>
+                {/* Сквозной реестр задач по всем проектам: из меню он переехал сюда */}
+                <button
+                  className="btn btn-ghost btn-sm board-all-btn"
+                  onClick={() => navigate({ section: 'tasks' })}
+                  title="Задачи по всем проектам: делаю, поручил, помогаю, наблюдаю"
+                >
+                  <Icon name="check-circle" size={14} /> Все задачи
                 </button>
                 <span className="view-switch" role="tablist" aria-label="Вид доски">
                   <button className={`view-btn ${view === 'board' ? 'active' : ''}`} onClick={() => switchView('board')} title="Канбан-доска"><Icon name="board" size={14} /> Доска</button>

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
+import { navigate } from '../lib/router';
+import { forgetProject } from '../lib/last-project';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonList } from '../components/Skeleton';
 import { api, TagItem } from '../lib/api';
@@ -207,6 +209,14 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
           <h1>Задачи</h1>
           <span className="registry-sub">{scopeHint(picked)}</span>
         </div>
+        {/* Задачи живут в «Проектах»: обратный путь к таблице проектов — одним нажатием */}
+        <button
+          className="btn btn-ghost btn-sm board-all-btn registry-projects-btn"
+          onClick={() => { forgetProject(); navigate({ section: 'projects' }); }}
+          title="Таблица со всеми проектами"
+        >
+          <Icon name="list" size={14} /> Все проекты
+        </button>
         {/*
           Поставить задачу — прямо отсюда.
 
