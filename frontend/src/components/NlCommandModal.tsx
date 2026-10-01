@@ -6,6 +6,7 @@ import { confirmTags, EMPTY_TAGS, pendingTagCount } from '../lib/tags';
 import { api, ApiError, TagSettings, VoiceJob } from '../lib/api';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { DatePicker } from './DatePicker';
+import { DirectionsPicker } from './DirectionsPicker';
 import { VoiceStatus } from './VoiceStatus';
 import { overlayProps } from '../lib/overlay';
 import { navigate } from '../lib/router';
@@ -678,6 +679,12 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
             </span>
           </div>
         )}
+        {/* Направления пункта (задача #1363): отмечены по словам, уходят в задачу отметками. */}
+        <DirectionsPicker
+          value={draft.task.directions ?? []}
+          auto
+          onChange={(next) => onPatchTask({ directions: next })}
+        />
         {/* Постановщик не выбирается: им становится тот, кто говорит. Сказать об этом
             нужно прямо — иначе человек ищет поле «от кого» и не находит. */}
         <div className="dim nl-hint">Постановщик — вы: задача записывается от вашего имени</div>

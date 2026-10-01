@@ -34,6 +34,9 @@ const WORDS: Record<Exclude<Skill, 'fullstack' | 'other'>, string[]> = {
   analytics: ['аналитик', 'метрик', 'дашборд', 'статистик', 'ga4', 'конверси', 'отчёт по трафик', 'воронк'],
 };
 
+/** Направления, которые бывают отметками у задачи (фулстек и «другое» — только у людей). */
+export const TASK_DIRECTIONS = Object.keys(WORDS) as Skill[];
+
 /** Сколько направлений максимум ставим сами: больше — это уже ТЗ на несколько задач. */
 export const MAX_AUTO_DIRECTIONS = 3;
 

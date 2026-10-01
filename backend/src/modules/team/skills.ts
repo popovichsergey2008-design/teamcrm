@@ -42,6 +42,14 @@ export const DEPARTMENT_SKILLS: Record<Department, Skill[]> = {
   unknown: [...SKILLS],
 };
 
+/** Отдел по направлению: нужен, когда направление нашли по словам, а не модель. */
+export function departmentOf(skill: Skill | null): Department {
+  if (!skill) return 'unknown';
+  if (DEPARTMENT_SKILLS.development.includes(skill)) return 'development';
+  if (DEPARTMENT_SKILLS.content.includes(skill)) return 'content';
+  return 'unknown';
+}
+
 export function isSkill(value: unknown): value is Skill {
   return typeof value === 'string' && (SKILLS as readonly string[]).includes(value);
 }

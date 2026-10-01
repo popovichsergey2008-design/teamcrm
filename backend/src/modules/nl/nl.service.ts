@@ -11,8 +11,8 @@ import { UsersRepository } from '../users/users.repository';
 import { matchUserInText, normalizeDeadline } from './nl.match';
 import { splitCommand } from './split-command';
 import { AssigneeCandidate, pickAssignee, SURE_CONFIDENCE } from './assignee-pick';
-import { Department, isDepartment, isSkill, Skill, SKILL_LABEL, skillsCatalog } from '../team/skills';
-import { directionsFromText, listItemsCount } from '../team/direction-rules';
+import { Department, departmentOf, isDepartment, isSkill, Skill, SKILL_LABEL, skillsCatalog } from '../team/skills';
+import { directionsFromText, listItemsCount, MAX_AUTO_DIRECTIONS, TASK_DIRECTIONS } from '../team/direction-rules';
 import {
   chooseProject, cleanTitle, matchProjectInText, pickApproval, pickDeadline, pickPriority,
   PROJECT_HINT, taskTitleFrom,
@@ -38,6 +38,8 @@ export interface NlDraft {
     requiresApproval: boolean;
     /** Шаги выполнения: ИИ разбивает работу, человек правит перед созданием. */
     checklist: string[];
+    /** Направления задачи (отметки в карточке): по словам и классификации, правятся в предпросмотре. */
+    directions?: Skill[];
   };
   /**
    * Кому и почему предлагаем поручить задачу (ТЗ-10, этап 4).
@@ -367,16 +369,31 @@ export class NlService {
     */
     if (items.length < 2) {
       const byRules = splitCommand(clean);
-      if (byRules.length < 2) return [await single];
-      this.log.log(`команда разделена правилами на ${byRules.length}: модель не ответила`);
-      const ruleDrafts = (await Promise.all(
-        byRules.map((part) => this.parse(tenantId, userId, part, currentProjectId, clean).catch(() => null)),
-      )).filter((d): d is NlDraft => !!d?.task);
-      return ruleDrafts.length > 1 ? ruleDrafts : [await single];
+      if (byRules.length >= 2) {
+        this.log.log(`команда разделена правилами на ${byRules.length}: модель не ответила`);
+        const ruleDrafts = (await Promise.all(
+          byRules.map((part) => this.parse(tenantId, userId, part, currentProjectId, clean).catch(() => null)),
+        )).filter((d): d is NlDraft => !!d?.task);
+        /*
+          ТЗ по пунктам без модели (задача #1363). Раньше пункты здесь только делились:
+          исполнителя по направлению получали лишь задачи, разобранные моделью, а на
+          проде у новых организаций модели нет вовсе — и всё ТЗ уходило ничьим. Теперь
+          каждый пункт раздаётся по словам так же, как одиночная задача в форме.
+        */
+        if (ruleDrafts.length > 1) {
+          await this.distribute(tenantId, ruleDrafts.map((d, i) => ({
+            draft: d, item: null, source: byRules[i],
+            named: matchUserInText(byRules[i], users) ?? matchUserInText(clean, users),
+          })));
+          return ruleDrafts;
+        }
+      }
+      const one = await single;
+      // Одна задача: направления и исполнитель по словам, только если человека не назвали.
+      if (one.task) await this.distribute(tenantId, [{ draft: one, item: null, source: clean, named: one.task.assigneeId }]);
+      return [one];
     }
 
-    // Кандидаты на исполнение — один раз на всю пачку: список один и тот же.
-    const candidates = await this.autoCandidates(tenantId);
     // Каждую задачу пачки оформляем параллельно: три поручения не должны ждать втрое дольше.
     const parsedItems = await Promise.all(items.slice(0, 10).map(async (item) => {
       const title = String(item?.title ?? '').trim();
@@ -391,13 +408,58 @@ export class NlService {
       if (Array.isArray(item?.checklist)) {
         draft.task.checklist = item.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 12);
       }
-      // Имя, названное в самой команде: только оно считается явной волей человека.
       // Имя, названное в команде: в самом поручении или в общей части надиктовки.
-      this.route(draft, item, candidates, matchUserInText(source, users) ?? matchUserInText(clean, users));
-      return draft;
+      // Для слов — только свой кусок: вся команда дала бы каждому пункту направления всего ТЗ.
+      return {
+        draft, item, source: String(item?.source ?? ''),
+        named: matchUserInText(source, users) ?? matchUserInText(clean, users),
+      };
     }));
-    const drafts = parsedItems.filter((d): d is NlDraft => !!d);
-    return drafts.length ? drafts : [await single];
+    const routed = parsedItems.filter((x): x is NonNullable<typeof x> => !!x);
+    if (!routed.length) return [await single];
+    await this.distribute(tenantId, routed);
+    return routed.map((x) => x.draft);
+  }
+
+  /**
+   * Раздать задачи пачки по специалистам (задача #1363).
+   *
+   * По ОЧЕРЕДИ, а не параллельно, и с учётом уже розданного: три бэкенд-пункта ТЗ при
+   * двух бэкендерах раньше уходили одному — тому, у кого с утра было меньше задач, —
+   * потому что загрузка бралась из базы один раз на всю пачку. Теперь каждая выданная
+   * задача добавляется к загрузке получателя до подбора следующей.
+   */
+  private async distribute(
+    tenantId: string,
+    list: { draft: NlDraft; item: any; source: string; named: string | null }[],
+  ): Promise<void> {
+    // Кандидаты на исполнение — один раз на всю пачку: список один и тот же.
+    const candidates = await this.autoCandidates(tenantId);
+    const members = await this.projectMembers(
+      list.map((x) => x.draft.task?.projectId).filter((p): p is string => !!p),
+    );
+    for (const x of list) {
+      const projectId = x.draft.task?.projectId;
+      for (const c of candidates) c.inProject = !!projectId && !!members.get(projectId)?.has(c.userId);
+      this.route(x.draft, x.item, candidates, x.named, x.source);
+      const got = candidates.find((c) => c.userId === x.draft.task?.assigneeId);
+      if (got) got.openTasks += 1;
+    }
+  }
+
+  /** Участники проектов — свой человек в проекте быстрее входит в курс дела. */
+  private async projectMembers(projectIds: string[]): Promise<Map<string, Set<string>>> {
+    const out = new Map<string, Set<string>>();
+    const ids = [...new Set(projectIds)];
+    if (!ids.length) return out;
+    const rows = await this.db.many<{ project_id: string; user_id: string }>(
+      `SELECT project_id::text, user_id::text FROM project_members WHERE project_id = ANY($1::bigint[])`, [ids],
+    ).catch(() => []);
+    for (const r of rows) {
+      if (!out.has(r.project_id)) out.set(r.project_id, new Set());
+      out.get(r.project_id)!.add(r.user_id);
+    }
+    return out;
   }
 
   /**
@@ -427,12 +489,27 @@ export class NlService {
    * Исполнителя, названного в самой команде («поставь Глебу»), НЕ трогаем: явная
    * воля человека главнее любой рекомендации. Подставляем только туда, где его нет.
    */
-  private route(draft: NlDraft, item: any, candidates: AssigneeCandidate[], namedAssigneeId: string | null): void {
+  private route(
+    draft: NlDraft, item: any, candidates: AssigneeCandidate[], namedAssigneeId: string | null, source: string,
+  ): void {
     if (!draft.task) return;
-    const department: Department = isDepartment(item?.department) ? item.department : 'unknown';
-    const skill: Skill | null = isSkill(item?.specialization) ? item.specialization : null;
+    let skill: Skill | null = isSkill(item?.specialization) ? item.specialization : null;
     const raw = Number(item?.confidence);
-    const confidence = Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0;
+    let confidence = Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0;
+    /*
+      Направления по словам — те же правила, что в форме задачи (direction-rules.ts).
+      Модель промолчала или не назвала направление — берём главное из слов: «свободнее
+      остальных» для задачи про API честно хуже, чем бэкендер с парой задач.
+    */
+    const byWords = directionsFromText([draft.task.title, draft.task.description ?? '', source].join('\n'));
+    if (!skill && byWords.length) { skill = byWords[0]; confidence = 1; }
+    const department: Department = isDepartment(item?.department) && item.department !== 'unknown'
+      ? item.department
+      : departmentOf(skill);
+    // Отметки направлений у задачи: главное первым, только из тех, что есть в карточке.
+    draft.task.directions = [...new Set([skill, ...byWords])]
+      .filter((d): d is Skill => !!d && TASK_DIRECTIONS.includes(d))
+      .slice(0, MAX_AUTO_DIRECTIONS);
 
     const pick = pickAssignee({ skill, confidence }, candidates);
     draft.routing = {
@@ -583,6 +660,7 @@ export class NlService {
         checklist: Array.isArray(t.checklist)
           ? t.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean)
           : undefined,
+        directions: Array.isArray(t.directions) ? t.directions.filter(isSkill) : undefined,
       } as any, userId);
       await this.tags.applyToNewTask(tenantId, { userId }, String(task.id), String(task.project_id), {
         tagIds: Array.isArray(t.tagIds) ? t.tagIds.map(String) : [],

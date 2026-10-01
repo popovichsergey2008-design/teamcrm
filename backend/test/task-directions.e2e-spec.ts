@@ -84,4 +84,35 @@ describe('Направления задачи (e2e)', () => {
     // Чужое направление не принимается: только коды из справочника.
     await http.patch(`/api/tasks/${task.id}/directions`).set(O).send({ directions: ['космос'] }).expect(400);
   }, 90000);
+
+  it('ТЗ по пунктам раздаётся разным специалистам, а направления доходят до задачи', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'DirTz', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const person = async (fullName: string, skills: string[]) => {
+      const u = (await http.post('/api/users').set(O)
+        .send({ email: `d_${uniq()}@t.test`, password: 'password123', fullName, role: 'member' }).expect(201)).body.data;
+      await http.patch(`/api/users/${u.id}`).set(O).send({ skills }).expect(200);
+      return String(u.id);
+    };
+    const back1 = await person('Денис Бэкендов', ['backend']);
+    const back2 = await person('Пётр Серверов', ['backend']);
+    const front = await person('Марина Фронтова', ['frontend']);
+    const project = (await http.post('/api/projects').set(O).send({ name: 'Склад' }).expect(201)).body.data;
+
+    const drafts = (await http.post('/api/nl/parse-many').set(O).send({
+      text: '1. Сделать API выгрузки остатков\n2. Сделать API авторизации складов\n3. Сверстать страницу заказа',
+      currentProjectId: String(project.id),
+    }).expect(201)).body.data;
+    expect(drafts).toHaveLength(3);
+    expect(drafts.map((d: any) => d.task.directions[0])).toEqual(['backend', 'backend', 'frontend']);
+    // Два бэкенд-пункта — двум разным бэкендерам: загрузка считается с уже розданным.
+    expect(new Set([drafts[0].task.assigneeId, drafts[1].task.assigneeId])).toEqual(new Set([back1, back2]));
+    expect(drafts[2].task.assigneeId).toBe(front);
+
+    const created = (await http.post('/api/nl/apply').set(O)
+      .send({ intent: 'create_task', task: { ...drafts[2].task, confirmedWithoutTags: true } }).expect(201)).body.data;
+    expect(created.task.directions).toEqual(['frontend']);
+  }, 90000);
 });
