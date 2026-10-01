@@ -285,6 +285,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           },
           onGuestWaiting: (hostPresent, hostCalled) => {
             setGuestState('waiting');
+            // сотрудник стучится в чужой созвон: его туда не звали
+            if (!isGuest) {
+              setGuestNote('Вас не звали в этот созвон — участники видят, что вы проситесь войти, и решат, впустить ли.');
+              return;
+            }
             setGuestNote(hostPresent
               ? 'Вы в комнате ожидания — организатор видит вашу заявку.'
               : hostCalled
@@ -303,7 +308,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             setGuestState('rejected');
             setGuestNote(reason === 'revoked'
               ? 'Ссылка больше не действует — попросите новую.'
-              : 'Организатор отклонил вход.');
+              : reason === 'empty'
+                ? 'В этом созвоне сейчас нет никого из команды — впустить вас некому.'
+                : isGuest ? 'Организатор отклонил вход.' : 'Участники созвона не впустили вас.');
           },
           onError: setErr,
         }, String(guest?.userId ?? user?.id ?? ''));
@@ -552,7 +559,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             className="call-pill-back"
             onClick={() => setView('full')}
             title={knocks.length
-              ? `За дверью ждёт гость (${knocks.length}) — вернитесь в созвон, чтобы впустить`
+              ? `Просятся в созвон (${knocks.length}) — вернитесь в окно, чтобы впустить`
               : 'Идёт созвон — вернуться в окно разговора'}
           >
             {recording
@@ -658,32 +665,43 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
                 </button>
               </>
             )}
+            {/*
+              Кнопки окна — как у любого окна на компьютере (просьба заказчика):
+              «−» сворачивает до самого маленького — кнопки с часами и микрофоном;
+              «❐» уменьшает до небольшого окна с лицами (поверх других программ, если
+              браузер умеет); «⛶» — на весь экран; «×» выходит из созвона, как и
+              красная кнопка внизу. Раньше крестик только прятал окно, и созвон
+              продолжался незаметно для человека.
+              У гостя «−» нет: за окном созвона у него пусто, сворачивать некуда.
+            */}
+            {!isGuest && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={hide}
+                title="Свернуть до маленькой кнопки с часами и микрофоном — разговор продолжится"
+                aria-label="Свернуть созвон до кнопки"
+              >
+                <Icon name="minus" size={15} />
+              </button>
+            )}
             <button
               className="btn btn-ghost btn-sm"
               onClick={() => void minimize()}
               title={pipSupported()
-                ? 'Свернуть — созвон останется отдельным окном поверх других программ'
-                : 'Свернуть — разговор продолжится в углу страницы'}
-              aria-label="Свернуть созвон"
+                ? 'Уменьшить — небольшое окно поверх других программ'
+                : 'Уменьшить — небольшое окно в углу страницы'}
+              aria-label="Уменьшить окно созвона"
             >
-              <Icon name="minimize" size={15} />
+              <Icon name="restore" size={15} />
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={toggleFull} title={full ? 'Свернуть из полного экрана' : 'Развернуть на весь экран'}>
+            <button className="btn btn-ghost btn-sm" onClick={toggleFull} title={full ? 'Выйти из полного экрана' : 'Развернуть на весь экран'}>
               <Icon name={full ? 'minimize' : 'maximize'} size={15} />
             </button>
-            {/* Крестик УБИРАЕТ окно, а не кладёт трубку: разговор продолжается, в углу
-                остаётся кнопка возврата. Выход из созвона — красной кнопкой внизу:
-                «закрыть окно» и «уйти со встречи» — разные желания, и раньше одно
-                молча исполняло другое.
-                У гостя за окном созвона пусто — вся его страница и есть созвон, —
-                поэтому ему крестик по-прежнему значит «выйти». */}
             <button
-              className="btn btn-ghost btn-sm"
-              onClick={isGuest ? leave : hide}
-              title={isGuest
-                ? 'Выйти из созвона'
-                : 'Убрать окно — созвон продолжится, вернуться можно кнопкой в углу. Чтобы выйти, нажмите «Выйти» внизу'}
-              aria-label={isGuest ? 'Выйти из созвона' : 'Убрать окно созвона'}
+              className="btn btn-ghost btn-sm call-head-close"
+              onClick={leave}
+              title="Выйти из созвона"
+              aria-label="Выйти из созвона"
             >
               <Icon name="close" />
             </button>
@@ -704,10 +722,13 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
         )}
         {err && <div className="error-text" style={{ padding: '0 12px' }}>{err}</div>}
 
-        {/* Гости за дверью. Впустить может любой сотрудник, который уже в комнате. */}
+        {/* За дверью: гости по ссылке и коллеги, которых не звали. Впустить может любой сотрудник в комнате. */}
         {knocks.map((k) => (
           <div className="call-knock" key={k.guestId}>
-            <span><Icon name="user" size={15} /> <b>{k.name}</b> просится в созвон — это внешний гость</span>
+            <span>
+              <Icon name="user" size={15} /> <b>{k.name}</b> просится в созвон
+              {k.employee ? ' — коллега, его сюда не звали' : ' — это внешний гость'}
+            </span>
             <span className="call-knock-actions">
               <button className="btn btn-sm" onClick={() => answerKnock(k.guestId, true)}>Впустить</button>
               <button className="btn btn-ghost btn-sm" onClick={() => answerKnock(k.guestId, false)}>Отказать</button>
@@ -716,17 +737,22 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
         ))}
         {linkNote && <div className="call-recording call-ai-waiting"><Icon name="link" size={15} /> {linkNote}</div>}
 
-        {/* Гость до впуска сцены не видит и не слышит: он ещё не в комнате. */}
-        {isGuest && guestState !== 'in' && (
+        {/* До впуска сцены не видно и не слышно — ни гостю, ни коллеге, которого не звали. */}
+        {guestState !== 'in' && (
           <div className="call-stage call-lobby">
             <div className="call-lobby-box">
               <Icon name={guestState === 'rejected' ? 'close' : 'clock'} size={28} />
               <h3>{guestState === 'rejected' ? 'Вход не состоялся' : 'Ждём, пока вас впустят'}</h3>
               <p className="dim">{guestNote}</p>
-              {guestState !== 'rejected' && (
+              {guestState !== 'rejected' && isGuest && (
                 <p className="dim" style={{ fontSize: 12 }}>
                   Микрофон можно разрешить заранее — тогда вы сразу сможете говорить.
                 </p>
+              )}
+              {!isGuest && (
+                <button className="btn btn-sm" onClick={leave}>
+                  {guestState === 'rejected' ? 'Закрыть' : 'Не ждать'}
+                </button>
               )}
             </div>
           </div>
@@ -734,7 +760,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
 
         {/* Показ экрана занимает сцену целиком, люди уезжают в полосу снизу:
             в общей сетке демонстрация выходила мелкой и нечитаемой. */}
-        {(!isGuest || guestState === 'in') && (
+        {guestState === 'in' && (
         <div className="call-stage">
           {screenTrack && (
             <div className="call-spotlight">

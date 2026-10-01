@@ -56,6 +56,26 @@ export class GuestLinksRepository {
     );
   }
 
+  /**
+   * Свой ли человек комнате ссылки или события: выдал на неё ссылку, участвует в событии
+   * (не отказался) или его завёл. Остальные сотрудники в такую комнату стучатся.
+   */
+  async isRoomMember(tenantId: string, roomId: string, userId: string): Promise<boolean> {
+    const row = await this.db.one<{ ok: boolean }>(
+      `SELECT (
+         EXISTS (SELECT 1 FROM meet_guest_links
+                  WHERE tenant_id=$1 AND room_id=$2 AND created_by=$3::bigint AND revoked_at IS NULL)
+      OR EXISTS (SELECT 1 FROM calendar_events e
+                  WHERE e.tenant_id=$1 AND e.meet_room_id=$2
+                    AND (e.owner_id=$3::bigint OR EXISTS (
+                      SELECT 1 FROM calendar_participants p
+                       WHERE p.event_id=e.id AND p.user_id=$3::bigint AND p.status <> 'declined')))
+       ) AS ok`,
+      [tenantId, roomId, userId],
+    );
+    return !!row?.ok;
+  }
+
   /** Событие календаря организации — под него выдаётся ссылка. */
   eventOf(tenantId: string, eventId: string) {
     return this.db.one<{ id: string; title: string; starts_at: Date; ends_at: Date; meet_room_id: string | null }>(

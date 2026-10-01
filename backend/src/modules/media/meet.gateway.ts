@@ -41,6 +41,8 @@ interface Client {
   guestRoomId?: string;
   /** Для гостя — ссылка, по которой он пришёл (у старых токенов нет). */
   guestLinkId?: string;
+  /** Сотрудник стоит за дверью чужого созвона — в этой комнате. */
+  knockRoomId?: string;
 }
 
 /**
@@ -198,7 +200,7 @@ export class MeetGateway implements OnModuleInit {
         this.log.warn(`${msg?.type}: ${(e as Error).message}`));
     });
     ws.on('close', () => {
-      if (client.isGuest) this.leaveLobby(client);
+      if (client.isGuest || client.knockRoomId) this.leaveLobby(client);
       if (client.meetingId) void this.leave(client);
       this.clients.delete(ws);
       this.untrack(client, ws);
@@ -259,6 +261,8 @@ export class MeetGateway implements OnModuleInit {
           this.diag.write({ tenantId: c.tenantId, scope: 'meet', refId: String(p.meeting_id ?? ''), userId: c.userId, side: 'server', event: 'join.rejected', data: { reason: 'room-not-found' } });
           return this.send(c.ws, 'meet.error', { message: 'Созвон не найден' });
         }
+        // не звали — стучится, как гость: в чужой разговор без спроса не входят
+        if (!(await this.mayEnter(c, room))) return this.knockEmployee(c, room);
         // вход со второго устройства вытесняет первое — иначе в списке два одинаковых человека
         if (room.participants.has(c.userId)) {
           this.media.removeParticipant(room, c.userId);
@@ -279,12 +283,16 @@ export class MeetGateway implements OnModuleInit {
         const guest = this.lobby.get(room.id)?.get(p.guest_id);
         if (!guest) return;
         this.lobby.get(room.id)?.delete(p.guest_id);
+        guest.knockRoomId = undefined;
         if (msg.type === 'meet.guest-reject') {
           this.send(guest.ws, 'meet.guest-rejected', { meeting_id: room.id, reason: 'declined' });
-          guest.ws.close();
+          // сотрудника не отключаем: его окно само покажет отказ и закроется по кнопке
+          if (guest.isGuest) guest.ws.close();
           this.trace(c, 'guest.rejected', { guest: guest.displayName });
           return;
         }
+        // впустили сотрудника — дальше он свой: переподключение не заставит стучаться снова
+        if (!guest.isGuest) room.allowed.add(guest.userId);
         this.send(guest.ws, 'meet.guest-admitted', { meeting_id: room.id });
         await this.joinRoom(guest, room);
         this.trace(c, 'guest.admitted', { guest: guest.displayName });
@@ -501,6 +509,8 @@ export class MeetGateway implements OnModuleInit {
             this.send(c.ws, 'meet.peer-busy', { meeting_id: room.id, user_id: String(target) });
             continue;
           }
+          // позвали — значит, войдёт без стука, даже если примет вызов позже
+          room.allowed.add(String(target));
           this.ringing.add(room.id, String(target));
           this.toUser(c.tenantId, String(target), 'meet.incoming-call', {
             meeting_id: room.id, project_id: room.projectId,
@@ -541,6 +551,8 @@ export class MeetGateway implements OnModuleInit {
       }
 
       case 'meet.leave':
+        // передумал ждать за дверью — снимаем стук у тех, кто внутри
+        if (c.knockRoomId) this.leaveLobby(c);
         return this.leave(c);
     }
   }
@@ -643,9 +655,52 @@ export class MeetGateway implements OnModuleInit {
     });
   }
 
+  /**
+   * Может ли сотрудник войти без стука.
+   *
+   * Свои — начавший созвон, позванные и впущенные; у комнаты ссылки или события ещё
+   * автор ссылки и участники события (это знает база). Ответ базы запоминаем в
+   * комнате: переподключение не должно снова ходить в неё.
+   */
+  private async mayEnter(c: Client, room: MeetingRoom): Promise<boolean> {
+    if (room.allowed.has(c.userId)) return true;
+    if (room.linked && await this.guests.isRoomMember(c.tenantId, room.id, c.userId).catch(() => false)) {
+      room.allowed.add(c.userId);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Сотрудник просится в чужой созвон.
+   *
+   * Тот же порядок, что у гостя: стоит за дверью, пока его не впустит кто-то из тех,
+   * кто внутри. Если внутри никого из команды — впускать некому, так и говорим, а не
+   * держим человека у пустой двери.
+   */
+  private knockEmployee(c: Client, room: MeetingRoom): void {
+    const hosts = [...room.participants.keys()].filter((id) => !id.startsWith('guest:'));
+    if (!hosts.length) {
+      this.send(c.ws, 'meet.guest-rejected', { meeting_id: room.id, reason: 'empty' });
+      return;
+    }
+    const waiting = this.lobby.get(room.id) ?? new Map<string, Client>();
+    waiting.set(c.userId, c);
+    this.lobby.set(room.id, waiting);
+    c.knockRoomId = room.id;
+    for (const host of hosts) {
+      this.toUser(c.tenantId, host, 'meet.guest-knocking', {
+        meeting_id: room.id, guest_id: c.userId, name: c.displayName, employee: true,
+      });
+    }
+    this.send(c.ws, 'meet.guest-waiting', { meeting_id: room.id, host_present: true, employee: true });
+    this.trace(c, 'employee.knock', { hosts: hosts.length });
+  }
+
   /** Гость ушёл, не дождавшись: убираем из лобби и снимаем стук у сотрудников. */
   private leaveLobby(c: Client): void {
-    const roomId = c.guestRoomId;
+    const roomId = c.knockRoomId ?? c.guestRoomId;
+    c.knockRoomId = undefined;
     if (!roomId) return;
     const waiting = this.lobby.get(roomId);
     if (!waiting?.delete(c.userId)) return;
@@ -665,12 +720,16 @@ export class MeetGateway implements OnModuleInit {
    */
   kickRoomGuests(tenantId: string, roomId: string, reason = 'revoked'): number {
     let kicked = 0;
-    for (const guest of this.lobby.get(roomId)?.values() ?? []) {
+    const waiting = this.lobby.get(roomId);
+    for (const guest of [...(waiting?.values() ?? [])]) {
+      // сотрудники за дверью ссылкой не приходили — отзыв ссылки их не касается
+      if (!guest.isGuest) continue;
       this.send(guest.ws, 'meet.guest-rejected', { meeting_id: roomId, reason });
       guest.ws.close();
+      waiting?.delete(guest.userId);
       kicked++;
     }
-    this.lobby.delete(roomId);
+    if (!waiting?.size) this.lobby.delete(roomId);
 
     const room = this.media.getRoom(roomId);
     if (!room || room.tenantId !== tenantId) return kicked;

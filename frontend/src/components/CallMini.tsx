@@ -150,10 +150,10 @@ export function CallMini({ people, videoOf, speaking, micOn, camOn, recording, p
           <button
             className="mini-btn"
             onClick={onHide}
-            title="Убрать созвон с глаз — останется маленькая кнопка с часами и микрофоном"
-            aria-label="Убрать окно созвона"
+            title="Свернуть до кнопки с часами и микрофоном — разговор продолжится"
+            aria-label="Свернуть созвон до кнопки"
           >
-            <Icon name="close" size={16} />
+            <Icon name="minus" size={16} />
           </button>
         )}
         <button className="mini-btn mini-btn-leave" onClick={onLeave} title="Выйти из созвона" aria-label="Выйти из созвона">

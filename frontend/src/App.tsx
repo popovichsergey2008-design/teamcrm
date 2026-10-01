@@ -169,7 +169,14 @@ export function App() {
   }, [callId]);
   // какой чат открыт — чтобы не слать уведомление о сообщении, которое человек и так видит
   const [openChatId, setOpenChatId] = useState<string | null>(null);
-  const [activeCalls, setActiveCalls] = useState<{ id: string; participants: { userId?: string; displayName: string }[] }[]>([]);
+  const [activeCalls, setActiveCalls] = useState<{ id: string; canJoin?: boolean; participants: { userId?: string; displayName: string }[] }[]>([]);
+  /*
+    Созвон, в который можно войти по кнопке «Идёт созвон», — только СВОЙ: начатый мной,
+    куда меня звали или впустили. Раньше кнопка вела в первый попавшийся созвон компании,
+    и любой коллега мог войти в чужой разговор — или к человеку, забывшему выйти.
+    Кто в созвоне, по-прежнему видно всем (статус «занят»), но войти в чужой нельзя.
+  */
+  const joinable = activeCalls.find((c) => c.canJoin) ?? null;
   // окно быстрой команды: null — закрыто; текст и голос приходят из командной строки
   const [nl, setNl] = useState<{ text?: string; voice?: boolean } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState<{ voice?: boolean } | null>(null);
@@ -328,7 +335,7 @@ export function App() {
 
   /** Присоединиться к уже идущему созвону. */
   const joinActiveCall = () => {
-    const existing = activeCalls[0];
+    const existing = joinable;
     if (!existing) return;
     setCallInvite([]);
     setCallId(existing.id);
@@ -515,7 +522,7 @@ export function App() {
         avatarPath={avatarPath}
         unread={unread}
         counters={counters}
-        activeCall={activeCalls.length > 0 ? { participants: activeCalls[0].participants.length } : null}
+        activeCall={joinable ? { participants: joinable.participants.length } : null}
         inCall={!!callId}
         onSwitchOrg={onSwitchOrg}
         onSearch={(voice) => setPaletteOpen({ voice })}

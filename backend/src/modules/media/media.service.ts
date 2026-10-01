@@ -154,6 +154,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     const room: MeetingRoom = {
       id: randomUUID(), tenantId, projectId, chatId, taskId, router, participants: new Map(),
       startedAt: Date.now(), aiEnabled, startedBy,
+      allowed: new Set(startedBy ? [startedBy] : []),
     };
     this.rooms.set(room.id, room);
     return room;
@@ -178,6 +179,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     const room: MeetingRoom = {
       id: roomId, tenantId, projectId, router, participants: new Map(),
       startedAt: Date.now(), aiEnabled, startedBy: null,
+      allowed: new Set(), linked: true,
     };
     this.rooms.set(room.id, room);
     return room;
@@ -187,14 +189,28 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     return this.rooms.get(id);
   }
 
-  /** Комнаты организации — чтобы показать «идёт созвон» и дать присоединиться. */
-  activeRooms(tenantId: string) {
-    return [...this.rooms.values()]
-      .filter((r) => r.tenantId === tenantId)
-      .map((r) => ({
-        id: r.id, projectId: r.projectId, startedAt: r.startedAt, aiEnabled: r.aiEnabled,
-        participants: [...r.participants.values()].map((p) => ({ userId: p.userId, displayName: p.displayName })),
-      }));
+  /**
+   * Комнаты организации — чтобы показать «идёт созвон» и дать присоединиться.
+   *
+   * Кто в созвоне, видно всем (это статус «занят»), а войти по кнопке — только своим
+   * (`canJoin`): чужой созвон в меню не предлагается. `isMember` решает, свой ли
+   * человек комнате гостевой ссылки или события — это знает только база.
+   */
+  async activeRooms(tenantId: string, userId: string, isMember?: (room: MeetingRoom) => Promise<boolean>) {
+    const out = [];
+    for (const r of this.rooms.values()) {
+      if (r.tenantId !== tenantId) continue;
+      const people = [...r.participants.values()];
+      // пустая комната (ссылку выдали, а никто ещё не пришёл) — не «идущий созвон»
+      if (!people.length) continue;
+      let canJoin = r.allowed.has(userId);
+      if (!canJoin && r.linked && isMember) canJoin = await isMember(r).catch(() => false);
+      out.push({
+        id: r.id, projectId: r.projectId, startedAt: r.startedAt, aiEnabled: r.aiEnabled, canJoin,
+        participants: people.map((p) => ({ userId: p.userId, displayName: p.displayName })),
+      });
+    }
+    return out;
   }
 
   closeRoom(id: string): void {

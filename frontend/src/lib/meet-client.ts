@@ -24,6 +24,8 @@ export interface Peer {
 export interface Knock {
   guestId: string;
   name: string;
+  /** Просится коллега, а не внешний гость: его не звали в этот созвон. */
+  employee?: boolean;
 }
 
 export interface MeetEvents {
@@ -308,7 +310,7 @@ export class MeetClient {
         return;
 
       case 'meet.guest-knocking':
-        this.knocks.set(p.guest_id, { guestId: p.guest_id, name: p.name });
+        this.knocks.set(p.guest_id, { guestId: p.guest_id, name: p.name, employee: !!p.employee });
         this.ev.onKnocks?.([...this.knocks.values()]);
         return;
 

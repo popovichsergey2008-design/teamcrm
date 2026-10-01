@@ -4,6 +4,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { MediaService } from './media.service';
+import { GuestLinksService } from './guest-links.service';
 
 /** Объявляем ДО контроллера: декоратор @Body() читает тип в момент объявления класса. */
 class StartRoomDto {
@@ -22,7 +23,7 @@ class StartRoomDto {
 @Controller('media')
 @Roles('owner', 'manager', 'member')
 export class MediaController {
-  constructor(private readonly media: MediaService) {}
+  constructor(private readonly media: MediaService, private readonly guests: GuestLinksService) {}
 
   /** Почему «Позвонить» не работает — ответ здесь, а не в логах контейнера. */
   @Get('health')
@@ -32,7 +33,7 @@ export class MediaController {
 
   @Get('rooms')
   rooms(@CurrentUser() u: AuthUser) {
-    return this.media.activeRooms(u.tenantId);
+    return this.media.activeRooms(u.tenantId, u.userId, (room) => this.guests.isRoomMember(u.tenantId, room.id, u.userId));
   }
 
   /** Настройки соединения для браузера. Учётные данные TURN временные — см. MediaService. */

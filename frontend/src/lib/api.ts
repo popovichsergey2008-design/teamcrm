@@ -1862,7 +1862,8 @@ export const api = {
   // созвоны (mediasoup)
   mediaHealth: () => request<{ available: boolean; workers: number; error: string | null }>('GET', '/media/health'),
   iceServers: () => request<{ iceServers: RTCIceServer[] }>('GET', '/media/ice'),
-  activeCalls: () => request<{ id: string; projectId: string | null; participants: { userId: string; displayName: string }[] }[]>('GET', '/media/rooms'),
+  /** canJoin — свой ли человек комнате: войти по кнопке можно только в свой созвон, в чужой — постучаться. */
+  activeCalls: () => request<{ id: string; projectId: string | null; canJoin: boolean; participants: { userId: string; displayName: string }[] }[]>('GET', '/media/rooms'),
   /**
    * Поднять комнату созвона.
    *

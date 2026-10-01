@@ -12,7 +12,7 @@
 export type IconName =
   | 'chat' | 'hash' | 'smile' | 'phone' | 'phone-off' | 'volume' | 'video' | 'video-off' | 'mic' | 'mic-off' | 'screen'
   | 'record' | 'stop' | 'hand' | 'robot' | 'users' | 'user' | 'user-plus'
-  | 'maximize' | 'minimize'
+  | 'maximize' | 'minimize' | 'restore'
   | 'board' | 'list' | 'check' | 'check-circle' | 'close' | 'plus' | 'minus'
   | 'search' | 'settings' | 'filter' | 'sort' | 'more'
   | 'folder' | 'archive' | 'file' | 'paperclip' | 'download' | 'upload' | 'image'
@@ -38,6 +38,7 @@ const PATHS: Record<IconName, string> = {
   record: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16ZM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z',
   maximize: 'M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5',
   minimize: 'M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5',
+  restore: 'M8 8V5.5A1.5 1.5 0 0 1 9.5 4h9A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H16M4 9.5A1.5 1.5 0 0 1 5.5 8h9A1.5 1.5 0 0 1 16 9.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 4 18.5Z',
   stop: 'M7 7.5A.5.5 0 0 1 7.5 7h9a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5Z',
   hand: 'M8 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1V4.5a1.5 1.5 0 0 1 3 0V11m0-.5V6a1.5 1.5 0 0 1 3 0v7a7 7 0 0 1-7 7 7 7 0 0 1-5-2l-3-4a1.6 1.6 0 0 1 2.3-2.2L8 14',
   robot: 'M12 3v3M7 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2ZM9.5 11v1.5M14.5 11v1.5M9.5 15h5M3 11v3M21 11v3',

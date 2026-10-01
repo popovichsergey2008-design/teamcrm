@@ -208,6 +208,12 @@ export class GuestLinksService {
     };
   }
 
+  /** Свой ли сотрудник комнате ссылки/события — входит без стука. */
+  isRoomMember(tenantId: string, roomId: string, userId: string): Promise<boolean> {
+    if (!/^\d+$/.test(String(userId))) return Promise.resolve(false); // гость — не сотрудник
+    return this.repo.isRoomMember(tenantId, roomId, String(userId));
+  }
+
   /** С какого момента гостя пускают постучаться. */
   static opensAt(startsAt: Date | string): Date {
     return new Date(new Date(startsAt).getTime() - OPEN_BEFORE_MIN * 60_000);
