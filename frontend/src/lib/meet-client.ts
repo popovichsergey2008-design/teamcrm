@@ -49,6 +49,8 @@ export interface MeetEvents {
 }
 
 const RESPONSE_TIMEOUT = 10_000;
+/** Как часто замерять связь: чаще — шумно в диагностике, реже — не поймать момент. */
+const STATS_EVERY = 15_000;
 
 /**
  * Клиент созвона: WebSocket-сигналинг + mediasoup-client.
@@ -87,6 +89,30 @@ export class MeetClient {
    * publish() уходил в никуда: собеседник слышал тишину, при том что его самого
    * было слышно прекрасно. Теперь публикация ждёт транспорт.
    */
+  /**
+   * Стоим за дверью: гость по ссылке или коллега, которого не звали.
+   *
+   * Пока не впустили, сервер каналов не открывает — и ждать их по обычному таймауту
+   * нельзя: впускают не за десять секунд. Раньше микрофон отваливался с «Сервер
+   * созвонов не открыл исходящий канал», и впущенного гостя никто не слышал.
+   * Обещание живёт, пока человек за дверью; впустили или отказали — разрешается.
+   */
+  private lobby: Promise<void> | null = null;
+  private leaveLobby: (() => void) | null = null;
+  /** Отказали во входе — публиковать нечего и ругаться не о чем. */
+  private refused = false;
+
+  private enterLobby(): void {
+    if (this.lobby) return;
+    this.lobby = new Promise<void>((r) => { this.leaveLobby = r; });
+  }
+
+  private exitLobby(): void {
+    this.leaveLobby?.();
+    this.lobby = null;
+    this.leaveLobby = null;
+  }
+
   private resolveSendReady!: () => void;
   private readonly sendReady = new Promise<void>((r) => { this.resolveSendReady = r; });
 
@@ -139,6 +165,86 @@ export class MeetClient {
 
   private log(event: string, data?: unknown): void {
     diag('meet', event, this.meetingId, data);
+  }
+
+  /**
+   * Замер связи раз в STATS_EVERY — в диагностику.
+   *
+   * Жалоба «звук с задержкой» без цифр не разбирается: задержку дают и путь (напрямую,
+   * через TCP или через ретранслятор TURN), и потери с джиттером, из-за которых
+   * браузер раздувает буфер воспроизведения. Здесь — всё это одной строкой:
+   *  - path — какой путь выбран (host/srflx/relay, udp/tcp) и rtt до сервера;
+   *  - in — приём звука: джиттер, потери за интервал, средний буфер, доля «досочинённого»;
+   *  - out — отправка: rtt и потери глазами сервера.
+   */
+  private statsTimer: ReturnType<typeof setInterval> | null = null;
+  private statsPrev = new Map<string, { lost: number; recv: number; concealed: number; samples: number; jbDelay: number; jbCount: number }>();
+
+  private startStats(): void {
+    if (this.statsTimer) return;
+    this.statsTimer = setInterval(() => { void this.sampleStats(); }, STATS_EVERY);
+  }
+
+  private stopStats(): void {
+    if (this.statsTimer) clearInterval(this.statsTimer);
+    this.statsTimer = null;
+  }
+
+  private async sampleStats(): Promise<void> {
+    if (this.closed) return this.stopStats();
+    try {
+      const out: Record<string, unknown> = {};
+      for (const [dir, t] of [['send', this.send], ['recv', this.recv]] as const) {
+        if (!t) continue;
+        const report = await t.getStats();
+        const all = new Map<string, any>();
+        report.forEach((s: any) => all.set(s.id, s));
+        // выбранная пара кандидатов — тот путь, по которому реально идёт звук
+        let pair: any = null;
+        for (const s of all.values()) {
+          if (s.type === 'transport' && s.selectedCandidatePairId) pair = all.get(s.selectedCandidatePairId);
+        }
+        if (!pair) for (const s of all.values()) if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair = s;
+        const local = pair ? all.get(pair.localCandidateId) : null;
+        out[`${dir}Path`] = local
+          ? `${local.candidateType}/${local.protocol}${local.relayProtocol ? `>${local.relayProtocol}` : ''}`
+          : 'none';
+        if (pair?.currentRoundTripTime != null) out[`${dir}Rtt`] = Math.round(pair.currentRoundTripTime * 1000);
+
+        for (const s of all.values()) {
+          if (s.type === 'inbound-rtp' && s.kind === 'audio') {
+            const prev = this.statsPrev.get(s.id) ?? { lost: 0, recv: 0, concealed: 0, samples: 0, jbDelay: 0, jbCount: 0 };
+            const now = {
+              lost: s.packetsLost ?? 0, recv: s.packetsReceived ?? 0,
+              concealed: s.concealedSamples ?? 0, samples: s.totalSamplesReceived ?? 0,
+              jbDelay: s.jitterBufferDelay ?? 0, jbCount: s.jitterBufferEmittedCount ?? 0,
+            };
+            this.statsPrev.set(s.id, now);
+            const got = now.recv - prev.recv;
+            const lost = now.lost - prev.lost;
+            const emitted = now.jbCount - prev.jbCount;
+            const list = (out.in as unknown[] | undefined) ?? [];
+            list.push({
+              jitter: Math.round((s.jitter ?? 0) * 1000),
+              lostPct: got + lost > 0 ? Math.round((lost / (got + lost)) * 1000) / 10 : 0,
+              // средняя задержка в буфере воспроизведения за интервал — главный виновник «эха через секунду»
+              bufferMs: emitted > 0 ? Math.round(((now.jbDelay - prev.jbDelay) / emitted) * 1000) : null,
+              concealPct: now.samples - prev.samples > 0
+                ? Math.round(((now.concealed - prev.concealed) / (now.samples - prev.samples)) * 1000) / 10 : 0,
+              silent: got === 0,
+            });
+            out.in = list;
+          }
+          if (s.type === 'remote-inbound-rtp' && s.kind === 'audio') {
+            out.out = {
+              rtt: s.roundTripTime != null ? Math.round(s.roundTripTime * 1000) : null,
+              lostPct: s.fractionLost != null ? Math.round(s.fractionLost * 1000) / 10 : null,
+            };
+          }
+        }
+      }
+      this.log('stats', out);
+    } catch { /* замер — не повод ронять созвон */ }
   }
 
   private async onMessage(msg: { type: string; payload?: any }): Promise<void> {
@@ -294,18 +400,23 @@ export class MeetClient {
         return;
 
       case 'meet.guest-waiting':
+        this.enterLobby();
         this.ev.onGuestWaiting?.(!!p.host_present, !!p.host_called);
         return;
 
       case 'meet.guest-too-early':
+        this.enterLobby();
         this.ev.onGuestTooEarly?.(String(p.opens_at ?? ''));
         return;
 
       case 'meet.guest-admitted':
+        this.exitLobby();
         this.ev.onGuestAdmitted?.();
         return;
 
       case 'meet.guest-rejected':
+        this.refused = true;
+        this.exitLobby();
         this.ev.onGuestRejected?.(String(p.reason ?? 'declined'));
         return;
 
@@ -362,7 +473,7 @@ export class MeetClient {
     transport.on('connectionstatechange', (state) => {
       // Здесь видно, дошла ли связь вообще: «failed» почти всегда значит TURN.
       this.log('transport.state', { direction: p.direction, state });
-      if (state === 'connected') this.ev.onState('connected');
+      if (state === 'connected') { this.ev.onState('connected'); this.startStats(); }
       // разрыв лечится перезапуском ICE: сеть моргнула — звонок не должен разваливаться
       if (state === 'failed') this.emit('meet.restart-ice', { transport_id: transport.id });
       if (state === 'disconnected') {
@@ -401,12 +512,20 @@ export class MeetClient {
   /** Публикация дорожки. Демонстрация экрана намеренно скромнее по битрейту и кадрам. */
   async publish(track: MediaStreamTrack, opts: { screen?: boolean } = {}): Promise<string | null> {
     if (!this.send) {
-      // ждём транспорт, но не бесконечно: молчаливое зависание хуже честной ошибки
-      await Promise.race([
-        this.sendReady,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Сервер созвонов не открыл исходящий канал')), RESPONSE_TIMEOUT)),
+      // ждём транспорт, но не бесконечно: молчаливое зависание хуже честной ошибки.
+      // Исключение — время за дверью: пока не впустили, канала и не может быть.
+      const waitSend = () => Promise.race([
+        this.sendReady.then(() => true),
+        new Promise<boolean>((r) => setTimeout(() => r(false), RESPONSE_TIMEOUT)),
       ]);
+      let ready = await waitSend();
+      while (!ready && this.lobby && !this.closed) {
+        await this.lobby;
+        ready = this.refused ? false : await waitSend();
+      }
+      if (!ready && !this.refused && !this.closed) throw new Error('Сервер созвонов не открыл исходящий канал');
     }
+    if (this.refused) return null;
     if (!this.send || this.closed) {
       this.log('publish.failed', { kind: track.kind, reason: this.closed ? 'closed' : 'no-send-transport' });
       return null;
@@ -483,6 +602,9 @@ export class MeetClient {
     this.log('leave', { producers: this.producers.size, consumers: this.consumers.size, peers: this.peers.size });
     flushDiag();
     this.closed = true;
+    this.exitLobby(); // ждущая за дверью публикация должна закончиться, а не висеть
+    void this.sampleStats(); // последний замер — каким созвон был под конец
+    this.stopStats();
     this.emit('meet.leave', {});
     for (const p of this.producers.values()) p.close();
     for (const c of this.consumers.values()) c.close();

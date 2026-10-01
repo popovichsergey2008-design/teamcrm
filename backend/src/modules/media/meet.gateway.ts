@@ -307,6 +307,19 @@ export class MeetGateway implements OnModuleInit {
         if (direction === 'send') participant.sendTransport = transport;
         else participant.recvTransport = transport;
         this.trace(c, 'transport.created', { direction, transportId: transport.id });
+        /*
+          Каким путём подключился человек — главный вопрос при жалобе «звук с задержкой».
+          Пришёл с адреса самого сервера — значит, через наш ретранслятор TURN (лишний
+          круг); по TCP — любая потеря задерживает весь звук за ней. Адрес не храним.
+        */
+        transport.on('iceselectedtuplechange', (tuple: { protocol?: string; remoteIp?: string }) => {
+          const announced = this.config.get<string>('MEDIASOUP_ANNOUNCED_IP');
+          const ip = String(tuple?.remoteIp ?? '');
+          // ретранслятор живёт на этом же сервере: его пакеты приходят с нашего адреса
+          // или, через докер, с внутреннего — и то и другое значит «через TURN»
+          const viaTurn = (!!announced && ip === announced) || /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(ip);
+          this.trace(c, 'transport.path', { direction, protocol: tuple?.protocol ?? null, viaTurn });
+        });
 
         return this.send(c.ws, 'meet.transport-created', {
           meeting_id: room.id, direction, transport_id: transport.id,
