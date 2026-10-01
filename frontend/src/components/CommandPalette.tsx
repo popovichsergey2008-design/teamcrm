@@ -44,7 +44,7 @@ const SECTIONS: { title: string; icon: IconName; route: Route; roles?: string[] 
   { title: 'Фокус дня', icon: 'target', route: { section: 'focus' } },
   { title: 'Задачи: все по всем проектам', icon: 'check-circle', route: { section: 'tasks' } },
   { title: 'Задачи: что я поручил', icon: 'send', route: { section: 'tasks', view: 'delegated' } },
-  { title: 'Проекты', icon: 'board', route: { section: 'projects' } },
+  { title: 'Проекты и Задачи', icon: 'board', route: { section: 'projects' } },
   { title: 'Чаты & Миты', icon: 'chat', route: { section: 'chat' } },
   // Спросить ИИ — такой же пункт, как раздел: помощник живёт в чатах, а не в модалке.
   { title: 'Спросить ИИ — AnthillBot', icon: 'robot', route: { section: 'chat', chatId: 'anthill' } },

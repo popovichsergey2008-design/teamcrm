@@ -499,7 +499,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                 : undefined}
             />
           ) : (
-            <EmptyState icon="arrow-left" title="Выберите проект" hint="Список проектов — в меню слева, под разделом «Проекты»." />
+            <EmptyState icon="arrow-left" title="Выберите проект" hint="Список проектов — в меню слева, под разделом «Проекты и Задачи»." />
           )
         )}
         {board && (
