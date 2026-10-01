@@ -3503,7 +3503,7 @@
 }
 .call-head-actions { display: flex; align-items: center; gap: 4px; }
 /* Крестик окна созвона — выход, как красная кнопка внизу: при наведении это видно сразу */
-.call-head-close:hover { background: var(--danger-soft); color: var(--danger); }
+.call-head-actions .btn.call-head-close:hover { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
 
 /* Сцена созвона. Обычно — сетка равных плиток; когда кто-то показывает экран,
    он занимает почти всё, а люди уезжают в полосу снизу: читать чужой код
