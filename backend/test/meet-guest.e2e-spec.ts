@@ -140,4 +140,51 @@ describe('Гостевой доступ в созвон (e2e)', () => {
     expect(hours).toBeGreaterThan(70);
     expect(hours).toBeLessThan(74);
   });
+
+  it('встреча «завтра в 9»: гость видит время, в созвон рано; ссылка из события — в комнату события', async () => {
+    const owner = await register('ГостиВремя');
+    const at = new Date(Date.now() + 26 * 3_600_000);
+    at.setUTCMinutes(0, 0, 0);
+
+    // ссылка на время: срок «4 часа» не должен убить её до встречи
+    const link = (await http$.post('/api/meet/guest-links').set(H(owner.accessToken))
+      .send({ label: 'Вектор', startsAt: at.toISOString(), ttlHours: 4 }).expect(201)).body.data;
+    expect(new Date(link.expiresAt).getTime()).toBeGreaterThan(at.getTime());
+    const token = link.url.split('/meet/')[1];
+    const info = (await http$.get(`/api/meet/guest/${token}`).expect(200)).body.data;
+    expect(info.startsAt).toBe(at.toISOString());
+    expect(new Date(info.opensAt).getTime()).toBe(at.getTime() - 15 * 60_000);
+    expect(info.hasChat).toBe(false);
+    // за сутки до встречи ссылка «только на созвон» не пускает
+    await http$.post(`/api/meet/guest/${token}/join`).send({ name: 'Сергей' }).expect(400);
+    // прошедшее время не принимаем
+    await http$.post('/api/meet/guest-links').set(H(owner.accessToken))
+      .send({ startsAt: new Date(Date.now() - 3_600_000).toISOString() }).expect(400);
+
+    // из события: время и комната — его; «Войти в созвон» и гость ведут в одно место
+    const start = new Date(Date.now() + 3 * 86_400_000); start.setUTCHours(9, 0, 0, 0);
+    const end = new Date(start.getTime() + 3_600_000);
+    const event = (await http$.post('/api/calendar/events').set(H(owner.accessToken))
+      .send({ title: 'Показ клиенту', startsAt: start.toISOString(), endsAt: end.toISOString() }).expect(201)).body.data;
+    const fromEvent = (await http$.post('/api/meet/guest-links').set(H(owner.accessToken))
+      .send({ eventId: String(event.id) }).expect(201)).body.data;
+    expect(fromEvent.startsAt).toBe(start.toISOString());
+    expect(fromEvent.label).toBe('Показ клиенту');
+    const again = (await http$.post('/api/meet/guest-links').set(H(owner.accessToken))
+      .send({ eventId: String(event.id) }).expect(201)).body.data;
+    expect(again.roomId).toBe(fromEvent.roomId);
+
+    // встречу перенесли — ссылка переехала следом
+    const moved = new Date(start.getTime() + 2 * 3_600_000);
+    await http$.patch(`/api/calendar/events/${event.id}`).set(H(owner.accessToken))
+      .send({ startsAt: moved.toISOString(), endsAt: new Date(moved.getTime() + 3_600_000).toISOString() }).expect(200);
+    const evToken = fromEvent.url.split('/meet/')[1];
+    const evInfo = (await http$.get(`/api/meet/guest/${evToken}`).expect(200)).body.data;
+    expect(evInfo.startsAt).toBe(moved.toISOString());
+
+    // чужое событие ссылкой не завернуть
+    const stranger = await register('Чужие');
+    await http$.post('/api/meet/guest-links').set(H(stranger.accessToken))
+      .send({ eventId: String(event.id) }).expect(404);
+  });
 });

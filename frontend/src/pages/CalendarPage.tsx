@@ -7,6 +7,7 @@ import { useAuth } from '../state/auth';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { addReminder, MAX_REMINDERS, reminderRows, ReminderUnit, toMinutes } from '../lib/reminders';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
+import { EventGuestLinkButton } from '../components/GuestLinkButton';
 import { CalendarSyncPanel } from '../components/CalendarSyncPanel';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
@@ -686,6 +687,8 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // комната встречи: появляется и после выдачи гостевой ссылки — тогда «Войти в созвон» нужен сразу
+  const [roomId, setRoomId] = useState<string | null>(value.meetRoomId ?? null);
   // своё время напоминания: число и единица рядом, чтобы не считать минуты в уме
   const [ownValue, setOwnValue] = useState('');
   const [ownUnit, setOwnUnit] = useState<ReminderUnit>('minutes');
@@ -966,10 +969,14 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
             </>
           )}
           {/* Созвон нашей комнаты: у события своя комната, туда же ведёт гостевая ссылка */}
-          {value.meetRoomId && (
-            <button className="btn btn-sm" onClick={() => { onStartCall(String(value.meetRoomId)); onClose(); }}>
+          {roomId && (
+            <button className="btn btn-sm" onClick={() => { onStartCall(String(roomId)); onClose(); }}>
               <Icon name="phone" size={14} /> Войти в созвон
             </button>
+          )}
+          {/* Гость со стороны: время и комната — из события, напоминание открыть комнату придёт само */}
+          {!isNew && value.id && !value.allDay && (
+            <EventGuestLinkButton eventId={String(value.id)} onRoom={setRoomId} />
           )}
           {/* Где договорились: встречу поставили по переписке — к ней одним нажатием */}
           {value.sourceChatId && (

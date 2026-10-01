@@ -4,6 +4,7 @@ import { ChatsModule } from '../chats/chats.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { GuestLinksRepository } from './guest-links.repository';
 import { GuestLinksService } from './guest-links.service';
+import { GuestLinksScheduler } from './guest-links.scheduler';
 import { MediaController } from './media.controller';
 import { MediaService } from './media.service';
 import { MeetGuestController } from './meet-guest.controller';
@@ -20,7 +21,7 @@ import { RecordingService } from './recording.service';
   // в переговорную; проверка гостевого токена при этом остаётся здесь, в одном месте.
   imports: [MeetingsModule, ChatsModule, NotificationsModule],
   controllers: [MediaController, MeetGuestController],
-  providers: [MediaService, MeetGateway, RecordingService, GuestLinksService, GuestLinksRepository],
+  providers: [MediaService, MeetGateway, RecordingService, GuestLinksService, GuestLinksRepository, GuestLinksScheduler],
   exports: [MediaService],
 })
 export class MediaModule {}

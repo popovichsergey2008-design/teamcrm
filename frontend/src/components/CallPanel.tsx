@@ -283,11 +283,20 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             // звук только на прибавление: список приходит и когда гость ушёл сам
             setKnocks((prev) => { if (list.length > prev.length) playKnock(); return list; });
           },
-          onGuestWaiting: (hostPresent) => {
+          onGuestWaiting: (hostPresent, hostCalled) => {
             setGuestState('waiting');
             setGuestNote(hostPresent
               ? 'Вы в комнате ожидания — организатор видит вашу заявку.'
-              : 'Встреча ещё не началась. Как только организатор подключится, он вас впустит.');
+              : hostCalled
+                ? 'Организатору отправлено уведомление, что вы ждёте. Как только он подключится, он вас впустит.'
+                : 'Встреча ещё не началась. Как только организатор подключится, он вас впустит.');
+          },
+          onGuestTooEarly: (opensAt) => {
+            setGuestState('waiting');
+            const at = new Date(opensAt);
+            setGuestNote(Number.isNaN(at.getTime())
+              ? 'Встреча ещё не скоро — вход откроется незадолго до начала.'
+              : `Встреча ещё не скоро. Вход откроется в ${at.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`);
           },
           onGuestAdmitted: () => { setGuestState('in'); setGuestNote(''); },
           onGuestRejected: (reason) => {

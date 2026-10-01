@@ -181,6 +181,35 @@ export class PushService {
     }
   }
 
+  /**
+   * Гостевая встреча: «гость ждёт в созвоне» и «скоро встреча — откройте комнату».
+   *
+   * Push уходит ВСЕМ устройствам, даже тому, что сейчас открыто: гость стоит за дверью,
+   * и пропустить это хуже, чем получить лишний сигнал. Повторы гасит вызывающий.
+   */
+  async meetHost(m: { tenantId: string; userId: string; eventKey: string; title: string; body: string }): Promise<void> {
+    try {
+      const path = '/chat';
+      const item = await this.inbox.record({
+        tenantId: m.tenantId, userId: m.userId, mailId: null, eventKey: m.eventKey, title: m.title, body: m.body, path,
+      });
+      if (!item || !this.fcm.enabled) return;
+      const targets = await this.inbox.pushTargets(m.userId);
+      if (!targets.length) return;
+      const privacy = await this.inbox.pushPrivacyOf(m.tenantId);
+      const title = privacy === 'hide' ? 'ANTHILL' : m.title;
+      const body = privacy === 'full' ? m.body : 'Встреча с гостем: откройте приложение';
+      for (const t of targets) {
+        const outcome = await this.fcm.send(t.push_token, {
+          title, body, data: { path, inboxId: String(item.id), eventKey: m.eventKey },
+        });
+        if (outcome === 'invalid_token') await this.inbox.dropPushToken(t.id);
+      }
+    } catch (e) {
+      this.log.warn(`push о гостевой встрече: ${(e as Error).message}`);
+    }
+  }
+
   private async allowChatPush(userId: string, chatId: string): Promise<boolean> {
     try {
       const r = await this.redis.client.set(`push:chat:${userId}:${chatId}`, '1', 'EX', CHAT_PUSH_THROTTLE_S, 'NX');

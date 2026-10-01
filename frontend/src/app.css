@@ -2896,6 +2896,35 @@
   overflow: hidden;
 }
 .guest-call-btn { align-self: flex-start; }
+/* Встреча назначена на время: гость открыл ссылку заранее — время видно первым. */
+.guest-when {
+  display: flex; align-items: center; gap: 10px; margin: 4px 0 12px; padding: 10px 12px;
+  border-radius: var(--radius-sm); background: var(--accent-soft); border: 1px solid var(--border);
+  text-align: left;
+}
+.guest-when-time { font-weight: 600; }
+.guest-when-sub { font-size: 12px; }
+.guest-when-note { font-size: 12px; margin: 0; }
+.guest-link-when { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; font-size: 12px; }
+.event-guest-link { display: flex; flex-direction: column; gap: 6px; flex-basis: 100%; }
+
+/*
+  Зов к гостю: «гость ждёт» / «скоро встреча». Висит до ответа — гость за дверью
+  ждёт дольше, чем живёт обычная всплывашка. На телефоне — во всю ширину над вкладками.
+*/
+.guest-host-call {
+  position: fixed; z-index: 110; right: 16px; bottom: 16px; width: min(380px, calc(100vw - 32px));
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; padding: 14px;
+  border-radius: var(--radius); background: var(--bg-elev);
+  border: 1px solid var(--border-2); box-shadow: var(--shadow-lg);
+}
+.guest-host-call.is-waiting { border-color: var(--accent); animation: incoming-pulse 1.6s ease-in-out infinite; }
+.guest-host-call-text { flex: 1; min-width: 0; font-size: var(--fs-sm); }
+.guest-host-call-title { font-weight: 600; margin-bottom: 2px; }
+.guest-host-call-actions { display: flex; gap: 6px; flex-basis: 100%; justify-content: flex-end; }
+@media (max-width: 720px) {
+  .guest-host-call { left: 16px; right: 16px; width: auto; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+}
 
 /*
   Клипы: голосовое сообщение и запись экрана.

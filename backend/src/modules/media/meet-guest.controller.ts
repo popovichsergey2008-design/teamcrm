@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsInt, IsISO8601, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -16,6 +16,10 @@ class CreateGuestLinkDto {
   @IsOptional() @IsInt() @Min(1) @Max(720) ttlHours?: number;
   /** Разговор, ради которого ссылка выдана: по нему её потом и находят в чате. */
   @IsOptional() @IsString() chatId?: string;
+  /** Когда встреча: гость до неё видит время, а автору перед ней напомнят открыть комнату. */
+  @IsOptional() @IsISO8601() startsAt?: string;
+  /** Событие календаря: время и комната берутся из него. */
+  @IsOptional() @IsString() eventId?: string;
 }
 
 class GuestJoinDto {

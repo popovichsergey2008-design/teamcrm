@@ -23,6 +23,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { CallPanel } from './components/CallPanel';
 import { ChatsPage } from './pages/ChatsPage';
 import { IncomingCallDialog, useIncomingCalls } from './components/IncomingCall';
+import { GuestHostCallCard, useGuestHostCalls } from './components/GuestHostCall';
 import { useCalendarReminders } from './hooks/useCalendarReminders';
 import { useChatNotifications } from './hooks/useChatNotifications';
 import { useFeedMentions } from './hooks/useFeedMentions';
@@ -388,6 +389,8 @@ export function App() {
 
   const counters = useNavCounters(crmAlive, route.section);
   const { incoming, accept, decline } = useIncomingCalls(crmAlive);
+  // гость ждёт за дверью, а в комнате никого — зов с кнопкой «Войти» в любом разделе
+  const hostCall = useGuestHostCalls(crmAlive);
   // напоминания о встречах приходят в любой раздел: календарь для этого открывать не нужно
   useCalendarReminders(crmAlive);
   // позвали через @ в ленте — узнать об этом человек должен из любого раздела
@@ -699,6 +702,14 @@ export function App() {
           inviteUserIds={callInvite}
           withCamera={callCamera}
           onClose={() => { setCallId(null); setCallInvite([]); setCallCamera(false); }}
+        />
+      )}
+      {/* В этой же комнате уже сидим — звать незачем */}
+      {hostCall.call && callId !== hostCall.call.roomId && (
+        <GuestHostCallCard
+          call={hostCall.call}
+          onJoin={(roomId) => { setCallInvite([]); setCallId(roomId); }}
+          onDismiss={hostCall.dismiss}
         />
       )}
       {incoming && !callId && (

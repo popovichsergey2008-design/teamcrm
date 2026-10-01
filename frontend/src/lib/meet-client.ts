@@ -34,7 +34,9 @@ export interface MeetEvents {
   onRecording: (active: boolean) => void;
   onAiInvited?: () => void;
   /** Гостю: стучимся, ждём впуска (hostPresent — есть ли кому впускать). */
-  onGuestWaiting?: (hostPresent: boolean) => void;
+  onGuestWaiting?: (hostPresent: boolean, hostCalled: boolean) => void;
+  /** Гостю: встреча позже — стучаться можно с opensAt (ISO). */
+  onGuestTooEarly?: (opensAt: string) => void;
   /** Гостю: впустили — дальше обычный созвон. */
   onGuestAdmitted?: () => void;
   /** Гостю: отказали или отозвали ссылку. */
@@ -290,7 +292,11 @@ export class MeetClient {
         return;
 
       case 'meet.guest-waiting':
-        this.ev.onGuestWaiting?.(!!p.host_present);
+        this.ev.onGuestWaiting?.(!!p.host_present, !!p.host_called);
+        return;
+
+      case 'meet.guest-too-early':
+        this.ev.onGuestTooEarly?.(String(p.opens_at ?? ''));
         return;
 
       case 'meet.guest-admitted':

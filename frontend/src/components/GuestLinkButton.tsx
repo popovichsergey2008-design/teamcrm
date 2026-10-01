@@ -32,6 +32,13 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
   const [label, setLabel] = useState('');
   const [forChat, setForChat] = useState(chatId ?? '');
   const [ttl, setTtl] = useState('24');
+  /**
+   * Когда встреча (datetime-local, по часам сотрудника). Пусто — ссылка открыта сразу.
+   * С ним гость до начала видит время и отсчёт, а нам за 10 минут напомнят открыть
+   * комнату: впустить гостя может только тот, кто внутри.
+   */
+  const [startsAt, setStartsAt] = useState('');
+  const [made, setMade] = useState<{ startsAt: string | null } | null>(null);
   const [url, setUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -56,8 +63,10 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
         label: label.trim() || undefined,
         chatId: forChat || undefined,
         ttlHours: Number(ttl) || 24,
+        startsAt: startsAt ? new Date(startsAt).toISOString() : undefined,
       });
       setUrl(r.url);
+      setMade({ startsAt: r.startsAt ?? null });
       // Копируем сразу: адрес показывается один раз — в базе только его отпечаток.
       try { await navigator.clipboard.writeText(r.url); setCopied(true); } catch { /* покажем текстом */ }
     } catch (e) {
@@ -69,7 +78,9 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
     try { await navigator.clipboard.writeText(url); setCopied(true); } catch { setErr('Скопируйте адрес вручную'); }
   };
 
-  const close = () => { setOpen(false); setUrl(''); setLabel(''); setErr(''); setCopied(false); };
+  const close = () => {
+    setOpen(false); setUrl(''); setLabel(''); setErr(''); setCopied(false); setStartsAt(''); setMade(null);
+  };
 
   return (
     <span className="guest-link-btn" ref={boxRef}>
@@ -106,6 +117,20 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
                   {chats.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
               )}
+              <label className="guest-link-when">
+                <span className="dim">Когда встреча (необязательно)</span>
+                <input
+                  className="input"
+                  type="datetime-local"
+                  value={startsAt}
+                  onChange={(e) => setStartsAt(e.target.value)}
+                />
+              </label>
+              {startsAt && (
+                <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>
+                  Гость увидит время и отсчёт, войти сможет за 15 минут. Вам за 10 минут напомним открыть комнату.
+                </div>
+              )}
               <select className="input" style={{ marginTop: 6 }} value={ttl} onChange={(e) => setTtl(e.target.value)}>
                 <option value="4">Действует 4 часа</option>
                 <option value="24">Действует сутки</option>
@@ -124,6 +149,7 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
                 {copied ? 'Ссылка скопирована — отправьте её гостю. ' : 'Скопируйте и отправьте гостю. '}
                 <b>Второй раз показать её нельзя</b>: в базе хранится только отпечаток.
               </div>
+              {made?.startsAt && <MeetingNote at={made.startsAt} />}
               <code className="guest-links-url">{url}</code>
               {err && <div className="error-text">{err}</div>}
               <div className="team-rate" style={{ marginTop: 6 }}>
@@ -137,5 +163,82 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
         </div>
       )}
     </span>
+  );
+}
+
+/** «Встреча 2 октября в 09:00 — за 10 минут напомним открыть комнату». */
+function MeetingNote({ at }: { at: string }) {
+  const when = new Date(at).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  return (
+    <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>
+      <Icon name="calendar" size={13} /> Встреча {when}. За 10 минут напомним открыть комнату, а если гость
+      придёт раньше вас — сразу сообщим.
+    </div>
+  );
+}
+
+/**
+ * Ссылка для гостя из события календаря.
+ *
+ * Время и комната — из события: «Войти в созвон» в нём ведёт туда же, куда придёт
+ * гость. Иначе сотрудники собирались бы по календарю в одной комнате, а гость ждал бы
+ * в другой.
+ */
+export function EventGuestLinkButton({ eventId, onRoom }: {
+  eventId: string;
+  /** У события появилась комната (раньше её не было) — показать «Войти в созвон». */
+  onRoom?: (roomId: string) => void;
+}) {
+  const [url, setUrl] = useState('');
+  const [at, setAt] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const create = async () => {
+    setBusy(true); setErr('');
+    try {
+      const r = await api.createGuestLink({ eventId });
+      setUrl(r.url); setAt(r.startsAt ?? null);
+      onRoom?.(r.roomId);
+      try { await navigator.clipboard.writeText(r.url); setCopied(true); } catch { /* покажем текстом */ }
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось создать ссылку');
+    } finally { setBusy(false); }
+  };
+
+  if (!url) {
+    return (
+      <>
+        <button
+          className="btn btn-sm"
+          onClick={create}
+          disabled={busy}
+          title="Ссылка для человека со стороны: он войдёт в браузере, без регистрации, в комнату этой встречи"
+        >
+          <Icon name="link" size={14} /> {busy ? 'Создаю…' : 'Ссылка для гостя'}
+        </button>
+        {err && <div className="error-text">{err}</div>}
+      </>
+    );
+  }
+  return (
+    <div className="event-guest-link">
+      <div className="dim" style={{ fontSize: 12 }}>
+        {copied ? 'Ссылка скопирована — отправьте её гостю. ' : 'Скопируйте и отправьте гостю. '}
+        Второй раз показать её нельзя.
+      </div>
+      <code className="guest-links-url">{url}</code>
+      {at && <MeetingNote at={at} />}
+      {!copied && (
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={async () => { try { await navigator.clipboard.writeText(url); setCopied(true); } catch { setErr('Скопируйте адрес вручную'); } }}
+        >
+          <Icon name="copy" size={14} /> Копировать
+        </button>
+      )}
+      {err && <div className="error-text">{err}</div>}
+    </div>
   );
 }

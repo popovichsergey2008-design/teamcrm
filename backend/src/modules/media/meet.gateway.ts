@@ -39,6 +39,8 @@ interface Client {
   isGuest: boolean;
   /** Для гостя — единственная комната, куда он вправе войти. */
   guestRoomId?: string;
+  /** Для гостя — ссылка, по которой он пришёл (у старых токенов нет). */
+  guestLinkId?: string;
 }
 
 /**
@@ -179,6 +181,7 @@ export class MeetGateway implements OnModuleInit {
       meetingId: null,
       isGuest: true,
       guestRoomId: guest.roomId,
+      guestLinkId: guest.linkId,
     });
   }
 
@@ -601,6 +604,12 @@ export class MeetGateway implements OnModuleInit {
       c.ws.close();
       return;
     }
+    // встреча назначена на потом: комнату не поднимаем и никого не будим — гостю время и отсчёт
+    const opensAt = await this.guests.opensLater(c.tenantId, roomId, c.guestLinkId).catch(() => null);
+    if (opensAt) {
+      this.send(c.ws, 'meet.guest-too-early', { meeting_id: roomId, opens_at: opensAt });
+      return;
+    }
     let room: MeetingRoom;
     try {
       room = await this.media.ensureRoom(c.tenantId, roomId, null);
@@ -619,10 +628,18 @@ export class MeetGateway implements OnModuleInit {
         meeting_id: room.id, guest_id: c.userId, name: c.displayName,
       });
     }
-    this.send(c.ws, 'meet.guest-waiting', { meeting_id: room.id, host_present: hosts.length > 0 });
+    /*
+      Впускать некому — зовём автора ссылки и сотрудников события. Без этого гость ждал,
+      пока кто-нибудь сам вспомнит о встрече: стук слышат только те, кто уже внутри.
+    */
+    const hostCalled = hosts.length === 0
+      && await this.guests.callHost(c.tenantId, room.id, c.displayName, c.guestLinkId).catch(() => false);
+    this.send(c.ws, 'meet.guest-waiting', {
+      meeting_id: room.id, host_present: hosts.length > 0, host_called: hostCalled,
+    });
     this.diag.write({
       tenantId: c.tenantId, scope: 'meet', refId: room.id, userId: c.userId,
-      side: 'server', event: 'guest.knock', data: { name: c.displayName, hosts: hosts.length },
+      side: 'server', event: 'guest.knock', data: { name: c.displayName, hosts: hosts.length, hostCalled },
     });
   }
 

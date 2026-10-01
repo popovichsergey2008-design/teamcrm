@@ -1990,8 +1990,13 @@ export const api = {
     request<any>('POST', '/calendar/work', b),
 
   // гостевой доступ в созвон по ссылке
-  createGuestLink: (b: { roomId?: string; projectId?: string; label?: string; ttlHours?: number; chatId?: string }) =>
-    request<{ id: string; roomId: string; url: string; expiresAt: string }>('POST', '/meet/guest-links', b),
+  /** startsAt — время встречи: гость до него видит отсчёт, автору перед ним напомнят. eventId — из события календаря. */
+  createGuestLink: (b: {
+    roomId?: string; projectId?: string; label?: string; ttlHours?: number; chatId?: string;
+    startsAt?: string; eventId?: string;
+  }) =>
+    request<{ id: string; roomId: string; url: string; expiresAt: string; startsAt: string | null; label: string | null }>(
+      'POST', '/meet/guest-links', b),
   listGuestLinks: () => request<any[]>('GET', '/meet/guest-links'),
   /** Войти в комнату ранее выданной ссылки — гость ждёт именно её. */
   openGuestLink: (id: string) =>
@@ -2002,11 +2007,18 @@ export const api = {
   /** Гостевые вызовы идут БЕЗ токена: у гостя нет учётной записи и быть не может. */
   guestLinkInfo: (token: string) =>
     rawRequest<
-      | { valid: true; orgName: string; label: string | null; roomActive: boolean; hostPresent: boolean }
+      | {
+        valid: true; orgName: string; label: string | null; roomActive: boolean; hostPresent: boolean;
+        /** Время встречи и момент, с которого можно войти; null — открыто сразу. */
+        startsAt: string | null; opensAt: string | null; hasChat: boolean;
+      }
       | { valid: false; reason: string }
     >('GET', `/meet/guest/${encodeURIComponent(token)}`, undefined, false),
   guestJoin: (token: string, name: string) =>
-    rawRequest<{ token: string; roomId: string; name: string; userId: string; iceServers: RTCIceServer[] }>(
+    rawRequest<{
+      token: string; roomId: string; name: string; userId: string; iceServers: RTCIceServer[];
+      chatId: string | null; startsAt: string | null; opensAt: string | null;
+    }>(
       'POST', `/meet/guest/${encodeURIComponent(token)}/join`, { name }, false),
 
   // встречи: запись → стенограмма → сводка → черновики задач

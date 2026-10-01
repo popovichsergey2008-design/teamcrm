@@ -129,6 +129,20 @@ export class CalendarRepository {
         sets.push('updated_at = now()');
         vals.push(tenantId, id);
         await c.query(`UPDATE calendar_events SET ${sets.join(', ')} WHERE tenant_id=$${i++} AND id=$${i}`, vals);
+        /*
+          Встречу перенесли — гостевые ссылки из неё переезжают следом: иначе гость
+          ждал бы по старому времени, а напоминание открыть комнату ушло бы не тогда.
+          Срок ссылки только продлевается — укоротить его перенос не должен.
+        */
+        await c.query(
+          `UPDATE meet_guest_links l
+              SET starts_at = e.starts_at, reminded_at = NULL,
+                  expires_at = GREATEST(l.expires_at, e.starts_at + interval '4 hours', e.ends_at + interval '1 hour')
+             FROM calendar_events e
+            WHERE e.tenant_id = $1 AND e.id = $2 AND l.event_id = e.id AND l.revoked_at IS NULL
+              AND l.starts_at IS DISTINCT FROM e.starts_at`,
+          [tenantId, id],
+        );
       }
       if (participantIds && ownerId) {
         await c.query(`DELETE FROM calendar_participants WHERE event_id = $1`, [id]);
