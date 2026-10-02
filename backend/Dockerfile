@@ -39,8 +39,12 @@ FROM node:20-bookworm-slim AS runner
 ENV NODE_ENV=production
 WORKDIR /app
 # ffmpeg — извлечение аудиодорожки и нарезка записи встречи на куски под лимит Whisper (25 МБ)
+# chromium + шрифты — печать PDF-отчётов из личного кабинета: отчёт сверстан как страница,
+# и печатает его настоящий браузер. Inter — шрифт отчёта (с кириллицей), DejaVu — запасной.
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+      chromium fonts-inter fonts-dejavu-core \
  && rm -rf /var/lib/apt/lists/*
+ENV CHROMIUM_PATH=/usr/bin/chromium
 COPY package*.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist

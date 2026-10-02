@@ -1990,6 +1990,21 @@ export const api = {
   saveCalendarWork: (b: { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] }) =>
     request<any>('POST', '/calendar/work', b),
 
+  // отчёты из личного кабинета
+  /** Сводка отчёта по задачам — те же цифры, что попадут в PDF. */
+  reportSummary: (q: ReportQuery) => request<ReportSummary>('GET', `/reports/tasks/summary?${reportParams(q)}`),
+  /** Сам PDF: файл, а не JSON, — поэтому мимо общего конверта. */
+  reportPdf: async (q: ReportQuery): Promise<Blob> => {
+    const res = await fetch(apiUrl(`/api/reports/tasks/pdf?${reportParams(q)}`), {
+      headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new ApiError(body?.error?.code ?? 'INTERNAL', body?.error?.message ?? `Не удалось собрать PDF (${res.status})`);
+    }
+    return res.blob();
+  },
+
   // гостевой доступ в созвон по ссылке
   /** startsAt — время встречи: гость до него видит отсчёт, автору перед ним напомнят. eventId — из события календаря. */
   createGuestLink: (b: {
@@ -2366,4 +2381,21 @@ export interface AnthillSchedule {
 export interface AnthillMessage {
   id: string; role: 'user' | 'assistant'; content: string; citations: AnthillSource[]; createdAt: string;
   action: AnthillAction | null;
+}
+
+export interface ReportQuery { from: string; to: string; projectId?: string; userId?: string }
+export interface ReportKpi {
+  key: string; label: string; value: number | null; prev: number | null;
+  unit: 'num' | 'pct' | 'days' | 'hours'; goodWhenUp: boolean | null; hint: string;
+}
+export interface ReportSummary {
+  periodLabel: string; prevLabel: string; scopeLabel: string; ongoing: boolean; empty: boolean;
+  kpis: ReportKpi[]; insights: string[];
+  counts: { completed: number; overdue: number; soon: number; review: number };
+}
+function reportParams(q: ReportQuery): string {
+  const p = new URLSearchParams({ from: q.from, to: q.to });
+  if (q.projectId) p.set('projectId', q.projectId);
+  if (q.userId) p.set('userId', q.userId);
+  return p.toString();
 }

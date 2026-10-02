@@ -1,4 +1,5 @@
 import { Icon, IconName } from '../components/Icon';
+import { ReportsPanel } from '../components/ReportsPanel';
 import { IntegrationsPanel } from '../components/IntegrationsPanel';
 import { AssistantPanel } from '../components/AssistantPanel';
 import { HandoffGatePanel } from '../components/HandoffGatePanel';
@@ -60,6 +61,14 @@ const CARDS: Card[] = [
     roles: ['owner', 'manager'],
   },
   {
+    // Отчёты — сразу за профилем: их собирают регулярно (неделя, месяц), и сотрудник
+    // тоже — свой отчёт для руководителя. Руководитель видит отчёт по всей компании.
+    tab: 'reports',
+    title: 'Отчёты',
+    hint: 'PDF по задачам за период: выполнено, сроки, проекты и люди, просрочки, время — со сравнением',
+    icon: 'chart',
+  },
+  {
     tab: 'knowledge',
     title: 'База знаний и регламенты',
     hint: 'Архив компании для поиска по смыслу и ответов ИИ',
@@ -116,6 +125,7 @@ const CARDS: Card[] = [
 
 /** Разделы с ограничением по роли: адрес открывается, а содержимое — нет. */
 const DENIED: [string, string[]][] = [
+  ['reports', ['owner', 'manager', 'member']],
   ['chat-analysis', ['owner', 'manager']],
   ['security', ['owner']],
   ['team', ['owner', 'manager']],
@@ -152,6 +162,7 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'team' && canManage && <TeamPanel onClose={close} />}
       {route.tab === 'integrations' && role === 'owner' && <IntegrationsPanel onClose={close} />}
       {route.tab === 'ai-usage' && canManage && <AiUsagePanel onClose={close} />}
+      {route.tab === 'reports' && role !== 'client' && <ReportsPanel canManage={canManage} onClose={close} />}
       {route.tab === 'knowledge' && <KnowledgePanel canManage={canManage} onClose={close} />}
       {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}
       {route.tab === 'assistant' && <AssistantPanel canManage={role === 'owner'} onClose={close} />}

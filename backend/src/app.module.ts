@@ -33,6 +33,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { StandupModule } from './modules/standup/standup.module';
 import { VelocityModule } from './modules/velocity/velocity.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { ForecastModule } from './modules/forecast/forecast.module';
 import { FilesModule } from './modules/files/files.module';
 import { TeamModule } from './modules/team/team.module';
@@ -110,6 +111,7 @@ import { FeedModule } from './modules/feed/feed.module';
     TelegramModule,
     StandupModule,
     VelocityModule,
+    ReportsModule,
     ForecastModule,
     FilesModule,
     TeamModule,
