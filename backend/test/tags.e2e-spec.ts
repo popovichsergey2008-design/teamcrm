@@ -42,7 +42,13 @@ describe('теги задач (e2e)', () => {
     const O = H(owner.accessToken);
 
     // Пять базовых тегов заводятся при регистрации — фильтр по тегам не должен быть пустым с первого дня.
-    const list = (await http.get('/api/tags').set(O).expect(200)).body.data;
+    // Заводятся они фоном после ответа на регистрацию, поэтому ждём, а не читаем сразу:
+    // иначе тест изредка видел 4 из 5 и падал на ровном месте.
+    let list = (await http.get('/api/tags').set(O).expect(200)).body.data;
+    for (let i = 0; i < 30 && list.items.length < 5; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      list = (await http.get('/api/tags').set(O).expect(200)).body.data;
+    }
     expect(list.items.length).toBeGreaterThanOrEqual(5);
     expect(list.items.map((t: any) => t.name)).toEqual(
       expect.arrayContaining(['Контентная задача', 'Программная задача', 'Дизайнерская задача', 'Клиент-менеджер', 'Отложенная задача']),
