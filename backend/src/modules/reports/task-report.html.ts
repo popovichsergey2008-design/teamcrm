@@ -198,7 +198,8 @@ export function renderTaskReportHtml(r: TaskReport): string {
 
   blocks.push(section(++n, 'Динамика', 'Сколько задач ставили и закрывали за период', trendChart(r)));
 
-  blocks.push(section(++n, 'Качество выполнения', 'Соблюдение сроков и что именно выполняли', `
+  // нечего разбирать — блок из нулей только занимает полстраницы
+  if (r.completedTotal > 0) blocks.push(section(++n, 'Качество выполнения', 'Соблюдение сроков и что именно выполняли', `
     <div class="cols3">
       <div class="panel"><div class="panel-t">Соблюдение сроков</div>${qualityDonut(r)}</div>
       <div class="panel"><div class="panel-t">По приоритету</div>${hbars(r.byPriority.map((x) => ({ label: x.label, count: x.count, color: PRIORITY_COLOR[x.key] })))}</div>

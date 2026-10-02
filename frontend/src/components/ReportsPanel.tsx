@@ -161,7 +161,7 @@ export function ReportsPanel({ canManage, onClose }: { canManage: boolean; onClo
             <DatePicker value={to} onChange={(v) => { setTo(v); setPreset('custom'); }} />
           </label>
         </div>
-        {!valid && <div className="error-text">Дата «с» позже даты «по».</div>}
+        {!valid && <div className="error-text">{!from || !to ? 'Укажите обе даты периода.' : 'Дата «с» позже даты «по».'}</div>}
 
         <div className="drawer-section-title">Что включить</div>
         <div className="reports-filters">
