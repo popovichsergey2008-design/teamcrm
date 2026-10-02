@@ -330,6 +330,9 @@ export function App() {
     // «Встречи» — тоже раздел чата, но со своим адресом: перебивать его нельзя,
     // иначе уход в них тут же отбрасывал бы обратно в переписку.
     if (now.section !== 'chat' || now.view) return;
+    // тот же чат — адрес ветки не трогаем: иначе ссылка на ветку тут же превращалась
+    // в ссылку на чат, и ветка закрывалась сразу после открытия
+    if (chatId && String(now.chatId) === String(chatId) && now.threadId) return;
     navigate({ section: 'chat', chatId: chatId ?? undefined }, { replace: true });
   }, []);
 
@@ -688,7 +691,7 @@ export function App() {
       )}
 
       <Toasts
-        onOpenChat={(chatId) => navigate({ section: 'chat', chatId: chatId ?? undefined })}
+        onOpenChat={(chatId, threadId) => navigate({ section: 'chat', chatId: chatId ?? undefined, threadId: chatId ? threadId : undefined })}
         onOpenFeed={() => navigate({ section: 'news' })}
         onOpenFocus={() => navigate({ section: 'focus' })}
         onOpenMeetings={() => navigate({ section: 'chat', view: 'meetings' })}

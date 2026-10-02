@@ -1524,10 +1524,14 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
     else setDone(picked.length === 1 ? `Файл «${picked[0].name}» прикреплён` : `Прикреплено файлов: ${picked.length}`);
   };
   // файлы за авторизацией: тянем blob с токеном, картинку показываем в попапе, остальное скачиваем
+  /** Какое вложение сейчас открывается и на сколько процентов (-1 — размер неизвестен). */
+  const [opening, setOpening] = useState<{ id: string; pct: number } | null>(null);
   const open = async (f: any) => {
     setErr('');
+    if (opening) return;
+    setOpening({ id: String(f.file_id), pct: -1 });
     try {
-      const blob = await api.authedBlob(`/api/files/${f.file_id}`);
+      const blob = await api.authedBlobProgress(`/api/files/${f.file_id}`, (p) => setOpening({ id: String(f.file_id), pct: p ?? -1 }));
       const url = URL.createObjectURL(blob);
       if (blob.type.startsWith('image/') || blob.type.startsWith('video/')) {
         setPreview({ url, name: f.file_name, mime: blob.type, own: true });
@@ -1538,7 +1542,7 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
       }
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось открыть файл');
-    }
+    } finally { setOpening(null); }
   };
   const closePreview = () => {
     // Ссылку освобождаем только свою: у превью из AuthedMedia хозяин другой, и
@@ -1595,7 +1599,10 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
       )}
       {files.map((f) => (
         <div key={f.id} className="team-row team-head">
-          <button className="file-link" onClick={() => open(f)}>{f.file_name}</button>
+          <button className="file-link" onClick={() => open(f)} aria-busy={opening?.id === String(f.file_id)}>{f.file_name}</button>
+          {opening?.id === String(f.file_id) && (
+            <span className="dim file-opening"><span className="spin-sm" /> {opening.pct < 0 ? 'открываю…' : `${opening.pct}%`}</span>
+          )}
           <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteAttachment(taskId, f.id); await reload(); onRefresh(); }} title="Удалить"><Icon name="close" size={13} /></button>
         </div>
       ))}

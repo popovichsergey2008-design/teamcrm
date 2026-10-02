@@ -380,6 +380,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const threadRef = useRef<{ rootId: string; messages: Message[] } | null>(null);
   useEffect(() => { threadRef.current = thread; }, [thread]);
   const [threadBody, setThreadBody] = useState('');
+  /*
+    Поле ответа в ветке. «Ответить в ветке» открывает панель справа — и фокус обязан
+    уйти в её поле: раньше он оставался где был, человек начинал печатать, и текст
+    уходил в никуда (жалоба заказчика «при ответе фокус из поля ввода пропадает»).
+  */
+  const threadInputRef = useRef<HTMLInputElement>(null);
+  const [threadFocus, setThreadFocus] = useState(0);
+  /*
+    Что уже отправлено, но сервер ещё не ответил. Поле очищается сразу, а сообщение
+    (особенно с фото) появлялось только после загрузки — секунды пустоты, в которые
+    непонятно, ушло ли оно. Теперь в ленте сразу пузырь «отправляется».
+  */
+  const [outbox, setOutbox] = useState<{ key: number; text: string; files: number }[]>([]);
+  /** Открываем ветку или переходим к сообщению — тонкая полоска сверху, что идёт загрузка. */
+  const [navBusy, setNavBusy] = useState(0);
   const [alsoInChannel, setAlsoInChannel] = useState(false);
   const [threads, setThreads] = useState<ThreadItem[]>([]);
   /** Закреплённое чата: то, что нужно всем и всегда под рукой. */
@@ -1144,6 +1159,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     setDraft('');
     clearDraft(`chat:${activeId}`);
     clearPending();
+    const outKey = Date.now() + Math.random();
+    setOutbox((o) => [...o, { key: outKey, text, files: files.length }]);
+    atBottomRef.current = true;
     try {
       // «@AI» — обращение к помощнику, а не к человеку: ответ придёт в этот же чат
       // и его увидят все, кто в разговоре.
@@ -1172,6 +1190,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       setErr(e instanceof ApiError ? e.message : files.length ? 'Файл не отправлен' : 'Сообщение не отправлено');
       setDraft(text); // не теряем набранное
       if (files.length) void attach(files); // и вложения возвращаем в очередь — переснимать экран обидно
+    } finally {
+      setOutbox((o) => o.filter((x) => x.key !== outKey));
     }
   };
 
@@ -1427,8 +1447,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    */
   useEffect(() => {
     const onJump = (e: Event) => {
-      const d = (e as CustomEvent<{ chatId: string; messageId: string }>).detail;
-      if (d?.chatId && d?.messageId) void openFound({ chatId: String(d.chatId), messageId: String(d.messageId), threadRootId: null });
+      const d = (e as CustomEvent<{ chatId: string; messageId: string; threadRootId?: string | null }>).detail;
+      if (d?.chatId && d?.messageId) {
+        void openFound({ chatId: String(d.chatId), messageId: String(d.messageId), threadRootId: d.threadRootId ? String(d.threadRootId) : null });
+      }
     };
     window.addEventListener('teamcrm:chat-jump', onJump);
     return () => window.removeEventListener('teamcrm:chat-jump', onJump);
@@ -1449,6 +1471,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     setView('chat');
     setActiveId(hit.chatId);
     setErr('');
+    setNavBusy((n) => n + 1);
     try {
       const list = hit.threadRootId
         ? await api.chatMessages(hit.chatId)
@@ -1469,11 +1492,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       setHasNewer(!hit.threadRootId);
       loadPinned(hit.chatId);
       api.chatContext(hit.chatId).then(setCtx).catch(() => setCtx(null));
-      if (hit.threadRootId) await openThread(hit.threadRootId);
+      /*
+        Чат передаём явно. openThread из этого замыкания помнит ПРЕЖНИЙ открытый чат:
+        переход в ветку из списка веток, входящих или поиска открывал сам чат (часто —
+        личный), а ветку искал в старом и молча не находил.
+      */
+      if (hit.threadRootId) await openThread(hit.threadRootId, hit.chatId);
       // Прокрутка и подсветка — общим путём: он дожидается отрисовки и глушит подгрузку краёв.
       scrollToMessage(hit.messageId);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось открыть сообщение');
+    } finally {
+      setNavBusy((n) => n - 1);
     }
   };
 
@@ -1540,7 +1570,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         focusComposer();
       },
     },
-    { label: 'Ответить в ветке', icon: 'chat' as const, onClick: () => { void openThread(String(m.id)); } },
+    { label: 'Ответить в ветке', icon: 'chat' as const, onClick: () => { void openThread(String(m.id), activeId, true); } },
     /*
       Копирование выделенного.
 
@@ -1630,16 +1660,22 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       : m)));
   };
 
-  const openThread = async (rootId: string, chatId: string | null = activeId) => {
+  const openThread = async (rootId: string, chatId: string | null = activeId, focus = false) => {
     if (!chatId) return;
     setInfoOpen(false); // правый слот один: ветка вытесняет сведения
     setThreadBody(''); setAlsoInChannel(false);
+    setNavBusy((n) => n + 1);
     try {
       const messages = await api.chatThread(chatId, rootId);
       setThread({ rootId: String(rootId), messages });
+      if (focus) setThreadFocus((n) => n + 1);
       notifyChatsChanged();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть ветку'); }
+    finally { setNavBusy((n) => n - 1); }
   };
+  useEffect(() => {
+    if (threadFocus) requestAnimationFrame(() => threadInputRef.current?.focus());
+  }, [threadFocus]);
 
   /**
    * Картинки в ветку.
@@ -2130,7 +2166,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   <button
                     key={m.id}
                     className={`thread-item${m.seen_at ? '' : ' thread-item-new'}`}
-                    onClick={() => { void openChat(String(m.chat_id)); }}
+                    onClick={() => {
+                      // упомянули внутри ветки — открываем саму ветку, а не только чат
+                      void openChat(String(m.chat_id)).then(() => (m.thread_root_id
+                        ? openThread(String(m.thread_root_id), String(m.chat_id)) : undefined));
+                    }}
                   >
                     <span className="thread-item-head">
                       <b>{m.project_name ?? m.chat_title ?? 'Личный диалог'}</b>
@@ -2148,7 +2188,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   <button
                     key={t.root_id}
                     className="thread-item"
-                    onClick={() => { void openChat(String(t.chat_id)).then(() => openThread(String(t.root_id))); }}
+                    onClick={() => { void openChat(String(t.chat_id)).then(() => openThread(String(t.root_id), String(t.chat_id))); }}
                   >
                     <span className="thread-item-head">
                       <b>{t.project_name ?? t.chat_title ?? 'Личный диалог'}</b>
@@ -2261,7 +2301,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               <button
                 key={t.root_id}
                 className="thread-item"
-                onClick={() => { void openChat(String(t.chat_id)).then(() => openThread(String(t.root_id))); }}
+                onClick={() => { void openChat(String(t.chat_id)).then(() => openThread(String(t.root_id), String(t.chat_id))); }}
               >
                 <span className="thread-item-head">
                   <b>{t.project_name ?? t.chat_title ?? 'Личный диалог'}</b>
@@ -2517,7 +2557,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 if (hasNewer && el.scrollHeight - el.scrollTop - el.clientHeight < 200) void loadNewer();
               }}
             >
-              {olderBusy && <div className="dim chat-older">Загружаю более ранние…</div>}
+              {navBusy > 0 && <div className="chat-loading-bar" role="progressbar" aria-label="Загрузка" />}
+              {olderBusy && <div className="dim chat-older"><span className="spin-sm" /> Загружаю более ранние…</div>}
               {msgLoading && <div style={{ padding: 12 }}><SkeletonList rows={4} /></div>}
               {!msgLoading && messages.length === 0 && (
                 <EmptyState
@@ -2804,6 +2845,23 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   </div>
                 );
               })}
+              {newerBusy && <div className="dim chat-older"><span className="spin-sm" /> Загружаю более новые…</div>}
+              {/* Отправленное, на которое сервер ещё не ответил: видно сразу, а не через секунды загрузки */}
+              {outbox.map((o) => (
+                <div key={o.key} className="chat-line mine msg-queued">
+                  <div className="chat-msg mine msg-sending">
+                    {o.text && <MessageText text={o.text} className="chat-body" />}
+                    {o.files > 0 && (
+                      <div className="msg-outbox-files">
+                        <Icon name="paperclip" size={13} /> {o.files} {o.files % 10 === 1 && o.files % 100 !== 11 ? 'файл' : [2, 3, 4].includes(o.files % 10) && ![12, 13, 14].includes(o.files % 100) ? 'файла' : 'файлов'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="chat-under">
+                    <span className="chat-time"><span className="spin-sm" /> {o.files ? 'загружаю…' : 'отправляется…'}</span>
+                  </div>
+                </div>
+              ))}
               {/* Написанное без сети: висит в ленте своим пузырём, пока не уйдёт из очереди (волна 9) */}
               {queued.map((q) => (
                 <div key={q.id} className="chat-line mine msg-queued">
@@ -3124,7 +3182,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               <button
                 className="btn btn-primary btn-sm"
                 onClick={send}
-                disabled={!draft.trim() && !pending}
+                disabled={!draft.trim() && !pending.length}
                 title="Отправить"
               >
                 <Icon name="send" />
@@ -3298,6 +3356,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               />
             </label>
             <input
+              ref={threadInputRef}
               className="input"
               placeholder="Ответить в ветке… Ctrl+V вставит картинку"
               value={threadBody}

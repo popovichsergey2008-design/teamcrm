@@ -15,7 +15,7 @@ const MAX_VISIBLE = 3;
  * Это видно всегда: клик открывает чаты.
  */
 export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, onOpenSupport, onOpenInbox }: {
-  onOpenChat: (chatId?: string) => void;
+  onOpenChat: (chatId?: string, threadId?: string) => void;
   onOpenFeed?: () => void;
   onOpenFocus?: () => void;
   onOpenMeetings?: () => void;
@@ -58,7 +58,7 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
             else if (t.section === 'meetings') onOpenMeetings?.();
             else if (t.section === 'support') onOpenSupport?.(t.conversationId);
             else if (t.section === 'inbox') onOpenInbox?.(t.inboxId, t.inboxPath);
-            else onOpenChat(t.chatId);
+            else onOpenChat(t.chatId, t.threadId);
             setItems((prev) => prev.filter((x) => x.id !== t.id));
           }}
           title={t.kind === 'saved' ? 'Скрыть'

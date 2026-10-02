@@ -103,9 +103,10 @@ export class AuthService {
     const memberships = await this.users.membershipsByAccount(account.id);
     if (memberships.length === 0) throw AppException.unauthorized('У аккаунта нет активных организаций');
 
+    // явно выбранное пространство; иначе — где работал последним (см. preferredTenant)
     const target = (dto.tenantId && memberships.find((m: any) => String(m.tenant_id) === String(dto.tenantId)))
       ? dto.tenantId
-      : (memberships[0] as any).tenant_id;
+      : (await this.users.preferredTenant(String(account.id))) ?? (memberships[0] as any).tenant_id;
     const user = await this.users.findActiveByAccountAndTenant(account.id, target);
     if (!user) throw AppException.unauthorized('Нет доступа к организации');
 
@@ -128,11 +129,10 @@ export class AuthService {
     return { user: toPublicUser(user), organizations: orgs, ...tokens };
   }
 
-  /** Найти членство аккаунта: активная организация — выбранная ранее или первая. */
+  /** Найти членство аккаунта: пространство, где работал последним, иначе рабочее, иначе первое. */
   async memberOf(accountId: string): Promise<UserRow | null> {
-    const memberships = await this.users.membershipsByAccount(accountId);
-    if (memberships.length === 0) return null;
-    return this.users.findActiveByAccountAndTenant(accountId, (memberships[0] as any).tenant_id);
+    const tenantId = await this.users.preferredTenant(accountId);
+    return tenantId ? this.users.findActiveByAccountAndTenant(accountId, tenantId) : null;
   }
 
   /**
@@ -264,6 +264,10 @@ export class AuthService {
     );
     const expiresAt = new Date(Date.now() + refreshTtl * 1000);
     const row = await this.refreshTokens.create(user.id, this.sha256(refreshToken), expiresAt, meta);
+    // где человек сейчас работает — туда и следующий вход (вход, переключение, обновление сессии)
+    if (user.account_id) {
+      await this.users.rememberTenant(String(user.account_id), String(user.tenant_id)).catch(() => undefined);
+    }
 
     const accessPayload: AccessTokenPayload = {
       sub: user.id,

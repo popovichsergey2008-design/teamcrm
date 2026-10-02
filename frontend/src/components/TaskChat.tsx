@@ -281,15 +281,19 @@ export function TaskChat({
    */
   const [fullyLoaded, setFullyLoaded] = useState(false);
 
+  /** Первая загрузка ещё идёт: пока она идёт, «обсуждения ещё не было» — неправда. */
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { setLoaded(false); }, [taskId]);
   const reload = (all = false) => {
     api.listComments(taskId, all)
       .then((rows) => {
         setComments(rows);
+        setLoaded(true);
         // «Всё загружено» решаем по факту: пришло меньше предела — выше ничего нет
         if (all || rows.length < 100) setFullyLoaded(true);
         setOlderBusy(false);
       })
-      .catch(() => undefined);
+      .catch(() => { setLoaded(true); setOlderBusy(false); });
     api.taskActivity(taskId).then(setActivity).catch(() => undefined);
     api.taskChatReaders(taskId).then(setReaders).catch(() => undefined);
   };
@@ -1147,7 +1151,9 @@ export function TaskChat({
         </div>
       )}
 
-      {comments.length === 0 && (
+      {!loaded && <div className="dim chat-older"><span className="spin-sm" /> Загружаю обсуждение…</div>}
+      {olderBusy && <div className="dim chat-older"><span className="spin-sm" /> Загружаю более ранние…</div>}
+      {loaded && comments.length === 0 && (
         <EmptyState compact icon="chat" title="Обсуждения ещё не было"
           hint="Здесь остаётся история решений по задаче. Помощника можно спросить тут же: «@AI что от меня требуется?»" />
       )}

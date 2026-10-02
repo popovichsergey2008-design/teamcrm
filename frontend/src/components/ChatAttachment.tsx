@@ -70,17 +70,22 @@ export function ChatAttachment({ fileId, fileName, onOpen }: {
     return () => { dead = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [fileId, isImage, media, near]);
 
+  /** Ход скачивания: null — не качаем, -1 — качаем, размер неизвестен, 0…99 — проценты. */
+  const [dl, setDl] = useState<number | null>(null);
+
   /** Не картинка (или картинка не загрузилась) — скачиваем по нажатию, тоже с токеном. */
   const download = async () => {
+    if (dl !== null) return; // уже качается — второе нажатие не запускает вторую загрузку
+    setDl(-1);
     try {
-      const blob = await api.authedBlob(`/api/files/${fileId}`);
+      const blob = await api.authedBlobProgress(`/api/files/${fileId}`, (p) => setDl(p ?? -1));
       const href = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = href;
       a.download = fileName;
       a.click();
       setTimeout(() => URL.revokeObjectURL(href), 5000);
-    } catch { setFailed(true); }
+    } catch { setFailed(true); } finally { setDl(null); }
   };
 
   if (media && url) {
@@ -112,11 +117,15 @@ export function ChatAttachment({ fileId, fileName, onOpen }: {
     скрепкой на цветной подложке — она видна на любом пузыре: своём, чужом, ботовом.
   */
   return (
-    <button className="chat-file" onClick={download} title={`Скачать «${fileName}»`}>
-      <span className="chat-file-icon" aria-hidden="true"><Icon name="paperclip" size={14} /></span>
+    <button className={`chat-file${dl !== null ? ' is-busy' : ''}`} onClick={download} title={`Скачать «${fileName}»`} aria-busy={dl !== null}>
+      <span className="chat-file-icon" aria-hidden="true">
+        {dl !== null ? <span className="spin-sm" /> : <Icon name="paperclip" size={14} />}
+      </span>
       <span className="chat-file-body">
         <span className="chat-file-name">{fileName}</span>
-        <span className="chat-file-hint">{fileKind(fileName)} · нажмите, чтобы скачать</span>
+        <span className="chat-file-hint">
+          {fileKind(fileName)} · {dl === null ? 'нажмите, чтобы скачать' : dl < 0 ? 'скачиваю…' : `скачиваю… ${dl}%`}
+        </span>
       </span>
     </button>
   );

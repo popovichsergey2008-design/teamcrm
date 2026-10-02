@@ -53,6 +53,15 @@ export class UsersService {
   }
 
   /** Создание сотрудника (owner/manager). Роль client через команду не назначается. */
+  /**
+   * Принял приглашение — значит, пришёл работать сюда: следующий вход ведёт в это
+   * пространство, а не в старое личное, заведённое при регистрации.
+   */
+  async rememberJoined(tenantId: string, userId: string): Promise<void> {
+    const acc = await this.repo.accountIdOf(tenantId, userId);
+    if (acc?.account_id) await this.repo.rememberTenant(String(acc.account_id), tenantId);
+  }
+
   async createUser(
     tenantId: string,
     input: {

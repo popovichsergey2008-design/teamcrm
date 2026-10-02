@@ -13,6 +13,8 @@ import { diag } from '../lib/diag';
 import { playKnock, startRingback, stopRingback } from '../lib/sound';
 import { useAuth } from '../state/auth';
 import { platform } from '../platform';
+import { clampTo, useDragMove } from '../hooks/useDragMove';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 
 /**
  * Размер свёрнутого созвона по умолчанию.
@@ -128,7 +130,16 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   const [speaking, setSpeaking] = useState<string | null>(null);
   /** Куда человек перетащил плашку. Отсчёт от правого нижнего угла — она там и появляется. */
   const [dock, setDock] = useState({ right: 16, bottom: 16 });
-  const dragFrom = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null);
+  /*
+    Куда передвинули само окно созвона (сдвиг от центра) и кнопку с часами.
+
+    Заказчик: окно должно двигаться при любом размере — и большое, и маленькое, и
+    самое маленькое. Сворачивается всё в правый нижний угол, а дальше человек ставит
+    куда удобно. На телефоне большое окно — во весь экран, двигать там нечего.
+  */
+  const [shift, setShift] = useState({ x: 0, y: 0 });
+  const [pill, setPill] = useState(() => ({ right: 16, bottom: window.innerWidth <= 1100 ? 80 : 16 }));
+  const narrow = useMediaQuery('(max-width: 640px)');
   /**
    * Размер плашки: человек тянет за угол, браузер меняет размеры сам (CSS resize),
    * а мы только запоминаем результат — иначе после каждого сворачивания окно
@@ -472,21 +483,38 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
    * Прижатая к правому нижнему углу плашка закрывает кнопки задач — человек
    * должен иметь возможность её отодвинуть, а не терпеть.
    */
-  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    dragFrom.current = { x: e.clientX, y: e.clientY, ...dock };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const onDrag = (e: React.PointerEvent<HTMLDivElement>) => {
-    const from = dragFrom.current;
-    if (!from) return;
-    // держим плашку в пределах экрана: утащить её за край значит потерять созвон
-    setDock({
-      right: Math.max(8, Math.min(window.innerWidth - 140, from.right - (e.clientX - from.x))),
-      bottom: Math.max(8, Math.min(window.innerHeight - 120, from.bottom - (e.clientY - from.y))),
-    });
-  };
-  const endDrag = () => { dragFrom.current = null; };
+  // Окошко в углу: держим целиком в пределах экрана — утащить его за край значит потерять созвон.
+  // За уголок не тянем: там ручка, которой окошко растягивают.
+  const dockDrag = useDragMove(
+    (el) => ({ ...dock, w: el.offsetWidth, h: el.offsetHeight }),
+    (s, dx, dy) => setDock({
+      right: clampTo(s.right - dx, 8, window.innerWidth - s.w - 8),
+      bottom: clampTo(s.bottom - dy, 8, window.innerHeight - s.h - 8),
+    }),
+    {
+      ignore: (e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        return e.clientX > r.right - 18 && e.clientY > r.bottom - 18;
+      },
+    },
+  );
+  // Кнопка с часами: самое маленькое окно тоже двигается — за любое место, включая кнопки.
+  const pillDrag = useDragMove(
+    (el) => ({ ...pill, w: el.offsetWidth, h: el.offsetHeight }),
+    (s, dx, dy) => setPill({
+      right: clampTo(s.right - dx, 4, window.innerWidth - s.w - 4),
+      bottom: clampTo(s.bottom - dy, 4, window.innerHeight - s.h - 4),
+    }),
+  );
+  // Большое окно — за шапку. Шапка всегда остаётся на экране, чтобы окно можно было вернуть.
+  const windowDrag = useDragMove(
+    () => ({ ...shift, r: windowRef.current?.getBoundingClientRect() ?? new DOMRect() }),
+    (s, dx, dy) => setShift({
+      x: s.x + clampTo(dx, -(s.r.right - 160), window.innerWidth - s.r.left - 160),
+      y: s.y + clampTo(dy, -s.r.top, window.innerHeight - s.r.top - 56),
+    }),
+    { disabled: full || narrow },
+  );
 
   /**
    * Ссылка для внешнего гостя. Копируем сразу в буфер: её всё равно понесут в мессенджер,
@@ -546,7 +574,13 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
     return (
       <>
         {sound}
-        <div className="call-pill">
+        <div
+          className="call-pill"
+          style={{ right: pill.right, bottom: pill.bottom }}
+          title="Созвон идёт. Окошко можно перетащить в любое место"
+          {...pillDrag}
+        >
+          <span className="call-pill-grip" aria-hidden="true" />
           <button
             className={`call-pill-btn${micOn ? '' : ' call-pill-off'}`}
             onClick={toggleMic}
@@ -615,10 +649,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
               className="call-dock"
               ref={dockRef}
               style={{ right: dock.right, bottom: dock.bottom, width: dockSize.width, height: dockSize.height }}
-              onPointerDown={startDrag}
-              onPointerMove={onDrag}
-              onPointerUp={endDrag}
-              onPointerCancel={endDrag}
+              {...dockDrag}
             >
               {panel}
             </div>
@@ -630,9 +661,13 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   return (
     <>
     {sound}
-    <div className="call-overlay">
-      <div className="call-window" ref={windowRef}>
-        <div className="call-head">
+    <div className={`call-overlay${narrow ? '' : ' call-overlay-floating'}`}>
+      <div
+        className="call-window"
+        ref={windowRef}
+        style={full || narrow ? undefined : { transform: `translate(${shift.x}px, ${shift.y}px)` }}
+      >
+        <div className="call-head" title={full || narrow ? undefined : 'Окно можно перетащить за эту полосу'} {...windowDrag}>
           <span>
             <Icon name="phone" size={16} /> Созвон · <span className="dim">{STATE_LABEL[state]}</span>
             {peers.length > 0 && <span className="badge badge-muted" style={{ marginLeft: 8 }}>участников: {peers.length}</span>}

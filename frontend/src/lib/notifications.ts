@@ -44,6 +44,8 @@ export interface ToastPayload {
   title: string;
   body: string;
   chatId?: string;
+  /** Сообщение пришло в ветку — щелчок открывает ветку, а не только чат. */
+  threadId?: string;
   /** Куда ведёт щелчок. По умолчанию — в чаты: с них уведомления и начинались. */
   section?: 'chat' | 'feed' | 'focus' | 'meetings' | 'support' | 'inbox';
   /** Обращение службы заботы, которое откроет щелчок (для `section: 'support'`). */

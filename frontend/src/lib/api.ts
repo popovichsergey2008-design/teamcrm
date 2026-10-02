@@ -468,6 +468,28 @@ export const api = {
     if (!res.ok) throw new ApiError('INTERNAL', `Не удалось загрузить файл (${res.status})`);
     return res.blob();
   },
+  /**
+   * То же, что authedBlob, но с ходом загрузки: большой файл качается секундами, и без
+   * процента человек не понимает, идёт ли что-то вообще. `pct` — null, если сервер не
+   * сообщил размер (тогда показываем просто «скачиваю»).
+   */
+  authedBlobProgress: async (path: string, onProgress: (pct: number | null) => void): Promise<Blob> => {
+    const res = await fetch(path.startsWith('/') ? apiUrl(path) : path, { headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {} });
+    if (!res.ok) throw new ApiError('INTERNAL', `Не удалось загрузить файл (${res.status})`);
+    const total = Number(res.headers.get('content-length')) || 0;
+    if (!res.body || !total) { onProgress(null); return res.blob(); }
+    const reader = res.body.getReader();
+    const parts: Uint8Array[] = [];
+    let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value);
+      got += value.length;
+      onProgress(Math.min(99, Math.round((got / total) * 100)));
+    }
+    return new Blob(parts as BlobPart[], { type: res.headers.get('content-type') ?? '' });
+  },
   /** Возвращает blob-URL защищённого файла для <img>/<a>. */
   authedObjectUrl: async (path: string): Promise<string> => URL.createObjectURL(await api.authedBlob(path)),
 

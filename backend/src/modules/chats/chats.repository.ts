@@ -462,7 +462,17 @@ export class ChatsRepository {
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
               m.thread_root_id, m.reply_count, m.last_reply_at,
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
-              m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author
+              m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author,
+              -- ВСЕ вложения: эта строка уходит отправителю и всем по сокету. Без них
+              -- сообщение с двумя фото показывалось с одним — до перезагрузки ленты,
+              -- а задача из него получала оба (она читает из базы).
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                         'fileId', mf.file_id::text, 'name', ff.file_name,
+                         'mime', ff.content_type, 'size', ff.size_bytes) ORDER BY mf.position, mf.file_id)
+                  FROM chat_message_files mf JOIN files ff ON ff.id = mf.file_id
+                 WHERE mf.message_id = m.id
+              ), '[]'::json) AS files
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
@@ -506,7 +516,14 @@ export class ChatsRepository {
     return this.db.many<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
-              m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at
+              m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                         'fileId', mf.file_id::text, 'name', ff.file_name,
+                         'mime', ff.content_type, 'size', ff.size_bytes) ORDER BY mf.position, mf.file_id)
+                  FROM chat_message_files mf JOIN files ff ON ff.id = mf.file_id
+                 WHERE mf.message_id = m.id
+              ), '[]'::json) AS files
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.author_id
          LEFT JOIN files f ON f.id = m.file_id
@@ -800,7 +817,7 @@ export class ChatsRepository {
   /** Где меня звали по имени. Непрочитанные — сверху, они и есть повод открыть раздел. */
   mentionsList(tenantId: string, userId: string, limit = 50) {
     return this.db.many(
-      `SELECT m.id, m.chat_id, m.body, m.created_at, u.full_name AS author_name,
+      `SELECT m.id, m.chat_id, m.body, m.created_at, u.full_name AS author_name, m.thread_root_id::text,
               n.seen_at, c.kind AS chat_kind, c.title AS chat_title, p.name AS project_name
          FROM chat_mentions n
          JOIN chat_messages m ON m.id = n.message_id AND m.deleted_at IS NULL

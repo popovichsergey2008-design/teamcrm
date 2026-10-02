@@ -305,6 +305,36 @@ export class UsersRepository {
     );
   }
 
+  /**
+   * В какое пространство вести человека при входе.
+   *
+   * Последнее, где он работал, — если он всё ещё в нём состоит. Иначе — пространство
+   * с командой, а не пустое личное: зарегистрировался, потом позвали в рабочее — входить
+   * надо в рабочее. И только при равенстве — самое старое.
+   */
+  async preferredTenant(accountId: string): Promise<string | null> {
+    const row = await this.db.one<{ tenant_id: string }>(
+      `SELECT u.tenant_id::text
+         FROM users u
+         JOIN accounts a ON a.id = u.account_id
+        WHERE u.account_id = $1 AND u.is_active = TRUE
+        ORDER BY (u.tenant_id = a.last_tenant_id) DESC NULLS LAST,
+                 (SELECT count(*) FROM users m WHERE m.tenant_id = u.tenant_id AND m.is_active = TRUE) DESC,
+                 u.created_at ASC
+        LIMIT 1`,
+      [accountId],
+    );
+    return row?.tenant_id ?? null;
+  }
+
+  /** Запомнить пространство, в котором человек сейчас работает. */
+  async rememberTenant(accountId: string, tenantId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE accounts SET last_tenant_id = $2 WHERE id = $1 AND last_tenant_id IS DISTINCT FROM $2`,
+      [accountId, tenantId],
+    );
+  }
+
   /** Членство аккаунта в конкретной организации (для переключения/выдачи токена). */
   findActiveByAccountAndTenant(accountId: string, tenantId: string): Promise<UserRow | null> {
     return this.db.one<UserRow>(

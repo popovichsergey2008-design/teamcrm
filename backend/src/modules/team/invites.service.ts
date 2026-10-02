@@ -119,6 +119,7 @@ export class InvitesService {
           role: invite.role_code as any, positionId: invite.position_id,
         });
     await this.repo.markAccepted(invite.id);
+    await this.users.rememberJoined(String(invite.tenant_id), String(created.user.id)).catch(() => undefined);
     // usedExistingAccount: аккаунт уже был — заданный сейчас пароль не применён,
     // человек входит прежним. Фронт обязан показать это, а не рапортовать «аккаунт создан».
     return { accepted: true, user: created.user, usedExistingAccount: created.usedExistingAccount };
@@ -171,6 +172,7 @@ export class InvitesService {
       role: link.role_code as any, positionId: link.position_id,
     });
     await this.repo.incrementLinkUses(link.id);
+    await this.users.rememberJoined(String(link.tenant_id), String(created.user.id)).catch(() => undefined);
     return { accepted: true, user: created.user, usedExistingAccount: created.usedExistingAccount };
   }
 }

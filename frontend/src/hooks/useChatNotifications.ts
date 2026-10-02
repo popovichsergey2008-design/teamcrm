@@ -40,7 +40,7 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
     refresh();
 
     const socket = getSocket();
-    const onMessage = (p: { chatId: string; message: { author_id: string | null; author_name: string | null; body: string; file_name?: string | null }; mentionIds?: string[] }) => {
+    const onMessage = (p: { chatId: string; message: { author_id: string | null; author_name: string | null; body: string; file_name?: string | null; thread_root_id?: string | null }; mentionIds?: string[] }) => {
       refresh();
       const m = p.message;
       // Настройка чата: «выключено» — тишина, «только упоминания» — звучит, лишь если позвали меня.
@@ -63,7 +63,7 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
       // Показываем сразу двумя способами: системное уведомление видно и при свёрнутом
       // окне, но требует разрешения; своё — работает всегда, пока вкладка открыта.
       showNotification(title, body, () => openChats.current());
-      showToast({ title, body, chatId: String(p.chatId) });
+      showToast({ title, body, chatId: String(p.chatId), threadId: m.thread_root_id ? String(m.thread_root_id) : undefined });
       playMessageChime();
     };
 

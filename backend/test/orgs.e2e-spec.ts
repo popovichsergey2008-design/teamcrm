@@ -56,6 +56,16 @@ describe('Enhancements v1 — Multi-org (e2e)', () => {
     // токен новой активной организации работает
     const me = (await http.get('/api/me').set(H(sw.accessToken)).expect(200)).body.data;
     expect(me.tenantId).toBe(t1);
+
+    // Вход ведёт туда, где работал последним, а не в самое старое пространство.
+    // Раньше человек, ушедший работать в другое пространство, при каждом входе снова
+    // попадал в первое — заведённое при регистрации.
+    await http.post('/api/auth/switch-org').set(H(sw.accessToken)).send({ tenantId: t2 }).expect(201);
+    const again = (await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data;
+    expect(again.user.tenantId).toBe(t2);
+    // явный выбор при входе по-прежнему главнее
+    const explicit = (await http.post('/api/auth/login').send({ email, password: 'password123', tenantId: t1 }).expect(201)).body.data;
+    expect(explicit.user.tenantId).toBe(t1);
   });
 
   it('приглашение уже-зарегистрированного человека в свою организацию', async () => {
