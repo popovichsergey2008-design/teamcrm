@@ -6181,3 +6181,6 @@ button.chat-pop-row:hover { background: var(--hover); }
 @media (prefers-reduced-motion: reduce) {
   .spin-sm, .chat-loading-bar::after, .chat-img-wait { animation-duration: 3s; }
 }
+
+/* пока тянут окно созвона — текст под указателем не выделяется */
+body.is-dragging { user-select: none; cursor: grabbing; }
