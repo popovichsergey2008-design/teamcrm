@@ -192,6 +192,16 @@ public class AnthillNativePlugin extends Plugin {
     private File download(String url, String expected, String version) throws Exception {
         File dir = new File(getContext().getExternalFilesDir(null), "updates");
         if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("некуда сохранить обновление");
+        File out = new File(dir, "anthill-" + version.replaceAll("[^0-9A-Za-z.]", "") + ".apk");
+
+        // Этот выпуск уже скачан и сходится с суммой — отдаём его установщику сразу.
+        // Повторное «Установить» после потерянного окна установки (Android сначала спросил
+        // разрешение и вернул человека к нам) не должно снова качать двадцать мегабайт.
+        if (out.exists() && expected != null && !expected.isEmpty() && expected.equalsIgnoreCase(sha256Of(out))) {
+            progress(out.length(), out.length());
+            return out;
+        }
+
         // Прошлые загрузки не копим: каждая весит больше двадцати мегабайт.
         File[] old = dir.listFiles();
         if (old != null) {
@@ -200,7 +210,6 @@ public class AnthillNativePlugin extends Plugin {
             }
         }
 
-        File out = new File(dir, "anthill-" + version.replaceAll("[^0-9A-Za-z.]", "") + ".apk");
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setInstanceFollowRedirects(true);
         conn.setConnectTimeout(20_000);
@@ -240,6 +249,20 @@ public class AnthillNativePlugin extends Plugin {
             }
         }
         return out;
+    }
+
+    private String sha256Of(File f) {
+        try (InputStream in = new java.io.FileInputStream(f)) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) digest.update(buf, 0, n);
+            StringBuilder sum = new StringBuilder();
+            for (byte x : digest.digest()) sum.append(String.format(Locale.US, "%02x", x));
+            return sum.toString();
+        } catch (Throwable t) {
+            return "";
+        }
     }
 
     private void launchInstaller(File file) {

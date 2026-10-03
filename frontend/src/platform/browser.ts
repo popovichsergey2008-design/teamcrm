@@ -102,6 +102,7 @@ export const browserBridge: PlatformBridge = {
     canInstall: () => Promise.resolve(false),
     install: () => Promise.resolve('unsupported' as const),
     requestInstallPermission: () => Promise.resolve(),
+    permitted: () => Promise.resolve(false),
     apply: () => Promise.resolve(),
   },
 

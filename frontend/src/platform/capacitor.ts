@@ -231,6 +231,9 @@ export const capacitorBridge: PlatformBridge = {
     async requestInstallPermission() {
       try { await AnthillNative.requestInstallPermission(); } catch { /* настройки нет — останется ссылка */ }
     },
+    async permitted() {
+      try { return (await AnthillNative.canInstall()).allowed; } catch { return false; }
+    },
   },
 
   biometrics: {

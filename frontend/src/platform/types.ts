@@ -98,6 +98,8 @@ export interface AppUpdateBridge {
   ): Promise<InstallUpdateResult>;
   /** Открыть системную настройку «разрешать установку из этого источника». */
   requestInstallPermission(): Promise<void>;
+  /** Разрешено ли уже ставить обновления из приложения (Android «из этого источника»). */
+  permitted(): Promise<boolean>;
   /** Скачать и применить: оболочка перезапустит веб-бандл сама. */
   apply(): Promise<void>;
 }

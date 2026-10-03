@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BottomSheet } from './BottomSheet';
 import { Logo } from './Logo';
 import { Icon } from './Icon';
@@ -30,6 +30,12 @@ export function UpdateSheet({ release, required, onClose }: {
   const [self, setSelf] = useState<boolean | null>(null);
   const [state, setState] = useState<'ask' | 'loading' | 'installing' | 'permission' | 'failed'>('ask');
   const [share, setShare] = useState(0);
+  /** Человек ушёл в системную настройку разрешения — по возвращении продолжаем сами. */
+  const awaitingPermission = useRef(false);
+  /** Установщик уже открывали: кнопка зовёт его снова, а не «Обновить» с нуля. */
+  const [opened, setOpened] = useState(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     let alive = true;
@@ -37,22 +43,55 @@ export function UpdateSheet({ release, required, onClose }: {
     return () => { alive = false; };
   }, []);
 
+  /*
+    Возврат в приложение.
+
+    Android (Xiaomi, Samsung и другие) нередко спрашивает разрешение «устанавливать из
+    этого источника» уже ПОСЛЕ открытия установщика: человек разрешает, жмёт «назад» —
+    и попадает не в установщик, а к нам. Раньше здесь висела неактивная кнопка «Установка
+    открыта», и сделать было нечего (жалоба заказчика). Теперь: вернулся после разрешения
+    и разрешил — ставим сами; вернулся из установщика — кнопка снова активна и откроет
+    его заново (файл уже скачан и проверен, повторно не качаем).
+  */
+  useEffect(() => {
+    const onBack = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (awaitingPermission.current) {
+        void platform.appUpdate.permitted().then((ok) => {
+          if (!ok) return; // не разрешил — остаётся кнопка «Разрешить установку»
+          awaitingPermission.current = false;
+          void download();
+        });
+        return;
+      }
+      if (stateRef.current === 'installing') setState('ask');
+    };
+    document.addEventListener('visibilitychange', onBack);
+    window.addEventListener('focus', onBack);
+    return () => {
+      document.removeEventListener('visibilitychange', onBack);
+      window.removeEventListener('focus', onBack);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const download = async () => {
+    if (stateRef.current === 'loading') return;
     setState('loading'); setShare(0);
     const result = await platform.appUpdate.install(
       { url: release.apkUrl, sha256: release.sha256, version: release.latestNative },
       setShare,
     );
-    if (result === 'installing') { setState('installing'); return; }
+    if (result === 'installing') { setOpened(true); setState('installing'); return; }
     if (result === 'needs_permission') { setState('permission'); return; }
     if (result === 'unsupported') { setSelf(false); setState('ask'); return; }
     setState('failed');
   };
 
   const allow = async () => {
+    awaitingPermission.current = true;
     await platform.appUpdate.requestInstallPermission();
-    // Человек уходит в настройки системы и возвращается сам: повтор — по его нажатию.
-    setState('ask');
+    // Человек уходит в настройки системы; вернётся с разрешением — установка продолжится сама.
   };
 
   const body = (
@@ -82,6 +121,12 @@ export function UpdateSheet({ release, required, onClose }: {
           Файл проверен, открылось окно установки. Нажмите в нём «Обновить» — данные и вход сохранятся.
         </div>
       )}
+      {state === 'ask' && opened && (
+        <div className="dim">
+          Окно установки закрылось? Так бывает, если Android сначала спрашивал разрешение. Нажмите
+          «Установить» — оно откроется снова, файл уже скачан.
+        </div>
+      )}
 
       {state === 'permission' && (
         <div className="dim">
@@ -104,8 +149,9 @@ export function UpdateSheet({ release, required, onClose }: {
         ) : state === 'permission' ? (
           <button className="btn btn-primary" onClick={() => void allow()}>Разрешить установку</button>
         ) : (
-          <button className="btn btn-primary" onClick={() => void download()} disabled={state === 'loading' || state === 'installing'}>
-            {state === 'installing' ? 'Установка открыта' : 'Обновить'}
+          /* Кнопка не замирает никогда: если окно установки потерялось, её нажимают снова. */
+          <button className="btn btn-primary" onClick={() => void download()} disabled={state === 'loading'}>
+            {state === 'installing' ? 'Открыть установку ещё раз' : opened ? 'Установить' : 'Обновить'}
           </button>
         )}
         {!required && state !== 'loading' && (
