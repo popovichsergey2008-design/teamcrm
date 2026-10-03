@@ -26,6 +26,7 @@ import { useDismiss } from '../hooks/useDismiss';
 import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync';
 import { SkeletonBoard } from '../components/Skeleton';
 import { MONETIZATION_ENABLED } from '../config';
+import { useStickyCheck } from '../lib/sticky-checks';
 
 type Action =
   | { type: 'SET'; board: Board }
@@ -151,7 +152,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   /** Постановщик из списка: работает независимо от «моих» — что человек раздал кому угодно. */
   const [creatorId, setCreatorId] = useState<string>('');
   /** «Только в работе»: скрыть завершённые карточки. По умолчанию выключено — см. MineFilter. */
-  const [inWorkOnly, setInWorkOnly] = useState(() => localStorage.getItem('teamcrm.boardInWork') === '1');
+  // «только в работе» — привычка человека, а не браузера (sticky-checks)
+  const [inWorkOnly, setInWorkOnly] = useStickyCheck('board.inWorkOnly', localStorage.getItem('teamcrm.boardInWork') === '1');
 
 
   /*

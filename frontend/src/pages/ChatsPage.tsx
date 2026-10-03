@@ -42,6 +42,7 @@ import { overlayProps } from '../lib/overlay';
 import { warmPalette } from '../lib/emoji-palette';
 import { pasteBelongsHere, pasteInForeignField } from '../lib/paste-scope';
 import type { User } from '../types';
+import { useStickyCheck } from '../lib/sticky-checks';
 
 interface Chat {
   id: string; kind: 'dm' | 'group' | 'project' | 'channel' | 'self' | 'external'; title: string | null;
@@ -395,7 +396,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const [outbox, setOutbox] = useState<{ key: number; text: string; files: number }[]>([]);
   /** Открываем ветку или переходим к сообщению — тонкая полоска сверху, что идёт загрузка. */
   const [navBusy, setNavBusy] = useState(0);
-  const [alsoInChannel, setAlsoInChannel] = useState(false);
+  // последний выбор человека — его значение по умолчанию (sticky-checks)
+  const [alsoInChannel, setAlsoInChannel] = useStickyCheck('chat.thread.alsoInChannel', false);
   const [threads, setThreads] = useState<ThreadItem[]>([]);
   /** Закреплённое чата: то, что нужно всем и всегда под рукой. */
   const [pinned, setPinned] = useState<Message[]>([]);
@@ -554,7 +556,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     if (hasNewer) { void goToLatest(); return; }
     const el = feedRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior });
+    // Далеко — сразу, без анимации: плавная прокрутка через десятки экранов не успевала
+    // доехать (по дороге догружались картинки) и останавливалась выше сегодняшних.
+    const far = el.scrollHeight - el.scrollTop - el.clientHeight > el.clientHeight * 3;
+    el.scrollTo({ top: el.scrollHeight, behavior: far ? 'auto' : behavior });
+    // картинки под конец могли дорасти — дожимаем до самого низа ещё раз
+    window.setTimeout(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, far ? 60 : 450);
     setMissed(0);
   };
 
@@ -1134,12 +1141,25 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
 
   // …кроме случая, когда есть непрочитанное: тогда — к черте, чтобы читать с неё,
   // а не мотать вверх в поисках, откуда начинается новое
+  /*
+    К черте — ОДИН раз на её появление.
+
+    Раньше прыжок к черте повторялся при каждом изменении ленты: человек жал «вниз» —
+    подгружался хвост, или листал вверх — подшивались старые, или приходило новое — и
+    лента снова уезжала к черте посреди разговора. Отсюда жалоба «стрелка вниз не
+    доводит до сегодняшних сообщений».
+  */
+  const unreadShown = useRef<string | null>(null);
   useEffect(() => {
-    if (!unreadFrom) return;
+    if (!unreadFrom) { unreadShown.current = null; return; }
+    if (unreadShown.current === String(unreadFrom)) return;
     const t = window.setTimeout(() => {
       // Идёт переход к сообщению — черта подождёт: иначе два разных места спорят за ленту.
       if (jumping.current) return;
-      feedRef.current?.querySelector('.chat-unread-line')?.scrollIntoView({ block: 'center' });
+      const line = feedRef.current?.querySelector('.chat-unread-line');
+      if (!line) return; // черта ещё не отрисована — попробуем, когда лента обновится
+      line.scrollIntoView({ block: 'center' });
+      unreadShown.current = String(unreadFrom);
     }, 30);
     return () => window.clearTimeout(t);
   }, [unreadFrom, messages.length]);
@@ -1663,7 +1683,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const openThread = async (rootId: string, chatId: string | null = activeId, focus = false) => {
     if (!chatId) return;
     setInfoOpen(false); // правый слот один: ветка вытесняет сведения
-    setThreadBody(''); setAlsoInChannel(false);
+    setThreadBody('');
     setNavBusy((n) => n + 1);
     try {
       const messages = await api.chatThread(chatId, rootId);

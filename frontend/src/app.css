@@ -5358,8 +5358,10 @@ button.chat-pop-row:hover { background: var(--hover); }
   border-left: 3px solid var(--accent-2);
 }
 /* Плеер ужимается первым: кнопки важнее, они и должны остаться на строке. */
-.voice-note-player { flex: 1 1 180px; min-width: 120px; max-width: 320px; height: 34px; }
-.voice-note-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+/* Сначала решение — подпись и кнопки одной строкой, плеер — под ними во всю ширину. */
+.voice-note-label { flex: 1 1 auto; }
+.voice-note-actions { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.voice-note-player { flex: 1 1 100%; width: 100%; max-width: none; height: 34px; }
 
 /* ───── Ветки и закреплённые в задаче (ТЗ-7, разд. 7 и 20) ───── */
 .task-thread {

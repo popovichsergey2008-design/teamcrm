@@ -11,6 +11,7 @@ import { SuggestAssignee } from './SuggestAssignee';
 import { DirectionsPicker } from './DirectionsPicker';
 import { NlCommandModal } from './NlCommandModal';
 import { isAnonymousClipboardName, screenshotName } from '../lib/attachments';
+import { useStickyCheck } from '../lib/sticky-checks';
 
 interface Props {
   projectId: string;
@@ -95,7 +96,9 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
    * теперь договорённость видит система. Снимает галочку тот, кто задачу ставит, —
    * заранее и осознанно, а не в момент, когда работа уже сдана.
    */
-  const [requiresApproval, setRequiresApproval] = useState(true);
+  // Снял или поставил сам — это его привычка, запоминаем. Шаблон значение меняет, но не запоминает.
+  const [approvalHabit, rememberApproval] = useStickyCheck('task.requiresApproval', true);
+  const [requiresApproval, setRequiresApproval] = useState(approvalHabit);
   /*
     Шаблоны задач (просьба заказчика: «кнопка сохранить как шаблон»).
 
@@ -450,7 +453,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
           <input
             type="checkbox"
             checked={requiresApproval}
-            onChange={(e) => setRequiresApproval(e.target.checked)}
+            onChange={(e) => { setRequiresApproval(e.target.checked); rememberApproval(e.target.checked); }}
           />
           Не завершать задачу без согласования с постановщиком
         </label>

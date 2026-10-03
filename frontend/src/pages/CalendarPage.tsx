@@ -18,6 +18,7 @@ import {
 import type { User } from '../types';
 import { overlayProps } from '../lib/overlay';
 import { toastSaved } from '../lib/notifications';
+import { useStickyCheck } from '../lib/sticky-checks';
 
 type View = 'day' | 'week' | 'month' | 'list';
 
@@ -192,7 +193,8 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [tasks, setTasks] = useState<CalTask[]>([]);
   const [work, setWork] = useState<Work>({ workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] });
-  const [showTasks, setShowTasks] = useState(() => localStorage.getItem('teamcrm.calendarTasks') !== '0');
+  // было в браузере — теперь у человека: тот же выбор на телефоне и на другом компьютере
+  const [showTasks, setShowTasks] = useStickyCheck('calendar.showTasks', localStorage.getItem('teamcrm.calendarTasks') !== '0');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [editing, setEditing] = useState<Partial<CalEvent> | null>(null);
@@ -671,6 +673,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
   onStartCall: (roomId: string) => void;
   onRespond: (id: string, s: 'accepted' | 'declined') => void;
 }) {
+  const [privateHabit, rememberPrivate] = useStickyCheck('calendar.event.private', false);
   const [form, setForm] = useState({
     title: value.title ?? '',
     description: value.description ?? '',
@@ -678,7 +681,8 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
     startsAt: isoLocal(new Date(value.startsAt ?? Date.now())),
     endsAt: isoLocal(new Date(value.endsAt ?? Date.now() + 3600_000)),
     allDay: !!value.allDay,
-    isPrivate: !!value.isPrivate,
+    // у новой встречи — привычный выбор человека; у существующей — как сохранено
+    isPrivate: value.id ? !!value.isPrivate : privateHabit,
     scope: (value.scope ?? 'personal') as 'personal' | 'company',
     participantIds: (value.participants ?? []).filter((p) => !p.isOrganizer).map((p) => String(p.userId)),
     // у новой встречи напоминания стоят сразу — за час, за 15 и за 5 минут;
@@ -841,7 +845,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
         </label>
         <label className="notify-row" title="Другие увидят только занятое время, без названия">
           <input type="checkbox" checked={form.isPrivate} disabled={!canEdit}
-                 onChange={(e) => setForm({ ...form, isPrivate: e.target.checked })} /> Приватное
+                 onChange={(e) => { setForm({ ...form, isPrivate: e.target.checked }); if (!value.id) rememberPrivate(e.target.checked); }} /> Приватное
         </label>
         <label className="notify-row" title="Событие компании видят все сотрудники">
           <input type="checkbox" checked={form.scope === 'company'} disabled={!canEdit}

@@ -25,6 +25,7 @@ import { useAuth } from '../state/auth';
 import { getSocket } from '../lib/socket';
 import { warmPalette } from '../lib/emoji-palette';
 import { requestCall } from '../lib/notifications';
+import { useStickyCheck } from '../lib/sticky-checks';
 
 /**
  * Цвет имени автора.
@@ -176,6 +177,10 @@ export function TaskChat({
   const [pending, setPending] = useState<{ file: File; url: string }[]>([]);
   /** Записанное голосовое: его сначала слушают, а потом отправляют или стирают. */
   const [note, setNote] = useState<{ blob: Blob; url: string } | null>(null);
+  // Запись остановили — блок с решением обязан оказаться перед глазами, а не под краем экрана.
+  useEffect(() => {
+    if (note) requestAnimationFrame(() => noteRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  }, [note]);
   const [noteBusy, setNoteBusy] = useState(false);
   /** Кто докуда дочитал: из этого собирается строка «Просмотрено» под своим сообщением. */
   const [readers, setReaders] = useState<{ userId: string; name: string; lastReadId: string }[]>([]);
@@ -194,7 +199,8 @@ export function TaskChat({
   const [threadBody, setThreadBody] = useState('');
   /** Выделенный кусок, на который отвечают: уедет цитатой вместе с ответом. */
   const [threadQuote, setThreadQuote] = useState<{ author: string; excerpt: string } | null>(null);
-  const [alsoInChannel, setAlsoInChannel] = useState(false);
+  // последний выбор человека — его значение по умолчанию (sticky-checks)
+  const [alsoInChannel, setAlsoInChannel] = useStickyCheck('taskChat.thread.alsoInChannel', false);
   /** Показывать ли список закреплённых: обычно он свёрнут в одну строку. */
   const [pinsOpen, setPinsOpen] = useState(false);
   /** Панели шапки: участники, история, выбор способа звонка. Открыта всегда одна. */
@@ -251,6 +257,8 @@ export function TaskChat({
   const feedRef = useRef<HTMLDivElement | null>(null);
   /** Поле ввода: к нему прокручиваем, когда прокручивается вся колонка целиком. */
   const composeRef = useRef<HTMLDivElement | null>(null);
+  /** Блок «что сделать с записью» — показываем его целиком, как только он появился. */
+  const noteRef = useRef<HTMLDivElement | null>(null);
   /**
    * Человек читает старое, а не хвост.
    *
@@ -571,7 +579,7 @@ export function TaskChat({
       const t = await api.taskThread(taskId, rootId);
       setThread(t);
       threadRef.current = { rootId: t.rootId };
-      setThreadBody(''); setAlsoInChannel(false);
+      setThreadBody('');
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть ветку'); }
   };
 
@@ -1626,10 +1634,13 @@ export function TaskChat({
       {/* Записанное — сначала послушать. Отправлять вслепую то, что человек только что
           наговорил, значит слать в задачу кашель и «эээ» без возможности передумать. */}
       {note && (
-        <div className="voice-note">
-          <span className="voice-note-label"><Icon name="mic" size={14} /> Голосовое записано</span>
-          <audio className="voice-note-player" src={note.url} controls preload="metadata" />
-          {/* Кнопки одной группой: перенесутся на новую строку вместе, а не по одной. */}
+        <div className="voice-note" ref={noteRef} role="group" aria-label="Голосовое записано: что с ним сделать">
+          {/*
+            Решение — первой строкой, плеер — под ним (просьба заказчика). Раньше кнопки
+            стояли ПОСЛЕ плеера и в узкой карточке переносились вниз, к самому краю:
+            человек останавливал запись и не понимал, что дальше.
+          */}
+          <span className="voice-note-label"><Icon name="mic" size={14} /> Голосовое записано — что с ним сделать?</span>
           <span className="voice-note-actions">
             <button className="btn btn-primary btn-sm" onClick={() => { void sendNote(); }} disabled={noteBusy}>
               {noteBusy ? 'Отправляю…' : 'Отправить'}
@@ -1639,6 +1650,7 @@ export function TaskChat({
             </button>
             <button className="btn btn-ghost btn-sm" onClick={dropNote} disabled={noteBusy}>Удалить</button>
           </span>
+          <audio className="voice-note-player" src={note.url} controls preload="metadata" />
         </div>
       )}
 

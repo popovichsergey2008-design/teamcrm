@@ -64,6 +64,7 @@ import { OfflineBar } from './components/OfflineBar';
 import { useConsoleAlerts } from './hooks/useConsoleAlerts';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { ConsoleTopBar } from './components/console/ConsoleTopBar';
+import { useSeedStickyChecks } from './lib/sticky-checks';
 
 /**
  * Обёртка раздела, который остаётся жить после ухода с него.
@@ -397,6 +398,8 @@ export function App() {
     } catch { /* недоступность медиа покажет само окно звонка */ }
   };
 
+  // запомненные галочки — сразу при входе, до первой открытой формы
+  useSeedStickyChecks();
   const counters = useNavCounters(crmAlive, route.section);
   const { incoming, accept, decline } = useIncomingCalls(crmAlive);
   // гость ждёт за дверью, а в комнате никого — зов с кнопкой «Войти» в любом разделе

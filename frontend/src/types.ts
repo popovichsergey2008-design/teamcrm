@@ -29,6 +29,8 @@ export interface User {
     chatSections?: { order?: string[]; collapsed?: string[] };
     /** AnthillBot: собирать ли память самому (ТЗ-6, разд. 21). */
     anthill?: { memoryAuto?: boolean };
+    /** Запомненные галочки ввода: последний выбор человека становится его значением по умолчанию. */
+    checks?: Record<string, boolean>;
   };
 }
 

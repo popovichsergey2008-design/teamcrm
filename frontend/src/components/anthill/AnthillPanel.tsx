@@ -15,6 +15,7 @@ import { AnthillAdmin } from './AnthillAdmin';
 import { useAuth } from '../../state/auth';
 import { getSocket } from '../../lib/socket';
 import { showNotification, showToast } from '../../lib/notifications';
+import { useStickyCheck } from '../../lib/sticky-checks';
 
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
   task: 'задача', project: 'проект', chat: 'чат', meeting: 'мит',
@@ -74,7 +75,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
    * Отдельным переключателем, а не догадкой по вопросу: разбор идёт минуту и стоит
    * заметно дороже обычного ответа — решать, нужен ли он, должен человек.
    */
-  const [deep, setDeep] = useState(false);
+  const [deep, setDeep] = useStickyCheck('anthill.deep', false);
   /** Быстрые ответы звучат от имени компании — их заводит руководство (разд. 38). */
   const { user } = useAuth();
   const canManage = user?.role === 'owner' || user?.role === 'manager';

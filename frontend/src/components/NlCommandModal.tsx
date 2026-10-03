@@ -12,6 +12,7 @@ import { overlayProps } from '../lib/overlay';
 import { navigate } from '../lib/router';
 import { newChangeId } from '../lib/offline-queue';
 import { plural } from '../lib/chat-text';
+import { stickyCheck, useStickyCheck } from '../lib/sticky-checks';
 
 /** Что создали в этом заходе — для итоговой страницы: куда ушло и как открыть. */
 interface CreatedTask {
@@ -183,6 +184,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
       intent: 'create_task',
       task: {
         ...draft.task,
+        // не трогал галочку — берём его привычное значение, а не заводское
+        requiresApproval: draft.task.requiresApproval ?? stickyCheck('task.requiresApproval', true),
         // пустые строки в шагах — след правки, а не шаг: до задачи они не доходят
         checklist: (draft.task.checklist ?? []).map((x: string) => x.trim()).filter(Boolean),
         // Теги и подтверждение постановщика: без них сервер задачу не создаст.
@@ -599,6 +602,7 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
   onDrop: () => void;
   onApply: () => void;
 }) {
+  const [approvalHabit, setApprovalHabit] = useStickyCheck('task.requiresApproval', true);
   const ctx = draft?.context ?? { projects: [], users: [], clients: [] };
   const files: File[] = draft?.files ?? [];
   /** Одноимённые не копим: файл выбирают дважды чаще, чем прикладывают два одинаковых. */
@@ -708,8 +712,8 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
         />
 
         <label className="notify-row" title="Исполнитель сдаст работу, а завершите её вы">
-          <input type="checkbox" checked={draft.task.requiresApproval !== false}
-                 onChange={(e) => onPatchTask({ requiresApproval: e.target.checked })} />
+          <input type="checkbox" checked={draft.task.requiresApproval ?? approvalHabit}
+                 onChange={(e) => { onPatchTask({ requiresApproval: e.target.checked }); setApprovalHabit(e.target.checked); }} />
           Не завершать без согласования с постановщиком
         </label>
 

@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { api, ApiError, MergeSide } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { useStickyCheck } from '../lib/sticky-checks';
 
 type Candidate = Awaited<ReturnType<typeof api.taskMergeCandidates>>['items'][number];
 type Preview = Awaited<ReturnType<typeof api.taskMergePreview>>;
@@ -36,8 +37,8 @@ export function TaskMergeModal({ taskId, taskTitle, onClose, onMerged }: {
   const [preview, setPreview] = useState<Preview | null>(null);
   /** Какая из двух остаётся основной. По умолчанию — та, из которой пришли. */
   const [keepCurrent, setKeepCurrent] = useState(true);
-  const [useSuggestion, setUseSuggestion] = useState(false);
-  const [dedupe, setDedupe] = useState(true);
+  const [useSuggestion, setUseSuggestion] = useStickyCheck('merge.useSuggestion', false);
+  const [dedupe, setDedupe] = useStickyCheck('merge.dedupe', true);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
 
