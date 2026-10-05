@@ -540,3 +540,73 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 
 /* «Подобрать» у подписи поля: без своего отступа, подсказка — строкой рядом. */
 .ui-field-action .suggest-assignee { margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ── доска (ТЗ-15): колонки — подложки, карточки — белые листы поверх ──────── */
+.board-v2 .board-header { align-items: center; margin-bottom: 14px; }
+.board-v2 .board-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--fs-md); }
+.board-v2 .board-switch-btn { font-size: 20px; font-weight: 650; letter-spacing: -.01em; margin-right: 6px; }
+.board-v2 .board-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; }
+
+.kv2-seg {
+  display: inline-flex; padding: 2px; gap: 2px; border-radius: var(--radius-sm);
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+}
+.kv2-seg-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+  border: 0; border-radius: 5px; background: transparent; color: var(--text-dim);
+  font: inherit; font-size: var(--fs-sm); font-weight: 500; cursor: pointer;
+}
+.kv2-seg-btn:hover { color: var(--text); }
+.kv2-seg-btn[aria-pressed="true"] { background: var(--bg-elev); color: var(--text); box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+.kv2-seg-btn:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+
+.board-v2 .board-columns { gap: 12px; }
+.board-v2 .column {
+  width: 292px; background: var(--bg-elev-2); border: 1px solid transparent; border-radius: var(--radius-lg);
+}
+.board-v2 .column-over { border-color: var(--accent-line); background: var(--accent-soft); }
+.board-v2 .column-dnd-over { border-color: var(--accent-2); box-shadow: none; }
+.board-v2 .column-head { border-bottom: 0; padding: 10px 10px 4px 14px; font-size: var(--fs-sm); }
+.board-v2 .col-head-right { gap: 2px; }
+.kv2-count {
+  min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; text-align: center;
+  background: var(--bg-elev); color: var(--text-dim); font-size: var(--fs-xs); font-weight: 600; line-height: 20px;
+  border: 1px solid var(--border);
+}
+.kv2-col-menu { opacity: .6; }
+.board-v2 .column:hover .kv2-col-menu, .kv2-col-menu:focus-visible, .kv2-col-menu[data-popup-open] { opacity: 1; }
+.board-v2 .column-tasks { padding: 6px 8px 8px; gap: 6px; }
+.board-v2 .add-task-btn { margin: 0 8px 8px; align-self: stretch; justify-content: flex-start; color: var(--text-mut); }
+.board-v2 .add-task-btn:hover { color: var(--text); background: var(--hover); }
+
+.board-v2 .task-card {
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; box-shadow: 0 1px 2px rgba(16,24,40,.05);
+  transition: border-color .12s, box-shadow .12s, transform .05s;
+}
+.board-v2 .task-card:hover { border-color: var(--border-2); box-shadow: 0 2px 8px rgba(16,24,40,.08); }
+.board-v2 .task-card-new { box-shadow: inset 3px 0 0 var(--fill-danger), 0 1px 2px rgba(16,24,40,.05); }
+.board-v2 .task-tracking { border-color: var(--ok-line); box-shadow: inset 3px 0 0 var(--ok), 0 1px 2px rgba(16,24,40,.05); }
+.board-v2 .task-title { font-size: var(--fs-md); font-weight: 500; line-height: 1.4; }
+.board-v2 .task-meta { gap: 6px 8px; margin-top: 10px; }
+.board-v2 .task-card-num { color: var(--text-mut); }
+.board-v2 .assignee-chip { background: transparent; border: 0; padding: 0; gap: 6px; color: var(--text-dim); }
+.board-v2 .manager-chip { padding: 0; }
+.board-v2 .card-labels { margin-bottom: 8px; }
+.board-v2 .card-label { width: 24px; height: 4px; }
+.kv2-stat { display: inline-flex; align-items: center; gap: 3px; color: var(--text-mut); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.kv2-stat.is-done { color: var(--ok); }
+.board-v2 .task-card-move-btn { border-radius: 6px; background: var(--bg-elev); }
+
+.board-v2 .add-column {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: 200px; height: 42px; padding: 0 12px; border-radius: var(--radius-lg);
+  border: 1px dashed var(--border-2); color: var(--text-dim); font: inherit; font-size: var(--fs-sm); font-weight: 500;
+}
+.board-v2 .add-column:hover { background: var(--hover); color: var(--text); border-color: var(--border-2); }
+
+@media (max-width: 720px) {
+  .board-v2 .board-switch-btn { font-size: 18px; }
+  .board-v2 .column { width: 86vw; }
+  .kv2-col-menu { opacity: 1; }
+}

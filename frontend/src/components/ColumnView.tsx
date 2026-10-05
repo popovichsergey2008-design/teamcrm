@@ -1,4 +1,4 @@
-import { DragEvent, useEffect, useRef, useState } from 'react';
+import { DragEvent, useState } from 'react';
 import { Icon } from './Icon';
 import { BottomSheet, SheetAction } from './BottomSheet';
 import { useIsPhone } from '../hooks/useMediaQuery';
@@ -6,6 +6,10 @@ import type { BoardColumn, Task, User } from '../types';
 import { MONETIZATION_ENABLED } from '../config';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import { COL_DND, TASK_DND } from '../lib/board-dnd';
+import { Avatar } from './ui/avatar';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
 
 interface Props {
   column: BoardColumn;
@@ -116,7 +120,7 @@ export function ColumnView({
       >
         {renaming ? (
           <input
-            className="input col-rename"
+            className="ui-input ui-input-sm col-rename"
             autoFocus
             value={colName}
             onChange={(e) => setColName(e.target.value)}
@@ -136,25 +140,30 @@ export function ColumnView({
           </span>
         )}
         <span className="col-head-right">
+          <span className="kv2-count">{column.tasks.length}</span>
+          {/*
+            Действия с колонкой — одним меню «⋯». Три мелкие кнопки в шапке каждой
+            колонки рябили по всей доске, а «удалить» стояло в пикселе от «вправо».
+          */}
           {canManage && !renaming && (
-            <span className="col-actions">
-              {/* Стрелки были текстовыми значками «◀ ▶»: в светлой теме они выглядели
-                  чужеродными чёрными треугольниками, а выключенные — почти невидимыми.
-                  Теперь это обычные иконки набора, как везде. */}
-              <button className="col-btn" title="Переместить колонку влево" aria-label="Переместить колонку влево" disabled={isFirst} onClick={() => onMoveColumn?.(column.id, 'left')}>
-                <Icon name="chevron-left" size={14} />
-              </button>
-              <button className="col-btn" title="Переместить колонку вправо" aria-label="Переместить колонку вправо" disabled={isLast} onClick={() => onMoveColumn?.(column.id, 'right')}>
-                <Icon name="chevron-right" size={14} />
-              </button>
-              {canDelete && (
-                <button className="col-btn col-del" title="Удалить колонку" aria-label="Удалить колонку" onClick={() => onDeleteColumn?.(column.id, column.name)}>
-                  <Icon name="close" size={13} />
-                </button>
+            <DropdownMenu
+              trigger={(
+                <Button variant="ghost" size="icon-sm" className="kv2-col-menu" aria-label={`Действия с колонкой «${column.name}»`} title="Действия с колонкой">
+                  <Icon name="more" size={15} />
+                </Button>
               )}
-            </span>
+            >
+              <MenuItem onSelect={() => setRenaming(true)} icon={<Icon name="edit" size={15} />}>Переименовать</MenuItem>
+              <MenuItem onSelect={() => onMoveColumn?.(column.id, 'left')} disabled={isFirst} icon={<Icon name="arrow-left" size={15} />}>Сдвинуть влево</MenuItem>
+              <MenuItem onSelect={() => onMoveColumn?.(column.id, 'right')} disabled={isLast} icon={<Icon name="arrow-right" size={15} />}>Сдвинуть вправо</MenuItem>
+              {canDelete && (
+                <>
+                  <MenuSeparator />
+                  <MenuItem destructive onSelect={() => onDeleteColumn?.(column.id, column.name)} icon={<Icon name="trash" size={15} />}>Удалить колонку</MenuItem>
+                </>
+              )}
+            </DropdownMenu>
           )}
-          <span className="badge">{column.tasks.length}</span>
         </span>
       </div>
 
@@ -176,9 +185,9 @@ export function ColumnView({
       </div>
 
       {canEdit && (
-        <button className="btn btn-ghost btn-sm add-task-btn" onClick={() => onRequestAddTask(column.id)}>
-          + Задача
-        </button>
+        <Button variant="ghost" size="sm" className="add-task-btn" onClick={() => onRequestAddTask(column.id)}>
+          <Icon name="plus" size={15} /> Задача
+        </Button>
       )}
     </div>
   );
@@ -218,13 +227,6 @@ function TaskCard({
   */
   const [moveOpen, setMoveOpen] = useState(false);
   const phone = useIsPhone();
-  const moveRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!moveOpen) return;
-    const onDoc = (e: MouseEvent) => { if (moveRef.current && !moveRef.current.contains(e.target as Node)) setMoveOpen(false); };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [moveOpen]);
   return (
     <div
       className={`task-card ${timerActive ? 'task-tracking' : ''}${task.unread ? ' task-card-new' : ''}`}
@@ -240,17 +242,31 @@ function TaskCard({
       onDragOver={(e) => canEdit && e.preventDefault()}
     >
       {canEdit && !!moveTargets?.length && (
-        <div className="task-card-move" ref={moveRef} onClick={(e) => e.stopPropagation()}>
-          <button
-            className="task-card-move-btn"
-            title="Переместить в другую колонку"
-            aria-label="Переместить в другую колонку"
-            aria-haspopup="menu"
-            aria-expanded={moveOpen}
-            onClick={() => setMoveOpen((v) => !v)}
-          >
-            <Icon name="arrow-right" size={13} />
-          </button>
+        <div className="task-card-move" onClick={(e) => e.stopPropagation()}>
+          {phone ? (
+            <button
+              className="task-card-move-btn"
+              title="Переместить в другую колонку"
+              aria-label="Переместить в другую колонку"
+              aria-haspopup="menu"
+              aria-expanded={moveOpen}
+              onClick={() => setMoveOpen((v) => !v)}
+            >
+              <Icon name="arrow-right" size={13} />
+            </button>
+          ) : (
+            <DropdownMenu
+              trigger={(
+                <button className="task-card-move-btn" title="Переместить в другую колонку" aria-label="Переместить в другую колонку">
+                  <Icon name="arrow-right" size={13} />
+                </button>
+              )}
+            >
+              {moveTargets.map((c) => (
+                <MenuItem key={c.id} onSelect={() => onMoveTo?.(c.id)} icon={<Icon name="arrow-right" size={15} />}>{c.name}</MenuItem>
+              ))}
+            </DropdownMenu>
+          )}
           {/* На телефоне — нижний лист с крупными строками; на компьютере — выпадашка у кнопки. */}
           {moveOpen && phone && (
             <BottomSheet title={`Переместить: ${task.title}`} onClose={() => setMoveOpen(false)}>
@@ -258,15 +274,6 @@ function TaskCard({
                 <SheetAction key={c.id} icon={<Icon name="arrow-right" size={18} />} label={c.name} onClick={() => { setMoveOpen(false); onMoveTo?.(c.id); }} />
               ))}
             </BottomSheet>
-          )}
-          {moveOpen && !phone && (
-            <div className="menu-pop task-card-move-pop" role="menu">
-              {moveTargets.map((c) => (
-                <button key={c.id} className="menu-item" role="menuitem" onClick={() => { setMoveOpen(false); onMoveTo?.(c.id); }}>
-                  {c.name}
-                </button>
-              ))}
-            </div>
           )}
         </div>
       )}
@@ -294,7 +301,7 @@ function TaskCard({
         <span className="task-card-num" title="Номер задачи">#{task.id}</span>
         {assigneeName && (
           <span className="assignee-chip" title={`Исполнитель: ${assigneeName}`}>
-            <span className="avatar-xs avatar-ph">{assigneeName[0]?.toUpperCase()}</span>
+            <Avatar name={assigneeName} size={18} />
             {assigneeName}
           </span>
         )}
@@ -307,35 +314,43 @@ function TaskCard({
             <Icon name="send" size={11} /> от {managerName}
           </span>
         )}
-        {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={12} /> ИИ-агент</span>}
+        {task.agent_assigned && <Badge tone="info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={11} /> ИИ-агент</Badge>}
         {/* Сдано и ждёт постановщика: по доске должно быть видно, что работа
             сделана, но задача ещё не закрыта — иначе «Готово» врёт. */}
         {task.approval_state === 'pending' && (
-          <span className="badge badge-warn" title="Работа сдана, ждёт решения постановщика">На согласовании</span>
+          <Badge tone="warn" title="Работа сдана, ждёт решения постановщика">На согласовании</Badge>
         )}
         {/* Объединённая задача остаётся в списках, и без пометки её открывают как живую */}
         {task.merged_into_id && (
-          <span className="badge badge-info" title={`Объединена с задачей #${task.merged_into_id}`}>
-            <Icon name="refresh" size={12} /> объединена
-          </span>
+          <Badge tone="info" title={`Объединена с задачей #${task.merged_into_id}`}>
+            <Icon name="refresh" size={11} /> объединена
+          </Badge>
         )}
-        {task.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
-        {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
-        {due && <span className={due.cls} title={due.title}>{due.text}</span>}
+        {task.is_blocked && <Badge tone="danger"><Icon name="alert" size={11} /> BLOCKED</Badge>}
+        {prio && (
+          <Badge tone={prio.tone} title="Приоритет">
+            <Icon name={prio.tone === 'danger' ? 'zap' : prio.tone === 'warn' ? 'arrow-up' : 'arrow-down'} size={11} />{prio.label}
+          </Badge>
+        )}
+        {due && <Badge tone={due.tone} title={due.title}><Icon name="clock" size={11} />{due.label}</Badge>}
         {/* Повтор — первым: он объясняет, ПОЧЕМУ задача снова на доске. Без значка
             очередная копия выглядит дублем, и её удаляют «как лишнюю». */}
         {task.recurrence_id && (
-          <span className="badge badge-repeat" title="Регулярная задача — повторяется по расписанию">
-            <Icon name="refresh" size={12} /> повтор
+          <Badge tone="neutral" title="Регулярная задача — повторяется по расписанию">
+            <Icon name="refresh" size={11} /> повтор
+          </Badge>
+        )}
+        {!!task.commentsCount && <span className="kv2-stat" title="Комментарии"><Icon name="chat" size={13} /> {task.commentsCount}</span>}
+        {!!task.attachmentsCount && <span className="kv2-stat" title="Вложения"><Icon name="paperclip" size={13} /> {task.attachmentsCount}</span>}
+        {!!task.checklistTotal && (
+          <span className={`kv2-stat${task.checklistDone === task.checklistTotal ? ' is-done' : ''}`} title="Чек-лист">
+            <Icon name="check-circle" size={13} /> {task.checklistDone}/{task.checklistTotal}
           </span>
         )}
-        {!!task.commentsCount && <span className="badge" title="комментарии"><Icon name="chat" size={12} /> {task.commentsCount}</span>}
-        {!!task.attachmentsCount && <span className="badge" title="вложения"><Icon name="paperclip" size={12} /> {task.attachmentsCount}</span>}
-        {!!task.checklistTotal && <span className="badge" title="чеклист"><Icon name="check" size={12} /> {task.checklistDone}/{task.checklistTotal}</span>}
         {MONETIZATION_ENABLED && cost !== null && (
-          <span className="badge" title="Себестоимость в реальном времени">
+          <Badge tone="neutral" title="Себестоимость в реальном времени">
             ₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}
-          </span>
+          </Badge>
         )}
       </div>
     </div>
