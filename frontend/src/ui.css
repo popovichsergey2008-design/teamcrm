@@ -537,3 +537,6 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 @media (max-width: 720px) {
   .nl-v2 { width: 100vw; padding: 14px; }
 }
+
+/* «Подобрать» у подписи поля: без своего отступа, подсказка — строкой рядом. */
+.ui-field-action .suggest-assignee { margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
