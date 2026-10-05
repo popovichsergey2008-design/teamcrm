@@ -670,3 +670,53 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
   .ui-btn-icon { width: 40px; height: 40px; }
   input.ui-input, .ui-input-group input, .ui-textarea { font-size: 16px; }
 }
+
+/* ── календарь (ТЗ-15): сетка тоньше, события — мягкие плитки с полосой слева ── */
+.cal-v2 .cal-head { margin-bottom: 4px; }
+.cal-v2 .cal-title { font-size: 20px; font-weight: 650; letter-spacing: -.01em; margin-left: 8px; }
+.cal-v2 .cal-actions { gap: 8px; }
+.cal-v2 .cal-grid { border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+.cal-v2 .cal-dayhead { flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; }
+.cal-v2 .cal-dayname { font-size: var(--fs-xs); font-weight: 500; }
+.cal-v2 .cal-daynum { font-size: var(--fs-lg); font-weight: 600; line-height: 1.2; min-width: 30px; text-align: center; }
+.cal-v2 .cal-dayhead.today .cal-daynum { padding: 2px 8px; }
+.cal-v2 .cal-hour span { font-size: var(--fs-xs); }
+.cal-v2 .cal-slot { border-top-color: var(--border); }
+.cal-v2 .cal-slot:hover { background: var(--hover); }
+
+/* Своё событие — мягкая плитка; событие компании — плотная: его видят все, и оно важнее. */
+.cal-v2 .cal-event {
+  background: var(--accent-soft); color: var(--accent); border: 0; border-left: 3px solid var(--accent-2);
+  border-radius: 6px; padding: 4px 8px; font-size: var(--fs-xs); box-shadow: 0 1px 2px rgba(16,24,40,.06);
+}
+.cal-v2 .cal-event:hover { filter: brightness(.97); }
+.cal-v2 .cal-event.company { background: var(--accent-2); color: var(--on-accent); border-left-color: var(--fill-info); }
+.cal-v2 .cal-event.invited { border-left-style: dashed; }
+.cal-v2 .cal-event-title { font-weight: 600; }
+.cal-v2 .cal-chip { border-radius: 6px; padding: 3px 7px; border: 0; border-left: 3px solid var(--accent-2); }
+.cal-v2 .cal-chip.company { border-left-color: var(--fill-info); }
+.cal-v2 .cal-chip-task { border-left-color: var(--border-2); }
+.cal-v2 .cal-month { border-radius: var(--radius-lg); overflow: hidden; }
+.cal-v2 .cal-month-num { font-size: var(--fs-sm); }
+.cal-v2 .cal-list-row { border-radius: var(--radius); background: var(--bg-elev); padding: 8px 12px; }
+.cal-v2 .cal-list-date { font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim); }
+
+/* Окно события — та же сетка полей, что в карточке задачи. */
+.ev-v2 { width: 520px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.ev-checks { display: flex; gap: 8px 18px; flex-wrap: wrap; }
+.ev-v2 .cal-reminder-own { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ev-own-num { width: 90px; }
+.ev-v2 .cal-call { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev-2); }
+.ev-v2 .cal-call-access { display: flex; flex-direction: column; gap: 10px; }
+.ev-v2 .cal-dialog-actions {
+  position: sticky; bottom: -20px; margin: 4px -20px -20px; padding: 12px 20px;
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;
+  background: var(--bg-elev); border-top: 1px solid var(--border);
+}
+.ev-delete { margin-right: auto; color: var(--danger); }
+.ev-delete:hover { background: var(--danger-soft); color: var(--danger); }
+@media (max-width: 720px) {
+  .cal-v2 .cal-title { font-size: 17px; }
+  .ev-v2 { width: 100vw; padding: 14px; }
+  .ev-v2 .cal-dialog-actions { bottom: -14px; margin: 4px -14px -14px; padding: 10px 14px; }
+}

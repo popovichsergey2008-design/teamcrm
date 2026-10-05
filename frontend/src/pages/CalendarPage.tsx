@@ -20,6 +20,13 @@ import { overlayProps } from '../lib/overlay';
 import { toastSaved } from '../lib/notifications';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { MeetingGuests } from '../components/MeetingGuests';
+import { Button } from '../components/ui/button';
+import { Checkbox } from '../components/ui/checkbox';
+import { confirmAction } from '../components/ui/dialog';
+import { Field, Textarea } from '../components/ui/field';
+import { Input } from '../components/ui/input';
+import { Select } from '../components/ui/select';
+import { Toggle } from '../components/ui/toggle';
 
 type View = 'day' | 'week' | 'month' | 'list';
 
@@ -322,7 +329,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const allDayOf = (day: Date) => allDay.filter((e) => splitByDay(e, [day]).length > 0);
 
   return (
-    <div className="page calendar-page">
+    <div className="page calendar-page cal-v2">
       <div className="cal-head">
         <div className="cal-nav">
           <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setAnchor(new Date())}>Сегодня</button>
@@ -331,16 +338,17 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           <h2 className="cal-title">{rangeTitle(view, days)}</h2>
         </div>
         <div className="cal-actions">
-          <label className="cal-tasks-toggle" title="Показывать задачи со сроком отдельным слоем">
-            <input type="checkbox" checked={showTasks} onChange={toggleTasks} /> Задачи
-          </label>
-          <div className="cal-views">
+          <Toggle pressed={showTasks} onPressedChange={() => toggleTasks()} title="Показывать задачи со сроком отдельным слоем">
+            <Icon name="check-circle" size={14} /> Задачи
+          </Toggle>
+          {/* Вид — сегментами, как на доске: один выбор из четырёх, а не четыре кнопки. */}
+          <span className="kv2-seg" role="group" aria-label="Вид календаря">
             {(Object.keys(VIEW_LABEL) as View[]).map((v) => (
-              <button key={v} className={`cal-view ${view === v ? 'active' : ''}`} onClick={() => switchView(v)}>
+              <button key={v} className="kv2-seg-btn" aria-pressed={view === v} onClick={() => switchView(v)}>
                 {VIEW_LABEL[v]}
               </button>
             ))}
-          </div>
+          </span>
           <button
             className="ui-btn ui-btn-ghost ui-btn-sm"
             onClick={() => setWorkOpen(true)}
@@ -374,8 +382,8 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
         </div>
       </div>
 
-      {err && <div className="error-text">{err}</div>}
-      {(voice.error || voiceErr) && <div className="error-text">{voice.error || voiceErr}</div>}
+      {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
+      {(voice.error || voiceErr) && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {voice.error || voiceErr}</div>}
       {heard && (
         <div className="cal-heard">
           <span className="dim">Услышано:</span> «{heard.text}»
@@ -811,7 +819,12 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
   };
 
   const remove = async () => {
-    if (!value.id || !window.confirm(`Удалить событие «${value.title}»?`)) return;
+    if (!value.id) return;
+    if (!(await confirmAction({
+      title: `Удалить событие «${value.title}»?`,
+      description: 'Участникам придёт письмо об отмене, а у гостей перестанет работать ссылка.',
+      danger: true,
+    }))) return;
     try {
       await api.calendarDelete(String(value.id));
       onSaved();
@@ -835,10 +848,10 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
     const done = () => { onSaved(); toastSaved('Встреча создана', created.title); };
     return (
       <div className="drawer-overlay" {...overlayProps(done)}>
-        <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-          <div className="drawer-head">
-            <h3><Icon name="check" size={18} /> Встреча создана</h3>
-            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={done} title="Закрыть"><Icon name="close" /></button>
+        <aside className="drawer ev-v2" onClick={(e) => e.stopPropagation()}>
+          <div className="nl-v2-head">
+            <h2 className="ui-modal-title"><Icon name="check-circle" size={20} /> Встреча создана</h2>
+            <Button variant="ghost" size="icon-sm" onClick={done} aria-label="Закрыть"><Icon name="close" size={16} /></Button>
           </div>
           <div className="meeting-created">
             <b>{created.title}</b>
@@ -868,10 +881,10 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
 
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
-      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head">
-          <h3><Icon name="calendar" size={18} /> {isNew ? 'Новое событие' : value.title}</h3>
-          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+      <aside className="drawer ev-v2" onClick={(e) => e.stopPropagation()}>
+        <div className="nl-v2-head">
+          <h2 className="ui-modal-title"><Icon name="calendar" size={20} /> {isNew ? 'Новое событие' : value.title}</h2>
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={16} /></Button>
         </div>
 
         {!isNew && organizerOf(value as CalEvent) && (
@@ -880,20 +893,18 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
           </div>
         )}
         {!canEdit && (
-          <div className="dim" style={{ fontSize: 12 }}>
-            Событие создал другой человек — вы можете только ответить на приглашение.
+          <div className="tv2-callout tv2-callout-info">
+            <Icon name="info" size={15} /> Событие создал другой человек — вы можете только ответить на приглашение.
           </div>
         )}
 
-        <div className="field">
-          <label>Название</label>
-          <input className="input" value={form.title} disabled={!canEdit}
+        <Field label="Название">
+          <Input value={form.title} disabled={!canEdit} placeholder="Например: планёрка по запуску"
                  onChange={(e) => setForm({ ...form, title: e.target.value })} />
-        </div>
+        </Field>
 
-        <div className="drawer-grid2">
-          <div className="field">
-            <label>Начало</label>
+        <div className="tv2-grid2">
+          <Field label="Начало">
             {/* Наш календарь вместо datetime-local: тот в тёмной теме выглядит чужеродно
                 и в каждом браузере по-своему. У «весь день» время не спрашиваем вовсе. */}
             <DatePicker
@@ -903,9 +914,8 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
               placeholder="когда начинаем"
               onChange={(v) => setForm((f) => ({ ...f, startsAt: v, endsAt: shiftEnd(v, f.startsAt, f.endsAt) }))}
             />
-          </div>
-          <div className="field">
-            <label>Конец</label>
+          </Field>
+          <Field label="Конец">
             <DatePicker
               value={form.endsAt}
               withTime={!form.allDay}
@@ -913,35 +923,31 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
               placeholder="когда заканчиваем"
               onChange={(v) => setForm({ ...form, endsAt: v })}
             />
-          </div>
+          </Field>
         </div>
 
-        <label className="notify-row">
-          <input type="checkbox" checked={form.allDay} disabled={!canEdit}
-                 onChange={(e) => setForm({ ...form, allDay: e.target.checked })} /> Весь день
-        </label>
-        <label className="notify-row" title="Другие увидят только занятое время, без названия">
-          <input type="checkbox" checked={form.isPrivate} disabled={!canEdit}
-                 onChange={(e) => { setForm({ ...form, isPrivate: e.target.checked }); if (!value.id) rememberPrivate(e.target.checked); }} /> Приватное
-        </label>
-        <label className="notify-row" title="Событие компании видят все сотрудники">
-          <input type="checkbox" checked={form.scope === 'company'} disabled={!canEdit}
-                 onChange={(e) => setForm({ ...form, scope: e.target.checked ? 'company' : 'personal' })} /> Событие компании
-        </label>
+        <div className="ev-checks">
+          <Checkbox checked={form.allDay} disabled={!canEdit}
+                    onCheckedChange={(on) => setForm({ ...form, allDay: on })} label="Весь день" />
+          <Checkbox checked={form.isPrivate} disabled={!canEdit}
+                    onCheckedChange={(on) => { setForm({ ...form, isPrivate: on }); if (!value.id) rememberPrivate(on); }}
+                    label={<span title="Другие увидят только занятое время, без названия">Приватное</span>} />
+          <Checkbox checked={form.scope === 'company'} disabled={!canEdit}
+                    onCheckedChange={(on) => setForm({ ...form, scope: on ? 'company' : 'personal' })}
+                    label={<span title="Событие компании видят все сотрудники">Событие компании</span>} />
+        </div>
 
-        <div className="field">
-          <label>Место или ссылка</label>
-          <input className="input" value={form.location} disabled={!canEdit} placeholder="Переговорная, адрес или ссылка"
+        <Field label="Место или ссылка">
+          <Input value={form.location} disabled={!canEdit} placeholder="Переговорная, адрес или ссылка"
                  onChange={(e) => setForm({ ...form, location: e.target.value })} />
-        </div>
+        </Field>
 
-        <div className="field">
-          <label>Описание и повестка</label>
-          <textarea className="input" rows={3} value={form.description} disabled={!canEdit}
+        <Field label="Описание и повестка">
+          <Textarea rows={3} value={form.description} disabled={!canEdit}
                     onChange={(e) => setForm({ ...form, description: e.target.value })} />
-        </div>
+        </Field>
 
-        <div className="drawer-section-title">Напоминания</div>
+        <h3 className="tv2-section-title">Напоминания</h3>
         <div className="cal-reminders">
           {reminderRows(form.reminders, REMINDER_CHOICES).map((r) => (
             <label key={r.minutes} className={`cal-reminder ${form.reminders.includes(r.minutes) ? 'on' : ''}`}>
@@ -964,21 +970,25 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
         {canEdit && (
           <div className="cal-reminder-own">
             <span className="dim">Своё время:</span>
-            <input
-              className="input"
+            <Input
+              inputSize="sm"
+              className="ev-own-num"
               type="number"
               min={0}
               max={20160}
               placeholder="30"
+              aria-label="Своё время напоминания"
               value={ownValue}
               onChange={(e) => setOwnValue(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOwn(); } }}
             />
-            <select className="input" value={ownUnit} onChange={(e) => setOwnUnit(e.target.value as ReminderUnit)}>
-              <option value="minutes">минут</option>
-              <option value="hours">часов</option>
-              <option value="days">дней</option>
-            </select>
+            <Select
+              ariaLabel="Единица времени"
+              size="sm"
+              value={ownUnit}
+              onValueChange={(v) => setOwnUnit(v as ReminderUnit)}
+              options={[{ value: 'minutes', label: 'минут' }, { value: 'hours', label: 'часов' }, { value: 'days', label: 'дней' }]}
+            />
             <button
               className="ui-btn ui-btn-outline ui-btn-sm"
               type="button"
@@ -989,14 +999,14 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
             </button>
           </div>
         )}
-        <div className="dim" style={{ fontSize: 12 }}>
+        <div className="ui-field-hint">
           Придёт письмом и всплывёт в приложении. Участникам — тоже.
           {form.reminders.length >= MAX_REMINDERS && ' Больше шести напоминаний на встречу не ставим.'}
         </div>
 
         {canEdit && (
           <>
-            <div className="drawer-section-title">Участники</div>
+            <h3 className="tv2-section-title">Участники</h3>
             {form.participantIds.some((id) => busyPeople[id]?.blocking) && (
               <div className="cal-busy-warn">
                 <Icon name="alert" size={14} /> Кто-то из выбранных занят в это время. Если у человека
@@ -1047,10 +1057,11 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
         {!form.allDay && (canEdit || value.meeting) && (
           <div className="cal-call">
             {canEdit && (
-              <label className="check">
-                <input type="checkbox" checked={isCall} onChange={(e) => { setCallTouched(true); setForm((f) => ({ ...f, isCall: e.target.checked })); }} />
-                <span><b>Созвон</b> — у встречи будет постоянная ссылка, комната откроется сама в назначенное время</span>
-              </label>
+              <Checkbox
+                checked={isCall}
+                onCheckedChange={(on) => { setCallTouched(true); setForm((f) => ({ ...f, isCall: on })); }}
+                label={<span><b>Созвон</b> — у встречи будет постоянная ссылка, комната откроется сама в назначенное время</span>}
+              />
             )}
             {isCall && value.meeting && (
               <div className="cal-call-link">
@@ -1070,23 +1081,32 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
                 </button>
                 {showAccess && (
                   <div className="cal-call-access">
-                    <label className="field-inline">
-                      <span className="dim">Кто входит</span>
-                      <select className="input" value={form.accessPolicy} onChange={(e) => setForm((f) => ({ ...f, accessPolicy: e.target.value as AccessPolicy }))}>
-                        {POLICY_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-                      </select>
-                    </label>
-                    <label className="field-inline">
-                      <span className="dim">Ранний вход</span>
-                      <select className="input" value={form.earlyJoinMin} onChange={(e) => setForm((f) => ({ ...f, earlyJoinMin: Number(e.target.value) }))}>
-                        {EARLY_OPTIONS.map((m) => <option key={m} value={m}>{m ? `за ${m} мин` : 'только с начала'}</option>)}
-                      </select>
-                    </label>
-                    <label className="check">
-                      <input type="checkbox" checked={form.guestsAllowed} onChange={(e) => setForm((f) => ({ ...f, guestsAllowed: e.target.checked }))} />
-                      <span>Гости по ссылке — через зал ожидания</span>
-                    </label>
-                    <div className="dim" style={{ fontSize: 12 }}>Соорганизаторов отметьте «соорг.» в списке участников.</div>
+                    <div className="tv2-grid2">
+                      <Field label="Кто входит">
+                        <Select
+                          ariaLabel="Кто входит"
+                          className="tv2-wide"
+                          value={form.accessPolicy}
+                          onValueChange={(v) => setForm((f) => ({ ...f, accessPolicy: v as AccessPolicy }))}
+                          options={POLICY_OPTIONS.map((o) => ({ value: o.key, label: o.label }))}
+                        />
+                      </Field>
+                      <Field label="Ранний вход">
+                        <Select
+                          ariaLabel="Ранний вход"
+                          className="tv2-wide"
+                          value={String(form.earlyJoinMin)}
+                          onValueChange={(v) => setForm((f) => ({ ...f, earlyJoinMin: Number(v) }))}
+                          options={EARLY_OPTIONS.map((m) => ({ value: String(m), label: m ? `за ${m} мин` : 'только с начала' }))}
+                        />
+                      </Field>
+                    </div>
+                    <Checkbox
+                      checked={form.guestsAllowed}
+                      onCheckedChange={(on) => setForm((f) => ({ ...f, guestsAllowed: on }))}
+                      label="Гости по ссылке — через зал ожидания"
+                    />
+                    <div className="ui-field-hint">Соорганизаторов отметьте «соорг.» в списке участников.</div>
                   </div>
                 )}
               </>
@@ -1096,7 +1116,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
 
         {!isNew && value.participants && value.participants.length > 0 && (
           <>
-            <div className="drawer-section-title">Кто идёт</div>
+            <h3 className="tv2-section-title">Кто идёт</h3>
             {value.participants.map((p) => (
               <div key={p.userId} className="cal-participant">
                 <Avatar path={p.avatarUrl} fallback={p.fullName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
@@ -1109,7 +1129,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
           </>
         )}
 
-        {err && <div className="error-text">{err}</div>}
+        {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
 
         <div className="cal-dialog-actions">
           {value.myStatus === 'invited' && value.id && (
@@ -1153,8 +1173,10 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
               <Icon name="download" size={14} /> В свой календарь
             </button>
           )}
-          {canEdit && <button className="ui-btn ui-btn-primary ui-btn-md" onClick={save} disabled={busy}>{busy ? 'Сохраняю…' : 'Сохранить'}</button>}
-          {canEdit && !isNew && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={remove}>Удалить</button>}
+          {canEdit && !isNew && (
+            <Button variant="ghost" size="sm" className="ev-delete" onClick={remove}><Icon name="trash" size={14} /> Удалить</Button>
+          )}
+          {canEdit && <Button variant="primary" onClick={save} loading={busy}>{busy ? 'Сохраняю…' : 'Сохранить'}</Button>}
         </div>
       </aside>
     </div>
