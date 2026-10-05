@@ -720,3 +720,7 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
   .ev-v2 { width: 100vw; padding: 14px; }
   .ev-v2 .cal-dialog-actions { bottom: -14px; margin: 4px -14px -14px; padding: 10px 14px; }
 }
+
+/* Окна-колонки заданной высоты: блоки внутри не сжимаются, а прокручивается окно целиком.
+   Без этого список участников события сжимался до одной обрезанной строки. */
+.ev-v2 > *, .nl-v2 > *, .task-v2:not(.drawer-task-chat) .task-main > * { flex-shrink: 0; }
