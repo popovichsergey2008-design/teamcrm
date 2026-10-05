@@ -34,7 +34,7 @@ export function Select({ value, onValueChange, options, ariaLabel, placeholder, 
         <Base.Icon className="ui-select-icon"><ChevronsUpDown size={14} /></Base.Icon>
       </Base.Trigger>
       <Base.Portal>
-        <Base.Positioner className="ui-positioner" sideOffset={4} alignItemWithTrigger={false}>
+        <Base.Positioner className="ui-positioner" sideOffset={4} align="start" alignItemWithTrigger={false}>
           <Base.Popup className="ui-popup ui-select-popup">
             <Base.List>
               {options.map((o) => (

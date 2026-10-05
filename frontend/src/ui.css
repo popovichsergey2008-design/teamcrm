@@ -99,7 +99,6 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 .ui-select-trigger:hover { background: var(--hover); }
 .ui-select-trigger[data-popup-open] { border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
 .ui-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-select-value[data-placeholder] { color: var(--text-mut); }
 .ui-select-icon { display: inline-flex; color: var(--text-mut); }
 
 /* ── всплывающие: меню, список, подсказка ───────────────────────────────────── */
@@ -300,7 +299,7 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
   border-radius: var(--radius); font-size: var(--fs-sm);
 }
 .tasks-v2-error .ui-btn { margin-left: auto; }
-.tasks-v2-row { grid-template-columns: minmax(0, 1fr) 150px 140px 180px 130px 150px; }
+.tasks-v2-row { grid-template-columns: minmax(0, 1fr) 150px 110px 170px 130px 140px; }
 .tasks-v2-row.late { box-shadow: inset 3px 0 0 var(--danger); }
 .tasks-v2-row.done .tasks-v2-name { color: var(--text-mut); text-decoration: line-through; }
 .tasks-v2-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -314,6 +313,7 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 }
 .tasks-v2-who { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-sm); }
 .tasks-v2-tags-cell { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
+.tasks-v2-tags-cell .label-chip { white-space: nowrap; flex: none; }
 
 @media (max-width: 1100px) {
   .tasks-v2-row { grid-template-columns: minmax(0, 1fr) 130px 160px 120px; }
@@ -321,6 +321,7 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 }
 @media (max-width: 720px) {
   .tasks-v2-filters-btn { display: inline-flex; }
+  .tasks-v2-sep { display: none; }
   .tasks-v2-filters { display: none; }
   .tasks-v2-filters.open { display: flex; }
   .tasks-v2-filters .ui-select-trigger { flex: 1 1 calc(50% - 8px); max-width: none; min-width: 0; }
