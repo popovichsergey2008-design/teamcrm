@@ -334,7 +334,15 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 
 /* ── поле формы, многострочное поле ─────────────────────────────────────────── */
 .ui-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.ui-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 20px; }
+.ui-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+/* Кнопка у подписи («Подобрать», «Редактировать») не раздвигает строку: соседние поля стоят ровно. */
+.ui-field-action .btn, .ui-field-action .ui-btn { height: 28px; padding-top: 0; padding-bottom: 0; }
+/* Поле даты (прежний DatePicker) — той же высоты и рамки, что Input и Select. */
+.ui-field .dp-trigger {
+  height: 34px; padding: 0 12px; border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  background: var(--bg-elev); font-size: var(--fs-md); box-shadow: 0 1px 2px rgba(16,24,40,.04);
+}
+.ui-field .dp-trigger:focus-visible { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
 .ui-field-label { font-size: var(--fs-sm); font-weight: 500; color: var(--text); }
 .ui-field-action { display: inline-flex; align-items: center; gap: 4px; }
 .ui-field-hint { font-size: var(--fs-xs); color: var(--text-mut); line-height: 1.45; }
