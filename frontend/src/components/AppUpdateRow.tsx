@@ -50,7 +50,7 @@ export function AppUpdateRow() {
       setRelease(c.android);
       const newer = !!c.android && !!installed && compareVersions(installed, c.android.latestNative) < 0;
       if (newer) window.dispatchEvent(new Event(UPDATE_OPEN_EVENT));
-      else toastSaved('У вас последняя версия', `ANTHILL ${installed ?? ''}`.trim());
+      else toastSaved('У вас последняя версия', `ANTHILL ${installed?.split(' ')[0] ?? ''}`.trim());
     } catch {
       toastSaved('Не удалось проверить обновления', 'Проверьте связь и попробуйте ещё раз');
     } finally { setBusy(false); }
@@ -59,7 +59,7 @@ export function AppUpdateRow() {
   return (
     <div className="app-update-row">
       <div className="app-update-text">
-        <span className="app-update-title"><Icon name="download" size={14} /> Приложение {installed ?? ''}</span>
+        <span className="app-update-title"><Icon name="download" size={14} /> Приложение {installed?.split(' ')[0] ?? ''}</span>
         <span className="dim">
           {release
             ? `Последнее обновление: ${release.latestNative}${release.publishedAt ? ` от ${day(release.publishedAt)}` : ''}${behind ? ' — не установлено' : ' — установлено'}`
