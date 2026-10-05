@@ -43,6 +43,7 @@ import { warmPalette } from '../lib/emoji-palette';
 import { pasteBelongsHere, pasteInForeignField } from '../lib/paste-scope';
 import type { User } from '../types';
 import { useStickyCheck } from '../lib/sticky-checks';
+import { confirmAction, promptText } from '../components/ui/dialog';
 
 interface Chat {
   id: string; kind: 'dm' | 'group' | 'project' | 'channel' | 'self' | 'external'; title: string | null;
@@ -1546,7 +1547,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
 
   const removeMessage = async (messageId: string) => {
     if (!activeId) return;
-    if (!window.confirm('Удалить сообщение? У собеседников оно тоже исчезнет.')) return;
+    if (!(await confirmAction({ title: 'Удалить сообщение?', description: 'У собеседников оно тоже исчезнет.', danger: true }))) return;
     try {
       await api.deleteMessage(activeId, messageId);
       // Ветка — отдельный список сообщений: без этой строки удалённое исчезало
@@ -1891,19 +1892,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       <aside className="chat-list">
         <div className="chat-list-head">
           <input className="input chat-search" placeholder="Поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <button className="btn btn-ghost btn-sm" title="Создать группу — разговор нескольких человек" onClick={() => setGroupOpen(true)}>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" title="Создать группу — разговор нескольких человек" onClick={() => setGroupOpen(true)}>
             <Icon name="plus" />
           </button>
           {/* Канал — тема, которая переживёт состав участников. Витрина рядом:
               публичный канал бесполезен, если о нём никто не знает. */}
-          <button className="btn btn-ghost btn-sm" title="Создать канал — общая тема" onClick={() => setChannelOpen(true)}>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" title="Создать канал — общая тема" onClick={() => setChannelOpen(true)}>
             <Icon name="hash" />
           </button>
           <button
-            className="btn btn-ghost btn-sm"
+            className="ui-btn ui-btn-ghost ui-btn-sm"
             title="Разговор с клиентом или подрядчиком — по ссылке, без доступа к остальному"
             onClick={async () => {
-              const title = window.prompt('С кем разговор? Например, «ООО Вектор»');
+              const title = await promptText({ title: 'Внешний разговор', description: 'С кем разговор? Например, «ООО Вектор».', placeholder: 'Название компании или имя', confirmLabel: 'Создать' });
               if (!title?.trim()) return;
               try {
                 const chat = await api.createExternalChat({ title: title.trim() });
@@ -1916,7 +1917,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             <Icon name="link" />
           </button>
           <button
-            className="btn btn-ghost btn-sm"
+            className="ui-btn ui-btn-ghost ui-btn-sm"
             title="Все каналы компании"
             onClick={() => { setView(view === 'channels' ? 'chat' : 'channels'); loadChannels(); }}
           >
@@ -1973,7 +1974,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         {/* Разрешение спрашиваем по кнопке: непрошеный запрос браузеры глушат,
             и человек больше не сможет его выдать. */}
         {perm === 'default' && (
-          <button className="btn btn-ghost btn-sm chat-notify-ask"
+          <button className="ui-btn ui-btn-ghost ui-btn-sm chat-notify-ask"
                   onClick={async () => setPerm(await requestNotificationPermission())}>
             <Icon name="bell" size={15} /> Включить уведомления
           </button>
@@ -2097,7 +2098,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             })}
           />
           {onClose && (
-            <button className="btn btn-ghost btn-sm chat-overlay-close" onClick={onClose} title="Закрыть окно чата (Esc)" aria-label="Закрыть окно чата">
+            <button className="ui-btn ui-btn-ghost ui-btn-sm chat-overlay-close" onClick={onClose} title="Закрыть окно чата (Esc)" aria-label="Закрыть окно чата">
               <Icon name="close" size={16} />
             </button>
           )}
@@ -2274,8 +2275,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 {c.description && <span className="thread-item-body dim">{c.description}</span>}
                 <span className="thread-item-foot">
                   {c.joined
-                    ? <button className="btn btn-ghost btn-sm" onClick={() => { setView('chat'); openChat(String(c.id)); }}>Открыть</button>
-                    : <button className="btn btn-sm" onClick={() => join(String(c.id))}>Вступить</button>}
+                    ? <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { setView('chat'); openChat(String(c.id)); }}>Открыть</button>
+                    : <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => join(String(c.id))}>Вступить</button>}
                 </span>
               </div>
             ))}
@@ -2362,7 +2363,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               {/* Назад к списку: на телефоне переписка занимает весь экран, и вернуться
                   к выбору собеседника иначе нечем. На широком экране кнопки нет. */}
               <button
-                className="btn btn-ghost btn-sm chat-back"
+                className="ui-btn ui-btn-ghost ui-btn-sm chat-back"
                 onClick={() => { setActiveId(null); setMessages([]); setThread(null); }}
                 title="К списку чатов"
                 aria-label="К списку чатов"
@@ -2402,7 +2403,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   </span>
                   {/* Стрелки — и есть «показать совпадение»: вверх к старому, вниз к новому. */}
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="ui-btn ui-btn-ghost ui-btn-sm"
                     disabled={!inChatHits.length || inChatPos <= 0}
                     onClick={() => goToHit(inChatPos - 1)}
                     title="Предыдущее совпадение (старее) — Enter"
@@ -2411,7 +2412,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     <Icon name="arrow-up" size={14} />
                   </button>
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="ui-btn ui-btn-ghost ui-btn-sm"
                     disabled={!inChatHits.length || inChatPos >= inChatHits.length - 1}
                     onClick={() => goToHit(inChatPos + 1)}
                     title="Следующее совпадение (новее) — Shift+Enter"
@@ -2420,7 +2421,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     <Icon name="arrow-down" size={14} />
                   </button>
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="ui-btn ui-btn-ghost ui-btn-sm"
                     onClick={() => { setInChatSearch(false); setInChatQuery(''); setHighlight(null); }}
                     title="Закрыть поиск"
                     aria-label="Закрыть поиск"
@@ -2439,7 +2440,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     от обычного мессенджера: статус и горящие задачи видно сразу. */}
                 {active.kind === 'project' && ctx?.project_id && (
                   <>
-                    <span className="badge badge-muted" style={{ marginLeft: 6 }}>
+                    <span className="ui-badge ui-badge-neutral" style={{ marginLeft: 6 }}>
                       {ctx.status === 'archived' ? 'в архиве' : 'проект'}
                     </span>
                     {ctx.client_name && <span className="chat-row-group">{ctx.client_name}</span>}
@@ -2450,7 +2451,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                       {ctx.nearest_deadline && <span> · ближайший срок: {new Date(ctx.nearest_deadline).toLocaleDateString('ru-RU')}</span>}
                     </span>
                     <button
-                      className="btn btn-ghost btn-sm"
+                      className="ui-btn ui-btn-ghost ui-btn-sm"
                       onClick={() => navigate({ section: 'projects', projectId: String(ctx.project_id) })}
                       title="Открыть доску проекта"
                     >
@@ -2458,10 +2459,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     </button>
                   </>
                 )}
-                {active.kind === 'project' && !ctx?.project_id && <span className="badge badge-muted" style={{ marginLeft: 6 }}>проект</span>}
+                {active.kind === 'project' && !ctx?.project_id && <span className="ui-badge ui-badge-neutral" style={{ marginLeft: 6 }}>проект</span>}
                 {/* Лупа: поиск по этому разговору. */}
                 <button
-                  className="btn btn-ghost btn-sm"
+                  className="ui-btn ui-btn-ghost ui-btn-sm"
                   onClick={() => setInChatSearch((v) => !v)}
                   title="Поиск в этом чате"
                   aria-label="Поиск в этом чате"
@@ -2471,7 +2472,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 {/* Сведения о чате: участники по ролям, материалы, закреплённое, история.
                     Раньше шестерёнка открывала окно только у групп — сайдбар есть у любого чата. */}
                 <button
-                  className={`btn btn-ghost btn-sm${infoOpen ? ' active' : ''}`}
+                  className={`ui-btn ui-btn-ghost ui-btn-sm${infoOpen ? ' active' : ''}`}
                   title="Сведения о чате: участники, файлы, закреплённое"
                   aria-label="Сведения о чате"
                   aria-pressed={infoOpen}
@@ -2615,7 +2616,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                           <div key={k} className="meet-card-line">{line}</div>
                         ))}
                         <button
-                          className="btn btn-ghost btn-sm"
+                          className="ui-btn ui-btn-ghost ui-btn-sm"
                           onClick={() => navigate({ section: 'chat', view: 'meetings' })}
                           title="Стенограмма, сводка и предложенные задачи"
                         >
@@ -2745,8 +2746,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                               onEnter={() => { void saveEdit(String(m.id)); }}
                             />
                             <div className="chat-edit-actions">
-                              <button className="btn btn-primary btn-sm" onClick={() => saveEdit(String(m.id))}>Сохранить</button>
-                              <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Отмена</button>
+                              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => saveEdit(String(m.id))}>Сохранить</button>
+                              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(null)}>Отмена</button>
                             </div>
                           </div>
                         )}
@@ -2950,7 +2951,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                       {p.file.name} <span className="dim">· {humanSize(p.file.size)}</span>
                     </span>
                     <button
-                      className="btn btn-ghost btn-sm"
+                      className="ui-btn ui-btn-ghost ui-btn-sm"
                       onClick={() => dropPending(i)}
                       title="Убрать это вложение"
                       aria-label="Убрать вложение"
@@ -2984,12 +2985,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             {overlay && context && (context.taskId || context.projectId) && (
               <div className="chat-context-row">
                 {context.taskId && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => void shareContext('task', String(context.taskId))} title="Отправить карточку задачи в этот чат">
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void shareContext('task', String(context.taskId))} title="Отправить карточку задачи в этот чат">
                     <Icon name="check-circle" size={13} /> Отправить задачу #{context.taskId}
                   </button>
                 )}
                 {context.projectId && !context.taskId && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => void shareContext('project', String(context.projectId))} title="Отправить карточку проекта в этот чат">
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void shareContext('project', String(context.projectId))} title="Отправить карточку проекта в этот чат">
                     <Icon name="board" size={13} /> Отправить проект
                   </button>
                 )}
@@ -3018,7 +3019,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 if (list.length) { e.preventDefault(); void attach(list); }
               }}
             >
-              <label className="btn btn-ghost btn-sm" title="Прикрепить файл" style={{ cursor: 'pointer' }}>
+              <label className="ui-btn ui-btn-ghost ui-btn-sm" title="Прикрепить файл" style={{ cursor: 'pointer' }}>
                 <Icon name="paperclip" size={16} />
                 {/* multiple: выбрать сразу несколько снимков — обычное дело, а уходил только первый. */}
                 <input
@@ -3039,7 +3040,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               */}
               {/* Смайл рядом с полем: за эмодзи не должно приходиться лезть в меню сообщения. */}
               <button
-                className="btn btn-ghost btn-sm"
+                className="ui-btn ui-btn-ghost ui-btn-sm"
                 onClick={(e) => {
                   const r = e.currentTarget.getBoundingClientRect();
                   setEmojiFor({ id: null, at: { x: r.left, y: r.top } });
@@ -3074,7 +3075,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               */}
               {overlay && (
                 <button
-                  className={`btn btn-ghost btn-sm${extraOpen ? ' active' : ''}`}
+                  className={`ui-btn ui-btn-ghost ui-btn-sm${extraOpen ? ' active' : ''}`}
                   onClick={() => setExtraOpen((v) => !v)}
                   title={extraOpen ? 'Скрыть действия' : 'Ещё: голосовое, AI, запись экрана, отложить'}
                   aria-label="Ещё действия"
@@ -3137,7 +3138,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               */}
               <span className="chat-later">
                 <button
-                  className="btn btn-ghost btn-sm chat-later-btn"
+                  className="ui-btn ui-btn-ghost ui-btn-sm chat-later-btn"
                   onClick={() => setLaterOpen((v) => !v)}
                   disabled={!draft.trim()}
                   title="Отправить позже — напомнить о встрече, написать утром"
@@ -3192,7 +3193,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     )}
 
                     <span className="later-actions">
-                      <button className="btn btn-primary btn-sm" onClick={confirmLater}>Отложить</button>
+                      <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={confirmLater}>Отложить</button>
                       <button className="chat-thread-link chat-thread-new" onClick={() => setLaterOpen(false)}>Отмена</button>
                     </span>
                   </span>
@@ -3200,7 +3201,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               </span>
               </span>
               <button
-                className="btn btn-primary btn-sm"
+                className="ui-btn ui-btn-primary ui-btn-sm"
                 onClick={send}
                 disabled={!draft.trim() && !pending.length}
                 title="Отправить"
@@ -3243,7 +3244,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
           <div className="chat-head">
             <span><Icon name="chat" size={15} /> <b>Ветка обсуждения</b></span>
             <button
-              className="btn btn-ghost btn-sm"
+              className="ui-btn ui-btn-ghost ui-btn-sm"
               onClick={() => { setThread(null); clearThreadPending(); }}
               title="Закрыть ветку"
               aria-label="Закрыть ветку"
@@ -3288,8 +3289,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                           onEnter={() => { void saveEdit(String(m.id)); }}
                         />
                         <div className="chat-edit-actions">
-                          <button className="btn btn-primary btn-sm" onClick={() => saveEdit(String(m.id))}>Сохранить</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Отмена</button>
+                          <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => saveEdit(String(m.id))}>Сохранить</button>
+                          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(null)}>Отмена</button>
                         </div>
                       </div>
                     )}
@@ -3350,7 +3351,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                       : <Icon name="paperclip" size={16} />}
                     <span className="chat-pending-name">{p.file.name}</span>
                     <button
-                      className="btn btn-ghost btn-sm"
+                      className="ui-btn ui-btn-ghost ui-btn-sm"
                       onClick={() => dropThreadPending(i)}
                       title="Убрать это вложение"
                       aria-label="Убрать вложение"
@@ -3362,7 +3363,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               </div>
             )}
             {/* Скрепка и в ветке: показать снимком быстрее, чем описать словами. */}
-            <label className="btn btn-ghost btn-sm" title="Приложить файлы" style={{ cursor: 'pointer' }}>
+            <label className="ui-btn ui-btn-ghost ui-btn-sm" title="Приложить файлы" style={{ cursor: 'pointer' }}>
               <Icon name="paperclip" size={16} />
               <input
                 type="file"
@@ -3384,7 +3385,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendToThread(); } }}
             />
             <button
-              className="btn btn-primary btn-sm"
+              className="ui-btn ui-btn-primary ui-btn-sm"
               onClick={sendToThread}
               disabled={!threadBody.trim() && !threadPending.length}
               title="Ответить"
@@ -3453,7 +3454,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="drawer-head">
               <h3><Icon name="clock" size={16} /> Отложенные сообщения</h3>
-              <button className="btn btn-ghost btn-sm" onClick={() => setQueueOpen(false)} title="Закрыть" aria-label="Закрыть">
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setQueueOpen(false)} title="Закрыть" aria-label="Закрыть">
                 <Icon name="close" size={16} />
               </button>
             </div>
@@ -3479,10 +3480,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     : 'Ждёт отправки · в переписке пока не видно, прочитать нельзя'}
                 </div>
                 <div className="later-actions">
-                  <button className="btn btn-primary btn-sm" onClick={() => sendScheduledNow(x.id)}>
+                  <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => sendScheduledNow(x.id)}>
                     <Icon name="send" size={13} /> Отправить сейчас
                   </button>
-                  <label className="btn btn-ghost btn-sm later-time" title="Перенести на другое время">
+                  <label className="ui-btn ui-btn-ghost ui-btn-sm later-time" title="Перенести на другое время">
                     <Icon name="calendar" size={13} /> Перенести
                     <input
                       type="datetime-local"
@@ -3492,7 +3493,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                       }}
                     />
                   </label>
-                  <button className="btn btn-ghost btn-sm btn-delete" onClick={() => cancelScheduled(x.id)}>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm btn-delete" onClick={() => cancelScheduled(x.id)}>
                     <Icon name="trash" size={13} /> Удалить
                   </button>
                 </div>

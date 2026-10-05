@@ -269,7 +269,7 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
                 onSetAll={(ids, on) => setCallChosen((prev) => { const n = new Set(prev); for (const id of ids) { if (on) n.add(id); else n.delete(id); } return n; })}
                 emptyHint="В организации пока некого звать."
               />
-              <button className="btn btn-primary btn-sm call-starter-go" onClick={startCall} disabled={inCall || callChosen.size === 0}>
+              <button className="ui-btn ui-btn-primary ui-btn-sm call-starter-go" onClick={startCall} disabled={inCall || callChosen.size === 0}>
                 <Icon name="phone" size={14} /> Начать созвон{callChosen.size > 0 ? ` · ${callChosen.size}` : ''}
               </button>
             </div>

@@ -238,7 +238,7 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 .ui-row:hover { background: var(--hover); }
 .ui-row-head {
   min-height: 38px; cursor: default; background: var(--bg-elev-2);
-  color: var(--text-dim); font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-dim); font-size: var(--fs-xs); font-weight: 600;
 }
 .ui-row-head:hover { background: var(--bg-elev-2); }
 .ui-sort {
@@ -610,3 +610,54 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
   .board-v2 .column { width: 86vw; }
   .kv2-col-menu { opacity: 1; }
 }
+
+/* «Нажатая» кнопка в шапках (сайдбар ⓘ, доп. панель): тот же вид, что у переключателя. */
+.ui-btn.active { background: var(--accent-soft); color: var(--accent); }
+
+/* ── чаты (ТЗ-15): список слева, лента пузырями, поле ввода карточкой ───────── */
+.chat-list { background: var(--bg-elev); padding: 12px 8px; gap: 1px; }
+.chat-group-head { font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); margin: 14px 8px 4px; }
+.chat-row { padding: 7px 8px; border-radius: var(--radius-sm); }
+.chat-row:hover, .chat-row-wrap:hover { background: var(--hover); }
+.chat-row.active, .chat-row-wrap.active { background: var(--accent-soft); box-shadow: none; }
+.chat-row.active .chat-row-title, .chat-row-wrap.active .chat-row-title { color: var(--accent); font-weight: 600; }
+.chat-row-title { font-size: var(--fs-md); font-weight: 500; }
+.chat-row-last { font-size: var(--fs-xs); margin-top: 1px; }
+.chat-unread {
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  background: var(--accent-2); color: var(--on-accent); font-size: var(--fs-xs); font-weight: 600;
+}
+
+.chat-head { min-height: 56px; padding: 10px 16px; background: var(--bg-elev); }
+.chat-head strong, .chat-head h2, .chat-head h3 { font-size: var(--fs-md); font-weight: 600; }
+.chat-feed { padding: 16px 20px; gap: 2px; }
+.chat-day {
+  margin: 14px auto 8px; padding: 3px 12px; border: 0;
+  background: var(--bg-elev-2); color: var(--text-dim); font-size: var(--fs-xs); font-weight: 500;
+}
+.chat-unread-line { font-size: var(--fs-xs); font-weight: 600; }
+
+/* Пузыри: чужое — лист с тонкой рамкой, своё — мягкий акцент без рамки; угол к собеседнику острее. */
+.chat-msg {
+  max-width: min(72%, 680px); padding: 8px 12px; border-radius: 14px 14px 14px 4px;
+  background: var(--bg-elev); border: 1px solid var(--border); box-shadow: 0 1px 1px rgba(16,24,40,.03);
+}
+.chat-msg.mine { border-radius: 14px 14px 4px 14px; background: var(--accent-soft); border-color: transparent; }
+.chat-author { font-size: var(--fs-xs); font-weight: 600; margin-bottom: 3px; }
+.chat-body { font-size: var(--fs-md); line-height: 1.5; }
+.chat-line { margin-bottom: 4px; }
+.chat-time, .chat-under { color: var(--text-mut); }
+.chat-system { font-style: normal; font-size: var(--fs-xs); }
+
+/* Поле ввода — карточка с рамкой и кольцом фокуса, кнопки внутри её строки. */
+.chat-input { padding: 10px 16px 14px; border-top: 1px solid var(--border); background: var(--bg-elev); gap: 8px; }
+.chat-input .input {
+  border: 1px solid var(--border-2); border-radius: var(--radius-lg); background: var(--bg-elev);
+  box-shadow: 0 1px 2px rgba(16,24,40,.04); padding: 11px 14px;
+}
+.chat-input .input:focus { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+.chat-jump { width: 38px; height: 38px; box-shadow: var(--shadow-lg); }
+
+/* Ветки и разделы над списком. */
+.thread-item { border-radius: var(--radius); }
+.thread-item:hover { background: var(--hover); }

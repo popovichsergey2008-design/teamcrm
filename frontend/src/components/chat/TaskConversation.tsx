@@ -30,13 +30,13 @@ export function TaskConversation({ taskId, onClose }: { taskId: string; onClose?
             <>
               <span className="task-num">#{brief.id}</span>
               <b className="task-conv-name" title={brief.title}>{brief.title}</b>
-              <span className={`badge ${brief.closed ? 'badge-muted' : 'badge-info'}`}>{brief.closed ? 'завершена' : brief.status}</span>
+              <span className={`ui-badge ${brief.closed ? 'ui-badge-neutral' : 'ui-badge-info'}`}>{brief.closed ? 'завершена' : brief.status}</span>
             </>
           ) : <b>Задача #{taskId}</b>}
         </span>
         {brief && (
           <button
-            className="btn btn-ghost btn-sm"
+            className="ui-btn ui-btn-ghost ui-btn-sm"
             onClick={() => navigate({ section: 'projects', projectId: brief.projectId, taskId: brief.id })}
             title={brief.projectName ? `Открыть задачу в проекте «${brief.projectName}»` : 'Открыть задачу'}
           >
@@ -44,7 +44,7 @@ export function TaskConversation({ taskId, onClose }: { taskId: string; onClose?
           </button>
         )}
         {onClose && (
-          <button className="btn btn-ghost btn-sm chat-overlay-close" onClick={onClose} title="Закрыть окно чата (Esc)" aria-label="Закрыть окно чата">
+          <button className="ui-btn ui-btn-ghost ui-btn-sm chat-overlay-close" onClick={onClose} title="Закрыть окно чата (Esc)" aria-label="Закрыть окно чата">
             <Icon name="close" size={16} />
           </button>
         )}

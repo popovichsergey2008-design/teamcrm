@@ -26,6 +26,7 @@ import { getSocket } from '../lib/socket';
 import { warmPalette } from '../lib/emoji-palette';
 import { requestCall } from '../lib/notifications';
 import { useStickyCheck } from '../lib/sticky-checks';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Цвет имени автора.
@@ -669,7 +670,7 @@ export function TaskChat({
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm('Удалить сообщение? Восстановить его будет нельзя.')) return;
+    if (!(await confirmAction({ title: 'Удалить сообщение?', description: 'Восстановить его будет нельзя.', danger: true }))) return;
     try { await api.deleteComment(taskId, id); reload(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалилось'); }
   };
@@ -996,7 +997,7 @@ export function TaskChat({
           */}
           {callTo.length > 0 && (
             <button
-              className="btn btn-primary btn-sm chat-call-main"
+              className="ui-btn ui-btn-primary ui-btn-sm chat-call-main"
               onClick={() => requestCall({ memberIds: callTo, projectId, taskId, title })}
               title={`Созвон: ${callNames}`}
             >
@@ -1197,7 +1198,7 @@ export function TaskChat({
         {/* Показан хвост переписки — остальное поднимается кнопкой. Появляется, только
             когда наверху действительно что-то есть. */}
         {!fullyLoaded && comments.length >= 100 && (
-          <button className="btn btn-ghost btn-sm chat-earlier" onClick={() => reload(true)}>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm chat-earlier" onClick={() => reload(true)}>
             <Icon name="chevron-up" size={13} /> Показать всю переписку
           </button>
         )}
@@ -1431,7 +1432,7 @@ export function TaskChat({
                           <input type="checkbox" checked={alsoInChannel} onChange={(e) => setAlsoInChannel(e.target.checked)} />
                           Показать и в ленте
                         </label>
-                        <button className="btn btn-primary btn-sm" onClick={() => { void sendToThread(); }} disabled={busy || !threadBody.trim()}>
+                        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void sendToThread(); }} disabled={busy || !threadBody.trim()}>
                           Ответить
                         </button>
                       </div>
@@ -1530,7 +1531,7 @@ export function TaskChat({
               <ul className="ai-advice-list">
                 {advice.checklist.map((step, i) => <li key={i}>{step}</li>)}
               </ul>
-              <button className="btn btn-sm" onClick={acceptChecklist} disabled={busy}>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={acceptChecklist} disabled={busy}>
                 <Icon name="check" size={13} /> Добавить в чек-лист
               </button>
             </>
@@ -1557,7 +1558,7 @@ export function TaskChat({
       {/* Кнопка появляется, только когда есть что догонять: пустая стрелка вниз
           в спокойной переписке — лишний шум. */}
       {!atBottom && unseen > 0 && (
-        <button className="btn btn-primary btn-sm chat-jump-new" onClick={() => toBottom(true)}>
+        <button className="ui-btn ui-btn-primary ui-btn-sm chat-jump-new" onClick={() => toBottom(true)}>
           <Icon name="arrow-down" size={13} /> {unseen} {plural(unseen, 'новое сообщение', 'новых сообщения', 'новых сообщений')}
         </button>
       )}
@@ -1567,7 +1568,7 @@ export function TaskChat({
       {quickOpen && (
         <div className="ai-quick" data-pop>
           {QUICK_ASKS.map((qa) => (
-            <button key={qa.label} className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setQuickOpen(false); ask(qa.ask); }}>
+            <button key={qa.label} className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => { setQuickOpen(false); ask(qa.ask); }}>
               {qa.label}
             </button>
           ))}
@@ -1609,7 +1610,7 @@ export function TaskChat({
           <span className="chat-pending-name">
             {p.file.name} <span className="dim">· {humanSize(p.file.size)}</span>
           </span>
-          <button className="btn btn-ghost btn-sm" onClick={() => dropPending(i)} title="Убрать вложение" aria-label="Убрать вложение">
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => dropPending(i)} title="Убрать вложение" aria-label="Убрать вложение">
             <Icon name="close" size={14} />
           </button>
         </div>
@@ -1642,13 +1643,13 @@ export function TaskChat({
           */}
           <span className="voice-note-label"><Icon name="mic" size={14} /> Голосовое записано — что с ним сделать?</span>
           <span className="voice-note-actions">
-            <button className="btn btn-primary btn-sm" onClick={() => { void sendNote(); }} disabled={noteBusy}>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void sendNote(); }} disabled={noteBusy}>
               {noteBusy ? 'Отправляю…' : 'Отправить'}
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => { void noteToText(); }} disabled={noteBusy} title="Распознать и положить текстом в поле ввода">
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void noteToText(); }} disabled={noteBusy} title="Распознать и положить текстом в поле ввода">
               В текст
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={dropNote} disabled={noteBusy}>Удалить</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={dropNote} disabled={noteBusy}>Удалить</button>
           </span>
           <audio className="voice-note-player" src={note.url} controls preload="metadata" />
         </div>

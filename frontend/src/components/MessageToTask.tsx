@@ -189,7 +189,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                   </div>
                 </div>
                 {!asked && (
-                  <button className="btn btn-sm" onClick={() => void ask()} disabled={busy}>
+                  <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void ask()} disabled={busy}>
                     <Icon name="chat" size={13} /> Спросить автора
                   </button>
                 )}
@@ -292,7 +292,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                     onBlur={() => void patch({ checklist: draft.checklist })}
                   />
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="ui-btn ui-btn-ghost ui-btn-sm"
                     onClick={() => void patch({ checklist: draft.checklist.filter((_, k) => k !== i) })}
                     title="Убрать шаг"
                     aria-label="Убрать шаг"
@@ -301,7 +301,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                   </button>
                 </div>
               ))}
-              <button className="btn btn-ghost btn-sm" onClick={() => setDraft({ ...draft, checklist: [...draft.checklist, ''] })}>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setDraft({ ...draft, checklist: [...draft.checklist, ''] })}>
                 <Icon name="plus" size={13} /> Шаг
               </button>
             </div>
@@ -315,7 +315,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
             {err && <div className="error-text">{err}</div>}
             <div className="drawer-row">
               <button
-                className="btn btn-primary"
+                className="ui-btn ui-btn-primary ui-btn-md"
                 style={{ flex: 1 }}
                 onClick={() => void create()}
                 disabled={busy || !tagsReady(tagSettings, tags)}
@@ -324,7 +324,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                 {busy ? 'Создаю…' : 'Создать задачу'}
               </button>
               {/* Отказ — явным действием: закрытое окно черновик не отменяет, он может ждать ответа. */}
-              <button className="btn btn-ghost" onClick={() => void cancel()} disabled={busy} title="Не создавать задачу по этому сообщению">
+              <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={() => void cancel()} disabled={busy} title="Не создавать задачу по этому сообщению">
                 Отказаться
               </button>
             </div>
