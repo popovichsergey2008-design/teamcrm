@@ -57,7 +57,7 @@ export function HandoffGatePanel({ canManage, onClose }: { canManage: boolean; o
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="check" size={18} /> Приёмка работы</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
 
         <div className="dim gate-panel-hint">

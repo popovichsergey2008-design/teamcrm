@@ -111,7 +111,7 @@ export function GuestMeetsPanel({ onEnter }: { onEnter: (roomId: string) => void
           <option value="168">Неделя</option>
           <option value="720">30 дней</option>
         </select>
-        <button className="btn btn-primary btn-sm" onClick={create} disabled={busy}>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={create} disabled={busy}>
           <Icon name="plus" size={15} /> Создать ссылку
         </button>
       </div>
@@ -145,10 +145,10 @@ export function GuestMeetsPanel({ onEnter }: { onEnter: (roomId: string) => void
                 </span>
               </span>
               <span className="guest-links-actions">
-                <button className="btn btn-sm" onClick={() => enter(l.id)} title="Войти в ту же комнату, куда придёт гость">
+                <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => enter(l.id)} title="Войти в ту же комнату, куда придёт гость">
                   <Icon name="phone" size={15} /> Войти
                 </button>
-                <button className="btn btn-ghost btn-sm" onClick={() => revoke(l.id)} title="Отозвать: гость по этой ссылке больше не войдёт, а сидящий сейчас — выйдет">
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => revoke(l.id)} title="Отозвать: гость по этой ссылке больше не войдёт, а сидящий сейчас — выйдет">
                   Отозвать
                 </button>
               </span>

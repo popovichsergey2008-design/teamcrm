@@ -73,7 +73,7 @@ export function RadarPage() {
                     </span>
                     <span className="radar-row-side">
                       <span className="dim">{p.closed} из {p.total}</span>
-                      {p.overdue > 0 && <span className="badge badge-warn">просрочено {p.overdue}</span>}
+                      {p.overdue > 0 && <span className="ui-badge ui-badge-warn">просрочено {p.overdue}</span>}
                     </span>
                   </button>
                 );
@@ -92,8 +92,8 @@ export function RadarPage() {
                     <span className="radar-row-title">{p.full_name}</span>
                   </span>
                   <span className="radar-row-side">
-                    {p.due_today > 0 && <span className="badge badge-info">сегодня {p.due_today}</span>}
-                    {p.overdue > 0 && <span className="badge badge-danger">просрочено {p.overdue}</span>}
+                    {p.due_today > 0 && <span className="ui-badge ui-badge-info">сегодня {p.due_today}</span>}
+                    {p.overdue > 0 && <span className="ui-badge ui-badge-danger">просрочено {p.overdue}</span>}
                     <span className="dim">{p.open} задач</span>
                   </span>
                 </div>
@@ -117,7 +117,7 @@ export function RadarPage() {
                     <span className="dim">{t.project_name} · {t.column_name}{t.assignee_name ? ` · ${t.assignee_name}` : ''}</span>
                   </span>
                   <span className="radar-row-side">
-                    <span className="badge badge-warn">{since(t.updated_at)}</span>
+                    <span className="ui-badge ui-badge-warn">{since(t.updated_at)}</span>
                   </span>
                 </button>
               ))}

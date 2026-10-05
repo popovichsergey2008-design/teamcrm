@@ -135,13 +135,13 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void create(); }}
               />
-              <button className="btn btn-sm" onClick={() => void create()}>Добавить</button>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void create()}>Добавить</button>
             </div>
             {err && (
               <div className="error-text">
                 {err}
                 {err.startsWith('Похожий тег') && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => void create(true)}>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void create(true)}>
                     Всё равно создать
                   </button>
                 )}
@@ -153,7 +153,7 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
         <div className="drawer-section">
           <div className="drawer-section-title">
             Список ({visible.length})
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowArchived((v) => !v)}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setShowArchived((v) => !v)}>
               {showArchived ? 'Скрыть архив' : 'Показать архив'}
             </button>
           </div>
@@ -184,8 +184,8 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
                     onChange={(e) => setDraft({ ...draft, aiDescription: e.target.value })}
                   />
                   <div className="tags-chips">
-                    <button className="btn btn-sm" onClick={() => void save(String(t.id))}>Сохранить</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Отмена</button>
+                    <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void save(String(t.id))}>Сохранить</button>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(null)}>Отмена</button>
                   </div>
                 </>
               ) : (
@@ -198,7 +198,7 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
                   {canManage && (
                     <span className="tag-row-actions">
                       <button
-                        className="btn btn-ghost btn-sm"
+                        className="ui-btn ui-btn-ghost ui-btn-sm"
                         onClick={() => {
                           setEditing(String(t.id));
                           setDraft({ name: t.name, color: t.color, aiDescription: t.ai_description ?? '' });
@@ -206,7 +206,7 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
                       >
                         Изменить
                       </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => void archive(t)}>
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void archive(t)}>
                         {t.archived_at ? 'Вернуть' : 'В архив'}
                       </button>
                     </span>

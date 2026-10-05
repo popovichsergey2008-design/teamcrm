@@ -48,7 +48,7 @@ export function ApprovalCard({ approval, onDecided, onOpenTask }: {
       <div className="approval-head">
         <span className="avatar-xs avatar-ph">{approval.author_name?.[0]?.toUpperCase() ?? '?'}</span>
         <span className="approval-author">{approval.author_name ?? 'Коллега'}</span>
-        <span className="badge badge-muted"><Icon name={kind.icon} size={11} /> {kind.label}</span>
+        <span className="ui-badge ui-badge-neutral"><Icon name={kind.icon} size={11} /> {kind.label}</span>
       </div>
 
       <div className="approval-subject">{approval.subject}</div>
@@ -78,10 +78,10 @@ export function ApprovalCard({ approval, onDecided, onOpenTask }: {
       {err && <div className="error-text">{err}</div>}
 
       <div className="approval-actions">
-        <button className="btn btn-sm approval-yes" disabled={busy} onClick={() => decide(true)}>
+        <button className="ui-btn ui-btn-outline ui-btn-sm approval-yes" disabled={busy} onClick={() => decide(true)}>
           <Icon name="check" size={14} /> Одобрить
         </button>
-        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => decide(false)}>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => decide(false)}>
           {rejecting ? 'Отправить отказ' : 'Отклонить'}
         </button>
       </div>

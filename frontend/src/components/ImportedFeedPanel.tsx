@@ -19,7 +19,7 @@ export function ImportedFeedPanel({ projectId, onClose }: { projectId: string; o
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>Лента (импорт из Битрикса)</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
+        <div className="drawer-head"><h3>Лента (импорт из Битрикса)</h3><button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="dim" style={{ fontSize: 12, marginBottom: 8 }}>Сообщения проекта, перенесённые из Битрикса. Только для чтения — при появлении чата станут его историей.</div>
         {!loaded && <SkeletonList rows={4} />}
         {loaded && messages.length === 0 && (

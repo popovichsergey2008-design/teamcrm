@@ -67,13 +67,13 @@ export function TaskBatchPage({ batchId }: { batchId: string }) {
         <div className="page-head-actions">
           {projects.size === 1 && batch.tasks.length > 0 && (
             <button
-              className="btn btn-sm"
+              className="ui-btn ui-btn-outline ui-btn-sm"
               onClick={() => navigate({ section: 'projects', projectId: batch.tasks[0].projectId })}
             >
               <Icon name="board" size={14} /> Открыть доску
             </button>
           )}
-          <button className="btn btn-sm" onClick={() => navigate({ section: 'tasks' })}>
+          <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => navigate({ section: 'tasks' })}>
             <Icon name="list" size={14} /> Все задачи
           </button>
         </div>
@@ -122,7 +122,7 @@ export function TaskBatchPage({ batchId }: { batchId: string }) {
             </button>
             {/* Уйти на доску — отдельным действием: иногда нужно именно к соседям по колонке. */}
             <button
-              className="btn btn-ghost btn-sm"
+              className="ui-btn ui-btn-ghost ui-btn-sm"
               title="Показать на доске"
               aria-label="Показать на доске"
               onClick={() => navigate({ section: 'projects', projectId: t.projectId, taskId: t.taskId })}
@@ -137,7 +137,7 @@ export function TaskBatchPage({ batchId }: { batchId: string }) {
           <div key={f.itemId} className="batch-item batch-item-failed">
             <span className="batch-item-title"><Icon name="alert" size={14} /> {f.title}</span>
             <span className="batch-item-sub error-text">{f.error ?? 'Не удалось создать'}</span>
-            <button className="btn btn-sm" disabled={busy} onClick={() => void retry(f.itemId)}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void retry(f.itemId)}>
               <Icon name="refresh" size={13} /> {busy ? 'Повторяю…' : 'Повторить'}
             </button>
           </div>

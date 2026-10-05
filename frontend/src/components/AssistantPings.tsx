@@ -161,13 +161,13 @@ export function AssistantPings({ today, onOpenTask, onPlanned }: {
         */}
         {p.kind === 'followup' ? (
           <>
-            <button className="btn btn-sm" disabled={busy === p.id} onClick={() => answer(p, 'on_track')}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy === p.id} onClick={() => answer(p, 'on_track')}>
               Успеваю
             </button>
-            <button className="btn btn-sm" disabled={busy === p.id} onClick={() => answer(p, 'blocked')}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy === p.id} onClick={() => answer(p, 'blocked')}>
               Есть блокер
             </button>
-            <button className="btn btn-sm" disabled={busy === p.id} onClick={() => answer(p, 'need_shift')}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy === p.id} onClick={() => answer(p, 'need_shift')}>
               Нужен перенос
             </button>
           </>
@@ -175,11 +175,11 @@ export function AssistantPings({ today, onOpenTask, onPlanned }: {
           <>
             {/* «Сделаю сегодня» — только тем, кто задачу и делает: проверяющему план не нужен */}
             {p.taskId && p.kind !== 'stuck_review' && (
-              <button className="btn btn-sm" disabled={busy === p.id} onClick={() => planToday(p)}>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy === p.id} onClick={() => planToday(p)}>
                 Сделаю сегодня
               </button>
             )}
-            <button className="btn btn-ghost btn-sm" disabled={busy === p.id} onClick={() => dismiss(p)}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy === p.id} onClick={() => dismiss(p)}>
               Скрыть
             </button>
           </>
@@ -208,7 +208,7 @@ export function AssistantPings({ today, onOpenTask, onPlanned }: {
               </button>
               {it.mine && (
                 <button
-                  className="btn btn-sm"
+                  className="ui-btn ui-btn-outline ui-btn-sm"
                   disabled={busy === p.id + ':' + it.taskId}
                   onClick={() => planFromDigest(p.id, it.taskId)}
                 >
@@ -282,7 +282,7 @@ function PingsDrawer({ groups, count, canDismissAll, busyAll, onDismissAll, onCl
 
         {canDismissAll && (
           <div className="ping-bulk">
-            <button className="btn btn-ghost btn-sm" disabled={busyAll} onClick={onDismissAll}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busyAll} onClick={onDismissAll}>
               <Icon name="check" size={14} /> Скрыть все
             </button>
           </div>

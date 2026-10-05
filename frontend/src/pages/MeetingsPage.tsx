@@ -98,7 +98,7 @@ export function MeetingsPage({ onEnterGuestMeet }: { onEnterGuestMeet: (roomId: 
           <option value="">— проект для задач (необязательно) —</option>
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        <label className={`btn btn-primary btn-sm ${busy ? 'disabled' : ''}`} style={{ width: '100%', textAlign: 'center', cursor: 'pointer' }}>
+        <label className={`ui-btn ui-btn-primary ui-btn-sm ${busy ? 'disabled' : ''}`} style={{ width: '100%', textAlign: 'center', cursor: 'pointer' }}>
           {busy ? 'Загружаю…' : <><Icon name="paperclip" size={15} /> Выбрать файл записи или субтитров</>}
           <input type="file" hidden disabled={busy} accept="audio/*,video/*,.vtt,.srt"
                  onChange={(e) => { const f = e.target.files?.[0]; if (f) submit(f); e.currentTarget.value = ''; }} />
@@ -124,12 +124,12 @@ export function MeetingsPage({ onEnterGuestMeet }: { onEnterGuestMeet: (roomId: 
                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenId(openId === m.id ? null : m.id); } }}>
               <div className="list-main">
                 <span className="list-title">{m.title}</span>
-                {m.duration_sec > 0 && <span className="badge badge-muted">{Math.round(m.duration_sec / 60)} мин</span>}
-                {m.source === 'transcript' && <span className="badge badge-muted" title="Загружены готовые субтитры">с именами</span>}
+                {m.duration_sec > 0 && <span className="ui-badge ui-badge-neutral">{Math.round(m.duration_sec / 60)} мин</span>}
+                {m.source === 'transcript' && <span className="ui-badge ui-badge-neutral" title="Загружены готовые субтитры">с именами</span>}
               </div>
               <div className="list-side">
-                {m.drafts_pending > 0 && <span className="badge badge-warn">задач к подтверждению: {m.drafts_pending}</span>}
-                <span className={`badge ${m.status === 'done' ? 'badge-ok' : m.status === 'error' ? 'badge-danger' : 'badge-info'}`}>
+                {m.drafts_pending > 0 && <span className="ui-badge ui-badge-warn">задач к подтверждению: {m.drafts_pending}</span>}
+                <span className={`ui-badge ${m.status === 'done' ? 'ui-badge-ok' : m.status === 'error' ? 'ui-badge-danger' : 'ui-badge-info'}`}>
                   {STATUS_LABEL[m.status] ?? m.status}
                 </span>
               </div>
@@ -192,7 +192,7 @@ function MeetingDetails({ id, projects, users, onChanged }: { id: string; projec
       {meeting.status === 'error' && (
         <div className="error-text" style={{ fontSize: 12 }}>
           {meeting.error}
-          <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }}
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ marginLeft: 8 }}
                   onClick={async () => { await api.retryMeeting(id); onChanged(); }}>Повторить обработку</button>
         </div>
       )}
@@ -236,7 +236,7 @@ function MeetingDetails({ id, projects, users, onChanged }: { id: string; projec
               и молча пропустить половину списка хуже, чем сказать об этом заранее. */}
           {pending.length > 1 && (
             <div className="team-rate" style={{ marginTop: 8 }}>
-              <button className="btn btn-primary btn-sm" onClick={applyAll} disabled={bulk || readyCount === 0}>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={applyAll} disabled={bulk || readyCount === 0}>
                 {bulk ? 'Создаю…' : `Создать все (${readyCount})`}
               </button>
               {readyCount < pending.length && (
@@ -304,7 +304,7 @@ function MeetingDetails({ id, projects, users, onChanged }: { id: string; projec
         ))}
       </div>
       {segments.length > 6 && (
-        <button className="btn btn-ghost btn-sm" onClick={() => setShowAll((v) => !v)}>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setShowAll((v) => !v)}>
           {showAll ? 'Свернуть' : 'Показать всю стенограмму'}
         </button>
       )}
@@ -412,22 +412,22 @@ function DraftRow({ draft, projects, users, onApply, onReject, onSaved }: {
       <div className="team-rate" style={{ marginTop: 4 }}>
         {editing ? (
           <>
-            <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>Сохранить</button>
-            <button className="btn btn-ghost btn-sm" onClick={cancel} disabled={busy}>Отмена</button>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={save} disabled={busy}>Сохранить</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={cancel} disabled={busy}>Отмена</button>
           </>
         ) : (
           <>
             <button
-              className="btn btn-primary btn-sm"
+              className="ui-btn ui-btn-primary ui-btn-sm"
               onClick={() => onApply(draft, { assigneeId: assigneeId || undefined, projectId: projectId || undefined })}
               disabled={busy}
             >
               Создать задачу
             </button>
-            <button className="btn btn-sm" onClick={() => setEditing(true)} disabled={busy}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setEditing(true)} disabled={busy}>
               <Icon name="edit" size={13} /> Редактировать
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => onReject(draft)} disabled={busy}>Отклонить</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => onReject(draft)} disabled={busy}>Отклонить</button>
           </>
         )}
       </div>

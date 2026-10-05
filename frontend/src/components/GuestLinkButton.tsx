@@ -85,7 +85,7 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
   return (
     <span className="guest-link-btn" ref={boxRef}>
       <button
-        className={`btn btn-sm ${compact ? 'btn-ghost' : ''}`}
+        className={`ui-btn ui-btn-sm ${compact ? 'ui-btn-ghost' : 'ui-btn-outline'}`}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         title="Ссылка для человека со стороны: он войдёт в браузере, без регистрации"
@@ -139,7 +139,7 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
                 <option value="720">Действует 30 дней</option>
               </select>
               {err && <div className="error-text">{err}</div>}
-              <button className="btn btn-primary btn-sm guest-link-go" onClick={create} disabled={busy}>
+              <button className="ui-btn ui-btn-primary ui-btn-sm guest-link-go" onClick={create} disabled={busy}>
                 {busy ? 'Создаю…' : 'Создать ссылку'}
               </button>
             </>
@@ -153,10 +153,10 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
               <code className="guest-links-url">{url}</code>
               {err && <div className="error-text">{err}</div>}
               <div className="team-rate" style={{ marginTop: 6 }}>
-                <button className="btn btn-primary btn-sm" onClick={copy}>
+                <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={copy}>
                   <Icon name="copy" size={14} /> Копировать
                 </button>
-                <button className="btn btn-ghost btn-sm" onClick={close}>Готово</button>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={close}>Готово</button>
               </div>
             </>
           )}
@@ -211,7 +211,7 @@ export function EventGuestLinkButton({ eventId, onRoom }: {
     return (
       <>
         <button
-          className="btn btn-sm"
+          className="ui-btn ui-btn-outline ui-btn-sm"
           onClick={create}
           disabled={busy}
           title="Ссылка для человека со стороны: он войдёт в браузере, без регистрации, в комнату этой встречи"
@@ -232,7 +232,7 @@ export function EventGuestLinkButton({ eventId, onRoom }: {
       {at && <MeetingNote at={at} />}
       {!copied && (
         <button
-          className="btn btn-primary btn-sm"
+          className="ui-btn ui-btn-primary ui-btn-sm"
           onClick={async () => { try { await navigator.clipboard.writeText(url); setCopied(true); } catch { setErr('Скопируйте адрес вручную'); } }}
         >
           <Icon name="copy" size={14} /> Копировать

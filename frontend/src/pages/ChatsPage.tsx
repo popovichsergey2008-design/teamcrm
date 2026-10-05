@@ -3088,7 +3088,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               {/* Голосовое: сказать быстрее, чем напечатать, — но только если сказанное
                   потом можно найти. Расшифровка приходит с сервера в тело сообщения. */}
               <button
-                className={clip.recording === 'voice' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+                className={clip.recording === 'voice' ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'}
                 onClick={() => (clip.recording ? clip.stop() : clip.start('voice'))}
                 disabled={clipBusy}
                 title={clip.recording === 'voice' ? 'Остановить и отправить' : 'Голосовое сообщение'}
@@ -3098,7 +3098,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               </button>
               {/* Спросить помощника голосом: вопрос расшифровывается и уходит как «@AI». */}
               <button
-                className={aiVoice.recording ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+                className={aiVoice.recording ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'}
                 onClick={aiVoice.toggle}
                 disabled={aiBusy || aiVoice.transcribing || !!clip.recording}
                 title={aiVoice.recording ? 'Остановить и спросить' : aiVoice.transcribing ? 'Расшифровываю вопрос…' : 'Спросить AI голосом'}
@@ -3109,7 +3109,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               {/* Запись экрана: «вот нажимаю кнопку, и всё зависает» показать проще,
                   чем описать словами. Из такого сообщения потом делают задачу. */}
               <button
-                className={clip.recording === 'screen' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+                className={clip.recording === 'screen' ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'}
                 onClick={() => (clip.recording ? clip.stop() : clip.start('screen'))}
                 disabled={clipBusy}
                 title={clip.recording === 'screen' ? 'Остановить и отправить' : 'Записать экран с голосом'}

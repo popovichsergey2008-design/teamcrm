@@ -343,7 +343,7 @@ export function ConsolePage({ route }: { route: Route }) {
                       */}
                       {!q.agentId && (
                         <span
-                          className="btn btn-sm"
+                          className="ui-btn ui-btn-outline ui-btn-sm"
                           role="button"
                           tabIndex={0}
                           onClick={(e) => { e.stopPropagation(); void act(() => api.supportAssign(q.id)); }}
@@ -354,7 +354,7 @@ export function ConsolePage({ route }: { route: Route }) {
                       )}
                       {q.agentId === user?.id && (
                         <span
-                          className="btn btn-ghost btn-sm"
+                          className="ui-btn ui-btn-ghost ui-btn-sm"
                           role="button"
                           tabIndex={0}
                           onClick={(e) => { e.stopPropagation(); void act(() => api.supportUnassign(q.id)); }}
@@ -404,7 +404,7 @@ export function ConsolePage({ route }: { route: Route }) {
                   onChange={(e) => setIncident({ ...incident, message: e.target.value })}
                 />
                 <button
-                  className="btn btn-sm"
+                  className="ui-btn ui-btn-outline ui-btn-sm"
                   disabled={busy || !incident.title.trim() || !incident.message.trim()}
                   onClick={() => void act(async () => {
                     await api.supportDeclareIncident(incident.title.trim(), incident.message.trim());
@@ -506,7 +506,7 @@ export function ConsolePage({ route }: { route: Route }) {
                     )}
                     {isAdmin && s.userId !== user?.id && (
                       <button
-                        className="btn btn-ghost btn-sm"
+                        className="ui-btn ui-btn-ghost ui-btn-sm"
                         disabled={busy}
                         onClick={(e) => { e.preventDefault(); void act(() => api.platformSetStaff(s.userId, { remove: true })); }}
                       >
@@ -553,7 +553,7 @@ export function ConsolePage({ route }: { route: Route }) {
                     onChange={(e) => setPersona({ ...persona, tone: e.target.value })}
                   />
                   <button
-                    className="btn btn-primary btn-sm"
+                    className="ui-btn ui-btn-primary ui-btn-sm"
                     disabled={busy || !persona.name.trim()}
                     onClick={() => void act(() => api.supportSetPersona({ name: persona.name.trim(), tone: persona.tone.trim() }))}
                   >
@@ -578,7 +578,7 @@ export function ConsolePage({ route }: { route: Route }) {
                         {p.position && <span className="dim"> · {p.position}</span>}
                       </span>
                       <button
-                        className="btn btn-sm"
+                        className="ui-btn ui-btn-outline ui-btn-sm"
                         disabled={busy}
                         onClick={() => void act(() => api.platformSetStaff(p.userId, { active: true }))}
                       >
@@ -620,7 +620,7 @@ export function ConsolePage({ route }: { route: Route }) {
                 onChange={(e) => setIssue({ ...issue, title: e.target.value })}
               />
               <button
-                className="btn btn-sm"
+                className="ui-btn ui-btn-outline ui-btn-sm"
                 disabled={busy || !issue.taskId || !issue.title.trim()}
                 onClick={() => void act(async () => {
                   await api.supportAddKnownIssue(issue.taskId, issue.title.trim());
@@ -638,7 +638,7 @@ export function ConsolePage({ route }: { route: Route }) {
                   <span className="dim"> · задача #{k.taskId} · {k.fixed ? 'исправлено' : 'чиним'}</span>
                 </span>
                 <button
-                  className="btn btn-ghost btn-sm"
+                  className="ui-btn ui-btn-ghost ui-btn-sm"
                   disabled={busy}
                   onClick={() => void act(() => api.supportSetKnownIssue(k.id, !k.active))}
                 >
@@ -680,7 +680,7 @@ export function ConsolePage({ route }: { route: Route }) {
                       ? `Загружено ${new Date(hb.loadedAt).toLocaleDateString('ru-RU')}${hb.stale ? ' · на диске новее' : ''}`
                       : 'Ещё не загружен.'}
                   </span>
-                  <button className="btn btn-sm" disabled={busy} onClick={() => void act(() => api.supportLoadHandbook())}>
+                  <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void act(() => api.supportLoadHandbook())}>
                     <Icon name="refresh" size={13} /> Обновить у всех
                   </button>
                 </div>

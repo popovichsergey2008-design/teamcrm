@@ -96,7 +96,7 @@ export function DeviceCheck() {
   if (!on) {
     return (
       <div className="device-check">
-        <button className="btn btn-sm" onClick={() => void start()}>
+        <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void start()}>
           <Icon name="video" size={15} /> Проверить камеру и микрофон
         </button>
         {err && <div className="error-text">{err}</div>}
@@ -125,8 +125,8 @@ export function DeviceCheck() {
         )}
       </div>
       <div className="device-actions">
-        <button className="btn btn-ghost btn-sm" onClick={beep}><Icon name="volume" size={14} /> Проверить звук</button>
-        <button className="btn btn-ghost btn-sm" onClick={() => { stop(); setOn(false); }}>Закрыть проверку</button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={beep}><Icon name="volume" size={14} /> Проверить звук</button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { stop(); setOn(false); }}>Закрыть проверку</button>
       </div>
     </div>
   );

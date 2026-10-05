@@ -106,7 +106,7 @@ export function CompanyStepDialog({ company, onClose, onSaved }: {
             {logo
               ? <AuthedMedia fileId={logo} name="Логотип компании" mime="image/png" className="onb-logo-img" />
               : <span className="onb-logo-empty"><Icon name="building" size={20} /></span>}
-            <label className="btn btn-sm">
+            <label className="ui-btn ui-btn-outline ui-btn-sm">
               {logo ? 'Заменить' : 'Загрузить'}
               <input
                 type="file"
@@ -124,7 +124,7 @@ export function CompanyStepDialog({ company, onClose, onSaved }: {
             </label>
             {logo && (
               <button
-                className="btn btn-ghost btn-sm"
+                className="ui-btn ui-btn-ghost ui-btn-sm"
                 onClick={() => { void api.clearLogo().then(() => setLogo(null)).catch(() => undefined); }}
               >
                 Убрать
@@ -149,7 +149,7 @@ export function CompanyStepDialog({ company, onClose, onSaved }: {
             </div>
           </div>
           <button
-            className="btn btn-sm"
+            className="ui-btn ui-btn-outline ui-btn-sm"
             onClick={() => { onClose(); navigate({ section: 'profile' }); }}
           >
             Подключить
@@ -159,8 +159,8 @@ export function CompanyStepDialog({ company, onClose, onSaved }: {
         {err && <div className="error-text">{err}</div>}
 
         <div className="modal-actions">
-          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Отмена</button>
-          <button className="btn btn-primary" onClick={save} disabled={busy}>
+          <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={onClose} disabled={busy}>Отмена</button>
+          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={save} disabled={busy}>
             {busy ? 'Сохраняю…' : 'Сохранить'}
           </button>
         </div>

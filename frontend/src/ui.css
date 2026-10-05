@@ -661,3 +661,12 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 /* Ветки и разделы над списком. */
 .thread-item { border-radius: var(--radius); }
 .thread-item:hover { background: var(--hover); }
+
+/* Палец, а не мышь (как у прежних .btn): кнопки не меньше 36-40 точек, поля — 16px, иначе Safari увеличивает страницу. */
+@media (hover: none) and (pointer: coarse) {
+  .ui-btn-md, .ui-btn-lg { min-height: 40px; }
+  .ui-btn-sm { min-height: 36px; }
+  .ui-btn-icon-sm { width: 36px; height: 36px; }
+  .ui-btn-icon { width: 40px; height: 40px; }
+  input.ui-input, .ui-input-group input, .ui-textarea { font-size: 16px; }
+}

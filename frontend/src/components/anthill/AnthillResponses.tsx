@@ -37,7 +37,7 @@ export function AnthillResponses() {
     <div className="anthill-pane">
       <div className="anthill-pane-head">
         <span className="dim">Ответ на частый вопрос — слово в слово, мгновенно и без модели.</span>
-        <button className="btn btn-primary btn-sm" onClick={() => setAdding((v) => !v)}><Icon name="plus" size={13} /> Новый</button>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => setAdding((v) => !v)}><Icon name="plus" size={13} /> Новый</button>
       </div>
 
       {adding && (
@@ -73,11 +73,11 @@ export function AnthillResponses() {
           </label>
           <div className="anthill-form-acts">
             <button
-              className="btn btn-primary btn-sm"
+              className="ui-btn ui-btn-primary ui-btn-sm"
               disabled={draft.trigger.trim().length < 2 || draft.answer.trim().length < 2}
               onClick={() => { void act(api.anthillAddResponse(draft)).then(() => { setDraft(EMPTY); setAdding(false); }); }}
             >Сохранить</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setAdding(false)}>Отмена</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setAdding(false)}>Отмена</button>
           </div>
         </div>
       )}
@@ -100,16 +100,16 @@ export function AnthillResponses() {
               <div className="anthill-skill-top">
                 <span className="anthill-mem-title">{row.trigger}</span>
                 <span className="dim">{row.matchKind === 'exact' ? 'точная фраза' : 'ключевые слова'} · {SCOPE_LABEL[row.scope] ?? row.scope}</span>
-                {row.auto && <span className="badge badge-info" title="Отвечает, даже когда бота не звали">без упоминания</span>}
-                {!row.enabled && <span className="badge badge-muted">выключен</span>}
+                {row.auto && <span className="ui-badge ui-badge-info" title="Отвечает, даже когда бота не звали">без упоминания</span>}
+                {!row.enabled && <span className="ui-badge ui-badge-neutral">выключен</span>}
                 {row.hits > 0 && <span className="dim">сработал {row.hits} раз</span>}
               </div>
               <div className="anthill-mem-body">{row.answer}</div>
               <div className="anthill-task-acts">
-                <button className="btn btn-ghost btn-sm" onClick={() => { void act(api.anthillEditResponse(row.id, { enabled: !row.enabled })); }}>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void act(api.anthillEditResponse(row.id, { enabled: !row.enabled })); }}>
                   <Icon name={row.enabled ? 'pause' : 'play'} size={13} /> {row.enabled ? 'Выключить' : 'Включить'}
                 </button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setEditing(row.id)}><Icon name="edit" size={13} /> Править</button>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(row.id)}><Icon name="edit" size={13} /> Править</button>
                 <button
                   className="msg-icon"
                   onClick={() => { if (window.confirm(`Удалить быстрый ответ «${row.trigger}»?`)) void act(api.anthillDeleteResponse(row.id)); }}
@@ -145,8 +145,8 @@ function EditResponse({ row, onSave, onCancel }: {
         Отвечать без упоминания бота
       </label>
       <div className="anthill-form-acts">
-        <button className="btn btn-primary btn-sm" onClick={() => { void onSave({ trigger: v.trigger.trim(), answer: v.answer.trim(), auto: v.auto }); }}>Сохранить</button>
-        <button className="btn btn-ghost btn-sm" onClick={onCancel}>Не менять</button>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void onSave({ trigger: v.trigger.trim(), answer: v.answer.trim(), auto: v.auto }); }}>Сохранить</button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onCancel}>Не менять</button>
       </div>
     </div>
   );

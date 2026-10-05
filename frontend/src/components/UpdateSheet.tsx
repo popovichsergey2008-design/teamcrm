@@ -143,19 +143,19 @@ export function UpdateSheet({ release, required, onClose }: {
 
       <div className="update-actions">
         {self === false || state === 'failed' ? (
-          <button className="btn btn-primary" onClick={() => platform.openExternal(release.apkUrl)}>
+          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={() => platform.openExternal(release.apkUrl)}>
             Скачать в браузере
           </button>
         ) : state === 'permission' ? (
-          <button className="btn btn-primary" onClick={() => void allow()}>Разрешить установку</button>
+          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={() => void allow()}>Разрешить установку</button>
         ) : (
           /* Кнопка не замирает никогда: если окно установки потерялось, её нажимают снова. */
-          <button className="btn btn-primary" onClick={() => void download()} disabled={state === 'loading'}>
+          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={() => void download()} disabled={state === 'loading'}>
             {state === 'installing' ? 'Открыть установку ещё раз' : opened ? 'Установить' : 'Обновить'}
           </button>
         )}
         {!required && state !== 'loading' && (
-          <button className="btn btn-ghost" onClick={onClose}>Позже</button>
+          <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={onClose}>Позже</button>
         )}
       </div>
     </div>

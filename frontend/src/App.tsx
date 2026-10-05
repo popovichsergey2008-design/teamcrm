@@ -505,7 +505,7 @@ export function App() {
       return (
         <div className="center-screen console-denied">
           <p>Этот адрес — рабочее место службы заботы.</p>
-          <a className="btn btn-primary btn-sm" href={mainSiteHref()}>Перейти в CRM</a>
+          <a className="ui-btn ui-btn-primary ui-btn-sm" href={mainSiteHref()}>Перейти в CRM</a>
         </div>
       );
     }

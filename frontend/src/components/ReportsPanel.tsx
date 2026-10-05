@@ -130,7 +130,7 @@ export function ReportsPanel({ canManage, onClose }: { canManage: boolean; onClo
       <aside className="drawer drawer-wide reports-panel" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="chart" size={18} /> Отчёты</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
 
         <p className="dim reports-lead">
@@ -213,7 +213,7 @@ export function ReportsPanel({ canManage, onClose }: { canManage: boolean; onClo
 
         {err && <div className="error-text">{err}</div>}
         <div className="reports-actions">
-          <button className="btn btn-primary" onClick={() => void download()} disabled={!valid || busy}>
+          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={() => void download()} disabled={!valid || busy}>
             <Icon name="download" size={16} /> {busy ? 'Собираю PDF…' : 'Скачать PDF'}
           </button>
           <span className="dim">Собирается за несколько секунд</span>

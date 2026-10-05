@@ -540,11 +540,11 @@ export function Sidebar({
                   им есть что стирать.
                 */}
                 {hasPrefs && (
-                  <button className="btn btn-ghost btn-sm nav-tune-reset" onClick={() => savePrefs({ order: [], hidden: [] })} title="Вернуть меню к заводскому порядку и показать все разделы">
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm nav-tune-reset" onClick={() => savePrefs({ order: [], hidden: [] })} title="Вернуть меню к заводскому порядку и показать все разделы">
                     По умолчанию
                   </button>
                 )}
-                <button className="btn btn-primary btn-sm" onClick={stopTuning} title="Закрыть настройку меню">
+                <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={stopTuning} title="Закрыть настройку меню">
                   <Icon name="check" size={14} />
                   Готово
                 </button>
@@ -557,7 +557,7 @@ export function Sidebar({
                   оказывается заперт: в этом режиме ни один пункт меню не открывается.
                   Дешевле дать вторую подпись, чем спорить с тем, как её ищут.
                 */}
-                <button className="btn btn-ghost btn-sm" onClick={stopTuning} title="Выйти из настройки меню — всё уже сохранено">
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={stopTuning} title="Выйти из настройки меню — всё уже сохранено">
                   <Icon name="logout" size={14} />
                   Выйти
                 </button>

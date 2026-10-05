@@ -56,7 +56,7 @@ export function OnboardingPanel({ onClose }: { onClose: () => void }) {
             <OnboardingCard always />
 
             {view.dismissed && (
-              <button className="btn btn-sm" onClick={show}>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={show}>
                 <Icon name="eye" size={14} /> Показывать подсказку на «Фокусе дня»
               </button>
             )}

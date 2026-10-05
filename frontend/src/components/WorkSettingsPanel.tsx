@@ -69,7 +69,7 @@ export function WorkSettingsPanel({ canManage, onClose }: { canManage: boolean; 
         <aside className="drawer" onClick={(e) => e.stopPropagation()}>
           <div className="drawer-head">
             <h3><Icon name="clock" size={18} /> Рабочее время</h3>
-            <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
           </div>
           {err ? <div className="error-text">{err}</div> : <div className="dim">Загружаю…</div>}
         </aside>
@@ -100,7 +100,7 @@ export function WorkSettingsPanel({ canManage, onClose }: { canManage: boolean; 
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="clock" size={18} /> Рабочее время</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
 
         <div className="dim gate-panel-hint">
@@ -164,10 +164,10 @@ export function WorkSettingsPanel({ canManage, onClose }: { canManage: boolean; 
         {canManage && (
           <div className="work-holiday-add">
             <DatePicker value={newHoliday} onChange={addHoliday} placeholder="добавить день" disabled={saving} />
-            <button className="btn btn-sm" disabled={saving} onClick={() => addYear(year)}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={saving} onClick={() => addYear(year)}>
               Нерабочие дни {year}
             </button>
-            <button className="btn btn-sm" disabled={saving} onClick={() => addYear(year + 1)}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={saving} onClick={() => addYear(year + 1)}>
               и {year + 1}
             </button>
           </div>

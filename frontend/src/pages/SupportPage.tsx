@@ -56,11 +56,11 @@ export function SupportPage() {
             Вход там отдельный: другой адрес — другое хранилище браузера.
           */}
           {user?.platformStaff && (
-            <a className="btn btn-sm" href={consoleHref()} target="_blank" rel="noreferrer">
+            <a className="ui-btn ui-btn-outline ui-btn-sm" href={consoleHref()} target="_blank" rel="noreferrer">
               <Icon name="lock" size={14} /> Консоль техподдержки
             </a>
           )}
-          <button className="btn btn-primary btn-sm" onClick={() => openSupport()}>
+          <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => openSupport()}>
             <Icon name="support" size={15} /> Обратиться в службу заботы
           </button>
         </div>
@@ -123,9 +123,9 @@ export function SupportPage() {
                 {h.csat ? ` · оценка ${h.csat}/4` : ''}
               </div>
               <div className="support-history-acts">
-                <button className="btn btn-ghost btn-sm" onClick={() => openSupport()}>Открыть разговор</button>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => openSupport()}>Открыть разговор</button>
                 {h.closedAt && (
-                  <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void reopen(h.id)}>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void reopen(h.id)}>
                     Проблема снова появилась
                   </button>
                 )}

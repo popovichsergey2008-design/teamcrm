@@ -111,8 +111,8 @@ export function Lightbox({ items, index = 0, onClose }: {
             {many && <span className="lightbox-count">{at + 1} из {count}</span>}
           </span>
           <div className="lightbox-actions">
-            {src && <a className="btn btn-ghost btn-sm" href={src} download={item.name}>Скачать</a>}
-            <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+            {src && <a className="ui-btn ui-btn-ghost ui-btn-sm" href={src} download={item.name}>Скачать</a>}
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
           </div>
         </div>
 

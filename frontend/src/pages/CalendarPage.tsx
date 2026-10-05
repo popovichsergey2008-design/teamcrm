@@ -325,9 +325,9 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
     <div className="page calendar-page">
       <div className="cal-head">
         <div className="cal-nav">
-          <button className="btn btn-sm" onClick={() => setAnchor(new Date())}>Сегодня</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => move(-1)} aria-label="Назад"><Icon name="chevron-left" size={16} /></button>
-          <button className="btn btn-ghost btn-sm" onClick={() => move(1)} aria-label="Вперёд"><Icon name="chevron-right" size={16} /></button>
+          <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setAnchor(new Date())}>Сегодня</button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => move(-1)} aria-label="Назад"><Icon name="chevron-left" size={16} /></button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => move(1)} aria-label="Вперёд"><Icon name="chevron-right" size={16} /></button>
           <h2 className="cal-title">{rangeTitle(view, days)}</h2>
         </div>
         <div className="cal-actions">
@@ -342,7 +342,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
             ))}
           </div>
           <button
-            className="btn btn-ghost btn-sm"
+            className="ui-btn ui-btn-ghost ui-btn-sm"
             onClick={() => setWorkOpen(true)}
             title="Рабочие часы, выходные и праздники компании"
           >
@@ -350,7 +350,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           </button>
           {/* Синхронизация с Google — рядом с рабочим временем: обе настройки календаря */}
           <button
-            className="btn btn-ghost btn-sm"
+            className="ui-btn ui-btn-ghost ui-btn-sm"
             onClick={() => setSyncOpen(true)}
             title="Синхронизация с Google-календарём: наши встречи туда, чужие сюда"
             aria-label="Синхронизация календаря"
@@ -358,11 +358,11 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
             <Icon name="refresh" size={15} />
           </button>
           <div className="cal-new-row">
-            <button className="btn btn-primary btn-sm" onClick={() => createNow()}>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => createNow()}>
               <Icon name="plus" size={15} /> Событие
             </button>
             <button
-              className={`btn btn-primary btn-sm cal-new-mic${voice.recording ? ' cal-mic-on' : ''}`}
+              className={`ui-btn ui-btn-primary ui-btn-sm cal-new-mic${voice.recording ? ' cal-mic-on' : ''}`}
               onClick={voice.toggle}
               disabled={voice.transcribing}
               title={voice.recording ? 'Остановить запись' : 'Продиктовать встречу голосом'}
@@ -380,7 +380,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
         <div className="cal-heard">
           <span className="dim">Услышано:</span> «{heard.text}»
           {heard.warnings.length > 0 && <span className="cal-heard-warn"> · {heard.warnings.join(' · ')}</span>}
-          <button className="btn btn-ghost btn-sm" onClick={() => setHeard(null)} title="Скрыть">
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setHeard(null)} title="Скрыть">
             <Icon name="close" size={12} />
           </button>
         </div>
@@ -634,8 +634,8 @@ function ListView({ days, events, tasks, onOpen, onRespond }: {
               </button>
               {e.myStatus === 'invited' && (
                 <span className="cal-list-answer">
-                  <button className="btn btn-sm" onClick={() => onRespond(e.id, 'accepted')}>Принять</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => onRespond(e.id, 'declined')}>Отклонить</button>
+                  <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => onRespond(e.id, 'accepted')}>Принять</button>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => onRespond(e.id, 'declined')}>Отклонить</button>
                 </span>
               )}
             </div>
@@ -838,7 +838,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
         <aside className="drawer" onClick={(e) => e.stopPropagation()}>
           <div className="drawer-head">
             <h3><Icon name="check" size={18} /> Встреча создана</h3>
-            <button className="btn btn-ghost btn-sm" onClick={done} title="Закрыть"><Icon name="close" /></button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={done} title="Закрыть"><Icon name="close" /></button>
           </div>
           <div className="meeting-created">
             <b>{created.title}</b>
@@ -851,14 +851,14 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
               Ссылка одна на всех и не изменится при переносе. Комната откроется сама в назначенное время.
             </div>
             <div className="cal-dialog-actions">
-              <button className="btn btn-primary btn-sm" onClick={async () => {
+              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={async () => {
                 const r = await shareMeeting(created.publicId, created.title);
                 if (r === 'copied') toastSaved('Ссылка скопирована', meetingUrl(created.publicId));
               }}><Icon name="link" size={14} /> Скопировать / поделиться</button>
-              <button className="btn btn-sm" onClick={() => { navigate({ section: 'meet', meetId: created.publicId }); done(); }}>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => { navigate({ section: 'meet', meetId: created.publicId }); done(); }}>
                 <Icon name="phone" size={14} /> Открыть встречу
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={done}>Готово</button>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={done}>Готово</button>
             </div>
           </div>
         </aside>
@@ -871,7 +871,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="calendar" size={18} /> {isNew ? 'Новое событие' : value.title}</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
 
         {!isNew && organizerOf(value as CalEvent) && (
@@ -980,7 +980,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
               <option value="days">дней</option>
             </select>
             <button
-              className="btn btn-sm"
+              className="ui-btn ui-btn-outline ui-btn-sm"
               type="button"
               onClick={addOwn}
               disabled={!ownValue || form.reminders.length >= MAX_REMINDERS}
@@ -1055,7 +1055,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
             {isCall && value.meeting && (
               <div className="cal-call-link">
                 <code title={meetingUrl(value.meeting.publicId)}>{meetingUrl(value.meeting.publicId).replace(/^https?:\/\//, '')}</code>
-                <button type="button" className="btn btn-sm" onClick={async () => {
+                <button type="button" className="ui-btn ui-btn-outline ui-btn-sm" onClick={async () => {
                   const r = await shareMeeting(value.meeting!.publicId, value.title ?? 'Встреча');
                   if (r === 'copied') toastSaved('Ссылка скопирована', meetingUrl(value.meeting!.publicId));
                 }}><Icon name="link" size={14} /> Поделиться</button>
@@ -1065,7 +1065,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
             {isCall && canEdit && value.meeting && value.id && <MeetingGuests eventId={String(value.id)} />}
             {isCall && canEdit && (
               <>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowAccess((v) => !v)} aria-expanded={showAccess}>
+                <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setShowAccess((v) => !v)} aria-expanded={showAccess}>
                   <Icon name={showAccess ? 'chevron-down' : 'chevron-right'} size={14} /> Доступ и ранний вход
                 </button>
                 {showAccess && (
@@ -1114,24 +1114,24 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
         <div className="cal-dialog-actions">
           {value.myStatus === 'invited' && value.id && (
             <>
-              <button className="btn btn-primary btn-sm" onClick={() => { onRespond(String(value.id), 'accepted'); onClose(); }}>Принять</button>
-              <button className="btn btn-sm" onClick={() => { onRespond(String(value.id), 'declined'); onClose(); }}>Отклонить</button>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { onRespond(String(value.id), 'accepted'); onClose(); }}>Принять</button>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => { onRespond(String(value.id), 'declined'); onClose(); }}>Отклонить</button>
             </>
           )}
           {/* Встреча с созвоном — на её страницу: там время, состояние, проверка устройств и вход */}
           {value.meeting ? (
-            <button className="btn btn-sm btn-primary" onClick={() => { navigate({ section: 'meet', meetId: value.meeting!.publicId }); onClose(); }}>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { navigate({ section: 'meet', meetId: value.meeting!.publicId }); onClose(); }}>
               <Icon name="phone" size={14} /> Открыть встречу
             </button>
           ) : roomId && (
-            <button className="btn btn-sm" onClick={() => { onStartCall(String(roomId)); onClose(); }}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => { onStartCall(String(roomId)); onClose(); }}>
               <Icon name="phone" size={14} /> Войти в созвон
             </button>
           )}
           {/* Где договорились: встречу поставили по переписке — к ней одним нажатием */}
           {value.sourceChatId && (
             <button
-              className="btn btn-sm"
+              className="ui-btn ui-btn-outline ui-btn-sm"
               onClick={() => {
                 navigate({ section: 'chat', chatId: String(value.sourceChatId) });
                 // раздел откроется и сам подсветит строку — событием, адреса у сообщения нет
@@ -1149,12 +1149,12 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
           )}
           {/* Файл встречи: кладётся в Google, Outlook или календарь телефона одним щелчком */}
           {!isNew && (
-            <button className="btn btn-sm" onClick={() => downloadIcs(String(value.id))} title="Добавить встречу в свой календарь — Google, Outlook, телефон">
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => downloadIcs(String(value.id))} title="Добавить встречу в свой календарь — Google, Outlook, телефон">
               <Icon name="download" size={14} /> В свой календарь
             </button>
           )}
-          {canEdit && <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Сохраняю…' : 'Сохранить'}</button>}
-          {canEdit && !isNew && <button className="btn btn-ghost btn-sm" onClick={remove}>Удалить</button>}
+          {canEdit && <button className="ui-btn ui-btn-primary ui-btn-md" onClick={save} disabled={busy}>{busy ? 'Сохраняю…' : 'Сохранить'}</button>}
+          {canEdit && !isNew && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={remove}>Удалить</button>}
         </div>
       </aside>
     </div>

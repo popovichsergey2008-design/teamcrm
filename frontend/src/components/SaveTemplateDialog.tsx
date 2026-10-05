@@ -120,8 +120,8 @@ export function SaveTemplateDialog({ task, checklistCount, onClose, onSaved }: {
         {err && <div className="error-text">{err}</div>}
 
         <div className="modal-actions">
-          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Отмена</button>
-          <button className="btn btn-primary" onClick={save} disabled={busy}>
+          <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={onClose} disabled={busy}>Отмена</button>
+          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={save} disabled={busy}>
             {busy ? 'Сохраняю…' : 'Сохранить шаблон'}
           </button>
         </div>

@@ -117,19 +117,19 @@ export function TaskRecurrenceBlock({ taskId, onRefresh }: { taskId: string; onR
 
       {current && !open && (
         <div className="repeat-current">
-          <span className="badge badge-repeat"><Icon name="refresh" size={12} /> {current.description}</span>
+          <span className="ui-badge ui-badge-neutral badge-repeat"><Icon name="refresh" size={12} /> {current.description}</span>
           <span className="dim">
             следующая — {new Date(current.nextRunAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
           </span>
           <span className="repeat-actions">
-            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>Изменить</button>
-            <button className="btn btn-ghost btn-sm" onClick={clear} disabled={busy}>Снять</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setOpen(true)}>Изменить</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={clear} disabled={busy}>Снять</button>
           </span>
         </div>
       )}
 
       {!current && !open && (
-        <button className="btn btn-sm" onClick={() => setOpen(true)}>
+        <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setOpen(true)}>
           <Icon name="refresh" size={14} /> Повторять эту задачу
         </button>
       )}
@@ -196,11 +196,11 @@ export function TaskRecurrenceBlock({ taskId, onRefresh }: { taskId: string; onR
 
           {err && <div className="error-text">{err}</div>}
           <div className="repeat-actions">
-            <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={save} disabled={busy}>
               {busy ? 'Сохраняю…' : 'Сохранить повтор'}
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setOpen(false); setErr(''); }}>Отмена</button>
-            {current && <button className="btn btn-ghost btn-sm" onClick={clear} disabled={busy}>Снять повтор</button>}
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { setOpen(false); setErr(''); }}>Отмена</button>
+            {current && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={clear} disabled={busy}>Снять повтор</button>}
           </div>
         </div>
       )}

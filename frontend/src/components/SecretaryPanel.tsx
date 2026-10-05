@@ -61,7 +61,7 @@ export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boo
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="sparkles" size={18} /> AI Секретарь</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
 
         <div className="secretary-summary">
@@ -156,7 +156,7 @@ function Ask() {
           placeholder="что с проектом Сайт · кто свободен · что горит"
           aria-label="Вопрос секретарю"
         />
-        <button className="btn btn-primary btn-sm" onClick={() => void ask()} disabled={busy}>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => void ask()} disabled={busy}>
           {busy ? 'Смотрю…' : 'Спросить'}
         </button>
       </div>
@@ -164,7 +164,7 @@ function Ask() {
       {!answer && (
         <div className="ask-chips">
           {['что горит', 'кто свободен', 'что на мне'].map((hint) => (
-            <button key={hint} className="btn btn-ghost btn-sm" onClick={() => void ask(hint)}>{hint}</button>
+            <button key={hint} className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void ask(hint)}>{hint}</button>
           ))}
         </div>
       )}
@@ -234,13 +234,13 @@ function Gaps({ canManage }: { canManage: boolean }) {
           </div>
           <span className="gap-actions">
             <button
-              className="btn btn-sm"
+              className="ui-btn ui-btn-outline ui-btn-sm"
               disabled={busy === r.taskId}
               onClick={() => apply(r, { assigneeId: r.assignee?.userId })}
             >
               Назначить
             </button>
-            <button className="btn btn-ghost btn-sm" disabled={busy === r.taskId} onClick={() => skip(r.taskId, 'assignee')}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy === r.taskId} onClick={() => skip(r.taskId, 'assignee')}>
               Не этой
             </button>
           </span>
@@ -257,13 +257,13 @@ function Gaps({ canManage }: { canManage: boolean }) {
           </div>
           <span className="gap-actions">
             <button
-              className="btn btn-sm"
+              className="ui-btn ui-btn-outline ui-btn-sm"
               disabled={busy === r.taskId}
               onClick={() => apply(r, { deadline: r.deadline?.date })}
             >
               Поставить срок
             </button>
-            <button className="btn btn-ghost btn-sm" disabled={busy === r.taskId} onClick={() => skip(r.taskId, 'deadline')}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy === r.taskId} onClick={() => skip(r.taskId, 'deadline')}>
               Не этой
             </button>
           </span>
@@ -312,8 +312,8 @@ function Proposed() {
             {p.toName && <span className="dim"> · {p.toName}</span>}
           </span>
           <span className="ping-actions">
-            <button className="btn btn-sm" disabled={busy === p.id} onClick={() => act(p, true)}>Напомнить</button>
-            <button className="btn btn-ghost btn-sm" disabled={busy === p.id} onClick={() => act(p, false)}>Не надо</button>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy === p.id} onClick={() => act(p, true)}>Напомнить</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy === p.id} onClick={() => act(p, false)}>Не надо</button>
           </span>
         </div>
       ))}
@@ -362,8 +362,8 @@ function Maintenance({ canManage }: { canManage: boolean }) {
               <span className="ping-text-static">{p.text}</span>
               {canManage && (
                 <span className="ping-actions">
-                  <button className="btn btn-sm" disabled={busy === p.id} onClick={() => act(p, 'apply')}>Убрать</button>
-                  <button className="btn btn-ghost btn-sm" disabled={busy === p.id} onClick={() => act(p, 'dismiss')}>
+                  <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy === p.id} onClick={() => act(p, 'apply')}>Убрать</button>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy === p.id} onClick={() => act(p, 'dismiss')}>
                     Не надо
                   </button>
                 </span>
@@ -386,7 +386,7 @@ function Maintenance({ canManage }: { canManage: boolean }) {
               </span>
               {canManage && (
                 <span className="ping-actions">
-                  <button className="btn btn-ghost btn-sm" disabled={busy === p.id} onClick={() => act(p, 'undo')}>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy === p.id} onClick={() => act(p, 'undo')}>
                     Вернуть
                   </button>
                 </span>

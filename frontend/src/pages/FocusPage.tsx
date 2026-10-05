@@ -112,7 +112,7 @@ function FocusCard({ task, side, onOpen, onPlan }: {
       )}
       <span className="focus-card-title">{task.title}</span>
       <span className="focus-card-meta">
-        <span className="badge badge-muted" title="Проект">{task.project_name}</span>
+        <span className="ui-badge ui-badge-neutral" title="Проект">{task.project_name}</span>
         {prio && <span className={prio.cls}>{prio.text}</span>}
         {due && <span className={due.cls} title={due.title}>{due.text}</span>}
         {checklist && <span className="focus-check"><Icon name="check" size={12} /> {checklist}</span>}

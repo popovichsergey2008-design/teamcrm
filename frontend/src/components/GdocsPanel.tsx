@@ -87,7 +87,7 @@ export function GdocsPanel() {
 
       <div className="drawer-section">
         <div className="drawer-section-title">Найти в системе</div>
-        <button className="btn btn-sm" onClick={scan} disabled={!!status?.scanning}>
+        <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={scan} disabled={!!status?.scanning}>
           <Icon name="search" size={14} /> {status?.scanning ? 'Ищу…' : 'Просканировать задачи и переписку'}
         </button>
         <div className="dim">
@@ -108,7 +108,7 @@ export function GdocsPanel() {
             <option value="">— проект по умолчанию —</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          <button className="btn btn-primary btn-sm" onClick={add}>Добавить и прочитать</button>
+          <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={add}>Добавить и прочитать</button>
         </div>
         <div className="dim">
           Документ живёт при проекте: знание без разреза по проекту потом нечем искать.

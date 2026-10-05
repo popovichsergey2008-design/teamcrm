@@ -39,7 +39,7 @@ export function ClientPortal() {
         </div>
         <div className="topbar-right">
           <span className="dim">{user?.fullName}</span>
-          <button className="btn btn-ghost btn-sm" onClick={logout}>Выйти</button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={logout}>Выйти</button>
         </div>
       </header>
       <div className="board-layout">
@@ -62,13 +62,13 @@ export function ClientPortal() {
               <div className="board-header">
                 <div className="board-title">
                   {board.project.name}
-                  <span className="badge" style={{ marginLeft: 10 }}>прогресс {progress}%</span>
+                  <span className="ui-badge ui-badge-neutral" style={{ marginLeft: 10 }}>прогресс {progress}%</span>
                 </div>
               </div>
               <div className="board-columns">
                 {board.columns.map((col: any) => (
                   <div key={col.id} className="column">
-                    <div className="column-head"><span>{col.name}</span><span className="badge">{col.tasks.length}</span></div>
+                    <div className="column-head"><span>{col.name}</span><span className="ui-badge ui-badge-neutral">{col.tasks.length}</span></div>
                     <div className="column-tasks">
                       {col.tasks.map((t: any) => (
                         <div key={t.id} className="task-card" style={{ cursor: 'default' }}>
@@ -80,9 +80,9 @@ export function ClientPortal() {
                             {t.title}
                           </div>
                           <div className="task-meta">
-                            {t.is_blocked && <span className="badge badge-blocked">В ожидании</span>}
-                            {t.deadline_at && <span className="badge" title="Срок">до {new Date(t.deadline_at).toLocaleDateString('ru-RU')}</span>}
-                            {!!t.checklistTotal && <span className="badge" title="чеклист"><Icon name="check" size={12} /> {t.checklistDone}/{t.checklistTotal}</span>}
+                            {t.is_blocked && <span className="ui-badge ui-badge-neutral badge-blocked">В ожидании</span>}
+                            {t.deadline_at && <span className="ui-badge ui-badge-neutral" title="Срок">до {new Date(t.deadline_at).toLocaleDateString('ru-RU')}</span>}
+                            {!!t.checklistTotal && <span className="ui-badge ui-badge-neutral" title="чеклист"><Icon name="check" size={12} /> {t.checklistDone}/{t.checklistTotal}</span>}
                           </div>
                         </div>
                       ))}

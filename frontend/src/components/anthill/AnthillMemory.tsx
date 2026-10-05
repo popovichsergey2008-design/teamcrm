@@ -67,7 +67,7 @@ export function AnthillMemory() {
           <input type="checkbox" checked={auto} onChange={toggleAuto} />
           Запоминать самому
         </label>
-        <button className="btn btn-primary btn-sm" onClick={() => setAdding((v) => !v)}>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => setAdding((v) => !v)}>
           <Icon name="plus" size={13} /> Добавить
         </button>
       </div>
@@ -90,8 +90,8 @@ export function AnthillMemory() {
             <textarea className="input" rows={2} value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} placeholder="Работаю по Новосибирску, отчёты нужны к 9 утра по местному" />
           </label>
           <div className="anthill-form-acts">
-            <button className="btn btn-primary btn-sm" onClick={() => { void add(); }} disabled={draft.title.trim().length < 2 || draft.content.trim().length < 2}>Запомнить</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setAdding(false)}>Отмена</button>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void add(); }} disabled={draft.title.trim().length < 2 || draft.content.trim().length < 2}>Запомнить</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setAdding(false)}>Отмена</button>
           </div>
         </div>
       )}
@@ -126,7 +126,7 @@ export function AnthillMemory() {
                   <>
                     <div className="anthill-mem-top">
                       <span className="anthill-mem-title">{row.title}</span>
-                      {row.source === 'auto' && <span className="badge badge-muted" title="Агент подметил это сам">сам</span>}
+                      {row.source === 'auto' && <span className="ui-badge ui-badge-neutral" title="Агент подметил это сам">сам</span>}
                     </div>
                     <div className="anthill-mem-body">{row.content}</div>
                     <div className="anthill-mem-acts">
@@ -163,8 +163,8 @@ function EditMemory({ row, onSave, onCancel }: {
         <textarea className="input" rows={2} value={content} onChange={(e) => setContent(e.target.value)} />
       </label>
       <div className="anthill-form-acts">
-        <button className="btn btn-primary btn-sm" onClick={() => { void onSave(title.trim(), content.trim()); }}>Сохранить</button>
-        <button className="btn btn-ghost btn-sm" onClick={onCancel}>Не менять</button>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void onSave(title.trim(), content.trim()); }}>Сохранить</button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onCancel}>Не менять</button>
       </div>
     </div>
   );

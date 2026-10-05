@@ -183,7 +183,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3><Icon name="users" size={18} /> Команда</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
+        <div className="drawer-head"><h3><Icon name="users" size={18} /> Команда</h3><button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         {/*
           Кто здесь распоряжается — сказано прямо.
 
@@ -235,7 +235,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
             )}
             <div className="panel-toolbar">
               <div className="drawer-section-title" style={{ margin: 0 }}>Сотрудники ({users.length})</div>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowAdd((v) => !v)}>{showAdd ? 'Скрыть' : '＋ Добавить людей'}</button>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => setShowAdd((v) => !v)}>{showAdd ? 'Скрыть' : '＋ Добавить людей'}</button>
             </div>
 
             {showAdd && (
@@ -256,7 +256,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                     <input className="input" type="number" min={1} placeholder="Лимит входов" value={linkForm.maxUses} onChange={(e) => setLinkForm({ ...linkForm, maxUses: e.target.value })} />
                   </div>
                   <input className="input" type="number" min={1} placeholder="Срок действия, дней" value={linkForm.expiresInDays} onChange={(e) => setLinkForm({ ...linkForm, expiresInDays: e.target.value })} />
-                  <button className="btn btn-sm" onClick={createLink}>Создать ссылку</button>
+                  <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={createLink}>Создать ссылку</button>
                   {newLink && (
                     <div className="invite-box">
                       Ссылка (можно раздать многим):
@@ -269,10 +269,10 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                     <div className="team-head">
                       <span>
                         {roleLabel(l.role_code)} · вошло {l.uses}{l.max_uses ? ` из ${l.max_uses}` : ''}
-                        {!l.is_active && <span className="badge badge-muted">отключена</span>}
+                        {!l.is_active && <span className="ui-badge ui-badge-neutral">отключена</span>}
                         {l.expires_at && <span className="dim" style={{ fontSize: 11 }}> · до {new Date(l.expires_at).toLocaleDateString()}</span>}
                       </span>
-                      {l.is_active && <button className="btn btn-ghost btn-sm" onClick={() => deleteLink(l.id)}>Отключить</button>}
+                      {l.is_active && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => deleteLink(l.id)}>Отключить</button>}
                     </div>
                   </div>
                 ))}
@@ -285,7 +285,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                     <select className="input" value={inv.role} onChange={(e) => setInv({ ...inv, role: e.target.value })}>{roleOptions}</select>
                     <select className="input" value={inv.positionId} onChange={(e) => setInv({ ...inv, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
                   </div>
-                  <button className="btn btn-sm" onClick={sendInvite}>Создать приглашение</button>
+                  <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={sendInvite}>Создать приглашение</button>
                   {invite && (
                     <div className="invite-box">
                       Ссылка для {invite.email}:
@@ -304,7 +304,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                     <select className="input" value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })}>{roleOptions}</select>
                     <select className="input" value={nu.positionId} onChange={(e) => setNu({ ...nu, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
                   </div>
-                  <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={addUser}>Добавить сотрудника</button>
+                  <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%' }} onClick={addUser}>Добавить сотрудника</button>
                 </div>
               </div>
             )}
@@ -312,7 +312,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
             {users.map((u) => (
               <div key={u.id} className={`team-row ${u.isActive ? '' : 'team-inactive'}`}>
                 <div className="team-head">
-                  <span>{u.fullName} {!u.isActive && <span className="badge badge-muted">неактивен</span>}</span>
+                  <span>{u.fullName} {!u.isActive && <span className="ui-badge ui-badge-neutral">неактивен</span>}</span>
                   <span className="dim">{u.positionName ?? '—'}</span>
                 </div>
                 <div className="drawer-grid2">
@@ -382,16 +382,16 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                   {MONETIZATION_ENABLED && (
                     <>
                       <input className="input" type="number" placeholder="₽/час" value={rate[u.id] ?? ''} onChange={(e) => setRate((r) => ({ ...r, [u.id]: e.target.value }))} />
-                      <button className="btn btn-sm" onClick={() => saveRate(u.id)}>Ставка</button>
+                      <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => saveRate(u.id)}>Ставка</button>
                     </>
                   )}
-                  <button className="btn btn-ghost btn-sm" onClick={() => loadMetrics(u.id)}>Метрики</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => patchUser(u.id, { isActive: !u.isActive })}>{u.isActive ? 'Деактив.' : 'Вкл.'}</button>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => loadMetrics(u.id)}>Метрики</button>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => patchUser(u.id, { isActive: !u.isActive })}>{u.isActive ? 'Деактив.' : 'Вкл.'}</button>
                   {me?.role === 'owner' && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => makeResetLink(u.id)} title="Выдать ссылку на смену пароля">Сброс пароля</button>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => makeResetLink(u.id)} title="Выдать ссылку на смену пароля">Сброс пароля</button>
                   )}
                   {String(u.id) !== String(me?.id ?? '') && (
-                    <button className="btn btn-ghost btn-sm" disabled={devicesBusy} onClick={() => void showDevices(u.id)} title="Где сотрудник вошёл: телефоны и браузеры; отзыв гасит сессию сразу">
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={devicesBusy} onClick={() => void showDevices(u.id)} title="Где сотрудник вошёл: телефоны и браузеры; отзыв гасит сессию сразу">
                       Устройства
                     </button>
                   )}
@@ -401,7 +401,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                     <div className="team-head">
                       <b>Устройства и сессии</b>
                       {devicesOf.list.length > 0 && (
-                        <button className="btn btn-ghost btn-sm" disabled={devicesBusy} onClick={() => void revokeDevice(u.id, null)}>
+                        <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={devicesBusy} onClick={() => void revokeDevice(u.id, null)}>
                           Выйти везде
                         </button>
                       )}
@@ -418,7 +418,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                         <Icon name="alert" size={13} /> Пароль общий для всех организаций этого человека — смена затронет также: {reset.alsoAffectsOrgs.join(', ')}.
                       </div>
                     )}
-                    <button className="btn btn-ghost btn-sm" onClick={() => setReset(null)}>Скрыть</button>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setReset(null)}>Скрыть</button>
                   </div>
                 )}
                 {metrics[u.id] && (
@@ -435,7 +435,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
           <>
             <div className="team-rate" style={{ marginBottom: 12 }}>
               <input className="input" placeholder="Новая должность" value={newPos} onChange={(e) => setNewPos(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addPos()} />
-              <button className="btn btn-primary btn-sm" onClick={addPos}>+</button>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={addPos}>+</button>
             </div>
             {/*
               Право публиковать новости — на должности, а не на человеке: при смене
@@ -462,7 +462,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                     />
                     Пишет новости
                   </label>
-                  <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deletePosition(p.id); reload(); }}>Удалить</button>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={async () => { await api.deletePosition(p.id); reload(); }}>Удалить</button>
                 </span>
               </div>
             ))}
@@ -475,7 +475,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
               <input className="input add-user-input" placeholder="Название группы/отдела" value={newGroup.name} onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })} />
               <div className="team-rate">
                 <select className="input" value={newGroup.kind} onChange={(e) => setNewGroup({ ...newGroup, kind: e.target.value })}><option value="group">группа</option><option value="department">отдел</option></select>
-                <button className="btn btn-primary btn-sm" onClick={addGroup}>Создать</button>
+                <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={addGroup}>Создать</button>
               </div>
             </div>
             {groups.length === 0 && (
@@ -494,11 +494,11 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                 <div key={g.id} className="team-row">
                   <div className="team-head">
                     <span>
-                      {g.name} <span className="badge badge-muted">{KIND_LABEL[g.kind] ?? g.kind}</span>{' '}
+                      {g.name} <span className="ui-badge ui-badge-neutral">{KIND_LABEL[g.kind] ?? g.kind}</span>{' '}
                       <span className="dim">{plural(members.length, 'человек', 'человека', 'человек')}</span>
                     </span>
                     <button
-                      className="btn btn-ghost btn-sm"
+                      className="ui-btn ui-btn-ghost ui-btn-sm"
                       onClick={() => removeGroup(g.id, g.name, members.length)}
                       title="Удалить группу"
                     >

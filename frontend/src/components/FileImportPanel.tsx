@@ -84,7 +84,7 @@ export function FileImportPanel() {
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); void upload(e.dataTransfer.files?.[0]); }}
         >
-          <label className="btn btn-sm file-pick">
+          <label className="ui-btn ui-btn-outline ui-btn-sm file-pick">
             <Icon name="upload" size={14} /> Выбрать файл
             <input
               className="file-pick-input"
@@ -128,8 +128,8 @@ export function FileImportPanel() {
           <div className="import-head">
             <span><Icon name="file" size={14} /> {preview.fileName}</span>
             <span className="dim">строк: {preview.totalRows}</span>
-            {preview.truncated && <span className="badge badge-warn">взяты первые 5000</span>}
-            <button className="btn btn-ghost btn-sm" onClick={() => { setPreview(null); setErr(''); }}>
+            {preview.truncated && <span className="ui-badge ui-badge-warn">взяты первые 5000</span>}
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { setPreview(null); setErr(''); }}>
               Другой файл
             </button>
           </div>
@@ -234,7 +234,7 @@ export function FileImportPanel() {
           </div>
 
           <button
-            className="btn btn-primary"
+            className="ui-btn ui-btn-primary ui-btn-md"
             onClick={run}
             disabled={busy || mapping.title === undefined || (target.mode === 'existing' && !target.projectId)}
           >

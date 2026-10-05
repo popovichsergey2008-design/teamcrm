@@ -43,7 +43,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3><Icon name="plug" size={18} /> Интеграции</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
+        <div className="drawer-head"><h3><Icon name="plug" size={18} /> Интеграции</h3><button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="tabs">
           {/* Файл — первым: он работает всегда и без ключей, а остальные источники
               требуют доступа к чужой системе. */}
@@ -71,7 +71,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
         <div className="add-user">
           <input className="input add-user-input" placeholder="URL вебхука (https://portal.bitrix24.ru/rest/…/…/)" value={form.webhookUrl} onChange={(e) => setForm({ ...form, webhookUrl: e.target.value })} />
           <input className="input add-user-input" placeholder="Название (напр. «Основной»)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
-          <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={connect}>Подключить и проверить</button>
+          <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%' }} onClick={connect}>Подключить и проверить</button>
           <div className="dim" style={{ marginTop: 6, fontSize: 12 }}>В Битриксе: Разработчикам → Другое → Входящий вебхук, права <b>task, user, sonet_group</b>; для вложений — <b>disk</b>, для общей ленты — <b>log</b>. Права можно дописать в существующий вебхук (URL не меняется).</div>
         </div>
 
@@ -85,8 +85,8 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
             <div className="team-head">
               <span>{c.label || c.portal} <span className="dim" style={{ fontSize: 12 }}>{c.portal}</span></span>
               <span>
-                <button className="btn btn-ghost btn-sm" onClick={() => setOpenCid(openCid === c.id ? null : c.id)}>{openCid === c.id ? 'Скрыть' : 'Импорт'}</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => disconnect(c.id)}>Отключить</button>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setOpenCid(openCid === c.id ? null : c.id)}>{openCid === c.id ? 'Скрыть' : 'Импорт'}</button>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => disconnect(c.id)}>Отключить</button>
               </span>
             </div>
             <div className="invite-box">
@@ -171,7 +171,7 @@ function ImportBlock({ cid }: { cid: string }) {
         <input type="checkbox" checked={feed} onChange={(e) => setFeed(e.target.checked)} />
         Общая Живая лента компании → «Входящие из Битрикса»
       </label>
-      <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={startImport} disabled={run && run.status === 'running'}>
+      <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={startImport} disabled={run && run.status === 'running'}>
         Импортировать выбранные
       </button>
       {run && (
@@ -189,7 +189,7 @@ function ImportBlock({ cid }: { cid: string }) {
       <UngroupedBlock cid={cid} />
 
       {!showUnmatched && (
-        <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={() => { setShowUnmatched(true); loadUnmatched(); }}>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ marginTop: 10 }} onClick={() => { setShowUnmatched(true); loadUnmatched(); }}>
           Сопоставить исполнителей вручную (необязательно)
         </button>
       )}
@@ -209,7 +209,7 @@ function ImportBlock({ cid }: { cid: string }) {
                 <option value="">— наш сотрудник —</option>
                 {users.map((x) => <option key={x.id} value={x.id}>{x.fullName}</option>)}
               </select>
-              <button className="btn btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
             </div>
           ))}
         </div>
@@ -237,7 +237,7 @@ function DiagnosticsBar({ cid }: { cid: string }) {
 
   return (
     <div style={{ marginBottom: 10 }}>
-      <button className="btn btn-ghost btn-sm" onClick={run} disabled={loading}>
+      <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={run} disabled={loading}>
         {loading ? 'Проверяю…' : <><Icon name="search" size={14} /> Диагностика подключения</>}
       </button>
       {err && <div className="error-text">{err}</div>}
@@ -316,7 +316,7 @@ function UngroupedBlock({ cid }: { cid: string }) {
         ИИ прочитает задачи вне рабочих групп Битрикса и предложит проект для каждой. Проверьте и примените.
       </div>
       {err && <div className="error-text">{err}</div>}
-      <button className="btn btn-sm" style={{ width: '100%' }} onClick={analyze} disabled={loading}>
+      <button className="ui-btn ui-btn-outline ui-btn-sm" style={{ width: '100%' }} onClick={analyze} disabled={loading}>
         {loading ? 'Анализирую…' : <><Icon name="sparkles" size={14} /> Проанализировать задачи без проекта</>}
       </button>
 
@@ -340,7 +340,7 @@ function UngroupedBlock({ cid }: { cid: string }) {
                 </select>
               </div>
             ))}
-            <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={apply} disabled={run && run.status === 'running'}>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={apply} disabled={run && run.status === 'running'}>
               Применить раскладку ({ana.tasks.length})
             </button>
             {run && (
@@ -432,7 +432,7 @@ function YougileSection() {
       <div className="add-user">
         <input className="input add-user-input" placeholder="API-ключ YouGile" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
         <input className="input add-user-input" placeholder="Название (напр. «Основной»)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
-        <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={connect}>Подключить</button>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%' }} onClick={connect}>Подключить</button>
       </div>
       {msg && <div className="dim">{msg}</div>}
 
@@ -446,8 +446,8 @@ function YougileSection() {
           <div className="team-head">
             <span>{c.label || 'YouGile'}</span>
             <span className="team-rate">
-              <button className="btn btn-ghost btn-sm" onClick={() => setOpenCid(openCid === c.id ? null : c.id)}>{openCid === c.id ? 'Скрыть' : 'Импорт'}</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => disconnect(c.id)}>Удалить</button>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setOpenCid(openCid === c.id ? null : c.id)}>{openCid === c.id ? 'Скрыть' : 'Импорт'}</button>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => disconnect(c.id)}>Удалить</button>
             </span>
           </div>
           {openCid === c.id && <YougileImportBlock cid={c.id} />}
@@ -520,7 +520,7 @@ function YougileImportBlock({ cid }: { cid: string }) {
         </label>
       ))}
       {boards && boards.length > 0 && (
-        <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={startImport} disabled={run && (run.status === 'running' || run.status === 'queued')}>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={startImport} disabled={run && (run.status === 'running' || run.status === 'queued')}>
           Импортировать выбранные
         </button>
       )}
@@ -534,7 +534,7 @@ function YougileImportBlock({ cid }: { cid: string }) {
 
       <div className="drawer-section-title" style={{ marginTop: 10 }}>Живая синхронизация</div>
       <div className="dim" style={{ fontSize: 12 }}>После включения YouGile будет присылать изменения задач (создание/перенос/правка/удаление) в реальном времени.</div>
-      {!live && <button className="btn btn-ghost btn-sm" onClick={enableLive}>Включить живую синхронизацию</button>}
+      {!live && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={enableLive}>Включить живую синхронизацию</button>}
       {liveErr && <div className="error-text" style={{ fontSize: 12 }}>{liveErr}</div>}
       {live && (
         <div className="dim" style={{ fontSize: 12 }}>
@@ -545,7 +545,7 @@ function YougileImportBlock({ cid }: { cid: string }) {
       <TwoWayBlock cid={cid} />
 
       <div className="drawer-section-title" style={{ marginTop: 10 }}>Сопоставление пользователей</div>
-      {!unmatched && <button className="btn btn-ghost btn-sm" onClick={loadUsers}>Показать несопоставленных</button>}
+      {!unmatched && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={loadUsers}>Показать несопоставленных</button>}
       {unmatched && (
         <>
           <div className="dim" style={{ fontSize: 12 }}>
@@ -562,7 +562,7 @@ function YougileImportBlock({ cid }: { cid: string }) {
                 <option value="">— выбрать —</option>
                 {locals.map((l) => <option key={l.id} value={l.id}>{l.fullName}</option>)}
               </select>
-              <button className="btn btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
             </div>
           ))}
         </>

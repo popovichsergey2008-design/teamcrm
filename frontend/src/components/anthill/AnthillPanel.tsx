@@ -281,11 +281,11 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
           </span>
         </span>
         <span className="anthill-head-acts">
-          <button className="btn btn-ghost btn-sm" onClick={() => { void fresh(); }} title="Новый разговор — с чистого листа">
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void fresh(); }} title="Новый разговор — с чистого листа">
             <Icon name="plus" size={14} /> Новый
           </button>
           <button
-            className={`btn btn-ghost btn-sm${historyOpen ? ' active' : ''}`}
+            className={`ui-btn ui-btn-ghost ui-btn-sm${historyOpen ? ' active' : ''}`}
             onClick={() => { setHistoryOpen((v) => !v); loadSessions(); }}
             title="История разговоров"
             aria-label="История разговоров"
@@ -294,12 +294,12 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
             <Icon name="clock" size={14} />
           </button>
           {onFullscreen && !fullscreen && (
-            <button className="btn btn-ghost btn-sm" onClick={onFullscreen} title="Открыть на весь экран" aria-label="Открыть на весь экран">
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onFullscreen} title="Открыть на весь экран" aria-label="Открыть на весь экран">
               <Icon name="maximize" size={14} />
             </button>
           )}
           {onClose && (
-            <button className="btn btn-ghost btn-sm chat-overlay-close" onClick={onClose} title="Закрыть (Esc)" aria-label="Закрыть">
+            <button className="ui-btn ui-btn-ghost ui-btn-sm chat-overlay-close" onClick={onClose} title="Закрыть (Esc)" aria-label="Закрыть">
               <Icon name="close" size={16} />
             </button>
           )}
@@ -404,22 +404,22 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
               <div className="anthill-action">
                 {m.action.status === 'pending' && (
                   <>
-                    <button className="btn btn-primary btn-sm" onClick={() => { void act(m.id, m.action!.id, 'confirm'); }}>
+                    <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void act(m.id, m.action!.id, 'confirm'); }}>
                       <Icon name="check" size={13} /> Создать
                     </button>
                     {m.action.fields.length > 0 && (
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing((cur) => (cur === m.id ? null : m.id))}>
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing((cur) => (cur === m.id ? null : m.id))}>
                         <Icon name="edit" size={13} /> Редактировать
                       </button>
                     )}
-                    <button className="btn btn-ghost btn-sm" onClick={() => { void act(m.id, m.action!.id, 'reject'); }}>Отмена</button>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void act(m.id, m.action!.id, 'reject'); }}>Отмена</button>
                     <span className="dim">пока не подтвердите — ничего не создано</span>
                   </>
                 )}
                 {m.action.status === 'done' && (
                   <>
-                    <span className="badge badge-ok">сделано</span>
-                    <button className="btn btn-ghost btn-sm" onClick={() => { void act(m.id, m.action!.id, 'undo'); }}>
+                    <span className="ui-badge ui-badge-ok">сделано</span>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void act(m.id, m.action!.id, 'undo'); }}>
                       <Icon name="refresh" size={13} /> Отменить
                     </button>
                   </>
@@ -434,9 +434,9 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
                     }}
                   />
                 )}
-                {m.action.status === 'rejected' && <span className="badge badge-muted">отклонено</span>}
-                {m.action.status === 'undone' && <span className="badge badge-muted">отменено</span>}
-                {m.action.status === 'failed' && <span className="badge badge-warn">не получилось</span>}
+                {m.action.status === 'rejected' && <span className="ui-badge ui-badge-neutral">отклонено</span>}
+                {m.action.status === 'undone' && <span className="ui-badge ui-badge-neutral">отменено</span>}
+                {m.action.status === 'failed' && <span className="ui-badge ui-badge-warn">не получилось</span>}
               </div>
             )}
 
@@ -509,7 +509,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
             aria-label="Вопрос AnthillBot"
           />
           <button
-            className={voice.recording ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+            className={voice.recording ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'}
             onClick={voice.toggle}
             disabled={busy}
             title={voice.recording ? 'Остановить и распознать' : 'Спросить голосом'}
@@ -518,11 +518,11 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
             <Icon name={voice.recording ? 'stop' : 'mic'} size={16} />
           </button>
           {busy ? (
-            <button className="btn btn-sm" onClick={() => stopRef.current?.()} title="Остановить ответ — написанное останется">
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => stopRef.current?.()} title="Остановить ответ — написанное останется">
               <Icon name="stop" size={14} /> Остановить
             </button>
           ) : (
-            <button className="btn btn-primary btn-sm" onClick={() => { void send(draft); }} disabled={!draft.trim()} title="Отправить" aria-label="Отправить">
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void send(draft); }} disabled={!draft.trim()} title="Отправить" aria-label="Отправить">
               <Icon name="send" size={16} />
             </button>
           )}
@@ -573,8 +573,8 @@ function ActionForm({ action, onSave, onCancel }: {
       ))}
       {err && <div className="error-text">{err}</div>}
       <div className="anthill-form-acts">
-        <button className="btn btn-primary btn-sm" onClick={() => { void save(); }} disabled={busy}>Сохранить</button>
-        <button className="btn btn-ghost btn-sm" onClick={onCancel} disabled={busy}>Не менять</button>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void save(); }} disabled={busy}>Сохранить</button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onCancel} disabled={busy}>Не менять</button>
       </div>
     </div>
   );

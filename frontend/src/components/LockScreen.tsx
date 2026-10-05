@@ -30,7 +30,7 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
       <Logo size={56} />
       <b className="lock-title">ANTHILL заблокирован</b>
       <span className="dim">{failed ? 'Не удалось подтвердить — попробуйте ещё раз' : 'Подтвердите, что это вы'}</span>
-      <button className="btn btn-primary" disabled={busy} onClick={() => void attempt()}>
+      <button className="ui-btn ui-btn-primary ui-btn-md" disabled={busy} onClick={() => void attempt()}>
         {busy ? 'Проверяем…' : 'Разблокировать'}
       </button>
     </div>

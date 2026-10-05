@@ -101,7 +101,7 @@ export function TaskMergeModal({ taskId, taskTitle, onClose, onMerged }: {
     <div className={`merge-side${main ? ' main' : ''}`}>
       <div className="merge-side-head">
         <span className="registry-id">#{s.id}</span>
-        {main ? <span className="badge badge-info">останется</span> : <span className="badge">будет объединена</span>}
+        {main ? <span className="ui-badge ui-badge-info">останется</span> : <span className="ui-badge ui-badge-neutral">будет объединена</span>}
       </div>
       <div className="merge-side-title">{s.title}</div>
       <div className="dim">{s.projectName ?? '—'} · {s.assigneeName ?? 'не назначен'}</div>
@@ -113,7 +113,7 @@ export function TaskMergeModal({ taskId, taskTitle, onClose, onMerged }: {
       <div className="modal-card merge-modal" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="refresh" size={16} /> {preview ? 'Объединить задачи?' : 'Найти похожую задачу'}</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть">
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть">
             <Icon name="close" size={16} />
           </button>
         </div>
@@ -223,10 +223,10 @@ export function TaskMergeModal({ taskId, taskTitle, onClose, onMerged }: {
             {err && <div className="error-text">{err}</div>}
 
             <div className="merge-actions">
-              <button className="btn btn-ghost btn-sm" onClick={() => setPreview(null)} disabled={busy}>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setPreview(null)} disabled={busy}>
                 <Icon name="chevron-left" size={14} /> К списку
               </button>
-              <button className="btn btn-primary" onClick={doMerge} disabled={busy}>
+              <button className="ui-btn ui-btn-primary ui-btn-md" onClick={doMerge} disabled={busy}>
                 {busy ? 'Объединяю…' : 'Объединить'}
               </button>
             </div>

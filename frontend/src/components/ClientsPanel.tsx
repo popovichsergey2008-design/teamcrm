@@ -52,7 +52,7 @@ export function ClientsPanel({ onClose, embedded = false }: { onClose?: () => vo
       <div className="drawer-section-title">Добавить клиента</div>
       <div className="team-rate">
         <input className="input" placeholder="Название компании-клиента" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && create()} />
-        <button className="btn btn-primary btn-sm" onClick={create}>+</button>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={create}>+</button>
       </div>
 
       <div className="drawer-section-title">Привязка проектов к клиентам</div>
@@ -86,7 +86,7 @@ export function ClientsPanel({ onClose, embedded = false }: { onClose?: () => vo
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="handshake" size={18} /> Клиенты и портал</h3>
-          <button className="btn btn-ghost btn-sm" onClick={close} title="Закрыть"><Icon name="close" /></button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={close} title="Закрыть"><Icon name="close" /></button>
         </div>
         {body}
       </aside>
@@ -103,7 +103,7 @@ function ClientRow({ client, onInvite }: { client: any; onInvite: (cid: string, 
       </div>
       <div className="team-rate">
         <input className="input" placeholder="e-mail для доступа в портал" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <button className="btn btn-sm" onClick={() => { onInvite(client.id, email); setEmail(''); }}>Пригласить</button>
+        <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => { onInvite(client.id, email); setEmail(''); }}>Пригласить</button>
       </div>
     </div>
   );

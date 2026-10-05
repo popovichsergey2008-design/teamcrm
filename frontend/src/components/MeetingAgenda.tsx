@@ -58,12 +58,12 @@ export function MeetingAgenda({ onJoin }: { onJoin: (roomId: string) => void }) 
             <Icon name="calendar" size={15} /> {a.title} — {when(a.startsAt)}
             <span className="ping-actions">
               {a.meetRoomId && (
-                <button className="btn btn-sm btn-primary" onClick={() => onJoin(a.meetRoomId as string)}>
+                <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => onJoin(a.meetRoomId as string)}>
                   <Icon name="video" size={13} /> Войти
                 </button>
               )}
               <button
-                className="btn btn-ghost btn-sm"
+                className="ui-btn ui-btn-ghost ui-btn-sm"
                 onClick={() => setHidden((prev) => [...prev, a.eventId])}
                 title="Скрыть до конца дня"
               >

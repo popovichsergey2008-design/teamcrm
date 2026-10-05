@@ -22,7 +22,7 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
         <div key={col.id} className="list-group">
           <div className="list-group-head">
             <span>{col.name}</span>
-            <span className="badge">{col.tasks.length}</span>
+            <span className="ui-badge ui-badge-neutral">{col.tasks.length}</span>
           </div>
           {col.tasks.map((t) => {
             const assignee = nameOf(t);
@@ -49,16 +49,16 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
                 </div>
                 <div className="list-side">
                   {t.approval_state === 'pending' && (
-                    <span className="badge badge-warn" title="Работа сдана, ждёт решения постановщика">На согласовании</span>
+                    <span className="ui-badge ui-badge-warn" title="Работа сдана, ждёт решения постановщика">На согласовании</span>
                   )}
-                  {t.is_blocked && <span className="badge badge-blocked">BLOCKED</span>}
+                  {t.is_blocked && <span className="ui-badge ui-badge-neutral badge-blocked">BLOCKED</span>}
                   {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
                   {due && <span className={due.cls} title={due.title}>{due.text}</span>}
-                  {!!t.commentsCount && <span className="badge" title="комментарии"><Icon name="chat" size={12} /> {t.commentsCount}</span>}
-                  {!!t.attachmentsCount && <span className="badge" title="вложения"><Icon name="paperclip" size={12} /> {t.attachmentsCount}</span>}
-                  {!!t.checklistTotal && <span className="badge" title="чеклист"><Icon name="check" size={12} /> {t.checklistDone}/{t.checklistTotal}</span>}
+                  {!!t.commentsCount && <span className="ui-badge ui-badge-neutral" title="комментарии"><Icon name="chat" size={12} /> {t.commentsCount}</span>}
+                  {!!t.attachmentsCount && <span className="ui-badge ui-badge-neutral" title="вложения"><Icon name="paperclip" size={12} /> {t.attachmentsCount}</span>}
+                  {!!t.checklistTotal && <span className="ui-badge ui-badge-neutral" title="чеклист"><Icon name="check" size={12} /> {t.checklistDone}/{t.checklistTotal}</span>}
                   {MONETIZATION_ENABLED && cost !== null && (
-                    <span className="badge" title="Себестоимость">₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</span>
+                    <span className="ui-badge ui-badge-neutral" title="Себестоимость">₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</span>
                   )}
                   {assignee ? (
                     <span className="assignee-chip" title={`Исполнитель: ${assignee}`}>

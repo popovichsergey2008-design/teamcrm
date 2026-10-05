@@ -57,7 +57,7 @@ export function CallInvite({ present, onInvite }: {
   return (
     <span className="call-invite" ref={boxRef}>
       <button
-        className="btn btn-ghost btn-sm"
+        className="ui-btn ui-btn-ghost ui-btn-sm"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         title="Позвать сотрудника в этот созвон"
@@ -79,7 +79,7 @@ export function CallInvite({ present, onInvite }: {
             emptyHint="Звать больше некого — вся команда уже на связи."
           />
 
-          <button className="btn btn-primary btn-sm call-starter-go" onClick={send} disabled={!chosen.size}>
+          <button className="ui-btn ui-btn-primary ui-btn-sm call-starter-go" onClick={send} disabled={!chosen.size}>
             <Icon name="phone" size={14} /> Позвать{chosen.size > 0 ? ` · ${chosen.size}` : ''}
           </button>
         </div>

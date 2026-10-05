@@ -561,7 +561,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                             onClick={() => { setSwitchOpen(false); setSwitchQuery(''); setSelected(String(p.id)); setOpenTaskId(null); }}
                           >
                             <Icon name="board" size={13} /> {p.name}
-                            {!!p.unread && <span className="badge badge-info">{p.unread}</span>}
+                            {!!p.unread && <span className="ui-badge ui-badge-info">{p.unread}</span>}
                           </button>
                         ))}
                       <button

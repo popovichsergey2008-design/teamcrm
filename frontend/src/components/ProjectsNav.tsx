@@ -306,7 +306,7 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
             onChange={(e) => setCreating(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && create()}
           />
-          <button className="btn btn-primary btn-sm" onClick={create} title="Создать проект">
+          <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={create} title="Создать проект">
             <Icon name="plus" size={14} />
           </button>
         </div>

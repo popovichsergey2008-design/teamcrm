@@ -536,7 +536,7 @@
 .update-progress { height: 6px; border-radius: 999px; background: var(--bg-elev-2); overflow: hidden; }
 .update-progress span { display: block; height: 100%; background: var(--fill-info); transition: width .2s; }
 .update-actions { display: flex; gap: 8px; margin-top: 4px; }
-.update-actions .btn { flex: 1; justify-content: center; }
+.update-actions .ui-btn { flex: 1; justify-content: center; }
 
 /* кнопка «меню» и подложка — только на узком экране */
 .nav-open-btn { display: none; }
@@ -678,7 +678,7 @@
 .feed-composer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .feed-flag { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; }
 .feed-groups, .feed-until { max-width: 220px; font-size: var(--fs-sm); }
-.feed-composer-row .btn { margin-left: auto; }
+.feed-composer-row .ui-btn { margin-left: auto; }
 /* «Показать предыдущие» — над самими комментариями: оттуда они и появятся. */
 .feed-earlier { align-self: flex-start; }
 .chat-earlier { align-self: center; margin-bottom: 6px; }
@@ -1295,10 +1295,10 @@
 .timer-panel.is-running .timer-dot { background: var(--ok); animation: timer-pulse 1.6s ease-in-out infinite; }
 @keyframes timer-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 .timer-actions { display: flex; gap: 8px; }
-.timer-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.timer-actions .ui-btn { display: inline-flex; align-items: center; gap: 6px; }
 .timer-go:not(:disabled) { background: var(--ok); border-color: var(--ok); color: var(--on-ok); font-weight: 600; }
 .timer-pause:not(:disabled) { background: var(--warn); border-color: var(--warn); color: var(--on-warn); font-weight: 600; }
-.timer-actions .btn:disabled { opacity: .45; }
+.timer-actions .ui-btn:disabled { opacity: .45; }
 @media (prefers-reduced-motion: reduce) { .timer-panel.is-running .timer-dot { animation: none; } }
 /* Отклик на напоминания: строка под счётчиками, а не отдельный экран статистики. */
 .secretary-reaction { font-size: calc(12px * var(--fs-scale)); margin: -4px 0 12px; line-height: 1.45; }
@@ -1663,7 +1663,7 @@
 /* Быстрые вопросы в узкой колонке: мелко и в строку — иначе пять кнопок во всю
    ширину занимают полэкрана и выглядят как меню, а не как подсказки. */
 .ai-quick { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
-.ai-quick .btn { padding: 3px 8px; font-size: calc(12px * var(--fs-scale)); }
+.ai-quick .ui-btn { padding: 3px 8px; font-size: calc(12px * var(--fs-scale)); }
 .comment-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 
 /* Настройка меню: перетаскивание пунктов и скрытие ненужных. */
@@ -1723,7 +1723,7 @@
 .font-option.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
 .font-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .nav-tune-title { flex: 1 0 100%; font-size: var(--fs-sm); font-weight: 600; }
-.nav-tune-head-row .btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
+.nav-tune-head-row .ui-btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
 .nav-tune-head-row .nav-tune-reset { flex: 1 0 100%; }
 
 /*
@@ -1777,7 +1777,7 @@
 .dupes-head { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .dupes-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .dupes-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dupes-warn > .btn-ghost { align-self: flex-start; }
+.dupes-warn > .ui-btn-ghost { align-self: flex-start; }
 
 /* Пометка в карточке объединённой задачи: без неё в закрытой копии продолжают работать. */
 .merge-banner {
@@ -1785,7 +1785,7 @@
   border-radius: var(--radius-sm); background: var(--accent-soft); border: 1px solid var(--accent-line);
   font-size: var(--fs-sm);
 }
-.merge-banner .btn { margin-left: auto; }
+.merge-banner .ui-btn { margin-left: auto; }
 
 /*
   Описание задачи: читают чаще, чем правят.
@@ -2038,7 +2038,7 @@
 */
 .import-file { display: flex; flex-direction: column; gap: 10px; }
 .import-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
-.import-head .btn { margin-left: auto; }
+.import-head .ui-btn { margin-left: auto; }
 .import-target { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 6px; }
 .import-target .input { max-width: 320px; }
 .import-map { width: 100%; border-collapse: collapse; }
@@ -2135,7 +2135,7 @@
 .guest-link-go { width: 100%; margin-top: 8px; }
 .chat-list-guest { padding: 0 8px 8px; }
 .chat-list-guest .guest-link-btn { width: 100%; }
-.chat-list-guest .btn { width: 100%; justify-content: center; }
+.chat-list-guest .ui-btn { width: 100%; justify-content: center; }
 
 /* Ход обработки записи: аудио уже на сервере, ждать приходится минуты. */
 .nl-job {
@@ -2202,7 +2202,7 @@
 /* Ряд действий по Telegram: код, переход в сам чат, отвязка. Ссылка выглядит
    кнопкой, но ведёт наружу — подчёркивание здесь читалось бы как ошибка вёрстки. */
 .tg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.tg-actions a.btn { text-decoration: none; }
+.tg-actions a.ui-btn { text-decoration: none; }
 
 .drawer-section { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; }
 .drawer-section-title { font-size: calc(12px * var(--fs-scale)); color: var(--text-mut); margin-bottom: 10px; }
@@ -2815,7 +2815,7 @@
 /* Шаг черновика: поле и «убрать» одной строкой — в общем ряду они вставали в столбик. */
 .task-step-row { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
 .task-step-row .input { flex: 1; min-width: 0; }
-.task-step-row .btn { flex: 0 0 auto; }
+.task-step-row .ui-btn { flex: 0 0 auto; }
 
 /* «Не понял, к какому проекту» — с кнопкой «спросить автора» прямо в окне черновика. */
 .task-draft-ask {
@@ -2824,7 +2824,7 @@
   font-size: var(--fs-sm);
 }
 .task-draft-ask > div { flex: 1; min-width: 0; }
-.task-draft-ask .btn { flex: 0 0 auto; }
+.task-draft-ask .ui-btn { flex: 0 0 auto; }
 
 .msg-quote-src {
   margin: 0 0 12px; padding: 8px 10px; font-size: calc(13px * var(--fs-scale)); color: var(--text-dim);
@@ -3479,7 +3479,7 @@
   margin-top: 6px; color: var(--text-mut); font-size: var(--fs-sm);
 }
 .incoming-actions { display: flex; gap: 10px; margin-top: 22px; }
-.incoming-actions .btn { flex: 1; justify-content: center; padding: 12px; font-size: calc(15px * var(--fs-scale)); font-weight: 600; }
+.incoming-actions .ui-btn { flex: 1; justify-content: center; padding: 12px; font-size: calc(15px * var(--fs-scale)); font-weight: 600; }
 .incoming-accept { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
 .incoming-accept:hover { background: var(--ok); color: var(--on-ok); }
 .incoming-decline { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
@@ -3507,7 +3507,7 @@
 }
 .call-head-actions { display: flex; align-items: center; gap: 4px; }
 /* Крестик окна созвона — выход, как красная кнопка внизу: при наведении это видно сразу */
-.call-head-actions .btn.call-head-close:hover { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+.call-head-actions .ui-btn.call-head-close:hover { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
 
 /* Сцена созвона. Обычно — сетка равных плиток; когда кто-то показывает экран,
    он занимает почти всё, а люди уезжают в полосу снизу: читать чужой код
@@ -3603,7 +3603,7 @@
 @media (max-width: 720px) {
   .guest-links-list li { flex-direction: column; align-items: stretch; }
   .guest-links-actions { justify-content: stretch; }
-  .guest-links-actions .btn { flex: 1 1 auto; justify-content: center; }
+  .guest-links-actions .ui-btn { flex: 1 1 auto; justify-content: center; }
 }
 
 /* Телефон: окно созвона занимает экран целиком — рамка и отступы съедают видео. */
@@ -3612,7 +3612,7 @@
   .call-window { max-height: 100%; height: 100%; border: none; border-radius: 0; }
   .call-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
   .call-controls { justify-content: center; }
-  .call-controls .btn { flex: 1 1 auto; justify-content: center; }
+  .call-controls .ui-btn { flex: 1 1 auto; justify-content: center; }
   .call-leave { margin-left: 0; }
   .call-knock { flex-direction: column; align-items: stretch; }
 }
@@ -4424,7 +4424,7 @@
 }
 @media (max-width: 900px) { .support-body { grid-template-columns: minmax(0, 1fr); } }
 .support-form { display: flex; flex-direction: column; gap: var(--sp-3); }
-.support-form .btn-primary { align-self: flex-start; }
+.support-form .ui-btn-primary { align-self: flex-start; }
 .support-hint { margin: 0; font-size: var(--fs-xs); }
 .support-list { display: flex; flex-direction: column; gap: 6px; }
 .support-ticket {
@@ -4900,7 +4900,7 @@
 .chat-input-extra-overlay { display: none; }
 .chat-input-extra-overlay.open { display: flex; flex-basis: 100%; order: 10; gap: 6px; flex-wrap: wrap; }
 .chats-overlay .chat-input { flex-wrap: wrap; padding: 8px 12px; }
-.chats-overlay .chat-input .btn.active { background: var(--accent-soft); color: var(--accent); }
+.chats-overlay .chat-input .ui-btn.active { background: var(--accent-soft); color: var(--accent); }
 /* Всплывашка «отложить» в узком окне — от левого края, иначе уезжает за экран. */
 .chats-overlay .chat-later-pick { right: auto; left: 0; }
 
@@ -5117,7 +5117,7 @@
   .chat-input { flex-wrap: wrap; padding: 8px 12px; }
   .chat-input > .input,
   .chat-input .mention-wrap { flex: 1 1 100%; }
-  .chat-input .btn { flex: 0 0 auto; }
+  .chat-input .ui-btn { flex: 0 0 auto; }
 
   .chat-feed { padding: 10px 12px; }
   .chat-head { padding: 10px 12px; }
@@ -5137,7 +5137,7 @@
   /* Миты: строка списка перестаёт быть строкой — иначе название и метки давят
      друг друга, а на экране 360 точек от названия остаётся два слова. */
   .mytasks { padding: 12px; }
-  .add-user .input, .add-user .btn { width: 100%; }
+  .add-user .input, .add-user .ui-btn { width: 100%; }
   .list-row { flex-direction: column; align-items: flex-start; gap: 6px; }
   .list-title { max-width: 100%; white-space: normal; }
   .list-side { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
@@ -5689,7 +5689,7 @@ button.chat-pop-row:hover { background: var(--hover); }
 /* Имя и тон первой линии: два поля и кнопка, ничего лишнего. */
 .console-persona { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
 .console-persona .input { font-size: var(--fs-sm); }
-.console-persona .btn { align-self: flex-start; }
+.console-persona .ui-btn { align-self: flex-start; }
 /* Роль в техотделе меняется там же, где дежурство: это одно решение, а не два. */
 .console-role { flex: 0 0 auto; max-width: 190px; font-size: var(--fs-xs); }
 /* Навыки и предел загрузки — по ним маршрутизатор и выбирает исполнителя. */
@@ -5916,7 +5916,7 @@ button.chat-pop-row:hover { background: var(--hover); }
   border-color: var(--danger-line); background: var(--danger-soft);
 }
 .batch-item-failed:hover { background: var(--danger-soft); }
-.batch-item-failed .btn { margin-top: 6px; }
+.batch-item-failed .ui-btn { margin-top: 6px; }
 
 /* «ИИ может предлагать исполнителем» в карточке сотрудника (ТЗ-10, этап 3). */
 .team-auto {
@@ -6059,18 +6059,18 @@ button.chat-pop-row:hover { background: var(--hover); }
   .call-controls {
     justify-content: center; gap: 6px 4px; padding: 12px 6px 14px;
   }
-  .call-controls .btn {
+  .call-controls .ui-btn {
     flex-direction: column; align-items: center; gap: 5px;
     flex: 0 0 auto; width: 64px; min-height: 0; height: auto; padding: 0; /* старое правило до 720px растягивало кнопки */
     background: transparent; border: none; border-radius: 0; color: var(--text);
   }
-  .call-controls .btn > .icon, .call-controls .call-hangup-ico {
+  .call-controls .ui-btn > .icon, .call-controls .call-hangup-ico {
     box-sizing: border-box; width: 52px; height: 52px; padding: 15px; flex: 0 0 auto;
     border-radius: 50%; background: var(--bg-elev); border: 1px solid var(--border-2);
   }
-  .call-controls .btn.call-off > .icon { background: transparent; }
-  .call-controls .btn.call-on > .icon { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-  .call-controls .btn-sm { font-size: calc(11px * var(--fs-scale)); }
+  .call-controls .ui-btn.call-off > .icon { background: transparent; }
+  .call-controls .ui-btn.call-on > .icon { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .call-controls .ui-btn-sm { font-size: calc(11px * var(--fs-scale)); }
   .call-btn-cap { display: block; line-height: 1.2; text-align: center; white-space: nowrap; }
   .call-controls .call-leave { margin-left: 0; order: 99; color: var(--text); }
   .call-controls .call-hangup-ico {

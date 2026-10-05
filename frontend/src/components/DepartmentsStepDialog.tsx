@@ -108,15 +108,15 @@ export function DepartmentsStepDialog({ industry, onClose, onDone }: {
               onChange={(e) => setCustom(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
             />
-            <button className="btn btn-sm" onClick={addCustom} disabled={custom.trim().length < 2}>Добавить</button>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={addCustom} disabled={custom.trim().length < 2}>Добавить</button>
           </div>
         </div>
 
         {err && <div className="error-text">{err}</div>}
 
         <div className="modal-actions">
-          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Отмена</button>
-          <button className="btn btn-primary" onClick={create} disabled={busy || chosen.length === 0}>
+          <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={onClose} disabled={busy}>Отмена</button>
+          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={create} disabled={busy || chosen.length === 0}>
             {busy ? 'Создаю…' : chosen.length ? `Создать отделы (${chosen.length})` : 'Выберите отделы'}
           </button>
         </div>

@@ -153,21 +153,21 @@ export function MeetingPage({ publicId, onJoin, inCall }: { publicId: string; on
         {err && <div className="error-text">{err}</div>}
         <div className="meeting-actions">
           {action && (
-            <button className="btn btn-primary" onClick={() => void enter()} disabled={busy || inCall}>
+            <button className="ui-btn ui-btn-primary ui-btn-md" onClick={() => void enter()} disabled={busy || inCall}>
               <Icon name={action.icon} size={16} /> {inCall ? 'Вы уже в созвоне' : busy ? 'Подключаюсь…' : action.label}
             </button>
           )}
           {s !== 'cancelled' && s !== 'unavailable' && (
-            <button className="btn btn-sm" onClick={() => void share()} title={meetingUrl(publicId)}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void share()} title={meetingUrl(publicId)}>
               <Icon name="link" size={14} /> Поделиться ссылкой
             </button>
           )}
           {s === 'ended' && (
-            <button className="btn btn-ghost btn-sm" onClick={() => navigate({ section: 'chat', view: 'meetings' })}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => navigate({ section: 'chat', view: 'meetings' })}>
               <Icon name="record" size={14} /> Итоги встреч
             </button>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate({ section: 'calendar' })}>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => navigate({ section: 'calendar' })}>
             <Icon name="calendar" size={14} /> В календарь
           </button>
         </div>

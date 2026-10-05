@@ -56,9 +56,9 @@ export function AiSettingsSection() {
         </div>
         <input className="input add-user-input" type="password" placeholder="sk-or-..." value={openrouterKey} onChange={(e) => setOpenrouterKey(e.target.value)} />
 
-        <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={saveKeys}>Сохранить ключи</button>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={saveKeys}>Сохранить ключи</button>
         {(s.openaiKeySet || s.anthropicKeySet || s.openrouterKeySet) && (
-          <button className="btn btn-ghost btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={() => save({ openaiKey: '', anthropicKey: '', openrouterKey: '' })}>Удалить свои ключи (вернуться к общему)</button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={() => save({ openaiKey: '', anthropicKey: '', openrouterKey: '' })}>Удалить свои ключи (вернуться к общему)</button>
         )}
 
         <div className="drawer-section-title">Модель ответов ИИ (Brain)</div>
@@ -67,14 +67,14 @@ export function AiSettingsSection() {
             <option value="">по умолчанию</option>
             {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}</option>)}
           </select>
-          <button className="btn btn-sm" onClick={() => save({ brainModel })}>Применить</button>
+          <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => save({ brainModel })}>Применить</button>
         </div>
 
         {/* «Есть в списке» и «отвечает» — разные вещи: часть моделей живёт в другом API
             или недоступна аккаунту. Раньше это выяснялось молча — запрос падал,
             включался запасной вариант, и человек считал, что работает выбранная. */}
         <button
-          className="btn btn-ghost btn-sm"
+          className="ui-btn ui-btn-ghost ui-btn-sm"
           style={{ marginTop: 6 }}
           disabled={checking}
           onClick={async () => {

@@ -67,11 +67,11 @@ export function AppUpdateRow() {
         </span>
       </div>
       {behind ? (
-        <button className="btn btn-primary btn-sm" onClick={() => window.dispatchEvent(new Event(UPDATE_OPEN_EVENT))}>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => window.dispatchEvent(new Event(UPDATE_OPEN_EVENT))}>
           Запуск обновления
         </button>
       ) : (
-        <button className="btn btn-sm" onClick={() => void check()} disabled={busy}>
+        <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void check()} disabled={busy}>
           {busy ? 'Проверяю…' : 'Обновить'}
         </button>
       )}

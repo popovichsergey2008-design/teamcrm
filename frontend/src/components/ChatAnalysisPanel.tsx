@@ -383,7 +383,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                     onChange={(e) => setLimit(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') saveLimit(); }}
                   />
-                  <button className="btn btn-sm" disabled={busy} onClick={saveLimit}>Сохранить</button>
+                  <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={saveLimit}>Сохранить</button>
                 </span>
                 {stats && (
                   <span className={stats.limitReached ? 'error-text' : 'dim'}>
@@ -444,10 +444,10 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
 
             {canManage && (
               <span className="ca-limit-row">
-                <button className="btn btn-sm" disabled={busy || !cfg.enabled} onClick={() => void runDaily()}>
+                <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy || !cfg.enabled} onClick={() => void runDaily()}>
                   <Icon name="refresh" size={14} /> Сверить день сейчас
                 </button>
-                <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void downloadExamples()}>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void downloadExamples()}>
                   <Icon name="download" size={14} /> Примеры для проверки
                 </button>
               </span>
@@ -455,7 +455,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
             {digest && <pre className="ca-digest">{digest}</pre>}
 
             {canManage && (
-              <button className="btn btn-sm" disabled={busy || !cfg.enabled} onClick={() => void runNow()}>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy || !cfg.enabled} onClick={() => void runNow()}>
                 <Icon name="refresh" size={14} /> Прогнать сейчас
               </button>
             )}
@@ -557,14 +557,14 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                   {a.action_type === 'task' && !a.created_entity_id && !['rejected', 'cancelled'].includes(a.status) && (
                     <>
                       <button
-                        className="btn btn-primary btn-sm"
+                        className="ui-btn ui-btn-primary ui-btn-sm"
                         disabled={busy || !(patch[a.id]?.projectId ?? a.project_id)}
                         onClick={() => void confirm(a)}
                         title={!(patch[a.id]?.projectId ?? a.project_id) ? 'Сначала выберите проект' : undefined}
                       >
                         <Icon name="check" size={13} /> Завести задачу
                       </button>
-                      <button className="btn btn-ghost btn-sm" disabled={busy}
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy}
                         onClick={() => void act(() => api.rejectChatAction(a.id))}>
                         <Icon name="close" size={13} /> Это не задача
                       </button>
@@ -572,10 +572,10 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                   )}
                   {a.action_type === 'decision' && openAction(a) && (
                     <>
-                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void logDecision(a)}>
+                      <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy} onClick={() => void logDecision(a)}>
                         <Icon name="flag" size={13} /> В журнал решений
                       </button>
-                      <button className="btn btn-ghost btn-sm" disabled={busy}
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy}
                         onClick={() => void act(() => api.rejectChatAction(a.id))}>
                         <Icon name="close" size={13} /> Это не решение
                       </button>
@@ -599,14 +599,14 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                         />
                       )}
                       <button
-                        className="btn btn-primary btn-sm"
+                        className="ui-btn ui-btn-primary ui-btn-sm"
                         disabled={busy || !(a.task_id || taskNumber(patch[a.id]?.taskId ?? ''))}
                         onClick={() => void addToTask(a)}
                         title={!a.task_id ? 'Впишите номер задачи, к которой это относится' : undefined}
                       >
                         <Icon name="chat" size={13} /> {a.task_id ? `Добавить в задачу #${a.task_id}` : 'Добавить в задачу'}
                       </button>
-                      <button className="btn btn-ghost btn-sm" disabled={busy}
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy}
                         onClick={() => void act(() => api.rejectChatAction(a.id))}>
                         <Icon name="close" size={13} /> Не то
                       </button>
@@ -629,14 +629,14 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                         />
                       )}
                       <button
-                        className="btn btn-primary btn-sm"
+                        className="ui-btn ui-btn-primary ui-btn-sm"
                         disabled={busy || (a.participants?.length ?? 0) < 2 || !(a.meeting_at || (patch[a.id]?.startsAt ?? '').length >= 16)}
                         onClick={() => void schedule(a)}
                         title={(a.participants?.length ?? 0) < 2 ? 'Встрече нужны хотя бы двое участников' : undefined}
                       >
                         <Icon name="calendar" size={13} /> Поставить в календарь
                       </button>
-                      <button className="btn btn-ghost btn-sm" disabled={busy}
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy}
                         onClick={() => void act(() => api.rejectChatAction(a.id))}>
                         <Icon name="close" size={13} /> Не договорились
                       </button>
@@ -648,30 +648,30 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                   */}
                   {a.action_type === 'change' && openAction(a) && a.task_id && a.change_kind && (
                     <>
-                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void applyChange(a)}>
+                      <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy} onClick={() => void applyChange(a)}>
                         <Icon name="check" size={13} /> Применить
                       </button>
-                      <button className="btn btn-ghost btn-sm" disabled={busy}
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy}
                         onClick={() => void act(() => api.rejectChatAction(a.id))}>
                         <Icon name="close" size={13} /> Оставить как есть
                       </button>
                     </>
                   )}
                   {a.created_entity_type === 'calendar_event' && (
-                    <button className="btn btn-sm" onClick={() => { navigate({ section: 'calendar' }); onClose(); }}>
+                    <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => { navigate({ section: 'calendar' }); onClose(); }}>
                       <Icon name="calendar" size={13} /> Открыть календарь
                     </button>
                   )}
                   {/* Отмена — только у заведённого агентом и только сутки; остальное сервер проверит сам. */}
                   {a.status === 'auto_created'
                     && Date.now() - new Date(a.updated_at).getTime() < 24 * 3600_000 && (
-                    <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void undo(a)}>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void undo(a)}>
                       <Icon name="close" size={13} /> {a.created_entity_type === 'decision' ? 'Убрать из журнала' : 'Отменить задачу'}
                     </button>
                   )}
                   {a.created_entity_type === 'task_comment' && a.task_id && (
                     <button
-                      className="btn btn-sm"
+                      className="ui-btn ui-btn-outline ui-btn-sm"
                       onClick={() => { navigate({ section: 'projects', projectId: String(a.task_project_id ?? ''), taskId: String(a.task_id) }); onClose(); }}
                     >
                       <Icon name="check" size={13} /> Открыть задачу
@@ -679,18 +679,18 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                   )}
                   {a.created_entity_type === 'task' && a.created_entity_id && a.status !== 'cancelled' && (
                     <button
-                      className="btn btn-sm"
+                      className="ui-btn ui-btn-outline ui-btn-sm"
                       onClick={() => { navigate({ section: 'projects', projectId: String(a.project_id ?? ''), taskId: String(a.created_entity_id) }); onClose(); }}
                     >
                       <Icon name="check" size={13} /> Открыть задачу
                     </button>
                   )}
-                  <button className="btn btn-ghost btn-sm" onClick={() => setOpen(opened ? null : a.id)}>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setOpen(opened ? null : a.id)}>
                     <Icon name={opened ? 'minus' : 'plus'} size={13} />
                     {' '}Откуда это ({a.sources.length})
                   </button>
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="ui-btn ui-btn-ghost ui-btn-sm"
                     onClick={() => { navigate({ section: 'chat', chatId: a.chat_id }); onClose(); }}
                   >
                     <Icon name="chat" size={13} /> Открыть чат
@@ -750,7 +750,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
               <div className="ca-acts">
                 {d.chat_id && (
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="ui-btn ui-btn-ghost ui-btn-sm"
                     onClick={() => {
                       navigate({ section: 'chat', chatId: String(d.chat_id) });
                       // раздел откроется и сам подсветит строку — событием, адреса у сообщения нет
@@ -765,7 +765,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                     <Icon name="chat" size={13} /> Где решили
                   </button>
                 )}
-                <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void revoke(d)}>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void revoke(d)}>
                   <Icon name="close" size={13} /> Снять
                 </button>
               </div>

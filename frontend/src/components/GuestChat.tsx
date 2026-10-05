@@ -92,7 +92,7 @@ export function GuestChat({ token, orgName }: { token: string; orgName?: string 
           placeholder="Сообщение…"
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
         />
-        <button className="btn btn-primary btn-sm" onClick={send} disabled={busy || !body.trim()} title="Отправить">
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={send} disabled={busy || !body.trim()} title="Отправить">
           <Icon name="send" />
         </button>
       </div>

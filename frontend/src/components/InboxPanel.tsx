@@ -104,7 +104,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3><Icon name="inbox" size={18} /> Входящие → задачи</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
+        <div className="drawer-head"><h3><Icon name="inbox" size={18} /> Входящие → задачи</h3><button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="dim" style={{ fontSize: 12 }}>Пересылайте письма/сообщения на вебхук канала — ИИ предложит черновик задачи, вы подтверждаете.</div>
         {msg && <div className="dim">{msg}</div>}
         <div className="tabs">
@@ -115,7 +115,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
         {tab === 'items' && (
           <>
             <button
-              className={`btn btn-sm ${recording ? 'btn-primary' : 'btn-ghost'}`}
+              className={`ui-btn ui-btn-sm ${recording ? 'ui-btn-primary' : 'ui-btn-ghost'}`}
               style={{ width: '100%', marginTop: 8 }}
               onClick={toggleRec}
               disabled={transcribing}
@@ -154,8 +154,8 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
                     </select>
                   </div>
                   <div className="team-rate" style={{ marginTop: 6 }}>
-                    <button className="btn btn-primary btn-sm" onClick={() => confirmItem(it.id)}>Создать задачу</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => dismissItem(it.id)}>Отклонить</button>
+                    <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => confirmItem(it.id)}>Создать задачу</button>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => dismissItem(it.id)}>Отклонить</button>
                   </div>
                 </div>
               );
@@ -172,7 +172,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
                 <option value="">Проект по умолчанию (необязательно)</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={createSource}>Создать канал</button>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%' }} onClick={createSource}>Создать канал</button>
             </div>
             <div className="drawer-section-title">Каналы ({sources.length})</div>
             {sources.length === 0 && (
@@ -186,8 +186,8 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
             {sources.map((s) => (
               <div key={s.id} className="team-row">
                 <div className="team-head">
-                  <span>{s.label || 'Без названия'} {s.default_project_name && <span className="badge" title="Проект по умолчанию"><Icon name="folder" size={12} /> {s.default_project_name}</span>} {s.pending ? <span className="badge badge-warn">{s.pending} на ревью</span> : null}</span>
-                  <button className="btn btn-ghost btn-sm" onClick={() => deleteSource(s.id)}>Удалить</button>
+                  <span>{s.label || 'Без названия'} {s.default_project_name && <span className="ui-badge ui-badge-neutral" title="Проект по умолчанию"><Icon name="folder" size={12} /> {s.default_project_name}</span>} {s.pending ? <span className="ui-badge ui-badge-warn">{s.pending} на ревью</span> : null}</span>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => deleteSource(s.id)}>Удалить</button>
                 </div>
                 <div className="invite-box">
                   Вебхук (укажите в почтовом провайдере / Zapier / n8n как приёмник входящих):

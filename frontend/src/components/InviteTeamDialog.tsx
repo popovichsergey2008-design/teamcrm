@@ -98,8 +98,8 @@ export function InviteTeamDialog({ onClose, onDone }: {
             {err && <div className="error-text">{err}</div>}
 
             <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Отмена</button>
-              <button className="btn btn-primary" onClick={send} disabled={busy || !emails.length}>
+              <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={onClose} disabled={busy}>Отмена</button>
+              <button className="ui-btn ui-btn-primary ui-btn-md" onClick={send} disabled={busy || !emails.length}>
                 {busy ? 'Отправляю…' : emails.length > 1 ? `Пригласить (${emails.length})` : 'Пригласить'}
               </button>
             </div>
@@ -119,7 +119,7 @@ export function InviteTeamDialog({ onClose, onDone }: {
                   <span className="inv-email">{r.email}</span>
                   {r.ok
                     ? (
-                      <button className="btn btn-ghost btn-sm" onClick={() => r.link && copy(r.email, r.link)}>
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => r.link && copy(r.email, r.link)}>
                         {copied === r.email ? 'Скопировано' : 'Скопировать ссылку'}
                       </button>
                     )
@@ -128,8 +128,8 @@ export function InviteTeamDialog({ onClose, onDone }: {
               ))}
             </ul>
             <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={() => { setResults(null); setText(''); }}>Позвать ещё</button>
-              <button className="btn btn-primary" onClick={onClose}>Готово</button>
+              <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={() => { setResults(null); setText(''); }}>Позвать ещё</button>
+              <button className="ui-btn ui-btn-primary ui-btn-md" onClick={onClose}>Готово</button>
             </div>
           </>
         )}

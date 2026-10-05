@@ -1417,13 +1417,13 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
   };
 
   const statusBadge = (s: string) => (({
-    running: { label: 'выполняется', cls: 'badge-info' },
-    done: { label: 'на ревью', cls: 'badge-warn' },
-    accepted: { label: 'принят', cls: 'badge-ok' },
-    rejected: { label: 'отклонён', cls: 'badge-muted' },
-    declined: { label: 'не автоматизируется', cls: 'badge-muted' },
-    failed: { label: 'ошибка', cls: 'badge-danger' },
-  } as Record<string, { label: string; cls: string }>)[s] ?? { label: s, cls: 'badge-muted' });
+    running: { label: 'выполняется', cls: 'ui-badge-info' },
+    done: { label: 'на ревью', cls: 'ui-badge-warn' },
+    accepted: { label: 'принят', cls: 'ui-badge-ok' },
+    rejected: { label: 'отклонён', cls: 'ui-badge-neutral' },
+    declined: { label: 'не автоматизируется', cls: 'ui-badge-neutral' },
+    failed: { label: 'ошибка', cls: 'ui-badge-danger' },
+  } as Record<string, { label: string; cls: string }>)[s] ?? { label: s, cls: 'ui-badge-neutral' });
 
   const run = async () => {
     setBusy(true); setMsg('');
@@ -1533,7 +1533,7 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
       {runs.map((r) => (
         <div key={r.id} className="team-row" style={{ marginTop: 8 }}>
           <div className="team-head">
-            <span className={`badge ${statusBadge(r.status).cls}`}>{statusBadge(r.status).label}</span>
+            <span className={`ui-badge ${statusBadge(r.status).cls}`}>{statusBadge(r.status).label}</span>
             <span className="dim" style={{ fontSize: 12 }}>
               {kindLabel(r.kind)} · {new Date(r.created_at).toLocaleString('ru-RU')}
               {(r.input_tokens || r.output_tokens) ? ` · ~${(r.input_tokens || 0) + (r.output_tokens || 0)} ток.` : ''}

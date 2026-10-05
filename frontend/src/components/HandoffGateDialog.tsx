@@ -57,10 +57,10 @@ export function HandoffGateDialog({ block, busy, onCancel, onForce }: {
           ))}
         </ul>
         <div className="gate-actions">
-          <button className="btn btn-primary" onClick={onCancel} disabled={busy}>
+          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={onCancel} disabled={busy}>
             {locked ? 'Вернуться к чек-листу' : 'Вернуться и дополнить'}
           </button>
-          {!locked && <button className="btn btn-sm gate-force" onClick={onForce} disabled={busy}>Сдать всё равно</button>}
+          {!locked && <button className="ui-btn ui-btn-outline ui-btn-sm gate-force" onClick={onForce} disabled={busy}>Сдать всё равно</button>}
         </div>
       </div>
     </div>

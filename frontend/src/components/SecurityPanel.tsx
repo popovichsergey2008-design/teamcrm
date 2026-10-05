@@ -110,7 +110,7 @@ export function SecurityPanel({ onClose }: { onClose: () => void }) {
               <button key={m.id} className="sec-member" onClick={() => void openMember(String(m.id))}>
                 <span className="sec-member-name">{m.full_name}</span>
                 <span className="dim">{roleLabel(m.base_role)}{m.role_name ? ` · ${m.role_name}` : ''}</span>
-                {m.limited > 0 && <span className="badge badge-warn">ограничений: {m.limited}</span>}
+                {m.limited > 0 && <span className="ui-badge ui-badge-warn">ограничений: {m.limited}</span>}
               </button>
             ))}
             {!members.length && <EmptyState compact icon="users" title="Сотрудников нет" hint="Пригласите команду в разделе «Команда»." />}
@@ -119,7 +119,7 @@ export function SecurityPanel({ onClose }: { onClose: () => void }) {
 
         {tab === 'people' && open && (
           <div className="sec-perms">
-            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(null)}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setOpen(null)}>
               <Icon name="chevron-left" size={14} /> Ко всем сотрудникам
             </button>
             <div className="drawer-section-title">{member?.full_name ?? 'Сотрудник'}</div>
