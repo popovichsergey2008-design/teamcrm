@@ -6,7 +6,7 @@ import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
 import { PushService } from '../notifications/push.service';
 import { TelegramMirror } from '../notifications/telegram-mirror.service';
-import { GuestLinksRepository, HostCallRow } from './guest-links.repository';
+import { GuestLinkRow, GuestLinksRepository, HostCallRow } from './guest-links.repository';
 import { MediaService } from './media.service';
 
 /** Токен гостя живёт заметно меньше ссылки: ссылку присылают заранее, входят один раз. */
@@ -203,7 +203,7 @@ export class GuestLinksService {
       // «хозяин на месте» = есть хотя бы один не-гость: впустить может только сотрудник
       hostPresent: !!room && [...room.participants.keys()].some((id) => !id.startsWith('guest:')),
       startsAt: link.starts_at ? new Date(link.starts_at).toISOString() : null,
-      opensAt: link.starts_at ? GuestLinksService.opensAt(link.starts_at).toISOString() : null,
+      opensAt: link.starts_at ? GuestLinksService.opensAt(link.starts_at, link.early_join_min).toISOString() : null,
       hasChat: !!link.chat_id,
     };
   }
@@ -214,14 +214,190 @@ export class GuestLinksService {
     return this.repo.isRoomMember(tenantId, roomId, String(userId));
   }
 
-  /** С какого момента гостя пускают постучаться. */
-  static opensAt(startsAt: Date | string): Date {
-    return new Date(new Date(startsAt).getTime() - OPEN_BEFORE_MIN * 60_000);
+  /** С какого момента гостя пускают постучаться. `early` — ранний вход встречи, минут. */
+  static opensAt(startsAt: Date | string, early = OPEN_BEFORE_MIN): Date {
+    return new Date(new Date(startsAt).getTime() - early * 60_000);
   }
 
   /** Рано ли стучаться по ссылке с этим временем встречи. */
-  static tooEarly(startsAt: Date | string | null, now = Date.now()): boolean {
-    return !!startsAt && now < GuestLinksService.opensAt(startsAt).getTime();
+  static tooEarly(startsAt: Date | string | null, now = Date.now(), early = OPEN_BEFORE_MIN): boolean {
+    return !!startsAt && now < GuestLinksService.opensAt(startsAt, early).getTime();
+  }
+
+  // ───────────────────── Встреча по постоянной ссылке (ТЗ-14) ─────────────────────
+
+  /**
+   * Состояние встречи — считается от времени на СЕРВЕРЕ при каждом вопросе, а не хранится.
+   *
+   * Так «пропущенный переход» (§101 ТЗ) невозможен по построению: никакого задания,
+   * которое в 09:00 должно перевести встречу в OPEN, нет — в 09:00 она просто OPEN.
+   */
+  static meetingState(link: Partial<Pick<GuestLinkRow, 'starts_at' | 'revoked_at' | 'cancelled_at' | 'ended_at' | 'early_join_min'>> & { expires_at: Date | string }, live: boolean, now = Date.now()):
+    'scheduled' | 'early' | 'open' | 'live' | 'ended' | 'cancelled' | 'unavailable' {
+    if (link.cancelled_at) return 'cancelled';
+    if (link.revoked_at) return 'unavailable';
+    if (live) return 'live';
+    if (link.ended_at || new Date(link.expires_at).getTime() <= now) return 'ended';
+    if (!link.starts_at) return 'open';
+    const start = new Date(link.starts_at).getTime();
+    if (now >= start) return 'open';
+    if (now >= start - (link.early_join_min ?? OPEN_BEFORE_MIN) * 60_000) return 'early';
+    return 'scheduled';
+  }
+
+  private roomLive(roomId: string): { live: boolean; hostPresent: boolean; people: number } {
+    const room = this.media.getRoom(roomId);
+    const people = room ? [...room.participants.keys()] : [];
+    return { live: people.length > 0, hostPresent: people.some((id) => !id.startsWith('guest:')), people: people.length };
+  }
+
+  /**
+   * Страница встречи — открытая часть: то, что видно любому, у кого есть ссылка.
+   * Участников по именам здесь нет: их показывает `meetingForUser` своим.
+   */
+  async describeMeeting(publicId: string) {
+    const link = await this.repo.meetingByPublicId(String(publicId || '').slice(0, 16));
+    if (!link) return { valid: false as const, reason: 'unknown' as const };
+    const room = this.roomLive(link.room_id);
+    const state = GuestLinksService.meetingState(link, room.live);
+    return {
+      valid: true as const,
+      state,
+      title: link.event_title ?? link.label ?? 'Встреча',
+      orgName: link.tenant_name,
+      organizer: link.organizer_name,
+      startsAt: link.starts_at ? new Date(link.starts_at).toISOString() : null,
+      endsAt: link.ends_at ? new Date(link.ends_at).toISOString() : null,
+      opensAt: link.starts_at ? GuestLinksService.opensAt(link.starts_at, link.early_join_min).toISOString() : null,
+      earlyJoinMin: link.early_join_min ?? OPEN_BEFORE_MIN,
+      accessPolicy: link.access_policy ?? 'trusted',
+      guestsAllowed: link.guests_allowed !== false,
+      hostPresent: room.hostPresent,
+      people: room.people,
+      // часы сервера: отсчёт на странице не должен зависеть от сбитых часов телефона (§100)
+      serverNow: new Date().toISOString(),
+    };
+  }
+
+  /** Своя часть страницы встречи: кто приглашён и кем ты в ней приходишься. */
+  async meetingForUser(publicId: string, user: { userId: string; tenantId: string }) {
+    const link = await this.repo.meetingByPublicId(String(publicId || '').slice(0, 16));
+    if (!link || String(link.tenant_id) !== String(user.tenantId)) return { member: false as const };
+    const people = await this.repo.meetingPeople(String(link.tenant_id), link.event_id ? String(link.event_id) : null);
+    const me = people.find((p) => p.user_id === String(user.userId));
+    const role = String(link.created_by) === String(user.userId) || me?.is_organizer ? 'organizer'
+      : me?.is_co_organizer ? 'co_organizer' : me && me.status !== 'declined' ? 'participant' : 'employee';
+    return {
+      member: true as const,
+      role,
+      roomId: link.room_id,
+      eventId: link.event_id ? String(link.event_id) : null,
+      people: people.map((p) => ({
+        userId: p.user_id, name: p.full_name, status: p.status,
+        role: p.is_organizer ? 'organizer' : p.is_co_organizer ? 'co_organizer' : 'participant',
+      })),
+    };
+  }
+
+  /**
+   * Сотрудник жмёт «Войти» на странице встречи.
+   *
+   * Комнату поднимаем здесь же: раньше её поднимал только гость, и сотрудник, пришедший
+   * первым по кнопке «Войти в созвон», получал «Созвон не найден» (баг, найденный при
+   * разборе ТЗ-14). Пускать ли внутрь — решает шлюз по правилам встречи.
+   */
+  async enterMeeting(publicId: string, user: { userId: string; tenantId: string }) {
+    const link = await this.repo.meetingByPublicId(String(publicId || '').slice(0, 16));
+    if (!link || String(link.tenant_id) !== String(user.tenantId)) throw AppException.notFound('Встреча не найдена');
+    const state = GuestLinksService.meetingState(link, this.roomLive(link.room_id).live);
+    if (state === 'cancelled') throw AppException.conflict('Встреча отменена');
+    if (state === 'unavailable') throw AppException.conflict('У этой встречи больше нет созвона');
+    // не поднялась сейчас (медиасервер перезапускается) — шлюз поднимет её при подключении сам
+    await this.media.ensureRoom(String(link.tenant_id), link.room_id, link.project_id ?? null).catch((e) => {
+      this.log.warn(`комната встречи ${link.room_id} не поднялась заранее: ${(e as Error).message}`);
+    });
+    return { roomId: link.room_id, state };
+  }
+
+  /** Гость по общей ссылке встречи: имя — и в зал ожидания (решение заказчика 05.10: гости остаются). */
+  async joinMeetingAsGuest(publicId: string, name: string) {
+    const link = await this.repo.meetingByPublicId(String(publicId || '').slice(0, 16));
+    if (!link) throw AppException.notFound('Встреча не найдена');
+    const state = GuestLinksService.meetingState(link, this.roomLive(link.room_id).live);
+    if (state === 'cancelled') throw AppException.conflict('Встреча отменена');
+    if (state === 'ended') throw AppException.conflict('Встреча завершена');
+    if (state === 'unavailable') throw AppException.conflict('У этой встречи больше нет созвона');
+    if (link.guests_allowed === false) throw AppException.forbidden('На эту встречу входят только приглашённые');
+    if (state === 'scheduled') {
+      throw AppException.validation(`Войти можно будет за ${link.early_join_min ?? OPEN_BEFORE_MIN} минут до начала`);
+    }
+    return this.issueGuest(link, name);
+  }
+
+  /**
+   * Пускать ли сотрудника во встречу — по её правилам (ТЗ-14, §23–28).
+   *
+   * - организатор и соорганизаторы — всегда (и могут «начать раньше»);
+   * - до раннего входа — рано: участник видит отсчёт;
+   * - участник: trusted — сразу с начала или как только пришёл организатор,
+   *   до начала — в зал ожидания; host_required — только при организаторе внутри;
+   *   waiting_room — всегда через зал;
+   * - коллега, которого не звали, — стучится (как было).
+   * null — комната не встречи: решает старое правило.
+   */
+  async meetingAccess(tenantId: string, roomId: string, userId: string, hostInside: boolean):
+    Promise<null | { verdict: 'direct' | 'knock' | 'early' | 'closed'; host: boolean; reason?: string; opensAt?: string }> {
+    const link = await this.repo.meetingOfRoom(tenantId, roomId).catch(() => null);
+    if (!link) return null;
+    const people = await this.repo.meetingPeople(tenantId, link.event_id ? String(link.event_id) : null);
+    const me = people.find((p) => p.user_id === String(userId));
+    const host = String(link.created_by) === String(userId) || !!me?.is_organizer || !!me?.is_co_organizer;
+    const state = GuestLinksService.meetingState(link, false);
+    if (state === 'cancelled' || state === 'unavailable') return { verdict: 'closed', host, reason: state };
+    if (host) {
+      // организатор вошёл после «Завершить для всех» — встреча снова открыта
+      if (link.ended_at) await this.repo.setEnded(String(link.id), false);
+      return { verdict: 'direct', host };
+    }
+    if (state === 'ended') return { verdict: 'closed', host, reason: 'ended' };
+    if (state === 'scheduled' && !hostInside) {
+      return { verdict: 'early', host, opensAt: link.starts_at ? GuestLinksService.opensAt(link.starts_at, link.early_join_min).toISOString() : undefined };
+    }
+    const participant = !!me && me.status !== 'declined';
+    if (!participant) return { verdict: 'knock', host };
+    const policy = link.access_policy ?? 'trusted';
+    if (policy === 'waiting_room') return { verdict: 'knock', host };
+    if (policy === 'host_required') return { verdict: hostInside ? 'direct' : 'knock', host };
+    return { verdict: state === 'open' || hostInside ? 'direct' : 'knock', host };
+  }
+
+  /** Организатор ли этот сотрудник в комнате встречи (для «Завершить для всех» и «Закрыть вход»). */
+  async isMeetingHost(tenantId: string, roomId: string, userId: string): Promise<boolean | null> {
+    const link = await this.repo.meetingOfRoom(tenantId, roomId).catch(() => null);
+    if (!link) return null;
+    if (String(link.created_by) === String(userId)) return true;
+    const people = await this.repo.meetingPeople(tenantId, link.event_id ? String(link.event_id) : null);
+    const me = people.find((p) => p.user_id === String(userId));
+    return !!me?.is_organizer || !!me?.is_co_organizer;
+  }
+
+  /** «Завершить для всех»: встреча закрыта, пока организатор не войдёт снова. */
+  async endMeeting(tenantId: string, roomId: string): Promise<void> {
+    const link = await this.repo.meetingOfRoom(tenantId, roomId).catch(() => null);
+    if (link) await this.repo.setEnded(String(link.id), true);
+  }
+
+  /** Встреча комнаты отменена или завершена — гостю туда уже нельзя. */
+  async meetingClosed(tenantId: string, roomId: string): Promise<string | null> {
+    const link = await this.repo.meetingOfRoom(tenantId, roomId).catch(() => null);
+    if (!link) return null;
+    const state = GuestLinksService.meetingState(link, !!this.media.getRoom(roomId)?.participants.size);
+    return state === 'cancelled' || state === 'ended' || state === 'unavailable' ? state : null;
+  }
+
+  /** Есть ли у комнаты живая ссылка — тогда её можно поднять по первому входу. */
+  roomHasLink(tenantId: string, roomId: string): Promise<boolean> {
+    return this.repo.roomOpen(tenantId, roomId).catch(() => false);
   }
 
   /**
@@ -230,8 +406,8 @@ export class GuestLinksService {
    */
   async opensLater(tenantId: string, roomId: string, linkId?: string): Promise<string | null> {
     const link = await this.repo.activeForRoom(tenantId, roomId, linkId).catch(() => null);
-    if (!link || !GuestLinksService.tooEarly(link.starts_at)) return null;
-    return GuestLinksService.opensAt(link.starts_at as Date).toISOString();
+    if (!link || !GuestLinksService.tooEarly(link.starts_at, Date.now(), link.early_join_min)) return null;
+    return GuestLinksService.opensAt(link.starts_at as Date, link.early_join_min).toISOString();
   }
 
   /**
@@ -242,16 +418,22 @@ export class GuestLinksService {
    * До времени встречи не зовём: гость пришёл рано, будить людей рано, а ему самому
    * страница показывает отсчёт. Возвращает, позвали ли.
    */
-  async callHost(tenantId: string, roomId: string, guestName: string, linkId?: string): Promise<boolean> {
+  async callHost(tenantId: string, roomId: string, guestName: string, linkId?: string, waiting = 1, late = false): Promise<boolean> {
     const link = await this.repo.activeForRoom(tenantId, roomId, linkId).catch(() => null);
-    if (!link || GuestLinksService.tooEarly(link.starts_at)) return false;
+    if (!link || GuestLinksService.tooEarly(link.starts_at, Date.now(), link.early_join_min)) return false;
     const last = this.hostCalledAt.get(roomId) ?? 0;
     if (Date.now() - last < HOST_CALL_EVERY_MS) return true;
     this.hostCalledAt.set(roomId, Date.now());
     const what = link.label ? `«${link.label}»` : 'по внешней ссылке';
+    // несколько ждущих — одно уведомление «ждут N», а не N уведомлений (ТЗ-14, §36)
+    const lateMin = late && link.starts_at ? Math.max(0, Math.round((Date.now() - new Date(link.starts_at).getTime()) / 60_000)) : 0;
     await this.notifyHosts(link, 'meet.guest-waiting', {
-      title: `Гость ждёт в созвоне: ${guestName}`,
-      body: `Встреча ${what}. В комнате никого из команды — войдите и впустите гостя.`,
+      title: late
+        ? `Встреча ${what} должна была начаться ${lateMin} мин назад`
+        : waiting > 1 ? `В зале ожидания ${waiting} чел.` : `Ждёт в созвоне: ${guestName}`,
+      body: late
+        ? `Ждут ${waiting} чел. Войдите и начните встречу.`
+        : `Встреча ${what}. В комнате никого из команды — войдите и впустите.`,
       guestName,
     });
     return true;
@@ -316,17 +498,21 @@ export class GuestLinksService {
     const refusal = this.refusalFor(link);
     if (refusal) throw AppException.unauthorized(this.refusalMessage(refusal));
 
-    const guestName = String(name || '').trim().slice(0, 60);
-    if (guestName.length < 2) throw AppException.validation('Представьтесь, пожалуйста');
     /*
       До встречи пускаем только в переписку: в созвон рано, а ссылка «только на созвон»
       ничего, кроме него, не даёт. Страница сама показывает время и отсчёт — это отказ
       на случай, если её обошли.
     */
-    if (!link.chat_id && GuestLinksService.tooEarly(link.starts_at)) {
-      throw AppException.validation(`Вход откроется за ${OPEN_BEFORE_MIN} минут до начала встречи`);
+    if (!link.chat_id && GuestLinksService.tooEarly(link.starts_at, Date.now(), link.early_join_min)) {
+      throw AppException.validation(`Вход откроется за ${link.early_join_min ?? OPEN_BEFORE_MIN} минут до начала встречи`);
     }
+    return this.issueGuest(link, name);
+  }
 
+  /** Гостевой токен на одну комнату — для гостевой ссылки и для общей ссылки встречи. */
+  private async issueGuest(link: GuestLinkRow, name: string) {
+    const guestName = String(name || '').trim().slice(0, 60);
+    if (guestName.length < 2) throw AppException.validation('Представьтесь, пожалуйста');
     const gid = randomUUID();
     const payload: GuestTokenPayload = {
       kind: 'guest', gid, tenantId: link.tenant_id, roomId: link.room_id, name: guestName,
@@ -352,7 +538,7 @@ export class GuestLinksService {
       // он сидит в мобильной сети или за корпоративным NAT
       iceServers: this.media.iceServers(`guest:${gid}`),
       startsAt: link.starts_at ? new Date(link.starts_at).toISOString() : null,
-      opensAt: link.starts_at ? GuestLinksService.opensAt(link.starts_at).toISOString() : null,
+      opensAt: link.starts_at ? GuestLinksService.opensAt(link.starts_at, link.early_join_min).toISOString() : null,
     };
   }
 
@@ -370,8 +556,8 @@ export class GuestLinksService {
 
   /** Отозвана ли ссылка на эту комнату прямо сейчас — гостя нужно выставить немедленно. */
   async roomStillOpen(tenantId: string, roomId: string): Promise<boolean> {
-    const rows = await this.repo.list(tenantId);
-    return rows.some((r) => r.room_id === roomId);
+    // и гостевые ссылки, и ссылка встречи: гость встречи пришёл по ней
+    return this.repo.roomOpen(tenantId, roomId);
   }
 
   private refusalFor(link: { revoked_at: Date | null; expires_at: Date; max_uses: number | null; uses: number }): LinkRefusal | null {

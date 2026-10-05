@@ -6198,3 +6198,51 @@ body.is-dragging { user-select: none; cursor: grabbing; }
   .msg-ctx-react { overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; margin-bottom: 2px; }
   .msg-ctx-react .react-pop-btn { flex: 0 0 auto; }
 }
+
+/* ───── Встреча по постоянной ссылке (ТЗ-14) ───── */
+.meeting-page { display: flex; justify-content: center; padding: 24px 16px; overflow: auto; }
+.meeting-card {
+  width: min(640px, 100%); display: flex; flex-direction: column; gap: 14px;
+  padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev);
+}
+.meeting-head { display: flex; gap: 12px; align-items: flex-start; }
+.meeting-badge { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); flex: 0 0 auto; }
+.meeting-title { margin: 0 0 2px; font-size: calc(20px * var(--fs-scale)); }
+.meeting-state { padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-elev-2); display: flex; flex-direction: column; gap: 4px; }
+.meeting-state-live, .meeting-state-open { border-color: var(--ok-line); background: var(--ok-soft); }
+.meeting-state-early { border-color: var(--accent); background: var(--accent-soft); }
+.meeting-state-cancelled, .meeting-state-unavailable { border-color: var(--danger-line); background: var(--danger-soft); }
+.meeting-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.meeting-people { display: flex; flex-direction: column; gap: 4px; }
+.meeting-person { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); padding: 4px 0; border-bottom: 1px solid var(--border); }
+.meeting-policy { font-size: 12px; }
+.meeting-created { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
+
+/* Проверка камеры и микрофона перед встречей */
+.device-check { display: flex; flex-direction: column; gap: 8px; }
+.device-preview { width: 100%; max-width: 360px; aspect-ratio: 16 / 9; border-radius: var(--radius-sm); background: var(--video-bg, #111); object-fit: cover; transform: scaleX(-1); }
+.device-meter { display: flex; align-items: center; gap: 8px; max-width: 360px; }
+.device-meter-track { flex: 1; height: 8px; border-radius: 99px; background: var(--bg-elev-2); overflow: hidden; }
+.device-meter-track span { display: block; height: 100%; background: var(--ok); transition: width .08s linear; }
+.device-selects { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px; max-width: 520px; }
+.device-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Созвон в окне события */
+.cal-call { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev-2); }
+.cal-call-link { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cal-call-link code { padding: 4px 8px; border-radius: var(--radius-sm); background: var(--bg-elev); border: 1px solid var(--border); font-size: 12px; word-break: break-all; }
+.cal-call-access { display: flex; flex-direction: column; gap: 8px; }
+.field-inline { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.cal-coorg {
+  margin-left: auto; padding: 1px 8px; border-radius: 99px; font-size: 11px; cursor: pointer;
+  border: 1px solid var(--border-2); background: var(--bg-elev); color: var(--text-dim);
+}
+.cal-coorg.active { background: var(--fill-info); border-color: var(--fill-info); color: var(--on-fill); }
+.cal-coorg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Страница гостя по постоянной ссылке */
+.guest-meeting-title { font-weight: 700; font-size: calc(17px * var(--fs-scale)); margin: 0; color: var(--text); }
+.guest-closed { border-color: var(--danger-line); background: var(--danger-soft); }
+
+/* «Завершить для всех» — не то же, что «Выйти»: отдельная кнопка, тоже тревожная */
+.call-end-all { border-color: var(--danger); color: var(--danger); background: transparent; }

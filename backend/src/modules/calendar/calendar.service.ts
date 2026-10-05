@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { CalendarMailService } from './calendar-mail.service';
-import { CalendarRepository, EventRow } from './calendar.repository';
+import { CalendarRepository, EventRow, MeetingSettings } from './calendar.repository';
 import { CalendarSyncService } from './calendar-sync.service';
 import { buildIcs, icsUid } from './ics';
 
@@ -22,6 +22,19 @@ export interface EventDto {
   meetRoomId?: string | null;
   /** Напоминания в минутах до начала: 15 — «за пятнадцать минут». */
   reminders?: number[];
+  /**
+   * Созвон у встречи (ТЗ-14). Не указано: у новой встречи с участниками — включён
+   * (решение заказчика 05.10), у личного напоминания без участников — выключен.
+   */
+  isCall?: boolean;
+  /** Кто входит сразу: trusted — участники; waiting_room — все через зал; host_required — ждут организатора. */
+  accessPolicy?: MeetingSettings['accessPolicy'];
+  /** За сколько минут до начала можно войти в зал ожидания. */
+  earlyJoinMin?: number;
+  /** Гости по общей ссылке (без приглашения). */
+  guestsAllowed?: boolean;
+  /** Соорганизаторы: впускают, начинают раньше, завершают. */
+  coOrganizerIds?: string[];
 }
 
 /** Что предлагаем по умолчанию: одно напоминание за 15 минут — привычная норма. */
@@ -175,6 +188,10 @@ export class CalendarService {
       isPrivate: !!dto.isPrivate,
       createdBy: user.userId,
       participantIds: dto.participantIds ?? [],
+      // по умолчанию созвон есть у встречи с людьми; у личного напоминания и «весь день» — нет
+      isCall: dto.isCall ?? (!dto.allDay && (dto.participantIds ?? []).filter((x) => String(x) !== String(user.userId)).length > 0),
+      meeting: this.meetingSettings(dto),
+      coOrganizerIds: dto.coOrganizerIds,
     });
     await this.repo.setReminders(row.id, this.cleanReminders(dto.reminders));
     // письма не ждём: встреча уже создана и видна на экране, почта догонит
@@ -210,7 +227,8 @@ export class CalendarService {
       color: dto.color === undefined ? undefined : (dto.color || null),
       is_private: dto.isPrivate,
       scope: dto.scope,
-    }, dto.participantIds, event.owner_id);
+      is_call: dto.isCall,
+    }, dto.participantIds, event.owner_id, this.meetingSettings(dto), dto.coOrganizerIds);
     if (dto.reminders !== undefined) await this.repo.setReminders(id, this.cleanReminders(dto.reminders));
 
     const updated = await this.repo.byId(tenantId, id);
@@ -260,6 +278,7 @@ export class CalendarService {
       attendees: people.filter((p) => !p.is_organizer).map((p) => ({ name: p.full_name, email: p.email })),
       method: 'PUBLISH',
       reminders: (await this.repo.remindersOf([id])).get(String(id)) ?? [],
+      url: event.is_call ? this.mail.meetUrl(event.public_id) : null,
     });
   }
 
@@ -346,7 +365,13 @@ export class CalendarService {
    * Приватное чужое событие показывается как «Занято» без названия, описания и места:
    * коллеге нужно знать, что время занято, а не чем именно.
    */
-  private view(row: EventRow & { my_status?: string | null }, userId: string, participants: { user_id: string; status: string; is_organizer: boolean; full_name: string | null; avatar_file_id: string | null }[]) {
+  private meetingSettings(dto: Partial<EventDto>): MeetingSettings {
+    const policy = ['trusted', 'waiting_room', 'host_required'].includes(String(dto.accessPolicy)) ? dto.accessPolicy : undefined;
+    const early = dto.earlyJoinMin === undefined ? undefined : Math.max(0, Math.min(120, Math.round(Number(dto.earlyJoinMin) || 0)));
+    return { accessPolicy: policy, earlyJoinMin: early, guestsAllowed: dto.guestsAllowed };
+  }
+
+  private view(row: EventRow & { my_status?: string | null }, userId: string, participants: { user_id: string; status: string; is_organizer: boolean; is_co_organizer?: boolean; full_name: string | null; avatar_file_id: string | null }[]) {
     const mine = String(row.owner_id) === String(userId)
       || participants.some((p) => String(p.user_id) === String(userId));
     const hidden = row.is_private && !mine;
@@ -360,6 +385,15 @@ export class CalendarService {
       // Откуда встреча: из карточки события — в переписку, где о ней договорились.
       sourceChatId: hidden ? null : (row.source_chat_id != null ? String(row.source_chat_id) : null),
       sourceMessageId: hidden ? null : (row.source_chat_message_id != null ? String(row.source_chat_message_id) : null),
+      // Созвон у встречи и его постоянная ссылка (ТЗ-14): одна на всех, не меняется при переносе.
+      isCall: !!row.is_call,
+      meeting: hidden || !row.is_call || !row.public_id ? null : {
+        publicId: row.public_id,
+        url: this.mail.meetUrl(row.public_id),
+        accessPolicy: row.access_policy ?? 'trusted',
+        earlyJoinMin: row.early_join_min ?? 15,
+        guestsAllowed: row.guests_allowed !== false,
+      },
       startsAt: row.starts_at,
       endsAt: row.ends_at,
       allDay: row.all_day,
@@ -373,6 +407,7 @@ export class CalendarService {
         fullName: p.full_name,
         status: p.status,
         isOrganizer: p.is_organizer,
+        isCoOrganizer: !!p.is_co_organizer,
         avatarUrl: p.avatar_file_id ? `/api/files/${p.avatar_file_id}` : null,
       })),
     };

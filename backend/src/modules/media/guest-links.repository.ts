@@ -22,6 +22,22 @@ export interface GuestLinkRow {
   event_id: string | null;
   /** Автору уже напомнили открыть комнату (раз на ссылку). */
   reminded_at: Date | null;
+  /** 'meeting' — постоянная ссылка встречи календаря (ТЗ-14), 'guest' — гостевая. */
+  kind?: string;
+  public_id?: string | null;
+  ends_at?: Date | null;
+  cancelled_at?: Date | null;
+  ended_at?: Date | null;
+  access_policy?: string;
+  early_join_min?: number;
+  guests_allowed?: boolean;
+}
+
+/** Встреча по её постоянной ссылке — всё, что нужно странице встречи и решению «пускать ли». */
+export interface MeetingLinkRow extends GuestLinkRow {
+  tenant_name: string;
+  organizer_name: string | null;
+  event_title: string | null;
 }
 
 /** Ссылка, по которой надо позвать хозяина: кто выдал, для кого и на когда. */
@@ -33,6 +49,10 @@ export interface HostCallRow {
   created_by: string;
   starts_at: Date | null;
   event_id: string | null;
+  kind?: string;
+  early_join_min?: number;
+  access_policy?: string;
+  ended_at?: Date | null;
 }
 
 @Injectable()
@@ -103,11 +123,11 @@ export class GuestLinksRepository {
   activeForRoom(tenantId: string, roomId: string, linkId?: string): Promise<HostCallRow | null> {
     // ссылка гостя известна из токена — берём её; старые токены без неё — самую свежую
     return this.db.one<HostCallRow>(
-      `SELECT id, tenant_id, room_id, label, created_by, starts_at, event_id
+      `SELECT id, tenant_id, room_id, label, created_by, starts_at, event_id, kind, early_join_min, access_policy, ended_at
          FROM meet_guest_links
         WHERE tenant_id=$1 AND room_id=$2 AND revoked_at IS NULL AND expires_at > now()
           AND ($3::bigint IS NULL OR id = $3::bigint)
-        ORDER BY created_at DESC LIMIT 1`,
+        ORDER BY (kind = 'meeting') DESC, created_at DESC LIMIT 1`,
       [tenantId, roomId, linkId ?? null],
     );
   }
@@ -127,7 +147,8 @@ export class GuestLinksRepository {
     return this.db.many<HostCallRow>(
       `SELECT id, tenant_id, room_id, label, created_by, starts_at, event_id
          FROM meet_guest_links
-        WHERE starts_at IS NOT NULL AND reminded_at IS NULL AND revoked_at IS NULL
+        -- у встреч календаря свои напоминания, а комната открывается сама: «откройте комнату» не нужно
+        WHERE kind = 'guest' AND starts_at IS NOT NULL AND reminded_at IS NULL AND revoked_at IS NULL
           AND expires_at > now()
           AND starts_at <= now() + make_interval(mins => $1)
           AND starts_at > now() - interval '30 minutes'
@@ -188,9 +209,63 @@ export class GuestLinksRepository {
          FROM meet_guest_links l
          LEFT JOIN users u ON u.id = l.created_by
          LEFT JOIN chats c ON c.id = l.chat_id
-        WHERE l.tenant_id = $1 AND l.revoked_at IS NULL AND l.expires_at > now()
+        -- постоянные ссылки встреч живут в календаре, в списке гостевых ссылок им не место
+        WHERE l.tenant_id = $1 AND l.kind = 'guest' AND l.revoked_at IS NULL AND l.expires_at > now()
         ORDER BY l.created_at DESC`,
       [tenantId],
+    );
+  }
+
+  /** Есть ли у комнаты живая ссылка (гостевая или встречи) — комнату можно поднимать и стучаться. */
+  async roomOpen(tenantId: string, roomId: string): Promise<boolean> {
+    const row = await this.db.one<{ ok: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM meet_guest_links
+                       WHERE tenant_id=$1 AND room_id=$2 AND revoked_at IS NULL AND expires_at > now()) AS ok`,
+      [tenantId, roomId],
+    );
+    return !!row?.ok;
+  }
+
+  /** Встреча по постоянной ссылке — и отменённая тоже: её адрес должен сказать «отменена». */
+  meetingByPublicId(publicId: string): Promise<MeetingLinkRow | null> {
+    return this.db.one<MeetingLinkRow>(
+      `SELECT l.*, t.name AS tenant_name, u.full_name AS organizer_name, e.title AS event_title
+         FROM meet_guest_links l
+         JOIN tenants t ON t.id = l.tenant_id
+         LEFT JOIN users u ON u.id = l.created_by
+         LEFT JOIN calendar_events e ON e.id = l.event_id
+        WHERE l.public_id = $1 AND l.kind = 'meeting'`,
+      [publicId],
+    );
+  }
+
+  /** Встреча, которой принадлежит комната. */
+  meetingOfRoom(tenantId: string, roomId: string): Promise<GuestLinkRow | null> {
+    return this.db.one<GuestLinkRow>(
+      `SELECT * FROM meet_guest_links
+        WHERE tenant_id=$1 AND room_id=$2 AND kind='meeting'
+        ORDER BY created_at DESC LIMIT 1`,
+      [tenantId, roomId],
+    );
+  }
+
+  /** Кто во встрече и кем: организатор, соорганизаторы, участники (кроме отказавшихся). */
+  async meetingPeople(tenantId: string, eventId: string | null): Promise<{ user_id: string; full_name: string; is_organizer: boolean; is_co_organizer: boolean; status: string }[]> {
+    if (!eventId) return [];
+    return this.db.many(
+      `SELECT p.user_id::text, u.full_name, p.is_organizer, p.is_co_organizer, p.status
+         FROM calendar_participants p JOIN users u ON u.id = p.user_id
+        WHERE p.tenant_id=$1 AND p.event_id=$2
+        ORDER BY p.is_organizer DESC, p.is_co_organizer DESC, u.full_name`,
+      [tenantId, eventId],
+    );
+  }
+
+  /** Встречу завершили для всех — или организатор снова открыл её, войдя. */
+  async setEnded(id: string, ended: boolean): Promise<void> {
+    await this.db.query(
+      `UPDATE meet_guest_links SET ended_at = CASE WHEN $2 THEN now() ELSE NULL END WHERE id=$1`,
+      [id, ended],
     );
   }
 

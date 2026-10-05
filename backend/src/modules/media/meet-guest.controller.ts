@@ -116,4 +116,34 @@ export class MeetGuestController {
   join(@Param('token') token: string, @Body() dto: GuestJoinDto) {
     return this.guests.join(token, dto.name);
   }
+
+  // ───── Встреча по постоянной ссылке /meet/{publicId} (ТЗ-14) ─────
+
+  /** Страница встречи — то, что видно любому со ссылкой: название, время, состояние, отсчёт. */
+  @Get('meet/m/:publicId')
+  @Public()
+  meeting(@Param('publicId') publicId: string) {
+    return this.guests.describeMeeting(publicId);
+  }
+
+  /** Своя часть: кто приглашён и кем ты в этой встрече. */
+  @Get('meet/m/:publicId/me')
+  @Roles('owner', 'manager', 'member')
+  meetingForMe(@CurrentUser() u: AuthUser, @Param('publicId') publicId: string) {
+    return this.guests.meetingForUser(publicId, u);
+  }
+
+  /** Сотрудник входит: комната поднимается, пускать ли — решает шлюз по правилам встречи. */
+  @Post('meet/m/:publicId/enter')
+  @Roles('owner', 'manager', 'member')
+  enterMeeting(@CurrentUser() u: AuthUser, @Param('publicId') publicId: string) {
+    return this.guests.enterMeeting(publicId, u);
+  }
+
+  /** Человек со стороны по общей ссылке встречи: имя — и в зал ожидания. */
+  @Post('meet/m/:publicId/guest')
+  @Public()
+  meetingGuest(@Param('publicId') publicId: string, @Body() dto: GuestJoinDto) {
+    return this.guests.joinMeetingAsGuest(publicId, dto.name);
+  }
 }

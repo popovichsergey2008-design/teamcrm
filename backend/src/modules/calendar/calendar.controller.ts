@@ -35,6 +35,12 @@ class EventDto {
   /** Напоминания в минутах до начала. Пусто — без напоминаний, не указано — за 15 минут. */
   @IsOptional() @IsArray() @ArrayMaxSize(6) @IsInt({ each: true }) @Min(0, { each: true }) @Max(20160, { each: true })
   reminders?: number[];
+  /** Созвон у встречи и правила входа (ТЗ-14). */
+  @IsOptional() @IsBoolean() isCall?: boolean;
+  @IsOptional() @IsIn(['trusted', 'waiting_room', 'host_required']) accessPolicy?: 'trusted' | 'waiting_room' | 'host_required';
+  @IsOptional() @IsIn([0, 5, 10, 15, 30, 60]) earlyJoinMin?: number;
+  @IsOptional() @IsBoolean() guestsAllowed?: boolean;
+  @IsOptional() @IsArray() @ArrayMaxSize(100) coOrganizerIds?: string[];
 }
 
 class EventPatchDto {
@@ -52,6 +58,11 @@ class EventPatchDto {
   @IsOptional() @IsString() @MaxLength(64) meetRoomId?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(6) @IsInt({ each: true }) @Min(0, { each: true }) @Max(20160, { each: true })
   reminders?: number[];
+  @IsOptional() @IsBoolean() isCall?: boolean;
+  @IsOptional() @IsIn(['trusted', 'waiting_room', 'host_required']) accessPolicy?: 'trusted' | 'waiting_room' | 'host_required';
+  @IsOptional() @IsIn([0, 5, 10, 15, 30, 60]) earlyJoinMin?: number;
+  @IsOptional() @IsBoolean() guestsAllowed?: boolean;
+  @IsOptional() @IsArray() @ArrayMaxSize(100) coOrganizerIds?: string[];
 }
 
 class RespondDto {

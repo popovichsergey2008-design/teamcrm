@@ -52,6 +52,8 @@ export class CalendarScheduler implements OnModuleInit, OnModuleDestroy {
             startsAt: r.starts_at,
             minutesBefore: r.minutes_before,
             location: r.location,
+            // встреча с созвоном: всплывашка ведёт на её страницу, где и войти
+            publicId: r.public_id ?? null,
           });
           await this.repo.markReminderSent(r.event_id, r.user_id, r.minutes_before, r.starts_at);
           sent++;

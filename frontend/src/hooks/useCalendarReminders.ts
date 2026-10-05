@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { getSocket } from '../lib/socket';
 import { showNotification, showToast } from '../lib/notifications';
 import { playMessageChime } from '../lib/sound';
+import { openInboxItem } from './useMobileInbox';
 
 interface ReminderPayload {
   eventId: string;
@@ -9,6 +10,8 @@ interface ReminderPayload {
   startsAt: string;
   minutesBefore: number;
   location?: string | null;
+  /** Встреча с созвоном: всплывашка ведёт на её страницу, где и войти (ТЗ-14). */
+  publicId?: string | null;
 }
 
 /** «за 15 минут», «за час», «за день» — человек читает словами, а не числом минут. */
@@ -34,8 +37,11 @@ export function useCalendarReminders(enabled: boolean): void {
     const onReminder = (p: ReminderPayload) => {
       const when = new Date(p.startsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
       const body = `${when}${p.location ? ` · ${p.location}` : ''} · ${inWords(p.minutesBefore)}`;
-      showToast({ title: `Встреча: ${p.title}`, body });
-      showNotification(`Встреча: ${p.title}`, body);
+      const path = p.publicId ? `/meet/${p.publicId}` : undefined;
+      showToast(path
+        ? { title: `Встреча: ${p.title}`, body: `${body} · нажмите, чтобы войти`, section: 'inbox', inboxPath: path }
+        : { title: `Встреча: ${p.title}`, body });
+      showNotification(`Встреча: ${p.title}`, body, path ? () => openInboxItem(undefined, path) : undefined);
       playMessageChime();
     };
 

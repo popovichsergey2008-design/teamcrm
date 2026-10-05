@@ -15,6 +15,7 @@ import { useAuth } from '../state/auth';
 import { platform } from '../platform';
 import { clampTo, useDragMove } from '../hooks/useDragMove';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { savedDevices } from './DeviceCheck';
 
 /**
  * Размер свёрнутого созвона по умолчанию.
@@ -29,6 +30,16 @@ const PIP_SIZE = { width: 168, height: 108 };
 /** Размер плашки внутри страницы. Человек тянет за угол — размер сохраняется. */
 const DOCK_SIZE_KEY = 'teamcrm.callDockSize';
 const DOCK_DEFAULT = { width: 148, height: 100 };
+
+/** Почему не впустили — словами (ТЗ-14, §93). */
+const REJECT_NOTE: Record<string, string> = {
+  revoked: 'Ссылка больше не действует — попросите новую.',
+  empty: 'В этом созвоне сейчас нет никого из команды — впустить вас некому.',
+  locked: 'Организатор закрыл вход в эту встречу.',
+  ended: 'Встреча уже завершена.',
+  cancelled: 'Встреча отменена организатором.',
+  unavailable: 'У этой встречи больше нет созвона.',
+};
 
 const STATE_LABEL: Record<string, string> = {
   connecting: 'Подключаюсь…',
@@ -87,6 +98,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   /** Состояние самого гостя: пока не впустили — сцены нет. */
   const [guestState, setGuestState] = useState<'waiting' | 'in' | 'rejected'>(isGuest ? 'waiting' : 'in');
   const [guestNote, setGuestNote] = useState('');
+  /** Организатор этой встречи (или начавший созвон): ему — «Завершить для всех» и «Закрыть вход». */
+  const [hostRole, setHostRole] = useState(false);
+  const [locked, setLocked] = useState(false);
+  /** «Сообщить организатору»: отправлено / можно ещё раз. */
+  const [notified, setNotified] = useState<'pending' | 'sent' | 'later' | null>(null);
   const [linkNote, setLinkNote] = useState('');
 
   const client = useRef<MeetClient | null>(null);
@@ -317,12 +333,16 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           onGuestAdmitted: () => { setGuestState('in'); setGuestNote(''); },
           onGuestRejected: (reason) => {
             setGuestState('rejected');
-            setGuestNote(reason === 'revoked'
-              ? 'Ссылка больше не действует — попросите новую.'
-              : reason === 'empty'
-                ? 'В этом созвоне сейчас нет никого из команды — впустить вас некому.'
-                : isGuest ? 'Организатор отклонил вход.' : 'Участники созвона не впустили вас.');
+            setGuestNote(REJECT_NOTE[reason]
+              ?? (isGuest ? 'Организатор отклонил вход.' : 'Участники созвона не впустили вас.'));
           },
+          onRole: (r) => { setHostRole(r.host); setLocked(r.locked); },
+          onLocked: setLocked,
+          onEnded: (by) => {
+            setGuestState('rejected');
+            setGuestNote(by ? `${by} завершил(а) встречу для всех.` : 'Встреча завершена для всех.');
+          },
+          onHostNotified: (ok) => setNotified(ok ? 'sent' : 'later'),
           onError: setErr,
         }, String(guest?.userId ?? user?.id ?? ''));
         client.current = c;
@@ -331,8 +351,13 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
         // микрофон берём сразу: звонок без звука бессмысленен
         // Просим подавление эха явно: со значением по умолчанию браузеры расходятся,
         // и голос из динамиков возвращается собеседнику отражённым.
+        // устройство, выбранное на проверке перед встречей, — если его выбирали
+        const pickedMic = savedDevices().audioIn;
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          audio: {
+            echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+            ...(pickedMic ? { deviceId: { ideal: pickedMic } } : {}),
+          },
         });
         localStream.current = stream;
         const audio = stream.getAudioTracks()[0];
@@ -383,7 +408,10 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
         setCamOn(false);
         return;
       }
-      const cam = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+      const pickedCam = savedDevices().videoIn;
+      const cam = await navigator.mediaDevices.getUserMedia({
+        video: { width: 1280, height: 720, ...(pickedCam ? { deviceId: { ideal: pickedCam } } : {}) },
+      });
       const track = cam.getVideoTracks()[0];
       localStream.current?.addTrack(track);
       setSelfVideo(track);
@@ -784,7 +812,13 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
                   Микрофон можно разрешить заранее — тогда вы сразу сможете говорить.
                 </p>
               )}
-              {!isGuest && (
+              {/* «Сообщить организатору, что я жду» — с ответом, что сообщение ушло (ТЗ-14, §35) */}
+              {guestState === 'waiting' && (
+                <button className="btn btn-sm" onClick={() => { client.current?.notifyHost(); setNotified('pending'); }} disabled={notified === 'pending' || notified === 'sent'}>
+                  <Icon name="bell" size={14} /> {notified === 'sent' ? 'Организатору сообщили' : notified === 'later' ? 'Сообщить ещё раз' : 'Сообщить организатору, что я жду'}
+                </button>
+              )}
+              {(!isGuest || guestState === 'rejected') && (
                 <button className="btn btn-sm" onClick={leave}>
                   {guestState === 'rejected' ? 'Закрыть' : 'Не ждать'}
                 </button>
@@ -867,11 +901,37 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
               <span className="call-btn-cap">Запись</span>
             </button>
           )}
+          {/*
+            Организатору — «Закрыть вход» и «Завершить для всех» (ТЗ-14, §71, §74). Это не то же,
+            что «Выйти»: выход кладёт только свою трубку, разговор у остальных продолжается.
+          */}
+          {hostRole && (
+            <button
+              className={`btn btn-sm ${locked ? 'call-rec-on' : 'call-off'}`}
+              onClick={() => client.current?.setLocked(!locked)}
+              title={locked ? 'Вход закрыт: новые люди не войдут и не постучатся. Нажмите, чтобы открыть' : 'Закрыть вход: новые люди не войдут, вернуться смогут только те, кто уже был'}
+            >
+              <Icon name="lock" size={15} />
+              <span className="call-btn-label">{locked ? 'Вход закрыт' : 'Закрыть вход'}</span>
+              <span className="call-btn-cap">{locked ? 'Закрыто' : 'Вход'}</span>
+            </button>
+          )}
+          {hostRole && (
+            <button
+              className="btn btn-sm call-end-all"
+              onClick={() => { if (window.confirm('Завершить встречу для всех участников?')) client.current?.endForAll(); }}
+              title="Завершить встречу для всех: созвон закончится у каждого"
+            >
+              <Icon name="phone-off" size={15} />
+              <span className="call-btn-label">Завершить для всех</span>
+              <span className="call-btn-cap">Для всех</span>
+            </button>
+          )}
           {/* Выход — заметной красной кнопкой «положить трубку» (задача #1463). */}
-          <button className="btn btn-sm call-leave" onClick={leave} title="Выйти из созвона" aria-label="Выйти из созвона">
+          <button className="btn btn-sm call-leave" onClick={leave} title="Выйти из созвона — у остальных разговор продолжится" aria-label="Выйти из созвона">
             <span className="call-hangup-ico"><Icon name="phone" size={16} /></span>
             <span className="call-btn-label">Выйти</span>
-            <span className="call-btn-cap">Завершить</span>
+            <span className="call-btn-cap">Выйти</span>
           </button>
         </div>
       </div>

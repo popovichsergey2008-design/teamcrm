@@ -65,6 +65,7 @@ import { useConsoleAlerts } from './hooks/useConsoleAlerts';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { ConsoleTopBar } from './components/console/ConsoleTopBar';
 import { useSeedStickyChecks } from './lib/sticky-checks';
+import { MeetingPage } from './pages/MeetingPage';
 
 /**
  * Обёртка раздела, который остаётся жить после ухода с него.
@@ -124,6 +125,8 @@ export function App() {
   const route = useRoute();
   useAppHeight();
   useDeepLinks(!!user);
+  /** На странице встречи нажали «Я сотрудник — войти»: показываем вход, адрес встречи остаётся. */
+  const [staffLogin, setStaffLogin] = useState(false);
   useDeviceRegistration(!!user);
   const lock = useAppLock(!!user);
   const mobile = useMobileConfig(!!user);
@@ -271,9 +274,17 @@ export function App() {
   // приглашение в команду: одноразовое /?invite=<token> или многоразовое /?join=<token>;
   // сброс пароля по ссылке от владельца: /?reset=<token>
   const params = new URLSearchParams(window.location.search);
-  const guestMeetToken = window.location.pathname.startsWith('/meet/')
+  /*
+    `/meet/…` — два вида ссылок. Длинный токен — гостевая ссылка: гостю вход не нужен
+    никогда. Короткий public_id — постоянная ссылка встречи (ТЗ-14): одна на всех;
+    сотрудник после входа попадает на страницу встречи внутри приложения, человек со
+    стороны — на её открытую страницу.
+  */
+  const meetPathId = window.location.pathname.startsWith('/meet/')
     ? decodeURIComponent(window.location.pathname.slice('/meet/'.length)).replace(/\/+$/, '')
     : null;
+  const guestMeetToken = meetPathId && meetPathId.length > 20 ? meetPathId : null;
+  const meetingPublicId = meetPathId && !guestMeetToken ? meetPathId : null;
   const inviteToken = params.get('invite');
   const joinToken = params.get('join');
   const resetToken = params.get('reset');
@@ -446,6 +457,10 @@ export function App() {
     );
   }
 
+  // постоянная ссылка встречи без входа — открытая страница; «я сотрудник» ведёт к входу здесь же
+  if (!user && meetingPublicId && !staffLogin) {
+    return <GuestMeetPage publicId={meetingPublicId} onStaffLogin={() => setStaffLogin(true)} />;
+  }
   if (!user) return <LoginPage />;
 
   // Заблокировано: ничего из содержимого не рисуем — ни в переключателе приложений, ни глазу соседа.
@@ -611,6 +626,12 @@ export function App() {
         )}
         {route.section === 'calendar' && (
           <CalendarPage onStartCall={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
+        )}
+        {/* Встреча по постоянной ссылке (ТЗ-14): страница перед входом — время, состояние, проверка устройств */}
+        {route.section === 'meet' && route.meetId && (
+          route.meetId.length > 20
+            ? <GuestMeetPage token={route.meetId} />
+            : <MeetingPage publicId={route.meetId} inCall={!!callId} onJoin={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
         )}
         {/*
           Реестр задач остаётся смонтированным, как «Фокус» и доски: набранные фильтры

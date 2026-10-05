@@ -27,6 +27,8 @@ export interface IcsEvent {
   sequence?: number;
   /** Напоминания за N минут — как VALARM внутри события. */
   reminders?: number[];
+  /** Постоянная ссылка встречи (ТЗ-14): по ней входят в созвон из любого календаря. */
+  url?: string | null;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -112,8 +114,13 @@ export function buildIcs(event: IcsEvent): string {
     lines.push(`DTEND:${stamp(event.endsAt)}`);
   }
 
-  if (event.description) lines.push(`DESCRIPTION:${escapeText(event.description)}`);
-  if (event.location) lines.push(`LOCATION:${escapeText(event.location)}`);
+  // ссылку кладём и отдельным полем URL, и в описание: часть календарей показывает только описание
+  const description = [event.description, event.url ? `Войти в созвон: ${event.url}` : null].filter(Boolean).join('\n\n');
+  if (description) lines.push(`DESCRIPTION:${escapeText(description)}`);
+  if (event.url) lines.push(`URL:${event.url}`);
+  // места нет — местом встречи будет ссылка: так её видно в карточке события у Google и Outlook
+  const location = event.location || event.url;
+  if (location) lines.push(`LOCATION:${escapeText(location)}`);
   if (event.organizer?.email) {
     const name = event.organizer.name ? `;CN=${escapeText(event.organizer.name)}` : '';
     lines.push(`ORGANIZER${name}:mailto:${event.organizer.email}`);

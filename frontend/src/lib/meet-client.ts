@@ -43,6 +43,14 @@ export interface MeetEvents {
   onGuestAdmitted?: () => void;
   /** Гостю: отказали или отозвали ссылку. */
   onGuestRejected?: (reason: string) => void;
+  /** Кто я в этой комнате: может ли «Завершить для всех» / «Закрыть вход» (ТЗ-14). */
+  onRole?: (r: { host: boolean; meeting: boolean; locked: boolean }) => void;
+  /** Организатор завершил встречу для всех. */
+  onEnded?: (by: string) => void;
+  /** Вход закрыт или открыт снова. */
+  onLocked?: (locked: boolean) => void;
+  /** Ответ на «Сообщить организатору». */
+  onHostNotified?: (ok: boolean) => void;
   /** Сотруднику: список стучащихся изменился. */
   onKnocks?: (knocks: Knock[]) => void;
   onError: (message: string) => void;
@@ -420,6 +428,24 @@ export class MeetClient {
         this.ev.onGuestRejected?.(String(p.reason ?? 'declined'));
         return;
 
+      case 'meet.role':
+        this.ev.onRole?.({ host: !!p.host, meeting: !!p.meeting, locked: !!p.locked });
+        return;
+
+      case 'meet.ended':
+        this.refused = true;
+        this.exitLobby();
+        this.ev.onEnded?.(String(p.by ?? ''));
+        return;
+
+      case 'meet.locked':
+        this.ev.onLocked?.(!!p.locked);
+        return;
+
+      case 'meet.host-notified':
+        this.ev.onHostNotified?.(!!p.ok);
+        return;
+
       case 'meet.guest-knocking':
         this.knocks.set(p.guest_id, { guestId: p.guest_id, name: p.name, employee: !!p.employee });
         this.ev.onKnocks?.([...this.knocks.values()]);
@@ -593,6 +619,15 @@ export class MeetClient {
     this.ev.onKnocks?.([...this.knocks.values()]);
     this.emit(admit ? 'meet.guest-admit' : 'meet.guest-reject', { guest_id: guestId });
   }
+
+  /** «Завершить для всех» — организатор встречи или тот, кто начал созвон. */
+  endForAll(): void { this.emit('meet.end-all', {}); }
+
+  /** «Закрыть вход» / «Открыть вход». */
+  setLocked(locked: boolean): void { this.emit('meet.lock', { locked }); }
+
+  /** Из зала ожидания: «Сообщить организатору, что я жду». */
+  notifyHost(): void { this.emit('meet.notify-host', {}); }
 
   invite(userIds: string[]): void {
     this.emit('meet.invite', { user_ids: userIds });

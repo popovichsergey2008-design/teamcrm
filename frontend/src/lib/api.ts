@@ -2012,6 +2012,18 @@ export const api = {
   saveCalendarWork: (b: { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] }) =>
     request<any>('POST', '/calendar/work', b),
 
+  // встреча по постоянной ссылке /meet/{publicId} (ТЗ-14)
+  /** Открытая часть: видна любому со ссылкой, без входа. */
+  meetingInfo: (publicId: string) => rawRequest<MeetingInfo>('GET', `/meet/m/${encodeURIComponent(publicId)}`, undefined, false),
+  /** Своя часть: роль и приглашённые. */
+  meetingMe: (publicId: string) => request<MeetingMe>('GET', `/meet/m/${encodeURIComponent(publicId)}/me`),
+  /** Сотрудник входит: комната поднимается, пускать ли — решает сервер по правилам встречи. */
+  meetingEnter: (publicId: string) => request<{ roomId: string; state: MeetingState }>('POST', `/meet/m/${encodeURIComponent(publicId)}/enter`),
+  /** Человек со стороны по общей ссылке встречи. */
+  meetingGuestJoin: (publicId: string, name: string) =>
+    rawRequest<{ token: string; roomId: string; name: string; userId: string; iceServers: RTCIceServer[]; chatId: string | null; startsAt: string | null; opensAt: string | null }>(
+      'POST', `/meet/m/${encodeURIComponent(publicId)}/guest`, { name }, false),
+
   // отчёты из личного кабинета
   /** Сводка отчёта по задачам — те же цифры, что попадут в PDF. */
   reportSummary: (q: ReportQuery) => request<ReportSummary>('GET', `/reports/tasks/summary?${reportParams(q)}`),
@@ -2421,3 +2433,20 @@ function reportParams(q: ReportQuery): string {
   if (q.userId) p.set('userId', q.userId);
   return p.toString();
 }
+
+/** Состояние встречи — считается сервером от его часов (ТЗ-14). */
+export type MeetingState = 'scheduled' | 'early' | 'open' | 'live' | 'ended' | 'cancelled' | 'unavailable';
+export type MeetingInfo =
+  | {
+    valid: true; state: MeetingState; title: string; orgName: string; organizer: string | null;
+    startsAt: string | null; endsAt: string | null; opensAt: string | null; earlyJoinMin: number;
+    accessPolicy: 'trusted' | 'waiting_room' | 'host_required'; guestsAllowed: boolean;
+    hostPresent: boolean; people: number; serverNow: string;
+  }
+  | { valid: false; reason: string };
+export type MeetingMe =
+  | { member: false }
+  | {
+    member: true; role: 'organizer' | 'co_organizer' | 'participant' | 'employee'; roomId: string; eventId: string | null;
+    people: { userId: string; name: string; status: string; role: 'organizer' | 'co_organizer' | 'participant' }[];
+  };

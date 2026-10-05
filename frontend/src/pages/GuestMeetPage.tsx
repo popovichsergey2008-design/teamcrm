@@ -4,6 +4,8 @@ import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 import { GuestChat } from '../components/GuestChat';
 import { Logo } from '../components/Logo';
+import { DeviceCheck } from '../components/DeviceCheck';
+import { clockOffset, countdown, meetingSpan, meetingWhen } from '../lib/meeting-time';
 
 interface LinkInfo {
   orgName: string;
@@ -16,6 +18,12 @@ interface LinkInfo {
   opensAt: string | null;
   /** За ссылкой есть переписка — в неё пускают и до встречи. */
   hasChat: boolean;
+  /** Постоянная ссылка встречи (ТЗ-14): её название, конец, состояние и пускают ли гостей. */
+  title?: string;
+  endsAt?: string | null;
+  organizer?: string | null;
+  state?: string;
+  guestsAllowed?: boolean;
 }
 
 interface Admission {
@@ -25,27 +33,6 @@ interface Admission {
   iceServers: RTCIceServer[];
   /** Разговор, ради которого выдана ссылка. Пусто — ссылка только на созвон. */
   chatId: string | null;
-}
-
-/** «завтра в 09:00», «2 октября в 09:00» — время гостя, по его часовому поясу. */
-function meetingWhen(iso: string): string {
-  const d = new Date(iso);
-  const day = new Date(d); day.setHours(0, 0, 0, 0);
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const diff = Math.round((day.getTime() - today.getTime()) / 86_400_000);
-  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  const date = diff === 0 ? 'сегодня' : diff === 1 ? 'завтра'
-    : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
-  return `${date} в ${time}`;
-}
-
-/** Сколько осталось: «через 2 дн. 3 ч», «через 1 ч 05 мин», «через 4 мин». */
-function countdown(ms: number): string {
-  const min = Math.max(1, Math.ceil(ms / 60_000));
-  const d = Math.floor(min / 1440); const h = Math.floor((min % 1440) / 60); const m = min % 60;
-  if (d) return `через ${d} дн.${h ? ` ${h} ч` : ''}`;
-  if (h) return `через ${h} ч ${String(m).padStart(2, '0')} мин`;
-  return `через ${m} мин`;
 }
 
 const REFUSAL: Record<string, string> = {
@@ -62,7 +49,14 @@ const REFUSAL: Record<string, string> = {
  * у гостя нет учётной записи и заводить её ради одного разговора незачем. Всё, что
  * он делает на этом экране, — называет себя и стучится в дверь.
  */
-export function GuestMeetPage({ token }: { token: string }) {
+export function GuestMeetPage({ token, publicId, onStaffLogin }: {
+  /** Гостевая ссылка (длинный токен). */
+  token?: string;
+  /** Постоянная ссылка встречи (ТЗ-14): та же для всех, гость входит через зал ожидания. */
+  publicId?: string;
+  /** «Я сотрудник — войти»: по постоянной ссылке своих пускают после входа. */
+  onStaffLogin?: () => void;
+}) {
   const [info, setInfo] = useState<LinkInfo | null>(null);
   const [refusal, setRefusal] = useState('');
   const [name, setName] = useState(() => localStorage.getItem('teamcrm.guest-name') ?? '');
@@ -82,15 +76,39 @@ export function GuestMeetPage({ token }: { token: string }) {
     открыться сама, без перезагрузки, — отсчёт идёт на глазах.
   */
   const [now, setNow] = useState(() => Date.now());
+  /** Поправка на часы устройства: отсчёт — по часам сервера (ТЗ-14, §100). */
+  const [offset, setOffset] = useState(0);
   const opensAtMs = info?.opensAt ? new Date(info.opensAt).getTime() : 0;
-  const early = opensAtMs > now;
+  const early = opensAtMs > now + offset;
   useEffect(() => {
     if (!opensAtMs || opensAtMs <= Date.now()) return;
     const t = window.setInterval(() => setNow(Date.now()), 15_000);
     return () => window.clearInterval(t);
   }, [opensAtMs]);
 
+  // Постоянная ссылка встречи: состояние с сервера, перенос и отмена видны без перезагрузки.
   useEffect(() => {
+    if (!publicId) return;
+    let alive = true;
+    const load = () => api.meetingInfo(publicId)
+      .then((r) => {
+        if (!alive) return;
+        if (!r.valid) { setRefusal(REFUSAL.unknown); return; }
+        setOffset(clockOffset(r.serverNow));
+        setInfo({
+          orgName: r.orgName, label: null, roomActive: r.people > 0, hostPresent: r.hostPresent,
+          startsAt: r.startsAt, opensAt: r.opensAt, hasChat: false,
+          title: r.title, endsAt: r.endsAt, organizer: r.organizer, state: r.state, guestsAllowed: r.guestsAllowed,
+        });
+      })
+      .catch((e) => alive && setRefusal(e instanceof ApiError ? e.message : 'Не удалось открыть встречу'));
+    void load();
+    const t = window.setInterval(load, 20_000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [publicId]);
+
+  useEffect(() => {
+    if (!token) return;
     let alive = true;
     api.guestLinkInfo(token)
       .then((r) => {
@@ -112,7 +130,7 @@ export function GuestMeetPage({ token }: { token: string }) {
     setError('');
     setBusy(true);
     try {
-      const r = await api.guestJoin(token, name.trim());
+      const r = publicId ? await api.meetingGuestJoin(publicId, name.trim()) : await api.guestJoin(String(token), name.trim());
       // имя запоминаем на этом устройстве: со второй попытки входа его не спросят заново
       localStorage.setItem('teamcrm.guest-name', r.name);
       setAdmission({
@@ -185,17 +203,36 @@ export function GuestMeetPage({ token }: { token: string }) {
             <p className="dim auth-sub">
               Вас пригласили на видеовстречу{info.orgName ? <> · «{info.orgName}»</> : null}
             </p>
+            {info.title && <p className="guest-meeting-title">{info.title}</p>}
             {info.label && <p className="dim" style={{ marginTop: -4 }}>{info.label}</p>}
+            {info.organizer && <p className="dim" style={{ marginTop: -4, fontSize: 12 }}>Организатор: {info.organizer}</p>}
 
+            {/* Встреча отменена, завершена или гостей не пускают — так и говорим, без формы входа (ТЗ-14, §93) */}
+            {closedNote(info) ? (
+              <>
+                <div className="guest-when guest-closed" role="status">
+                  <Icon name={info.state === 'cancelled' ? 'close' : 'clock'} size={18} />
+                  <div>
+                    <div className="guest-when-time">{closedNote(info)!.title}</div>
+                    <div className="dim guest-when-sub">{closedNote(info)!.hint}</div>
+                  </div>
+                </div>
+                {onStaffLogin && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={onStaffLogin}>Я сотрудник — войти</button>
+                )}
+              </>
+            ) : (<>
             {/* Встреча назначена на время: показать его крупно — ради этого гость и открыл ссылку */}
             {info.startsAt && (
               <div className="guest-when" role="status">
                 <Icon name="calendar" size={18} />
                 <div>
-                  <div className="guest-when-time">{meetingWhen(info.startsAt)}</div>
+                  <div className="guest-when-time">
+                    {meetingWhen(info.startsAt, now + offset)}{info.endsAt ? ` · ${meetingSpan(info.startsAt, info.endsAt)}` : ''}
+                  </div>
                   <div className="dim guest-when-sub">
                     {early
-                      ? `Начало ${countdown(new Date(info.startsAt).getTime() - now)} · время указано по вашим часам`
+                      ? `Начало ${countdown(new Date(info.startsAt).getTime() - now - offset)} · время по вашим часам. Ссылка правильная — возвращаться за новой не нужно.`
                       : 'Встреча скоро начнётся или уже идёт'}
                   </div>
                 </div>
@@ -218,13 +255,15 @@ export function GuestMeetPage({ token }: { token: string }) {
             <p className="dim" style={{ fontSize: 12 }}>
               {early
                 ? (info.opensAt
-                  ? `Войти можно будет за 15 минут до начала — ${countdown(opensAtMs - now)}. Страницу можно не закрывать: кнопка откроется сама.`
+                  ? `Войти в зал ожидания можно будет за ${Math.round(((info.startsAt ? Date.parse(info.startsAt) : opensAtMs) - opensAtMs) / 60_000)} мин до начала — ${countdown(opensAtMs - now - offset)}. Страницу можно не закрывать: кнопка откроется сама.`
                   : '')
                 : info.hostPresent
                   ? 'Встреча идёт — организатор увидит вашу заявку и впустит.'
                   : 'Можно войти и подождать — организатору придёт уведомление, и он вас впустит.'}
             </p>
 
+            {/* Проверить камеру и микрофон заранее — разрешение браузер спросит только по нажатию */}
+            <DeviceCheck />
             {error && <div className="error-text">{error}</div>}
             {/*
               До времени встречи ссылка «только на созвон» не пускает никуда — кнопка
@@ -242,9 +281,24 @@ export function GuestMeetPage({ token }: { token: string }) {
               Ничего устанавливать не нужно: встреча работает прямо в браузере.
               Разрешите доступ к микрофону, когда браузер спросит.
             </p>
+            {onStaffLogin && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={onStaffLogin}>
+                Я сотрудник ANTHILL — войти
+              </button>
+            )}
+            </>)}
           </>
         )}
       </form>
     </div>
   );
+}
+
+/** Встреча по постоянной ссылке, в которую гостю сейчас не войти, — что ему сказать. */
+function closedNote(info: { state?: string; guestsAllowed?: boolean }): { title: string; hint: string } | null {
+  if (info.state === 'cancelled') return { title: 'Встреча отменена', hint: 'Организатор отменил встречу. Если её перенесут, вам пришлют новое приглашение.' };
+  if (info.state === 'ended') return { title: 'Встреча завершена', hint: 'Если вы не успели — напишите организатору.' };
+  if (info.state === 'unavailable') return { title: 'Созвона у встречи больше нет', hint: 'Организатор выключил созвон для этой встречи.' };
+  if (info.guestsAllowed === false) return { title: 'Встреча только для приглашённых', hint: 'Гостей по этой ссылке не пускают. Попросите у организатора персональное приглашение.' };
+  return null;
 }

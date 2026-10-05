@@ -7,7 +7,7 @@ import { useAuth } from '../state/auth';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { addReminder, MAX_REMINDERS, reminderRows, ReminderUnit, toMinutes } from '../lib/reminders';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
-import { EventGuestLinkButton } from '../components/GuestLinkButton';
+import { meetingUrl, shareMeeting } from './MeetingPage';
 import { CalendarSyncPanel } from '../components/CalendarSyncPanel';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
@@ -45,8 +45,19 @@ export interface CalEvent {
   myStatus: 'invited' | 'accepted' | 'declined' | null;
   /** Напоминания в минутах до начала. */
   reminders?: number[];
-  participants: { userId: string; fullName: string | null; status: string; isOrganizer: boolean; avatarUrl: string | null }[];
+  participants: { userId: string; fullName: string | null; status: string; isOrganizer: boolean; isCoOrganizer?: boolean; avatarUrl: string | null }[];
+  /** Созвон у встречи (ТЗ-14) и его постоянная ссылка. */
+  isCall?: boolean;
+  meeting?: { publicId: string; url: string | null; accessPolicy: AccessPolicy; earlyJoinMin: number; guestsAllowed: boolean } | null;
 }
+
+type AccessPolicy = 'trusted' | 'waiting_room' | 'host_required';
+const POLICY_OPTIONS: { key: AccessPolicy; label: string }[] = [
+  { key: 'trusted', label: 'Участники входят сразу, остальные — через зал ожидания' },
+  { key: 'waiting_room', label: 'Все через зал ожидания' },
+  { key: 'host_required', label: 'Ждать организатора' },
+];
+const EARLY_OPTIONS = [0, 5, 10, 15, 30, 60];
 
 interface CalTask {
   id: string; title: string; deadline_at: string; project_id: string; status: string;
@@ -688,11 +699,26 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
     // у новой встречи напоминания стоят сразу — за час, за 15 и за 5 минут;
     // «ни одного» человек выбирает осознанно, сняв галочки
     reminders: value.id ? (value.reminders ?? []) : DEFAULT_REMINDERS,
+    // созвон и правила входа (ТЗ-14)
+    isCall: !!value.isCall,
+    accessPolicy: (value.meeting?.accessPolicy ?? 'trusted') as AccessPolicy,
+    earlyJoinMin: value.meeting?.earlyJoinMin ?? 15,
+    guestsAllowed: value.meeting?.guestsAllowed ?? true,
+    coOrganizerIds: (value.participants ?? []).filter((p) => p.isCoOrganizer).map((p) => String(p.userId)),
   });
+  /*
+    «Созвон» у новой встречи включается сам, как только позвали людей (решение заказчика
+    05.10), — пока человек не тронул галочку руками. Тронул — его выбор главнее.
+  */
+  const [callTouched, setCallTouched] = useState(!!value.id);
+  const isCall = callTouched ? form.isCall : (form.participantIds.length > 0 && !form.allDay);
+  const [showAccess, setShowAccess] = useState(false);
+  /** Встреча с созвоном только что создана — показываем её ссылку, а не закрываем окно молча (§44). */
+  const [created, setCreated] = useState<{ publicId: string; title: string; when: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   // комната встречи: появляется и после выдачи гостевой ссылки — тогда «Войти в созвон» нужен сразу
-  const [roomId, setRoomId] = useState<string | null>(value.meetRoomId ?? null);
+  const [roomId] = useState<string | null>(value.meetRoomId ?? null);
   // своё время напоминания: число и единица рядом, чтобы не считать минуты в уме
   const [ownValue, setOwnValue] = useState('');
   const [ownUnit, setOwnUnit] = useState<ReminderUnit>('minutes');
@@ -760,9 +786,20 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
         scope: form.scope,
         participantIds: form.participantIds,
         reminders: form.reminders,
+        isCall,
+        ...(isCall ? {
+          accessPolicy: form.accessPolicy,
+          earlyJoinMin: form.earlyJoinMin,
+          guestsAllowed: form.guestsAllowed,
+          coOrganizerIds: form.coOrganizerIds.filter((id) => form.participantIds.includes(id)),
+        } : {}),
       };
-      if (isNew) await api.calendarCreate(body);
-      else await api.calendarUpdate(String(value.id), body);
+      const saved = isNew ? await api.calendarCreate(body) : await api.calendarUpdate(String(value.id), body);
+      // встреча с созвоном создана — ссылка уже рабочая: показать её сразу, с «скопировать» и «поделиться»
+      if (isNew && saved?.meeting?.publicId) {
+        setCreated({ publicId: saved.meeting.publicId, title: form.title.trim(), when: form.startsAt });
+        return;
+      }
       onSaved();
       toastSaved(isNew ? 'Событие создано' : 'Событие сохранено', form.title.trim());
     } catch (e) {
@@ -788,6 +825,45 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
       ? f.participantIds.filter((x) => x !== id)
       : [...f.participantIds, id],
   }));
+
+  /*
+    Встреча создана — показываем её ссылку сразу (ТЗ-14, §44): приглашения участникам ушли,
+    а ссылку уже можно отправить кому угодно, не нажимая «начать звонок».
+  */
+  if (created) {
+    const done = () => { onSaved(); toastSaved('Встреча создана', created.title); };
+    return (
+      <div className="drawer-overlay" {...overlayProps(done)}>
+        <aside className="drawer" onClick={(e) => e.stopPropagation()}>
+          <div className="drawer-head">
+            <h3><Icon name="check" size={18} /> Встреча создана</h3>
+            <button className="btn btn-ghost btn-sm" onClick={done} title="Закрыть"><Icon name="close" /></button>
+          </div>
+          <div className="meeting-created">
+            <b>{created.title}</b>
+            <div className="dim">{new Date(created.when).toLocaleString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</div>
+            {form.participantIds.length > 0 && <div className="dim">✓ Приглашения отправлены: {form.participantIds.length}</div>}
+            <div className="cal-call-link">
+              <code>{meetingUrl(created.publicId).replace(/^https?:\/\//, '')}</code>
+            </div>
+            <div className="dim" style={{ fontSize: 12 }}>
+              Ссылка одна на всех и не изменится при переносе. Комната откроется сама в назначенное время.
+            </div>
+            <div className="cal-dialog-actions">
+              <button className="btn btn-primary btn-sm" onClick={async () => {
+                const r = await shareMeeting(created.publicId, created.title);
+                if (r === 'copied') toastSaved('Ссылка скопирована', meetingUrl(created.publicId));
+              }}><Icon name="link" size={14} /> Скопировать / поделиться</button>
+              <button className="btn btn-sm" onClick={() => { navigate({ section: 'meet', meetId: created.publicId }); done(); }}>
+                <Icon name="phone" size={14} /> Открыть встречу
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={done}>Готово</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    );
+  }
 
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
@@ -933,6 +1009,21 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
                          onChange={() => toggleParticipant(String(u.id))} />
                   <Avatar path={u.avatarUrl ?? null} fallback={u.fullName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
                   <span className="call-starter-name">{u.fullName}</span>
+                  {/* соорганизатор: впускает, начинает раньше, завершает — если организатор опаздывает */}
+                  {isCall && form.participantIds.includes(String(u.id)) && (
+                    <button
+                      type="button"
+                      className={`cal-coorg${form.coOrganizerIds.includes(String(u.id)) ? ' active' : ''}`}
+                      title="Соорганизатор: может начать встречу, впускать из зала ожидания и завершить её"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        const id = String(u.id);
+                        setForm((f) => ({ ...f, coOrganizerIds: f.coOrganizerIds.includes(id) ? f.coOrganizerIds.filter((x) => x !== id) : [...f.coOrganizerIds, id] }));
+                      }}
+                    >
+                      соорг.
+                    </button>
+                  )}
                   {/* занятость видно до сохранения — иначе отказ «занят» будет неожиданностью */}
                   {busyPeople[String(u.id)] && (
                     <span
@@ -948,6 +1039,58 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
           </>
         )}
 
+        {/*
+          Созвон у встречи (ТЗ-14): постоянная ссылка — одна на всех, есть сразу, не
+          меняется при переносе. По ней входят сотрудники (по правилам ниже) и гости.
+        */}
+        {!form.allDay && (canEdit || value.meeting) && (
+          <div className="cal-call">
+            {canEdit && (
+              <label className="check">
+                <input type="checkbox" checked={isCall} onChange={(e) => { setCallTouched(true); setForm((f) => ({ ...f, isCall: e.target.checked })); }} />
+                <span><b>Созвон</b> — у встречи будет постоянная ссылка, комната откроется сама в назначенное время</span>
+              </label>
+            )}
+            {isCall && value.meeting && (
+              <div className="cal-call-link">
+                <code title={meetingUrl(value.meeting.publicId)}>{meetingUrl(value.meeting.publicId).replace(/^https?:\/\//, '')}</code>
+                <button type="button" className="btn btn-sm" onClick={async () => {
+                  const r = await shareMeeting(value.meeting!.publicId, value.title ?? 'Встреча');
+                  if (r === 'copied') toastSaved('Ссылка скопирована', meetingUrl(value.meeting!.publicId));
+                }}><Icon name="link" size={14} /> Поделиться</button>
+              </div>
+            )}
+            {isCall && canEdit && (
+              <>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowAccess((v) => !v)} aria-expanded={showAccess}>
+                  <Icon name={showAccess ? 'chevron-down' : 'chevron-right'} size={14} /> Доступ и ранний вход
+                </button>
+                {showAccess && (
+                  <div className="cal-call-access">
+                    <label className="field-inline">
+                      <span className="dim">Кто входит</span>
+                      <select className="input" value={form.accessPolicy} onChange={(e) => setForm((f) => ({ ...f, accessPolicy: e.target.value as AccessPolicy }))}>
+                        {POLICY_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="field-inline">
+                      <span className="dim">Ранний вход</span>
+                      <select className="input" value={form.earlyJoinMin} onChange={(e) => setForm((f) => ({ ...f, earlyJoinMin: Number(e.target.value) }))}>
+                        {EARLY_OPTIONS.map((m) => <option key={m} value={m}>{m ? `за ${m} мин` : 'только с начала'}</option>)}
+                      </select>
+                    </label>
+                    <label className="check">
+                      <input type="checkbox" checked={form.guestsAllowed} onChange={(e) => setForm((f) => ({ ...f, guestsAllowed: e.target.checked }))} />
+                      <span>Гости по ссылке — через зал ожидания</span>
+                    </label>
+                    <div className="dim" style={{ fontSize: 12 }}>Соорганизаторов отметьте «соорг.» в списке участников.</div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         {!isNew && value.participants && value.participants.length > 0 && (
           <>
             <div className="drawer-section-title">Кто идёт</div>
@@ -956,7 +1099,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
                 <Avatar path={p.avatarUrl} fallback={p.fullName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
                 <span className="call-starter-name">{p.fullName}</span>
                 <span className={`cal-status cal-status-${p.status}`}>
-                  {p.isOrganizer ? 'организатор' : p.status === 'accepted' ? 'идёт' : p.status === 'declined' ? 'отказался' : 'не ответил'}
+                  {p.isOrganizer ? 'организатор' : `${p.isCoOrganizer ? 'соорганизатор · ' : ''}${p.status === 'accepted' ? 'идёт' : p.status === 'declined' ? 'отказался' : 'не ответил'}`}
                 </span>
               </div>
             ))}
@@ -972,15 +1115,15 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
               <button className="btn btn-sm" onClick={() => { onRespond(String(value.id), 'declined'); onClose(); }}>Отклонить</button>
             </>
           )}
-          {/* Созвон нашей комнаты: у события своя комната, туда же ведёт гостевая ссылка */}
-          {roomId && (
+          {/* Встреча с созвоном — на её страницу: там время, состояние, проверка устройств и вход */}
+          {value.meeting ? (
+            <button className="btn btn-sm btn-primary" onClick={() => { navigate({ section: 'meet', meetId: value.meeting!.publicId }); onClose(); }}>
+              <Icon name="phone" size={14} /> Открыть встречу
+            </button>
+          ) : roomId && (
             <button className="btn btn-sm" onClick={() => { onStartCall(String(roomId)); onClose(); }}>
               <Icon name="phone" size={14} /> Войти в созвон
             </button>
-          )}
-          {/* Гость со стороны: время и комната — из события, напоминание открыть комнату придёт само */}
-          {!isNew && value.id && !value.allDay && (
-            <EventGuestLinkButton eventId={String(value.id)} onRoom={setRoomId} />
           )}
           {/* Где договорились: встречу поставили по переписке — к ней одним нажатием */}
           {value.sourceChatId && (

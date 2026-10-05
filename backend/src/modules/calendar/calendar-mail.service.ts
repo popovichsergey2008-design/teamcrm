@@ -25,6 +25,11 @@ export class CalendarMailService {
     return (this.config.get<string>('APP_BASE_URL') || 'https://anthill.team').replace(/\/+$/, '');
   }
 
+  /** Постоянная ссылка встречи (ТЗ-14): одна на всех и навсегда. */
+  meetUrl(publicId: string | null | undefined): string | null {
+    return publicId ? `${this.baseUrl()}/meet/${publicId}` : null;
+  }
+
   private when(event: EventRow): string {
     if (event.all_day) {
       return new Date(event.starts_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) + ', весь день';
@@ -64,17 +69,20 @@ export class CalendarMailService {
         organizer: organizer ? { name: organizer.full_name, email: organizer.email } : null,
         attendees: targets.map((t) => ({ name: t.full_name, email: t.email })),
         method: kind === 'cancel' ? 'CANCEL' : 'REQUEST',
-        // номер правки растёт со временем изменения: без этого внешний календарь
-        // считает письмо повтором и не обновляет встречу
-        sequence: kind === 'cancel' ? 2 : 1,
+        // номер правки растёт со временем: без этого внешний календарь считает письмо о
+        // переносе повтором и не обновляет встречу (раньше он был всегда 1)
+        sequence: Math.floor(Date.now() / 60_000) - 29_000_000 + (kind === 'cancel' ? 1 : 0),
         reminders,
+        url: event.is_call ? this.meetUrl(event.public_id) : null,
       });
       const attachments = [{
         name: 'meeting.ics',
         content: Buffer.from(ics, 'utf8').toString('base64'),
       }];
 
-      const url = `${this.baseUrl()}/focus/calendar`;
+      // у встречи с созвоном — её постоянная ссылка: по ней и ответить, и войти (ТЗ-14, §38)
+      const meetUrl = event.is_call ? this.meetUrl(event.public_id) : null;
+      const url = meetUrl ?? `${this.baseUrl()}/focus/calendar`;
       const subject = kind === 'cancel' ? `Встреча отменена: ${event.title}` : `Встреча: ${event.title}`;
       for (const p of targets) {
         const lines = kind === 'cancel'
@@ -88,7 +96,8 @@ export class CalendarMailService {
             event.description ? '' : '',
             event.description ?? '',
             '',
-            `Ответить и посмотреть подробности: ${url}`,
+            meetUrl ? `Ссылка на встречу — по ней же войти в созвон: ${meetUrl}` : `Ответить и посмотреть подробности: ${url}`,
+            meetUrl ? 'Ссылка не изменится, даже если время встречи перенесут.' : '',
             'К письму приложен файл встречи — им можно добавить её в свой календарь.',
           ];
         await this.enqueue({
@@ -113,7 +122,9 @@ export class CalendarMailService {
   async sendReminder(r: {
     event_id: string; tenant_id: string; user_id: string; minutes_before: number;
     title: string; starts_at: Date; ends_at: Date; location: string | null; all_day: boolean; email: string;
+    public_id?: string | null;
   }): Promise<void> {
+    const meetUrl = this.meetUrl(r.public_id);
     const inWords = r.minutes_before >= 1440 ? `за ${Math.round(r.minutes_before / 1440)} дн.`
       : r.minutes_before >= 60 ? `за ${Math.round(r.minutes_before / 60)} ч`
         : `за ${r.minutes_before} мин`;
@@ -129,7 +140,7 @@ export class CalendarMailService {
         this.when({ starts_at: r.starts_at, ends_at: r.ends_at, all_day: r.all_day } as EventRow),
         r.location ? `Место: ${r.location}` : '',
         '',
-        `${this.baseUrl()}/focus/calendar`,
+        meetUrl ? `Войти в созвон: ${meetUrl}` : `${this.baseUrl()}/focus/calendar`,
       ].join('\n'),
       eventKey: 'calendar.remind',
       dedupKey: `cal.remind:${r.event_id}:${r.user_id}:${r.minutes_before}:${new Date(r.starts_at).getTime()}`,

@@ -27,7 +27,14 @@ const GUEST_ALLOWED = new Set([
   'meet.consume', 'meet.resume-consumer', 'meet.producer-pause', 'meet.producer-resume',
   'meet.producer-close', 'meet.hand-raise', 'meet.hand-lower', 'meet.reaction',
   'meet.restart-ice', 'meet.set-consumer-layers', 'meet.get-participants', 'meet.leave',
+  // из зала ожидания: «Сообщить организатору, что я жду» (ТЗ-14, §35)
+  'meet.notify-host',
 ]);
+
+/** Как часто пересматриваем зал ожидания: наступило время встречи — участники входят сами. */
+const LOBBY_TICK_MS = 15_000;
+/** Опоздавшему организатору напоминаем не больше стольких раз (ТЗ-14, §57: «без бесконечного спама»). */
+const LATE_CALLS_MAX = 3;
 
 interface Client {
   ws: WebSocket;
@@ -98,7 +105,13 @@ export class MeetGateway implements OnModuleInit {
     });
   }
 
+  /** Сколько раз уже звали опоздавшего организатора — по комнате. */
+  private readonly lateCalls = new Map<string, number>();
+
   onModuleInit(): void {
+    // зал ожидания пересматриваем по часам сервера, а не по чьему-то открытому браузеру
+    const tick = setInterval(() => { void this.lobbyTick(); }, LOBBY_TICK_MS);
+    tick.unref?.();
     const server = this.adapterHost.httpAdapter?.getHttpServer();
     if (!server) return;
     this.wss = new WebSocketServer({ noServer: true });
@@ -252,17 +265,39 @@ export class MeetGateway implements OnModuleInit {
   private async handle(c: Client, msg: { type: string; payload?: Record<string, any> }): Promise<void> {
     const p = msg.payload ?? {};
     if (c.isGuest && !GUEST_ALLOWED.has(msg.type)) return;
-    const room = this.roomFor(c, p.meeting_id);
+    let room = this.roomFor(c, p.meeting_id);
 
     switch (msg.type) {
       case 'meet.join': {
         if (c.isGuest) return this.knock(c);
+        /*
+          Комнаты ещё нет, но у неё есть ссылка (встреча календаря или гостевая) — поднимаем.
+          Раньше её поднимал только гость, и сотрудник, пришедший первым по «Войти в
+          созвон», получал «Созвон не найден» (ТЗ-14, §6, §62).
+        */
+        if (!room && typeof p.meeting_id === 'string' && await this.guests.roomHasLink(c.tenantId, p.meeting_id)) {
+          room = await this.media.ensureRoom(c.tenantId, p.meeting_id, null).catch(() => null);
+        }
         if (!room) {
           this.diag.write({ tenantId: c.tenantId, scope: 'meet', refId: String(p.meeting_id ?? ''), userId: c.userId, side: 'server', event: 'join.rejected', data: { reason: 'room-not-found' } });
           return this.send(c.ws, 'meet.error', { message: 'Созвон не найден' });
         }
-        // не звали — стучится, как гость: в чужой разговор без спроса не входят
-        if (!(await this.mayEnter(c, room))) return this.knockEmployee(c, room);
+        // «Закрыть вход»: вернуться может тот, кто уже был внутри, новые — нет
+        if (room.locked && !room.joined?.has(c.userId)) {
+          return this.send(c.ws, 'meet.guest-rejected', { meeting_id: room.id, reason: 'locked' });
+        }
+        // Встреча календаря — по её правилам (ТЗ-14): организатор, участники, ранний вход, политика.
+        const access = await this.guests.meetingAccess(c.tenantId, room.id, c.userId, this.hostInside(room)).catch(() => null);
+        if (access) {
+          if (access.verdict === 'closed') return this.send(c.ws, 'meet.guest-rejected', { meeting_id: room.id, reason: access.reason ?? 'ended' });
+          if (access.verdict === 'early') return this.send(c.ws, 'meet.guest-too-early', { meeting_id: room.id, opens_at: access.opensAt ?? null });
+          if (access.verdict === 'knock') return this.knockEmployee(c, room, true);
+          room.allowed.add(c.userId);
+          if (access.host) (room.hosts ??= new Set()).add(c.userId);
+        } else if (!(await this.mayEnter(c, room))) {
+          // не звали — стучится, как гость: в чужой разговор без спроса не входят
+          return this.knockEmployee(c, room);
+        }
         // вход со второго устройства вытесняет первое — иначе в списке два одинаковых человека
         if (room.participants.has(c.userId)) {
           this.media.removeParticipant(room, c.userId);
@@ -271,8 +306,53 @@ export class MeetGateway implements OnModuleInit {
         await this.joinRoom(c, room);
         // сотрудник вошёл — покажем ему тех, кто уже стоит за дверью
         for (const g of this.lobby.get(room.id)?.values() ?? []) {
-          this.send(c.ws, 'meet.guest-knocking', { meeting_id: room.id, guest_id: g.userId, name: g.displayName });
+          this.send(c.ws, 'meet.guest-knocking', { meeting_id: room.id, guest_id: g.userId, name: g.displayName, employee: !g.isGuest });
         }
+        // кто здесь может «Завершить для всех» и «Закрыть вход»
+        const isHost = access ? access.host : room.startedBy === c.userId;
+        this.send(c.ws, 'meet.role', { meeting_id: room.id, host: isHost, meeting: !!access, locked: !!room.locked });
+        // пришёл организатор — участники из зала ожидания проходят сами (trusted / host_required)
+        if (access?.host) void this.reviewLobby(room);
+        return;
+      }
+
+      /**
+       * «Завершить для всех» (ТЗ-14, §74): не то же, что «Выйти». Может организатор
+       * (соорганизатор) встречи, а у созвона без встречи — тот, кто его начал.
+       */
+      case 'meet.end-all': {
+        if (!room || !room.participants.has(c.userId)) return;
+        if (!(await this.canHost(c, room))) return this.send(c.ws, 'meet.error', { message: 'Завершить для всех может организатор' });
+        await this.guests.endMeeting(c.tenantId, room.id).catch(() => undefined);
+        this.trace(c, 'meeting.ended', { people: room.participants.size });
+        for (const w of [...(this.lobby.get(room.id)?.values() ?? [])]) {
+          this.send(w.ws, 'meet.ended', { meeting_id: room.id, by: c.displayName });
+          w.knockRoomId = undefined;
+        }
+        this.lobby.delete(room.id);
+        const inside = [...this.clients.values()].filter((x) => x.meetingId === room!.id);
+        for (const x of inside) this.send(x.ws, 'meet.ended', { meeting_id: room.id, by: c.displayName });
+        for (const x of inside) await this.leave(x);
+        return;
+      }
+
+      /** «Закрыть вход» / «Открыть вход» (ТЗ-14, §71). */
+      case 'meet.lock': {
+        if (!room || !room.participants.has(c.userId)) return;
+        if (!(await this.canHost(c, room))) return this.send(c.ws, 'meet.error', { message: 'Закрыть вход может организатор' });
+        room.locked = !!p.locked;
+        this.trace(c, room.locked ? 'meeting.locked' : 'meeting.unlocked', {});
+        this.broadcast(room, 'meet.locked', { meeting_id: room.id, locked: room.locked });
+        return;
+      }
+
+      /** Из зала ожидания: «Сообщить организатору, что я жду». Повторы гасит callHost. */
+      case 'meet.notify-host': {
+        const roomId = c.knockRoomId ?? c.guestRoomId;
+        if (!roomId || !this.lobby.get(roomId)?.has(c.userId)) return;
+        const waiting = this.lobby.get(roomId)?.size ?? 1;
+        const called = await this.guests.callHost(c.tenantId, roomId, c.displayName, c.guestLinkId, waiting).catch(() => false);
+        this.send(c.ws, 'meet.host-notified', { meeting_id: roomId, ok: called });
         return;
       }
 
@@ -585,6 +665,7 @@ export class MeetGateway implements OnModuleInit {
     }
     this.ringing.stop(room.id, c.userId); // вошёл — звонить ему больше не о чем
     this.media.addParticipant(room, c.userId, c.displayName);
+    (room.joined ??= new Set()).add(c.userId);
     // комнату по гостевой ссылке поднимает тот, кто вошёл первым; хозяином становится
     // первый сотрудник — гость на эту роль не годится, у него нет учётной записи
     if (!room.startedBy && !c.isGuest) room.startedBy = c.userId;
@@ -627,6 +708,15 @@ export class MeetGateway implements OnModuleInit {
     if (!(await this.guests.roomStillOpen(c.tenantId, roomId).catch(() => false))) {
       this.send(c.ws, 'meet.guest-rejected', { meeting_id: roomId, reason: 'revoked' });
       c.ws.close();
+      return;
+    }
+    const closed = await this.guests.meetingClosed(c.tenantId, roomId).catch(() => null);
+    if (closed) {
+      this.send(c.ws, 'meet.guest-rejected', { meeting_id: roomId, reason: closed });
+      return;
+    }
+    if (this.media.getRoom(roomId)?.locked) {
+      this.send(c.ws, 'meet.guest-rejected', { meeting_id: roomId, reason: 'locked' });
       return;
     }
     // встреча назначена на потом: комнату не поднимаем и никого не будим — гостю время и отсчёт
@@ -691,11 +781,15 @@ export class MeetGateway implements OnModuleInit {
    * кто внутри. Если внутри никого из команды — впускать некому, так и говорим, а не
    * держим человека у пустой двери.
    */
-  private knockEmployee(c: Client, room: MeetingRoom): void {
+  private knockEmployee(c: Client, room: MeetingRoom, hold = false): void {
     const hosts = [...room.participants.keys()].filter((id) => !id.startsWith('guest:'));
-    if (!hosts.length) {
+    // в обычный созвон без людей стучаться некуда; во встречу — ждём в зале, организатора позовут
+    if (!hosts.length && !hold) {
       this.send(c.ws, 'meet.guest-rejected', { meeting_id: room.id, reason: 'empty' });
       return;
+    }
+    if (!hosts.length) {
+      void this.guests.callHost(c.tenantId, room.id, c.displayName, undefined, (this.lobby.get(room.id)?.size ?? 0) + 1).catch(() => false);
     }
     const waiting = this.lobby.get(room.id) ?? new Map<string, Client>();
     waiting.set(c.userId, c);
@@ -706,8 +800,71 @@ export class MeetGateway implements OnModuleInit {
         meeting_id: room.id, guest_id: c.userId, name: c.displayName, employee: true,
       });
     }
-    this.send(c.ws, 'meet.guest-waiting', { meeting_id: room.id, host_present: true, employee: true });
+    this.send(c.ws, 'meet.guest-waiting', { meeting_id: room.id, host_present: hosts.length > 0, host_called: !hosts.length, employee: true });
     this.trace(c, 'employee.knock', { hosts: hosts.length });
+  }
+
+  /** Есть ли в комнате организатор или соорганизатор встречи. */
+  private hostInside(room: MeetingRoom): boolean {
+    return [...room.participants.keys()].some((id) => room.hosts?.has(id));
+  }
+
+  /** Может ли человек «Завершить для всех» / «Закрыть вход». */
+  private async canHost(c: Client, room: MeetingRoom): Promise<boolean> {
+    if (c.isGuest) return false;
+    const meetingHost = await this.guests.isMeetingHost(c.tenantId, room.id, c.userId).catch(() => null);
+    return meetingHost === null ? room.startedBy === c.userId : meetingHost;
+  }
+
+  /**
+   * Пересмотреть зал ожидания встречи: кому теперь можно войти самому.
+   *
+   * Участник пришёл раньше времени и ждёт; наступило время встречи или вошёл организатор —
+   * он проходит сам, без кнопки «Впустить». Гостей так не пропускаем: их впускает человек.
+   */
+  private async reviewLobby(room: MeetingRoom): Promise<void> {
+    const waiting = this.lobby.get(room.id);
+    if (!waiting?.size) return;
+    for (const w of [...waiting.values()]) {
+      if (w.isGuest) continue;
+      const access = await this.guests.meetingAccess(w.tenantId, room.id, w.userId, this.hostInside(room)).catch(() => null);
+      if (access?.verdict !== 'direct') continue;
+      waiting.delete(w.userId);
+      w.knockRoomId = undefined;
+      room.allowed.add(w.userId);
+      if (access.host) (room.hosts ??= new Set()).add(w.userId);
+      for (const host of room.participants.keys()) {
+        if (!host.startsWith('guest:')) this.toUser(room.tenantId, host, 'meet.guest-gone', { meeting_id: room.id, guest_id: w.userId });
+      }
+      this.send(w.ws, 'meet.guest-admitted', { meeting_id: room.id });
+      await this.joinRoom(w, room);
+      this.send(w.ws, 'meet.role', { meeting_id: room.id, host: access.host, meeting: true, locked: !!room.locked });
+    }
+    if (!waiting.size) this.lobby.delete(room.id);
+  }
+
+  /** Раз в LOBBY_TICK_MS: время встречи наступило — ждущие проходят; организатор опаздывает — зовём. */
+  private async lobbyTick(): Promise<void> {
+    for (const [roomId, waiting] of [...this.lobby.entries()]) {
+      if (!waiting.size) continue;
+      const room = this.media.getRoom(roomId);
+      if (!room) continue;
+      try {
+        await this.reviewLobby(room);
+        const still = this.lobby.get(roomId);
+        if (!still?.size) { this.lateCalls.delete(roomId); continue; }
+        // внутри никого из команды, а время встречи прошло — организатор опаздывает
+        const staffInside = [...room.participants.keys()].some((id) => !id.startsWith('guest:'));
+        const sample = [...still.values()][0];
+        if (staffInside || this.lateCalls.get(roomId)! >= LATE_CALLS_MAX) continue;
+        const closed = await this.guests.meetingClosed(room.tenantId, roomId).catch(() => null);
+        if (closed) continue;
+        const called = await this.guests.callHost(room.tenantId, roomId, sample.displayName, undefined, still.size, true).catch(() => false);
+        if (called) this.lateCalls.set(roomId, (this.lateCalls.get(roomId) ?? 0) + 1);
+      } catch (e) {
+        this.log.warn(`зал ожидания ${roomId}: ${(e as Error).message}`);
+      }
+    }
   }
 
   /** Гость ушёл, не дождавшись: убираем из лобби и снимаем стук у сотрудников. */
