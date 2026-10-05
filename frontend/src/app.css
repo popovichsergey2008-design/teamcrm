@@ -6186,3 +6186,15 @@ button.chat-pop-row:hover { background: var(--hover); }
 
 /* пока тянут окно созвона — текст под указателем не выделяется */
 body.is-dragging { user-select: none; cursor: grabbing; }
+
+/*
+  Меню сообщения на телефоне — компактнее (задача #1491): строки по 36 точек вместо
+  растянутых кнопок, реакции — одной строкой с прокруткой вбок. Палец попадает так же
+  уверенно, а меню у сообщения в середине экрана помещается целиком.
+*/
+@media (max-width: 720px), (pointer: coarse) {
+  .msg-ctx { min-width: 220px; max-width: min(280px, calc(100vw - 16px)); padding: 3px; }
+  .msg-ctx .msg-menu-item { min-height: 36px; padding: 4px 12px; font-size: calc(14px * var(--fs-scale)); line-height: 1.2; }
+  .msg-ctx-react { overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; margin-bottom: 2px; }
+  .msg-ctx-react .react-pop-btn { flex: 0 0 auto; }
+}

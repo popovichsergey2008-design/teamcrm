@@ -1,6 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
-import { placePopover } from '../lib/popover';
 
 /** Пункт меню сообщения. `danger` — красный: удаление ни с чем не спутаешь. */
 export interface MsgMenuItem {
@@ -24,9 +23,48 @@ export interface MenuAt { x: number; y: number }
  * На касании правой кнопки нет — там меню открывается долгим нажатием (см. useLongPress
  * ниже): всё, что доступно мышью, обязано быть доступно пальцем.
  *
- * Высота считается по числу пунктов: меню должно раскрываться вверх, когда снизу
- * места нет, — иначе у нижних сообщений оно уезжает за край ленты.
+ * Место меню считается по его НАСТОЯЩЕМУ размеру (задача #1491). Раньше высота
+ * бралась «по 34 точки на пункт», а на телефоне пункт почти вдвое выше: меню у
+ * сообщения в середине экрана вылезало и за верх (реакции уходили под вырез камеры),
+ * и за низ. Теперь меню сначала рисуется невидимым, измеряется и встаёт в видимую
+ * часть экрана с учётом выреза и системных панелей; не влезает целиком — внутри
+ * появляется прокрутка, но за край оно не уходит никогда.
  */
+
+const EDGE = 8;
+const GAP = 6;
+
+/** Отступы системных панелей и выреза камеры: CSS их знает, JS — нет. Меряем пробником. */
+function safeInsets(): { top: number; bottom: number } {
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding-top:var(--safe-top,0px);padding-bottom:var(--safe-bottom,0px)';
+  document.body.appendChild(probe);
+  const cs = getComputedStyle(probe);
+  const r = { top: parseFloat(cs.paddingTop) || 0, bottom: parseFloat(cs.paddingBottom) || 0 };
+  probe.remove();
+  return r;
+}
+
+interface Placed { x: number; y: number; maxH: number | null }
+
+/**
+ * Куда поставить меню размером w×h, открытое в точке (ax, ay): под точкой, если влезает,
+ * иначе над ней, иначе — сдвинуть так, чтобы целиком было в видимой части.
+ */
+export function placeMenu(
+  ax: number, ay: number, w: number, h: number,
+  vw: number, vh: number, insets: { top: number; bottom: number },
+): Placed {
+  const minY = insets.top + EDGE;
+  const maxY = vh - insets.bottom - EDGE;
+  const room = maxY - minY;
+  const x = Math.max(EDGE, Math.min(ax, vw - w - EDGE));
+  if (h >= room) return { x, y: minY, maxH: room }; // выше экрана — прокрутка внутри
+  let y = ay + GAP;                                   // под пальцем
+  if (y + h > maxY) y = ay - GAP - h;                 // не влезает — над ним
+  y = Math.max(minY, Math.min(y, maxY - h));          // и в любом случае — в пределах экрана
+  return { x, y, maxH: null };
+}
 export function MessageMenu({ at, reactions, onReact, onMoreEmoji, items, onClose }: {
   at: MenuAt;
   /** Быстрые реакции строкой сверху. Пустой список — строки не будет. */
@@ -69,8 +107,17 @@ export function MessageMenu({ at, reactions, onReact, onMoreEmoji, items, onClos
     };
   }, [onClose]);
 
-  const height = items.length * 34 + (reactions?.length ? 46 : 0) + 12;
-  const place = placePopover({ left: at.x, top: at.y, bottom: at.y }, height, window.innerWidth, 232, window.innerHeight);
+  // Сначала рисуем невидимым там, где позвали, меряем — и ставим так, чтобы влезло целиком.
+  const box = useRef<HTMLSpanElement | null>(null);
+  const [place, setPlace] = useState<Placed | null>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const vv = window.visualViewport;
+    const vh = vv?.height ?? window.innerHeight;
+    const vw = vv?.width ?? window.innerWidth;
+    setPlace(placeMenu(at.x, at.y, el.offsetWidth, el.scrollHeight, vw, vh, safeInsets()));
+  }, [at.x, at.y, items.length]);
 
   return (
     <>
@@ -81,9 +128,12 @@ export function MessageMenu({ at, reactions, onReact, onMoreEmoji, items, onClos
         onContextMenu={(e) => { e.preventDefault(); if (!settling()) onClose(); }}
       />
       <span
+        ref={box}
         className="msg-ctx"
         role="menu"
-        style={{ left: place.x, top: place.y, transform: place.up ? 'translateY(-100%)' : undefined }}
+        style={place
+          ? { left: place.x, top: place.y, maxHeight: place.maxH ?? undefined, overflowY: place.maxH ? 'auto' : undefined }
+          : { left: at.x, top: at.y, visibility: 'hidden' }}
         onClick={(e) => e.stopPropagation()}
       >
         {!!reactions?.length && onReact && (
