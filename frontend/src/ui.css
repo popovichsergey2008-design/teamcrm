@@ -1,0 +1,332 @@
+/* ANTHILL UI — примитивы ТЗ-15 (components/ui/*).
+
+   Стиль shadcn/ui, но на НАШИХ токенах (index.css): обе темы, контраст и размер шрифта
+   работают сразу. Классы с приставкой ui- — чтобы не пересекаться с прежними .btn,
+   .input и прочими, пока экраны переезжают по одному. Состояния берём из атрибутов
+   Base UI: data-highlighted, data-checked, data-pressed, data-starting-style… */
+
+/* ── кольцо фокуса — одно на все примитивы ─────────────────────────────────── */
+.ui-btn:focus-visible,
+.ui-toggle:focus-visible,
+.ui-checkbox:focus-visible,
+.ui-select-trigger:focus-visible,
+.ui-row:focus-visible,
+.ui-page-btn:focus-visible,
+.ui-sort:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+/* ── кнопка ─────────────────────────────────────────────────────────────────── */
+.ui-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  font: inherit; font-weight: 500; line-height: 1; white-space: nowrap;
+  cursor: pointer; user-select: none;
+  transition: background-color .12s, border-color .12s, color .12s, box-shadow .12s;
+}
+.ui-btn:disabled { opacity: .5; cursor: default; pointer-events: none; }
+.ui-btn .icon, .ui-btn svg { flex: none; }
+
+.ui-btn-sm      { height: 30px; padding: 0 10px; font-size: var(--fs-sm); }
+.ui-btn-md      { height: 34px; padding: 0 14px; font-size: var(--fs-md); }
+.ui-btn-lg      { height: 40px; padding: 0 18px; font-size: var(--fs-md); }
+.ui-btn-icon    { height: 34px; width: 34px; padding: 0; }
+.ui-btn-icon-sm { height: 28px; width: 28px; padding: 0; }
+
+.ui-btn-primary { background: var(--accent-2); color: var(--on-accent); box-shadow: 0 1px 2px rgba(16,24,40,.12); }
+.ui-btn-primary:hover { background: var(--fill-info); }
+.ui-btn-secondary { background: var(--bg-elev-2); color: var(--text); }
+.ui-btn-secondary:hover { background: var(--hover); }
+.ui-btn-outline { background: var(--bg-elev); color: var(--text); border-color: var(--border); box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.ui-btn-outline:hover { background: var(--hover); }
+.ui-btn-ghost { background: transparent; color: var(--text-dim); }
+.ui-btn-ghost:hover { background: var(--hover); color: var(--text); }
+.ui-btn-destructive { background: var(--fill-danger); color: var(--on-fill); }
+.ui-btn-destructive:hover { filter: brightness(.94); }
+.ui-btn-link { background: transparent; color: var(--accent); padding-left: 0; padding-right: 0; height: auto; }
+.ui-btn-link:hover { text-decoration: underline; }
+/* «нажатое» состояние у кнопки-переключателя, сделанной из Button */
+.ui-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
+
+/* ── крутилка и заглушка ────────────────────────────────────────────────────── */
+.ui-spinner {
+  display: inline-block; flex: none; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent;
+  animation: ui-spin .7s linear infinite; opacity: .8;
+}
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+.ui-skeleton {
+  display: inline-block; border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--bg-elev-2) 0%, var(--hover) 50%, var(--bg-elev-2) 100%);
+  background-size: 200% 100%; animation: ui-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes ui-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+/* ── поле ввода ─────────────────────────────────────────────────────────────── */
+.ui-input {
+  display: inline-flex; align-items: center; width: 100%; min-width: 0;
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  font: inherit; font-size: var(--fs-md);
+  box-shadow: 0 1px 2px rgba(16,24,40,.04);
+  transition: border-color .12s, box-shadow .12s;
+}
+.ui-input-sm { height: 30px; padding: 0 10px; font-size: var(--fs-sm); }
+.ui-input-md { height: 34px; padding: 0 12px; }
+input.ui-input::placeholder, .ui-input-group input::placeholder { color: var(--text-mut); }
+input.ui-input:focus-visible, .ui-input-group:focus-within {
+  outline: none; border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ui-input[aria-invalid="true"], .ui-input-group[data-invalid] { border-color: var(--danger); }
+.ui-input-group { gap: 8px; padding-right: 6px; }
+.ui-input-group input {
+  flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; padding: 0;
+  background: transparent; color: inherit; font: inherit;
+}
+.ui-input-addon { display: inline-flex; align-items: center; color: var(--text-mut); }
+
+/* ── выпадающий список ──────────────────────────────────────────────────────── */
+.ui-select-trigger {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-width: 150px; max-width: 260px;
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  font: inherit; font-size: var(--fs-sm); cursor: pointer;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04);
+}
+.ui-select-trigger:hover { background: var(--hover); }
+.ui-select-trigger[data-popup-open] { border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ui-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select-value[data-placeholder] { color: var(--text-mut); }
+.ui-select-icon { display: inline-flex; color: var(--text-mut); }
+
+/* ── всплывающие: меню, список, подсказка ───────────────────────────────────── */
+.ui-positioner { z-index: 1000; outline: 0; }
+.ui-popup {
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); padding: 4px;
+  transform-origin: var(--transform-origin);
+  transition: opacity .12s, transform .12s;
+  outline: 0;
+}
+.ui-popup[data-starting-style], .ui-popup[data-ending-style] { opacity: 0; transform: scale(.97); }
+.ui-menu { min-width: 190px; }
+.ui-select-popup {
+  min-width: var(--anchor-width); max-height: min(360px, var(--available-height));
+  overflow-y: auto;
+}
+.ui-menu-item {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 32px; padding: 6px 8px; border-radius: var(--radius-sm);
+  font-size: var(--fs-sm); color: var(--text); cursor: default; user-select: none; outline: 0;
+}
+.ui-menu-item[data-highlighted] { background: var(--hover); }
+.ui-menu-item[data-disabled] { opacity: .5; }
+.ui-menu-item-danger { color: var(--danger); }
+.ui-menu-item-danger[data-highlighted] { background: var(--danger-soft); }
+.ui-menu-icon { display: inline-flex; color: var(--text-mut); }
+.ui-menu-item-danger .ui-menu-icon { color: inherit; }
+.ui-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-menu-check { display: inline-flex; color: var(--accent); }
+.ui-menu-sep { height: 1px; margin: 4px -4px; background: var(--border); }
+.ui-kbd {
+  font: inherit; font-size: var(--fs-xs); color: var(--text-mut);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; background: var(--bg-elev-2);
+}
+.ui-tooltip {
+  background: var(--text); color: var(--bg-elev);
+  font-size: var(--fs-xs); line-height: 1.35; padding: 5px 8px; border-radius: var(--radius-sm);
+  max-width: 280px; box-shadow: var(--shadow);
+  transition: opacity .1s;
+}
+.ui-tooltip[data-starting-style], .ui-tooltip[data-ending-style] { opacity: 0; }
+
+/* ── окно ───────────────────────────────────────────────────────────────────── */
+.ui-backdrop {
+  position: fixed; inset: 0; z-index: 1100; background: var(--overlay);
+  transition: opacity .15s;
+}
+.ui-backdrop[data-starting-style], .ui-backdrop[data-ending-style] { opacity: 0; }
+.ui-dialog {
+  position: fixed; z-index: 1101; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100vw - 32px); max-height: calc(var(--app-h, 100vh) - 48px); overflow: auto;
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); padding: 20px;
+  display: flex; flex-direction: column; gap: 12px;
+  transition: opacity .15s, transform .15s;
+}
+.ui-dialog[data-starting-style], .ui-dialog[data-ending-style] { opacity: 0; transform: translate(-50%, -48%) scale(.98); }
+.ui-dialog-sm { max-width: 420px; }
+.ui-dialog-md { max-width: 560px; }
+.ui-dialog-lg { max-width: 800px; }
+.ui-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ui-dialog-title { margin: 0; font-size: var(--fs-lg); font-weight: 600; line-height: 1.3; }
+.ui-dialog-desc { margin: 0; color: var(--text-dim); font-size: var(--fs-md); line-height: 1.5; }
+.ui-dialog-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+
+/* ── плашка, аватар ─────────────────────────────────────────────────────────── */
+.ui-badge {
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  height: 20px; padding: 0 7px; border-radius: 999px;
+  font-size: var(--fs-xs); font-weight: 500; line-height: 1;
+  border: 1px solid transparent;
+}
+.ui-badge-neutral { background: var(--bg-elev-2); color: var(--text-dim); }
+.ui-badge-info    { background: var(--accent-soft); color: var(--accent); }
+.ui-badge-ok      { background: var(--ok-soft); color: var(--ok); }
+.ui-badge-warn    { background: var(--warn-soft); color: var(--warn); }
+.ui-badge-danger  { background: var(--danger-soft); color: var(--danger); }
+.ui-badge-outline { background: transparent; color: var(--text-dim); border-color: var(--border); }
+.ui-avatar {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+
+/* ── флажок и переключатель-кнопка ──────────────────────────────────────────── */
+.ui-checkbox {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 16px; height: 16px; padding: 0; border-radius: 4px;
+  border: 1px solid var(--border-2); background: var(--bg-elev);
+  cursor: pointer;
+}
+.ui-checkbox[data-checked], .ui-checkbox[data-indeterminate] { background: var(--accent-2); border-color: var(--accent-2); color: var(--on-accent); }
+.ui-checkbox-mark { display: inline-flex; }
+.ui-checkbox-label { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-sm); cursor: pointer; }
+.ui-checkbox-label[data-disabled] { opacity: .5; cursor: default; }
+
+.ui-toggle {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--bg-elev);
+  color: var(--text-dim); font: inherit; font-weight: 500; cursor: pointer;
+  transition: background-color .12s, color .12s, border-color .12s;
+}
+.ui-toggle-sm { height: 28px; padding: 0 11px; font-size: var(--fs-sm); }
+.ui-toggle-md { height: 32px; padding: 0 14px; font-size: var(--fs-md); }
+.ui-toggle:hover { background: var(--hover); color: var(--text); }
+.ui-toggle[data-pressed] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
+
+/* ── экран: шапка, панель, таблица, страницы (первым переехал реестр задач) ── */
+.ui-page { display: flex; flex-direction: column; gap: 16px; padding: 24px 28px 32px; min-width: 0; }
+.ui-page-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.ui-page-title { display: flex; flex-direction: column; gap: 2px; margin-right: auto; min-width: 0; }
+.ui-page-title h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.01em; line-height: 1.25; }
+.ui-page-sub { color: var(--text-dim); font-size: var(--fs-sm); }
+.ui-page-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.ui-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ui-toolbar-grow { flex: 1 1 280px; max-width: 460px; }
+.ui-toolbar-end { margin-left: auto; color: var(--text-mut); font-size: var(--fs-sm); white-space: nowrap; }
+
+.ui-card {
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow); overflow: hidden;
+}
+
+.ui-table { display: flex; flex-direction: column; min-width: 0; }
+.ui-row {
+  display: grid; align-items: center; gap: 12px;
+  min-height: 44px; padding: 6px 16px;
+  border: 0; border-bottom: 1px solid var(--border); background: transparent;
+  color: var(--text); font: inherit; font-size: var(--fs-md); text-align: left; width: 100%;
+  cursor: pointer;
+}
+.ui-row:last-child { border-bottom: 0; }
+.ui-row:hover { background: var(--hover); }
+.ui-row-head {
+  min-height: 38px; cursor: default; background: var(--bg-elev-2);
+  color: var(--text-dim); font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+}
+.ui-row-head:hover { background: var(--bg-elev-2); }
+.ui-sort {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; margin-left: -4px;
+  border: 0; border-radius: 4px; background: transparent; color: inherit;
+  font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer;
+}
+.ui-sort:hover { color: var(--text); background: var(--hover); }
+.ui-sort[data-active] { color: var(--accent); }
+.ui-sort svg { opacity: .35; }
+.ui-sort[data-active] svg { opacity: 1; }
+.ui-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-cell-dim { color: var(--text-dim); font-size: var(--fs-sm); }
+
+.ui-pages { display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
+.ui-page-btn {
+  min-width: 32px; height: 32px; padding: 0 8px; border-radius: var(--radius-sm);
+  border: 1px solid transparent; background: transparent; color: var(--text-dim);
+  font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.ui-page-btn:hover { background: var(--hover); color: var(--text); }
+.ui-page-btn[aria-current="page"] { background: var(--bg-elev); border-color: var(--border); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.05); }
+
+.ui-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  padding: 48px 16px; color: var(--text-dim);
+}
+.ui-empty-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 12px; background: var(--bg-elev-2); color: var(--text-mut);
+}
+.ui-empty-title { color: var(--text); font-weight: 600; font-size: var(--fs-md); }
+.ui-empty-hint { font-size: var(--fs-sm); max-width: 380px; line-height: 1.5; }
+
+@media (max-width: 720px) {
+  .ui-page { padding: 16px; gap: 12px; }
+  .ui-page-title h1 { font-size: 20px; }
+  .ui-btn-md, .ui-input-md { height: 40px; }
+  .ui-toolbar-grow { max-width: none; flex-basis: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-popup, .ui-dialog, .ui-backdrop, .ui-tooltip, .ui-btn, .ui-toggle { transition: none; }
+  .ui-spinner { animation-duration: 1.6s; }
+  .ui-skeleton { animation: none; }
+}
+
+/* ── Base UI: всплывающие рисуются в body поверх всего приложения ─────────── */
+#root { isolation: isolate; }
+
+/* ── экран «Задачи» (первый переехавший, ТЗ-15) ─────────────────────────────── */
+.tasks-v2-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+.tasks-v2-filters-btn { display: none; }
+.tasks-v2-tags { display: flex; gap: 6px; flex-wrap: wrap; flex-basis: 100%; }
+.tasks-v2-error {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border: 1px solid var(--danger-line); background: var(--danger-soft); color: var(--danger);
+  border-radius: var(--radius); font-size: var(--fs-sm);
+}
+.tasks-v2-error .ui-btn { margin-left: auto; }
+.tasks-v2-row { grid-template-columns: minmax(0, 1fr) 150px 140px 180px 130px 150px; }
+.tasks-v2-row.late { box-shadow: inset 3px 0 0 var(--danger); }
+.tasks-v2-row.done .tasks-v2-name { color: var(--text-mut); text-decoration: line-through; }
+.tasks-v2-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tasks-v2-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.tasks-v2-id { color: var(--text-mut); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; flex: none; }
+.tasks-v2-done-icon { color: var(--ok); flex: none; }
+.tasks-v2-new {
+  flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--fill-danger); color: var(--on-fill);
+  font-size: var(--fs-xs); font-weight: 600; line-height: 18px; text-align: center;
+}
+.tasks-v2-who { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-sm); }
+.tasks-v2-tags-cell { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
+
+@media (max-width: 1100px) {
+  .tasks-v2-row { grid-template-columns: minmax(0, 1fr) 130px 160px 120px; }
+  .tasks-v2-row > *:nth-child(3), .tasks-v2-row > *:nth-child(6) { display: none; }
+}
+@media (max-width: 720px) {
+  .tasks-v2-filters-btn { display: inline-flex; }
+  .tasks-v2-filters { display: none; }
+  .tasks-v2-filters.open { display: flex; }
+  .tasks-v2-filters .ui-select-trigger { flex: 1 1 calc(50% - 8px); max-width: none; min-width: 0; }
+  /* на телефоне строка читается карточкой: название и срок */
+  .tasks-v2-row { grid-template-columns: minmax(0, 1fr) auto; padding: 10px 14px; min-height: 52px; }
+  .tasks-v2-row > *:nth-child(2), .tasks-v2-row > *:nth-child(3), .tasks-v2-row > *:nth-child(4),
+  .tasks-v2-row > *:nth-child(6) { display: none; }
+  .ui-row-head.tasks-v2-row { display: none; }
+}

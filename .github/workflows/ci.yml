@@ -125,6 +125,8 @@ jobs:
       - name: focus (видимое кольцо у всего кликабельного)
         run: npm run a11y
       - run: npm run build
+      - name: budget (вес первого экрана — ТЗ-15)
+        run: npm run budget
       - name: build:mobile (тот же код в режиме телефона — ТЗ-9)
         run: npm run build:mobile
 

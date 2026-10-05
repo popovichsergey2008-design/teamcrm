@@ -24,11 +24,11 @@ export const ASSIGNABLE_ROLES: { value: RoleCode; label: string }[] = [
  * Плашка приоритета для карточки. «Обычный» не показываем — иначе доска
  * зарастает одинаковыми плашками и выделять становится нечего.
  */
-export function priorityBadge(priority?: string | null): { text: string; cls: string } | null {
+export function priorityBadge(priority?: string | null): { text: string; cls: string; label: string; tone: BadgeTone } | null {
   switch (priority) {
-    case 'urgent': return { text: '🔥 срочно', cls: 'badge badge-danger' };
-    case 'high': return { text: '↑ высокий', cls: 'badge badge-warn' };
-    case 'low': return { text: '↓ низкий', cls: 'badge badge-muted' };
+    case 'urgent': return { text: '🔥 срочно', cls: 'badge badge-danger', label: 'срочно', tone: 'danger' };
+    case 'high': return { text: '↑ высокий', cls: 'badge badge-warn', label: 'высокий', tone: 'warn' };
+    case 'low': return { text: '↓ низкий', cls: 'badge badge-muted', label: 'низкий', tone: 'neutral' };
     default: return null;
   }
 }
@@ -39,7 +39,10 @@ const DAY_MS = 86_400_000;
  * Плашка срока: дата + цвет по близости. Закрытую задачу не подсвечиваем —
  * просроченность у сделанной работы уже ничего не меняет.
  */
-export function deadlineBadge(deadlineAt?: string | null, closed = false): { text: string; cls: string; title: string } | null {
+/** Тон плашки нового интерфейса (ТЗ-15): смысл, а не цвет — цвет даёт тема. */
+export type BadgeTone = 'neutral' | 'warn' | 'danger';
+
+export function deadlineBadge(deadlineAt?: string | null, closed = false): { text: string; cls: string; title: string; label: string; tone: BadgeTone } | null {
   if (!deadlineAt) return null;
   const due = new Date(deadlineAt);
   if (Number.isNaN(due.getTime())) return null;
@@ -52,12 +55,12 @@ export function deadlineBadge(deadlineAt?: string | null, closed = false): { tex
   const date = due.toLocaleDateString('ru-RU', sameYear ? { day: '2-digit', month: '2-digit' } : { day: '2-digit', month: '2-digit', year: '2-digit' });
   const title = `Срок: ${due.toLocaleDateString('ru-RU')}`;
 
-  if (closed) return { text: `⏰ ${date}`, cls: 'badge badge-muted', title };
-  if (days < 0) return { text: `⏰ ${date} · просрочен`, cls: 'badge badge-danger', title: `${title} — просрочен на ${-days} дн.` };
-  if (days === 0) return { text: '⏰ сегодня', cls: 'badge badge-danger', title };
-  if (days === 1) return { text: '⏰ завтра', cls: 'badge badge-warn', title };
-  if (days <= 3) return { text: `⏰ ${date}`, cls: 'badge badge-warn', title: `${title} — через ${days} дн.` };
-  return { text: `⏰ ${date}`, cls: 'badge badge-muted', title };
+  if (closed) return { text: `⏰ ${date}`, cls: 'badge badge-muted', title, label: date, tone: 'neutral' };
+  if (days < 0) return { text: `⏰ ${date} · просрочен`, cls: 'badge badge-danger', title: `${title} — просрочен на ${-days} дн.`, label: `${date} · просрочен`, tone: 'danger' };
+  if (days === 0) return { text: '⏰ сегодня', cls: 'badge badge-danger', title, label: 'сегодня', tone: 'danger' };
+  if (days === 1) return { text: '⏰ завтра', cls: 'badge badge-warn', title, label: 'завтра', tone: 'warn' };
+  if (days <= 3) return { text: `⏰ ${date}`, cls: 'badge badge-warn', title: `${title} — через ${days} дн.`, label: date, tone: 'warn' };
+  return { text: `⏰ ${date}`, cls: 'badge badge-muted', title, label: date, tone: 'neutral' };
 }
 
 /**
