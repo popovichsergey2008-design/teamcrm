@@ -18,6 +18,8 @@ interface LinkInfo {
   opensAt: string | null;
   /** За ссылкой есть переписка — в неё пускают и до встречи. */
   hasChat: boolean;
+  /** Персональное приглашение по email: «Вы приглашены как …». */
+  invitedAs?: string | null;
   /** Постоянная ссылка встречи (ТЗ-14): её название, конец, состояние и пускают ли гостей. */
   title?: string;
   endsAt?: string | null;
@@ -38,6 +40,8 @@ interface Admission {
 const REFUSAL: Record<string, string> = {
   unknown: 'Такой ссылки нет. Проверьте, что скопировали её целиком.',
   revoked: 'Ссылку отозвали — попросите новую у организатора.',
+  'invite-revoked': 'Ваше приглашение больше не активно. Если это ошибка — напишите организатору.',
+  cancelled: 'Встреча отменена организатором. Если её перенесут, вам пришлют новое приглашение.',
   expired: 'Срок действия ссылки истёк — попросите новую.',
   'used-up': 'Ссылкой уже воспользовались.',
 };
@@ -115,9 +119,11 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
         if (!alive) return;
         if (r.valid) {
           setInfo({
-            orgName: r.orgName, label: r.label, roomActive: r.roomActive, hostPresent: r.hostPresent,
-            startsAt: r.startsAt ?? null, opensAt: r.opensAt ?? null, hasChat: !!r.hasChat,
+            orgName: r.orgName, label: r.invitedAs ? null : r.label, roomActive: r.roomActive, hostPresent: r.hostPresent,
+            startsAt: r.startsAt ?? null, opensAt: r.opensAt ?? null, hasChat: !!r.hasChat, invitedAs: r.invitedAs ?? null,
           });
+          // приглашённого по email встречаем по имени — его и подставляем
+          if (r.invitedAs && !r.invitedAs.includes('@')) setName((cur) => cur || r.invitedAs!);
         }
         else setRefusal(REFUSAL[r.reason] ?? 'Ссылка недействительна.');
       })
@@ -239,6 +245,9 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
               </div>
             )}
 
+            {info.invitedAs && (
+              <p className="dim" style={{ marginTop: -4 }}>Вы приглашены как <b>{info.invitedAs}</b></p>
+            )}
             <div className="field">
               <label htmlFor="guest-name">Как вас представить участникам</label>
               <input

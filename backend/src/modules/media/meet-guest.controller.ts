@@ -22,6 +22,11 @@ class CreateGuestLinkDto {
   @IsOptional() @IsString() eventId?: string;
 }
 
+class InviteGuestDto {
+  @IsString() email!: string;
+  @IsOptional() @IsString() name?: string;
+}
+
 class GuestJoinDto {
   @IsString() name!: string;
 }
@@ -138,6 +143,34 @@ export class MeetGuestController {
   @Roles('owner', 'manager', 'member')
   enterMeeting(@CurrentUser() u: AuthUser, @Param('publicId') publicId: string) {
     return this.guests.enterMeeting(publicId, u);
+  }
+
+  // ───── Гости встречи по email (ТЗ-14, §66–70) ─────
+
+  @Get('calendar/events/:id/guests')
+  @Roles('owner', 'manager', 'member')
+  invites(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.guests.listInvites(u, id);
+  }
+
+  @Post('calendar/events/:id/guests')
+  @Roles('owner', 'manager', 'member')
+  invite(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: InviteGuestDto) {
+    return this.guests.inviteGuest(u, id, dto.email, dto.name);
+  }
+
+  @Post('calendar/events/:id/guests/:inviteId/resend')
+  @Roles('owner', 'manager', 'member')
+  resendInvite(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('inviteId') inviteId: string) {
+    return this.guests.resendInvite(u, id, inviteId);
+  }
+
+  /** Отзыв действует сразу: гость с этой ссылкой выходит из комнаты и зала ожидания. */
+  @Delete('calendar/events/:id/guests/:inviteId')
+  @Roles('owner', 'manager', 'member')
+  async revokeInvite(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('inviteId') inviteId: string) {
+    const r = await this.guests.revokeInvite(u, id, inviteId);
+    return { ...r, kicked: this.gateway.kickLinkGuests(u.tenantId, r.roomId, r.id) };
   }
 
   /** Человек со стороны по общей ссылке встречи: имя — и в зал ожидания. */

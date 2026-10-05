@@ -916,6 +916,20 @@ export class MeetGateway implements OnModuleInit {
     return kicked;
   }
 
+  /** Отозвали приглашение одного гостя — выставляем только его (ТЗ-14, §52). */
+  kickLinkGuests(tenantId: string, roomId: string, linkId: string): number {
+    let kicked = 0;
+    const waiting = this.lobby.get(roomId);
+    for (const c of [...this.clients.values()]) {
+      if (!c.isGuest || c.tenantId !== tenantId || c.guestRoomId !== roomId || String(c.guestLinkId) !== String(linkId)) continue;
+      this.send(c.ws, 'meet.guest-rejected', { meeting_id: roomId, reason: 'invite-revoked' });
+      waiting?.delete(c.userId);
+      c.ws.close();
+      kicked++;
+    }
+    return kicked;
+  }
+
   /** Запуск записи + оповещение: плашка у всех и ИИ в списке участников. */
   private async startRecording(room: MeetingRoom, actorId: string): Promise<void> {
     if (this.recording.isRecording(room.id)) return;

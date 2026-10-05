@@ -192,6 +192,15 @@ export class CalendarRepository {
       [tenantId, room, ev.title, `meeting:${randomUUID()}`, ev.owner_id, ev.starts_at, ev.ends_at, eventId,
         newPublicId(), settings.accessPolicy ?? null, settings.earlyJoinMin ?? null, settings.guestsAllowed ?? null],
     );
+    // личные ссылки гостей встречи — с тем же ранним входом и концом встречи
+    await c.query(
+      `UPDATE meet_guest_links g
+          SET early_join_min = m.early_join_min, ends_at = $3, label = COALESCE(g.invite_name, g.invite_email, g.label)
+         FROM meet_guest_links m
+        WHERE m.tenant_id = $1 AND m.event_id = $2 AND m.kind = 'meeting'
+          AND g.event_id = $2 AND g.kind = 'guest' AND g.revoked_at IS NULL`,
+      [tenantId, eventId, ev.ends_at],
+    );
   }
 
   async update(tenantId: string, id: string, patch: Record<string, unknown>, participantIds?: string[], ownerId?: string,
@@ -216,7 +225,7 @@ export class CalendarRepository {
         */
         await c.query(
           `UPDATE meet_guest_links l
-              SET starts_at = e.starts_at, reminded_at = NULL,
+              SET starts_at = e.starts_at, reminded_at = NULL, guest_reminded_at = NULL, ends_at = e.ends_at,
                   expires_at = GREATEST(l.expires_at, e.starts_at + interval '4 hours', e.ends_at + interval '1 hour')
              FROM calendar_events e
             WHERE e.tenant_id = $1 AND e.id = $2 AND l.event_id = e.id AND l.revoked_at IS NULL
@@ -253,6 +262,15 @@ export class CalendarRepository {
         WHERE tenant_id=$1 AND event_id=$2`, [tenantId, id],
     );
     await this.db.query(`DELETE FROM calendar_events WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+  }
+
+  /** Гости встречи по email с их зашифрованной ссылкой — для писем о переносе и отмене. */
+  guestInvites(tenantId: string, eventId: string) {
+    return this.db.many<{ id: string; invite_email: string; invite_name: string | null; token_enc: string | null }>(
+      `SELECT id::text, invite_email, invite_name, token_enc FROM meet_guest_links
+        WHERE tenant_id = $1 AND event_id = $2 AND invite_email IS NOT NULL AND revoked_at IS NULL`,
+      [tenantId, eventId],
+    );
   }
 
   /** Ответ на приглашение меняет ровно свою строку — чужие ответы не трогаем. */

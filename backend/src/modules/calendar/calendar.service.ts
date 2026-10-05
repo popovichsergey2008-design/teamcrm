@@ -4,6 +4,7 @@ import { CalendarMailService } from './calendar-mail.service';
 import { CalendarRepository, EventRow, MeetingSettings } from './calendar.repository';
 import { CalendarSyncService } from './calendar-sync.service';
 import { buildIcs, icsUid } from './ics';
+import { IntegrationCryptoService } from '../integrations/crypto.service';
 
 const DEFAULT_WORK = { workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] as string[] };
 const MAX_RANGE_DAYS = 62; // два месяца: больше одного экрана календаря не показывает
@@ -54,7 +55,26 @@ export class CalendarService {
     private readonly repo: CalendarRepository,
     private readonly mail: CalendarMailService,
     private readonly sync: CalendarSyncService,
+    private readonly crypto: IntegrationCryptoService,
   ) {}
+
+  /**
+   * Письма гостям встречи по email: перенос или отмена (ТЗ-14, §49–53).
+   * Ссылка в письме о переносе — та же, по которой гостя пригласили.
+   */
+  private async notifyGuests(event: EventRow, kind: 'update' | 'cancel'): Promise<void> {
+    try {
+      const invites = await this.repo.guestInvites(String(event.tenant_id), String(event.id));
+      if (!invites.length) return;
+      const organizer = (await this.repo.participantContacts(event.tenant_id, event.id)).find((p) => p.is_organizer);
+      const base = this.mail.meetUrl('x')?.replace(/\/meet\/x$/, '') ?? '';
+      for (const inv of invites) {
+        let url: string | null = null;
+        try { url = inv.token_enc ? `${base}/meet/${this.crypto.decrypt(inv.token_enc)}` : null; } catch { url = null; }
+        await this.mail.sendGuest(kind, event, { inviteId: inv.id, email: inv.invite_email, name: inv.invite_name, url }, organizer?.full_name ?? null);
+      }
+    } catch { /* письмо гостю — не повод ронять правку встречи */ }
+  }
 
   /**
    * Всё, что нужно экрану за один запрос: события, задачи со сроком и рабочее время.
@@ -239,6 +259,8 @@ export class CalendarService {
       || new Date(updated.ends_at).getTime() !== new Date(event.ends_at).getTime()
     );
     if (updated && (timeChanged || dto.participantIds)) void this.mail.sendInvites(updated);
+    // гостям со стороны — «время изменено» с их же ссылкой
+    if (updated && timeChanged) void this.notifyGuests(updated, 'update');
     return this.details(tenantId, user, id);
   }
 
@@ -246,6 +268,7 @@ export class CalendarService {
     const event = await this.mine(tenantId, user, id);
     // письмо об отмене собираем ДО удаления: после него список участников уже не прочитать
     await this.mail.sendCancel(event);
+    await this.notifyGuests(event, 'cancel');
     await this.repo.remove(tenantId, id);
     return { deleted: true };
   }

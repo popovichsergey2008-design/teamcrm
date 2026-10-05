@@ -107,4 +107,46 @@ describe('Ссылка на встречу (e2e)', () => {
     expect((await http$.get(`/api/meet/m/${call.meeting.publicId}/me`).set(H(b.accessToken)).expect(200)).body.data).toEqual({ member: false });
     await http$.post(`/api/meet/m/${call.meeting.publicId}/enter`).set(H(b.accessToken)).expect(404);
   });
+
+  it('гость по email: личная ссылка с именем, отзыв поштучно, отмена встречи', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Гости по почте', email: `mg_${uniq()}@t.test`, password: 'password123', fullName: 'Организатор' })
+      .expect(201)).body.data;
+    const ev = (await http$.post('/api/calendar/events').set(H(owner.accessToken))
+      .send({ title: 'Показ клиенту', startsAt: inMin(24 * 60), endsAt: inMin(24 * 60 + 60), isCall: true }).expect(201)).body.data;
+
+    const a = (await http$.post(`/api/calendar/events/${ev.id}/guests`).set(H(owner.accessToken))
+      .send({ email: 'John.Smith@Client.test', name: 'John Smith' }).expect(201)).body.data;
+    expect(a).toMatchObject({ email: 'john.smith@client.test', name: 'John Smith', active: true });
+    const b = (await http$.post(`/api/calendar/events/${ev.id}/guests`).set(H(owner.accessToken))
+      .send({ email: 'anna@client.test' }).expect(201)).body.data;
+    // плохой адрес — отказ словами
+    await http$.post(`/api/calendar/events/${ev.id}/guests`).set(H(owner.accessToken)).send({ email: 'не почта' }).expect(400);
+
+    const tokA = a.url.split('/meet/')[1];
+    const infoA = (await http$.get(`/api/meet/guest/${tokA}`).expect(200)).body.data;
+    expect(infoA).toMatchObject({ valid: true, invitedAs: 'John Smith' });
+    expect(infoA.startsAt).toBe(ev.startsAt);
+
+    const list = (await http$.get(`/api/calendar/events/${ev.id}/guests`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(list.map((i: any) => i.email).sort()).toEqual(['anna@client.test', 'john.smith@client.test']);
+    // в общем списке гостевых ссылок личные приглашения встреч не путаются с постоянной ссылкой
+    await http$.post(`/api/calendar/events/${ev.id}/guests/${a.id}/resend`).set(H(owner.accessToken)).expect(201);
+
+    // отозвали одного — его ссылка «больше не активна», у второго работает
+    await http$.delete(`/api/calendar/events/${ev.id}/guests/${a.id}`).set(H(owner.accessToken)).expect(200);
+    expect((await http$.get(`/api/meet/guest/${tokA}`).expect(200)).body.data).toEqual({ valid: false, reason: 'invite-revoked' });
+    const tokB = b.url.split('/meet/')[1];
+    expect((await http$.get(`/api/meet/guest/${tokB}`).expect(200)).body.data.valid).toBe(true);
+
+    // гостей зовёт организатор: коллега без прав — отказ
+    const mate = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: `mgm_${uniq()}@t.test`, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const mateTok = (await http$.post('/api/auth/login').send({ email: mate.email, password: 'password123' }).expect(201)).body.data.accessToken;
+    await http$.post(`/api/calendar/events/${ev.id}/guests`).set(H(mateTok)).send({ email: 'x@y.test' }).expect(403);
+
+    // встречу отменили — ссылка гостя говорит «отменена»
+    await http$.delete(`/api/calendar/events/${ev.id}`).set(H(owner.accessToken)).expect(200);
+    expect((await http$.get(`/api/meet/guest/${tokB}`).expect(200)).body.data).toEqual({ valid: false, reason: 'cancelled' });
+  });
 });

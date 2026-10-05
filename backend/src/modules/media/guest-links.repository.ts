@@ -31,6 +31,10 @@ export interface GuestLinkRow {
   access_policy?: string;
   early_join_min?: number;
   guests_allowed?: boolean;
+  invite_email?: string | null;
+  invite_name?: string | null;
+  invited_at?: Date | null;
+  token_enc?: string | null;
 }
 
 /** Встреча по её постоянной ссылке — всё, что нужно странице встречи и решению «пускать ли». */
@@ -148,7 +152,7 @@ export class GuestLinksRepository {
       `SELECT id, tenant_id, room_id, label, created_by, starts_at, event_id
          FROM meet_guest_links
         -- у встреч календаря свои напоминания, а комната открывается сама: «откройте комнату» не нужно
-        WHERE kind = 'guest' AND starts_at IS NOT NULL AND reminded_at IS NULL AND revoked_at IS NULL
+        WHERE kind = 'guest' AND event_id IS NULL AND starts_at IS NOT NULL AND reminded_at IS NULL AND revoked_at IS NULL
           AND expires_at > now()
           AND starts_at <= now() + make_interval(mins => $1)
           AND starts_at > now() - interval '30 minutes'
@@ -267,6 +271,82 @@ export class GuestLinksRepository {
       `UPDATE meet_guest_links SET ended_at = CASE WHEN $2 THEN now() ELSE NULL END WHERE id=$1`,
       [id, ended],
     );
+  }
+
+  // ───── Персональные приглашения гостям (ТЗ-14, §66–70) ─────
+
+  /** Событие со встречей — для приглашения гостя: время, комната, ранний вход, кто вправе звать. */
+  eventForInvite(tenantId: string, eventId: string, userId: string) {
+    return this.db.one<{
+      id: string; tenant_id: string; title: string; description: string | null; location: string | null;
+      starts_at: Date; ends_at: Date; all_day: boolean; is_call: boolean; meet_room_id: string | null;
+      owner_name: string | null; early_join_min: number | null; can_manage: boolean;
+    }>(
+      `SELECT e.id::text, e.tenant_id::text, e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day,
+              e.is_call, e.meet_room_id, u.full_name AS owner_name, ml.early_join_min,
+              (e.owner_id = $3::bigint
+               OR EXISTS (SELECT 1 FROM calendar_participants p WHERE p.event_id = e.id AND p.user_id = $3::bigint AND p.is_co_organizer)
+               OR (e.scope = 'company' AND EXISTS (
+                    SELECT 1 FROM users me JOIN roles r ON r.id = me.role_id
+                     WHERE me.id = $3::bigint AND r.code IN ('owner', 'manager')))) AS can_manage
+         FROM calendar_events e
+         LEFT JOIN users u ON u.id = e.owner_id
+         LEFT JOIN meet_guest_links ml ON ml.event_id = e.id AND ml.kind = 'meeting' AND ml.revoked_at IS NULL
+        WHERE e.tenant_id = $1 AND e.id = $2`,
+      [tenantId, eventId, userId],
+    );
+  }
+
+  createInvite(i: {
+    tenantId: string; roomId: string; eventId: string; createdBy: string; tokenHash: string; tokenEnc: string;
+    email: string; name: string | null; startsAt: Date; endsAt: Date; earlyJoinMin: number;
+  }) {
+    return this.db.one<GuestLinkRow>(
+      `INSERT INTO meet_guest_links
+         (tenant_id, room_id, label, token_hash, token_enc, created_by, expires_at, starts_at, ends_at, event_id, kind,
+          early_join_min, invite_email, invite_name, invited_at)
+       VALUES ($1, $2, $3, $4, $5, $6, GREATEST($8::timestamptz, $7::timestamptz) + interval '4 hours', $7, $8, $9, 'guest',
+               $10, $11, $12, now())
+       RETURNING *`,
+      [i.tenantId, i.roomId, i.name ?? i.email, i.tokenHash, i.tokenEnc, i.createdBy, i.startsAt, i.endsAt, i.eventId,
+        i.earlyJoinMin, i.email, i.name],
+    );
+  }
+
+  /** Приглашённые гости встречи: и действующие, и отозванные — человек должен видеть, кого звал. */
+  invitesOf(tenantId: string, eventId: string) {
+    return this.db.many<GuestLinkRow & { invite_email: string; invite_name: string | null; invited_at: Date; token_enc: string | null }>(
+      `SELECT * FROM meet_guest_links
+        WHERE tenant_id = $1 AND event_id = $2 AND invite_email IS NOT NULL
+        ORDER BY invited_at DESC`,
+      [tenantId, eventId],
+    );
+  }
+
+  inviteById(tenantId: string, id: string) {
+    return this.db.one<GuestLinkRow & { invite_email: string; invite_name: string | null; token_enc: string | null }>(
+      `SELECT * FROM meet_guest_links WHERE tenant_id = $1 AND id = $2 AND invite_email IS NOT NULL`,
+      [tenantId, id],
+    );
+  }
+
+  /** Гостям, чья встреча через 15 минут, ещё не напомнили. */
+  dueGuestReminders(withinMinutes: number) {
+    return this.db.many<GuestLinkRow & { invite_email: string; invite_name: string | null; token_enc: string | null }>(
+      `SELECT * FROM meet_guest_links
+        WHERE invite_email IS NOT NULL AND revoked_at IS NULL AND guest_reminded_at IS NULL AND token_enc IS NOT NULL
+          AND starts_at IS NOT NULL AND expires_at > now()
+          AND starts_at <= now() + make_interval(mins => $1) AND starts_at > now()
+        ORDER BY starts_at LIMIT 100`,
+      [withinMinutes],
+    );
+  }
+
+  async markGuestReminded(id: string): Promise<boolean> {
+    const row = await this.db.one<{ id: string }>(
+      `UPDATE meet_guest_links SET guest_reminded_at = now() WHERE id = $1 AND guest_reminded_at IS NULL RETURNING id`, [id],
+    );
+    return !!row;
   }
 
   /** Отзыв идемпотентен: повторное нажатие не должно быть ошибкой. */

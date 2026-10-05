@@ -30,14 +30,90 @@ export class CalendarMailService {
     return publicId ? `${this.baseUrl()}/meet/${publicId}` : null;
   }
 
-  private when(event: EventRow): string {
+  /**
+   * Время встречи словами — В ПОЯСЕ КОМПАНИИ и с отметкой пояса.
+   *
+   * Раньше письмо форматировалось по часам сервера (UTC): встреча «в 09:00 по Москве»
+   * приходила как «06:00». Гостю со стороны пояс подписываем: «(GMT+3)» — его часы
+   * могут быть другими, а файл встречи в его календаре покажет время по его часам.
+   */
+  private when(event: Pick<EventRow, 'starts_at' | 'ends_at' | 'all_day'>, tz = 'Europe/Moscow'): string {
     if (event.all_day) {
-      return new Date(event.starts_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) + ', весь день';
+      return new Date(event.starts_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: tz }) + ', весь день';
     }
-    const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' };
-    const start = new Date(event.starts_at).toLocaleString('ru-RU', opts);
-    const end = new Date(event.ends_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    return `${start} — ${end}`;
+    const start = new Date(event.starts_at).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: tz });
+    const end = new Date(event.ends_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+    let zone = '';
+    try {
+      zone = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' })
+        .formatToParts(new Date(event.starts_at)).find((x) => x.type === 'timeZoneName')?.value ?? '';
+    } catch { /* старый движок без shortOffset — без подписи */ }
+    return `${start} — ${end}${zone ? ` (${zone})` : ''}`;
+  }
+
+  private async tzOf(tenantId: string): Promise<string> {
+    const row = await this.db.one<{ timezone: string | null }>(`SELECT timezone FROM tenants WHERE id=$1`, [tenantId]).catch(() => null);
+    return row?.timezone || 'Europe/Moscow';
+  }
+
+  /**
+   * Письмо гостю со стороны (ТЗ-14, §66): приглашение, перенос, отмена, напоминание.
+   *
+   * У гостя нет учётной записи — письмо и файл встречи для его календаря и есть всё
+   * приглашение. Ссылка в нём — ЕГО личная: по ней он войдёт в зал ожидания под своим
+   * именем, и её можно отозвать, не трогая остальных.
+   */
+  async sendGuest(kind: 'invite' | 'update' | 'cancel' | 'reminder', event: Pick<EventRow, 'id' | 'tenant_id' | 'title' | 'description' | 'location' | 'starts_at' | 'ends_at' | 'all_day'>,
+    guest: { inviteId: string; email: string; name: string | null; url: string | null }, organizerName: string | null): Promise<void> {
+    try {
+      const tz = await this.tzOf(String(event.tenant_id));
+      const when = this.when(event, tz);
+      const hello = guest.name ? `Здравствуйте, ${guest.name}!` : 'Здравствуйте!';
+      const who = organizerName ? `${organizerName} приглашает вас` : 'Вас приглашают';
+      const subject = kind === 'cancel' ? `Встреча отменена: ${event.title}`
+        : kind === 'update' ? `Время встречи изменено: ${event.title}`
+          : kind === 'reminder' ? `Скоро встреча: ${event.title}`
+            : `Приглашение на встречу: ${event.title}`;
+      const lines = kind === 'cancel'
+        ? [hello, '', `Встреча «${event.title}» (${when}) отменена.`]
+        : [
+          hello, '',
+          kind === 'update' ? `Время встречи «${event.title}» изменено.` : kind === 'reminder' ? `Встреча «${event.title}» скоро начнётся.` : `${who} на видеовстречу «${event.title}».`,
+          '',
+          `Когда: ${when}`,
+          event.location ? `Где: ${event.location}` : '',
+          event.description && kind === 'invite' ? `\n${event.description}` : '',
+          '',
+          guest.url ? `Ваша ссылка для входа: ${guest.url}` : '',
+          'Ничего устанавливать не нужно — встреча работает в браузере. Войти в зал ожидания',
+          'можно незадолго до начала, организатор впустит вас.',
+          kind === 'invite' ? 'К письму приложен файл встречи — им можно добавить её в свой календарь.' : '',
+          kind === 'update' ? 'Ссылка осталась прежней.' : '',
+        ];
+      const attachments = kind === 'reminder' ? undefined : [{
+        name: 'meeting.ics',
+        content: Buffer.from(buildIcs({
+          uid: icsUid(event.tenant_id, event.id),
+          title: event.title, description: event.description, location: event.location,
+          startsAt: event.starts_at, endsAt: event.ends_at, allDay: event.all_day,
+          organizer: organizerName ? { name: organizerName, email: null } : null,
+          attendees: [{ name: guest.name, email: guest.email }],
+          method: kind === 'cancel' ? 'CANCEL' : 'REQUEST',
+          sequence: Math.floor(Date.now() / 60_000) - 29_000_000 + (kind === 'cancel' ? 1 : 0),
+          url: guest.url,
+        }), 'utf8').toString('base64'),
+      }];
+      await this.db.query(
+        `INSERT INTO mail_outbox (tenant_id, user_id, to_email, subject, body_text, body_html, event_key, dedup_key, attachments)
+         VALUES ($1, NULL, $2, $3, $4, NULL, $5, $6, $7) ON CONFLICT (dedup_key) DO NOTHING`,
+        [event.tenant_id, guest.email, subject.slice(0, 255), lines.join('\n').replace(/\n{3,}/g, '\n\n'),
+          `meet.guest-${kind}`,
+          `meet.guest.${kind}:${guest.inviteId}:${new Date(event.starts_at).getTime()}:${kind === 'invite' || kind === 'reminder' ? '' : Date.now()}`.slice(0, 160),
+          attachments ? JSON.stringify(attachments) : null],
+      );
+    } catch (e) {
+      this.log.warn(`письмо гостю по встрече ${event.id} не ушло: ${(e as Error).message}`);
+    }
   }
 
   /** Приглашение или сообщение об изменении: письмо + .ics, который кладётся в любой календарь. */
@@ -52,6 +128,7 @@ export class CalendarMailService {
 
   private async send(event: EventRow, kind: 'invite' | 'cancel', onlyUserIds?: string[]): Promise<void> {
     try {
+      const tz = await this.tzOf(String(event.tenant_id));
       const people = await this.repo.participantContacts(event.tenant_id, event.id);
       const organizer = people.find((p) => p.is_organizer) ?? null;
       const reminders = (await this.repo.remindersOf([event.id])).get(String(event.id)) ?? [];
@@ -86,12 +163,12 @@ export class CalendarMailService {
       const subject = kind === 'cancel' ? `Встреча отменена: ${event.title}` : `Встреча: ${event.title}`;
       for (const p of targets) {
         const lines = kind === 'cancel'
-          ? [`Встреча «${event.title}» отменена.`, this.when(event)]
+          ? [`Встреча «${event.title}» отменена.`, this.when(event, tz)]
           : [
             `${organizer?.full_name ?? 'Коллега'} зовёт вас на встречу.`,
             '',
             event.title,
-            this.when(event),
+            this.when(event, tz),
             event.location ? `Место: ${event.location}` : '',
             event.description ? '' : '',
             event.description ?? '',
@@ -137,7 +214,7 @@ export class CalendarMailService {
         `Напоминание ${inWords} до начала.`,
         '',
         r.title,
-        this.when({ starts_at: r.starts_at, ends_at: r.ends_at, all_day: r.all_day } as EventRow),
+        this.when({ starts_at: r.starts_at, ends_at: r.ends_at, all_day: r.all_day }, await this.tzOf(String(r.tenant_id))),
         r.location ? `Место: ${r.location}` : '',
         '',
         meetUrl ? `Войти в созвон: ${meetUrl}` : `${this.baseUrl()}/focus/calendar`,

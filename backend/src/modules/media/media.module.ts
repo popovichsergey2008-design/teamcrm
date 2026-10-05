@@ -10,6 +10,8 @@ import { MediaService } from './media.service';
 import { MeetGuestController } from './meet-guest.controller';
 import { MeetGateway } from './meet.gateway';
 import { RecordingService } from './recording.service';
+import { CalendarModule } from '../calendar/calendar.module';
+import { IntegrationCryptoService } from '../integrations/crypto.service';
 
 /**
  * Этап 6, Ш1 — SFU-слой созвонов (mediasoup), перенесённый из TeamConnect.
@@ -19,9 +21,9 @@ import { RecordingService } from './recording.service';
 @Module({
   // ChatsModule — внешний участник по ссылке попадает и в переписку, а не только
   // в переговорную; проверка гостевого токена при этом остаётся здесь, в одном месте.
-  imports: [MeetingsModule, ChatsModule, NotificationsModule],
+  imports: [MeetingsModule, ChatsModule, NotificationsModule, CalendarModule],
   controllers: [MediaController, MeetGuestController],
-  providers: [MediaService, MeetGateway, RecordingService, GuestLinksService, GuestLinksRepository, GuestLinksScheduler],
+  providers: [MediaService, MeetGateway, RecordingService, GuestLinksService, GuestLinksRepository, GuestLinksScheduler, IntegrationCryptoService],
   exports: [MediaService],
 })
 export class MediaModule {}

@@ -6246,3 +6246,10 @@ body.is-dragging { user-select: none; cursor: grabbing; }
 
 /* «Завершить для всех» — не то же, что «Выйти»: отдельная кнопка, тоже тревожная */
 .call-end-all { border-color: var(--danger); color: var(--danger); background: transparent; }
+
+/* Гости встречи по email (ТЗ-14) */
+.meeting-guests { display: flex; flex-direction: column; gap: 6px; }
+.meeting-guests-add { display: grid; grid-template-columns: 1.3fr 1fr auto; gap: 6px; }
+@media (max-width: 720px) { .meeting-guests-add { grid-template-columns: 1fr; } }
+.meeting-guest { display: flex; align-items: center; gap: 4px; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
+.meeting-guest-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }

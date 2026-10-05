@@ -2019,6 +2019,14 @@ export const api = {
   meetingMe: (publicId: string) => request<MeetingMe>('GET', `/meet/m/${encodeURIComponent(publicId)}/me`),
   /** Сотрудник входит: комната поднимается, пускать ли — решает сервер по правилам встречи. */
   meetingEnter: (publicId: string) => request<{ roomId: string; state: MeetingState }>('POST', `/meet/m/${encodeURIComponent(publicId)}/enter`),
+  /** Гости встречи по email (ТЗ-14): у каждого своя ссылка, отзыв — поштучно. */
+  meetingInvites: (eventId: string) => request<MeetingInvite[]>('GET', `/calendar/events/${eventId}/guests`),
+  meetingInvite: (eventId: string, email: string, name?: string) =>
+    request<MeetingInvite & { url: string }>('POST', `/calendar/events/${eventId}/guests`, { email, name: name || undefined }),
+  meetingInviteResend: (eventId: string, inviteId: string) =>
+    request<MeetingInvite>('POST', `/calendar/events/${eventId}/guests/${inviteId}/resend`),
+  meetingInviteRevoke: (eventId: string, inviteId: string) =>
+    request<{ id: string; kicked: number }>('DELETE', `/calendar/events/${eventId}/guests/${inviteId}`),
   /** Человек со стороны по общей ссылке встречи. */
   meetingGuestJoin: (publicId: string, name: string) =>
     rawRequest<{ token: string; roomId: string; name: string; userId: string; iceServers: RTCIceServer[]; chatId: string | null; startsAt: string | null; opensAt: string | null }>(
@@ -2061,6 +2069,8 @@ export const api = {
         valid: true; orgName: string; label: string | null; roomActive: boolean; hostPresent: boolean;
         /** Время встречи и момент, с которого можно войти; null — открыто сразу. */
         startsAt: string | null; opensAt: string | null; hasChat: boolean;
+        /** Персональное приглашение по email: как зовут гостя. */
+        invitedAs?: string | null;
       }
       | { valid: false; reason: string }
     >('GET', `/meet/guest/${encodeURIComponent(token)}`, undefined, false),
@@ -2450,3 +2460,8 @@ export type MeetingMe =
     member: true; role: 'organizer' | 'co_organizer' | 'participant' | 'employee'; roomId: string; eventId: string | null;
     people: { userId: string; name: string; status: string; role: 'organizer' | 'co_organizer' | 'participant' }[];
   };
+
+export interface MeetingInvite {
+  id: string; email: string; name: string | null; invitedAt: string;
+  active: boolean; revokedAt: string | null; opened: boolean; lastUsedAt: string | null;
+}

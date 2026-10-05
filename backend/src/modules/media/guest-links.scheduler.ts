@@ -32,7 +32,10 @@ export class GuestLinksScheduler implements OnModuleInit, OnModuleDestroy {
     if (this.busy) return 0;
     this.busy = true;
     try {
-      return await this.guests.remindDue();
+      const hosts = await this.guests.remindDue();
+      // гостям по email — напоминание за 15 минут по их же ссылке
+      const guests = await this.guests.remindGuests().catch(() => 0);
+      return hosts + guests;
     } catch (e) {
       this.log.warn(`проход напоминаний о гостевых встречах не удался: ${(e as Error).message}`);
       return 0;

@@ -19,6 +19,7 @@ import type { User } from '../types';
 import { overlayProps } from '../lib/overlay';
 import { toastSaved } from '../lib/notifications';
 import { useStickyCheck } from '../lib/sticky-checks';
+import { MeetingGuests } from '../components/MeetingGuests';
 
 type View = 'day' | 'week' | 'month' | 'list';
 
@@ -1060,6 +1061,8 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
                 }}><Icon name="link" size={14} /> Поделиться</button>
               </div>
             )}
+            {/* Гости со стороны по email — личные ссылки, у сохранённой встречи с созвоном */}
+            {isCall && canEdit && value.meeting && value.id && <MeetingGuests eventId={String(value.id)} />}
             {isCall && canEdit && (
               <>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowAccess((v) => !v)} aria-expanded={showAccess}>

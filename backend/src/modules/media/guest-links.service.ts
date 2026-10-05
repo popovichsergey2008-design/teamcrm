@@ -7,6 +7,8 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { PushService } from '../notifications/push.service';
 import { TelegramMirror } from '../notifications/telegram-mirror.service';
 import { GuestLinkRow, GuestLinksRepository, HostCallRow } from './guest-links.repository';
+import { CalendarMailService } from '../calendar/calendar-mail.service';
+import { IntegrationCryptoService } from '../integrations/crypto.service';
 import { MediaService } from './media.service';
 
 /** Токен гостя живёт заметно меньше ссылки: ссылку присылают заранее, входят один раз. */
@@ -50,7 +52,7 @@ export interface GuestTokenPayload {
   linkId?: string;
 }
 
-export type LinkRefusal = 'unknown' | 'revoked' | 'expired' | 'used-up';
+export type LinkRefusal = 'unknown' | 'revoked' | 'expired' | 'used-up' | 'cancelled' | 'invite-revoked';
 
 @Injectable()
 export class GuestLinksService {
@@ -64,6 +66,8 @@ export class GuestLinksService {
     private readonly realtime: RealtimeService,
     private readonly push: PushService,
     private readonly telegram: TelegramMirror,
+    private readonly mail: CalendarMailService,
+    private readonly crypto: IntegrationCryptoService,
   ) {}
 
   /** Комната → когда последний раз звали хозяина. */
@@ -186,6 +190,8 @@ export class GuestLinksService {
       startsAt: string | null; opensAt: string | null;
       /** За ссылкой есть переписка: до встречи гостя пускают в неё, но не в созвон. */
       hasChat: boolean;
+      /** Персональное приглашение по email — как зовут гостя. */
+      invitedAs: string | null;
     }
     | { valid: false; reason: LinkRefusal }
   > {
@@ -205,6 +211,8 @@ export class GuestLinksService {
       startsAt: link.starts_at ? new Date(link.starts_at).toISOString() : null,
       opensAt: link.starts_at ? GuestLinksService.opensAt(link.starts_at, link.early_join_min).toISOString() : null,
       hasChat: !!link.chat_id,
+      // персональное приглашение: «Вы приглашены как John Smith» (ТЗ-14, §67)
+      invitedAs: link.invite_email ? (link.invite_name || link.invite_email) : null,
     };
   }
 
@@ -212,6 +220,93 @@ export class GuestLinksService {
   isRoomMember(tenantId: string, roomId: string, userId: string): Promise<boolean> {
     if (!/^\d+$/.test(String(userId))) return Promise.resolve(false); // гость — не сотрудник
     return this.repo.isRoomMember(tenantId, roomId, String(userId));
+  }
+
+  // ───────────── Персональные приглашения гостям по email (ТЗ-14, §66–70, §112) ─────────────
+
+  private inviteView(r: GuestLinkRow & { invite_email?: string | null; invite_name?: string | null; invited_at?: Date | null }) {
+    return {
+      id: String(r.id), email: r.invite_email, name: r.invite_name ?? null,
+      invitedAt: r.invited_at, active: !r.revoked_at && new Date(r.expires_at).getTime() > Date.now(),
+      revokedAt: r.revoked_at, opened: r.uses > 0, lastUsedAt: r.last_used_at,
+    };
+  }
+
+  private async manageable(user: { userId: string; tenantId: string }, eventId: string) {
+    const ev = await this.repo.eventForInvite(user.tenantId, eventId, user.userId);
+    if (!ev) throw AppException.notFound('Встреча не найдена');
+    if (!ev.can_manage) throw AppException.forbidden('Гостей зовёт организатор или соорганизатор встречи');
+    if (!ev.is_call || !ev.meet_room_id) throw AppException.conflict('Включите у встречи «Созвон» — тогда гостю будет куда войти');
+    return ev;
+  }
+
+  /** Список приглашённых гостей встречи. */
+  async listInvites(user: { userId: string; tenantId: string }, eventId: string) {
+    await this.manageable(user, eventId);
+    return (await this.repo.invitesOf(user.tenantId, eventId)).map((r) => this.inviteView(r));
+  }
+
+  /**
+   * Пригласить гостя по email: своя ссылка, письмо с файлом встречи.
+   *
+   * Ссылка у каждого гостя своя: отозвать можно одного, не трогая остальных, и
+   * страница встречает его по имени. Тот же адрес уже приглашён — старая ссылка
+   * отзывается, уходит новая: «отправить ещё раз» без двух живых ссылок на одного человека.
+   */
+  async inviteGuest(user: { userId: string; tenantId: string }, eventId: string, emailRaw: string, nameRaw?: string | null) {
+    const ev = await this.manageable(user, eventId);
+    const email = String(emailRaw || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) throw AppException.validation('Проверьте адрес почты гостя');
+    const name = String(nameRaw || '').trim().slice(0, 120) || null;
+    for (const old of await this.repo.invitesOf(user.tenantId, eventId)) {
+      if (old.invite_email === email && !old.revoked_at) await this.repo.revoke(user.tenantId, String(old.id));
+    }
+    const token = randomBytes(32).toString('base64url');
+    const row = await this.repo.createInvite({
+      tenantId: user.tenantId, roomId: ev.meet_room_id!, eventId, createdBy: user.userId,
+      tokenHash: this.sha256(token), tokenEnc: this.crypto.encrypt(token), email, name,
+      startsAt: new Date(ev.starts_at), endsAt: new Date(ev.ends_at), earlyJoinMin: ev.early_join_min ?? OPEN_BEFORE_MIN,
+    });
+    if (!row) throw AppException.conflict('Не удалось создать приглашение');
+    await this.mail.sendGuest('invite', ev, { inviteId: String(row.id), email, name, url: `${this.baseUrl()}/meet/${token}` }, ev.owner_name);
+    this.log.log(`гость ${email} приглашён на встречу ${eventId}`);
+    return { ...this.inviteView(row), url: `${this.baseUrl()}/meet/${token}` };
+  }
+
+  /** «Отправить ещё раз» — та же ссылка, новое письмо. */
+  async resendInvite(user: { userId: string; tenantId: string }, eventId: string, inviteId: string) {
+    const ev = await this.manageable(user, eventId);
+    const inv = await this.repo.inviteById(user.tenantId, inviteId);
+    if (!inv || String(inv.event_id) !== String(eventId) || inv.revoked_at || !inv.token_enc) throw AppException.notFound('Приглашение не найдено');
+    const url = `${this.baseUrl()}/meet/${this.crypto.decrypt(inv.token_enc)}`;
+    // повтор приглашения — новое письмо, а не «уже отправлено»: ключ письма уникален
+    await this.mail.sendGuest('update', ev, { inviteId: `${inv.id}:${Date.now()}`, email: inv.invite_email, name: inv.invite_name, url }, ev.owner_name);
+    return this.inviteView(inv);
+  }
+
+  /** Отозвать приглашение: ссылка скажет «приглашение больше не активно», гостя — из комнаты. */
+  async revokeInvite(user: { userId: string; tenantId: string }, eventId: string, inviteId: string) {
+    await this.manageable(user, eventId);
+    const inv = await this.repo.inviteById(user.tenantId, inviteId);
+    if (!inv || String(inv.event_id) !== String(eventId)) throw AppException.notFound('Приглашение не найдено');
+    await this.repo.revoke(user.tenantId, inviteId);
+    return { id: String(inv.id), roomId: inv.room_id };
+  }
+
+  /** Напомнить гостям за 15 минут — по их же ссылке (§38). Зовёт планировщик. */
+  async remindGuests(): Promise<number> {
+    let sent = 0;
+    for (const inv of await this.repo.dueGuestReminders(15)) {
+      if (!(await this.repo.markGuestReminded(String(inv.id)))) continue;
+      const ev = await this.repo.eventForInvite(String(inv.tenant_id), String(inv.event_id), String(inv.created_by)).catch(() => null);
+      if (!ev || !inv.token_enc) continue;
+      await this.mail.sendGuest('reminder', ev, {
+        inviteId: String(inv.id), email: inv.invite_email, name: inv.invite_name,
+        url: `${this.baseUrl()}/meet/${this.crypto.decrypt(inv.token_enc)}`,
+      }, ev.owner_name);
+      sent++;
+    }
+    return sent;
   }
 
   /** С какого момента гостя пускают постучаться. `early` — ранний вход встречи, минут. */
@@ -560,8 +655,10 @@ export class GuestLinksService {
     return this.repo.roomOpen(tenantId, roomId);
   }
 
-  private refusalFor(link: { revoked_at: Date | null; expires_at: Date; max_uses: number | null; uses: number }): LinkRefusal | null {
-    if (link.revoked_at) return 'revoked';
+  private refusalFor(link: { revoked_at: Date | null; expires_at: Date; max_uses: number | null; uses: number; cancelled_at?: Date | null; invite_email?: string | null }): LinkRefusal | null {
+    // встречу отменили — так и говорим; личное приглашение отозвали — «больше не активно» (ТЗ-14, §52)
+    if (link.cancelled_at) return 'cancelled';
+    if (link.revoked_at) return link.invite_email ? 'invite-revoked' : 'revoked';
     if (new Date(link.expires_at).getTime() <= Date.now()) return 'expired';
     if (link.max_uses !== null && link.uses >= link.max_uses) return 'used-up';
     return null;
@@ -569,6 +666,8 @@ export class GuestLinksService {
 
   private refusalMessage(reason: LinkRefusal): string {
     if (reason === 'revoked') return 'Ссылку отозвали — попросите новую';
+    if (reason === 'invite-revoked') return 'Ваше приглашение больше не активно';
+    if (reason === 'cancelled') return 'Встреча отменена';
     if (reason === 'expired') return 'Срок ссылки истёк — попросите новую';
     if (reason === 'used-up') return 'Ссылкой уже воспользовались';
     return 'Ссылка недействительна';

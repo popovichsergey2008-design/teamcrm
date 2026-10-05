@@ -17,6 +17,7 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
     CalendarService, CalendarRepository, CalendarMailService, CalendarScheduler,
     CalendarSyncService, IntegrationCryptoService,
   ],
-  exports: [CalendarService, CalendarRepository], // репозиторий нужен счётчикам панели
+  // репозиторий нужен счётчикам панели; почта — приглашениям гостей встреч (ТЗ-14)
+  exports: [CalendarService, CalendarRepository, CalendarMailService],
 })
 export class CalendarModule {}

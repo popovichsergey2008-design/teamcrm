@@ -36,13 +36,13 @@ describe('Гостевая ссылка в созвон', () => {
     calls.realtime.mockClear(); calls.push.mockClear(); calls.telegram.mockClear();
     return new GuestLinksService(
       repo as any, media as any, jwt as any, config as any,
-      { emitToUsers: calls.realtime } as any, { meetHost: calls.push } as any, { push: calls.telegram } as any,
+      { emitToUsers: calls.realtime } as any, { meetHost: calls.push } as any, { push: calls.telegram } as any, {} as any, {} as any,
     );
   };
 
   it('действующая ссылка показывает организацию и то, что встреча ещё не идёт', async () => {
     const info = await build(link()).describe('t');
-    expect(info).toEqual({ valid: true, orgName: 'Борис и КО', label: 'ООО Вектор', roomActive: false, hostPresent: false, startsAt: null, opensAt: null, hasChat: false,
+    expect(info).toEqual({ valid: true, orgName: 'Борис и КО', label: 'ООО Вектор', roomActive: false, hostPresent: false, startsAt: null, opensAt: null, hasChat: false, invitedAs: null,
     });
   });
 

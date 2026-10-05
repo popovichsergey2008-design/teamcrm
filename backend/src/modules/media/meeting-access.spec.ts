@@ -49,7 +49,7 @@ describe('Кого пускать во встречу', () => {
       meetingPeople: async () => people,
       setEnded: jest.fn(async () => undefined),
     };
-    return { s: new GuestLinksService(repo as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any), repo };
+    return { s: new GuestLinksService(repo as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any), repo };
   };
   const at = (min: number) => ({ starts_at: new Date(Date.now() + min * MIN), expires_at: new Date(Date.now() + 6 * 60 * MIN) });
 
