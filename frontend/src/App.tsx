@@ -24,18 +24,15 @@ import { useTabAlert } from './hooks/useTabAlert';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 import { Icon } from './components/Icon';
-import { ProfilePanel } from './components/ProfilePanel';
-import { NlCommandModal } from './components/NlCommandModal';
 import { CommandPalette } from './components/CommandPalette';
-import { SecretaryPanel } from './components/SecretaryPanel';
-import { InboxPanel } from './components/InboxPanel';
 import { Toasts } from './components/Toasts';
 import { isConsoleHost, mainSiteHref, navigate, parsePath, Section, useRoute } from './lib/router';
 import { lastProject } from './lib/last-project';
 import { dropCache } from './lib/cache';
 import { START_CALL_EVENT, StartCallRequest } from './lib/notifications';
 import { useShortcuts } from './hooks/useShortcuts';
-import { ShortcutsHelp } from './components/ShortcutsHelp';
+import { lazyComponent } from './lib/lazy';
+import { SecretaryPanel } from './components/SecretaryPanel';
 import { prefetchFocus } from './pages/FocusPage';
 import { prefetchRadar } from './pages/RadarPage';
 import { ChatBar } from './components/chatbar/ChatBar';
@@ -75,6 +72,12 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ de
 const ClientPortal = lazy(() => import('./pages/ClientPortal').then((m) => ({ default: m.ClientPortal })));
 const MeetingPage = lazy(() => import('./pages/MeetingPage').then((m) => ({ default: m.MeetingPage })));
 const CallPanel = lazy(() => import('./components/CallPanel').then((m) => ({ default: m.CallPanel })));
+
+// Окна по нажатию — тоже по требованию: на первом экране их нет.
+const ProfilePanel = lazyComponent(() => import('./components/ProfilePanel').then((m) => m.ProfilePanel));
+const NlCommandModal = lazyComponent(() => import('./components/NlCommandModal').then((m) => m.NlCommandModal));
+const InboxPanel = lazyComponent(() => import('./components/InboxPanel').then((m) => m.InboxPanel));
+const ShortcutsHelp = lazyComponent(() => import('./components/ShortcutsHelp').then((m) => m.ShortcutsHelp));
 
 /** Заглушка на время загрузки раздела: место под ним уже занято, экран не прыгает. */
 const pageFallback = <div className="center-screen"><div className="spinner" /></div>;

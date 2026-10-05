@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { TaskDrawer } from './TaskDrawer';
+import { lazyComponent } from '../lib/lazy';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../state/auth';
 import type { Board, Task, User } from '../types';
+
+const TaskDrawer = lazyComponent(() => import('./TaskDrawer').then((m) => m.TaskDrawer));
 
 /**
  * Карточка задачи поверх любого экрана — по её номеру.

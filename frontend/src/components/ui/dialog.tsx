@@ -65,6 +65,64 @@ export function confirmAction(opts: {
   });
 }
 
+/**
+ * Вопрос с ответом текстом — вместо window.prompt («Что доработать?»).
+ * Возвращает введённый текст или null, если человек передумал.
+ */
+export function promptText(opts: {
+  title: string;
+  description?: ReactNode;
+  placeholder?: string;
+  confirmLabel?: string;
+  /** Короче — кнопка неактивна: «вернуть без причины» нельзя. */
+  minLength?: number;
+}): Promise<string | null> {
+  return new Promise((resolve) => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const done = (v: string | null) => {
+      resolve(v);
+      window.setTimeout(() => { root.unmount(); host.remove(); }, 200);
+    };
+    root.render(<PromptHost {...opts} onDone={done} />);
+  });
+}
+
+function PromptHost({ title, description, placeholder, confirmLabel, minLength = 1, onDone }: {
+  title: string; description?: ReactNode; placeholder?: string; confirmLabel?: string; minLength?: number;
+  onDone: (v: string | null) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const [text, setText] = useState('');
+  const close = (v: string | null) => { if (!open) return; setOpen(false); onDone(v); };
+  const ok = text.trim().length >= minLength;
+  return (
+    <AlertDialog.Root open={open} onOpenChange={(o) => { if (!o) close(null); }}>
+      <AlertDialog.Portal>
+        <AlertDialog.Backdrop className="ui-backdrop" />
+        <AlertDialog.Popup className="ui-dialog ui-dialog-sm">
+          <AlertDialog.Title className="ui-dialog-title">{title}</AlertDialog.Title>
+          {description && <AlertDialog.Description className="ui-dialog-desc">{description}</AlertDialog.Description>}
+          <textarea
+            className="ui-textarea"
+            rows={4}
+            autoFocus
+            placeholder={placeholder}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && ok) close(text.trim()); }}
+          />
+          <footer className="ui-dialog-foot">
+            <Button variant="ghost" onClick={() => close(null)}>Отмена</Button>
+            <Button variant="primary" disabled={!ok} onClick={() => close(text.trim())}>{confirmLabel ?? 'Отправить'}</Button>
+          </footer>
+        </AlertDialog.Popup>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
+}
+
 function ConfirmHost({ title, description, confirmLabel, cancelLabel, danger, onDone }: {
   title: string; description?: ReactNode; confirmLabel?: string; cancelLabel?: string; danger?: boolean;
   onDone: (v: boolean) => void;

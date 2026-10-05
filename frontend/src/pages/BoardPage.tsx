@@ -7,9 +7,8 @@ import { useAuth } from '../state/auth';
 import type { Board, BoardColumn, CostOfWork, Pnl, Project, Task, User } from '../types';
 import { ColumnView } from '../components/ColumnView';
 import { PnlPanel } from '../components/PnlPanel';
-import { TaskDrawer } from '../components/TaskDrawer';
+import { lazyComponent, preloadWhenIdle } from '../lib/lazy';
 import { GateBlock, HandoffGateDialog, gateFromError } from '../components/HandoffGateDialog';
-import { TaskCreateModal } from '../components/TaskCreateModal';
 import { TaskListView } from '../components/TaskListView';
 import {
   countMatching, filterActive, filterBoard, MineMode, realPosition,
@@ -27,6 +26,14 @@ import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync'
 import { SkeletonBoard } from '../components/Skeleton';
 import { MONETIZATION_ENABLED } from '../config';
 import { useStickyCheck } from '../lib/sticky-checks';
+
+/*
+  Карточка задачи (с чатом, редактором описания, вкладками) и окно создания грузятся
+  отдельно от доски: доска показывается сразу, а карточка подтягивается в фоне, пока
+  человек смотрит на колонки, — к первому нажатию она уже на месте.
+*/
+const TaskDrawer = lazyComponent(() => import('../components/TaskDrawer').then((m) => m.TaskDrawer));
+const TaskCreateModal = lazyComponent(() => import('../components/TaskCreateModal').then((m) => m.TaskCreateModal));
 
 type Action =
   | { type: 'SET'; board: Board }
@@ -91,6 +98,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   /** Продиктовать задачу: окно живёт в приложении, доска только просит его открыть. */
   onVoiceTask?: () => void;
 } = {}) {
+  // Доска нарисована — подтягиваем карточку и окно создания, пока человек смотрит на колонки.
+  useEffect(() => { preloadWhenIdle(TaskDrawer, TaskCreateModal); }, []);
   const { user } = useAuth();
   const isClient = user?.role === 'client';
   /*
