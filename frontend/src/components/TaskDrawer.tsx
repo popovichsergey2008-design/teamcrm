@@ -865,8 +865,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               </dd>
             </>
           )}
-          <dt>Теги</dt>
-          <dd><LabelsRow task={task} onRefresh={onRefresh} /></dd>
+          {/* У поля тегов своя подпись — вторая слева была бы повтором. */}
+          <dd className="tv2-props-full"><LabelsRow task={task} onRefresh={onRefresh} /></dd>
         </dl>
 
         {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}

@@ -402,6 +402,8 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 .tv2-props dt { color: var(--text-mut); font-size: var(--fs-sm); }
 .tv2-props dd { margin: 0; min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .tv2-props .labels-row { margin: 0; width: 100%; }
+.tv2-props-full { grid-column: 1 / -1; }
+.tv2-props .tags-field { margin: 0; }
 
 .tv2-tabs { margin-top: 4px; }
 .tv2-timer {
@@ -432,7 +434,8 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 .tv2-callout-sub { color: var(--text-dim); font-size: var(--fs-xs); }
 
 .tv2-section { display: flex; flex-direction: column; gap: 12px; padding-top: 14px; border-top: 1px solid var(--border); }
-.tv2-section-title { margin: 0; font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mut); }
+/* Обычный регистр, а не капслок: в Inter заглавные Л, Ю, Д, И мелким кеглем неотличимы от строчных. */
+.tv2-section-title { margin: 0; font-size: var(--fs-md); font-weight: 600; color: var(--text); }
 .tv2-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tv2-wide { width: 100%; max-width: none; }
 .tv2-check { padding: 2px 0; }
