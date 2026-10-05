@@ -6253,3 +6253,11 @@ body.is-dragging { user-select: none; cursor: grabbing; }
 @media (max-width: 720px) { .meeting-guests-add { grid-template-columns: 1fr; } }
 .meeting-guest { display: flex; align-items: center; gap: 4px; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
 .meeting-guest-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* «Приложение» в панели разделов (только в приложении на телефоне): версия и обновление */
+.app-update-row {
+  display: flex; align-items: center; gap: 8px; margin: 8px 10px 0; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev);
+}
+.app-update-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.app-update-title { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: var(--fs-sm); color: var(--text); }

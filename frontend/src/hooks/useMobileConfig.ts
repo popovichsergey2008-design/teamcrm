@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { MobileConfig, setMobileConfig, shouldOfferUpdate, updateVerdict, UPDATE_SNOOZE_MS } from '../lib/mobile-config';
 import { platform, isNativeShell } from '../platform';
+import { UPDATE_OPEN_EVENT } from '../components/AppUpdateRow';
 
 /** Как часто без сети сверяемся, не кончился ли час после «Позже». */
 const SNOOZE_CHECK_MS = 60 * 1000;
@@ -52,6 +53,12 @@ export function useMobileConfig(signedIn: boolean): {
       } catch { /* нет сети — работаем с тем, что есть */ }
     };
     void load();
+    // «Запуск обновления» из строки «Приложение» — окно установки сразу, даже после «Позже»
+    const onOpen = () => {
+      snoozedUntil.current = null;
+      void load().then(() => { if (last.current?.release) setOffer(true); });
+    };
+    window.addEventListener(UPDATE_OPEN_EVENT, onOpen);
     const onVisible = () => { if (document.visibilityState === 'visible') void load(); };
     document.addEventListener('visibilitychange', onVisible);
     // Долгая работа без сворачивания: visibilitychange не придёт, час отсчитываем сами.
@@ -60,6 +67,7 @@ export function useMobileConfig(signedIn: boolean): {
     }, SNOOZE_CHECK_MS);
     return () => {
       alive = false;
+      window.removeEventListener(UPDATE_OPEN_EVENT, onOpen);
       document.removeEventListener('visibilitychange', onVisible);
       window.clearInterval(timer);
     };

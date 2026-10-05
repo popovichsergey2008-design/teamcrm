@@ -15,6 +15,7 @@ import { FocusMenu, focusLine } from './FocusMenu';
 import { humanMinutes } from './SecretaryPanel';
 import { api } from '../lib/api';
 import type { Focus } from '../types';
+import { AppUpdateRow } from './AppUpdateRow';
 
 /**
  * Левая панель — единственная навигация приложения.
@@ -666,6 +667,8 @@ export function Sidebar({
           {/* Вход в настройку — внизу списка и мелко: ею пользуются один раз,
               а место в панели занимают каждый день. В самой настройке этой строки
               нет: выход живёт в шапке, две кнопки об одном и том же только путают. */}
+          {/* В приложении на телефоне: версия, последнее обновление и кнопка обновиться */}
+          {!collapsed && !tuning && <AppUpdateRow />}
           {!collapsed && !tuning && (
             <div className="nav-tune-bar">
               <button className="nav-tune-btn" onClick={() => setTuning(true)}>
