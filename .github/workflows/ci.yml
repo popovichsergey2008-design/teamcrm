@@ -2,9 +2,9 @@ name: CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, ui-v2]
   pull_request:
-    branches: [main]
+    branches: [main, ui-v2]
 
 jobs:
   backend:
@@ -158,7 +158,7 @@ jobs:
         run: |
           rsync -az --delete \
             --exclude node_modules --exclude dist --exclude coverage \
-            --exclude .git --exclude '.env' --exclude 'nginx/certs' --exclude 'nginx/html/.well-known' --exclude 'nginx/html/app' \
+            --exclude .git --exclude '.env' --exclude 'nginx/certs' --exclude 'nginx/html/.well-known' --exclude 'nginx/html/app' --exclude 'nginx/html/dev-ui' \
             -e "ssh -i ~/.ssh/deploy_key" \
             backend frontend infra/docker-compose.yml infra/nginx infra/deploy \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/teamcrm/"
@@ -173,3 +173,48 @@ jobs:
             set -e
             bash /opt/teamcrm/deploy/release.sh
           '
+
+  # Новый интерфейс (ТЗ-15) — на dev.anthill.team, пока не готов к проду.
+  # Ветка ui-v2 меняет только интерфейс: API, база и созвоны — общие с продом, поэтому
+  # здесь ни миграций, ни перезапуска контейнеров. Собираем, сжимаем и подменяем
+  # каталог одним переименованием: открытая вкладка не ловит полусобранный набор.
+  deploy-dev:
+    name: Deploy UI to dev.anthill.team
+    needs: [frontend]
+    if: github.ref == 'refs/heads/ui-v2' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          find dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.svg' -o -name '*.json' -o -name '*.html' \)             -size +1k -exec sh -c 'for f; do gzip -9 -c "$f" > "$f.gz"; done' _ {} +
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Upload
+        run: |
+          D=/opt/teamcrm/nginx/html
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" frontend/dist/             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:$D/dev-ui.next/"
+          ssh -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
+            set -e
+            # хэшированные файлы прежней сборки оставляем: открытая вкладка догрузит свои куски
+            if [ -d $D/dev-ui/assets ]; then cp -an $D/dev-ui/assets/. $D/dev-ui.next/assets/; fi
+            rm -rf $D/dev-ui.prev
+            if [ -d $D/dev-ui ]; then mv $D/dev-ui $D/dev-ui.prev; fi
+            mv $D/dev-ui.next $D/dev-ui
+            rm -rf $D/dev-ui.prev
+          "
