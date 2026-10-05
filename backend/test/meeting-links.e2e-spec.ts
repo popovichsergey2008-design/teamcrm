@@ -94,7 +94,7 @@ describe('Ссылка на встречу (e2e)', () => {
 
   it('личное событие без участников — без созвона; чужой не входит по своей ссылке другой компании', async () => {
     const a = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'А', email: `mla_${uniq()}@t.test`, password: 'password123', fullName: 'А' }).expect(201)).body.data;
+      .send({ tenantName: 'Компания А', email: `mla_${uniq()}@t.test`, password: 'password123', fullName: 'А' }).expect(201)).body.data;
     const solo = (await http$.post('/api/calendar/events').set(H(a.accessToken))
       .send({ title: 'Подумать', startsAt: inMin(60), endsAt: inMin(90) }).expect(201)).body.data;
     expect(solo.isCall).toBe(false);
@@ -103,7 +103,7 @@ describe('Ссылка на встречу (e2e)', () => {
     const call = (await http$.post('/api/calendar/events').set(H(a.accessToken))
       .send({ title: 'Созвон', startsAt: inMin(60), endsAt: inMin(90), isCall: true }).expect(201)).body.data;
     const b = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Б', email: `mlb_${uniq()}@t.test`, password: 'password123', fullName: 'Б' }).expect(201)).body.data;
+      .send({ tenantName: 'Компания Б', email: `mlb_${uniq()}@t.test`, password: 'password123', fullName: 'Б' }).expect(201)).body.data;
     expect((await http$.get(`/api/meet/m/${call.meeting.publicId}/me`).set(H(b.accessToken)).expect(200)).body.data).toEqual({ member: false });
     await http$.post(`/api/meet/m/${call.meeting.publicId}/enter`).set(H(b.accessToken)).expect(404);
   });
