@@ -1011,3 +1011,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 
 /* Кнопка без рамки первой в ряду — по левому краю текста, а не со сдвигом на свой отступ. */
 .pings-drawer .ping-actions > .ui-btn-ghost:first-child { margin-left: -10px; }
+
+/* Колокольчик «Непрочитанные» в верхнем ряду обёрнут в .bar-avatar ради счётчика; блок аватара
+   стал 32 точки, и значок сползал относительно соседних. В ряду кнопок — размер значка. */
+.bar-icon .bar-avatar { width: 16px; height: 16px; }
