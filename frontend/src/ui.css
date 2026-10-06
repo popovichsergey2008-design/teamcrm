@@ -921,3 +921,15 @@ input[type="checkbox"]:indeterminate {
 input[type="radio"]:checked { border-color: var(--accent-2); border-width: 5px; }
 input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .5; cursor: default; }
 input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+
+/* Под палец (ТЗ-15, проверка на телефоне): переключатели, чипы и флажки не мельче 36 точек. На компьютере размеры прежние. */
+@media (hover: none) and (pointer: coarse) {
+  .ui-toggle-sm, .kv2-seg-btn, .group-chip, .chip-btn, .view-btn, .theme-option, .board-switch-btn, .directions-chip, .label-chip { min-height: 36px; }
+  .ui-toggle-sm, .group-chip, .chip-btn { padding-left: 12px; padding-right: 12px; }
+  input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
+}
+
+/* Карточка задачи — не обычная шторка: отступы у её колонок свои, а у самой шторки их нет,
+   иначе полоса «Сохранить» прилипает выше края и под ней просвечивает содержимое. */
+.drawer.drawer-task { padding: 0; }
+@media (max-width: 900px) { .chat-input { padding: 8px 12px; } }
