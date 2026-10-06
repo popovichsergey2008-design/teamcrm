@@ -268,7 +268,7 @@ function PingsDrawer({ groups, count, canDismissAll, busyAll, onDismissAll, onCl
 
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
-      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
+      <aside className="drawer pings-drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="bell" size={18} /> Секретарь напоминает</h3>
           <button className="drawer-close" onClick={onClose} title="Закрыть" aria-label="Закрыть">

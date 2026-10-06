@@ -59,7 +59,7 @@ export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boo
 
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
-      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
+      <aside className="drawer pings-drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="sparkles" size={18} /> AI Секретарь</h3>
           <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
