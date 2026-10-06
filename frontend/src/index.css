@@ -21,21 +21,21 @@
   */
 
   /* поверхности: страница → панель → подложка внутри панели */
-  --bg:        #f6f7f9;
-  --bg-elev:   #ffffff;
-  --bg-elev-2: #f0f2f5;
+  --bg:        #f5f1ea;
+  --bg-elev:   #fcfaf6;
+  --bg-elev-2: #eee8de;
   /* --border — тонкие разделители (строки списков, низ шапки), --border-2 — контуры
      того, с чем взаимодействуют: поля ввода, кнопки, всплывающие окна. */
-  --border:    #e1e4ea;
-  --border-2:  #bcc3ce;
+  --border:    #e3dcd0;
+  --border-2:  #c6bcad;
   /* Подсветка под курсором. Раньше её рисовали цветом границы — и, усилив границы,
      мы бы разом сделали наведение грязно-серым. Это разные роли, и токена два. */
-  --hover:     #eceef2;
+  --hover:     #ece5da;
 
   /* текст: основной → второстепенный → подсказки */
-  --text:      #0b0f17;
-  --text-dim:  #4b5363;
-  --text-mut:  #5c6474;
+  --text:      #211d18;
+  --text-dim:  #544c41;
+  --text-mut:  #665d50;
 
   /*
     Акцент: --accent для текста, рамок и наведения, --accent-2 — заливка кнопки.
@@ -45,8 +45,8 @@
   */
   --accent:      #1d4ed8;
   --accent-2:    #2563eb;
-  --accent-soft: #eef3ff;
-  --accent-line: #a8bff5;
+  --accent-soft: #e9edf8;
+  --accent-line: #a9bdec;
 
   /* статусы: у каждого мягкая подложка и рамка, чтобы не смешивать прозрачности */
   --ok:          #0f6f49;
@@ -107,10 +107,10 @@
   --brand-2: #2f7fd6;   /* Neon Blue    #79C9FF */
   --brand-3: #7c4dd8;   /* Neon Purple  #B06CFF */
 
-  --overlay:   rgba(15,23,42,.50);
+  --overlay:   rgba(40,32,20,.40);
   /* Тень — второй способ отделить карточку от страницы: на светлом одной границы мало. */
-  --shadow:    0 1px 2px rgba(16,24,40,.05), 0 4px 14px rgba(16,24,40,.07);
-  --shadow-lg: 0 16px 40px rgba(16,24,40,.16);
+  --shadow:    0 1px 2px rgba(60,45,25,.06), 0 4px 14px rgba(60,45,25,.07);
+  --shadow-lg: 0 16px 40px rgba(60,45,25,.16);
   --video-bg:  #0d1117;   /* видео читается на тёмном в любой теме */
 
   /* шкалы: одинаковые шаги вместо произвольных чисел в каждом месте */
@@ -155,28 +155,28 @@
       Заливка кнопки НЕ неоновая: белым по циану читать нельзя (1.4:1). Под белый
       текст берём глубокий синий из той же семьи — 5.67:1.
     */
-    --bg:        #0a0d13;
-    --bg-elev:   #11151c;
-    --bg-elev-2: #191e27;
-    --border:    #232934;
-    --border-2:  #363e4c;
-    --hover:     #1c222c;
-    --text:      #edf1f7;
-    --text-dim:  #9ba5b5;
-    --text-mut:  #8c96a7;
-    --accent:      #7dd3fc;
-    --accent-2:    #2563eb;
-    --accent-soft: rgba(125,211,252,.12);
-    --accent-line: rgba(125,211,252,.38);
+    --bg:        #1d2026;
+    --bg-elev:   #24282f;
+    --bg-elev-2: #2c3139;
+    --border:    #343a44;
+    --border-2:  #48505d;
+    --hover:     #30353e;
+    --text:      #e8e5df;
+    --text-dim:  #aaa59c;
+    --text-mut:  #9d988f;
+    --accent:      #93c5fd;
+    --accent-2:    #3566d6;
+    --accent-soft: rgba(147,197,253,.12);
+    --accent-line: rgba(147,197,253,.36);
     --ok:          #57d9a3;
     --ok-soft:     rgba(87,217,163,.12);
     --ok-line:     rgba(87,217,163,.40);
     --warn:        #ffcf5c;
     --warn-soft:   rgba(255,207,92,.14);
     --warn-line:   rgba(255,207,92,.42);
-    --danger:      #ff6b6b;
-    --danger-soft: rgba(255,107,107,.12);
-    --danger-line: rgba(255,107,107,.40);
+    --danger:      #ff8f87;
+    --danger-soft: rgba(255,143,135,.12);
+    --danger-line: rgba(255,143,135,.40);
     /* Имена авторов — светлые оттенки той же шестёрки: на тёмных поверхностях. */
     --who-1: #ff9d95;
     --who-2: #8fc3ff;
@@ -188,13 +188,13 @@
     --fill-ok:     #16714f;
     --fill-warn:   #8a5a00;
     --fill-danger: #b3303a;
-    --fill-info:   #2563eb;
+    --fill-info:   #3566d6;
     --fill-muted:  #4d5c77;
     --on-ok:     #08110d;
   --on-warn:   #1a1300;
-    --overlay:   rgba(0,0,0,.55);
-    --shadow:    0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
-    --shadow-lg: 0 20px 50px rgba(0,0,0,.55);
+    --overlay:   rgba(10,12,16,.50);
+    --shadow:    0 1px 2px rgba(0,0,0,.22), 0 8px 24px rgba(0,0,0,.24);
+    --shadow-lg: 0 20px 50px rgba(0,0,0,.40);
     --video-bg:  #000000;
     /* На тёмном — ровно брендбук: неон задуман светящимся в темноте. */
     --brand-1: #4ef2f7;
@@ -217,28 +217,28 @@
     Заливка кнопки НЕ неоновая: белым по циану читать нельзя (1.4:1). Под белый
     текст берём глубокий синий из той же семьи — 5.67:1.
   */
-  --bg:        #0a0d13;
-  --bg-elev:   #11151c;
-  --bg-elev-2: #191e27;
-  --border:    #232934;
-  --border-2:  #363e4c;
-  --hover:     #1c222c;
-  --text:      #edf1f7;
-  --text-dim:  #9ba5b5;
-  --text-mut:  #8c96a7;
-  --accent:      #7dd3fc;
-  --accent-2:    #2563eb;
-  --accent-soft: rgba(125,211,252,.12);
-  --accent-line: rgba(125,211,252,.38);
+  --bg:        #1d2026;
+  --bg-elev:   #24282f;
+  --bg-elev-2: #2c3139;
+  --border:    #343a44;
+  --border-2:  #48505d;
+  --hover:     #30353e;
+  --text:      #e8e5df;
+  --text-dim:  #aaa59c;
+  --text-mut:  #9d988f;
+  --accent:      #93c5fd;
+  --accent-2:    #3566d6;
+  --accent-soft: rgba(147,197,253,.12);
+  --accent-line: rgba(147,197,253,.36);
   --ok:          #57d9a3;
   --ok-soft:     rgba(87,217,163,.12);
   --ok-line:     rgba(87,217,163,.40);
   --warn:        #ffcf5c;
   --warn-soft:   rgba(255,207,92,.14);
   --warn-line:   rgba(255,207,92,.42);
-  --danger:      #ff6b6b;
-  --danger-soft: rgba(255,107,107,.12);
-  --danger-line: rgba(255,107,107,.40);
+  --danger:      #ff8f87;
+  --danger-soft: rgba(255,143,135,.12);
+  --danger-line: rgba(255,143,135,.40);
   /* Имена авторов — светлые оттенки той же шестёрки: на тёмных поверхностях. */
   --who-1: #ff9d95;
   --who-2: #8fc3ff;
@@ -250,13 +250,13 @@
   --fill-ok:     #16714f;
   --fill-warn:   #8a5a00;
   --fill-danger: #b3303a;
-  --fill-info:   #2563eb;
+  --fill-info:   #3566d6;
   --fill-muted:  #4d5c77;
   --on-ok:     #08110d;
   --on-warn:   #1a1300;
-  --overlay:   rgba(0,0,0,.55);
-  --shadow:    0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
-  --shadow-lg: 0 20px 50px rgba(0,0,0,.55);
+  --overlay:   rgba(10,12,16,.50);
+  --shadow:    0 1px 2px rgba(0,0,0,.22), 0 8px 24px rgba(0,0,0,.24);
+  --shadow-lg: 0 20px 50px rgba(0,0,0,.40);
   --video-bg:  #000000;
   /* На тёмном — ровно брендбук: неон задуман светящимся в темноте. */
   --brand-1: #4ef2f7;
