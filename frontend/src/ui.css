@@ -933,3 +933,13 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
    иначе полоса «Сохранить» прилипает выше края и под ней просвечивает содержимое. */
 .drawer.drawer-task { padding: 0; }
 @media (max-width: 900px) { .chat-input { padding: 8px 12px; } }
+
+/* Второй проход по целям для пальца — то, что нашёл обход экранов на телефоне. */
+@media (hover: none) and (pointer: coarse) {
+  .ui-input-sm, .ui-select-trigger { min-height: 36px; }
+  .task-card-move-btn, .chat-star, .msg-dots { min-width: 32px; min-height: 32px; }
+  .dp-clear { min-width: 32px; min-height: 32px; display: inline-grid; place-items: center; }
+  .tv2-num { min-height: 28px; padding: 4px 10px; }
+  .chat-group-toggle, .chat-pins-btn { min-height: 32px; }
+  .reaction { min-height: 28px; }
+}
