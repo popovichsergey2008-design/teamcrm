@@ -800,3 +800,7 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
   .settings-grid { padding: 16px; }
   .drawer { padding: 14px; }
 }
+
+/* Длинное значение сжимается многоточием, а не выталкивает список за край (раздел «Команда»). */
+.ui-select-trigger { overflow: hidden; }
+.ui-select-value { flex: 1; min-width: 0; text-align: left; }
