@@ -1008,3 +1008,6 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 
 /* Шторки не прокручиваются вбок: длинное — переносится, а не уводит вправо. */
 .drawer { overflow-x: hidden; }
+
+/* Кнопка без рамки первой в ряду — по левому краю текста, а не со сдвигом на свой отступ. */
+.pings-drawer .ping-actions > .ui-btn-ghost:first-child { margin-left: -10px; }
