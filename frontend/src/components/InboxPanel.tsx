@@ -5,6 +5,7 @@ import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 /** Авто-задачи из переписок: каналы приёма (вебхук) + голосовые заметки + ревью черновиков задач. */
 export function InboxPanel({ onClose }: { onClose: () => void }) {
@@ -54,7 +55,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
     } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
   const deleteSource = async (id: string) => {
-    if (!window.confirm('Удалить канал? Его вебхук перестанет принимать письма.')) return;
+    if (!(await confirmAction({ title: 'Удалить канал?', description: 'Его вебхук перестанет принимать письма.', danger: true }))) return;
     try { await api.inboxDeleteSource(id); loadSources(); } catch { /* */ }
   };
 

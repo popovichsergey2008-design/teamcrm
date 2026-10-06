@@ -3,6 +3,7 @@ import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Импорт из Trello — слой 2 «переезда в один клик».
@@ -34,7 +35,7 @@ export function TrelloPanel() {
   };
 
   const disconnect = async (cid: string) => {
-    if (!window.confirm('Отключить Trello? Импортированные доски и задачи останутся.')) return;
+    if (!(await confirmAction({ title: 'Отключить Trello?', description: 'Импортированные доски и задачи останутся.', danger: true }))) return;
     try { await api.trelloDisconnect(cid); if (openCid === cid) setOpenCid(null); reload(); } catch { /* */ }
   };
 

@@ -27,7 +27,7 @@ import { SkeletonBoard } from '../components/Skeleton';
 import { MONETIZATION_ENABLED } from '../config';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { Button } from '../components/ui/button';
-import { confirmAction } from '../components/ui/dialog';
+import { confirmAction, promptText } from '../components/ui/dialog';
 
 /*
   Карточка задачи (с чатом, редактором описания, вкладками) и окно создания грузятся
@@ -341,7 +341,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
 
   const addColumn = async () => {
     if (!selected) return;
-    const name = window.prompt('Название колонки:');
+    const name = await promptText({ title: 'Новая колонка', placeholder: 'Например: На проверке', confirmLabel: 'Добавить', singleLine: true });
     if (!name || !name.trim()) return;
     try {
       await api.addColumn(selected, name.trim());

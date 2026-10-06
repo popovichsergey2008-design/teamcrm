@@ -51,6 +51,7 @@ import { useConsoleAlerts } from './hooks/useConsoleAlerts';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { ConsoleTopBar } from './components/console/ConsoleTopBar';
 import { useSeedStickyChecks } from './lib/sticky-checks';
+import { promptText } from './components/ui/dialog';
 
 /*
   Разделы, которые открывают не каждый день, грузятся по требованию (ТЗ-15, этап 0).
@@ -274,7 +275,13 @@ export function App() {
 
   const onSwitchOrg = async (tenantId: string) => {
     if (tenantId === '__new__') {
-      const name = window.prompt('Название новой организации:');
+      const name = await promptText({
+        title: 'Новая организация',
+        description: 'Отдельное пространство со своими проектами, людьми и чатами. Переключаться между ними — в меню профиля.',
+        placeholder: 'Например: ООО «Вектор»',
+        confirmLabel: 'Создать',
+        singleLine: true,
+      });
       if (name && name.trim()) await createOrg(name.trim());
       return;
     }

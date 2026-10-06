@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, MeetingInvite } from '../lib/api';
 import { toastSaved } from '../lib/notifications';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Гости встречи по email (ТЗ-14, §66–70, §112).
@@ -45,7 +46,7 @@ export function MeetingGuests({ eventId }: { eventId: string }) {
   };
 
   const revoke = async (inv: MeetingInvite) => {
-    if (!window.confirm(`Отозвать приглашение ${inv.email}? Его ссылка перестанет работать.`)) return;
+    if (!(await confirmAction({ title: `Отозвать приглашение ${inv.email}?`, description: `Его ссылка перестанет работать.`, danger: true }))) return;
     try { await api.meetingInviteRevoke(eventId, inv.id); void load(); }
     catch (er) { setErr(er instanceof ApiError ? er.message : 'Не удалось отозвать'); }
   };

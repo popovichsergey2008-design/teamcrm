@@ -12,6 +12,7 @@ import { pageWindow } from '../lib/task-registry-view';
 import { useAuth } from '../state/auth';
 import { overlayProps } from '../lib/overlay';
 import { OptionSelect } from '../components/ui/option-select';
+import { confirmAction } from '../components/ui/dialog';
 
 interface Post {
   id: string;
@@ -457,7 +458,7 @@ function PostCard({ post, team, onOpen, onChanged }: {
               className="ui-btn ui-btn-ghost ui-btn-sm"
               title="Удалить из ленты"
               aria-label="Удалить из ленты"
-              onClick={() => { if (window.confirm('Удалить сообщение из ленты?')) api.feedDelete(post.id).then(onChanged); }}
+              onClick={async () => { if (await confirmAction({ title: 'Удалить сообщение из ленты?', danger: true })) api.feedDelete(post.id).then(onChanged); }}
             >
               <Icon name="trash" size={13} />
             </button>
@@ -713,8 +714,8 @@ function PostModal({ post, team, onChanged, onClose }: {
               <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => api.feedPin(post.id, !post.isPinned).then(onChanged)}>
                 {post.isPinned ? 'Открепить' : 'Закрепить'}
               </button>
-              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => {
-                if (window.confirm('Удалить сообщение из ленты?')) {
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={async () => {
+                if (await confirmAction({ title: 'Удалить сообщение из ленты?', danger: true })) {
                   api.feedDelete(post.id).then(() => { onChanged(); onClose(); });
                 }
               }}>

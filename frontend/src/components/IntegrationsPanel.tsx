@@ -12,6 +12,7 @@ import { PromptsSection } from './PromptsPanel';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 /** Интеграции: подключения (Битрикс24) + ключи ИИ + промпты (PromptOps). */
 export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
@@ -36,7 +37,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
   };
 
   const disconnect = async (cid: string) => {
-    if (!window.confirm('Отключить портал? Импортированные проекты останутся.')) return;
+    if (!(await confirmAction({ title: 'Отключить портал?', description: 'Импортированные проекты останутся.', danger: true }))) return;
     try { await api.bitrixDisconnect(cid); if (openCid === cid) setOpenCid(null); reload(); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
@@ -419,7 +420,7 @@ function YougileSection() {
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
   const disconnect = async (cid: string) => {
-    if (!window.confirm('Удалить подключение YouGile? Импортированные проекты останутся.')) return;
+    if (!(await confirmAction({ title: 'Удалить подключение YouGile?', description: 'Импортированные проекты останутся.', danger: true }))) return;
     try { await api.yougileDisconnect(cid); if (openCid === cid) setOpenCid(null); reload(); } catch { /* */ }
   };
 

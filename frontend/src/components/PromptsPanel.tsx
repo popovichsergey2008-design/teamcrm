@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { OptionSelect } from './ui/option-select';
+import { promptText } from './ui/dialog';
 
 const STATUS: Record<string, string> = { active: 'активная', testing: 'тест', draft: 'черновик', deprecated: 'снята' };
 
@@ -68,7 +69,13 @@ export function PromptsSection() {
   };
   const startAb = async (v: number) => {
     if (!key) return;
-    const raw = window.prompt('Доля трафика на этот вариант (B), % — 1..99:', '20');
+    const raw = await promptText({
+      title: `A/B-тест версии ${v}`,
+      description: 'Какая доля запросов пойдёт на этот вариант (B), в процентах — от 1 до 99.',
+      defaultValue: '20',
+      confirmLabel: 'Запустить',
+      singleLine: true,
+    });
     if (raw === null) return;
     const split = Number(raw);
     if (!Number.isInteger(split) || split < 1 || split > 99) return flash('Нужно целое 1..99');

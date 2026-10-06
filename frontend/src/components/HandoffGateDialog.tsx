@@ -1,5 +1,6 @@
 import { Icon } from './Icon';
 import { overlayProps } from '../lib/overlay';
+import { useEscape } from '../hooks/useEscape';
 
 /**
  * Приёмка работы: что мешает сдать задачу.
@@ -31,6 +32,8 @@ export function HandoffGateDialog({ block, busy, onCancel, onForce }: {
   onCancel: () => void;
   onForce: () => void;
 }) {
+  // Escape — то же, что «Вернуться к задаче»: ничего не сдаём
+  useEscape(onCancel, !busy);
   /*
     Обязательный чек-лист (задача #1386): тут не «сдать всё равно», а прямое «нельзя» —
     и почему. Исполнитель должен понять правило сразу, а не из возврата задачи.

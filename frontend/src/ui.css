@@ -875,3 +875,13 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 .anthill-v2 .anthill-hint:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 /* Окно ожидания стоит на тёмной сцене — своим светлым листом, иначе текст пропадает. */
 .call-lobby-box { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px 28px; box-shadow: var(--shadow-lg); }
+
+/* ── диалоги на прежнем каркасе (modal-card): тот же вид, что у ui-modal и ui-dialog ── */
+.modal-overlay { background: var(--overlay); }
+.modal-card { border-radius: var(--radius-lg); border-color: var(--border); box-shadow: var(--shadow-lg); padding: 20px 22px; }
+.modal-card > .drawer-head { margin: -2px 0 14px; }
+.modal-card > .drawer-head h3 { font-size: var(--fs-lg); font-weight: 650; }
+.modal-card > .drawer-head .ui-btn-ghost { color: var(--text-mut); }
+@media (max-width: 720px) {
+  .modal-card { padding: 16px; border-radius: var(--radius-lg) var(--radius-lg) var(--radius) var(--radius); }
+}

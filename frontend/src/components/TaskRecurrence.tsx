@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { api, ApiError, TaskRecurrence as Recurrence } from '../lib/api';
 import { toastSaved } from '../lib/notifications';
 import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Повтор задачи.
@@ -96,7 +97,7 @@ export function TaskRecurrenceBlock({ taskId, onRefresh }: { taskId: string; onR
   };
 
   const clear = async () => {
-    if (!window.confirm('Снять повтор? Уже созданные задачи останутся.')) return;
+    if (!(await confirmAction({ title: 'Снять повтор?', description: 'Уже созданные задачи останутся.', danger: true }))) return;
     setBusy(true);
     try {
       await api.clearTaskRecurrence(taskId);

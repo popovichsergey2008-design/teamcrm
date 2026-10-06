@@ -5,6 +5,7 @@ import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 /** База знаний (Этап 5, K1): семантический поиск + регламенты + реиндекс. */
 export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onClose: () => void }) {
@@ -68,7 +69,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
     try { await api.createRegulation({ title: form.title.trim(), body: form.body }); setForm({ title: '', body: '' }); flash('Регламент добавлен, индексируется'); loadRegs(); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
-  const delReg = async (id: string) => { if (window.confirm('Удалить регламент?')) { await api.deleteRegulation(id); loadRegs(); } };
+  const delReg = async (id: string) => { if ((await confirmAction({ title: 'Удалить регламент?', danger: true }))) { await api.deleteRegulation(id); loadRegs(); } };
 
   const reindex = async () => {
     try { const r = await api.knowledgeReindex(); flash(`В очередь на индексацию: ${r.queued}`); setTimeout(loadStats, 2000); }

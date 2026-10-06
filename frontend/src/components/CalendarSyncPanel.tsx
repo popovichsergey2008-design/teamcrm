@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, CalendarLink } from '../lib/api';
 import { overlayProps } from '../lib/overlay';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Синхронизация календаря с Google (и любым другим, понимающим iCalendar).
@@ -32,7 +33,7 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
   const imports = links.filter((l) => l.kind === 'import');
 
   const makeExport = async (rotate = false) => {
-    if (rotate && !window.confirm('Сделать новый адрес? Старый перестанет работать, и календарь придётся переподключить в Google.')) return;
+    if (rotate && !(await confirmAction({ title: 'Сделать новый адрес?', description: 'Старый перестанет работать, и календарь придётся переподключить в Google.' }))) return;
     setErr(''); setBusy(true);
     try { await api.calendarExportLink(rotate); await reload(); setMsg(rotate ? 'Адрес заменён' : 'Ссылка готова'); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось'); }
@@ -65,7 +66,7 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm('Отключить календарь? Его встречи исчезнут из нашего календаря.')) return;
+    if (!(await confirmAction({ title: 'Отключить календарь?', description: 'Его встречи исчезнут из нашего календаря.', danger: true }))) return;
     try { await api.calendarRemoveLink(id); await reload(); } catch { /* */ }
   };
 

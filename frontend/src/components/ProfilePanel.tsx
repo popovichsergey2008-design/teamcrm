@@ -14,6 +14,7 @@ import { FontSizeSwitch } from './FontSizeSwitch';
 import { DatePicker } from './DatePicker';
 import { useAuth } from '../state/auth';
 import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients';
 
@@ -489,7 +490,7 @@ function PromptsLibrary() {
   };
   const duplicate = (p: any) => { setEditId(null); setForm({ name: `${p.name} (копия)`, instruction: p.instruction, model: p.model ?? '', isShared: false }); setOpen(true); };
   const del = async (p: any) => {
-    if (!window.confirm(`Удалить промпт «${p.name}»?`)) return;
+    if (!(await confirmAction({ title: `Удалить промпт «${p.name}»?`, danger: true }))) return;
     try { await api.agentPromptDelete(p.id); reload(); } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
 

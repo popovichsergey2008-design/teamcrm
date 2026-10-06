@@ -5,6 +5,8 @@ import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
 import { overlayProps } from '../lib/overlay';
 import { toastSaved } from '../lib/notifications';
+import { confirmAction } from './ui/dialog';
+import { useEscape } from '../hooks/useEscape';
 
 interface Member { userId: string; fullName: string }
 
@@ -22,6 +24,8 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
   onChanged: () => void;
   onLeft: () => void;
 }) {
+  // Escape закрывает, как и остальные окна
+  useEscape(onClose);
   const [members, setMembers] = useState<Member[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [name, setName] = useState(title);
@@ -51,7 +55,7 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
   };
 
   const leave = async () => {
-    if (!window.confirm('Выйти из группы? Переписка останется у остальных участников.')) return;
+    if (!(await confirmAction({ title: 'Выйти из группы?', description: 'Переписка останется у остальных участников.', danger: true }))) return;
     setBusy(true);
     try { await api.leaveChat(chatId); onLeft(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось выйти'); setBusy(false); }

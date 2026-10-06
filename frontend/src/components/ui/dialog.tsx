@@ -76,6 +76,10 @@ export function promptText(opts: {
   confirmLabel?: string;
   /** Короче — кнопка неактивна: «вернуть без причины» нельзя. */
   minLength?: number;
+  /** Что стоит в поле сразу (как второй аргумент window.prompt). */
+  defaultValue?: string;
+  /** Одна строка (название, адрес): Enter — готово. По умолчанию — абзац, Ctrl+Enter. */
+  singleLine?: boolean;
 }): Promise<string | null> {
   return new Promise((resolve) => {
     const host = document.createElement('div');
@@ -89,12 +93,13 @@ export function promptText(opts: {
   });
 }
 
-function PromptHost({ title, description, placeholder, confirmLabel, minLength = 1, onDone }: {
+function PromptHost({ title, description, placeholder, confirmLabel, minLength = 1, defaultValue, singleLine, onDone }: {
   title: string; description?: ReactNode; placeholder?: string; confirmLabel?: string; minLength?: number;
+  defaultValue?: string; singleLine?: boolean;
   onDone: (v: string | null) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(defaultValue ?? '');
   const close = (v: string | null) => { if (!open) return; setOpen(false); onDone(v); };
   const ok = text.trim().length >= minLength;
   return (
@@ -104,15 +109,27 @@ function PromptHost({ title, description, placeholder, confirmLabel, minLength =
         <AlertDialog.Popup className="ui-dialog ui-dialog-sm">
           <AlertDialog.Title className="ui-dialog-title">{title}</AlertDialog.Title>
           {description && <AlertDialog.Description className="ui-dialog-desc">{description}</AlertDialog.Description>}
-          <textarea
-            className="ui-textarea"
-            rows={4}
-            autoFocus
-            placeholder={placeholder}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && ok) close(text.trim()); }}
-          />
+          {singleLine ? (
+            <input
+              className="ui-input ui-input-md"
+              autoFocus
+              placeholder={placeholder}
+              value={text}
+              onFocus={(e) => e.currentTarget.select()}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && ok) { e.preventDefault(); close(text.trim()); } }}
+            />
+          ) : (
+            <textarea
+              className="ui-textarea"
+              rows={4}
+              autoFocus
+              placeholder={placeholder}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && ok) close(text.trim()); }}
+            />
+          )}
           <footer className="ui-dialog-foot">
             <Button variant="ghost" onClick={() => close(null)}>Отмена</Button>
             <Button variant="primary" disabled={!ok} onClick={() => close(text.trim())}>{confirmLabel ?? 'Отправить'}</Button>
@@ -121,6 +138,16 @@ function PromptHost({ title, description, placeholder, confirmLabel, minLength =
       </AlertDialog.Portal>
     </AlertDialog.Root>
   );
+}
+
+/**
+ * Подпись красной кнопки по умолчанию — глагол из вопроса: «Отключить календарь?» →
+ * «Отключить», «Выйти из группы?» → «Выйти». Кнопка «Удалить» под вопросом об
+ * отключении читалась бы как другое, более страшное действие.
+ */
+function verbOf(title: string): string {
+  const word = title.trim().split(/[\s?«»"]+/)[0] ?? '';
+  return /ить$|ать$|ять$|еть$|ти$/.test(word) ? word : 'Удалить';
 }
 
 function ConfirmHost({ title, description, confirmLabel, cancelLabel, danger, onDone }: {
@@ -139,7 +166,7 @@ function ConfirmHost({ title, description, confirmLabel, cancelLabel, danger, on
           <footer className="ui-dialog-foot">
             <Button variant="ghost" onClick={() => close(false)}>{cancelLabel ?? 'Отмена'}</Button>
             <Button variant={danger ? 'destructive' : 'primary'} onClick={() => close(true)} autoFocus>
-              {confirmLabel ?? (danger ? 'Удалить' : 'Подтвердить')}
+              {confirmLabel ?? (danger ? verbOf(title) : 'Подтвердить')}
             </Button>
           </footer>
         </AlertDialog.Popup>

@@ -11,6 +11,7 @@ import { toastSaved } from '../lib/notifications';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 type Tab = 'people' | 'positions' | 'groups';
 const roleOptions = ASSIGNABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>);
@@ -160,7 +161,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
   /** Удаление спрашивает подтверждение: раньше промах по кнопке молча сносил отдел с людьми. */
   const removeGroup = async (id: string, name: string, count: number) => {
     const warn = count > 0 ? ` В ней ${plural(count, 'человек', 'человека', 'человек')} — они останутся в системе, но потеряют это подразделение.` : '';
-    if (!window.confirm(`Удалить «${name}»?${warn}`)) return;
+    if (!(await confirmAction({ title: `Удалить «${name}»?`, description: warn.trim() || undefined, danger: true }))) return;
     try { await api.deleteGroup(id); await reload(); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Не удалось удалить группу'); }
   };

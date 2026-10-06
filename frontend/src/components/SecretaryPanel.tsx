@@ -6,6 +6,7 @@ import { SkeletonList } from './Skeleton';
 import type { AiAction, Ping, Proposal } from '../types';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Журнал «AI Секретаря»: что система сделала за людей сама.
@@ -204,7 +205,7 @@ function Gaps({ canManage }: { canManage: boolean }) {
       // назначении руками. Решает руководитель, а не секретарь.
       if (res?.applied === false && res?.warning) {
         setNote(`У человека уже ${Math.round(res.projectedHours)} ч работы при норме ${Math.round(res.capacityHours)} ч.`);
-        if (window.confirm('Человек перегружен. Всё равно назначить?')) return apply(row, body, true);
+        if ((await confirmAction({ title: 'Человек перегружен. Всё равно назначить?', confirmLabel: 'Назначить' }))) return apply(row, body, true);
         return;
       }
       await load();

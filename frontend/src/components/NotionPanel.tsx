@@ -3,6 +3,7 @@ import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Импорт из Notion — слой 3 «переезда в один клик».
@@ -36,7 +37,7 @@ export function NotionPanel() {
   };
 
   const disconnect = async (cid: string) => {
-    if (!window.confirm('Отключить Notion? Импортированные задачи останутся.')) return;
+    if (!(await confirmAction({ title: 'Отключить Notion?', description: 'Импортированные задачи останутся.', danger: true }))) return;
     try { await api.notionDisconnect(cid); if (openCid === cid) setOpenCid(null); reload(); } catch { /* */ }
   };
 
