@@ -885,3 +885,39 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 @media (max-width: 720px) {
   .modal-card { padding: 16px; border-radius: var(--radius-lg) var(--radius-lg) var(--radius) var(--radius); }
 }
+
+/* ── профиль: меню разделов — мягкая подсветка вместо сплошной заливки ──────── */
+.profile-nav { padding: 16px 10px; gap: 2px; }
+.profile-nav button { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: var(--fs-md); font-weight: 500; }
+.profile-nav button:hover { background: var(--hover); }
+.profile-nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.profile-nav button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+.profile-content { padding: 24px 32px; }
+.profile-content .notify-row { border-bottom-color: var(--border); }
+
+/*
+  Флажки и переключатели прежней разметки — в виде ui-checkbox (ТЗ-15).
+
+  Родной флажок рисует каждая система по-своему, и рядом с новыми выглядел чужим.
+  Разметка и поведение не меняются: это тот же <input>, только нарисованный нами.
+*/
+input[type="checkbox"], input[type="radio"] {
+  appearance: none; -webkit-appearance: none; flex: none; margin: 0;
+  width: 16px; height: 16px; display: inline-grid; place-content: center; vertical-align: -3px;
+  border: 1px solid var(--border-2); background: var(--bg-elev); cursor: pointer;
+  transition: background-color .12s, border-color .12s;
+}
+input[type="checkbox"] { border-radius: 4px; }
+input[type="radio"] { border-radius: 50%; }
+input[type="checkbox"]:checked, input[type="checkbox"]:indeterminate {
+  background: var(--accent-2) no-repeat center / 12px 12px; border-color: var(--accent-2);
+}
+input[type="checkbox"]:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+}
+input[type="checkbox"]:indeterminate {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round'%3E%3Cpath d='M5 12h14'/%3E%3C/svg%3E");
+}
+input[type="radio"]:checked { border-color: var(--accent-2); border-width: 5px; }
+input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .5; cursor: default; }
+input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
