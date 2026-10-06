@@ -804,3 +804,8 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 /* Длинное значение сжимается многоточием, а не выталкивает список за край (раздел «Команда»). */
 .ui-select-trigger { overflow: hidden; }
 .ui-select-value { flex: 1; min-width: 0; text-align: left; }
+
+/* Сетки на две колонки: minmax(0, 1fr), иначе колонка не уже своего содержимого и длинный текст выталкивает её за край («Команда»). */
+.drawer-grid2, .tv2-grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.drawer-grid2 > *, .tv2-grid2 > * { min-width: 0; }
+@media (max-width: 720px) { .tv2-grid2 { grid-template-columns: minmax(0, 1fr); } }
