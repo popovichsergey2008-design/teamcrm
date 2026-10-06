@@ -7,6 +7,7 @@ import { overlayProps } from '../lib/overlay';
 import { toastSaved } from '../lib/notifications';
 import { confirmAction } from './ui/dialog';
 import { useEscape } from '../hooks/useEscape';
+import { initialsOf } from '../lib/initials';
 
 interface Member { userId: string; fullName: string }
 
@@ -85,7 +86,7 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
         <div className="group-members">
           {members.map((m) => (
             <div key={m.userId} className="notify-row">
-              <Avatar path={(m as any).avatarUrl ?? null} fallback={m.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+              <Avatar path={(m as any).avatarUrl ?? null} fallback={initialsOf(m.fullName)} className="avatar-sm" />
               <span style={{ flex: 1 }}>{m.fullName}{String(m.userId) === String(meId) && <span className="dim"> — вы</span>}</span>
               {canManage && String(m.userId) !== String(meId) && (
                 <button className="ui-btn ui-btn-ghost ui-btn-sm" title="Убрать из группы" disabled={busy}
@@ -103,7 +104,7 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
                 <label key={u.id} className="notify-row" style={{ cursor: 'pointer' }}>
                   <input type="checkbox" checked={!!adding[u.id]}
                          onChange={(e) => setAdding((s) => ({ ...s, [u.id]: e.target.checked }))} />
-                  <Avatar path={(u as any).avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+                  <Avatar path={(u as any).avatarUrl ?? null} fallback={initialsOf(u.fullName)} className="avatar-sm" />
                   <span>{u.fullName}</span>
                 </label>
               ))}

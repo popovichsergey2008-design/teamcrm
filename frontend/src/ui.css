@@ -943,3 +943,41 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
   .chat-group-toggle, .chat-pins-btn { min-height: 32px; }
   .reaction { min-height: 28px; }
 }
+
+/* ── заглушка аватара без фото: две буквы, мягкий оттенок по буквам, группа — квадратом ── */
+.avatar-ph { font-weight: 600; letter-spacing: -.02em; }
+.avatar-sm.avatar-ph { font-size: calc(11px * var(--fs-scale)); }
+.avatar-tone-1 { background: color-mix(in srgb, var(--who-1) 16%, var(--bg-elev)); color: var(--who-1); }
+.avatar-tone-2 { background: color-mix(in srgb, var(--who-2) 16%, var(--bg-elev)); color: var(--who-2); }
+.avatar-tone-3 { background: color-mix(in srgb, var(--who-3) 16%, var(--bg-elev)); color: var(--who-3); }
+.avatar-tone-4 { background: color-mix(in srgb, var(--who-4) 16%, var(--bg-elev)); color: var(--who-4); }
+.avatar-tone-5 { background: color-mix(in srgb, var(--who-5) 16%, var(--bg-elev)); color: var(--who-5); }
+.avatar-tone-6 { background: color-mix(in srgb, var(--who-6) 16%, var(--bg-elev)); color: var(--who-6); }
+/* Группа и канал — скруглённым квадратом, человек — кругом: видно сразу, кто есть кто. */
+.avatar-group { border-radius: 8px; }
+
+/* ── панель чатов справа (Chat Bar) ─────────────────────────────────────────── */
+.chat-bar { width: 60px; }
+.chat-bar.expanded { width: 300px; box-shadow: var(--shadow-lg); }
+.bar-top, .bar-bottom { padding: 8px; gap: 2px; }
+.bar-icon { min-height: 40px; border-radius: var(--radius); }
+.bar-icon:hover { background: var(--hover); }
+.bar-search {
+  margin: 10px 8px 4px; height: 36px; border-color: var(--border-2); border-radius: var(--radius-sm);
+  background: var(--bg-elev); box-shadow: 0 1px 2px rgba(16,24,40,.04);
+}
+.bar-search:focus-within { border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+.bar-list { padding: 4px 8px; }
+.bar-section { font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); padding: 12px 8px 6px; }
+.bar-chat { gap: 10px; padding: 7px 8px; border-radius: var(--radius); }
+.bar-chat:hover { background: var(--hover); }
+.bar-chat.active { background: var(--accent-soft); }
+.bar-chat.active .bar-chat-title { color: var(--accent); font-weight: 600; }
+.bar-avatar, .bar-avatar .avatar-sm { width: 32px; height: 32px; }
+.bar-chat-title { font-size: var(--fs-md); font-weight: 500; }
+.bar-chat.unread .bar-chat-title { font-weight: 650; }
+.bar-chat-time { font-size: var(--fs-xs); }
+.bar-badge { background: var(--accent-2); color: var(--on-accent); border-color: var(--bg-elev); min-width: 18px; height: 18px; border-radius: 999px; }
+.bar-badge-inline { height: 20px; min-width: 20px; }
+.chat-bar:not(.expanded) .bar-list { padding: 4px 6px; }
+.chat-bar:not(.expanded) .bar-chat { justify-content: center; padding: 6px 0; }

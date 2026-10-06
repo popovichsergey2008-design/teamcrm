@@ -17,6 +17,7 @@ import { api } from '../lib/api';
 import type { Focus } from '../types';
 import { AppUpdateRow } from './AppUpdateRow';
 import { OptionSelect } from './ui/option-select';
+import { initialsOf } from '../lib/initials';
 
 /**
  * Левая панель — единственная навигация приложения.
@@ -415,7 +416,7 @@ export function Sidebar({
               aria-haspopup="menu"
               aria-expanded={menuOpen}
             >
-              <Avatar path={avatarPath} fallback={user.fullName?.[0] ?? '?'} className="avatar-sm" />
+              <Avatar path={avatarPath} fallback={initialsOf(user.fullName)} className="avatar-sm" />
               <span className={`nav-dot nav-dot-${focus?.kind ?? 'free'}`} aria-hidden="true" />
               <span className="nav-user-text">
                 <span className="nav-user-name">{user.fullName}</span>

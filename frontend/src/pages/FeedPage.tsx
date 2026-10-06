@@ -13,6 +13,7 @@ import { useAuth } from '../state/auth';
 import { overlayProps } from '../lib/overlay';
 import { OptionSelect } from '../components/ui/option-select';
 import { confirmAction } from '../components/ui/dialog';
+import { initialsOf } from '../lib/initials';
 
 interface Post {
   id: string;
@@ -440,7 +441,7 @@ function PostCard({ post, team, onOpen, onChanged }: {
       title="Открыть новость"
     >
       <header className="feed-post-head">
-        <Avatar path={post.authorAvatar} fallback={post.authorName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+        <Avatar path={post.authorAvatar} fallback={initialsOf(post.authorName)} className="avatar-sm" />
         <span className="feed-author">{post.authorName ?? 'Сотрудник'}</span>
         <span className="dim feed-time">{when(post.createdAt)}</span>
         {post.isPinned && <Icon name="flag" size={13} />}
@@ -539,7 +540,7 @@ function FeedAside({ onOpenPost }: { onOpenPost: (id: string) => void }) {
           <h4>🎂 Дни рождения</h4>
           {data.birthdays.map((b) => (
             <div key={b.userId} className={`feed-aside-person${b.inDays === 0 ? ' today' : ''}`}>
-              <Avatar path={b.avatarUrl} fallback={b.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+              <Avatar path={b.avatarUrl} fallback={initialsOf(b.fullName)} className="avatar-sm" />
               <span className="feed-aside-name">{b.fullName}</span>
               <span className="dim feed-time">{birthdayWhen(b)}</span>
             </div>
@@ -552,7 +553,7 @@ function FeedAside({ onOpenPost }: { onOpenPost: (id: string) => void }) {
           <h4><Icon name="user" size={14} /> Новые в команде</h4>
           {data.newcomers.map((n) => (
             <div key={n.userId} className="feed-aside-person">
-              <Avatar path={n.avatarUrl} fallback={n.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+              <Avatar path={n.avatarUrl} fallback={initialsOf(n.fullName)} className="avatar-sm" />
               <span className="feed-aside-name">{n.fullName}</span>
               <span className="dim feed-time">{n.positionName ?? ''}</span>
             </div>
@@ -702,7 +703,7 @@ function PostModal({ post, team, onChanged, onClose }: {
       onClick={(e) => e.stopPropagation()}
     >
       <header className="feed-post-head">
-        <Avatar path={post.authorAvatar} fallback={post.authorName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+        <Avatar path={post.authorAvatar} fallback={initialsOf(post.authorName)} className="avatar-sm" />
         <span className="feed-author">{post.authorName ?? 'Сотрудник'}</span>
         <span className="dim feed-time">{when(post.createdAt)}</span>
         {post.isPinned && <Icon name="flag" size={13} />}
@@ -799,7 +800,7 @@ function PostModal({ post, team, onChanged, onClose }: {
           )}
           {comments.map((c) => (
             <div key={c.id} className="feed-comment">
-              <Avatar path={c.avatarUrl} fallback={c.fullName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+              <Avatar path={c.avatarUrl} fallback={initialsOf(c.fullName)} className="avatar-sm" />
               <div>
                 <div className="feed-comment-head">
                   <b>{c.fullName}</b> <span className="dim feed-time">{when(c.createdAt)}</span>

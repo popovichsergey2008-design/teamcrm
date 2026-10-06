@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Avatar } from './Avatar';
 import { api } from '../lib/api';
 import { useAuth } from '../state/auth';
+import { initialsOf } from '../lib/initials';
 
 export interface Person {
   userId: string;
@@ -102,7 +103,7 @@ export function PeoplePicker({ exclude = [], chosen, onToggle, onSetAll, emptyHi
         {shown.map((p) => (
           <label key={p.userId} className="call-starter-row">
             <input type="checkbox" checked={chosen.has(p.userId)} onChange={() => onToggle(p.userId)} />
-            <Avatar path={p.avatarUrl} fallback={p.fullName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+            <Avatar path={p.avatarUrl} fallback={initialsOf(p.fullName)} className="avatar-sm" />
             <span className="call-starter-name">{p.fullName}</span>
           </label>
         ))}

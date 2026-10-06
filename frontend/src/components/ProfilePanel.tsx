@@ -15,6 +15,7 @@ import { DatePicker } from './DatePicker';
 import { useAuth } from '../state/auth';
 import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
+import { initialsOf } from '../lib/initials';
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients';
 
@@ -184,7 +185,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
         {tab === 'profile' && (
           <>
             <div className="avatar-row">
-              <Avatar path={me.avatarUrl} fallback={me.fullName?.[0] ?? '?'} className="avatar-lg" />
+              <Avatar path={me.avatarUrl} fallback={initialsOf(me.fullName)} className="avatar-lg" />
               <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => fileRef.current?.click()}>Загрузить фото</button>
               <input ref={fileRef} type="file" accept="image/*" hidden onChange={onAvatarPick} />
             </div>

@@ -8,6 +8,7 @@ import { presenceKind, presenceLabel } from '../../lib/presence';
 import { stampLabel } from '../../lib/chat-text';
 import type { SearchResults } from '../../types';
 import { PeoplePicker } from '../PeoplePicker';
+import { initialsOf } from '../../lib/initials';
 
 /** Строка списка чатов — то, что отдаёт GET /chats (см. ChatsPage). */
 export interface BarChat {
@@ -219,7 +220,7 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
         title={shown ? undefined : `${c.title ?? 'Чат'}${c.unread ? ` · ${c.unread} непрочитанных` : ''}`}
       >
         <span className="bar-avatar">
-          <Avatar path={c.avatarUrl ?? null} fallback={c.kind === 'dm' ? (c.title?.[0]?.toUpperCase() ?? '?') : '#'} className="avatar-sm" />
+          <Avatar path={c.avatarUrl ?? null} fallback={initialsOf(c.title)} className={`avatar-sm${c.kind === 'dm' ? '' : ' avatar-group'}`} />
           {kind && <span className={`bar-dot bar-dot-${kind}`} aria-hidden="true" />}
           {!shown && c.unread > 0 && <span className="bar-badge">{c.unread > 99 ? '99+' : c.unread}</span>}
         </span>
@@ -327,7 +328,7 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
               return (
                 <button key={u.id} className="bar-chat" onClick={() => openUser(String(u.id))} title="Написать">
                   <span className="bar-avatar">
-                    <Avatar path={u.avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+                    <Avatar path={u.avatarUrl ?? null} fallback={initialsOf(u.fullName)} className="avatar-sm" />
                     <span className={`bar-dot bar-dot-${kind}`} aria-hidden="true" />
                   </span>
                   <span className="bar-chat-main">

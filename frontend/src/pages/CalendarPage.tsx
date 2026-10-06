@@ -27,6 +27,7 @@ import { Field, Textarea } from '../components/ui/field';
 import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
 import { Toggle } from '../components/ui/toggle';
+import { initialsOf } from '../lib/initials';
 
 type View = 'day' | 'week' | 'month' | 'list';
 
@@ -1018,7 +1019,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
                 <label key={u.id} className="call-starter-row">
                   <input type="checkbox" checked={form.participantIds.includes(String(u.id))}
                          onChange={() => toggleParticipant(String(u.id))} />
-                  <Avatar path={u.avatarUrl ?? null} fallback={u.fullName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+                  <Avatar path={u.avatarUrl ?? null} fallback={initialsOf(u.fullName)} className="avatar-sm" />
                   <span className="call-starter-name">{u.fullName}</span>
                   {/* соорганизатор: впускает, начинает раньше, завершает — если организатор опаздывает */}
                   {isCall && form.participantIds.includes(String(u.id)) && (
@@ -1119,7 +1120,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
             <h3 className="tv2-section-title">Кто идёт</h3>
             {value.participants.map((p) => (
               <div key={p.userId} className="cal-participant">
-                <Avatar path={p.avatarUrl} fallback={p.fullName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+                <Avatar path={p.avatarUrl} fallback={initialsOf(p.fullName)} className="avatar-sm" />
                 <span className="call-starter-name">{p.fullName}</span>
                 <span className={`cal-status cal-status-${p.status}`}>
                   {p.isOrganizer ? 'организатор' : `${p.isCoOrganizer ? 'соорганизатор · ' : ''}${p.status === 'accepted' ? 'идёт' : p.status === 'declined' ? 'отказался' : 'не ответил'}`}

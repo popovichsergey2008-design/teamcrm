@@ -44,6 +44,7 @@ import { pasteBelongsHere, pasteInForeignField } from '../lib/paste-scope';
 import type { User } from '../types';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { confirmAction, promptText } from '../components/ui/dialog';
+import { initialsOf } from '../lib/initials';
 
 interface Chat {
   id: string; kind: 'dm' | 'group' | 'project' | 'channel' | 'self' | 'external'; title: string | null;
@@ -1842,7 +1843,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       label: 'Написать впервые', count: others.filter((u) => match(u.fullName)).length, unread: 0,
       rows: others.filter((u) => match(u.fullName)).map((u) => (
         <button key={u.id} className="chat-row" onClick={() => writeTo(u.id)}>
-          <Avatar path={u.avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+          <Avatar path={u.avatarUrl ?? null} fallback={initialsOf(u.fullName)} className="avatar-sm" />
           <span className="chat-row-main">
             <span className="chat-row-title">
               {u.fullName}
@@ -3544,13 +3545,13 @@ function ChatRow({ chat, active, group, onClick, onStar }: {
   /** Закрепить сверху. В списке из сорока переписок нужные четыре ищут глазами. */
   onStar?: () => void;
 }) {
-  const icon = chat.kind === 'dm' ? (chat.title?.[0]?.toUpperCase() ?? '?') : '#';
+  const icon = initialsOf(chat.title);
   return (
     <div className={`chat-row-wrap${active ? ' active' : ''}`}>
     <button className={`chat-row ${active ? 'active' : ''}`} onClick={onClick}>
       {/* у личного диалога — лицо собеседника: по десятку одинаковых кружков с буквой
           чат не находится взглядом, а по фотографии находится сразу */}
-      <Avatar path={chat.avatarUrl ?? null} fallback={icon} className="avatar-sm" />
+      <Avatar path={chat.avatarUrl ?? null} fallback={icon} className={`avatar-sm${chat.kind === 'dm' ? '' : ' avatar-group'}`} />
       <span className="chat-row-main">
         <span className="chat-row-title">
           {chat.kind === 'dm' && <span className={`presence ${chat.peerOnline ? 'on' : ''}`} />}

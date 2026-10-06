@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Avatar } from './Avatar';
 import { htmlToMd } from '../lib/rich-text';
 import { activeQuery, MentionUser, suggest } from '../lib/mentions';
+import { initialsOf } from '../lib/initials';
 
 /**
  * Поле с упоминаниями через `@`.
@@ -193,7 +194,7 @@ export function MentionField({
               >
                 {u.id === EVERYONE.id
                   ? <span className="avatar avatar-sm mention-all-icon" aria-hidden="true">@</span>
-                  : <Avatar path={u.avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />}
+                  : <Avatar path={u.avatarUrl ?? null} fallback={initialsOf(u.fullName)} className="avatar-sm" />}
                 <span className="mention-name">{u.fullName}</span>
                 {/* Роль в задаче: по одному имени не понять, к кому обращаться
                     с вопросом «когда будет», а к кому — «так делать?». */}

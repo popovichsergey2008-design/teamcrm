@@ -11,6 +11,7 @@ import { placePopover, PopoverPlace } from '../../lib/popover';
 import { toastSaved } from '../../lib/notifications';
 import { navigate } from '../../lib/router';
 import type { User } from '../../types';
+import { initialsOf } from '../../lib/initials';
 
 const KIND_LABEL: Record<string, string> = {
   dm: 'Личный диалог', group: 'Групповой чат', channel: 'Канал', project: 'Чат проекта',
@@ -307,7 +308,7 @@ function MembersBlock({ chatId, members, meId, manageable, ownerId, canCall, onW
             return (
               <div key={m.userId} className="ci-member">
                 <span className="bar-avatar">
-                  <Avatar path={m.avatarUrl} fallback={m.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+                  <Avatar path={m.avatarUrl} fallback={initialsOf(m.fullName)} className="avatar-sm" />
                   <span className={`bar-dot bar-dot-${kind}`} aria-hidden="true" />
                 </span>
                 <span className="ci-member-main">
@@ -413,7 +414,7 @@ function AddPeople({ chatId, users, members, onAdded }: { chatId: string; users:
             {candidates.slice(0, 40).map((u) => (
               <label key={u.id} className="ci-add-row">
                 <input type="checkbox" checked={picked.has(String(u.id))} onChange={(e) => setPicked((p) => { const n = new Set(p); if (e.target.checked) n.add(String(u.id)); else n.delete(String(u.id)); return n; })} />
-                <Avatar path={u.avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+                <Avatar path={u.avatarUrl ?? null} fallback={initialsOf(u.fullName)} className="avatar-sm" />
                 <span>{u.fullName}</span>
               </label>
             ))}
