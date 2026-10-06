@@ -16,6 +16,9 @@ import { useAuth } from '../../state/auth';
 import { getSocket } from '../../lib/socket';
 import { showNotification, showToast } from '../../lib/notifications';
 import { useStickyCheck } from '../../lib/sticky-checks';
+import { confirmAction } from '../ui/dialog';
+import { Tabs } from '../ui/tabs';
+import { Toggle } from '../ui/toggle';
 
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
   task: 'задача', project: 'проект', chat: 'чат', meeting: 'мит',
@@ -271,7 +274,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     : '';
 
   return (
-    <section className={`anthill${fullscreen ? ' anthill-full' : ''}`} aria-label="AnthillBot">
+    <section className={`anthill anthill-v2${fullscreen ? ' anthill-full' : ''}`} aria-label="AnthillBot">
       <div className="chat-head anthill-head">
         <span className="anthill-title">
           <span className="anthill-mark" aria-hidden="true"><Icon name="robot" size={16} /></span>
@@ -306,25 +309,19 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
         </span>
       </div>
 
-      <div className="anthill-tabs" role="tablist" aria-label="Разделы AnthillBot">
-        {([
+      <Tabs
+        className="anthill-tabs-v2"
+        ariaLabel="Разделы AnthillBot"
+        value={tab}
+        onValueChange={setTab}
+        items={([
           { key: 'chat', label: 'Разговор', icon: 'chat' },
           { key: 'tasks', label: 'Задачи', icon: 'clock' },
           { key: 'skills', label: 'Навыки', icon: 'sparkles' },
           { key: 'memory', label: 'Память', icon: 'book' },
           ...(canManage ? [{ key: 'responses', label: 'Ответы', icon: 'reply' }, { key: 'admin', label: 'Настройки', icon: 'settings' }] as const : []),
-        ] as const).map((t) => (
-          <button
-            key={t.key}
-            className={`anthill-tab${tab === t.key ? ' active' : ''}`}
-            onClick={() => setTab(t.key)}
-            role="tab"
-            aria-selected={tab === t.key}
-          >
-            <Icon name={t.icon} size={13} /> {t.label}
-          </button>
-        ))}
-      </div>
+        ] as const).map((t) => ({ value: t.key, label: <><Icon name={t.icon} size={14} /> {t.label}</> }))}
+      />
 
       {tab === 'tasks' && <AnthillTasks onOpenSession={(id) => { setTab('chat'); void openSession(id); }} />}
       {tab === 'skills' && (
@@ -345,7 +342,8 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
               </button>
               <button
                 className="msg-icon"
-                onClick={() => {
+                onClick={async () => {
+                  if (!(await confirmAction({ title: `Удалить разговор «${s.title}»?`, description: 'Переписка с AnthillBot пропадёт из истории.', danger: true }))) return;
                   api.anthillDelete(String(s.id))
                     .then(() => {
                       if (String(s.id) === sessionId) { setSessionId(null); setMessages([]); }
@@ -457,7 +455,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
           </div>
         )}
 
-        {err && <div className="error-text anthill-err">{err}</div>}
+        {err && <div className="tv2-callout tv2-callout-danger anthill-err" role="alert"><Icon name="alert" size={15} /> {err}</div>}
       </div>
       )}
 
@@ -491,10 +489,14 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
             </button>
           </div>
         )}
-        <label className="anthill-ctx anthill-deep" title="Несколько волн поиска и отчёт по разделам: выводы, факты, риски, рекомендации. Дольше и дороже обычного ответа.">
-          <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} />
-          <Icon name="search" size={12} /> Глубокий анализ
-        </label>
+        <Toggle
+          className="anthill-deep-v2"
+          pressed={deep}
+          onPressedChange={setDeep}
+          title="Несколько волн поиска и отчёт по разделам: выводы, факты, риски, рекомендации. Дольше и дороже обычного ответа."
+        >
+          <Icon name="search" size={13} /> Глубокий анализ
+        </Toggle>
         <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} hint="нажмите «стоп», когда закончите" />
         <div className="chat-input anthill-input">
           <textarea

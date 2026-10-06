@@ -16,6 +16,7 @@ import { platform } from '../platform';
 import { clampTo, useDragMove } from '../hooks/useDragMove';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { savedDevices } from './DeviceCheck';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Размер свёрнутого созвона по умолчанию.
@@ -920,7 +921,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           {hostRole && (
             <button
               className="ui-btn ui-btn-outline ui-btn-sm call-end-all"
-              onClick={() => { if (window.confirm('Завершить встречу для всех участников?')) client.current?.endForAll(); }}
+              onClick={async () => { if (await confirmAction({ title: 'Завершить встречу для всех?', description: 'Все участники выйдут из созвона, а войти снова сможет только организатор.', confirmLabel: 'Завершить для всех', danger: true })) client.current?.endForAll(); }}
               title="Завершить встречу для всех: созвон закончится у каждого"
             >
               <Icon name="phone-off" size={15} />

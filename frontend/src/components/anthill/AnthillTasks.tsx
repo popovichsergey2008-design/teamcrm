@@ -3,6 +3,7 @@ import { Icon } from '../Icon';
 import { api, ApiError } from '../../lib/api';
 import type { AnthillActionRow, AnthillSchedule } from '../../lib/api';
 import { stampLabel } from '../../lib/chat-text';
+import { confirmAction } from '../ui/dialog';
 
 const GROUPS: { key: string; title: string }[] = [
   { key: 'active', title: 'Активные' },
@@ -81,7 +82,7 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
   };
 
   const remove = async (row: AnthillSchedule) => {
-    if (!window.confirm(`Удалить «${row.title}»? Задача перестанет выполняться.`)) return;
+    if (!(await confirmAction({ title: `Удалить «${row.title}»?`, description: 'Регулярная задача перестанет выполняться.', danger: true }))) return;
     setErr('');
     try { await api.anthillDeleteSchedule(row.id); load(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось удалить'); }

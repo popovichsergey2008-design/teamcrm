@@ -3,6 +3,7 @@ import { Icon } from '../Icon';
 import { api, ApiError } from '../../lib/api';
 import type { AnthillResponse } from '../../lib/api';
 import { OptionSelect } from '../ui/option-select';
+import { confirmAction } from '../ui/dialog';
 
 const SCOPE_LABEL: Record<string, string> = { all: 'везде', channels: 'в группах и каналах', dms: 'в личных' };
 const EMPTY = {
@@ -113,7 +114,7 @@ export function AnthillResponses() {
                 <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(row.id)}><Icon name="edit" size={13} /> Править</button>
                 <button
                   className="msg-icon"
-                  onClick={() => { if (window.confirm(`Удалить быстрый ответ «${row.trigger}»?`)) void act(api.anthillDeleteResponse(row.id)); }}
+                  onClick={async () => { if (await confirmAction({ title: `Удалить быстрый ответ «${row.trigger}»?`, danger: true })) void act(api.anthillDeleteResponse(row.id)); }}
                   title="Удалить" aria-label="Удалить"
                 ><Icon name="trash" size={13} /></button>
               </div>

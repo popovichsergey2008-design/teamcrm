@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../Icon';
 import { api, ApiError } from '../../lib/api';
 import type { AnthillSkill } from '../../lib/api';
+import { confirmAction } from '../ui/dialog';
 
 const EMPTY = { name: '', whenToUse: '', steps: '', output: '', visibility: 'private' as 'private' | 'company' };
 
@@ -92,7 +93,7 @@ export function AnthillSkills({ onRun }: { onRun?: (skill: AnthillSkill) => void
                 </button>
                 <button
                   className="msg-icon"
-                  onClick={() => { if (window.confirm(`Удалить навык «${row.name}»?`)) void act(api.anthillDeleteSkill(row.id)); }}
+                  onClick={async () => { if (await confirmAction({ title: `Удалить навык «${row.name}»?`, danger: true })) void act(api.anthillDeleteSkill(row.id)); }}
                   title="Удалить" aria-label="Удалить"
                 ><Icon name="trash" size={13} /></button>
               </>
