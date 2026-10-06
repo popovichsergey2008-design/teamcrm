@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../Icon';
 import { api, ApiError } from '../../lib/api';
 import type { AnthillResponse } from '../../lib/api';
+import { OptionSelect } from '../ui/option-select';
 
 const SCOPE_LABEL: Record<string, string> = { all: 'везде', channels: 'в группах и каналах', dms: 'в личных' };
 const EMPTY = {
@@ -53,18 +54,18 @@ export function AnthillResponses() {
           <div className="anthill-resp-opts">
             <label className="anthill-form-row">
               <span className="dim">Как сравнивать</span>
-              <select className="input" value={draft.matchKind} onChange={(e) => setDraft({ ...draft, matchKind: e.target.value as 'keyword' | 'exact' })}>
+              <OptionSelect className="input" value={draft.matchKind} onChange={(e) => setDraft({ ...draft, matchKind: e.target.value as 'keyword' | 'exact' })}>
                 <option value="keyword">по ключевым словам</option>
                 <option value="exact">точное совпадение фразы</option>
-              </select>
+              </OptionSelect>
             </label>
             <label className="anthill-form-row">
               <span className="dim">Где</span>
-              <select className="input" value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as 'all' | 'channels' | 'dms' })}>
+              <OptionSelect className="input" value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as 'all' | 'channels' | 'dms' })}>
                 <option value="all">везде</option>
                 <option value="channels">в группах и каналах</option>
                 <option value="dms">в личных</option>
-              </select>
+              </OptionSelect>
             </label>
           </div>
           <label className="anthill-ctx" title="Иначе ответ приходит только когда бота позвали через @">

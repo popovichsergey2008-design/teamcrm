@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { OptionSelect } from './ui/option-select';
 
 const STATUS: Record<string, string> = { active: 'активная', testing: 'тест', draft: 'черновик', deprecated: 'снята' };
 
@@ -99,11 +100,11 @@ export function PromptsSection() {
       {msg && <div className="dim">{msg}</div>}
 
       <div className="drawer-section-title">Промпт</div>
-      <select className="input" value={key ?? ''} onChange={(e) => setKey(e.target.value)}>
+      <OptionSelect className="input" value={key ?? ''} onChange={(e) => setKey(e.target.value)}>
         {templates.map((t) => (
           <option key={t.key} value={t.key}>{t.title} {t.customized ? '(изменён)' : ''} · v{t.activeVersion ?? '—'}</option>
         ))}
-      </select>
+      </OptionSelect>
 
       {data && (
         <>

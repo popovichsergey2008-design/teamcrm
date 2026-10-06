@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * Управление клиентами портала: компании, приглашения, привязка проектов.
@@ -59,10 +60,10 @@ export function ClientsPanel({ onClose, embedded = false }: { onClose?: () => vo
       {projects.map((p) => (
         <div key={p.id} className="team-rate" style={{ marginBottom: 4 }}>
           <span style={{ flex: 1, fontSize: 13 }}>{p.name}</span>
-          <select className="input" defaultValue="" onChange={(e) => assign(p.id, e.target.value)}>
+          <OptionSelect className="input" defaultValue="" onChange={(e) => assign(p.id, e.target.value)}>
             <option value="">— клиент —</option>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          </OptionSelect>
         </div>
       ))}
 

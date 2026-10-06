@@ -724,3 +724,79 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 /* Окна-колонки заданной высоты: блоки внутри не сжимаются, а прокручивается окно целиком.
    Без этого список участников события сжимался до одной обрезанной строки. */
 .ev-v2 > *, .nl-v2 > *, .task-v2:not(.drawer-task-chat) .task-main > * { flex-shrink: 0; }
+
+/* Бывший <select class="input"> (OptionSelect): во всю ширину поля, как раньше. */
+.ui-select-fill { width: 100%; max-width: none; min-width: 0; }
+
+/* ── пустое состояние (EmptyState по всему приложению) — как ui-empty ─────── */
+.empty-icon { width: 44px; height: 44px; border-radius: 12px; border: 0; background: var(--bg-elev-2); color: var(--text-mut); }
+.empty-title { font-weight: 600; }
+
+/* ── «Фокус дня» (ТЗ-15) ────────────────────────────────────────────────────── */
+.focus-v2 { padding: 24px 28px; gap: 4px; }
+.focus-v2 .focus-hello { font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+.focus-v2 .focus-head { margin-bottom: 16px; }
+.focus-v2 .focus-progress-box { min-width: 240px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.focus-v2 .focus-progress span { background: var(--ok); }
+.focus-v2 .focus-columns { gap: 20px; margin-top: 8px; }
+.focus-v2 .focus-col { gap: 8px; }
+.focus-v2 .focus-col-head { font-size: var(--fs-md); color: var(--text); padding: 4px 0 8px; }
+.focus-v2 .focus-col-head .icon { color: var(--text-mut); }
+.focus-v2 .focus-col-count { background: var(--bg-elev); border: 1px solid var(--border); font-weight: 600; min-width: 22px; text-align: center; }
+.focus-v2 .focus-card {
+  gap: 8px; padding: 12px 14px; border-radius: var(--radius); box-shadow: 0 1px 2px rgba(16,24,40,.05);
+  transition: border-color .12s, box-shadow .12s;
+}
+.focus-v2 .focus-card:hover { border-color: var(--border-2); box-shadow: 0 2px 8px rgba(16,24,40,.08); }
+.focus-v2 .focus-card-late { border-left: 3px solid var(--danger); }
+.focus-v2 .focus-card-title { font-size: var(--fs-md); font-weight: 500; line-height: 1.4; }
+.focus-v2 .focus-card-meta { gap: 6px; }
+.focus-v2 .focus-plan { gap: 6px; }
+.focus-v2 .focus-check { color: var(--text-mut); }
+.focus-v2 .focus-more { align-self: flex-start; color: var(--text-dim); }
+@media (max-width: 720px) {
+  .focus-v2 { padding: 16px; }
+  .focus-v2 .focus-hello { font-size: 19px; }
+  .focus-v2 .focus-progress-box { min-width: 0; width: 100%; }
+}
+
+/* ── заголовок страницы, шторки панелей, вкладки прежней разметки (ТЗ-15) ───── */
+.page-head { min-height: 60px; padding: 14px 28px; background: var(--bg-elev); }
+.page-head h2 { font-size: 20px; font-weight: 650; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
+
+/* Шторка-панель: шапка крупнее, разделы — обычным регистром, отступы ровные. */
+.drawer { padding: 20px 22px; }
+.drawer-head { min-height: 32px; margin-bottom: 14px; }
+.drawer-head h3 { display: flex; align-items: center; gap: 8px; font-size: var(--fs-lg); font-weight: 650; }
+.drawer-section-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 18px 0 10px; }
+.drawer-section { border-top-color: var(--border); }
+
+.tabs { gap: 4px; margin: 4px 0 16px; }
+.tab { height: 38px; padding: 0 12px; font-size: var(--fs-sm); font-weight: 500; border-bottom-width: 2px; border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.tab:hover { color: var(--text); }
+.tab.active { border-bottom-color: var(--accent-2); }
+
+.add-area { border-radius: var(--radius); padding: 12px 14px 4px; }
+.menu-pop { border-color: var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 4px; }
+.menu-item { min-height: 32px; padding: 6px 8px; font-size: var(--fs-sm); }
+.menu-item:hover { background: var(--hover); }
+
+/* Главная настроек: карточки с иконкой в плитке. */
+.settings-grid { gap: 12px; padding: 24px 28px; }
+.settings-card {
+  border-radius: var(--radius-lg); padding: 16px 18px; gap: 6px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.05); transition: border-color .12s, box-shadow .12s;
+}
+.settings-card:hover { border-color: var(--border-2); box-shadow: 0 4px 14px rgba(16,24,40,.08); }
+.settings-card-icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin-bottom: 4px;
+  border-radius: 10px; background: var(--accent-soft); color: var(--accent);
+}
+.settings-card-title { font-size: var(--fs-md); }
+.settings-card-hint { line-height: 1.5; }
+
+@media (max-width: 720px) {
+  .page-head { padding: 12px 16px; }
+  .settings-grid { padding: 16px; }
+  .drawer { padding: 14px; }
+}

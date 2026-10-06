@@ -7,6 +7,7 @@ import { navigate } from '../lib/router';
 import { stampLabel } from '../lib/chat-text';
 import type { IconName } from './Icon';
 import type { ChatAnalysisAction, ChatAnalysisRun, ChatAnalysisSettings, ChatAnalysisStats, Decision } from '../types';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * «Разбор переписки» в настройках (ТЗ-12, этапы 1–5).
@@ -269,14 +270,14 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
             </label>
             <label className="field ca-quiet">
               <span>Считать разговор законченным после тишины</span>
-              <select
+              <OptionSelect
                 className="input"
                 value={cfg.quiet_minutes}
                 disabled={!canManage || busy}
                 onChange={(e) => void save({ quietMinutes: Number(e.target.value) })}
               >
                 {[10, 15, 20, 30, 45, 60].map((m) => <option key={m} value={m}>{m} минут</option>)}
-              </select>
+              </OptionSelect>
             </label>
             {/*
               Вопрос в чате видят все участники — это должно быть решением владельца,
@@ -416,14 +417,14 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
               </label>
               <label className="field ca-quiet">
                 <span>Во сколько (по времени компании)</span>
-                <select
+                <OptionSelect
                   className="input"
                   value={cfg.daily_hour}
                   disabled={!canManage || busy || !cfg.enabled || !cfg.daily_enabled}
                   onChange={(e) => void save({ dailyHour: Number(e.target.value) })}
                 >
                   {[18, 19, 20, 21, 22, 23].map((h) => <option key={h} value={h}>{h}:00</option>)}
-                </select>
+                </OptionSelect>
               </label>
               <label className={`gate-item${canManage ? '' : ' gate-item-ro'}`}>
                 <input
@@ -529,7 +530,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                 {a.action_type === 'task' && !a.created_entity_id && !['rejected', 'cancelled'].includes(a.status) && (
                   <div className="ca-fix">
                     {!a.project_id && (
-                      <select
+                      <OptionSelect
                         className="input"
                         aria-label="Проект задачи"
                         value={patch[a.id]?.projectId ?? ''}
@@ -537,10 +538,10 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                       >
                         <option value="">Проект не выбран</option>
                         {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
+                      </OptionSelect>
                     )}
                     {!a.assignee_id && (
-                      <select
+                      <OptionSelect
                         className="input"
                         aria-label="Исполнитель задачи"
                         value={patch[a.id]?.assigneeId ?? ''}
@@ -548,7 +549,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                       >
                         <option value="">Исполнитель не выбран</option>
                         {people.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                      </select>
+                      </OptionSelect>
                     )}
                   </div>
                 )}

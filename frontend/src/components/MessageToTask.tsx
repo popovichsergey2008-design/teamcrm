@@ -6,6 +6,7 @@ import { overlayProps } from '../lib/overlay';
 import { humanSize } from '../lib/attachments';
 import { TaskTagsField } from './TaskTagsField';
 import { EMPTY_TAGS, tagsReady, TagsValue } from '../lib/tags';
+import { OptionSelect } from './ui/option-select';
 
 /** Черновик задачи из сообщения — то, что отдаёт сервер и правит человек. */
 export interface MessageTaskDraft {
@@ -218,18 +219,18 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
             </div>
             <div className="field">
               <label>Проект</label>
-              <select className="input" value={draft.projectId ?? ''} onChange={(e) => void patch({ projectId: e.target.value || null })}>
+              <OptionSelect className="input" value={draft.projectId ?? ''} onChange={(e) => void patch({ projectId: e.target.value || null })}>
                 <option value="">— выберите —</option>
                 {ctx.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              </OptionSelect>
             </div>
             <div className="drawer-row">
               <div className="field" style={{ flex: '1 1 200px', minWidth: 0 }}>
                 <label>Исполнитель</label>
-                <select className="input" value={draft.assigneeId ?? ''} onChange={(e) => void patch({ assigneeId: e.target.value || null })}>
+                <OptionSelect className="input" value={draft.assigneeId ?? ''} onChange={(e) => void patch({ assigneeId: e.target.value || null })}>
                   <option value="">— не назначен —</option>
                   {ctx.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
+                </OptionSelect>
                 {/* Почему предложен именно он — строкой под полем: в подписи длинное
                     объяснение рвало ряд на три строки и сплющивало сам выбор. */}
                 {draft.assigneeReason && <span className="dim nl-hint">{draft.assigneeReason}</span>}
@@ -245,12 +246,12 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
               </div>
               <div className="field" style={{ flex: 1 }}>
                 <label>Приоритет</label>
-                <select className="input" value={draft.priority} onChange={(e) => void patch({ priority: e.target.value })}>
+                <OptionSelect className="input" value={draft.priority} onChange={(e) => void patch({ priority: e.target.value })}>
                   <option value="low">Низкий</option>
                   <option value="normal">Обычный</option>
                   <option value="high">Высокий</option>
                   <option value="urgent">Срочный</option>
-                </select>
+                </OptionSelect>
               </div>
             </div>
 

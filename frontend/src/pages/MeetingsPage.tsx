@@ -7,6 +7,7 @@ import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import type { Project, User } from '../types';
 import { toastSaved } from '../lib/notifications';
+import { OptionSelect } from '../components/ui/option-select';
 
 const STATUS_LABEL: Record<string, string> = {
   queued: 'В очереди',
@@ -94,10 +95,10 @@ export function MeetingsPage({ onEnterGuestMeet }: { onEnterGuestMeet: (roomId: 
       <div className="add-user" style={{ maxWidth: 620 }}>
         <input className="input add-user-input" placeholder="Название встречи" value={form.title}
                onChange={(e) => setForm({ ...form, title: e.target.value })} />
-        <select className="input" value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
+        <OptionSelect className="input" value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
           <option value="">— проект для задач (необязательно) —</option>
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        </OptionSelect>
         <label className={`ui-btn ui-btn-primary ui-btn-sm ${busy ? 'disabled' : ''}`} style={{ width: '100%', textAlign: 'center', cursor: 'pointer' }}>
           {busy ? 'Загружаю…' : <><Icon name="paperclip" size={15} /> Выбрать файл записи или субтитров</>}
           <input type="file" hidden disabled={busy} accept="audio/*,video/*,.vtt,.srt"
@@ -399,14 +400,14 @@ function DraftRow({ draft, projects, users, onApply, onReject, onSaved }: {
       {err && <div className="error-text" style={{ fontSize: 12 }}>{err}</div>}
 
       <div className="drawer-grid2" style={{ marginTop: 4 }}>
-        <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} aria-label="Исполнитель">
+        <OptionSelect className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} aria-label="Исполнитель">
           <option value="">— исполнитель —</option>
           {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-        </select>
-        <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Проект">
+        </OptionSelect>
+        <OptionSelect className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Проект">
           <option value="">— проект —</option>
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        </OptionSelect>
       </div>
 
       <div className="team-rate" style={{ marginTop: 4 }}>

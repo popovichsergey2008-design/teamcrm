@@ -5,6 +5,7 @@ import { api, ApiError, ReportKpi, ReportSummary } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { platform } from '../platform';
+import { OptionSelect } from './ui/option-select';
 
 type Preset = 'week' | 'prevweek' | 'month' | 'prevmonth' | 'quarter' | 'prevquarter' | 'year' | 'custom';
 
@@ -165,15 +166,15 @@ export function ReportsPanel({ canManage, onClose }: { canManage: boolean; onClo
 
         <div className="drawer-section-title">Что включить</div>
         <div className="reports-filters">
-          <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Проект">
+          <OptionSelect className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Проект">
             <option value="">Все проекты</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          </OptionSelect>
           {canManage ? (
-            <select className="input" value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="Исполнитель">
+            <OptionSelect className="input" value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="Исполнитель">
               <option value="">Все сотрудники</option>
               {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            </OptionSelect>
           ) : (
             <div className="dim reports-mine"><Icon name="user" size={14} /> Только ваши задачи</div>
           )}

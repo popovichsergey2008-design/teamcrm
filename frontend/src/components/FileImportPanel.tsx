@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, ImportPreview, ImportStats } from '../lib/api';
 import type { Project } from '../types';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * Импорт задач из файла (CSV/Excel).
@@ -158,13 +159,13 @@ export function FileImportPanel() {
                 В существующий
               </label>
               {target.mode === 'existing' && (
-                <select
+                <OptionSelect
                   className="input" value={target.projectId}
                   onChange={(e) => setTarget((t) => ({ ...t, projectId: e.target.value }))}
                 >
                   <option value="">— выберите проект —</option>
                   {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                </OptionSelect>
               )}
             </div>
             <div className="dim">
@@ -188,7 +189,7 @@ export function FileImportPanel() {
                         <span className="dim">{f.hint}</span>
                       </td>
                       <td>
-                        <select
+                        <OptionSelect
                           className="input"
                           value={value === undefined ? '' : String(value)}
                           onChange={(e) => setMapping((m) => {
@@ -202,7 +203,7 @@ export function FileImportPanel() {
                           {preview.headers.map((h, i) => (
                             <option key={i} value={i}>{h}</option>
                           ))}
-                        </select>
+                        </OptionSelect>
                         {conflict && <span className="error-text">эта колонка уже занята полем «{conflict}»</span>}
                       </td>
                       <td className="import-map-sample dim">

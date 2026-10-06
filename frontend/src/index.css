@@ -281,11 +281,13 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
 
 /* ───── базовые компоненты ───── */
 
+/* Прежняя кнопка — для того немногого, что собирает класс в коде (ТЗ-15: остальное — ui-btn). */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
-  border: 1px solid var(--border-2); background: var(--bg-elev-2); color: var(--text);
-  padding: var(--sp-2) 14px; border-radius: var(--radius-sm); cursor: pointer;
-  transition: background .15s, border-color .15s, color .15s, opacity .15s; font-weight: 500;
+  border: 1px solid var(--border); background: var(--bg-elev); color: var(--text);
+  padding: 7px 14px; border-radius: var(--radius-sm); cursor: pointer; line-height: 1.2;
+  transition: background .12s, border-color .12s, color .12s, opacity .12s; font-weight: 500;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04);
 }
 .btn:hover:not(:disabled) { border-color: var(--border-2); background: var(--hover); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
@@ -304,20 +306,23 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
 .btn-icon { padding: 6px; width: 32px; height: 32px; }
 .btn-icon.btn-sm { padding: 4px; width: 28px; height: 28px; }
 
+/* Поле ввода прежней разметки — в том же виде, что ui-input (ТЗ-15): формы, которые ещё
+   не переписаны на компоненты, выглядят так же, как переписанные. */
 .input {
-  width: 100%; padding: 10px var(--sp-3); border-radius: var(--radius-sm);
+  width: 100%; min-height: 36px; padding: 8px 12px; border-radius: var(--radius-sm);
   background: var(--bg-elev); border: 1px solid var(--border-2); color: var(--text);
-  outline: none; transition: border-color .15s, box-shadow .15s;
+  outline: none; transition: border-color .12s, box-shadow .12s;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04); line-height: 1.4;
 }
-.input:hover:not(:disabled) { border-color: var(--text-mut); }
-.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.input:hover:not(:disabled) { border-color: var(--border-2); }
+.input:focus { border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
 .input:disabled { opacity: .6; cursor: not-allowed; }
 .input::placeholder { color: var(--text-mut); }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-.field label { color: var(--text-dim); font-size: var(--fs-sm); }
+.field label { color: var(--text); font-size: var(--fs-sm); font-weight: 500; }
 
-.card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); }
+.card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
 
 /*
  * Плашки залиты плотным цветом, текст — белый. Прежняя схема (бледная подложка +
@@ -326,19 +331,23 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
  * В тёмной теме заливки свои: --danger/--warn/--ok там пастельные, они задуманы
  * как цвет текста на тёмном фоне, и белое по ним не читается.
  */
+/*
+ * Плашки прежней разметки — мягкие, как ui-badge (ТЗ-15): подложка тона и текст того же
+ * тона. Контраст проверяет npm run contrast по обеим темам — так же, как у ui-badge.
+ */
 .badge {
-  display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs);
-  padding: 2px var(--sp-2); border-radius: 999px; white-space: nowrap;
-  background: var(--fill-muted); color: var(--on-fill); border: 1px solid transparent;
+  display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs); font-weight: 500;
+  height: 20px; padding: 0 7px; border-radius: 999px; white-space: nowrap;
+  background: var(--bg-elev-2); color: var(--text-dim); border: 1px solid transparent;
 }
 .badge-role { text-transform: capitalize; }
 /* единая палитра статусов: успех / внимание / ошибка / инфо / приглушённый */
-.badge-ok      { background: var(--fill-ok); }
-.badge-warn    { background: var(--fill-warn); }
-.badge-danger  { background: var(--fill-danger); }
-.badge-info    { background: var(--fill-info); }
-.badge-muted   { background: var(--fill-muted); }
-.badge-blocked { background: var(--fill-danger); }
+.badge-ok      { background: var(--ok-soft); color: var(--ok); }
+.badge-warn    { background: var(--warn-soft); color: var(--warn); }
+.badge-danger  { background: var(--danger-soft); color: var(--danger); }
+.badge-info    { background: var(--accent-soft); color: var(--accent); }
+.badge-muted   { background: var(--bg-elev-2); color: var(--text-dim); }
+.badge-blocked { background: var(--danger-soft); color: var(--danger); }
 
 .error-text { color: var(--danger); font-size: var(--fs-sm); min-height: 18px; }
 .muted { color: var(--text-mut); }

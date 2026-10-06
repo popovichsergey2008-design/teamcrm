@@ -4,6 +4,7 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { OptionSelect } from './ui/option-select';
 
 /** База знаний (Этап 5, K1): семантический поиск + регламенты + реиндекс. */
 export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onClose: () => void }) {
@@ -39,10 +40,10 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
   };
 
   const ScopeSelect = () => (
-    <select className="input" style={{ maxWidth: 220 }} value={scope} onChange={(e) => setScope(e.target.value)} title="Разрез базы знаний">
+    <OptionSelect className="input" style={{ maxWidth: 220 }} value={scope} onChange={(e) => setScope(e.target.value)} title="Разрез базы знаний">
       <option value="">Вся организация</option>
       {projects.map((p) => <option key={p.id} value={p.id}>Проект: {p.name}</option>)}
-    </select>
+    </OptionSelect>
   );
 
   // поиск
@@ -245,13 +246,13 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
           <>
             <div className="team-rate">
               <ScopeSelect />
-              <select className="input" style={{ maxWidth: 180 }} value={srcType} onChange={(e) => setSrcType(e.target.value)}>
+              <OptionSelect className="input" style={{ maxWidth: 180 }} value={srcType} onChange={(e) => setSrcType(e.target.value)}>
                 <option value="">Все типы</option>
                 <option value="task">Задачи</option>
                 <option value="comment">Комментарии</option>
                 <option value="gdoc">Google-доки</option>
                 <option value="regulation">Регламенты</option>
-              </select>
+              </OptionSelect>
             </div>
             <div className="team-rate">
               <input className="input" placeholder="Поиск по названию…" value={srcQ} onChange={(e) => setSrcQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && loadSources(true)} />

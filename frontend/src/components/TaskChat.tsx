@@ -27,6 +27,7 @@ import { warmPalette } from '../lib/emoji-palette';
 import { requestCall } from '../lib/notifications';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { confirmAction } from './ui/dialog';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * Цвет имени автора.
@@ -1080,7 +1081,7 @@ export function TaskChat({
           </span>
           <label className="chat-pop-add">
             <Icon name="user-plus" size={14} />
-            <select
+            <OptionSelect
               className="input"
               value=""
               onChange={(e) => {
@@ -1094,7 +1095,7 @@ export function TaskChat({
               {users
                 .filter((u) => !people.some((p) => p.id === String(u.id)))
                 .map((u) => <option key={u.id} value={String(u.id)}>{u.fullName}</option>)}
-            </select>
+            </OptionSelect>
           </label>
         </div>
       )}

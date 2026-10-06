@@ -4,6 +4,7 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { OptionSelect } from './ui/option-select';
 
 /** Авто-задачи из переписок: каналы приёма (вебхук) + голосовые заметки + ревью черновиков задач. */
 export function InboxPanel({ onClose }: { onClose: () => void }) {
@@ -141,17 +142,17 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
                   <div className="dim" style={{ fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 80, overflow: 'auto', margin: '4px 0', opacity: 0.7 }}>{(it.body ?? '').slice(0, 400)}</div>
                   <input className="input" placeholder="Название задачи" value={e.title ?? ''} onChange={(ev) => setEdit(it.id, { title: ev.target.value })} />
                   <div className="team-rate" style={{ marginTop: 6 }}>
-                    <select className="input" value={e.projectId ?? ''} onChange={(ev) => setEdit(it.id, { projectId: ev.target.value })}>
+                    <OptionSelect className="input" value={e.projectId ?? ''} onChange={(ev) => setEdit(it.id, { projectId: ev.target.value })}>
                       <option value="">— проект —</option>
                       {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                    <select className="input" value={e.assigneeId ?? ''} onChange={(ev) => setEdit(it.id, { assigneeId: ev.target.value })}>
+                    </OptionSelect>
+                    <OptionSelect className="input" value={e.assigneeId ?? ''} onChange={(ev) => setEdit(it.id, { assigneeId: ev.target.value })}>
                       <option value="">— исполнитель —</option>
                       {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-                    </select>
-                    <select className="input" value={e.priority ?? 'normal'} onChange={(ev) => setEdit(it.id, { priority: ev.target.value })}>
+                    </OptionSelect>
+                    <OptionSelect className="input" value={e.priority ?? 'normal'} onChange={(ev) => setEdit(it.id, { priority: ev.target.value })}>
                       <option value="low">Низкий</option><option value="normal">Обычный</option><option value="high">Высокий</option><option value="urgent">Срочный</option>
-                    </select>
+                    </OptionSelect>
                   </div>
                   <div className="team-rate" style={{ marginTop: 6 }}>
                     <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => confirmItem(it.id)}>Создать задачу</button>
@@ -168,10 +169,10 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
             <div className="drawer-section-title">Новый канал приёма</div>
             <div className="add-user">
               <input className="input add-user-input" placeholder="Название (напр. «Почта продаж»)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
-              <select className="input" value={form.defaultProjectId} onChange={(e) => setForm({ ...form, defaultProjectId: e.target.value })}>
+              <OptionSelect className="input" value={form.defaultProjectId} onChange={(e) => setForm({ ...form, defaultProjectId: e.target.value })}>
                 <option value="">Проект по умолчанию (необязательно)</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              </OptionSelect>
               <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%' }} onClick={createSource}>Создать канал</button>
             </div>
             <div className="drawer-section-title">Каналы ({sources.length})</div>

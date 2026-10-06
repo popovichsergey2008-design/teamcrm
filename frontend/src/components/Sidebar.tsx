@@ -16,6 +16,7 @@ import { humanMinutes } from './SecretaryPanel';
 import { api } from '../lib/api';
 import type { Focus } from '../types';
 import { AppUpdateRow } from './AppUpdateRow';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * Левая панель — единственная навигация приложения.
@@ -444,7 +445,7 @@ export function Sidebar({
                 {/* Пространство — здесь же: переключить или создать. Переименовать — в профиле, у создателя. */}
                 <div className="menu-theme">
                   <span className="dim">Пространство</span>
-                  <select
+                  <OptionSelect
                     className="input nav-org-select"
                     value={user.tenantId}
                     onChange={(e) => { setMenuOpen(false); onSwitchOrg(e.target.value); }}
@@ -457,7 +458,7 @@ export function Sidebar({
                     ))}
                     {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
                     <option value="__new__">+ Создать пространство…</option>
-                  </select>
+                  </OptionSelect>
                 </div>
                 {/* Свой статус для коллег — только руками (решение заказчика):
                     «занят» ставят нарочно, чтобы к тебе не шли, и снимают сами. */}

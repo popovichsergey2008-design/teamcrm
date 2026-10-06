@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { OptionSelect } from './ui/option-select';
 
 interface GuestLink {
   id: string;
@@ -104,13 +105,13 @@ export function GuestMeetsPanel({ onEnter }: { onEnter: (roomId: string) => void
           placeholder="Для кого — например, «ООО Вектор»"
           maxLength={120}
         />
-        <select className="input" value={ttl} onChange={(e) => setTtl(e.target.value)} aria-label="Срок действия">
+        <OptionSelect className="input" value={ttl} onChange={(e) => setTtl(e.target.value)} aria-label="Срок действия">
           <option value="4">4 часа</option>
           <option value="24">Сутки</option>
           <option value="72">3 дня</option>
           <option value="168">Неделя</option>
           <option value="720">30 дней</option>
-        </select>
+        </OptionSelect>
         <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={create} disabled={busy}>
           <Icon name="plus" size={15} /> Создать ссылку
         </button>

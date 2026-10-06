@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { OptionSelect } from './ui/option-select';
 
 /** BYOK: ключи ИИ-провайдеров (шифруются на сервере) + выбор модели чата. Встраивается в «Интеграции». */
 export function AiSettingsSection() {
@@ -63,10 +64,10 @@ export function AiSettingsSection() {
 
         <div className="drawer-section-title">Модель ответов ИИ (Brain)</div>
         <div className="team-rate">
-          <select className="input" value={brainModel} onChange={(e) => setBrainModel(e.target.value)}>
+          <OptionSelect className="input" value={brainModel} onChange={(e) => setBrainModel(e.target.value)}>
             <option value="">по умолчанию</option>
             {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}</option>)}
-          </select>
+          </OptionSelect>
           <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => save({ brainModel })}>Применить</button>
         </div>
 

@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { PROJECTS_CHANGED } from './ProjectsNav';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * Настройки проекта.
@@ -257,7 +258,7 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
               ))}
               {!members.length && <span className="dim">Пока никого — добавьте людей ниже.</span>}
             </div>
-            <select
+            <OptionSelect
               className="input"
               value=""
               onChange={(e) => { void addMember(e.target.value); e.currentTarget.value = ''; }}
@@ -268,16 +269,16 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
               {people
                 .filter((u) => !members.some((m) => String(m.user_id) === String(u.id)))
                 .map((u) => <option key={u.id} value={String(u.id)}>{u.fullName}</option>)}
-            </select>
+            </OptionSelect>
           </div>
         )}
 
         <div className="drawer-section">
           <div className="drawer-section-title">Ответственный</div>
-          <select className="input" value={owner} disabled={busy} onChange={(e) => changeOwner(e.target.value)} aria-label="Ответственный за проект">
+          <OptionSelect className="input" value={owner} disabled={busy} onChange={(e) => changeOwner(e.target.value)} aria-label="Ответственный за проект">
             <option value="">— не назначен —</option>
             {people.map((u) => <option key={u.id} value={String(u.id)}>{u.fullName}</option>)}
-          </select>
+          </OptionSelect>
           <p className="dim">К нему идут с вопросами «что по проекту»; показывается в шапке чата проекта и в сведениях.</p>
         </div>
 

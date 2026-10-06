@@ -12,6 +12,7 @@ import type {
   FunnelReport, PlatformCandidate, PlatformStaff, PlatformTenant,
   SupportEscalation, SupportHandbook, SupportQueueFilter, SupportQueueItem,
 } from '../types';
+import { OptionSelect } from '../components/ui/option-select';
 
 /** Секунды человеческими словами: «28 сек», «4 мин», «1 ч 10 мин». */
 function dur(sec: number | null): string {
@@ -289,7 +290,7 @@ export function ConsolePage({ route }: { route: Route }) {
               >
                 Ничьи
               </button>
-              <select
+              <OptionSelect
                 className="input console-role"
                 value={filter.skill ?? ''}
                 aria-label="Навык"
@@ -299,8 +300,8 @@ export function ConsolePage({ route }: { route: Route }) {
                 {[...new Set(queue.map((q) => q.requiredSkill).filter(Boolean))].map((sk) => (
                   <option key={String(sk)} value={String(sk)}>{sk}</option>
                 ))}
-              </select>
-              <select
+              </OptionSelect>
+              <OptionSelect
                 className="input console-role"
                 value={filter.priority ?? ''}
                 aria-label="Срочность"
@@ -310,7 +311,7 @@ export function ConsolePage({ route }: { route: Route }) {
                 <option value="critical">Критично</option>
                 <option value="high">Срочно</option>
                 <option value="normal">Обычные</option>
-              </select>
+              </OptionSelect>
               <button
                 className={`console-chip${filter.waiting ? ' active' : ''}`}
                 onClick={() => setFilter({ ...filter, waiting: filter.waiting ? undefined : 30 })}
@@ -453,7 +454,7 @@ export function ConsolePage({ route }: { route: Route }) {
                       не в отдельном экране настроек.
                     */}
                     {isAdmin && (
-                      <select
+                      <OptionSelect
                         className="input console-role"
                         value={s.role}
                         disabled={busy}
@@ -462,7 +463,7 @@ export function ConsolePage({ route }: { route: Route }) {
                         onChange={(e) => void act(() => api.platformSetStaff(s.userId, { role: e.target.value }))}
                       >
                         {roles.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
-                      </select>
+                      </OptionSelect>
                     )}
                     {/*
                       Навыки и предел загрузки — там же, где роль.

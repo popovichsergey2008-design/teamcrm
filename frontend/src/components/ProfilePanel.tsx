@@ -13,6 +13,7 @@ import { ThemeSwitch } from './ThemeSwitch';
 import { FontSizeSwitch } from './FontSizeSwitch';
 import { DatePicker } from './DatePicker';
 import { useAuth } from '../state/auth';
+import { OptionSelect } from './ui/option-select';
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients';
 
@@ -251,7 +252,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
               <label>Часовой пояс</label>
               {/* Выбор из списка, а не свободный ввод: опечатка в «Europe/Moskow» тихо
                   ломала бы сроки и напоминания, и человек не понял бы почему. */}
-              <select
+              <OptionSelect
                 className="input"
                 value={me.timezone ?? ''}
                 onChange={(e) => setMe({ ...me, timezone: e.target.value })}
@@ -262,7 +263,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 {me.timezone && !zones.some((t) => t.id === me.timezone) && (
                   <option value={me.timezone}>{me.timezone}</option>
                 )}
-              </select>
+              </OptionSelect>
               <button
                 className="ui-btn ui-btn-ghost ui-btn-sm"
                 style={{ alignSelf: 'flex-start', marginTop: 4 }}
@@ -378,13 +379,13 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 <div className="drawer-section-title" style={{ marginTop: 18 }}>Блокировка приложения</div>
                 <div className="field">
                   <label>Просить Face ID / отпечаток</label>
-                  <select
+                  <OptionSelect
                     className="input"
                     value={lockPolicy}
                     onChange={(e) => { const v = e.target.value as LockPolicy; setLockPolicy(v); writeLockPolicy(v); }}
                   >
                     {LOCK_POLICIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                  </select>
+                  </OptionSelect>
                   <span className="dim" style={{ fontSize: 12 }}>
                     Свернули приложение и вернулись позже — оно попросит подтвердить, что это вы. Содержимое в переключателе
                     приложений скрыто всегда.
@@ -402,9 +403,9 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
         {tab === 'availability' && (
           <>
             <div className="drawer-grid2">
-              <select className="input" value={newAv.kind} onChange={(e) => setNewAv({ ...newAv, kind: e.target.value })}>
+              <OptionSelect className="input" value={newAv.kind} onChange={(e) => setNewAv({ ...newAv, kind: e.target.value })}>
                 <option value="vacation">отпуск</option><option value="sick">больничный</option><option value="other">другое</option>
-              </select>
+              </OptionSelect>
               <div />
               <DatePicker value={newAv.fromDate} onChange={(v) => setNewAv({ ...newAv, fromDate: v })} placeholder="с какого числа" />
               <DatePicker value={newAv.toDate} onChange={(v) => setNewAv({ ...newAv, toDate: v })} placeholder="по какое число" />
@@ -509,10 +510,10 @@ function PromptsLibrary() {
           <input className="input" placeholder="Название (напр. «Копирайтер: КП»)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <textarea className="input" rows={5} style={{ marginTop: 6 }} placeholder="Инструкция агенту: роль, тон, структура, что учесть…&#10;Напр.: Пиши дружелюбно и по делу. Структура: заголовок → оффер → выгоды → цена → призыв." value={form.instruction} onChange={(e) => setForm({ ...form, instruction: e.target.value })} />
           <div className="drawer-grid2" style={{ marginTop: 6 }}>
-            <select className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} title="Модель ИИ">
+            <OptionSelect className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} title="Модель ИИ">
               <option value="">Модель по умолчанию</option>
               {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}</option>)}
-            </select>
+            </OptionSelect>
             <label className="notify-row" style={{ cursor: 'pointer' }}>
               <input type="checkbox" checked={form.isShared} onChange={(e) => setForm({ ...form, isShared: e.target.checked })} />
               <span>Общий (для всей команды)</span>

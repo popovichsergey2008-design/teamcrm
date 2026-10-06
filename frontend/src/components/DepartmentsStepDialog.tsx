@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import type { Industry } from '../types';
+import { OptionSelect } from './ui/option-select';
 
 interface Suggested {
   name: string;
@@ -80,9 +81,9 @@ export function DepartmentsStepDialog({ industry, onClose, onDone }: {
 
         <div className="field">
           <label htmlFor="onb-dep-industry">Чем занимается компания</label>
-          <select id="onb-dep-industry" className="input" value={code} onChange={(e) => setCode(e.target.value)}>
+          <OptionSelect id="onb-dep-industry" className="input" value={code} onChange={(e) => setCode(e.target.value)}>
             {industries.map((i) => <option key={i.code} value={i.code}>{i.title}</option>)}
-          </select>
+          </OptionSelect>
           <span className="dim tpl-hint">Смените отрасль — предложим другой набор.</span>
         </div>
 

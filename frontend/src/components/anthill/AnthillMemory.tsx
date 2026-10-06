@@ -4,6 +4,7 @@ import { api, ApiError } from '../../lib/api';
 import type { AnthillMemory as Memory } from '../../lib/api';
 import { useAuth } from '../../state/auth';
 import { stampLabel } from '../../lib/chat-text';
+import { OptionSelect } from '../ui/option-select';
 
 const TYPE_TITLE: Record<string, string> = { preference: 'Предпочтения', topic: 'Рабочие темы' };
 const TYPE_HINT: Record<string, string> = {
@@ -76,10 +77,10 @@ export function AnthillMemory() {
         <div className="anthill-form anthill-card">
           <label className="anthill-form-row">
             <span className="dim">Что это</span>
-            <select className="input" value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as 'preference' | 'topic' })}>
+            <OptionSelect className="input" value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as 'preference' | 'topic' })}>
               <option value="preference">Предпочтение — {TYPE_HINT.preference}</option>
               <option value="topic">Рабочая тема — {TYPE_HINT.topic}</option>
-            </select>
+            </OptionSelect>
           </label>
           <label className="anthill-form-row">
             <span className="dim">О чём это</span>

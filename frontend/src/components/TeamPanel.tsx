@@ -10,6 +10,7 @@ import type { OrgPolicy, SessionInfo } from '../lib/api';
 import { toastSaved } from '../lib/notifications';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { OptionSelect } from './ui/option-select';
 
 type Tab = 'people' | 'positions' | 'groups';
 const roleOptions = ASSIGNABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>);
@@ -214,21 +215,21 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                 <div className="drawer-grid2">
                   <label className="field">
                     <span className="dim">Что показывать в push на экране блокировки</span>
-                    <select className="input" value={policy.pushPrivacy} onChange={(e) => void savePolicy({ pushPrivacy: e.target.value as OrgPolicy['pushPrivacy'] })}>
+                    <OptionSelect className="input" value={policy.pushPrivacy} onChange={(e) => void savePolicy({ pushPrivacy: e.target.value as OrgPolicy['pushPrivacy'] })}>
                       <option value="hide">только «есть новое»</option>
                       <option value="sender_only">заголовок без текста</option>
                       <option value="full">заголовок и текст</option>
-                    </select>
+                    </OptionSelect>
                   </label>
                   <label className="field">
                     <span className="dim">Блокировка биометрией — не мягче, чем</span>
-                    <select className="input" value={policy.minLockPolicy} onChange={(e) => void savePolicy({ minLockPolicy: e.target.value as OrgPolicy['minLockPolicy'] })}>
+                    <OptionSelect className="input" value={policy.minLockPolicy} onChange={(e) => void savePolicy({ minLockPolicy: e.target.value as OrgPolicy['minLockPolicy'] })}>
                       <option value="off">на усмотрение сотрудника</option>
                       <option value="15">через 15 минут в фоне</option>
                       <option value="5">через 5 минут в фоне</option>
                       <option value="1">через минуту в фоне</option>
                       <option value="immediately">сразу, как свернули</option>
-                    </select>
+                    </OptionSelect>
                   </label>
                 </div>
               </div>
@@ -249,10 +250,10 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                     {/* Подписи ролей общие на всё приложение: здесь стояли свои
                         («Участник», «Менеджер»), и одна и та же роль называлась в
                         двух местах по-разному. */}
-                    <select className="input" value={linkForm.role} onChange={(e) => setLinkForm({ ...linkForm, role: e.target.value })}>
+                    <OptionSelect className="input" value={linkForm.role} onChange={(e) => setLinkForm({ ...linkForm, role: e.target.value })}>
                       {ASSIGNABLE_ROLES.filter((r) => r.value !== 'owner')
                         .map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                    </select>
+                    </OptionSelect>
                     <input className="input" type="number" min={1} placeholder="Лимит входов" value={linkForm.maxUses} onChange={(e) => setLinkForm({ ...linkForm, maxUses: e.target.value })} />
                   </div>
                   <input className="input" type="number" min={1} placeholder="Срок действия, дней" value={linkForm.expiresInDays} onChange={(e) => setLinkForm({ ...linkForm, expiresInDays: e.target.value })} />
@@ -282,8 +283,8 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                   <div className="dim" style={{ fontSize: 12 }}>Персональная ссылка на конкретный e-mail (одноразовая).</div>
                   <input className="input add-user-input" placeholder="E-mail" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} />
                   <div className="drawer-grid2">
-                    <select className="input" value={inv.role} onChange={(e) => setInv({ ...inv, role: e.target.value })}>{roleOptions}</select>
-                    <select className="input" value={inv.positionId} onChange={(e) => setInv({ ...inv, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                    <OptionSelect className="input" value={inv.role} onChange={(e) => setInv({ ...inv, role: e.target.value })}>{roleOptions}</OptionSelect>
+                    <OptionSelect className="input" value={inv.positionId} onChange={(e) => setInv({ ...inv, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</OptionSelect>
                   </div>
                   <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={sendInvite}>Создать приглашение</button>
                   {invite && (
@@ -301,8 +302,8 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                   <input className="input add-user-input" placeholder="E-mail" value={nu.email} onChange={(e) => setNu({ ...nu, email: e.target.value })} />
                   <input className="input add-user-input" type="password" placeholder="Пароль (≥8)" value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} />
                   <div className="drawer-grid2">
-                    <select className="input" value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })}>{roleOptions}</select>
-                    <select className="input" value={nu.positionId} onChange={(e) => setNu({ ...nu, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                    <OptionSelect className="input" value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })}>{roleOptions}</OptionSelect>
+                    <OptionSelect className="input" value={nu.positionId} onChange={(e) => setNu({ ...nu, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</OptionSelect>
                   </div>
                   <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%' }} onClick={addUser}>Добавить сотрудника</button>
                 </div>
@@ -316,8 +317,8 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                   <span className="dim">{u.positionName ?? '—'}</span>
                 </div>
                 <div className="drawer-grid2">
-                  <select className="input" value={u.role} onChange={(e) => patchUser(u.id, { role: e.target.value })}>{roleOptions}</select>
-                  <select className="input" value={u.positionId ?? ''} onChange={(e) => patchUser(u.id, { positionId: e.target.value || null })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                  <OptionSelect className="input" value={u.role} onChange={(e) => patchUser(u.id, { role: e.target.value })}>{roleOptions}</OptionSelect>
+                  <OptionSelect className="input" value={u.positionId ?? ''} onChange={(e) => patchUser(u.id, { positionId: e.target.value || null })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</OptionSelect>
                 </div>
                 {/*
                   Чем человек занимается (ТЗ-10, этап 3).
@@ -474,7 +475,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
             <div className="add-user" style={{ marginBottom: 12 }}>
               <input className="input add-user-input" placeholder="Название группы/отдела" value={newGroup.name} onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })} />
               <div className="team-rate">
-                <select className="input" value={newGroup.kind} onChange={(e) => setNewGroup({ ...newGroup, kind: e.target.value })}><option value="group">группа</option><option value="department">отдел</option></select>
+                <OptionSelect className="input" value={newGroup.kind} onChange={(e) => setNewGroup({ ...newGroup, kind: e.target.value })}><option value="group">группа</option><option value="department">отдел</option></OptionSelect>
                 <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={addGroup}>Создать</button>
               </div>
             </div>
@@ -529,14 +530,14 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                   {/* Выбор из списка сразу добавляет: отдельная кнопка «+» только добавляла шаг,
                       на котором забывали нажать. В списке — лишь те, кого в группе ещё нет. */}
                   {outside.length > 0 && (
-                    <select
+                    <OptionSelect
                       className="input group-add"
                       value=""
                       onChange={(e) => e.target.value && toggleMembership(g.id, e.target.value, false)}
                     >
                       <option value="">+ добавить сотрудника…</option>
                       {outside.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-                    </select>
+                    </OptionSelect>
                   )}
                 </div>
               );

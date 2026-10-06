@@ -5,6 +5,7 @@ import { api, ApiError, SecurityMember, SecurityPolicy } from '../lib/api';
 import { PERMISSION_GROUPS, permissionTitle } from '../lib/permissions';
 import { useEscape } from '../hooks/useEscape';
 import { roleLabel } from '../lib/labels';
+import { OptionSelect } from './ui/option-select';
 
 type Tab = 'people' | 'policy' | 'audit' | 'reveals';
 
@@ -174,7 +175,7 @@ export function SecurityPanel({ onClose }: { onClose: () => void }) {
               </label>
               <div className="field">
                 <label>Через сколько снова прятать</label>
-                <select
+                <OptionSelect
                   className="input"
                   value={String(policy.contacts.revealTtlSeconds)}
                   onChange={(e) => void savePolicy({ contacts: { ...policy.contacts, revealTtlSeconds: Number(e.target.value) } })}
@@ -182,7 +183,7 @@ export function SecurityPanel({ onClose }: { onClose: () => void }) {
                   <option value="60">через минуту</option>
                   <option value="300">через 5 минут</option>
                   <option value="900">через 15 минут</option>
-                </select>
+                </OptionSelect>
               </div>
             </div>
 
@@ -215,7 +216,7 @@ export function SecurityPanel({ onClose }: { onClose: () => void }) {
               <div className="drawer-section-title">Интеграции</div>
               <div className="field">
                 <label>Кому открыты внешние системы</label>
-                <select
+                <OptionSelect
                   className="input"
                   value={policy.integrations.mode}
                   onChange={(e) => void savePolicy({ integrations: { ...policy.integrations, mode: e.target.value } })}
@@ -223,7 +224,7 @@ export function SecurityPanel({ onClose }: { onClose: () => void }) {
                   <option value="all">Разрешены</option>
                   <option value="allow_list">Только разрешённые владельцем</option>
                   <option value="off">Запрещены</option>
-                </select>
+                </OptionSelect>
               </div>
             </div>
 
@@ -231,7 +232,7 @@ export function SecurityPanel({ onClose }: { onClose: () => void }) {
               <div className="drawer-section-title">Вход</div>
               <div className="field">
                 <label>Двухфакторная проверка</label>
-                <select
+                <OptionSelect
                   className="input"
                   value={policy.twoFactor}
                   onChange={(e) => void savePolicy({ twoFactor: e.target.value })}
@@ -240,7 +241,7 @@ export function SecurityPanel({ onClose }: { onClose: () => void }) {
                   <option value="optional">По желанию сотрудника</option>
                   <option value="required_for_admins">Обязательна для руководителей</option>
                   <option value="required_for_all">Обязательна для всех</option>
-                </select>
+                </OptionSelect>
                 <span className="dim" style={{ fontSize: 12 }}>
                   Само подключение приложения-аутентификатора появится следующим шагом — политика уже сохраняется.
                 </span>

@@ -3,6 +3,7 @@ import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { Project } from '../types';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * Google-документы — слой 4 «переезда в один клик».
@@ -104,10 +105,10 @@ export function GdocsPanel() {
           onChange={(e) => setLinks(e.target.value)}
         />
         <div className="import-target">
-          <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <OptionSelect className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
             <option value="">— проект по умолчанию —</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          </OptionSelect>
           <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={add}>Добавить и прочитать</button>
         </div>
         <div className="dim">

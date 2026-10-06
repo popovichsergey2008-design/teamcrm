@@ -11,6 +11,7 @@ import { api, ApiError } from '../lib/api';
 import { pageWindow } from '../lib/task-registry-view';
 import { useAuth } from '../state/auth';
 import { overlayProps } from '../lib/overlay';
+import { OptionSelect } from '../components/ui/option-select';
 
 interface Post {
   id: string;
@@ -254,7 +255,7 @@ export function FeedPage() {
           {/* Адресаты: пусто — всей компании. Так проще всего, а отделы выбирают, когда
               сообщение действительно касается только их. */}
           {groups.length > 0 && (
-            <select
+            <OptionSelect
               className="input feed-groups"
               value=""
               onChange={(e) => {
@@ -266,7 +267,7 @@ export function FeedPage() {
               {groups.filter((g) => !groupIds.includes(String(g.id))).map((g) => (
                 <option key={g.id} value={g.id}>{g.name}</option>
               ))}
-            </select>
+            </OptionSelect>
           )}
           {asAnnouncement && (
             <input

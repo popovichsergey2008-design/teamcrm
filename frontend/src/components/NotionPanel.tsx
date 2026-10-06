@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * Импорт из Notion — слой 3 «переезда в один клик».
@@ -202,13 +203,13 @@ function NotionImportBlock({ cid }: { cid: string }) {
         <div key={u.externalId} className="team-row team-head">
           <span>{u.name} <span className="dim" style={{ fontSize: 12 }}>{u.email}</span></span>
           <span>
-            <select
+            <OptionSelect
               className="input" value={mapPick[u.externalId] ?? ''}
               onChange={(e) => setMapPick({ ...mapPick, [u.externalId]: e.target.value })}
             >
               <option value="">— выбрать сотрудника —</option>
               {users.map((x) => <option key={x.id} value={x.id}>{x.fullName}</option>)}
-            </select>
+            </OptionSelect>
             <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
           </span>
         </div>

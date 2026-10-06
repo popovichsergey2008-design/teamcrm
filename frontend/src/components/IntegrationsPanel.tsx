@@ -11,6 +11,7 @@ import { AiSettingsSection } from './AiSettingsPanel';
 import { PromptsSection } from './PromptsPanel';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { OptionSelect } from './ui/option-select';
 
 /** Интеграции: подключения (Битрикс24) + ключи ИИ + промпты (PromptOps). */
 export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
@@ -205,10 +206,10 @@ function ImportBlock({ cid }: { cid: string }) {
           {unmatched.items.map((u) => (
             <div key={u.externalId} className="team-rate" style={{ marginBottom: 4 }}>
               <span style={{ flex: 1, fontSize: 13 }}>{u.name} <span className="dim">{u.email}</span></span>
-              <select className="input" value={mapPick[u.externalId] ?? ''} onChange={(e) => setMapPick((m) => ({ ...m, [u.externalId]: e.target.value }))}>
+              <OptionSelect className="input" value={mapPick[u.externalId] ?? ''} onChange={(e) => setMapPick((m) => ({ ...m, [u.externalId]: e.target.value }))}>
                 <option value="">— наш сотрудник —</option>
                 {users.map((x) => <option key={x.id} value={x.id}>{x.fullName}</option>)}
-              </select>
+              </OptionSelect>
               <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
             </div>
           ))}
@@ -334,10 +335,10 @@ function UngroupedBlock({ cid }: { cid: string }) {
                   {t.title}
                   {t.confidence > 0 && <span className="dim" style={{ fontSize: 11, marginLeft: 6 }}>увер. {Math.round(t.confidence * 100)}%</span>}
                 </span>
-                <select className="input" value={pick[t.externalId] ?? ''} onChange={(e) => setPick((s) => ({ ...s, [t.externalId]: e.target.value }))}>
+                <OptionSelect className="input" value={pick[t.externalId] ?? ''} onChange={(e) => setPick((s) => ({ ...s, [t.externalId]: e.target.value }))}>
                   <option value="">— Входящие из Битрикса —</option>
                   {ana.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                </OptionSelect>
               </div>
             ))}
             <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={apply} disabled={run && run.status === 'running'}>
@@ -558,10 +559,10 @@ function YougileImportBlock({ cid }: { cid: string }) {
           {unmatched.items.map((u) => (
             <div key={u.externalId} className="team-rate" style={{ marginTop: 4 }}>
               <span style={{ flex: 1, fontSize: 13 }}>{u.name}{u.email && <span className="dim" style={{ fontSize: 11 }}> · {u.email}</span>}</span>
-              <select className="input" value={mapPick[u.externalId] ?? ''} onChange={(e) => setMapPick({ ...mapPick, [u.externalId]: e.target.value })}>
+              <OptionSelect className="input" value={mapPick[u.externalId] ?? ''} onChange={(e) => setMapPick({ ...mapPick, [u.externalId]: e.target.value })}>
                 <option value="">— выбрать —</option>
                 {locals.map((l) => <option key={l.id} value={l.id}>{l.fullName}</option>)}
-              </select>
+              </OptionSelect>
               <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
             </div>
           ))}

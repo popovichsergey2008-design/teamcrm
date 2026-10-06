@@ -6,6 +6,7 @@ import { overlayProps } from '../lib/overlay';
 import { AuthedMedia } from './AuthedMedia';
 import { navigate } from '../lib/router';
 import type { Industry, OnboardingView } from '../types';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * Шаг «Настроить компанию» (ТЗ-11, разд. 16–17, 20–22).
@@ -75,9 +76,9 @@ export function CompanyStepDialog({ company, onClose, onSaved }: {
 
         <div className="field">
           <label htmlFor="onb-tz">Часовой пояс</label>
-          <select id="onb-tz" className="input" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+          <OptionSelect id="onb-tz" className="input" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
             {zones.map((z) => <option key={z} value={z}>{z === guessed ? `${z} — определили по вашему компьютеру` : z}</option>)}
-          </select>
+          </OptionSelect>
           <span className="dim tpl-hint">
             По нему считаются сроки, напоминания и тихие часы. У каждого сотрудника пояс
             может быть свой — этот отвечает за компанию в целом.
@@ -86,10 +87,10 @@ export function CompanyStepDialog({ company, onClose, onSaved }: {
 
         <div className="field">
           <label htmlFor="onb-industry">Чем занимается компания</label>
-          <select id="onb-industry" className="input" value={industry} onChange={(e) => setIndustry(e.target.value)}>
+          <OptionSelect id="onb-industry" className="input" value={industry} onChange={(e) => setIndustry(e.target.value)}>
             <option value="">— не выбрано —</option>
             {industries.map((i) => <option key={i.code} value={i.code}>{i.title}</option>)}
-          </select>
+          </OptionSelect>
           <span className="dim tpl-hint">
             По отрасли на следующем шаге предложим отделы — останется подтвердить.
           </span>

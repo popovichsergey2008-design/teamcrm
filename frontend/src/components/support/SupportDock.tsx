@@ -12,6 +12,7 @@ import { Icon } from '../Icon';
 import { VoiceStatus } from '../VoiceStatus';
 import { MessageText } from '../MessageText';
 import type { SupportConversation, SupportDesk, SupportQueueItem } from '../../types';
+import { OptionSelect } from '../ui/option-select';
 
 /**
  * Открыть службу заботы откуда угодно.
@@ -951,7 +952,7 @@ export function SupportDock({ embedded = false }: {
                   {copilot?.summary && <div className="support-copilot">{copilot.summary}</div>}
 
                   <div className="support-tools-acts">
-                    <select
+                    <OptionSelect
                       className="input"
                       value=""
                       disabled={busy}
@@ -962,7 +963,7 @@ export function SupportDock({ embedded = false }: {
                       {people
                         .filter((p) => !conv.participants.some((x) => String(x.user_id) === p.id))
                         .map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}
-                    </select>
+                    </OptionSelect>
                     <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void createBug()}>
                       <Icon name="alert" size={13} /> Завести задачу
                     </button>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { OptionSelect } from './ui/option-select';
 
 /** Выбранные устройства — их же берёт окно созвона при входе. */
 export const DEVICES_KEY = 'teamcrm.meet.devices';
@@ -112,16 +113,16 @@ export function DeviceCheck() {
       </div>
       <div className="device-selects">
         {mics.length > 0 && (
-          <select className="input" value={chosen.audioIn ?? ''} onChange={(e) => pick('audioIn', e.target.value)} aria-label="Микрофон">
+          <OptionSelect className="input" value={chosen.audioIn ?? ''} onChange={(e) => pick('audioIn', e.target.value)} aria-label="Микрофон">
             <option value="">Микрофон по умолчанию</option>
             {mics.map((d, i) => <option key={d.deviceId || i} value={d.deviceId}>{d.label || `Микрофон ${i + 1}`}</option>)}
-          </select>
+          </OptionSelect>
         )}
         {cams.length > 0 && (
-          <select className="input" value={chosen.videoIn ?? ''} onChange={(e) => pick('videoIn', e.target.value)} aria-label="Камера">
+          <OptionSelect className="input" value={chosen.videoIn ?? ''} onChange={(e) => pick('videoIn', e.target.value)} aria-label="Камера">
             <option value="">Камера по умолчанию</option>
             {cams.map((d, i) => <option key={d.deviceId || i} value={d.deviceId}>{d.label || `Камера ${i + 1}`}</option>)}
-          </select>
+          </OptionSelect>
         )}
       </div>
       <div className="device-actions">

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, TaskRecurrence as Recurrence } from '../lib/api';
 import { toastSaved } from '../lib/notifications';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * Повтор задачи.
@@ -138,9 +139,9 @@ export function TaskRecurrenceBlock({ taskId, onRefresh }: { taskId: string; onR
         <div className="repeat-form">
           <div className="drawer-grid2">
             <div className="field"><label>Как часто</label>
-              <select className="input" value={freq} onChange={(e) => setFreq(e.target.value as Freq)}>
+              <OptionSelect className="input" value={freq} onChange={(e) => setFreq(e.target.value as Freq)}>
                 {FREQS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-              </select>
+              </OptionSelect>
             </div>
             <div className="field"><label title="Время срока новой задачи в вашем часовом поясе">Во сколько</label>
               <input className="input" type="time" value={atTime} onChange={(e) => setAtTime(e.target.value)} />

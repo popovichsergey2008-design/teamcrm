@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { parseEmails } from '../lib/emails';
+import { OptionSelect } from './ui/option-select';
 
 interface Result {
   email: string;
@@ -88,10 +89,10 @@ export function InviteTeamDialog({ onClose, onDone }: {
 
             <div className="field">
               <label htmlFor="inv-role">Роль</label>
-              <select id="inv-role" className="input" value={role} onChange={(e) => setRole(e.target.value)}>
+              <OptionSelect id="inv-role" className="input" value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value="member">Сотрудник — работает в своих проектах и задачах</option>
                 <option value="manager">Руководитель — ведёт проекты и команду</option>
-              </select>
+              </OptionSelect>
               <span className="dim tpl-hint">Роль можно изменить позже в разделе «Команда».</span>
             </div>
 

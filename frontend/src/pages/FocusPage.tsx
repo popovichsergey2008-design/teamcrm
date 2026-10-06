@@ -13,6 +13,10 @@ import { LeftoversDialog, leftoversSeenToday } from '../components/LeftoversDial
 import { OnboardingCard } from '../components/OnboardingCard';
 import { AssistantPings } from '../components/AssistantPings';
 import { MeetingAgenda } from '../components/MeetingAgenda';
+import { Avatar } from '../components/ui/avatar';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Toggle } from '../components/ui/toggle';
 
 /** Задача из сквозной выборки — с именем проекта и колонки (доска не одна). */
 type CrossTask = Task & { project_name: string; column_name: string };
@@ -112,24 +116,28 @@ function FocusCard({ task, side, onOpen, onPlan }: {
       )}
       <span className="focus-card-title">{task.title}</span>
       <span className="focus-card-meta">
-        <span className="ui-badge ui-badge-neutral" title="Проект">{task.project_name}</span>
-        {prio && <span className={prio.cls}>{prio.text}</span>}
-        {due && <span className={due.cls} title={due.title}>{due.text}</span>}
-        {checklist && <span className="focus-check"><Icon name="check" size={12} /> {checklist}</span>}
+        <Badge tone="outline" title="Проект">{task.project_name}</Badge>
+        {prio && (
+          <Badge tone={prio.tone} title="Приоритет">
+            <Icon name={prio.tone === 'danger' ? 'zap' : prio.tone === 'warn' ? 'arrow-up' : 'arrow-down'} size={11} />{prio.label}
+          </Badge>
+        )}
+        {due && <Badge tone={due.tone} title={due.title}><Icon name="clock" size={11} />{due.label}</Badge>}
+        {checklist && <span className="focus-check"><Icon name="check-circle" size={13} /> {checklist}</span>}
       </span>
       {onPlan && (
         // Планирование — отдельной строкой и явными словами: «сегодня» это личный план,
         // а не срок. Кнопка не должна читаться как перенос обязательства перед другими.
         <span className="focus-plan" onClick={(e) => e.stopPropagation()}>
           {planToday
-            ? <button className="focus-plan-btn active" onClick={() => onPlan(null)}>Убрать из дня</button>
-            : <button className="focus-plan-btn" onClick={() => onPlan(localDay())}>В сегодня</button>}
-          <button className="focus-plan-btn" onClick={() => onPlan(localDay(1))}>На завтра</button>
+            ? <Toggle pressed onPressedChange={() => onPlan(null)} title="Убрать из личного плана на сегодня"><Icon name="target" size={13} /> В плане на сегодня</Toggle>
+            : <Toggle pressed={false} onPressedChange={() => onPlan(localDay())} title="Личный план, не срок"><Icon name="target" size={13} /> В сегодня</Toggle>}
+          <Toggle pressed={false} onPressedChange={() => onPlan(localDay(1))}><Icon name="calendar" size={13} /> На завтра</Toggle>
         </span>
       )}
       {who && (
         <span className="focus-card-who">
-          <span className="avatar-xs avatar-ph">{who[0]?.toUpperCase()}</span>
+          <Avatar name={who} size={18} />
           {who}
           {task.risk_level && task.risk_level !== 'green' && (
             <span className={`risk-dot risk-${task.risk_level}`} title="Риск срока" />
@@ -228,7 +236,7 @@ export function FocusPage({ onOpenTask, onJoinCall, active = true }: {
   };
 
   return (
-    <div className="focus-page">
+    <div className="focus-page focus-v2">
       <div className="focus-head">
         <div>
           <div className="focus-hello">{greeting()}, {user?.fullName?.split(' ')[0] ?? ''}!</div>
@@ -252,7 +260,7 @@ export function FocusPage({ onOpenTask, onJoinCall, active = true }: {
         </div>
       </div>
 
-      {err && <div className="error-text">{err}</div>}
+      {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
 
       {/*
         Путь владельца — над всем остальным и только пока он не пройден (ТЗ-11).
@@ -339,9 +347,10 @@ export function FocusPage({ onOpenTask, onJoinCall, active = true }: {
 
           {rest.length > 0 && (
             <>
-              <button className="focus-more" onClick={() => setShowRest((v) => !v)}>
+              <Button variant="ghost" size="sm" className="focus-more" onClick={() => setShowRest((v) => !v)}>
+                <Icon name={showRest ? 'chevron-up' : 'chevron-down'} size={14} />
                 {showRest ? 'Скрыть' : `Ещё ${rest.length} моих задач без срока на сегодня`}
-              </button>
+              </Button>
               {showRest && rest.map((t) => (
                 <FocusCard key={t.id} task={t} side="manager" onOpen={() => openTask(t)} onPlan={(d) => plan(t, d)} />
               ))}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { OptionSelect } from './ui/option-select';
 
 interface ChatOption {
   id: string;
@@ -112,10 +113,10 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
                 autoFocus
               />
               {chats.length > 0 && (
-                <select className="input" style={{ marginTop: 6 }} value={forChat} onChange={(e) => setForChat(e.target.value)}>
+                <OptionSelect className="input" style={{ marginTop: 6 }} value={forChat} onChange={(e) => setForChat(e.target.value)}>
                   <option value="">— без привязки к чату —</option>
                   {chats.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
-                </select>
+                </OptionSelect>
               )}
               <label className="guest-link-when">
                 <span className="dim">Когда встреча (необязательно)</span>
@@ -131,13 +132,13 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
                   Гость увидит время и отсчёт, войти сможет за 15 минут. Вам за 10 минут напомним открыть комнату.
                 </div>
               )}
-              <select className="input" style={{ marginTop: 6 }} value={ttl} onChange={(e) => setTtl(e.target.value)}>
+              <OptionSelect className="input" style={{ marginTop: 6 }} value={ttl} onChange={(e) => setTtl(e.target.value)}>
                 <option value="4">Действует 4 часа</option>
                 <option value="24">Действует сутки</option>
                 <option value="72">Действует 3 дня</option>
                 <option value="168">Действует неделю</option>
                 <option value="720">Действует 30 дней</option>
-              </select>
+              </OptionSelect>
               {err && <div className="error-text">{err}</div>}
               <button className="ui-btn ui-btn-primary ui-btn-sm guest-link-go" onClick={create} disabled={busy}>
                 {busy ? 'Создаю…' : 'Создать ссылку'}
