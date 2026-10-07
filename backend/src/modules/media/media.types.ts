@@ -75,6 +75,12 @@ export interface Participant {
   producers: Map<string, MsProducer>;
   consumers: Map<string, MsConsumer>;
   handRaised: boolean;
+  /**
+   * Соединение, которому принадлежит место в комнате. Человек может войти со второй
+   * вкладки или устройства — тогда место переходит к новому соединению, и закрытие
+   * старого больше не должно выкидывать человека из созвона.
+   */
+  conn?: unknown;
 }
 
 export interface MeetingRoom {

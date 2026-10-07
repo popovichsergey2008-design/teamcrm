@@ -47,6 +47,8 @@ export interface MeetEvents {
   onRole?: (r: { host: boolean; meeting: boolean; locked: boolean }) => void;
   /** Организатор завершил встречу для всех. */
   onEnded?: (by: string) => void;
+  /** Этот же человек вошёл в созвон с другой вкладки или устройства — здесь созвон закрыт. */
+  onReplaced?: () => void;
   /** Вход закрыт или открыт снова. */
   onLocked?: (locked: boolean) => void;
   /** Ответ на «Сообщить организатору». */
@@ -430,6 +432,15 @@ export class MeetClient {
 
       case 'meet.role':
         this.ev.onRole?.({ host: !!p.host, meeting: !!p.meeting, locked: !!p.locked });
+        return;
+
+      case 'meet.replaced':
+        // Место в комнате перешло к другой вкладке. Переподключаться нельзя — выбьем её.
+        this.log('replaced', {});
+        this.refused = true;
+        this.closed = true;
+        this.stopStats();
+        this.ev.onReplaced?.();
         return;
 
       case 'meet.ended':

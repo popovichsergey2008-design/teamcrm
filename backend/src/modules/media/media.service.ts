@@ -234,12 +234,12 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     try { room.router.close(); } catch { /* воркер мог умереть */ }
   }
 
-  addParticipant(room: MeetingRoom, userId: string, displayName: string): Participant {
+  addParticipant(room: MeetingRoom, userId: string, displayName: string, conn?: unknown): Participant {
     const existing = room.participants.get(userId);
     if (existing) this.removeParticipant(room, userId); // вход со второго устройства вытесняет первый
     const p: Participant = {
       userId, displayName, sendTransport: null, recvTransport: null,
-      producers: new Map(), consumers: new Map(), handRaised: false,
+      producers: new Map(), consumers: new Map(), handRaised: false, conn,
     };
     room.participants.set(userId, p);
     if (!userId.startsWith('guest:')) this.presence?.changed(room.tenantId, userId);

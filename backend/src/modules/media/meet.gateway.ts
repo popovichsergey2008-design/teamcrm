@@ -298,11 +298,6 @@ export class MeetGateway implements OnModuleInit {
           // не звали — стучится, как гость: в чужой разговор без спроса не входят
           return this.knockEmployee(c, room);
         }
-        // вход со второго устройства вытесняет первое — иначе в списке два одинаковых человека
-        if (room.participants.has(c.userId)) {
-          this.media.removeParticipant(room, c.userId);
-          this.broadcast(room, 'meet.peer-left', { meeting_id: room.id, user_id: c.userId });
-        }
         await this.joinRoom(c, room);
         // сотрудник вошёл — покажем ему тех, кто уже стоит за дверью
         for (const g of this.lobby.get(room.id)?.values() ?? []) {
@@ -658,13 +653,25 @@ export class MeetGateway implements OnModuleInit {
    * приводил к тому, что вошедший не слышал уже говорящих.
    */
   private async joinRoom(c: Client, room: MeetingRoom): Promise<void> {
-    // вход со второго устройства вытесняет первое — иначе в списке два одинаковых человека
+    /*
+      Вход со второй вкладки или устройства вытесняет первое — иначе в списке два
+      одинаковых человека. Вытесненному соединению об этом ГОВОРИМ и отвязываем его от
+      комнаты: раньше оно об этом не знало, и когда закрывалось или переподключалось,
+      выкидывало из созвона уже новое — две вкладки выбивали друг друга по кругу
+      («постоянно выкидывает с созвона», 07.10).
+    */
+    for (const x of this.clients.values()) {
+      if (x !== c && x.meetingId === room.id && x.userId === c.userId && x.tenantId === c.tenantId) {
+        this.send(x.ws, 'meet.replaced', { meeting_id: room.id });
+        x.meetingId = null;
+      }
+    }
     if (room.participants.has(c.userId)) {
       this.media.removeParticipant(room, c.userId);
       this.broadcast(room, 'meet.peer-left', { meeting_id: room.id, user_id: c.userId });
     }
     this.ringing.stop(room.id, c.userId); // вошёл — звонить ему больше не о чем
-    this.media.addParticipant(room, c.userId, c.displayName);
+    this.media.addParticipant(room, c.userId, c.displayName, c.ws);
     (room.joined ??= new Set()).add(c.userId);
     // комнату по гостевой ссылке поднимает тот, кто вошёл первым; хозяином становится
     // первый сотрудник — гость на эту роль не годится, у него нет учётной записи
@@ -1013,6 +1020,9 @@ export class MeetGateway implements OnModuleInit {
     const wasIn = c.meetingId;
     c.meetingId = null;
     if (!room) return;
+    // место в комнате уже у другого соединения этого же человека — его не трогаем
+    const seat = room.participants.get(c.userId);
+    if (seat?.conn && seat.conn !== c.ws) return;
     if (!this.media.removeParticipant(room, c.userId)) return;
     this.diag.write({
       tenantId: c.tenantId, scope: 'meet', refId: wasIn, userId: c.userId,

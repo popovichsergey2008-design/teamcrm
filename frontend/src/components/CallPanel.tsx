@@ -340,6 +340,10 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           },
           onRole: (r) => { setHostRole(r.host); setLocked(r.locked); },
           onLocked: setLocked,
+          onReplaced: () => {
+            setGuestState('rejected');
+            setGuestNote('Вы подключились к этому созвону в другой вкладке или на другом устройстве — здесь он закрыт.');
+          },
           onEnded: (by) => {
             setGuestState('rejected');
             setGuestNote(by ? `${by} завершил(а) встречу для всех.` : 'Встреча завершена для всех.');
