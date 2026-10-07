@@ -206,9 +206,10 @@ export function ClientCardPage({ clientId }: { clientId: string }) {
               ))}
             </ul>
           )}
-          {card.summary.risks.length > 0 && (
+          {/* «нет следующего действия» уже сказано блоком выше — здесь не повторяем */}
+          {card.summary.risks.some((r) => r.text !== 'По клиенту нет следующего действия.') && (
             <ul className="cl-ai-risks">
-              {card.summary.risks.map((r) => (
+              {card.summary.risks.filter((r) => r.text !== 'По клиенту нет следующего действия.').map((r) => (
                 <li key={r.text}><Icon name="alert" size={13} /> {r.text}{why && <span className="cl-src"> {r.sources.map(sourceLabel).join(' · ')}</span>}</li>
               ))}
             </ul>
