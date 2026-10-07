@@ -3,12 +3,13 @@ import { RealtimeGateway } from './realtime.gateway';
 import { RealtimeService } from './realtime.service';
 import { PresenceService } from '../presence/presence.service';
 import { PresenceController } from '../presence/presence.controller';
+import { TeamPulseController } from '../presence/team-pulse.controller';
 
 /** Global: RealtimeService доступен всем доменным модулям для эмиссии событий. */
 @Global()
 @Module({
   // Присутствие живёт рядом: шлюз пишет «был здесь», сервис отдаёт сводку и статусы.
-  controllers: [PresenceController],
+  controllers: [PresenceController, TeamPulseController],
   providers: [RealtimeGateway, RealtimeService, PresenceService],
   exports: [RealtimeService, PresenceService],
 })

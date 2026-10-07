@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { createHmac, randomUUID } from 'crypto';
 import { MeetingRoom, MsRouter, MsTransport, MsWorker, Participant } from './media.types';
+import { PresenceService } from '../presence/presence.service';
 
 /** Кодеки: Opus для звука, три видеокодека — браузеры договорятся сами. */
 const MEDIA_CODECS = [
@@ -52,7 +53,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
   private nextWorker = 0;
   private initError: string | null = null;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly config: ConfigService, private readonly presence: PresenceService) {}
 
   get available(): boolean {
     return this.workers.length > 0;
@@ -71,6 +72,8 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
+    // «На созвоне» в общем состоянии человека знает только этот модуль (ТЗ-16).
+    this.presence.useCallProbe((tenantId, userId) => this.isBusy(tenantId, userId));
     if (this.config.get<string>('MEDIASOUP_DISABLED') === '1') {
       this.initError = 'выключено через MEDIASOUP_DISABLED';
       return;
@@ -216,8 +219,11 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
   closeRoom(id: string): void {
     const room = this.rooms.get(id);
     if (!room) return;
+    const people = [...room.participants.keys()].filter((u) => !u.startsWith('guest:'));
     this.closeRoomInternal(room);
     this.rooms.delete(id);
+    // созвон кончился для всех сразу — «на созвоне» должно погаснуть у каждого
+    for (const userId of people) this.presence?.changed(room.tenantId, userId);
   }
 
   private closeRoomInternal(room: MeetingRoom): void {
@@ -236,6 +242,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
       producers: new Map(), consumers: new Map(), handRaised: false,
     };
     room.participants.set(userId, p);
+    if (!userId.startsWith('guest:')) this.presence?.changed(room.tenantId, userId);
     return p;
   }
 
@@ -247,6 +254,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     p.sendTransport?.close();
     p.recvTransport?.close();
     room.participants.delete(userId);
+    if (!userId.startsWith('guest:')) this.presence?.changed(room.tenantId, userId);
     return true;
   }
 

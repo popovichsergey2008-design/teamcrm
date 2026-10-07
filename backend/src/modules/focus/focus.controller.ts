@@ -4,6 +4,7 @@ import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-va
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { FOCUS_KINDS, FocusService } from './focus.service';
+import { SecurityService } from '../security/security.service';
 
 class SetFocusDto {
   @IsIn(FOCUS_KINDS as unknown as string[])
@@ -26,7 +27,7 @@ class SetFocusDto {
 @Controller('focus')
 @Roles('owner', 'manager', 'member')
 export class FocusController {
-  constructor(private readonly focus: FocusService) {}
+  constructor(private readonly focus: FocusService, private readonly security: SecurityService) {}
 
   @Get('me')
   mine(@CurrentUser() u: AuthUser) {
@@ -45,7 +46,8 @@ export class FocusController {
 
   /** Кто чем занят прямо сейчас — чтобы не спрашивать «ты свободен?». */
   @Get('team')
-  team(@CurrentUser() u: AuthUser) {
-    return this.focus.team(u.tenantId);
+  async team(@CurrentUser() u: AuthUser) {
+    await this.security.require(u.tenantId, u.userId, 'focus.view_team', 'Список «Кто чем занят» вам закрыт — его открывает владелец организации');
+    return this.focus.team(u.tenantId, { userId: u.userId, role: u.role });
   }
 }

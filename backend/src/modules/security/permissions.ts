@@ -28,6 +28,8 @@ export const PERMISSIONS = [
   'crm.view', 'crm.edit',
   // переписка и файлы
   'chat.view', 'chat.write', 'file.download',
+  // «Фокус дня» (ТЗ-16): кто чем занят в команде и «постучать срочно» в глубокий фокус
+  'focus.view_team', 'focus.knock',
   // ИИ и автоматизации
   'ai.use', 'ai.manage',
   // интеграции, выгрузки, безопасность
@@ -91,6 +93,7 @@ const BASE: Record<BaseRole, PermissionMap> = {
     'contact.view': ALL, 'contact.reveal': ALL, 'contact.copy': ALL, 'contact.export': ALL, 'contact.bulk_reveal': NO,
     'crm.view': ALL, 'crm.edit': ALL,
     'chat.view': ALL, 'chat.write': ALL, 'file.download': ALL,
+    'focus.view_team': ALL, 'focus.knock': ALL,
     'ai.use': ALL, 'ai.manage': ALL,
     'integration.view': ALL, 'integration.manage': NO,
     'export.create': ALL,
@@ -105,6 +108,7 @@ const BASE: Record<BaseRole, PermissionMap> = {
     'contact.view': ALL, 'contact.reveal': ALL, 'contact.copy': ALL, 'contact.export': NO, 'contact.bulk_reveal': NO,
     'crm.view': ALL, 'crm.edit': ALL,
     'chat.view': ALL, 'chat.write': ALL, 'file.download': ALL,
+    'focus.view_team': ALL, 'focus.knock': ALL,
     'ai.use': ALL, 'ai.manage': NO,
     'integration.view': ALL, 'integration.manage': NO,
     'export.create': ALL,

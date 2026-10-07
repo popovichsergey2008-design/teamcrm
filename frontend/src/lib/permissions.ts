@@ -38,6 +38,8 @@ const TITLES: Record<string, string> = {
   'chat.view': 'Читать переписку',
   'chat.write': 'Писать в чаты',
   'file.download': 'Скачивать файлы',
+  'focus.view_team': 'Видеть, кто чем занят в команде',
+  'focus.knock': 'Стучать в глубокий фокус коллеги',
 
   'ai.use': 'Пользоваться ИИ',
   'ai.manage': 'Настраивать ИИ',
@@ -70,7 +72,7 @@ export const PERMISSION_GROUPS: { title: string; items: string[] }[] = [
   },
   {
     title: 'Переписка и файлы',
-    items: ['chat.view', 'chat.write', 'file.download'],
+    items: ['chat.view', 'chat.write', 'file.download', 'focus.view_team', 'focus.knock'],
   },
   {
     title: 'Люди и организация',

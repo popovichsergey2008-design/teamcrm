@@ -64,6 +64,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.realtime.presenceConnect(user.tenantId, user.userId);
       void this.presence.touch(user.tenantId, user.userId);
       this.realtime.emitToTenant(user.tenantId, 'user.online', { userId: user.userId });
+      this.presence.changed(user.tenantId, user.userId);
     } catch {
       socket.emit('error', { code: 'UNAUTHORIZED', message: 'Socket auth failed' });
       socket.disconnect(true);
@@ -80,6 +81,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     // может быть открыта вторая вкладка или телефон
     if (!this.realtime.isOnline(user.tenantId, user.userId)) {
       this.realtime.emitToTenant(user.tenantId, 'user.offline', { userId: user.userId });
+      this.presence.changed(user.tenantId, user.userId);
     }
   }
 
