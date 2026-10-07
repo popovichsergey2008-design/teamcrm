@@ -116,7 +116,7 @@ export class FocusSessionService {
     try {
       await this.db.one<any>(
         `INSERT INTO focus_sessions (tenant_id, user_id, task_id, focus_day_item_id, planned_minutes, planned_end_at)
-         VALUES ($1, $2, $3, $4, $5, now() + make_interval(mins => $5::int))
+         VALUES ($1, $2, $3, $4, $5::int, now() + make_interval(mins => $5::int))
          RETURNING id`,
         [me.tenantId, me.userId, input.taskId ?? null, input.itemId ?? null, minutes],
       );

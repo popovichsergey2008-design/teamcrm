@@ -4,6 +4,8 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { localParts } from '../assistant/ping-rules';
 import { FocusDayRepository, ItemLive, ItemRow, PlanRow } from './focus-day.repository';
 import { Candidate, pickTop3, SCORE_VERSION, Scored, scoreCandidate } from './rule-of-3';
+import { closeDayAvailable, nextWorkStart, tomorrowOf, zonedTime } from './close-day';
+import { PresenceService } from '../presence/presence.service';
 
 export type Viewer = { tenantId: string; userId: string; role: string };
 
@@ -25,7 +27,11 @@ export const CHANGE_REASONS = ['not_relevant', 'wrong_priority', 'done', 'blocke
  */
 @Injectable()
 export class FocusDayService {
-  constructor(private readonly repo: FocusDayRepository, private readonly realtime: RealtimeService) {}
+  constructor(
+    private readonly repo: FocusDayRepository,
+    private readonly realtime: RealtimeService,
+    private readonly presence: PresenceService,
+  ) {}
 
   private async context(v: Viewer, now: Date) {
     const tz = await this.repo.timezone(v.tenantId, v.userId);
@@ -71,10 +77,10 @@ export class FocusDayService {
       if (created) await this.fill(v, id, scored, []);
       plan = await this.repo.plan(v.tenantId, v.userId, today);
     }
-    return this.aggregate(v, plan!, scored, enabled);
+    return this.aggregate(v, plan!, scored, enabled, now);
   }
 
-  private async aggregate(v: Viewer, plan: PlanRow, scored: (Scored & { createdAt: Date })[], enabled: boolean) {
+  private async aggregate(v: Viewer, plan: PlanRow, scored: (Scored & { createdAt: Date })[], enabled: boolean, now: Date) {
     const boss = v.role === 'owner' || v.role === 'manager';
     const [items, live] = await Promise.all([
       this.repo.items(plan.id),
@@ -99,6 +105,8 @@ export class FocusDayService {
     const inPlan = new Set(items.map(keyOfItem));
     const rest = scored.filter((c) => !inPlan.has(c.key));
     const waitingDecision = scored.filter((c) => c.kind !== 'task').length;
+    const [work, workday] = await Promise.all([this.repo.workDay(v.tenantId), this.repo.workdayState(v.tenantId, v.userId)]);
+    const doneTop = items.filter((i) => i.status === 'done').length;
 
     return {
       enabled,
@@ -111,7 +119,70 @@ export class FocusDayService {
       backlogCount: rest.length,
       waitingDecision,
       criticalCandidate: this.critical(plan, items, rest),
+      // «Завершить день» — после всей тройки или к концу рабочего дня (п. 78–80)
+      closeDay: {
+        available: !plan.closed_at && closeDayAvailable(now, plan.timezone, work, doneTop, items.length),
+        closedAt: plan.closed_at,
+        workdayClosedUntil: workday.closedUntil,
+        workEnd: work.workEnd,
+      },
     };
+  }
+
+  /** Итоги дня для окна «Завершить день» (п. 81–83). */
+  async closeSummary(v: Viewer, now = new Date()) {
+    const plan = await this.requirePlan(v, now);
+    const boss = v.role === 'owner' || v.role === 'manager';
+    const [items, live] = await Promise.all([this.repo.items(plan.id), this.repo.live(v.tenantId, { userId: v.userId, boss }, plan.id)]);
+    const liveBy = new Map(live.map((l) => [String(l.item_id), l]));
+    const from = zonedTime(plan.focus_date, '00:00', plan.timezone);
+    const to = new Date(from.getTime() + 24 * 3_600_000);
+    const [stats, workday] = await Promise.all([
+      this.repo.daySummary(v.tenantId, v.userId, from, to),
+      this.repo.workdayState(v.tenantId, v.userId),
+    ]);
+    const { tz, today } = await this.context(v, now);
+    const backlog = (await this.scored(v, now, tz, today)).filter((c) => !items.some((i) => keyOfItem(i) === c.key));
+    return {
+      topDone: items.filter((i) => i.status === 'done').length,
+      topTotal: items.length,
+      remaining: items.filter((i) => i.status === 'active').map((i) => present(i, liveBy.get(String(i.id)))),
+      secondaryLeft: backlog.filter((c) => c.worthy).length,
+      ...stats,
+      quietDefault: workday.quiet,
+    };
+  }
+
+  /**
+   * Завершить день (п. 82–87). Хвосты НЕ получают «на завтра» скопом (п. 84): всё
+   * возвращается в общий список, утром тройка соберётся заново; «закрепить на
+   * завтра» — только то, что человек выбрал сам, и только своя задача.
+   */
+  async close(v: Viewer, input: { tomorrow: string[]; quiet: boolean }, now = new Date()) {
+    const plan = await this.requirePlan(v, now);
+    const items = await this.repo.items(plan.id);
+    const date = tomorrowOf(now, plan.timezone);
+    for (const id of input.tomorrow) {
+      const it = items.find((i) => String(i.id) === String(id));
+      if (it?.task_id && it.item_type === 'task') await this.repo.pinTomorrow(v.tenantId, v.userId, it.task_id, date);
+    }
+    await this.repo.closePlan(plan.id);
+    const work = await this.repo.workDay(v.tenantId);
+    await this.repo.setWorkday(v.tenantId, v.userId, nextWorkStart(now, plan.timezone, work), input.quiet);
+    this.presence.changed(v.tenantId, v.userId);
+    // телефон и вторая вкладка узнают сразу и тоже затихают (п. 134)
+    this.realtime.emitToUsers(v.tenantId, [v.userId], 'workday.closed', {});
+    this.changed(v);
+    return this.today(v, now);
+  }
+
+  /** «Я ещё поработаю» — день снова открыт, тишина снимается (п. 87). */
+  async reopen(v: Viewer, now = new Date()) {
+    await this.repo.setWorkday(v.tenantId, v.userId, null);
+    this.presence.changed(v.tenantId, v.userId);
+    this.realtime.emitToUsers(v.tenantId, [v.userId], 'workday.closed', {});
+    this.changed(v);
+    return this.today(v, now);
   }
 
   /**

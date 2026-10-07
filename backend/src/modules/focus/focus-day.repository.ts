@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
 import { Candidate } from './rule-of-3';
+import { DEFAULT_DAY, WorkDay } from './close-day';
 
 export interface PlanRow {
   id: string;
@@ -168,6 +169,86 @@ export class FocusDayRepository {
       });
     }
     return out;
+  }
+
+  /** Рабочие часы организации; не заданы — день до 18:30, как в ТЗ (п. 79). */
+  async workDay(tenantId: string): Promise<WorkDay> {
+    const row = await this.db.one<{ work_start: string; work_end: string; weekend_days: number[]; holidays: string[] }>(
+      `SELECT work_start::text, work_end::text, weekend_days, holidays::text[] AS holidays
+         FROM org_work_settings WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    if (!row) return DEFAULT_DAY;
+    return {
+      workStart: row.work_start.slice(0, 5), workEnd: row.work_end.slice(0, 5),
+      weekendDays: row.weekend_days ?? DEFAULT_DAY.weekendDays,
+      holidays: (row.holidays ?? []).map((h) => String(h).slice(0, 10)),
+    };
+  }
+
+  async workdayState(tenantId: string, userId: string): Promise<{ closedUntil: Date | null; quiet: boolean }> {
+    const row = await this.db.one<{ workday_closed_until: Date | null; quiet_after_close: boolean }>(
+      `SELECT workday_closed_until, quiet_after_close FROM users WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, userId],
+    );
+    const until = row?.workday_closed_until && new Date(row.workday_closed_until) > new Date() ? row.workday_closed_until : null;
+    return { closedUntil: until, quiet: row?.quiet_after_close !== false };
+  }
+
+  async setWorkday(tenantId: string, userId: string, until: Date | null, quiet?: boolean): Promise<void> {
+    await this.db.query(
+      `UPDATE users SET workday_closed_until = $3, quiet_after_close = COALESCE($4, quiet_after_close)
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, userId, until, quiet ?? null],
+    );
+  }
+
+  /**
+   * Итоги дня (п. 81): минуты глубокой работы, сколько раз человек разблокировал
+   * коллег (решил согласование, принял сданную работу), сколько было встреч.
+   * Границы дня — местные сутки человека: [from, to).
+   */
+  async daySummary(tenantId: string, userId: string, from: Date, to: Date) {
+    const row = await this.db.one<{ deep: number; approvals: number; reviews: number; meetings: number }>(
+      `SELECT
+         (SELECT COALESCE(SUM(LEAST(s.planned_minutes,
+                   EXTRACT(EPOCH FROM (COALESCE(s.ended_at, now()) - s.started_at)) / 60)), 0)::int
+            FROM focus_sessions s
+           WHERE s.tenant_id = $1 AND s.user_id = $2 AND s.status IN ('completed', 'running', 'paused')
+             AND s.started_at >= $3 AND s.started_at < $4) AS deep,
+         (SELECT count(*)::int FROM approvals a
+           WHERE a.tenant_id = $1 AND a.approver_id = $2 AND a.decided_at >= $3 AND a.decided_at < $4) AS approvals,
+         (SELECT count(*)::int FROM focus_day_items i JOIN focus_day_plans p ON p.id = i.plan_id
+           WHERE p.tenant_id = $1 AND p.user_id = $2 AND i.item_type = 'review' AND i.status = 'done'
+             AND i.updated_at >= $3 AND i.updated_at < $4) AS reviews,
+         (SELECT count(DISTINCT e.id)::int FROM calendar_events e
+            JOIN calendar_participants cp ON cp.event_id = e.id AND cp.user_id = $2 AND cp.status <> 'declined'
+           WHERE e.tenant_id = $1 AND NOT e.all_day AND e.starts_at >= $3 AND e.starts_at < $4 AND e.starts_at < now()) AS meetings`,
+      [tenantId, userId, from, to],
+    );
+    return {
+      deepMinutes: Number(row?.deep ?? 0),
+      unblocked: Number(row?.approvals ?? 0) + Number(row?.reviews ?? 0),
+      meetings: Number(row?.meetings ?? 0),
+    };
+  }
+
+  async closePlan(planId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE focus_day_plans SET status = 'closed', closed_at = COALESCE(closed_at, now()), updated_at = now() WHERE id = $1`,
+      [planId],
+    );
+  }
+
+  /** «Закрепить на завтра» — личный план на завтра: только своя задача (п. 84). */
+  async pinTomorrow(tenantId: string, userId: string, taskId: string, date: string): Promise<boolean> {
+    const r = await this.db.one<{ id: string }>(
+      `UPDATE tasks SET focus_date = $4::date, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 AND assignee_id = $3 AND closed_at IS NULL AND deleted_at IS NULL
+        RETURNING id`,
+      [tenantId, taskId, userId, date],
+    );
+    return !!r;
   }
 
   plan(tenantId: string, userId: string, date: string): Promise<PlanRow | null> {

@@ -95,7 +95,7 @@ export class PresenceService {
     let one = '';
     if (onlyUserId) { params.push(onlyUserId); one = `AND u.id = $${params.length}`; }
     const rows = await this.db.many<any>(
-      `SELECT u.id, u.full_name, u.avatar_file_id, u.presence_status,
+      `SELECT u.id, u.full_name, u.avatar_file_id, u.presence_status, u.workday_closed_until,
               f.kind, f.note, f.task_id, f.until,
               fs.id AS session_id, fs.task_id AS session_task_id, fs.planned_end_at AS session_end,
               CASE WHEN t.id IS NOT NULL AND ($3::boolean OR p.visibility = 'all'
@@ -123,6 +123,7 @@ export class PresenceService {
         inCall: this.callProbe(tenantId, userId),
         focus: r.kind ? { kind: r.kind, note: r.note, taskId: r.task_id ? String(r.task_id) : null, until: r.until } : null,
         manual: (r.presence_status as ManualStatus) ?? null,
+        workdayClosedUntil: r.workday_closed_until,
         session: r.session_id
           ? { id: String(r.session_id), taskId: r.session_task_id ? String(r.session_task_id) : null, plannedEndAt: r.session_end }
           : null,

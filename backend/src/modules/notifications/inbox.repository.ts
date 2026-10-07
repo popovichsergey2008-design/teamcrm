@@ -98,7 +98,11 @@ export class InboxRepository {
                           AND s.status = 'running' AND s.planned_end_at > now())
             OR EXISTS (SELECT 1 FROM user_focus f
                         WHERE f.tenant_id = $1 AND f.user_id = $2 AND f.kind = 'deep'
-                          AND (f.until IS NULL OR f.until > now()))) AS quiet`,
+                          AND (f.until IS NULL OR f.until > now()))
+            -- «Завершить день» с тихим режимом: молчим до утра (ТЗ-16, п. 86)
+            OR EXISTS (SELECT 1 FROM users u
+                        WHERE u.tenant_id = $1 AND u.id = $2 AND u.quiet_after_close
+                          AND u.workday_closed_until > now())) AS quiet`,
       [tenantId, userId],
     );
     return !!row?.quiet;

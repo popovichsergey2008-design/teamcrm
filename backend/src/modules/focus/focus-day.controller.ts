@@ -31,6 +31,13 @@ class DismissDto {
   @IsString() @MaxLength(40) key!: string;
 }
 
+class CloseDto {
+  /** элементы плана, которые закрепить на завтра (только свои задачи) */
+  @IsArray() @ArrayMaxSize(3) @IsString({ each: true }) tomorrow!: string[];
+  /** тихий режим до начала следующего рабочего дня */
+  @IsBoolean() quiet!: boolean;
+}
+
 class SettingsDto {
   @IsBoolean() enabled!: boolean;
 }
@@ -100,6 +107,21 @@ export class FocusDayController {
   @Patch('items/:itemId/pin')
   pin(@CurrentUser() u: AuthUser, @Param('itemId') itemId: string, @Body() dto: PinDto) {
     return this.day.pin(this.v(u), itemId, dto.pinned);
+  }
+
+  @Get('close')
+  closeSummary(@CurrentUser() u: AuthUser) {
+    return this.day.closeSummary(this.v(u));
+  }
+
+  @Post('close')
+  close(@CurrentUser() u: AuthUser, @Body() dto: CloseDto) {
+    return this.day.close(this.v(u), dto);
+  }
+
+  @Post('reopen')
+  reopen(@CurrentUser() u: AuthUser) {
+    return this.day.reopen(this.v(u));
   }
 
   @Post('dismiss')

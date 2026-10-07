@@ -143,6 +143,24 @@ describe('ТЗ-16 — Фокус дня: правило трёх (e2e)', () => {
     const after = (await http.get('/api/focus/today').set(H(owner.accessToken)).expect(200)).body.data;
     expect(after.top[0].status).toBe('done');
     expect(after.plan.status).toBe('completed');
+
+    // вся тройка сделана — можно завершать день, итоги без упрёков
+    expect(after.closeDay.available).toBe(true);
+    const sum = (await http.get('/api/focus/today/close').set(H(owner.accessToken)).expect(200)).body.data;
+    expect(sum.topDone).toBe(1);
+    expect(sum.topTotal).toBe(1);
+    expect(sum.unblocked).toBeGreaterThanOrEqual(1);
+    const closed = (await http.post('/api/focus/today/close').set(H(owner.accessToken))
+      .send({ tomorrow: [], quiet: true }).expect(201)).body.data;
+    expect(closed.plan.status).toBe('closed');
+    expect(closed.closeDay.available).toBe(false);
+    expect(closed.closeDay.workdayClosedUntil).toBeTruthy();
+    // коллеги видят «день завершён»
+    const pulse = (await http.get('/api/team/pulse').set(H(mem.accessToken)).expect(200)).body.data;
+    expect(pulse.find((x: any) => x.fullName === 'Анна').status).toBe('workday_closed');
+    // «я ещё поработаю»
+    const reopened = (await http.post('/api/focus/today/reopen').set(H(owner.accessToken)).expect(201)).body.data;
+    expect(reopened.closeDay.workdayClosedUntil).toBeNull();
   });
   it('глубокая работа: таймер, тишина, стук один раз, перерыв', async () => {
     const owner = (await http.post('/api/auth/register')
