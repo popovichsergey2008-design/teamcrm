@@ -19,6 +19,7 @@ import { AnthillScheduler } from './anthill.scheduler';
 import { AnthillAdminService } from './anthill-admin.service';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { MailboxModule } from '../mailbox/mailbox.module';
 import { BotDelivery } from './bot-delivery.service';
 import { BriefRepository } from './brief.repository';
 import { BriefService } from './brief.service';
@@ -37,6 +38,8 @@ import { BriefService } from './brief.service';
     ClientsModule,
     // Личные уведомления секретаря (ТЗ-18): ящик, push, Telegram
     NotificationsModule,
+    // Личная почта (ТЗ-18): бот разбирает ящик и готовит ответы
+    MailboxModule,
   ],
   controllers: [AnthillController],
   providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService, BotDelivery, BriefRepository, BriefService],

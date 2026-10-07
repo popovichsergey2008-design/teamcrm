@@ -1124,6 +1124,14 @@ export const api = {
   anthillDelete: (id: string) => request<{ deleted: boolean }>('DELETE', `/anthill/sessions/${id}`),
   anthillConfirm: (actionId: string) => request<{ status: string; text: string; output: Record<string, unknown>; sources: AnthillSource[]; canUndo: boolean }>('POST', `/anthill/actions/${actionId}/confirm`, {}),
   anthillReject: (actionId: string) => request<{ status: string }>('POST', `/anthill/actions/${actionId}/reject`, {}),
+  mailProviders: () => request<MailProvider[]>('GET', '/mailbox/providers'),
+  mailAccounts: () => request<MailAccount[]>('GET', '/mailbox/accounts'),
+  mailConnect: (i: { provider: string; email: string; password: string; imapHost?: string; imapPort?: number; smtpHost?: string; smtpPort?: number }) =>
+    request<MailAccount>('POST', '/mailbox/accounts', i),
+  mailDisconnect: (id: string) => request<{ deleted: boolean }>('DELETE', `/mailbox/accounts/${id}`),
+  mailMessages: (o: { unread?: boolean; q?: string } = {}) =>
+    request<MailMessage[]>('GET', `/mailbox/messages?${new URLSearchParams({ ...(o.unread ? { unread: '1' } : {}), ...(o.q ? { q: o.q } : {}) })}`),
+  mailMessage: (id: string) => request<MailMessage & { body: string }>('GET', `/mailbox/messages/${id}`),
   secretaryPrefs: () => request<SecretaryPrefs>('GET', '/anthill/secretary/prefs'),
   saveSecretaryPrefs: (p: Partial<SecretaryPrefs>) => request<SecretaryPrefs>('PATCH', '/anthill/secretary/prefs', p),
   secretaryBrief: (kind: 'morning' | 'evening') => request<{ text: string }>('GET', `/anthill/secretary/brief/${kind}`),
@@ -2667,6 +2675,14 @@ export interface AnthillAdmin {
   /** Автономность по группам действий (ТЗ-18): off · suggest · confirm · auto. */
   autonomy: Record<AnthillGroup, AnthillMode>;
 }
+/** Личная почта (ТЗ-18). */
+export type MailCategory = 'critical' | 'action' | 'client' | 'invoice' | 'fyi' | 'newsletter';
+export interface MailProvider { id: string; imapHost: string; imapPort: number; smtpHost: string; smtpPort: number; hint: string }
+export interface MailAccount { id: string; provider: string; email: string; status: string; lastError: string | null; lastSyncAt: string | null }
+export interface MailMessage {
+  id: string; from: string | null; fromEmail: string | null; subject: string; sentAt: string | null;
+  category: MailCategory; reason: string | null; client: string | null; isRead: boolean; preview: string; mailbox: string | null;
+}
 /** Личные настройки секретаря (ТЗ-18): сводки, каналы, справка перед встречей, важные люди. */
 export interface SecretaryPrefs {
   morningAt: string | null; eveningAt: string | null; weekdaysOnly: boolean;
@@ -2675,7 +2691,7 @@ export interface SecretaryPrefs {
 }
 /** Напоминание бота (ТЗ-18): разовое или с повтором. */
 export interface AnthillReminder { id: string; text: string; dueAt: string; repeat: string | null; sent: number }
-export type AnthillGroup = 'self' | 'tasks' | 'messages' | 'calendar' | 'documents';
+export type AnthillGroup = 'self' | 'tasks' | 'messages' | 'calendar' | 'documents' | 'mail';
 export type AnthillMode = 'off' | 'suggest' | 'confirm' | 'auto';
 export interface AnthillUsage {
   days: { day: string; requests: number; tokens: number; cost: number }[];

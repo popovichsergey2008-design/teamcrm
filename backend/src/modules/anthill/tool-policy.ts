@@ -14,7 +14,7 @@ import { Permission } from '../security/permissions';
 export type Risk = 'read' | 'low_write' | 'high_write' | 'destructive';
 
 /** Группа действий — по ней владелец задаёт автономность (§4). */
-export type ToolGroup = 'read' | 'self' | 'tasks' | 'messages' | 'calendar' | 'documents';
+export type ToolGroup = 'read' | 'self' | 'tasks' | 'messages' | 'calendar' | 'documents' | 'mail';
 export type WriteGroup = Exclude<ToolGroup, 'read'>;
 
 /**
@@ -27,7 +27,7 @@ export type WriteGroup = Exclude<ToolGroup, 'read'>;
 export type AutonomyMode = 'off' | 'suggest' | 'confirm' | 'auto';
 export type Autonomy = Record<WriteGroup, AutonomyMode>;
 
-export const WRITE_GROUPS: WriteGroup[] = ['self', 'tasks', 'messages', 'calendar', 'documents'];
+export const WRITE_GROUPS: WriteGroup[] = ['self', 'tasks', 'messages', 'calendar', 'documents', 'mail'];
 
 /**
  * По умолчанию всё — с подтверждением, кроме того, что касается только самого
@@ -36,6 +36,8 @@ export const WRITE_GROUPS: WriteGroup[] = ['self', 'tasks', 'messages', 'calenda
  */
 export const DEFAULT_AUTONOMY: Autonomy = {
   self: 'auto', tasks: 'confirm', messages: 'confirm', calendar: 'confirm', documents: 'confirm',
+  // черновик в свой ящик — сразу (ТЗ §4: «черновик ответа → AUTO»); отправка — всегда с подтверждением
+  mail: 'auto',
 };
 
 type Params = Record<string, unknown>;
@@ -96,6 +98,12 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
     // встреча без участников — это время в своём календаре, а не приглашение
     affectsOthers: (p) => Array.isArray(p.participantIds) && p.participantIds.length > 0,
   },
+  mail_inbox: READ,
+  mail_search: READ,
+  mail_read: READ,
+  // черновик ложится в свой же ящик и никуда не уходит
+  mail_draft: { risk: 'low_write', group: 'mail', affectsOthers: false },
+  mail_send: { risk: 'high_write', group: 'mail', affectsOthers: true },
   move_event: {
     risk: 'high_write', group: 'calendar',
     affectsOthers: (p) => Number(p.participants ?? 0) > 0,

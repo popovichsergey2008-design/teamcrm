@@ -12,6 +12,7 @@ import { AiUsagePanel } from '../components/AiUsagePanel';
 import { KnowledgePanel } from '../components/KnowledgePanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { FocusSettingsPanel } from '../components/FocusSettingsPanel';
+import { MailPanel } from '../components/MailPanel';
 import { navigate, Route } from '../lib/router';
 
 /**
@@ -53,6 +54,13 @@ const CARDS: Card[] = [
     hint: 'Битрикс24 и YouGile, ключи ИИ, библиотека промптов, Telegram',
     icon: 'plug',
     roles: ['owner'],
+  },
+  {
+    tab: 'mail',
+    title: 'Почта',
+    hint: 'Ваш ящик Gmail, Яндекс, Mail.ru, Outlook или свой: секретарь разбирает письма и готовит ответы',
+    icon: 'mail',
+    roles: ['owner', 'manager', 'member'],
   },
   {
     tab: 'ai-usage',
@@ -171,6 +179,8 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'team' && canManage && <TeamPanel onClose={close} />}
       {route.tab === 'integrations' && role === 'owner' && <IntegrationsPanel onClose={close} />}
       {route.tab === 'ai-usage' && canManage && <AiUsagePanel onClose={close} />}
+      {/* Личный ящик — у каждого свой (ТЗ-18): письма не видит никто, кроме хозяина. */}
+      {route.tab === 'mail' && role !== 'client' && <MailPanel onClose={close} />}
       {route.tab === 'reports' && role !== 'client' && <ReportsPanel canManage={canManage} onClose={close} />}
       {route.tab === 'knowledge' && <KnowledgePanel canManage={canManage} onClose={close} />}
       {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}

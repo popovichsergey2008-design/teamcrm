@@ -9,6 +9,7 @@ import { ModeratorRepository } from '../assistant/moderator.repository';
 import { CalendarService } from '../calendar/calendar.service';
 import { meetingBriefText, weekAuditText } from './meeting-brief-rules';
 import { classify, unansweredText } from './chat-digest-rules';
+import { MailboxService } from '../mailbox/mailbox.service';
 
 const FALLBACK_TZ = 'Europe/Moscow';
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -36,6 +37,7 @@ export class BriefService {
     private readonly delivery: BotDelivery,
     private readonly moderator: ModeratorRepository,
     private readonly calendar: CalendarService,
+    private readonly mail: MailboxService,
   ) {}
 
   async prefs(userId: string): Promise<SecretaryPrefs> {
@@ -90,6 +92,8 @@ export class BriefService {
       const extra: string[] = [];
       if (d.critical.length) extra.push(`Срочное в переписке: ${d.critical.length} — спросите QEVO Bot «что срочного в чатах»`);
       if (silent) extra.push(`Вам не ответили:\n${silent}`);
+      const mailLine = await this.mail.briefLine(userId).catch(() => null);
+      if (mailLine) extra.push(mailLine);
       const all = [base, ...extra].filter(Boolean);
       return all.length ? all.join('\n') : null;
     }

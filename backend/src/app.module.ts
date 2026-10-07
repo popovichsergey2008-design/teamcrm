@@ -66,6 +66,7 @@ import { MediaModule } from './modules/media/media.module';
 import { NavModule } from './modules/nav/nav.module';
 import { FocusModule } from './modules/focus/focus.module';
 import { ClientsModule } from './modules/clients/clients.module';
+import { MailboxModule } from './modules/mailbox/mailbox.module';
 import { RadarModule } from './modules/radar/radar.module';
 import { SearchModule } from './modules/search/search.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
@@ -145,6 +146,7 @@ import { FeedModule } from './modules/feed/feed.module';
     NavModule,
     FocusModule,
     ClientsModule,
+    MailboxModule,
     RadarModule,
     SearchModule,
     ApprovalsModule,

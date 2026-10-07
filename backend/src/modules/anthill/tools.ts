@@ -15,6 +15,7 @@ import { NlService } from '../nl/nl.service';
 import { AskService } from '../assistant/ask.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { BriefService } from './brief.service';
+import { MailboxService } from '../mailbox/mailbox.service';
 import { classify, digestText, unansweredText } from './chat-digest-rules';
 import { BUFFER_MIN, conflicts, dayRu, findSlots, slotRu, timeRu } from './slot-rules';
 
@@ -85,6 +86,8 @@ export interface ToolDeps {
   clients: ClientsService;
   /** Сводки секретаря (ТЗ-18): «мой день» и «куда ушла неделя» тем же расчётом, что в уведомлениях. */
   briefs: BriefService;
+  /** Личная почта (ТЗ-18): разбор, поиск, черновик, отправка. */
+  mail: MailboxService;
 }
 
 const str = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
@@ -92,7 +95,7 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs } = deps;
+  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail } = deps;
 
   /** Клиент по названию или номеру — тем же поиском, что в разделе, и с теми же правами. */
   const findClient = async (ctx: ToolContext, key: string) => {
@@ -1044,6 +1047,82 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           text: text ? `Не ответили (${list.length}):\n${text}` : `Вопросов без ответа дольше ${days} дн. нет.`,
           sources: list.slice(0, 6).map((u) => ({ kind: 'chat' as const, id: u.chatId, title: u.chatKind === 'dm' ? `Личка: ${u.to}` : (u.chatTitle ?? 'Чат'), url: `${ctx.base}/chat/${u.chatId}` })),
         };
+      },
+    },
+    // ── почта (ТЗ-18, §8.1–8.2) ──
+    {
+      name: 'mail_inbox', kind: 'read',
+      description: 'Разбор моей почты: непрочитанное за 3 дня по категориям — важно, требуют действия, от клиентов, счета, к сведению, рассылки. Для «что в почте», «есть важные письма?», «разбери почту». Номера писем (#N) — для mail_read и ответа.',
+      params: {},
+      async run(ctx) {
+        if (!(await mail.hasMailbox(ctx.tenantId, ctx.user.userId))) return { text: 'Почта не подключена. Подключить ящик: «Настройки → Почта».', sources: [] };
+        const text = await mail.triage(ctx.tenantId, ctx.user.userId);
+        return { text: text ?? 'Непрочитанных писем за 3 дня нет.', sources: [] };
+      },
+    },
+    {
+      name: 'mail_search', kind: 'read',
+      description: 'Найти письма в моей почте за две недели по словам, отправителю или теме: «письмо от Иванова про договор». q — что искать.',
+      params: { q: 'слова, имя или адрес отправителя' },
+      async run(ctx, p) {
+        const list = await mail.inbox(ctx.tenantId, ctx.user.userId, { q: str(p.q, 100) });
+        if (!list.length) return { text: 'Таких писем не нашёл.', sources: [] };
+        return { text: list.slice(0, 15).map((m) => `#${m.id} ${m.sentAt ? dateRu(m.sentAt) : ''} ${m.from}: «${clip(m.subject, 80)}» — ${clip(m.preview, 140)}`).join('\n'), sources: [] };
+      },
+    },
+    {
+      name: 'mail_read', kind: 'read',
+      description: 'Прочитать письмо целиком по номеру (#N из mail_inbox или mail_search) — перед ответом на него.',
+      params: { id: 'номер письма' },
+      async run(ctx, p) {
+        const m = await mail.read(ctx.tenantId, ctx.user.userId, str(p.id, 20));
+        return { text: `Письмо #${m.id} от ${m.from} <${m.fromEmail ?? ''}>, ${m.sentAt ? dateRu(m.sentAt) : ''}${m.client ? `, клиент ${m.client}` : ''}\nТема: ${m.subject}\n\n${clip(m.body, 8000)}`, sources: [] };
+      },
+    },
+    {
+      name: 'mail_draft', kind: 'write',
+      description: 'Подготовить ответ или новое письмо ЧЕРНОВИКОМ в папку «Черновики» моего ящика — человек сам проверит и отправит из почты. replyTo — номер письма, на которое отвечаем (тогда адрес и тема подставятся сами). text — полный текст письма в тоне человека (учитывай memory). Это ничего не отправляет.',
+      params: { replyTo: 'номер письма, на которое отвечаем (необязательно)', to: 'адрес, если это новое письмо', subject: 'тема (необязательно для ответа)', text: 'текст письма' },
+      async preview(ctx, p) {
+        const m = await mail.prepare(ctx.tenantId, ctx.user.userId, { replyTo: str(p.replyTo, 20) || null, to: str(p.to, 255) || null, subject: str(p.subject, 300) || null, text: String(p.text ?? '') });
+        return {
+          text: `Черновик в «Черновики» ящика ${m.from}:\nКому: ${m.to}\nТема: ${m.subject}\n\n${clip(m.text, 1500)}`,
+          params: { replyTo: str(p.replyTo, 20) || null, to: m.to, subject: m.subject, text: m.text },
+        };
+      },
+      fields: [{ key: 'subject', label: 'Тема', type: 'text' }, { key: 'text', label: 'Текст письма', type: 'multiline' }],
+      values: (p) => ({ subject: str(p.subject, 300), text: String(p.text ?? '') }),
+      async edit(ctx, p, patch) {
+        const next = { ...p, subject: str(patch.subject ?? p.subject, 300), text: String(patch.text ?? p.text ?? '').trim() };
+        if (!next.text) throw new Error('Пустое письмо');
+        return { text: `Черновик:\nКому: ${p.to}\nТема: ${next.subject}\n\n${clip(next.text, 1500)}`, params: next };
+      },
+      async execute(ctx, p) {
+        const r = await mail.draft(ctx.tenantId, ctx.user.userId, { replyTo: (p.replyTo as string) || null, to: String(p.to), subject: String(p.subject), text: String(p.text) });
+        return { text: `Черновик сохранён в папку «${r.folder}» ящика ${r.account}: «${r.subject}» для ${r.to}. Откройте почту, проверьте и отправьте.`, output: { to: r.to }, sources: [] };
+      },
+    },
+    {
+      name: 'mail_send', kind: 'write',
+      description: 'ОТПРАВИТЬ письмо из моего ящика — только если человек прямо просит отправить. Иначе используй mail_draft. replyTo — номер письма, на которое отвечаем; text — полный текст.',
+      params: { replyTo: 'номер письма, на которое отвечаем (необязательно)', to: 'адрес, если это новое письмо', subject: 'тема (необязательно для ответа)', text: 'текст письма' },
+      async preview(ctx, p) {
+        const m = await mail.prepare(ctx.tenantId, ctx.user.userId, { replyTo: str(p.replyTo, 20) || null, to: str(p.to, 255) || null, subject: str(p.subject, 300) || null, text: String(p.text ?? '') });
+        return {
+          text: `Отправить письмо из ${m.from}?\nКому: ${m.to}\nТема: ${m.subject}\n\n${clip(m.text, 1500)}`,
+          params: { replyTo: str(p.replyTo, 20) || null, to: m.to, subject: m.subject, text: m.text },
+        };
+      },
+      fields: [{ key: 'subject', label: 'Тема', type: 'text' }, { key: 'text', label: 'Текст письма', type: 'multiline' }],
+      values: (p) => ({ subject: str(p.subject, 300), text: String(p.text ?? '') }),
+      async edit(ctx, p, patch) {
+        const next = { ...p, subject: str(patch.subject ?? p.subject, 300), text: String(patch.text ?? p.text ?? '').trim() };
+        if (!next.text) throw new Error('Пустое письмо');
+        return { text: `Отправить письмо?\nКому: ${p.to}\nТема: ${next.subject}\n\n${clip(next.text, 1500)}`, params: next };
+      },
+      async execute(ctx, p) {
+        const r = await mail.send(ctx.tenantId, ctx.user.userId, { replyTo: (p.replyTo as string) || null, to: String(p.to), subject: String(p.subject), text: String(p.text) });
+        return { text: `Письмо «${r.subject}» отправлено ${r.to} из ${r.account}.`, output: { to: r.to }, sources: [] };
       },
     },
     // ── календарь секретаря (ТЗ-18, этап 3) ──

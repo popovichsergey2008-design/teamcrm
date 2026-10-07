@@ -27,6 +27,7 @@ const GROUPS: { key: AnthillGroup; label: string; hint: string; self?: boolean }
   { key: 'messages', label: 'Сообщения', hint: 'написать в чат или в обсуждение задачи' },
   { key: 'calendar', label: 'Календарь', hint: 'поставить встречу' },
   { key: 'documents', label: 'Документы', hint: 'собрать файл и приложить его' },
+  { key: 'mail', label: 'Почта', hint: 'черновик ответа — в «Черновики» вашего ящика; отправка — всегда с подтверждением' },
 ];
 
 /**
