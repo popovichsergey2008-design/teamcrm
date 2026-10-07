@@ -4,6 +4,8 @@
    светлая тема ломается там, где о ней забыли. */
 
 :root {
+  /* Кольцо фокуса — одно на всё приложение (ТЗ-15). */
+  --ring: #2563eb;
   color-scheme: light;
 
   /*
@@ -144,6 +146,7 @@
 /* Тёмная тема: по системной настройке, если человек не выбрал светлую явно. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+  --ring: #93c5fd;
     color-scheme: dark;
     /*
       ───── Тёмная тема = брендбук ANTHILL.TEAM ─────
@@ -206,6 +209,7 @@
 
 /* Явный выбор человека сильнее системной настройки — в обе стороны. */
 :root[data-theme="dark"] {
+  --ring: #93c5fd;
   color-scheme: dark;
   /*
     ───── Тёмная тема = брендбук ANTHILL.TEAM ─────
@@ -293,12 +297,12 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 /* доступность: видимое кольцо только при навигации с клавиатуры */
-.btn:focus-visible, .input:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn:focus-visible, .input:focus-visible, .tab:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 
 .btn-primary { background: var(--accent-2); border-color: var(--accent-2); color: var(--on-accent); }
 .btn-primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
-.btn-ghost:hover:not(:disabled) { background: var(--bg-elev-2); color: var(--text); }
+.btn-ghost:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .btn-danger { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
 .btn-danger:hover:not(:disabled) { background: var(--fill-danger); border-color: var(--fill-danger); color: var(--on-fill); }
 .btn-sm { padding: 5px 10px; font-size: var(--fs-sm); }
