@@ -245,7 +245,20 @@ export type FocusToday =
     backlogCount: number;
     waitingDecision: number;
     criticalCandidate: (FocusCandidate & { replaceRank: number }) | null;
+    closeDay: { available: boolean; closedAt: string | null; workdayClosedUntil: string | null; workEnd: string };
   };
+
+/** Итоги дня для «Завершить день» (ТЗ-16, п. 81). */
+export interface FocusCloseSummary {
+  topDone: number;
+  topTotal: number;
+  remaining: FocusItem[];
+  secondaryLeft: number;
+  deepMinutes: number;
+  unblocked: number;
+  meetings: number;
+  quietDefault: boolean;
+}
 
 /** Сессия глубокой работы (ТЗ-16, волна 4): время считает сервер. */
 export interface FocusSession {
@@ -2236,6 +2249,10 @@ export const api = {
   knock: (userId: string, reason?: string) => request<{ ok: true; until: string }>('POST', `/users/${userId}/knock`, reason ? { reason } : {}),
   teamPulse: () => request<TeamPresence[]>('GET', '/team/pulse'),
   teamPulseOne: (userId: string) => request<TeamPresence | null>('GET', `/team/pulse/${userId}`),
+  focusCloseSummary: () => request<FocusCloseSummary>('GET', '/focus/today/close'),
+  focusClose: (tomorrow: string[], quiet: boolean) => request<FocusToday>('POST', '/focus/today/close', { tomorrow, quiet }),
+  focusReopen: () => request<FocusToday>('POST', '/focus/today/reopen'),
+  focusWorkday: () => request<{ closedUntil: string | null; quiet: boolean }>('GET', '/focus/workday'),
   focusSettings: (enabled: boolean) => request<{ enabled: boolean }>('PATCH', '/focus/today/settings', { enabled }),
   mobileFocus: () => request<{ mine: any[]; delegated: any[]; review: any[]; approvals: Approval[] }>('GET', '/mobile/focus'),
   myTasks: (scope: 'mine' | 'delegated' | 'review', closed = false) =>

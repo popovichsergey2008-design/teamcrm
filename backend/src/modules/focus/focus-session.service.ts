@@ -76,6 +76,17 @@ export class FocusSessionService {
     this.realtime.emitToUsers(me.tenantId, [me.userId], event, {});
   }
 
+  /** Закрыт ли день и тихо ли до утра — чтобы приложение молчало на любом экране. */
+  async workday(me: Me) {
+    const row = await this.db.one<{ until: Date | null; quiet: boolean }>(
+      `SELECT CASE WHEN workday_closed_until > now() THEN workday_closed_until END AS until,
+              quiet_after_close AS quiet
+         FROM users WHERE tenant_id = $1 AND id = $2`,
+      [me.tenantId, me.userId],
+    );
+    return { closedUntil: row?.until ?? null, quiet: !!row?.until && row?.quiet !== false };
+  }
+
   async current(me: Me) {
     return this.view(await this.live(me.tenantId, me.userId));
   }

@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { api } from '../lib/api';
+import { setQuietSource } from '../lib/quiet';
 import { getSocket } from '../lib/socket';
 import { showNotification, showToast } from '../lib/notifications';
 import { playKnock } from '../lib/sound';
@@ -21,6 +23,25 @@ const FocusZen = lazyComponent(() => import('./FocusZen').then((m) => m.FocusZen
  */
 export function FocusSessionHost({ onOpenTask }: { onOpenTask: (projectId: string, taskId: string) => void }) {
   const { session } = useFocusSession();
+
+  // День закрыт с тихим режимом — молчим до утра; утром тишина снимается сама.
+  useEffect(() => {
+    let timer: number | null = null;
+    const check = () => {
+      api.focusWorkday().then((w) => {
+        setQuietSource('workday', w.quiet);
+        if (timer) window.clearTimeout(timer);
+        if (w.quiet && w.closedUntil) {
+          const ms = new Date(w.closedUntil).getTime() - Date.now();
+          if (ms > 0 && ms < 2 ** 31 - 1) timer = window.setTimeout(() => setQuietSource('workday', false), ms);
+        }
+      }).catch(() => undefined);
+    };
+    check();
+    const socket = getSocket();
+    socket.on('workday.closed', check);
+    return () => { socket.off('workday.closed', check); if (timer) window.clearTimeout(timer); };
+  }, []);
 
   useEffect(() => {
     void refreshFocusSession();

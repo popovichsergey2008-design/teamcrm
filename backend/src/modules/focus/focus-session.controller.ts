@@ -47,6 +47,11 @@ export class FocusSessionController {
     return this.sessions.current(this.me(u));
   }
 
+  @Get('focus/workday')
+  workday(@CurrentUser() u: AuthUser) {
+    return this.sessions.workday(this.me(u));
+  }
+
   /** Нет ли встречи раньше конца фокуса — до старта. */
   @Get('focus/sessions/preflight')
   preflight(@CurrentUser() u: AuthUser, @Query() q: PreflightQuery) {

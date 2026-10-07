@@ -13,6 +13,8 @@ import { api, ApiError, FocusCandidate, FocusChangeReason, FocusItem, FocusToday
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import { getSocket } from '../lib/socket';
 import { setFocusSession, useFocusSession } from '../hooks/useFocusSession';
+import { CloseDayDialog } from './CloseDayDialog';
+import { TeamNow } from './TeamNow';
 import { useAuth } from '../state/auth';
 
 type Day = Extract<FocusToday, { enabled: true }>;
@@ -73,6 +75,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   // перед стартом фокуса: встреча раньше его конца (п. 132)
   const [meetingSoon, setMeetingSoon] = useState<null | { item: FocusItem; title: string; minutesLeft: number }>(null);
   const { session } = useFocusSession();
+  const [closing, setClosing] = useState(false);
 
   const apply = (next: FocusToday) => {
     if (next.enabled) setDay(next);
@@ -450,6 +453,27 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           ))}
         </section>
       )}
+
+      {/* Кто чем занят — без «ты свободен?» (п. 61). */}
+      <TeamNow meId={user?.id} />
+
+      {/* «Завершить день» — по нажатию, поверх работы само не открывается (п. 80). */}
+      {day.closeDay.workdayClosedUntil ? (
+        <section className="fd-closed" role="status">
+          <Icon name="moon" size={16} />
+          <span>День завершён. Тихо до {new Date(day.closeDay.workdayClosedUntil).toLocaleString('ru-RU', { weekday: 'short', hour: '2-digit', minute: '2-digit' })} — отдыхайте.</span>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run(api.focusReopen)}>Я ещё поработаю</Button>
+        </section>
+      ) : day.closeDay.available && (
+        <section className="fd-closeday">
+          <Button variant="outline" onClick={() => setClosing(true)}><Icon name="moon" size={15} /> Завершить день и подвести итоги</Button>
+        </section>
+      )}
+      <CloseDayDialog
+        open={closing}
+        onClose={() => setClosing(false)}
+        onClosed={(next) => { setClosing(false); apply(next); }}
+      />
 
       {/* Напоминания секретаря — ниже тройки: главное на экране — план, а не россыпь. */}
       <AssistantPings today={day.plan.date} onOpenTask={onOpenTask} onPlanned={() => void reload()} />
