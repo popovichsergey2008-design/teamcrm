@@ -77,6 +77,8 @@ export class PushService {
         });
         if (!item || !this.fcm.enabled) continue;
         if (!(await this.allowChatPush(userId, m.chatId))) continue;
+        // глубокая работа: сообщение лежит в ящике, телефон молчит (ТЗ-16)
+        if (await this.inbox.isQuiet(m.tenantId, userId)) continue;
 
         /*
           Куда слать.
@@ -251,6 +253,7 @@ export class PushService {
     // Живому приложению (сокет открыт, пусть и в фоне) — сигнал без push: оно само догонит ящик (волна 12).
     if (item) this.realtime.emitToUsers(row.tenant_id, [row.user_id], 'inbox.item', { id: String(item.id), eventKey: item.event_key });
     if (!item || row.push_sent_at || !this.fcm.enabled) return;
+    if (await this.inbox.isQuiet(row.tenant_id, row.user_id).catch(() => false)) return;
 
     try {
       const targets = (await this.inbox.pushTargets(row.user_id)).filter((t) => !t.active);

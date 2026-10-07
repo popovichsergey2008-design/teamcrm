@@ -97,6 +97,7 @@ export class PresenceService {
     const rows = await this.db.many<any>(
       `SELECT u.id, u.full_name, u.avatar_file_id, u.presence_status,
               f.kind, f.note, f.task_id, f.until,
+              fs.id AS session_id, fs.task_id AS session_task_id, fs.planned_end_at AS session_end,
               CASE WHEN t.id IS NOT NULL AND ($3::boolean OR p.visibility = 'all'
                         OR p.owner_user_id = $2::bigint
                         OR EXISTS (SELECT 1 FROM project_members pm
@@ -106,7 +107,8 @@ export class PresenceService {
          JOIN roles r ON r.id = u.role_id
          LEFT JOIN user_focus f ON f.tenant_id = u.tenant_id AND f.user_id = u.id
                                AND (f.until IS NULL OR f.until > now())
-         LEFT JOIN tasks t ON t.id = f.task_id AND t.deleted_at IS NULL
+         LEFT JOIN focus_sessions fs ON fs.tenant_id = u.tenant_id AND fs.user_id = u.id AND fs.status = 'running'
+         LEFT JOIN tasks t ON t.id = COALESCE(fs.task_id, f.task_id) AND t.deleted_at IS NULL
          LEFT JOIN projects p ON p.id = t.project_id
         WHERE u.tenant_id = $1 AND u.is_active AND r.code <> 'client' ${one}
         ORDER BY u.full_name`,
@@ -121,6 +123,9 @@ export class PresenceService {
         inCall: this.callProbe(tenantId, userId),
         focus: r.kind ? { kind: r.kind, note: r.note, taskId: r.task_id ? String(r.task_id) : null, until: r.until } : null,
         manual: (r.presence_status as ManualStatus) ?? null,
+        session: r.session_id
+          ? { id: String(r.session_id), taskId: r.session_task_id ? String(r.session_task_id) : null, plannedEndAt: r.session_end }
+          : null,
       }, now);
       // Подпись к фокусу «работаю над задачей» — это и есть название задачи: прячем
       // её вместе с названием, иначе закрытая задача утекает через подпись.

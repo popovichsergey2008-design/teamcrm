@@ -85,6 +85,25 @@ export class InboxRepository {
     );
   }
 
+  /**
+   * Тихо ли сейчас у человека (ТЗ-16, п. 56): идёт глубокая работа — сессия фокуса
+   * или «глубокий фокус», поставленный руками. Сообщения и уведомления о задачах при
+   * этом доставляются (ящик, лента, счётчики), но без push и Telegram. Звонки, стук
+   * «срочно» и безопасность сюда не смотрят — они проходят всегда.
+   */
+  async isQuiet(tenantId: string, userId: string): Promise<boolean> {
+    const row = await this.db.one<{ quiet: boolean }>(
+      `SELECT (EXISTS (SELECT 1 FROM focus_sessions s
+                        WHERE s.tenant_id = $1 AND s.user_id = $2
+                          AND s.status = 'running' AND s.planned_end_at > now())
+            OR EXISTS (SELECT 1 FROM user_focus f
+                        WHERE f.tenant_id = $1 AND f.user_id = $2 AND f.kind = 'deep'
+                          AND (f.until IS NULL OR f.until > now()))) AS quiet`,
+      [tenantId, userId],
+    );
+    return !!row?.quiet;
+  }
+
   /** Оболочка сообщает, открыта она сейчас или свёрнута. */
   setForeground(deviceId: string, foreground: boolean) {
     return this.db.query(

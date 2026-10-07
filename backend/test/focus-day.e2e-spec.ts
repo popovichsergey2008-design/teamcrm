@@ -144,4 +144,53 @@ describe('ТЗ-16 — Фокус дня: правило трёх (e2e)', () => {
     expect(after.top[0].status).toBe('done');
     expect(after.plan.status).toBe('completed');
   });
+  it('глубокая работа: таймер, тишина, стук один раз, перерыв', async () => {
+    const owner = (await http.post('/api/auth/register')
+      .send({ tenantName: 'Deep', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Юрий' })
+      .expect(201)).body.data;
+    const tok = owner.accessToken;
+    const memEmail = `d_m_${uniq()}@t.test`;
+    const inv = (await http.post('/api/invites').set(H(tok)).send({ email: memEmail, role: 'member' }).expect(201)).body.data;
+    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Алина', password: 'memberpass1' }).expect(201);
+    const mem = (await http.post('/api/auth/login').send({ email: memEmail, password: 'memberpass1' }).expect(201)).body.data;
+    const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Глубоко' }).expect(201)).body.data;
+    const task = (await http.post('/api/tasks').set(H(tok)).send({ projectId: proj.id, title: 'Сложная задача', assigneeId: owner.user.id }).expect(201)).body.data;
+
+    // нет фокуса — нет сессии; стучать некуда
+    expect((await http.get('/api/focus/sessions/current').set(H(tok)).expect(200)).body.data).toBeNull();
+    await http.post(`/api/users/${owner.user.id}/knock`).set(H(mem.accessToken)).send({}).expect(409);
+
+    const s = (await http.post('/api/focus/sessions').set(H(tok)).send({ taskId: String(task.id) }).expect(201)).body.data;
+    expect(s.status).toBe('running');
+    expect(s.plannedMinutes).toBe(50);
+    expect(s.remainingSeconds).toBeGreaterThan(49 * 60);
+    expect(s.task.title).toBe('Сложная задача');
+    // второй фокус поверх первого — нельзя
+    await http.post('/api/focus/sessions').set(H(tok)).send({}).expect(409);
+
+    // коллега видит «в глубоком фокусе»
+    const pulse = (await http.get('/api/team/pulse').set(H(mem.accessToken)).expect(200)).body.data;
+    expect(pulse.find((p: any) => p.fullName === 'Юрий').status).toBe('deep_focus');
+
+    // стук — один раз за сессию
+    await http.post(`/api/users/${owner.user.id}/knock`).set(H(mem.accessToken)).send({ reason: 'горит прод' }).expect(201);
+    await http.post(`/api/users/${owner.user.id}/knock`).set(H(mem.accessToken)).send({}).expect(409);
+
+    // пауза и продолжение не съедают время
+    const paused = (await http.post(`/api/focus/sessions/${s.id}/pause`).set(H(tok)).expect(201)).body.data;
+    expect(paused.status).toBe('paused');
+    const resumed = (await http.post(`/api/focus/sessions/${s.id}/resume`).set(H(tok)).expect(201)).body.data;
+    expect(resumed.status).toBe('running');
+    expect(resumed.interruptions).toBe(1);
+
+    await http.put(`/api/focus/sessions/${s.id}/notes`).set(H(tok)).send({ notes: 'проверить индекс' }).expect(200);
+    const done = (await http.post(`/api/focus/sessions/${s.id}/finish`).set(H(tok))
+      .send({ outcome: 'completed', takeBreak: true }).expect(201)).body.data;
+    expect(done.notes).toBe('проверить индекс');
+    expect(done.taskId).toBe(String(task.id));
+
+    const after = (await http.get('/api/team/pulse').set(H(mem.accessToken)).expect(200)).body.data;
+    expect(after.find((p: any) => p.fullName === 'Юрий').status).toBe('break');
+    expect((await http.get('/api/focus/sessions/current').set(H(tok)).expect(200)).body.data).toBeNull();
+  });
 });

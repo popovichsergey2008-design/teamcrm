@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { TelegramSender } from '../telegram/telegram.sender';
 import { TelegramService } from '../telegram/telegram.service';
 import { MailRow, NotificationsRepository } from './notifications.repository';
+import { InboxRepository } from './inbox.repository';
 import { CHAT_DIRECT_KEY, MIRROR_EVENT_KEY } from './mail.templates';
 import { mirrorText } from './telegram-mirror.text';
 
@@ -27,6 +28,7 @@ export class TelegramMirror {
     private readonly repo: NotificationsRepository,
     private readonly telegram: TelegramService,
     private readonly sender: TelegramSender,
+    private readonly inbox: InboxRepository,
   ) {}
 
   /**
@@ -67,6 +69,8 @@ export class TelegramMirror {
     if (!this.sender.enabled || !m.userId) return false;
     try {
       if (!(await this.repo.prefEnabled(m.tenantId, m.userId, CHAT_DIRECT_KEY))) return false;
+      // глубокая работа — без дубля в Telegram: сообщение ждёт в QEVO (ТЗ-16)
+      if (await this.inbox.isQuiet(m.tenantId, m.userId)) return false;
       const chatId = await this.telegram.chatIdOf(m.tenantId, m.userId);
       if (!chatId) return false;
       const who = m.authorName ?? 'Коллега';
@@ -92,6 +96,7 @@ export class TelegramMirror {
     if (!this.sender.enabled || !row.user_id || row.tg_sent_at) return;
     try {
       if (!(await this.repo.prefEnabled(row.tenant_id, row.user_id, MIRROR_EVENT_KEY))) return;
+      if (await this.inbox.isQuiet(row.tenant_id, row.user_id)) return;
       const chatId = await this.telegram.chatIdOf(row.tenant_id, row.user_id);
       if (!chatId) return; // Telegram не привязан — это норма, а не ошибка
 
