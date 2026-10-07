@@ -489,6 +489,9 @@ describe('QEVO Bot (e2e)', () => {
     const usage = (await http$.get('/api/anthill/admin/usage').set(O).expect(200)).body.data;
     expect(Array.isArray(usage.days)).toBe(true);
     expect(Array.isArray(usage.errors)).toBe(true);
+    // качество действий (ТЗ-18, §22) — по инструментам, и жалобы по причинам
+    expect(Array.isArray(usage.quality)).toBe(true);
+    expect(Array.isArray(usage.complaints)).toBe(true);
   });
 
   /**

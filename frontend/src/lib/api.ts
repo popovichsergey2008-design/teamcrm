@@ -2694,6 +2694,9 @@ export interface AnthillReminder { id: string; text: string; dueAt: string; repe
 export type AnthillGroup = 'self' | 'tasks' | 'messages' | 'calendar' | 'documents' | 'mail';
 export type AnthillMode = 'off' | 'suggest' | 'confirm' | 'auto';
 export interface AnthillUsage {
+  /** Качество действий по инструментам (ТЗ-18, §22). */
+  quality: { tool: string; total: number; done: number; rejected: number; failed: number; undone: number; auto: number; edited: number; thinkSec: number | null }[];
+  complaints: { reason: string; count: number }[];
   days: { day: string; requests: number; tokens: number; cost: number }[];
   errors: { kind: string; id: string; title: string; text: string; at: string; who: string | null }[];
 }

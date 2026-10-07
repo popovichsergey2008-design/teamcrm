@@ -243,7 +243,8 @@ export class AnthillRepository {
 
   /** Правка карточки до подтверждения: меняются и параметры, и текст предложения. */
   async updateActionInput(id: string, input: Record<string, unknown>): Promise<void> {
-    await this.db.query(`UPDATE ai_tool_actions SET input_json=$2::jsonb WHERE id=$1 AND status='pending'`, [id, JSON.stringify(input)]);
+    // edited — для доли «правили перед подтверждением» (ТЗ-18, §22)
+    await this.db.query(`UPDATE ai_tool_actions SET input_json=$2::jsonb, edited=true WHERE id=$1 AND status='pending'`, [id, JSON.stringify(input)]);
   }
 
   async setActionMessageText(actionId: string, text: string): Promise<void> {

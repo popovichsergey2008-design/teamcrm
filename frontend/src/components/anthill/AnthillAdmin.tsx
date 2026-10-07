@@ -20,6 +20,19 @@ const LIMITS: { key: keyof Settings['limits']; label: string; hint: string }[] =
   { key: 'contextMessages', label: 'Сообщений разговора в подсказке', hint: 'больше памяти в ответе — дороже каждый запрос' },
 ];
 
+/** Действия бота по-человечески — для метрик качества. */
+const TOOL_LABEL: Record<string, string> = {
+  create_task: 'Создать задачу', update_task: 'Изменить задачу', add_comment: 'Написать в задачу', send_message: 'Сообщение в чат',
+  create_reminder: 'Напоминание', create_scheduled_task: 'Регулярная задача', create_skill: 'Навык', remember: 'Запомнить',
+  create_document: 'Документ', create_event: 'Встреча', move_event: 'Перенос встречи', cancel_event: 'Отмена встречи',
+  mail_draft: 'Черновик письма', mail_send: 'Отправка письма',
+};
+const COMPLAINT: Record<string, string> = {
+  inaccurate: 'неточно', not_found: 'не нашёл', invented: 'придумал', wrong_context: 'не тот контекст', wording: 'формулировка',
+  wrong_person: 'не тот человек', wrong_time: 'не то время', wrong_tone: 'не тот тон', wrong_document: 'не тот документ',
+  should_not: 'не надо было выполнять', other: 'другое',
+};
+
 /** Группы действий для автономности (ТЗ-18, §4). */
 const GROUPS: { key: AnthillGroup; label: string; hint: string; self?: boolean }[] = [
   { key: 'self', label: 'Для себя', hint: 'напоминание себе, память, регулярные задачи, навыки', self: true },
@@ -205,6 +218,33 @@ export function AnthillAdmin() {
           ))}
         </div>
       </div>
+
+      {usage && usage.quality.length > 0 && (
+        <div className="anthill-group">
+          <div className="anthill-group-head">Как бот действует — за две недели</div>
+          <div className="anthill-card">
+            {usage.quality.map((q) => {
+              const decided = q.done + q.rejected;
+              const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)}%` : '—');
+              return (
+                <div key={q.tool} className="anthill-adm-day">
+                  <span>{TOOL_LABEL[q.tool] ?? q.tool}</span>
+                  <span className="dim">
+                    {q.total} · подтверждено {pct(q.done, decided)} · правили {pct(q.edited, q.total)}
+                    {q.auto ? ` · сам ${q.auto}` : ''}{q.failed ? ` · сбоев ${q.failed}` : ''}{q.undone ? ` · отменено ${q.undone}` : ''}
+                    {q.thinkSec !== null ? ` · решали ~${q.thinkSec < 90 ? `${q.thinkSec} с` : `${Math.round(q.thinkSec / 60)} мин`}` : ''}
+                  </span>
+                </div>
+              );
+            })}
+            {usage.complaints.length > 0 && (
+              <div className="dim">
+                Жалобы: {usage.complaints.map((c) => `${COMPLAINT[c.reason] ?? c.reason} — ${c.count}`).join(', ')}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="anthill-group">
         <div className="anthill-group-head">Расход за две недели</div>

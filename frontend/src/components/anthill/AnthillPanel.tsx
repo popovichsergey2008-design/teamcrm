@@ -42,6 +42,15 @@ const REASONS: { key: string; label: string }[] = [
   { key: 'wording', label: 'плохая формулировка' },
   { key: 'other', label: 'другое' },
 ];
+/** Причины для оценки действия (ТЗ-18, §22): что именно бот сделал не так. */
+const ACTION_REASONS: { key: string; label: string }[] = [
+  { key: 'wrong_person', label: 'не тот человек' },
+  { key: 'wrong_time', label: 'не то время' },
+  { key: 'wrong_tone', label: 'не тот тон' },
+  { key: 'wrong_document', label: 'не тот документ' },
+  { key: 'should_not', label: 'не надо было выполнять' },
+  { key: 'other', label: 'другое' },
+];
 const HINTS = [
   'Что мне сегодня нужно сделать?',
   'Какие задачи просрочены?',
@@ -499,7 +508,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
             )}
 
             {m.role === 'assistant' && !m.id.startsWith('act-') && !m.id.startsWith('part-') && (
-              <Feedback voted={votes[m.id] ?? null} onVote={(v, reason) => vote(m.id, v, reason)} />
+              <Feedback voted={votes[m.id] ?? null} onVote={(v, reason) => vote(m.id, v, reason)} action={!!m.action} />
             )}
           </div>
         ))}
@@ -647,7 +656,7 @@ function ActionForm({ action, onSave, onCancel }: {
  * Оценка ответа. Палец вниз спрашивает «что не так»: без причины мера бесполезна —
  * по ней потом правят подсказки модели и инструменты (ТЗ-6, «обучение»).
  */
-function Feedback({ voted, onVote }: { voted: 1 | -1 | null; onVote: (v: 1 | -1, reason?: string) => void }) {
+function Feedback({ voted, onVote, action = false }: { voted: 1 | -1 | null; onVote: (v: 1 | -1, reason?: string) => void; action?: boolean }) {
   const [asking, setAsking] = useState(false);
   return (
     <div className="anthill-feedback">
@@ -667,7 +676,7 @@ function Feedback({ voted, onVote }: { voted: 1 | -1 | null; onVote: (v: 1 | -1,
       </button>
       {asking && (
         <span className="anthill-reasons">
-          {REASONS.map((r) => (
+          {(action ? ACTION_REASONS : REASONS).map((r) => (
             <button key={r.key} className="anthill-reason" onClick={() => { setAsking(false); onVote(-1, r.key); }}>{r.label}</button>
           ))}
         </span>

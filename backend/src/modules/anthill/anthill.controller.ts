@@ -118,7 +118,9 @@ class SchedulePatchDto {
 }
 class FeedbackDto {
   @IsInt() @IsIn([1, -1]) vote!: 1 | -1;
-  @IsOptional() @IsIn(['inaccurate', 'not_found', 'invented', 'wrong_context', 'wording', 'other']) reason?: string;
+  // вторая строка — причины для действий (ТЗ-18, §22): «не тот человек», «не надо было выполнять»
+  @IsOptional() @IsIn(['inaccurate', 'not_found', 'invented', 'wrong_context', 'wording', 'other',
+    'wrong_person', 'wrong_time', 'wrong_tone', 'wrong_document', 'should_not']) reason?: string;
   @IsOptional() @IsString() @MaxLength(500) comment?: string;
 }
 

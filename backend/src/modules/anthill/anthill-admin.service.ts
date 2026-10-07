@@ -149,7 +149,7 @@ export class AnthillAdminService {
    * действий, которые не выполнились, и из регулярных задач, упавших при запуске.
    */
   async usage(tenantId: string) {
-    const [days, errors, failedTasks] = await Promise.all([
+    const [days, errors, failedTasks, quality, reasons] = await Promise.all([
       this.db.many<{ day: string; requests: string; tokens: string; cost: string }>(
         `SELECT to_char(created_at, 'YYYY-MM-DD') AS day,
                 COUNT(*)::text AS requests,
@@ -174,8 +174,39 @@ export class AnthillAdminService {
           ORDER BY s.last_run_at DESC NULLS LAST LIMIT 20`,
         [tenantId],
       ),
+      /*
+        Качество действий по инструментам (ТЗ-18, §22): сколько предложено, подтверждено,
+        отклонено, упало, выполнено само, поправлено перед подтверждением, и сколько
+        человек думал над карточкой (медиана секунд до «Создать»).
+      */
+      this.db.many<{ tool: string; total: number; done: number; rejected: number; failed: number; undone: number; auto: number; edited: number; think: number | null }>(
+        `SELECT tool, count(*)::int AS total,
+                count(*) FILTER (WHERE status IN ('done', 'undone'))::int AS done,
+                count(*) FILTER (WHERE status = 'rejected')::int AS rejected,
+                count(*) FILTER (WHERE status = 'failed')::int AS failed,
+                count(*) FILTER (WHERE status = 'undone')::int AS undone,
+                count(*) FILTER (WHERE auto)::int AS auto,
+                count(*) FILTER (WHERE edited)::int AS edited,
+                (percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (approved_at - created_at)))
+                   FILTER (WHERE approved_at IS NOT NULL AND NOT auto))::int AS think
+           FROM ai_tool_actions
+          WHERE tenant_id=$1 AND created_at > now() - interval '14 days'
+          GROUP BY tool ORDER BY count(*) DESC`,
+        [tenantId],
+      ),
+      this.db.many<{ reason: string; n: number }>(
+        `SELECT f.reason, count(*)::int AS n FROM ai_feedback f
+          WHERE f.tenant_id=$1 AND f.vote < 0 AND f.reason IS NOT NULL AND f.created_at > now() - interval '14 days'
+          GROUP BY f.reason ORDER BY count(*) DESC`,
+        [tenantId],
+      ),
     ]);
     return {
+      quality: quality.map((q) => ({
+        tool: q.tool, total: Number(q.total), done: Number(q.done), rejected: Number(q.rejected), failed: Number(q.failed),
+        undone: Number(q.undone), auto: Number(q.auto), edited: Number(q.edited), thinkSec: q.think === null ? null : Number(q.think),
+      })),
+      complaints: reasons.map((r) => ({ reason: r.reason, count: Number(r.n) })),
       days: days.map((d) => ({ day: d.day, requests: Number(d.requests), tokens: Number(d.tokens ?? 0), cost: Number(d.cost ?? 0) })),
       errors: [
         ...errors.map((e) => ({ kind: 'action' as const, id: String(e.id), title: e.tool, text: e.error, at: e.created_at, who: e.who })),
