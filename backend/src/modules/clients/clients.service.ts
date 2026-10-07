@@ -245,6 +245,12 @@ export class ClientsService {
     };
   }
 
+  async brief(me: Me, id: string) {
+    const c = await this.ctx(me);
+    const row = await this.client(me, c, id);
+    return { id: String(row.id), name: row.name, status: row.status, archived: !!row.archived_at };
+  }
+
   // ── контакты (п. 23–28) ─────────────────────────────────────────────────────────
   private async contactsView(me: Me, c: Ctx, clientId: string) {
     if (!can(c.perms, 'contact.view')) return { hidden: true, items: [] as any[], canReveal: false, requireReason: false };

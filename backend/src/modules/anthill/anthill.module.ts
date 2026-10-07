@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ClientsModule } from '../clients/clients.module';
 import { AiModule } from '../ai/ai.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { ChatsModule } from '../chats/chats.module';
@@ -28,6 +29,8 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
     FilesModule, TaskCardModule, ForecastModule, CalendarModule,
     // База знаний: из неё агент отвечает на вопросы о том, как работает сама система.
     KnowledgeModule,
+    // Клиенты (ТЗ-17): «что с Acme?», «кто требует внимания»
+    ClientsModule,
   ],
   controllers: [AnthillController],
   providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService],

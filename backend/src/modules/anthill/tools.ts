@@ -1,4 +1,5 @@
 import { AnthillRepository, Source } from './anthill.repository';
+import { ClientsService } from '../clients/clients.service';
 import { nextRun, parseSchedule, scheduleLabel } from './schedule-ru';
 import { FilesService } from '../files/files.service';
 import { ForecastService } from '../forecast/forecast.service';
@@ -78,6 +79,7 @@ export interface ToolDeps {
   nl: NlService;
   ask: AskService;
   knowledge: KnowledgeService;
+  clients: ClientsService;
 }
 
 const str = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
@@ -85,7 +87,14 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge } = deps;
+  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients } = deps;
+
+  /** Клиент по названию или номеру — тем же поиском, что в разделе, и с теми же правами. */
+  const findClient = async (ctx: ToolContext, key: string) => {
+    const r = await clients.list({ tenantId: ctx.tenantId, userId: ctx.user.userId, role: ctx.user.role }, /^\d+$/.test(key) ? { ids: [key], view: 'all' } : { q: key, view: 'all' });
+    return r.items[0] ?? null;
+  };
+  const clientSource = (ctx: ToolContext, c: { id: string; name: string }): Source => ({ kind: 'client', id: c.id, title: c.name, url: `${ctx.base}/clients/${c.id}` });
 
   /**
    * Человек по имени. Точного совпадения не требуем: в задаче просят «поставь на
@@ -183,6 +192,46 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           t.comments.length ? `Последние реплики:\n${[...t.comments].reverse().map((c) => `— ${c.author ?? 'система'} (${dateRu(c.at)}): ${clip(c.body, 300)}`).join('\n')}` : 'Обсуждения пока нет.',
         ];
         return { text: parts.join('\n'), sources: [taskSource(ctx, t)] };
+      },
+    },
+    {
+      name: 'search_clients', kind: 'read',
+      description: 'Клиенты компании (ТЗ-17): найти по названию, телефону, почте, ИНН, контакту или сделке; view: attention — «какие клиенты требуют внимания», mine — мои, no_owner — без ответственного; inactiveDays — «кому давно не писали», «без активности больше 14 дней»; segment — например VIP.',
+      params: { q: 'слова для поиска (необязательно)', view: 'all|mine|attention|no_owner', inactiveDays: 'сколько дней без активности (необязательно)', segment: 'сегмент (необязательно)' },
+      async run(ctx, p) {
+        const r = await clients.list({ tenantId: ctx.tenantId, userId: ctx.user.userId, role: ctx.user.role }, {
+          q: str(p.q, 120) || null, view: str(p.view) || 'all', segment: str(p.segment, 48) || null,
+          inactiveDays: Number(p.inactiveDays) > 0 ? Math.trunc(Number(p.inactiveDays)) : null, page: 1,
+        });
+        if (!r.items.length) return { text: 'Клиентов по этому условию не нашлось.', sources: [] };
+        const lines = r.items.slice(0, 25).map((c) => {
+          const days = c.activityAt ? Math.floor((ctx.now.getTime() - new Date(c.activityAt).getTime()) / 86_400_000) : null;
+          return `«${c.name}» — ${c.status}${c.segment ? `, ${c.segment}` : ''}, ответственный ${c.ownerName ?? 'не назначен'}`
+            + `${days != null ? `, активность ${days} дн. назад` : ''}${c.overdueTasks ? `, просрочено задач ${c.overdueTasks}` : ''}`
+            + `${c.health.signals.length ? ` (${c.health.signals.join('; ')})` : ''}`;
+        });
+        return { text: `Найдено клиентов: ${r.total}. Первые:\n${lines.join('\n')}`, sources: r.items.slice(0, 25).map((c) => clientSource(ctx, c)) };
+      },
+    },
+    {
+      name: 'client_overview', kind: 'read',
+      description: 'Что сейчас происходит с клиентом: статус, последняя активность, открытые сделки, задачи и просрочки, ближайшая встреча, следующее действие, риски — только факты с источниками. Для «что с Acme?» и «подготовь меня к встрече с …».',
+      params: { client: 'название клиента или его номер' },
+      async run(ctx, p) {
+        const found = await findClient(ctx, str(p.client, 120));
+        if (!found) return { text: 'Такого клиента не нашлось или он вам не виден.', sources: [] };
+        const card = await clients.card({ tenantId: ctx.tenantId, userId: ctx.user.userId, role: ctx.user.role }, found.id);
+        const people = card.contacts.items.map((x: any) => `${x.firstName} ${x.lastName ?? ''}${x.position ? ` (${x.position})` : ''}${x.isPrimary ? ' — основной' : ''}`.trim());
+        const parts = [
+          `Клиент «${card.client.name}» (${card.client.type === 'person' ? 'частное лицо' : 'компания'}), ответственный ${card.client.ownerName ?? 'не назначен'}.`,
+          ...card.summary.lines.map((l: any) => l.text),
+          card.summary.risks.length ? `Риски: ${card.summary.risks.map((r: any) => r.text).join(' ')}` : 'Явных рисков по фактам нет.',
+          people.length ? `Контакты: ${people.join('; ')}.` : 'Контактов не записано.',
+          card.deals.length ? `Сделки: ${card.deals.map((d: any) => `«${d.title}» — ${d.stage}${d.amount ? `, ${d.amount} ${d.currency}` : ''}${d.nextAction ? `, дальше: ${d.nextAction}` : ''}`).join('; ')}.` : '',
+          card.tasks.top.length ? `Открытые задачи: ${card.tasks.top.map((t: any) => `#${t.id} «${t.title}»${t.deadlineAt ? ` до ${dateRu(t.deadlineAt)}` : ''}`).join('; ')}.` : '',
+          card.pinnedNotes.length ? `Важное из заметок: ${card.pinnedNotes.map((n: any) => clip(n.body, 200)).join(' | ')}` : '',
+        ].filter(Boolean);
+        return { text: parts.join('\n'), sources: [clientSource(ctx, found)] };
       },
     },
     {
@@ -398,18 +447,20 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
     {
       name: 'create_task', kind: 'write',
       description: 'Создать задачу по описанию словами: название, описание, чек-лист, исполнитель, срок, проект — как при голосовой постановке. Передавай всю просьбу целиком в instruction, включая контекст (о чём задача), если он известен из переписки.',
-      params: { instruction: 'что сделать, кому, к какому сроку, в каком проекте', projectId: 'номер проекта из контекста (необязательно)' },
+      params: { instruction: 'что сделать, кому, к какому сроку, в каком проекте', projectId: 'номер проекта из контекста (необязательно)', client: 'клиент, по которому задача (необязательно)' },
       async preview(ctx, p) {
         const draft = await nl.parse(ctx.tenantId, ctx.user.userId, str(p.instruction, 4000), str(p.projectId, 20) || null);
         if (draft.intent !== 'create_task' || !draft.task) throw new Error('Не понял, какую задачу создать — уточните, пожалуйста');
         const t = draft.task as any;
         const ctxp = (draft as any).context ?? { projects: [], users: [] };
+        const client = p.client ? await findClient(ctx, str(p.client, 120)).catch(() => null) : null;
+        const card = await taskCard(ctx, t, {
+          project: ctxp.projects?.find((x: any) => String(x.id) === String(t.projectId))?.name,
+          assignee: ctxp.users?.find((x: any) => String(x.id) === String(t.assigneeId))?.name,
+        });
         return {
-          text: await taskCard(ctx, t, {
-            project: ctxp.projects?.find((x: any) => String(x.id) === String(t.projectId))?.name,
-            assignee: ctxp.users?.find((x: any) => String(x.id) === String(t.assigneeId))?.name,
-          }),
-          params: { intent: 'create_task', task: { ...t, requiresApproval: true } },
+          text: client ? `${card}\nКлиент: ${client.name}` : card,
+          params: { intent: 'create_task', task: { ...t, requiresApproval: true }, ...(client ? { clientId: client.id } : {}) },
         };
       },
       fields: [
@@ -434,9 +485,12 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         return { text: await taskCard(ctx, t), params: { ...p, task: t } };
       },
       async execute(ctx, p) {
-        const res: any = await nl.apply(ctx.tenantId, ctx.user.userId, p as any);
+        const { clientId, ...body } = p as any;
+        const res: any = await nl.apply(ctx.tenantId, ctx.user.userId, body);
         const task = res?.task;
         if (!task?.id) throw new Error('Задача не создалась');
+        // клиент — после создания: разбор фразы о клиентах не знает, привязку ставим сами
+        if (clientId) await tasks.update(ctx.tenantId, String(task.id), { clientId: String(clientId) } as any, ctx.user.userId).catch(() => undefined);
         const src = taskSource(ctx, { id: String(task.id), title: task.title, project_id: String(task.project_id ?? task.projectId) });
         return { text: `Задача #${task.id} «${task.title}» создана.`, output: { taskId: String(task.id), projectId: String(task.project_id ?? task.projectId), title: task.title }, sources: [src] };
       },

@@ -227,6 +227,12 @@ export class ClientsController {
     return this.clients.card(this.me(u), id);
   }
 
+  /** Коротко — для поля «Клиент» в карточке задачи (п. 33). */
+  @Get('clients/:id/brief')
+  brief(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.clients.brief(this.me(u), id);
+  }
+
   @Patch('clients/:id')
   update(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ClientFields) {
     return this.clients.update(this.me(u), id, dto);

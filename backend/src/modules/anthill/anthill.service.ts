@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ClientsService } from '../clients/clients.service';
 import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
 import { TasksService } from '../tasks/tasks.service';
@@ -56,9 +57,9 @@ export class AnthillService {
     private readonly ai: AiService,
     tasks: TasksService, chats: ChatsService, search: SearchService, nl: NlService, ask: AskService,
     files: FilesService, taskcard: TaskCardService, forecast: ForecastService, calendar: CalendarService,
-    knowledge: KnowledgeService,
+    knowledge: KnowledgeService, clients: ClientsService,
   ) {
-    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge });
+    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients });
   }
 
   private base() { return (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, ''); }

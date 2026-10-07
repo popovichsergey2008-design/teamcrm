@@ -24,7 +24,8 @@ import { useEnterSend } from '../../hooks/useEnterSend';
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
   task: 'задача', project: 'проект', chat: 'чат', meeting: 'мит',
 };
-const SOURCE_ICON: Record<AnthillSource['kind'], 'check-circle' | 'chat' | 'record' | 'board' | 'link'> = {
+const SOURCE_ICON: Record<AnthillSource['kind'], 'check-circle' | 'chat' | 'record' | 'board' | 'link' | 'building'> = {
+  client: 'building',
   task: 'check-circle', message: 'chat', chat: 'chat', meeting: 'record', project: 'board', web: 'link',
 };
 /** Почему ответ не подошёл: короткий список вместо свободного поля — иначе не заполняют. */
@@ -254,6 +255,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     const task = /\/projects\/([^/]+)\/task\/([^/#?]+)/.exec(url);
     if (task) { navigate({ section: 'projects', projectId: task[1], taskId: task[2] }); return; }
     if (s.kind === 'project') { navigate({ section: 'projects', projectId: String(s.id) }); return; }
+    if (s.kind === 'client') { navigate({ section: 'clients', clientId: String(s.id) }); return; }
     if (s.kind === 'meeting') {
       navigate({ section: 'chat', view: 'meetings' });
       window.setTimeout(() => window.dispatchEvent(

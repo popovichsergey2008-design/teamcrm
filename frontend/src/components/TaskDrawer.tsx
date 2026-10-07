@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { TaskClientField } from './TaskClientField';
 import { navigate } from '../lib/router';
 import { useAuth } from '../state/auth';
 import { EmptyState } from './EmptyState';
@@ -20,7 +21,7 @@ import { RichText } from './RichText';
 import { RichEditor } from './RichEditor';
 import { SuggestAssignee } from './SuggestAssignee';
 import { DirectionsPicker } from './DirectionsPicker';
-import { MONETIZATION_ENABLED } from '../config';
+import { CLIENTS_ENABLED, MONETIZATION_ENABLED } from '../config';
 import { TaskTagsField } from './TaskTagsField';
 import { EMPTY_TAGS, TagsValue } from '../lib/tags';
 import { overlayProps } from '../lib/overlay';
@@ -863,6 +864,13 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                   : <span className="ui-cell-dim">нет прогноза</span>}
                 {MONETIZATION_ENABLED && cost !== null && <Badge tone="neutral">₽ {cost.toLocaleString('ru-RU')}</Badge>}
               </dd>
+            </>
+          )}
+          {/* Клиент задачи (ТЗ-17, п. 33) — пока раздел «Клиенты» только в сборке dev. */}
+          {CLIENTS_ENABLED && (
+            <>
+              <dt>Клиент</dt>
+              <dd><TaskClientField taskId={task.id} clientId={(task as { client_id?: string | null }).client_id ?? null} onChanged={onRefresh} /></dd>
             </>
           )}
           {/* У поля тегов своя подпись — вторая слева была бы повтором. */}

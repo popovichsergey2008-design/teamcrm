@@ -2315,6 +2315,7 @@ export const api = {
   clientDuplicates: (q: string) => request<ClientDuplicate[]>('GET', `/clients/duplicates?${q}`),
   createClient: (b: Record<string, unknown>) => request<{ id: string }>('POST', '/clients', b),
   clientCard: (id: string) => request<ClientCard>('GET', `/clients/${id}`),
+  clientBrief: (id: string) => request<{ id: string; name: string; status: string; archived: boolean }>('GET', `/clients/${id}/brief`),
   updateClient: (id: string, b: Record<string, unknown>) => request<ClientCard>('PATCH', `/clients/${id}`, b),
   archiveClient: (id: string) => request<{ ok: true }>('DELETE', `/clients/${id}`),
   restoreClient: (id: string) => request<{ ok: true }>('POST', `/clients/${id}/restore`),
@@ -2621,7 +2622,7 @@ export interface MaterialItem {
 /** QEVO Bot: с чем открыт разговор. */
 export interface AnthillContext { type: 'task' | 'project' | 'chat' | 'meeting'; id: string; title?: string }
 /** `web` — страница из интернета: открывается в новой вкладке, а не внутри CRM. */
-export interface AnthillSource { kind: 'task' | 'message' | 'meeting' | 'project' | 'chat' | 'web'; id: string; title: string; url: string }
+export interface AnthillSource { kind: 'task' | 'message' | 'meeting' | 'project' | 'chat' | 'web' | 'client'; id: string; title: string; url: string }
 export interface AnthillSession { id: string; title: string; messages: number; updatedAt: string; context: { type: string; id: string } | null }
 /** Поле карточки действия: состав задаёт инструмент на сервере. */
 export interface AnthillField { key: string; label: string; type: 'text' | 'multiline' | 'date' | 'datetime' | string }

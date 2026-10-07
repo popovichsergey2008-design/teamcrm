@@ -37,7 +37,7 @@ export interface SkillRow {
 /** Источник в ответе — то, что можно открыть одним нажатием. */
 export interface Source {
   /** `web` — страница из интернета: её видно в ответе отдельной пометкой (разд. 26). */
-  kind: 'task' | 'message' | 'meeting' | 'project' | 'chat' | 'web';
+  kind: 'task' | 'message' | 'meeting' | 'project' | 'chat' | 'web' | 'client';
   id: string; title: string; url: string;
 }
 
