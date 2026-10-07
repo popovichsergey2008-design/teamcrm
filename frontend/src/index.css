@@ -161,15 +161,15 @@
       Заливка кнопки НЕ неоновая: белым по циану читать нельзя (1.4:1). Под белый
       текст берём глубокий синий из той же семьи — 5.67:1.
     */
-    --bg:        #1d2026;
-    --bg-elev:   #24282f;
-    --bg-elev-2: #2c3139;
-    --border:    #343a44;
-    --border-2:  #48505d;
-    --hover:     #30353e;
-    --text:      #e8e5df;
-    --text-dim:  #aaa59c;
-    --text-mut:  #9d988f;
+    --bg:        #172033;
+    --bg-elev:   #1e2840;
+    --bg-elev-2: #26314b;
+    --border:    #2e3a55;
+    --border-2:  #43516f;
+    --hover:     #2a3550;
+    --text:      #e6edf7;
+    --text-dim:  #a9b5ca;
+    --text-mut:  #97a4ba;
     --accent:      #5fc8e6;
     --accent-2:    #0a6bb0;
     --accent-soft: rgba(95,200,230,.12);
@@ -198,9 +198,9 @@
     --fill-muted:  #4d5c77;
     --on-ok:     #08110d;
   --on-warn:   #1a1300;
-    --overlay:   rgba(10,12,16,.50);
-    --shadow:    0 1px 2px rgba(0,0,0,.22), 0 8px 24px rgba(0,0,0,.24);
-    --shadow-lg: 0 20px 50px rgba(0,0,0,.40);
+    --overlay:   rgba(6,10,20,.55);
+    --shadow:    0 1px 2px rgba(3,8,20,.30), 0 8px 24px rgba(3,8,20,.32);
+    --shadow-lg: 0 20px 50px rgba(3,8,20,.50);
     --video-bg:  #000000;
     /* На тёмном — ровно брендбук: неон задуман светящимся в темноте. */
     --brand-1: #81e5ed;
@@ -225,15 +225,15 @@
     Заливка кнопки НЕ неоновая: белым по циану читать нельзя (1.4:1). Под белый
     текст берём глубокий синий из той же семьи — 5.67:1.
   */
-  --bg:        #1d2026;
-  --bg-elev:   #24282f;
-  --bg-elev-2: #2c3139;
-  --border:    #343a44;
-  --border-2:  #48505d;
-  --hover:     #30353e;
-  --text:      #e8e5df;
-  --text-dim:  #aaa59c;
-  --text-mut:  #9d988f;
+  --bg:        #172033;
+  --bg-elev:   #1e2840;
+  --bg-elev-2: #26314b;
+  --border:    #2e3a55;
+  --border-2:  #43516f;
+  --hover:     #2a3550;
+  --text:      #e6edf7;
+  --text-dim:  #a9b5ca;
+  --text-mut:  #97a4ba;
   --accent:      #5fc8e6;
   --accent-2:    #0a6bb0;
   --accent-soft: rgba(95,200,230,.12);
@@ -262,9 +262,9 @@
   --fill-muted:  #4d5c77;
   --on-ok:     #08110d;
   --on-warn:   #1a1300;
-  --overlay:   rgba(10,12,16,.50);
-  --shadow:    0 1px 2px rgba(0,0,0,.22), 0 8px 24px rgba(0,0,0,.24);
-  --shadow-lg: 0 20px 50px rgba(0,0,0,.40);
+  --overlay:   rgba(6,10,20,.55);
+  --shadow:    0 1px 2px rgba(3,8,20,.30), 0 8px 24px rgba(3,8,20,.32);
+  --shadow-lg: 0 20px 50px rgba(3,8,20,.50);
   --video-bg:  #000000;
   /* На тёмном — ровно брендбук: неон задуман светящимся в темноте. */
   --brand-1: #81e5ed;

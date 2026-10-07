@@ -84,7 +84,7 @@ for d, px in DENS.items():
     save(Image.new('RGBA', (px, px), (255, 255, 255, 255)), os.path.join(folder, 'ic_launcher_background.png'))
     save(fit(MARK, px, 0.86), os.path.join(folder, 'ic_launcher_foreground.png'))
 
-# ── Android: заставка — знак по центру; ночная — на графите тёмной темы ──
+# ── Android: заставка — знак по центру; ночная — на тёмно-синем фоне тёмной темы ──
 for entry in os.listdir(RES):
     if not entry.startswith('drawable'):
         continue
@@ -93,7 +93,7 @@ for entry in os.listdir(RES):
         continue
     w, h = Image.open(path).size
     night = 'night' in entry
-    bg = (29, 32, 38, 255) if night else (245, 241, 234, 255)  # --bg тёмной и светлой темы
+    bg = (23, 32, 51, 255) if night else (245, 241, 234, 255)  # --bg тёмной и светлой темы
     canvas = Image.new('RGBA', (w, h), bg)
     side = round(min(w, h) * 0.34)
     piece = fit(MARK, side, 1.0)
