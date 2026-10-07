@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { FocusDayService } from '../focus/focus-day.service';
 import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SecretaryService } from '../secretary/secretary.service';
@@ -25,6 +26,7 @@ export class AssistantService {
     private readonly realtime: RealtimeService,
     private readonly secretary: SecretaryService,
     private readonly telegram: TelegramMirror,
+    private readonly focusDay: FocusDayService,
   ) {}
 
   // ---------- режим ----------
@@ -205,7 +207,8 @@ export class AssistantService {
     tenantId: string, userId: string, tz: string | null, items: PingCandidate[], now: Date,
   ): Promise<boolean> {
     const key = digestKey(userId, now, tz);
-    const text = digestText(items, greetingFor(now, tz));
+    const focus = await this.focusDay.morningLine(tenantId, userId, now).catch(() => null);
+    const text = focus ? `${greetingFor(now, tz)}! ${focus}` : digestText(items, greetingFor(now, tz));
     if (!text) return false;
     const row = await this.repo.create({
       tenantId, userId, kind: 'digest', taskId: null, text, status: 'sent', dedupKey: key,

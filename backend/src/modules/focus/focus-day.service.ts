@@ -406,6 +406,23 @@ export class FocusDayService {
     }
   }
 
+  /**
+   * Утренняя строка для сводки секретаря (решение заказчика: вместо россыпи
+   * напоминаний — «ваш фокус готов»). План собирается здесь же, если ещё не собран:
+   * человек откроет «Фокус дня» и увидит то же, что в сообщении. null — новый фокус
+   * у организации выключен, сводка остаётся прежней.
+   */
+  async morningLine(tenantId: string, userId: string, now = new Date()): Promise<string | null> {
+    if (!(await this.repo.enabled(tenantId))) return null;
+    const day = await this.today({ tenantId, userId, role: 'member' }, now);
+    if (!('top' in day)) return null;
+    const top = day.top.filter((i) => i.status === 'active' && i.title);
+    if (!top.length) return 'На сегодня критичных задач нет — день свободен для своего.';
+    const lines = top.map((i) => `${i.rank}. ${i.title}`);
+    const tail = day.waitingDecision > 0 ? `\nЕщё ждут вашего решения: ${day.waitingDecision}.` : '';
+    return `Ваш фокус на сегодня готов:\n${lines.join('\n')}${tail}\nОткройте «Фокус дня», чтобы принять или поправить.`;
+  }
+
   async setEnabled(tenantId: string, on: boolean) {
     await this.repo.setEnabled(tenantId, on);
     return { enabled: on };

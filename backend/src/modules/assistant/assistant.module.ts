@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { FocusModule } from '../focus/focus.module';
 import { ForecastModule } from '../forecast/forecast.module';
 import { MeetingsModule } from '../meetings/meetings.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -33,7 +34,7 @@ import { MaintenanceService } from './maintenance.service';
   // остальные уведомления, и слушается той же настройки человека
   // ForecastModule — чтобы секретарь назначал исполнителя тем же путём, что и человек:
   // с предупреждением о перегрузе, а не прямым UPDATE в обход правил
-  imports: [TasksModule, ProjectsModule, MeetingsModule, NotificationsModule, ForecastModule],
+  imports: [TasksModule, ProjectsModule, MeetingsModule, NotificationsModule, ForecastModule, FocusModule],
   controllers: [AssistantController],
   providers: [
     AssistantService, AssistantRepository, AssistantScheduler,
