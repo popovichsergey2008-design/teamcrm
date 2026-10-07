@@ -38,7 +38,7 @@ function line(p: TeamPresence): string {
     case 'do_not_disturb': return 'Не беспокоить';
     case 'break': return p.until ? `Перерыв до ${hm(p.until)}` : 'Перерыв';
     case 'workday_closed': return 'День завершён';
-    case 'available': return p.taskTitle ? `Работает: ${p.taskTitle}` : p.note ? p.note : 'Доступен(на)';
+    case 'available': return p.taskTitle ? `Работает: ${p.taskTitle}` : p.note ? p.note : 'На месте';
     default: return 'Не в сети';
   }
 }
