@@ -41,6 +41,8 @@ class EventDto {
   @IsOptional() @IsIn([0, 5, 10, 15, 30, 60]) earlyJoinMin?: number;
   @IsOptional() @IsBoolean() guestsAllowed?: boolean;
   @IsOptional() @IsArray() @ArrayMaxSize(100) coOrganizerIds?: string[];
+  /** Встреча с клиентом (ТЗ-17): попадает в его карточку и ленту. */
+  @IsOptional() @IsString() clientId?: string;
 }
 
 class EventPatchDto {

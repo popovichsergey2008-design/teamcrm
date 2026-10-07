@@ -10,6 +10,8 @@ const DEFAULT_WORK = { workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6]
 const MAX_RANGE_DAYS = 62; // два месяца: больше одного экрана календаря не показывает
 
 export interface EventDto {
+  /** встреча с клиентом (ТЗ-17) */
+  clientId?: string;
   title: string;
   description?: string | null;
   location?: string | null;
@@ -212,6 +214,7 @@ export class CalendarService {
       isCall: dto.isCall ?? (!dto.allDay && (dto.participantIds ?? []).filter((x) => String(x) !== String(user.userId)).length > 0),
       meeting: this.meetingSettings(dto),
       coOrganizerIds: dto.coOrganizerIds,
+      clientId: dto.clientId ?? null,
     });
     await this.repo.setReminders(row.id, this.cleanReminders(dto.reminders));
     // письма не ждём: встреча уже создана и видна на экране, почта догонит

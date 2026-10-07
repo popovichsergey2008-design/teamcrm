@@ -127,17 +127,18 @@ export class CalendarRepository {
     tenantId: string; scope: string; ownerId: string; title: string; description: string | null;
     location: string | null; meetRoomId: string | null; startsAt: string; endsAt: string;
     allDay: boolean; color: string | null; isPrivate: boolean; createdBy: string; participantIds: string[];
-    isCall: boolean; meeting?: MeetingSettings; coOrganizerIds?: string[];
+    isCall: boolean; meeting?: MeetingSettings; coOrganizerIds?: string[]; clientId?: string | null;
   }): Promise<EventRow> {
     return this.db.withTransaction(async (c) => {
       const { rows } = await c.query<EventRow>(
         `INSERT INTO calendar_events
            (tenant_id, scope, owner_id, title, description, location, meet_room_id,
-            starts_at, ends_at, all_day, color, is_private, created_by, is_call)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+            starts_at, ends_at, all_day, color, is_private, created_by, is_call, client_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
+                 (SELECT id FROM clients WHERE tenant_id = $1 AND id = $15::bigint)) RETURNING *`,
         [input.tenantId, input.scope, input.ownerId, input.title, input.description, input.location,
           input.meetRoomId, input.startsAt, input.endsAt, input.allDay, input.color, input.isPrivate,
-          input.createdBy, input.isCall],
+          input.createdBy, input.isCall, input.clientId ?? null],
       );
       const event = rows[0];
       await this.writeParticipants(c, input.tenantId, event.id, input.ownerId, input.participantIds, input.coOrganizerIds);

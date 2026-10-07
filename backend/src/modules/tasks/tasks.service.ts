@@ -204,9 +204,13 @@ export class TasksService {
       : columns[0];
     if (!column) throw AppException.notFound('Column not found');
 
+    if (dto.clientId && !(await this.repo.clientExists(tenantId, dto.clientId))) {
+      throw AppException.validation('Клиент не найден');
+    }
     const task = await this.repo.create({
       tenantId,
       projectId: dto.projectId,
+      clientId: dto.clientId ?? null,
       columnId: column.id,
       status: column.name,
       title: dto.title,
@@ -323,8 +327,12 @@ export class TasksService {
     const existing = await this.repo.findById(tenantId, id);
     if (!existing) throw AppException.notFound('Task not found');
     this.assertVersion(existing, expectedVersion, dto);
+    if (dto.clientId && !(await this.repo.clientExists(tenantId, dto.clientId))) {
+      throw AppException.validation('Клиент не найден');
+    }
 
     const updated = await this.repo.update(tenantId, id, {
+      client_id: dto.clientId === '' ? null : dto.clientId,
       title: dto.title,
       description: dto.description,
       assignee_id: dto.assigneeId,

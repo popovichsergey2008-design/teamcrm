@@ -346,6 +346,7 @@ export class TasksRepository {
     /** Задачу завёл ИИ (разбор переписки), а не человек из формы. */
     createdByAi?: boolean;
     directions?: string[];
+    clientId?: string | null;
   }): Promise<TaskRow> {
     return this.db.withTransaction(async (client) => {
       const posRes = await client.query<{ next: number }>(
@@ -358,10 +359,10 @@ export class TasksRepository {
         `INSERT INTO tasks
            (tenant_id, project_id, column_id, position, title, description, assignee_id, status, created_by,
             priority, deadline_at, estimate_hours, requires_approval,
-            source_chat_message_id, created_by_ai, directions)
+            source_chat_message_id, created_by_ai, directions, client_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
                  COALESCE($10::varchar, 'normal'), $11::timestamptz, $12::numeric,
-                 COALESCE($13::boolean, TRUE), $14::bigint, $15, $16::text[]) RETURNING *`,
+                 COALESCE($13::boolean, TRUE), $14::bigint, $15, $16::text[], $17::bigint) RETURNING *`,
         [
           input.tenantId,
           input.projectId,
@@ -379,6 +380,7 @@ export class TasksRepository {
           input.sourceChatMessageId ?? null,
           input.createdByAi === true,
           input.directions ?? [],
+          input.clientId ?? null,
         ],
       );
       const task = res.rows[0];
@@ -491,6 +493,7 @@ export class TasksRepository {
       created_by: string | null;
       is_blocked: boolean;
       priority: string;
+      client_id: string | null;
     }>,
   ): Promise<TaskRow | null> {
     const fields: string[] = [];
@@ -510,6 +513,12 @@ export class TasksRepository {
       values,
     );
     return res;
+  }
+
+  /** Клиент из этой организации — чужого к задаче не привязать. */
+  async clientExists(tenantId: string, clientId: string): Promise<boolean> {
+    const r = await this.db.one(`SELECT 1 FROM clients WHERE tenant_id = $1 AND id = $2`, [tenantId, clientId]);
+    return !!r;
   }
 
   /**

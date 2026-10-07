@@ -19,6 +19,11 @@ export class CreateTaskDto {
   @IsString()
   projectId!: string;
 
+  /** Клиент задачи напрямую (ТЗ-17): задача про клиента и во внутреннем проекте. */
+  @IsOptional()
+  @IsString()
+  clientId?: string | null;
+
   /*
     Теги и их подтверждение (ТЗ по тегам, п. 20 и 52).
 
@@ -140,6 +145,11 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsBoolean()
   isBlocked?: boolean;
+
+  /** Клиент задачи (ТЗ-17); null — снять привязку (останется клиент проекта). */
+  @IsOptional()
+  @IsString()
+  clientId?: string | null;
 
   @IsOptional()
   @IsIn(['low', 'normal', 'high', 'urgent'])

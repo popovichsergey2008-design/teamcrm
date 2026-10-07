@@ -3,6 +3,7 @@ import { AppException } from '../../common/http/app-exception';
 import { BoardService } from '../board/board.service';
 import { InvitesService } from '../team/invites.service';
 import { PortalRepository } from './portal.repository';
+import { maskContact } from '../security/permissions';
 
 /**
  * Клиентский портал «маржа-сейф» (фича №9). Единый безопасный путь отдачи данных роли client.
@@ -22,8 +23,14 @@ export class PortalService {
     return this.repo.createClient(tenantId, name.trim(), contact?.trim() || null);
   }
 
-  listClients(tenantId: string) {
-    return this.repo.listClients(tenantId);
+  /**
+   * Список клиентов для портала. Поле «контакт» — только маской: раньше оно уходило
+   * целиком мимо слоя безопасности (ТЗ-17, волна 0). Открыть — в карточке клиента,
+   * через «Показать» с журналом.
+   */
+  async listClients(tenantId: string) {
+    const rows = await this.repo.listClients(tenantId);
+    return rows.map((r: any) => ({ ...r, contact: maskContact(r.contact, 'auto') }));
   }
 
   async inviteClientUser(tenantId: string, invitedBy: string, clientId: string, email: string) {

@@ -5,6 +5,7 @@ import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { TasksService } from '../tasks/tasks.service';
+import { SecurityService } from '../security/security.service';
 import { DealsService } from '../deals/deals.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { UsersRepository } from '../users/users.repository';
@@ -112,6 +113,7 @@ export class NlService {
     private readonly tags: TagsService,
     private readonly secretary: SecretaryService,
     private readonly users: UsersRepository,
+    private readonly security: SecurityService,
   ) {}
 
   private async context(tenantId: string) {
@@ -673,6 +675,8 @@ export class NlService {
       return { type: 'task', task };
     }
     if (body.intent === 'create_deal') {
+      // то же право, что у раздела сделок: быстрая команда не обходит его
+      await this.security.require(tenantId, userId, 'crm.edit', 'Заводить сделки вам не разрешено');
       const d = body.deal ?? {};
       if (!String(d.title ?? '').trim()) throw AppException.validation('Укажите название сделки');
       if (d.clientId) {

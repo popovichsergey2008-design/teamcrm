@@ -26,6 +26,8 @@ export const PERMISSIONS = [
   // клиенты и контакты
   'contact.view', 'contact.reveal', 'contact.copy', 'contact.export', 'contact.bulk_reveal',
   'crm.view', 'crm.edit',
+  // раздел «Клиенты» (ТЗ-17): scope `assigned` у client.view — «только свои клиенты»
+  'client.view', 'client.create', 'client.edit', 'client.archive', 'client.delete', 'client.export',
   // переписка и файлы
   'chat.view', 'chat.write', 'file.download',
   // «Фокус дня» (ТЗ-16): кто чем занят в команде и «постучать срочно» в глубокий фокус
@@ -92,6 +94,7 @@ const BASE: Record<BaseRole, PermissionMap> = {
     'task.delete': ALL, 'task.restore': ALL, 'task.delete_permanently': NO, 'task.export': ALL,
     'contact.view': ALL, 'contact.reveal': ALL, 'contact.copy': ALL, 'contact.export': ALL, 'contact.bulk_reveal': NO,
     'crm.view': ALL, 'crm.edit': ALL,
+    'client.view': ALL, 'client.create': ALL, 'client.edit': ALL, 'client.archive': ALL, 'client.delete': NO, 'client.export': ALL,
     'chat.view': ALL, 'chat.write': ALL, 'file.download': ALL,
     'focus.view_team': ALL, 'focus.knock': ALL,
     'ai.use': ALL, 'ai.manage': ALL,
@@ -106,7 +109,9 @@ const BASE: Record<BaseRole, PermissionMap> = {
     'task.view': ALL, 'task.create': ALL, 'task.edit': ALL, 'task.assign': ALL,
     'task.delete': ALL, 'task.restore': ALL, 'task.delete_permanently': NO, 'task.export': ALL,
     'contact.view': ALL, 'contact.reveal': ALL, 'contact.copy': ALL, 'contact.export': NO, 'contact.bulk_reveal': NO,
-    'crm.view': ALL, 'crm.edit': ALL,
+    // сделки видит, заводит и правит — руководство (деньги — не для сотрудника); владелец может выдать
+    'crm.view': ALL, 'crm.edit': NO,
+    'client.view': ALL, 'client.create': ALL, 'client.edit': ALL, 'client.archive': NO, 'client.delete': NO, 'client.export': NO,
     'chat.view': ALL, 'chat.write': ALL, 'file.download': ALL,
     'focus.view_team': ALL, 'focus.knock': ALL,
     'ai.use': ALL, 'ai.manage': NO,
