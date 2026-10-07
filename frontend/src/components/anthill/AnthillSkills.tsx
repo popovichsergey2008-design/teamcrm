@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../Icon';
 import { api, ApiError } from '../../lib/api';
 import type { AnthillSkill } from '../../lib/api';
+import { confirmAction } from '../ui/dialog';
 
 const EMPTY = { name: '', whenToUse: '', steps: '', output: '', visibility: 'private' as 'private' | 'company' };
 
@@ -63,7 +64,7 @@ export function AnthillSkills({ onRun }: { onRun?: (skill: AnthillSkill) => void
             <button className="anthill-skill-name" onClick={() => setOpen(open === row.id ? null : row.id)} aria-expanded={open === row.id}>
               <Icon name={open === row.id ? 'chevron-down' : 'chevron-right'} size={12} /> {row.name}
             </button>
-            {row.shared && <span className="badge badge-info" title="Навык компании — виден всем">компании</span>}
+            {row.shared && <span className="ui-badge ui-badge-info" title="Навык компании — виден всем">компании</span>}
             {row.uses > 0 && <span className="dim">применён {row.uses} раз</span>}
           </div>
           {row.whenToUse && <div className="dim anthill-skill-when">Когда: {row.whenToUse}</div>}
@@ -76,15 +77,15 @@ export function AnthillSkills({ onRun }: { onRun?: (skill: AnthillSkill) => void
           )}
           <div className="anthill-task-acts">
             {onRun && (
-              <button className="btn btn-ghost btn-sm" onClick={() => onRun(row)} title="Задать вопрос этим навыком">
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => onRun(row)} title="Задать вопрос этим навыком">
                 <Icon name="play" size={13} /> Применить
               </button>
             )}
             {row.mine ? (
               <>
-                <button className="btn btn-ghost btn-sm" onClick={() => setEditing(row.id)}><Icon name="edit" size={13} /> Править</button>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(row.id)}><Icon name="edit" size={13} /> Править</button>
                 <button
-                  className="btn btn-ghost btn-sm"
+                  className="ui-btn ui-btn-ghost ui-btn-sm"
                   onClick={() => { void act(api.anthillEditSkill(row.id, { visibility: row.shared ? 'private' : 'company' })); }}
                   title={row.shared ? 'Оставить только себе' : 'Поделиться с компанией'}
                 >
@@ -92,12 +93,12 @@ export function AnthillSkills({ onRun }: { onRun?: (skill: AnthillSkill) => void
                 </button>
                 <button
                   className="msg-icon"
-                  onClick={() => { if (window.confirm(`Удалить навык «${row.name}»?`)) void act(api.anthillDeleteSkill(row.id)); }}
+                  onClick={async () => { if (await confirmAction({ title: `Удалить навык «${row.name}»?`, danger: true })) void act(api.anthillDeleteSkill(row.id)); }}
                   title="Удалить" aria-label="Удалить"
                 ><Icon name="trash" size={13} /></button>
               </>
             ) : (
-              <button className="btn btn-ghost btn-sm" onClick={() => { void act(api.anthillForkSkill(row.id)); }} title="Сделать свою копию и править её">
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void act(api.anthillForkSkill(row.id)); }} title="Сделать свою копию и править её">
                 <Icon name="copy" size={13} /> Копия под себя
               </button>
             )}
@@ -111,7 +112,7 @@ export function AnthillSkills({ onRun }: { onRun?: (skill: AnthillSkill) => void
     <div className="anthill-pane">
       <div className="anthill-pane-head">
         <span className="dim">Агент берёт подходящий навык сам — или выберите его в разговоре.</span>
-        <button className="btn btn-primary btn-sm" onClick={() => setAdding((v) => !v)}><Icon name="plus" size={13} /> Новый</button>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => setAdding((v) => !v)}><Icon name="plus" size={13} /> Новый</button>
       </div>
 
       {adding && (
@@ -137,8 +138,8 @@ export function AnthillSkills({ onRun }: { onRun?: (skill: AnthillSkill) => void
             Сделать навыком компании — им смогут пользоваться все
           </label>
           <div className="anthill-form-acts">
-            <button className="btn btn-primary btn-sm" onClick={() => { void add(); }} disabled={draft.name.trim().length < 2 || toSteps(draft.steps).length === 0}>Сохранить</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setAdding(false)}>Отмена</button>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void add(); }} disabled={draft.name.trim().length < 2 || toSteps(draft.steps).length === 0}>Сохранить</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setAdding(false)}>Отмена</button>
           </div>
         </div>
       )}
@@ -187,7 +188,7 @@ function EditSkill({ row, onSave, onCancel }: {
       </label>
       <div className="anthill-form-acts">
         <button
-          className="btn btn-primary btn-sm"
+          className="ui-btn ui-btn-primary ui-btn-sm"
           onClick={() => {
             void onSave({
               name: v.name.trim(), whenToUse: v.whenToUse.trim(), output: v.output.trim(),
@@ -195,7 +196,7 @@ function EditSkill({ row, onSave, onCancel }: {
             });
           }}
         >Сохранить</button>
-        <button className="btn btn-ghost btn-sm" onClick={onCancel}>Не менять</button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onCancel}>Не менять</button>
       </div>
     </div>
   );

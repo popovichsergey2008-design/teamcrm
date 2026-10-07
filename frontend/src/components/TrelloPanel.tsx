@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Импорт из Trello — слой 2 «переезда в один клик».
@@ -33,7 +35,7 @@ export function TrelloPanel() {
   };
 
   const disconnect = async (cid: string) => {
-    if (!window.confirm('Отключить Trello? Импортированные доски и задачи останутся.')) return;
+    if (!(await confirmAction({ title: 'Отключить Trello?', description: 'Импортированные доски и задачи останутся.', danger: true }))) return;
     try { await api.trelloDisconnect(cid); if (openCid === cid) setOpenCid(null); reload(); } catch { /* */ }
   };
 
@@ -53,7 +55,7 @@ export function TrelloPanel() {
           className="input add-user-input" placeholder="Название (напр. «Личный аккаунт»)"
           value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })}
         />
-        <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={connect}>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%' }} onClick={connect}>
           Подключить и проверить
         </button>
         <div className="dim" style={{ marginTop: 6, fontSize: 12 }}>
@@ -76,10 +78,10 @@ export function TrelloPanel() {
           <div className="team-head">
             <span>{c.label} <span className="dim" style={{ fontSize: 12 }}>{c.portal}</span></span>
             <span>
-              <button className="btn btn-ghost btn-sm" onClick={() => setOpenCid(openCid === c.id ? null : c.id)}>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setOpenCid(openCid === c.id ? null : c.id)}>
                 {openCid === c.id ? 'Скрыть' : 'Импорт'}
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => disconnect(c.id)}>Отключить</button>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => disconnect(c.id)}>Отключить</button>
             </span>
           </div>
           {openCid === c.id && <TrelloImportBlock cid={c.id} />}
@@ -152,11 +154,11 @@ function TrelloImportBlock({ cid }: { cid: string }) {
               onChange={(e) => setPicked({ ...picked, [b.id]: e.target.checked })}
             />
             {b.name}
-            {b.closed && <span className="badge badge-muted">архив</span>}
+            {b.closed && <span className="ui-badge ui-badge-neutral">архив</span>}
           </label>
         ))}
       </div>
-      <button className="btn btn-primary btn-sm" onClick={start} disabled={run?.status === 'running'}>
+      <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={start} disabled={run?.status === 'running'}>
         Импортировать выбранные
       </button>
 
@@ -190,7 +192,7 @@ function TrelloImportBlock({ cid }: { cid: string }) {
       <div className="drawer-section-title">Люди</div>
       {!unmatched && (
         <button
-          className="btn btn-ghost btn-sm"
+          className="ui-btn ui-btn-ghost ui-btn-sm"
           onClick={() => api.trelloUnmatched(cid).then(setUnmatched).catch(() => setUnmatched({ total: 0, items: [] }))}
         >
           <Icon name="users" size={14} /> Показать, кого не опознали
@@ -203,14 +205,14 @@ function TrelloImportBlock({ cid }: { cid: string }) {
         <div key={u.externalId} className="team-row team-head">
           <span>{u.name}</span>
           <span>
-            <select
+            <OptionSelect
               className="input" value={mapPick[u.externalId] ?? ''}
               onChange={(e) => setMapPick({ ...mapPick, [u.externalId]: e.target.value })}
             >
               <option value="">— выбрать сотрудника —</option>
               {users.map((x) => <option key={x.id} value={x.id}>{x.fullName}</option>)}
-            </select>
-            <button className="btn btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
+            </OptionSelect>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => mapUser(u.externalId)}>Привязать</button>
           </span>
         </div>
       ))}

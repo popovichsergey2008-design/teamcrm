@@ -98,9 +98,9 @@ export function AnthillAdmin() {
                   placeholder={s.hasWebSearchKey ? 'новый ключ (оставьте пустым — не менять)' : 'tvly-…'}
                   aria-label="Ключ поиска"
                 />
-                <button className="btn btn-primary btn-sm" disabled={!key.trim()} onClick={() => { void save({ webSearchKey: key.trim() }).then(() => setKey('')); }}>Сохранить ключ</button>
+                <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={!key.trim()} onClick={() => { void save({ webSearchKey: key.trim() }).then(() => setKey('')); }}>Сохранить ключ</button>
                 {s.hasWebSearchKey && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => { void save({ webSearchKey: '' }); }}>Убрать</button>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void save({ webSearchKey: '' }); }}>Убрать</button>
                 )}
               </div>
             )}
@@ -175,7 +175,7 @@ export function AnthillAdmin() {
           {(!usage || usage.errors.length === 0) && <div className="dim">Сбоев нет.</div>}
           {usage?.errors.map((e) => (
             <div key={`${e.kind}-${e.id}`} className="anthill-adm-err">
-              <span className="badge badge-muted">{e.kind === 'task' ? 'регулярная задача' : 'действие'}</span>
+              <span className="ui-badge ui-badge-neutral">{e.kind === 'task' ? 'регулярная задача' : 'действие'}</span>
               <span className="anthill-mem-title">{e.title}</span>
               <span className="dim">{e.who ?? '—'} · {e.at ? stampLabel(e.at) : ''}</span>
               <div className="error-text">{e.text}</div>

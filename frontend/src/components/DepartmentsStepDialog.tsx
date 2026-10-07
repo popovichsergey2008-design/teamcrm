@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import type { Industry } from '../types';
+import { OptionSelect } from './ui/option-select';
 
 interface Suggested {
   name: string;
@@ -80,9 +81,9 @@ export function DepartmentsStepDialog({ industry, onClose, onDone }: {
 
         <div className="field">
           <label htmlFor="onb-dep-industry">Чем занимается компания</label>
-          <select id="onb-dep-industry" className="input" value={code} onChange={(e) => setCode(e.target.value)}>
+          <OptionSelect id="onb-dep-industry" className="input" value={code} onChange={(e) => setCode(e.target.value)}>
             {industries.map((i) => <option key={i.code} value={i.code}>{i.title}</option>)}
-          </select>
+          </OptionSelect>
           <span className="dim tpl-hint">Смените отрасль — предложим другой набор.</span>
         </div>
 
@@ -108,15 +109,15 @@ export function DepartmentsStepDialog({ industry, onClose, onDone }: {
               onChange={(e) => setCustom(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
             />
-            <button className="btn btn-sm" onClick={addCustom} disabled={custom.trim().length < 2}>Добавить</button>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={addCustom} disabled={custom.trim().length < 2}>Добавить</button>
           </div>
         </div>
 
         {err && <div className="error-text">{err}</div>}
 
         <div className="modal-actions">
-          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Отмена</button>
-          <button className="btn btn-primary" onClick={create} disabled={busy || chosen.length === 0}>
+          <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={onClose} disabled={busy}>Отмена</button>
+          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={create} disabled={busy || chosen.length === 0}>
             {busy ? 'Создаю…' : chosen.length ? `Создать отделы (${chosen.length})` : 'Выберите отделы'}
           </button>
         </div>

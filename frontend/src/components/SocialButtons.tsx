@@ -161,7 +161,7 @@ export function SocialButtons() {
         </div>
         <div className="error-text">{error}</div>
         <button
-          className="btn btn-primary auth-submit"
+          className="ui-btn ui-btn-primary ui-btn-md auth-submit"
           disabled={busy || tenantName.trim().length < 2}
           type="button"
           onClick={() => void createWorkspace()}

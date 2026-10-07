@@ -4,6 +4,7 @@ import { EmptyState } from './EmptyState';
 import { api, ApiError, TagItem, TagSettings } from '../lib/api';
 import { labelTextColor } from '../lib/labels';
 import { useEscape } from '../hooks/useEscape';
+import { OptionSelect } from './ui/option-select';
 
 /** Цвета тегов: различимые между собой и читаемые с белым или тёмным текстом. */
 const PALETTE = ['#2f5fbf', '#2f7d5d', '#7c4dbf', '#a35a10', '#b03a48', '#55606f', '#146b73', '#8a6d00'];
@@ -107,7 +108,7 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
 
             <div className="field">
               <label>Кто может заводить новые теги</label>
-              <select
+              <OptionSelect
                 className="input"
                 value={settings.whoCanCreate}
                 disabled={!canManage}
@@ -116,7 +117,7 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
                 <option value="all">Все сотрудники</option>
                 <option value="managers">Руководители</option>
                 <option value="admins">Только владелец</option>
-              </select>
+              </OptionSelect>
               <span className="dim" style={{ fontSize: 12 }}>
                 Ограничение спасает от «SEO», «seo» и «СЕО» в одном списке.
               </span>
@@ -135,13 +136,13 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void create(); }}
               />
-              <button className="btn btn-sm" onClick={() => void create()}>Добавить</button>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void create()}>Добавить</button>
             </div>
             {err && (
               <div className="error-text">
                 {err}
                 {err.startsWith('Похожий тег') && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => void create(true)}>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void create(true)}>
                     Всё равно создать
                   </button>
                 )}
@@ -153,7 +154,7 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
         <div className="drawer-section">
           <div className="drawer-section-title">
             Список ({visible.length})
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowArchived((v) => !v)}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setShowArchived((v) => !v)}>
               {showArchived ? 'Скрыть архив' : 'Показать архив'}
             </button>
           </div>
@@ -184,8 +185,8 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
                     onChange={(e) => setDraft({ ...draft, aiDescription: e.target.value })}
                   />
                   <div className="tags-chips">
-                    <button className="btn btn-sm" onClick={() => void save(String(t.id))}>Сохранить</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Отмена</button>
+                    <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void save(String(t.id))}>Сохранить</button>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(null)}>Отмена</button>
                   </div>
                 </>
               ) : (
@@ -198,7 +199,7 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
                   {canManage && (
                     <span className="tag-row-actions">
                       <button
-                        className="btn btn-ghost btn-sm"
+                        className="ui-btn ui-btn-ghost ui-btn-sm"
                         onClick={() => {
                           setEditing(String(t.id));
                           setDraft({ name: t.name, color: t.color, aiDescription: t.ai_description ?? '' });
@@ -206,7 +207,7 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
                       >
                         Изменить
                       </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => void archive(t)}>
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void archive(t)}>
                         {t.archived_at ? 'Вернуть' : 'В архив'}
                       </button>
                     </span>

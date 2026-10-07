@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { hydrateImages } from './RichText';
 import { htmlToMd, mdToHtml } from '../lib/rich-text';
+import { promptText } from './ui/dialog';
 
 /**
  * Визуальный редактор описания — «как в WordPress».
@@ -121,9 +122,15 @@ export function RichEditor({ value, onChange, onUploadImage, placeholder, autoFo
     }
   };
 
-  const link = () => {
-    const url = window.prompt('Адрес ссылки', 'https://');
+  const link = async () => {
+    // Окно ввода забирает фокус, и выделение в тексте теряется — запоминаем его до
+    // окна и возвращаем после: ссылка должна лечь ровно на выделенные слова.
+    const sel = window.getSelection();
+    const range = sel && sel.rangeCount && ref.current?.contains(sel.anchorNode) ? sel.getRangeAt(0).cloneRange() : null;
+    const url = await promptText({ title: 'Ссылка', placeholder: 'https://…', defaultValue: 'https://', confirmLabel: 'Вставить', singleLine: true });
     if (!url || !/^https?:\/\//i.test(url)) return;
+    ref.current?.focus();
+    if (range && sel) { sel.removeAllRanges(); sel.addRange(range); }
     run('createLink', url);
   };
 

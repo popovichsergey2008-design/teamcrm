@@ -81,7 +81,7 @@ export function CallStarter({ chatId, kind, peerId, disabled, onStart }: {
   return (
     <span className="call-starter" ref={boxRef}>
       <button
-        className="btn btn-sm call-starter-add"
+        className="ui-btn ui-btn-outline ui-btn-sm call-starter-add"
         disabled={disabled}
         title="Выбрать, кого позвать в созвон"
         aria-label="Выбрать участников"
@@ -92,7 +92,7 @@ export function CallStarter({ chatId, kind, peerId, disabled, onStart }: {
         {chosen.size > 0 && <span className="view-count">{chosen.size}</span>}
       </button>
       <button
-        className="btn btn-sm call-starter-call"
+        className="ui-btn ui-btn-outline ui-btn-sm call-starter-call"
         disabled={disabled}
         title={disabled ? 'Вы уже в созвоне' : 'Начать созвон'}
         onClick={start}
@@ -118,7 +118,7 @@ export function CallStarter({ chatId, kind, peerId, disabled, onStart }: {
           />
 
           <button
-            className="btn btn-primary btn-sm call-starter-go"
+            className="ui-btn ui-btn-primary ui-btn-sm call-starter-go"
             onClick={start}
             disabled={disabled || chosen.size === 0}
           >

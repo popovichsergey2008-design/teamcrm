@@ -88,7 +88,7 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
         <div className="projects-tools">
           {/* Реестр задач по всем проектам — часть «Проектов», а не отдельный раздел меню */}
           <button
-            className="btn btn-ghost btn-sm board-all-btn"
+            className="ui-btn ui-btn-ghost ui-btn-sm board-all-btn"
             onClick={() => navigate({ section: 'tasks' })}
             title="Задачи по всем проектам: делаю, поручил, помогаю, наблюдаю"
           >
@@ -123,11 +123,11 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
                   onChange={(e) => setName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') void create(); if (e.key === 'Escape') setAdding(false); }}
                 />
-                <button className="btn btn-primary btn-sm" disabled={busy || !name.trim()} onClick={() => void create()}>Создать</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => { setAdding(false); setName(''); }}>Отмена</button>
+                <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy || !name.trim()} onClick={() => void create()}>Создать</button>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { setAdding(false); setName(''); }}>Отмена</button>
               </span>
             ) : (
-              <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => setAdding(true)}>
                 <Icon name="plus" size={15} /> Новый проект
               </button>
             )
@@ -172,9 +172,9 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
                     >
                       {p.name}
                     </a>
-                    {p.is_default && <span className="badge badge-muted" title="Основная доска компании">основная</span>}
+                    {p.is_default && <span className="ui-badge ui-badge-neutral" title="Основная доска компании">основная</span>}
                     {p.origin_label && <span className="dim projects-origin" title="Импортированный проект">· {p.origin_label}</span>}
-                    {!!p.unread && <span className="badge badge-info" title="Новое в ваших задачах">{p.unread}</span>}
+                    {!!p.unread && <span className="ui-badge ui-badge-info" title="Новое в ваших задачах">{p.unread}</span>}
                   </td>
                   <td className="num" data-label="Задач">{p.tasks_total}</td>
                   <td className="num" data-label="Открыто">{p.tasks_open}</td>
@@ -184,7 +184,7 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
                   <td data-label="Доступ">
                     {p.visibility === 'members'
                       ? (
-                        <span className="badge badge-muted" title={`Видят только участники: ${p.members_count}`}>
+                        <span className="ui-badge ui-badge-neutral" title={`Видят только участники: ${p.members_count}`}>
                           <Icon name="lock" size={11} /> только свои
                         </span>
                       )

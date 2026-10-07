@@ -11,6 +11,7 @@ import { placePopover, PopoverPlace } from '../../lib/popover';
 import { toastSaved } from '../../lib/notifications';
 import { navigate } from '../../lib/router';
 import type { User } from '../../types';
+import { initialsOf } from '../../lib/initials';
 
 const KIND_LABEL: Record<string, string> = {
   dm: 'Личный диалог', group: 'Групповой чат', channel: 'Канал', project: 'Чат проекта',
@@ -75,7 +76,7 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
     return () => { socket.off('chat.updated', onUpdated); socket.off('chat.pinned', onUpdated); };
   }, [chatId, load]);
 
-  if (err) return <aside className="chat-info"><div className="chat-info-head"><b>Сведения</b><button className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={15} /></button></div><div className="error-text" style={{ padding: 12 }}>{err}</div></aside>;
+  if (err) return <aside className="chat-info"><div className="chat-info-head"><b>Сведения</b><button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={15} /></button></div><div className="error-text" style={{ padding: 12 }}>{err}</div></aside>;
   if (!info) return <aside className="chat-info"><div className="chat-info-head"><b>Сведения</b></div><div className="dim" style={{ padding: 12 }}>Загружаю…</div></aside>;
 
   const { chat, members, me, counts } = info;
@@ -85,7 +86,7 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
     <aside className="chat-info" aria-label="Сведения о чате">
       <div className="chat-info-head">
         <b><Icon name="info" size={15} /> Сведения</b>
-        <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть сведения"><Icon name="close" size={15} /></button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть сведения"><Icon name="close" size={15} /></button>
       </div>
       <div className="chat-info-body">
         <Section title="О чате" open={open.about} onToggle={() => toggle('about')}>
@@ -237,8 +238,8 @@ function AboutBlock({ chat, manageable, onChanged }: { chat: ChatInfo['chat']; m
           <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название" aria-label="Название чата" />
           <textarea className="input" rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Описание: о чём этот чат, правила" aria-label="Описание чата" />
           <div className="ci-row-actions">
-            <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>Сохранить</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Отмена</button>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={save} disabled={busy}>Сохранить</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(false)}>Отмена</button>
           </div>
         </>
       ) : (
@@ -246,7 +247,7 @@ function AboutBlock({ chat, manageable, onChanged }: { chat: ChatInfo['chat']; m
           <div className="ci-title">
             {chat.title ?? KIND_LABEL[chat.kind] ?? 'Чат'}
             {manageable && (
-              <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)} title="Изменить название и описание" aria-label="Изменить название и описание">
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(true)} title="Изменить название и описание" aria-label="Изменить название и описание">
                 <Icon name="edit" size={13} />
               </button>
             )}
@@ -307,7 +308,7 @@ function MembersBlock({ chatId, members, meId, manageable, ownerId, canCall, onW
             return (
               <div key={m.userId} className="ci-member">
                 <span className="bar-avatar">
-                  <Avatar path={m.avatarUrl} fallback={m.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+                  <Avatar path={m.avatarUrl} fallback={initialsOf(m.fullName)} className="avatar-sm" />
                   <span className={`bar-dot bar-dot-${kind}`} aria-hidden="true" />
                 </span>
                 <span className="ci-member-main">
@@ -413,15 +414,15 @@ function AddPeople({ chatId, users, members, onAdded }: { chatId: string; users:
             {candidates.slice(0, 40).map((u) => (
               <label key={u.id} className="ci-add-row">
                 <input type="checkbox" checked={picked.has(String(u.id))} onChange={(e) => setPicked((p) => { const n = new Set(p); if (e.target.checked) n.add(String(u.id)); else n.delete(String(u.id)); return n; })} />
-                <Avatar path={u.avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+                <Avatar path={u.avatarUrl ?? null} fallback={initialsOf(u.fullName)} className="avatar-sm" />
                 <span>{u.fullName}</span>
               </label>
             ))}
             {candidates.length === 0 && <div className="dim">Некого добавить</div>}
           </div>
           <div className="ci-row-actions">
-            <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy || !picked.size}>Добавить{picked.size ? ` (${picked.size})` : ''}</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setOpen(false); setPicked(new Set()); }}>Отмена</button>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={submit} disabled={busy || !picked.size}>Добавить{picked.size ? ` (${picked.size})` : ''}</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { setOpen(false); setPicked(new Set()); }}>Отмена</button>
           </div>
         </div>
       )}

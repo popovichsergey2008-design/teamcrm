@@ -29,12 +29,12 @@ export function SessionsList({ sessions, onRevoke, busy }: {
           <span className="sessions-main">
             <Icon name={s.device ? 'phone' : 'building'} size={14} />
             <span>
-              {s.current && <span className="badge pnl-good">текущая</span>} {sessionLabel(s)}
+              {s.current && <span className="ui-badge ui-badge-neutral pnl-good">текущая</span>} {sessionLabel(s)}
               <span className="dim sessions-when"> · {stampLabel(s.lastUsedAt ?? s.createdAt)}</span>
             </span>
           </span>
           {!s.current && (
-            <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => onRevoke(s.id)} title="Завершить сессию — сразу, не через 15 минут">
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => onRevoke(s.id)} title="Завершить сессию — сразу, не через 15 минут">
               Выйти
             </button>
           )}

@@ -34,7 +34,7 @@ export function SuggestAssignee({ title, description, projectId, onPick }: {
     <div className="suggest-assignee">
       <button
         type="button"
-        className="btn btn-ghost btn-sm"
+        className="ui-btn ui-btn-ghost ui-btn-sm"
         disabled={busy || title.trim().length < 3}
         onClick={() => void ask()}
         title={title.trim().length < 3 ? 'Сначала напишите название задачи' : 'Спросить ИИ, кому поручить'}
@@ -50,7 +50,7 @@ export function SuggestAssignee({ title, description, projectId, onPick }: {
             <>
               <b>{result.suggestedAssigneeName}</b>
               {' — '}{result.reason}{result.sure ? '' : ' (ИИ предполагает)'}
-              <button type="button" className="btn btn-sm suggest-apply" onClick={() => onPick(result.suggestedAssigneeId!)}>
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-sm suggest-apply" onClick={() => onPick(result.suggestedAssigneeId!)}>
                 Поставить
               </button>
             </>

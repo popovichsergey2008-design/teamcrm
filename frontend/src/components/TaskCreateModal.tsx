@@ -12,6 +12,13 @@ import { DirectionsPicker } from './DirectionsPicker';
 import { NlCommandModal } from './NlCommandModal';
 import { isAnonymousClipboardName, screenshotName } from '../lib/attachments';
 import { useStickyCheck } from '../lib/sticky-checks';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
+import { confirmAction } from './ui/dialog';
+import { Field, Textarea } from './ui/field';
+import { Input } from './ui/input';
+import { Select } from './ui/select';
 
 interface Props {
   projectId: string;
@@ -32,7 +39,12 @@ function inDays(days: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const PRIORITIES = [['low', 'низкий'], ['normal', 'обычный'], ['high', 'высокий'], ['urgent', 'срочно']];
+const PRIORITY_OPTIONS = [
+  { value: 'low', label: 'Низкий' },
+  { value: 'normal', label: 'Обычный' },
+  { value: 'high', label: 'Высокий' },
+  { value: 'urgent', label: 'Срочно' },
+];
 
 /**
  * Форма создания задачи.
@@ -183,7 +195,11 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
 
   /** Шаблон больше не нужен: убирает тот, кто его завёл, или владелец — решает сервер. */
   const dropTemplate = async (t: TaskTemplate) => {
-    if (!window.confirm(`Удалить шаблон «${t.name}»? Уже созданные по нему задачи останутся.`)) return;
+    if (!(await confirmAction({
+      title: `Удалить шаблон «${t.name}»?`,
+      description: 'Уже созданные по нему задачи останутся.',
+      danger: true,
+    }))) return;
     try {
       await api.deleteTaskTemplate(String(t.id));
       setTemplates((prev) => prev.filter((x) => String(x.id) !== String(t.id)));
@@ -275,9 +291,15 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
     );
   }
 
+  const userOptions = (empty: string) => [
+    { value: '', label: empty },
+    ...users.map((u) => ({ value: String(u.id), label: u.fullName })),
+  ];
+  const canCreate = tagsReady(tagSettings, tags);
+
   return (
     <div
-      className="modal-overlay"
+      className="modal-overlay ui-modal-overlay"
       data-paste-scope
       /*
         Снимок из буфера — прямо в задачу (задача #1367).
@@ -295,232 +317,229 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
           ? new File([f], screenshotName(new Date(), f.type), { type: f.type })
           : f)));
       }}
+      onKeyDown={(e) => { if (e.key === 'Escape' && !busy) { e.stopPropagation(); onClose(); } }}
       {...overlayProps(onClose)}
     >
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head">
-          <h3>Новая задача · {columnName}</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
-        </div>
-
-        {/*
-          Шаблон — ПЕРВЫМ полем: выбирать его после того, как форма заполнена руками,
-          поздно — он всё перезапишет. Список появляется, только когда шаблоны есть:
-          пустая строка выбора в форме ничего не объясняет и только мешает.
-        */}
-        {templates.length > 0 && (
-          <div className="field tpl-pick">
-            <label htmlFor="tpl-choose">Из шаблона</label>
-            <div className="tpl-pick-row">
-              <select
-                id="tpl-choose"
-                className="input"
-                value={tplId}
-                onChange={(e) => applyTemplate(e.target.value)}
-              >
-                <option value="">без шаблона</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={String(t.id)}>
-                    {t.name}{t.used_count ? ` · ${t.used_count}` : ''}
-                  </option>
-                ))}
-              </select>
-              {!!chosenTpl && (
-                <button
-                  className="btn btn-ghost btn-sm btn-delete"
-                  onClick={() => dropTemplate(chosenTpl)}
-                  title={`Удалить шаблон «${chosenTpl.name}»`}
-                  aria-label="Удалить шаблон"
-                >
-                  <Icon name="trash" size={14} />
-                </button>
-              )}
-            </div>
-            {!!chosenTpl && (
-              <span className="dim tpl-hint">
-                Поля заполнены по шаблону — поправьте что нужно.
-                {chosenTpl.checklist.length > 0 && ` Чек-лист (${chosenTpl.checklist.length}) добавится после создания.`}
-                {chosenTpl.created_by_name ? ` Шаблон завёл ${chosenTpl.created_by_name}.` : ''}
-              </span>
-            )}
+      <div className="ui-modal" role="dialog" aria-modal="true" aria-labelledby="task-create-title" onClick={(e) => e.stopPropagation()}>
+        <header className="ui-modal-head">
+          <div className="ui-modal-title-wrap">
+            <h2 id="task-create-title" className="ui-modal-title">Новая задача</h2>
+            <span className="ui-modal-sub">в колонку «{columnName}»</span>
           </div>
-        )}
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={16} /></Button>
+        </header>
 
-        <div className="field"><label>Название</label>
-          <input
-            className="input"
-            autoFocus
-            value={title}
-            placeholder="Что нужно сделать"
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit(); }}
-          />
-        </div>
-
-        {/*
-          «Возможно, такая задача уже есть».
-
-          Стоит сразу под названием — там, где человек её и породил, — и ничего не
-          запрещает: бывает, что похожая задача действительно нужна второй раз.
-          Кнопка «Открыть» уводит в существующую, «Создать всё равно» просто убирает
-          подсказку, чтобы она не мешала дозаполнять форму.
-        */}
-        {!dupesHidden && dupes.length > 0 && (
-          <div className="dupes-warn">
-            <div className="dupes-head">
-              <Icon name="alert" size={14} /> Возможно, такая задача уже существует
-            </div>
-            {dupes.map((d) => (
-              <div key={d.id} className="dupes-row">
-                <span className="registry-id">#{d.id}</span>
-                <span className="dupes-title" title={d.reason}>{d.title}</span>
-                <span className="dim">{d.projectName ?? ''}</span>
-                <span className="merge-match">{d.match}%</span>
-                <button
-                  className="btn btn-sm"
-                  onClick={() => {
-                    navigate({ section: 'projects', projectId: String(d.projectId), taskId: String(d.id) });
-                    onClose();
-                  }}
-                >
-                  Открыть
-                </button>
-              </div>
-            ))}
-            <button className="btn btn-ghost btn-sm" onClick={() => setDupesHidden(true)}>
-              Создать всё равно
-            </button>
-          </div>
-        )}
-
-        <DirectionsPicker
-          value={directions}
-          auto={!dirsTouched}
-          onChange={(next) => { setDirsTouched(true); setDirections(next); }}
-        />
-        {/* ТЗ из нескольких пунктов — разные специалисты: предлагаем разложить на задачи. */}
-        {items >= 2 && (
-          <div className="split-hint">
-            <span className="dim">В описании {items} пунктов — их можно раздать разным специалистам.</span>
-            <button type="button" className="btn btn-sm" onClick={() => setSplitOpen(true)}>
-              Разложить по специалистам
-            </button>
-          </div>
-        )}
-
-        <div className="drawer-grid2">
-          <div className="field"><label>Исполнитель</label>
-            <select className="input" value={assigneeId} onChange={(e) => { setAssigneeTouched(true); setAutoNote(''); setAssigneeId(e.target.value); }}>
-              <option value="">— не назначен —</option>
-              {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-            </select>
-            {autoNote && <span className="dim suggest-line">{autoNote}</span>}
-            {/* Совет модели — по кнопке, для случаев, где слов не хватило (ТЗ-10). */}
-            <SuggestAssignee title={title} description={description} projectId={projectId}
-              onPick={(id) => { setAssigneeTouched(true); setAutoNote(''); setAssigneeId(id); }} />
-          </div>
-          <div className="field"><label title="Кто ставит задачу и принимает результат">Постановщик</label>
-            <select className="input" value={managerId} onChange={(e) => setManagerId(e.target.value)}>
-              <option value="">— не задан —</option>
-              {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="drawer-grid2">
-          <div className="field"><label>Приоритет</label>
-            <select className="input" value={priority} onChange={(e) => setPriority(e.target.value)}>
-              {PRIORITIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          </div>
-          <div className="field"><label>Оценка, ч</label>
-            <input className="input" type="number" min="0" step="0.5" value={estimate}
-                   onChange={(e) => setEstimate(e.target.value)} placeholder="не задана" />
-          </div>
-        </div>
-
-        <div className="field"><label>Дедлайн</label>
-          <DatePicker value={deadline} onChange={setDeadline} withTime warnPast placeholder="срок не задан" />
-        </div>
-
-        <TaskTagsField
-          task={{ title, description, projectName: null }}
-          value={tags}
-          onChange={setTags}
-        />
-
-        <label className="notify-row" title="Исполнитель сдаст работу, а завершите её вы">
-          <input
-            type="checkbox"
-            checked={requiresApproval}
-            onChange={(e) => { setRequiresApproval(e.target.checked); rememberApproval(e.target.checked); }}
-          />
-          Не завершать задачу без согласования с постановщиком
-        </label>
-
-        <div className="field"><label>Описание (необязательно)</label>
-          <textarea className="input" rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
-        </div>
-
-        {/* Файлы прямо здесь: задача без исходников — это вопрос «а где макет?»
-            через десять минут после постановки. */}
-        <div className="field">
-          <label>Файлы (необязательно)</label>
-          <div
-            className="file-drop"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
-          >
-            <label className="btn btn-sm file-pick">
-              <Icon name="paperclip" size={14} /> Выбрать файлы
-              <input
-                className="file-pick-input"
-                type="file"
-                multiple
-                aria-label="Выбрать файлы для задачи"
-                onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
-              />
-            </label>
-            <span className="dim">или перетащите сюда</span>
-          </div>
-          {files.length > 0 && (
-            <div className="file-picked">
-              {files.map((f, i) => (
-                <span key={`${f.name}-${i}`} className="people-chip">
-                  <Icon name="file" size={12} /> {f.name}
-                  <button
-                    className="people-chip-x"
-                    onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
-                    title="Убрать файл"
-                    aria-label={`Убрать ${f.name}`}
+        <div className="ui-modal-body">
+          {/*
+            Шаблон — ПЕРВЫМ полем: выбирать его после того, как форма заполнена руками,
+            поздно — он всё перезапишет. Список появляется, только когда шаблоны есть.
+          */}
+          {templates.length > 0 && (
+            <Field
+              label="Из шаблона"
+              hint={chosenTpl ? (
+                <>
+                  Поля заполнены по шаблону — поправьте что нужно.
+                  {chosenTpl.checklist.length > 0 && ` Чек-лист (${chosenTpl.checklist.length}) добавится после создания.`}
+                  {chosenTpl.created_by_name ? ` Шаблон завёл ${chosenTpl.created_by_name}.` : ''}
+                </>
+              ) : undefined}
+            >
+              <div className="tc-row">
+                <Select
+                  ariaLabel="Шаблон задачи"
+                  className="tv2-wide"
+                  value={tplId}
+                  onValueChange={applyTemplate}
+                  options={[
+                    { value: '', label: 'Без шаблона' },
+                    ...templates.map((t) => ({ value: String(t.id), label: `${t.name}${t.used_count ? ` · ${t.used_count}` : ''}` })),
+                  ]}
+                />
+                {!!chosenTpl && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => dropTemplate(chosenTpl)}
+                    title={`Удалить шаблон «${chosenTpl.name}»`}
+                    aria-label="Удалить шаблон"
                   >
-                    <Icon name="close" size={11} />
-                  </button>
-                </span>
+                    <Icon name="trash" size={15} />
+                  </Button>
+                )}
+              </div>
+            </Field>
+          )}
+
+          <Field label="Название" htmlFor="task-create-name">
+            <Input
+              id="task-create-name"
+              autoFocus
+              value={title}
+              placeholder="Что нужно сделать"
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit(); }}
+            />
+          </Field>
+
+          {/*
+            «Возможно, такая задача уже есть» — сразу под названием, там, где человек
+            её и породил. Ничего не запрещает: похожая задача бывает нужна второй раз.
+          */}
+          {!dupesHidden && dupes.length > 0 && (
+            <div className="tv2-callout tv2-callout-warn tv2-callout-block">
+              <div className="tv2-callout-head"><Icon name="alert" size={15} /> Возможно, такая задача уже существует</div>
+              {dupes.map((d) => (
+                <div key={d.id} className="tc-dupe">
+                  <span className="tasks-v2-id">#{d.id}</span>
+                  <span className="tc-dupe-title" title={d.reason}>{d.title}</span>
+                  <span className="ui-cell-dim">{d.projectName ?? ''}</span>
+                  <Badge tone="warn">{d.match}%</Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigate({ section: 'projects', projectId: String(d.projectId), taskId: String(d.id) });
+                      onClose();
+                    }}
+                  >
+                    Открыть
+                  </Button>
+                </div>
               ))}
+              <div><Button variant="ghost" size="sm" onClick={() => setDupesHidden(true)}>Создать всё равно</Button></div>
             </div>
           )}
+
+          <Field label="Описание" hint="Необязательно. Пункты списком — можно будет раздать разным специалистам">
+            <Textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Подробности, ссылки, критерии готовности" />
+          </Field>
+
+          <DirectionsPicker
+            value={directions}
+            auto={!dirsTouched}
+            onChange={(next) => { setDirsTouched(true); setDirections(next); }}
+          />
+          {/* ТЗ из нескольких пунктов — разные специалисты: предлагаем разложить на задачи. */}
+          {items >= 2 && (
+            <div className="tv2-callout tv2-callout-info">
+              <Icon name="users" size={15} />
+              <span>В описании {items} пунктов — их можно раздать разным специалистам.</span>
+              <Button size="sm" variant="outline" onClick={() => setSplitOpen(true)}>Разложить по специалистам</Button>
+            </div>
+          )}
+
+          <div className="tv2-grid2">
+            <Field
+              label="Исполнитель"
+              hint={autoNote || undefined}
+              action={(
+                /* Совет модели — по кнопке, для случаев, где слов не хватило (ТЗ-10). */
+                <SuggestAssignee title={title} description={description} projectId={projectId}
+                  onPick={(id) => { setAssigneeTouched(true); setAutoNote(''); setAssigneeId(id); }} />
+              )}
+            >
+              <Select
+                ariaLabel="Исполнитель"
+                className="tv2-wide"
+                value={assigneeId}
+                onValueChange={(v) => { setAssigneeTouched(true); setAutoNote(''); setAssigneeId(v); }}
+                options={userOptions('Не назначен')}
+              />
+            </Field>
+            <Field label={<span title="Кто ставит задачу и принимает результат">Постановщик</span>}>
+              <Select ariaLabel="Постановщик" className="tv2-wide" value={managerId} onValueChange={setManagerId} options={userOptions('Не задан')} />
+            </Field>
+          </div>
+
+          <div className="tc-grid3">
+            <Field label="Срок">
+              <DatePicker value={deadline} onChange={setDeadline} withTime warnPast placeholder="срок не задан" />
+            </Field>
+            <Field label="Приоритет">
+              <Select ariaLabel="Приоритет" className="tv2-wide" value={priority} onValueChange={setPriority} options={PRIORITY_OPTIONS} />
+            </Field>
+            <Field label="Оценка, ч">
+              <Input type="number" min="0" step="0.5" value={estimate} onChange={(e) => setEstimate(e.target.value)} placeholder="не задана" />
+            </Field>
+          </div>
+
+          <TaskTagsField
+            task={{ title, description, projectName: null }}
+            value={tags}
+            onChange={setTags}
+          />
+
+          <Checkbox
+            checked={requiresApproval}
+            onCheckedChange={(on) => { setRequiresApproval(on); rememberApproval(on); }}
+            label={<span title="Исполнитель сдаст работу, а завершите её вы">Не завершать задачу без согласования с постановщиком</span>}
+          />
+
+          {/* Файлы прямо здесь: задача без исходников — это вопрос «а где макет?»
+              через десять минут после постановки. */}
+          <Field label="Файлы" hint="Необязательно. Снимок экрана можно вставить сюда по Ctrl+V">
+            <div
+              className="file-drop tc-drop"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+            >
+              <label className="ui-btn ui-btn-outline ui-btn-sm file-pick">
+                <Icon name="paperclip" size={15} /> Выбрать файлы
+                <input
+                  className="file-pick-input"
+                  type="file"
+                  multiple
+                  aria-label="Выбрать файлы для задачи"
+                  onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
+                />
+              </label>
+              <span className="ui-cell-dim">или перетащите сюда</span>
+            </div>
+            {files.length > 0 && (
+              <div className="file-picked">
+                {files.map((f, i) => (
+                  <span key={`${f.name}-${i}`} className="people-chip">
+                    <Icon name="file" size={12} /> {f.name}
+                    <button
+                      className="people-chip-x"
+                      onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                      title="Убрать файл"
+                      aria-label={`Убрать ${f.name}`}
+                    >
+                      <Icon name="close" size={11} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </Field>
+
+          {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
         </div>
 
-        {err && <div className="error-text">{err}</div>}
-        {createdId ? (
-          <button className="btn btn-primary" style={{ width: '100%', marginTop: 6 }} onClick={finishAfterPartial}>
-            Готово — открыть доску
-          </button>
-        ) : (
-          <button
-            className="btn btn-primary"
-            style={{ width: '100%', marginTop: 6 }}
-            /* Теги не подтверждены — создавать нельзя: то же правило проверяет сервер. */
-            disabled={busy || !tagsReady(tagSettings, tags)}
-            onClick={submit}
-            title={tagsReady(tagSettings, tags) ? undefined : 'Подтвердите теги задачи'}
-          >
-            {busy
-              ? (files.length ? 'Создаём и грузим файлы…' : 'Создаём…')
-              : (files.length ? `Создать задачу и прикрепить ${files.length}` : 'Создать задачу')}
-          </button>
-        )}
+        <footer className="ui-modal-foot">
+          <span className="ui-modal-hint">Ctrl+Enter — создать</span>
+          {createdId ? (
+            <Button variant="primary" onClick={finishAfterPartial}>Готово — открыть доску</Button>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={onClose} disabled={busy}>Отмена</Button>
+              <Button
+                variant="primary"
+                /* Теги не подтверждены — создавать нельзя: то же правило проверяет сервер. */
+                disabled={!canCreate}
+                loading={busy}
+                onClick={submit}
+                title={canCreate ? undefined : 'Подтвердите теги задачи'}
+              >
+                {busy
+                  ? (files.length ? 'Создаём и грузим файлы…' : 'Создаём…')
+                  : (files.length ? `Создать и прикрепить ${files.length}` : 'Создать задачу')}
+              </Button>
+            </>
+          )}
+        </footer>
       </div>
     </div>
   );

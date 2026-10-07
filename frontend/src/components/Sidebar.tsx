@@ -16,6 +16,8 @@ import { humanMinutes } from './SecretaryPanel';
 import { api } from '../lib/api';
 import type { Focus } from '../types';
 import { AppUpdateRow } from './AppUpdateRow';
+import { OptionSelect } from './ui/option-select';
+import { initialsOf } from '../lib/initials';
 
 /**
  * Левая панель — единственная навигация приложения.
@@ -414,7 +416,7 @@ export function Sidebar({
               aria-haspopup="menu"
               aria-expanded={menuOpen}
             >
-              <Avatar path={avatarPath} fallback={user.fullName?.[0] ?? '?'} className="avatar-sm" />
+              <Avatar path={avatarPath} fallback={initialsOf(user.fullName)} className="avatar-sm" />
               <span className={`nav-dot nav-dot-${focus?.kind ?? 'free'}`} aria-hidden="true" />
               <span className="nav-user-text">
                 <span className="nav-user-name">{user.fullName}</span>
@@ -444,7 +446,7 @@ export function Sidebar({
                 {/* Пространство — здесь же: переключить или создать. Переименовать — в профиле, у создателя. */}
                 <div className="menu-theme">
                   <span className="dim">Пространство</span>
-                  <select
+                  <OptionSelect
                     className="input nav-org-select"
                     value={user.tenantId}
                     onChange={(e) => { setMenuOpen(false); onSwitchOrg(e.target.value); }}
@@ -457,7 +459,7 @@ export function Sidebar({
                     ))}
                     {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
                     <option value="__new__">+ Создать пространство…</option>
-                  </select>
+                  </OptionSelect>
                 </div>
                 {/* Свой статус для коллег — только руками (решение заказчика):
                     «занят» ставят нарочно, чтобы к тебе не шли, и снимают сами. */}
@@ -540,11 +542,11 @@ export function Sidebar({
                   им есть что стирать.
                 */}
                 {hasPrefs && (
-                  <button className="btn btn-ghost btn-sm nav-tune-reset" onClick={() => savePrefs({ order: [], hidden: [] })} title="Вернуть меню к заводскому порядку и показать все разделы">
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm nav-tune-reset" onClick={() => savePrefs({ order: [], hidden: [] })} title="Вернуть меню к заводскому порядку и показать все разделы">
                     По умолчанию
                   </button>
                 )}
-                <button className="btn btn-primary btn-sm" onClick={stopTuning} title="Закрыть настройку меню">
+                <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={stopTuning} title="Закрыть настройку меню">
                   <Icon name="check" size={14} />
                   Готово
                 </button>
@@ -557,7 +559,7 @@ export function Sidebar({
                   оказывается заперт: в этом режиме ни один пункт меню не открывается.
                   Дешевле дать вторую подпись, чем спорить с тем, как её ищут.
                 */}
-                <button className="btn btn-ghost btn-sm" onClick={stopTuning} title="Выйти из настройки меню — всё уже сохранено">
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={stopTuning} title="Выйти из настройки меню — всё уже сохранено">
                   <Icon name="logout" size={14} />
                   Выйти
                 </button>

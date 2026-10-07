@@ -12,6 +12,7 @@ import type {
   FunnelReport, PlatformCandidate, PlatformStaff, PlatformTenant,
   SupportEscalation, SupportHandbook, SupportQueueFilter, SupportQueueItem,
 } from '../types';
+import { OptionSelect } from '../components/ui/option-select';
 
 /** Секунды человеческими словами: «28 сек», «4 мин», «1 ч 10 мин». */
 function dur(sec: number | null): string {
@@ -289,7 +290,7 @@ export function ConsolePage({ route }: { route: Route }) {
               >
                 Ничьи
               </button>
-              <select
+              <OptionSelect
                 className="input console-role"
                 value={filter.skill ?? ''}
                 aria-label="Навык"
@@ -299,8 +300,8 @@ export function ConsolePage({ route }: { route: Route }) {
                 {[...new Set(queue.map((q) => q.requiredSkill).filter(Boolean))].map((sk) => (
                   <option key={String(sk)} value={String(sk)}>{sk}</option>
                 ))}
-              </select>
-              <select
+              </OptionSelect>
+              <OptionSelect
                 className="input console-role"
                 value={filter.priority ?? ''}
                 aria-label="Срочность"
@@ -310,7 +311,7 @@ export function ConsolePage({ route }: { route: Route }) {
                 <option value="critical">Критично</option>
                 <option value="high">Срочно</option>
                 <option value="normal">Обычные</option>
-              </select>
+              </OptionSelect>
               <button
                 className={`console-chip${filter.waiting ? ' active' : ''}`}
                 onClick={() => setFilter({ ...filter, waiting: filter.waiting ? undefined : 30 })}
@@ -343,7 +344,7 @@ export function ConsolePage({ route }: { route: Route }) {
                       */}
                       {!q.agentId && (
                         <span
-                          className="btn btn-sm"
+                          className="ui-btn ui-btn-outline ui-btn-sm"
                           role="button"
                           tabIndex={0}
                           onClick={(e) => { e.stopPropagation(); void act(() => api.supportAssign(q.id)); }}
@@ -354,7 +355,7 @@ export function ConsolePage({ route }: { route: Route }) {
                       )}
                       {q.agentId === user?.id && (
                         <span
-                          className="btn btn-ghost btn-sm"
+                          className="ui-btn ui-btn-ghost ui-btn-sm"
                           role="button"
                           tabIndex={0}
                           onClick={(e) => { e.stopPropagation(); void act(() => api.supportUnassign(q.id)); }}
@@ -404,7 +405,7 @@ export function ConsolePage({ route }: { route: Route }) {
                   onChange={(e) => setIncident({ ...incident, message: e.target.value })}
                 />
                 <button
-                  className="btn btn-sm"
+                  className="ui-btn ui-btn-outline ui-btn-sm"
                   disabled={busy || !incident.title.trim() || !incident.message.trim()}
                   onClick={() => void act(async () => {
                     await api.supportDeclareIncident(incident.title.trim(), incident.message.trim());
@@ -453,7 +454,7 @@ export function ConsolePage({ route }: { route: Route }) {
                       не в отдельном экране настроек.
                     */}
                     {isAdmin && (
-                      <select
+                      <OptionSelect
                         className="input console-role"
                         value={s.role}
                         disabled={busy}
@@ -462,7 +463,7 @@ export function ConsolePage({ route }: { route: Route }) {
                         onChange={(e) => void act(() => api.platformSetStaff(s.userId, { role: e.target.value }))}
                       >
                         {roles.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
-                      </select>
+                      </OptionSelect>
                     )}
                     {/*
                       Навыки и предел загрузки — там же, где роль.
@@ -506,7 +507,7 @@ export function ConsolePage({ route }: { route: Route }) {
                     )}
                     {isAdmin && s.userId !== user?.id && (
                       <button
-                        className="btn btn-ghost btn-sm"
+                        className="ui-btn ui-btn-ghost ui-btn-sm"
                         disabled={busy}
                         onClick={(e) => { e.preventDefault(); void act(() => api.platformSetStaff(s.userId, { remove: true })); }}
                       >
@@ -553,7 +554,7 @@ export function ConsolePage({ route }: { route: Route }) {
                     onChange={(e) => setPersona({ ...persona, tone: e.target.value })}
                   />
                   <button
-                    className="btn btn-primary btn-sm"
+                    className="ui-btn ui-btn-primary ui-btn-sm"
                     disabled={busy || !persona.name.trim()}
                     onClick={() => void act(() => api.supportSetPersona({ name: persona.name.trim(), tone: persona.tone.trim() }))}
                   >
@@ -578,7 +579,7 @@ export function ConsolePage({ route }: { route: Route }) {
                         {p.position && <span className="dim"> · {p.position}</span>}
                       </span>
                       <button
-                        className="btn btn-sm"
+                        className="ui-btn ui-btn-outline ui-btn-sm"
                         disabled={busy}
                         onClick={() => void act(() => api.platformSetStaff(p.userId, { active: true }))}
                       >
@@ -620,7 +621,7 @@ export function ConsolePage({ route }: { route: Route }) {
                 onChange={(e) => setIssue({ ...issue, title: e.target.value })}
               />
               <button
-                className="btn btn-sm"
+                className="ui-btn ui-btn-outline ui-btn-sm"
                 disabled={busy || !issue.taskId || !issue.title.trim()}
                 onClick={() => void act(async () => {
                   await api.supportAddKnownIssue(issue.taskId, issue.title.trim());
@@ -638,7 +639,7 @@ export function ConsolePage({ route }: { route: Route }) {
                   <span className="dim"> · задача #{k.taskId} · {k.fixed ? 'исправлено' : 'чиним'}</span>
                 </span>
                 <button
-                  className="btn btn-ghost btn-sm"
+                  className="ui-btn ui-btn-ghost ui-btn-sm"
                   disabled={busy}
                   onClick={() => void act(() => api.supportSetKnownIssue(k.id, !k.active))}
                 >
@@ -680,7 +681,7 @@ export function ConsolePage({ route }: { route: Route }) {
                       ? `Загружено ${new Date(hb.loadedAt).toLocaleDateString('ru-RU')}${hb.stale ? ' · на диске новее' : ''}`
                       : 'Ещё не загружен.'}
                   </span>
-                  <button className="btn btn-sm" disabled={busy} onClick={() => void act(() => api.supportLoadHandbook())}>
+                  <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void act(() => api.supportLoadHandbook())}>
                     <Icon name="refresh" size={13} /> Обновить у всех
                   </button>
                 </div>

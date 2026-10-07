@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, TaskRecurrence as Recurrence } from '../lib/api';
 import { toastSaved } from '../lib/notifications';
+import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Повтор задачи.
@@ -95,7 +97,7 @@ export function TaskRecurrenceBlock({ taskId, onRefresh }: { taskId: string; onR
   };
 
   const clear = async () => {
-    if (!window.confirm('Снять повтор? Уже созданные задачи останутся.')) return;
+    if (!(await confirmAction({ title: 'Снять повтор?', description: 'Уже созданные задачи останутся.', danger: true }))) return;
     setBusy(true);
     try {
       await api.clearTaskRecurrence(taskId);
@@ -117,19 +119,19 @@ export function TaskRecurrenceBlock({ taskId, onRefresh }: { taskId: string; onR
 
       {current && !open && (
         <div className="repeat-current">
-          <span className="badge badge-repeat"><Icon name="refresh" size={12} /> {current.description}</span>
+          <span className="ui-badge ui-badge-neutral badge-repeat"><Icon name="refresh" size={12} /> {current.description}</span>
           <span className="dim">
             следующая — {new Date(current.nextRunAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
           </span>
           <span className="repeat-actions">
-            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>Изменить</button>
-            <button className="btn btn-ghost btn-sm" onClick={clear} disabled={busy}>Снять</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setOpen(true)}>Изменить</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={clear} disabled={busy}>Снять</button>
           </span>
         </div>
       )}
 
       {!current && !open && (
-        <button className="btn btn-sm" onClick={() => setOpen(true)}>
+        <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setOpen(true)}>
           <Icon name="refresh" size={14} /> Повторять эту задачу
         </button>
       )}
@@ -138,9 +140,9 @@ export function TaskRecurrenceBlock({ taskId, onRefresh }: { taskId: string; onR
         <div className="repeat-form">
           <div className="drawer-grid2">
             <div className="field"><label>Как часто</label>
-              <select className="input" value={freq} onChange={(e) => setFreq(e.target.value as Freq)}>
+              <OptionSelect className="input" value={freq} onChange={(e) => setFreq(e.target.value as Freq)}>
                 {FREQS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-              </select>
+              </OptionSelect>
             </div>
             <div className="field"><label title="Время срока новой задачи в вашем часовом поясе">Во сколько</label>
               <input className="input" type="time" value={atTime} onChange={(e) => setAtTime(e.target.value)} />
@@ -196,11 +198,11 @@ export function TaskRecurrenceBlock({ taskId, onRefresh }: { taskId: string; onR
 
           {err && <div className="error-text">{err}</div>}
           <div className="repeat-actions">
-            <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={save} disabled={busy}>
               {busy ? 'Сохраняю…' : 'Сохранить повтор'}
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setOpen(false); setErr(''); }}>Отмена</button>
-            {current && <button className="btn btn-ghost btn-sm" onClick={clear} disabled={busy}>Снять повтор</button>}
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { setOpen(false); setErr(''); }}>Отмена</button>
+            {current && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={clear} disabled={busy}>Снять повтор</button>}
           </div>
         </div>
       )}

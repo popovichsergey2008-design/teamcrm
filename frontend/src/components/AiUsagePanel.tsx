@@ -81,7 +81,7 @@ export function AiUsagePanel({ onClose }: { onClose: () => void }) {
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="sparkles" size={18} /> Расход ИИ</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
 
         <div className="ai-usage-period">
@@ -166,7 +166,7 @@ export function AiUsagePanel({ onClose }: { onClose: () => void }) {
                           <>
                             <span className="ai-usage-tokens">{num(f.tokens)}</span>
                             <span className="dim">{f.calls} раз · {money(f.cost)}</span>
-                            {f.mockCalls > 0 && <span className="badge badge-warn">демо</span>}
+                            {f.mockCalls > 0 && <span className="ui-badge ui-badge-warn">демо</span>}
                           </>
                         )}
                       </div>

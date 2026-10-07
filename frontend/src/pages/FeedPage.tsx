@@ -11,6 +11,9 @@ import { api, ApiError } from '../lib/api';
 import { pageWindow } from '../lib/task-registry-view';
 import { useAuth } from '../state/auth';
 import { overlayProps } from '../lib/overlay';
+import { OptionSelect } from '../components/ui/option-select';
+import { confirmAction } from '../components/ui/dialog';
+import { initialsOf } from '../lib/initials';
 
 interface Post {
   id: string;
@@ -206,11 +209,11 @@ export function FeedPage() {
         */}
         {canPost && (
           <span className="page-head-actions">
-            <button className="btn btn-sm" onClick={() => openComposer(false)}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => openComposer(false)}>
               <Icon name="plus" size={14} /> Новость
             </button>
             {canAnnounce && (
-              <button className="btn btn-primary btn-sm" onClick={() => openComposer(true)}>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => openComposer(true)}>
                 <Icon name="alert" size={14} /> Объявление
               </button>
             )}
@@ -232,7 +235,7 @@ export function FeedPage() {
       <div className="modal-card feed-composer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3>{asAnnouncement ? 'Объявление компании' : 'Новость компании'}</h3>
-          <button className="btn btn-ghost btn-sm" onClick={closeComposer} title="Закрыть"><Icon name="close" /></button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={closeComposer} title="Закрыть"><Icon name="close" /></button>
         </div>
         {asAnnouncement && (
           // Последствия объявления надо знать ДО отправки, а не узнавать по звонкам
@@ -254,7 +257,7 @@ export function FeedPage() {
           {/* Адресаты: пусто — всей компании. Так проще всего, а отделы выбирают, когда
               сообщение действительно касается только их. */}
           {groups.length > 0 && (
-            <select
+            <OptionSelect
               className="input feed-groups"
               value=""
               onChange={(e) => {
@@ -266,7 +269,7 @@ export function FeedPage() {
               {groups.filter((g) => !groupIds.includes(String(g.id))).map((g) => (
                 <option key={g.id} value={g.id}>{g.name}</option>
               ))}
-            </select>
+            </OptionSelect>
           )}
           {asAnnouncement && (
             <input
@@ -277,7 +280,7 @@ export function FeedPage() {
               title="До какого числа объявление действует. Пусто — бессрочно"
             />
           )}
-          <label className="btn btn-sm feed-attach" title="Приложить файлы к сообщению">
+          <label className="ui-btn ui-btn-outline ui-btn-sm feed-attach" title="Приложить файлы к сообщению">
             <Icon name="paperclip" size={14} /> Файл
             <input
               type="file"
@@ -289,7 +292,7 @@ export function FeedPage() {
               }}
             />
           </label>
-          <button className="btn btn-primary btn-sm" onClick={publish} disabled={busy || !body.trim()}>
+          <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={publish} disabled={busy || !body.trim()}>
             {busy ? 'Публикую…' : 'Опубликовать'}
           </button>
         </div>
@@ -438,7 +441,7 @@ function PostCard({ post, team, onOpen, onChanged }: {
       title="Открыть новость"
     >
       <header className="feed-post-head">
-        <Avatar path={post.authorAvatar} fallback={post.authorName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+        <Avatar path={post.authorAvatar} fallback={initialsOf(post.authorName)} className="avatar-sm" />
         <span className="feed-author">{post.authorName ?? 'Сотрудник'}</span>
         <span className="dim feed-time">{when(post.createdAt)}</span>
         {post.isPinned && <Icon name="flag" size={13} />}
@@ -449,14 +452,14 @@ function PostCard({ post, team, onOpen, onChanged }: {
             а не изнутри новости. Клик по кнопке не должен открывать окно. */}
         {post.canManage && (
           <span className="feed-post-actions" onClick={(e) => e.stopPropagation()}>
-            <button className="btn btn-ghost btn-sm" onClick={() => api.feedPin(post.id, !post.isPinned).then(onChanged)}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => api.feedPin(post.id, !post.isPinned).then(onChanged)}>
               {post.isPinned ? 'Открепить' : 'Закрепить'}
             </button>
             <button
-              className="btn btn-ghost btn-sm"
+              className="ui-btn ui-btn-ghost ui-btn-sm"
               title="Удалить из ленты"
               aria-label="Удалить из ленты"
-              onClick={() => { if (window.confirm('Удалить сообщение из ленты?')) api.feedDelete(post.id).then(onChanged); }}
+              onClick={async () => { if (await confirmAction({ title: 'Удалить сообщение из ленты?', danger: true })) api.feedDelete(post.id).then(onChanged); }}
             >
               <Icon name="trash" size={13} />
             </button>
@@ -537,7 +540,7 @@ function FeedAside({ onOpenPost }: { onOpenPost: (id: string) => void }) {
           <h4>🎂 Дни рождения</h4>
           {data.birthdays.map((b) => (
             <div key={b.userId} className={`feed-aside-person${b.inDays === 0 ? ' today' : ''}`}>
-              <Avatar path={b.avatarUrl} fallback={b.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+              <Avatar path={b.avatarUrl} fallback={initialsOf(b.fullName)} className="avatar-sm" />
               <span className="feed-aside-name">{b.fullName}</span>
               <span className="dim feed-time">{birthdayWhen(b)}</span>
             </div>
@@ -550,7 +553,7 @@ function FeedAside({ onOpenPost }: { onOpenPost: (id: string) => void }) {
           <h4><Icon name="user" size={14} /> Новые в команде</h4>
           {data.newcomers.map((n) => (
             <div key={n.userId} className="feed-aside-person">
-              <Avatar path={n.avatarUrl} fallback={n.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+              <Avatar path={n.avatarUrl} fallback={initialsOf(n.fullName)} className="avatar-sm" />
               <span className="feed-aside-name">{n.fullName}</span>
               <span className="dim feed-time">{n.positionName ?? ''}</span>
             </div>
@@ -700,7 +703,7 @@ function PostModal({ post, team, onChanged, onClose }: {
       onClick={(e) => e.stopPropagation()}
     >
       <header className="feed-post-head">
-        <Avatar path={post.authorAvatar} fallback={post.authorName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+        <Avatar path={post.authorAvatar} fallback={initialsOf(post.authorName)} className="avatar-sm" />
         <span className="feed-author">{post.authorName ?? 'Сотрудник'}</span>
         <span className="dim feed-time">{when(post.createdAt)}</span>
         {post.isPinned && <Icon name="flag" size={13} />}
@@ -709,11 +712,11 @@ function PostModal({ post, team, onChanged, onClose }: {
         <span className="feed-post-actions">
           {post.canManage && (
             <>
-              <button className="btn btn-ghost btn-sm" onClick={() => api.feedPin(post.id, !post.isPinned).then(onChanged)}>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => api.feedPin(post.id, !post.isPinned).then(onChanged)}>
                 {post.isPinned ? 'Открепить' : 'Закрепить'}
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => {
-                if (window.confirm('Удалить сообщение из ленты?')) {
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={async () => {
+                if (await confirmAction({ title: 'Удалить сообщение из ленты?', danger: true })) {
                   api.feedDelete(post.id).then(() => { onChanged(); onClose(); });
                 }
               }}>
@@ -721,7 +724,7 @@ function PostModal({ post, team, onChanged, onClose }: {
               </button>
             </>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть">
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть">
             <Icon name="close" size={16} />
           </button>
         </span>
@@ -768,12 +771,12 @@ function PostModal({ post, team, onChanged, onClose }: {
       {post.isAnnouncement && (
         <footer className="feed-post-foot">
           {!read && (
-            <button className="btn btn-primary btn-sm" onClick={confirmRead}>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={confirmRead}>
               <Icon name="check" size={14} /> Прочитал
             </button>
           )}
           {read && <span className="dim"><Icon name="check" size={13} /> вы прочитали</span>}
-          <button className="btn btn-ghost btn-sm" onClick={showReaders}>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={showReaders}>
             Прочитали: {post.reads}
           </button>
         </footer>
@@ -791,13 +794,13 @@ function PostModal({ post, team, onChanged, onClose }: {
           {/* Сколько ещё наверху — говорим числом: «показать ещё» без числа не даёт
               понять, там три сообщения или триста. */}
           {more > 0 && (
-            <button className="btn btn-ghost btn-sm feed-earlier" onClick={loadEarlier}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm feed-earlier" onClick={loadEarlier}>
               <Icon name="chevron-up" size={13} /> Показать предыдущие ({more})
             </button>
           )}
           {comments.map((c) => (
             <div key={c.id} className="feed-comment">
-              <Avatar path={c.avatarUrl} fallback={c.fullName?.[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+              <Avatar path={c.avatarUrl} fallback={initialsOf(c.fullName)} className="avatar-sm" />
               <div>
                 <div className="feed-comment-head">
                   <b>{c.fullName}</b> <span className="dim feed-time">{when(c.createdAt)}</span>
@@ -815,7 +818,7 @@ function PostModal({ post, team, onChanged, onClose }: {
               onMention={(id) => setMentionIds((prev) => (prev.includes(id) ? prev : [...prev, id]))}
               onEnter={send}
             />
-            <button className="btn btn-sm" onClick={send} disabled={!text.trim()}>Отправить</button>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={send} disabled={!text.trim()}>Отправить</button>
           </div>
         </div>
       )}

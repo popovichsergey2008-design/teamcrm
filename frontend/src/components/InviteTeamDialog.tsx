@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { parseEmails } from '../lib/emails';
+import { OptionSelect } from './ui/option-select';
 
 interface Result {
   email: string;
@@ -88,18 +89,18 @@ export function InviteTeamDialog({ onClose, onDone }: {
 
             <div className="field">
               <label htmlFor="inv-role">Роль</label>
-              <select id="inv-role" className="input" value={role} onChange={(e) => setRole(e.target.value)}>
+              <OptionSelect id="inv-role" className="input" value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value="member">Сотрудник — работает в своих проектах и задачах</option>
                 <option value="manager">Руководитель — ведёт проекты и команду</option>
-              </select>
+              </OptionSelect>
               <span className="dim tpl-hint">Роль можно изменить позже в разделе «Команда».</span>
             </div>
 
             {err && <div className="error-text">{err}</div>}
 
             <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Отмена</button>
-              <button className="btn btn-primary" onClick={send} disabled={busy || !emails.length}>
+              <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={onClose} disabled={busy}>Отмена</button>
+              <button className="ui-btn ui-btn-primary ui-btn-md" onClick={send} disabled={busy || !emails.length}>
                 {busy ? 'Отправляю…' : emails.length > 1 ? `Пригласить (${emails.length})` : 'Пригласить'}
               </button>
             </div>
@@ -119,7 +120,7 @@ export function InviteTeamDialog({ onClose, onDone }: {
                   <span className="inv-email">{r.email}</span>
                   {r.ok
                     ? (
-                      <button className="btn btn-ghost btn-sm" onClick={() => r.link && copy(r.email, r.link)}>
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => r.link && copy(r.email, r.link)}>
                         {copied === r.email ? 'Скопировано' : 'Скопировать ссылку'}
                       </button>
                     )
@@ -128,8 +129,8 @@ export function InviteTeamDialog({ onClose, onDone }: {
               ))}
             </ul>
             <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={() => { setResults(null); setText(''); }}>Позвать ещё</button>
-              <button className="btn btn-primary" onClick={onClose}>Готово</button>
+              <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={() => { setResults(null); setText(''); }}>Позвать ещё</button>
+              <button className="ui-btn ui-btn-primary ui-btn-md" onClick={onClose}>Готово</button>
             </div>
           </>
         )}

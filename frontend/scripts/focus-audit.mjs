@@ -19,7 +19,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SRC = process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
-const css = ['app.css', 'index.css'].map((f) => readFileSync(join(SRC, f), 'utf8')).join('\n');
+// все таблицы стилей верхнего уровня: app.css, index.css и ui.css (компоненты ТЗ-15)
+const css = readdirSync(SRC).filter((f) => f.endsWith('.css')).map((f) => readFileSync(join(SRC, f), 'utf8')).join('\n');
 
 // классы с cursor: pointer — то, что задумано кликабельным
 const clickable = new Set();

@@ -4,6 +4,8 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
 import { overlayProps } from '../lib/overlay';
+import { useEscape } from '../hooks/useEscape';
+import { initialsOf } from '../lib/initials';
 
 /**
  * Создание группового чата: название и состав.
@@ -15,6 +17,8 @@ export function GroupChatModal({ users, meId, onClose, onCreated }: {
   onClose: () => void;
   onCreated: (chatId: string) => void;
 }) {
+  // Escape закрывает, как и остальные окна
+  useEscape(onClose);
   const [title, setTitle] = useState('');
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState('');
@@ -43,7 +47,7 @@ export function GroupChatModal({ users, meId, onClose, onCreated }: {
   return (
     <div className="modal-overlay" {...overlayProps(onClose)}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>Новая группа</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
+        <div className="drawer-head"><h3>Новая группа</h3><button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
 
         <div className="field"><label>Название</label>
           <input
@@ -67,7 +71,7 @@ export function GroupChatModal({ users, meId, onClose, onCreated }: {
                   checked={!!picked[u.id]}
                   onChange={(e) => setPicked((s) => ({ ...s, [u.id]: e.target.checked }))}
                 />
-                <Avatar path={(u as any).avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+                <Avatar path={(u as any).avatarUrl ?? null} fallback={initialsOf(u.fullName)} className="avatar-sm" />
                 <span>{u.fullName}</span>
               </label>
             ))}
@@ -75,7 +79,7 @@ export function GroupChatModal({ users, meId, onClose, onCreated }: {
         </div>
 
         {err && <div className="error-text">{err}</div>}
-        <button className="btn btn-primary" style={{ width: '100%', marginTop: 6 }} disabled={busy} onClick={submit}>
+        <button className="ui-btn ui-btn-primary ui-btn-md" style={{ width: '100%', marginTop: 6 }} disabled={busy} onClick={submit}>
           {busy ? 'Создаём…' : 'Создать группу'}
         </button>
       </div>

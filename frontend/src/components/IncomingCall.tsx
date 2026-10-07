@@ -112,10 +112,10 @@ export function IncomingCallDialog({ call, onAccept, onDecline }: {
         <div className="incoming-who">{call.callerName}</div>
         <div className="incoming-sub"><Icon name="phone" size={14} /> Входящий звонок</div>
         <div className="incoming-actions">
-          <button className="btn incoming-accept" onClick={onAccept} autoFocus>
+          <button className="ui-btn ui-btn-outline ui-btn-md incoming-accept" onClick={onAccept} autoFocus>
             <Icon name="phone" size={16} /> Принять
           </button>
-          <button className="btn incoming-decline" onClick={onDecline}>
+          <button className="ui-btn ui-btn-outline ui-btn-md incoming-decline" onClick={onDecline}>
             <Icon name="close" size={16} /> Отклонить
           </button>
         </div>

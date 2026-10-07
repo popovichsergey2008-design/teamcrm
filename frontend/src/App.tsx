@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from './state/auth';
 import { api } from './lib/api';
 import { LoginPage } from './pages/LoginPage';
@@ -6,21 +6,11 @@ import { BoardPage } from './pages/BoardPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { JoinOrgPage } from './pages/JoinOrgPage';
-import { GuestMeetPage } from './pages/GuestMeetPage';
-import { GetAppPage } from './pages/GetAppPage';
-import { TaskBatchPage } from './pages/TaskBatchPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { CalendarPage } from './pages/CalendarPage';
-import { FeedPage } from './pages/FeedPage';
 import { FocusPage } from './pages/FocusPage';
-import { MeetingsPage } from './pages/MeetingsPage';
 import { RadarPage } from './pages/RadarPage';
-import { SupportPage } from './pages/SupportPage';
-import { ConsolePage } from './pages/ConsolePage';
 import { TasksPage } from './pages/TasksPage';
 import { toScope } from './lib/task-registry-view';
-import { SettingsPage } from './pages/SettingsPage';
-import { CallPanel } from './components/CallPanel';
 import { ChatsPage } from './pages/ChatsPage';
 import { IncomingCallDialog, useIncomingCalls } from './components/IncomingCall';
 import { GuestHostCallCard, useGuestHostCalls } from './components/GuestHostCall';
@@ -34,19 +24,15 @@ import { useTabAlert } from './hooks/useTabAlert';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 import { Icon } from './components/Icon';
-import { ProfilePanel } from './components/ProfilePanel';
-import { NlCommandModal } from './components/NlCommandModal';
 import { CommandPalette } from './components/CommandPalette';
-import { SecretaryPanel } from './components/SecretaryPanel';
-import { InboxPanel } from './components/InboxPanel';
-import { ClientPortal } from './pages/ClientPortal';
 import { Toasts } from './components/Toasts';
 import { isConsoleHost, mainSiteHref, navigate, parsePath, Section, useRoute } from './lib/router';
 import { lastProject } from './lib/last-project';
 import { dropCache } from './lib/cache';
 import { START_CALL_EVENT, StartCallRequest } from './lib/notifications';
 import { useShortcuts } from './hooks/useShortcuts';
-import { ShortcutsHelp } from './components/ShortcutsHelp';
+import { lazyComponent } from './lib/lazy';
+import { SecretaryPanel } from './components/SecretaryPanel';
 import { prefetchFocus } from './pages/FocusPage';
 import { prefetchRadar } from './pages/RadarPage';
 import { ChatBar } from './components/chatbar/ChatBar';
@@ -65,7 +51,37 @@ import { useConsoleAlerts } from './hooks/useConsoleAlerts';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { ConsoleTopBar } from './components/console/ConsoleTopBar';
 import { useSeedStickyChecks } from './lib/sticky-checks';
-import { MeetingPage } from './pages/MeetingPage';
+import { promptText } from './components/ui/dialog';
+
+/*
+  Разделы, которые открывают не каждый день, грузятся по требованию (ТЗ-15, этап 0).
+
+  Раньше весь интерфейс приезжал одним куском — 1,5 МБ кода до первого экрана, хотя
+  человеку с утра нужны «Фокус» и чаты, а не консоль техотдела и настройки. Здесь —
+  то, без чего первый экран обходится: созвон (с mediasoup), календарь, встречи,
+  настройки, консоль, гостевые страницы. Пока кусок едет, на его месте крутилка.
+*/
+const GuestMeetPage = lazy(() => import('./pages/GuestMeetPage').then((m) => ({ default: m.GuestMeetPage })));
+const GetAppPage = lazy(() => import('./pages/GetAppPage').then((m) => ({ default: m.GetAppPage })));
+const TaskBatchPage = lazy(() => import('./pages/TaskBatchPage').then((m) => ({ default: m.TaskBatchPage })));
+const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
+const FeedPage = lazy(() => import('./pages/FeedPage').then((m) => ({ default: m.FeedPage })));
+const MeetingsPage = lazy(() => import('./pages/MeetingsPage').then((m) => ({ default: m.MeetingsPage })));
+const SupportPage = lazy(() => import('./pages/SupportPage').then((m) => ({ default: m.SupportPage })));
+const ConsolePage = lazy(() => import('./pages/ConsolePage').then((m) => ({ default: m.ConsolePage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const ClientPortal = lazy(() => import('./pages/ClientPortal').then((m) => ({ default: m.ClientPortal })));
+const MeetingPage = lazy(() => import('./pages/MeetingPage').then((m) => ({ default: m.MeetingPage })));
+const CallPanel = lazy(() => import('./components/CallPanel').then((m) => ({ default: m.CallPanel })));
+
+// Окна по нажатию — тоже по требованию: на первом экране их нет.
+const ProfilePanel = lazyComponent(() => import('./components/ProfilePanel').then((m) => m.ProfilePanel));
+const NlCommandModal = lazyComponent(() => import('./components/NlCommandModal').then((m) => m.NlCommandModal));
+const InboxPanel = lazyComponent(() => import('./components/InboxPanel').then((m) => m.InboxPanel));
+const ShortcutsHelp = lazyComponent(() => import('./components/ShortcutsHelp').then((m) => m.ShortcutsHelp));
+
+/** Заглушка на время загрузки раздела: место под ним уже занято, экран не прыгает. */
+const pageFallback = <div className="center-screen"><div className="spinner" /></div>;
 
 /**
  * Обёртка раздела, который остаётся жить после ухода с него.
@@ -259,7 +275,13 @@ export function App() {
 
   const onSwitchOrg = async (tenantId: string) => {
     if (tenantId === '__new__') {
-      const name = window.prompt('Название новой организации:');
+      const name = await promptText({
+        title: 'Новая организация',
+        description: 'Отдельное пространство со своими проектами, людьми и чатами. Переключаться между ними — в меню профиля.',
+        placeholder: 'Например: ООО «Вектор»',
+        confirmLabel: 'Создать',
+        singleLine: true,
+      });
       if (name && name.trim()) await createOrg(name.trim());
       return;
     }
@@ -441,9 +463,9 @@ export function App() {
 
   // Гость по ссылке `/meet/<токен>` — до всякой авторизации: у него нет учётной записи,
   // и экран входа на его пути означал бы «встреча только для сотрудников».
-  if (guestMeetToken) return <GuestMeetPage token={guestMeetToken} />;
+  if (guestMeetToken) return <Suspense fallback={pageFallback}><GuestMeetPage token={guestMeetToken} /></Suspense>;
   // «Скачать приложение» — тоже до входа: ссылку присылают новому сотруднику (волна 12).
-  if (window.location.pathname.replace(/\/+$/, '') === '/get') return <GetAppPage />;
+  if (window.location.pathname.replace(/\/+$/, '') === '/get') return <Suspense fallback={pageFallback}><GetAppPage /></Suspense>;
 
   if (inviteToken) return <AcceptInvitePage token={inviteToken} />;
   if (joinToken) return <JoinOrgPage token={joinToken} />;
@@ -459,7 +481,7 @@ export function App() {
 
   // постоянная ссылка встречи без входа — открытая страница; «я сотрудник» ведёт к входу здесь же
   if (!user && meetingPublicId && !staffLogin) {
-    return <GuestMeetPage publicId={meetingPublicId} onStaffLogin={() => setStaffLogin(true)} />;
+    return <Suspense fallback={pageFallback}><GuestMeetPage publicId={meetingPublicId} onStaffLogin={() => setStaffLogin(true)} /></Suspense>;
   }
   if (!user) return <LoginPage />;
 
@@ -471,7 +493,7 @@ export function App() {
   }
 
   // клиент видит отдельный портал (без внутренних досок/финансов)
-  if (user.role === 'client') return <ClientPortal />;
+  if (user.role === 'client') return <Suspense fallback={pageFallback}><ClientPortal /></Suspense>;
 
   /*
     Консоль техотдела — своё рабочее место, а не CRM со скрытой строкой меню.
@@ -490,7 +512,7 @@ export function App() {
       return (
         <div className="center-screen console-denied">
           <p>Этот адрес — рабочее место службы заботы.</p>
-          <a className="btn btn-primary btn-sm" href={mainSiteHref()}>Перейти в CRM</a>
+          <a className="ui-btn ui-btn-primary ui-btn-sm" href={mainSiteHref()}>Перейти в CRM</a>
         </div>
       );
     }
@@ -499,7 +521,7 @@ export function App() {
         <ConsoleTopBar name={user.fullName} avatarPath={avatarPath} onLogout={logout} />
         <div className="console-body">
           <main className="console-main">
-            <ConsolePage route={route} />
+            <Suspense fallback={pageFallback}><ConsolePage route={route} /></Suspense>
           </main>
 
           {/*
@@ -521,12 +543,12 @@ export function App() {
           компании — созвон с клиентом начинается из разговора по согласию обеих сторон.
         */}
         {callId && (
-          <CallPanel
+          <Suspense fallback={null}><CallPanel
             meetingId={callId}
             inviteUserIds={callInvite}
             withCamera={callCamera}
             onClose={() => { setCallId(null); setCallInvite([]); setCallCamera(false); }}
-          />
+          /></Suspense>
         )}
       </div>
     );
@@ -620,18 +642,20 @@ export function App() {
         )}
         {/* Остальное открывают редко и ненадолго — держать это в памяти незачем */}
         {/* Новости — свой раздел, а не вкладка чатов: это издание компании, а не переписка */}
-        {route.section === 'news' && <FeedPage />}
+        {route.section === 'news' && <Suspense fallback={pageFallback}><FeedPage /></Suspense>}
         {route.section === 'chat' && route.view === 'meetings' && (
-          <MeetingsPage onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
+          <Suspense fallback={pageFallback}><MeetingsPage onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} /></Suspense>
         )}
         {route.section === 'calendar' && (
-          <CalendarPage onStartCall={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
+          <Suspense fallback={pageFallback}><CalendarPage onStartCall={(roomId) => { setCallInvite([]); setCallId(roomId); }} /></Suspense>
         )}
         {/* Встреча по постоянной ссылке (ТЗ-14): страница перед входом — время, состояние, проверка устройств */}
         {route.section === 'meet' && route.meetId && (
-          route.meetId.length > 20
-            ? <GuestMeetPage token={route.meetId} />
-            : <MeetingPage publicId={route.meetId} inCall={!!callId} onJoin={(roomId) => { setCallInvite([]); setCallId(roomId); }} />
+          <Suspense fallback={pageFallback}>
+            {route.meetId.length > 20
+              ? <GuestMeetPage token={route.meetId} />
+              : <MeetingPage publicId={route.meetId} inCall={!!callId} onJoin={(roomId) => { setCallInvite([]); setCallId(roomId); }} />}
+          </Suspense>
         )}
         {/*
           Реестр задач остаётся смонтированным, как «Фокус» и доски: набранные фильтры
@@ -653,11 +677,11 @@ export function App() {
         )}
         {/* Результат пакетного создания задач: свой адрес, переживает перезагрузку (ТЗ-10). */}
         {route.section === 'tasks' && route.view === 'batch' && route.batchId && (
-          <TaskBatchPage batchId={route.batchId} />
+          <Suspense fallback={pageFallback}><TaskBatchPage batchId={route.batchId} /></Suspense>
         )}
         {route.section === 'radar' && canManage && <RadarPage />}
         {route.section === 'support' && (
-          <SupportPage />
+          <Suspense fallback={pageFallback}><SupportPage /></Suspense>
         )}
         {/*
           Консоль техотдела вендора.
@@ -665,8 +689,8 @@ export function App() {
           Проверка здесь — чтобы клиент не увидел пустой каркас, набрав адрес руками;
           настоящая защита на сервере: каждая ручка консоли спрашивает техотдел.
         */}
-        {route.section === 'console' && user.platformStaff && <ConsolePage route={route} />}
-        {route.section === 'settings' && <SettingsPage route={route} role={user.role} />}
+        {route.section === 'console' && user.platformStaff && <Suspense fallback={pageFallback}><ConsolePage route={route} /></Suspense>}
+        {route.section === 'settings' && <Suspense fallback={pageFallback}><SettingsPage route={route} role={user.role} /></Suspense>}
         {route.section === 'profile' && (
           <ProfilePanel onClose={() => navigate({ section: 'settings' })} onAvatar={setAvatarPath} />
         )}
@@ -731,12 +755,12 @@ export function App() {
         <UpdateSheet release={mobile.config.android} onClose={mobile.skip} />
       )}
       {callId && (
-        <CallPanel
+        <Suspense fallback={null}><CallPanel
           meetingId={callId}
           inviteUserIds={callInvite}
           withCamera={callCamera}
           onClose={() => { setCallId(null); setCallInvite([]); setCallCamera(false); }}
-        />
+        /></Suspense>
       )}
       {/* В этой же комнате уже сидим — звать незачем */}
       {hostCall.call && callId !== hostCall.call.roomId && (

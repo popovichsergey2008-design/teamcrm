@@ -1,6 +1,7 @@
 import { Avatar } from '../Avatar';
 import { Icon } from '../Icon';
 import { mainSiteHref } from '../../lib/router';
+import { initialsOf } from '../../lib/initials';
 
 /**
  * Шапка консоли техотдела.
@@ -28,14 +29,14 @@ export function ConsoleTopBar({
         <span className="dim">консоль техотдела</span>
       </span>
       <span className="console-bar-right">
-        <a className="btn btn-ghost btn-sm" href={mainSiteHref()} target="_blank" rel="noreferrer">
+        <a className="ui-btn ui-btn-ghost ui-btn-sm" href={mainSiteHref()} target="_blank" rel="noreferrer">
           <Icon name="link" size={13} /> Открыть CRM
         </a>
         <span className="console-me">
-          <Avatar path={avatarPath} fallback={name} className="avatar avatar-sm" />
+          <Avatar path={avatarPath} fallback={initialsOf(name)} className="avatar avatar-sm" />
           <span className="console-me-name">{name}</span>
         </span>
-        <button className="btn btn-ghost btn-sm" onClick={onLogout} title="Выйти">
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onLogout} title="Выйти">
           <Icon name="logout" size={14} /> Выйти
         </button>
       </span>

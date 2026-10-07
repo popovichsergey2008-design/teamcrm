@@ -101,8 +101,8 @@ export function CallMini({ people, videoOf, speaking, micOn, camOn, recording, p
       {knocks.length > 0 && (
         <div className="mini-knock">
           <span className="mini-knock-who"><Icon name="user" size={13} /> {knocks[0].name}</span>
-          <button className="btn btn-sm" onClick={() => onKnock(knocks[0].guestId, true)}>Впустить</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => onKnock(knocks[0].guestId, false)}>Нет</button>
+          <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => onKnock(knocks[0].guestId, true)}>Впустить</button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => onKnock(knocks[0].guestId, false)}>Нет</button>
         </div>
       )}
 

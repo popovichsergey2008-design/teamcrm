@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../Icon';
 import { api, ApiError } from '../../lib/api';
 import type { AnthillResponse } from '../../lib/api';
+import { OptionSelect } from '../ui/option-select';
+import { confirmAction } from '../ui/dialog';
 
 const SCOPE_LABEL: Record<string, string> = { all: 'везде', channels: 'в группах и каналах', dms: 'в личных' };
 const EMPTY = {
@@ -37,7 +39,7 @@ export function AnthillResponses() {
     <div className="anthill-pane">
       <div className="anthill-pane-head">
         <span className="dim">Ответ на частый вопрос — слово в слово, мгновенно и без модели.</span>
-        <button className="btn btn-primary btn-sm" onClick={() => setAdding((v) => !v)}><Icon name="plus" size={13} /> Новый</button>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => setAdding((v) => !v)}><Icon name="plus" size={13} /> Новый</button>
       </div>
 
       {adding && (
@@ -53,18 +55,18 @@ export function AnthillResponses() {
           <div className="anthill-resp-opts">
             <label className="anthill-form-row">
               <span className="dim">Как сравнивать</span>
-              <select className="input" value={draft.matchKind} onChange={(e) => setDraft({ ...draft, matchKind: e.target.value as 'keyword' | 'exact' })}>
+              <OptionSelect className="input" value={draft.matchKind} onChange={(e) => setDraft({ ...draft, matchKind: e.target.value as 'keyword' | 'exact' })}>
                 <option value="keyword">по ключевым словам</option>
                 <option value="exact">точное совпадение фразы</option>
-              </select>
+              </OptionSelect>
             </label>
             <label className="anthill-form-row">
               <span className="dim">Где</span>
-              <select className="input" value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as 'all' | 'channels' | 'dms' })}>
+              <OptionSelect className="input" value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as 'all' | 'channels' | 'dms' })}>
                 <option value="all">везде</option>
                 <option value="channels">в группах и каналах</option>
                 <option value="dms">в личных</option>
-              </select>
+              </OptionSelect>
             </label>
           </div>
           <label className="anthill-ctx" title="Иначе ответ приходит только когда бота позвали через @">
@@ -73,11 +75,11 @@ export function AnthillResponses() {
           </label>
           <div className="anthill-form-acts">
             <button
-              className="btn btn-primary btn-sm"
+              className="ui-btn ui-btn-primary ui-btn-sm"
               disabled={draft.trigger.trim().length < 2 || draft.answer.trim().length < 2}
               onClick={() => { void act(api.anthillAddResponse(draft)).then(() => { setDraft(EMPTY); setAdding(false); }); }}
             >Сохранить</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setAdding(false)}>Отмена</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setAdding(false)}>Отмена</button>
           </div>
         </div>
       )}
@@ -100,19 +102,19 @@ export function AnthillResponses() {
               <div className="anthill-skill-top">
                 <span className="anthill-mem-title">{row.trigger}</span>
                 <span className="dim">{row.matchKind === 'exact' ? 'точная фраза' : 'ключевые слова'} · {SCOPE_LABEL[row.scope] ?? row.scope}</span>
-                {row.auto && <span className="badge badge-info" title="Отвечает, даже когда бота не звали">без упоминания</span>}
-                {!row.enabled && <span className="badge badge-muted">выключен</span>}
+                {row.auto && <span className="ui-badge ui-badge-info" title="Отвечает, даже когда бота не звали">без упоминания</span>}
+                {!row.enabled && <span className="ui-badge ui-badge-neutral">выключен</span>}
                 {row.hits > 0 && <span className="dim">сработал {row.hits} раз</span>}
               </div>
               <div className="anthill-mem-body">{row.answer}</div>
               <div className="anthill-task-acts">
-                <button className="btn btn-ghost btn-sm" onClick={() => { void act(api.anthillEditResponse(row.id, { enabled: !row.enabled })); }}>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void act(api.anthillEditResponse(row.id, { enabled: !row.enabled })); }}>
                   <Icon name={row.enabled ? 'pause' : 'play'} size={13} /> {row.enabled ? 'Выключить' : 'Включить'}
                 </button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setEditing(row.id)}><Icon name="edit" size={13} /> Править</button>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(row.id)}><Icon name="edit" size={13} /> Править</button>
                 <button
                   className="msg-icon"
-                  onClick={() => { if (window.confirm(`Удалить быстрый ответ «${row.trigger}»?`)) void act(api.anthillDeleteResponse(row.id)); }}
+                  onClick={async () => { if (await confirmAction({ title: `Удалить быстрый ответ «${row.trigger}»?`, danger: true })) void act(api.anthillDeleteResponse(row.id)); }}
                   title="Удалить" aria-label="Удалить"
                 ><Icon name="trash" size={13} /></button>
               </div>
@@ -145,8 +147,8 @@ function EditResponse({ row, onSave, onCancel }: {
         Отвечать без упоминания бота
       </label>
       <div className="anthill-form-acts">
-        <button className="btn btn-primary btn-sm" onClick={() => { void onSave({ trigger: v.trigger.trim(), answer: v.answer.trim(), auto: v.auto }); }}>Сохранить</button>
-        <button className="btn btn-ghost btn-sm" onClick={onCancel}>Не менять</button>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void onSave({ trigger: v.trigger.trim(), answer: v.answer.trim(), auto: v.auto }); }}>Сохранить</button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onCancel}>Не менять</button>
       </div>
     </div>
   );

@@ -1,7 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import '@fontsource-variable/inter';
 import './index.css';
 import './app.css';
+import './ui.css';
 import { App } from './App';
 import { AuthProvider } from './state/auth';
 import { initTheme } from './lib/theme';

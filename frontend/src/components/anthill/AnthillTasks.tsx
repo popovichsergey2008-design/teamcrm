@@ -3,6 +3,7 @@ import { Icon } from '../Icon';
 import { api, ApiError } from '../../lib/api';
 import type { AnthillActionRow, AnthillSchedule } from '../../lib/api';
 import { stampLabel } from '../../lib/chat-text';
+import { confirmAction } from '../ui/dialog';
 
 const GROUPS: { key: string; title: string }[] = [
   { key: 'active', title: 'Активные' },
@@ -81,7 +82,7 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
   };
 
   const remove = async (row: AnthillSchedule) => {
-    if (!window.confirm(`Удалить «${row.title}»? Задача перестанет выполняться.`)) return;
+    if (!(await confirmAction({ title: `Удалить «${row.title}»?`, description: 'Регулярная задача перестанет выполняться.', danger: true }))) return;
     setErr('');
     try { await api.anthillDeleteSchedule(row.id); load(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось удалить'); }
@@ -91,7 +92,7 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
     <div className="anthill-pane">
       <div className="anthill-pane-head">
         <span className="dim">Агент делает это сам, по расписанию — и приносит результат в «Заметки».</span>
-        <button className="btn btn-primary btn-sm" onClick={() => setAdding((v) => !v)}>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => setAdding((v) => !v)}>
           <Icon name="plus" size={13} /> Новая
         </button>
       </div>
@@ -111,8 +112,8 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
             <input className="input" value={draft.schedule} onChange={(e) => setDraft({ ...draft, schedule: e.target.value })} placeholder="каждый понедельник в 9:00" />
           </label>
           <div className="anthill-form-acts">
-            <button className="btn btn-primary btn-sm" onClick={() => { void add(); }} disabled={busy || !draft.title.trim() || draft.instruction.trim().length < 5 || !draft.schedule.trim()}>Создать</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setAdding(false)} disabled={busy}>Отмена</button>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void add(); }} disabled={busy || !draft.title.trim() || draft.instruction.trim().length < 5 || !draft.schedule.trim()}>Создать</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setAdding(false)} disabled={busy}>Отмена</button>
           </div>
         </div>
       )}
@@ -131,13 +132,13 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
               {actionHint(a) && <div className="dim anthill-task-what">{actionHint(a)}</div>}
               <div className="anthill-task-acts">
                 <button
-                  className="btn btn-primary btn-sm"
+                  className="ui-btn ui-btn-primary ui-btn-sm"
                   onClick={() => { setErr(''); api.anthillConfirm(a.id).then(load).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось выполнить')); }}
                 >
                   <Icon name="check" size={13} /> Создать
                 </button>
                 <button
-                  className="btn btn-ghost btn-sm"
+                  className="ui-btn ui-btn-ghost ui-btn-sm"
                   onClick={() => { api.anthillReject(a.id).then(load).catch(() => undefined); }}
                 >Отмена</button>
               </div>
@@ -168,7 +169,7 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
                 <div className="dim anthill-task-what">{row.instruction}</div>
                 <div className="dim anthill-task-meta">
                   {row.status === 'active' && row.nextRunAt && <span><Icon name="clock" size={11} /> следующий: {stampLabel(row.nextRunAt)}</span>}
-                  {row.status === 'paused' && <span className="badge badge-muted">на паузе</span>}
+                  {row.status === 'paused' && <span className="ui-badge ui-badge-neutral">на паузе</span>}
                   {row.lastRunAt && <span>· последний: {stampLabel(row.lastRunAt)}</span>}
                   {row.runs > 0 && <span>· запусков: {row.runs}</span>}
                 </div>
@@ -184,12 +185,12 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
                   <EditTask row={row} onCancel={() => setEditing(null)} onSave={async (p) => { await patch(row.id, p); setEditing(null); }} />
                 ) : (
                   <div className="anthill-task-acts">
-                    <button className="btn btn-ghost btn-sm" onClick={() => { void patch(row.id, { status: row.status === 'active' ? 'paused' : 'active' }); }}>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void patch(row.id, { status: row.status === 'active' ? 'paused' : 'active' }); }}>
                       <Icon name={row.status === 'active' ? 'pause' : 'play'} size={13} /> {row.status === 'active' ? 'Пауза' : 'Включить'}
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setEditing(row.id)}><Icon name="edit" size={13} /> Править</button>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(row.id)}><Icon name="edit" size={13} /> Править</button>
                     {row.sessionId && onOpenSession && (
-                      <button className="btn btn-ghost btn-sm" onClick={() => onOpenSession(row.sessionId!)}><Icon name="chat" size={13} /> Нитка</button>
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => onOpenSession(row.sessionId!)}><Icon name="chat" size={13} /> Нитка</button>
                     )}
                     <button className="msg-icon" onClick={() => { void remove(row); }} title="Удалить" aria-label="Удалить"><Icon name="trash" size={13} /></button>
                   </div>
@@ -225,8 +226,8 @@ function EditTask({ row, onSave, onCancel }: {
         <input className="input" value={v.schedule} onChange={(e) => setV({ ...v, schedule: e.target.value })} />
       </label>
       <div className="anthill-form-acts">
-        <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => { setBusy(true); void onSave(v).finally(() => setBusy(false)); }}>Сохранить</button>
-        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={onCancel}>Не менять</button>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy} onClick={() => { setBusy(true); void onSave(v).finally(() => setBusy(false)); }}>Сохранить</button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={onCancel}>Не менять</button>
       </div>
     </div>
   );

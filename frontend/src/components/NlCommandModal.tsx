@@ -13,6 +13,11 @@ import { navigate } from '../lib/router';
 import { newChangeId } from '../lib/offline-queue';
 import { plural } from '../lib/chat-text';
 import { stickyCheck, useStickyCheck } from '../lib/sticky-checks';
+import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
+import { Textarea } from './ui/field';
+import { Input } from './ui/input';
+import { Select } from './ui/select';
 
 /** Что создали в этом заходе — для итоговой страницы: куда ушло и как открыть. */
 interface CreatedTask {
@@ -387,13 +392,13 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     const sameProject = new Set(created.map((t) => t.projectId)).size === 1;
     return (
       <div className="drawer-overlay" {...overlayProps(onClose)}>
-        <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-          <div className="drawer-head">
-            <h3><Icon name="check" size={18} /> Создано: {created.length} {plural(created.length, 'задача', 'задачи', 'задач')}</h3>
-            <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+        <aside className="drawer nl-v2" onClick={(e) => e.stopPropagation()}>
+          <div className="nl-v2-head">
+            <h2 className="ui-modal-title"><Icon name="check-circle" size={20} /> Создано: {created.length} {plural(created.length, 'задача', 'задачи', 'задач')}</h2>
+            <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={16} /></Button>
           </div>
-          {msg && <div className="error-text">{msg}</div>}
-          <div className="dim" style={{ fontSize: 12 }}>
+          {msg && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {msg}</div>}
+          <div className="nl-v2-sub">
             Задачи уже на досках и у исполнителей. Нажмите на любую, чтобы открыть карточку.
           </div>
           {cardTask && (
@@ -415,23 +420,24 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             ))}
           </div>
           <div className="nl-actions">
-            <button className="btn btn-primary btn-sm" onClick={openTaskList}>
-              <Icon name="list" size={14} /> Посмотреть задачи
-            </button>
+            <Button variant="primary" size="sm" onClick={openTaskList}>
+              <Icon name="list" size={15} /> Посмотреть задачи
+            </Button>
             {sameProject && (
-              <button className="btn btn-ghost btn-sm" onClick={openBoard}>
-                <Icon name="board" size={14} /> Открыть доску
-              </button>
+              <Button variant="outline" size="sm" onClick={openBoard}>
+                <Icon name="board" size={15} /> Открыть доску
+              </Button>
             )}
-            <button
-              className="btn btn-ghost btn-sm"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
               requestId.current = newChangeId();
               setStage('compose'); setDrafts([]); setDone([]); setCreated([]); setText(''); setHeard(''); setMsg('');
             }}
             >
-              <Icon name="zap" size={14} /> Ещё команда
-            </button>
+              <Icon name="zap" size={15} /> Ещё команда
+            </Button>
           </div>
         </aside>
       </div>
@@ -440,21 +446,21 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
 
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
-      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head">
-          <h3><Icon name="zap" size={18} /> Быстрая команда</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+      <aside className="drawer nl-v2" onClick={(e) => e.stopPropagation()}>
+        <div className="nl-v2-head">
+          <h2 className="ui-modal-title"><Icon name="zap" size={20} /> Новая задача</h2>
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={16} /></Button>
         </div>
-        <div className="dim" style={{ fontSize: 12 }}>
+        <div className="nl-v2-sub">
           Скажите или напишите обычным языком — черновики соберутся сами, вам останется подтвердить.
           В одной записи можно надиктовать сразу несколько задач разным людям.
         </div>
-        {msg && <div className="error-text">{msg}</div>}
+        {msg && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {msg}</div>}
 
         <textarea
-          className="input"
+          className="ui-textarea"
           rows={3}
-          placeholder="Ваша команда…"
+          placeholder="Например: Ольге до пятницы подготовить отчёт по продажам, срочно"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void parse(); }}
@@ -476,24 +482,24 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             {job.status === 'error' && (
               // Аудио сохранено — переспрашивать человека, который говорил десять минут,
               // мы не станем ни при какой ошибке.
-              <button className="btn btn-sm" onClick={retry}>Повторить обработку</button>
+              <Button variant="outline" size="sm" onClick={retry}>Повторить обработку</Button>
             )}
           </div>
         )}
 
         <div className="nl-actions">
-          <button
-            className={`btn btn-sm ${recording ? 'btn-primary' : 'btn-ghost'}`}
+          <Button
+            variant={recording ? 'destructive' : 'outline'}
             onClick={voice.toggle}
             disabled={busy || working}
           >
             {recording
-              ? <><Icon name="stop" size={14} /> Остановить</>
-              : <><Icon name="mic" size={14} /> {drafts.length ? 'Сказать заново' : 'Голосом'}</>}
-          </button>
-          <button className="btn btn-primary btn-sm nl-parse" onClick={() => void parse()} disabled={busy || recording || working}>
-            <Icon name="sparkles" size={14} /> {busy ? 'Разбираю команду…' : 'Разобрать'}
-          </button>
+              ? <><Icon name="stop" size={15} /> Остановить</>
+              : <><Icon name="mic" size={15} /> {drafts.length ? 'Сказать заново' : 'Голосом'}</>}
+          </Button>
+          <Button variant="primary" className="nl-parse" onClick={() => void parse()} disabled={recording || working} loading={busy}>
+            {!busy && <Icon name="sparkles" size={15} />} {busy ? 'Разбираю…' : 'Разобрать'}
+          </Button>
         </div>
 
         {heard && drafts.length > 0 && (
@@ -503,9 +509,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         )}
 
         {drafts.length > 1 && (
-          <div className="drawer-section-title" style={{ marginTop: 10 }}>
-            Задачи из этой записи ({drafts.length})
-          </div>
+          <h3 className="tv2-section-title nl-v2-count">Задачи из этой записи · {drafts.length}</h3>
         )}
 
         {drafts.map((draft, i) => (
@@ -524,14 +528,14 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
 
         {/* Большой пакет: подтвердить подсказки разом, увидев их все (ТЗ, п. 35). */}
         {drafts.length > 1 && pendingTags > 0 && !busy && (
-          <button
-            className="btn btn-sm"
-            style={{ width: '100%', marginTop: 8 }}
+          <Button
+            variant="outline"
+            className="tv2-wide"
             onClick={() => setDrafts((prev) => prev.map((d) => (d.intent === 'create_task'
               ? { ...d, tags: confirmTags(d.tags ?? EMPTY_TAGS) } : d)))}
           >
-            <Icon name="check" size={13} /> Подтвердить теги у всех ({pendingTags})
-          </button>
+            <Icon name="check" size={15} /> Подтвердить теги у всех ({pendingTags})
+          </Button>
         )}
         {/*
           Кнопка живёт, пока есть что создавать (жалоба в #1344).
@@ -541,18 +545,19 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           видел это как «пакетное создание не работает».
         */}
         {drafts.length > 1 && readyCount > 0 && (
-          <button
-            className="btn btn-primary btn-sm"
-            style={{ width: '100%', marginTop: 8 }}
+          <Button
+            variant="primary"
+            className="tv2-wide"
             onClick={applyAll}
-            disabled={busy || pendingTags > 0}
+            disabled={pendingTags > 0}
+            loading={busy}
             title={pendingTags > 0 ? `Подтвердите теги у ${pendingTags} задач` : undefined}
           >
             {busy ? 'Создаю…'
               : created.length
                 ? `Создать остальные (${readyCount})`
                 : `Создать ${readyCount} ${plural(readyCount, 'задачу', 'задачи', 'задач')}`}
-          </button>
+          </Button>
         )}
         {pendingTags > 0 && !busy && (
           <div className="nl-need-project">
@@ -573,9 +578,9 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         )}
         {/* Часть создали, часть нет (ошибка или выбросили) — к созданным всё равно можно перейти. */}
         {drafts.length > 1 && created.length > 0 && readyCount > 0 && !busy && (
-          <button className="btn btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={() => setStage('done')}>
+          <Button variant="ghost" className="tv2-wide" onClick={() => setStage('done')}>
             Показать созданные ({created.length})
-          </button>
+          </Button>
         )}
       </aside>
     </div>
@@ -634,11 +639,11 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
   if (draft.intent === 'create_task' && draft.task) {
     return (
       <div className="nl-draft">
-        <div className="drawer-section-title">
-          Задача{conf}
-          <button className="btn btn-ghost btn-sm nl-draft-drop" onClick={onDrop} title="Не создавать эту задачу">
-            <Icon name="close" size={13} />
-          </button>
+        <div className="nl-draft-head">
+          <span className="tv2-section-title">Задача{conf}</span>
+          <Button variant="ghost" size="icon-sm" className="nl-draft-drop" onClick={onDrop} title="Не создавать эту задачу" aria-label="Не создавать эту задачу">
+            <Icon name="close" size={14} />
+          </Button>
         </div>
         {draft.error && (
           <div className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {draft.error}</div>
@@ -646,22 +651,28 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
         {draft.warnings?.map((w: string, i: number) => (
           <div key={i} className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {w}</div>
         ))}
-        <input className="input" placeholder="Название" value={draft.task.title}
+        <Input placeholder="Название" aria-label="Название задачи" value={draft.task.title}
                onChange={(e) => onPatchTask({ title: e.target.value })} />
-        <textarea className="input" rows={2} placeholder="Описание (необязательно)" value={draft.task.description ?? ''}
-                  onChange={(e) => onPatchTask({ description: e.target.value })} style={{ marginTop: 6 }} />
-        <select className="input" style={{ marginTop: 6 }} value={draft.task.projectId ?? ''}
-                onChange={(e) => onPatchTask({ projectId: e.target.value || null, projectHint: '' })}>
-          <option value="">— проект (обязательно) —</option>
-          {ctx.projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        <Textarea rows={2} placeholder="Описание (необязательно)" aria-label="Описание задачи" value={draft.task.description ?? ''}
+                  onChange={(e) => onPatchTask({ description: e.target.value })} />
+        <div className="tv2-grid2">
+          <Select
+            ariaLabel="Проект"
+            className="tv2-wide"
+            value={String(draft.task.projectId ?? '')}
+            onValueChange={(v) => onPatchTask({ projectId: v || null, projectHint: '' })}
+            options={[{ value: '', label: 'Проект (обязательно)' }, ...ctx.projects.map((p: any) => ({ value: String(p.id), label: p.name }))]}
+          />
+          <Select
+            ariaLabel="Исполнитель"
+            className="tv2-wide"
+            value={String(draft.task.assigneeId ?? '')}
+            onValueChange={(v) => onPatchTask({ assigneeId: v || null })}
+            options={[{ value: '', label: 'Без исполнителя' }, ...ctx.users.map((u: any) => ({ value: String(u.id), label: u.name }))]}
+          />
+        </div>
         {/* Откуда взялся проект: подставленный молча, он однажды окажется не тем. */}
         {draft.task.projectHint && <div className="dim nl-hint">{draft.task.projectHint}</div>}
-        <select className="input" style={{ marginTop: 6 }} value={draft.task.assigneeId ?? ''}
-                onChange={(e) => onPatchTask({ assigneeId: e.target.value || null })}>
-          <option value="">— исполнитель —</option>
-          {ctx.users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
-        </select>
         {/*
           Кого и почему предложил ИИ (ТЗ-10, этап 4).
 
@@ -692,11 +703,8 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
         {/* Постановщик не выбирается: им становится тот, кто говорит. Сказать об этом
             нужно прямо — иначе человек ищет поле «от кого» и не находит. */}
         <div className="dim nl-hint">Постановщик — вы: задача записывается от вашего имени</div>
-        <div className="team-rate" style={{ marginTop: 6 }}>
-          <select className="input" value={draft.task.priority} onChange={(e) => onPatchTask({ priority: e.target.value })}>
-            <option value="low">Низкий</option><option value="normal">Обычный</option>
-            <option value="high">Высокий</option><option value="urgent">Срочный</option>
-          </select>
+        <div className="tv2-grid2">
+          <Select ariaLabel="Приоритет" className="tv2-wide" value={String(draft.task.priority ?? 'normal')} onValueChange={(v) => onPatchTask({ priority: v })} options={[{ value: 'low', label: 'Низкий' }, { value: 'normal', label: 'Обычный' }, { value: 'high', label: 'Высокий' }, { value: 'urgent', label: 'Срочный' }]} />
           <DatePicker value={draft.task.deadline ?? ''} onChange={(v) => onPatchTask({ deadline: v || null })} placeholder="срок не задан" />
         </div>
 
@@ -711,36 +719,40 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
           onChange={(tags) => onPatchDraft({ tags })}
         />
 
-        <label className="notify-row" title="Исполнитель сдаст работу, а завершите её вы">
-          <input type="checkbox" checked={draft.task.requiresApproval ?? approvalHabit}
-                 onChange={(e) => { onPatchTask({ requiresApproval: e.target.checked }); setApprovalHabit(e.target.checked); }} />
-          Не завершать без согласования с постановщиком
-        </label>
+        <Checkbox
+          checked={draft.task.requiresApproval ?? approvalHabit}
+          onCheckedChange={(on) => { onPatchTask({ requiresApproval: on }); setApprovalHabit(on); }}
+          label={<span title="Исполнитель сдаст работу, а завершите её вы">Не завершать без согласования с постановщиком</span>}
+        />
 
         {/* Чек-лист приходит из разбора и правится здесь же: шаги, придуманные
             моделью, человек читает первым — и половину обычно переписывает. */}
         {/* Подпись — ОТДЕЛЬНОЙ строкой обычными буквами. Внутри заголовка она
             набиралась капслоком и читалась как продолжение названия блока. */}
-        <div className="drawer-section-title" style={{ marginTop: 8 }}>Шаги проверки задачи</div>
-        <div className="dim nl-hint">как понять, что работа сделана</div>
+        <div className="nl-v2-block">
+          <span className="ui-field-label">Шаги проверки</span>
+          <span className="ui-field-hint">как понять, что работа сделана</span>
+        </div>
         {(draft.task.checklist ?? []).map((step: string, i: number) => (
           <div key={i} className="nl-step">
-            <input className="input" value={step} aria-label={`Шаг ${i + 1}`}
+            <Input value={step} aria-label={`Шаг ${i + 1}`}
                    onChange={(e) => {
                      const next = [...(draft.task.checklist ?? [])];
                      next[i] = e.target.value;
                      onPatchTask({ checklist: next });
                    }} />
-            <button className="btn btn-ghost btn-sm" title="Убрать шаг"
+            <Button variant="ghost" size="icon-sm" title="Убрать шаг" aria-label={`Убрать шаг ${i + 1}`}
                     onClick={() => onPatchTask({ checklist: (draft.task.checklist ?? []).filter((_: string, j: number) => j !== i) })}>
-              <Icon name="close" size={13} />
-            </button>
+              <Icon name="close" size={14} />
+            </Button>
           </div>
         ))}
-        <button className="btn btn-ghost btn-sm"
-                onClick={() => onPatchTask({ checklist: [...(draft.task.checklist ?? []), ''] })}>
-          <Icon name="plus" size={13} /> Добавить шаг
-        </button>
+        <div>
+          <Button variant="ghost" size="sm"
+                  onClick={() => onPatchTask({ checklist: [...(draft.task.checklist ?? []), ''] })}>
+            <Icon name="plus" size={14} /> Добавить шаг
+          </Button>
+        </div>
 
         {/*
           Файлы — и здесь тоже.
@@ -751,14 +763,14 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
           после постановки. Грузятся они сразу после создания — вложение живёт при
           задаче, а до её создания прикреплять не к чему.
         */}
-        <div className="drawer-section-title" style={{ marginTop: 8 }}>Файлы</div>
+        <span className="ui-field-label">Файлы</span>
         <div
           className="file-drop"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
         >
-          <label className="btn btn-sm file-pick">
-            <Icon name="paperclip" size={14} /> Загрузить файл
+          <label className="ui-btn ui-btn-outline ui-btn-sm file-pick">
+            <Icon name="paperclip" size={15} /> Загрузить файл
             <input
               className="file-pick-input"
               type="file"
@@ -787,12 +799,12 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
           </div>
         )}
 
-        <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }}
-                onClick={onApply} disabled={busy || !draft.task.projectId}>
+        <Button variant="primary" className="tv2-wide"
+                onClick={onApply} disabled={!draft.task.projectId} loading={busy}>
           {!draft.task.projectId
             ? 'Выберите проект'
             : (files.length ? `Создать задачу и прикрепить ${files.length}` : 'Создать задачу')}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -800,23 +812,25 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
   if (draft.intent === 'create_deal' && draft.deal) {
     return (
       <div className="nl-draft">
-        <div className="drawer-section-title">Сделка{conf}</div>
-        <input className="input" placeholder="Название сделки" value={draft.deal.title}
+        <span className="tv2-section-title">Сделка{conf}</span>
+        <Input placeholder="Название сделки" aria-label="Название сделки" value={draft.deal.title}
                onChange={(e) => onPatchDeal({ title: e.target.value })} />
-        <div className="team-rate" style={{ marginTop: 6 }}>
-          <input className="input" type="number" placeholder="Сумма" value={draft.deal.amount ?? ''}
+        <div className="tv2-grid2">
+          <Input type="number" placeholder="Сумма" aria-label="Сумма" value={draft.deal.amount ?? ''}
                  onChange={(e) => onPatchDeal({ amount: e.target.value === '' ? null : Number(e.target.value) })} />
-          <input className="input" type="number" placeholder="Маржа %" value={draft.deal.plannedMargin ?? ''}
+          <Input type="number" placeholder="Маржа %" aria-label="Маржа" value={draft.deal.plannedMargin ?? ''}
                  onChange={(e) => onPatchDeal({ plannedMargin: e.target.value === '' ? null : Number(e.target.value) })} />
         </div>
-        <select className="input" style={{ marginTop: 6 }} value={draft.deal.clientId ?? ''}
-                onChange={(e) => onPatchDeal({ clientId: e.target.value || null })}>
-          <option value="">— клиент —</option>
-          {ctx.clients.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={onApply} disabled={busy}>
+        <Select
+          ariaLabel="Клиент"
+          className="tv2-wide"
+          value={String(draft.deal.clientId ?? '')}
+          onValueChange={(v) => onPatchDeal({ clientId: v || null })}
+          options={[{ value: '', label: 'Клиент не выбран' }, ...ctx.clients.map((c: any) => ({ value: String(c.id), label: c.name }))]}
+        />
+        <Button variant="primary" className="tv2-wide" onClick={onApply} loading={busy}>
           Создать сделку
-        </button>
+        </Button>
       </div>
     );
   }

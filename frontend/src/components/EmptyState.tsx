@@ -21,7 +21,7 @@ export function EmptyState({ icon, title, hint, action, compact }: {
       <div className="empty-title">{title}</div>
       {hint && <div className="empty-hint">{hint}</div>}
       {action && (
-        <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={action.onClick}>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ marginTop: 10 }} onClick={action.onClick}>
           {action.label}
         </button>
       )}

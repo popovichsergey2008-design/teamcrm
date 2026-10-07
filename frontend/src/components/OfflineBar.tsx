@@ -65,21 +65,21 @@ function QueueSheet({ items, online, onClose, onRetry }: {
             </div>
             <div className="offline-item-actions">
               {c.status === 'conflict' && (
-                <button type="button" className="btn btn-primary" onClick={() => setConflict(c)}>Разобрать</button>
+                <button type="button" className="ui-btn ui-btn-primary ui-btn-md" onClick={() => setConflict(c)}>Разобрать</button>
               )}
               {c.status === 'failed' && (
-                <button type="button" className="btn" onClick={() => { retryQueued(c.id); void onRetry(); }} title="Повторить">
+                <button type="button" className="ui-btn ui-btn-outline ui-btn-md" onClick={() => { retryQueued(c.id); void onRetry(); }} title="Повторить">
                   <Icon name="refresh" size={14} />
                 </button>
               )}
-              <button type="button" className="btn btn-delete" onClick={() => removeQueued(c.id)} title="Убрать из очереди">
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-md btn-delete" onClick={() => removeQueued(c.id)} title="Убрать из очереди">
                 <Icon name="trash" size={14} />
               </button>
             </div>
           </div>
         ))}
         {online && items.some((c) => c.status === 'pending') && (
-          <button type="button" className="btn" onClick={() => void onRetry()}>Отправить сейчас</button>
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-md" onClick={() => void onRetry()}>Отправить сейчас</button>
         )}
       </div>
     </BottomSheet>
@@ -118,10 +118,10 @@ export function ConflictSheet({ item, onClose, onDone }: { item: QueuedChange; o
           </div>
         ))}
         <div className="conflict-actions">
-          <button type="button" className="btn btn-primary" onClick={() => { retryQueued(item.id, serverVersion); onDone(); }}>
+          <button type="button" className="ui-btn ui-btn-primary ui-btn-md" onClick={() => { retryQueued(item.id, serverVersion); onDone(); }}>
             Оставить мой вариант
           </button>
-          <button type="button" className="btn" onClick={() => { removeQueued(item.id); onDone(); }}>
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-md" onClick={() => { removeQueued(item.id); onDone(); }}>
             Взять серверный
           </button>
         </div>

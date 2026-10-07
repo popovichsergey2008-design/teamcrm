@@ -13,6 +13,9 @@ import { ThemeSwitch } from './ThemeSwitch';
 import { FontSizeSwitch } from './FontSizeSwitch';
 import { DatePicker } from './DatePicker';
 import { useAuth } from '../state/auth';
+import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
+import { initialsOf } from '../lib/initials';
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients';
 
@@ -156,7 +159,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
         {/* «Назад» ведёт туда, откуда сюда приходят — на главную личного кабинета.
             Раньше кнопка называлась «К доскам» и выбрасывала в «Фокус дня»: человек
             правил профиль, нажимал назад и оказывался в другом разделе. */}
-        <button className="btn btn-ghost btn-sm" onClick={onClose}><Icon name="arrow-left" size={14} /> Назад</button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose}><Icon name="arrow-left" size={14} /> Назад</button>
         <h2>Профиль</h2>
       </div>
       <div className="profile-layout">
@@ -182,8 +185,8 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
         {tab === 'profile' && (
           <>
             <div className="avatar-row">
-              <Avatar path={me.avatarUrl} fallback={me.fullName?.[0] ?? '?'} className="avatar-lg" />
-              <button className="btn btn-sm" onClick={() => fileRef.current?.click()}>Загрузить фото</button>
+              <Avatar path={me.avatarUrl} fallback={initialsOf(me.fullName)} className="avatar-lg" />
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => fileRef.current?.click()}>Загрузить фото</button>
               <input ref={fileRef} type="file" accept="image/*" hidden onChange={onAvatarPick} />
             </div>
             {/* Тема — настройка внешнего вида, и место ей в кабинете. В меню под
@@ -218,7 +221,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void saveOrgName(); } }}
                   />
                   <button
-                    className="btn btn-sm"
+                    className="ui-btn ui-btn-outline ui-btn-sm"
                     disabled={orgName.trim().length < 2 || orgName.trim() === currentOrgName}
                     onClick={() => void saveOrgName()}
                   >
@@ -251,7 +254,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
               <label>Часовой пояс</label>
               {/* Выбор из списка, а не свободный ввод: опечатка в «Europe/Moskow» тихо
                   ломала бы сроки и напоминания, и человек не понял бы почему. */}
-              <select
+              <OptionSelect
                 className="input"
                 value={me.timezone ?? ''}
                 onChange={(e) => setMe({ ...me, timezone: e.target.value })}
@@ -262,9 +265,9 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 {me.timezone && !zones.some((t) => t.id === me.timezone) && (
                   <option value={me.timezone}>{me.timezone}</option>
                 )}
-              </select>
+              </OptionSelect>
               <button
-                className="btn btn-ghost btn-sm"
+                className="ui-btn ui-btn-ghost ui-btn-sm"
                 style={{ alignSelf: 'flex-start', marginTop: 4 }}
                 onClick={() => setMe({ ...me, timezone: browserTimezone() })}
                 title={`Определить по настройкам компьютера: ${browserTimezone()}`}
@@ -302,7 +305,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
               Не ставить мне встречи на занятое время
             </label>
 
-            <button className="btn btn-primary" style={{ width: '100%' }} onClick={saveProfile}>Сохранить</button>
+            <button className="ui-btn ui-btn-primary ui-btn-md" style={{ width: '100%' }} onClick={saveProfile}>Сохранить</button>
 
             <div className="drawer-section">
               <div className="drawer-section-title">Письма на почту</div>
@@ -324,7 +327,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
 
             <div className="drawer-section">
               <div className="drawer-section-title">
-                Telegram {tgLinked === true && <span className="badge pnl-good">привязан</span>}
+                Telegram {tgLinked === true && <span className="ui-badge ui-badge-neutral pnl-good">привязан</span>}
               </div>
               <div className="dim" style={{ fontSize: 12, marginBottom: 6 }}>
                 {tgLinked
@@ -347,15 +350,15 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
               ))}
 
               <div className="tg-actions">
-                {!tgLinked && <button className="btn btn-sm" onClick={linkTelegram}>Получить код привязки</button>}
+                {!tgLinked && <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={linkTelegram}>Получить код привязки</button>}
                 {/* Ссылка на сам чат: с кодом на руках человек иначе ищет бота поиском
                     по имени и натыкается на чужих похожих. */}
                 {tgBotUrl && (
-                  <a className="btn btn-sm" href={tgBotUrl} target="_blank" rel="noreferrer">
+                  <a className="ui-btn ui-btn-outline ui-btn-sm" href={tgBotUrl} target="_blank" rel="noreferrer">
                     <Icon name="link" size={14} /> {tgLinked ? 'Открыть чат с ботом' : 'Открыть бота'}
                   </a>
                 )}
-                {tgLinked && <button className="btn btn-ghost btn-sm" onClick={unlinkTelegram}>Отвязать Telegram</button>}
+                {tgLinked && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={unlinkTelegram}>Отвязать Telegram</button>}
               </div>
               {tgCode && !tgLinked && (
                 <div className="dim" style={{ marginTop: 6 }}>
@@ -371,20 +374,20 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             <div className="drawer-section-title">Смена пароля</div>
             <div className="field"><label>Текущий пароль</label><input className="input" type="password" value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} /></div>
             <div className="field"><label>Новый пароль</label><input className="input" type="password" value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} /></div>
-            <button className="btn btn-primary" style={{ width: '100%' }} onClick={changePw}>Сменить пароль</button>
+            <button className="ui-btn ui-btn-primary ui-btn-md" style={{ width: '100%' }} onClick={changePw}>Сменить пароль</button>
 
             {isNativeShell() && (
               <>
                 <div className="drawer-section-title" style={{ marginTop: 18 }}>Блокировка приложения</div>
                 <div className="field">
                   <label>Просить Face ID / отпечаток</label>
-                  <select
+                  <OptionSelect
                     className="input"
                     value={lockPolicy}
                     onChange={(e) => { const v = e.target.value as LockPolicy; setLockPolicy(v); writeLockPolicy(v); }}
                   >
                     {LOCK_POLICIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                  </select>
+                  </OptionSelect>
                   <span className="dim" style={{ fontSize: 12 }}>
                     Свернули приложение и вернулись позже — оно попросит подтвердить, что это вы. Содержимое в переключателе
                     приложений скрыто всегда.
@@ -394,7 +397,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             )}
 
             <div className="drawer-section-title" style={{ marginTop: 18 }}>Устройства и сессии</div>
-            <button className="btn btn-ghost btn-sm" onClick={async () => { await api.revokeOtherSessions(); loadSessions(); }}>Выйти на других устройствах</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={async () => { await api.revokeOtherSessions(); loadSessions(); }}>Выйти на других устройствах</button>
             <SessionsList sessions={sessions} onRevoke={async (id) => { await api.revokeSession(id); loadSessions(); }} />
           </>
         )}
@@ -402,18 +405,18 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
         {tab === 'availability' && (
           <>
             <div className="drawer-grid2">
-              <select className="input" value={newAv.kind} onChange={(e) => setNewAv({ ...newAv, kind: e.target.value })}>
+              <OptionSelect className="input" value={newAv.kind} onChange={(e) => setNewAv({ ...newAv, kind: e.target.value })}>
                 <option value="vacation">отпуск</option><option value="sick">больничный</option><option value="other">другое</option>
-              </select>
+              </OptionSelect>
               <div />
               <DatePicker value={newAv.fromDate} onChange={(v) => setNewAv({ ...newAv, fromDate: v })} placeholder="с какого числа" />
               <DatePicker value={newAv.toDate} onChange={(v) => setNewAv({ ...newAv, toDate: v })} placeholder="по какое число" />
             </div>
-            <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={addAv}>Добавить</button>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={addAv}>Добавить</button>
             {av.map((a) => (
               <div key={a.id} className="team-row team-head">
                 <span>{a.kind}: {a.from_date?.slice(0, 10)} — {a.to_date?.slice(0, 10)}</span>
-                <button className="btn btn-ghost btn-sm" onClick={async () => { await api.removeMyAvailability(a.id); loadAv(); }} title="Убрать"><Icon name="close" size={13} /></button>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={async () => { await api.removeMyAvailability(a.id); loadAv(); }} title="Убрать"><Icon name="close" size={13} /></button>
               </div>
             ))}
             <div className="dim" style={{ marginTop: 10 }}>Недельная ёмкость: {me.weeklyCapacityHours} ч</div>
@@ -436,14 +439,14 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             <label className="notify-row">
               <input type="checkbox" checked={sound.messages} onChange={() => toggleSound('messages')} />
               Сигнал о новом сообщении
-              <button className="btn btn-ghost btn-sm" onClick={(e) => { e.preventDefault(); previewSound('messages'); }}>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={(e) => { e.preventDefault(); previewSound('messages'); }}>
                 Послушать
               </button>
             </label>
             <label className="notify-row">
               <input type="checkbox" checked={sound.calls} onChange={() => toggleSound('calls')} />
               Звонок при входящем вызове
-              <button className="btn btn-ghost btn-sm" onClick={(e) => { e.preventDefault(); previewSound('calls'); }}>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={(e) => { e.preventDefault(); previewSound('calls'); }}>
                 Послушать
               </button>
             </label>
@@ -488,7 +491,7 @@ function PromptsLibrary() {
   };
   const duplicate = (p: any) => { setEditId(null); setForm({ name: `${p.name} (копия)`, instruction: p.instruction, model: p.model ?? '', isShared: false }); setOpen(true); };
   const del = async (p: any) => {
-    if (!window.confirm(`Удалить промпт «${p.name}»?`)) return;
+    if (!(await confirmAction({ title: `Удалить промпт «${p.name}»?`, danger: true }))) return;
     try { await api.agentPromptDelete(p.id); reload(); } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
 
@@ -499,7 +502,7 @@ function PromptsLibrary() {
       </div>
       <div className="panel-toolbar">
         <div className="drawer-section-title" style={{ margin: 0 }}>Промпты ({list.length})</div>
-        {!open && <button className="btn btn-primary btn-sm" onClick={startNew}>＋ Новый промпт</button>}
+        {!open && <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={startNew}>＋ Новый промпт</button>}
       </div>
       {msg && <div className="dim">{msg}</div>}
 
@@ -509,18 +512,18 @@ function PromptsLibrary() {
           <input className="input" placeholder="Название (напр. «Копирайтер: КП»)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <textarea className="input" rows={5} style={{ marginTop: 6 }} placeholder="Инструкция агенту: роль, тон, структура, что учесть…&#10;Напр.: Пиши дружелюбно и по делу. Структура: заголовок → оффер → выгоды → цена → призыв." value={form.instruction} onChange={(e) => setForm({ ...form, instruction: e.target.value })} />
           <div className="drawer-grid2" style={{ marginTop: 6 }}>
-            <select className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} title="Модель ИИ">
+            <OptionSelect className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} title="Модель ИИ">
               <option value="">Модель по умолчанию</option>
               {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}</option>)}
-            </select>
+            </OptionSelect>
             <label className="notify-row" style={{ cursor: 'pointer' }}>
               <input type="checkbox" checked={form.isShared} onChange={(e) => setForm({ ...form, isShared: e.target.checked })} />
               <span>Общий (для всей команды)</span>
             </label>
           </div>
           <div className="team-rate" style={{ marginTop: 8 }}>
-            <button className="btn btn-primary btn-sm" onClick={save}>{editId ? 'Сохранить' : 'Создать'}</button>
-            <button className="btn btn-ghost btn-sm" onClick={cancel}>Отмена</button>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={save}>{editId ? 'Сохранить' : 'Создать'}</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={cancel}>Отмена</button>
           </div>
         </div>
       )}
@@ -534,17 +537,17 @@ function PromptsLibrary() {
           <div className="team-head">
             <span>
               <b>{p.name}</b>{' '}
-              <span className={`badge ${p.is_shared ? 'badge-info' : 'badge-muted'}`}>{p.is_shared ? 'общий' : 'личный'}</span>{' '}
-              {p.model && <span className="badge badge-muted" title="Модель">{p.model.length > 22 ? p.model.slice(0, 22) + '…' : p.model}</span>}{' '}
-              {p.usage_count > 0 && <span className="badge" title="Использований"><Icon name="refresh" size={11} /> {p.usage_count}</span>}
+              <span className={`ui-badge ${p.is_shared ? 'ui-badge-info' : 'ui-badge-neutral'}`}>{p.is_shared ? 'общий' : 'личный'}</span>{' '}
+              {p.model && <span className="ui-badge ui-badge-neutral" title="Модель">{p.model.length > 22 ? p.model.slice(0, 22) + '…' : p.model}</span>}{' '}
+              {p.usage_count > 0 && <span className="ui-badge ui-badge-neutral" title="Использований"><Icon name="refresh" size={11} /> {p.usage_count}</span>}
               {!p.mine && <span className="dim" style={{ fontSize: 11 }}> · автор: {p.author_name}</span>}
             </span>
           </div>
           <div className="dim" style={{ fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 60, overflow: 'auto', margin: '4px 0', opacity: 0.8 }}>{p.instruction.slice(0, 240)}</div>
           <div className="team-rate">
-            {p.mine && <button className="btn btn-ghost btn-sm" onClick={() => startEdit(p)}>Изменить</button>}
-            <button className="btn btn-ghost btn-sm" onClick={() => duplicate(p)}>Дублировать</button>
-            {p.mine && <button className="btn btn-ghost btn-sm" onClick={() => del(p)}>Удалить</button>}
+            {p.mine && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => startEdit(p)}>Изменить</button>}
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => duplicate(p)}>Дублировать</button>
+            {p.mine && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => del(p)}>Удалить</button>}
           </div>
         </div>
       ))}

@@ -5,6 +5,9 @@ import { api, ApiError } from '../lib/api';
 import type { User } from '../types';
 import { overlayProps } from '../lib/overlay';
 import { toastSaved } from '../lib/notifications';
+import { confirmAction } from './ui/dialog';
+import { useEscape } from '../hooks/useEscape';
+import { initialsOf } from '../lib/initials';
 
 interface Member { userId: string; fullName: string }
 
@@ -22,6 +25,8 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
   onChanged: () => void;
   onLeft: () => void;
 }) {
+  // Escape закрывает, как и остальные окна
+  useEscape(onClose);
   const [members, setMembers] = useState<Member[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [name, setName] = useState(title);
@@ -51,7 +56,7 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
   };
 
   const leave = async () => {
-    if (!window.confirm('Выйти из группы? Переписка останется у остальных участников.')) return;
+    if (!(await confirmAction({ title: 'Выйти из группы?', description: 'Переписка останется у остальных участников.', danger: true }))) return;
     setBusy(true);
     try { await api.leaveChat(chatId); onLeft(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось выйти'); setBusy(false); }
@@ -60,13 +65,13 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
   return (
     <div className="modal-overlay" {...overlayProps(onClose)}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3>Группа</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
+        <div className="drawer-head"><h3>Группа</h3><button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
 
         <div className="field"><label>Название</label>
           <div className="team-rate">
             <input className="input" value={name} disabled={!canManage} onChange={(e) => setName(e.target.value)} />
             {canManage && (
-              <button className="btn btn-sm" disabled={busy || !name.trim() || name.trim() === title}
+              <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy || !name.trim() || name.trim() === title}
                       onClick={() => wrap(async () => {
                         await api.renameChat(chatId, name.trim());
                         toastSaved('Название сохранено');
@@ -81,10 +86,10 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
         <div className="group-members">
           {members.map((m) => (
             <div key={m.userId} className="notify-row">
-              <Avatar path={(m as any).avatarUrl ?? null} fallback={m.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+              <Avatar path={(m as any).avatarUrl ?? null} fallback={initialsOf(m.fullName)} className="avatar-sm" />
               <span style={{ flex: 1 }}>{m.fullName}{String(m.userId) === String(meId) && <span className="dim"> — вы</span>}</span>
               {canManage && String(m.userId) !== String(meId) && (
-                <button className="btn btn-ghost btn-sm" title="Убрать из группы" disabled={busy}
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" title="Убрать из группы" disabled={busy}
                         onClick={() => wrap(() => api.removeChatMember(chatId, m.userId))}><Icon name="close" size={13} /></button>
               )}
             </div>
@@ -99,12 +104,12 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
                 <label key={u.id} className="notify-row" style={{ cursor: 'pointer' }}>
                   <input type="checkbox" checked={!!adding[u.id]}
                          onChange={(e) => setAdding((s) => ({ ...s, [u.id]: e.target.checked }))} />
-                  <Avatar path={(u as any).avatarUrl ?? null} fallback={u.fullName[0]?.toUpperCase() ?? '?'} className="avatar-sm" />
+                  <Avatar path={(u as any).avatarUrl ?? null} fallback={initialsOf(u.fullName)} className="avatar-sm" />
                   <span>{u.fullName}</span>
                 </label>
               ))}
             </div>
-            <button className="btn btn-sm" style={{ width: '100%', marginTop: 6 }} disabled={busy || chosen.length === 0}
+            <button className="ui-btn ui-btn-outline ui-btn-sm" style={{ width: '100%', marginTop: 6 }} disabled={busy || chosen.length === 0}
                     onClick={() => wrap(async () => { await api.addChatMembers(chatId, chosen); setAdding({}); })}>
               Добавить выбранных ({chosen.length})
             </button>
@@ -112,7 +117,7 @@ export function GroupManageModal({ chatId, title, users, meId, onClose, onChange
         )}
 
         {err && <div className="error-text">{err}</div>}
-        <button className="btn btn-ghost btn-sm group-leave" disabled={busy} onClick={leave}>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm group-leave" disabled={busy} onClick={leave}>
           Выйти из группы
         </button>
       </div>

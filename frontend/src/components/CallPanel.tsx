@@ -16,6 +16,7 @@ import { platform } from '../platform';
 import { clampTo, useDragMove } from '../hooks/useDragMove';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { savedDevices } from './DeviceCheck';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Размер свёрнутого созвона по умолчанию.
@@ -699,7 +700,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
         <div className="call-head" title={full || narrow ? undefined : 'Окно можно перетащить за эту полосу'} {...windowDrag}>
           <span>
             <Icon name="phone" size={16} /> Созвон · <span className="dim">{STATE_LABEL[state]}</span>
-            {peers.length > 0 && <span className="badge badge-muted" style={{ marginLeft: 8 }}>участников: {peers.length}</span>}
+            {peers.length > 0 && <span className="ui-badge ui-badge-neutral" style={{ marginLeft: 8 }}>участников: {peers.length}</span>}
             {/* Статус ИИ виден всегда и первым делом: человек должен понимать,
                 слушает его система или нет, не разглядывая кнопки внизу. */}
             <span className={`call-ai-status${recording ? ' on' : ''}`} title={recording
@@ -721,7 +722,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
                   onInvite={(ids) => client.current?.invite(ids)}
                 />
                 <button
-                  className="btn btn-ghost btn-sm"
+                  className="ui-btn ui-btn-ghost ui-btn-sm"
                   onClick={copyGuestLink}
                   title="Скопировать ссылку для внешнего гостя — он войдёт из браузера, без регистрации"
                 >
@@ -740,7 +741,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             */}
             {!isGuest && (
               <button
-                className="btn btn-ghost btn-sm"
+                className="ui-btn ui-btn-ghost ui-btn-sm"
                 onClick={hide}
                 title="Свернуть до маленькой кнопки с часами и микрофоном — разговор продолжится"
                 aria-label="Свернуть созвон до кнопки"
@@ -749,7 +750,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
               </button>
             )}
             <button
-              className="btn btn-ghost btn-sm"
+              className="ui-btn ui-btn-ghost ui-btn-sm"
               onClick={() => void minimize()}
               title={pipSupported()
                 ? 'Уменьшить — небольшое окно поверх других программ'
@@ -758,11 +759,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             >
               <Icon name="restore" size={15} />
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={toggleFull} title={full ? 'Выйти из полного экрана' : 'Развернуть на весь экран'}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={toggleFull} title={full ? 'Выйти из полного экрана' : 'Развернуть на весь экран'}>
               <Icon name={full ? 'minimize' : 'maximize'} size={15} />
             </button>
             <button
-              className="btn btn-ghost btn-sm call-head-close"
+              className="ui-btn ui-btn-ghost ui-btn-sm call-head-close"
               onClick={leave}
               title="Выйти из созвона"
               aria-label="Выйти из созвона"
@@ -794,8 +795,8 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
               {k.employee ? ' — коллега, его сюда не звали' : ' — это внешний гость'}
             </span>
             <span className="call-knock-actions">
-              <button className="btn btn-sm" onClick={() => answerKnock(k.guestId, true)}>Впустить</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => answerKnock(k.guestId, false)}>Отказать</button>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => answerKnock(k.guestId, true)}>Впустить</button>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => answerKnock(k.guestId, false)}>Отказать</button>
             </span>
           </div>
         ))}
@@ -815,12 +816,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
               )}
               {/* «Сообщить организатору, что я жду» — с ответом, что сообщение ушло (ТЗ-14, §35) */}
               {guestState === 'waiting' && (
-                <button className="btn btn-sm" onClick={() => { client.current?.notifyHost(); setNotified('pending'); }} disabled={notified === 'pending' || notified === 'sent'}>
+                <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => { client.current?.notifyHost(); setNotified('pending'); }} disabled={notified === 'pending' || notified === 'sent'}>
                   <Icon name="bell" size={14} /> {notified === 'sent' ? 'Организатору сообщили' : notified === 'later' ? 'Сообщить ещё раз' : 'Сообщить организатору, что я жду'}
                 </button>
               )}
               {(!isGuest || guestState === 'rejected') && (
-                <button className="btn btn-sm" onClick={leave}>
+                <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={leave}>
                   {guestState === 'rejected' ? 'Закрыть' : 'Не ждать'}
                 </button>
               )}
@@ -855,12 +856,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
         )}
 
         <div className="call-controls">
-          <button className={`btn btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic}>
+          <button className={`ui-btn ui-btn-outline ui-btn-sm ${micOn ? '' : 'call-off'}`} onClick={toggleMic}>
             <Icon name={micOn ? 'mic' : 'mic-off'} size={15} />
             <span className="call-btn-label">{micOn ? 'Микрофон' : 'Включить микрофон'}</span>
             <span className="call-btn-cap">Микрофон</span>
           </button>
-          <button className={`btn btn-sm ${camOn ? '' : 'call-off'}`} onClick={toggleCam}>
+          <button className={`ui-btn ui-btn-outline ui-btn-sm ${camOn ? '' : 'call-off'}`} onClick={toggleCam}>
             <Icon name={camOn ? 'video' : 'video-off'} size={15} />
             <span className="call-btn-label">{camOn ? 'Камера' : 'Включить камеру'}</span>
             <span className="call-btn-cap">Камера</span>
@@ -868,7 +869,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           {/* Громкая связь — только там, где ОС даёт выбрать, куда идёт звук (приложение на Android). */}
           {audioRoute !== null && audioRoute !== 'headset' && (
             <button
-              className={`btn btn-sm ${audioRoute === 'speaker' ? 'call-on' : 'call-off'}`}
+              className={`ui-btn ui-btn-outline ui-btn-sm ${audioRoute === 'speaker' ? 'call-on' : 'call-off'}`}
               onClick={toggleSpeaker}
               aria-pressed={audioRoute === 'speaker'}
               title={audioRoute === 'speaker' ? 'Выключить громкую связь — звук к уху' : 'Включить громкую связь'}
@@ -881,19 +882,19 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           {/* Показ экрана — только там, где браузер его умеет: в WebView Android getDisplayMedia нет,
               и кнопка обещала бы то, что кончится ошибкой (нативный показ — отдельным мостом, волна 11). */}
           {typeof navigator.mediaDevices?.getDisplayMedia === 'function' && (
-          <button className={`btn btn-sm ${screenOn ? '' : 'call-off'}`} onClick={toggleScreen}>
+          <button className={`ui-btn ui-btn-outline ui-btn-sm ${screenOn ? '' : 'call-off'}`} onClick={toggleScreen}>
             <Icon name="screen" size={15} /><span className="call-btn-label">{screenOn ? 'Показ идёт' : 'Показать экран'}</span>
             <span className="call-btn-cap">Экран</span>
           </button>
           )}
-          <button className={`btn btn-sm ${hand ? '' : 'call-off'}`} onClick={() => { setHand(!hand); client.current?.raiseHand(!hand); }}>
+          <button className={`ui-btn ui-btn-outline ui-btn-sm ${hand ? '' : 'call-off'}`} onClick={() => { setHand(!hand); client.current?.raiseHand(!hand); }}>
             <Icon name="hand" size={15} /><span className="call-btn-label"> Рука</span>
             <span className="call-btn-cap">Рука</span>
           </button>
           {/* Запись и приглашение гостей — права хозяина встречи, не гостя */}
           {!isGuest && (
             <button
-              className={`btn btn-sm ${recording ? 'call-rec-on' : 'call-off'}`}
+              className={`ui-btn ui-btn-outline ui-btn-sm ${recording ? 'call-rec-on' : 'call-off'}`}
               onClick={() => client.current?.setRecording(!recording)}
               title={recording ? 'Остановить запись и получить стенограмму' : 'Записать созвон для стенограммы и задач'}
             >
@@ -908,7 +909,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           */}
           {hostRole && (
             <button
-              className={`btn btn-sm ${locked ? 'call-rec-on' : 'call-off'}`}
+              className={`ui-btn ui-btn-outline ui-btn-sm ${locked ? 'call-rec-on' : 'call-off'}`}
               onClick={() => client.current?.setLocked(!locked)}
               title={locked ? 'Вход закрыт: новые люди не войдут и не постучатся. Нажмите, чтобы открыть' : 'Закрыть вход: новые люди не войдут, вернуться смогут только те, кто уже был'}
             >
@@ -919,8 +920,8 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           )}
           {hostRole && (
             <button
-              className="btn btn-sm call-end-all"
-              onClick={() => { if (window.confirm('Завершить встречу для всех участников?')) client.current?.endForAll(); }}
+              className="ui-btn ui-btn-outline ui-btn-sm call-end-all"
+              onClick={async () => { if (await confirmAction({ title: 'Завершить встречу для всех?', description: 'Все участники выйдут из созвона, а войти снова сможет только организатор.', confirmLabel: 'Завершить для всех', danger: true })) client.current?.endForAll(); }}
               title="Завершить встречу для всех: созвон закончится у каждого"
             >
               <Icon name="phone-off" size={15} />
@@ -929,7 +930,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             </button>
           )}
           {/* Выход — заметной красной кнопкой «положить трубку» (задача #1463). */}
-          <button className="btn btn-sm call-leave" onClick={leave} title="Выйти из созвона — у остальных разговор продолжится" aria-label="Выйти из созвона">
+          <button className="ui-btn ui-btn-outline ui-btn-sm call-leave" onClick={leave} title="Выйти из созвона — у остальных разговор продолжится" aria-label="Выйти из созвона">
             <span className="call-hangup-ico"><Icon name="phone" size={16} /></span>
             <span className="call-btn-label">Выйти</span>
             <span className="call-btn-cap">Выйти</span>

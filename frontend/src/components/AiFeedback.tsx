@@ -51,7 +51,7 @@ export function AiFeedback({ send }: { send: (b: { correct: boolean; reasons?: s
             {r.label}
           </label>
         ))}
-        <button className="btn btn-sm" disabled={busy || !picked.length} onClick={() => void submit(false)}>Отправить</button>
+        <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy || !picked.length} onClick={() => void submit(false)}>Отправить</button>
         {err && <span className="error-text">{err}</span>}
       </span>
     );

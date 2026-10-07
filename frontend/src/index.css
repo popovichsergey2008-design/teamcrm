@@ -4,6 +4,8 @@
    светлая тема ломается там, где о ней забыли. */
 
 :root {
+  /* Кольцо фокуса — одно на всё приложение (ТЗ-15). */
+  --ring: #2563eb;
   color-scheme: light;
 
   /*
@@ -21,21 +23,21 @@
   */
 
   /* поверхности: страница → панель → подложка внутри панели */
-  --bg:        #eef1f7;
-  --bg-elev:   #ffffff;
-  --bg-elev-2: #e2e7f0;
+  --bg:        #f5f1ea;
+  --bg-elev:   #fcfaf6;
+  --bg-elev-2: #eee8de;
   /* --border — тонкие разделители (строки списков, низ шапки), --border-2 — контуры
      того, с чем взаимодействуют: поля ввода, кнопки, всплывающие окна. */
-  --border:    #c9d2e0;
-  --border-2:  #8f9db5;
+  --border:    #e3dcd0;
+  --border-2:  #c6bcad;
   /* Подсветка под курсором. Раньше её рисовали цветом границы — и, усилив границы,
      мы бы разом сделали наведение грязно-серым. Это разные роли, и токена два. */
-  --hover:     #dde3ed;
+  --hover:     #ece5da;
 
   /* текст: основной → второстепенный → подсказки */
-  --text:      #0f1521;
-  --text-dim:  #485263;
-  --text-mut:  #5b6474;
+  --text:      #211d18;
+  --text-dim:  #544c41;
+  --text-mut:  #665d50;
 
   /*
     Акцент: --accent для текста, рамок и наведения, --accent-2 — заливка кнопки.
@@ -43,10 +45,10 @@
     Оттенок взят у фирменного Neon Blue, но углублён: сам неон на белом даёт 3.4:1 и
     не читается. Здесь 6.65:1 для текста и 4.9:1 для белого по заливке.
   */
-  --accent:      #175bb0;
-  --accent-2:    #1f6fd4;
-  --accent-soft: #e7f1fd;
-  --accent-line: #7fb2ea;
+  --accent:      #1d4ed8;
+  --accent-2:    #2563eb;
+  --accent-soft: #e9edf8;
+  --accent-line: #a9bdec;
 
   /* статусы: у каждого мягкая подложка и рамка, чтобы не смешивать прозрачности */
   --ok:          #0f6f49;
@@ -83,7 +85,7 @@
   --fill-ok:     #0f6f49;
   --fill-warn:   #8a5f00;
   --fill-danger: #c22335;
-  --fill-info:   #175bb0;
+  --fill-info:   #1d4ed8;
   --fill-muted:  #525d72;
   --on-fill:     #ffffff;
 
@@ -107,15 +109,15 @@
   --brand-2: #2f7fd6;   /* Neon Blue    #79C9FF */
   --brand-3: #7c4dd8;   /* Neon Purple  #B06CFF */
 
-  --overlay:   rgba(15,23,42,.50);
+  --overlay:   rgba(40,32,20,.40);
   /* Тень — второй способ отделить карточку от страницы: на светлом одной границы мало. */
-  --shadow:    0 8px 24px rgba(16,22,35,.13);
-  --shadow-lg: 0 18px 48px rgba(16,22,35,.22);
+  --shadow:    0 1px 2px rgba(60,45,25,.06), 0 4px 14px rgba(60,45,25,.07);
+  --shadow-lg: 0 16px 40px rgba(60,45,25,.16);
   --video-bg:  #0d1117;   /* видео читается на тёмном в любой теме */
 
   /* шкалы: одинаковые шаги вместо произвольных чисел в каждом месте */
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
-  --radius-sm: 7px; --radius: 10px; --radius-lg: 14px;
+  --radius-sm: 6px; --radius: 8px; --radius-lg: 12px;
   /*
     Размер шрифта — с множителем.
 
@@ -129,7 +131,7 @@
   --fs-xs: calc(11px * var(--fs-scale)); --fs-sm: calc(13px * var(--fs-scale));
   --fs-md: calc(14px * var(--fs-scale)); --fs-lg: calc(18px * var(--fs-scale));
 
-  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   /*
     Эмодзи отдельным стеком.
 
@@ -144,6 +146,7 @@
 /* Тёмная тема: по системной настройке, если человек не выбрал светлую явно. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+  --ring: #93c5fd;
     color-scheme: dark;
     /*
       ───── Тёмная тема = брендбук ANTHILL.TEAM ─────
@@ -155,28 +158,28 @@
       Заливка кнопки НЕ неоновая: белым по циану читать нельзя (1.4:1). Под белый
       текст берём глубокий синий из той же семьи — 5.67:1.
     */
-    --bg:        #0b1020;
-    --bg-elev:   #111827;
-    --bg-elev-2: #1f2937;
-    --border:    #26324a;
-    --border-2:  #33415c;
-    --hover:     #26324a;
-    --text:      #eaf7ff;
-    --text-dim:  #94a3b8;
-    --text-mut:  #8494ab;
-    --accent:      #62e8ff;
-    --accent-2:    #2563c9;
-    --accent-soft: rgba(98,232,255,.13);
-    --accent-line: rgba(98,232,255,.40);
+    --bg:        #1d2026;
+    --bg-elev:   #24282f;
+    --bg-elev-2: #2c3139;
+    --border:    #343a44;
+    --border-2:  #48505d;
+    --hover:     #30353e;
+    --text:      #e8e5df;
+    --text-dim:  #aaa59c;
+    --text-mut:  #9d988f;
+    --accent:      #93c5fd;
+    --accent-2:    #3566d6;
+    --accent-soft: rgba(147,197,253,.12);
+    --accent-line: rgba(147,197,253,.36);
     --ok:          #57d9a3;
     --ok-soft:     rgba(87,217,163,.12);
     --ok-line:     rgba(87,217,163,.40);
     --warn:        #ffcf5c;
     --warn-soft:   rgba(255,207,92,.14);
     --warn-line:   rgba(255,207,92,.42);
-    --danger:      #ff6b6b;
-    --danger-soft: rgba(255,107,107,.12);
-    --danger-line: rgba(255,107,107,.40);
+    --danger:      #ff8f87;
+    --danger-soft: rgba(255,143,135,.12);
+    --danger-line: rgba(255,143,135,.40);
     /* Имена авторов — светлые оттенки той же шестёрки: на тёмных поверхностях. */
     --who-1: #ff9d95;
     --who-2: #8fc3ff;
@@ -188,13 +191,13 @@
     --fill-ok:     #16714f;
     --fill-warn:   #8a5a00;
     --fill-danger: #b3303a;
-    --fill-info:   #2563c9;
+    --fill-info:   #3566d6;
     --fill-muted:  #4d5c77;
     --on-ok:     #08110d;
   --on-warn:   #1a1300;
-    --overlay:   rgba(0,0,0,.55);
-    --shadow:    0 10px 30px rgba(0,0,0,.35);
-    --shadow-lg: 0 20px 60px rgba(0,0,0,.60);
+    --overlay:   rgba(10,12,16,.50);
+    --shadow:    0 1px 2px rgba(0,0,0,.22), 0 8px 24px rgba(0,0,0,.24);
+    --shadow-lg: 0 20px 50px rgba(0,0,0,.40);
     --video-bg:  #000000;
     /* На тёмном — ровно брендбук: неон задуман светящимся в темноте. */
     --brand-1: #4ef2f7;
@@ -206,6 +209,7 @@
 
 /* Явный выбор человека сильнее системной настройки — в обе стороны. */
 :root[data-theme="dark"] {
+  --ring: #93c5fd;
   color-scheme: dark;
   /*
     ───── Тёмная тема = брендбук ANTHILL.TEAM ─────
@@ -217,28 +221,28 @@
     Заливка кнопки НЕ неоновая: белым по циану читать нельзя (1.4:1). Под белый
     текст берём глубокий синий из той же семьи — 5.67:1.
   */
-  --bg:        #0b1020;
-  --bg-elev:   #111827;
-  --bg-elev-2: #1f2937;
-  --border:    #26324a;
-  --border-2:  #33415c;
-  --hover:     #26324a;
-  --text:      #eaf7ff;
-  --text-dim:  #94a3b8;
-  --text-mut:  #8494ab;
-  --accent:      #62e8ff;
-  --accent-2:    #2563c9;
-  --accent-soft: rgba(98,232,255,.13);
-  --accent-line: rgba(98,232,255,.40);
+  --bg:        #1d2026;
+  --bg-elev:   #24282f;
+  --bg-elev-2: #2c3139;
+  --border:    #343a44;
+  --border-2:  #48505d;
+  --hover:     #30353e;
+  --text:      #e8e5df;
+  --text-dim:  #aaa59c;
+  --text-mut:  #9d988f;
+  --accent:      #93c5fd;
+  --accent-2:    #3566d6;
+  --accent-soft: rgba(147,197,253,.12);
+  --accent-line: rgba(147,197,253,.36);
   --ok:          #57d9a3;
   --ok-soft:     rgba(87,217,163,.12);
   --ok-line:     rgba(87,217,163,.40);
   --warn:        #ffcf5c;
   --warn-soft:   rgba(255,207,92,.14);
   --warn-line:   rgba(255,207,92,.42);
-  --danger:      #ff6b6b;
-  --danger-soft: rgba(255,107,107,.12);
-  --danger-line: rgba(255,107,107,.40);
+  --danger:      #ff8f87;
+  --danger-soft: rgba(255,143,135,.12);
+  --danger-line: rgba(255,143,135,.40);
   /* Имена авторов — светлые оттенки той же шестёрки: на тёмных поверхностях. */
   --who-1: #ff9d95;
   --who-2: #8fc3ff;
@@ -250,13 +254,13 @@
   --fill-ok:     #16714f;
   --fill-warn:   #8a5a00;
   --fill-danger: #b3303a;
-  --fill-info:   #2563c9;
+  --fill-info:   #3566d6;
   --fill-muted:  #4d5c77;
   --on-ok:     #08110d;
   --on-warn:   #1a1300;
-  --overlay:   rgba(0,0,0,.55);
-  --shadow:    0 10px 30px rgba(0,0,0,.35);
-  --shadow-lg: 0 20px 60px rgba(0,0,0,.60);
+  --overlay:   rgba(10,12,16,.50);
+  --shadow:    0 1px 2px rgba(0,0,0,.22), 0 8px 24px rgba(0,0,0,.24);
+  --shadow-lg: 0 20px 50px rgba(0,0,0,.40);
   --video-bg:  #000000;
   /* На тёмном — ровно брендбук: неон задуман светящимся в темноте. */
   --brand-1: #4ef2f7;
@@ -281,22 +285,24 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
 
 /* ───── базовые компоненты ───── */
 
+/* Прежняя кнопка — для того немногого, что собирает класс в коде (ТЗ-15: остальное — ui-btn). */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
-  border: 1px solid var(--border-2); background: var(--bg-elev-2); color: var(--text);
-  padding: var(--sp-2) 14px; border-radius: var(--radius-sm); cursor: pointer;
-  transition: background .15s, border-color .15s, color .15s, opacity .15s; font-weight: 500;
+  border: 1px solid var(--border); background: var(--bg-elev); color: var(--text);
+  padding: 7px 14px; border-radius: var(--radius-sm); cursor: pointer; line-height: 1.2;
+  transition: background .12s, border-color .12s, color .12s, opacity .12s; font-weight: 500;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04);
 }
 .btn:hover:not(:disabled) { border-color: var(--border-2); background: var(--hover); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 /* доступность: видимое кольцо только при навигации с клавиатуры */
-.btn:focus-visible, .input:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn:focus-visible, .input:focus-visible, .tab:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 
 .btn-primary { background: var(--accent-2); border-color: var(--accent-2); color: var(--on-accent); }
 .btn-primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
-.btn-ghost:hover:not(:disabled) { background: var(--bg-elev-2); color: var(--text); }
+.btn-ghost:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .btn-danger { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
 .btn-danger:hover:not(:disabled) { background: var(--fill-danger); border-color: var(--fill-danger); color: var(--on-fill); }
 .btn-sm { padding: 5px 10px; font-size: var(--fs-sm); }
@@ -304,20 +310,23 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
 .btn-icon { padding: 6px; width: 32px; height: 32px; }
 .btn-icon.btn-sm { padding: 4px; width: 28px; height: 28px; }
 
+/* Поле ввода прежней разметки — в том же виде, что ui-input (ТЗ-15): формы, которые ещё
+   не переписаны на компоненты, выглядят так же, как переписанные. */
 .input {
-  width: 100%; padding: 10px var(--sp-3); border-radius: var(--radius-sm);
+  width: 100%; min-height: 36px; padding: 8px 12px; border-radius: var(--radius-sm);
   background: var(--bg-elev); border: 1px solid var(--border-2); color: var(--text);
-  outline: none; transition: border-color .15s, box-shadow .15s;
+  outline: none; transition: border-color .12s, box-shadow .12s;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04); line-height: 1.4;
 }
-.input:hover:not(:disabled) { border-color: var(--text-mut); }
-.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.input:hover:not(:disabled) { border-color: var(--border-2); }
+.input:focus { border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
 .input:disabled { opacity: .6; cursor: not-allowed; }
 .input::placeholder { color: var(--text-mut); }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-.field label { color: var(--text-dim); font-size: var(--fs-sm); }
+.field label { color: var(--text); font-size: var(--fs-sm); font-weight: 500; }
 
-.card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); }
+.card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
 
 /*
  * Плашки залиты плотным цветом, текст — белый. Прежняя схема (бледная подложка +
@@ -326,19 +335,23 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
  * В тёмной теме заливки свои: --danger/--warn/--ok там пастельные, они задуманы
  * как цвет текста на тёмном фоне, и белое по ним не читается.
  */
+/*
+ * Плашки прежней разметки — мягкие, как ui-badge (ТЗ-15): подложка тона и текст того же
+ * тона. Контраст проверяет npm run contrast по обеим темам — так же, как у ui-badge.
+ */
 .badge {
-  display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs);
-  padding: 2px var(--sp-2); border-radius: 999px; white-space: nowrap;
-  background: var(--fill-muted); color: var(--on-fill); border: 1px solid transparent;
+  display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs); font-weight: 500;
+  height: 20px; padding: 0 7px; border-radius: 999px; white-space: nowrap;
+  background: var(--bg-elev-2); color: var(--text-dim); border: 1px solid transparent;
 }
 .badge-role { text-transform: capitalize; }
 /* единая палитра статусов: успех / внимание / ошибка / инфо / приглушённый */
-.badge-ok      { background: var(--fill-ok); }
-.badge-warn    { background: var(--fill-warn); }
-.badge-danger  { background: var(--fill-danger); }
-.badge-info    { background: var(--fill-info); }
-.badge-muted   { background: var(--fill-muted); }
-.badge-blocked { background: var(--fill-danger); }
+.badge-ok      { background: var(--ok-soft); color: var(--ok); }
+.badge-warn    { background: var(--warn-soft); color: var(--warn); }
+.badge-danger  { background: var(--danger-soft); color: var(--danger); }
+.badge-info    { background: var(--accent-soft); color: var(--accent); }
+.badge-muted   { background: var(--bg-elev-2); color: var(--text-dim); }
+.badge-blocked { background: var(--danger-soft); color: var(--danger); }
 
 .error-text { color: var(--danger); font-size: var(--fs-sm); min-height: 18px; }
 .muted { color: var(--text-mut); }

@@ -2,8 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { navigate } from '../lib/router';
 import { forgetProject } from '../lib/last-project';
-import { EmptyState } from '../components/EmptyState';
-import { SkeletonList } from '../components/Skeleton';
+import { Avatar } from '../components/ui/avatar';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Select } from '../components/ui/select';
+import { Skeleton } from '../components/ui/skeleton';
+import { Spinner } from '../components/ui/spinner';
+import { Toggle } from '../components/ui/toggle';
+import { Tooltip } from '../components/ui/tooltip';
 import { api, TagItem } from '../lib/api';
 import { deadlineBadge, labelTextColor, priorityBadge } from '../lib/labels';
 import {
@@ -35,13 +42,15 @@ import type { Project } from '../types';
 
 type Row = Awaited<ReturnType<typeof api.taskRegistry>>['items'][number];
 
-const PRIORITIES = [
-  { key: '', label: 'Любой приоритет' },
-  { key: 'urgent', label: 'Срочный' },
-  { key: 'high', label: 'Высокий' },
-  { key: 'normal', label: 'Обычный' },
-  { key: 'low', label: 'Низкий' },
+const PRIORITY_OPTIONS = [
+  { value: '', label: 'Любой приоритет' },
+  { value: 'urgent', label: 'Срочный' },
+  { value: 'high', label: 'Высокий' },
+  { value: 'normal', label: 'Обычный' },
+  { value: 'low', label: 'Низкий' },
 ];
+const DUE_OPTIONS = REGISTRY_DUES.map((d) => ({ value: d.key, label: d.label }));
+const SORT_OPTIONS = REGISTRY_SORTS.map((d) => ({ value: d.key, label: d.label }));
 
 /**
  * Заголовок столбца, который сортирует.
@@ -60,7 +69,8 @@ function SortHead({ column, label, filters, onSort }: {
   return (
     <span role="columnheader" aria-sort={mark === 'asc' ? 'ascending' : mark === 'desc' ? 'descending' : 'none'}>
       <button
-        className={`registry-sort${mark ? ' on' : ''}`}
+        className="ui-sort"
+        data-active={mark ? '' : undefined}
         onClick={() => onSort(column)}
         title={mark === 'asc' ? 'Сейчас А→Я, нажмите для Я→А' : mark === 'desc' ? 'Сейчас Я→А, нажмите для обычного порядка' : `Сортировать по столбцу «${label}»`}
       >
@@ -202,131 +212,142 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
   */
   const sortBy = (column: SortColumn) => setFilters((f) => ({ ...f, ...nextSortState(f, column), page: 1 }));
 
+  const projectOptions = useMemo(
+    () => [{ value: '', label: 'Все проекты' }, ...projects.map((p) => ({ value: String(p.id), label: p.name }))],
+    [projects],
+  );
+  const peopleOptions = useMemo(
+    () => [
+      { value: '', label: 'Любой исполнитель' },
+      { value: 'none', label: 'Без исполнителя' },
+      ...people.map((u) => ({ value: String(u.id), label: u.full_name })),
+    ],
+    [people],
+  );
+
   return (
-    <div className="page registry-page">
-      <header className="registry-head">
-        <div className="registry-title">
+    <div className="ui-page tasks-v2">
+      <header className="ui-page-head">
+        <div className="ui-page-title">
           <h1>Задачи</h1>
-          <span className="registry-sub">{scopeHint(picked)}</span>
+          <span className="ui-page-sub">{scopeHint(picked)}</span>
         </div>
-        {/* Задачи живут в «Проектах»: обратный путь к таблице проектов — одним нажатием */}
-        <button
-          className="btn btn-ghost btn-sm board-all-btn registry-projects-btn"
-          onClick={() => { forgetProject(); navigate({ section: 'projects' }); }}
-          title="Таблица со всеми проектами"
-        >
-          <Icon name="list" size={14} /> Все проекты
-        </button>
-        {/*
-          Поставить задачу — прямо отсюда.
-
-          Раньше единственная кнопка постановки стояла в левой панели; заказчик убрал
-          её оттуда и попросил ставить задачи там, где они живут. Реестр — одно из
-          двух таких мест (второе — доска проекта).
-        */}
-        {(onNewTask || onVoiceTask) && (
-          <span className="registry-create">
-            {onNewTask && (
-              <button className="btn btn-primary btn-sm" onClick={onNewTask} title="Новая задача — текстом (клавиша C)">
-                <Icon name="plus" size={15} /> Новая задача
-              </button>
-            )}
-            {onVoiceTask && (
-              <button className="btn btn-primary btn-sm" onClick={onVoiceTask} title="Продиктовать задачу голосом" aria-label="Продиктовать задачу голосом">
-                <Icon name="mic" size={15} />
-              </button>
-            )}
-          </span>
-        )}
-        {/*
-          Роли — ГАЛОЧКАМИ, а не вкладками.
-
-          Вкладки заставляли смотреть свою работу по четырём спискам: «делаю»,
-          «поручил», «помогаю», «наблюдаю». Человек хочет видеть её целиком, поэтому
-          по умолчанию отмечены все четыре, а снимая галочку, он сужает список.
-
-          «Все задачи компании» стоит особняком: это другой вопрос — чужая работа,
-          а не моя роль в ней. Поэтому он выключает роли, а не складывается с ними.
-        */}
-        <nav className="registry-roles" aria-label="Мои роли в задачах">
-          {ROLE_TABS.map((t) => (
-            <label key={t.key} className={`registry-role${picked.includes(t.key) ? ' active' : ''}`} title={t.hint}>
-              <input
-                type="checkbox"
-                checked={picked.includes(t.key)}
-                onChange={(e) => toggleRole(t.key, e.target.checked)}
-              />
-              {t.label}
-            </label>
-          ))}
-          <button
-            className={`registry-tab${picked.includes('all') ? ' active' : ''}`}
-            title="Все задачи компании во всех проектах, включая чужие"
-            onClick={() => toggleAll(!picked.includes('all'))}
+        <div className="ui-page-actions">
+          {/* Задачи живут в «Проектах»: обратный путь к таблице проектов — одним нажатием */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { forgetProject(); navigate({ section: 'projects' }); }}
+            title="Таблица со всеми проектами"
           >
-            Все задачи
-          </button>
-        </nav>
+            <Icon name="list" size={15} /> Все проекты
+          </Button>
+          {/*
+            Поставить задачу — прямо отсюда (просьба заказчика: ставить задачи там, где
+            они живут). Реестр — одно из двух таких мест, второе — доска проекта.
+          */}
+          {onVoiceTask && (
+            <Tooltip content="Продиктовать задачу голосом">
+              <Button variant="outline" size="icon" onClick={onVoiceTask} aria-label="Продиктовать задачу голосом">
+                <Icon name="mic" size={16} />
+              </Button>
+            </Tooltip>
+          )}
+          {onNewTask && (
+            <Button variant="primary" onClick={onNewTask} title="Новая задача — текстом (клавиша C)">
+              <Icon name="plus" size={16} /> Новая задача
+            </Button>
+          )}
+        </div>
       </header>
 
-      <div className="registry-bar">
-        <label className="registry-search">
-          <Icon name="search" size={15} />
-          <input
-            value={filters.q}
-            placeholder="Поиск по названию или номеру задачи…"
-            aria-label="Поиск по задачам"
-            onChange={(e) => patch({ q: e.target.value })}
-          />
-          {filters.q && (
-            <button className="registry-clear" title="Очистить" onClick={() => patch({ q: '' })}>
-              <Icon name="close" size={14} />
-            </button>
-          )}
-        </label>
+      {/*
+        Роли — переключателями, а не вкладками: человек хочет видеть свою работу
+        целиком, поэтому по умолчанию включены все четыре, а выключая, он сужает список.
+        «Все задачи компании» стоит особняком: это чужая работа, а не моя роль в ней,
+        поэтому он выключает роли, а не складывается с ними.
+      */}
+      <nav className="ui-toolbar" aria-label="Мои роли в задачах">
+        {ROLE_TABS.map((t) => (
+          <Toggle key={t.key} pressed={picked.includes(t.key)} onPressedChange={(on) => toggleRole(t.key, on)} title={t.hint}>
+            {t.label}
+          </Toggle>
+        ))}
+        <span className="tasks-v2-sep" aria-hidden />
+        <Toggle
+          pressed={picked.includes('all')}
+          onPressedChange={(on) => toggleAll(on)}
+          title="Все задачи компании во всех проектах, включая чужие"
+        >
+          <Icon name="building" size={14} /> Все задачи компании
+        </Toggle>
+      </nav>
 
+      <div className="ui-toolbar">
+        <Input
+          className="ui-toolbar-grow"
+          value={filters.q}
+          placeholder="Поиск по названию или номеру…"
+          aria-label="Поиск по задачам"
+          onChange={(e) => patch({ q: e.target.value })}
+          leading={<Icon name="search" size={15} />}
+          trailing={filters.q ? (
+            <Button variant="ghost" size="icon-sm" aria-label="Очистить поиск" onClick={() => patch({ q: '' })}>
+              <Icon name="close" size={14} />
+            </Button>
+          ) : undefined}
+        />
         {/*
-          Фильтры на узком экране убираются под кнопку, но НЕ прячутся за наведение:
-          спрятанный до наведения элемент не существует — ни на телефоне, ни для того,
-          кто просто не догадался туда навести.
+          На узком экране фильтры убираются под кнопку, но НЕ прячутся за наведение:
+          спрятанного до наведения на телефоне не существует.
         */}
-        <button
-          className={`btn btn-sm registry-toggle${filtersOpen ? ' active' : ''}`}
+        <Button
+          variant="outline"
+          className="tasks-v2-filters-btn"
+          aria-pressed={filtersOpen}
           onClick={() => setFiltersOpen((v) => !v)}
         >
-          <Icon name="filter" size={14} /> Фильтры{filterCount > 0 ? ` (${filterCount})` : ''}
-        </button>
-
-        <span className="registry-count">{loading ? 'Загрузка…' : rangeLabel(meta.page, meta.pageSize, meta.total)}</span>
+          <Icon name="filter" size={15} /> Фильтры
+          {filterCount > 0 && <Badge tone="info">{filterCount}</Badge>}
+        </Button>
+        <span className="ui-toolbar-end" aria-live="polite">
+          {loading ? <Spinner size={14} label="Загрузка" /> : rangeLabel(meta.page, meta.pageSize, meta.total)}
+        </span>
       </div>
 
-      <div className={`registry-filters${filtersOpen ? ' open' : ''}`}>
-        <select value={filters.projectId} onChange={(e) => patch({ projectId: e.target.value })} aria-label="Проект">
-          <option value="">Все проекты</option>
-          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-
-        <select value={filters.assigneeId} onChange={(e) => patch({ assigneeId: e.target.value })} aria-label="Исполнитель">
-          <option value="">Любой исполнитель</option>
-          <option value="none">Без исполнителя</option>
-          {people.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-        </select>
-
-        <select value={filters.priority} onChange={(e) => patch({ priority: e.target.value })} aria-label="Приоритет">
-          {PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-        </select>
-
-        <select value={filters.due} onChange={(e) => patch({ due: e.target.value })} aria-label="Срок">
-          {REGISTRY_DUES.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
-        </select>
+      <div className={`ui-toolbar tasks-v2-filters${filtersOpen ? ' open' : ''}`}>
+        <Select ariaLabel="Проект" size="sm" value={filters.projectId} onValueChange={(v) => patch({ projectId: v })} options={projectOptions} />
+        <Select ariaLabel="Исполнитель" size="sm" value={filters.assigneeId} onValueChange={(v) => patch({ assigneeId: v })} options={peopleOptions} />
+        <Select ariaLabel="Приоритет" size="sm" value={filters.priority} onValueChange={(v) => patch({ priority: v })} options={PRIORITY_OPTIONS} />
+        <Select ariaLabel="Срок" size="sm" value={filters.due} onValueChange={(v) => patch({ due: v })} options={DUE_OPTIONS} />
+        <Select ariaLabel="Сортировка" size="sm" value={filters.sort} onValueChange={(v) => patch({ sort: v })} options={SORT_OPTIONS} />
+        {/*
+          «В работе» — главный переключатель списка. Включён: только живая работа.
+          Выключен: видно всё, что было, — завершённое и задачи из архивных проектов.
+        */}
+        <Toggle
+          pressed={filters.inWork}
+          onPressedChange={(on) => patch({ inWork: on })}
+          title={filters.inWork
+            ? 'Показаны только задачи в работе. Выключите, чтобы увидеть завершённые и архив'
+            : 'Показано всё, включая завершённое и архивные проекты'}
+        >
+          <Icon name={filters.inWork ? 'play' : 'archive'} size={14} />
+          {filters.inWork ? 'В работе' : 'Всё, включая архив'}
+        </Toggle>
+        {filterCount > 0 && (
+          <Button variant="ghost" size="sm" onClick={() => setFilters({ ...EMPTY_FILTERS, scope: filters.scope })}>
+            <Icon name="close" size={14} /> Сбросить
+          </Button>
+        )}
 
         {/*
-          Теги отбором «любой из выбранных»: человек отмечает два-три, чтобы РАСШИРИТЬ
-          выборку («покажи программные и дизайнерские»), а не сузить её до задач,
-          помеченных всеми сразу, — таких обычно нет вовсе.
+          Теги отбором «любой из выбранных»: два-три отмечают, чтобы РАСШИРИТЬ выборку,
+          а не сузить её до задач, помеченных всеми сразу, — таких обычно нет вовсе.
+          Цвета тегов — данные компании, поэтому плашки остаются цветными.
         */}
         {tags.length > 0 && (
-          <div className="registry-tagfilter">
+          <div className="tasks-v2-tags">
             {tags.slice(0, 12).map((t) => {
               const on = filters.tagIds.includes(String(t.id));
               return (
@@ -351,150 +372,151 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
             })}
           </div>
         )}
-
-        <select value={filters.sort} onChange={(e) => patch({ sort: e.target.value })} aria-label="Сортировка">
-          {REGISTRY_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-        </select>
-
-        {/*
-          «В работе» — главный переключатель списка, поэтому он выглядит как кнопка,
-          а не как галочка среди фильтров. Включён: только живая работа. Выключен:
-          видно всё, что было, — завершённое и задачи из архивных проектов.
-        */}
-        <button
-          className={`btn btn-sm registry-inwork${filters.inWork ? ' active' : ''}`}
-          onClick={() => patch({ inWork: !filters.inWork })}
-          aria-pressed={filters.inWork}
-          title={filters.inWork
-            ? 'Показаны только задачи в работе. Выключите, чтобы увидеть завершённые и архив'
-            : 'Показано всё, включая завершённое и архивные проекты'}
-        >
-          <Icon name={filters.inWork ? 'play' : 'archive'} size={14} />
-          {filters.inWork ? 'В работе' : 'Всё, включая архив'}
-        </button>
-
-        {filterCount > 0 && (
-          <button className="btn btn-sm" onClick={() => setFilters({ ...EMPTY_FILTERS, scope: filters.scope })}>
-            Сбросить
-          </button>
-        )}
       </div>
 
-      {error && <div className="error-text">{error}</div>}
-
-      {loading && rows.length === 0 && <SkeletonList rows={8} />}
-
-      {!loading && rows.length === 0 && !error && (
-        <EmptyState icon="check-circle" title="Задач нет" hint={emptyHint(picked[0] ?? 'doing', filterCount > 0)} />
-      )}
-
-      {rows.length > 0 && (
-        <div className="registry-list" role="table">
-          {/*
-            Шапка сортирует нажатием (просьба заказчика): А→Я, Я→А, обычный порядок.
-            Считает сервер — сортировать на клиенте нельзя, на экране лишь страница из
-            пятидесяти строк, и «по алфавиту» получилось бы в пределах страницы.
-          */}
-          <div className="registry-row registry-header" role="row">
-            <SortHead column="title" label="Задача" filters={filters} onSort={sortBy} />
-            <SortHead column="project" label="Проект" filters={filters} onSort={sortBy} />
-            <SortHead column="status" label="Статус" filters={filters} onSort={sortBy} />
-            <SortHead
-              column={showWho === 'assignee' ? 'assignee' : 'manager'}
-              label={showWho === 'assignee' ? 'Исполнитель' : 'Постановщик'}
-              filters={filters}
-              onSort={sortBy}
-            />
-            <SortHead column="deadline" label="Срок" filters={filters} onSort={sortBy} />
-            {/* Теги — последним столбцом: по ним ищут глазами, но читают строку слева направо. */}
-            <span role="columnheader">Теги</span>
-          </div>
-          {rows.map((t) => {
-            const prio = priorityBadge(t.priority);
-            const due = deadlineBadge(t.deadline_at, !!t.closed_at);
-            const who = showWho === 'assignee' ? t.assignee_name : t.manager_name;
-            return (
-              <button
-                key={t.id}
-                role="row"
-                className={`registry-row${t.overdue ? ' late' : ''}${t.closed_at ? ' done' : ''}`}
-                onClick={() => onOpenTask(String(t.project_id), String(t.id))}
-              >
-                <span className="registry-cell-title" role="cell">
-                  {/*
-                    Красная точка — только по МОИМ задачам: так решено заказчиком, и это
-                    правильно. В YouGile краснеет вся доска, и через неделю на счётчики
-                    перестают смотреть.
-                  */}
-                  {t.unread > 0 && <span className="registry-new" title={`Новых событий: ${t.unread}`}>{t.unread}</span>}
-                  <span className="registry-name">{t.title}</span>
-                  <span className="registry-id">#{t.id}</span>
-                  {t.closed_at && <span className="badge badge-ok">Завершена</span>}
-                  {prio && <span className={prio.cls}>{prio.text}</span>}
-                </span>
-                <span className="registry-cell-dim" role="cell">{t.project_name}</span>
-                <span className="registry-cell-dim" role="cell">{t.column_name}</span>
-                <span className="registry-cell-who" role="cell">
-                  {who ? (
-                    <>
-                      <span className="avatar-xs avatar-ph">{who[0]?.toUpperCase()}</span>
-                      <span className="registry-who-name">{who}</span>
-                    </>
-                  ) : (
-                    <span className="registry-nobody">не назначен</span>
-                  )}
-                </span>
-                <span className="registry-cell-due" role="cell">
-                  {due
-                    ? <span className={due.cls} title={due.title}>{due.text}</span>
-                    : <span className="registry-nobody">{shortDate(t.deadline_at) || 'без срока'}</span>}
-                </span>
-                {/*
-                  Теги плашками. Не кнопками: строка сама по себе кнопка, а кнопка
-                  внутри кнопки — сломанная разметка и ловушка для клавиатуры. Отбор по
-                  тегу делается плашками в фильтрах над списком.
-
-                  Больше двух не показываем: иначе одна задача с шестью тегами
-                  растягивает столбец и ломает всю таблицу.
-                */}
-                <span className="registry-cell-tags" role="cell">
-                  {(t.tags ?? []).slice(0, 2).map((tag) => (
-                    <span
-                      key={tag.id}
-                      className="label-chip label-chip-sm"
-                      style={{ background: tag.color, color: labelTextColor(tag.color) }}
-                    >
-                      {tag.name}
-                    </span>
-                  ))}
-                  {(t.tags?.length ?? 0) > 2 && (
-                    <span className="registry-tags-more" title={(t.tags ?? []).map((x) => x.name).join(', ')}>
-                      +{(t.tags?.length ?? 0) - 2}
-                    </span>
-                  )}
-                </span>
-              </button>
-            );
-          })}
+      {error && (
+        <div className="tasks-v2-error" role="alert">
+          <Icon name="alert" size={16} /> {error}
+          <Button variant="outline" size="sm" onClick={() => void load(request)}>Повторить</Button>
         </div>
       )}
 
+      <div className="ui-card">
+        {loading && rows.length === 0 && (
+          <div className="ui-table" aria-busy>
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} className="ui-row tasks-v2-row" style={{ cursor: 'default' }}>
+                <Skeleton width={`${55 + ((i * 17) % 35)}%`} />
+                <Skeleton width="70%" /><Skeleton width="60%" /><Skeleton width="75%" /><Skeleton width="55%" /><Skeleton width="40%" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && rows.length === 0 && !error && (
+          <div className="ui-empty">
+            <span className="ui-empty-icon"><Icon name="check-circle" size={22} /></span>
+            <span className="ui-empty-title">Задач нет</span>
+            <span className="ui-empty-hint">{emptyHint(picked[0] ?? 'doing', filterCount > 0)}</span>
+            {filterCount > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setFilters({ ...EMPTY_FILTERS, scope: filters.scope })}>
+                Сбросить фильтры
+              </Button>
+            )}
+          </div>
+        )}
+
+        {rows.length > 0 && (
+          <div className="ui-table" role="table" aria-busy={loading || undefined}>
+            {/*
+              Шапка сортирует нажатием: А→Я, Я→А, обычный порядок. Считает сервер —
+              на экране лишь страница из пятидесяти строк, и «по алфавиту» на клиенте
+              получилось бы в пределах страницы.
+            */}
+            <div className="ui-row ui-row-head tasks-v2-row" role="row">
+              <SortHead column="title" label="Задача" filters={filters} onSort={sortBy} />
+              <SortHead column="project" label="Проект" filters={filters} onSort={sortBy} />
+              <SortHead column="status" label="Статус" filters={filters} onSort={sortBy} />
+              <SortHead
+                column={showWho === 'assignee' ? 'assignee' : 'manager'}
+                label={showWho === 'assignee' ? 'Исполнитель' : 'Постановщик'}
+                filters={filters}
+                onSort={sortBy}
+              />
+              <SortHead column="deadline" label="Срок" filters={filters} onSort={sortBy} />
+              <span role="columnheader">Теги</span>
+            </div>
+            {rows.map((t) => {
+              const prio = priorityBadge(t.priority);
+              const due = deadlineBadge(t.deadline_at, !!t.closed_at);
+              const who = showWho === 'assignee' ? t.assignee_name : t.manager_name;
+              return (
+                <button
+                  key={t.id}
+                  role="row"
+                  className={`ui-row tasks-v2-row${t.overdue ? ' late' : ''}${t.closed_at ? ' done' : ''}`}
+                  onClick={() => onOpenTask(String(t.project_id), String(t.id))}
+                >
+                  <span className="tasks-v2-title" role="cell">
+                    {/*
+                      Счётчик новых событий — только по МОИМ задачам (решение заказчика):
+                      в YouGile краснеет вся доска, и через неделю на счётчики не смотрят.
+                    */}
+                    {t.unread > 0 && <span className="tasks-v2-new" title={`Новых событий: ${t.unread}`}>{t.unread}</span>}
+                    {t.closed_at && <Icon name="check-circle" size={15} className="tasks-v2-done-icon" />}
+                    <span className="tasks-v2-name">{t.title}</span>
+                    <span className="tasks-v2-id">#{t.id}</span>
+                    {prio && (
+                      <Badge tone={prio.tone}>
+                        {prio.tone === 'danger' && <Icon name="zap" size={11} />}
+                        {prio.tone === 'warn' && <Icon name="arrow-up" size={11} />}
+                        {prio.tone === 'neutral' && <Icon name="arrow-down" size={11} />}
+                        {prio.label}
+                      </Badge>
+                    )}
+                  </span>
+                  <span className="ui-cell ui-cell-dim" role="cell">{t.project_name}</span>
+                  <span className="ui-cell" role="cell"><Badge tone="outline">{t.column_name}</Badge></span>
+                  <span className="tasks-v2-who" role="cell">
+                    {who ? (
+                      <>
+                        <Avatar name={who} />
+                        <span className="ui-cell">{who}</span>
+                      </>
+                    ) : (
+                      <span className="ui-cell-dim">не назначен</span>
+                    )}
+                  </span>
+                  <span className="ui-cell" role="cell">
+                    {due
+                      ? <Badge tone={due.tone} title={due.title}><Icon name="clock" size={11} />{due.label}</Badge>
+                      : <span className="ui-cell-dim">{shortDate(t.deadline_at) || 'без срока'}</span>}
+                  </span>
+                  {/*
+                    Теги плашками, не кнопками: строка сама кнопка, а кнопка в кнопке —
+                    ловушка для клавиатуры. Больше двух не показываем: одна задача
+                    с шестью тегами растягивала столбец и ломала таблицу.
+                  */}
+                  <span className="tasks-v2-tags-cell" role="cell">
+                    {(t.tags ?? []).slice(0, 2).map((tag) => (
+                      <span
+                        key={tag.id}
+                        className="label-chip label-chip-sm"
+                        style={{ background: tag.color, color: labelTextColor(tag.color) }}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                    {(t.tags?.length ?? 0) > 2 && (
+                      <span className="ui-cell-dim" title={(t.tags ?? []).map((x) => x.name).join(', ')}>
+                        +{(t.tags?.length ?? 0) - 2}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {meta.pages > 1 && (
-        <nav className="registry-pages" aria-label="Страницы">
-          <button
-            className="btn btn-sm"
+        <nav className="ui-pages" aria-label="Страницы">
+          <Button
+            variant="ghost"
+            size="sm"
             disabled={meta.page <= 1}
             onClick={() => setFilters((f) => ({ ...f, page: f.page - 1 }))}
           >
-            <Icon name="chevron-left" size={14} /> Назад
-          </button>
+            <Icon name="chevron-left" size={15} /> Назад
+          </Button>
           {pageWindow(meta.page, meta.pages).map((n, i) => (
             n === 0
-              ? <span key={`gap${i}`} className="registry-gap">…</span>
+              ? <span key={`gap${i}`} className="ui-cell-dim">…</span>
               : (
                 <button
                   key={n}
-                  className={`registry-page${n === meta.page ? ' active' : ''}`}
+                  className="ui-page-btn"
                   aria-current={n === meta.page ? 'page' : undefined}
                   onClick={() => setFilters((f) => ({ ...f, page: n }))}
                 >
@@ -502,13 +524,14 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
                 </button>
               )
           ))}
-          <button
-            className="btn btn-sm"
+          <Button
+            variant="ghost"
+            size="sm"
             disabled={meta.page >= meta.pages}
             onClick={() => setFilters((f) => ({ ...f, page: f.page + 1 }))}
           >
-            Далее <Icon name="chevron-right" size={14} />
-          </button>
+            Далее <Icon name="chevron-right" size={15} />
+          </Button>
         </nav>
       )}
     </div>

@@ -53,7 +53,7 @@ export function ResetPasswordPage({ token }: { token: string }) {
         ) : done ? (
           <>
             <div className="pnl-good" style={{ marginBottom: 14 }}><Icon name="check-circle" size={15} /> Пароль изменён. Теперь войдите с новым паролем.</div>
-            <a className="btn btn-primary auth-submit" href="/">Перейти ко входу</a>
+            <a className="ui-btn ui-btn-primary ui-btn-md auth-submit" href="/">Перейти ко входу</a>
           </>
         ) : (
           <>
@@ -69,7 +69,7 @@ export function ResetPasswordPage({ token }: { token: string }) {
               Не короче 8 символов. После смены все ваши сеансы на других устройствах будут завершены.
             </div>
             <div className="error-text">{error}</div>
-            <button className="btn btn-primary auth-submit" disabled={busy || !info} type="submit">
+            <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy || !info} type="submit">
               {busy ? '...' : 'Сменить пароль'}
             </button>
           </>

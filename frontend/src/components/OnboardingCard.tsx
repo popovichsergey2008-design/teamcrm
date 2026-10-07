@@ -99,12 +99,12 @@ export function OnboardingCard({ always = false }: {
                   </span>
                   {!s.done && (
                     <span className="onb-actions">
-                      <button className="btn btn-sm btn-primary" onClick={() => go(s)}>
+                      <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => go(s)}>
                         {s.key === 'team' ? 'Пригласить' : s.key === 'project' ? 'Создать' : s.key === 'task' ? 'Поставить' : 'Настроить'}
                       </button>
                       {!s.required && !s.skipped && (
                         <button
-                          className="btn btn-ghost btn-sm"
+                          className="ui-btn ui-btn-ghost ui-btn-sm"
                           onClick={() => act(() => api.skipOnboardingStep(s.key))}
                           title="Отложить: шаг останется в списке, но звать к нему не будем"
                         >

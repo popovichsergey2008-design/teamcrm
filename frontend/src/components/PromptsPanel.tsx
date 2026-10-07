@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { OptionSelect } from './ui/option-select';
+import { promptText } from './ui/dialog';
 
 const STATUS: Record<string, string> = { active: 'активная', testing: 'тест', draft: 'черновик', deprecated: 'снята' };
 
@@ -67,7 +69,13 @@ export function PromptsSection() {
   };
   const startAb = async (v: number) => {
     if (!key) return;
-    const raw = window.prompt('Доля трафика на этот вариант (B), % — 1..99:', '20');
+    const raw = await promptText({
+      title: `A/B-тест версии ${v}`,
+      description: 'Какая доля запросов пойдёт на этот вариант (B), в процентах — от 1 до 99.',
+      defaultValue: '20',
+      confirmLabel: 'Запустить',
+      singleLine: true,
+    });
     if (raw === null) return;
     const split = Number(raw);
     if (!Number.isInteger(split) || split < 1 || split > 99) return flash('Нужно целое 1..99');
@@ -99,11 +107,11 @@ export function PromptsSection() {
       {msg && <div className="dim">{msg}</div>}
 
       <div className="drawer-section-title">Промпт</div>
-      <select className="input" value={key ?? ''} onChange={(e) => setKey(e.target.value)}>
+      <OptionSelect className="input" value={key ?? ''} onChange={(e) => setKey(e.target.value)}>
         {templates.map((t) => (
           <option key={t.key} value={t.key}>{t.title} {t.customized ? '(изменён)' : ''} · v{t.activeVersion ?? '—'}</option>
         ))}
-      </select>
+      </OptionSelect>
 
       {data && (
         <>
@@ -116,10 +124,10 @@ export function PromptsSection() {
             <input className="input" placeholder="Модель (опц., напр. gpt-4o-mini)" value={model} onChange={(e) => setModel(e.target.value)} />
             <input className="input" placeholder="Что изменено (note)" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
-          <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 6 }} disabled={busy} onClick={saveVersion}>
+          <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%', marginTop: 6 }} disabled={busy} onClick={saveVersion}>
             Сохранить как новую версию
           </button>
-          <button className="btn btn-ghost btn-sm" style={{ width: '100%', marginTop: 6 }} disabled={optimizing} onClick={optimize}>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ width: '100%', marginTop: 6 }} disabled={optimizing} onClick={optimize}>
             {optimizing ? 'ИИ анализирует…' : <><Icon name="sparkles" size={14} /> Предложить улучшение (ИИ)</>}
           </button>
 
@@ -132,8 +140,8 @@ export function PromptsSection() {
                   {suggest.rationale && <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Почему: {suggest.rationale}</div>}
                   {suggest.warning && <div style={{ fontSize: 12, marginTop: 4, color: 'var(--warn)' }}><Icon name="alert" size={12} /> {suggest.warning}</div>}
                   <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                    <button className="btn btn-primary btn-sm" onClick={takeSuggestion}>Взять в редактор</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setSuggest(null)}>Отклонить</button>
+                    <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={takeSuggestion}>Взять в редактор</button>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setSuggest(null)}>Отклонить</button>
                   </div>
                 </>
               ) : (
@@ -150,10 +158,10 @@ export function PromptsSection() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <div><b>v{v.version}</b> · {STATUS[v.status] ?? v.status}{v.status === 'testing' && v.abSplit ? ` ${v.abSplit}%` : ''}{v.model ? ` · ${v.model}` : ''}</div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => loadInto(v)}>В редактор</button>
-                    {v.status !== 'active' && <button className="btn btn-sm" onClick={() => activate(v.version)}>Сделать активной</button>}
-                    {v.status !== 'active' && <button className="btn btn-ghost btn-sm" title="Запустить A/B: доля трафика на этот вариант" onClick={() => startAb(v.version)}>A/B</button>}
-                    {v.status !== 'active' && <button className="btn btn-ghost btn-sm" onClick={() => deprecate(v.version)}>Снять</button>}
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => loadInto(v)}>В редактор</button>
+                    {v.status !== 'active' && <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => activate(v.version)}>Сделать активной</button>}
+                    {v.status !== 'active' && <button className="ui-btn ui-btn-ghost ui-btn-sm" title="Запустить A/B: доля трафика на этот вариант" onClick={() => startAb(v.version)}>A/B</button>}
+                    {v.status !== 'active' && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => deprecate(v.version)}>Снять</button>}
                   </div>
                 </div>
                 {v.note && <div className="dim" style={{ fontSize: 12 }}>{v.note}</div>}

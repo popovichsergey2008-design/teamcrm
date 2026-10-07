@@ -54,10 +54,10 @@ export function GuestHostCallCard({ call, onJoin, onDismiss }: {
         <div className="dim">{call.body}</div>
       </div>
       <div className="guest-host-call-actions">
-        <button className="btn btn-primary btn-sm" onClick={() => { onJoin(call.roomId); onDismiss(); }} autoFocus>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { onJoin(call.roomId); onDismiss(); }} autoFocus>
           <Icon name="phone" size={14} /> Войти
         </button>
-        <button className="btn btn-ghost btn-sm" onClick={onDismiss}>Позже</button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onDismiss}>Позже</button>
       </div>
     </div>
   );

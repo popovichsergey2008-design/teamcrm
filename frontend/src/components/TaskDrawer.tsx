@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { navigate } from '../lib/router';
 import { useAuth } from '../state/auth';
 import { EmptyState } from './EmptyState';
@@ -26,6 +26,15 @@ import { EMPTY_TAGS, TagsValue } from '../lib/tags';
 import { overlayProps } from '../lib/overlay';
 import { showToast, toastSaved } from '../lib/notifications';
 import { AiFeedback } from './AiFeedback';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
+import { confirmAction, promptText } from './ui/dialog';
+import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
+import { Field } from './ui/field';
+import { Input } from './ui/input';
+import { Select } from './ui/select';
+import { Tabs } from './ui/tabs';
 
 interface Props {
   task: Task;
@@ -44,7 +53,12 @@ interface Props {
 
 // Обсуждения среди вкладок больше нет: чат стоит справа и виден всегда.
 type Tab = 'overview' | 'checklist' | 'files' | 'agent' | 'chat';
-const PRIORITIES = [['low', 'низкий'], ['normal', 'обычный'], ['high', 'высокий'], ['urgent', 'срочно']];
+const PRIORITY_OPTIONS = [
+  { value: 'low', label: 'Низкий' },
+  { value: 'normal', label: 'Обычный' },
+  { value: 'high', label: 'Высокий' },
+  { value: 'urgent', label: 'Срочно' },
+];
 
 /** Колонки, означающие закрытие задачи (совпадает с логикой закрытия на бэкенде). */
 const DONE_RE = /^(done|готово|выполнено|завершено|завершён|завершен|закрыто|сделано)$/i;
@@ -330,10 +344,11 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
       Теперь до нажатия сказано, что произойдёт, а после видно, что именно вышло:
       перенесли сразу или отправили постановщику на подтверждение.
     */
-    const ok = window.confirm(
-      'Отчитаться «Сделал» и перенести срок на следующую среду, 17:00?\n\n'
-      + 'Постановщик получит уведомление и подтвердит перенос. До его ответа срок останется прежним.',
-    );
+    const ok = await confirmAction({
+      title: 'Отчитаться «Сделал» и перенести срок на следующую среду, 17:00?',
+      description: 'Постановщик получит уведомление и подтвердит перенос. До его ответа срок останется прежним.',
+      confirmLabel: 'Сделал',
+    });
     if (!ok) return;
     setErr('');
     try {
@@ -367,8 +382,11 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const moveToProject = async (projectId: string) => {
     if (!projectId || String(projectId) === String(task.project_id)) return;
     const to = projectList.find((p) => String(p.id) === String(projectId));
-    if (!window.confirm(`Перенести задачу в проект «${to?.name ?? projectId}»?\n\n`
-      + 'Переписка, вложения, чек-лист и учтённое время переедут вместе с ней.')) return;
+    if (!(await confirmAction({
+      title: `Перенести задачу в проект «${to?.name ?? projectId}»?`,
+      description: 'Переписка, вложения, чек-лист и учтённое время переедут вместе с ней.',
+      confirmLabel: 'Перенести',
+    }))) return;
     setErr('');
     try {
       await api.moveTaskToProject(task.id, projectId);
@@ -384,7 +402,12 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     try {
       if (accept) await api.approveTask(task.id);
       else {
-        const reason = window.prompt('Что доработать? Причина уйдёт исполнителю и останется в истории задачи.');
+        const reason = await promptText({
+          title: 'Вернуть в работу',
+          description: 'Что доработать? Причина уйдёт исполнителю и останется в истории задачи.',
+          placeholder: 'Например: не хватает макета мобильной версии',
+          confirmLabel: 'Вернуть',
+        });
         if (!reason?.trim()) return; // молча вернуть работу нельзя — это ссора на ровном месте
         await api.returnTask(task.id, reason.trim());
       }
@@ -487,7 +510,11 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
    */
   /** Отмена задачи, которую агент завёл сам по переписке: в корзину, промах засчитан. */
   const undoAi = async () => {
-    if (!window.confirm(`Отменить задачу «${task.title}»? Она уйдёт в корзину, а в чате появится отметка об отмене.`)) return;
+    if (!(await confirmAction({
+      title: `Отменить задачу «${task.title}»?`,
+      description: 'Она уйдёт в корзину, а в чате появится отметка об отмене.',
+      confirmLabel: 'Отменить задачу', danger: true,
+    }))) return;
     setErr(''); setMoving(true);
     try {
       await api.undoAiTask(task.id);
@@ -501,8 +528,11 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   };
 
   const removeTask = async (confirmTimeLoss = false) => {
-    if (!confirmTimeLoss
-      && !window.confirm(`Удалить задачу «${task.title}»? Вместе с ней исчезнут комментарии, чек-лист и вложения. Отменить это будет нельзя.`)) return;
+    if (!confirmTimeLoss && !(await confirmAction({
+      title: `Удалить задачу «${task.title}»?`,
+      description: 'Вместе с ней исчезнут комментарии, чек-лист и вложения. Отменить это будет нельзя.',
+      danger: true,
+    }))) return;
     setErr(''); setMoving(true);
     try {
       await api.deleteTask(task.id, confirmTimeLoss);
@@ -514,9 +544,11 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
         : undefined;
       if (timeLoss && !confirmTimeLoss) {
         setMoving(false);
-        if (window.confirm(`${e instanceof ApiError ? e.message : ''}
-
-Удалить задачу?`)) {
+        if (await confirmAction({
+          title: 'Удалить задачу?',
+          description: e instanceof ApiError ? e.message : undefined,
+          danger: true,
+        })) {
           await removeTask(true);
         }
         return;
@@ -536,7 +568,6 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   // досок финальная колонка называется по-своему («Сдано», «На тестировании»),
   // и угадывать за человека мы не будем.
   // Возврат в работу выбор сохраняет: рабочих колонок много и очевидной среди них нет.
-  const [choosing, setChoosing] = useState(false);
   const isDone = !!task.closed_at;
   const targets = orderColumns(columns, isDone ? 'reopen' : 'finish').filter((c) => c.id !== task.column_id);
   const doneTarget = isDone ? null : targets.find((c) => DONE_RE.test(c.name.trim())) ?? null;
@@ -565,6 +596,21 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     toastSaved('Файл приложен', picked.length > 1 ? `${picked.length} шт. — во вкладке «Файлы»` : picked[0].name);
   };
 
+  const userOptions = (empty: string) => [
+    { value: '', label: empty },
+    ...users.map((u) => ({ value: String(u.id), label: u.fullName })),
+  ];
+  const tabItems: { value: Tab; label: ReactNode; count?: number }[] = [
+    { value: 'overview', label: 'Обзор' },
+    { value: 'files', label: 'Файлы', count: fileCount },
+    { value: 'checklist', label: 'Чек-лист' },
+    // ИИ-агент доступен всем сотрудникам: сервер их и так пускал, пряталась только вкладка.
+    { value: 'agent', label: <><Icon name="robot" size={14} /> Агент</> },
+    // «Чат» на всю карточку — ответ на «сообщения в маленьких окнах»: колонка справа
+    // в 360 точек превращала абзац в двадцать строк, а картинку — в марку.
+    { value: 'chat', label: <><Icon name="chat" size={14} /> Чат</> },
+  ];
+
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       {/*
@@ -574,7 +620,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
         их в голове и прыгать туда-обратно. Окно от этого шире обычного — и должно быть.
       */}
       <aside
-        className={`drawer drawer-task${tab === 'chat' ? ' drawer-task-chat' : ''}${dragOver ? ' drawer-drag' : ''}`}
+        className={`drawer drawer-task task-v2${tab === 'chat' ? ' drawer-task-chat' : ''}${dragOver ? ' drawer-drag' : ''}`}
         onClick={(e) => e.stopPropagation()}
         onDragOver={(e) => {
           // Реагируем только на файлы: перетаскивание текста или карточки внутри окна
@@ -606,220 +652,226 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             onForce={() => moveToColumn(gate.columnId, true)}
           />
         )}
-        <div className="drawer-head">
-          {/*
-            Заголовок правится прямо здесь.
 
-            Так сделано в Битриксе, и это правильно: название — первое, что человек
-            читает и первое, что хочет поправить. Отдельное поле «Название» ниже по
-            карточке дублировало его и заставляло искать, где же настоящее.
-
-            Поле растёт под текст: длинное название иначе уезжает за край одной
-            строкой, и прочитать его можно только стрелками.
-          */}
-          <h3 className="drawer-title">
-            <textarea
-              className="drawer-title-input"
-              value={title}
-              rows={1}
-              placeholder="Название задачи"
-              onChange={(e) => setTitle(e.target.value)}
-              onInput={(e) => {
-                const el = e.currentTarget;
-                el.style.height = 'auto';
-                el.style.height = `${el.scrollHeight}px`;
-              }}
-              ref={(el) => {
-                if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }
-              }}
-            />
-            {/* Номер нужен человеку, а не системе: по нему задачу называют боту
-                в ежедневном отчёте и в переписке. Клик копирует — переписывать
-                цифры с экрана руками никто не должен. */}
-            <button
-              className="task-num"
-              onClick={() => navigator.clipboard?.writeText(`#${task.id}`).catch(() => undefined)}
-              title="Номер задачи — скопировать. По нему задачу называют боту в отчёте"
-            >
-              #{task.id}
-            </button>
-          </h3>
+        <div className="tv2-crumbs">
+          {/* Номер нужен человеку, а не системе: по нему задачу называют боту в отчёте
+              и в переписке. Клик копирует — переписывать цифры с экрана никто не должен. */}
+          <button
+            className="tv2-num"
+            onClick={() => {
+              navigator.clipboard?.writeText(`#${task.id}`).then(() => toastSaved('Номер скопирован', `#${task.id}`)).catch(() => undefined);
+            }}
+            title="Номер задачи — скопировать. По нему задачу называют боту в отчёте"
+          >
+            #{task.id}
+          </button>
+          {columnName && <><span className="tv2-dot" aria-hidden>·</span><span>{columnName}</span></>}
+          {isDone && <Badge tone="ok"><Icon name="check" size={11} /> завершена</Badge>}
+          {task.agent_assigned && <Badge tone="info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={11} /> ИИ-агент</Badge>}
+          {task.is_blocked && <Badge tone="danger"><Icon name="alert" size={11} /> BLOCKED</Badge>}
           {/* Закрытие — крупной кнопкой: карточка на пол-экрана, и уходить из неё
               человек должен уверенным движением, а не целясь в мелкий значок. */}
-          <button className="drawer-close" onClick={onClose} title="Закрыть карточку" aria-label="Закрыть карточку">
-            <Icon name="close" size={20} />
-          </button>
+          <Button variant="ghost" size="icon" className="tv2-close" onClick={onClose} title="Закрыть карточку" aria-label="Закрыть карточку">
+            <Icon name="close" size={18} />
+          </Button>
         </div>
 
-        {/* Завершение — отдельной строкой под заголовком. Сбоку от названия кнопка
-            жалась к «закрыть» и терялась тем сильнее, чем длиннее название задачи. */}
         {/*
-          Задача объединена — об этом надо сказать первой строкой.
+          Заголовок правится прямо здесь, как в Битриксе: название — первое, что человек
+          читает и первое, что хочет поправить. Поле растёт под текст: длинное название
+          иначе уезжает за край одной строкой.
+        */}
+        <h2 className="tv2-title">
+          <textarea
+            className="drawer-title-input"
+            value={title}
+            rows={1}
+            placeholder="Название задачи"
+            aria-label="Название задачи"
+            onChange={(e) => setTitle(e.target.value)}
+            onInput={(e) => {
+              const el = e.currentTarget;
+              el.style.height = 'auto';
+              el.style.height = `${el.scrollHeight}px`;
+            }}
+            ref={(el) => {
+              if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }
+            }}
+          />
+        </h2>
 
-          Иначе человек продолжит работать в закрытой копии: комментарии он оставит
-          там, где их никто не читает. Ссылка ведёт в основную задачу.
+        {/*
+          Задача объединена — об этом надо сказать первой строкой: иначе человек
+          продолжит работать в закрытой копии, где комментарии никто не читает.
         */}
         {task.merged_into_id && (
-          <div className="merge-banner">
-            <Icon name="refresh" size={14} />
+          <div className="tv2-callout tv2-callout-info">
+            <Icon name="refresh" size={15} />
             <span>Объединена с задачей #{task.merged_into_id} — работа продолжается там.</span>
-            <button
-              className="btn btn-sm"
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => navigate({ section: 'projects', projectId: String(task.project_id), taskId: String(task.merged_into_id) })}
             >
               Открыть
-            </button>
+            </Button>
           </div>
         )}
 
-        {(isDone || targets.length > 0 || canDelete) && (
-          <div className="task-actions-row">
-            {targets.length > 0 && (
-              <div className="finish-group">
-                <button
-                  className={`btn btn-sm ${isDone ? 'btn-reopen' : 'btn-finish'}`}
-                  onClick={() => (doneTarget ? moveToColumn(doneTarget.id) : setChoosing((v) => !v))}
-                  disabled={moving}
-                  title={
-                    isDone ? 'Снять завершение и вернуть задачу в работу'
-                      : doneTarget ? `Завершить и перенести в «${doneTarget.name}»`
-                        : 'Перенести задачу в финальную колонку'
-                  }
-                >
-                  {isDone ? <><Icon name="reply" size={14} /> Вернуть в работу</> : <><Icon name="check" size={14} /> Завершить</>}
-                </button>
-                {doneTarget && (
-                  <button
-                    className="btn btn-sm finish-more"
-                    onClick={() => setChoosing((v) => !v)}
-                    disabled={moving}
-                    title="Завершить, но перенести в другую колонку"
-                    aria-label="Выбрать колонку"
+        {/*
+          Действия над задачей целиком. На виду — главное: завершить и проверить ИИ.
+          Остальное (объединить, шаблон, BLOCKED, удалить) — в меню «⋯»: восемь кнопок
+          в ряд читались как одна серая полоса, и «Удалить» стояло вплотную к «Завершить».
+        */}
+        <div className="tv2-actions">
+          {targets.length > 0 && (
+            <div className="tv2-split">
+              {doneTarget ? (
+                <>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => moveToColumn(doneTarget.id)}
+                    loading={moving}
+                    title={`Завершить и перенести в «${doneTarget.name}»`}
                   >
-                    <Icon name="more" size={14} />
-                  </button>
-                )}
-              </div>
-            )}
-            {isDone && <span className="badge badge-ok" title="Задача закрыта"><Icon name="check" size={12} /> завершена</span>}
-            {/*
-              Проверка ИИ.
-
-              Читает постановку, чек-лист, переписку, документы и СМОТРИТ скриншоты,
-              после чего пишет отчёт в переписку задачи. Это не приёмка: задачу
-              по-прежнему закрывает постановщик — ИИ только собирает доводы.
-            */}
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={runReview}
-              disabled={reviewing || moving}
-              title="ИИ прочитает задачу, посмотрит вложения и напишет в обсуждение, что проверил"
-            >
-              <Icon name="sparkles" size={14} /> {reviewing ? 'Проверяю…' : 'Проверить ИИ'}
-            </button>
-            {/* Объединение — рядом с завершением: это тоже способ закрыть задачу,
-                только не выбрасывая её содержимое. */}
-            {!task.merged_into_id && (
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => setMerging(true)}
-                disabled={moving}
-                title="Найти дубль этой задачи и объединить их в одну"
-              >
-                <Icon name="refresh" size={14} /> Объединить
-              </button>
-            )}
-            {/* Шаблон — про СПОСОБ работы, поэтому стоит рядом с прочими действиями
-                над задачей целиком, а не среди её полей. */}
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => setSaveTpl(true)}
-              disabled={moving}
-              title="Закрепить эту задачу как образец: название, описание, чек-лист, теги и исполнитель"
-            >
-              <Icon name="copy" size={14} /> Сохранить как шаблон
-            </button>
-            {canDelete && (
-              <button className="btn btn-ghost btn-sm btn-delete" onClick={() => removeTask()} disabled={moving} title="Удалить задачу без возможности восстановления">
-                <Icon name="trash" size={14} /> Удалить
-              </button>
-            )}
-          </div>
-        )}
-
-        {choosing && (
-          <div className={`finish-picker ${isDone ? 'reopen-picker' : ''}`}>
-            <span className="status-label">{isDone ? 'Вернуть в колонку' : 'Куда перенести задачу?'}</span>
-            <div className="status-pills">
-              {targets.map((c) => (
-                <button
-                  key={c.id}
-                  className={`status-pill ${c.highlight ? (isDone ? 'pill-work' : 'pill-final') : ''}`}
-                  disabled={moving}
-                  onClick={async () => { await moveToColumn(c.id); setChoosing(false); }}
+                    <Icon name="check" size={15} /> Завершить
+                  </Button>
+                  <DropdownMenu
+                    align="start"
+                    trigger={(
+                      <Button variant="primary" size="sm" className="tv2-split-more" disabled={moving} aria-label="Завершить в другую колонку">
+                        <Icon name="chevron-down" size={14} />
+                      </Button>
+                    )}
+                  >
+                    {targets.map((c) => (
+                      <MenuItem key={c.id} onSelect={() => void moveToColumn(c.id)} icon={c.highlight ? <Icon name="check" size={14} /> : undefined}>
+                        {c.name}
+                      </MenuItem>
+                    ))}
+                  </DropdownMenu>
+                </>
+              ) : (
+                // «Готово» у проекта нет (импортные доски: «Сдано», «На тестировании») —
+                // угадывать за человека не будем, колонку он выбирает сам.
+                <DropdownMenu
+                  align="start"
+                  trigger={(
+                    <Button variant={isDone ? 'outline' : 'primary'} size="sm" loading={moving}>
+                      {isDone ? <><Icon name="reply" size={15} /> Вернуть в работу</> : <><Icon name="check" size={15} /> Завершить</>}
+                      <Icon name="chevron-down" size={14} />
+                    </Button>
+                  )}
                 >
-                  {c.highlight && !isDone && <Icon name="check" size={12} />}{c.name}
-                </button>
-              ))}
+                  {targets.map((c) => (
+                    <MenuItem key={c.id} onSelect={() => void moveToColumn(c.id)} icon={c.highlight ? <Icon name="check" size={14} /> : undefined}>
+                      {c.name}
+                    </MenuItem>
+                  ))}
+                </DropdownMenu>
+              )}
             </div>
-          </div>
-        )}
-
-        {columns.length > 0 && (
-          <div className="status-bar">
-            <span className="status-label">Статус</span>
-            <div className="status-pills">
-              {columns.map((c) => (
-                <button
-                  key={c.id}
-                  className={`status-pill ${c.id === task.column_id ? 'active' : ''}`}
-                  onClick={() => moveToColumn(c.id)}
-                  disabled={moving}
-                  title={c.id === task.column_id ? 'Текущая колонка' : `Переместить в «${c.name}»`}
-                >
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="drawer-row card-meta">
-          {task.agent_assigned && <span className="badge badge-info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={12} /> ИИ-агент</span>}
-          <select className="input prio-select" value={priority} onChange={(e) => setPriority(e.target.value)}>
-            {PRIORITIES.map(([v, l]) => <option key={v} value={v}>приоритет: {l}</option>)}
-          </select>
-          {task.risk_level && <span className={`badge risk-badge risk-${task.risk_level}`} title="Риск срыва срока"><Icon name="alert" size={12} /> {task.risk_pct ?? '—'}%</span>}
-          {MONETIZATION_ENABLED && cost !== null && <span className="badge">₽ {cost.toLocaleString('ru-RU')}</span>}
-          <button className={`btn btn-ghost btn-sm ${task.is_blocked ? 'blocked-on' : ''}`} onClick={toggleBlocked} title="Блокировка задачи">
-            {task.is_blocked ? <><Icon name="alert" size={14} /> BLOCKED</> : 'Отметить BLOCKED'}
-          </button>
-        </div>
-        {err && <div className="error-text">{err}</div>}
-        <LabelsRow task={task} onRefresh={onRefresh} />
-
-        <div className="tabs">
-          <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Обзор</button>
-          <button className={`tab ${tab === 'files' ? 'active' : ''}`} onClick={() => setTab('files')}>
-            Файлы{fileCount > 0 && <span className="tab-count">{fileCount}</span>}
-          </button>
-          <button className={`tab ${tab === 'checklist' ? 'active' : ''}`} onClick={() => setTab('checklist')}>Чеклист</button>
-          {/* ИИ-агент доступен всем сотрудникам: сервер их и так пускал, пряталась
-              только вкладка — человек видел у руководителя возможность, которой у него
-              «нет», хотя на деле она была. */}
-          <button className={`tab ${tab === 'agent' ? 'active' : ''}`} onClick={() => setTab('agent')}><Icon name="robot" size={14} /> Агент</button>
+          )}
           {/*
-            Вкладка «Чат» — ответ на «сообщения в маленьких окнах».
-
-            Колонка справа шириной в 360 точек превращает абзац из пяти строк в
-            двадцать, а картинку — в марку. Здесь разговор занимает карточку целиком:
-            читать длинное сообщение становится так же удобно, как в мессенджере.
-            Колонка при этом никуда не делась — из неё в эту вкладку ведёт «развернуть».
+            Проверка ИИ: читает постановку, чек-лист, переписку, документы и смотрит
+            скриншоты, а отчёт пишет в обсуждение. Это не приёмка — закрывает задачу
+            по-прежнему постановщик.
           */}
-          <button className={`tab ${tab === 'chat' ? 'active' : ''}`} onClick={() => setTab('chat')}>
-            <Icon name="chat" size={14} /> Чат
-          </button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runReview}
+            loading={reviewing}
+            disabled={moving}
+            title="ИИ прочитает задачу, посмотрит вложения и напишет в обсуждение, что проверил"
+          >
+            {!reviewing && <Icon name="sparkles" size={15} />} {reviewing ? 'Проверяю…' : 'Проверить ИИ'}
+          </Button>
+          <DropdownMenu
+            trigger={(
+              <Button variant="ghost" size="icon-sm" aria-label="Ещё действия с задачей" title="Ещё действия">
+                <Icon name="more" size={16} />
+              </Button>
+            )}
+          >
+            {/* BLOCKED — не правка полей, а метка состояния: ставится и снимается одним нажатием. */}
+            <MenuItem onSelect={() => void toggleBlocked()} icon={<Icon name="alert" size={15} />}>
+              {task.is_blocked ? 'Снять BLOCKED' : 'Отметить BLOCKED'}
+            </MenuItem>
+            {!task.merged_into_id && (
+              <MenuItem onSelect={() => setMerging(true)} icon={<Icon name="refresh" size={15} />} disabled={moving}>
+                Объединить с дублем
+              </MenuItem>
+            )}
+            {/* Шаблон — про СПОСОБ работы, поэтому среди действий над задачей целиком. */}
+            <MenuItem onSelect={() => setSaveTpl(true)} icon={<Icon name="copy" size={15} />} disabled={moving}>
+              Сохранить как шаблон
+            </MenuItem>
+            <MenuItem
+              onSelect={() => { navigator.clipboard?.writeText(`${window.location.origin}/projects/${task.project_id}/task/${task.id}`).then(() => toastSaved('Ссылка скопирована')).catch(() => undefined); }}
+              icon={<Icon name="link" size={15} />}
+            >
+              Скопировать ссылку
+            </MenuItem>
+            {canDelete && (
+              <>
+                <MenuSeparator />
+                <MenuItem destructive onSelect={() => void removeTask()} icon={<Icon name="trash" size={15} />} disabled={moving}>
+                  Удалить задачу
+                </MenuItem>
+              </>
+            )}
+          </DropdownMenu>
         </div>
+
+        {/*
+          Свойства — сеткой «подпись · значение», как в Linear: статус, приоритет, риск
+          и стоимость читаются одним взглядом, а не ищутся по строкам с кнопками.
+        */}
+        <dl className="tv2-props">
+          {columns.length > 0 && (
+            <>
+              <dt>Статус</dt>
+              <dd className="tv2-status">
+                {columns.map((c) => (
+                  <button
+                    key={c.id}
+                    className="ui-toggle ui-toggle-sm"
+                    data-pressed={c.id === task.column_id ? '' : undefined}
+                    aria-pressed={c.id === task.column_id}
+                    onClick={() => moveToColumn(c.id)}
+                    disabled={moving}
+                    title={c.id === task.column_id ? 'Текущая колонка' : `Переместить в «${c.name}»`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </dd>
+            </>
+          )}
+          <dt>Приоритет</dt>
+          <dd>
+            <Select ariaLabel="Приоритет" size="sm" value={priority} onValueChange={setPriority} options={PRIORITY_OPTIONS} />
+          </dd>
+          {(task.risk_level || (MONETIZATION_ENABLED && cost !== null)) && (
+            <>
+              <dt>Риск</dt>
+              <dd>
+                {task.risk_level
+                  ? <Badge tone={task.risk_level === 'red' ? 'danger' : task.risk_level === 'yellow' ? 'warn' : 'ok'} title="Риск срыва срока"><Icon name="alert" size={11} /> {task.risk_pct ?? '—'}%</Badge>
+                  : <span className="ui-cell-dim">нет прогноза</span>}
+                {MONETIZATION_ENABLED && cost !== null && <Badge tone="neutral">₽ {cost.toLocaleString('ru-RU')}</Badge>}
+              </dd>
+            </>
+          )}
+          {/* У поля тегов своя подпись — вторая слева была бы повтором. */}
+          <dd className="tv2-props-full"><LabelsRow task={task} onRefresh={onRefresh} /></dd>
+        </dl>
+
+        {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
+
+        <Tabs className="tv2-tabs" ariaLabel="Разделы задачи" value={tab} onValueChange={setTab} items={tabItems} />
 
         {tab === 'chat' && (
           <TaskChat
@@ -842,67 +894,65 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           <>
             {/* Обе кнопки на виду: одна кнопка-переключатель не показывала, в каком
                 состоянии таймер сейчас, и «Пауза» читалась как «идёт пауза». */}
-            <div className={`timer-panel ${timerActive ? 'is-running' : ''}`}>
-              <div className="timer-state">
+            <div className={`tv2-timer${timerActive ? ' is-running' : ''}`}>
+              <div className="tv2-timer-state">
                 <span className="timer-dot" />
                 <span>{timerActive ? 'Идёт работа' : 'Таймер остановлен'}</span>
               </div>
-              <div className="timer-actions">
-                <button
-                  className="btn btn-sm timer-go"
+              <div className="tv2-timer-actions">
+                <Button
+                  size="sm"
+                  variant={timerActive ? 'outline' : 'primary'}
                   disabled={timerActive}
                   title={timerActive ? 'Таймер уже идёт' : 'Начать отсчёт времени по задаче'}
                   onClick={() => onToggleTimer(task.id)}
                 >
-                  <Icon name="play" size={13} /> В работу
-                </button>
-                <button
-                  className="btn btn-sm timer-pause"
+                  <Icon name="play" size={14} /> В работу
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   disabled={!timerActive}
                   title={timerActive ? 'Остановить отсчёт' : 'Таймер не запущен'}
                   onClick={() => onToggleTimer(task.id)}
                 >
-                  <Icon name="pause" size={13} /> Пауза
-                </button>
-                {/* «Сделал» — про срок, а не про завершение: задача остаётся жить и
-                    ждёт следующего круга. Поэтому кнопка стоит у таймера, а не рядом
-                    с «Завершить», которую от неё надо отличать с первого взгляда.
-                    Кому и когда она видна — см. canShift. */}
-                {canShift && <button
-                  className="btn btn-sm"
-                  onClick={askShift}
-                  disabled={!!task.deadline_shift_to}
-                  title={task.deadline_shift_to
-                    ? 'Перенос уже отправлен постановщику'
-                    : 'Отчитаться и перенести срок на следующую среду, 17:00 (подтверждает постановщик)'}
-                >
-                  <Icon name="check-circle" size={13} /> Сделал — срок на среду
-                </button>}
+                  <Icon name="pause" size={14} /> Пауза
+                </Button>
+                {/* «Сделал» — про срок, а не про завершение: задача ждёт следующего круга.
+                    Поэтому кнопка у таймера, а не рядом с «Завершить». Кому видна — canShift. */}
+                {canShift && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={askShift}
+                    disabled={!!task.deadline_shift_to}
+                    title={task.deadline_shift_to
+                      ? 'Перенос уже отправлен постановщику'
+                      : 'Отчитаться и перенести срок на следующую среду, 17:00 (подтверждает постановщик)'}
+                  >
+                    <Icon name="check-circle" size={14} /> Сделал — срок на среду
+                  </Button>
+                )}
               </div>
             </div>
-            {shiftNote && <div className="dim task-shift-note"><Icon name="check" size={12} /> {shiftNote}</div>}
-            {tplNote && <div className="dim task-shift-note"><Icon name="check" size={12} /> {tplNote}</div>}
+            {shiftNote && <div className="tv2-note"><Icon name="check" size={13} /> {shiftNote}</div>}
+            {tplNote && <div className="tv2-note"><Icon name="check" size={13} /> {tplNote}</div>}
 
-            {/*
-              Просьба перенести срок — рядом с решением о приёмке, по тем же правилам:
-              видно всем, а кнопки — тому, кто решает.
-            */}
+            {/* Просьба перенести срок — по тем же правилам, что приёмка: видно всем, кнопки — тому, кто решает. */}
             {task.deadline_shift_to && (
-              <div className="approval-box">
-                <div className="approval-head">
-                  <Icon name="calendar" size={15} />{' '}
+              <div className="tv2-callout tv2-callout-warn tv2-callout-block">
+                <div className="tv2-callout-head">
+                  <Icon name="calendar" size={15} />
                   {userName(task.deadline_shift_by ?? null)} отчитался «Сделал» и просит перенести срок
                   на {shiftLabel(task.deadline_shift_to)}
                 </div>
                 {isManager ? (
-                  <div className="team-rate">
-                    <button className="btn btn-primary btn-sm" onClick={() => decideShift(true)}>Подтвердите</button>
-                    <button className="btn btn-sm" onClick={() => decideShift(false)}>Оставить прежний срок</button>
+                  <div className="tv2-callout-actions">
+                    <Button variant="primary" size="sm" onClick={() => decideShift(true)}>Подтвердить</Button>
+                    <Button variant="outline" size="sm" onClick={() => decideShift(false)}>Оставить прежний срок</Button>
                   </div>
                 ) : (
-                  <div className="dim" style={{ fontSize: 12 }}>
-                    Решает {userName(task.created_by ?? null)} — до подтверждения срок прежний.
-                  </div>
+                  <div className="tv2-callout-sub">Решает {userName(task.created_by ?? null)} — до подтверждения срок прежний.</div>
                 )}
               </div>
             )}
@@ -910,27 +960,25 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             {/* Работа сдана и ждёт решения: блок стоит первым — это главное, что
                 сейчас происходит с задачей, и адресован он конкретному человеку. */}
             {task.approval_state === 'pending' && (
-              <div className="approval-box">
-                <div className="approval-head">
+              <div className="tv2-callout tv2-callout-warn tv2-callout-block">
+                <div className="tv2-callout-head">
                   <Icon name="alert" size={15} /> Работа сдана и ждёт решения постановщика
                 </div>
                 {isManager ? (
-                  <div className="team-rate">
-                    <button className="btn btn-primary btn-sm" onClick={() => decide(true)}>Принять работу</button>
-                    <button className="btn btn-sm" onClick={() => decide(false)}>Вернуть в работу</button>
+                  <div className="tv2-callout-actions">
+                    <Button variant="primary" size="sm" onClick={() => decide(true)}>Принять работу</Button>
+                    <Button variant="outline" size="sm" onClick={() => decide(false)}>Вернуть в работу</Button>
                   </div>
                 ) : (
-                  <div className="dim" style={{ fontSize: 12 }}>
-                    Решает {userName(task.created_by ?? null)} — задача завершится после подтверждения.
-                  </div>
+                  <div className="tv2-callout-sub">Решает {userName(task.created_by ?? null)} — задача завершится после подтверждения.</div>
                 )}
               </div>
             )}
 
             {meeting && (
               // Обратная ссылка: из задачи видно, на какой встрече её поручили
-              <div className="dim task-origin">
-                <Icon name="record" size={12} /> Создано по итогам встречи:{' '}
+              <div className="tv2-origin">
+                <Icon name="record" size={13} /> Создано по итогам встречи:{' '}
                 <button className="link-btn" onClick={() => navigate({ section: 'chat', view: 'meetings' })}>
                   {meeting.title || 'встреча'}
                 </button>
@@ -938,14 +986,12 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             )}
 
             {fromMessage && (
-              // Из задачи видно, из какой фразы она выросла. Через неделю после
-              // постановки «а это вообще откуда?» — самый частый вопрос на разборе.
-              <div className="dim task-origin">
-                {/* Задачу, которую агент завёл сам, видно сразу: это не личное поручение
-                    из формы, и спорить о ней надо с перепиской, а не с постановщиком. */}
+              // Из задачи видно, из какой фразы она выросла: «а это вообще откуда?» —
+              // самый частый вопрос на разборе через неделю после постановки.
+              <div className="tv2-origin">
                 {task.created_by_ai
-                  ? <><Icon name="sparkles" size={12} /> Создано Anthill AI по итогам переписки{' '}</>
-                  : <><Icon name="chat" size={12} /> Создано из сообщения{' '}</>}
+                  ? <><Icon name="sparkles" size={13} /> Создано Anthill AI по итогам переписки{' '}</>
+                  : <><Icon name="chat" size={13} /> Создано из сообщения{' '}</>}
                 {fromMessage.author_name ? `(${fromMessage.author_name})` : ''}:{' '}
                 <button
                   className="link-btn"
@@ -960,10 +1006,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 >
                   «{fromMessage.body.slice(0, 80)}»
                 </button>
-                {/* Ошибку агента отменяют здесь же: исполнителю раздел «Разбор переписки»
-                    не открыт, а обычное удаление не засчитало бы агенту промах.
-                    Окно — сутки; права сервер проверит сам. */}
-                {/* Отзыв о задаче, которую завёл агент (ТЗ-12, разд. 59). */}
+                {/* Отзыв о задаче, которую завёл агент (ТЗ-12, разд. 59), и отмена его ошибки:
+                    окно — сутки, права проверит сервер. */}
                 {task.created_by_ai && (
                   <>{' · '}<AiFeedback send={(b) => api.aiTaskFeedback(task.id, b)} /></>
                 )}
@@ -979,30 +1023,26 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               </div>
             )}
 
-            {/* Поля «Название» здесь больше нет: заголовок правится в шапке карточки,
-                а два поля об одном и том же расходились и путали. */}
             {/*
-              Описание читается, а не редактируется.
-
-              Пока оно было полем ввода, по ссылке в постановке нельзя было щёлкнуть,
-              а картинку — увидеть: текст в textarea можно только выделить и скопировать.
-              Правка включается кнопкой, как в Битриксе.
+              Описание читается, а не редактируется: пока оно было полем ввода, по ссылке
+              нельзя было щёлкнуть, а картинку — увидеть. Правка включается кнопкой.
             */}
-            <div className="field">
-              <label>
-                Описание
-                {/* Пока описание правили — «Готово» горит: человек должен видеть,
-                    что от него ждут действия, не разглядывая полосу внизу карточки. */}
-                <button
-                  className={`btn btn-sm desc-edit-btn${editingDesc && desc !== (task.description ?? '') ? ' btn-primary' : ' btn-ghost'}`}
+            <Field
+              className="tv2-desc"
+              label="Описание"
+              action={(
+                <Button
+                  size="sm"
+                  variant={editingDesc && desc !== (task.description ?? '') ? 'primary' : 'ghost'}
                   onClick={() => setEditingDesc((v) => !v)}
                   title={editingDesc ? 'Закончить правку — сохранится общей кнопкой внизу' : 'Изменить описание'}
                 >
-                  <Icon name={editingDesc ? 'check' : 'edit'} size={13} /> {editingDesc ? 'Готово' : 'Редактировать'}
-                </button>
-              </label>
-              {/* Визуальный редактор — как в WordPress: жирный, списки, картинки по Ctrl+V.
-                  В базу уходит лёгкая разметка, поэтому письма и ИИ читают описание как раньше. */}
+                  <Icon name={editingDesc ? 'check' : 'edit'} size={14} /> {editingDesc ? 'Готово' : 'Редактировать'}
+                </Button>
+              )}
+            >
+              {/* Визуальный редактор: жирный, списки, картинки по Ctrl+V. В базу уходит
+                  лёгкая разметка, поэтому письма и ИИ читают описание как раньше. */}
               {editingDesc ? (
                 <RichEditor
                   value={desc}
@@ -1018,102 +1058,99 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               {descPreview && (
                 <Lightbox items={[{ url: descPreview.url, name: descPreview.name, mime: descPreview.mime }]} onClose={() => setDescPreview(null)} />
               )}
-            </div>
-            <div className="drawer-section">
-              <div className="drawer-section-title">Назначение и план</div>
+            </Field>
+
+            <section className="tv2-section">
+              <h3 className="tv2-section-title">Люди</h3>
               {/* Направления — для кого работа (задача #1295); сохраняются сразу. */}
               <TaskDirections taskId={String(task.id)} initial={task.directions ?? []} onRefresh={onRefresh} />
-              <div className="drawer-grid2">
-                <div className="field"><label>Исполнитель</label>
-                  <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-                    <option value="">— не назначен —</option>
-                    {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-                  </select>
-                  {/* Совет «кому поручить» — по кнопке; поле остаётся за человеком (ТЗ-10). */}
+              <div className="tv2-grid2">
+                <Field label="Исполнитель" action={
+                  /* Совет «кому поручить» — по кнопке; поле остаётся за человеком (ТЗ-10). */
                   <SuggestAssignee title={title} description={desc} projectId={String(task.project_id)} onPick={setAssigneeId} />
-                </div>
-                <div className="field"><label title="Кто ставит задачу и принимает результат">Постановщик</label>
-                  <select className="input" value={managerId} onChange={(e) => setManagerId(e.target.value)}>
-                    <option value="">— не задан —</option>
-                    {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-                  </select>
-                </div>
+                }>
+                  <Select ariaLabel="Исполнитель" value={String(assigneeId ?? '')} onValueChange={setAssigneeId} options={userOptions('Не назначен')} className="tv2-wide" />
+                </Field>
+                <Field label={<span title="Кто ставит задачу и принимает результат">Постановщик</span>}>
+                  <Select ariaLabel="Постановщик" value={String(managerId ?? '')} onValueChange={setManagerId} options={userOptions('Не задан')} className="tv2-wide" />
+                </Field>
               </div>
-              {/* Соисполнители и наблюдатели — рядом с исполнителем и постановщиком:
-                  это ответ на тот же вопрос «кто в этой задаче». */}
-              <PeopleField
-                label="Соисполнители"
-                hint="Делают работу вместе с исполнителем и видят задачу в своих"
-                role="co_assignee"
-                people={participants}
-                users={users}
-                onAdd={addPerson}
-                onRemove={removePerson}
-              />
-              <PeopleField
-                label="Наблюдатели"
-                hint="Следят за ходом и получают уведомления, выполнять не обязаны"
-                role="watcher"
-                people={participants}
-                users={users}
-                onAdd={addPerson}
-                onRemove={removePerson}
-              />
-
-              {/*
-                Перенос задачи в другой проект.
-
-                Живая жалоба: «поставил не туда и не могу перенести». Пересоздавать
-                задачу значило потерять переписку, вложения и учтённое время — вместе
-                с ними теряется и вся история решения.
-              */}
-              <div className="field">
-                <label>Проект</label>
-                <select
-                  className="input"
-                  value={String(task.project_id)}
-                  onChange={(e) => { void moveToProject(e.target.value); }}
-                  title="Перенести задачу в другой проект"
-                >
-                  {projectList.map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
-                </select>
-                {movedNote && <span className="dim" style={{ fontSize: 12 }}>{movedNote}</span>}
+              {/* Соисполнители и наблюдатели — рядом с исполнителем: тот же вопрос «кто в задаче». */}
+              <div className="tv2-grid2">
+                <PeopleField
+                  label="Соисполнители"
+                  hint="Делают работу вместе с исполнителем и видят задачу в своих"
+                  role="co_assignee"
+                  people={participants}
+                  users={users}
+                  onAdd={addPerson}
+                  onRemove={removePerson}
+                />
+                <PeopleField
+                  label="Наблюдатели"
+                  hint="Следят за ходом и получают уведомления, выполнять не обязаны"
+                  role="watcher"
+                  people={participants}
+                  users={users}
+                  onAdd={addPerson}
+                  onRemove={removePerson}
+                />
               </div>
+            </section>
 
-              <div className="drawer-grid2">
-                <div className="field"><label>Оценка, ч</label><input className="input" type="number" min="0" step="0.5" value={estimate} onChange={(e) => setEstimate(e.target.value)} /></div>
-                <div className="field"><label>Дедлайн</label>
+            <section className="tv2-section">
+              <h3 className="tv2-section-title">План</h3>
+              <div className="tv2-grid2">
+                <Field label="Срок">
                   <DatePicker value={deadline} onChange={setDeadline} withTime warnPast placeholder="срок не задан" />
-                </div>
+                </Field>
+                <Field label="Оценка, ч">
+                  <Input type="number" min="0" step="0.5" value={estimate} placeholder="не задана" onChange={(e) => setEstimate(e.target.value)} />
+                </Field>
               </div>
               {warn && (
-                <div className="overload-warn"><Icon name="alert" size={13} /> Перегруз: риск {warn.riskPct ?? '—'}%, {warn.projectedHours}ч &gt; {warn.capacityHours}ч/нед.
-                  <button className="btn btn-sm overload-confirm" onClick={() => saveAll(true)}>Всё равно назначить</button>
+                <div className="tv2-callout tv2-callout-warn">
+                  <Icon name="alert" size={15} />
+                  <span>Перегруз: риск {warn.riskPct ?? '—'}%, {warn.projectedHours} ч &gt; {warn.capacityHours} ч/нед.</span>
+                  <Button size="sm" variant="outline" onClick={() => saveAll(true)}>Всё равно назначить</Button>
                 </div>
               )}
               {/* Переключатель согласования — право постановщика, пока задача жива. */}
-              <label className="notify-row" title="Исполнитель сдаёт работу, завершаете её вы">
-                <input
-                  type="checkbox"
-                  checked={approval}
-                  disabled={!isManager || !!task.closed_at}
-                  onChange={(e) => setApproval(e.target.checked)}
-                />
-                Не завершать без согласования с постановщиком
-              </label>
-            </div>
-            {/* Повтор — рядом с планом: это ответ на вопрос «когда», а не отдельная тема. */}
-            <TaskRecurrenceBlock taskId={task.id} onRefresh={onRefresh} />
+              <Checkbox
+                className="tv2-check"
+                checked={approval}
+                disabled={!isManager || !!task.closed_at}
+                onCheckedChange={setApproval}
+                label="Не завершать без согласования с постановщиком"
+              />
+              {/* Повтор — рядом с планом: это ответ на вопрос «когда», а не отдельная тема. */}
+              <TaskRecurrenceBlock taskId={task.id} onRefresh={onRefresh} />
+              {(task.risk_level || task.predicted_finish_at) && (
+                <div className="tv2-note">
+                  {task.risk_level && <span className={`risk-dot risk-${task.risk_level}`} />}
+                  Прогноз: {task.risk_level ? `риск ${task.risk_pct ?? '—'}%` : 'без оценки риска'}
+                  {task.predicted_finish_at && ` · закончится ${new Date(task.predicted_finish_at).toLocaleString('ru-RU')}`}
+                </div>
+              )}
+            </section>
 
-            <div className="drawer-section">
-              <div className="drawer-section-title">Прогноз срока</div>
-              <div className="drawer-row">
-                {task.risk_level && <span className={`risk-dot risk-${task.risk_level}`} />}
-                <span>{task.risk_level ? `риск ${task.risk_pct ?? '—'}% (${task.risk_level})` : 'нет прогноза'}</span>
-              </div>
-              {task.predicted_finish_at && <div className="dim">Прогноз: {new Date(task.predicted_finish_at).toLocaleString('ru-RU')}</div>}
-              <div className="dim">Исполнитель: {userName(assigneeId || null)} · Постановщик: {userName(managerId || null)}</div>
-            </div>
+            {/*
+              Перенос задачи в другой проект. Живая жалоба: «поставил не туда и не могу
+              перенести». Пересоздавать задачу значило потерять переписку, вложения
+              и учтённое время.
+            */}
+            <section className="tv2-section">
+              <h3 className="tv2-section-title">Проект</h3>
+              <Field hint={movedNote || 'Переписка, вложения и время переедут вместе с задачей'}>
+                <Select
+                  ariaLabel="Проект задачи"
+                  value={String(task.project_id)}
+                  onValueChange={(v) => { void moveToProject(v); }}
+                  options={projectList.map((p) => ({ value: String(p.id), label: p.name }))}
+                  className="tv2-wide"
+                />
+              </Field>
+            </section>
           </>
         )}
 
@@ -1129,21 +1166,17 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
         {/*
           Полоса сохранения — внизу карточки и всегда на виду, на любой вкладке.
-
-          Ответ на вопрос «мои правки применились?» должен лежать в ОДНОМ месте и не
-          уезжать за край экрана. Раньше кнопок сохранения было две, обе в середине
-          длинной карточки, а половина полей сохранялась молча — и человек, прикрепив
-          файл, смотрел на неактивную кнопку и не понимал, случилось ли хоть что-то.
+          Ответ на вопрос «мои правки применились?» лежит в ОДНОМ месте.
         */}
         <div className={`task-save-bar${dirty ? ' is-dirty' : ''}`}>
           <span className="task-save-note">
             {dirty
               ? 'Есть несохранённые правки — Ctrl+S или «Сохранить»'
-              : 'Всё сохранено. Файлы, метки, люди и чек-лист сохраняются сразу'}
+              : 'Всё сохранено. Файлы, теги, люди и чек-лист сохраняются сразу'}
           </span>
-          <button className="btn btn-primary" onClick={() => saveAll(false)} disabled={!dirty || saving}>
+          <Button variant="primary" onClick={() => saveAll(false)} disabled={!dirty} loading={saving}>
             {saving ? 'Сохраняю…' : dirty ? 'Сохранить' : 'Сохранено'}
-          </button>
+          </Button>
         </div>
         </div>
 
@@ -1188,8 +1221,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           onClose={() => setMerging(false)}
           onMerged={(r) => {
             setMerging(false);
-            // Уходим в основную задачу: она могла оказаться и в другом проекте,
-            // а оставаться в объединённой копии человеку незачем.
+            // Уходим в основную задачу: она могла оказаться и в другом проекте.
             navigate({ section: 'projects', projectId: r.projectId, taskId: r.taskId });
             onRefresh();
           }}
@@ -1285,36 +1317,54 @@ function ChecklistTab({ taskId, onRefresh, required, canSetRequired }: {
         знает, что без отмеченных пунктов задачу не сдать, а не узнаёт об этом из возврата.
       */}
       {canSetRequired ? (
-        <label className="gate-item checklist-rule">
-          <input type="checkbox" checked={strict} onChange={(e) => void toggleStrict(e.target.checked)} />
-          <span>
-            <span className="gate-item-title">Не принимать задачу без выполненного чек-листа</span>
-            <span className="dim gate-item-hint">
-              Исполнитель не сможет сдать задачу, пока не отметит все пункты. Включено по умолчанию.
-            </span>
-          </span>
-        </label>
+        <div className="tv2-rule">
+          <Checkbox
+            checked={strict}
+            onCheckedChange={(on) => void toggleStrict(on)}
+            label={(
+              <span className="tv2-rule-text">
+                <b>Не принимать задачу без выполненного чек-листа</b>
+                <span>Исполнитель не сможет сдать задачу, пока не отметит все пункты. Включено по умолчанию.</span>
+              </span>
+            )}
+          />
+        </div>
       ) : strict && items.length > 0 && (
-        <div className="checklist-rule checklist-rule-note">
+        <div className="tv2-callout tv2-callout-info">
           <Icon name="lock" size={14} /> Задачу не сдать, пока не отмечены все пункты: постановщик не принимает без чек-листа.
         </div>
       )}
-      {items.length > 0 && <div className="dim">{done} / {items.length} выполнено</div>}
+      {items.length > 0 && (
+        <div className="tv2-progress" aria-label={`Выполнено ${done} из ${items.length}`}>
+          <span className="tv2-progress-bar"><span style={{ width: `${Math.round((done / items.length) * 100)}%` }} /></span>
+          <span className="tv2-progress-text">{done} из {items.length}</span>
+        </div>
+      )}
       {items.length === 0 && (
         <EmptyState compact icon="check" title="Чек-листа нет"
           hint="Разбейте задачу на шаги — станет видно, сколько уже сделано, и работу проще передать." />
       )}
-      {items.map((i) => (
-        <label key={i.id} className="notify-row">
-          <input type="checkbox" checked={i.is_done} onChange={async () => { await api.patchChecklist(taskId, i.id, { isDone: !i.is_done }); reload(); onRefresh(); }} />
-          <span style={{ flex: 1, textDecoration: i.is_done ? 'line-through' : 'none' }}>{i.text}</span>
-          <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteChecklist(taskId, i.id); reload(); onRefresh(); }} title="Удалить"><Icon name="close" size={13} /></button>
-        </label>
-      ))}
-      <div className="team-rate" style={{ marginTop: 10 }}>
-        <input className="input" placeholder="новый пункт" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && text.trim() && (async () => { await api.addChecklist(taskId, text.trim()); setText(''); reload(); onRefresh(); })()} />
-        <button className="btn btn-primary btn-sm" onClick={async () => { if (text.trim()) { await api.addChecklist(taskId, text.trim()); setText(''); reload(); onRefresh(); } }}>+</button>
+      <div className="tv2-list">
+        {items.map((i) => (
+          <div key={i.id} className={`tv2-list-row${i.is_done ? ' is-done' : ''}`}>
+            <Checkbox
+              checked={!!i.is_done}
+              onCheckedChange={async () => { await api.patchChecklist(taskId, i.id, { isDone: !i.is_done }); reload(); onRefresh(); }}
+              label={i.text}
+            />
+            <Button variant="ghost" size="icon-sm" onClick={async () => { await api.deleteChecklist(taskId, i.id); reload(); onRefresh(); }} title="Удалить пункт" aria-label={`Удалить пункт «${i.text}»`}>
+              <Icon name="trash" size={14} />
+            </Button>
+          </div>
+        ))}
       </div>
+      <form
+        className="tv2-add"
+        onSubmit={async (e) => { e.preventDefault(); if (!text.trim()) return; await api.addChecklist(taskId, text.trim()); setText(''); reload(); onRefresh(); }}
+      >
+        <Input placeholder="Новый пункт — Enter, чтобы добавить" value={text} onChange={(e) => setText(e.target.value)} aria-label="Новый пункт чек-листа" />
+        <Button type="submit" variant="primary" disabled={!text.trim()}><Icon name="plus" size={15} /> Добавить</Button>
+      </form>
     </>
   );
 }
@@ -1345,7 +1395,11 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
   };
 
   const assign = async () => {
-    if (!window.confirm('Передать задачу ИИ-агенту? Он станет исполнителем и сразу выполнит её (результат — на «На тестировании»).')) return;
+    if (!(await confirmAction({
+      title: 'Передать задачу ИИ-агенту?',
+      description: 'Он станет исполнителем и сразу выполнит её — результат появится в «На тестировании».',
+      confirmLabel: 'Передать',
+    }))) return;
     setBusy(true); setMsg('');
     try {
       const r = await api.agentAssign(taskId, true, runOpts());
@@ -1363,13 +1417,13 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
   };
 
   const statusBadge = (s: string) => (({
-    running: { label: 'выполняется', cls: 'badge-info' },
-    done: { label: 'на ревью', cls: 'badge-warn' },
-    accepted: { label: 'принят', cls: 'badge-ok' },
-    rejected: { label: 'отклонён', cls: 'badge-muted' },
-    declined: { label: 'не автоматизируется', cls: 'badge-muted' },
-    failed: { label: 'ошибка', cls: 'badge-danger' },
-  } as Record<string, { label: string; cls: string }>)[s] ?? { label: s, cls: 'badge-muted' });
+    running: { label: 'выполняется', cls: 'ui-badge-info' },
+    done: { label: 'на ревью', cls: 'ui-badge-warn' },
+    accepted: { label: 'принят', cls: 'ui-badge-ok' },
+    rejected: { label: 'отклонён', cls: 'ui-badge-neutral' },
+    declined: { label: 'не автоматизируется', cls: 'ui-badge-neutral' },
+    failed: { label: 'ошибка', cls: 'ui-badge-danger' },
+  } as Record<string, { label: string; cls: string }>)[s] ?? { label: s, cls: 'ui-badge-neutral' });
 
   const run = async () => {
     setBusy(true); setMsg('');
@@ -1378,7 +1432,11 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
     finally { setBusy(false); }
   };
   const execute = async () => {
-    if (!window.confirm('Передать задачу ИИ-агенту? Он выполнит её и перенесёт в «На тестировании» на вашу проверку.')) return;
+    if (!(await confirmAction({
+      title: 'Выполнить задачу ИИ-агентом?',
+      description: 'Он выполнит её и перенесёт в «На тестировании» на вашу проверку.',
+      confirmLabel: 'Выполнить',
+    }))) return;
     setBusy(true); setMsg('');
     try {
       const r = await api.agentExecute(taskId, runOpts());
@@ -1398,7 +1456,12 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
   const rework = async (id: string) => {
-    const feedback = window.prompt('Что доработать? Агент переделает результат с учётом замечаний:');
+    const feedback = await promptText({
+      title: 'Доработать результат агента',
+      description: 'Агент переделает результат с учётом замечаний.',
+      minLength: 2,
+      confirmLabel: 'Доработать',
+    });
     if (!feedback || feedback.trim().length < 2) return;
     setBusy(true); setMsg('');
     try { await api.agentRework(id, feedback.trim()); flash('Доработка готова — новый результат ниже'); reload(); onRefresh(); }
@@ -1411,14 +1474,14 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
     <>
       <div className="add-area" style={{ marginBottom: 10 }}>
         {assigned ? (
-          <div className="team-head">
-            <span className="badge badge-info"><Icon name="robot" size={12} /> Исполнитель — ИИ-агент</span>
-            <button className="btn btn-ghost btn-sm" onClick={unassign} disabled={busy}>Снять с агента</button>
+          <div className="tv2-row">
+            <Badge tone="info"><Icon name="robot" size={11} /> Исполнитель — ИИ-агент</Badge>
+            <Button variant="ghost" size="sm" onClick={unassign} disabled={busy}>Снять с агента</Button>
           </div>
         ) : (
-          <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={assign} disabled={busy}>
-            <Icon name="robot" size={14} /> Передать агенту
-          </button>
+          <Button variant="primary" className="tv2-wide" onClick={assign} loading={busy}>
+            <Icon name="robot" size={15} /> Передать агенту
+          </Button>
         )}
         <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
           «Передать агенту» — назначить ИИ исполнителем и сразу выполнить (текстовые задачи). Задача пойдёт на «На тестировании» вам на проверку.
@@ -1431,35 +1494,46 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
 
       {/* выбор промпта: пресет из библиотеки / свой / по умолчанию */}
       <div style={{ marginTop: 8 }}>
-        <select className="input" value={promptId} onChange={(e) => setPromptId(e.target.value)} title="Промпт для агента">
-          <option value="">Промпт: по умолчанию</option>
-          {prompts.map((p) => <option key={p.id} value={p.id}>{p.name}{p.is_shared ? ' · общий' : ''}{p.model ? ` · ${p.model}` : ''}</option>)}
-          <option value="__custom__">Свой промпт…</option>
-        </select>
+        <Select
+          ariaLabel="Промпт для агента"
+          className="tv2-wide"
+          value={promptId}
+          onValueChange={setPromptId}
+          options={[
+            { value: '', label: 'Промпт: по умолчанию' },
+            ...prompts.map((p) => ({ value: String(p.id), label: `${p.name}${p.is_shared ? ' · общий' : ''}${p.model ? ` · ${p.model}` : ''}` })),
+            { value: '__custom__', label: 'Свой промпт…' },
+          ]}
+        />
         {promptId === '__custom__' && (
           <>
-            <textarea className="input" rows={3} style={{ marginTop: 6 }} placeholder="Инструкция агенту на этот запуск: роль, тон, структура…" value={customText} onChange={(e) => setCustomText(e.target.value)} />
-            <select className="input" style={{ marginTop: 6 }} value={customModel} onChange={(e) => setCustomModel(e.target.value)} title="Модель">
-              <option value="">Модель по умолчанию</option>
-              {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}</option>)}
-            </select>
+            <textarea className="ui-textarea" rows={3} style={{ marginTop: 6 }} placeholder="Инструкция агенту на этот запуск: роль, тон, структура…" value={customText} onChange={(e) => setCustomText(e.target.value)} />
+            <div style={{ marginTop: 6 }}>
+              <Select
+                ariaLabel="Модель"
+                className="tv2-wide"
+                value={customModel}
+                onValueChange={setCustomModel}
+                options={[{ value: '', label: 'Модель по умолчанию' }, ...models.map((m) => ({ value: m, label: `${m}${m.endsWith(':free') ? ' — бесплатно' : ''}` }))]}
+              />
+            </div>
             <div className="dim" style={{ fontSize: 11, marginTop: 4 }}>Совет: удачный промпт сохраните в «Личный кабинет → Профиль → Мои промпты», чтобы переиспользовать.</div>
           </>
         )}
       </div>
       <div className="team-rate" style={{ marginTop: 8 }}>
-        <button className="btn btn-sm" style={{ flex: 1 }} onClick={run} disabled={busy}>
-          {busy ? 'Агент думает…' : <><Icon name="sparkles" size={14} /> Черновик</>}
-        </button>
-        <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={execute} disabled={busy} title="Автономно выполнить задачу (текст/КП) → на тестирование">
-          {busy ? 'Агент работает…' : <><Icon name="robot" size={14} /> Выполнить</>}
-        </button>
+        <Button variant="outline" style={{ flex: 1 }} onClick={run} disabled={busy}>
+          {busy ? 'Агент думает…' : <><Icon name="sparkles" size={15} /> Черновик</>}
+        </Button>
+        <Button variant="primary" style={{ flex: 1 }} onClick={execute} loading={busy} title="Автономно выполнить задачу (текст/КП) → на тестирование">
+          {busy ? 'Агент работает…' : <><Icon name="robot" size={15} /> Выполнить</>}
+        </Button>
       </div>
       {msg && <div className="dim" style={{ marginTop: 6 }}>{msg}</div>}
       {runs.map((r) => (
         <div key={r.id} className="team-row" style={{ marginTop: 8 }}>
           <div className="team-head">
-            <span className={`badge ${statusBadge(r.status).cls}`}>{statusBadge(r.status).label}</span>
+            <span className={`ui-badge ${statusBadge(r.status).cls}`}>{statusBadge(r.status).label}</span>
             <span className="dim" style={{ fontSize: 12 }}>
               {kindLabel(r.kind)} · {new Date(r.created_at).toLocaleString('ru-RU')}
               {(r.input_tokens || r.output_tokens) ? ` · ~${(r.input_tokens || 0) + (r.output_tokens || 0)} ток.` : ''}
@@ -1469,10 +1543,10 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
           {r.error && <div className="error-text" style={{ fontSize: 12 }}>{r.error}</div>}
           {(r.status === 'done' || (r.status === 'accepted' && (r.kind === 'task_execute' || r.kind === 'task_rework'))) && (
             <div className="team-rate">
-              {r.status === 'done' && <button className="btn btn-primary btn-sm" onClick={() => accept(r.id, false)}>Принять</button>}
-              {r.status === 'done' && r.kind === 'task_draft' && <button className="btn btn-sm" onClick={() => accept(r.id, true)}>В чеклист</button>}
-              {(r.kind === 'task_execute' || r.kind === 'task_rework') && <button className="btn btn-sm" onClick={() => rework(r.id)} disabled={busy} title="Вернуть на доработку с замечаниями"><Icon name="refresh" size={13} /> Доработать</button>}
-              {r.status === 'done' && <button className="btn btn-ghost btn-sm" onClick={() => reject(r.id)}>Отклонить</button>}
+              {r.status === 'done' && <Button variant="primary" size="sm" onClick={() => accept(r.id, false)}>Принять</Button>}
+              {r.status === 'done' && r.kind === 'task_draft' && <Button variant="outline" size="sm" onClick={() => accept(r.id, true)}>В чек-лист</Button>}
+              {(r.kind === 'task_execute' || r.kind === 'task_rework') && <Button variant="outline" size="sm" onClick={() => rework(r.id)} disabled={busy} title="Вернуть на доработку с замечаниями"><Icon name="refresh" size={14} /> Доработать</Button>}
+              {r.status === 'done' && <Button variant="ghost" size="sm" onClick={() => reject(r.id)}>Отклонить</Button>}
             </div>
           )}
         </div>
@@ -1562,8 +1636,8 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => { e.preventDefault(); void upload(e.dataTransfer.files); }}
       >
-        <label className="btn btn-sm file-pick">
-          <Icon name="paperclip" size={14} /> Загрузить файлы
+        <label className="ui-btn ui-btn-outline ui-btn-sm file-pick">
+          <Icon name="paperclip" size={15} /> Загрузить файлы
           <input
             className="file-pick-input"
             type="file"
@@ -1574,7 +1648,7 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
         </label>
         <span className="dim">или перетащите сюда</span>
       </div>
-      {busyName && <div className="dim" style={{ marginTop: 8 }}>Загружаю «{busyName}»…</div>}
+      {busyName && <div className="tv2-note"><span className="ui-spinner" style={{ width: 13, height: 13 }} /> Загружаю «{busyName}»…</div>}
       {done && <div className="file-ok"><Icon name="check" size={13} /> {done}</div>}
       {err && <div className="error-text" style={{ marginTop: 8 }}>{err}</div>}
       {/*
@@ -1598,12 +1672,24 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
         </div>
       )}
       {files.map((f) => (
-        <div key={f.id} className="team-row team-head">
+        <div key={f.id} className="tv2-file">
+          <Icon name="file" size={15} />
           <button className="file-link" onClick={() => open(f)} aria-busy={opening?.id === String(f.file_id)}>{f.file_name}</button>
           {opening?.id === String(f.file_id) && (
             <span className="dim file-opening"><span className="spin-sm" /> {opening.pct < 0 ? 'открываю…' : `${opening.pct}%`}</span>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={async () => { await api.deleteAttachment(taskId, f.id); await reload(); onRefresh(); }} title="Удалить"><Icon name="close" size={13} /></button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Удалить файл ${f.file_name}`}
+            title="Удалить файл"
+            onClick={async () => {
+              if (!(await confirmAction({ title: `Удалить файл «${f.file_name}»?`, description: 'Из задачи он пропадёт у всех участников.', danger: true }))) return;
+              await api.deleteAttachment(taskId, f.id); await reload(); onRefresh();
+            }}
+          >
+            <Icon name="trash" size={14} />
+          </Button>
         </div>
       ))}
       {files.length === 0 && (
@@ -1657,8 +1743,7 @@ function PeopleField({ label, hint, role, people, users, onAdd, onRemove }: {
   const taken = new Set(mine.map((p) => String(p.user_id)));
 
   return (
-    <div className="field">
-      <label title={hint}>{label}</label>
+    <Field label={<span title={hint}>{label}</span>}>
       {mine.length > 0 && (
         <div className="people-chips">
           {mine.map((p) => (
@@ -1676,16 +1761,17 @@ function PeopleField({ label, hint, role, people, users, onAdd, onRemove }: {
           ))}
         </div>
       )}
-      <select
-        className="input"
+      {/* Значение всегда пустое: выбранный сразу уходит в список выше, поле снова «+ добавить». */}
+      <Select
+        ariaLabel={`Добавить: ${label.toLowerCase()}`}
+        className="tv2-wide"
         value=""
-        onChange={(e) => { onAdd(e.target.value, role); e.currentTarget.value = ''; }}
-      >
-        <option value="">+ добавить</option>
-        {users.filter((u) => !taken.has(String(u.id))).map((u) => (
-          <option key={u.id} value={u.id}>{u.fullName}</option>
-        ))}
-      </select>
-    </div>
+        onValueChange={(v) => { if (v) onAdd(v, role); }}
+        options={[
+          { value: '', label: '+ добавить' },
+          ...users.filter((u) => !taken.has(String(u.id))).map((u) => ({ value: String(u.id), label: u.fullName })),
+        ]}
+      />
+    </Field>
   );
 }

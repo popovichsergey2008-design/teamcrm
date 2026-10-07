@@ -168,10 +168,13 @@ export function rangeTitle(view: 'day' | 'week' | 'month' | 'list', days: Date[]
     const mid = days[Math.floor(days.length / 2)];
     return `${month(mid)} ${mid.getFullYear()}`;
   }
+  // У диапазона месяц — в родительном падеже («5 — 11 октября»): одно { month: 'long' }
+  // даёт именительный («октябрь»), а вместе с числом — родительный.
+  const dayMonth = (d: Date) => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
   const sameMonth = first.getMonth() === last.getMonth();
   return sameMonth
-    ? `${first.getDate()} — ${last.getDate()} ${month(first)}`
-    : `${first.getDate()} ${month(first)} — ${last.getDate()} ${month(last)}`;
+    ? `${first.getDate()} — ${dayMonth(last)}`
+    : `${dayMonth(first)} — ${dayMonth(last)}`;
 }
 
 

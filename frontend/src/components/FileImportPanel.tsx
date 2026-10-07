@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, ImportPreview, ImportStats } from '../lib/api';
 import type { Project } from '../types';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * Импорт задач из файла (CSV/Excel).
@@ -84,7 +85,7 @@ export function FileImportPanel() {
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); void upload(e.dataTransfer.files?.[0]); }}
         >
-          <label className="btn btn-sm file-pick">
+          <label className="ui-btn ui-btn-outline ui-btn-sm file-pick">
             <Icon name="upload" size={14} /> Выбрать файл
             <input
               className="file-pick-input"
@@ -128,8 +129,8 @@ export function FileImportPanel() {
           <div className="import-head">
             <span><Icon name="file" size={14} /> {preview.fileName}</span>
             <span className="dim">строк: {preview.totalRows}</span>
-            {preview.truncated && <span className="badge badge-warn">взяты первые 5000</span>}
-            <button className="btn btn-ghost btn-sm" onClick={() => { setPreview(null); setErr(''); }}>
+            {preview.truncated && <span className="ui-badge ui-badge-warn">взяты первые 5000</span>}
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { setPreview(null); setErr(''); }}>
               Другой файл
             </button>
           </div>
@@ -158,13 +159,13 @@ export function FileImportPanel() {
                 В существующий
               </label>
               {target.mode === 'existing' && (
-                <select
+                <OptionSelect
                   className="input" value={target.projectId}
                   onChange={(e) => setTarget((t) => ({ ...t, projectId: e.target.value }))}
                 >
                   <option value="">— выберите проект —</option>
                   {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                </OptionSelect>
               )}
             </div>
             <div className="dim">
@@ -188,7 +189,7 @@ export function FileImportPanel() {
                         <span className="dim">{f.hint}</span>
                       </td>
                       <td>
-                        <select
+                        <OptionSelect
                           className="input"
                           value={value === undefined ? '' : String(value)}
                           onChange={(e) => setMapping((m) => {
@@ -202,7 +203,7 @@ export function FileImportPanel() {
                           {preview.headers.map((h, i) => (
                             <option key={i} value={i}>{h}</option>
                           ))}
-                        </select>
+                        </OptionSelect>
                         {conflict && <span className="error-text">эта колонка уже занята полем «{conflict}»</span>}
                       </td>
                       <td className="import-map-sample dim">
@@ -234,7 +235,7 @@ export function FileImportPanel() {
           </div>
 
           <button
-            className="btn btn-primary"
+            className="ui-btn ui-btn-primary ui-btn-md"
             onClick={run}
             disabled={busy || mapping.title === undefined || (target.mode === 'existing' && !target.projectId)}
           >

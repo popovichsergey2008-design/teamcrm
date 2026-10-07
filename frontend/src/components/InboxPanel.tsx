@@ -4,6 +4,8 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 /** Авто-задачи из переписок: каналы приёма (вебхук) + голосовые заметки + ревью черновиков задач. */
 export function InboxPanel({ onClose }: { onClose: () => void }) {
@@ -53,7 +55,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
     } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
   const deleteSource = async (id: string) => {
-    if (!window.confirm('Удалить канал? Его вебхук перестанет принимать письма.')) return;
+    if (!(await confirmAction({ title: 'Удалить канал?', description: 'Его вебхук перестанет принимать письма.', danger: true }))) return;
     try { await api.inboxDeleteSource(id); loadSources(); } catch { /* */ }
   };
 
@@ -104,7 +106,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3><Icon name="inbox" size={18} /> Входящие → задачи</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
+        <div className="drawer-head"><h3><Icon name="inbox" size={18} /> Входящие → задачи</h3><button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="dim" style={{ fontSize: 12 }}>Пересылайте письма/сообщения на вебхук канала — ИИ предложит черновик задачи, вы подтверждаете.</div>
         {msg && <div className="dim">{msg}</div>}
         <div className="tabs">
@@ -115,7 +117,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
         {tab === 'items' && (
           <>
             <button
-              className={`btn btn-sm ${recording ? 'btn-primary' : 'btn-ghost'}`}
+              className={`ui-btn ui-btn-sm ${recording ? 'ui-btn-primary' : 'ui-btn-ghost'}`}
               style={{ width: '100%', marginTop: 8 }}
               onClick={toggleRec}
               disabled={transcribing}
@@ -141,21 +143,21 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
                   <div className="dim" style={{ fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 80, overflow: 'auto', margin: '4px 0', opacity: 0.7 }}>{(it.body ?? '').slice(0, 400)}</div>
                   <input className="input" placeholder="Название задачи" value={e.title ?? ''} onChange={(ev) => setEdit(it.id, { title: ev.target.value })} />
                   <div className="team-rate" style={{ marginTop: 6 }}>
-                    <select className="input" value={e.projectId ?? ''} onChange={(ev) => setEdit(it.id, { projectId: ev.target.value })}>
+                    <OptionSelect className="input" value={e.projectId ?? ''} onChange={(ev) => setEdit(it.id, { projectId: ev.target.value })}>
                       <option value="">— проект —</option>
                       {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                    <select className="input" value={e.assigneeId ?? ''} onChange={(ev) => setEdit(it.id, { assigneeId: ev.target.value })}>
+                    </OptionSelect>
+                    <OptionSelect className="input" value={e.assigneeId ?? ''} onChange={(ev) => setEdit(it.id, { assigneeId: ev.target.value })}>
                       <option value="">— исполнитель —</option>
                       {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-                    </select>
-                    <select className="input" value={e.priority ?? 'normal'} onChange={(ev) => setEdit(it.id, { priority: ev.target.value })}>
+                    </OptionSelect>
+                    <OptionSelect className="input" value={e.priority ?? 'normal'} onChange={(ev) => setEdit(it.id, { priority: ev.target.value })}>
                       <option value="low">Низкий</option><option value="normal">Обычный</option><option value="high">Высокий</option><option value="urgent">Срочный</option>
-                    </select>
+                    </OptionSelect>
                   </div>
                   <div className="team-rate" style={{ marginTop: 6 }}>
-                    <button className="btn btn-primary btn-sm" onClick={() => confirmItem(it.id)}>Создать задачу</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => dismissItem(it.id)}>Отклонить</button>
+                    <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => confirmItem(it.id)}>Создать задачу</button>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => dismissItem(it.id)}>Отклонить</button>
                   </div>
                 </div>
               );
@@ -168,11 +170,11 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
             <div className="drawer-section-title">Новый канал приёма</div>
             <div className="add-user">
               <input className="input add-user-input" placeholder="Название (напр. «Почта продаж»)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
-              <select className="input" value={form.defaultProjectId} onChange={(e) => setForm({ ...form, defaultProjectId: e.target.value })}>
+              <OptionSelect className="input" value={form.defaultProjectId} onChange={(e) => setForm({ ...form, defaultProjectId: e.target.value })}>
                 <option value="">Проект по умолчанию (необязательно)</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={createSource}>Создать канал</button>
+              </OptionSelect>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%' }} onClick={createSource}>Создать канал</button>
             </div>
             <div className="drawer-section-title">Каналы ({sources.length})</div>
             {sources.length === 0 && (
@@ -186,8 +188,8 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
             {sources.map((s) => (
               <div key={s.id} className="team-row">
                 <div className="team-head">
-                  <span>{s.label || 'Без названия'} {s.default_project_name && <span className="badge" title="Проект по умолчанию"><Icon name="folder" size={12} /> {s.default_project_name}</span>} {s.pending ? <span className="badge badge-warn">{s.pending} на ревью</span> : null}</span>
-                  <button className="btn btn-ghost btn-sm" onClick={() => deleteSource(s.id)}>Удалить</button>
+                  <span>{s.label || 'Без названия'} {s.default_project_name && <span className="ui-badge ui-badge-neutral" title="Проект по умолчанию"><Icon name="folder" size={12} /> {s.default_project_name}</span>} {s.pending ? <span className="ui-badge ui-badge-warn">{s.pending} на ревью</span> : null}</span>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => deleteSource(s.id)}>Удалить</button>
                 </div>
                 <div className="invite-box">
                   Вебхук (укажите в почтовом провайдере / Zapier / n8n как приёмник входящих):

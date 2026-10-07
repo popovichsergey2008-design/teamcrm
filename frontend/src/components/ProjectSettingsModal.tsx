@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { PROJECTS_CHANGED } from './ProjectsNav';
+import { OptionSelect } from './ui/option-select';
 
 /**
  * Настройки проекта.
@@ -181,7 +182,7 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3><Icon name="settings" size={16} /> Настройки проекта · {project.name}</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть">
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть">
             <Icon name="close" size={16} />
           </button>
         </div>
@@ -205,7 +206,7 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
               aria-label="Название проекта"
             />
             <button
-              className="btn btn-sm"
+              className="ui-btn ui-btn-outline ui-btn-sm"
               onClick={() => void rename()}
               disabled={busy || !name.trim() || name.trim() === project.name}
             >
@@ -257,7 +258,7 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
               ))}
               {!members.length && <span className="dim">Пока никого — добавьте людей ниже.</span>}
             </div>
-            <select
+            <OptionSelect
               className="input"
               value=""
               onChange={(e) => { void addMember(e.target.value); e.currentTarget.value = ''; }}
@@ -268,16 +269,16 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
               {people
                 .filter((u) => !members.some((m) => String(m.user_id) === String(u.id)))
                 .map((u) => <option key={u.id} value={String(u.id)}>{u.fullName}</option>)}
-            </select>
+            </OptionSelect>
           </div>
         )}
 
         <div className="drawer-section">
           <div className="drawer-section-title">Ответственный</div>
-          <select className="input" value={owner} disabled={busy} onChange={(e) => changeOwner(e.target.value)} aria-label="Ответственный за проект">
+          <OptionSelect className="input" value={owner} disabled={busy} onChange={(e) => changeOwner(e.target.value)} aria-label="Ответственный за проект">
             <option value="">— не назначен —</option>
             {people.map((u) => <option key={u.id} value={String(u.id)}>{u.fullName}</option>)}
-          </select>
+          </OptionSelect>
           <p className="dim">К нему идут с вопросами «что по проекту»; показывается в шапке чата проекта и в сведениях.</p>
         </div>
 
@@ -289,7 +290,7 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
             переименовывается: свои доски остаются вместе с задачами, просто уезжают
             правее. Те, что уже есть, второй раз не заводятся.
           </p>
-          <button className="btn" onClick={addDefaultColumns} disabled={busy}>
+          <button className="ui-btn ui-btn-outline ui-btn-md" onClick={addDefaultColumns} disabled={busy}>
             <Icon name="plus" size={14} /> Добавить доски по умолчанию
           </button>
         </div>
@@ -333,7 +334,7 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
             вперемешку со своими. Одно нажатие возвращает понятный вид. Задачи и сами
             доски при этом не трогаются — меняется только порядок в списке.
           </p>
-          <button className="btn" onClick={resetOrder} disabled={busy}>
+          <button className="ui-btn ui-btn-outline ui-btn-md" onClick={resetOrder} disabled={busy}>
             <Icon name="list" size={14} /> Восстановить порядок по умолчанию
           </button>
         </div>

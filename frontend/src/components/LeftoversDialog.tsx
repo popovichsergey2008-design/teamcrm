@@ -67,7 +67,7 @@ export function LeftoversDialog({ tasks, today, onClose, onDone }: {
       <div className="leftovers" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Вчерашние задачи">
         <div className="leftovers-head">
           <h3><Icon name="clock" size={18} /> Со вчера осталось: {left.length}</h3>
-          <button className="btn btn-ghost btn-sm" onClick={() => { markLeftoversSeen(today); onClose(); }} title="Закрыть">
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { markLeftoversSeen(today); onClose(); }} title="Закрыть">
             <Icon name="close" />
           </button>
         </div>
@@ -84,13 +84,13 @@ export function LeftoversDialog({ tasks, today, onClose, onDone }: {
                 <div className="leftovers-main">
                   <div>{t.title}</div>
                   <div className="leftovers-meta">
-                    <span className="badge badge-muted">{t.project_name}</span>
+                    <span className="ui-badge ui-badge-neutral">{t.project_name}</span>
                     {due && <span className={due.cls}>{due.text}</span>}
                   </div>
                 </div>
                 <div className="leftovers-actions">
-                  <button className="btn btn-sm btn-primary" onClick={() => decide(t, true)}>Сегодня</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => decide(t, false)}>В список</button>
+                  <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => decide(t, true)}>Сегодня</button>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => decide(t, false)}>В список</button>
                 </div>
               </div>
             );
@@ -98,8 +98,8 @@ export function LeftoversDialog({ tasks, today, onClose, onDone }: {
         </div>
 
         <div className="leftovers-foot">
-          <button className="btn btn-sm" disabled={busy} onClick={() => all(true)}>Все на сегодня</button>
-          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => all(false)}>Все в список</button>
+          <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => all(true)}>Все на сегодня</button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => all(false)}>Все в список</button>
         </div>
       </div>
     </div>

@@ -119,7 +119,7 @@ export function ChannelModal({ meId, onClose, onCreated }: {
         </div>
 
         {err && <div className="error-text">{err}</div>}
-        <button className="btn btn-primary" onClick={create} disabled={busy}>
+        <button className="ui-btn ui-btn-primary ui-btn-md" onClick={create} disabled={busy}>
           {busy ? 'Создаю…' : 'Создать канал'}
         </button>
       </aside>

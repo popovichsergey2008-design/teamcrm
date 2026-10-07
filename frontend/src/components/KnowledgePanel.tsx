@@ -4,6 +4,8 @@ import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
 
 /** База знаний (Этап 5, K1): семантический поиск + регламенты + реиндекс. */
 export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onClose: () => void }) {
@@ -39,10 +41,10 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
   };
 
   const ScopeSelect = () => (
-    <select className="input" style={{ maxWidth: 220 }} value={scope} onChange={(e) => setScope(e.target.value)} title="Разрез базы знаний">
+    <OptionSelect className="input" style={{ maxWidth: 220 }} value={scope} onChange={(e) => setScope(e.target.value)} title="Разрез базы знаний">
       <option value="">Вся организация</option>
       {projects.map((p) => <option key={p.id} value={p.id}>Проект: {p.name}</option>)}
-    </select>
+    </OptionSelect>
   );
 
   // поиск
@@ -67,7 +69,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
     try { await api.createRegulation({ title: form.title.trim(), body: form.body }); setForm({ title: '', body: '' }); flash('Регламент добавлен, индексируется'); loadRegs(); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
-  const delReg = async (id: string) => { if (window.confirm('Удалить регламент?')) { await api.deleteRegulation(id); loadRegs(); } };
+  const delReg = async (id: string) => { if ((await confirmAction({ title: 'Удалить регламент?', danger: true }))) { await api.deleteRegulation(id); loadRegs(); } };
 
   const reindex = async () => {
     try { const r = await api.knowledgeReindex(); flash(`В очередь на индексацию: ${r.queued}`); setTimeout(loadStats, 2000); }
@@ -148,11 +150,11 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer drawer-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-head"><h3><Icon name="book" size={18} /> База знаний</h3><button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
+        <div className="drawer-head"><h3><Icon name="book" size={18} /> База знаний</h3><button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button></div>
         <div className="dim" style={{ fontSize: 12 }}>
           В индексе: {stats?.chunks ?? '—'} фрагментов из {stats?.sources ?? '—'} источников (закрытые задачи, комментарии, регламенты).
           {usage && <> · ИИ-вызовов: {usage.totalCalls}, из кэша: {Math.round(usage.cacheHitRatio * 100)}%</>}
-          {canManage && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={reindex}>Переиндексировать всё</button>}
+          {canManage && <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ marginLeft: 8 }} onClick={reindex}>Переиндексировать всё</button>}
         </div>
         {canManage && (
           <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>
@@ -160,7 +162,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
             {gd?.byStatus.no_access ? `, нет доступа: ${gd.byStatus.no_access}` : ''}
             {gd?.byStatus.unsupported ? `, не поддержано: ${gd.byStatus.unsupported}` : ''}
             {gd?.byStatus.error ? `, ошибок: ${gd.byStatus.error}` : ''}
-            <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={scanGdocs} disabled={gd?.scanning}>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ marginLeft: 8 }} onClick={scanGdocs} disabled={gd?.scanning}>
               {gd?.scanning ? 'Сканирую…' : <><Icon name="link" size={14} /> Сканировать Google-доки</>}
             </button>
             <div style={{ fontSize: 11, opacity: 0.75 }}>Читаются только доки, открытые «по ссылке»; приватные помечаются «нет доступа».</div>
@@ -183,11 +185,11 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
               )}
               {chat.map((m, i) => (
                 <div key={i} className={`brain-msg brain-${m.role}`}>
-                  {m.cached && <span className="badge badge-info" title="Ответ из кэша, без обращения к ИИ" style={{ marginBottom: 4 }}><Icon name="zap" size={11} /> из кэша</span>}
+                  {m.cached && <span className="ui-badge ui-badge-info" title="Ответ из кэша, без обращения к ИИ" style={{ marginBottom: 4 }}><Icon name="zap" size={11} /> из кэша</span>}
                   <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}{m.role === 'assistant' && thinking && !m.content && <span className="dim">думаю…</span>}</div>
                   {m.citations && m.citations.length > 0 && (
                     <div className="brain-cites">
-                      {m.citations.map((c, j) => <span key={j} className="badge" title={citeLabel(c)}>[{j + 1}] {citeLabel(c).slice(0, 40)}</span>)}
+                      {m.citations.map((c, j) => <span key={j} className="ui-badge ui-badge-neutral" title={citeLabel(c)}>[{j + 1}] {citeLabel(c).slice(0, 40)}</span>)}
                     </div>
                   )}
                   {m.role === 'assistant' && m.promptVersionId && (
@@ -197,8 +199,8 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
                       ) : (
                         <>
                           <span className="dim" style={{ fontSize: 12 }}>Ответ полезен?</span>
-                          <button className="btn btn-ghost btn-sm" title="Полезно" onClick={() => rate(i, 1)}><Icon name="check" size={14} /></button>
-                          <button className="btn btn-ghost btn-sm" title="Не полезно" onClick={() => rate(i, -1)}><Icon name="close" size={14} /></button>
+                          <button className="ui-btn ui-btn-ghost ui-btn-sm" title="Полезно" onClick={() => rate(i, 1)}><Icon name="check" size={14} /></button>
+                          <button className="ui-btn ui-btn-ghost ui-btn-sm" title="Не полезно" onClick={() => rate(i, -1)}><Icon name="close" size={14} /></button>
                         </>
                       )}
                     </div>
@@ -210,7 +212,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
             <div className="team-rate"><ScopeSelect /><span className="dim" style={{ fontSize: 12 }}>← искать ответ в этом разрезе</span></div>
             <div className="team-rate">
               <input className="input" placeholder="Ваш вопрос…" value={ask} onChange={(e) => setAsk(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !thinking && sendAsk()} />
-              <button className="btn btn-primary btn-sm" onClick={sendAsk} disabled={thinking}>Спросить</button>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={sendAsk} disabled={thinking}>Спросить</button>
             </div>
           </>
         )}
@@ -220,7 +222,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
             <div className="team-rate"><ScopeSelect /></div>
             <div className="team-rate">
               <input className="input" placeholder="Спросите: как мы решали…?" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doSearch()} />
-              <button className="btn btn-primary btn-sm" onClick={doSearch} disabled={searching}>{searching ? '…' : 'Найти'}</button>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={doSearch} disabled={searching}>{searching ? '…' : 'Найти'}</button>
             </div>
             {hits && hits.length === 0 && (
               <EmptyState compact icon="search" title="Ничего не нашлось"
@@ -230,8 +232,8 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
               <div key={i} className="team-row">
                 <div className="team-head">
                   <span>
-                    <span className="badge">{h.sourceType === 'task' ? 'задача' : h.sourceType === 'comment' ? 'комментарий' : 'регламент'}</span>
-                    {h.projectName && <span className="badge" title="Проект"><Icon name="folder" size={12} /> {h.projectName}</span>} {h.title || '—'}
+                    <span className="ui-badge ui-badge-neutral">{h.sourceType === 'task' ? 'задача' : h.sourceType === 'comment' ? 'комментарий' : 'регламент'}</span>
+                    {h.projectName && <span className="ui-badge ui-badge-neutral" title="Проект"><Icon name="folder" size={12} /> {h.projectName}</span>} {h.title || '—'}
                   </span>
                   <span className="dim" style={{ fontSize: 12 }}>{Math.round((h.score ?? 0) * 100)}%</span>
                 </div>
@@ -245,17 +247,17 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
           <>
             <div className="team-rate">
               <ScopeSelect />
-              <select className="input" style={{ maxWidth: 180 }} value={srcType} onChange={(e) => setSrcType(e.target.value)}>
+              <OptionSelect className="input" style={{ maxWidth: 180 }} value={srcType} onChange={(e) => setSrcType(e.target.value)}>
                 <option value="">Все типы</option>
                 <option value="task">Задачи</option>
                 <option value="comment">Комментарии</option>
                 <option value="gdoc">Google-доки</option>
                 <option value="regulation">Регламенты</option>
-              </select>
+              </OptionSelect>
             </div>
             <div className="team-rate">
               <input className="input" placeholder="Поиск по названию…" value={srcQ} onChange={(e) => setSrcQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && loadSources(true)} />
-              <button className="btn btn-primary btn-sm" onClick={() => loadSources(true)}>Найти</button>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => loadSources(true)}>Найти</button>
             </div>
             {sources.length === 0 && (
               <EmptyState compact icon="book" title="Пока ничего не проиндексировано"
@@ -270,8 +272,8 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
                 <div key={key} className="team-row">
                   <div className="team-head" style={{ cursor: 'pointer' }} onClick={() => viewSource(s.sourceType, s.sourceId)}>
                     <span>
-                      <span className="badge">{srcTypeLabel(s.sourceType)}</span>
-                      {s.projectName && <span className="badge" title="Проект"><Icon name="folder" size={12} /> {s.projectName}</span>} {s.title || '—'}
+                      <span className="ui-badge ui-badge-neutral">{srcTypeLabel(s.sourceType)}</span>
+                      {s.projectName && <span className="ui-badge ui-badge-neutral" title="Проект"><Icon name="folder" size={12} /> {s.projectName}</span>} {s.title || '—'}
                     </span>
                     <span className="dim" style={{ fontSize: 12 }}>{open ? '▾' : '▸'} {s.chunks} фр.</span>
                   </div>
@@ -290,7 +292,7 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
                 </div>
               );
             })}
-            {srcHasMore && <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => loadSources(false)}>Показать ещё</button>}
+            {srcHasMore && <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ marginTop: 8 }} onClick={() => loadSources(false)}>Показать ещё</button>}
           </>
         )}
 
@@ -300,13 +302,13 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
               <div className="add-user">
                 <input className="input add-user-input" placeholder="Заголовок регламента" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
                 <textarea className="input" rows={5} placeholder="Текст регламента (будет проиндексирован в базу знаний)" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
-                <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={addReg}>Добавить регламент</button>
+                <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%' }} onClick={addReg}>Добавить регламент</button>
               </div>
             )}
             {regs.map((r) => (
               <div key={r.id} className="team-row team-head">
                 <span>{r.title} <span className="dim" style={{ fontSize: 12 }}>{r.excerpt}</span></span>
-                {canManage && <button className="btn btn-ghost btn-sm" onClick={() => delReg(r.id)}>Удалить</button>}
+                {canManage && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => delReg(r.id)}>Удалить</button>}
               </div>
             ))}
             {regs.length === 0 && (

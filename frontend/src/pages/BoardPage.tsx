@@ -7,9 +7,8 @@ import { useAuth } from '../state/auth';
 import type { Board, BoardColumn, CostOfWork, Pnl, Project, Task, User } from '../types';
 import { ColumnView } from '../components/ColumnView';
 import { PnlPanel } from '../components/PnlPanel';
-import { TaskDrawer } from '../components/TaskDrawer';
+import { lazyComponent, preloadWhenIdle } from '../lib/lazy';
 import { GateBlock, HandoffGateDialog, gateFromError } from '../components/HandoffGateDialog';
-import { TaskCreateModal } from '../components/TaskCreateModal';
 import { TaskListView } from '../components/TaskListView';
 import {
   countMatching, filterActive, filterBoard, MineMode, realPosition,
@@ -27,6 +26,16 @@ import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync'
 import { SkeletonBoard } from '../components/Skeleton';
 import { MONETIZATION_ENABLED } from '../config';
 import { useStickyCheck } from '../lib/sticky-checks';
+import { Button } from '../components/ui/button';
+import { confirmAction, promptText } from '../components/ui/dialog';
+
+/*
+  Карточка задачи (с чатом, редактором описания, вкладками) и окно создания грузятся
+  отдельно от доски: доска показывается сразу, а карточка подтягивается в фоне, пока
+  человек смотрит на колонки, — к первому нажатию она уже на месте.
+*/
+const TaskDrawer = lazyComponent(() => import('../components/TaskDrawer').then((m) => m.TaskDrawer));
+const TaskCreateModal = lazyComponent(() => import('../components/TaskCreateModal').then((m) => m.TaskCreateModal));
 
 type Action =
   | { type: 'SET'; board: Board }
@@ -91,6 +100,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   /** Продиктовать задачу: окно живёт в приложении, доска только просит его открыть. */
   onVoiceTask?: () => void;
 } = {}) {
+  // Доска нарисована — подтягиваем карточку и окно создания, пока человек смотрит на колонки.
+  useEffect(() => { preloadWhenIdle(TaskDrawer, TaskCreateModal); }, []);
   const { user } = useAuth();
   const isClient = user?.role === 'client';
   /*
@@ -330,7 +341,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
 
   const addColumn = async () => {
     if (!selected) return;
-    const name = window.prompt('Название колонки:');
+    const name = await promptText({ title: 'Новая колонка', placeholder: 'Например: На проверке', confirmLabel: 'Добавить', singleLine: true });
     if (!name || !name.trim()) return;
     try {
       await api.addColumn(selected, name.trim());
@@ -362,7 +373,11 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
 
   const deleteColumn = async (columnId: string, name: string) => {
     if (!selected) return;
-    if (!window.confirm(`Удалить колонку «${name}»? Её задачи переедут в первую колонку.`)) return;
+    if (!(await confirmAction({
+      title: `Удалить колонку «${name}»?`,
+      description: 'Её задачи переедут в первую колонку доски.',
+      danger: true,
+    }))) return;
     try {
       await api.deleteColumn(selected, columnId);
       reloadBoard();
@@ -473,8 +488,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   return (
     <div className="board-layout">
 
-      <main className="board-main">
-        {error && <div className="error-text board-error">{error}</div>}
+      <main className="board-main board-v2">
+        {error && <div className="tv2-callout tv2-callout-danger board-error" role="alert"><Icon name="alert" size={15} /> {error}</div>}
         {gate && (
           <HandoffGateDialog
             block={gate.block}
@@ -528,7 +543,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                   {switchOpen && (
                     <span className="chat-pop board-switch-pop" data-pop>
                       <input
-                        className="input"
+                        className="ui-input ui-input-sm"
                         value={switchQuery}
                         onChange={(e) => setSwitchQuery(e.target.value)}
                         placeholder="Поиск проекта"
@@ -546,7 +561,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                             onClick={() => { setSwitchOpen(false); setSwitchQuery(''); setSelected(String(p.id)); setOpenTaskId(null); }}
                           >
                             <Icon name="board" size={13} /> {p.name}
-                            {!!p.unread && <span className="badge badge-info">{p.unread}</span>}
+                            {!!p.unread && <span className="ui-badge ui-badge-info">{p.unread}</span>}
                           </button>
                         ))}
                       <button
@@ -565,24 +580,29 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                   доска открывается на последней, и человек, которому нужен общий список,
                   сначала открывал выпадашку, потом искал в ней строку. Одно нажатие вместо трёх.
                 */}
-                <button
-                  className="btn btn-ghost btn-sm board-all-btn"
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="board-all-btn"
                   onClick={() => { forgetProject(); navigate({ section: 'projects' }); }}
                   title="Таблица со всеми проектами"
                 >
-                  <Icon name="list" size={14} /> Все проекты
-                </button>
+                  <Icon name="list" size={15} /> Все проекты
+                </Button>
                 {/* Сквозной реестр задач по всем проектам: из меню он переехал сюда */}
-                <button
-                  className="btn btn-ghost btn-sm board-all-btn"
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="board-all-btn"
                   onClick={() => navigate({ section: 'tasks' })}
                   title="Задачи по всем проектам: делаю, поручил, помогаю, наблюдаю"
                 >
-                  <Icon name="check-circle" size={14} /> Все задачи
-                </button>
-                <span className="view-switch" role="tablist" aria-label="Вид доски">
-                  <button className={`view-btn ${view === 'board' ? 'active' : ''}`} onClick={() => switchView('board')} title="Канбан-доска"><Icon name="board" size={14} /> Доска</button>
-                  <button className={`view-btn ${view === 'list' ? 'active' : ''}`} onClick={() => switchView('list')} title="Список"><Icon name="list" size={14} /> Список</button>
+                  <Icon name="check-circle" size={15} /> Все задачи
+                </Button>
+                {/* Вид доски — переключатель из двух сегментов, а не две отдельные кнопки. */}
+                <span className="kv2-seg" role="group" aria-label="Вид доски">
+                  <button className="kv2-seg-btn" aria-pressed={view === 'board'} onClick={() => switchView('board')} title="Канбан-доска"><Icon name="board" size={15} /> Доска</button>
+                  <button className="kv2-seg-btn" aria-pressed={view === 'list'} onClick={() => switchView('list')} title="Список"><Icon name="list" size={15} /> Список</button>
                 </span>
                 {!isClient && (
                   /* Один фильтр вместо трёх элементов: «чьи задачи» — один вопрос,
@@ -612,37 +632,41 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                       голосом — то же окно диктовки, что и раньше, с этим проектом.
                     */}
                     {board.columns.length > 0 && (
-                      <button
-                        className="btn btn-primary btn-sm"
+                      <Button
+                        variant="primary"
+                        size="sm"
                         onClick={() => openCreate(board.columns[0].id)}
                         title={`Новая задача в колонку «${board.columns[0].name}» (клавиша C — голосом или текстом)`}
                       >
                         <Icon name="plus" size={15} /> Новая задача
-                      </button>
+                      </Button>
                     )}
                     {onVoiceTask && (
-                      <button
-                        className="btn btn-primary btn-sm board-mic"
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="board-mic"
                         onClick={onVoiceTask}
                         title="Продиктовать задачу голосом"
                         aria-label="Продиктовать задачу голосом"
                       >
                         <Icon name="mic" size={15} />
-                      </button>
+                      </Button>
                     )}
                     {/* Настройки самой доски: место в списке и порядок досок компании.
                         Раньше это висело кнопкой в левой панели — не её дело. */}
                     {canManageBoard && (
-                      <button
-                        className="btn btn-ghost btn-sm"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setShowProjectSettings(true)}
                         title="Настройки проекта: место в списке досок"
                       >
                         <Icon name="settings" size={15} /> Настройки
-                      </button>
+                      </Button>
                     )}
                     {board.project.origin === 'bitrix' && (
-                      <button className="btn btn-ghost btn-sm" onClick={() => setShowFeed(true)} title="Живая лента импортированного проекта"><Icon name="list" size={15} /> Лента</button>
+                      <Button variant="ghost" size="sm" onClick={() => setShowFeed(true)} title="Живая лента импортированного проекта"><Icon name="list" size={15} /> Лента</Button>
                     )}
                   </span>
                 )}
@@ -691,7 +715,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                 ))}
                 {canManageBoard && (
                   <button className="add-column" onClick={addColumn} title="Добавить колонку">
-                    + колонка
+                    <Icon name="plus" size={15} /> Колонка
                   </button>
                 )}
               </div>

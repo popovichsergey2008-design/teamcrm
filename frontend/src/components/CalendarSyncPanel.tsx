@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, CalendarLink } from '../lib/api';
 import { overlayProps } from '../lib/overlay';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Синхронизация календаря с Google (и любым другим, понимающим iCalendar).
@@ -32,7 +33,7 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
   const imports = links.filter((l) => l.kind === 'import');
 
   const makeExport = async (rotate = false) => {
-    if (rotate && !window.confirm('Сделать новый адрес? Старый перестанет работать, и календарь придётся переподключить в Google.')) return;
+    if (rotate && !(await confirmAction({ title: 'Сделать новый адрес?', description: 'Старый перестанет работать, и календарь придётся переподключить в Google.' }))) return;
     setErr(''); setBusy(true);
     try { await api.calendarExportLink(rotate); await reload(); setMsg(rotate ? 'Адрес заменён' : 'Ссылка готова'); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось'); }
@@ -65,7 +66,7 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm('Отключить календарь? Его встречи исчезнут из нашего календаря.')) return;
+    if (!(await confirmAction({ title: 'Отключить календарь?', description: 'Его встречи исчезнут из нашего календаря.', danger: true }))) return;
     try { await api.calendarRemoveLink(id); await reload(); } catch { /* */ }
   };
 
@@ -74,7 +75,7 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <h3>Синхронизация календаря</h3>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
 
         <div className="drawer-section">
@@ -87,7 +88,7 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
             <>
               <div className="sync-link">
                 <input className="input" readOnly value={exportLink.url} onFocus={(e) => e.currentTarget.select()} />
-                <button className="btn btn-sm" onClick={() => copy(exportLink.url!)}>
+                <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => copy(exportLink.url!)}>
                   <Icon name="copy" size={14} /> Копировать
                 </button>
               </div>
@@ -97,7 +98,7 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
               </p>
             </>
           ) : (
-            <button className="btn btn-sm" onClick={() => makeExport(false)} disabled={busy}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => makeExport(false)} disabled={busy}>
               <Icon name="link" size={14} /> Создать ссылку
             </button>
           )}
@@ -116,7 +117,7 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
           />
           <div className="sync-link">
             <input className="input" placeholder="Название (напр. «Личный»)" value={title} onChange={(e) => setTitle(e.target.value)} />
-            <button className="btn btn-primary btn-sm" onClick={add} disabled={busy}>Подключить</button>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={add} disabled={busy}>Подключить</button>
           </div>
 
           {imports.map((l) => (
@@ -131,8 +132,8 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
                 {l.lastError && <div className="error-text">{l.lastError}</div>}
               </span>
               <span>
-                <button className="btn btn-ghost btn-sm" onClick={() => sync(l.id)} disabled={busy}>Обновить</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => remove(l.id)}>Отключить</button>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => sync(l.id)} disabled={busy}>Обновить</button>
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => remove(l.id)}>Отключить</button>
               </span>
             </div>
           ))}

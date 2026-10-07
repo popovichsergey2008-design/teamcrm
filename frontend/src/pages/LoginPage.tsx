@@ -71,7 +71,7 @@ export function LoginPage() {
 
         <div className="error-text">{error}</div>
 
-        <button className="btn btn-primary auth-submit" disabled={busy} type="submit">
+        <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy} type="submit">
           {busy ? '...' : mode === 'login' ? 'Войти' : 'Создать'}
         </button>
 
@@ -87,7 +87,7 @@ export function LoginPage() {
 
         <button
           type="button"
-          className="btn btn-ghost btn-sm auth-toggle"
+          className="ui-btn ui-btn-ghost ui-btn-sm auth-toggle"
           onClick={() => {
             setMode(mode === 'login' ? 'register' : 'login');
             setError('');

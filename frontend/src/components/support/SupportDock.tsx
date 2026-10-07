@@ -12,6 +12,7 @@ import { Icon } from '../Icon';
 import { VoiceStatus } from '../VoiceStatus';
 import { MessageText } from '../MessageText';
 import type { SupportConversation, SupportDesk, SupportQueueItem } from '../../types';
+import { OptionSelect } from '../ui/option-select';
 
 /**
  * Открыть службу заботы откуда угодно.
@@ -626,7 +627,7 @@ export function SupportDock({ embedded = false }: {
               <span className="dim">
                 {heldByOther ? `Ведёт ${agent?.full_name ?? 'другой специалист'}` : 'Обращение никто не взял'}
               </span>
-              <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void takeConversation(conv.id)}>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy} onClick={() => void takeConversation(conv.id)}>
                 {heldByOther ? 'Взять себе' : 'Взять себе и ответить'}
               </button>
             </div>
@@ -667,11 +668,11 @@ export function SupportDock({ embedded = false }: {
                     {q.agentName ? ` · ведёт ${q.agentName}` : ''}
                   </div>
                   <span className="support-ask-row">
-                    <button className="btn btn-sm" disabled={busy} onClick={() => void openConversation(q.id)}>
+                    <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void openConversation(q.id)}>
                       Открыть
                     </button>
                     {!q.agentName && (
-                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void takeConversation(q.id)}>
+                      <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy} onClick={() => void takeConversation(q.id)}>
                         Взять себе
                       </button>
                     )}
@@ -696,7 +697,7 @@ export function SupportDock({ embedded = false }: {
                     {h.csat ? ` · оценка ${h.csat}/4` : ''}
                   </div>
                   {h.closedAt && (
-                    <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void reopen(h.id)}>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void reopen(h.id)}>
                       Проблема снова появилась
                     </button>
                   )}
@@ -764,16 +765,16 @@ export function SupportDock({ embedded = false }: {
                   </span>
                   {a.status === 'proposed' && mineConversation && (
                     <span className="support-action-acts">
-                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void decideAction(a.id, true)}>
+                      <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy} onClick={() => void decideAction(a.id, true)}>
                         Разрешить
                       </button>
-                      <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void decideAction(a.id, false)}>
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void decideAction(a.id, false)}>
                         Не надо
                       </button>
                     </span>
                   )}
                   {a.status === 'done' && a.action !== 'project.columns' && (
-                    <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void undoAction(a.id)}>
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void undoAction(a.id)}>
                       Вернуть как было
                     </button>
                   )}
@@ -795,10 +796,10 @@ export function SupportDock({ embedded = false }: {
                       : `${conv.call.byName ?? 'Специалист'} предлагает созвониться`}
                   </b>
                   <div className="support-ask-row">
-                    <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void startHuddle()}>
+                    <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy} onClick={() => void startHuddle()}>
                       Присоединиться
                     </button>
-                    <button className="btn btn-sm" disabled={busy} onClick={() => void declineCall()}>
+                    <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void declineCall()}>
                       Сейчас неудобно
                     </button>
                   </div>
@@ -824,10 +825,10 @@ export function SupportDock({ embedded = false }: {
                     Специалист считает, что починил. Закрыть разговор можете только вы.
                   </span>
                   <div className="support-ask-row">
-                    <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => setLowReason(0)}>
+                    <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy} onClick={() => setLowReason(0)}>
                       Да, проблема решена
                     </button>
-                    <button className="btn btn-sm" disabled={busy} onClick={() => void confirm(false)}>
+                    <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void confirm(false)}>
                       Нет, нужна помощь
                     </button>
                   </div>
@@ -850,7 +851,7 @@ export function SupportDock({ embedded = false }: {
                       {!!lowReason && lowReason <= 2 && (
                         <div className="support-reasons">
                           {REASONS.map((r) => (
-                            <button key={r} className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void confirm(true, lowReason, r)}>
+                            <button key={r} className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void confirm(true, lowReason, r)}>
                               {r}
                             </button>
                           ))}
@@ -913,7 +914,7 @@ export function SupportDock({ embedded = false }: {
                   {!!diag?.issues.length && (
                     <div className="support-issues">
                       {diag.issues.map((i) => (
-                        <span key={i.taskId} className={`badge${i.closed ? ' badge-muted' : ' badge-info'}`}>
+                        <span key={i.taskId} className={`ui-badge ui-badge-neutral${i.closed ? ' badge-muted' : ' badge-info'}`}>
                           Задача #{i.taskId} · {i.closed ? 'закрыта' : 'в работе'}
                         </span>
                       ))}
@@ -926,7 +927,7 @@ export function SupportDock({ embedded = false }: {
                     молчит, пока его не попросят. Ответ читает человек, а не машина.
                   */}
                   <div className="support-tools-acts">
-                    <button className="btn btn-sm" disabled={busy} onClick={() => void askCopilot()}>
+                    <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void askCopilot()}>
                       <Icon name="sparkles" size={13} /> Подсказка помощника
                     </button>
                     {/*
@@ -936,14 +937,14 @@ export function SupportDock({ embedded = false }: {
                       специалиста: сам он посреди живого разговора не возвращается.
                     */}
                     {conv.aiMode === 'copilot' ? (
-                      <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void returnAi()}>
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void returnAi()}>
                         Вернуть помощника в разговор
                       </button>
                     ) : (
-                      <span className="badge badge-info">помощник отвечает сам</span>
+                      <span className="ui-badge ui-badge-info">помощник отвечает сам</span>
                     )}
                     {copilot?.known && (
-                      <span className="badge badge-warn" title={`Задача #${copilot.known.taskId}`}>
+                      <span className="ui-badge ui-badge-warn" title={`Задача #${copilot.known.taskId}`}>
                         похоже на известную: {copilot.known.title}
                       </span>
                     )}
@@ -951,7 +952,7 @@ export function SupportDock({ embedded = false }: {
                   {copilot?.summary && <div className="support-copilot">{copilot.summary}</div>}
 
                   <div className="support-tools-acts">
-                    <select
+                    <OptionSelect
                       className="input"
                       value=""
                       disabled={busy}
@@ -962,8 +963,8 @@ export function SupportDock({ embedded = false }: {
                       {people
                         .filter((p) => !conv.participants.some((x) => String(x.user_id) === p.id))
                         .map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}
-                    </select>
-                    <button className="btn btn-sm" disabled={busy} onClick={() => void createBug()}>
+                    </OptionSelect>
+                    <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void createBug()}>
                       <Icon name="alert" size={13} /> Завести задачу
                     </button>
                   </div>
@@ -978,17 +979,17 @@ export function SupportDock({ embedded = false }: {
                   */}
                   <div className="support-tools-acts">
                     {conv.status !== 'engineer_escalated' && conv.status !== 'fix_in_progress' && (
-                      <button className="btn btn-sm" disabled={busy} onClick={() => void setStatus('engineer_escalated')}>
+                      <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void setStatus('engineer_escalated')}>
                         Передал инженерам
                       </button>
                     )}
                     {(conv.status === 'engineer_escalated' || conv.status === 'fix_in_progress') && (
-                      <button className="btn btn-sm" disabled={busy} onClick={() => void setStatus(conv.status === 'fix_in_progress' ? 'in_progress' : 'fix_in_progress')}>
+                      <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void setStatus(conv.status === 'fix_in_progress' ? 'in_progress' : 'fix_in_progress')}>
                         {conv.status === 'fix_in_progress' ? 'Вернуть в работу' : 'Чиним'}
                       </button>
                     )}
                     {conv.status !== 'waiting_reply' && (
-                      <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void setStatus('waiting_reply')}>
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void setStatus('waiting_reply')}>
                         Жду ответа
                       </button>
                     )}
@@ -1020,7 +1021,7 @@ export function SupportDock({ embedded = false }: {
                         onChange={(e) => setNoteText(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addNote(); } }}
                       />
-                      <button className="btn btn-sm" disabled={busy || !noteText.trim()} onClick={() => void addNote()}>
+                      <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy || !noteText.trim()} onClick={() => void addNote()}>
                         Записать
                       </button>
                     </div>
@@ -1065,7 +1066,7 @@ export function SupportDock({ embedded = false }: {
                               : ' доступ закрыт'}
                           </span>
                           {g.live && (
-                            <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void revokeEngineer(g.engineerId)}>
+                            <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void revokeEngineer(g.engineerId)}>
                               Закрыть
                             </button>
                           )}
@@ -1131,7 +1132,7 @@ export function SupportDock({ embedded = false }: {
                 )}
                 {conv && mineConversation && !conv.agentId && conv.status !== 'closed' && (
                   <button
-                    className="btn btn-sm support-human"
+                    className="ui-btn ui-btn-outline ui-btn-sm support-human"
                     disabled={busy}
                     onClick={() => void callHuman()}
                     title="Подключить старшего специалиста к этому разговору"
@@ -1141,7 +1142,7 @@ export function SupportDock({ embedded = false }: {
                 )}
                 {conv && mineConversation && conv.status !== 'closed' && !asksResult && (
                   <button
-                    className="btn btn-ghost btn-sm"
+                    className="ui-btn ui-btn-ghost ui-btn-sm"
                     disabled={busy}
                     onClick={() => void closeMine()}
                     title="Закрыть разговор: вопрос больше не нужен. Если проблема вернётся — откроете заново."
@@ -1151,7 +1152,7 @@ export function SupportDock({ embedded = false }: {
                 )}
                 {conv && !mineConversation && conv.status !== 'closed' && conv.status !== 'waiting_user' && (
                   <button
-                    className="btn btn-sm support-human"
+                    className="ui-btn ui-btn-outline ui-btn-sm support-human"
                     disabled={busy}
                     onClick={() => void resolveAsAgent()}
                     title="Человек получит вопрос «Всё работает?» и закроет разговор сам"

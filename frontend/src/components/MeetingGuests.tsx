@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, MeetingInvite } from '../lib/api';
 import { toastSaved } from '../lib/notifications';
+import { confirmAction } from './ui/dialog';
 
 /**
  * Гости встречи по email (ТЗ-14, §66–70, §112).
@@ -45,7 +46,7 @@ export function MeetingGuests({ eventId }: { eventId: string }) {
   };
 
   const revoke = async (inv: MeetingInvite) => {
-    if (!window.confirm(`Отозвать приглашение ${inv.email}? Его ссылка перестанет работать.`)) return;
+    if (!(await confirmAction({ title: `Отозвать приглашение ${inv.email}?`, description: `Его ссылка перестанет работать.`, danger: true }))) return;
     try { await api.meetingInviteRevoke(eventId, inv.id); void load(); }
     catch (er) { setErr(er instanceof ApiError ? er.message : 'Не удалось отозвать'); }
   };
@@ -59,7 +60,7 @@ export function MeetingGuests({ eventId }: { eventId: string }) {
       <form className="meeting-guests-add" onSubmit={invite}>
         <input className="input" type="email" placeholder="email гостя" value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email гостя" />
         <input className="input" placeholder="Имя (необязательно)" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} aria-label="Имя гостя" />
-        <button className="btn btn-sm btn-primary" type="submit" disabled={busy || !email.trim()}>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" type="submit" disabled={busy || !email.trim()}>
           <Icon name="send" size={14} /> {busy ? 'Отправляю…' : 'Пригласить'}
         </button>
       </form>
@@ -74,10 +75,10 @@ export function MeetingGuests({ eventId }: { eventId: string }) {
             <b>{i.name || i.email}</b>{i.name && <span className="dim"> · {i.email}</span>}
             <span className="dim"> · {i.opened ? 'заходил по ссылке' : 'ещё не открывал'}</span>
           </span>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void resend(i)} title="Отправить письмо со ссылкой ещё раз">
+          <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void resend(i)} title="Отправить письмо со ссылкой ещё раз">
             <Icon name="send" size={13} />
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void revoke(i)} title="Отозвать приглашение" aria-label={`Отозвать приглашение ${i.email}`}>
+          <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void revoke(i)} title="Отозвать приглашение" aria-label={`Отозвать приглашение ${i.email}`}>
             <Icon name="close" size={13} />
           </button>
         </div>

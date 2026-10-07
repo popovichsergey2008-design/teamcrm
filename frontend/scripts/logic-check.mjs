@@ -1361,6 +1361,22 @@ test('почты вынимаются из того, что человек вс�
   assert.deepEqual(parseEmails(''), []);
 });
 
+test('на аватаре без фото — две буквы: у групп и каналов тоже, а не «#»', async () => {
+  const { initialsOf } = await load('lib/initials.ts');
+  assert.equal(initialsOf('Boris Chest'), 'BC');
+  assert.equal(initialsOf('TEAM PRO'), 'TP');
+  assert.equal(initialsOf('Константин'), 'Ко');
+  assert.equal(initialsOf('ОТЧЕТЫ'), 'От');
+  // предлоги второй буквой не берём
+  assert.equal(initialsOf('Группа по разработке СРМ'), 'ГР');
+  assert.equal(initialsOf('чат для гостя'), 'ЧГ');
+  // знаки в начале слова пропускаем до буквы
+  assert.equal(initialsOf('#общий канал'), 'ОК');
+  assert.equal(initialsOf('Склад — рабочий'), 'СР');
+  assert.equal(initialsOf(''), '?');
+  assert.equal(initialsOf(null), '?');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

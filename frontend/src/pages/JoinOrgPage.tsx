@@ -61,7 +61,7 @@ export function JoinOrgPage({ token }: { token: string }) {
             ) : (
               <div className="pnl-good" style={{ marginBottom: 14 }}><Icon name="check-circle" size={15} /> Аккаунт создан. Теперь войдите.</div>
             )}
-            <a className="btn btn-primary auth-submit" href="/">Перейти ко входу</a>
+            <a className="ui-btn ui-btn-primary ui-btn-md auth-submit" href="/">Перейти ко входу</a>
           </>
         ) : (
           <>
@@ -78,7 +78,7 @@ export function JoinOrgPage({ token }: { token: string }) {
               <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
             </div>
             <div className="error-text">{error}</div>
-            <button className="btn btn-primary auth-submit" disabled={busy || !info} type="submit">
+            <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy || !info} type="submit">
               {busy ? '...' : 'Вступить и создать аккаунт'}
             </button>
           </>

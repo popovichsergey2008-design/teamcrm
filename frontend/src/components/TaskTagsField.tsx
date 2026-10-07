@@ -167,12 +167,12 @@ export function TaskTagsField({ task, value, onChange, compact, mode = 'create' 
             </span>
           );
         })}
-        <button className="btn btn-ghost btn-sm" onClick={() => setPickOpen(!pickOpen)}>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setPickOpen(!pickOpen)}>
           <Icon name="plus" size={13} /> тег
         </button>
         {mode === 'edit' && settings?.aiTagging && (
           <button
-            className="btn btn-ghost btn-sm"
+            className="ui-btn ui-btn-ghost ui-btn-sm"
             onClick={() => { askedFor.current = ''; void ask(); }}
             disabled={asking}
             title="Пересобрать подсказки по текущему тексту задачи"
@@ -233,16 +233,16 @@ export function TaskTagsField({ task, value, onChange, compact, mode = 'create' 
             {!visible.length && <span className="dim">Ничего не найдено</span>}
           </div>
           {query.trim().length >= 2 && canCreate && !similar && (
-            <button className="btn btn-sm" onClick={() => void createTag(query.trim())}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void createTag(query.trim())}>
               <Icon name="plus" size={13} /> Создать тег «{query.trim()}»
             </button>
           )}
           {similar && (
             <div className="tags-similar">
-              <button className="btn btn-sm" onClick={() => { toggle(String(similar.tag.id)); setSimilar(null); setErr(''); }}>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => { toggle(String(similar.tag.id)); setSimilar(null); setErr(''); }}>
                 Использовать «{similar.tag.name}»
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => void createTag(similar.name, true)}>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void createTag(similar.name, true)}>
                 Всё равно создать новый
               </button>
             </div>
@@ -254,7 +254,7 @@ export function TaskTagsField({ task, value, onChange, compact, mode = 'create' 
       {proposed && canCreate && !value.confirmed && (
         <div className="dim tags-proposed">
           ИИ предлагает новый тег «{proposed}».{' '}
-          <button className="btn btn-ghost btn-sm" onClick={() => void createTag(proposed)}>Создать</button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void createTag(proposed)}>Создать</button>
         </div>
       )}
 
@@ -263,11 +263,11 @@ export function TaskTagsField({ task, value, onChange, compact, mode = 'create' 
       {gated && !ready && (
         <div className="tags-confirm">
           {value.tagIds.length > 0 ? (
-            <button className="btn btn-sm" onClick={() => onChange({ ...value, confirmed: true, confirmedWithoutTags: false })}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => onChange({ ...value, confirmed: true, confirmedWithoutTags: false })}>
               <Icon name="check" size={13} /> Подтвердить теги{suggestions.length ? ` (${value.tagIds.length})` : ''}
             </button>
           ) : (
-            <button className="btn btn-sm" onClick={() => onChange({ ...value, confirmed: false, confirmedWithoutTags: true })}>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => onChange({ ...value, confirmed: false, confirmedWithoutTags: true })}>
               <Icon name="check" size={13} /> Подтвердить без тегов
             </button>
           )}

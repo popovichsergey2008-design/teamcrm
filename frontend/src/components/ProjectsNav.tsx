@@ -4,6 +4,7 @@ import { SkeletonList } from './Skeleton';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import type { Project } from '../types';
+import { confirmAction } from './ui/dialog';
 
 const EXPANDED_KEY = 'teamcrm.expandedBitrix';
 const providerLabel = (origin?: string) => (origin === 'yougile' ? 'YouGile' : 'Битрикс24');
@@ -116,7 +117,7 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
 
   const toggleArchive = async (p: Project) => {
     const archived = p.status === 'archived';
-    if (!archived && !window.confirm(`Убрать проект «${p.name}» в архив? Он уйдёт на вкладку «Архив», данные сохранятся.`)) return;
+    if (!archived && !(await confirmAction({ title: `Убрать проект «${p.name}» в архив?`, description: `Он уйдёт на вкладку «Архив», данные сохранятся.`, confirmLabel: 'В архив' }))) return;
     try {
       if (archived) await api.unarchiveProject(p.id); else await api.archiveProject(p.id);
       await reload();
@@ -127,7 +128,7 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
   };
 
   const remove = async (p: Project) => {
-    if (!window.confirm(`Удалить проект «${p.name}» со всеми задачами? Действие необратимо.`)) return;
+    if (!(await confirmAction({ title: `Удалить проект «${p.name}» со всеми задачами?`, description: `Действие необратимо.`, danger: true }))) return;
     try {
       await api.deleteProject(p.id);
       const rest = projects.filter((x) => x.id !== p.id);
@@ -306,7 +307,7 @@ export function ProjectsNav({ currentId, canManage, canDelete = false }: {
             onChange={(e) => setCreating(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && create()}
           />
-          <button className="btn btn-primary btn-sm" onClick={create} title="Создать проект">
+          <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={create} title="Создать проект">
             <Icon name="plus" size={14} />
           </button>
         </div>

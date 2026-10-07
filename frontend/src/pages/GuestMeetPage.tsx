@@ -181,7 +181,7 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
             Созвон {meetingWhen(info.startsAt)} — подключиться можно будет {countdown(opensAtMs - now)}.
           </p>
         )}
-        <button className="btn btn-primary guest-call-btn" onClick={() => setInCall(true)} disabled={early}>
+        <button className="ui-btn ui-btn-primary ui-btn-md guest-call-btn" onClick={() => setInCall(true)} disabled={early}>
           <Icon name="phone" size={15} /> Подключиться к созвону
         </button>
       </div>
@@ -224,7 +224,7 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
                   </div>
                 </div>
                 {onStaffLogin && (
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={onStaffLogin}>Я сотрудник — войти</button>
+                  <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onStaffLogin}>Я сотрудник — войти</button>
                 )}
               </>
             ) : (<>
@@ -279,7 +279,7 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
               закрыта. Если за ссылкой есть переписка, войти в неё можно сразу.
             */}
             <button
-              className="btn btn-primary auth-submit"
+              className="ui-btn ui-btn-primary ui-btn-md auth-submit"
               type="submit"
               disabled={busy || name.trim().length < 2 || (early && !info.hasChat)}
             >
@@ -291,7 +291,7 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
               Разрешите доступ к микрофону, когда браузер спросит.
             </p>
             {onStaffLogin && (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={onStaffLogin}>
+              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onStaffLogin}>
                 Я сотрудник ANTHILL — войти
               </button>
             )}
