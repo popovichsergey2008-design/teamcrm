@@ -34,6 +34,12 @@ const TITLES: Record<string, string> = {
   'contact.bulk_reveal': 'Раскрывать контакты списком',
   'crm.view': 'Видеть клиентов и сделки',
   'crm.edit': 'Править клиентов и сделки',
+  'client.view': 'Видеть клиентов',
+  'client.create': 'Заводить клиентов',
+  'client.edit': 'Править клиентов',
+  'client.archive': 'Убирать клиентов в архив',
+  'client.delete': 'Удалять клиентов насовсем',
+  'client.export': 'Выгружать клиентов',
 
   'chat.view': 'Читать переписку',
   'chat.write': 'Писать в чаты',
@@ -68,7 +74,7 @@ export const PERMISSION_GROUPS: { title: string; items: string[] }[] = [
   },
   {
     title: 'Клиенты и контакты',
-    items: ['crm.view', 'crm.edit', 'contact.view', 'contact.reveal', 'contact.copy', 'contact.export', 'contact.bulk_reveal'],
+    items: ['client.view', 'client.create', 'client.edit', 'client.archive', 'client.delete', 'client.export', 'crm.view', 'crm.edit', 'contact.view', 'contact.reveal', 'contact.copy', 'contact.export', 'contact.bulk_reveal'],
   },
   {
     title: 'Переписка и файлы',

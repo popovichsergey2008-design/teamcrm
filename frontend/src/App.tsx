@@ -1,4 +1,5 @@
 import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { CLIENTS_ENABLED } from './config';
 import { useAuth } from './state/auth';
 import { api } from './lib/api';
 import { LoginPage } from './pages/LoginPage';
@@ -65,6 +66,8 @@ import { promptText } from './components/ui/dialog';
 const GuestMeetPage = lazy(() => import('./pages/GuestMeetPage').then((m) => ({ default: m.GuestMeetPage })));
 const GetAppPage = lazy(() => import('./pages/GetAppPage').then((m) => ({ default: m.GetAppPage })));
 const TaskBatchPage = lazy(() => import('./pages/TaskBatchPage').then((m) => ({ default: m.TaskBatchPage })));
+// Клиенты (ТЗ-17) — отдельным куском: пока раздел только в сборке для dev
+const ClientsPage = lazy(() => import('./pages/clients/ClientsPage').then((m) => ({ default: m.ClientsPage })));
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 const FeedPage = lazy(() => import('./pages/FeedPage').then((m) => ({ default: m.FeedPage })));
 const MeetingsPage = lazy(() => import('./pages/MeetingsPage').then((m) => ({ default: m.MeetingsPage })));
@@ -684,6 +687,9 @@ export function App() {
           <Suspense fallback={pageFallback}><TaskBatchPage taskIds={route.taskIds} /></Suspense>
         )}
         {route.section === 'radar' && canManage && <RadarPage />}
+        {route.section === 'clients' && CLIENTS_ENABLED && (
+          <Suspense fallback={pageFallback}><ClientsPage clientId={route.clientId} /></Suspense>
+        )}
         {route.section === 'support' && (
           <Suspense fallback={pageFallback}><SupportPage /></Suspense>
         )}

@@ -305,6 +305,61 @@ export interface TeamPresence {
 
 export type FocusChangeReason = 'not_relevant' | 'wrong_priority' | 'done' | 'blocked' | 'other';
 
+// ── Клиенты (ТЗ-17) ────────────────────────────────────────────────────────────
+export type ClientStatus = 'lead' | 'active' | 'paused' | 'inactive' | 'lost';
+export interface ClientHealth { level: 'healthy' | 'attention' | 'risk' | null; signals: string[] }
+export interface ClientCan {
+  create: boolean; edit: boolean; archive: boolean; delete: boolean; export: boolean;
+  deals: boolean; editDeals: boolean; contacts: boolean; reveal: boolean;
+}
+export interface ClientRow {
+  id: string; name: string; type: 'company' | 'person'; status: ClientStatus; segment: string | null; source: string | null;
+  city: string | null; website: string | null; ownerId: string | null; ownerName: string | null; archived: boolean;
+  createdAt: string; activityAt: string | null; nextAction: string | null; nextActionAt: string | null;
+  contacts: number; primaryContact: string | null; openDeals: number; dealsAmount: number | null;
+  openTasks: number; overdueTasks: number; health: ClientHealth;
+}
+export interface ClientContact {
+  id: string; firstName: string; lastName: string | null; position: string | null; preferredChannel: string | null;
+  isPrimary: boolean; fields: Record<'phone' | 'email' | 'telegram' | 'whatsapp', { value: string | null; masked: boolean }>;
+}
+export interface ClientContacts { hidden: boolean; items: ClientContact[]; canReveal: boolean; requireReason: boolean }
+export interface ClientDeal {
+  id: string; title: string; stage: string; amount: number | null; currency: string; probability: number | null;
+  ownerId: string | null; ownerName: string | null; nextAction: string | null; closeDate: string | null;
+  lostReason: string | null; projectId: string | null; updatedAt: string;
+}
+export interface ClientTask {
+  id: string; title: string; projectId: string | null; projectName: string | null; deadlineAt: string | null;
+  priority: string | null; closed: boolean; assigneeName: string | null; column: string | null;
+}
+export interface ClientMeeting { kind: 'event' | 'meeting'; id: string; title: string; startsAt: string; endsAt: string | null; roomId: string | null }
+export interface ClientNote { id: string; body: string; pinned: boolean; isPrivate: boolean; authorId: string | null; authorName: string | null; createdAt: string }
+export interface SummaryLine { text: string; sources: string[]; tone?: 'risk' | 'info' }
+export interface ClientCard {
+  client: {
+    id: string; name: string; type: 'company' | 'person'; legalName: string | null; status: ClientStatus; segment: string | null;
+    source: string | null; ownerId: string | null; ownerName: string | null; departmentId: string | null; departmentName: string | null;
+    website: string | null; country: string | null; city: string | null; address: string | null; taxId: string | null;
+    registrationNumber: string | null; description: string | null; archived: boolean; createdAt: string;
+    lastActivityAt: string | null; nextAction: string | null; nextActionAt: string | null;
+  };
+  nextAction: { text: string; at: string | null; source: string } | null;
+  health: ClientHealth;
+  summary: { lines: SummaryLine[]; risks: SummaryLine[]; enough: boolean };
+  contacts: ClientContacts;
+  team: { userId: string; role: string; name: string; avatarUrl: string | null }[];
+  deals: ClientDeal[];
+  projects: { id: string; name: string; status: string; pmName: string | null; total: number; done: number }[];
+  tasks: { open: number; overdue: number; top: ClientTask[] };
+  meetings: { upcoming: ClientMeeting[]; past: ClientMeeting[] };
+  pinnedNotes: ClientNote[];
+  can: ClientCan;
+}
+export interface ClientActivity { id: string; kind: string; title: string; at: string; actor: string | null; entityType: string | null; entityId: string | null }
+export interface ClientFile { id: string; fileId: string; name: string; contentType: string; size: number; category: string; uploadedBy: string | null; createdAt: string }
+export interface ClientDuplicate { id: string; name: string; website: string | null; archived: boolean; matched: string[] }
+
 /** Сторона объединения задач: та, что остаётся, и та, что помечается объединённой. */
 export interface MergeSide {
   id: string;
@@ -475,6 +530,16 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * уже дошёл до сервера, и повтор завёл бы вторую задачу. Здесь честнее сказать
  * человеку «сервер обновляется, повторите», чем молча сделать что-то дважды.
  */
+/** Отправка формы с файлом (multipart): конверт ответа тот же, что у request. */
+async function upload<T>(path: string, fields: Record<string, string | Blob>): Promise<T> {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+  const res = await fetch(apiUrl(path), { method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd });
+  const env = await res.json().catch(() => ({ ok: false }));
+  if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Не удалось отправить файл', env.error?.details);
+  return env.data as T;
+}
+
 async function request<T>(method: string, path: string, body?: unknown, extra?: RequestExtra): Promise<T> {
   // запоминаем, с каким токеном шли: по нему видно, обновил ли его кто-то параллельно
   const access = tokens.access;
@@ -982,6 +1047,8 @@ export const api = {
     directions?: string[];
     /* Теги: что предложил ИИ и что подтвердил человек (ТЗ по тегам, п. 52). */
     suggestedTagIds?: string[]; tagsConfirmed?: boolean; confirmedWithoutTags?: boolean;
+    /** клиент задачи напрямую (ТЗ-17) */
+    clientId?: string;
   }) =>
     request<Task>('POST', '/tasks', b),
   /**
@@ -991,6 +1058,8 @@ export const api = {
   updateTask: (id: string, b: Partial<{
     title: string; description: string; isBlocked: boolean; priority: string;
     managerId: string | null; assigneeId: string | null;
+    /** клиент задачи (ТЗ-17); null — снять */
+    clientId: string | null;
   }>, version?: number | null) =>
     queued<Task>('PATCH', `/tasks/${id}`, b, { label: 'Правка задачи', preview: b.title ?? b.description ?? undefined, ifMatch: version ?? null }),
   moveTask: (id: string, b: { columnId: string; position: number; confirmGate?: boolean }) =>
@@ -2236,6 +2305,58 @@ export const api = {
 
   /** «Фокус дня» одним запросом (ТЗ-9): мои (с закрытыми — для полосы дня), порученные, на проверке, согласования. */
   /** «Фокус дня» (ТЗ-16): план на сегодня одним запросом — собирается при первом открытии. */
+  // ── Клиенты (ТЗ-17) ──
+  /** Загрузить файл в хранилище (без привязки) — потом его привязывают к клиенту. */
+  uploadFile: (file: File, ownerKind = 'generic', ownerId?: string) =>
+    upload<{ id: string; fileName: string; contentType: string; sizeBytes: number }>('/api/files', { file, ownerKind, ...(ownerId ? { ownerId } : {}) }),
+  clients: (query: string) => request<{ items: ClientRow[]; total: number; page: number; pageSize: number;
+    counters: { mine: number; no_owner: number; overdue: number; total: number }; can: ClientCan }>('GET', `/clients?${query}`),
+  clientOptions: () => request<{ users: { id: string; name: string }[]; departments: { id: string; name: string }[]; segments: string[] }>('GET', '/clients/options'),
+  clientDuplicates: (q: string) => request<ClientDuplicate[]>('GET', `/clients/duplicates?${q}`),
+  createClient: (b: Record<string, unknown>) => request<{ id: string }>('POST', '/clients', b),
+  clientCard: (id: string) => request<ClientCard>('GET', `/clients/${id}`),
+  updateClient: (id: string, b: Record<string, unknown>) => request<ClientCard>('PATCH', `/clients/${id}`, b),
+  archiveClient: (id: string) => request<{ ok: true }>('DELETE', `/clients/${id}`),
+  restoreClient: (id: string) => request<{ ok: true }>('POST', `/clients/${id}/restore`),
+  deleteClient: (id: string) => request<{ ok: true }>('DELETE', `/clients/${id}/permanent`),
+  clientPeople: (id: string) => request<ClientContacts>('GET', `/clients/${id}/contacts`),
+  addClientContact: (id: string, b: Record<string, unknown>) => request<ClientContacts>('POST', `/clients/${id}/contacts`, b),
+  updateClientContact: (cid: string, b: Record<string, unknown>) => request<ClientContacts>('PATCH', `/client-contacts/${cid}`, b),
+  removeClientContact: (cid: string) => request<ClientContacts>('DELETE', `/client-contacts/${cid}`),
+  revealClientContact: (cid: string, field: string, reason?: string) =>
+    request<{ field: string; value: string | null; ttlSeconds: number }>('POST', `/client-contacts/${cid}/reveal`, { field, ...(reason ? { reason } : {}) }),
+  setClientMember: (id: string, userId: string, role: string) => request<ClientCard>('POST', `/clients/${id}/members`, { userId, role }),
+  removeClientMember: (id: string, userId: string) => request<ClientCard>('DELETE', `/clients/${id}/members/${userId}`),
+  clientNotes: (id: string) => request<ClientNote[]>('GET', `/clients/${id}/notes`),
+  addClientNote: (id: string, b: { body: string; pinned?: boolean; isPrivate?: boolean }) => request<ClientNote[]>('POST', `/clients/${id}/notes`, b),
+  updateClientNote: (nid: string, b: { body?: string; pinned?: boolean; isPrivate?: boolean }) => request<ClientNote[]>('PATCH', `/client-notes/${nid}`, b),
+  deleteClientNote: (nid: string) => request<ClientNote[]>('DELETE', `/client-notes/${nid}`),
+  clientDeals: (id: string) => request<ClientDeal[]>('GET', `/clients/${id}/deals`),
+  addClientDeal: (id: string, b: Record<string, unknown>) => request<ClientDeal[]>('POST', `/clients/${id}/deals`, b),
+  updateClientDeal: (did: string, b: Record<string, unknown>) => request<ClientDeal[]>('PATCH', `/client-deals/${did}`, b),
+  removeClientDeal: (did: string) => request<ClientDeal[]>('DELETE', `/client-deals/${did}`),
+  clientProjects: (id: string) => request<ClientCard['projects']>('GET', `/clients/${id}/projects`),
+  linkClientProject: (id: string, pid: string) => request<ClientCard['projects']>('POST', `/clients/${id}/projects/${pid}`),
+  unlinkClientProject: (id: string, pid: string) => request<ClientCard['projects']>('DELETE', `/clients/${id}/projects/${pid}`),
+  clientTasks: (id: string, filter: string) => request<ClientTask[]>('GET', `/clients/${id}/tasks?filter=${filter}`),
+  clientMeetings: (id: string) => request<{ upcoming: ClientMeeting[]; past: ClientMeeting[] }>('GET', `/clients/${id}/meetings`),
+  clientChats: (id: string) => request<{ id: string; title: string | null; kind: string; external: boolean; lastMessageAt: string | null }[]>('GET', `/clients/${id}/chats`),
+  clientFiles: (id: string) => request<ClientFile[]>('GET', `/clients/${id}/files`),
+  addClientFile: (id: string, fileId: string, category: string) => request<ClientFile[]>('POST', `/clients/${id}/files`, { fileId, category }),
+  removeClientFile: (id: string, fid: string) => request<ClientFile[]>('DELETE', `/clients/${id}/files/${fid}`),
+  clientActivity: (id: string, kind?: string) => request<ClientActivity[]>('GET', `/clients/${id}/activity${kind ? `?kind=${kind}` : ''}`),
+  clientViews: () => request<{ id: string; name: string; filter: Record<string, string>; sort: Record<string, string> }[]>('GET', '/clients/views'),
+  addClientView: (name: string, filter: Record<string, string>, sort: Record<string, string>) =>
+    request<{ id: string; name: string; filter: Record<string, string>; sort: Record<string, string> }[]>('POST', '/clients/views', { name, filter, sort }),
+  removeClientView: (id: string) => request<{ id: string; name: string; filter: Record<string, string>; sort: Record<string, string> }[]>('DELETE', `/clients/views/${id}`),
+  clientsBulk: (ids: string[], action: string, value?: string | null) => request<{ updated: number }>('POST', '/clients/bulk', { ids, action, value: value ?? null }),
+  clientMergePreview: (keepId: string, dropId: string) => request<{ keep: any; drop: any }>('POST', '/clients/merge-preview', { keepId, dropId }),
+  clientMerge: (keepId: string, dropId: string, nameFrom: 'keep' | 'drop') => request<{ id: string }>('POST', '/clients/merge', { keepId, dropId, nameFrom }),
+  clientImportPreview: (file: File) => upload<{ headers: string[]; mapping: Record<string, string | null>; total: number; sample: string[][]; fields: { key: string; title: string }[] }>(
+    '/api/clients/import/preview', { file }),
+  clientImport: (file: File, mapping: Record<string, string | null>, onDuplicate: 'skip' | 'create') =>
+    upload<{ total: number; imported: number; skipped: number; review: number; errors: { row: number; reason: string; name?: string }[] }>(
+      '/api/clients/import', { file, mapping: JSON.stringify(mapping), onDuplicate }),
   focusToday: () => request<FocusToday>('GET', '/focus/today'),
   focusBacklog: () => request<FocusCandidate[]>('GET', '/focus/today/backlog'),
   focusAccept: () => request<FocusToday>('POST', '/focus/today/accept'),

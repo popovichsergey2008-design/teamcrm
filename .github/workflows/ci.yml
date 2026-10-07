@@ -197,6 +197,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Build
         working-directory: frontend
+        # разделы, которые пока живут только на dev (config.ts → DEV_FEATURES)
+        env:
+          VITE_DEV_FEATURES: clients
         run: |
           npm ci
           npm run build

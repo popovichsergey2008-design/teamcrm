@@ -12,6 +12,8 @@
 import { useEffect, useState } from 'react';
 
 export type Section = 'focus' | 'calendar' | 'news' | 'tasks' | 'projects' | 'chat' | 'radar' | 'support'
+  /** Клиенты (ТЗ-17): `/clients`, карточка — `/clients/:id` */
+  | 'clients'
   /** Консоль техотдела вендора: клиентам этого раздела не существует. */
   | 'console'
   | 'settings' | 'profile'
@@ -39,10 +41,12 @@ export type Route = {
   taskIds?: string;
   /** встреча: `/meet/:publicId` (ТЗ-14) */
   meetId?: string;
+  /** карточка клиента: `/clients/:id` (ТЗ-17) */
+  clientId?: string;
 };
 
 const SECTIONS: Section[] = [
-  'focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'support', 'console', 'settings', 'profile', 'meet',
+  'focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'support', 'console', 'settings', 'profile', 'meet', 'clients',
 ];
 
 /** По ТЗ приложение открывается на «Фокусе дня», а не на досках. */
@@ -137,6 +141,8 @@ export function parsePath(pathname: string): Route {
       return seg[1] ? { section, tab: seg[1] } : { section };
     case 'meet':
       return seg[1] ? { section, meetId: seg[1] } : { section: 'calendar' };
+    case 'clients':
+      return seg[1] ? { section, clientId: seg[1] } : { section };
     default:
       return { section };
   }
@@ -167,6 +173,8 @@ export function buildPath(r: Route): string {
       return r.tab ? `/console/${enc(r.tab)}` : '/console';
     case 'meet':
       return r.meetId ? `/meet/${enc(r.meetId)}` : '/calendar';
+    case 'clients':
+      return r.clientId ? `/clients/${enc(r.clientId)}` : '/clients';
     default:
       return `/${r.section}`;
   }

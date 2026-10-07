@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
+import { CLIENTS_ENABLED } from '../config';
 import { Icon, IconName } from './Icon';
 import { applyHidden, applyOrder, isHidden, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
 import { setQuietSource } from '../lib/quiet';
@@ -50,6 +51,8 @@ type Item = {
    * общих экранах и не наводит на мысль, что у соседа «есть что-то ещё».
    */
   platformOnly?: boolean;
+  /** Раздел пока живёт только в сборке для dev (config.ts → DEV_FEATURES). */
+  devOnly?: 'clients';
   subs?: { label: string; icon: IconName; route: Route; roles?: Role[] }[];
 };
 
@@ -86,6 +89,15 @@ const MENU: Item[] = [
     hint: 'Пространства задач компании: списки и канбан',
     // «Клиенты и сделки» переехали в личный кабинет и видны только тому, кто завёл
     // компанию: приглашённым сотрудникам этот раздел не нужен, а место в меню занимал
+  },
+  {
+    // Клиенты (ТЗ-17): рабочий центр отношений с клиентом. Пока — только в сборке dev.
+    section: 'clients',
+    label: 'Клиенты',
+    icon: 'building',
+    hint: 'Клиенты: контакты, сделки, задачи, встречи и что делать дальше',
+    roles: ['owner', 'manager', 'member'],
+    devOnly: 'clients',
   },
   {
     section: 'chat',
@@ -214,7 +226,8 @@ export function Sidebar({
   const [dragged, setDragged] = useState<string | null>(null);
   useEffect(() => { setPrefs(user.uiPrefs ?? {}); }, [user.uiPrefs]);
 
-  const allowed = MENU.filter((i) => visible(i.roles, user.role) && (!i.platformOnly || (user.platformStaff && isConsoleHost())));
+  const allowed = MENU.filter((i) => visible(i.roles, user.role) && (!i.platformOnly || (user.platformStaff && isConsoleHost()))
+    && (!i.devOnly || CLIENTS_ENABLED));
   const ordered = applyOrder(allowed, prefs);
   // В режиме настройки показываем и спрятанное — иначе вернуть его будет неоткуда.
   const menuItems = tuning ? ordered : applyHidden(ordered, prefs);

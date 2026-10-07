@@ -52,7 +52,8 @@ export class ClientsRepository {
   async list(tenantId: string, scope: ClientScope, f: ListFilters) {
     const params: unknown[] = [tenantId, scope.userId];
     const add = (v: unknown) => { params.push(v); return `$${params.length}`; };
-    const where: string[] = ['c.tenant_id = $1'];
+    // $2 (кто смотрит) упоминается всегда: неиспользованный параметр Postgres не прощает (грабли)
+    const where: string[] = ['c.tenant_id = $1', '$2::bigint IS NOT NULL'];
     if (scope.own) where.push(OWN('c', '$2'));
 
     const view = f.view ?? 'all';
@@ -167,7 +168,7 @@ export class ClientsRepository {
          FROM clients c
          LEFT JOIN users ou ON ou.id = c.owner_user_id
          LEFT JOIN groups g ON g.id = c.department_id
-        WHERE c.tenant_id = $1 AND c.id = $3 ${scope.own ? `AND ${OWN('c', '$2')}` : ''}`,
+        WHERE c.tenant_id = $1 AND c.id = $3 AND $2::bigint IS NOT NULL ${scope.own ? `AND ${OWN('c', '$2')}` : ''}`,
       [tenantId, scope.userId, id],
     );
   }
