@@ -1,0 +1,123 @@
+/*
+  «Фокус дня» по ТЗ-16. Файл грузится вместе с экраном (отдельным куском сборки), а не
+  в общий CSS: первый экран и так у предела бюджета.
+
+  Смысловые токены (п. 42): главная миссия, важное, сделанное. Строятся из токенов
+  темы, поэтому светлая и тёмная получают своё без отдельных значений.
+*/
+:root {
+  --focus-mission: var(--accent);
+  --focus-mission-bg: color-mix(in srgb, var(--accent) 7%, var(--bg-elev));
+  --focus-important: var(--border-2);
+  --focus-complete: var(--ok);
+}
+
+.fd-page { overflow-y: auto; gap: var(--sp-3); }
+.fd-page > * { flex-shrink: 0; }
+
+.fd-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+.fd-head .focus-hello { font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+.fd-score { font-size: 15px; }
+.fd-score b { font-size: 20px; }
+
+/* предложение системы */
+.fd-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3); flex-wrap: wrap;
+  padding: 10px 14px; border-radius: 12px;
+  border: 1px solid var(--accent-line); background: var(--accent-soft);
+}
+.fd-banner-text { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.fd-banner-text .icon { color: var(--accent); }
+.fd-banner-acts { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.fd-accepted { display: flex; align-items: center; gap: 4px var(--sp-3); flex-wrap: wrap; font-size: 13px; }
+.fd-accepted > .dim { display: inline-flex; align-items: center; gap: 6px; }
+.fd-feedback { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+
+/* новая критичная — заметно, но не тревожной сиреной */
+.fd-critical { border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border)); border-radius: 12px; padding: 10px 14px; background: color-mix(in srgb, var(--warn) 7%, var(--bg-elev)); }
+.fd-critical-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fd-critical-line .icon { color: var(--warn); }
+.fd-critical-line > span { flex: 1; min-width: 200px; }
+.fd-critical-body { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+
+/* тройка */
+.fd-top { display: flex; flex-direction: column; gap: var(--sp-3); }
+.fd-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.fd-card {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+  padding: 14px 16px; border-radius: 14px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+  border-left: 3px solid var(--focus-important);
+}
+.fd-mission { padding: 18px 20px; background: var(--focus-mission-bg); border-color: var(--accent-line); border-left: 4px solid var(--focus-mission); }
+.fd-done { border-left-color: var(--focus-complete); }
+.fd-done .fd-title { text-decoration: line-through; color: var(--text-dim); }
+.fd-gone { border-style: dashed; }
+.fd-free { align-items: flex-start; border-style: dashed; border-left-width: 1px; background: transparent; }
+.fd-card-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 24px; }
+.fd-rank { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+.fd-mission .fd-rank { color: var(--accent); }
+.fd-pin { color: var(--accent); display: inline-flex; }
+.fd-edit { display: inline-flex; gap: 2px; margin-left: auto; flex-wrap: wrap; }
+.fd-title {
+  all: unset; cursor: pointer; display: flex; align-items: flex-start; gap: 8px;
+  font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere;
+}
+.fd-title .icon { flex-shrink: 0; margin-top: 2px; color: var(--text-dim); }
+.fd-mission .fd-title { font-size: 19px; font-weight: 650; }
+.fd-mission .fd-title .icon { color: var(--accent); }
+.fd-title:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: 6px; }
+.fd-title:disabled { cursor: default; }
+.fd-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.fd-check { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); }
+.fd-progress { height: 6px; border-radius: 99px; background: var(--bg-elev-2); overflow: hidden; }
+.fd-progress > span { display: block; height: 100%; background: var(--brand-gradient, var(--accent)); }
+.fd-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fd-why { margin: 0; padding: 8px 12px 8px 26px; border-radius: 10px; background: var(--bg-elev-2); font-size: 13px; color: var(--text-dim); }
+.fd-why li + li { margin-top: 2px; }
+.fd-gone-body { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fd-note { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--focus-complete); font-weight: 600; }
+
+/* причины замены — чипами, одним нажатием */
+.fd-reasons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 6px; border-top: 1px dashed var(--border); }
+.fd-chip {
+  font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 99px; cursor: pointer;
+  border: 1px solid var(--border-2); background: var(--bg-elev); color: var(--text);
+}
+.fd-chip:hover { background: var(--hover); }
+.fd-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.fd-chip-ghost { border-color: transparent; color: var(--text-dim); }
+
+/* строки «ждут решения» и «остальные» — вторичный слой (п. 40) */
+.fd-row {
+  all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-elev);
+  font-size: 14px;
+}
+.fd-row:hover { background: var(--hover); }
+.fd-row:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.fd-row > .icon:last-child { margin-left: auto; color: var(--text-dim); }
+.fd-backlog { display: flex; flex-direction: column; gap: 4px; }
+.fd-bl-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-elev);
+}
+.fd-bl-blocked { opacity: .75; }
+.fd-bl-main { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 2px; }
+.fd-bl-title { display: inline-flex; align-items: flex-start; gap: 6px; font-size: 14px; overflow-wrap: anywhere; }
+.fd-bl-title .icon { flex-shrink: 0; margin-top: 3px; color: var(--text-dim); }
+.fd-bl-sub { font-size: 12px; overflow-wrap: anywhere; }
+.fd-place { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.fd-empty { padding: 10px 14px; }
+
+@media (max-width: 720px) {
+  .fd-pair { grid-template-columns: minmax(0, 1fr); }
+  .fd-mission { padding: 14px 16px; }
+  .fd-mission .fd-title { font-size: 17px; }
+  .fd-head .focus-hello { font-size: 19px; }
+  .fd-feedback { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fd-card { transition: border-color .15s, background-color .15s; }
+}

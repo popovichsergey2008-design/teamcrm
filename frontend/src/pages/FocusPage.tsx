@@ -17,6 +17,17 @@ import { Avatar } from '../components/ui/avatar';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Toggle } from '../components/ui/toggle';
+import { lazyComponent } from '../lib/lazy';
+import type { FocusToday } from '../lib/api';
+
+/*
+  Новый «Фокус дня» (ТЗ-16) — отдельным куском сборки: пока организации его не
+  включили, первый экран не платит за него ни байтом.
+*/
+const FocusDayPage = lazyComponent(
+  () => import('./FocusDayPage').then((m) => m.FocusDayPage),
+  <div className="focus-page"><SkeletonList rows={4} /></div>,
+);
 
 /** Задача из сквозной выборки — с именем проекта и колонки (доска не одна). */
 type CrossTask = Task & { project_name: string; column_name: string };
@@ -153,13 +164,47 @@ export function prefetchFocus() {
   cached('focus:all', () => api.mobileFocus());
 }
 
-export function FocusPage({ onOpenTask, onJoinCall, active = true }: {
+type FocusProps = {
   onOpenTask: (projectId: string, taskId: string) => void;
   /** войти в созвон встречи прямо из повестки */
   onJoinCall: (roomId: string) => void;
   /** экран остаётся смонтированным в фоне — в это время он не ходит в сеть */
   active?: boolean;
-}) {
+};
+
+/** Включён ли у организации новый фокус — помним, чтобы не мелькал старый экран. */
+const flagKey = (tenantId?: string) => `teamcrm.focusV2.${tenantId ?? ''}`;
+function readFlag(tenantId?: string): boolean {
+  try { return localStorage.getItem(flagKey(tenantId)) === '1'; } catch { return false; }
+}
+function writeFlag(tenantId: string | undefined, on: boolean) {
+  try { if (on) localStorage.setItem(flagKey(tenantId), '1'); else localStorage.removeItem(flagKey(tenantId)); } catch { /* приватное окно */ }
+}
+
+/**
+ * «Фокус дня»: новый экран (ТЗ-16), если организация его включила, иначе прежний.
+ * Сервер на выключенном флаге отвечает коротким `{ enabled: false }` и ничего не собирает.
+ */
+export function FocusPage(props: FocusProps) {
+  const { user } = useAuth();
+  const [day, setDay] = useState<FocusToday | null>(null);
+  const expectNew = readFlag(user?.tenantId);
+
+  useEffect(() => {
+    if (!props.active) return;
+    let alive = true;
+    api.focusToday()
+      .then((d) => { if (!alive) return; setDay(d); writeFlag(user?.tenantId, d.enabled); })
+      .catch(() => { if (alive) setDay({ enabled: false }); });
+    return () => { alive = false; };
+  }, [props.active, user?.tenantId]);
+
+  if (day?.enabled) return <FocusDayPage initial={day} {...props} />;
+  if (!day && expectNew) return <div className="focus-page"><SkeletonList rows={4} /></div>;
+  return <LegacyFocusPage {...props} />;
+}
+
+function LegacyFocusPage({ onOpenTask, onJoinCall, active = true }: FocusProps) {
   const { user } = useAuth();
   // План дня — личный план исполнителя; соисполнителю сервер отказывает (403), и
   // кнопка молча откатывалась. Ему показываем задачу без кнопок плана.

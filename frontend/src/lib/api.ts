@@ -191,6 +191,64 @@ export interface TaskBatch {
   failed: { itemId: string; position: number; error: string | null; title: string }[];
 }
 
+/** Действие в «Фокусе дня» (ТЗ-16): своя задача, проверка чужой работы или согласование. */
+export interface FocusItem {
+  id: string;
+  rank: 1 | 2 | 3;
+  kind: 'task' | 'review' | 'approval';
+  status: 'active' | 'done';
+  taskId: string | null;
+  approvalId: string | null;
+  projectId: string | null;
+  /** null — задача удалена или больше не видна: старое название не показываем */
+  title: string | null;
+  unavailable: boolean;
+  projectName: string | null;
+  deadlineAt: string | null;
+  priority: string | null;
+  assigneeName: string | null;
+  checklistTotal: number;
+  checklistDone: number;
+  /** «почему эта задача» — готовые строки, собранные сервером */
+  reasons: string[];
+  score: number;
+  parts: { deadline: number; unlock: number; meeting: number; base: number; penalty: number };
+  pinned: boolean;
+  source: string;
+}
+
+export interface FocusCandidate {
+  key: string;
+  kind: 'task' | 'review' | 'approval';
+  taskId: string | null;
+  approvalId: string | null;
+  title: string;
+  projectName: string | null;
+  deadlineAt?: string | null;
+  priority?: string | null;
+  score: number;
+  reasons: string[];
+  blocked?: boolean;
+}
+
+export type FocusToday =
+  | { enabled: false }
+  | {
+    enabled: true;
+    plan: {
+      id: string; date: string; timezone: string;
+      status: 'proposed' | 'accepted' | 'modified' | 'in_progress' | 'completed' | 'closed';
+      scoreVersion: string; acceptedAt: string | null; completedAt: string | null; closedAt: string | null;
+      feedback: 1 | -1 | null;
+    };
+    top: FocusItem[];
+    backlogCount: number;
+    waitingDecision: number;
+    criticalCandidate: (FocusCandidate & { replaceRank: number }) | null;
+  };
+
+export type FocusChangeReason = 'not_relevant' | 'wrong_priority' | 'done' | 'blocked' | 'other';
+
 /** Сторона объединения задач: та, что остаётся, и та, что помечается объединённой. */
 export interface MergeSide {
   id: string;
@@ -2121,6 +2179,20 @@ export const api = {
     request<(Task & { project_name: string })[]>('GET', `/tasks/my/leftovers?today=${today}`),
 
   /** «Фокус дня» одним запросом (ТЗ-9): мои (с закрытыми — для полосы дня), порученные, на проверке, согласования. */
+  /** «Фокус дня» (ТЗ-16): план на сегодня одним запросом — собирается при первом открытии. */
+  focusToday: () => request<FocusToday>('GET', '/focus/today'),
+  focusBacklog: () => request<FocusCandidate[]>('GET', '/focus/today/backlog'),
+  focusAccept: () => request<FocusToday>('POST', '/focus/today/accept'),
+  focusRecalculate: () => request<FocusToday>('POST', '/focus/today/recalculate'),
+  focusAdd: (key: string, rank?: number, reason?: FocusChangeReason) =>
+    request<FocusToday>('POST', '/focus/today/items', { key, ...(rank ? { rank } : {}), ...(reason ? { reason } : {}) }),
+  focusRemove: (itemId: string, reason?: FocusChangeReason) =>
+    request<FocusToday>('DELETE', `/focus/today/items/${itemId}`, reason ? { reason } : {}),
+  focusPin: (itemId: string, pinned: boolean) => request<FocusToday>('PATCH', `/focus/today/items/${itemId}/pin`, { pinned }),
+  focusReorder: (ids: string[]) => request<FocusToday>('POST', '/focus/today/items/reorder', { ids }),
+  focusDismiss: (key: string) => request<FocusToday>('POST', '/focus/today/dismiss', { key }),
+  focusFeedback: (value: 1 | -1) => request<{ ok: true }>('POST', '/focus/today/feedback', { value }),
+  focusSettings: (enabled: boolean) => request<{ enabled: boolean }>('PATCH', '/focus/today/settings', { enabled }),
   mobileFocus: () => request<{ mine: any[]; delegated: any[]; review: any[]; approvals: Approval[] }>('GET', '/mobile/focus'),
   myTasks: (scope: 'mine' | 'delegated' | 'review', closed = false) =>
     request<any[]>('GET', `/tasks/my?scope=${scope}${closed ? '&closed=1' : ''}`),

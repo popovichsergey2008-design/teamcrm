@@ -17,6 +17,7 @@ import {
   ChevronDown, ChevronUp, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Reply, LifeBuoy, TriangleAlert,
   Info, CircleHelp, Lock, Eye, EyeOff, LogOut, BookOpen, Inbox, Plug, Handshake, Sparkles,
   ChartColumn, Wallet, Sun, Moon, Monitor, Play, Pause, Mail, Building2, Target, Zap,
+  Pin, ThumbsUp, ThumbsDown,
 } from 'lucide-react';
 
 const ICONS = {
@@ -36,6 +37,7 @@ const ICONS = {
   book: BookOpen, inbox: Inbox, plug: Plug, handshake: Handshake, sparkles: Sparkles, chart: ChartColumn,
   money: Wallet, sun: Sun, moon: Moon, monitor: Monitor,
   play: Play, pause: Pause, mail: Mail, building: Building2, target: Target, zap: Zap,
+  pin: Pin, 'thumbs-up': ThumbsUp, 'thumbs-down': ThumbsDown,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;
