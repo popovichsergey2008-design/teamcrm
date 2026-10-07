@@ -64,7 +64,7 @@ function toPerm(v: string | undefined): Perm {
 async function prepareLocalNotifications(): Promise<void> {
   try {
     localPerm = toPerm((await LocalNotifications.checkPermissions()).display);
-    await LocalNotifications.createChannel({ id: 'anthill', name: 'ANTHILL', importance: 4, sound: 'default', description: 'Сообщения, задачи, напоминания' });
+    await LocalNotifications.createChannel({ id: 'anthill', name: 'QEVO', importance: 4, sound: 'default', description: 'Сообщения, задачи, напоминания' });
     await LocalNotifications.createChannel({ id: 'anthill-calls', name: 'Звонки', importance: 5, sound: 'default', vibration: true, description: 'Входящие созвоны' });
     await LocalNotifications.addListener('localNotificationActionPerformed', (e) => {
       const h = clickHandlers.get(e.notification.id);
@@ -140,7 +140,7 @@ function requestPushToken(): Promise<string | null> {
         void PushNotifications.addListener('registrationError', () => resolve(null));
         setTimeout(() => resolve(null), 15_000); // FCM не ответил — представимся без токена
       });
-      await PushNotifications.createChannel({ id: 'anthill', name: 'ANTHILL', importance: 4, sound: 'default' }).catch(() => undefined);
+      await PushNotifications.createChannel({ id: 'anthill', name: 'QEVO', importance: 4, sound: 'default' }).catch(() => undefined);
       await PushNotifications.register();
       return await token;
     } catch { return null; }
@@ -325,7 +325,7 @@ export const capacitorBridge: PlatformBridge = {
       try {
         if (on) {
           await ForegroundService.startForegroundService({
-            id: 1, title: 'Идёт созвон', body: 'ANTHILL держит микрофон включённым',
+            id: 1, title: 'Идёт созвон', body: 'QEVO держит микрофон включённым',
             smallIcon: 'ic_stat_call', serviceType: ServiceType.Microphone,
           });
         } else {

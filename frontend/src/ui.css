@@ -1,4 +1,4 @@
-/* ANTHILL UI — примитивы ТЗ-15 (components/ui/*).
+/* QEVO UI — примитивы ТЗ-15 (components/ui/*).
 
    Стиль shadcn/ui, но на НАШИХ токенах (index.css): обе темы, контраст и размер шрифта
    работают сразу. Классы с приставкой ui- — чтобы не пересекаться с прежними .btn,
@@ -810,7 +810,7 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 .drawer-grid2 > *, .tv2-grid2 > * { min-width: 0; }
 @media (max-width: 720px) { .tv2-grid2 { grid-template-columns: minmax(0, 1fr); } }
 
-/* ── AnthillBot (ТЗ-15): ответ — лист с меткой, вопрос — мягкий пузырь, действие — карточка ── */
+/* ── QEVO Bot (ТЗ-15): ответ — лист с меткой, вопрос — мягкий пузырь, действие — карточка ── */
 .anthill-v2 { background: var(--bg); }
 .anthill-v2 .anthill-head { background: var(--bg-elev); }
 .anthill-v2 .anthill-mark {
@@ -1038,3 +1038,26 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 }
 .nav-secretary-text > span:first-child { font-size: var(--fs-sm); font-weight: 600; }
 .nav-secretary:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+
+/* ── бренд QEVO: градиент знака там, где он не мешает читать ────────────────── */
+/* Главная кнопка — тёмная часть градиента (#193B91 → #0A6BB0): белый текст на ней 5.6:1 и выше.
+   Бирюзовый конец сюда не берём — белое по нему 2.4:1. Однотонный цвет — запасной. */
+.ui-btn-primary, .auth-submit {
+  background-color: var(--accent-2);
+  background-image: linear-gradient(135deg, #193b91 0%, #0a6bb0 100%);
+  border-color: transparent;
+}
+.ui-btn-primary:hover, .auth-submit:hover:not(:disabled) {
+  background-color: var(--accent-2);
+  background-image: linear-gradient(135deg, #173480 0%, #095f9c 100%);
+}
+/* Значок бота — тот же отрезок градиента: белая иконка на бирюзовом терялась бы. */
+.anthill-v2 .anthill-mark { background: linear-gradient(135deg, #193b91, #087cc1); color: #fff; }
+/* Прогресс (план дня, чек-лист) — полный градиент знака: синий → бирюзовый. */
+.focus-v2 .focus-progress span, .tv2-progress-bar > span { background: var(--brand-gradient); }
+/* Карточка входа и регистрации — тонкая полоса градиента по верху, как у знака. */
+.auth-card { position: relative; overflow: hidden; }
+.auth-card::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--brand-gradient);
+}
+.auth-logo .logo-word { font-size: 26px; }

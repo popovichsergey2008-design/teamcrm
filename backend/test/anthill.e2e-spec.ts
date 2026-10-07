@@ -10,10 +10,10 @@ import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
 import { AnthillRepository } from '../src/modules/anthill/anthill.repository';
 
 /**
- * AnthillBot (ТЗ-6, MVP 1): сессии, ответ потоком, действия с подтверждением и откатом.
+ * QEVO Bot (ТЗ-6, MVP 1): сессии, ответ потоком, действия с подтверждением и откатом.
  * Модель в CI — заглушка, поэтому проверяем конвейер, а не качество текста.
  */
-describe('AnthillBot (e2e)', () => {
+describe('QEVO Bot (e2e)', () => {
   let app: INestApplication;
   let http$: any;
   let repo: AnthillRepository;

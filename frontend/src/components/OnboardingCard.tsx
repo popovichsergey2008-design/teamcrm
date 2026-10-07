@@ -58,7 +58,7 @@ export function OnboardingCard({ always = false }: {
 
   return (
     <>
-      <section className={`onb-card${open ? '' : ' onb-collapsed'}`} aria-label="Настройка ANTHILL">
+      <section className={`onb-card${open ? '' : ' onb-collapsed'}`} aria-label="Настройка QEVO">
         <header className="onb-head">
           <button
             className="onb-toggle"
@@ -67,7 +67,7 @@ export function OnboardingCard({ always = false }: {
             title={open ? 'Свернуть' : 'Развернуть'}
           >
             <Icon name={open ? 'chevron-down' : 'chevron-right'} size={16} />
-            <span className="onb-title">Настройка ANTHILL</span>
+            <span className="onb-title">Настройка QEVO</span>
             <span className="onb-progress">{view.done} / {view.total}</span>
           </button>
           {!always && <button

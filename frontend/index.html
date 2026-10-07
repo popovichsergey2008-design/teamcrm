@@ -6,19 +6,20 @@
          safe-area; interactive-widget=resizes-content: открытая клавиатура сжимает
          страницу, а не накрывает поле ввода (Chrome на Android). -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
-    <title>ANTHILL</title>
+    <title>QEVO</title>
 
-    <!-- Знак вкладки — фирменный ANTHILL.TEAM. Только png: знак растровый, и svg-версии
-         у него нет; своя векторная «похожая» фигура на вкладке хуже настоящей.
+    <!-- Знак вкладки — знак QEVO без букв (просьба заказчика). Только png: знак растровый,
+         svg-версии у него нет. Собирается scripts/brand-assets.py из исходника.
          Два размера: 32 для вкладки, 64 для закладок и панели задач.
          apple-touch-icon отдельно: iOS не берёт ни манифест, ни мелкие иконки. -->
     <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="icon" href="/favicon-64.png" sizes="64x64" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
-    <!-- Цвет строки браузера на телефоне: тёмный фон знака в обеих темах.
-         Логотип неоновый по тёмному — светлая полоса рядом с ним смотрелась бы чужой. -->
-    <meta name="theme-color" content="#0b0d12" />
+    <!-- Цвет строки браузера на телефоне — фон страницы своей темы: светлый бежевый или
+         графит. Прежний почти чёрный был под неоновый знак старого бренда. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f1ea" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1d2026" />
   </head>
   <body>
     <div id="root"></div>

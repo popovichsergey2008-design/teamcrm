@@ -45,7 +45,7 @@ const HINTS = [
 type Live = { status: string; text: string; sources: AnthillSource[] };
 
 /**
- * AnthillBot — персональный AI-помощник (ТЗ-6, MVP 1).
+ * QEVO Bot — персональный AI-помощник (ТЗ-6, MVP 1).
  *
  * Одно окно на три места: поверх CRM из Chat Bar, во весь экран в мессенджере и
  * в списке чатов отдельным собеседником. Внутри — переписка: вопрос, этапы работы
@@ -148,8 +148,8 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
       loadSessions();
       // Человек мог давно уйти из агента: без сигнала об отчёте он узнает, только
       // если сам заглянет. Отчёт уже лежит в «Заметках» — сюда даём короткий знак.
-      showToast({ kind: 'saved', title: 'AnthillBot: задача выполнена', body: p?.title ?? 'Отчёт готов и ждёт в «Заметках»' });
-      showNotification('AnthillBot', `${p?.title ?? 'Регулярная задача'} — отчёт готов`);
+      showToast({ kind: 'saved', title: 'QEVO Bot: задача выполнена', body: p?.title ?? 'Отчёт готов и ждёт в «Заметках»' });
+      showNotification('QEVO Bot', `${p?.title ?? 'Регулярная задача'} — отчёт готов`);
     };
     socket.on('anthill.task.done', done);
     return () => { socket.off('anthill.task.done', done); };
@@ -274,12 +274,12 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     : '';
 
   return (
-    <section className={`anthill anthill-v2${fullscreen ? ' anthill-full' : ''}`} aria-label="AnthillBot">
+    <section className={`anthill anthill-v2${fullscreen ? ' anthill-full' : ''}`} aria-label="QEVO Bot">
       <div className="chat-head anthill-head">
         <span className="anthill-title">
           <span className="anthill-mark" aria-hidden="true"><Icon name="robot" size={16} /></span>
           <span className="anthill-title-text">
-            <b>AnthillBot</b>
+            <b>QEVO Bot</b>
             <span className="dim">AI-помощник</span>
           </span>
         </span>
@@ -311,7 +311,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
 
       <Tabs
         className="anthill-tabs-v2"
-        ariaLabel="Разделы AnthillBot"
+        ariaLabel="Разделы QEVO Bot"
         value={tab}
         onValueChange={setTab}
         items={([
@@ -343,7 +343,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
               <button
                 className="msg-icon"
                 onClick={async () => {
-                  if (!(await confirmAction({ title: `Удалить разговор «${s.title}»?`, description: 'Переписка с AnthillBot пропадёт из истории.', danger: true }))) return;
+                  if (!(await confirmAction({ title: `Удалить разговор «${s.title}»?`, description: 'Переписка с QEVO Bot пропадёт из истории.', danger: true }))) return;
                   api.anthillDelete(String(s.id))
                     .then(() => {
                       if (String(s.id) === sessionId) { setSessionId(null); setMessages([]); }
@@ -504,11 +504,11 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
             className="input"
             rows={1}
             value={draft}
-            placeholder={busy ? 'AnthillBot отвечает…' : deep ? 'Что разобрать по-крупному?' : 'Спросите или попросите сделать…'}
+            placeholder={busy ? 'QEVO Bot отвечает…' : deep ? 'Что разобрать по-крупному?' : 'Спросите или попросите сделать…'}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(draft); } }}
             disabled={busy}
-            aria-label="Вопрос AnthillBot"
+            aria-label="Вопрос QEVO Bot"
           />
           <button
             className={voice.recording ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'}

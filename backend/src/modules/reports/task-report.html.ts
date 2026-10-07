@@ -313,7 +313,7 @@ export function renderTaskReportHtml(r: TaskReport): string {
   .method b { color: ${C.muted}; }
 </style></head><body>
   <header class="cover">
-    <div class="cover-top">${logo}<div><div class="company">${esc(r.companyName)}</div><div class="brand">ANTHILL · ОТЧЁТНОСТЬ</div></div></div>
+    <div class="cover-top">${logo}<div><div class="company">${esc(r.companyName)}</div><div class="brand">QEVO · ОТЧЁТНОСТЬ</div></div></div>
     <h1>${esc(r.title)}</h1>
     <div class="period">${esc(r.periodLabel)}${r.ongoing ? ' · период ещё идёт' : ''}</div>
     <div class="cover-meta">

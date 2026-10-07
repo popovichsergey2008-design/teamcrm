@@ -10,7 +10,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
  */
 const config: CapacitorConfig = {
   appId: 'team.anthill.app',
-  appName: 'ANTHILL',
+  appName: 'QEVO',
   webDir: 'dist-capacitor',
   android: { path: 'native/android' },
   ios: { path: 'native/ios' },
@@ -29,7 +29,7 @@ const config: CapacitorConfig = {
     allowNavigation: ['anthill.team', '*.anthill.team'],
   },
   plugins: {
-    SplashScreen: { launchAutoHide: true, launchShowDuration: 600, backgroundColor: '#0b0d12' },
+    SplashScreen: { launchAutoHide: true, launchShowDuration: 600, backgroundColor: '#f5f1ea' },
     Keyboard: { resize: 'body' },
     // Переключатель приложений содержимое не показывает, снимки экрана — можно (D-07 с поправкой).
     PrivacyScreen: { enable: true, preventScreenshots: false },

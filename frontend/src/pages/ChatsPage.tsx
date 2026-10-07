@@ -121,7 +121,7 @@ const SECTIONS: { key: 'inbox' | 'threads' | 'saved'; title: string; hint: strin
 const REACTIONS = QUICK_REACTIONS;
 
 /** «@AI», «@ии», «@ai-помощник» — человек пишет как придётся. */
-const MENTIONS_AI = /@(anthillbot|ai|ии|ai-помощник|бот)(?![\wа-яё-])/gi;
+const MENTIONS_AI = /@(qevo bot|qevobot|qevo|anthillbot|ai|ии|ai-помощник|бот)(?![\wа-яё-])/gi;
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long' });
@@ -1585,7 +1585,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       onClick: () => {
         setReplyTo({
           id: String(m.id),
-          author: m.is_ai ? 'AnthillBot' : (m.author_name ?? m.guest_name ?? 'Собеседник'),
+          author: m.is_ai ? 'QEVO Bot' : (m.author_name ?? m.guest_name ?? 'Собеседник'),
           // Цитируем ИМЕННО выделенный кусок: спорят обычно об одном абзаце.
           excerpt: picked || String(m.body ?? 'вложение').slice(0, 600),
         });
@@ -1800,7 +1800,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     хотя он участник этого разговора. Так же сделано в чате задачи.
   */
   const mentionUsers = [
-    { id: 'ai', fullName: 'AnthillBot', hint: 'знает эту переписку' },
+    { id: 'ai', fullName: 'QEVO Bot', hint: 'знает эту переписку' },
     ...users.map((u) => ({ id: String(u.id), fullName: u.fullName })),
   ];
   /*
@@ -1927,7 +1927,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         </div>
 
         {/*
-          AnthillBot — отдельным собеседником в самом верху списка (ТЗ-6).
+          QEVO Bot — отдельным собеседником в самом верху списка (ТЗ-6).
 
           Не кнопка «спросить ИИ» где-то в углу: помощник отвечает в переписке, и
           искать его человек будет там же, где ищет коллегу — в списке чатов.
@@ -1938,7 +1938,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         >
           <span className="chat-section-icon anthill-mark" aria-hidden="true"><Icon name="robot" size={15} /></span>
           <span className="chat-row-main">
-            <span className="chat-row-title">AnthillBot</span>
+            <span className="chat-row-title">QEVO Bot</span>
             <span className="chat-row-last dim">AI-помощник</span>
           </span>
         </button>
@@ -2668,7 +2668,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                         >
                           <Icon name="more" size={14} />
                         </button>
-                        {m.is_ai && <div className="chat-author"><Icon name="robot" size={11} /> AnthillBot</div>}
+                        {m.is_ai && <div className="chat-author"><Icon name="robot" size={11} /> QEVO Bot</div>}
                         {/* Кто именно писал со стороны: через месяц «внешний участник»
                             без имени в переписке не значит ничего. */}
                         {m.guest_name && (

@@ -1,5 +1,5 @@
 /**
- * Письма ANTHILL.
+ * Письма QEVO.
  *
  * Чистые функции без обращений к базе — их проверяют тесты, а не живая отправка.
  *
@@ -53,15 +53,17 @@ export const MIRROR_EVENT_TITLE = 'Дублировать уведомления
 export const CHAT_DIRECT_KEY = 'chat.direct';
 export const CHAT_DIRECT_TITLE = 'Личные сообщения и упоминания — в Telegram';
 
+// Цвета бренда QEVO: тёплая светлая гамма интерфейса и синие логотипа (#193B91 → #15B8CD).
 const BRAND = {
-  ink: '#101623',
-  soft: '#4d5768',
-  mut: '#7a8496',
-  line: '#e2e7f2',
-  bg: '#f4f6fa',
-  card: '#ffffff',
-  accent: '#1e57e6',
-  accentSoft: '#e8effe',
+  ink: '#211d18',
+  soft: '#544c41',
+  mut: '#7a7064',
+  line: '#e3dcd0',
+  bg: '#f5f1ea',
+  card: '#fffefb',
+  word: '#193b91',
+  accent: '#0a6bb0',
+  accentSoft: '#e4f0f8',
   ok: '#17875a',
   warn: '#9a6a00',
   danger: '#cf2b3b',
@@ -153,7 +155,7 @@ function shell(opts: {
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>ANTHILL</title></head>
+<title>QEVO</title></head>
 <body style="margin:0;padding:0;background:${BRAND.bg};">
 <!-- Строка предпросмотра: её показывает список писем рядом с темой, но в самом письме она не видна. -->
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escape(opts.preheader)}</div>
@@ -162,7 +164,7 @@ function shell(opts: {
     <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;max-width:560px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif">
 
       <tr><td style="padding:0 4px 14px">
-        <span style="font-size:19px;font-weight:800;letter-spacing:-.5px;color:${BRAND.ink}">TEAM<span style="color:${BRAND.accent}">CRM</span></span>
+        <span style="font-size:20px;font-weight:800;letter-spacing:.5px;color:${BRAND.word}">QEVO</span>
       </td></tr>
 
       <tr><td style="background:${BRAND.card};border:1px solid ${BRAND.line};border-radius:12px;overflow:hidden">
@@ -183,7 +185,7 @@ function shell(opts: {
       </td></tr>
 
       <tr><td style="padding:16px 6px 0;font-size:12px;line-height:1.6;color:${BRAND.mut}">
-        Письмо от ANTHILL.
+        Письмо от QEVO.
         <a href="${escape(opts.unsubscribeUrl)}" style="color:${BRAND.mut};text-decoration:underline">Отписаться</a>
         или настроить письма в личном кабинете.
       </td></tr>
@@ -223,7 +225,7 @@ function ownOr(ctx: TaskCtx): string {
  */
 function chatLead(ctx: TaskCtx): string {
   const own = ctx.managerName && ctx.assigneeName && ctx.managerName === ctx.assigneeName;
-  const who = ctx.byAi ? 'Anthill AI завёл задачу по итогам переписки' : 'Задача по итогам переписки';
+  const who = ctx.byAi ? 'QEVO AI завёл задачу по итогам переписки' : 'Задача по итогам переписки';
   if (own) return `${who}: личная задача, которую вы взяли на себя.`;
   return ctx.managerName ? `${who}. Поручение от ${ctx.managerName}.` : `${who}.`;
 }
@@ -429,7 +431,7 @@ export function inviteLetter(ctx: {
   const subject = trim(`Приглашение в «${ctx.orgName}»`, 120);
   const text = [
     lead, '',
-    'ANTHILL — рабочее пространство компании: задачи, проекты, переписка и созвоны в одном месте.',
+    'QEVO — рабочее пространство компании: задачи, проекты, переписка и созвоны в одном месте.',
     '', `Принять приглашение: ${ctx.acceptUrl}`,
     '', `Ссылка действует до ${until}.`,
   ].join('\n');
@@ -437,18 +439,18 @@ export function inviteLetter(ctx: {
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>ANTHILL</title></head>
+<title>QEVO</title></head>
 <body style="margin:0;padding:0;background:${BRAND.bg};">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escape(lead)}</div>
 <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;background:${BRAND.bg}">
   <tr><td align="center" style="padding:28px 12px">
     <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;max-width:560px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif">
       <tr><td style="padding:0 4px 14px">
-        <span style="font-size:19px;font-weight:800;letter-spacing:-.5px;color:${BRAND.ink}">ANTHILL<span style="color:${BRAND.accent}">.TEAM</span></span>
+        <span style="font-size:20px;font-weight:800;letter-spacing:.5px;color:${BRAND.word}">QEVO</span>
       </td></tr>
       <tr><td style="background:${BRAND.card};border:1px solid ${BRAND.line};border-radius:12px;overflow:hidden">
         <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%">
-          <tr><td style="height:4px;background:${BRAND.accent};font-size:0;line-height:0">&nbsp;</td></tr>
+          <tr><td style="height:4px;background:${BRAND.accent};background-image:linear-gradient(90deg,#193b91,#087cc1,#15b8cd);font-size:0;line-height:0">&nbsp;</td></tr>
           <tr><td style="padding:22px 26px 24px">
             <p style="margin:0 0 14px;font-size:17px;line-height:1.5;color:${BRAND.ink};font-weight:600">${escape(lead)}</p>
             <p style="margin:0 0 18px;font-size:14px;line-height:1.55;color:${BRAND.soft}">Задачи, проекты, переписка и созвоны компании — в одном месте.</p>
@@ -479,14 +481,14 @@ export function feedAnnouncementLetter(
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>ANTHILL</title></head>
+<title>QEVO</title></head>
 <body style="margin:0;padding:0;background:${BRAND.bg};">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escape(ctx.body.slice(0, 120))}</div>
 <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;background:${BRAND.bg}">
   <tr><td align="center" style="padding:28px 12px">
     <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;max-width:560px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif">
       <tr><td style="padding:0 4px 14px">
-        <span style="font-size:19px;font-weight:800;letter-spacing:-.5px;color:${BRAND.ink}">TEAM<span style="color:${BRAND.accent}">CRM</span></span>
+        <span style="font-size:20px;font-weight:800;letter-spacing:.5px;color:${BRAND.word}">QEVO</span>
       </td></tr>
       <tr><td style="background:${BRAND.card};border:1px solid ${BRAND.line};border-radius:12px;overflow:hidden">
         <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%">
@@ -503,7 +505,7 @@ export function feedAnnouncementLetter(
         </table>
       </td></tr>
       <tr><td style="padding:16px 6px 0;font-size:12px;line-height:1.6;color:${BRAND.mut}">
-        Письмо от ANTHILL.
+        Письмо от QEVO.
         <a href="${escape(unsubscribeUrl)}" style="color:${BRAND.mut};text-decoration:underline">Отписаться</a>
         или настроить письма в личном кабинете.
       </td></tr>
@@ -533,18 +535,18 @@ export function feedMentionLetter(
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>ANTHILL</title></head>
+<title>QEVO</title></head>
 <body style="margin:0;padding:0;background:${BRAND.bg};">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escape(ctx.body.slice(0, 120))}</div>
 <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;background:${BRAND.bg}">
   <tr><td align="center" style="padding:28px 12px">
     <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;max-width:560px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif">
       <tr><td style="padding:0 4px 14px">
-        <span style="font-size:19px;font-weight:800;letter-spacing:-.5px;color:${BRAND.ink}">TEAM<span style="color:${BRAND.accent}">CRM</span></span>
+        <span style="font-size:20px;font-weight:800;letter-spacing:.5px;color:${BRAND.word}">QEVO</span>
       </td></tr>
       <tr><td style="background:${BRAND.card};border:1px solid ${BRAND.line};border-radius:12px;overflow:hidden">
         <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%">
-          <tr><td style="height:4px;background:${BRAND.accent};font-size:0;line-height:0">&nbsp;</td></tr>
+          <tr><td style="height:4px;background:${BRAND.accent};background-image:linear-gradient(90deg,#193b91,#087cc1,#15b8cd);font-size:0;line-height:0">&nbsp;</td></tr>
           <tr><td style="padding:22px 26px 24px">
             <p style="margin:0 0 14px;font-size:14px;line-height:1.5;color:${BRAND.soft}">${escape(lead)}</p>
             <div style="margin:0 0 18px;font-size:15px;line-height:1.55;color:${BRAND.ink};white-space:pre-wrap">${escape(ctx.body)}</div>
@@ -557,7 +559,7 @@ export function feedMentionLetter(
         </table>
       </td></tr>
       <tr><td style="padding:16px 6px 0;font-size:12px;line-height:1.6;color:${BRAND.mut}">
-        Письмо от ANTHILL.
+        Письмо от QEVO.
         <a href="${escape(unsubscribeUrl)}" style="color:${BRAND.mut};text-decoration:underline">Отписаться</a>
         или настроить письма в личном кабинете.
       </td></tr>
