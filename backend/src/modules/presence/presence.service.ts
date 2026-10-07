@@ -148,9 +148,8 @@ export class PresenceService {
         if (!p) return;
         // В общую рассылку не кладём ни задачу, ни подпись при ней: подпись автофокуса —
         // это название задачи, а компания одна на всех смотрящих.
-        const { taskTitle: _t, ...open } = p;
         this.realtime.emitToTenant(tenantId, 'presence.updated', {
-          ...open, taskId: null, note: p.taskId ? null : p.note,
+          ...p, taskTitle: null, taskId: null, note: p.taskId ? null : p.note,
         });
       })
       .catch((e) => this.log.warn(`presence.updated не разослан: ${e instanceof Error ? e.message : e}`));
