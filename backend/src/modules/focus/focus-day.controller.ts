@@ -4,6 +4,7 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Ma
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { CHANGE_REASONS, FocusDayService } from './focus-day.service';
+import { SecurityService } from '../security/security.service';
 
 class AddItemDto {
   /** ключ кандидата из «остальных»: task:15 · review:15 · approval:4 */
@@ -30,6 +31,10 @@ class DismissDto {
   @IsString() @MaxLength(40) key!: string;
 }
 
+class SettingsDto {
+  @IsBoolean() enabled!: boolean;
+}
+
 class FeedbackDto {
   @IsIn([1, -1]) value!: 1 | -1;
 }
@@ -43,7 +48,7 @@ class FeedbackDto {
 @Controller('focus/today')
 @Roles('owner', 'manager', 'member')
 export class FocusDayController {
-  constructor(private readonly day: FocusDayService) {}
+  constructor(private readonly day: FocusDayService, private readonly security: SecurityService) {}
 
   private v(u: AuthUser) {
     return { tenantId: u.tenantId, userId: u.userId, role: u.role };
@@ -53,6 +58,13 @@ export class FocusDayController {
   @Get()
   today(@CurrentUser() u: AuthUser) {
     return this.day.today(this.v(u));
+  }
+
+  /** Включить новый «Фокус дня» организации — владелец, право управления организацией. */
+  @Patch('settings')
+  async settings(@CurrentUser() u: AuthUser, @Body() dto: SettingsDto) {
+    await this.security.require(u.tenantId, u.userId, 'organization.manage', 'Новый «Фокус дня» включает владелец организации');
+    return this.day.setEnabled(u.tenantId, dto.enabled);
   }
 
   @Get('backlog')

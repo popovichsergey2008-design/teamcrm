@@ -60,9 +60,14 @@ describe('ТЗ-16 — Фокус дня: правило трёх (e2e)', () => {
     const appr = (await http.post('/api/approvals').set(H(mem.accessToken))
       .send({ approverId: String(me), subject: 'Бюджет на рекламу' }).expect(201)).body.data;
 
+    // 0. Флаг организации выключен — ничего не собирается; включает владелец, не сотрудник
+    expect((await http.get('/api/focus/today').set(H(tok)).expect(200)).body.data).toEqual({ enabled: false });
+    await http.patch('/api/focus/today/settings').set(H(mem.accessToken)).send({ enabled: true }).expect(403);
+    await http.patch('/api/focus/today/settings').set(H(tok)).send({ enabled: true }).expect(200);
+
     // 1. Первое открытие собирает план сам
     const day1 = (await http.get('/api/focus/today').set(H(tok)).expect(200)).body.data;
-    expect(day1.enabled).toBe(false); // флаг организации по умолчанию выключен
+    expect(day1.enabled).toBe(true);
     expect(day1.plan.status).toBe('proposed');
     expect(day1.plan.scoreVersion).toBe('rule_of_3_v1');
     const keys = day1.top.map((i: any) => (i.kind === 'approval' ? `approval:${i.approvalId}` : `task:${i.taskId}`));
@@ -131,6 +136,7 @@ describe('ТЗ-16 — Фокус дня: правило трёх (e2e)', () => {
     const appr = (await http.post('/api/approvals').set(H(mem.accessToken))
       .send({ approverId: String(owner.user.id), subject: 'Отпуск в ноябре' }).expect(201)).body.data;
 
+    await http.patch('/api/focus/today/settings').set(H(owner.accessToken)).send({ enabled: true }).expect(200);
     const d = (await http.get('/api/focus/today').set(H(owner.accessToken)).expect(200)).body.data;
     expect(d.top).toHaveLength(1); // одно достойное — одно место, без добивки
     await http.post(`/api/approvals/${appr.id}/decide`).set(H(owner.accessToken)).send({ approve: true }).expect(201);

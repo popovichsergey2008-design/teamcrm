@@ -60,6 +60,9 @@ export class FocusDayService {
   /** Главный экран одним запросом (п. 114–115). */
   async today(v: Viewer, now = new Date()) {
     const enabled = await this.repo.enabled(v.tenantId);
+    // Новый фокус выключен — ничего не собираем: старый экран живёт как жил, а
+    // планы не копятся у тех, кто их не видит.
+    if (!enabled) return { enabled: false as const };
     const { tz, today } = await this.context(v, now);
     let plan = await this.repo.plan(v.tenantId, v.userId, today);
     const scored = await this.scored(v, now, tz, today);
