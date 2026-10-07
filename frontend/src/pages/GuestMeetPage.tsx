@@ -170,7 +170,7 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
         {/* Первое, что видит человек. Знак крупнее слова — его и запоминают. */}
         <div className="auth-logo">
           <Logo size={88} />
-          <span className="logo-word">ANTHILL<span className="logo-dot">.</span>TEAM</span>
+          <span className="logo-word">QEVO</span>
         </div>
         <p className="dim auth-sub">
           Вы в разговоре{info?.orgName ? <> · «{info.orgName}»</> : null}. Кроме него, вам ничего не видно.
@@ -194,7 +194,7 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
         {/* Первое, что видит человек. Знак крупнее слова — его и запоминают. */}
         <div className="auth-logo">
           <Logo size={88} />
-          <span className="logo-word">ANTHILL<span className="logo-dot">.</span>TEAM</span>
+          <span className="logo-word">QEVO</span>
         </div>
 
         {refusal ? (
@@ -292,7 +292,7 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
             </p>
             {onStaffLogin && (
               <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onStaffLogin}>
-                Я сотрудник ANTHILL — войти
+                Я сотрудник QEVO — войти
               </button>
             )}
             </>)}

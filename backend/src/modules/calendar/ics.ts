@@ -92,7 +92,7 @@ export function buildIcs(event: IcsEvent): string {
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//ANTHILL//Calendar//RU',
+    'PRODID:-//QEVO//Calendar//RU',
     'CALSCALE:GREGORIAN',
     `METHOD:${method}`,
     'BEGIN:VEVENT',

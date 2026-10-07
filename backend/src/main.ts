@@ -52,7 +52,7 @@ async function bootstrap() {
   app.useWebSocketAdapter(new RedisIoAdapter(app));
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('ANTHILL API')
+    .setTitle('QEVO API')
     .setDescription('Этап 1 — каркас: auth/RBAC, projects, tasks, deals, board, realtime')
     .setVersion('0.1.0')
     .addBearerAuth()
@@ -62,7 +62,7 @@ async function bootstrap() {
 
   const port = Number(config.get('PORT') ?? 3000);
   await app.listen(port, '0.0.0.0');
-  new Logger('Bootstrap').log(`ANTHILL backend on :${port} (docs at /api/docs)`);
+  new Logger('Bootstrap').log(`QEVO backend on :${port} (docs at /api/docs)`);
 }
 
 bootstrap();

@@ -19,7 +19,7 @@ import { AnthillAdminService } from './anthill-admin.service';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
 
 /**
- * AnthillBot — оркестратор над существующими модулями: задачи, чаты, поиск,
+ * QEVO Bot — оркестратор над существующими модулями: задачи, чаты, поиск,
  * постановка задач словами, вопросы о делах. Своих данных CRM не заводит.
  */
 @Module({

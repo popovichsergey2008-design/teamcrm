@@ -43,7 +43,7 @@ export function ResetPasswordPage({ token }: { token: string }) {
         {/* Первое, что видит человек. Знак крупнее слова — его и запоминают. */}
         <div className="auth-logo">
           <Logo size={88} />
-          <span className="logo-word">ANTHILL<span className="logo-dot">.</span>TEAM</span>
+          <span className="logo-word">QEVO</span>
         </div>
         <p className="dim auth-sub">
           {info ? <>Новый пароль для {info.email}</> : 'Смена пароля'}

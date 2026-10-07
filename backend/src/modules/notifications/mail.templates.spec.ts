@@ -36,7 +36,7 @@ describe('письма по задачам', () => {
       ...CTX, actorName: 'Юрий', assigneeName: 'Пётр', managerName: 'Ольга', fromChat: true, byAi: true,
     }, UNSUB);
     for (const part of [letter.html, letter.text]) {
-      expect(part).toContain('Anthill AI');
+      expect(part).toContain('QEVO AI');
       expect(part).toContain('Поручение от Ольга');
       expect(part).toContain('Постановщик');
       expect(part).not.toContain('Юрий');

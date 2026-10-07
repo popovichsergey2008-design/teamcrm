@@ -287,15 +287,15 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
           </span>
           {shown && <span className="bar-label">{totalUnread ? `Непрочитанных: ${totalUnread}` : 'Всё прочитано'}</span>}
         </button>
-        {/* AnthillBot — такой же собеседник, как коллега: открывается тем же окном (ТЗ-6). */}
+        {/* QEVO Bot — такой же собеседник, как коллега: открывается тем же окном (ТЗ-6). */}
         <button
           className={`bar-icon${activeChatId === 'anthill' ? ' active' : ''}`}
           onClick={() => { setHoverOpen(false); if (expanded) onCollapse(); onOpenAi(); }}
-          title="AnthillBot — AI-помощник: спросить о задачах, чатах и митах"
-          aria-label="AnthillBot — AI-помощник"
+          title="QEVO Bot — AI-помощник: спросить о задачах, чатах и митах"
+          aria-label="QEVO Bot — AI-помощник"
         >
           <Icon name="robot" size={16} />
-          {shown && <span className="bar-label">AnthillBot</span>}
+          {shown && <span className="bar-label">QEVO Bot</span>}
         </button>
       </div>
 

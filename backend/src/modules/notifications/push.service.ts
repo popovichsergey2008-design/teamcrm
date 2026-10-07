@@ -88,7 +88,7 @@ export class PushService {
         const targets = (await this.inbox.pushTargets(userId)).filter((t) => !t.active);
         if (!targets.length) continue;
         const badge = await this.inbox.unreadCount(userId);
-        const title = privacy === 'hide' ? 'ANTHILL' : where;
+        const title = privacy === 'hide' ? 'QEVO' : where;
         const body = privacy === 'full' ? item.body : privacy === 'sender_only' ? 'Новое сообщение' : 'Есть новое';
         for (const t of targets) {
           const outcome = await this.fcm.send(t.push_token, {
@@ -121,7 +121,7 @@ export class PushService {
         if (r !== 'OK') return;
       } catch { /* без Redis — шлём */ }
       const privacy = await this.inbox.pushPrivacyOf(m.tenantId);
-      const title = privacy === 'hide' ? 'ANTHILL' : `Входящий звонок · ${m.callerName}`;
+      const title = privacy === 'hide' ? 'QEVO' : `Входящий звонок · ${m.callerName}`;
       const body = privacy === 'hide' ? 'Входящий звонок' : 'Откройте, чтобы ответить';
       for (const t of targets) {
         const outcome = await this.fcm.send(t.push_token, {
@@ -167,7 +167,7 @@ export class PushService {
       if (!targets.length) return;
       const badge = await this.inbox.unreadCount(m.userId);
       const privacy = await this.inbox.pushPrivacyOf(m.tenantId);
-      const title = privacy === 'hide' ? 'ANTHILL' : m.title;
+      const title = privacy === 'hide' ? 'QEVO' : m.title;
       const body = privacy === 'full' ? m.body : 'Служба заботы: есть новое';
       for (const t of targets) {
         const outcome = await this.fcm.send(t.push_token, {
@@ -197,7 +197,7 @@ export class PushService {
       const targets = await this.inbox.pushTargets(m.userId);
       if (!targets.length) return;
       const privacy = await this.inbox.pushPrivacyOf(m.tenantId);
-      const title = privacy === 'hide' ? 'ANTHILL' : m.title;
+      const title = privacy === 'hide' ? 'QEVO' : m.title;
       const body = privacy === 'full' ? m.body : 'Встреча с гостем: откройте приложение';
       for (const t of targets) {
         const outcome = await this.fcm.send(t.push_token, {
@@ -262,7 +262,7 @@ export class PushService {
         sender_only: заголовок письма (в нём «кто и что»), без текста; hide — только
         факт; full — как есть.
       */
-      const title = privacy === 'hide' ? 'ANTHILL' : item.title;
+      const title = privacy === 'hide' ? 'QEVO' : item.title;
       const body = privacy === 'full' ? item.body : privacy === 'sender_only' ? 'Откройте, чтобы прочитать' : 'Есть новое';
       for (const t of targets) {
         const outcome = await this.fcm.send(t.push_token, {

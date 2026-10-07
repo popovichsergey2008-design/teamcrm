@@ -101,12 +101,12 @@ jobs:
           sha256sum app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: anthill-android-debug
+          name: qevo-android-debug
           path: frontend/native/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: anthill-android-release
+          name: qevo-android-release
           path: frontend/native/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
 
@@ -120,14 +120,14 @@ jobs:
           FORCE: ${{ inputs.force }}
           NOTES: ${{ inputs.notes }}
         run: |
-          cp app-release.apk "anthill-$VERSION.apk"
-          SHA=$(sha256sum "anthill-$VERSION.apk" | cut -d' ' -f1)
-          SIZE=$(stat -c %s "anthill-$VERSION.apk")
+          cp app-release.apk "qevo-$VERSION.apk"
+          SHA=$(sha256sum "qevo-$VERSION.apk" | cut -d' ' -f1)
+          SIZE=$(stat -c %s "qevo-$VERSION.apk")
           node -e '
             const [v, min, force, notes, sha, size] = process.argv.slice(1);
             const out = {
               latestNative: v, minimumNative: min, force: force === "true",
-              apkUrl: `https://anthill.team/app/anthill-${v}.apk`, sha256: sha, sizeBytes: Number(size),
+              apkUrl: `https://anthill.team/app/qevo-${v}.apk`, sha256: sha, sizeBytes: Number(size),
               notes: notes || undefined, publishedAt: new Date().toISOString(),
             };
             require("fs").writeFileSync("latest.json", JSON.stringify(out, null, 2) + "\n");
@@ -151,6 +151,6 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           ssh -i ~/.ssh/deploy_key "$TARGET" 'mkdir -p /opt/teamcrm/nginx/html/app'
-          scp -i ~/.ssh/deploy_key "anthill-$VERSION.apk" "$TARGET:/opt/teamcrm/nginx/html/app/anthill-$VERSION.apk"
+          scp -i ~/.ssh/deploy_key "qevo-$VERSION.apk" "$TARGET:/opt/teamcrm/nginx/html/app/qevo-$VERSION.apk"
           scp -i ~/.ssh/deploy_key latest.json "$TARGET:/opt/teamcrm/nginx/html/app/latest.json"
           curl -fsS "https://anthill.team/app/latest.json"

@@ -12,7 +12,7 @@ import { platform } from '../platform';
  * бейджи в панели скажут ему всё сами, а прыгающий заголовок будет мешать.
  */
 
-const BASE_TITLE = 'ANTHILL';
+const BASE_TITLE = 'QEVO';
 /** Столько держится каждое состояние: реже — незаметно, чаще — рябит. */
 const BLINK_MS = 1100;
 

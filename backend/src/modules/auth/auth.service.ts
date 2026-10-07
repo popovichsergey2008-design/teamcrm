@@ -34,7 +34,7 @@ export interface OrgRef {
   tenantId: string;
   name: string;
   role: string;
-  /** Логотип организации: рисуется в шапке вместо общего знака ANTHILL. */
+  /** Логотип организации: рисуется в шапке вместо общего знака QEVO. */
   logoFileId: string | null;
 }
 

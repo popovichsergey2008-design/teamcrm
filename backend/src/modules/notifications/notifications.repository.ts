@@ -111,7 +111,7 @@ export class NotificationsRepository {
 
   /** Имя того, кто совершил действие: в письме важно, кто именно, а не «система». */
   async actorName(tenantId: string, actorId: string | null): Promise<string> {
-    if (!actorId) return 'TEAMCRM';
+    if (!actorId) return 'QEVO';
     const row = await this.db.one<{ full_name: string }>(
       `SELECT full_name FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, actorId]);
     return row?.full_name || 'Коллега';

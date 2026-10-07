@@ -82,7 +82,7 @@ const CARDS: Card[] = [
   },
   {
     tab: 'onboarding',
-    title: 'Настройка ANTHILL',
+    title: 'Настройка QEVO',
     hint: 'Путь от пустого пространства до первой задачи: что уже сделано и что осталось',
     icon: 'target',
     roles: ['owner', 'manager'],

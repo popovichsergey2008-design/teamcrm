@@ -98,7 +98,7 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
                 onChange={(e) => void saveSettings({ aiTagging: e.target.checked })}
               />
               <span>
-                Автоматически подбирать теги через Anthill AI
+                Автоматически подбирать теги через QEVO AI
                 <span className="dim" style={{ display: 'block', fontSize: 12 }}>
                   ИИ предлагает теги по тексту задачи. Пока предложения не подтвердит постановщик,
                   задача не создаётся — молча проставленный тег хуже, чем его отсутствие.

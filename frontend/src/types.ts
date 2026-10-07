@@ -27,7 +27,7 @@ export interface User {
     chatBar?: { expanded?: boolean; width?: number };
     /** Секции списка чатов: порядок и свёрнутые (ТЗ-5, раздел 38). */
     chatSections?: { order?: string[]; collapsed?: string[] };
-    /** AnthillBot: собирать ли память самому (ТЗ-6, разд. 21). */
+    /** QEVO Bot: собирать ли память самому (ТЗ-6, разд. 21). */
     anthill?: { memoryAuto?: boolean };
     /** Запомненные галочки ввода: последний выбор человека становится его значением по умолчанию. */
     checks?: Record<string, boolean>;
@@ -38,7 +38,7 @@ export interface OrgRef {
   tenantId: string;
   name: string;
   role: string;
-  /** Логотип компании: рисуется в шапке вместо общего знака ANTHILL. */
+  /** Логотип компании: рисуется в шапке вместо общего знака QEVO. */
   logoFileId?: string | null;
 }
 
@@ -538,7 +538,7 @@ export interface Proposal {
 */
 export interface SupportMessage {
   id: string;
-  /** user — человек, agent — специалист, ai — AnthillBot, system — отметки разговора. */
+  /** user — человек, agent — специалист, ai — QEVO Bot, system — отметки разговора. */
   kind: 'user' | 'agent' | 'ai' | 'system';
   authorId: string | null;
   authorName: string | null;

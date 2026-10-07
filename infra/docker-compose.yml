@@ -59,7 +59,7 @@ x-api-env: &api-env
   # в письмах: по адресу с самоподписанным сертификатом их никто не откроет.
   BREVO_API_KEY: ${BREVO_API_KEY:-}
   MAIL_FROM: ${MAIL_FROM:-noreply@anthill.team}
-  MAIL_FROM_NAME: ${MAIL_FROM_NAME:-ANTHILL}
+  MAIL_FROM_NAME: ${MAIL_FROM_NAME:-QEVO}
   APP_BASE_URL: ${APP_BASE_URL:-https://anthill.team}
   # Телеграм-бот: без токена отправка молча ничего не делает — это рабочий режим
   # для окружений без бота. Секрет проверяется на входящем вебхуке, если задан.

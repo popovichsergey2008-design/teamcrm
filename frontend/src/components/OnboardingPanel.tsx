@@ -6,7 +6,7 @@ import { OnboardingCard } from './OnboardingCard';
 import type { OnboardingView } from '../types';
 
 /**
- * «Настройка ANTHILL» в настройках (ТЗ-11, разд. 74).
+ * «Настройка QEVO» в настройках (ТЗ-11, разд. 74).
  *
  * Подсказку с «Фокуса дня» можно убрать, а путь при этом остаётся — сюда и приходят,
  * чтобы посмотреть, что ещё не сделано, или вернуть её на главный экран.
@@ -32,7 +32,7 @@ export function OnboardingPanel({ onClose }: { onClose: () => void }) {
     <div className="drawer-overlay" onClick={onClose}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
-          <h3><Icon name="target" size={18} /> Настройка ANTHILL</h3>
+          <h3><Icon name="target" size={18} /> Настройка QEVO</h3>
           <button className="drawer-close" onClick={onClose} title="Закрыть" aria-label="Закрыть">
             <Icon name="close" size={20} />
           </button>

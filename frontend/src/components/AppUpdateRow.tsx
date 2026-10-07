@@ -50,7 +50,7 @@ export function AppUpdateRow() {
       setRelease(c.android);
       const newer = !!c.android && !!installed && compareVersions(installed, c.android.latestNative) < 0;
       if (newer) window.dispatchEvent(new Event(UPDATE_OPEN_EVENT));
-      else toastSaved('У вас последняя версия', `ANTHILL ${installed?.split(' ')[0] ?? ''}`.trim());
+      else toastSaved('У вас последняя версия', `QEVO ${installed?.split(' ')[0] ?? ''}`.trim());
     } catch {
       toastSaved('Не удалось проверить обновления', 'Проверьте связь и попробуйте ещё раз');
     } finally { setBusy(false); }

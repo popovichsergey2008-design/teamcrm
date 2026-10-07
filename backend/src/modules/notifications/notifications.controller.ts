@@ -75,12 +75,12 @@ export class NotificationsController {
   async unsubscribe(@Query('token') token: string, @Res() res: Response) {
     const ok = token ? await this.repo.unsubscribeByToken(String(token), ALL_KEYS) : false;
     const text = ok
-      ? 'Письма отключены. Включить обратно можно в личном кабинете TEAMCRM.'
-      : 'Ссылка недействительна. Настройки писем есть в личном кабинете TEAMCRM.';
+      ? 'Письма отключены. Включить обратно можно в личном кабинете QEVO.'
+      : 'Ссылка недействительна. Настройки писем есть в личном кабинете QEVO.';
     res.status(ok ? 200 : 404).type('html').send(
-      `<!doctype html><meta charset="utf-8"><title>TEAMCRM</title>`
+      `<!doctype html><meta charset="utf-8"><title>QEVO</title>`
       + `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:520px;margin:60px auto;font-size:15px;line-height:1.5">`
-      + `<p style="font-size:18px;font-weight:600">TEAMCRM</p><p>${text}</p></div>`,
+      + `<p style="font-size:18px;font-weight:600">QEVO</p><p>${text}</p></div>`,
     );
   }
 }

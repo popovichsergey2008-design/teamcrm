@@ -34,7 +34,7 @@ export function GetAppPage() {
     <div className="getapp">
       <div className="auth-logo">
         <Logo size={88} />
-        <span className="logo-word">ANTHILL<span className="logo-dot">.</span>TEAM</span>
+        <span className="logo-word">QEVO</span>
       </div>
       <p className="dim auth-sub">Приложение для телефона: задачи, чаты, созвоны и уведомления — в кармане.</p>
 
@@ -61,7 +61,7 @@ export function GetAppPage() {
               {release.notes && <p className="getapp-notes">{release.notes}</p>}
               <ol className="getapp-steps">
                 <li>Откройте скачанный файл. Телефон спросит разрешение ставить приложения из браузера — разрешите один раз.</li>
-                <li>После установки откройте ANTHILL и войдите своей почтой и паролем.</li>
+                <li>После установки откройте QEVO и войдите своей почтой и паролем.</li>
                 <li>Разрешите уведомления — иначе о задачах и звонках вы узнаете только открыв приложение.</li>
               </ol>
               <details className="getapp-verify">
@@ -84,7 +84,7 @@ export function GetAppPage() {
             <li>Нажмите «Поделиться» <Icon name="upload" size={14} /> внизу экрана.</li>
             <li>Выберите «На экран “Домой”» и подтвердите.</li>
           </ol>
-          <p className="dim">Значок ANTHILL появится рядом с остальными приложениями и будет открываться на весь экран.</p>
+          <p className="dim">Значок QEVO появится рядом с остальными приложениями и будет открываться на весь экран.</p>
           {isAndroid && <p className="dim">Вы на Android — вам подойдёт установка выше.</p>}
         </section>
       )))}

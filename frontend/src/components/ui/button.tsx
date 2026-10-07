@@ -13,7 +13,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 /**
- * Кнопка ANTHILL (ТЗ-15). Одна на всё приложение: варианты — смысл действия,
+ * Кнопка QEVO (ТЗ-15). Одна на всё приложение: варианты — смысл действия,
  * размеры — плотность. Цвета только из токенов, кольцо фокуса — общее для ui-*.
  */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(

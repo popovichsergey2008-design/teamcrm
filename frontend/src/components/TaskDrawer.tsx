@@ -990,7 +990,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               // самый частый вопрос на разборе через неделю после постановки.
               <div className="tv2-origin">
                 {task.created_by_ai
-                  ? <><Icon name="sparkles" size={13} /> Создано Anthill AI по итогам переписки{' '}</>
+                  ? <><Icon name="sparkles" size={13} /> Создано QEVO AI по итогам переписки{' '}</>
                   : <><Icon name="chat" size={13} /> Создано из сообщения{' '}</>}
                 {fromMessage.author_name ? `(${fromMessage.author_name})` : ''}:{' '}
                 <button

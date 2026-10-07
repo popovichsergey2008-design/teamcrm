@@ -932,7 +932,7 @@ export const api = {
     return true;
   },
   /*
-    ───── AnthillBot (ТЗ-6) ─────
+    ───── QEVO Bot (ТЗ-6) ─────
     Сессии, вопрос потоком, действия с подтверждением, оценка.
   */
   anthillSessions: () => request<AnthillSession[]>('GET', '/anthill/sessions'),
@@ -1662,7 +1662,7 @@ export const api = {
    * Справочник по системе — то, из чего отвечает помощник службы заботы.
    *
    * Документация лежит рядом с кодом и загружается в базу знаний регламентами:
-   * помощник и AnthillBot читают один источник, а не каждый свой.
+   * помощник и QEVO Bot читают один источник, а не каждый свой.
    */
   supportHandbook: () => request<SupportHandbook>('GET', '/support/desk/handbook/state'),
   /** Под каким именем и каким тоном первая линия говорит с клиентами (руководству службы). */
@@ -2346,7 +2346,7 @@ export interface MaterialItem {
   url?: string; authorName: string | null; createdAt: string;
 }
 
-/** AnthillBot: с чем открыт разговор. */
+/** QEVO Bot: с чем открыт разговор. */
 export interface AnthillContext { type: 'task' | 'project' | 'chat' | 'meeting'; id: string; title?: string }
 /** `web` — страница из интернета: открывается в новой вкладке, а не внутри CRM. */
 export interface AnthillSource { kind: 'task' | 'message' | 'meeting' | 'project' | 'chat' | 'web'; id: string; title: string; url: string }

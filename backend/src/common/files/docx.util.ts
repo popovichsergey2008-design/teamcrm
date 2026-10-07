@@ -5,7 +5,7 @@ export const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordproc
 /**
  * Текст → .docx.
  *
- * Один сборщик на всех, кто отдаёт человеку готовый документ (ИИ-агент, AnthillBot):
+ * Один сборщик на всех, кто отдаёт человеку готовый документ (ИИ-агент, QEVO Bot):
  * две копии разошлись бы на первой же правке оформления, а человек получал бы
  * из разных мест по-разному сверстанные файлы.
  *
@@ -17,6 +17,6 @@ export async function buildDocx(title: string, body: string): Promise<Buffer> {
     new Paragraph({ text: title, heading: HeadingLevel.HEADING_1 }),
     ...body.split('\n').map((line) => new Paragraph({ children: [new TextRun(line)] })),
   ];
-  const doc = new Document({ creator: 'ANTHILL', sections: [{ children: paragraphs }] });
+  const doc = new Document({ creator: 'QEVO', sections: [{ children: paragraphs }] });
   return Packer.toBuffer(doc);
 }

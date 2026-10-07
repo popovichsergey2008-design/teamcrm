@@ -52,15 +52,15 @@ const REACTIONS = QUICK_REACTIONS;
  * инструмент в стороне от разговора, хотя он участник этого разговора.
  */
 const AI_MENTION_ID = 'ai';
-const AI_MENTION_NAME = 'AnthillBot';
+const AI_MENTION_NAME = 'QEVO Bot';
 /**
- * «@AnthillBot», «@AI», «@бот» — человек пишет как придётся, и старые написания
+ * «@QEVO Bot», «@QEVO», «@AI», «@бот» и прежнее «@AnthillBot» — человек пишет как придётся, и старые написания
  * обязаны работать: они уже в чужой переписке и в чужих привычках.
  *
  * ГРАБЛИ: `\\b` и `\\w` не видят кириллицу, из-за чего «@ии» не срабатывало
  * вовсе — границу слова проверяем явным классом.
  */
-const MENTIONS_AI = /@(anthillbot|ai|ии|ai-помощник|бот)(?![\wа-яё-])/gi;
+const MENTIONS_AI = /@(qevo bot|qevobot|qevo|anthillbot|ai|ии|ai-помощник|бот)(?![\wа-яё-])/gi;
 
 /** Частые вопросы помощнику — чтобы не формулировать заново то, что спрашивают всегда. */
 const QUICK_ASKS: { label: string; ask: string }[] = [

@@ -5,7 +5,7 @@
 
 :root {
   /* Кольцо фокуса — одно на всё приложение (ТЗ-15). */
-  --ring: #2563eb;
+  --ring: #0a6bb0;
   color-scheme: light;
 
   /*
@@ -45,10 +45,10 @@
     Оттенок взят у фирменного Neon Blue, но углублён: сам неон на белом даёт 3.4:1 и
     не читается. Здесь 6.65:1 для текста и 4.9:1 для белого по заливке.
   */
-  --accent:      #1d4ed8;
-  --accent-2:    #2563eb;
-  --accent-soft: #e9edf8;
-  --accent-line: #a9bdec;
+  --accent:      #0b5e9e;
+  --accent-2:    #0a6bb0;
+  --accent-soft: #e4f0f8;
+  --accent-line: #9fcbe6;
 
   /* статусы: у каждого мягкая подложка и рамка, чтобы не смешивать прозрачности */
   --ok:          #0f6f49;
@@ -85,12 +85,12 @@
   --fill-ok:     #0f6f49;
   --fill-warn:   #8a5f00;
   --fill-danger: #c22335;
-  --fill-info:   #1d4ed8;
+  --fill-info:   #0b5e9e;
   --fill-muted:  #525d72;
   --on-fill:     #ffffff;
 
   /*
-    ───── Фирменные цвета ANTHILL.TEAM ─────
+    ───── Фирменные цвета QEVO ─────
 
     Брендбук написан для тёмного: неон на «Midnight Navy». На белом фоне тот же неон
     не читается — он и задуман светящимся в темноте. Поэтому в светлой теме те же три
@@ -104,10 +104,10 @@
     конце и 5.4:1 на фиолетовом. Неоновые концы брендбука для этого не годятся — белым
     по циану нельзя, а тёмным по синему уже нельзя.
   */
-  --cta-2: #7c4dd8;
-  --brand-1: #0d9aa8;   /* Electric Cyan #4EF2F7, углублённый под белый фон */
-  --brand-2: #2f7fd6;   /* Neon Blue    #79C9FF */
-  --brand-3: #7c4dd8;   /* Neon Purple  #B06CFF */
+  --cta-2: #193b91;
+  --brand-1: #15b8cd;   /* Electric Cyan #4EF2F7, углублённый под белый фон */
+  --brand-2: #087cc1;   /* Neon Blue    #79C9FF */
+  --brand-3: #193b91;   /* Neon Purple  #B06CFF */
 
   --overlay:   rgba(40,32,20,.40);
   /* Тень — второй способ отделить карточку от страницы: на светлом одной границы мало. */
@@ -141,15 +141,18 @@
     Emoji в macOS и iOS, Noto — в Linux и Android.
   */
   --font-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
+  /* Бренд QEVO: слово логотипа и градиент знака (синий → бирюзовый). */
+  --brand-word: #193b91;
+  --brand-gradient: linear-gradient(135deg, #193b91 0%, #087cc1 50%, #15b8cd 100%);
 }
 
 /* Тёмная тема: по системной настройке, если человек не выбрал светлую явно. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-  --ring: #93c5fd;
+  --ring: #5fc8e6;
     color-scheme: dark;
     /*
-      ───── Тёмная тема = брендбук ANTHILL.TEAM ─────
+      ───── Тёмная тема = брендбук QEVO ─────
 
       Поверхности взяты из него дословно: Midnight Navy → Deep Space → Graphite.
       Текст — Ice White и Cool Gray, акцент — Aqua Glow. Неон здесь и задуман: он
@@ -167,10 +170,10 @@
     --text:      #e8e5df;
     --text-dim:  #aaa59c;
     --text-mut:  #9d988f;
-    --accent:      #93c5fd;
-    --accent-2:    #3566d6;
-    --accent-soft: rgba(147,197,253,.12);
-    --accent-line: rgba(147,197,253,.36);
+    --accent:      #5fc8e6;
+    --accent-2:    #0a6bb0;
+    --accent-soft: rgba(95,200,230,.12);
+    --accent-line: rgba(95,200,230,.36);
     --ok:          #57d9a3;
     --ok-soft:     rgba(87,217,163,.12);
     --ok-line:     rgba(87,217,163,.40);
@@ -191,7 +194,7 @@
     --fill-ok:     #16714f;
     --fill-warn:   #8a5a00;
     --fill-danger: #b3303a;
-    --fill-info:   #3566d6;
+    --fill-info:   #0a6bb0;
     --fill-muted:  #4d5c77;
     --on-ok:     #08110d;
   --on-warn:   #1a1300;
@@ -200,19 +203,20 @@
     --shadow-lg: 0 20px 50px rgba(0,0,0,.40);
     --video-bg:  #000000;
     /* На тёмном — ровно брендбук: неон задуман светящимся в темноте. */
-    --brand-1: #4ef2f7;
-    --brand-2: #79c9ff;
-    --brand-3: #b06cff;
-    --cta-2: #7c4dd8;
-  }
+    --brand-1: #81e5ed;
+    --brand-2: #15b8cd;
+    --brand-3: #087cc1;
+    --cta-2: #193b91;
+      --brand-word: #81e5ed;
+}
 }
 
 /* Явный выбор человека сильнее системной настройки — в обе стороны. */
 :root[data-theme="dark"] {
-  --ring: #93c5fd;
+  --ring: #5fc8e6;
   color-scheme: dark;
   /*
-    ───── Тёмная тема = брендбук ANTHILL.TEAM ─────
+    ───── Тёмная тема = брендбук QEVO ─────
 
     Поверхности взяты из него дословно: Midnight Navy → Deep Space → Graphite.
     Текст — Ice White и Cool Gray, акцент — Aqua Glow. Неон здесь и задуман: он
@@ -230,10 +234,10 @@
   --text:      #e8e5df;
   --text-dim:  #aaa59c;
   --text-mut:  #9d988f;
-  --accent:      #93c5fd;
-  --accent-2:    #3566d6;
-  --accent-soft: rgba(147,197,253,.12);
-  --accent-line: rgba(147,197,253,.36);
+  --accent:      #5fc8e6;
+  --accent-2:    #0a6bb0;
+  --accent-soft: rgba(95,200,230,.12);
+  --accent-line: rgba(95,200,230,.36);
   --ok:          #57d9a3;
   --ok-soft:     rgba(87,217,163,.12);
   --ok-line:     rgba(87,217,163,.40);
@@ -254,7 +258,7 @@
   --fill-ok:     #16714f;
   --fill-warn:   #8a5a00;
   --fill-danger: #b3303a;
-  --fill-info:   #3566d6;
+  --fill-info:   #0a6bb0;
   --fill-muted:  #4d5c77;
   --on-ok:     #08110d;
   --on-warn:   #1a1300;
@@ -263,10 +267,11 @@
   --shadow-lg: 0 20px 50px rgba(0,0,0,.40);
   --video-bg:  #000000;
   /* На тёмном — ровно брендбук: неон задуман светящимся в темноте. */
-  --brand-1: #4ef2f7;
-  --brand-2: #79c9ff;
-  --brand-3: #b06cff;
-  --cta-2: #7c4dd8;
+  --brand-1: #81e5ed;
+  --brand-2: #15b8cd;
+  --brand-3: #087cc1;
+  --cta-2: #193b91;
+  --brand-word: #81e5ed;
 }
 
 * { box-sizing: border-box; }
