@@ -67,6 +67,13 @@ export class FocusDayController {
     return this.day.today(this.v(u));
   }
 
+  /** Включён ли новый фокус и метрики за две недели — владелец и руководители. */
+  @Get('settings')
+  @Roles('owner', 'manager')
+  settingsView(@CurrentUser() u: AuthUser) {
+    return this.day.settings(u.tenantId);
+  }
+
   /** Включить новый «Фокус дня» организации — владелец, право управления организацией. */
   @Patch('settings')
   async settings(@CurrentUser() u: AuthUser, @Body() dto: SettingsDto) {

@@ -119,7 +119,14 @@ describe('ТЗ-16 — Фокус дня: правило трёх (e2e)', () => {
     expect(his.plan.id).not.toBe(day1.plan.id);
     expect(his.top.map((i: any) => i.taskId)).not.toContain(String(overdue.id));
 
-    // 9. «Команда сейчас»: оба на месте, клиентов нет
+    // 9. Метрики для руководства: план посчитан, замена по «неверному приоритету» видна
+    const m = (await http.get('/api/focus/today/settings').set(H(tok)).expect(200)).body.data;
+    expect(m.enabled).toBe(true);
+    expect(m.plans).toBeGreaterThanOrEqual(1);
+    expect(m.wrongPriority).toBeGreaterThanOrEqual(1);
+    await http.get('/api/focus/today/settings').set(H(mem.accessToken)).expect(403);
+
+    // 10. «Команда сейчас»: оба на месте, клиентов нет
     const pulse = (await http.get('/api/team/pulse').set(H(mem.accessToken)).expect(200)).body.data;
     expect(pulse.map((p: any) => p.fullName)).toEqual(expect.arrayContaining(['Ольга', 'Глеб']));
     expect(pulse[0]).toHaveProperty('status');

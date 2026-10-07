@@ -97,7 +97,8 @@ export class FocusDayService {
       }
     }
     const active = items.filter((i) => i.status === 'active');
-    if (items.length && !active.length && !plan.completed_at && ACCEPTED.concat('proposed').includes(plan.status)) {
+    // Вся тройка сделана — план выполнен. Закрытый день не трогаем: «закрыт» важнее.
+    if (items.length && !active.length && !plan.completed_at && ['proposed', 'accepted', 'modified', 'in_progress'].includes(plan.status)) {
       await this.repo.setPlan(plan.id, { status: 'completed' });
       plan.status = 'completed';
     }
@@ -405,10 +406,35 @@ export class FocusDayService {
     }
   }
 
-  // ── для волн 4 и 7 ──
   async setEnabled(tenantId: string, on: boolean) {
     await this.repo.setEnabled(tenantId, on);
     return { enabled: on };
+  }
+
+  /** Включён ли новый фокус и как он работает — для руководства (п. 119–120). */
+  async settings(tenantId: string, days = 14) {
+    const [enabled, m] = await Promise.all([this.repo.enabled(tenantId), this.repo.metrics(tenantId, days)]);
+    const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : null);
+    const n = (k: string) => Number(m?.[k] ?? 0);
+    return {
+      enabled,
+      days,
+      plans: n('plans'),
+      people: n('people'),
+      // принят как есть — главный сигнал, что тройка угадана
+      acceptedAsIs: pct(n('accepted_as_is'), n('plans')),
+      corrected: pct(n('corrected'), n('plans')),
+      rank1Kept: pct(n('rank1_kept'), n('rank1_total')),
+      wrongPriority: n('wrong_priority'),
+      topCompletion: pct(n('top_done'), n('top_total')),
+      deepStart: pct(n('plans_with_focus'), n('plans')),
+      deepCompletion: pct(n('sessions_done'), n('sessions')),
+      sessions: n('sessions'),
+      closeDay: pct(n('closed'), n('plans')),
+      huddleInFocus: n('huddle_in_focus'),
+      thumbsUp: n('thumbs_up'),
+      thumbsDown: n('thumbs_down'),
+    };
   }
 }
 

@@ -2265,6 +2265,12 @@ export const api = {
   focusClose: (tomorrow: string[], quiet: boolean) => request<FocusToday>('POST', '/focus/today/close', { tomorrow, quiet }),
   focusReopen: () => request<FocusToday>('POST', '/focus/today/reopen'),
   focusWorkday: () => request<{ closedUntil: string | null; quiet: boolean }>('GET', '/focus/workday'),
+  focusSettingsView: () => request<{
+    enabled: boolean; days: number; plans: number; people: number;
+    acceptedAsIs: number | null; corrected: number | null; rank1Kept: number | null; wrongPriority: number;
+    topCompletion: number | null; deepStart: number | null; deepCompletion: number | null; sessions: number;
+    closeDay: number | null; huddleInFocus: number; thumbsUp: number; thumbsDown: number;
+  }>('GET', '/focus/today/settings'),
   focusSettings: (enabled: boolean) => request<{ enabled: boolean }>('PATCH', '/focus/today/settings', { enabled }),
   mobileFocus: () => request<{ mine: any[]; delegated: any[]; review: any[]; approvals: Approval[] }>('GET', '/mobile/focus'),
   myTasks: (scope: 'mine' | 'delegated' | 'review', closed = false) =>

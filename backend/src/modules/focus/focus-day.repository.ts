@@ -272,6 +272,45 @@ export class FocusDayRepository {
     );
   }
 
+  /**
+   * Метрики «Фокуса дня» за N дней (ТЗ-16, п. 119–120) — по таблицам планов, элементов
+   * и сессий. Отдельного журнала событий нет намеренно: всё, что нужно, уже лежит в
+   * самих планах (принят ли как есть, что заменили и почему, что сделано).
+   */
+  async metrics(tenantId: string, days: number) {
+    return this.db.one<any>(
+      `WITH p AS (
+         SELECT * FROM focus_day_plans WHERE tenant_id = $1 AND focus_date > (now() - make_interval(days => $2::int))::date
+       ), i AS (
+         SELECT i.* FROM focus_day_items i JOIN p ON p.id = i.plan_id
+       ), changed AS (
+         SELECT DISTINCT plan_id FROM i
+          WHERE i.source = 'user' OR (i.status IN ('removed', 'replaced') AND COALESCE(i.change_reason, '') <> 'recalc')
+       ), s AS (
+         SELECT * FROM focus_sessions WHERE tenant_id = $1 AND started_at > now() - make_interval(days => $2::int)
+       )
+       SELECT
+         (SELECT count(*) FROM p)::int AS plans,
+         (SELECT count(DISTINCT user_id) FROM p)::int AS people,
+         (SELECT count(*) FROM p WHERE accepted_at IS NOT NULL)::int AS accepted,
+         (SELECT count(*) FROM p WHERE accepted_at IS NOT NULL AND id NOT IN (SELECT plan_id FROM changed))::int AS accepted_as_is,
+         (SELECT count(*) FROM changed)::int AS corrected,
+         (SELECT count(*) FROM i WHERE rank = 1 AND source IN ('ai', 'legacy'))::int AS rank1_total,
+         (SELECT count(*) FROM i WHERE rank = 1 AND source IN ('ai', 'legacy') AND status IN ('active', 'done'))::int AS rank1_kept,
+         (SELECT count(*) FROM i WHERE change_reason = 'wrong_priority')::int AS wrong_priority,
+         (SELECT count(*) FROM i WHERE status IN ('active', 'done'))::int AS top_total,
+         (SELECT count(*) FROM i WHERE status = 'done')::int AS top_done,
+         (SELECT count(*) FROM s)::int AS sessions,
+         (SELECT count(*) FROM s WHERE status = 'completed')::int AS sessions_done,
+         (SELECT count(DISTINCT p.id) FROM p JOIN s ON s.user_id = p.user_id AND s.started_at::date = p.focus_date)::int AS plans_with_focus,
+         (SELECT count(*) FROM p WHERE closed_at IS NOT NULL)::int AS closed,
+         (SELECT count(*) FROM i WHERE meeting_score >= 85 AND status IN ('active', 'done'))::int AS huddle_in_focus,
+         (SELECT count(*) FROM p WHERE feedback = 1)::int AS thumbs_up,
+         (SELECT count(*) FROM p WHERE feedback = -1)::int AS thumbs_down`,
+      [tenantId, days],
+    );
+  }
+
   plan(tenantId: string, userId: string, date: string): Promise<PlanRow | null> {
     return this.db.one<PlanRow>(
       `SELECT id, focus_date::text AS focus_date, timezone, status, generation_source, score_version,
@@ -358,6 +397,7 @@ export class FocusDayRepository {
       `UPDATE focus_day_plans
           SET status = COALESCE($2, status),
               accepted_at = CASE WHEN $3::boolean AND accepted_at IS NULL THEN now() ELSE accepted_at END,
+              completed_at = CASE WHEN $2 = 'completed' AND completed_at IS NULL THEN now() ELSE completed_at END,
               generation_source = COALESCE($4, generation_source),
               feedback = CASE WHEN $5::boolean THEN $6::smallint ELSE feedback END,
               updated_at = now()
