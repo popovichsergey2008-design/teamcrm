@@ -9,7 +9,9 @@ import { MeetingAgenda } from '../components/MeetingAgenda';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { promptText } from '../components/ui/dialog';
-import { api, ApiError, FocusCandidate, FocusChangeReason, FocusItem, FocusToday } from '../lib/api';
+import { api, ApiError, FocusCandidate, FocusChangeReason, FocusHuddle, FocusItem, FocusToday } from '../lib/api';
+import { navigate } from '../lib/router';
+import { plural } from '../lib/chat-text';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import { getSocket } from '../lib/socket';
 import { setFocusSession, useFocusSession } from '../hooks/useFocusSession';
@@ -76,6 +78,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   const [meetingSoon, setMeetingSoon] = useState<null | { item: FocusItem; title: string; minutesLeft: number }>(null);
   const { session } = useFocusSession();
   const [closing, setClosing] = useState(false);
+  const [huddleOpen, setHuddleOpen] = useState<string | null>(null);
 
   const apply = (next: FocusToday) => {
     if (next.enabled) setDay(next);
@@ -312,6 +315,65 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     </div>
   );
 
+  /**
+   * Созвон → фокус (п. 74–76): одно поручение — «важнее вашего #N?», несколько —
+   * сводкой «N новых действий, из них срочных M». Принятый план без согласия не меняется.
+   */
+  const huddleCard = (h: FocusHuddle) => {
+    const one = h.items.length === 1 ? h.items[0] : null;
+    const due = one ? deadlineBadge(one.deadlineAt) : null;
+    const expanded = huddleOpen === h.meetingId;
+    return (
+      <section key={h.meetingId} className="fd-huddle" aria-label={`После встречи «${h.title}»`}>
+        <div className="fd-huddle-line">
+          <Icon name="video" size={16} />
+          {one ? (
+            <span>
+              На встрече «{h.title}» зафиксировано: <b>{one.title}</b>{due ? ` · ${due.label}` : ''}.
+              {h.suggestRank && <> QEVO AI считает это важнее вашего #{h.suggestRank}.</>}
+            </span>
+          ) : h.items.length > 1 ? (
+            <span>
+              После встречи «{h.title}» у вас {h.items.length} {plural(h.items.length, 'новое действие', 'новых действия', 'новых действий')}
+              {h.urgent ? ` · срочных ${h.urgent}` : ''}{h.regular ? ` · обычных ${h.regular}` : ''}.
+            </span>
+          ) : (
+            <span>Со встречи «{h.title}» ждут разбора {h.pendingDrafts} {plural(h.pendingDrafts, 'поручение', 'поручения', 'поручений')} на вас.</span>
+          )}
+        </div>
+        <span className="fd-banner-acts">
+          {one && h.suggestRank && (
+            <Button variant="primary" size="sm" disabled={busy} onClick={() => void run(() => api.focusAdd(one.key, h.suggestRank ?? undefined, 'wrong_priority'))}>
+              <Icon name="pin" size={13} /> Закрепить как #{h.suggestRank}
+            </Button>
+          )}
+          {one && one.taskId && (
+            <Button variant="outline" size="sm" onClick={() => setBacklogOpen('all')}>Открыть в списке</Button>
+          )}
+          {h.items.length > 1 && (
+            <Button variant="outline" size="sm" aria-expanded={expanded} onClick={() => setHuddleOpen(expanded ? null : h.meetingId)}>Посмотреть</Button>
+          )}
+          {h.pendingDrafts > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => navigate({ section: 'chat', view: 'meetings' })}>Разобрать черновики ({h.pendingDrafts})</Button>
+          )}
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run(() => api.focusDismiss(`huddle:${h.meetingId}`))}>В список</Button>
+        </span>
+        {expanded && (
+          <ul className="fd-huddle-list">
+            {h.items.map((c) => (
+              <li key={c.key}>
+                <span>{c.title}{c.reasons[0] ? <span className="dim"> · {c.reasons.filter((r) => !r.startsWith('поручили')).slice(0, 1).join('')}</span> : null}</span>
+                <Button variant="outline" size="sm" disabled={busy} onClick={() => place({ key: c.key, kind: 'task', taskId: c.taskId, approvalId: null, title: c.title, projectName: null, score: c.score, reasons: c.reasons })}>
+                  <Icon name="target" size={13} /> В фокус
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    );
+  };
+
   const decisions = (backlog ?? []).filter((c) => c.kind !== 'task');
   const listed = backlogOpen === 'decisions' ? decisions : (backlog ?? []);
   const critical = day.criticalCandidate;
@@ -383,6 +445,8 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           )}
         </section>
       )}
+
+      {day.huddle.map(huddleCard)}
 
       <OnboardingCard />
       <MeetingAgenda onJoin={onJoinCall} />

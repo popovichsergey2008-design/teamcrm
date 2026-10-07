@@ -40,6 +40,13 @@
 .fd-critical-line > span { flex: 1; min-width: 200px; }
 .fd-critical-body { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 
+/* созвон → фокус */
+.fd-huddle { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--accent-line); background: var(--bg-elev); }
+.fd-huddle-line { display: flex; align-items: flex-start; gap: 10px; }
+.fd-huddle-line .icon { color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+.fd-huddle-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.fd-huddle-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border-radius: 8px; background: var(--bg-elev-2); }
+
 /* тройка */
 .fd-top { display: flex; flex-direction: column; gap: var(--sp-3); }
 .fd-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }

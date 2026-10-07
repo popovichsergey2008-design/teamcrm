@@ -40,6 +40,8 @@ export interface Candidate {
   /** сила договорённости на созвоне за сутки: 100 — поручили на созвоне, 0 — не было */
   meeting: number;
   meetingTitle: string | null;
+  /** встреча, на которой это поручили (созвон → фокус, волна 6) */
+  meetingId?: string | null;
   /** человек сам поставил «В сегодня» (tasks.focus_date) — закрепление */
   pinned: boolean;
   estimateHours: number | null;

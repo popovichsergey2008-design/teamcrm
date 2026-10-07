@@ -119,6 +119,7 @@ export class FocusDayService {
       backlogCount: rest.length,
       waitingDecision,
       criticalCandidate: this.critical(plan, items, rest),
+      huddle: await this.huddle(v, plan, items, rest),
       // «Завершить день» — после всей тройки или к концу рабочего дня (п. 78–80)
       closeDay: {
         available: !plan.closed_at && closeDayAvailable(now, plan.timezone, work, doneTop, items.length),
@@ -198,6 +199,8 @@ export class FocusDayService {
     const weakest = active.length < 3 ? null : active.reduce((a, b) => (Number(a.priority_score) <= Number(b.priority_score) ? a : b));
     const dismissed = new Set(plan.dismissed ?? []);
     const fresh = rest
+      // поручения со встреч предлагает блок «созвон → фокус», не дублируем
+      .filter((c) => !c.meetingId)
       .filter((c) => c.worthy && !dismissed.has(c.key) && new Date(c.createdAt).getTime() > new Date(plan.created_at).getTime())
       .filter((c) => c.priority === 'urgent' || c.deadlineScore >= 95 || c.meetingScore >= 85)
       .filter((c) => !weakest || c.score > Number(weakest.priority_score))
@@ -208,6 +211,51 @@ export class FocusDayService {
       title: fresh.title, projectName: fresh.projectName, reasons: fresh.reasons, score: fresh.score,
       replaceRank: weakest ? weakest.rank : ([1, 2, 3].find((r) => !active.some((i) => i.rank === r)) ?? 3),
     };
+  }
+
+  /**
+   * Созвон → фокус (п. 71–77). После встречи у человека появились поручения — показываем
+   * их по встречам: одно — «важнее вашего #3?», несколько — «3 новых действия, 1 срочное».
+   * Задачи создаёт прежний разбор встреч; здесь только предложение, и принятый план
+   * без согласия не меняется (п. 75). Отказ («В список») запоминается на встречу.
+   */
+  private async huddle(v: Viewer, plan: PlanRow, items: ItemRow[], rest: (Scored & { createdAt: Date })[]) {
+    if (plan.closed_at) return [];
+    const dismissed = new Set(plan.dismissed ?? []);
+    const active = items.filter((i) => i.status === 'active');
+    const weakest = active.length < 3 ? null : active.reduce((a, b) => (Number(a.priority_score) <= Number(b.priority_score) ? a : b));
+    const freeRank = [1, 2, 3].find((r) => !active.some((i) => i.rank === r)) ?? null;
+    const byMeeting = new Map<string, { meetingId: string; title: string; items: (Scored & { createdAt: Date })[] }>();
+    for (const c of rest) {
+      if (!c.meetingId || dismissed.has(`huddle:${c.meetingId}`) || dismissed.has(c.key)) continue;
+      const g = byMeeting.get(c.meetingId) ?? { meetingId: c.meetingId, title: c.meetingTitle ?? 'Созвон', items: [] };
+      g.items.push(c);
+      byMeeting.set(c.meetingId, g);
+    }
+    const drafts = await this.repo.pendingMeetingDrafts(v.tenantId, v.userId).catch(() => []);
+    for (const d of drafts) {
+      const id = String(d.meeting_id);
+      if (dismissed.has(`huddle:${id}`)) continue;
+      if (!byMeeting.has(id)) byMeeting.set(id, { meetingId: id, title: d.title, items: [] });
+    }
+    return [...byMeeting.values()].map((g) => {
+      const sorted = [...g.items].sort((a, b) => b.score - a.score);
+      const top = sorted[0];
+      const urgent = sorted.filter((c) => c.priority === 'urgent' || c.deadlineScore >= 95).length;
+      return {
+        meetingId: g.meetingId,
+        title: g.title,
+        urgent,
+        regular: sorted.length - urgent,
+        pendingDrafts: Number(drafts.find((d) => String(d.meeting_id) === g.meetingId)?.n ?? 0),
+        items: sorted.slice(0, 10).map((c) => ({
+          key: c.key, taskId: c.taskId, title: c.title, deadlineAt: c.deadlineAt, priority: c.priority,
+          reasons: c.reasons, score: c.score,
+        })),
+        // одно поручение весомее слабейшего в тройке — предлагаем поставить его на это место
+        suggestRank: top && (freeRank ?? (weakest && top.score > Number(weakest.priority_score) ? weakest.rank : null)),
+      };
+    });
   }
 
   /** Остальные действия по очкам — раскрываются по нажатию (п. 39, 143). */

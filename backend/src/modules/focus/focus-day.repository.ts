@@ -103,12 +103,17 @@ export class FocusDayRepository {
       this.db.many<any>(
         `SELECT t.id, t.title, p.name AS project_name, t.deadline_at, t.priority, t.is_blocked,
                 t.estimate_hours, t.focus_date::text AS focus_date, t.created_at,
-                (SELECT m.title FROM meeting_task_drafts d JOIN meetings m ON m.id = d.meeting_id
-                  WHERE d.task_id = t.id AND d.created_at > now() - interval '24 hours'
-                  ORDER BY d.created_at DESC LIMIT 1) AS meeting_title
+                mt.meeting_id, mt.meeting_title
            FROM tasks t
            JOIN projects p ON p.id = t.project_id
            JOIN board_columns bc ON bc.id = t.column_id
+           -- поручили на созвоне за последние сутки (итоги встречи завели задачу)
+           LEFT JOIN LATERAL (
+             SELECT m.id AS meeting_id, m.title AS meeting_title
+               FROM meeting_task_drafts d JOIN meetings m ON m.id = d.meeting_id
+              WHERE d.task_id = t.id AND d.created_at > now() - interval '24 hours'
+              ORDER BY d.created_at DESC LIMIT 1
+           ) mt ON TRUE
           WHERE t.tenant_id = $1 AND t.assignee_id = $2
             AND t.closed_at IS NULL AND t.deleted_at IS NULL AND p.status <> 'archived'
             AND lower(bc.name) <> ALL($3::text[])
@@ -146,6 +151,7 @@ export class FocusDayRepository {
         isBlocked: !!t.is_blocked, waiting: 0, waitingName: null,
         // Задачу завели из итогов созвона за последние сутки — поручение прозвучало вслух.
         meeting: t.meeting_title ? 100 : 0, meetingTitle: t.meeting_title ?? null,
+        meetingId: t.meeting_id ? String(t.meeting_id) : null,
         pinned: t.focus_date === today, estimateHours: t.estimate_hours != null ? Number(t.estimate_hours) : null,
         createdAt: t.created_at,
       });
@@ -249,6 +255,21 @@ export class FocusDayRepository {
       [tenantId, taskId, userId, date],
     );
     return !!r;
+  }
+
+  /**
+   * Черновики задач со встреч за сутки, которые ждут разбора и названы на этого
+   * человека: задачей они станут в разборе встречи, а не здесь (п. 77 — единый путь).
+   */
+  async pendingMeetingDrafts(tenantId: string, userId: string): Promise<{ meeting_id: string; title: string; n: number }[]> {
+    return this.db.many(
+      `SELECT m.id AS meeting_id, m.title, count(*)::int AS n
+         FROM meeting_task_drafts d JOIN meetings m ON m.id = d.meeting_id
+        WHERE d.tenant_id = $1 AND d.assignee_id = $2 AND d.status = 'pending'
+          AND d.created_at > now() - interval '24 hours'
+        GROUP BY m.id, m.title`,
+      [tenantId, userId],
+    );
   }
 
   plan(tenantId: string, userId: string, date: string): Promise<PlanRow | null> {

@@ -246,7 +246,19 @@ export type FocusToday =
     waitingDecision: number;
     criticalCandidate: (FocusCandidate & { replaceRank: number }) | null;
     closeDay: { available: boolean; closedAt: string | null; workdayClosedUntil: string | null; workEnd: string };
+    /** созвон → фокус: поручения со встреч за сутки, по встречам */
+    huddle: FocusHuddle[];
   };
+
+export interface FocusHuddle {
+  meetingId: string;
+  title: string;
+  urgent: number;
+  regular: number;
+  pendingDrafts: number;
+  items: { key: string; taskId: string | null; title: string; deadlineAt: string | null; priority: string | null; reasons: string[]; score: number }[];
+  suggestRank: number | null;
+}
 
 /** Итоги дня для «Завершить день» (ТЗ-16, п. 81). */
 export interface FocusCloseSummary {
