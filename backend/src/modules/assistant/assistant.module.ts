@@ -42,6 +42,7 @@ import { MaintenanceService } from './maintenance.service';
     MaintenanceService, MaintenanceRepository, MaintenanceScheduler,
     GapsService, GapsRepository, EveningService, AskService,
   ],
-  exports: [AssistantService, ModeratorService, MaintenanceService, GapsService, AskService],
+  // ModeratorRepository — справке секретаря перед встречей (ТЗ-18): те же факты, что в повестке
+  exports: [AssistantService, ModeratorService, MaintenanceService, GapsService, AskService, ModeratorRepository],
 })
 export class AssistantModule {}

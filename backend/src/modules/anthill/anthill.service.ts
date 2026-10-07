@@ -20,6 +20,7 @@ import { can, PermissionMap } from '../security/permissions';
 import { TaskActivityRepository } from '../tasks/task-activity.repository';
 import { AgentSettings } from './anthill-admin.service';
 import { decide, maxRisk, permissionFor, policyOf } from './tool-policy';
+import { BriefService } from './brief.service';
 import { nextRun, parseSchedule, Schedule, scheduleLabel } from './schedule-ru';
 
 /** Что открыто у человека — для «что здесь нужно сделать» без ссылки (разд. 4–5). */
@@ -72,9 +73,9 @@ export class AnthillService {
     private readonly activity: TaskActivityRepository,
     tasks: TasksService, chats: ChatsService, search: SearchService, nl: NlService, ask: AskService,
     files: FilesService, taskcard: TaskCardService, forecast: ForecastService, calendar: CalendarService,
-    knowledge: KnowledgeService, clients: ClientsService,
+    knowledge: KnowledgeService, clients: ClientsService, briefs: BriefService,
   ) {
-    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients });
+    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs });
   }
 
   private base() { return (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, ''); }
@@ -615,7 +616,8 @@ export class AnthillService {
     if (t.kind === 'write' && !settings.actionsAllowed) return false;
     if (!settings.filesAllowed && (t.name === 'read_file' || t.name === 'list_files' || t.name === 'create_document')) return false;
     if (t.name === 'web_search' && !settings.webSearch) return false;
-    if (t.name === 'create_event' && !settings.integrations) return false;
+    // Календарь (встреча, перенос, отмена) раньше прятался за выключателем «интеграции»;
+    // теперь им управляет группа «Календарь» в автономности — с подтверждением по умолчанию.
     const pol = policyOf(t.name);
     if (pol.group !== 'read' && settings.autonomy[pol.group] === 'off') return false;
     const need = typeof pol.permission === 'string' ? pol.permission : null;
@@ -950,6 +952,8 @@ const STATUS_OF: Record<string, string> = {
   chat_recent: 'Читаю чат…', whats_missed: 'Собираю пропущенное…', get_project: 'Смотрю проект…',
   search_meetings: 'Ищу миты…', get_meeting: 'Читаю итог мита…', team_status: 'Считаю по доскам…', global_search: 'Ищу по всему…',
   list_files: 'Смотрю вложения…', read_file: 'Читаю файл…',
+  find_slots: 'Ищу свободное время…', my_events: 'Смотрю календарь…',
+  my_day: 'Собираю ваш день…', time_audit: 'Считаю неделю…',
 };
 
 function extractJson(raw: string): any {

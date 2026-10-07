@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../Icon';
 import { RichText } from '../RichText';
 import { VoiceStatus } from '../VoiceStatus';
@@ -7,11 +7,16 @@ import type { AnthillAction, AnthillContext, AnthillMessage, AnthillSession, Ant
 import { navigate } from '../../lib/router';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { stampLabel } from '../../lib/chat-text';
-import { AnthillTasks } from './AnthillTasks';
-import { AnthillMemory } from './AnthillMemory';
-import { AnthillSkills } from './AnthillSkills';
-import { AnthillResponses } from './AnthillResponses';
-import { AnthillAdmin } from './AnthillAdmin';
+
+/*
+  Вкладки кроме «Разговора» открывают редко — их код грузится по первому щелчку,
+  а не вместе с приложением: так первый экран не платит за настройки бота.
+*/
+const AnthillTasks = lazy(() => import('./AnthillTasks').then((m) => ({ default: m.AnthillTasks })));
+const AnthillMemory = lazy(() => import('./AnthillMemory').then((m) => ({ default: m.AnthillMemory })));
+const AnthillSkills = lazy(() => import('./AnthillSkills').then((m) => ({ default: m.AnthillSkills })));
+const AnthillResponses = lazy(() => import('./AnthillResponses').then((m) => ({ default: m.AnthillResponses })));
+const AnthillAdmin = lazy(() => import('./AnthillAdmin').then((m) => ({ default: m.AnthillAdmin })));
 import { useAuth } from '../../state/auth';
 import { getSocket } from '../../lib/socket';
 import { showNotification, showToast } from '../../lib/notifications';
@@ -361,13 +366,15 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
         ] as const).map((t) => ({ value: t.key, label: <><Icon name={t.icon} size={14} /> {t.label}</> }))}
       />
 
-      {tab === 'tasks' && <AnthillTasks onOpenSession={(id) => { setTab('chat'); void openSession(id); }} />}
-      {tab === 'skills' && (
-        <AnthillSkills onRun={(x) => { setSkill(x); setTab('chat'); inputRef.current?.focus(); }} />
-      )}
-      {tab === 'memory' && <AnthillMemory />}
-      {tab === 'responses' && canManage && <AnthillResponses />}
-      {tab === 'admin' && canManage && <AnthillAdmin />}
+      <Suspense fallback={tab !== 'chat' ? <div className="anthill-pane dim">Загружаю…</div> : null}>
+        {tab === 'tasks' && <AnthillTasks onOpenSession={(id) => { setTab('chat'); void openSession(id); }} />}
+        {tab === 'skills' && (
+          <AnthillSkills onRun={(x) => { setSkill(x); setTab('chat'); inputRef.current?.focus(); }} />
+        )}
+        {tab === 'memory' && <AnthillMemory />}
+        {tab === 'responses' && canManage && <AnthillResponses />}
+        {tab === 'admin' && canManage && <AnthillAdmin />}
+      </Suspense>
 
       {tab === 'chat' && historyOpen && (
         <div className="anthill-history">

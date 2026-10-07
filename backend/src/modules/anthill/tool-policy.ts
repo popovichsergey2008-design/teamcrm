@@ -71,6 +71,10 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   web_search: READ,
   list_files: { ...READ, permission: 'file.download' },
   read_file: { ...READ, permission: 'file.download' },
+  find_slots: READ,
+  my_day: READ,
+  time_audit: READ,
+  my_events: READ,
 
   create_reminder: { risk: 'low_write', group: 'self', affectsOthers: false },
   create_scheduled_task: { risk: 'low_write', group: 'self', affectsOthers: false },
@@ -90,6 +94,12 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
     // встреча без участников — это время в своём календаре, а не приглашение
     affectsOthers: (p) => Array.isArray(p.participantIds) && p.participantIds.length > 0,
   },
+  move_event: {
+    risk: 'high_write', group: 'calendar',
+    affectsOthers: (p) => Number(p.participants ?? 0) > 0,
+  },
+  // отмену не вернуть: встреча удаляется, участникам уходит отмена
+  cancel_event: { risk: 'destructive', group: 'calendar', affectsOthers: true },
   create_document: {
     risk: 'low_write', group: 'documents',
     permission: (p) => (p.target === 'task' ? 'task.edit' : p.target === 'chat' ? 'chat.write' : null),

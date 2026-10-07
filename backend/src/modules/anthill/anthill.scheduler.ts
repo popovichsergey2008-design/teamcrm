@@ -58,6 +58,7 @@ export class AnthillScheduler implements OnModuleInit, OnModuleDestroy {
     // напоминания — первыми: они короткие, и минута опоздания для них заметнее, чем для отчёта
     await this.reminders().catch((e) => this.log.warn(`напоминания: ${(e as Error).message}`));
     await this.briefs.tick().catch((e) => this.log.warn(`сводки: ${(e as Error).message}`));
+    await this.briefs.meetingTick().catch((e) => this.log.warn(`справки перед встречей: ${(e as Error).message}`));
     try {
       const due = await this.anthill.scheduleDue();
       for (const row of due) {

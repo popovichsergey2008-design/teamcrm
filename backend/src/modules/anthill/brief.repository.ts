@@ -117,6 +117,77 @@ export class BriefRepository {
     };
   }
 
+  /**
+   * Встречи, до которых осталось ровно «за сколько минут» человек просил справку
+   * (окно ±1 минута — планировщик ходит раз в минуту), и по которым справки ещё не было.
+   */
+  dueMeetingBriefs(): Promise<{
+    user_id: string; tenant_id: string; event_id: string; title: string; description: string | null;
+    starts_at: Date; minutes: number; client: string | null; public_id: string | null; channels: PrefsRow['channels'];
+  }[]> {
+    return this.db.many(
+      `SELECT s.user_id, s.tenant_id, e.id AS event_id, e.title, e.description, e.starts_at, s.meeting_brief_min AS minutes,
+              c.name AS client, l.public_id, s.channels
+         FROM secretary_prefs s
+         JOIN users u ON u.id = s.user_id AND u.is_active
+         JOIN calendar_participants cp ON cp.user_id = s.user_id AND cp.status <> 'declined'
+         JOIN calendar_events e ON e.id = cp.event_id AND e.tenant_id = s.tenant_id AND NOT e.all_day
+         LEFT JOIN clients c ON c.id = e.client_id
+         LEFT JOIN LATERAL (
+           SELECT g.public_id FROM meet_guest_links g WHERE g.event_id = e.id AND g.kind = 'meeting' LIMIT 1
+         ) l ON TRUE
+        WHERE s.meeting_brief_min IS NOT NULL
+          AND e.starts_at >  now() + make_interval(mins => s.meeting_brief_min - 1)
+          AND e.starts_at <= now() + make_interval(mins => s.meeting_brief_min + 1)
+          AND NOT EXISTS (
+            SELECT 1 FROM secretary_sent x
+             WHERE x.user_id = s.user_id AND x.kind = 'meeting_brief'
+               AND x.ref = e.id::text || ':' || extract(epoch FROM e.starts_at)::bigint::text)
+        LIMIT 200`,
+    );
+  }
+
+  /** Занять отправку: вставил строку — шлёт этот экземпляр; строка уже была — кто-то успел раньше. */
+  async claimSent(userId: string, kind: string, ref: string): Promise<boolean> {
+    const r = await this.db.query(
+      `INSERT INTO secretary_sent (user_id, kind, ref) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, [userId, kind, ref],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  eventParticipants(eventId: string): Promise<{ user_id: string; full_name: string }[]> {
+    return this.db.many(
+      `SELECT cp.user_id, u.full_name FROM calendar_participants cp JOIN users u ON u.id = cp.user_id
+        WHERE cp.event_id = $1 AND cp.status <> 'declined' ORDER BY cp.is_organizer DESC, u.full_name`,
+      [eventId],
+    );
+  }
+
+  /** Куда ушла неделя (§7.4): встречи, глубокая работа, трекер, закрытое, просроченное. */
+  async week(tenantId: string, userId: string, from: Date, to: Date) {
+    const row = await this.db.one<{ meetings: number; deep: number; tracked: number; closed: number; overdue: number }>(
+      `SELECT
+         (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (LEAST(e.ends_at, $4) - GREATEST(e.starts_at, $3))) / 60), 0)::int
+            FROM (SELECT DISTINCT e.id, e.starts_at, e.ends_at FROM calendar_events e
+                    JOIN calendar_participants cp ON cp.event_id = e.id AND cp.user_id = $2 AND cp.status <> 'declined'
+                   WHERE e.tenant_id = $1 AND NOT e.all_day AND e.starts_at < $4 AND e.ends_at > $3) e) AS meetings,
+         (SELECT COALESCE(SUM(LEAST(s.planned_minutes, EXTRACT(EPOCH FROM (COALESCE(s.ended_at, now()) - s.started_at)) / 60)), 0)::int
+            FROM focus_sessions s
+           WHERE s.tenant_id = $1 AND s.user_id = $2 AND s.status IN ('completed', 'running', 'paused')
+             AND s.started_at >= $3 AND s.started_at < $4) AS deep,
+         (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(l.timestamp_end, now()) - l.timestamp_start)) / 60), 0)::int
+            FROM time_logs l WHERE l.tenant_id = $1 AND l.user_id = $2 AND l.timestamp_start >= $3 AND l.timestamp_start < $4) AS tracked,
+         (SELECT count(*)::int FROM tasks t
+           WHERE t.tenant_id = $1 AND t.assignee_id = $2 AND t.deleted_at IS NULL AND t.closed_at >= $3 AND t.closed_at < $4) AS closed,
+         (SELECT count(*)::int FROM tasks t WHERE ${OPEN_MINE} AND t.deadline_at < now()) AS overdue`,
+      [tenantId, userId, from, to],
+    );
+    return {
+      meetingMinutes: Number(row?.meetings ?? 0), deepMinutes: Number(row?.deep ?? 0), trackedMinutes: Number(row?.tracked ?? 0),
+      closed: Number(row?.closed ?? 0), overdueNow: Number(row?.overdue ?? 0),
+    };
+  }
+
   async evening(tenantId: string, userId: string, from: Date, to: Date): Promise<EveningData> {
     const task = (r: any): BriefTask => ({ id: String(r.id), title: r.title, projectId: String(r.project_id) });
     const tomorrowEnd = new Date(to.getTime() + 24 * 3600_000);

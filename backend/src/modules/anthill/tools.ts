@@ -14,6 +14,8 @@ import { SearchService } from '../search/search.service';
 import { NlService } from '../nl/nl.service';
 import { AskService } from '../assistant/ask.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { BriefService } from './brief.service';
+import { BUFFER_MIN, conflicts, dayRu, findSlots, slotRu, timeRu } from './slot-rules';
 
 /**
  * Инструменты QEVO Bot (ТЗ-6, разд. 48).
@@ -80,6 +82,8 @@ export interface ToolDeps {
   ask: AskService;
   knowledge: KnowledgeService;
   clients: ClientsService;
+  /** Сводки секретаря (ТЗ-18): «мой день» и «куда ушла неделя» тем же расчётом, что в уведомлениях. */
+  briefs: BriefService;
 }
 
 const str = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
@@ -87,7 +91,7 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients } = deps;
+  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs } = deps;
 
   /** Клиент по названию или номеру — тем же поиском, что в разделе, и с теми же правами. */
   const findClient = async (ctx: ToolContext, key: string) => {
@@ -996,6 +1000,168 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       async undo(ctx, output) {
         await calendar.remove(ctx.tenantId, ctx.user, String(output.eventId));
         return 'Встреча отменена, участникам уйдёт отмена.';
+      },
+    },
+    // ── сводки секретаря (ТЗ-18) ──
+    {
+      name: 'my_day', kind: 'read',
+      description: 'Сводка дня человека: встречи сегодня, просрочки, сроки сегодня, блокеры, что ждёт его решения, непрочитанные личные. Для «что у меня сегодня», «утренний брифинг», «что горит». kind — morning (что сегодня) или evening (итоги дня: что сделано, что завтра).',
+      params: { kind: 'morning | evening (по умолчанию morning)' },
+      async run(ctx, p) {
+        const kind = p.kind === 'evening' ? 'evening' : 'morning';
+        const r = await briefs.preview(ctx.tenantId, ctx.user.userId, kind, ctx.timezone ?? null);
+        return { text: r.text, sources: [] };
+      },
+    },
+    {
+      name: 'time_audit', kind: 'read',
+      description: 'Куда ушло время на этой неделе: часы встреч и их доля рабочего времени, глубокая работа, трекер, закрытые задачи, просрочки и советы. Для «куда ушла неделя», «сколько я сидел на встречах», «аудит времени».',
+      params: {},
+      async run(ctx) {
+        const text = await briefs.weekAudit(ctx.tenantId, ctx.user.userId, ctx.timezone || 'Europe/Moscow', ctx.now);
+        return { text: text ?? 'За эту неделю пока нечего считать: встреч, фокуса и закрытых задач нет.', sources: [] };
+      },
+    },
+    // ── календарь секретаря (ТЗ-18, этап 3) ──
+    {
+      name: 'find_slots', kind: 'read',
+      description: 'Найти свободное время для встречи с людьми: «когда поставить встречу с Иваном на следующей неделе», «найди час с Глебом и Анной». Учитывает рабочие часы компании, выходные, отпуска и встречи всех участников. people — имена через запятую (себя не нужно), duration — минуты, from и to — даты ISO (по умолчанию ближайшая неделя).',
+      params: { people: 'имена участников через запятую', duration: 'длительность в минутах (по умолчанию 60)', from: 'с какой даты, ISO (необязательно)', to: 'по какую дату, ISO (необязательно)' },
+      async run(ctx, p) {
+        const tz = ctx.timezone || 'Europe/Moscow';
+        const names = str(p.people, 300).split(/[,;]| и /).map((x) => x.trim()).filter(Boolean);
+        const people: { id: string; name: string }[] = [];
+        for (const n of names.slice(0, 10)) {
+          const u = await findUser(ctx.tenantId, n);
+          if (u) people.push({ id: String(u.id), name: u.full_name });
+        }
+        const from = p.from && !Number.isNaN(new Date(String(p.from)).getTime()) ? new Date(String(p.from)) : ctx.now;
+        const to = p.to && !Number.isNaN(new Date(String(p.to)).getTime())
+          ? new Date(new Date(String(p.to)).getTime() + 86_399_000)
+          : new Date(from.getTime() + 7 * 86_400_000);
+        const ids = [ctx.user.userId, ...people.map((x) => x.id)];
+        const [{ busy }, work] = await Promise.all([calendar.busy(ctx.tenantId, ids, from.toISOString(), to.toISOString()), calendar.work(ctx.tenantId)]);
+        const all = Object.values(busy).flat().map((b) => ({ start: new Date(b.startsAt), end: new Date(b.endsAt), kind: b.kind }));
+        const duration = Number(p.duration) > 0 ? Number(p.duration) : 60;
+        const slots = findSlots({ from, to, durationMin: duration, busy: all, work, tz, now: ctx.now });
+        const who = people.length ? `вы и ${people.map((x) => x.name).join(', ')}` : 'вы';
+        if (!slots.length) {
+          return { text: `Свободного окна на ${duration} мин, где свободны ${who}, в рабочие часы с ${dayRu(from, tz)} по ${dayRu(to, tz)} нет. Можно расширить срок или сократить встречу.`, sources: [] };
+        }
+        return {
+          text: `Свободно для: ${who} (${duration} мин; учтены рабочие часы ${work.workStart}–${work.workEnd}, выходные, отпуска, встречи и буфер ${BUFFER_MIN} мин):\n`
+            + slots.map((s, i) => `${i + 1}. ${slotRu(s, tz)} — ISO ${s.start.toISOString()}`).join('\n')
+            + '\nЧтобы поставить встречу, нужен create_event с выбранным временем.',
+          sources: [],
+        };
+      },
+    },
+    {
+      name: 'my_events', kind: 'read',
+      description: 'Мои встречи за период с номерами — чтобы перенести или отменить конкретную («перенеси завтрашнюю встречу с Иваном»), и проверка конфликтов: «есть ли накладки на неделе». from и to — даты ISO (по умолчанию сегодня и неделя вперёд), q — слово из названия или имя участника (необязательно).',
+      params: { from: 'с какой даты, ISO (необязательно)', to: 'по какую дату, ISO (необязательно)', q: 'слово из названия или имя участника (необязательно)' },
+      async run(ctx, p) {
+        const tz = ctx.timezone || 'Europe/Moscow';
+        const from = p.from && !Number.isNaN(new Date(String(p.from)).getTime()) ? new Date(String(p.from)) : new Date(ctx.now.getTime() - 3600_000);
+        const to = p.to && !Number.isNaN(new Date(String(p.to)).getTime())
+          ? new Date(new Date(String(p.to)).getTime() + 86_399_000)
+          : new Date(from.getTime() + 7 * 86_400_000);
+        const r: any = await calendar.range(ctx.tenantId, ctx.user, from.toISOString(), to.toISOString(), false);
+        const q = str(p.q, 80).toLowerCase();
+        const events = (r.events as any[]).filter((e) => !q
+          || String(e.title).toLowerCase().includes(q)
+          || (e.participants ?? []).some((x: any) => String(x.fullName ?? x.full_name ?? '').toLowerCase().includes(q)));
+        if (!events.length) return { text: q ? `Встреч «${q}» в этот период нет.` : 'Встреч в этот период нет.', sources: [] };
+        const lines = events.slice(0, 30).map((e) => {
+          const s = new Date(e.startsAt); const f = new Date(e.endsAt);
+          const people = (e.participants ?? []).map((x: any) => x.fullName ?? x.full_name).filter(Boolean);
+          return `#${e.id} ${e.allDay ? `${dayRu(s, tz)}, весь день` : `${dayRu(s, tz)} ${timeRu(s, tz)}–${timeRu(f, tz)}`} «${e.title}»`
+            + `${people.length ? ` · ${people.slice(0, 5).join(', ')}` : ''}${e.canEdit ? '' : ' · организатор не вы'}`;
+        });
+        const pairs = conflicts(events.map((e) => ({ id: String(e.id), title: e.title, start: new Date(e.startsAt), end: new Date(e.endsAt), allDay: e.allDay })));
+        const clash = pairs.length
+          ? `\nКонфликты (${pairs.length}): ${pairs.slice(0, 5).map(([a, b]) => `«${a.title}» ${timeRu(a.start, tz)} и «${b.title}» ${timeRu(b.start, tz)}`).join('; ')}. Предложи перенести одну из них в свободное окно (find_slots), без согласия не переноси.`
+          : '';
+        return { text: `Встречи (${events.length}):\n${lines.join('\n')}${clash}`, sources: [] };
+      },
+    },
+    {
+      name: 'move_event', kind: 'write',
+      description: 'Перенести встречу на другое время: «перенеси встречу #45 на 15:30», «сдвинь планёрку на завтра». Номер встречи бери из my_events. start — новое начало ISO, end — новый конец ISO (по умолчанию — та же длительность). Участникам уйдёт уведомление о переносе.',
+      params: { eventId: 'номер встречи', start: 'новое начало ISO', end: 'новый конец ISO (необязательно)' },
+      async preview(ctx, p) {
+        const tz = ctx.timezone || 'Europe/Moscow';
+        const ev: any = await calendar.details(ctx.tenantId, ctx.user, str(p.eventId, 20));
+        if (!ev.canEdit) throw new Error(`Встречу «${ev.title}» переносит её организатор — попросите его или предложите время в переписке`);
+        const start = new Date(str(p.start, 40));
+        if (Number.isNaN(start.getTime())) throw new Error('Не понял, на когда перенести');
+        if (start.getTime() < ctx.now.getTime() - 60_000) throw new Error('Это время уже прошло — назовите будущее');
+        const dur = new Date(ev.endsAt).getTime() - new Date(ev.startsAt).getTime();
+        const end = p.end && !Number.isNaN(new Date(String(p.end)).getTime()) ? new Date(String(p.end)) : new Date(start.getTime() + dur);
+        if (end.getTime() <= start.getTime()) throw new Error('Конец встречи должен быть позже начала');
+        const others = (ev.participants ?? []).filter((x: any) => String(x.userId ?? x.user_id) !== String(ctx.user.userId));
+        const names = others.map((x: any) => x.fullName ?? x.full_name).filter(Boolean);
+        const was = new Date(ev.startsAt);
+        return {
+          text: `Перенести «${ev.title}»?\n${dayRu(was, tz)} ${timeRu(was, tz)} → ${dayRu(start, tz)} ${timeRu(start, tz)}–${timeRu(end, tz)}`
+            + (names.length ? `\nУведомление получат: ${names.join(', ')}` : ''),
+          params: { eventId: String(ev.id), title: ev.title, start: start.toISOString(), end: end.toISOString(), participants: others.length,
+            prevStart: new Date(ev.startsAt).toISOString(), prevEnd: new Date(ev.endsAt).toISOString() },
+        };
+      },
+      fields: [{ key: 'start', label: 'Новое начало', type: 'datetime' }, { key: 'end', label: 'Новый конец', type: 'datetime' }],
+      values: (p) => ({
+        start: p.start ? new Date(String(p.start)).toISOString().slice(0, 16) : '',
+        end: p.end ? new Date(String(p.end)).toISOString().slice(0, 16) : '',
+      }),
+      async edit(ctx, p, patch) {
+        const tz = ctx.timezone || 'Europe/Moscow';
+        const start = new Date(patch.start !== undefined ? patch.start : String(p.start));
+        const end = new Date(patch.end !== undefined ? patch.end : String(p.end));
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new Error('Укажите день и время');
+        if (end.getTime() <= start.getTime()) throw new Error('Конец встречи должен быть позже начала');
+        const was = new Date(String(p.prevStart));
+        return {
+          text: `Перенести «${p.title}»?\n${dayRu(was, tz)} ${timeRu(was, tz)} → ${dayRu(start, tz)} ${timeRu(start, tz)}–${timeRu(end, tz)}`,
+          params: { ...p, start: start.toISOString(), end: end.toISOString() },
+        };
+      },
+      async execute(ctx, p) {
+        await calendar.update(ctx.tenantId, ctx.user, String(p.eventId), { startsAt: String(p.start), endsAt: String(p.end) });
+        const tz = ctx.timezone || 'Europe/Moscow';
+        const s = new Date(String(p.start));
+        return {
+          text: `Встреча «${p.title}» перенесена на ${dayRu(s, tz)} ${timeRu(s, tz)}.${Number(p.participants) ? ' Участникам ушло уведомление.' : ''}`,
+          output: { eventId: String(p.eventId), prevStart: p.prevStart, prevEnd: p.prevEnd },
+          sources: [],
+        };
+      },
+      async undo(ctx, output) {
+        await calendar.update(ctx.tenantId, ctx.user, String(output.eventId), { startsAt: String(output.prevStart), endsAt: String(output.prevEnd) });
+        return 'Встреча возвращена на прежнее время, участникам ушло уведомление.';
+      },
+    },
+    {
+      name: 'cancel_event', kind: 'write',
+      description: 'Отменить встречу: «отмени созвон #45». Номер встречи бери из my_events. Участникам уйдёт отмена; вернуть встречу после отмены нельзя — только поставить заново.',
+      params: { eventId: 'номер встречи' },
+      async preview(ctx, p) {
+        const tz = ctx.timezone || 'Europe/Moscow';
+        const ev: any = await calendar.details(ctx.tenantId, ctx.user, str(p.eventId, 20));
+        if (!ev.canEdit) throw new Error(`Встречу «${ev.title}» отменяет её организатор — можно отказаться от участия в календаре`);
+        const others = (ev.participants ?? []).filter((x: any) => String(x.userId ?? x.user_id) !== String(ctx.user.userId));
+        const names = others.map((x: any) => x.fullName ?? x.full_name).filter(Boolean);
+        const s = new Date(ev.startsAt);
+        return {
+          text: `Отменить встречу «${ev.title}» (${dayRu(s, tz)} ${timeRu(s, tz)})?`
+            + (names.length ? `\nОтмену получат: ${names.join(', ')}` : '')
+            + '\nВернуть её потом нельзя — только поставить заново.',
+          params: { eventId: String(ev.id), title: ev.title, participants: others.length },
+        };
+      },
+      async execute(ctx, p) {
+        await calendar.remove(ctx.tenantId, ctx.user, String(p.eventId));
+        return { text: `Встреча «${p.title}» отменена.${Number(p.participants) ? ' Участникам ушла отмена.' : ''}`, output: { eventId: String(p.eventId) }, sources: [] };
       },
     },
     {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import type { SecretaryPrefs } from '../../lib/api';
 import { RichText } from '../RichText';
+import { Select } from '../ui/select';
 
 /**
  * Личные сводки секретаря (ТЗ-18): утром — что сегодня, вечером — что сделано и что
@@ -54,7 +55,26 @@ export function SecretaryBriefs() {
       <div className="anthill-group-head">Сводки секретаря</div>
       <div className="anthill-card">
         {row('morning', 'Утром — ваш день', 'встречи, сроки, просрочки, что ждёт вашего решения')}
-        {row('evening', 'Вечером — итоги', 'что сделано, что перенесено, что завтра')}
+        {row('evening', 'Вечером — итоги', 'что сделано, что перенесено, что завтра; в пятницу — итоги недели')}
+        <div className="anthill-adm-day">
+          <span className="anthill-adm-text">
+            <span>Перед встречей — справка</span>
+            <span className="dim">клиент, цель, прошлые решения, просрочки участников; без фактов не приходит</span>
+          </span>
+          <Select
+            ariaLabel="Справка перед встречей"
+            size="sm"
+            value={p.meetingBriefMin ? String(p.meetingBriefMin) : 'off'}
+            onValueChange={(v) => { void save({ meetingBriefMin: v === 'off' ? null : Number(v) }); }}
+            options={[
+              { value: 'off', label: 'Не нужна' },
+              { value: '10', label: 'За 10 минут' },
+              { value: '15', label: 'За 15 минут' },
+              { value: '30', label: 'За 30 минут' },
+              { value: '60', label: 'За час' },
+            ]}
+          />
+        </div>
         <label className="anthill-adm-row">
           <input type="checkbox" checked={p.weekdaysOnly} onChange={(e) => { void save({ weekdaysOnly: e.target.checked }); }} />
           <span className="anthill-adm-text"><span>Только в будни</span></span>

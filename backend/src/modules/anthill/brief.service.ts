@@ -5,6 +5,9 @@ import { tomorrowOf, zonedTime } from '../focus/close-day';
 import { BotDelivery } from './bot-delivery.service';
 import { briefDue, eveningText, morningText } from './brief-rules';
 import { BriefRepository, PrefsRow } from './brief.repository';
+import { ModeratorRepository } from '../assistant/moderator.repository';
+import { CalendarService } from '../calendar/calendar.service';
+import { meetingBriefText, weekAuditText } from './meeting-brief-rules';
 
 const FALLBACK_TZ = 'Europe/Moscow';
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -27,7 +30,12 @@ export interface SecretaryPrefs {
 export class BriefService {
   private readonly log = new Logger('SecretaryBrief');
 
-  constructor(private readonly repo: BriefRepository, private readonly delivery: BotDelivery) {}
+  constructor(
+    private readonly repo: BriefRepository,
+    private readonly delivery: BotDelivery,
+    private readonly moderator: ModeratorRepository,
+    private readonly calendar: CalendarService,
+  ) {}
 
   async prefs(userId: string): Promise<SecretaryPrefs> {
     return view(await this.repo.prefs(userId));
@@ -65,7 +73,81 @@ export class BriefService {
     const from = zonedTime(today, '00:00', tz);
     const to = zonedTime(tomorrowOf(now, tz), '00:00', tz);
     if (kind === 'morning') return morningText(await this.repo.morning(tenantId, userId, from, to), tz);
-    return eveningText(await this.repo.evening(tenantId, userId, from, to));
+    const evening = eveningText(await this.repo.evening(tenantId, userId, from, to));
+    // в последний рабочий день недели к итогам дня — итоги недели (§7.4)
+    if (!(await this.lastWorkday(tenantId, now, tz))) return evening;
+    const week = await this.weekAudit(tenantId, userId, tz, now);
+    if (!week) return evening;
+    return evening ? `${evening}\n\nНеделя:\n${week}` : `Неделя:\n${week}`;
+  }
+
+  /** Сегодня последний рабочий день недели: следующие дни до понедельника — выходные. */
+  private async lastWorkday(tenantId: string, now: Date, tz: string): Promise<boolean> {
+    const work = await this.calendar.work(tenantId);
+    const dow = localParts(now, tz).dow;
+    if (work.weekendDays.includes(dow)) return false;
+    for (let d = dow + 1; d <= 7; d += 1) {
+      const wd = d % 7;
+      if (wd === 1) return true; // дошли до понедельника, рабочих по пути не было
+      if (!work.weekendDays.includes(wd)) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Аудит недели: с понедельника по сегодня в поясе человека. Рабочие часы — по
+   * календарю компании: доля встреч считается от них, а не от суток.
+   */
+  async weekAudit(tenantId: string, userId: string, tz: string, now = new Date()): Promise<string | null> {
+    const work = await this.calendar.work(tenantId);
+    const local = localParts(now, tz);
+    const monday = shiftDate(local.date, -((local.dow + 6) % 7));
+    const from = zonedTime(monday, '00:00', tz);
+    const to = zonedTime(tomorrowOf(now, tz), '00:00', tz);
+    let days = 0;
+    for (let d = monday; d <= local.date; d = shiftDate(d, 1)) {
+      const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
+      if (!work.weekendDays.includes(dow) && !work.holidays.includes(d)) days += 1;
+    }
+    const [sh, sm] = work.workStart.split(':').map(Number);
+    const [eh, em] = work.workEnd.split(':').map(Number);
+    const dayHours = Math.max(0, (eh * 60 + em - sh * 60 - sm) / 60);
+    return weekAuditText({ workHours: days * dayHours, ...(await this.repo.week(tenantId, userId, from, to)) });
+  }
+
+  /**
+   * Справки перед встречей (§7.3): тем, кто включил, за выбранное число минут.
+   * Факты — те же, что у модератора встреч; без фактов справки нет.
+   */
+  async meetingTick(): Promise<void> {
+    const due = await this.repo.dueMeetingBriefs();
+    for (const m of due) {
+      const ref = `${m.event_id}:${Math.floor(new Date(m.starts_at).getTime() / 1000)}`;
+      if (!(await this.repo.claimSent(String(m.user_id), 'meeting_brief', ref))) continue;
+      try {
+        const people = await this.repo.eventParticipants(String(m.event_id));
+        const ids = people.map((p) => String(p.user_id));
+        const [decisions, overdue, approvals, review] = await Promise.all([
+          this.moderator.previousDecisions(String(m.tenant_id), String(m.event_id)),
+          this.moderator.overdue(String(m.tenant_id), ids),
+          this.moderator.approvals(String(m.tenant_id), ids),
+          this.moderator.awaitingReview(String(m.tenant_id), ids),
+        ]);
+        const text = meetingBriefText({
+          title: m.title, startsAt: new Date(m.starts_at),
+          participants: people.filter((p) => String(p.user_id) !== String(m.user_id)).map((p) => p.full_name),
+          client: m.client, description: m.description, decisions, overdue, approvals, review,
+        }, Number(m.minutes));
+        if (!text) continue;
+        await this.delivery.send(String(m.tenant_id), String(m.user_id), {
+          eventKey: 'secretary.meeting', title: '📋 Перед встречей', body: text,
+          path: m.public_id ? `/meet/${m.public_id}` : '/focus/calendar',
+          channels: { push: m.channels?.push !== false, telegram: m.channels?.telegram !== false },
+        });
+      } catch (e) {
+        this.log.warn(`справка перед встречей ${m.event_id} для ${m.user_id}: ${(e as Error).message}`);
+      }
+    }
   }
 
   /** Проход планировщика: раз в минуту, сводки тем, у кого подошло время. */
@@ -95,6 +177,12 @@ export class BriefService {
       }
     }
   }
+}
+
+function shiftDate(date: string, n: number): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }
 
 function view(r: PrefsRow | null): SecretaryPrefs {

@@ -136,8 +136,8 @@ describe('QEVO Bot (e2e)', () => {
     expect(def).toMatchObject({ morningAt: null, eveningAt: null, weekdaysOnly: true, channels: { push: true, telegram: true } });
 
     const saved = (await http$.patch('/api/anthill/secretary/prefs').set(O)
-      .send({ morningAt: '08:30', eveningAt: '18:45', channels: { telegram: false } }).expect(200)).body.data;
-    expect(saved).toMatchObject({ morningAt: '08:30', eveningAt: '18:45', channels: { push: true, telegram: false } });
+      .send({ morningAt: '08:30', eveningAt: '18:45', channels: { telegram: false }, meetingBriefMin: 30 }).expect(200)).body.data;
+    expect(saved).toMatchObject({ morningAt: '08:30', eveningAt: '18:45', channels: { push: true, telegram: false }, meetingBriefMin: 30 });
     expect((await http$.get('/api/anthill/secretary/prefs').set(O).expect(200)).body.data.morningAt).toBe('08:30');
     await http$.patch('/api/anthill/secretary/prefs').set(O).send({ morningAt: '25:00' }).expect(400);
     // выключить — пустой строкой
