@@ -73,7 +73,7 @@ describe('ТЗ-17 — Клиенты (e2e)', () => {
     const shown = (await http.post(`/api/client-contacts/${contact.id}/reveal`).set(H(mem.accessToken)).send({ field: 'phone' }).expect(201)).body.data;
     expect(shown.value).toBe('8 (999) 123-45-67');
     const reveals = (await http.get('/api/security/contact-reveals').set(H(tok)).expect(200)).body.data;
-    expect(reveals.length).toBeGreaterThanOrEqual(1);
+    expect(reveals.items.length).toBeGreaterThanOrEqual(1);
 
     // 5. Права: сотрудник видит сделки, но не заводит; не архивирует; не выгружает
     await http.post(`/api/clients/${acme.id}/deals`).set(H(mem.accessToken)).send({ title: 'Внедрение' }).expect(403);
