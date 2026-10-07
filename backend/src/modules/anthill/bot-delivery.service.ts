@@ -16,9 +16,17 @@ import { TelegramMirror } from '../notifications/telegram-mirror.service';
 export class BotDelivery {
   constructor(private readonly push: PushService, private readonly telegram: TelegramMirror) {}
 
-  async send(tenantId: string, userId: string, m: { eventKey: string; title: string; body: string; path?: string }): Promise<void> {
+  async send(
+    tenantId: string, userId: string,
+    m: { eventKey: string; title: string; body: string; path?: string; channels?: { push?: boolean; telegram?: boolean } },
+  ): Promise<void> {
     const path = m.path ?? '/chat/anthill';
-    await this.push.personal({ tenantId, userId, eventKey: m.eventKey, title: m.title, body: m.body.slice(0, 1000), path });
+    // в ящик — всегда; push и Telegram — если человек не выключил их для сводок
+    await this.push.personal({
+      tenantId, userId, eventKey: m.eventKey, title: m.title, body: m.body.slice(0, 1000), path,
+      push: m.channels?.push !== false,
+    });
+    if (m.channels?.telegram === false) return;
     const text = m.body.trim() ? `${m.title}\n\n${m.body.slice(0, 3500)}` : m.title;
     await this.telegram.push(tenantId, userId, text).catch(() => false);
   }

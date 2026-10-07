@@ -423,6 +423,11 @@ export class AnthillService {
     return skillView(row, userId);
   }
 
+  /** Пояс человека — для сводок секретаря «по его часам». */
+  userTz(tenantId: string, userId: string) {
+    return this.repo.userTz(tenantId, userId);
+  }
+
   // ── напоминания (ТЗ-18, этап 4) ──
   async reminders(tenantId: string, userId: string) {
     const rows = await this.repo.reminders(tenantId, userId);

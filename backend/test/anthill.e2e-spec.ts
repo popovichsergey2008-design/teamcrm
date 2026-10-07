@@ -127,6 +127,34 @@ describe('QEVO Bot (e2e)', () => {
     await http$.post(`/api/anthill/actions/${other.id}/edit`).set(O).send({ patch: { text: 'ещё раз' } }).expect(409);
   });
 
+  it('секретарь (ТЗ-18): настройки сводок свои, сводка собирается правилами по своим данным', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'AB-brief', email: `abb_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    // по умолчанию сводки выключены: секретарь не начинает писать сам
+    const def = (await http$.get('/api/anthill/secretary/prefs').set(O).expect(200)).body.data;
+    expect(def).toMatchObject({ morningAt: null, eveningAt: null, weekdaysOnly: true, channels: { push: true, telegram: true } });
+
+    const saved = (await http$.patch('/api/anthill/secretary/prefs').set(O)
+      .send({ morningAt: '08:30', eveningAt: '18:45', channels: { telegram: false } }).expect(200)).body.data;
+    expect(saved).toMatchObject({ morningAt: '08:30', eveningAt: '18:45', channels: { push: true, telegram: false } });
+    expect((await http$.get('/api/anthill/secretary/prefs').set(O).expect(200)).body.data.morningAt).toBe('08:30');
+    await http$.patch('/api/anthill/secretary/prefs').set(O).send({ morningAt: '25:00' }).expect(400);
+    // выключить — пустой строкой
+    expect((await http$.patch('/api/anthill/secretary/prefs').set(O).send({ eveningAt: '' }).expect(200)).body.data.eveningAt).toBeNull();
+
+    // просроченная задача попадает в утреннюю сводку
+    const project = (await http$.post('/api/projects').set(O).send({ name: 'Сводка' }).expect(201)).body.data;
+    const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
+    const task = (await http$.post('/api/tasks').set(O).send({
+      projectId: project.id, columnId: board.columns[0].id, title: 'Оплатить счёт поставщику',
+      assigneeId: String(owner.user.id), deadlineAt: new Date(Date.now() - 2 * 86400_000).toISOString(),
+    }).expect(201)).body.data;
+    const morning = (await http$.get('/api/anthill/secretary/brief/morning').set(O).expect(200)).body.data;
+    expect(morning.text).toContain(`#${task.id} Оплатить счёт поставщику`);
+    await http$.get('/api/anthill/secretary/brief/night').set(O).expect(400);
+  });
+
   it('прогон из нескольких шагов (ТЗ-18): «выполнить всё», сбой шага не роняет остальные, след в задаче, выключенная группа', async () => {
     const owner = (await http$.post('/api/auth/register')
       .send({ tenantName: 'AB-run', email: `abr_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;

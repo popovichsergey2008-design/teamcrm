@@ -9,6 +9,7 @@ import { AppException } from '../../common/http/app-exception';
 import { AnthillService, PageContext } from './anthill.service';
 import { CustomResponsesService } from '../chats/custom-responses.service';
 import { AgentLimits, AnthillAdminService } from './anthill-admin.service';
+import { BriefService } from './brief.service';
 
 class ContextDto {
   @IsIn(['task', 'project', 'chat', 'meeting']) type!: PageContext['type'];
@@ -36,6 +37,19 @@ class AdminDto {
   @IsOptional() @ValidateNested() @Type(() => LimitsDto) limits?: LimitsDto;
   /** Автономность по группам: {"tasks":"confirm","self":"auto"}; чужое значение отбрасывается. */
   @IsOptional() @IsObject() autonomy?: Record<string, string>;
+}
+class ChannelsDto {
+  @IsOptional() @IsBoolean() push?: boolean;
+  @IsOptional() @IsBoolean() telegram?: boolean;
+}
+class SecretaryPrefsDto {
+  /** «08:30»; пустая строка или null — выключить */
+  @IsOptional() @IsString() @MaxLength(5) morningAt?: string | null;
+  @IsOptional() @IsString() @MaxLength(5) eveningAt?: string | null;
+  @IsOptional() @IsBoolean() weekdaysOnly?: boolean;
+  @IsOptional() @ValidateNested() @Type(() => ChannelsDto) channels?: ChannelsDto;
+  @IsOptional() @IsInt() meetingBriefMin?: number | null;
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) vipUserIds?: string[];
 }
 class AskDto {
   @IsString() @MinLength(2) @MaxLength(8000) question!: string;
@@ -120,6 +134,7 @@ export class AnthillController {
     private readonly anthill: AnthillService,
     private readonly responses: CustomResponsesService,
     private readonly admin: AnthillAdminService,
+    private readonly briefs: BriefService,
   ) {}
 
   /*
@@ -249,6 +264,24 @@ export class AnthillController {
   @Post('actions/:id/undo')
   undo(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.anthill.undo(u.tenantId, u, id);
+  }
+
+  /** Личные настройки секретаря (ТЗ-18): сводки утром и вечером, каналы, важные люди. */
+  @Get('secretary/prefs')
+  secretaryPrefs(@CurrentUser() u: AuthUser) {
+    return this.briefs.prefs(u.userId);
+  }
+
+  @Patch('secretary/prefs')
+  saveSecretaryPrefs(@CurrentUser() u: AuthUser, @Body() dto: SecretaryPrefsDto) {
+    return this.briefs.savePrefs(u.tenantId, u.userId, dto as any);
+  }
+
+  /** «Показать сейчас»: какая сводка придёт — по сегодняшним данным. */
+  @Get('secretary/brief/:kind')
+  secretaryBrief(@CurrentUser() u: AuthUser, @Param('kind') kind: string) {
+    if (kind !== 'morning' && kind !== 'evening') throw AppException.validation('Сводка бывает утренняя или вечерняя');
+    return this.anthill.userTz(u.tenantId, u.userId).then((tz) => this.briefs.preview(u.tenantId, u.userId, kind, tz));
   }
 
   /** Напоминания бота (ТЗ-18): что и когда придёт, отменить. */

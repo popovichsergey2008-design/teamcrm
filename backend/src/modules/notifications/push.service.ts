@@ -247,14 +247,14 @@ export class PushService {
    * глубокой работы, ломает ровно то, ради чего фокус включали. Telegram шлёт
    * вызывающий (TelegramMirror.push) — у него свой выключатель.
    */
-  async personal(m: { tenantId: string; userId: string; eventKey: string; title: string; body: string; path: string }): Promise<boolean> {
+  async personal(m: { tenantId: string; userId: string; eventKey: string; title: string; body: string; path: string; push?: boolean }): Promise<boolean> {
     try {
       const item = await this.inbox.record({
         tenantId: m.tenantId, userId: m.userId, mailId: null, eventKey: m.eventKey, title: m.title, body: m.body, path: m.path,
       });
       if (!item) return false;
       this.realtime.emitToUsers(m.tenantId, [m.userId], 'inbox.item', { id: String(item.id), eventKey: item.event_key });
-      if (!this.fcm.enabled) return true;
+      if (!this.fcm.enabled || m.push === false) return true;
       if (await this.inbox.isQuiet(m.tenantId, m.userId).catch(() => false)) return true;
       const targets = (await this.inbox.pushTargets(m.userId)).filter((t) => !t.active);
       if (!targets.length) return true;

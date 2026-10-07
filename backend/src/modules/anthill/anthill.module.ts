@@ -20,6 +20,8 @@ import { AnthillAdminService } from './anthill-admin.service';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { BotDelivery } from './bot-delivery.service';
+import { BriefRepository } from './brief.repository';
+import { BriefService } from './brief.service';
 
 /**
  * QEVO Bot — оркестратор над существующими модулями: задачи, чаты, поиск,
@@ -37,7 +39,7 @@ import { BotDelivery } from './bot-delivery.service';
     NotificationsModule,
   ],
   controllers: [AnthillController],
-  providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService, BotDelivery],
+  providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService, BotDelivery, BriefRepository, BriefService],
   // AnthillRepository наружу: служба заботы заводит агенту сессию под каждый разговор,
   // чтобы первая линия помнила нить, а не отвечала с чистого листа каждый раз.
   exports: [AnthillService, AnthillRepository, BotDelivery],

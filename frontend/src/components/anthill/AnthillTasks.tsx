@@ -4,6 +4,7 @@ import { api, ApiError } from '../../lib/api';
 import type { AnthillActionRow, AnthillReminder, AnthillSchedule } from '../../lib/api';
 import { stampLabel } from '../../lib/chat-text';
 import { confirmAction } from '../ui/dialog';
+import { SecretaryBriefs } from './SecretaryBriefs';
 
 const GROUPS: { key: string; title: string }[] = [
   { key: 'active', title: 'Активные' },
@@ -149,6 +150,8 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
           ))}
         </div>
       )}
+
+      <SecretaryBriefs />
 
       {reminders.length > 0 && (
         <div className="anthill-group">
