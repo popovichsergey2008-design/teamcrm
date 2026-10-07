@@ -232,7 +232,16 @@ export class TasksRepository {
     userId: string,
     scope: 'mine' | 'delegated' | 'review',
     includeClosed: boolean,
-  ): Promise<(TaskRow & { project_name: string; column_name: string; assignee_name: string | null; manager_name: string | null })[]> {
+    /**
+     * Закрытые — только не старше стольких часов. «Фокусу дня» нужны закрытые СЕГОДНЯ
+     * (полоса «X из Y»), а без границы приезжали все закрытые задачи человека за всё
+     * время — сотни строк ради одного счётчика. null — без границы (поиск по своим).
+     */
+    closedWithinHours: number | null = null,
+  ): Promise<(TaskRow & {
+    project_name: string; column_name: string; assignee_name: string | null; manager_name: string | null;
+    checklistTotal: number; checklistDone: number;
+  })[]> {
     // review — то, что уже сдали и ждут от меня решения: я постановщик, работал кто-то
     // другой, и задача стоит в колонке проверки. Именно это считает бейдж «Фокуса дня».
     // «Мои» — это и то, что делаю сам, и то, где я соисполнитель: человек, который
@@ -246,24 +255,39 @@ export class TasksRepository {
         ? `t.created_by = $2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
            AND t.closed_at IS NULL AND lower(bc.name) = ANY($4::text[])`
         : `t.created_by = $2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)`;
+    const params: unknown[] = scope === 'review'
+      ? [tenantId, userId, includeClosed, REVIEW_COLUMN_NAMES]
+      : [tenantId, userId, includeClosed];
+    // Граница для закрытых — параметром, только когда задана: лишний параметр Postgres
+    // не прощает (грабли реестра).
+    let closedBound = '';
+    if (includeClosed && closedWithinHours != null) {
+      params.push(closedWithinHours);
+      closedBound = `AND (t.closed_at IS NULL OR t.closed_at >= now() - make_interval(hours => $${params.length}::int))`;
+    }
+    // Корзина в списки не попадает (слой безопасности, 0129): раньше удалённые всплывали
+    // в «Фокусе дня». Счётчик чек-листа — сразу здесь: карточка фокуса его показывает,
+    // а приходил он только с доски.
     return this.db.many(
       `SELECT t.*, p.name AS project_name, bc.name AS column_name,
-              ua.full_name AS assignee_name, um.full_name AS manager_name
+              ua.full_name AS assignee_name, um.full_name AS manager_name,
+              (SELECT count(*)::int FROM task_checklist_items ci WHERE ci.task_id = t.id) AS "checklistTotal",
+              (SELECT count(*)::int FROM task_checklist_items ci WHERE ci.task_id = t.id AND ci.is_done) AS "checklistDone"
          FROM tasks t
          JOIN projects p ON p.id = t.project_id
          JOIN board_columns bc ON bc.id = t.column_id
          LEFT JOIN users ua ON ua.id = t.assignee_id
          LEFT JOIN users um ON um.id = t.created_by
         WHERE t.tenant_id = $1 AND ${scopeSql}
+          AND t.deleted_at IS NULL
           AND p.status <> 'archived'
           AND ($3::boolean OR t.closed_at IS NULL)
+          ${closedBound}
         ORDER BY t.closed_at IS NOT NULL,
                  t.deadline_at IS NULL, t.deadline_at ASC,
                  CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
                  t.created_at DESC`,
-      scope === 'review'
-        ? [tenantId, userId, includeClosed, REVIEW_COLUMN_NAMES]
-        : [tenantId, userId, includeClosed],
+      params,
     );
   }
 

@@ -161,6 +161,9 @@ export function FocusPage({ onOpenTask, onJoinCall, active = true }: {
   active?: boolean;
 }) {
   const { user } = useAuth();
+  // План дня — личный план исполнителя; соисполнителю сервер отказывает (403), и
+  // кнопка молча откатывалась. Ему показываем задачу без кнопок плана.
+  const canPlan = (t: Task) => String(t.assignee_id) === String(user?.id);
   const [mine, setMine] = useState<CrossTask[]>([]);
   const [delegated, setDelegated] = useState<CrossTask[]>([]);
   const [review, setReview] = useState<CrossTask[]>([]);
@@ -342,7 +345,7 @@ export function FocusPage({ onOpenTask, onJoinCall, active = true }: {
             />
           )}
           {today.map((t) => (
-            <FocusCard key={t.id} task={t} side="manager" onOpen={() => openTask(t)} onPlan={(d) => plan(t, d)} />
+            <FocusCard key={t.id} task={t} side="manager" onOpen={() => openTask(t)} onPlan={canPlan(t) ? (d) => plan(t, d) : undefined} />
           ))}
 
           {rest.length > 0 && (
@@ -352,7 +355,7 @@ export function FocusPage({ onOpenTask, onJoinCall, active = true }: {
                 {showRest ? 'Скрыть' : `Ещё ${rest.length} моих задач без срока на сегодня`}
               </Button>
               {showRest && rest.map((t) => (
-                <FocusCard key={t.id} task={t} side="manager" onOpen={() => openTask(t)} onPlan={(d) => plan(t, d)} />
+                <FocusCard key={t.id} task={t} side="manager" onOpen={() => openTask(t)} onPlan={canPlan(t) ? (d) => plan(t, d) : undefined} />
               ))}
             </>
           )}

@@ -66,7 +66,8 @@ export class MobileService {
    */
   async focus(tenantId: string, userId: string) {
     const [mine, delegated, review, approvals] = await Promise.all([
-      this.tasks.listForUser(tenantId, userId, 'mine', true),
+      // закрытые — за двое суток: хватает на «закрыто сегодня» в любом поясе
+      this.tasks.listForUser(tenantId, userId, 'mine', true, 48),
       this.tasks.listForUser(tenantId, userId, 'delegated', false),
       this.tasks.listForUser(tenantId, userId, 'review', false),
       this.approvals.inbox(tenantId, userId),
