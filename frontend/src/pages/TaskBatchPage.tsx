@@ -5,6 +5,7 @@ import { SkeletonList } from '../components/Skeleton';
 import { TaskCardWindow } from '../components/TaskCardWindow';
 import { api, ApiError, TaskBatch } from '../lib/api';
 import { navigate } from '../lib/router';
+import { forgetProject } from '../lib/last-project';
 import { plural } from '../lib/chat-text';
 
 /**
@@ -69,6 +70,14 @@ export function TaskBatchPage({ batchId, taskIds }: { batchId?: string; taskIds?
     finally { setBusy(false); }
   };
 
+  /*
+    Выход — ко ВСЕМ проектам (просьба заказчика). Раньше крестик при одном проекте вёл
+    на его доску, а «Проекты» без проекта сами открывают последнюю доску — к таблице
+    проектов было не выйти. Память о последней доске забываем, как кнопка «Все проекты»
+    на доске.
+  */
+  const toAllProjects = () => { forgetProject(); navigate({ section: 'projects' }); };
+
   if (err && !batch) {
     return (
       <div className="page">
@@ -101,19 +110,20 @@ export function TaskBatchPage({ batchId, taskIds }: { batchId?: string; taskIds?
           <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => navigate({ section: 'tasks' })}>
             <Icon name="list" size={14} /> Все задачи
           </button>
+          <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={toAllProjects} title="Таблица со всеми проектами">
+            <Icon name="folder" size={14} /> Все проекты
+          </button>
         </div>
         {/*
           Выход — крестиком справа, как у карточки одной задачи (задача #1467): кнопки
           «Открыть доску» и «Все задачи» выходом не выглядят, и люди застревали здесь.
-          Ведёт к проектам — туда, откуда обычно ставят задачи; один проект — сразу к нему.
+          Ведёт ко всем проектам — туда, откуда обычно ставят задачи.
         */}
         <button
           className="drawer-close batch-close"
-          title="Закрыть и вернуться к проектам"
-          aria-label="Закрыть и вернуться к проектам"
-          onClick={() => navigate(projects.size === 1 && batch.tasks.length > 0
-            ? { section: 'projects', projectId: batch.tasks[0].projectId }
-            : { section: 'projects' })}
+          title="Закрыть и вернуться ко всем проектам"
+          aria-label="Закрыть и вернуться ко всем проектам"
+          onClick={toAllProjects}
         >
           <Icon name="close" size={20} />
         </button>
