@@ -21,6 +21,8 @@ CREATE TABLE focus_sessions (
     interruptions_count SMALLINT NOT NULL DEFAULT 0,
     -- быстрые заметки по ходу; в конце человек решает, переносить ли их в задачу
     notes               TEXT NULL,
+    -- когда сообщили «фокус завершён» на телефон: ровно один раз на сессию
+    end_notified_at     TIMESTAMPTZ NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

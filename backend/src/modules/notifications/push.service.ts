@@ -137,6 +137,34 @@ export class PushService {
   }
 
   /**
+   * Глубокая работа (ТЗ-16, волна 8): стук «срочно» и «фокус завершён».
+   *
+   * Стук — критичный: идёт на все устройства, кроме того, в которое человек смотрит
+   * (там он и так появится на экране), и сквозь тишину фокуса — ради этого он и есть.
+   * «Фокус завершён» — тому, кто свернул приложение: таймер считает сервер, а без
+   * сигнала человек с телефоном не узнает, что время вышло.
+   */
+  async focusEvent(m: { tenantId: string; userId: string; kind: 'knock' | 'ended'; title: string; body: string }): Promise<void> {
+    if (!this.fcm.enabled) return;
+    try {
+      const targets = (await this.inbox.pushTargets(m.userId)).filter((t) => !t.active);
+      if (!targets.length) return;
+      const privacy = await this.inbox.pushPrivacyOf(m.tenantId);
+      const hide = privacy === 'hide';
+      for (const t of targets) {
+        const outcome = await this.fcm.send(t.push_token, {
+          title: hide ? 'QEVO' : m.title,
+          body: hide ? (m.kind === 'knock' ? 'Вас просят отвлечься — срочно' : 'Фокус завершён') : m.body,
+          data: { type: `focus.${m.kind}`, path: '/focus', eventKey: `focus.${m.kind}` },
+        });
+        if (outcome === 'invalid_token') await this.inbox.dropPushToken(t.id);
+      }
+    } catch (e) {
+      this.log.warn(`push фокуса (${m.kind}): ${(e as Error).message}`);
+    }
+  }
+
+  /**
    * Служба заботы (ТЗ-9, волна 10): человеку, который написал в поддержку и ушёл.
    *
    * Разговор с поддержкой не чат: ответ приходит через минуты или часы, и человек

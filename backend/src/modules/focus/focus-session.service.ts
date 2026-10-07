@@ -4,6 +4,7 @@ import { DbService } from '../../database/db.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { PresenceService } from '../presence/presence.service';
 import { SecurityService } from '../security/security.service';
+import { PushService } from '../notifications/push.service';
 
 type Me = { tenantId: string; userId: string; role: string };
 
@@ -30,6 +31,7 @@ export class FocusSessionService {
     private readonly realtime: RealtimeService,
     private readonly presence: PresenceService,
     private readonly security: SecurityService,
+    private readonly push: PushService,
   ) {}
 
   private live(tenantId: string, userId: string) {
@@ -208,6 +210,31 @@ export class FocusSessionService {
   }
 
   /**
+   * Закончившиеся по времени сессии — сообщить один раз (планировщик, раз в 30 секунд).
+   * Сессию не закрываем: итог («готово», «ещё фокус», «перерыв») выбирает человек.
+   */
+  async notifyEnded(): Promise<number> {
+    const rows = await this.db.many<any>(
+      `UPDATE focus_sessions s SET end_notified_at = now()
+        WHERE s.status = 'running' AND s.end_notified_at IS NULL
+          AND s.planned_end_at <= now() AND s.planned_end_at > now() - interval '15 minutes'
+        RETURNING s.tenant_id, s.user_id, s.planned_minutes,
+                  (SELECT title FROM tasks WHERE id = s.task_id) AS task_title`,
+    );
+    for (const r of rows) {
+      const tenantId = String(r.tenant_id);
+      const userId = String(r.user_id);
+      this.presence.changed(tenantId, userId);
+      this.realtime.emitToUsers(tenantId, [userId], 'focus.session.ended', {});
+      void this.push.focusEvent({
+        tenantId, userId, kind: 'ended', title: 'Фокус завершён',
+        body: r.task_title ? `${r.planned_minutes} минут над «${String(r.task_title).slice(0, 80)}». Что дальше?` : `${r.planned_minutes} минут без отвлечений. Что дальше?`,
+      });
+    }
+    return rows.length;
+  }
+
+  /**
    * «Постучать срочно» (п. 53–55): только в идущий фокус, только с правом
    * `focus.knock`, один раз за сессию от каждого. Стук проходит сквозь тишину —
    * ради этого он и есть. Журнал — сама таблица стуков.
@@ -232,6 +259,10 @@ export class FocusSessionService {
     const from = await this.db.one<{ full_name: string }>(`SELECT full_name FROM users WHERE id = $1`, [me.userId]);
     this.realtime.emitToUsers(me.tenantId, [toUserId], 'focus.knock', {
       fromUserId: me.userId, fromName: from?.full_name ?? 'Коллега', reason: reason?.trim() || null,
+    });
+    void this.push.focusEvent({
+      tenantId: me.tenantId, userId: toUserId, kind: 'knock',
+      title: `${from?.full_name ?? 'Коллега'} стучит`, body: reason?.trim() || 'Просит отвлечься — срочно',
     });
     return { ok: true, until: target.planned_end_at };
   }

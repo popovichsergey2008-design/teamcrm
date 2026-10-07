@@ -53,7 +53,7 @@ export function FocusSessionHost({ onOpenTask }: { onOpenTask: (projectId: strin
       showNotification(`${p.fromName} стучит`, body, undefined, { critical: true });
       playKnock(true);
     };
-    const events = ['focus.session.started', 'focus.session.paused', 'focus.session.resumed', 'focus.session.completed', 'connect'];
+    const events = ['focus.session.started', 'focus.session.paused', 'focus.session.resumed', 'focus.session.completed', 'focus.session.ended', 'connect'];
     events.forEach((e) => socket.on(e, refresh));
     socket.on('focus.knock', onKnock);
     return () => {
