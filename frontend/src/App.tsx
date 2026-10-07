@@ -664,12 +664,12 @@ export function App() {
         */}
         {/* Пакет задач — отдельный экран той же секции: реестр под ним не показываем. */}
         {visited.has('tasks') && (
-          <Pane active={route.section === 'tasks' && route.view !== 'batch'}>
+          <Pane active={route.section === 'tasks' && route.view !== 'batch' && route.view !== 'created'}>
             <TasksPage
-              active={route.section === 'tasks' && route.view !== 'batch'}
+              active={route.section === 'tasks' && route.view !== 'batch' && route.view !== 'created'}
               onNewTask={() => setNl({})}
               onVoiceTask={() => setNl({ voice: true })}
-              scope={toScope(route.view === 'batch' ? undefined : route.view)}
+              scope={toScope(route.view === 'batch' || route.view === 'created' ? undefined : route.view)}
               onScope={(scope) => navigate({ section: 'tasks', view: scope === 'all' ? undefined : scope })}
               onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
             />
@@ -678,6 +678,9 @@ export function App() {
         {/* Результат пакетного создания задач: свой адрес, переживает перезагрузку (ТЗ-10). */}
         {route.section === 'tasks' && route.view === 'batch' && route.batchId && (
           <Suspense fallback={pageFallback}><TaskBatchPage batchId={route.batchId} /></Suspense>
+        )}
+        {route.section === 'tasks' && route.view === 'created' && route.taskIds && (
+          <Suspense fallback={pageFallback}><TaskBatchPage taskIds={route.taskIds} /></Suspense>
         )}
         {route.section === 'radar' && canManage && <RadarPage />}
         {route.section === 'support' && (

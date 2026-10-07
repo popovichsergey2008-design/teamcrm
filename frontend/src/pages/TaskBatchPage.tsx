@@ -18,7 +18,31 @@ import { plural } from '../lib/chat-text';
  * и что именно не получилось — с возможностью повторить только это, не создавая
  * заново уже созданное.
  */
-export function TaskBatchPage({ batchId }: { batchId: string }) {
+/**
+ * Набор задач по номерам — «Посмотреть задачи» после быстрой команды, когда задачи
+ * создавались по одной и общего пакета у них нет (жалоба заказчика: кнопка вела во
+ * весь реестр, и созданное приходилось искать глазами). Берём их из реестра одним
+ * запросом и показываем тем же экраном, что и пакет.
+ */
+async function loadByIds(taskIds: string): Promise<TaskBatch> {
+  const ids = taskIds.split(',').filter((x) => /^\d+$/.test(x));
+  const q = new URLSearchParams({ scope: 'all', closed: '1', sort: 'created', ids: ids.join(','), dayEnd: new Date().toISOString() });
+  const { items } = await api.taskRegistry(q.toString());
+  // порядок — как создавали, а не как отсортировал реестр
+  const rows = [...items].sort((a, b) => ids.indexOf(String(a.id)) - ids.indexOf(String(b.id)));
+  return {
+    batchId: '', status: 'completed', requested: rows.length, created: rows.length, failedCount: 0,
+    sourceType: 'text', sourceText: null, createdAt: '',
+    tasks: rows.map((t) => ({
+      taskId: String(t.id), title: t.title, projectId: String(t.project_id), projectName: t.project_name,
+      assigneeId: t.assignee_id ? String(t.assignee_id) : null, assigneeName: t.assignee_name,
+      deadlineAt: t.deadline_at ?? null, priority: t.priority ?? null, status: t.column_name,
+    })),
+    failed: [],
+  };
+}
+
+export function TaskBatchPage({ batchId, taskIds }: { batchId?: string; taskIds?: string }) {
   const [batch, setBatch] = useState<TaskBatch | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -31,14 +55,15 @@ export function TaskBatchPage({ batchId }: { batchId: string }) {
   const [openTask, setOpenTask] = useState<{ projectId: string; taskId: string } | null>(null);
 
   const load = useCallback(() => {
-    api.taskBatch(batchId)
+    (taskIds ? loadByIds(taskIds) : api.taskBatch(batchId ?? ''))
       .then(setBatch)
       .catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось открыть результат'));
-  }, [batchId]);
+  }, [batchId, taskIds]);
   useEffect(load, [load]);
 
   const retry = async (itemId: string) => {
     setBusy(true); setErr('');
+    if (!batchId) return;
     try { setBatch(await api.retryBatchItem(batchId, itemId)); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Повторить не удалось'); }
     finally { setBusy(false); }

@@ -35,6 +35,8 @@ export type Route = {
   tab?: string;
   /** пакет задач из быстрой команды: `/tasks/batch/:id` (ТЗ-10) */
   batchId?: string;
+  /** только что созданные задачи, номера через запятую: `/tasks/created/1,2,3` */
+  taskIds?: string;
   /** встреча: `/meet/:publicId` (ТЗ-14) */
   meetId?: string;
 };
@@ -114,6 +116,8 @@ export function parsePath(pathname: string): Route {
     case 'tasks':
       // Результат пакетного создания живёт по адресу: переживает перезагрузку и ссылку.
       if (seg[1] === 'batch' && seg[2]) return { section, view: 'batch', batchId: seg[2] };
+      // Предпросмотр созданных из быстрой команды по одной — у них нет общего пакета.
+      if (seg[1] === 'created' && seg[2]) return { section, view: 'created', taskIds: seg[2] };
       return seg[1] ? { section, view: seg[1] } : { section };
     case 'projects': {
       if (!seg[1]) return { section };
@@ -145,6 +149,7 @@ export function buildPath(r: Route): string {
       return '/focus';
     case 'tasks':
       if (r.view === 'batch' && r.batchId) return `/tasks/batch/${enc(r.batchId)}`;
+      if (r.view === 'created' && r.taskIds) return `/tasks/created/${r.taskIds}`;
       return r.view ? `/tasks/${enc(r.view)}` : '/tasks';
     case 'projects':
       if (!r.projectId) return '/projects';

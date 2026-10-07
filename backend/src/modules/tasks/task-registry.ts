@@ -70,6 +70,8 @@ export interface RegistryFilters {
    * сразу, — таких обычно нет вовсе, и фильтр выглядел бы сломанным.
    */
   tagIds?: string | null;
+  /** Только эти задачи (номера через запятую) — предпросмотр созданных быстрой командой. */
+  ids?: string | null;
   page?: number | null;
   /**
    * Конец «сегодня» у ЧЕЛОВЕКА, ISO-строкой с клиента. День на сервере и день у
@@ -246,6 +248,9 @@ export function buildRegistry(tenantId: string, userId: string, f: RegistryFilte
     where.push(`EXISTS (SELECT 1 FROM task_labels tl
                          WHERE tl.task_id = t.id AND tl.label_id = ANY(${add(tagIds)}::bigint[]))`);
   }
+
+  const ids = String(f.ids ?? '').split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)).slice(0, 200);
+  if (ids.length) where.push(`t.id = ANY(${add(ids)}::bigint[])`);
 
   // Границы дня считаем от присланного конца суток: начало «сегодня» — минус день,
   // конец недели — плюс семь. Второй параметр под это заводить незачем.

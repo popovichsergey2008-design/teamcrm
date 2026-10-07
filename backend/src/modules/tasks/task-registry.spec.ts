@@ -182,3 +182,16 @@ describe('несколько ролей сразу', () => {
     expect(normalizeScopes('doing,doing')).toEqual(['doing']);
   });
 });
+
+describe('buildRegistry: предпросмотр созданных', () => {
+  it('номера задач — отдельным параметром, мусор отброшен', () => {
+    const q = buildRegistry('1', '7', { ...base, scope: 'all', closed: true, ids: '15,x,16' });
+    expect(q.where).toMatch(/t\.id = ANY\(\$\d+::bigint\[\]\)/);
+    expect(q.params).toContainEqual(['15', '16']);
+  });
+
+  it('без номеров условие не появляется', () => {
+    const q = buildRegistry('1', '7', { ...base, scope: 'all' });
+    expect(q.where).not.toContain('t.id = ANY');
+  });
+});
