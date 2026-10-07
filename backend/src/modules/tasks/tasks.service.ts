@@ -800,6 +800,15 @@ export class TasksService {
     if (effects.markBlocked) {
       await this.repo.update(tenantId, taskId, { is_blocked: true });
     }
+    /*
+      Блокер — постановщику СРАЗУ (ТЗ-18 §10.2, эскалация). Правило «постановщик узнаёт»
+      было записано в effectsOf, но никем не выполнялось: задача молча краснела флажком,
+      а постановщик узнавал о срыве из просрочки. Про перенос он и так узнаёт — письмом
+      из askDeadlineShift.
+    */
+    if (effects.notifyManager && effects.markBlocked && task.created_by && String(task.created_by) !== String(actor.userId)) {
+      void this.notify.followupBlocked(tenantId, taskId, actor.userId).catch(() => undefined);
+    }
     if (effects.askShift) {
       const to = shiftTarget(shiftTo ?? null, new Date(open.deadline_at), new Date());
       await this.askDeadlineShift(tenantId, taskId, actor, to);

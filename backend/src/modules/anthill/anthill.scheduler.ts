@@ -2,6 +2,9 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { AnthillService } from './anthill.service';
 import { ChatsService } from '../chats/chats.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { AnthillRepository } from './anthill.repository';
+import { BotDelivery } from './bot-delivery.service';
+import { nextRun, Schedule } from './schedule-ru';
 
 /**
  * Раз в минуту: минутной точности расписанию хватает — «в 9:00» и «в 9:01»
@@ -33,6 +36,8 @@ export class AnthillScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly anthill: AnthillService,
     private readonly chats: ChatsService,
     private readonly realtime: RealtimeService,
+    private readonly repo: AnthillRepository,
+    private readonly delivery: BotDelivery,
   ) {}
 
   onModuleInit(): void {
@@ -48,6 +53,8 @@ export class AnthillScheduler implements OnModuleInit, OnModuleDestroy {
   async tick(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
+    // напоминания — первыми: они короткие, и минута опоздания для них заметнее, чем для отчёта
+    await this.reminders().catch((e) => this.log.warn(`напоминания: ${(e as Error).message}`));
     try {
       const due = await this.anthill.scheduleDue();
       for (const row of due) {
@@ -61,6 +68,13 @@ export class AnthillScheduler implements OnModuleInit, OnModuleDestroy {
           const message = (e as Error).message;
           await this.anthill.afterRun(row, null, message.slice(0, 1000));
           this.log.warn(`«${row.title}» для ${row.user_id}: ${message}`);
+          // Сбой — самому человеку, а не только в журнал администратора: молчащая
+          // регулярная задача выглядит так же, как работающая (ТЗ-13 §89).
+          await this.delivery.send(String(row.tenant_id), String(row.user_id), {
+            eventKey: 'anthill.task.failed',
+            title: `QEVO Bot: «${row.title}» не выполнилась`,
+            body: `${humanError(message)} Попробую снова в следующий раз по расписанию. Если повторится — откройте QEVO Bot → «Задачи».`,
+          }).catch(() => undefined);
         }
       }
     } catch (e) {
@@ -80,12 +94,42 @@ export class AnthillScheduler implements OnModuleInit, OnModuleDestroy {
   private async deliver(row: { id: string; tenant_id: string; user_id: string; title: string; role: string }, text: string, sessionId: string): Promise<void> {
     const user = { userId: String(row.user_id), role: row.role };
     if (text) {
+      // «Заметки» — история отчётов; сама весть — личным уведомлением: сообщение от
+      // своего имени не даёт ни push, ни Telegram (ТЗ-18, этап 4)
       const self = await this.chats.selfChat(String(row.tenant_id), user);
       const body = `🐜 ${row.title}\n\n${text.slice(0, 3500)}`;
       await this.chats.send(String(row.tenant_id), String(self.id), user, body, null).catch(() => undefined);
+      await this.delivery.send(String(row.tenant_id), String(row.user_id), {
+        eventKey: 'anthill.task.done', title: `QEVO Bot: ${row.title}`, body: text, path: `/chat/${self.id}`,
+      }).catch(() => undefined);
     }
     this.realtime.emitToUsers(String(row.tenant_id), [String(row.user_id)], 'anthill.task.done', {
       id: String(row.id), title: row.title, sessionId,
     });
   }
+
+  /**
+   * Напоминания (ТЗ-18, этап 4): забрать созревшие, отправить, повторяющимся —
+   * поставить следующий срок в поясе человека («каждый день в 9» — его девять).
+   */
+  private async reminders(): Promise<void> {
+    const due = await this.repo.claimDueReminders();
+    for (const r of due) {
+      await this.delivery.send(String(r.tenant_id), String(r.user_id), {
+        eventKey: 'anthill.reminder', title: '⏰ Напоминание', body: r.text,
+      }).catch((e) => this.log.warn(`напоминание #${r.id}: ${(e as Error).message}`));
+      if (r.repeat) {
+        const next = nextRun(r.repeat as unknown as Schedule, new Date(), r.timezone);
+        await this.repo.rescheduleReminder(String(r.id), next);
+      }
+    }
+  }
+}
+
+/** Ошибка регулярной задачи — словами для человека, а не стеком. */
+function humanError(message: string): string {
+  if (/лимит/i.test(message)) return 'Исчерпан дневной лимит вопросов к боту.';
+  if (/выключен|нет доступа|закрыт/i.test(message)) return 'Бот выключен или вам закрыт доступ к нему.';
+  if (/ключ|key|401|403/i.test(message)) return 'Модель ИИ не ответила: похоже, в организации не настроен ключ.';
+  return 'Модель ИИ не ответила или ответила с ошибкой.';
 }

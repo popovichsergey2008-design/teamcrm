@@ -4,7 +4,7 @@ import {
   EventKey, Letter, TaskCtx,
   deadlineShiftAskLetter, deadlineShiftDecidedLetter,
   taskApprovalLetter, taskCommentedLetter, taskCreatedLetter, taskParticipantLetter,
-  taskReturnedLetter, taskStatusLetter, taskMergedLetter, feedAnnouncementLetter, feedMentionLetter,
+  taskReturnedLetter, taskBlockedLetter, taskStatusLetter, taskMergedLetter, feedAnnouncementLetter, feedMentionLetter,
   inviteLetter,
 } from './mail.templates';
 
@@ -329,6 +329,12 @@ export class NotificationsService {
     // askedBy в ключе: два решения по одной задаче в один день — два письма, а не одно
     return this.fanout(tenantId, taskId, 'task.status', actorId, `dd${taskId}:${askedBy ?? '-'}:${Date.now()}`,
       (ctx, unsub) => deadlineShiftDecidedLetter({ ...ctx, shiftTo, approved }, unsub));
+  }
+
+  /** Исполнитель ответил «есть блокер» — постановщику и наблюдателям, сразу. */
+  followupBlocked(tenantId: string, taskId: string, actorId: string | null): Promise<void> {
+    return this.fanout(tenantId, taskId, 'task.status', actorId, `fb${taskId}:${Date.now()}`,
+      (ctx, unsub) => taskBlockedLetter(ctx, unsub));
   }
 
   /** Работу вернули: исполнителю нужно знать не только «нет», но и почему. */

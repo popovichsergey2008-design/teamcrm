@@ -251,6 +251,17 @@ export class AnthillController {
     return this.anthill.undo(u.tenantId, u, id);
   }
 
+  /** Напоминания бота (ТЗ-18): что и когда придёт, отменить. */
+  @Get('reminders')
+  reminders(@CurrentUser() u: AuthUser) {
+    return this.anthill.reminders(u.tenantId, u.userId);
+  }
+
+  @Delete('reminders/:id')
+  cancelReminder(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.anthill.cancelReminder(u.tenantId, u.userId, id);
+  }
+
   @Get('actions')
   actions(@CurrentUser() u: AuthUser) {
     return this.anthill.actions(u.tenantId, u.userId);

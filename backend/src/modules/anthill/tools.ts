@@ -150,8 +150,8 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
     return `Создать задачу?\n${lines.join('\n')}`;
   };
 
-  const reminderCard = (text: string, when: Date) =>
-    `Напомнить ${when.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}: «${text}»?`;
+  const reminderCard = (text: string, when: Date, repeat: string | null = null) =>
+    `Напомнить ${when.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}${repeat ? ` и дальше ${repeat.toLowerCase()}` : ''}: «${text}»?`;
 
   const taskSource = (ctx: ToolContext, t: { id: string; title: string; project_id?: string; projectId?: string }): Source => ({
     kind: 'task', id: String(t.id), title: `#${t.id} ${t.title}`,
@@ -510,14 +510,20 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
     },
     {
       name: 'create_reminder', kind: 'write',
-      description: 'Напомнить человеку о чём-то в назначенное время: «напомни завтра утром проверить задачу». Напоминание придёт сообщением в его чат «Заметки». when — дата и время в ISO (вычисли из слов и текущего времени), text — о чём напомнить.',
-      params: { text: 'о чём напомнить', when: 'ISO дата-время, например 2026-09-15T09:00' },
+      description: 'Напомнить человеку о чём-то в назначенное время: «напомни завтра утром проверить задачу», «напоминай каждый понедельник в 10 сдать отчёт». Напоминание придёт уведомлением на телефон, в приложение и в Telegram. when — дата и время первого напоминания в ISO (вычисли из слов и текущего времени), text — о чём напомнить, repeat — фраза о повторе, только если просят повторять.',
+      params: { text: 'о чём напомнить', when: 'ISO дата-время, например 2026-09-15T09:00', repeat: 'фраза о повторе: «каждый день в 9:00», «каждый понедельник в 10» (необязательно)' },
       async preview(ctx, p) {
-        const when = new Date(str(p.when, 40));
+        const text = str(p.text, 500) || 'Напоминание';
+        const phrase = str(p.repeat, 200);
+        const repeat = phrase ? parseSchedule(phrase) : null;
+        if (phrase && !repeat) throw new Error('Не понял, как часто повторять — скажите, например, «каждый понедельник в 10:00»');
+        let when = new Date(str(p.when, 40));
+        // у повторяющегося первый срок можно не называть: он следует из расписания
+        if (Number.isNaN(when.getTime()) && repeat) when = nextRun(repeat, ctx.now, ctx.timezone ?? null);
         if (Number.isNaN(when.getTime())) throw new Error('Не понял, когда напомнить — назовите день и время');
         if (when.getTime() < ctx.now.getTime() + 30_000) throw new Error('Это время уже прошло — назовите будущее');
-        const text = str(p.text, 500) || 'Напоминание';
-        return { text: reminderCard(text, when), params: { text, when: when.toISOString() } };
+        const params = { text, when: when.toISOString(), ...(repeat ? { repeat } : {}) };
+        return { text: reminderCard(text, when, repeat ? scheduleLabel(repeat) : null), params };
       },
       fields: [
         { key: 'text', label: 'О чём напомнить', type: 'text' },
@@ -530,19 +536,24 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         const when = new Date(patch.when !== undefined ? patch.when : String(p.when));
         if (Number.isNaN(when.getTime())) throw new Error('Укажите день и время');
         if (when.getTime() < ctx.now.getTime() + 30_000) throw new Error('Это время уже прошло — выберите будущее');
-        return { text: reminderCard(text, when), params: { text, when: when.toISOString() } };
+        const repeat = (p.repeat ?? null) as any;
+        return { text: reminderCard(text, when, repeat ? scheduleLabel(repeat) : null), params: { ...p, text, when: when.toISOString() } };
       },
       async execute(ctx, p) {
-        const self = await chats.selfChat(ctx.tenantId, ctx.user);
-        const row: any = await chats.schedule(ctx.tenantId, String(self.id), ctx.user, `⏰ ${str(p.text, 500)}`, String(p.when));
+        const when = new Date(String(p.when));
+        const repeat = (p.repeat && typeof p.repeat === 'object') ? p.repeat as Record<string, unknown> : null;
+        const row = await repo.createReminder({ tenantId: ctx.tenantId, userId: ctx.user.userId, text: str(p.text, 500), dueAt: when, repeat });
+        const label = repeat ? ` и дальше ${scheduleLabel(repeat as any).toLowerCase()}` : '';
         return {
-          text: `Напоминание поставлено на ${new Date(String(p.when)).toLocaleString('ru-RU')}.`,
-          output: { scheduledId: String(row?.id ?? ''), chatId: String(self.id), when: String(p.when) },
-          sources: [{ kind: 'chat', id: String(self.id), title: 'Заметки', url: `${ctx.base}/chat/${self.id}` }],
+          text: `Напомню ${when.toLocaleString('ru-RU', { timeZone: ctx.timezone ?? 'Europe/Moscow', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}${label} — уведомлением в приложении, на телефоне и в Telegram.`,
+          output: { reminderId: String(row.id), when: when.toISOString() },
+          sources: [],
         };
       },
       async undo(ctx, output) {
+        // старые напоминания (до 0155) были отложенными сообщениями в «Заметках»
         if (output.scheduledId) await chats.cancelScheduled(ctx.tenantId, String(output.scheduledId), ctx.user);
+        if (output.reminderId) await repo.cancelReminder(ctx.tenantId, ctx.user.userId, String(output.reminderId));
         return 'Напоминание отменено.';
       },
     },

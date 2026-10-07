@@ -17,6 +17,13 @@ export interface ActionRow {
   run_id: string | null; step_no: number | null; risk_level: string | null; auto: boolean;
 }
 
+/** Напоминание бота (ТЗ-18, этап 4, миграция 0155). */
+export interface ReminderRow {
+  id: string; tenant_id: string; user_id: string; text: string; due_at: Date;
+  repeat: Record<string, unknown> | null; status: string; sent_count: number; last_sent_at: Date | null;
+  action_id: string | null; session_id: string | null; created_at: Date;
+}
+
 /** Прогон из нескольких шагов (ТЗ-18, этап 1). */
 export interface RunRow {
   id: string; tenant_id: string; user_id: string; session_id: string | null; intent: string;
@@ -148,6 +155,57 @@ export class AnthillRepository {
     return this.db.one<ActionRow>(
       `UPDATE ai_tool_actions SET status='running' WHERE id=$1 AND status='pending' RETURNING *`, [id],
     );
+  }
+
+  // ── напоминания ──
+  createReminder(i: { tenantId: string; userId: string; text: string; dueAt: Date; repeat: Record<string, unknown> | null; sessionId?: string | null }): Promise<ReminderRow> {
+    return this.db.one<ReminderRow>(
+      `INSERT INTO ai_reminders (tenant_id, user_id, text, due_at, repeat, session_id) VALUES ($1,$2,$3,$4,$5::jsonb,$6) RETURNING *`,
+      [i.tenantId, i.userId, i.text.slice(0, 1000), i.dueAt.toISOString(), i.repeat ? JSON.stringify(i.repeat) : null, i.sessionId ?? null],
+    ) as Promise<ReminderRow>;
+  }
+
+  reminders(tenantId: string, userId: string): Promise<ReminderRow[]> {
+    return this.db.many<ReminderRow>(
+      `SELECT * FROM ai_reminders WHERE tenant_id=$1 AND user_id=$2 AND status='active' ORDER BY due_at LIMIT 200`, [tenantId, userId],
+    );
+  }
+
+  async cancelReminder(tenantId: string, userId: string, id: string): Promise<boolean> {
+    const r = await this.db.query(
+      `UPDATE ai_reminders SET status='cancelled' WHERE tenant_id=$1 AND user_id=$2 AND id=$3 AND status='active'`, [tenantId, userId, id],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * Созревшие напоминания — забираем их за один проход: разовое сразу закрывается,
+   * повторяющееся переезжает на следующий срок в том же запросе. Так два процесса
+   * (синий и зелёный при выкладке) не пришлют одно напоминание дважды.
+   * Следующий срок считает TS (пояс человека), поэтому здесь его только помечаем.
+   */
+  claimDueReminders(limit = 50): Promise<(ReminderRow & { timezone: string | null })[]> {
+    return this.db.many<ReminderRow & { timezone: string | null }>(
+      `WITH due AS (
+         SELECT id FROM ai_reminders
+          WHERE status='active' AND due_at <= now()
+          ORDER BY due_at LIMIT $1
+          FOR UPDATE SKIP LOCKED
+       )
+       UPDATE ai_reminders r
+          SET status = CASE WHEN r.repeat IS NULL THEN 'done' ELSE 'active' END,
+              -- повторяющемуся — временно отодвигаем на сутки, точный срок поставит rescheduleReminder
+              due_at = CASE WHEN r.repeat IS NULL THEN r.due_at ELSE now() + interval '1 day' END,
+              sent_count = r.sent_count + 1, last_sent_at = now()
+         FROM due
+        WHERE r.id = due.id
+        RETURNING r.*, (SELECT u.timezone FROM users u WHERE u.id = r.user_id) AS timezone`,
+      [limit],
+    );
+  }
+
+  async rescheduleReminder(id: string, dueAt: Date): Promise<void> {
+    await this.db.query(`UPDATE ai_reminders SET due_at=$2 WHERE id=$1 AND status='active'`, [id, dueAt.toISOString()]);
   }
 
   // ── прогоны ──

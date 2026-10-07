@@ -335,6 +335,29 @@ export function taskReturnedLetter(ctx: TaskCtx & { reason: string }, unsubscrib
 }
 
 /**
+ * Исполнитель ответил на «как идёт работа?» — «есть блокер» (ТЗ-18, §10.2).
+ *
+ * Письмо постановщику: срыв виден ДО срока, пока ещё можно помочь — снять
+ * препятствие, переназначить, перенести.
+ */
+export function taskBlockedLetter(ctx: TaskCtx, unsubscribeUrl: string): Letter {
+  const lead = `${ctx.actorName} сообщает: в задаче блокер — без помощи к сроку не успеть.`;
+  const quote = 'Откройте задачу и обсудите, что мешает: помочь сейчас дешевле, чем разбирать просрочку.';
+  return {
+    subject: trim(`Блокер: ${ctx.taskTitle}`, 120),
+    text: plain(lead, ctx, unsubscribeUrl, quote),
+    html: shell({
+      preheader: `${ctx.projectName} · исполнителю нужна помощь`,
+      lead: escape(lead),
+      ctx,
+      accent: BRAND.warn,
+      unsubscribeUrl,
+      extra: escape(quote),
+    }),
+  };
+}
+
+/**
  * Вас добавили к задаче.
  *
  * Соисполнителю говорим о работе, наблюдателю — что он в курсе, но не обязан делать.

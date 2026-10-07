@@ -240,6 +240,41 @@ export class PushService {
     }
   }
 
+  /**
+   * Личное уведомление от секретаря (ТЗ-18): напоминание, отчёт регулярной задачи,
+   * сводка. В ящик — всегда; в открытое приложение — сигналом через сокет; push —
+   * на свёрнутые устройства и не в тишине фокуса: напоминание, пришедшее посреди
+   * глубокой работы, ломает ровно то, ради чего фокус включали. Telegram шлёт
+   * вызывающий (TelegramMirror.push) — у него свой выключатель.
+   */
+  async personal(m: { tenantId: string; userId: string; eventKey: string; title: string; body: string; path: string }): Promise<boolean> {
+    try {
+      const item = await this.inbox.record({
+        tenantId: m.tenantId, userId: m.userId, mailId: null, eventKey: m.eventKey, title: m.title, body: m.body, path: m.path,
+      });
+      if (!item) return false;
+      this.realtime.emitToUsers(m.tenantId, [m.userId], 'inbox.item', { id: String(item.id), eventKey: item.event_key });
+      if (!this.fcm.enabled) return true;
+      if (await this.inbox.isQuiet(m.tenantId, m.userId).catch(() => false)) return true;
+      const targets = (await this.inbox.pushTargets(m.userId)).filter((t) => !t.active);
+      if (!targets.length) return true;
+      const privacy = await this.inbox.pushPrivacyOf(m.tenantId);
+      const badge = await this.inbox.unreadCount(m.userId);
+      const title = privacy === 'hide' ? 'QEVO' : m.title;
+      const body = privacy === 'full' ? m.body : privacy === 'sender_only' ? 'Откройте, чтобы прочитать' : 'Есть новое';
+      for (const t of targets) {
+        const outcome = await this.fcm.send(t.push_token, {
+          title, body, badge, data: { path: m.path, inboxId: String(item.id), eventKey: m.eventKey },
+        });
+        if (outcome === 'invalid_token') await this.inbox.dropPushToken(t.id);
+      }
+      return true;
+    } catch (e) {
+      this.log.warn(`личное уведомление ${m.eventKey}: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
   private async allowChatPush(userId: string, chatId: string): Promise<boolean> {
     try {
       const r = await this.redis.client.set(`push:chat:${userId}:${chatId}`, '1', 'EX', CHAT_PUSH_THROTTLE_S, 'NX');

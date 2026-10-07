@@ -1124,6 +1124,8 @@ export const api = {
   anthillDelete: (id: string) => request<{ deleted: boolean }>('DELETE', `/anthill/sessions/${id}`),
   anthillConfirm: (actionId: string) => request<{ status: string; text: string; output: Record<string, unknown>; sources: AnthillSource[]; canUndo: boolean }>('POST', `/anthill/actions/${actionId}/confirm`, {}),
   anthillReject: (actionId: string) => request<{ status: string }>('POST', `/anthill/actions/${actionId}/reject`, {}),
+  anthillReminders: () => request<AnthillReminder[]>('GET', '/anthill/reminders'),
+  anthillCancelReminder: (id: string) => request<{ cancelled: boolean }>('DELETE', `/anthill/reminders/${id}`),
   anthillConfirmRun: (runId: string) => request<{ status: string; text: string; results: { id: string; step: number; status: 'done' | 'failed'; text: string }[] }>('POST', `/anthill/runs/${runId}/confirm`, {}),
   anthillRejectRun: (runId: string) => request<{ status: string }>('POST', `/anthill/runs/${runId}/reject`, {}),
   /** Журнал действий: по нему видно и то, что ещё ждёт подтверждения (разд. 36). */
@@ -2662,6 +2664,8 @@ export interface AnthillAdmin {
   /** Автономность по группам действий (ТЗ-18): off · suggest · confirm · auto. */
   autonomy: Record<AnthillGroup, AnthillMode>;
 }
+/** Напоминание бота (ТЗ-18): разовое или с повтором. */
+export interface AnthillReminder { id: string; text: string; dueAt: string; repeat: string | null; sent: number }
 export type AnthillGroup = 'self' | 'tasks' | 'messages' | 'calendar' | 'documents';
 export type AnthillMode = 'off' | 'suggest' | 'confirm' | 'auto';
 export interface AnthillUsage {

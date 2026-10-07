@@ -91,9 +91,8 @@ describe('QEVO Bot (e2e)', () => {
     const pending = (await http$.get('/api/anthill/actions').set(O).expect(200)).body.data;
     expect(pending[0]).toMatchObject({ id: String(action.id), tool: 'create_reminder', status: 'pending' });
 
-    // до подтверждения в «Заметках» ничего не запланировано
-    const self = (await http$.post('/api/chats/self').set(O).expect(201)).body.data;
-    expect((await http$.get(`/api/chats/${self.id}/scheduled`).set(O).expect(200)).body.data.items).toEqual([]);
+    // до подтверждения ничего не запланировано
+    expect((await http$.get('/api/anthill/reminders').set(O).expect(200)).body.data).toEqual([]);
 
     // «Редактировать»: правка идёт мимо модели и переписывает карточку на месте
     const edited = (await http$.post(`/api/anthill/actions/${action.id}/edit`).set(O)
@@ -106,12 +105,15 @@ describe('QEVO Bot (e2e)', () => {
     const done = (await http$.post(`/api/anthill/actions/${action.id}/confirm`).set(O).expect(201)).body.data;
     expect(done.status).toBe('done');
     expect(done.canUndo).toBe(true);
-    expect((await http$.get(`/api/chats/${self.id}/scheduled`).set(O).expect(200)).body.data.items.length).toBe(1);
+    // напоминание — своя сущность (0155), а не сообщение в «Заметки» от своего имени
+    const list = (await http$.get('/api/anthill/reminders').set(O).expect(200)).body.data;
+    expect(list).toHaveLength(1);
+    expect(list[0].text).toBe('позвонить подрядчику');
 
     // второй раз не выполнить; откат убирает напоминание
     await http$.post(`/api/anthill/actions/${action.id}/confirm`).set(O).expect(409);
     await http$.post(`/api/anthill/actions/${action.id}/undo`).set(O).expect(201);
-    expect((await http$.get(`/api/chats/${self.id}/scheduled`).set(O).expect(200)).body.data.items).toEqual([]);
+    expect((await http$.get('/api/anthill/reminders').set(O).expect(200)).body.data).toEqual([]);
     expect((await http$.get('/api/anthill/actions').set(O).expect(200)).body.data[0].status).toBe('undone');
 
     // отклонённое — не выполнить

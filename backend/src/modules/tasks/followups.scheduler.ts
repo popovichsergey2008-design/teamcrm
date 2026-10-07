@@ -3,6 +3,8 @@ import { withinWorkHours } from '../assistant/ping-rules';
 import { humanDeadline } from './deadline-notice';
 import { ASK_FROM_MS, askText, shouldAsk } from './followup-rules';
 import { FollowupCandidate, FollowupsRepository } from './followups.repository';
+import { PushService } from '../notifications/push.service';
+import { TelegramMirror } from '../notifications/telegram-mirror.service';
 
 /**
  * Раз в четверть часа. Окно вопроса — два часа шириной (4–6 часов до срока), так что
@@ -32,7 +34,11 @@ export class FollowupsScheduler implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private busy = false;
 
-  constructor(private readonly repo: FollowupsRepository) {}
+  constructor(
+    private readonly repo: FollowupsRepository,
+    private readonly push: PushService,
+    private readonly telegram: TelegramMirror,
+  ) {}
 
   onModuleInit(): void {
     this.timer = setInterval(() => void this.tick(), TICK_MS);
@@ -102,6 +108,18 @@ export class FollowupsScheduler implements OnModuleInit, OnModuleDestroy {
       row.tenant_id, row.task_id, String(row.assignee_id), row.deadline_at, pingId,
     );
     if (!first) return false;
+
+    /*
+      Вопрос — до человека, а не только в панель (ТЗ-18 §10.1). За 4–6 часов до срока
+      исполнитель чаще всего не сидит в приложении: без push и Telegram вопрос
+      «успеваешь?» он видел уже после срока, когда отвечать поздно.
+    */
+    const assignee = String(row.assignee_id);
+    const path = `/projects/${row.project_id}/task/${row.task_id}`;
+    void this.push.personal({ tenantId: row.tenant_id, userId: assignee, eventKey: 'task.followup', title: 'Как идёт работа?', body: text, path })
+      .catch(() => undefined);
+    void this.telegram.push(row.tenant_id, assignee, `${text}\n\nОтветьте в задаче: успеваю · есть блокер · нужен перенос.`)
+      .catch(() => undefined);
 
     this.log.log(`задача ${row.task_id}: спросили исполнителя о ходе работы`);
     return true;

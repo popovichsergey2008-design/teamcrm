@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../Icon';
 import { api, ApiError } from '../../lib/api';
-import type { AnthillActionRow, AnthillSchedule } from '../../lib/api';
+import type { AnthillActionRow, AnthillReminder, AnthillSchedule } from '../../lib/api';
 import { stampLabel } from '../../lib/chat-text';
 import { confirmAction } from '../ui/dialog';
 
@@ -50,6 +50,8 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
    * повисло. Здесь видно всё, что ждёт решения, и решить можно не возвращаясь.
    */
   const [pending, setPending] = useState<AnthillActionRow[]>([]);
+  /** Напоминания бота (ТЗ-18): что и когда придёт — на телефон, в приложение и в Telegram. */
+  const [reminders, setReminders] = useState<AnthillReminder[]>([]);
   const [err, setErr] = useState('');
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ title: '', instruction: '', schedule: '' });
@@ -58,6 +60,7 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
 
   const load = useCallback(() => {
     api.anthillSchedules().then(setRows).catch(() => undefined);
+    api.anthillReminders().then(setReminders).catch(() => undefined);
     api.anthillActions()
       .then((list) => setPending(list.filter((a) => a.status === 'pending')))
       .catch(() => undefined);
@@ -141,6 +144,31 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
                   className="ui-btn ui-btn-ghost ui-btn-sm"
                   onClick={() => { api.anthillReject(a.id).then(load).catch(() => undefined); }}
                 >Отмена</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {reminders.length > 0 && (
+        <div className="anthill-group">
+          <div className="anthill-group-head">Напоминания</div>
+          {reminders.map((r) => (
+            <div key={r.id} className="anthill-card anthill-task">
+              <div className="anthill-task-top">
+                <span className="anthill-task-title">{r.text}</span>
+                <button
+                  className="msg-icon"
+                  title="Отменить напоминание"
+                  aria-label="Отменить напоминание"
+                  onClick={() => { api.anthillCancelReminder(r.id).then(load).catch(() => undefined); }}
+                >
+                  <Icon name="close" size={13} />
+                </button>
+              </div>
+              <div className="dim anthill-task-what">
+                {new Date(r.dueAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                {r.repeat ? ` · ${r.repeat.toLowerCase()}` : ''}
               </div>
             </div>
           ))}

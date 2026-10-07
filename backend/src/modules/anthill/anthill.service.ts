@@ -423,6 +423,21 @@ export class AnthillService {
     return skillView(row, userId);
   }
 
+  // ── напоминания (ТЗ-18, этап 4) ──
+  async reminders(tenantId: string, userId: string) {
+    const rows = await this.repo.reminders(tenantId, userId);
+    return rows.map((r) => ({
+      id: String(r.id), text: r.text, dueAt: r.due_at,
+      repeat: r.repeat ? scheduleLabel(r.repeat as unknown as Schedule) : null,
+      sent: Number(r.sent_count),
+    }));
+  }
+
+  async cancelReminder(tenantId: string, userId: string, id: string) {
+    if (!(await this.repo.cancelReminder(tenantId, userId, id))) throw AppException.notFound('Напоминание не найдено');
+    return { cancelled: true };
+  }
+
   // ── регулярные задачи (разд. 15) ──
 
   schedules(tenantId: string, userId: string) {

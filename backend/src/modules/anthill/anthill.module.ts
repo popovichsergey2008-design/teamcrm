@@ -18,6 +18,8 @@ import { AnthillService } from './anthill.service';
 import { AnthillScheduler } from './anthill.scheduler';
 import { AnthillAdminService } from './anthill-admin.service';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { BotDelivery } from './bot-delivery.service';
 
 /**
  * QEVO Bot — оркестратор над существующими модулями: задачи, чаты, поиск,
@@ -31,11 +33,13 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
     KnowledgeModule,
     // Клиенты (ТЗ-17): «что с Acme?», «кто требует внимания»
     ClientsModule,
+    // Личные уведомления секретаря (ТЗ-18): ящик, push, Telegram
+    NotificationsModule,
   ],
   controllers: [AnthillController],
-  providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService],
+  providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService, BotDelivery],
   // AnthillRepository наружу: служба заботы заводит агенту сессию под каждый разговор,
   // чтобы первая линия помнила нить, а не отвечала с чистого листа каждый раз.
-  exports: [AnthillService, AnthillRepository],
+  exports: [AnthillService, AnthillRepository, BotDelivery],
 })
 export class AnthillModule {}
