@@ -8,6 +8,7 @@ import { BriefRepository, PrefsRow } from './brief.repository';
 import { ModeratorRepository } from '../assistant/moderator.repository';
 import { CalendarService } from '../calendar/calendar.service';
 import { meetingBriefText, weekAuditText } from './meeting-brief-rules';
+import { classify, unansweredText } from './chat-digest-rules';
 
 const FALLBACK_TZ = 'Europe/Moscow';
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -62,6 +63,15 @@ export class BriefService {
     return next;
   }
 
+  /** Непрочитанное для сводки переписки — бот и утренняя сводка считают одинаково. */
+  digest(tenantId: string, userId: string) {
+    return this.repo.digestRows(tenantId, userId);
+  }
+
+  unanswered(tenantId: string, userId: string, days = 3) {
+    return this.repo.unanswered(tenantId, userId, days);
+  }
+
   /** Сводка прямо сейчас — для «Показать» в настройках: человек видит, что будет приходить. */
   async preview(tenantId: string, userId: string, kind: 'morning' | 'evening', tz: string | null): Promise<{ text: string }> {
     const text = await this.compose(tenantId, userId, kind, tz || FALLBACK_TZ, new Date());
@@ -72,7 +82,17 @@ export class BriefService {
     const today = localParts(now, tz).date;
     const from = zonedTime(today, '00:00', tz);
     const to = zonedTime(tomorrowOf(now, tz), '00:00', tz);
-    if (kind === 'morning') return morningText(await this.repo.morning(tenantId, userId, from, to), tz);
+    if (kind === 'morning') {
+      const base = morningText(await this.repo.morning(tenantId, userId, from, to), tz);
+      // переписка (§8.3–8.4): что срочного и кто не ответил на мои вопросы
+      const d = classify(await this.repo.digestRows(tenantId, userId));
+      const silent = unansweredText(await this.repo.unanswered(tenantId, userId, 3));
+      const extra: string[] = [];
+      if (d.critical.length) extra.push(`Срочное в переписке: ${d.critical.length} — спросите QEVO Bot «что срочного в чатах»`);
+      if (silent) extra.push(`Вам не ответили:\n${silent}`);
+      const all = [base, ...extra].filter(Boolean);
+      return all.length ? all.join('\n') : null;
+    }
     const evening = eveningText(await this.repo.evening(tenantId, userId, from, to));
     // в последний рабочий день недели к итогам дня — итоги недели (§7.4)
     if (!(await this.lastWorkday(tenantId, now, tz))) return evening;

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
 import { BriefMeeting, BriefTask, EveningData, MorningData } from './brief-rules';
+import { DigestMessage, Unanswered } from './chat-digest-rules';
 
 export interface PrefsRow {
   user_id: string; tenant_id: string; morning_at: string | null; evening_at: string | null;
@@ -161,6 +162,72 @@ export class BriefRepository {
         WHERE cp.event_id = $1 AND cp.status <> 'declined' ORDER BY cp.is_organizer DESC, u.full_name`,
       [eventId],
     );
+  }
+
+  /**
+   * Непрочитанное за двое суток в чатах, где человек участник (§8.3). Чаты проектов
+   * без строки участия не берём: там «непрочитано всё», и сводка утонула бы в шуме.
+   */
+  digestRows(tenantId: string, userId: string): Promise<DigestMessage[]> {
+    return this.db.many<any>(
+      `SELECT m.id::text, m.chat_id::text AS "chatId", c.kind AS "chatKind", COALESCE(c.title, p.name) AS "chatTitle",
+              COALESCE(u.full_name, 'кто-то') AS author, m.body, m.created_at AS "createdAt",
+              EXISTS (SELECT 1 FROM chat_mentions n WHERE n.message_id = m.id AND n.user_id = $2) AS "mentionsMe"
+         FROM chat_members me
+         JOIN chats c ON c.id = me.chat_id AND c.tenant_id = $1
+    LEFT JOIN projects p ON p.id = c.project_id
+         JOIN chat_messages m ON m.chat_id = c.id AND m.deleted_at IS NULL AND m.author_id IS NOT NULL AND m.author_id <> $2
+              AND NOT m.is_ai
+              AND (m.thread_root_id IS NULL OR m.also_in_channel)
+              AND (me.last_read_at IS NULL OR m.created_at > me.last_read_at)
+              AND m.created_at > now() - interval '48 hours'
+    LEFT JOIN users u ON u.id = m.author_id
+        WHERE me.user_id = $2 AND COALESCE(me.notify, 'all') <> 'none'
+        ORDER BY m.created_at DESC
+        LIMIT 300`,
+      [tenantId, userId],
+    ).then((rows) => rows.map((r) => ({ ...r, body: String(r.body ?? '') })));
+  }
+
+  /**
+   * Мои вопросы без ответа (§8.4): последний вопрос в личке или с упоминанием, после
+   * которого собеседник не написал в этом чате ни слова. Старше N дней, но не
+   * старше двух недель — дальше это уже не «напомнить», а «забыто».
+   */
+  unanswered(tenantId: string, userId: string, days = 3): Promise<Unanswered[]> {
+    return this.db.many<any>(
+      `WITH asked AS (
+         SELECT DISTINCT ON (m.chat_id, target.id)
+                m.id, m.chat_id, c.kind, COALESCE(c.title, p.name) AS chat_title, m.body, m.created_at, target.id AS to_id, target.full_name AS to_name
+           FROM chat_messages m
+           JOIN chats c ON c.id = m.chat_id AND c.tenant_id = $1
+      LEFT JOIN projects p ON p.id = c.project_id
+           JOIN LATERAL (
+             SELECT u.id, u.full_name FROM chat_members x JOIN users u ON u.id = x.user_id
+              WHERE c.kind = 'dm' AND x.chat_id = c.id AND x.user_id <> $2
+             UNION
+             SELECT u.id, u.full_name FROM chat_mentions n JOIN users u ON u.id = n.user_id
+              WHERE n.message_id = m.id AND n.user_id <> $2
+           ) target ON TRUE
+          WHERE m.author_id = $2 AND m.deleted_at IS NULL AND NOT m.is_ai
+            -- классы символов, а не «\?» и «\s»: в шаблонной строке TS обратный слэш теряется
+            AND (m.body ~ '[?]' OR m.body ~* '^[[:space:]]*(когда|где|кто|почему|сколько|можешь|можете|сможешь|сможете|подскажи)')
+            AND m.created_at < now() - make_interval(days => $3::int)
+            AND m.created_at > now() - interval '14 days'
+          ORDER BY m.chat_id, target.id, m.created_at DESC
+       )
+       SELECT a.chat_id::text AS "chatId", a.kind AS "chatKind", a.chat_title AS "chatTitle", a.to_name AS "to", a.body,
+              GREATEST(1, (EXTRACT(EPOCH FROM (now() - a.created_at)) / 86400)::int) AS days
+         FROM asked a
+        WHERE NOT EXISTS (
+          SELECT 1 FROM chat_messages r WHERE r.chat_id = a.chat_id AND r.author_id = a.to_id AND r.created_at > a.created_at AND r.deleted_at IS NULL)
+          AND NOT EXISTS (
+          -- я сам уже написал позже в этот чат — значит, разговор пошёл дальше
+          SELECT 1 FROM chat_messages r WHERE r.chat_id = a.chat_id AND r.author_id = $2 AND r.created_at > a.created_at AND r.deleted_at IS NULL AND r.id <> a.id)
+        ORDER BY days DESC
+        LIMIT 20`,
+      [tenantId, userId, days],
+    ).then((rows) => rows.map((r) => ({ ...r, days: Number(r.days) })));
   }
 
   /** Куда ушла неделя (§7.4): встречи, глубокая работа, трекер, закрытое, просроченное. */

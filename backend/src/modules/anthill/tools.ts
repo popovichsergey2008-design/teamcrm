@@ -15,6 +15,7 @@ import { NlService } from '../nl/nl.service';
 import { AskService } from '../assistant/ask.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { BriefService } from './brief.service';
+import { classify, digestText, unansweredText } from './chat-digest-rules';
 import { BUFFER_MIN, conflicts, dayRu, findSlots, slotRu, timeRu } from './slot-rules';
 
 /**
@@ -1020,6 +1021,29 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       async run(ctx) {
         const text = await briefs.weekAudit(ctx.tenantId, ctx.user.userId, ctx.timezone || 'Europe/Moscow', ctx.now);
         return { text: text ?? 'За эту неделю пока нечего считать: встреч, фокуса и закрытых задач нет.', sources: [] };
+      },
+    },
+    {
+      name: 'chat_digest', kind: 'read',
+      description: 'Что в переписке требует внимания: непрочитанное за двое суток — критично (срочные слова), ждут вашего ответа (вопрос в личке, упоминание), к сведению (числом). Для «что пропустил в чатах», «кому надо ответить», «что срочного в переписке».',
+      params: {},
+      async run(ctx) {
+        const text = digestText(classify(await briefs.digest(ctx.tenantId, ctx.user.userId)));
+        return { text: text ?? 'Непрочитанного, что ждёт вас, нет.', sources: [] };
+      },
+    },
+    {
+      name: 'unanswered', kind: 'read',
+      description: 'Мои вопросы, на которые не ответили: личка или упоминание, без ответа N дней (по умолчанию 3). Для «кто мне не ответил», «напомни тем, кто молчит». Чтобы напомнить человеку — предложи send_message с вежливым текстом, сам не отправляй.',
+      params: { days: 'сколько дней без ответа (по умолчанию 3)' },
+      async run(ctx, p) {
+        const days = Math.min(14, Math.max(1, Number(p.days) || 3));
+        const list = await briefs.unanswered(ctx.tenantId, ctx.user.userId, days);
+        const text = unansweredText(list);
+        return {
+          text: text ? `Не ответили (${list.length}):\n${text}` : `Вопросов без ответа дольше ${days} дн. нет.`,
+          sources: list.slice(0, 6).map((u) => ({ kind: 'chat' as const, id: u.chatId, title: u.chatKind === 'dm' ? `Личка: ${u.to}` : (u.chatTitle ?? 'Чат'), url: `${ctx.base}/chat/${u.chatId}` })),
+        };
       },
     },
     // ── календарь секретаря (ТЗ-18, этап 3) ──

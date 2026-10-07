@@ -152,6 +152,15 @@ describe('QEVO Bot (e2e)', () => {
     }).expect(201)).body.data;
     const morning = (await http$.get('/api/anthill/secretary/brief/morning').set(O).expect(200)).body.data;
     expect(morning.text).toContain(`#${task.id} Оплатить счёт поставщику`);
+
+    // срочное непрочитанное в личке — строкой в сводке (ТЗ-18, этап 5)
+    const mateEmail = `abbm_${uniq()}@t.test`;
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    const dm = (await http$.post('/api/chats/dm').set(M).send({ userId: String(owner.user.id) }).expect(201)).body.data;
+    await http$.post(`/api/chats/${dm.id}/messages`).set(M).send({ body: 'Срочно: прод упал, нужен доступ' }).expect(201);
+    const withChat = (await http$.get('/api/anthill/secretary/brief/morning').set(O).expect(200)).body.data;
+    expect(withChat.text).toContain('Срочное в переписке: 1');
     await http$.get('/api/anthill/secretary/brief/night').set(O).expect(400);
   });
 

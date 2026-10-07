@@ -73,6 +73,8 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   read_file: { ...READ, permission: 'file.download' },
   find_slots: READ,
   my_day: READ,
+  chat_digest: { ...READ, permission: 'chat.view' },
+  unanswered: { ...READ, permission: 'chat.view' },
   time_audit: READ,
   my_events: READ,
 

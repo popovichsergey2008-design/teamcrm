@@ -954,6 +954,7 @@ const STATUS_OF: Record<string, string> = {
   list_files: 'Смотрю вложения…', read_file: 'Читаю файл…',
   find_slots: 'Ищу свободное время…', my_events: 'Смотрю календарь…',
   my_day: 'Собираю ваш день…', time_audit: 'Считаю неделю…',
+  chat_digest: 'Разбираю переписку…', unanswered: 'Ищу, кто не ответил…',
 };
 
 function extractJson(raw: string): any {
