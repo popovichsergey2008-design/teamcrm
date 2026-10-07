@@ -3,6 +3,8 @@ import { Avatar } from './Avatar';
 import { htmlToMd } from '../lib/rich-text';
 import { activeQuery, MentionUser, suggest } from '../lib/mentions';
 import { initialsOf } from '../lib/initials';
+import { useEnterSend } from '../hooks/useEnterSend';
+import { isEnterKey } from '../lib/enter-key';
 
 /**
  * Поле с упоминаниями через `@`.
@@ -72,6 +74,7 @@ export function MentionField({
     try { el.setSelectionRange(end, end); } catch { /* input без выделения — не беда */ }
   }, [focusKey]);
 
+  const enter = useEnterSend(onEnter);
   const [caret, setCaret] = useState(0);
   const [active, setActive] = useState(0);
   const [open, setOpen] = useState(false);
@@ -120,10 +123,11 @@ export function MentionField({
     if (found.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); return setActive((i) => (i + 1) % found.length); }
       if (e.key === 'ArrowUp') { e.preventDefault(); return setActive((i) => (i - 1 + found.length) % found.length); }
-      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); return pick(found[active]); }
+      if ((isEnterKey(e) && !e.shiftKey && !e.ctrlKey && !e.metaKey) || e.key === 'Tab') { e.preventDefault(); return pick(found[active]); }
       if (e.key === 'Escape') { e.preventDefault(); return setOpen(false); }
     }
-    if (e.key === 'Enter' && !e.shiftKey && onEnter) { e.preventDefault(); onEnter(); }
+    // Enter — отправить, Shift/Ctrl+Enter — новая строка; диктовка — см. useEnterSend
+    enter.onKeyDown(e as React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>);
   };
 
   const common = {
@@ -169,6 +173,7 @@ export function MentionField({
       });
     },
     onKeyDown: keyDown,
+    onCompositionEnd: enter.onCompositionEnd,
     onKeyUp: (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setCaret((e.target as HTMLInputElement).selectionStart ?? 0),
     onClick: (e: React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>) =>

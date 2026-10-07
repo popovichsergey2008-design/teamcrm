@@ -13,6 +13,7 @@ import { VoiceStatus } from '../VoiceStatus';
 import { MessageText } from '../MessageText';
 import type { SupportConversation, SupportDesk, SupportQueueItem } from '../../types';
 import { OptionSelect } from '../ui/option-select';
+import { useEnterSend } from '../../hooks/useEnterSend';
 
 /**
  * Открыть службу заботы откуда угодно.
@@ -414,6 +415,8 @@ export function SupportDock({ embedded = false }: {
     if (el) el.scrollTop = el.scrollHeight;
   }, [open, conv?.messages.length, view]);
 
+  // Enter — отправить, Shift/Ctrl+Enter — новая строка, после диктовки тоже (useEnterSend)
+  const textEnter = useEnterSend(() => { void (mineConversation ? send() : replyAsAgent()); });
   const send = async () => {
     const body = text.trim();
     if (!body || busy) return;
@@ -1102,11 +1105,8 @@ export function SupportDock({ embedded = false }: {
                   rows={1}
                   placeholder={mineConversation ? 'Что случилось?' : 'Ответ клиенту… (Enter — отправить)'}
                   onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter' || e.shiftKey) return;
-                    e.preventDefault();
-                    void (mineConversation ? send() : replyAsAgent());
-                  }}
+                  onKeyDown={textEnter.onKeyDown}
+                  onCompositionEnd={textEnter.onCompositionEnd}
                 />
                 <button
                   className="chat-send"

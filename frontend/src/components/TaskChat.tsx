@@ -28,6 +28,7 @@ import { requestCall } from '../lib/notifications';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { confirmAction } from './ui/dialog';
 import { OptionSelect } from './ui/option-select';
+import { useEnterSend } from '../hooks/useEnterSend';
 
 /**
  * Цвет имени автора.
@@ -585,6 +586,8 @@ export function TaskChat({
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть ветку'); }
   };
 
+  // Enter — отправить, Shift/Ctrl+Enter — новая строка, после диктовки тоже (useEnterSend)
+  const threadEnter = useEnterSend(() => { void sendToThread(); });
   const sendToThread = async () => {
     const text = threadBody.trim();
     if (!text || !thread) return;
@@ -1425,7 +1428,8 @@ export function TaskChat({
                           autoFocus
                           value={threadBody}
                           onChange={(e) => setThreadBody(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendToThread(); } }}
+                          onKeyDown={threadEnter.onKeyDown}
+                          onCompositionEnd={threadEnter.onCompositionEnd}
                           placeholder="Ответить в ветке"
                           aria-label="Ответить в ветке"
                         />

@@ -45,6 +45,7 @@ import type { User } from '../types';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { confirmAction, promptText } from '../components/ui/dialog';
 import { initialsOf } from '../lib/initials';
+import { useEnterSend } from '../hooks/useEnterSend';
 
 interface Chat {
   id: string; kind: 'dm' | 'group' | 'project' | 'channel' | 'self' | 'external'; title: string | null;
@@ -1726,6 +1727,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     return prev.filter((_, i) => i !== idx);
   });
 
+  // Enter — отправить, Shift/Ctrl+Enter — новая строка, после диктовки тоже (useEnterSend)
+  const threadEnter = useEnterSend(() => { void sendToThread(); });
   const sendToThread = async () => {
     const text = threadBody.trim();
     if ((!text && !threadPending.length) || !thread || !activeId) return;
@@ -3064,7 +3067,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 }}
                 placeholder={pending ? 'Подпись к вложению…' : 'Сообщение… «@» — позвать по имени'}
                 onEnter={send}
-                // Enter отправляет, Shift+Enter переносит строку — как в мессенджерах.
+                // Enter отправляет, Shift+Enter или Ctrl+Enter переносит строку — как в мессенджерах.
                 autoGrow
               />
               {/*
@@ -3383,7 +3386,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               placeholder="Ответить в ветке… Ctrl+V вставит картинку"
               value={threadBody}
               onChange={(e) => setThreadBody(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendToThread(); } }}
+              onKeyDown={threadEnter.onKeyDown}
+              onCompositionEnd={threadEnter.onCompositionEnd}
             />
             <button
               className="ui-btn ui-btn-primary ui-btn-sm"

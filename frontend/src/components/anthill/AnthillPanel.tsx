@@ -19,6 +19,7 @@ import { useStickyCheck } from '../../lib/sticky-checks';
 import { confirmAction } from '../ui/dialog';
 import { Tabs } from '../ui/tabs';
 import { Toggle } from '../ui/toggle';
+import { useEnterSend } from '../../hooks/useEnterSend';
 
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
   task: 'задача', project: 'проект', chat: 'чат', meeting: 'мит',
@@ -158,6 +159,8 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
   // Лента вниз на каждый кусок ответа: его читают с конца, пока он печатается.
   useEffect(() => { const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight; }, [messages, live]);
 
+  // Enter — отправить, Shift/Ctrl+Enter — новая строка, после диктовки тоже (useEnterSend)
+  const draftEnter = useEnterSend(() => { void send(draft); });
   const send = async (text: string) => {
     const question = text.trim();
     if (!question || busy) return;
@@ -506,7 +509,8 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
             value={draft}
             placeholder={busy ? 'QEVO Bot отвечает…' : deep ? 'Что разобрать по-крупному?' : 'Спросите или попросите сделать…'}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(draft); } }}
+            onKeyDown={draftEnter.onKeyDown}
+            onCompositionEnd={draftEnter.onCompositionEnd}
             disabled={busy}
             aria-label="Вопрос QEVO Bot"
           />

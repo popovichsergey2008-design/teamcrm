@@ -1377,6 +1377,22 @@ test('на аватаре без фото — две буквы: у групп �
   assert.equal(initialsOf(null), '?');
 });
 
+test('Enter в чате отправляет, Shift/Ctrl+Enter переносит строку, и после диктовки тоже', async () => {
+  const { enterAction } = await load('lib/enter-key.ts');
+  const k = (o) => ({ key: 'Enter', code: 'Enter', keyCode: 13, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, ...o });
+  assert.equal(enterAction(k({})), 'send');
+  assert.equal(enterAction(k({ shiftKey: true })), 'newline');
+  assert.equal(enterAction(k({ ctrlKey: true })), 'newline');
+  assert.equal(enterAction(k({ metaKey: true })), 'newline', 'Cmd+Enter на Mac');
+  assert.equal(enterAction(k({ ctrlKey: true, shiftKey: true })), 'newline');
+  // голосовой ввод Windows и IME: браузер отдаёт «Process», клавишу видно по code
+  assert.equal(enterAction(k({ key: 'Process', keyCode: 229 })), 'send', 'Enter после диктовки — отправить');
+  assert.equal(enterAction(k({ key: 'Process', keyCode: 229, code: 'NumpadEnter' })), 'send');
+  assert.equal(enterAction(k({ key: 'Process', keyCode: 229, code: 'KeyA' })), null, 'другие клавиши во время диктовки не трогаем');
+  assert.equal(enterAction(k({ key: 'a', code: 'KeyA', keyCode: 65 })), null);
+  assert.equal(enterAction(k({ altKey: true })), null);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

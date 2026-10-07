@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { useEnterSend } from '../hooks/useEnterSend';
 
 /**
  * Переписка глазами внешнего участника.
@@ -40,6 +41,8 @@ export function GuestChat({ token, orgName }: { token: string; orgName?: string 
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  // Enter — отправить, Shift/Ctrl+Enter — новая строка, после диктовки тоже (useEnterSend)
+  const bodyEnter = useEnterSend(() => { void send(); });
   const send = async () => {
     const text = body.trim();
     if (!text) return;
@@ -90,7 +93,8 @@ export function GuestChat({ token, orgName }: { token: string; orgName?: string 
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder="Сообщение…"
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+          onKeyDown={bodyEnter.onKeyDown}
+          onCompositionEnd={bodyEnter.onCompositionEnd}
         />
         <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={send} disabled={busy || !body.trim()} title="Отправить">
           <Icon name="send" />
