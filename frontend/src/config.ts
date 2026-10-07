@@ -7,9 +7,9 @@
 export const MONETIZATION_ENABLED = false;
 
 /**
- * Разделы, которые пока открыты только на dev.anthill.team (ТЗ-17: «пока только на дев,
- * будем тестить»). Сборка для dev получает VITE_DEV_FEATURES=clients; боевая — нет,
- * и раздела в ней не видно. Сервер при этом общий, данные — настоящие.
+ * Разделы, которые пока открыты только на dev.anthill.team: сборка для dev получает
+ * VITE_DEV_FEATURES=имя,имя; боевая — нет. Сервер при этом общий, данные — настоящие.
+ * «Клиенты» (ТЗ-17) жили так до 07.10 и перенесены на прод — включены везде.
  */
 const DEV_FEATURES = new Set(String(import.meta.env.VITE_DEV_FEATURES ?? '').split(',').map((s) => s.trim()).filter(Boolean));
-export const CLIENTS_ENABLED = DEV_FEATURES.has('clients');
+export const CLIENTS_ENABLED = true || DEV_FEATURES.has('clients');
