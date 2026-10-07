@@ -34,6 +34,8 @@ class AdminDto {
   @IsOptional() @IsBoolean() actionsAllowed?: boolean;
   @IsOptional() @IsBoolean() integrations?: boolean;
   @IsOptional() @ValidateNested() @Type(() => LimitsDto) limits?: LimitsDto;
+  /** Автономность по группам: {"tasks":"confirm","self":"auto"}; чужое значение отбрасывается. */
+  @IsOptional() @IsObject() autonomy?: Record<string, string>;
 }
 class AskDto {
   @IsString() @MinLength(2) @MaxLength(8000) question!: string;
@@ -135,7 +137,7 @@ export class AnthillController {
   @Patch('admin')
   @Roles('owner')
   saveAdmin(@CurrentUser() u: AuthUser, @Body() dto: AdminDto) {
-    return this.admin.save(u.tenantId, u.userId, dto as Partial<{ limits: AgentLimits }> & AdminDto);
+    return this.admin.save(u.tenantId, u.userId, dto as unknown as Partial<{ limits: AgentLimits }> & Omit<AdminDto, 'autonomy'>);
   }
 
   @Get('admin/usage')
@@ -215,6 +217,17 @@ export class AnthillController {
     } finally {
       if (!closed) res.end();
     }
+  }
+
+  /** Прогон из нескольких шагов (ТЗ-18): подтвердить все оставшиеся шаги разом. */
+  @Post('runs/:id/confirm')
+  confirmRun(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.anthill.confirmRun(u.tenantId, u, id);
+  }
+
+  @Post('runs/:id/reject')
+  rejectRun(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.anthill.rejectRun(u.tenantId, u, id);
   }
 
   @Post('actions/:id/confirm')

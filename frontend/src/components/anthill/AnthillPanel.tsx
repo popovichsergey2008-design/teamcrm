@@ -180,6 +180,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     show();
     let pending: { id: string; tool: string; preview: string; fields?: AnthillAction['fields']; values?: Record<string, string> } | null = null;
     let landed = false;
+    const steps: AnthillMessage[] = [];
     const land = (messageId: string) => {
       if (landed) return;
       landed = true;
@@ -189,7 +190,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
         action: pending
           ? { id: pending.id, tool: pending.tool, status: 'pending', output: null, fields: pending.fields ?? [], values: pending.values ?? {} }
           : null,
-      }]);
+      }, ...steps]);
     };
 
     const run = api.anthillAsk(id, question, ctxArg, skill ? skill.id : null, deep, {
@@ -197,6 +198,13 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
       onDelta: (t) => { acc.text += t; acc.status = ''; show(); },
       onSources: (s) => { acc.sources = s; show(); },
       onAction: (a) => { pending = a; },
+      // шаги прогона встают после вступления — копим, пока вступление не легло в ленту
+      onStep: (s) => {
+        steps.push({
+          id: s.message.id, role: 'assistant', content: s.message.content, citations: [],
+          createdAt: new Date().toISOString(), action: s.message.action,
+        });
+      },
       onDone: (d) => land(String(d.messageId)),
       onError: (m) => setErr(m || 'Не удалось получить ответ. Попробуйте снова.'),
     });
@@ -233,6 +241,31 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
       setErr(e instanceof ApiError ? e.message : 'Не удалось выполнить действие');
     }
   };
+
+  /** «Выполнить все шаги»: оставшиеся карточки прогона разом, итог — одним сообщением. */
+  const actRun = async (runId: string, what: 'confirm' | 'reject') => {
+    setErr('');
+    try {
+      if (what === 'reject') {
+        await api.anthillRejectRun(runId);
+        setMessages((prev) => prev.map((m) => (m.action?.runId === runId && m.action.status === 'pending'
+          ? { ...m, action: { ...m.action, status: 'rejected' } } : m)));
+        return;
+      }
+      const r = await api.anthillConfirmRun(runId);
+      const byId = new Map(r.results.map((x) => [x.id, x.status]));
+      setMessages((prev) => [
+        ...prev.map((m) => (m.action && byId.has(m.action.id)
+          ? { ...m, action: { ...m.action, status: byId.get(m.action.id)!, fields: [] } } : m)),
+        { id: `act-${Date.now()}`, role: 'assistant' as const, content: r.text, citations: [], createdAt: new Date().toISOString(), action: null },
+      ]);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось выполнить шаги');
+    }
+  };
+
+  /** Сколько шагов прогона ещё ждут — кнопка «Выполнить все» стоит под последним из них. */
+  const runPending = (runId: string) => messages.filter((m) => m.action?.runId === runId && m.action.status === 'pending');
 
   const saveEdit = async (messageId: string, actionId: string, patch: Record<string, string>) => {
     const r = await api.anthillEdit(actionId, patch);
@@ -419,12 +452,27 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
                     <span className="dim">пока не подтвердите — ничего не создано</span>
                   </>
                 )}
+                {m.action.status === 'pending' && m.action.runId && (() => {
+                  const left = runPending(m.action.runId);
+                  if (left.length < 2 || left[left.length - 1].id !== m.id) return null;
+                  const runId = m.action.runId;
+                  return (
+                    <div className="anthill-form-acts">
+                      <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void actRun(runId, 'confirm'); }}>
+                        <Icon name="check" size={13} /> Выполнить все шаги ({left.length})
+                      </button>
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void actRun(runId, 'reject'); }}>Отменить все</button>
+                    </div>
+                  );
+                })()}
                 {m.action.status === 'done' && (
                   <>
-                    <span className="ui-badge ui-badge-ok">сделано</span>
-                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void act(m.id, m.action!.id, 'undo'); }}>
-                      <Icon name="refresh" size={13} /> Отменить
-                    </button>
+                    <span className="ui-badge ui-badge-ok">{m.action.auto ? 'сделано сразу' : 'сделано'}</span>
+                    {m.action.canUndo !== false && (
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void act(m.id, m.action!.id, 'undo'); }}>
+                        <Icon name="refresh" size={13} /> Отменить
+                      </button>
+                    )}
                   </>
                 )}
                 {m.action.status === 'pending' && editing === m.id && (

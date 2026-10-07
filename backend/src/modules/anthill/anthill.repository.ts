@@ -14,6 +14,13 @@ export interface ActionRow {
   id: string; tenant_id: string; session_id: string | null; user_id: string; tool: string;
   input_json: Record<string, unknown>; output_json: Record<string, unknown> | null;
   requires_approval: boolean; approved_at: Date | null; status: string; error: string | null; created_at: Date;
+  run_id: string | null; step_no: number | null; risk_level: string | null; auto: boolean;
+}
+
+/** Прогон из нескольких шагов (ТЗ-18, этап 1). */
+export interface RunRow {
+  id: string; tenant_id: string; user_id: string; session_id: string | null; intent: string;
+  status: string; risk_level: string; steps: number; error: string | null; started_at: Date; completed_at: Date | null;
 }
 
 export interface MemoryRow {
@@ -118,11 +125,58 @@ export class AnthillRepository {
   }
 
   // ── действия ──
-  createAction(i: { tenantId: string; sessionId: string | null; userId: string; tool: string; input: Record<string, unknown> }): Promise<ActionRow> {
+  createAction(i: {
+    tenantId: string; sessionId: string | null; userId: string; tool: string; input: Record<string, unknown>;
+    runId?: string | null; stepNo?: number | null; risk?: string | null; auto?: boolean;
+  }): Promise<ActionRow> {
     return this.db.one<ActionRow>(
-      `INSERT INTO ai_tool_actions (tenant_id, session_id, user_id, tool, input_json) VALUES ($1,$2,$3,$4,$5::jsonb) RETURNING *`,
-      [i.tenantId, i.sessionId, i.userId, i.tool, JSON.stringify(i.input)],
+      `INSERT INTO ai_tool_actions (tenant_id, session_id, user_id, tool, input_json, run_id, step_no, risk_level, auto, requires_approval)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10) RETURNING *`,
+      [i.tenantId, i.sessionId, i.userId, i.tool, JSON.stringify(i.input), i.runId ?? null, i.stepNo ?? null,
+        i.risk ?? null, i.auto === true, i.auto !== true],
     ) as Promise<ActionRow>;
+  }
+
+  /**
+   * Занять действие на выполнение.
+   *
+   * Проверка «ещё pending» и смена статуса — одним запросом: двойное нажатие
+   * «Создать» (или «Создать» и «Выполнить всё» одновременно) иначе выполняло бы
+   * одно действие дважды — две задачи, два сообщения.
+   */
+  claimAction(id: string): Promise<ActionRow | null> {
+    return this.db.one<ActionRow>(
+      `UPDATE ai_tool_actions SET status='running' WHERE id=$1 AND status='pending' RETURNING *`, [id],
+    );
+  }
+
+  // ── прогоны ──
+  createRun(i: { tenantId: string; userId: string; sessionId: string | null; intent: string; steps: number; risk: string }): Promise<RunRow> {
+    return this.db.one<RunRow>(
+      `INSERT INTO ai_runs (tenant_id, user_id, session_id, intent, steps, risk_level) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [i.tenantId, i.userId, i.sessionId, i.intent.slice(0, 4000), i.steps, i.risk],
+    ) as Promise<RunRow>;
+  }
+
+  run(tenantId: string, userId: string, id: string): Promise<RunRow | null> {
+    return this.db.one<RunRow>(`SELECT * FROM ai_runs WHERE tenant_id=$1 AND user_id=$2 AND id=$3`, [tenantId, userId, id]);
+  }
+
+  runActions(runId: string): Promise<ActionRow[]> {
+    return this.db.many<ActionRow>(`SELECT * FROM ai_tool_actions WHERE run_id=$1 ORDER BY step_no, id`, [runId]);
+  }
+
+  async setRunStatus(id: string, status: string, error?: string | null): Promise<void> {
+    const final = ['completed', 'failed', 'cancelled'].includes(status);
+    await this.db.query(
+      `UPDATE ai_runs SET status=$2, error=$3, completed_at = CASE WHEN $4::boolean THEN now() ELSE NULL END WHERE id=$1`,
+      [id, status, error ?? null, final],
+    );
+  }
+
+  /** Задача создана ботом — помечаем, как это уже делает разбор переписки (0137). */
+  async markTaskByAi(tenantId: string, taskId: string): Promise<void> {
+    await this.db.query(`UPDATE tasks SET created_by_ai=true WHERE tenant_id=$1 AND id=$2`, [tenantId, taskId]);
   }
 
   action(tenantId: string, userId: string, id: string): Promise<ActionRow | null> {
@@ -145,7 +199,7 @@ export class AnthillRepository {
    * значение колонки и как операнд сравнения роняет ВЕСЬ запрос («inconsistent
    * types deduced for parameter»), а не только эту ветку.
    */
-  async finishAction(id: string, status: 'done' | 'rejected' | 'failed' | 'undone', output?: Record<string, unknown> | null, error?: string | null): Promise<void> {
+  async finishAction(id: string, status: 'done' | 'rejected' | 'failed' | 'undone' | 'pending', output?: Record<string, unknown> | null, error?: string | null): Promise<void> {
     await this.db.query(
       `UPDATE ai_tool_actions SET status=$2, output_json=COALESCE($3::jsonb, output_json), error=$4,
               approved_at = COALESCE($5::timestamptz, approved_at)

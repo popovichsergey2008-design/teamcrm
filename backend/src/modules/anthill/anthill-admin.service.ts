@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { AppException } from '../../common/http/app-exception';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
+import { Autonomy, autonomyOf } from './tool-policy';
 
 /** Значения по умолчанию: щедро для работы и достаточно скромно для счёта за модель. */
 export const DEFAULT_LIMITS = {
@@ -29,11 +30,14 @@ export interface AgentSettings {
   actionsAllowed: boolean;
   integrations: boolean;
   limits: AgentLimits;
+  /** Автономность по группам действий (ТЗ-18, §4); потолок держит tool-policy.decide. */
+  autonomy: Autonomy;
 }
 
 interface Row {
   enabled: boolean; allowed_roles: string[]; web_search: boolean; web_search_key: string | null;
   files_allowed: boolean; actions_allowed: boolean; integrations: boolean; limits: Partial<AgentLimits>;
+  autonomy: Record<string, unknown> | null;
 }
 
 /**
@@ -80,6 +84,7 @@ export class AnthillAdminService {
       actionsAllowed: row?.actions_allowed ?? true,
       integrations: row?.integrations ?? false,
       limits: { ...DEFAULT_LIMITS, ...(row?.limits ?? {}) },
+      autonomy: autonomyOf(row?.autonomy),
       key: row?.web_search_key ? this.decrypt(row.web_search_key) : null,
     };
     this.cache.set(tenantId, { at: Date.now(), value });
@@ -97,15 +102,17 @@ export class AnthillAdminService {
     // «Никому» — не настройка, а поломка: такую организацию потом некому починить
     if (roles && !roles.length) throw AppException.validation('Оставьте хотя бы одну роль');
     const limits = patch.limits ? sanitizeLimits(patch.limits) : null;
+    const autonomy = patch.autonomy ? autonomyOf(patch.autonomy as Record<string, unknown>) : null;
     // Пустая строка в ключе означает «убрать ключ», отсутствие поля — «не трогать».
     const keyEnc = patch.webSearchKey === undefined ? undefined
       : (patch.webSearchKey ? this.crypto.encrypt(patch.webSearchKey.trim()) : null);
 
     await this.db.query(
       `INSERT INTO ai_agent_settings (tenant_id, enabled, allowed_roles, web_search, web_search_key,
-                                      files_allowed, actions_allowed, integrations, limits, updated_by)
+                                      files_allowed, actions_allowed, integrations, limits, updated_by, autonomy)
        VALUES ($1, COALESCE($2, true), COALESCE($3::jsonb, '["owner","manager","member"]'::jsonb), COALESCE($4, false), $5,
-               COALESCE($6, true), COALESCE($7, true), COALESCE($8, false), COALESCE($9::jsonb, '{}'::jsonb), $10)
+               COALESCE($6, true), COALESCE($7, true), COALESCE($8, false), COALESCE($9::jsonb, '{}'::jsonb), $10,
+               COALESCE($12::jsonb, '{}'::jsonb))
        ON CONFLICT (tenant_id) DO UPDATE SET
          enabled         = COALESCE($2, ai_agent_settings.enabled),
          allowed_roles   = COALESCE($3::jsonb, ai_agent_settings.allowed_roles),
@@ -115,6 +122,7 @@ export class AnthillAdminService {
          actions_allowed = COALESCE($7, ai_agent_settings.actions_allowed),
          integrations    = COALESCE($8, ai_agent_settings.integrations),
          limits          = COALESCE($9::jsonb, ai_agent_settings.limits),
+         autonomy        = COALESCE($12::jsonb, ai_agent_settings.autonomy),
          updated_by      = $10,
          updated_at      = now()`,
       [tenantId,
@@ -127,7 +135,8 @@ export class AnthillAdminService {
         patch.integrations ?? null,
         limits ? JSON.stringify(limits) : null,
         userId,
-        keyEnc !== undefined],
+        keyEnc !== undefined,
+        autonomy ? JSON.stringify(autonomy) : null],
     );
     this.cache.delete(tenantId);
     this.log.log(`настройки агента обновлены (организация ${tenantId})`);

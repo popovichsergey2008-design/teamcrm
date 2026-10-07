@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../Icon';
 import { api, ApiError } from '../../lib/api';
-import type { AnthillAdmin as Settings, AnthillUsage } from '../../lib/api';
+import type { AnthillAdmin as Settings, AnthillGroup, AnthillMode, AnthillUsage } from '../../lib/api';
+import { Select } from '../ui/select';
 import { useAuth } from '../../state/auth';
 import { stampLabel } from '../../lib/chat-text';
 
@@ -17,6 +18,27 @@ const LIMITS: { key: keyof Settings['limits']; label: string; hint: string }[] =
   { key: 'maxScheduled', label: 'Регулярных задач на человека', hint: 'их выполняет сервер по расписанию' },
   { key: 'maxSkills', label: 'Навыков на человека', hint: 'свои сценарии работы' },
   { key: 'contextMessages', label: 'Сообщений разговора в подсказке', hint: 'больше памяти в ответе — дороже каждый запрос' },
+];
+
+/** Группы действий для автономности (ТЗ-18, §4). */
+const GROUPS: { key: AnthillGroup; label: string; hint: string; self?: boolean }[] = [
+  { key: 'self', label: 'Для себя', hint: 'напоминание себе, память, регулярные задачи, навыки', self: true },
+  { key: 'tasks', label: 'Задачи', hint: 'создать задачу, перенести срок, сменить исполнителя' },
+  { key: 'messages', label: 'Сообщения', hint: 'написать в чат или в обсуждение задачи' },
+  { key: 'calendar', label: 'Календарь', hint: 'поставить встречу' },
+  { key: 'documents', label: 'Документы', hint: 'собрать файл и приложить его' },
+];
+
+/**
+ * «Сам» есть у каждой группы, но для того, что задевает других (сообщение коллеге,
+ * задача на другого, встреча с участниками), сервер всё равно спросит: это правило,
+ * а не настройка.
+ */
+const MODES: { value: AnthillMode; label: string }[] = [
+  { value: 'auto', label: 'Сам, с отменой' },
+  { value: 'confirm', label: 'С подтверждением' },
+  { value: 'suggest', label: 'Только предлагает' },
+  { value: 'off', label: 'Выключено' },
 ];
 
 /**
@@ -80,6 +102,34 @@ export function AnthillAdmin() {
           {toggle('Может искать в интернете', 'по умолчанию агент работает только на данных QEVO', s.webSearch, (v) => void save({ webSearch: v }))}
         </div>
       </div>
+
+      {s.actionsAllowed && s.autonomy && (
+        <div className="anthill-group">
+          <div className="anthill-group-head">Как бот действует</div>
+          <div className="anthill-card">
+            <div className="dim">
+              То, что задевает других — сообщение коллеге, задачу на другого, встречу с участниками, —
+              бот выполняет только после подтверждения, даже если выбрано «Сам».
+            </div>
+            {GROUPS.map((g) => (
+              <div key={g.key} className="anthill-adm-day">
+                <span className="anthill-adm-text">
+                  <span>{g.label}</span>
+                  <span className="dim">{g.hint}</span>
+                </span>
+                <Select
+                  ariaLabel={`Как бот действует: ${g.label}`}
+                  size="sm"
+                  disabled={!canEdit}
+                  value={s.autonomy[g.key]}
+                  onValueChange={(v) => { void save({ autonomy: { ...s.autonomy, [g.key]: v as AnthillMode } }); }}
+                  options={MODES}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {s.webSearch && (
         <div className="anthill-group">

@@ -1124,6 +1124,8 @@ export const api = {
   anthillDelete: (id: string) => request<{ deleted: boolean }>('DELETE', `/anthill/sessions/${id}`),
   anthillConfirm: (actionId: string) => request<{ status: string; text: string; output: Record<string, unknown>; sources: AnthillSource[]; canUndo: boolean }>('POST', `/anthill/actions/${actionId}/confirm`, {}),
   anthillReject: (actionId: string) => request<{ status: string }>('POST', `/anthill/actions/${actionId}/reject`, {}),
+  anthillConfirmRun: (runId: string) => request<{ status: string; text: string; results: { id: string; step: number; status: 'done' | 'failed'; text: string }[] }>('POST', `/anthill/runs/${runId}/confirm`, {}),
+  anthillRejectRun: (runId: string) => request<{ status: string }>('POST', `/anthill/runs/${runId}/reject`, {}),
   /** Журнал действий: по нему видно и то, что ещё ждёт подтверждения (разд. 36). */
   anthillActions: () => request<AnthillActionRow[]>('GET', '/anthill/actions'),
   anthillEdit: (actionId: string, patch: Record<string, string>) =>
@@ -1186,6 +1188,8 @@ export const api = {
     on: {
       onStatus?: (t: string) => void; onDelta?: (t: string) => void; onSources?: (s: AnthillSource[]) => void;
       onAction?: (a: { id: string; tool: string; preview: string; fields: AnthillField[]; values: Record<string, string> }) => void;
+      /** Шаг прогона — готовое сообщение с карточкой; introId — вступление, после которого он встаёт. */
+      onStep?: (s: { introId: string; message: { id: string; content: string; action: AnthillAction | null } }) => void;
       onDone?: (d: { messageId: string }) => void; onError?: (m: string) => void;
     },
   ): { stop: () => void; finished: Promise<void> } => {
@@ -1220,6 +1224,7 @@ export const api = {
             else if (ev === 'delta') on.onDelta?.(data.text);
             else if (ev === 'sources') on.onSources?.(data.sources ?? []);
             else if (ev === 'action') on.onAction?.(data.action);
+            else if (ev === 'step') on.onStep?.(data);
             else if (ev === 'done') on.onDone?.(data);
             else if (ev === 'error') on.onError?.(data.text ?? data.message);
           }
@@ -2634,6 +2639,11 @@ export interface AnthillAction {
   /** Что можно поправить до «Создать»; пусто — карточка уже обработана. */
   fields: AnthillField[];
   values: Record<string, string>;
+  /** Шаг прогона из нескольких действий (ТЗ-18): по нему собирается «Выполнить все шаги». */
+  runId?: string | null;
+  /** Выполнено само — так настроено для действий «для себя». */
+  auto?: boolean;
+  canUndo?: boolean;
 }
 /** Что агенту позволено в организации и сколько ему можно. */
 export interface AnthillAdmin {
@@ -2649,7 +2659,11 @@ export interface AnthillAdmin {
     requestsPerDay: number; deepPerDay: number;
     maxScheduled: number; maxSkills: number; contextMessages: number;
   };
+  /** Автономность по группам действий (ТЗ-18): off · suggest · confirm · auto. */
+  autonomy: Record<AnthillGroup, AnthillMode>;
 }
+export type AnthillGroup = 'self' | 'tasks' | 'messages' | 'calendar' | 'documents';
+export type AnthillMode = 'off' | 'suggest' | 'confirm' | 'auto';
 export interface AnthillUsage {
   days: { day: string; requests: number; tokens: number; cost: number }[];
   errors: { kind: string; id: string; title: string; text: string; at: string; who: string | null }[];

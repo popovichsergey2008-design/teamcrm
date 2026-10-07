@@ -93,6 +93,13 @@ const ACTIVITY_LABEL: Record<string, string> = {
   approval_setting: 'изменил правило согласования',
   merged_in: 'объединил сюда другую задачу',
   merged_into: 'объединил эту задачу с другой',
+  via_bot: 'через QEVO Bot',
+};
+
+/** Что именно сделал бот — словами, а не именем инструмента. */
+const BOT_TOOL_LABEL: Record<string, string> = {
+  create_task: 'создал задачу', update_task: 'изменил задачу', add_comment: 'написал в обсуждение',
+  create_document: 'приложил документ',
 };
 
 function activityText(a: { kind: string; detail?: Record<string, any> }): string {
@@ -104,6 +111,7 @@ function activityText(a: { kind: string; detail?: Record<string, any> }): string
     return `${label} #${a.detail.taskId}${a.detail.title ? ` «${a.detail.title}»` : ''}`;
   }
   // обход приёмки без списка нехваток бесполезен: ради этого списка запись и делается
+  if (a.kind === 'via_bot') return `${BOT_TOOL_LABEL[String(a.detail?.tool)] ?? 'изменил задачу'} через QEVO Bot`;
   if (a.kind === 'handoff_forced' && Array.isArray(a.detail?.missing)) {
     return `${label}: ${a.detail.missing.join('; ')}`;
   }

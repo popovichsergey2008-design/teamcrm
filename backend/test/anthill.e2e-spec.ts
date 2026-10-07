@@ -125,6 +125,53 @@ describe('QEVO Bot (e2e)', () => {
     await http$.post(`/api/anthill/actions/${other.id}/edit`).set(O).send({ patch: { text: 'ещё раз' } }).expect(409);
   });
 
+  it('прогон из нескольких шагов (ТЗ-18): «выполнить всё», сбой шага не роняет остальные, след в задаче, выключенная группа', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'AB-run', email: `abr_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const tenantId = String(owner.user.tenantId);
+    const userId = String(owner.user.id);
+    const project = (await http$.post('/api/projects').set(O).send({ name: 'Прогон' }).expect(201)).body.data;
+    const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
+    const task = (await http$.post('/api/tasks').set(O)
+      .send({ projectId: project.id, columnId: board.columns[0].id, title: 'Договор с подрядчиком' }).expect(201)).body.data;
+    const session = (await http$.post('/api/anthill/sessions').set(O).send({}).expect(201)).body.data;
+
+    const run = await repo.createRun({ tenantId, userId, sessionId: String(session.id), intent: 'три дела', steps: 3, risk: 'high_write' });
+    const when = new Date(Date.now() + 3600_000).toISOString();
+    const step = (n: number, tool: string, input: Record<string, unknown>) => repo.createAction({
+      tenantId, sessionId: String(session.id), userId, tool, input, runId: String(run.id), stepNo: n, risk: 'high_write',
+    });
+    await step(1, 'add_comment', { taskId: String(task.id), text: 'Договор согласован' });
+    await step(2, 'update_task', { taskId: '999999999', priority: 'high' }); // такой задачи нет — шаг упадёт
+    await step(3, 'create_reminder', { text: 'позвонить подрядчику', when });
+
+    const r = (await http$.post(`/api/anthill/runs/${run.id}/confirm`).set(O).expect(201)).body.data;
+    expect(r.results.map((x: any) => x.status)).toEqual(['done', 'failed', 'done']);
+    expect(r.status).toBe('completed');
+    expect(r.text).toContain('Сделано 2 из 3');
+    // второй раз подтверждать нечего
+    await http$.post(`/api/anthill/runs/${run.id}/confirm`).set(O).expect(409);
+
+    // след «через QEVO Bot» в истории задачи
+    const activity = (await http$.get(`/api/tasks/${task.id}/activity`).set(O).expect(200)).body.data;
+    const items = Array.isArray(activity) ? activity : activity.items;
+    expect(items.some((a: any) => a.kind === 'via_bot' && a.detail?.tool === 'add_comment')).toBe(true);
+
+    // чужой прогон не подтвердить
+    const mateEmail = `abrm_${uniq()}@t.test`;
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.post(`/api/anthill/runs/${run.id}/confirm`).set(M).expect(404);
+
+    // группа «для себя» выключена владельцем — подготовленная раньше карточка не выполнится
+    const later = await repo.createAction({ tenantId, sessionId: String(session.id), userId, tool: 'create_reminder', input: { text: 'ещё', when } });
+    const saved = (await http$.patch('/api/anthill/admin').set(O).send({ autonomy: { self: 'off', tasks: 'auto' } }).expect(200)).body.data;
+    expect(saved.autonomy).toMatchObject({ self: 'off', tasks: 'auto', messages: 'confirm' });
+    await http$.post(`/api/anthill/actions/${later.id}/confirm`).set(O).expect(409);
+    await http$.patch('/api/anthill/admin').set(O).send({ autonomy: { self: 'auto' } }).expect(200);
+  });
+
   it('память: своя, правится и удаляется; чужую не тронуть', async () => {
     const owner = (await http$.post('/api/auth/register')
       .send({ tenantName: 'AB3', email: `ab3_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
