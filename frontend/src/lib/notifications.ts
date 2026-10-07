@@ -1,4 +1,5 @@
 import { platform } from '../platform';
+import { isQuiet } from './quiet';
 
 /**
  * Уведомления о новых сообщениях.
@@ -27,8 +28,12 @@ export function requestNotificationPermission(): Promise<NotificationPermission 
   return platform.notifications.requestPermission();
 }
 
-/** Показ уведомления. Молча ничего не делает, если разрешения нет. */
-export function showNotification(title: string, body: string, onClick?: () => void): void {
+/**
+ * Показ уведомления. Молча ничего не делает, если разрешения нет — и во время
+ * глубокой работы, кроме критичного (стук «срочно», безопасность).
+ */
+export function showNotification(title: string, body: string, onClick?: () => void, opts?: { critical?: boolean }): void {
+  if (isQuiet() && !opts?.critical) return;
   platform.notifications.show(title, body, onClick);
 }
 
@@ -59,8 +64,13 @@ export interface ToastPayload {
    * «получилось?», а не зовёт куда-то идти.
    */
   kind?: 'info' | 'saved';
+  /** Пробивается сквозь глубокую работу (ТЗ-16): стук «срочно», безопасность. */
+  critical?: boolean;
 }
 export function showToast(payload: ToastPayload): void {
+  // В глубоком фокусе — тишина. Ответ на действие самого человека («сохранено») не
+  // отвлекает: он его и ждёт.
+  if (isQuiet() && !payload.critical && payload.kind !== 'saved') return;
   window.dispatchEvent(new CustomEvent<ToastPayload>(TOAST_EVENT, { detail: payload }));
 }
 

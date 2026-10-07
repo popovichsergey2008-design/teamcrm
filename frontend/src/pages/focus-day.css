@@ -78,6 +78,9 @@
 .fd-gone-body { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .fd-note { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--focus-complete); font-weight: 600; }
 
+.fd-meeting { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--warn) 8%, var(--bg-elev)); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--border)); }
+.fd-meeting > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+
 /* причины замены — чипами, одним нажатием */
 .fd-reasons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 6px; border-top: 1px dashed var(--border); }
 .fd-chip {

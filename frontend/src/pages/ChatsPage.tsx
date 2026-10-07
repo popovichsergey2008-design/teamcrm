@@ -46,6 +46,7 @@ import { useStickyCheck } from '../lib/sticky-checks';
 import { confirmAction, promptText } from '../components/ui/dialog';
 import { initialsOf } from '../lib/initials';
 import { useEnterSend } from '../hooks/useEnterSend';
+import { DeepFocusGuard } from '../components/DeepFocusGuard';
 
 interface Chat {
   id: string; kind: 'dm' | 'group' | 'project' | 'channel' | 'self' | 'external'; title: string | null;
@@ -3012,6 +3013,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   <Icon name="close" size={13} />
                 </button>
               </div>
+            )}
+            {/* Собеседник в глубоком фокусе — честно сказать и дать «постучать» (ТЗ-16). */}
+            {active?.kind === 'dm' && active.peerId && (
+              <DeepFocusGuard peerId={String(active.peerId)} peerName={active.title ?? ''} />
             )}
             <div
               className="chat-input"

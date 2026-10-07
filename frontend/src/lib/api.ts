@@ -247,6 +247,37 @@ export type FocusToday =
     criticalCandidate: (FocusCandidate & { replaceRank: number }) | null;
   };
 
+/** Сессия глубокой работы (ТЗ-16, волна 4): время считает сервер. */
+export interface FocusSession {
+  id: string;
+  status: 'running' | 'paused';
+  plannedMinutes: number;
+  startedAt: string;
+  plannedEndAt: string;
+  pausedAt: string | null;
+  serverNow: string;
+  remainingSeconds: number;
+  finished: boolean;
+  interruptions: number;
+  notes: string;
+  itemId: string | null;
+  task: { id: string; title: string; description: string | null; projectId: string } | null;
+}
+
+export interface TeamPresence {
+  userId: string;
+  fullName: string;
+  avatarUrl: string | null;
+  status: 'in_meeting' | 'deep_focus' | 'do_not_disturb' | 'break' | 'workday_closed' | 'available' | 'offline';
+  source: string;
+  until: string | null;
+  taskId: string | null;
+  taskTitle: string | null;
+  note: string | null;
+  focusSessionId: string | null;
+  online: boolean;
+}
+
 export type FocusChangeReason = 'not_relevant' | 'wrong_priority' | 'done' | 'blocked' | 'other';
 
 /** Сторона объединения задач: та, что остаётся, и та, что помечается объединённой. */
@@ -2192,6 +2223,19 @@ export const api = {
   focusReorder: (ids: string[]) => request<FocusToday>('POST', '/focus/today/items/reorder', { ids }),
   focusDismiss: (key: string) => request<FocusToday>('POST', '/focus/today/dismiss', { key }),
   focusFeedback: (value: 1 | -1) => request<{ ok: true }>('POST', '/focus/today/feedback', { value }),
+  focusSessionCurrent: () => request<FocusSession | null>('GET', '/focus/sessions/current'),
+  focusPreflight: (minutes = 50) =>
+    request<{ meeting: { title: string; startsAt: string; minutesLeft: number } | null }>('GET', `/focus/sessions/preflight?minutes=${minutes}`),
+  focusStart: (b: { taskId?: string | null; itemId?: string | null; minutes?: number }) =>
+    request<FocusSession>('POST', '/focus/sessions', b),
+  focusPause: (id: string) => request<FocusSession>('POST', `/focus/sessions/${id}/pause`),
+  focusResume: (id: string) => request<FocusSession>('POST', `/focus/sessions/${id}/resume`),
+  focusNotes: (id: string, notes: string) => request<{ ok: true }>('PUT', `/focus/sessions/${id}/notes`, { notes }),
+  focusFinish: (id: string, outcome: 'completed' | 'cancelled', takeBreak = false) =>
+    request<{ id: string; status: string; notes: string; taskId: string | null; minutes: number }>('POST', `/focus/sessions/${id}/finish`, { outcome, takeBreak }),
+  knock: (userId: string, reason?: string) => request<{ ok: true; until: string }>('POST', `/users/${userId}/knock`, reason ? { reason } : {}),
+  teamPulse: () => request<TeamPresence[]>('GET', '/team/pulse'),
+  teamPulseOne: (userId: string) => request<TeamPresence | null>('GET', `/team/pulse/${userId}`),
   focusSettings: (enabled: boolean) => request<{ enabled: boolean }>('PATCH', '/focus/today/settings', { enabled }),
   mobileFocus: () => request<{ mine: any[]; delegated: any[]; review: any[]; approvals: Approval[] }>('GET', '/mobile/focus'),
   myTasks: (scope: 'mine' | 'delegated' | 'review', closed = false) =>

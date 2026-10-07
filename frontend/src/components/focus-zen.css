@@ -1,0 +1,66 @@
+/* Окно глубокой работы (ТЗ-16, п. 49). Грузится вместе с ним — не в общий CSS. */
+
+.zen {
+  position: fixed; inset: 0; z-index: 900;
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text);
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+.zen-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; max-width: 760px; width: 100%; margin: 0 auto; }
+.zen-badge { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
+.zen-top-acts { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.zen-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); flex-shrink: 0; }
+
+.zen-body { flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 18px; max-width: 640px; width: 100%; margin: 4vh auto 0; }
+.zen-timer { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.zen-time { font-size: clamp(56px, 14vw, 96px); font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+.zen-bar { width: 100%; height: 6px; border-radius: 99px; background: var(--bg-elev-2); overflow: hidden; }
+.zen-bar > span { display: block; height: 100%; background: var(--brand-gradient, var(--accent)); transition: width 1s linear; }
+.zen-task {
+  all: unset; cursor: pointer; text-align: center; font-size: 20px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere;
+}
+.zen-task:hover { color: var(--accent); }
+.zen-task:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; border-radius: 6px; }
+.zen-task-free { cursor: default; color: var(--text-dim); }
+.zen-task-free:hover { color: var(--text-dim); }
+.zen-dod { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; background: var(--bg-elev); }
+.zen-dod summary { cursor: pointer; font-weight: 600; }
+.zen-dod summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
+.zen-dod p { margin: 8px 0 0; white-space: pre-wrap; color: var(--text-dim); font-size: 14px; }
+.zen-sub { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
+.zen-checks { display: flex; flex-direction: column; gap: 6px; }
+.zen-check { display: flex; align-items: flex-start; gap: 10px; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.zen-check:hover { background: var(--hover); }
+.zen-check input { margin-top: 3px; }
+.zen-check.done span { text-decoration: line-through; color: var(--text-dim); }
+.zen-notes { display: flex; flex-direction: column; gap: 6px; }
+.zen-acts { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+
+.zen-end { display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; margin-top: 6vh; }
+.zen-end h2 { display: inline-flex; align-items: center; gap: 10px; margin: 0; font-size: 26px; }
+.zen-end h2 .icon { color: var(--ok); }
+.zen-end-acts { display: flex; flex-direction: column; gap: 8px; width: min(100%, 340px); }
+.zen-tonote { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+
+/* свёрнутый фокус — плашка в углу, тишина остаётся */
+.zen-pill {
+  position: fixed; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 890;
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 16px; border-radius: 99px; cursor: pointer;
+  border: 1px solid var(--accent-line); background: var(--bg-elev); color: var(--text);
+  box-shadow: var(--shadow-lg); font: inherit;
+}
+.zen-pill:hover { background: var(--hover); }
+.zen-pill:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.zen-pill-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.zen-pill-label { font-size: 13px; color: var(--text-dim); }
+
+@media (max-width: 720px) {
+  /* над нижним меню телефона */
+  .zen-pill { bottom: calc(72px + env(safe-area-inset-bottom)); right: 12px; }
+  .zen-task { font-size: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zen-bar > span { transition: none; }
+}

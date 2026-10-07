@@ -134,9 +134,32 @@ export function playTaskChime(): void {
   note(now + 0.24, 880, 0.30, 0.12); // ля
 }
 
-/** Сигнал о госте, который просится в созвон, — тише и ниже, чем сообщение. */
-export function playKnock(): void {
-  if (doNotDisturb || !soundPrefs().messages) return;
+/**
+ * Конец глубокого фокуса (ТЗ-16, п. 59): мягкий сигнал, который звучит и сквозь
+ * тишину фокуса — он и есть её конец. Отключается своим выключателем, и на экране
+ * при этом всегда есть видимый знак.
+ */
+const KEY_FOCUS = 'teamcrm.sound.focus';
+export const focusSoundOn = () => localStorage.getItem(KEY_FOCUS) !== '0';
+export function setFocusSound(enabled: boolean): void {
+  localStorage.setItem(KEY_FOCUS, enabled ? '1' : '0');
+}
+export function playFocusDone(): void {
+  if (!focusSoundOn()) return;
+  const audio = context();
+  if (!audio) return;
+  const now = audio.currentTime;
+  note(now, 523, 0.30, 0.10);
+  note(now + 0.22, 659, 0.30, 0.10);
+  note(now + 0.44, 784, 0.45, 0.10);
+}
+
+/**
+ * Сигнал о госте, который просится в созвон, — тише и ниже, чем сообщение.
+ * `force` — стук «срочно» в глубокий фокус (ТЗ-16): ради него тишину и нарушают.
+ */
+export function playKnock(force = false): void {
+  if ((doNotDisturb && !force) || !soundPrefs().messages) return;
   const audio = context();
   if (!audio) return;
   const now = audio.currentTime;

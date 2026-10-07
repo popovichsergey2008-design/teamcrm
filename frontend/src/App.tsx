@@ -26,6 +26,7 @@ import { BottomNav } from './components/BottomNav';
 import { Icon } from './components/Icon';
 import { CommandPalette } from './components/CommandPalette';
 import { Toasts } from './components/Toasts';
+import { FocusSessionHost } from './components/FocusSessionHost';
 import { isConsoleHost, mainSiteHref, navigate, parsePath, Section, useRoute } from './lib/router';
 import { lastProject } from './lib/last-project';
 import { dropCache } from './lib/cache';
@@ -748,6 +749,9 @@ export function App() {
         onOpenMeetings={() => navigate({ section: 'chat', view: 'meetings' })}
         onOpenInbox={openInboxItem}
       />
+
+      {/* Глубокая работа (ТЗ-16): таймер поверх всего, тишина, «постучать срочно». */}
+      <FocusSessionHost onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })} />
 
       {/*
         Обновление приложения (просьба заказчика): вышла новая сборка — лист снизу,

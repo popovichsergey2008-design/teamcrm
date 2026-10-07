@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { applyHidden, applyOrder, isHidden, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
-import { setDoNotDisturb } from '../lib/sound';
+import { setQuietSource } from '../lib/quiet';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { Logo } from './Logo';
@@ -282,7 +282,7 @@ export function Sidebar({
   }, []);
 
   // «Не беспокоить» — это в том числе тишина: глубокий фокус глушит и сигналы, и звонок
-  useEffect(() => { setDoNotDisturb(focus?.kind === 'deep'); }, [focus]);
+  useEffect(() => { setQuietSource('manual', focus?.kind === 'deep'); }, [focus]);
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {

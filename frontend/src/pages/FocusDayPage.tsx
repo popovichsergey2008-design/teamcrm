@@ -12,6 +12,7 @@ import { promptText } from '../components/ui/dialog';
 import { api, ApiError, FocusCandidate, FocusChangeReason, FocusItem, FocusToday } from '../lib/api';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import { getSocket } from '../lib/socket';
+import { setFocusSession, useFocusSession } from '../hooks/useFocusSession';
 import { useAuth } from '../state/auth';
 
 type Day = Extract<FocusToday, { enabled: true }>;
@@ -69,6 +70,9 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   const [placing, setPlacing] = useState<FocusCandidate | null>(null);
   const [asking, setAsking] = useState<null | { itemId: string; mode: 'remove' } | { key: string; rank: number; mode: 'replace' }>(null);
   const [criticalOpen, setCriticalOpen] = useState(false);
+  // перед стартом фокуса: встреча раньше его конца (п. 132)
+  const [meetingSoon, setMeetingSoon] = useState<null | { item: FocusItem; title: string; minutesLeft: number }>(null);
+  const { session } = useFocusSession();
 
   const apply = (next: FocusToday) => {
     if (next.enabled) setDay(next);
@@ -160,6 +164,20 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     });
   };
 
+  /** Войти в глубокий фокус по действию плана: сначала — нет ли встречи раньше конца. */
+  const startFocus = async (item: FocusItem, minutes = 50, skipCheck = false) => {
+    setErr('');
+    if (!skipCheck) {
+      const pre = await api.focusPreflight(minutes).catch(() => ({ meeting: null }));
+      if (pre.meeting) { setMeetingSoon({ item, title: pre.meeting.title, minutesLeft: pre.meeting.minutesLeft }); return; }
+    }
+    setMeetingSoon(null);
+    await run(async () => {
+      setFocusSession(await api.focusStart({ taskId: item.taskId, itemId: item.id, minutes }));
+      return api.focusToday();
+    });
+  };
+
   const toggleWhy = (id: string) => setWhy((s) => {
     const n = new Set(s);
     if (n.has(id)) n.delete(id); else n.add(id);
@@ -241,8 +259,14 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
               {item.kind === 'review' && !done && item.taskId && (
                 <Button variant={isMission ? 'primary' : 'outline'} size="sm" onClick={() => open(item)}><Icon name="check-circle" size={14} /> Открыть и принять</Button>
               )}
+              {item.kind === 'task' && !done && item.taskId && !session && (
+                <Button
+                  variant={isMission ? 'primary' : 'outline'} size="sm" disabled={busy}
+                  onClick={() => void startFocus(item)}
+                ><Icon name="target" size={14} /> {isMission ? 'Войти в глубокий фокус · 50 мин' : 'Фокус · 50 мин'}</Button>
+              )}
               {item.kind === 'task' && !done && isMission && item.taskId && (
-                <Button variant="outline" size="sm" onClick={() => open(item)}><Icon name="board" size={14} /> Открыть задачу</Button>
+                <Button variant="ghost" size="sm" onClick={() => open(item)}><Icon name="board" size={14} /> Открыть задачу</Button>
               )}
               {item.reasons.length > 0 && (
                 <Button variant="ghost" size="sm" aria-expanded={showWhy} onClick={() => toggleWhy(item.id)}>
@@ -256,6 +280,18 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
               </ul>
             )}
           </>
+        )}
+        {meetingSoon?.item.id === item.id && (
+          <div className="fd-meeting" role="alertdialog" aria-label="Скоро встреча">
+            <span><Icon name="calendar" size={14} /> У вас встреча «{meetingSoon.title}» через {meetingSoon.minutesLeft} мин.</span>
+            <span className="fd-banner-acts">
+              {meetingSoon.minutesLeft >= 5 && (
+                <Button variant="primary" size="sm" disabled={busy} onClick={() => void startFocus(item, meetingSoon.minutesLeft, true)}>Фокус на {meetingSoon.minutesLeft} мин</Button>
+              )}
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => void startFocus(item, 50, true)}>Начать 50 минут всё равно</Button>
+              <Button variant="ghost" size="sm" onClick={() => setMeetingSoon(null)}>Отмена</Button>
+            </span>
+          </div>
         )}
         {asking && 'itemId' in asking && asking.itemId === item.id && reasonPicker((r) => {
           setAsking(null);
