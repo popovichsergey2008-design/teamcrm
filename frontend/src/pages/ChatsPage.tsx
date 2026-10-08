@@ -1057,9 +1057,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   }, [initialChatId, initialThreadId, openChat]);
 
   useEffect(() => {
-    onActiveChat?.(activeId);
+    // Открыт QEVO Bot — адрес /chat/anthill: по нему вкладка «Секретарь» знает, что она
+    // активна, и ссылку на бота можно переслать (ТЗ-18).
+    onActiveChat?.(view === 'anthill' ? 'anthill' : activeId);
     return () => onActiveChat?.(null); // ушли из раздела — уведомления снова нужны
-  }, [activeId, onActiveChat]);
+  }, [activeId, view, onActiveChat]);
 
   /**
    * Скриншот из буфера — как в мессенджерах: Ctrl+V, и картинка в переписке.

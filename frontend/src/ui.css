@@ -1027,6 +1027,10 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
   box-shadow: none; border: 1px solid var(--accent-line); transition: background-color .12s, border-color .12s;
 }
 .nav-support-fab:hover { filter: none; transform: none; background: var(--hover); border-color: var(--border-2); }
+/* Секретарь (ТЗ-18) — залитым кружком: его должно быть видно, служба заботы рядом остаётся спокойной */
+/* --fill-info, а не --accent: в тёмной теме акцент — пастель, белый значок по нему не читается */
+.nav-bot-fab, .nav-bot-fab:hover { background: var(--fill-info); color: var(--on-accent); border-color: var(--fill-info); }
+.nav-bot-fab:hover { filter: brightness(1.1); }
 .nav-secretary {
   gap: 10px; padding: 7px 10px; margin: 0; border: 0; border-radius: var(--radius-sm);
   background: none; color: var(--text);

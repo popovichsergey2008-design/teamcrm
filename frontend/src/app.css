@@ -364,7 +364,7 @@
   вернуть, только в левой панели. Строка под ним подписывает кружок словами; в
   свёрнутой панели остаётся один кружок — он и так узнаваем.
 */
-.nav-support-wrap { display: flex; justify-content: center; padding: 4px 0 2px; }
+.nav-support-wrap { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; padding: 4px 0 2px; }
 .nav-support-fab {
   display: inline-grid; place-items: center;
   width: 42px; height: 42px; padding: 0;

@@ -716,7 +716,20 @@ export function Sidebar({
             хотел именно его). Строки с подписью под ним нет: раздел «Служба заботы» и так
             есть в списке разделов выше, и две одинаковые строки подряд читались как ошибка.
           */}
+          {/*
+            QEVO Bot — личный секретарь (ТЗ-18) — рядом со службой заботы: в списке чатов
+            его не находили («его там в чатах никто не найдёт в жизни», заказчик 08.10).
+            Кружок открывает бота на весь экран; виден из любого раздела.
+          */}
           <div className="nav-support-wrap">
+            <button
+              className="nav-support-fab nav-bot-fab"
+              onClick={() => { setOpen(false); navigate({ section: 'chat', chatId: 'anthill' }); }}
+              title="QEVO Bot — ваш секретарь: напоминания, сводки, встречи, почта"
+              aria-label="Открыть QEVO Bot — секретаря"
+            >
+              <Icon name="robot" size={20} />
+            </button>
             <button className="nav-support-fab" onClick={() => { setOpen(false); openSupport(); }} title="Написать в службу заботы" aria-label="Написать в службу заботы">
               <Icon name="support" size={20} />
             </button>
