@@ -28,6 +28,7 @@ import { MONETIZATION_ENABLED } from '../config';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { Button } from '../components/ui/button';
 import { confirmAction, promptText } from '../components/ui/dialog';
+import { useTitleHint } from '../lib/page-title';
 
 /*
   Карточка задачи (с чатом, редактором описания, вкладками) и окно создания грузятся
@@ -124,6 +125,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [board, dispatch] = useReducer(reducer, null);
+  useTitleHint(board?.project ? `project:${board.project.id}` : null, board?.project?.name);
   const [pnl, setPnl] = useState<Pnl | null>(null);
   const [cow, setCow] = useState<CostOfWork | null>(null);
   const [alert, setAlert] = useState<string | null>(null);

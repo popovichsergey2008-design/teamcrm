@@ -47,6 +47,7 @@ import { confirmAction, promptText } from '../components/ui/dialog';
 import { initialsOf } from '../lib/initials';
 import { useEnterSend } from '../hooks/useEnterSend';
 import { DeepFocusGuard } from '../components/DeepFocusGuard';
+import { useTitleHint } from '../lib/page-title';
 
 interface Chat {
   id: string; kind: 'dm' | 'group' | 'project' | 'channel' | 'self' | 'external'; title: string | null;
@@ -1778,6 +1779,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   };
 
   const active = chats.find((c) => String(c.id) === String(activeId)) ?? null;
+  useTitleHint(active ? `chat:${active.id}` : null, active?.title);
   /*
     Группировка списка: избранное, каналы, потом всё остальное.
 

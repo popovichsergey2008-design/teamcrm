@@ -29,6 +29,8 @@ import { CommandPalette } from './components/CommandPalette';
 import { Toasts } from './components/Toasts';
 import { FocusSessionHost } from './components/FocusSessionHost';
 import { isConsoleHost, mainSiteHref, navigate, parsePath, Section, useRoute } from './lib/router';
+import { pageTitleFor, TITLE_HINTS_EVENT } from './lib/page-title';
+import { setPageTitle } from './lib/tab-alert';
 import { lastProject } from './lib/last-project';
 import { dropCache } from './lib/cache';
 import { START_CALL_EVENT, StartCallRequest } from './lib/notifications';
@@ -143,6 +145,17 @@ function useDeepLinks(signedIn: boolean): void {
 export function App() {
   const { user, organizations, loading, logout, switchOrg, createOrg } = useAuth();
   const route = useRoute();
+  /*
+    Заголовок вкладки по странице (#1516): ссылка, скопированная из браузера, несёт имя
+    задачи, а не голое «QEVO». Имена сообщают экраны; пересчёт — на смену адреса и имён.
+  */
+  const [titleTick, setTitleTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setTitleTick((n) => n + 1);
+    window.addEventListener(TITLE_HINTS_EVENT, bump);
+    return () => window.removeEventListener(TITLE_HINTS_EVENT, bump);
+  }, []);
+  useEffect(() => { setPageTitle(pageTitleFor(route)); }, [route, titleTick]);
   useAppHeight();
   useDeepLinks(!!user);
   /** На странице встречи нажали «Я сотрудник — войти»: показываем вход, адрес встречи остаётся. */

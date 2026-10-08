@@ -21,9 +21,20 @@ let alertText = '';
 let timer: ReturnType<typeof setInterval> | null = null;
 let inverted = false;
 let listening = false;
+/** Что открыто: «#1137 Название задачи», «Проект Сайт» (#1516); пусто — просто QEVO. */
+let page = '';
 
-/** Спокойный заголовок: с числом непрочитанных, если они есть. */
-const calmTitle = () => (unread > 0 ? `(${unread}) ${BASE_TITLE}` : BASE_TITLE);
+/** Спокойный заголовок: с числом непрочитанных, если они есть, и страницей перед именем продукта. */
+const calmTitle = () => {
+  const base = page ? `${page} · ${BASE_TITLE}` : BASE_TITLE;
+  return unread > 0 ? `(${unread}) ${base}` : base;
+};
+
+/** Заголовок открытой страницы — его считает App по адресу (lib/page-title). */
+export function setPageTitle(text: string): void {
+  page = text.trim().slice(0, 120);
+  render();
+}
 
 function render(): void {
   document.title = alertText && inverted ? `(!) ${alertText}` : calmTitle();

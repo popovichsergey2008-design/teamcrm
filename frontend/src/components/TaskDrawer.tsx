@@ -36,6 +36,7 @@ import { Field } from './ui/field';
 import { Input } from './ui/input';
 import { Select } from './ui/select';
 import { Tabs } from './ui/tabs';
+import { useTitleHint } from '../lib/page-title';
 
 interface Props {
   task: Task;
@@ -81,6 +82,8 @@ function orderColumns(columns: { id: string; name: string }[], mode: 'finish' | 
 
 export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
+  // заголовок вкладки «#1137 Название» — ссылка из браузера скажет, о какой задаче речь (#1516)
+  useTitleHint(task.id ? `task:${task.id}` : null, task.title ? `#${task.id} ${task.title}` : null);
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
   const [estimate, setEstimate] = useState(task.estimate_hours ?? '');
   // формат поля — локальное время; toISOString здесь давал сдвиг на часовой пояс и показывал чужой час

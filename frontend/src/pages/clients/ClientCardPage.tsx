@@ -16,6 +16,7 @@ import { toastSaved } from '../../lib/notifications';
 import { ago, dateTimeRu, HEALTH, money, SOURCE, STAGE, STATUS, STATUS_KEYS, TYPE } from './labels';
 import { ContactsTab, DealsTab, NotesTab, ActivityTab, FilesTab, TasksTab, MeetingsTab, ChatsTab, ProjectsTab, ProfileTab } from './tabs';
 import { QuickTaskDialog, QuickMeetingDialog, MergeDialog } from './dialogs';
+import { useTitleHint } from '../../lib/page-title';
 
 type Tab = 'overview' | 'contacts' | 'deals' | 'projects' | 'tasks' | 'meetings' | 'chats' | 'files' | 'notes' | 'activity' | 'profile';
 
@@ -28,6 +29,7 @@ const SOURCE_RU: Record<string, string> = { manual: 'записано вручн
  */
 export function ClientCardPage({ clientId }: { clientId: string }) {
   const [card, setCard] = useState<ClientCard | null>(null);
+  useTitleHint(`client:${clientId}`, card?.client.name);
   const [err, setErr] = useState('');
   const [tab, setTab] = useState<Tab>('overview');
   const [why, setWhy] = useState(false);
