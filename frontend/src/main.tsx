@@ -37,7 +37,7 @@ function reportShellCrash(where: string, e: unknown): void {
   const err = e as { message?: string; stack?: string } | undefined;
   const stack = `${where}: ${err?.stack ?? err?.message ?? String(e)}`.slice(0, 15_000);
   try {
-    void fetch('https://anthill.team/api/mobile/crash', {
+    void fetch('https://qevo.one/api/mobile/crash', {
       method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ appVersion: `js ${platform.info().bundleVersion}`, device: platform.info().model ?? undefined, os: navigator.userAgent.slice(0, 40), stack, at: new Date().toISOString() }),
     });

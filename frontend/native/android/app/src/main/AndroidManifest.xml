@@ -21,12 +21,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- App Links: ссылки anthill.team открываются приложением (подтверждение —
+            <!-- App Links: ссылки qevo.one (и прежнего anthill.team) открываются приложением (подтверждение —
                  assetlinks.json на домене, волна 4). Путь тот же, что в вебе. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="qevo.one" />
+                <data android:scheme="https" android:host="www.qevo.one" />
                 <data android:scheme="https" android:host="anthill.team" />
                 <data android:scheme="https" android:host="www.anthill.team" />
             </intent-filter>

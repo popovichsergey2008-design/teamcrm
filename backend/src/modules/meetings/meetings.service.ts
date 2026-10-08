@@ -370,7 +370,7 @@ export class MeetingsService {
   }
 
   private base(): string {
-    return (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, '');
+    return (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, '');
   }
 
   private async analyze(tenantId: string, meetingId: string, projectId: string | null, replies: Reply[]): Promise<void> {

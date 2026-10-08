@@ -79,7 +79,7 @@ export class AnthillService {
     this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail });
   }
 
-  private base() { return (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, ''); }
+  private base() { return (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, ''); }
 
   // ── сессии ──
   sessions(tenantId: string, userId: string) {

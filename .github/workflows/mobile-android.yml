@@ -127,7 +127,7 @@ jobs:
             const [v, min, force, notes, sha, size] = process.argv.slice(1);
             const out = {
               latestNative: v, minimumNative: min, force: force === "true",
-              apkUrl: `https://anthill.team/app/qevo-${v}.apk`, sha256: sha, sizeBytes: Number(size),
+              apkUrl: `https://qevo.one/app/qevo-${v}.apk`, sha256: sha, sizeBytes: Number(size),
               notes: notes || undefined, publishedAt: new Date().toISOString(),
             };
             require("fs").writeFileSync("latest.json", JSON.stringify(out, null, 2) + "\n");
@@ -153,4 +153,4 @@ jobs:
           ssh -i ~/.ssh/deploy_key "$TARGET" 'mkdir -p /opt/teamcrm/nginx/html/app'
           scp -i ~/.ssh/deploy_key "qevo-$VERSION.apk" "$TARGET:/opt/teamcrm/nginx/html/app/qevo-$VERSION.apk"
           scp -i ~/.ssh/deploy_key latest.json "$TARGET:/opt/teamcrm/nginx/html/app/latest.json"
-          curl -fsS "https://anthill.team/app/latest.json"
+          curl -fsS "https://qevo.one/app/latest.json"

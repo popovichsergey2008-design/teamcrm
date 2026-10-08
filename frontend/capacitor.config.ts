@@ -4,7 +4,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * Оболочка Capacitor для Android и iOS (ТЗ-9, волна 2).
  *
  * Внутри — тот же веб-фронт из `dist-capacitor` (сборка `npm run build:capacitor`):
- * бандл лежит на устройстве, API — на anthill.team (см. src/lib/origin.ts). Нативные
+ * бандл лежит на устройстве, API — на qevo.one (см. src/lib/origin.ts). Нативные
  * проекты живут в `native/android` и `native/ios`, генерируются `npx cap add` и
  * обновляются `npx cap sync` после каждой сборки бандла.
  */
@@ -26,7 +26,7 @@ const config: CapacitorConfig = {
       браузер (Custom Tabs / Safari), чтобы чужой сайт не открывался внутри приложения
       с нашим мостом в ОС.
     */
-    allowNavigation: ['anthill.team', '*.anthill.team'],
+    allowNavigation: ['qevo.one', '*.qevo.one', 'anthill.team', '*.anthill.team'],
   },
   plugins: {
     SplashScreen: { launchAutoHide: true, launchShowDuration: 600, backgroundColor: '#f5f1ea' },

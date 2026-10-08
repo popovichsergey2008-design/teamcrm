@@ -147,6 +147,8 @@ export function buildIcs(event: IcsEvent): string {
 }
 
 /** Стабильный идентификатор встречи: по нему внешний календарь понимает правку и отмену. */
+// host остаётся прежним и после переезда на qevo.one: по UID календари узнают уже разосланные
+// встречи, и смена имени превратила бы каждое обновление в новую встречу-дубль.
 export function icsUid(tenantId: string, eventId: string, host = 'anthill.team'): string {
   return `teamcrm-${tenantId}-${eventId}@${host}`;
 }

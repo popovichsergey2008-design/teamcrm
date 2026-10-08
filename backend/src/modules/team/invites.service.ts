@@ -51,7 +51,7 @@ export class InvitesService {
     input: { emails: string[]; role: string; positionId?: string | null },
   ) {
     const who = await this.repo.inviterContext(tenantId, invitedBy);
-    const base = (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, '');
+    const base = (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, '');
     return this.createMany(tenantId, invitedBy, input, {
       orgName: who?.org_name ?? 'компанию',
       inviterName: who?.inviter_name ?? 'Коллега',

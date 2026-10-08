@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Включение адреса консоли техподдержки — console.anthill.team (ТЗ-8).
+# Включение адреса консоли техподдержки — console.qevo.one (ТЗ-8).
 #
 # Зачем скрипт, а не «сходил руками»: шаг делается редко, а ошибиться в нём легко —
 # выпустить сертификат до A-записи нельзя, а добавить в nginx путь к ещё не выпущенному
 # сертификату значит уронить весь сайт. Здесь порядок зафиксирован и проверяется.
 #
 # Что делает:
-#   1) убеждается, что console.anthill.team уже указывает на ЭТОТ сервер;
-#   2) расширяет существующий сертификат anthill.team новым именем (webroot, без
+#   1) убеждается, что console.qevo.one уже указывает на ЭТОТ сервер;
+#   2) расширяет существующий сертификат qevo.one новым именем (webroot, без
 #      остановки nginx — ACME-челлендж отдаёт тот же контейнер);
 #   3) мягко перечитывает конфигурацию edge-nginx: живые соединения не рвутся.
 #
@@ -17,8 +17,8 @@
 # Запуск на сервере:  bash /opt/teamcrm/deploy/console-domain.sh
 set -euo pipefail
 
-DOMAIN="${CONSOLE_DOMAIN:-console.anthill.team}"
-BASE="${BASE_DOMAIN:-anthill.team}"
+DOMAIN="${CONSOLE_DOMAIN:-console.qevo.one}"
+BASE="${BASE_DOMAIN:-qevo.one}"
 WEBROOT=/opt/teamcrm/nginx/html
 COMPOSE_DIR=/opt/teamcrm
 
@@ -40,11 +40,11 @@ fi
 say "A-запись на месте: $DOMAIN → $got"
 
 # ── 2. сертификат ──
-# --expand добавляет имя в СУЩЕСТВУЮЩИЙ сертификат anthill.team, а не заводит второй:
+# --expand добавляет имя в СУЩЕСТВУЮЩИЙ сертификат qevo.one, а не заводит второй:
 # один файл на все имена сайта проще обновлять и невозможно перепутать в конфигурации.
 say "расширяем сертификат $BASE именем $DOMAIN"
 sudo certbot certonly --webroot -w "$WEBROOT" \
-  --cert-name "$BASE" -d "$BASE" -d "www.$BASE" -d "$DOMAIN" \
+  --cert-name "$BASE" -d "$BASE" -d "www.$BASE" -d "console.$BASE" -d "dev.$BASE" \
   --expand --non-interactive --agree-tos --keep-until-expiring
 
 # ── 3. мягкий reload ──

@@ -284,7 +284,7 @@ export class PushService {
 
   /** Путь внутри приложения из первой ссылки на наш домен в письме. */
   static pathOf(text: string): string | null {
-    const base = (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, '');
+    const base = (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, '');
     const m = new RegExp(`${base.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}(/[^\\s)>"']*)`).exec(text ?? '');
     if (!m) return null;
     // ссылки на API (отписка) — не маршрут приложения

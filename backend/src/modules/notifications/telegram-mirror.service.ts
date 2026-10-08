@@ -78,7 +78,7 @@ export class TelegramMirror {
         ? `${who} упомянул вас${m.chatTitle ? ` в «${m.chatTitle}»` : ''}`
         : `Личное сообщение от ${who}`;
       const body = String(m.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 400) || 'вложение';
-      const base = (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, '');
+      const base = (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, '');
       await this.sender.sendMessage(chatId, `${head}:\n${body}\n${base}${m.path}`);
       return true;
     } catch (e) {

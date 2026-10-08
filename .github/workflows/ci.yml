@@ -176,12 +176,12 @@ jobs:
             bash /opt/teamcrm/deploy/release.sh
           '
 
-  # Новый интерфейс (ТЗ-15) — на dev.anthill.team, пока не готов к проду.
+  # Новый интерфейс (ТЗ-15) — на dev.qevo.one, пока не готов к проду.
   # Ветка ui-v2 меняет только интерфейс: API, база и созвоны — общие с продом, поэтому
   # здесь ни миграций, ни перезапуска контейнеров. Собираем, сжимаем и подменяем
   # каталог одним переименованием: открытая вкладка не ловит полусобранный набор.
   deploy-dev:
-    name: Deploy UI to dev.anthill.team
+    name: Deploy UI to dev.qevo.one
     needs: [frontend]
     if: github.ref == 'refs/heads/ui-v2' && github.event_name == 'push'
     runs-on: ubuntu-latest

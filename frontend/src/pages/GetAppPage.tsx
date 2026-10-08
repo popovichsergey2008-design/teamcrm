@@ -50,7 +50,7 @@ export function GetAppPage() {
           <h2><Icon name="phone" size={18} /> Android</h2>
           {release === undefined && <p className="dim">Ищем последнюю версию…</p>}
           {release === null && (
-            <p className="dim">Приложение ещё не выпущено. Пока откройте anthill.team в браузере телефона — там работает всё то же самое.</p>
+            <p className="dim">Приложение ещё не выпущено. Пока откройте qevo.one в браузере телефона — там работает всё то же самое.</p>
           )}
           {release && (
             <>
@@ -80,7 +80,7 @@ export function GetAppPage() {
           <h2><Icon name="phone" size={18} /> iPhone и iPad</h2>
           <p>Приложение ставится из Safari — без App Store, за три касания:</p>
           <ol className="getapp-steps">
-            <li>Откройте <b>anthill.team</b> в Safari (в другом браузере кнопки не будет).</li>
+            <li>Откройте <b>qevo.one</b> в Safari (в другом браузере кнопки не будет).</li>
             <li>Нажмите «Поделиться» <Icon name="upload" size={14} /> внизу экрана.</li>
             <li>Выберите «На экран “Домой”» и подтвердите.</li>
           </ol>

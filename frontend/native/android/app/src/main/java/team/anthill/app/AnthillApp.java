@@ -29,7 +29,7 @@ import java.util.TimeZone;
  * запрещает, а ждать вечно нельзя, иначе падение превратится в зависание.
  */
 public class AnthillApp extends Application {
-    private static final String CRASH_URL = "https://anthill.team/api/mobile/crash";
+    private static final String CRASH_URL = "https://qevo.one/api/mobile/crash";
     private static final int WAIT_MS = 4000;
     private static final int MAX_STACK = 15000;
 

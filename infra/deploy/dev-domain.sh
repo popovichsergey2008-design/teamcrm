@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Сертификат для dev.anthill.team — адреса нового интерфейса (ТЗ-15).
+# Сертификат для dev.qevo.one — адреса нового интерфейса (ТЗ-15).
 #
 # Порядок тот же, что в console-domain.sh: имя уже стоит в server_name своего блока
-# (nginx/conf.d/default.conf) и ссылается на сертификат anthill.team, так что nginx
+# (nginx/conf.d/default.conf) и ссылается на сертификат qevo.one, так что nginx
 # поднимается и без него — браузер лишь ругается на имя. Здесь сертификат расширяется
 # новым именем, после чего мягкий reload — и адрес открывается без предупреждений.
 #
@@ -11,8 +11,8 @@
 # Запуск на сервере:  bash /opt/teamcrm/deploy/dev-domain.sh
 set -euo pipefail
 
-DOMAIN=dev.anthill.team
-BASE=anthill.team
+DOMAIN=dev.qevo.one
+BASE=qevo.one
 WEBROOT=/opt/teamcrm/nginx/html
 
 say() { echo "[dev-domain] $*"; }
@@ -26,7 +26,7 @@ fi
 say "A-запись на месте: $DOMAIN → $got"
 
 sudo certbot certonly --webroot -w "$WEBROOT" \
-  --cert-name "$BASE" -d "$BASE" -d "www.$BASE" -d "console.$BASE" -d "$DOMAIN" \
+  --cert-name "$BASE" -d "$BASE" -d "www.$BASE" -d "console.$BASE" -d "dev.$BASE" \
   --expand --non-interactive --agree-tos --keep-until-expiring
 
 cd /opt/teamcrm

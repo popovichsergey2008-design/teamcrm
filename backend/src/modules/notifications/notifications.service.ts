@@ -23,7 +23,7 @@ export class NotificationsService {
 
   /** Базовый адрес для ссылок в письмах: письмо бесполезно, если ссылка ведёт в никуда. */
   private baseUrl(): string {
-    return (process.env.APP_BASE_URL || 'https://anthill.team').replace(/\/+$/, '');
+    return (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, '');
   }
 
   /**
