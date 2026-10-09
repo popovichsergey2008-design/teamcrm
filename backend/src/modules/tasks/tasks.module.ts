@@ -28,6 +28,6 @@ import { TagsModule } from '../tags/tags.module';
     FollowupsRepository, FollowupsScheduler,
     TaskMergeService, TaskMergeRepository,
   ],
-  exports: [TasksService, TasksRepository, TaskActivityRepository, TaskRecurrenceRepository, TaskReadsModule],
+  exports: [TasksService, TasksRepository, TaskActivityRepository, TaskRecurrenceRepository, TaskReadsModule, FollowupsRepository],
 })
 export class TasksModule {}

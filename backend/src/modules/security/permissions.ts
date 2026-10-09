@@ -32,6 +32,8 @@ export const PERMISSIONS = [
   'chat.view', 'chat.write', 'file.download',
   // «Фокус дня» (ТЗ-16): кто чем занят в команде и «постучать срочно» в глубокий фокус
   'focus.view_team', 'focus.knock',
+  // «Пульс команды» (ТЗ-19): видеть, выполнять действия, балансировать, публиковать победы
+  'radar.view', 'radar.execute_actions', 'radar.rebalance', 'radar.publish_news',
   // ИИ и автоматизации
   'ai.use', 'ai.manage',
   // интеграции, выгрузки, безопасность
@@ -97,6 +99,7 @@ const BASE: Record<BaseRole, PermissionMap> = {
     'client.view': ALL, 'client.create': ALL, 'client.edit': ALL, 'client.archive': ALL, 'client.delete': NO, 'client.export': ALL,
     'chat.view': ALL, 'chat.write': ALL, 'file.download': ALL,
     'focus.view_team': ALL, 'focus.knock': ALL,
+    'radar.view': ALL, 'radar.execute_actions': ALL, 'radar.rebalance': ALL, 'radar.publish_news': ALL,
     'ai.use': ALL, 'ai.manage': ALL,
     'integration.view': ALL, 'integration.manage': NO,
     'export.create': ALL,
@@ -114,6 +117,8 @@ const BASE: Record<BaseRole, PermissionMap> = {
     'client.view': ALL, 'client.create': ALL, 'client.edit': ALL, 'client.archive': NO, 'client.delete': NO, 'client.export': NO,
     'chat.view': ALL, 'chat.write': ALL, 'file.download': ALL,
     'focus.view_team': ALL, 'focus.knock': ALL,
+    // Пульс — экран руководителя; сотруднику владелец может выдать отдельно
+    'radar.view': NO, 'radar.execute_actions': NO, 'radar.rebalance': NO, 'radar.publish_news': NO,
     'ai.use': ALL, 'ai.manage': NO,
     'integration.view': ALL, 'integration.manage': NO,
     'export.create': ALL,

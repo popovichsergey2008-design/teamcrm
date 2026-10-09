@@ -43,7 +43,7 @@ export class RadarRepository {
               COUNT(t.id) FILTER (WHERE t.closed_at IS NULL AND t.deadline_at < now())::int AS overdue,
               MIN(t.deadline_at) FILTER (WHERE t.closed_at IS NULL) AS next_deadline
          FROM projects p
-         LEFT JOIN tasks t ON t.project_id = p.id AND t.tenant_id = p.tenant_id
+         LEFT JOIN tasks t ON t.project_id = p.id AND t.tenant_id = p.tenant_id AND t.deleted_at IS NULL
         WHERE p.tenant_id = $1 AND p.status <> 'archived'
         GROUP BY p.id, p.name
         ORDER BY overdue DESC, total DESC
@@ -125,7 +125,7 @@ export class RadarRepository {
          COUNT(*) FILTER (WHERE closed_at >= now() - interval '14 days'
                             AND closed_at <  now() - interval '7 days')::int AS prev7
          FROM tasks
-        WHERE tenant_id = $1 AND closed_at IS NOT NULL`,
+        WHERE tenant_id = $1 AND closed_at IS NOT NULL AND deleted_at IS NULL`,
       [tenantId],
     );
   }

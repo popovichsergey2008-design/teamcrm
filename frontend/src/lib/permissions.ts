@@ -46,6 +46,10 @@ const TITLES: Record<string, string> = {
   'file.download': 'Скачивать файлы',
   'focus.view_team': 'Видеть, кто чем занят в команде',
   'focus.knock': 'Стучать в глубокий фокус коллеги',
+  'radar.view': 'Видеть «Пульс команды»',
+  'radar.execute_actions': 'Действовать из «Пульса»: вопрос, срок, переназначение',
+  'radar.rebalance': 'Перераспределять нагрузку',
+  'radar.publish_news': 'Публиковать победы команды',
 
   'ai.use': 'Пользоваться ИИ',
   'ai.manage': 'Настраивать ИИ',
@@ -78,7 +82,7 @@ export const PERMISSION_GROUPS: { title: string; items: string[] }[] = [
   },
   {
     title: 'Переписка и файлы',
-    items: ['chat.view', 'chat.write', 'file.download', 'focus.view_team', 'focus.knock'],
+    items: ['chat.view', 'chat.write', 'file.download', 'focus.view_team', 'focus.knock', 'radar.view', 'radar.execute_actions', 'radar.rebalance', 'radar.publish_news'],
   },
   {
     title: 'Люди и организация',
