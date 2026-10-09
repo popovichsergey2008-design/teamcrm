@@ -983,6 +983,16 @@ export const api = {
   search: (q: string) => request<SearchResults>('GET', `/search?q=${encodeURIComponent(q)}`),
 
   /** Сводка «Пульса команды»: проекты, загрузка людей, узкие места, скорость. */
+  /** «Пульс команды» как командный центр (ТЗ-19): всё одним запросом. */
+  pulse: () => request<PulseSummary>('GET', `/radar/summary?tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || '')}`),
+  pulsePreview: (i: { type: PulseActionType; taskId?: string; toUserId?: string; date?: string; text?: string }) =>
+    request<{ id: string; preview: string }>('POST', '/radar/actions/preview', i),
+  pulseConfirm: (id: string) => request<{ status: string; text: string }>('POST', `/radar/actions/${id}/confirm`, {}),
+  pulseReject: (id: string) => request<{ status: string }>('POST', `/radar/actions/${id}/reject`, {}),
+  pulseRebalance: (userId: string) => request<PulseRebalance>('POST', `/radar/rebalance/${userId}/preview`, {}),
+  pulseFeedback: (kind: string, ref: string, reason: string) => request<{ ok: boolean }>('POST', '/radar/feedback', { kind, ref, reason }),
+  pulseTarget: (projectId: string, date: string | null) => request<{ targetDate: string | null }>('PATCH', `/radar/projects/${projectId}/target`, { date }),
+  pulseNorm: (userId: string, norm: number | null) => request<{ norm: number }>('PATCH', `/radar/people/${userId}/norm`, { norm }),
   radar: () => request<{
     projects: { id: string; name: string; total: number; closed: number; overdue: number; next_deadline: string | null }[];
     people: { user_id: string; full_name: string; open: number; overdue: number; due_today: number }[];
@@ -2688,6 +2698,30 @@ export interface SecretaryPrefs {
   morningAt: string | null; eveningAt: string | null; weekdaysOnly: boolean;
   channels: { push: boolean; telegram: boolean };
   meetingBriefMin: number | null; vipUserIds: string[];
+}
+/** «Пульс команды» (ТЗ-19). */
+export type PulseActionType = 'TASK_NUDGE' | 'TASK_REASSIGN' | 'TASK_RESCHEDULE' | 'TASK_CREATE_MEETING' | 'REVIEW_REMINDER' | 'TASK_FOCUS' | 'PUBLISH_NEWS';
+export type PulseZone = 'healthy' | 'attention' | 'risk' | 'critical';
+export interface PulseForecast {
+  date: string | null; perWeek: number; confidence: number; reliable: boolean; delayDays: number | null;
+  neededPerWeek: number | null; factors: string[]; version: string;
+}
+export interface PulseSummary {
+  generatedAt: string;
+  health: { score: number; zone: PulseZone; components: Record<'delivery' | 'deadlines' | 'flow' | 'capacity' | 'velocity', number>; version: string };
+  verdict: { headline: string; lines: string[]; sources: { projects: number; tasks: number; stuck: number; people: number; last7: number; prev7: number } };
+  decisions: { kind: string; id: string; title: string; who: string | null; since: string; dueAt: string | null; taskId: string | null; projectId: string | null; clientId: string | null; urgent: boolean; score: number }[];
+  bottlenecks: { taskId: string; title: string; projectId: string; projectName: string; assignee: string | null; type: string; typeTitle: string; why: string; actions: PulseActionType[]; severity: number; priority: string }[];
+  workload: { id: string; name: string; pct: number; band: 'available' | 'normal' | 'high' | 'overloaded'; norm: number; risk: string; available: boolean; points: number; active: number; urgent: number; overdue: number; dueSoon: number; reviews: number; meetingHours: number }[];
+  velocity: { last7: number; prev7: number; delta: number | null; label: string };
+  victories: string[];
+  projects: { id: string; name: string; targetDate: string | null; open: number; progress: number; overdue: number; stuck: number; risk: { score: number; level: 'high' | 'medium' | 'low' }; forecast: PulseForecast; catchUp: string[] }[];
+  allProjects: { id: string; name: string; targetDate: string | null; open: number; forecast: PulseForecast; catchUp: string[] }[];
+  can: { act: boolean; rebalance: boolean; publish: boolean; editNorms: boolean };
+}
+export interface PulseRebalance {
+  id: string | null; moves: { taskId: string; title: string; toId: string; toName: string; reason: string }[];
+  before: number; after: number; loads: { id: string; name: string; before: number; after: number }[]; fromName?: string; note?: string;
 }
 /** Напоминание бота (ТЗ-18): разовое или с повтором. */
 export interface AnthillReminder { id: string; text: string; dueAt: string; repeat: string | null; sent: number }

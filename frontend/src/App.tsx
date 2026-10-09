@@ -9,7 +9,6 @@ import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { JoinOrgPage } from './pages/JoinOrgPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { FocusPage } from './pages/FocusPage';
-import { RadarPage } from './pages/RadarPage';
 import { TasksPage } from './pages/TasksPage';
 import { toScope } from './lib/task-registry-view';
 import { ChatsPage } from './pages/ChatsPage';
@@ -38,7 +37,6 @@ import { useShortcuts } from './hooks/useShortcuts';
 import { lazyComponent } from './lib/lazy';
 import { SecretaryPanel } from './components/SecretaryPanel';
 import { prefetchFocus } from './pages/FocusPage';
-import { prefetchRadar } from './pages/RadarPage';
 import { ChatBar } from './components/chatbar/ChatBar';
 import { openSupport, SupportDock } from './components/support/SupportDock';
 import { platform } from './platform';
@@ -70,6 +68,9 @@ const GetAppPage = lazy(() => import('./pages/GetAppPage').then((m) => ({ defaul
 const TaskBatchPage = lazy(() => import('./pages/TaskBatchPage').then((m) => ({ default: m.TaskBatchPage })));
 // Клиенты (ТЗ-17) — отдельным куском: пока раздел только в сборке для dev
 const ClientsPage = lazy(() => import('./pages/clients/ClientsPage').then((m) => ({ default: m.ClientsPage })));
+// «Пульс команды» (ТЗ-19) — своим куском сборки со своими стилями: экран руководителя, первый экран за него не платит
+const PulsePage = lazy(() => import('./pages/PulsePage').then((m) => ({ default: m.PulsePage })));
+const prefetchRadar = () => { void import('./pages/PulsePage').then((m) => m.prefetchPulse()); };
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 const FeedPage = lazy(() => import('./pages/FeedPage').then((m) => ({ default: m.FeedPage })));
 const MeetingsPage = lazy(() => import('./pages/MeetingsPage').then((m) => ({ default: m.MeetingsPage })));
@@ -699,7 +700,7 @@ export function App() {
         {route.section === 'tasks' && route.view === 'created' && route.taskIds && (
           <Suspense fallback={pageFallback}><TaskBatchPage taskIds={route.taskIds} /></Suspense>
         )}
-        {route.section === 'radar' && canManage && <RadarPage />}
+        {route.section === 'radar' && canManage && <Suspense fallback={pageFallback}><PulsePage /></Suspense>}
         {route.section === 'clients' && CLIENTS_ENABLED && (
           <Suspense fallback={pageFallback}><ClientsPage clientId={route.clientId} /></Suspense>
         )}

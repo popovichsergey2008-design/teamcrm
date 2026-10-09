@@ -1,0 +1,109 @@
+/*
+  «Пульс команды» (ТЗ-19). Файл грузится вместе с экраном отдельным куском сборки —
+  общий CSS у предела бюджета. Смысловые токены (§66) строятся из токенов темы, поэтому
+  светлая и тёмная получают своё без отдельных значений.
+*/
+:root {
+  --health-good: var(--ok);
+  --health-attention: var(--accent);
+  --health-risk: var(--warn);
+  --health-critical: var(--danger);
+  --capacity-normal: var(--ok);
+  --capacity-high: var(--warn);
+  --capacity-overloaded: var(--danger);
+}
+
+.pulse-page { overflow-y: auto; gap: var(--sp-3); }
+.pulse-page > * { flex-shrink: 0; }
+.pulse-page .page-head { display: flex; align-items: center; gap: var(--sp-2); }
+.pulse-page .page-head h2 { margin-right: auto; }
+
+.pulse-card {
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 14px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0;
+}
+.pulse-card h3 { margin: 0; font-size: var(--fs-md); font-weight: 650; }
+.pulse-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+.pulse-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+.pulse-span { grid-column: 1 / -1; }
+@media (max-width: 900px) { .pulse-grid { grid-template-columns: 1fr; } }
+
+/* вердикт */
+.pulse-verdict { flex-direction: row; align-items: flex-start; gap: 18px; }
+.pulse-score { position: relative; width: 92px; height: 92px; flex: 0 0 auto; display: grid; place-items: center; text-align: center; }
+.pulse-score svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.pulse-score b { font-size: 26px; line-height: 1; margin-top: 18px; }
+.pulse-score span { font-size: var(--fs-xs); color: var(--text-mut); margin-bottom: 14px; }
+.pulse-ring-bg { fill: none; stroke: var(--border); stroke-width: 6; }
+.pulse-ring { fill: none; stroke-width: 6; stroke-linecap: round; stroke: var(--health-attention); transition: stroke-dasharray .4s; }
+.pz-healthy .pulse-ring { stroke: var(--health-good); }
+.pz-risk .pulse-ring { stroke: var(--health-risk); }
+.pz-critical .pulse-ring { stroke: var(--health-critical); }
+.pulse-verdict-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pulse-verdict-text p { margin: 0; }
+.pulse-headline { font-size: 17px; font-weight: 650; }
+.pulse-sources { font-size: var(--fs-xs); }
+@media (max-width: 600px) { .pulse-verdict { flex-direction: column; align-items: center; } }
+
+.pulse-why { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+.pulse-why-row { display: grid; grid-template-columns: minmax(120px, 1.4fr) 2fr 34px; gap: 10px; align-items: center; font-size: var(--fs-sm); }
+.pulse-bar { display: block; height: 6px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.pulse-bar i { display: block; height: 100%; border-radius: 4px; background: var(--health-attention); }
+.pulse-bar i.ok { background: var(--health-good); }
+.pulse-bar i.mid { background: var(--health-risk); }
+.pulse-bar i.bad { background: var(--health-critical); }
+
+.pulse-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pulse-link {
+  background: none; border: 0; padding: 0; font: inherit; color: var(--text); text-align: left; cursor: pointer;
+  font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pulse-link:hover { text-decoration: underline; }
+.pulse-link:focus-visible, .pulse-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+.pulse-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--border); }
+.pulse-row .pulse-link { flex: 1 1 200px; }
+
+/* победы */
+.pulse-win { flex-direction: row; align-items: center; gap: 12px; background: var(--ok-soft, var(--bg-elev)); }
+.pulse-win > .icon { color: var(--health-good); }
+.pulse-win-text { flex: 1 1 auto; }
+
+/* узкие места */
+.pulse-bn { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--border); }
+.pulse-bn-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pulse-reasons { display: flex; flex-wrap: wrap; gap: 6px; }
+.pulse-chip {
+  border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 999px;
+  padding: 3px 10px; font: inherit; font-size: var(--fs-xs); cursor: pointer;
+}
+
+/* загрузка */
+.pulse-load { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--border); }
+.pulse-load-top { display: flex; align-items: center; gap: 8px; }
+.pulse-load-pct { margin-left: auto; font-weight: 700; }
+.pulse-load-meta { font-size: var(--fs-xs); }
+.pb-available .pulse-bar i { background: var(--health-attention); }
+.pb-normal .pulse-bar i { background: var(--capacity-normal); }
+.pb-high .pulse-bar i { background: var(--capacity-high); }
+.pb-overloaded .pulse-bar i { background: var(--capacity-overloaded); }
+.pulse-num { width: 64px; }
+
+/* прогноз */
+.pulse-fc { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-top: 1px solid var(--border); }
+.pulse-fc-top { display: flex; align-items: center; gap: 8px; }
+.pulse-fc-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.pulse-fc-cell { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); min-width: 0; }
+.pulse-fc-cell .input { min-width: 0; }
+@media (max-width: 600px) { .pulse-fc-grid { grid-template-columns: 1fr 1fr; } }
+.pulse-plan { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+
+/* скорость */
+.pulse-velocity { display: flex; align-items: baseline; gap: 10px; }
+.pulse-velocity b { font-size: 30px; line-height: 1; }
+
+/* окна действий */
+.pulse-preview { white-space: pre-line; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); }
+.pulse-move { display: flex; flex-wrap: wrap; gap: 6px 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.pulse-text { width: 100%; resize: vertical; }

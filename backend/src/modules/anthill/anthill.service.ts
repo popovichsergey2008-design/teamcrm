@@ -22,6 +22,7 @@ import { AgentSettings } from './anthill-admin.service';
 import { decide, maxRisk, permissionFor, policyOf } from './tool-policy';
 import { BriefService } from './brief.service';
 import { MailboxService } from '../mailbox/mailbox.service';
+import { PulseService } from '../radar/pulse.service';
 import { nextRun, parseSchedule, Schedule, scheduleLabel } from './schedule-ru';
 
 /** Что открыто у человека — для «что здесь нужно сделать» без ссылки (разд. 4–5). */
@@ -74,9 +75,9 @@ export class AnthillService {
     private readonly activity: TaskActivityRepository,
     tasks: TasksService, chats: ChatsService, search: SearchService, nl: NlService, ask: AskService,
     files: FilesService, taskcard: TaskCardService, forecast: ForecastService, calendar: CalendarService,
-    knowledge: KnowledgeService, clients: ClientsService, briefs: BriefService, mail: MailboxService,
+    knowledge: KnowledgeService, clients: ClientsService, briefs: BriefService, mail: MailboxService, pulse: PulseService,
   ) {
-    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail });
+    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse });
   }
 
   private base() { return (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, ''); }
@@ -956,7 +957,7 @@ const STATUS_OF: Record<string, string> = {
   find_slots: 'Ищу свободное время…', my_events: 'Смотрю календарь…',
   my_day: 'Собираю ваш день…', time_audit: 'Считаю неделю…',
   chat_digest: 'Разбираю переписку…', unanswered: 'Ищу, кто не ответил…',
-  mail_inbox: 'Разбираю почту…', mail_search: 'Ищу в почте…', mail_read: 'Читаю письмо…',
+  team_pulse: 'Смотрю пульс команды…', mail_inbox: 'Разбираю почту…', mail_search: 'Ищу в почте…', mail_read: 'Читаю письмо…',
 };
 
 function extractJson(raw: string): any {

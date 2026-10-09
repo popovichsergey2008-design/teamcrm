@@ -4139,32 +4139,6 @@
   .focus-col { overflow: visible; }
 }
 
-/* ───── Пульс команды ───── */
-.radar-grid {
-  flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-4) var(--sp-5);
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: var(--sp-4); align-content: start;
-}
-.radar-block { padding: var(--sp-4); display: flex; flex-direction: column; gap: 4px; }
-.radar-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: var(--fs-md); font-weight: 700; }
-.radar-note { font-size: var(--fs-xs); color: var(--text-mut); margin-bottom: 8px; }
-.radar-row {
-  display: flex; align-items: center; gap: var(--sp-3); width: 100%; text-align: left; cursor: pointer;
-  background: none; border: none; font: inherit; color: var(--text); padding: 8px 6px; border-radius: var(--radius-sm);
-}
-.radar-row:hover { background: var(--hover); }
-.radar-row-static { cursor: default; }
-.radar-row-static:hover { background: none; }
-.radar-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.radar-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.radar-row-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: var(--fs-sm); }
-.radar-bar { display: block; height: 5px; border-radius: 999px; background: var(--bg-elev-2); overflow: hidden; }
-.radar-bar span { display: block; height: 100%; background: var(--ok); }
-.radar-bar span.late { background: var(--warn); }
-.radar-velocity { display: flex; gap: var(--sp-5); padding-top: 4px; }
-.radar-big { font-size: calc(24px * var(--fs-scale)); font-weight: 700; }
-.radar-up { color: var(--ok); }
-.radar-down { color: var(--danger); }
-
 /* Панель раздела: занимает всю рабочую область, скрытая — не влияет на раскладку */
 .pane { flex: 1; min-height: 0; min-width: 0; flex-direction: column; }
 /* Доска под списком проектов: живёт в той же панели и занимает её целиком. */
@@ -4208,7 +4182,7 @@
 .focus-plan-btn:focus-visible, .approval-task:focus-visible, .call-starter-row:focus-visible,
 .call-starter-ai:focus-visible,
 .focus-template:focus-visible, .focus-clear:focus-visible,
-.radar-row:focus-visible, .settings-card:focus-visible,
+.settings-card:focus-visible,
 .palette-item:focus-visible, .palette-mic:focus-visible, .palette-input:focus-visible,
 .voice-fab:focus-visible, .call-pill-btn:focus-visible, .call-pill-back:focus-visible,
 .project-item:focus-visible, .menu-item:focus-visible,

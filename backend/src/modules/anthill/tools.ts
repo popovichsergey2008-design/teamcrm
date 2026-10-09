@@ -16,6 +16,7 @@ import { AskService } from '../assistant/ask.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { BriefService } from './brief.service';
 import { MailboxService } from '../mailbox/mailbox.service';
+import { PulseService } from '../radar/pulse.service';
 import { classify, digestText, unansweredText } from './chat-digest-rules';
 import { BUFFER_MIN, conflicts, dayRu, findSlots, slotRu, timeRu } from './slot-rules';
 
@@ -88,6 +89,8 @@ export interface ToolDeps {
   briefs: BriefService;
   /** Личная почта (ТЗ-18): разбор, поиск, черновик, отправка. */
   mail: MailboxService;
+  /** «Пульс команды» (ТЗ-19): тот же расчёт, что на экране руководителя. */
+  pulse: PulseService;
 }
 
 const str = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
@@ -95,7 +98,7 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail } = deps;
+  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse } = deps;
 
   /** Клиент по названию или номеру — тем же поиском, что в разделе, и с теми же правами. */
   const findClient = async (ctx: ToolContext, key: string) => {
@@ -1047,6 +1050,25 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           text: text ? `Не ответили (${list.length}):\n${text}` : `Вопросов без ответа дольше ${days} дн. нет.`,
           sources: list.slice(0, 6).map((u) => ({ kind: 'chat' as const, id: u.chatId, title: u.chatKind === 'dm' ? `Личка: ${u.to}` : (u.chatTitle ?? 'Чат'), url: `${ctx.base}/chat/${u.chatId}` })),
         };
+      },
+    },
+    // ── «Пульс команды» (ТЗ-19) ──
+    {
+      name: 'team_pulse', kind: 'read',
+      description: 'Состояние команды для руководителя: индекс здоровья, главный затык, кто перегружен и кого можно разгрузить, что ждёт решения, какие проекты не успевают к сроку и что сделать, чтобы успеть. Для «где главный затык», «кого разгрузить», «что сделать, чтобы релиз не задержался», «разбери 5 главных проблем команды».',
+      params: {},
+      async run(ctx) {
+        const s = await pulse.summary({ tenantId: ctx.tenantId, userId: ctx.user.userId, role: ctx.user.role }, ctx.timezone ?? null);
+        const lines: string[] = [`Индекс здоровья ${s.health.score}/100 (${s.health.zone}). ${s.verdict.headline}.`, ...s.verdict.lines];
+        if (s.bottlenecks.length) lines.push('Главные затыки:', ...s.bottlenecks.slice(0, 5).map((b: any) => `— #${b.taskId} «${b.title}»: ${b.typeTitle.toLowerCase()}, ${b.why}, исполнитель ${b.assignee ?? 'не назначен'}`));
+        const over = s.workload.filter((w: any) => w.pct > 100);
+        const free = s.workload.filter((w: any) => w.pct <= 60 && w.available);
+        if (over.length) lines.push(`Выше нормы: ${over.map((w: any) => `${w.name} ${w.pct}%`).join(', ')}. Свободнее всех: ${free.slice(0, 3).map((w: any) => `${w.name} ${w.pct}%`).join(', ') || 'никого'}. Разгрузить — кнопка «Балансировать» в «Пульсе команды».`);
+        if (s.decisions.length) lines.push(`Ждут решения руководителя: ${s.decisions.length}.`);
+        for (const p of s.allProjects.filter((x: any) => x.forecast.delayDays && x.forecast.delayDays > 0).slice(0, 3)) {
+          lines.push(`Проект «${p.name}» опаздывает на ${p.forecast.delayDays} дн. (прогноз ${p.forecast.date}, уверенность ${p.forecast.reliable ? `${p.forecast.confidence}%` : 'низкая'}). Чтобы успеть: ${p.catchUp.join(' ')}`);
+        }
+        return { text: lines.join('\n'), sources: [{ kind: 'project' as const, id: 'pulse', title: 'Пульс команды', url: `${ctx.base}/radar` }] };
       },
     },
     // ── почта (ТЗ-18, §8.1–8.2) ──

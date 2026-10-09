@@ -57,12 +57,14 @@ export class PulseRepository {
     return this.db.many<PersonRow>(
       `SELECT u.id::text, u.full_name AS name, r.code AS role, u.load_norm_points AS norm,
               COALESCE(u.can_receive_auto_tasks, true) AS "canReceive",
+              -- оба параметра — моменты времени (timestamptz) везде: один и тот же $2 как дата и как
+              -- момент Postgres не выводит («inconsistent types deduced for parameter»)
               NOT EXISTS (SELECT 1 FROM user_availability a WHERE a.user_id = u.id
-                           AND a.from_date <= $2::date AND a.to_date >= $2::date) AS available,
-              COALESCE((SELECT sum(EXTRACT(EPOCH FROM (LEAST(e.ends_at, $3) - GREATEST(e.starts_at, $2))) / 3600)
+                           AND a.from_date <= ($2::timestamptz)::date AND a.to_date >= ($2::timestamptz)::date) AS available,
+              COALESCE((SELECT sum(EXTRACT(EPOCH FROM (LEAST(e.ends_at, $3::timestamptz) - GREATEST(e.starts_at, $2::timestamptz))) / 3600)
                           FROM calendar_events e JOIN calendar_participants cp ON cp.event_id = e.id
                          WHERE cp.user_id = u.id AND cp.status <> 'declined' AND NOT e.all_day
-                           AND e.starts_at < $3 AND e.ends_at > $2), 0)::float AS "meetingHours",
+                           AND e.starts_at < $3::timestamptz AND e.ends_at > $2::timestamptz), 0)::float AS "meetingHours",
               COALESCE((SELECT array_agg(s.skill) FROM user_skills s WHERE s.user_id = u.id), '{}') AS skills
          FROM users u JOIN roles r ON r.id = u.role_id
         WHERE u.tenant_id = $1 AND u.is_active AND r.code <> 'client'
@@ -217,8 +219,8 @@ export class PulseRepository {
 
   async finishProposal(id: string, status: 'completed' | 'failed' | 'rejected', error?: string | null): Promise<void> {
     await this.db.query(
-      `UPDATE radar_action_proposals SET status=$2, error=$3, executed_at = CASE WHEN $2 = 'completed' THEN now() ELSE executed_at END WHERE id=$1`,
-      [id, status, error ?? null],
+      `UPDATE radar_action_proposals SET status=$2, error=$3, executed_at = CASE WHEN $4::boolean THEN now() ELSE executed_at END WHERE id=$1`,
+      [id, status, error ?? null, status === 'completed'],
     );
   }
 
