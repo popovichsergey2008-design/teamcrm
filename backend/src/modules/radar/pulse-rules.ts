@@ -170,7 +170,11 @@ export interface HealthComponents { delivery: number; deadlines: number; flow: n
 
 export function healthComponents(i: HealthInput): HealthComponents {
   // Закрываем ли столько, сколько приходит: 100 — закрыто не меньше, чем заведено за 30 дней.
-  const delivery = clamp(Math.round((100 * i.closed30) / Math.max(1, i.created30)));
+  // Ничего не заводили — сравнивать не с чем: нейтральные 75, а не ноль (иначе тихий месяц
+  // выглядел бы провалом: «закрываем меньше, чем приходит», когда не приходит ничего).
+  const delivery = i.created30 === 0
+    ? (i.closed30 > 0 ? 100 : 75)
+    : clamp(Math.round((100 * i.closed30) / i.created30));
   const overdueRatio = i.withDeadline ? i.overdue / i.withDeadline : 0;
   const deadlines = clamp(Math.round(100 * (1 - overdueRatio) - Math.min(20, i.avgOverdueDays * 2) - Math.min(25, i.criticalOverdue * 5)));
   const stuckRatio = i.open ? i.stuck / i.open : 0;
@@ -299,7 +303,7 @@ export function verdict(i: VerdictInput): { headline: string; lines: string[] } 
   else if (i.velocityDelta !== null && i.velocityDelta <= -25) lines.push(`Темп снизился: закрыто на ${Math.abs(i.velocityDelta)}% меньше задач, чем неделей раньше.`);
   else if (i.last7) lines.push(`За неделю закрыто задач: ${i.last7}.`);
 
-  if (i.stuckByColumn && i.stuckByColumn.count >= 2) lines.push(`Главное узкое место: ${i.stuckByColumn.count} задачи застряли у ${i.stuckByColumn.assignee}.`);
+  if (i.stuckByColumn && i.stuckByColumn.count >= 2) lines.push(`Главное узкое место — ${i.stuckByColumn.assignee}: застряли ${i.stuckByColumn.count} ${i.stuckByColumn.count < 5 ? 'задачи' : 'задач'}.`);
   else if (i.topBottleneck) lines.push(`Главное узкое место: #${i.topBottleneck.id} «${i.topBottleneck.title}» — ${i.topBottleneck.why.toLowerCase()}.`);
   if (i.overloaded.length) lines.push(`Выше нормы загружены: ${i.overloaded.slice(0, 3).map((p) => `${p.name} (${p.pct}%)`).join(', ')}.`);
   if (i.lateProjects.length) lines.push(`Не успевают к сроку: ${i.lateProjects.slice(0, 2).map((p) => `${p.name} (+${p.delayDays} дн.)`).join(', ')}.`);

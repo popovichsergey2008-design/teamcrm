@@ -72,6 +72,8 @@ describe('pulse-rules: индекс здоровья', () => {
   it('пустая организация не делит на ноль', () => {
     const c = healthComponents({ ...base, closed30: 0, created30: 0, open: 0, withDeadline: 0, overdue: 0, criticalOverdue: 0, avgOverdueDays: 0, stuck: 0, reviewStuck: 0, noAssignee: 0, people: [], last7: 0, prev7: 0 });
     expect(Object.values(c).every((v) => v >= 0 && v <= 100)).toBe(true);
+    // тихий месяц — не провал доставки
+    expect(c.delivery).toBe(75);
   });
 
   it('скорость: прирост в процентах, без прошлой недели — нет процента', () => {
