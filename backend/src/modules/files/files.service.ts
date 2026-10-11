@@ -1,6 +1,7 @@
 import { ProjectViewer } from '../../common/access/project-visibility';
 import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { ConfigService } from '@nestjs/config';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
 import { AppException } from '../../common/http/app-exception';
@@ -10,10 +11,46 @@ import { decodeUploadName, sanitizeFileName, validateUpload } from './files.vali
 
 @Injectable()
 export class FilesService {
+  private readonly playSecret: string;
+
   constructor(
     private readonly s3: S3Service,
     private readonly repo: FilesRepository,
-  ) {}
+    config: ConfigService,
+  ) {
+    // свой ключ подписи, выведенный из секрета токенов: ссылка проигрывания — не токен входа
+    this.playSecret = createHmac('sha256', config.get<string>('JWT_ACCESS_SECRET') ?? 'dev').update('file-play').digest('hex');
+  }
+
+  /**
+   * Короткоживущая ссылка на проигрывание (ТЗ-25, §29–31): плееру браузера нужен адрес,
+   * по которому он сам перемотает и подкачает кусок, — заголовок с токеном он не пошлёт.
+   * Права проверяет вызывающий ДО выдачи; ссылка живёт минуты и ведёт к одному файлу.
+   */
+  signPlay(tenantId: string, fileId: string, ttlSec = 600): { url: string; expiresAt: string } {
+    const exp = Math.floor(Date.now() / 1000) + ttlSec;
+    const sig = this.playSig(tenantId, fileId, exp);
+    return { url: `/api/files/play/${fileId}?t=${tenantId}&e=${exp}&s=${sig}`, expiresAt: new Date(exp * 1000).toISOString() };
+  }
+
+  verifyPlay(tenantId: string, fileId: string, exp: number, sig: string): boolean {
+    if (!Number.isFinite(exp) || exp < Date.now() / 1000) return false;
+    const want = Buffer.from(this.playSig(tenantId, fileId, exp));
+    const got = Buffer.from(String(sig ?? ''));
+    return want.length === got.length && timingSafeEqual(want, got);
+  }
+
+  private playSig(tenantId: string, fileId: string, exp: number): string {
+    return createHmac('sha256', this.playSecret).update(`${tenantId}.${fileId}.${exp}`).digest('base64url');
+  }
+
+  /** Убрать файл без проверки прав человека: служебная уборка (отозванный фрагмент задачи). */
+  async removeInternal(tenantId: string, id: string): Promise<void> {
+    const file = await this.repo.findById(tenantId, id);
+    if (!file) return;
+    await this.s3.client.send(new DeleteObjectCommand({ Bucket: this.s3.bucket, Key: file.object_key })).catch(() => undefined);
+    await this.repo.delete(tenantId, id);
+  }
 
   async upload(input: {
     tenantId: string;

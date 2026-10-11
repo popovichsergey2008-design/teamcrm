@@ -30,6 +30,8 @@ class ApplyDraftDto {
   /** Срок: ISO или '' — убрать. */
   @IsOptional() @IsString() deadlineAt?: string;
   @IsOptional() @IsIn(['', 'low', 'normal', 'high', 'urgent']) priority?: string;
+  /** фрагмент записи (ТЗ-25): «Разрешить фрагмент» или «Создать без аудио» */
+  @IsOptional() @IsIn(['allow', 'none']) audio?: 'allow' | 'none';
 }
 
 class BatchItemDto extends ApplyDraftDto {
@@ -38,6 +40,8 @@ class BatchItemDto extends ApplyDraftDto {
 
 class CreateBatchDto {
   @IsArray() @ArrayMaxSize(40) @ValidateNested({ each: true }) @Type(() => BatchItemDto) items!: BatchItemDto[];
+  /** нажали «Подтвердить всё» (ТЗ-25) — для доли разборов одним нажатием */
+  @IsOptional() @IsBoolean() confirmAll?: boolean;
 }
 
 /** Встречи: загрузка записи → стенограмма → сводка → черновики задач. Заказчику недоступно. */
@@ -89,7 +93,7 @@ export class MeetingsController {
   @Post(':id/postcall/tasks/create-batch')
   async createBatch(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CreateBatchDto) {
     await this.meetings.assertVisible(u.tenantId, id, { userId: u.userId, role: u.role });
-    return this.meetings.createBatch(u.tenantId, u.userId, id, dto.items);
+    return this.meetings.createBatch(u.tenantId, u.userId, id, dto.items, dto.confirmAll === true);
   }
 
   /** «Подготовить пост в Новости»: кандидат по вехе встречи, публикует руководитель. */

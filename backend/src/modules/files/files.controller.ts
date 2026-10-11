@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UploadedFile,
@@ -13,7 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags, ApiConsumes } from '@nestjs/swagger';
 import { Request, Response } from 'express';
-import { CurrentUser, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
 import { FilesService } from './files.service';
@@ -51,17 +52,36 @@ export class FilesController {
     };
   }
 
+  /**
+   * Проигрывание по подписанной ссылке (ТЗ-25): плеер сам перематывает к нужной секунде
+   * и тянет только кусок записи. Права проверены при выдаче ссылки; здесь — подпись и срок.
+   */
+  @Public()
+  @Get('play/:id')
+  async play(
+    @Param('id') id: string, @Query('t') tenantId: string, @Query('e') exp: string, @Query('s') sig: string,
+    @Req() req: Request, @Res() res: Response,
+  ) {
+    if (!this.files.verifyPlay(String(tenantId), String(id), Number(exp), String(sig))) throw AppException.notFound('File not found');
+    await this.send(String(tenantId), id, req, res, true);
+  }
+
   @Get(':id')
   async download(@CurrentUser() user: AuthUser, @Param('id') id: string, @Req() req: Request, @Res() res: Response) {
     // файл закрытого проекта, чужой переписки или записи чужого созвона — «не найден» (ТЗ-21, этап 0)
     if (!(await this.files.canDownload(user.tenantId, id, { userId: user.userId, role: user.role }))) {
       throw AppException.notFound('File not found');
     }
+    await this.send(user.tenantId, id, req, res, false);
+  }
+
+  private async send(tenantId: string, id: string, req: Request, res: Response, audioInline: boolean) {
     /*
       Докачка и перемотка (ТЗ-21): запись встречи на час — десятки мегабайт, и проигрыватель
       просит кусок с нужной секунды, а не весь файл. Один диапазон `bytes=a-b` — 206.
     */
-    const meta = await this.files.meta(user.tenantId, id);
+    const meta = await this.files.meta(tenantId, id);
+    if (!meta) throw AppException.notFound('File not found');
     const size = Number(meta?.size_bytes ?? 0);
     const range = parseRange(req.headers.range, size);
     if (range === 'invalid') {
@@ -69,7 +89,7 @@ export class FilesController {
       res.end();
       return;
     }
-    const { file, stream } = await this.files.getForDownload(user.tenantId, id, range);
+    const { file, stream } = await this.files.getForDownload(tenantId, id, range);
     res.setHeader('Accept-Ranges', 'bytes');
     if (range) {
       res.status(206);
@@ -81,7 +101,8 @@ export class FilesController {
       Картинки и PDF смотрят как есть, остальное скачивается.
     */
     const inline = (file.content_type.startsWith('image/') && file.content_type !== 'image/svg+xml')
-      || file.content_type === 'application/pdf';
+      || file.content_type === 'application/pdf'
+      || (audioInline && file.content_type.startsWith('audio/'));
     res.setHeader('Content-Type', file.content_type);
     res.setHeader('Content-Length', range ? range.end - range.start + 1 : file.size_bytes);
     res.setHeader(

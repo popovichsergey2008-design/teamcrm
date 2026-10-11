@@ -216,7 +216,11 @@ export class TasksRepository {
   listByProject(tenantId: string, projectId: string): Promise<TaskRow[]> {
     return this.db.many<TaskRow>(
       // Удалённые в корзину на доске не показываем — см. `trash`.
-      `SELECT * FROM tasks WHERE tenant_id = $1 AND project_id = $2 AND deleted_at IS NULL
+      // длина фрагмента созвона (ТЗ-25) — значок «🎙 15 сек» на карточке доски
+      `SELECT tasks.*,
+              (SELECT round((a.end_ms - a.start_ms) / 1000.0)::int FROM task_audio_proofs a
+                WHERE a.task_id = tasks.id AND a.status = 'ready') AS audio_proof_sec
+         FROM tasks WHERE tenant_id = $1 AND project_id = $2 AND deleted_at IS NULL
         ORDER BY column_id, position ASC`,
       [tenantId, projectId],
     );

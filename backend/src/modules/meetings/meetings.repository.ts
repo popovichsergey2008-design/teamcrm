@@ -132,6 +132,38 @@ export class MeetingsRepository {
     await this.db.query(`UPDATE meetings SET file_id = $2 WHERE id = $1`, [id, fileId]);
   }
 
+  /**
+   * Обещание из той же реплики, что и поручение (ТЗ-25, §38): охотник за обещаниями нашёл
+   * его в стенограмме правилами — теперь оно отслеживается задачей, а не само по себе.
+   */
+  async linkCommitment(tenantId: string, meetingId: string, sec: number, taskId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE commitments SET linked_task_id = $4, status = 'tracked', updated_at = now()
+        WHERE tenant_id = $1 AND source_type = 'meeting' AND source_id = $2::bigint
+          AND linked_task_id IS NULL AND abs(COALESCE(source_offset_sec, -1000) - $3) <= 5`,
+      [tenantId, meetingId, sec, taskId],
+    );
+  }
+
+  /**
+   * Уже существующая задача по той же договорённости (ТЗ-25, §10): открытая, с тем же
+   * названием и исполнителем, заведена за последний месяц — не из этого черновика.
+   */
+  duplicateTasks(tenantId: string, meetingId: string, draftIds: string[]) {
+    if (!draftIds.length) return Promise.resolve([] as { draft_id: string; task_id: string; project_id: string; title: string }[]);
+    return this.db.many<{ draft_id: string; task_id: string; project_id: string; title: string }>(
+      `SELECT DISTINCT ON (d.id) d.id::text AS draft_id, t.id::text AS task_id, t.project_id::text AS project_id, t.title
+         FROM meeting_task_drafts d
+         JOIN tasks t ON t.tenant_id = d.tenant_id AND t.deleted_at IS NULL AND t.closed_at IS NULL
+                     AND t.created_at > now() - interval '30 days'
+                     AND lower(btrim(t.title)) = lower(btrim(d.title))
+                     AND (d.assignee_id IS NULL OR t.assignee_id = d.assignee_id)
+        WHERE d.tenant_id = $1 AND d.meeting_id = $2 AND d.id::text = ANY($3::text[])
+        ORDER BY d.id, t.created_at DESC`,
+      [tenantId, meetingId, draftIds],
+    );
+  }
+
   /** Комната созвона: экран итогов находит по ней встречу, пока номера у него ещё нет (ТЗ-22). */
   async setRoom(id: string, roomId: string): Promise<void> {
     await this.db.query(`UPDATE meetings SET room_id = $2 WHERE id = $1`, [id, roomId]);

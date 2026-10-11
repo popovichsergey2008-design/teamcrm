@@ -10,13 +10,15 @@ import { MeetingsController } from './meetings.controller';
 import { MeetingsRepository } from './meetings.repository';
 import { MeetingsService } from './meetings.service';
 import { PostcallRepository } from './postcall.repository';
+import { AudioProofController } from './audio-proof.controller';
+import { AudioProofService } from './audio-proof.service';
 import { PostcallService } from './postcall.service';
 
 /** Этап 6, М2: разбор записей встреч. Свои созвоны появятся позже — источник записи внешний. */
 @Module({
   imports: [AiModule, TasksModule, KnowledgeModule, TaskCardModule, NotificationsModule, ClientsModule, PromptsModule],
-  controllers: [MeetingsController],
-  providers: [MeetingsService, MeetingsRepository, PostcallService, PostcallRepository],
+  controllers: [MeetingsController, AudioProofController],
+  providers: [MeetingsService, MeetingsRepository, PostcallService, PostcallRepository, AudioProofService],
   exports: [MeetingsService, MeetingsRepository, PostcallService], // репозиторий нужен уборке: черновики со встреч
 })
 export class MeetingsModule {}

@@ -60,6 +60,9 @@ export class FilesRepository {
       `SELECT (f.uploaded_by = $2::bigint OR CASE f.owner_kind
           WHEN 'task_attachment' THEN f.owner_id IS NULL OR EXISTS (
             SELECT 1 FROM tasks t WHERE t.id = f.owner_id AND t.tenant_id = $1 AND ${proj('t.project_id')})
+          -- фрагмент созвона у задачи (ТЗ-25): права задачи — решение заказчика 11.10
+          WHEN 'task_audio_proof' THEN f.owner_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM tasks t WHERE t.id = f.owner_id AND t.tenant_id = $1 AND t.deleted_at IS NULL AND ${proj('t.project_id')})
           WHEN 'meeting_recording' THEN f.owner_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM meetings m WHERE m.id = f.owner_id AND m.tenant_id = $1
                AND ${meetingVisibleSql('m', { user: '$2', all: '$4', client: '$5' })})

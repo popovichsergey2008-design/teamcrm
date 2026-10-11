@@ -15,6 +15,8 @@ import { MEETING_PROMPT, SUMMARY_PROMPT, validateMeetingAnalysis } from './meeti
 import { draftConfidence, newsKind, speakerAt } from './postcall-rules';
 import { DraftRow, MeetingsRepository } from './meetings.repository';
 import { blocksOf, PostcallService } from './postcall.service';
+import { AudioProofService } from './audio-proof.service';
+import { TaskActivityRepository } from '../tasks/task-activity.repository';
 import { parseSubtitles, repliesToText, Reply, shiftSegments } from './transcript.util';
 
 /** Записи встреч тяжелее обычных вложений: час видео легко весит сотни мегабайт. */
@@ -67,6 +69,8 @@ export class MeetingsService {
     private readonly taskcard: TaskCardService,
     private readonly postcall: PostcallService,
     private readonly prompts: PromptsService,
+    private readonly proofs: AudioProofService,
+    private readonly activity: TaskActivityRepository,
   ) {}
 
   list(tenantId: string, viewer: ProjectViewer) {
@@ -113,10 +117,21 @@ export class MeetingsService {
     if (review && String(review.owner_id) === String(viewer.userId)) await this.postcall.opened(review);
     // письмо клиенту — только тому, кому его подготовили; отправляет он же
     const followup = await this.postcall.followupFor(tenantId, viewer.userId, id).catch(() => null);
+    // ТЗ-25: фрагмент у каждого черновика, запись для предпросмотра (§34), уже существующие задачи (§10)
+    const open = details.drafts.filter((d) => d.status === 'pending' || d.status === 'failed');
+    const [proofs, duplicates] = await Promise.all([
+      this.proofs.forDrafts(tenantId, id, open.map((d) => ({ ...d, id: String(d.id), source_sec: d.source_sec ?? null }))).catch(() => ({})),
+      this.repo.duplicateTasks(tenantId, id, open.map((d) => String(d.id))).catch(() => []),
+    ]);
+    const recording = details.meeting.file_id && details.meeting.source !== 'transcript'
+      ? this.files.signPlay(tenantId, String(details.meeting.file_id), 1800) : null;
     return {
       ...details,
       decisions,
       followup,
+      proofs,
+      recording,
+      duplicates: Object.fromEntries(duplicates.map((x) => [x.draft_id, { taskId: x.task_id, projectId: x.project_id, title: x.title }])),
       review: review ? {
         status: review.status,
         ai: review.ai,
@@ -661,7 +676,7 @@ export class MeetingsService {
   }
 
   /** Подтверждение черновика: создаём обычную задачу тем же путём, что и руками. */
-  async applyDraft(tenantId: string, actorId: string, draftId: string, patch?: DraftPatch) {
+  async applyDraft(tenantId: string, actorId: string, draftId: string, patch?: DraftPatch, opts: { deferCut?: boolean } = {}) {
     const draft = await this.repo.draft(tenantId, draftId);
     if (!draft) throw AppException.notFound('Черновик не найден');
     if (draft.status !== 'pending' && draft.status !== 'failed') throw AppException.conflict('Черновик уже обработан');
@@ -700,6 +715,8 @@ export class MeetingsService {
     }
 
     await this.repo.markDraftApplied(draftId, task.id);
+    await this.afterDraftApplied(tenantId, actorId, draft, String(task.id), String(projectId), patch?.audio, opts.deferCut === true)
+      .catch((e) => this.log.warn(`черновик ${draftId}: источник задачи — ${(e as Error).message}`));
     void this.secretary.record({
       tenantId, userId: draft.author_id ?? actorId, kind: 'meeting_task',
       summary: `Задача со встречи: «${task.title}»`, subjectType: 'task', subjectId: task.id,
@@ -728,12 +745,36 @@ export class MeetingsService {
   }
 
   /**
+   * Задача родилась на созвоне (ТЗ-25): у неё есть источник. Фрагмент записи с
+   * поручением (вырезается фоном — задача его не ждёт), запись в истории задачи и
+   * обещание из той же реплики привязывается к задаче, а не живёт отдельно (§38).
+   */
+  private async afterDraftApplied(
+    tenantId: string, actorId: string, draft: DraftRow, taskId: string, projectId: string,
+    audio: 'allow' | 'none' | undefined, deferCut: boolean,
+  ): Promise<void> {
+    const sec = draft.source_sec == null ? null : Number(draft.source_sec);
+    const meeting = await this.repo.get(tenantId, draft.meeting_id);
+    let proof: 'attached' | 'needs_consent' | 'none' = 'none';
+    if (sec != null) {
+      proof = await this.proofs.attach({
+        tenantId, actorId, taskId, meetingId: draft.meeting_id, draftId: String(draft.id), projectId, sourceSec: sec, consent: audio,
+      }).catch(() => 'none' as const);
+      if (proof === 'attached' && !deferCut) void this.proofs.cutPending(tenantId, draft.meeting_id);
+      await this.repo.linkCommitment(tenantId, draft.meeting_id, sec, taskId).catch(() => undefined);
+    }
+    await this.activity.log(tenantId, taskId, actorId, 'from_meeting', {
+      meetingId: String(draft.meeting_id), meetingTitle: meeting?.title ?? 'встреча', sec, audio: proof === 'attached',
+    }).catch(() => undefined);
+  }
+
+  /**
    * «Создать выбранные задачи» (ТЗ-22, §15–17). Пакет — это сама встреча: у неё есть
    * номер, состав и состояние каждого черновика. Упавший пункт не отменяет остальные
    * и остаётся черновиком с причиной; повтор создаёт только его — созданный черновик
    * второй раз не применяется (занятие черновика атомарно).
    */
-  async createBatch(tenantId: string, actorId: string, meetingId: string, items: (DraftPatch & { draftId: string })[]) {
+  async createBatch(tenantId: string, actorId: string, meetingId: string, items: (DraftPatch & { draftId: string })[], confirmAll = false) {
     const drafts = await this.repo.drafts(tenantId, meetingId);
     const own = new Map(drafts.map((d) => [String(d.id), d]));
     const created: { draftId: string; taskId: string; title: string }[] = [];
@@ -745,12 +786,15 @@ export class MeetingsService {
       if (d.status === 'applied') { skipped++; continue; } // уже создан — повтор пакета дублей не даёт
       const { draftId, ...patch } = it;
       try {
-        const task = await this.applyDraft(tenantId, actorId, String(draftId), Object.keys(patch).length ? patch : undefined);
+        const task = await this.applyDraft(tenantId, actorId, String(draftId), Object.keys(patch).length ? patch : undefined, { deferCut: true });
         created.push({ draftId: String(draftId), taskId: String(task.id), title: task.title });
       } catch (e) {
         failed.push({ draftId: String(draftId), error: e instanceof AppException ? e.message : 'Не удалось создать задачу' });
       }
     }
+    // фрагменты всех задач пакета — одним скачиванием записи, фоном (§49)
+    if (created.length) void this.proofs.cutPending(tenantId, meetingId);
+    if (confirmAll) await this.postcall.markConfirmAll(tenantId, meetingId).catch(() => undefined);
     return { created, failed, skipped };
   }
 
@@ -815,6 +859,8 @@ export function matchTeamMember(team: { id: string; full_name: string }[], hint:
 export interface DraftPatch {
   title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
   deadlineAt?: string | null; priority?: string | null;
+  /** фрагмент записи (ТЗ-25): разрешить показать тем, кто встречу не видит, или без аудио */
+  audio?: 'allow' | 'none';
 }
 
 /** Что из услышанного ИИ человек исправил: название, исполнителя, проект, срок (§52). */

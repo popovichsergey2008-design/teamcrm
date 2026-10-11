@@ -4,6 +4,8 @@ import { Server } from 'socket.io';
 /** Доменные события (master → Realtime контракт). */
 export type DomainEvent =
   | 'task.created'
+  /** фрагмент созвона у задачи готов / не вышел / убран (ТЗ-25) */
+  | 'task.audio_proof'
   | 'task.updated'
   | 'task.moved'
   | 'task.deleted'

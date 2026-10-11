@@ -108,3 +108,37 @@ export async function mixTracks(tracks: { buffer: Buffer; fileName: string; offs
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
+
+/** Аргументы ffmpeg для фрагмента: моно, 64 кбит/с mp3 — речь разборчива, 15 секунд ≈ 120 КБ. */
+export function clipArgs(input: string, startSec: number, endSec: number, out: string): string[] {
+  const dur = Math.max(1, endSec - startSec);
+  return ['-hide_banner', '-loglevel', 'error', '-y', '-ss', startSec.toFixed(2), '-t', dur.toFixed(2), '-i', input,
+    '-vn', '-ac', '1', '-codec:a', 'libmp3lame', '-b:a', '64k', out];
+}
+
+/**
+ * Вырезать фрагменты из одной записи за одно скачивание (ТЗ-25): пять задач со встречи —
+ * пять фрагментов, а запись встречи тянется из хранилища один раз.
+ */
+export async function cutClips(source: Buffer, sourceName: string, ranges: { startSec: number; endSec: number }[]): Promise<(Buffer | null)[]> {
+  if (!ranges.length) return [];
+  const dir = await mkdtemp(join(tmpdir(), 'clip-'));
+  try {
+    const ext = (sourceName.split('.').pop() || 'mp3').replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'mp3';
+    const input = join(dir, `src.${ext}`);
+    await writeFile(input, source);
+    const out: (Buffer | null)[] = [];
+    for (const [k, r] of ranges.entries()) {
+      const file = join(dir, `c${k}.mp3`);
+      try {
+        await run('ffmpeg', clipArgs(input, r.startSec, r.endSec, file), { timeout: 120_000, maxBuffer: 1 << 20 });
+        out.push(await readFile(file));
+      } catch {
+        out.push(null); // этот фрагмент не вышел — остальные режем дальше
+      }
+    }
+    return out;
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}

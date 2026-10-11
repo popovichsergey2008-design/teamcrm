@@ -1,5 +1,5 @@
 import { parseStamp, validateMeetingAnalysis } from './meeting-schema';
-import { draftConfidence, newsKind, speakerAt } from './postcall-rules';
+import { draftConfidence, guestInRange, newsKind, proofDrifted, proofRange, speakerAt } from './postcall-rules';
 
 const replies = [
   { start: 0, text: 'Начинаем планёрку', speaker: 'Борис', speakerUserId: '1' },
@@ -62,5 +62,43 @@ describe('итоги встречи: источник пункта', () => {
     expect(value!.decisions).toEqual([{ text: 'Ссылка без регистрации', sec: 62 }, { text: 'Релиз в пятницу', sec: null }]);
     expect(value!.questions).toEqual([{ text: 'Нужен ли пароль на ссылку?', sec: null }]);
     expect(value!.tasks[0]).toMatchObject({ sec: 1874, confidence: 'medium', urgent: true });
+  });
+});
+
+describe('аудио-доказательство: фрагмент поручения', () => {
+  const segs = [
+    { start: 1860, end: 1866, text: 'Кто проверит вход гостя с Android?', speaker: 'Борис', speakerUserId: '1' },
+    { start: 1867, end: 1873, text: 'Сергей, проверь гостевой join на Android к пятнице', speaker: 'Борис', speakerUserId: '1' },
+    { start: 1874, end: 1876, text: 'Хорошо, сделаю', speaker: 'Сергей', speakerUserId: '2' },
+    { start: 1900, end: 1905, text: 'Это ещё обсудим', speaker: 'Анна (гость)', speakerUserId: null },
+  ];
+
+  it('реплика −4 с и +5 с; вопрос перед поручением входит целиком', () => {
+    const r = proofRange(segs, 1868)!;
+    expect(r.anchorSec).toBe(1867);
+    expect(r.startSec).toBe(1859.5); // вопрос «Кто проверит…» вошёл
+    expect(r.endSec).toBe(1878);
+    expect(r.speaker).toBe('Борис');
+    expect(r.quote).toContain('Кто проверит');
+    expect(r.quote).toContain('Сергей, проверь');
+  });
+
+  it('не короче 10 и не длиннее 30 секунд, не дальше конца записи', () => {
+    const one = [{ start: 5, end: 6, text: 'Глеб, позвони клиенту', speaker: 'Борис', speakerUserId: '1' }];
+    const r = proofRange(one, 5)!;
+    expect(r.endSec - r.startSec).toBe(10);
+    const long = [{ start: 100, end: 160, text: 'длинная речь', speaker: 'Борис', speakerUserId: '1' }];
+    const l = proofRange(long, 100)!;
+    expect(l.endSec - l.startSec).toBe(30);
+    // запись короче фрагмента — не дальше её конца
+    expect(proofRange(one, 5, 8)).toMatchObject({ startSec: 0, endSec: 8 });
+    expect(proofRange([], 5)).toBeNull();
+  });
+
+  it('гость во фрагменте и «формулировку переписали»', () => {
+    expect(guestInRange(segs, 1895, 1910)).toBe(true);
+    expect(guestInRange(segs, 1859, 1878)).toBe(false);
+    expect(proofDrifted('Проверить гостевой вход на Android', segs[1].text)).toBe(false);
+    expect(proofDrifted('Подготовить коммерческое предложение банку', segs[1].text)).toBe(true);
   });
 });

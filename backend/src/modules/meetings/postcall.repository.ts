@@ -229,6 +229,7 @@ export class PostcallRepository {
       drafts: number; applied: number; rejected: number; open_drafts: number;
       edit_assignee: number; edit_deadline: number; edit_title: number; edit_project: number;
       with_tasks: number; with_decisions: number; followup_ready: number; followup_sent: number; recap_sent: number;
+      confirm_all: number; proofs: number; proofs_played: number;
     }>(
       `WITH r AS (
          SELECT * FROM meeting_postcall_reviews WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2::int)
@@ -256,8 +257,19 @@ export class PostcallRepository {
          (SELECT count(*)::int FROM assistant_proposals p JOIN r ON p.source_id = r.meeting_id::text
            WHERE p.tenant_id = $1 AND p.skill = 'followup' AND p.source_type = 'meeting' AND p.status = 'executed'
              AND p.resolved_action IN ('send_chat','send_mail')) AS followup_sent,
-         (SELECT count(*)::int FROM r WHERE recap_sent_at IS NOT NULL) AS recap_sent`,
+         (SELECT count(*)::int FROM r WHERE recap_sent_at IS NOT NULL) AS recap_sent,
+         -- ТЗ-25: «Подтвердить всё» и прослушанные фрагменты созвона у задач
+         (SELECT count(*)::int FROM r WHERE confirm_all_at IS NOT NULL) AS confirm_all,
+         (SELECT count(*)::int FROM task_audio_proofs a JOIN r ON r.meeting_id = a.meeting_id WHERE a.status = 'ready') AS proofs,
+         (SELECT count(*)::int FROM task_audio_proofs a JOIN r ON r.meeting_id = a.meeting_id WHERE a.status = 'ready' AND a.play_count > 0) AS proofs_played`,
       [tenantId, days],
+    );
+  }
+
+  async markConfirmAll(tenantId: string, meetingId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE meeting_postcall_reviews SET confirm_all_at = COALESCE(confirm_all_at, now()) WHERE tenant_id = $1 AND meeting_id = $2`,
+      [tenantId, meetingId],
     );
   }
 

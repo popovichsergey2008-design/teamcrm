@@ -208,12 +208,20 @@ export class PostcallService implements OnModuleInit {
       decisionCapture: pct(q.with_decisions, q.ai_meetings),
       followupSendRate: pct(q.followup_sent, q.followup_ready),
       recapRate: pct(q.recap_sent, q.meetings),
+      confirmAllRate: pct(q.confirm_all, q.meetings),
+      proofs: q.proofs,
+      proofPlayRate: pct(q.proofs_played, q.proofs),
       // как часто человек исправлял услышанное ИИ — среди созданных задач
       wrongAssignee: pct(q.edit_assignee, q.applied),
       wrongDeadline: pct(q.edit_deadline, q.applied),
       titleEdited: pct(q.edit_title, q.applied),
       wrongProject: pct(q.edit_project, q.applied),
     };
+  }
+
+  /** «Подтвердить всё» нажали (ТЗ-25, §53) — для доли разборов одним нажатием. */
+  async markConfirmAll(tenantId: string, meetingId: string) {
+    await this.repo.markConfirmAll(tenantId, meetingId);
   }
 
   /** «Подготовить пост в Новости» — только у встречи с вехой (§26). */
