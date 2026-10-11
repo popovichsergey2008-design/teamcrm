@@ -17,7 +17,7 @@ import {
   ChevronDown, ChevronUp, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Reply, LifeBuoy, TriangleAlert,
   Info, CircleHelp, Lock, Eye, EyeOff, LogOut, BookOpen, Inbox, Plug, Handshake, Sparkles,
   ChartColumn, Wallet, Sun, Moon, Monitor, Play, Pause, Mail, Building2, Target, Zap,
-  Pin, ThumbsUp, ThumbsDown,
+  Pin, ThumbsUp, ThumbsDown, Heart, Rocket, Megaphone, PartyPopper, Trophy, Lightbulb,
 } from 'lucide-react';
 
 const ICONS = {
@@ -38,6 +38,8 @@ const ICONS = {
   money: Wallet, sun: Sun, moon: Moon, monitor: Monitor,
   play: Play, pause: Pause, mail: Mail, building: Building2, target: Target, zap: Zap,
   pin: Pin, 'thumbs-up': ThumbsUp, 'thumbs-down': ThumbsDown,
+  // «Новости» (ТЗ-20): спасибо, релиз, объявление, веха, победа, выводы недели
+  heart: Heart, rocket: Rocket, megaphone: Megaphone, party: PartyPopper, trophy: Trophy, bulb: Lightbulb,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

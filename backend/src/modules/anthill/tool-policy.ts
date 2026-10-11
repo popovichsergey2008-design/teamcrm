@@ -76,6 +76,7 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   find_slots: READ,
   my_day: READ,
   team_pulse: { ...READ, permission: 'radar.view' },
+  news_today: READ,
   chat_digest: { ...READ, permission: 'chat.view' },
   unanswered: { ...READ, permission: 'chat.view' },
   time_audit: READ,
@@ -94,6 +95,9 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   },
   add_comment: { risk: 'high_write', group: 'messages', permission: 'chat.write', affectsOthers: true },
   send_message: { risk: 'high_write', group: 'messages', permission: 'chat.write', affectsOthers: true },
+  // «Новости» видит вся компания: публикация — всегда с подтверждением (§54)
+  news_kudos: { risk: 'high_write', group: 'messages', affectsOthers: true },
+  news_poll: { risk: 'high_write', group: 'messages', permission: 'news.create_poll', affectsOthers: true },
   create_event: {
     risk: 'high_write', group: 'calendar',
     // встреча без участников — это время в своём календаре, а не приглашение

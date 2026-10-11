@@ -2113,23 +2113,60 @@ export const api = {
     request<{ id: string; projectId: string | null; aiEnabled: boolean }>('POST', '/media/rooms', { projectId, withAi, chatId, taskId }),
 
   // лента компании: сообщения и объявления
-  /**
-   * Лента компании, постранично. `canPost` и номера страниц считает СЕРВЕР: правило
-   * «кто публикует» одно на всю систему, а число страниц на клиенте пришлось бы гадать.
-   */
-  feedList: (page = 1) =>
-    request<{ items: any[]; canPost: boolean; total: number; page: number; pages: number }>(
-      'GET', `/feed?page=${page}`),
-  feedUnread: () => request<{ items: any[]; count: number }>('GET', '/feed/unread'),
-  /** Правая колонка новостей: объявления, свежие новости, дни рождения, новички. */
+  // ── «Новости» (ТЗ-20) ──
+  /** Лента: закреплённые и хайлайт дня (`top`) + по времени, «ещё» — курсором `before`. */
+  feedList: (o: { filter?: NewsFilter; q?: string; before?: string } = {}) => {
+    const qs = new URLSearchParams();
+    if (o.filter && o.filter !== 'all') qs.set('filter', o.filter);
+    if (o.q) qs.set('q', o.q);
+    if (o.before) qs.set('before', o.before);
+    const tail = qs.toString();
+    return request<{ top: NewsPost[]; items: NewsPost[]; nextCursor: string | null; can: NewsCan }>('GET', `/feed${tail ? `?${tail}` : ''}`);
+  },
+  feedGet: (id: string) => request<NewsPost>('GET', `/feed/${id}`),
+  feedUnread: () => request<{ items: unknown[]; count: number }>('GET', '/feed/unread'),
+  /** Открыл раздел — всё до этого момента уже не «новое». */
+  feedSeen: () => request<{ ok: boolean }>('POST', '/feed/seen'),
+  /** Правая колонка: объявления, открытые опросы, дни рождения, новички. */
   feedSidebar: () => request<{
-    announcements: { id: string; body: string; createdAt: string; isRead: boolean }[];
-    latest: { id: string; body: string; createdAt: string; authorName: string | null }[];
+    announcements: { id: string; title: string | null; body: string; createdAt: string; needsAck: boolean }[];
+    polls: { id: string; question: string; deadlineAt: string | null }[];
     birthdays: { userId: string; fullName: string; avatarUrl: string | null; date: string; inDays: number }[];
     newcomers: { userId: string; fullName: string; avatarUrl: string | null; positionName: string | null; joinedAt: string }[];
   }>('GET', '/feed/sidebar'),
-  feedCreate: (b: { body: string; isAnnouncement?: boolean; activeUntil?: string; groupIds?: string[]; mentionIds?: string[] }) =>
-    request<any>('POST', '/feed', b),
+  feedCreate: (b: {
+    type?: 'manual' | 'announcement'; title?: string; body: string; visibility?: NewsVisibility;
+    groupIds?: string[]; userIds?: string[]; projectId?: string; mentionIds?: string[];
+    requiresAck?: boolean; activeUntil?: string; ctaLabel?: string; ctaUrl?: string; pin?: boolean;
+  }) => request<NewsPost>('POST', '/feed', b),
+  feedUpdate: (id: string, b: { title?: string; body?: string; ctaLabel?: string; ctaUrl?: string; requiresAck?: boolean; activeUntil?: string }) =>
+    request<NewsPost>('PATCH', `/feed/${id}`, b),
+  feedCheck: (text: string) => request<{ warning: string | null }>('POST', '/feed/check', { text }),
+  feedKudos: (b: { toUserId: string; text: string; badge?: string; visibility?: 'all' | 'department'; groupIds?: string[] }) =>
+    request<NewsPost>('POST', '/feed/kudos', b),
+  feedPoll: (b: {
+    question: string; options: string[]; deadlineAt?: string; anonymous?: boolean; multiple?: boolean;
+    visibility?: NewsVisibility; groupIds?: string[]; userIds?: string[]; projectId?: string;
+  }) => request<NewsPost>('POST', '/feed/polls', b),
+  feedVote: (id: string, optionIds: string[]) => request<NewsPost>('POST', `/feed/${id}/vote`, { optionIds }),
+  feedClosePoll: (id: string) => request<NewsPost>('POST', `/feed/${id}/close`),
+  feedVoters: (id: string) => request<{ options: { optionId: string; names: string[] }[] }>('GET', `/feed/${id}/voters`),
+  feedReact: (id: string, reaction: string) => request<NewsPost>('POST', `/feed/${id}/reactions`, { reaction }),
+  feedAck: (id: string) => request<{ acked: boolean }>('POST', `/feed/${id}/ack`),
+  feedReleaseTasks: (projectId: string) =>
+    request<{ id: string; title: string; closedAt: string; assigneeName: string | null }[]>('GET', `/feed/releases/tasks?projectId=${encodeURIComponent(projectId)}`),
+  feedRelease: (b: { projectId: string; title: string; body?: string; taskIds?: string[] }) => request<NewsPost>('POST', '/feed/releases', b),
+  /** Очередь одобрения: черновики системы и кандидаты на вехи и релизы. */
+  feedReview: () => request<{ drafts: NewsPost[]; candidates: NewsCandidate[] }>('GET', '/feed/review'),
+  feedPublishDraft: (id: string, b: { title?: string; body?: string } = {}) => request<NewsPost>('POST', `/feed/${id}/publish`, b),
+  feedSkipDraft: (id: string) => request<{ skipped: boolean }>('POST', `/feed/${id}/skip`),
+  feedPublishCandidate: (id: string, b: { title?: string; body?: string } = {}) => request<NewsPost>('POST', `/feed/candidates/${id}/publish`, b),
+  feedRejectCandidate: (id: string) => request<{ rejected: boolean }>('POST', `/feed/candidates/${id}/reject`),
+  feedDetectCandidates: () => request<{ added: number }>('POST', '/feed/candidates/detect'),
+  feedGenerateHighlight: () => request<{ status: string; postId?: string | null }>('POST', '/feed/highlights/generate'),
+  feedGenerateLearnings: () => request<{ status: string; postId?: string | null }>('POST', '/feed/learnings/generate'),
+  feedSettings: () => request<NewsSettings>('GET', '/feed/settings'),
+  feedSaveSettings: (b: Partial<NewsSettings>) => request<NewsSettings>('PATCH', '/feed/settings', b),
   /** Вложение прикладывается к УЖЕ опубликованному посту: сорвётся загрузка — текст не пропадёт. */
   feedAttach: async (postId: string, file: File) => {
     const fd = new FormData(); fd.append('file', file);
@@ -2142,7 +2179,6 @@ export const api = {
     if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Не удалось приложить файл');
     return env.data;
   },
-  feedRead: (id: string) => request<any>('POST', `/feed/${id}/read`),
 
   // смарт-пинги ассистента
   assistantMode: () =>
@@ -2167,18 +2203,19 @@ export const api = {
   sendPing: (id: string) => request<any>('POST', `/assistant/pings/${id}/send`),
   dismissPing: (id: string) => request<any>('POST', `/assistant/pings/${id}/dismiss`),
   feedReaders: (id: string) =>
-    request<{ read: { fullName: string }[]; pending: { fullName: string }[] }>('GET', `/feed/${id}/readers`),
+    request<{ read: { userId: string; fullName: string }[]; pending: { userId: string; fullName: string }[]; total: number }>('GET', `/feed/${id}/readers`),
   /**
    * Комментарии новости: последние десять. `before` — идентификатор самого верхнего
    * показанного, им поднимают предыдущие: обсуждение читают с конца, а не с начала.
    */
   feedComments: (id: string, before?: string) =>
-    request<{ items: any[]; total: number; hasMore: boolean }>(
+    request<{ items: NewsComment[]; total: number; hasMore: boolean }>(
       'GET', `/feed/${id}/comments${before ? `?before=${before}` : ''}`),
   feedComment: (id: string, body: string, mentionIds?: string[]) =>
-    request<{ items: any[]; total: number; hasMore: boolean }>('POST', `/feed/${id}/comments`, { body, mentionIds }),
-  feedPin: (id: string, pinned: boolean) => request<any>('POST', `/feed/${id}/pin`, { pinned }),
-  feedDelete: (id: string) => request<any>('DELETE', `/feed/${id}`),
+    request<{ items: NewsComment[]; total: number; hasMore: boolean }>('POST', `/feed/${id}/comments`, { body, mentionIds }),
+  feedDeleteComment: (id: string) => request<{ deleted: boolean }>('DELETE', `/feed/comments/${id}`),
+  feedPin: (id: string, pinned: boolean) => request<{ pinned: boolean }>('POST', `/feed/${id}/pin`, { pinned }),
+  feedDelete: (id: string) => request<{ deleted: boolean }>('DELETE', `/feed/${id}`),
 
   // календарь: события людей и компании
   calendarRange: (from: string, to: string, withTasks = true) =>
@@ -2833,4 +2870,57 @@ export type MeetingMe =
 export interface MeetingInvite {
   id: string; email: string; name: string | null; invitedAt: string;
   active: boolean; revokedAt: string | null; opened: boolean; lastUsedAt: string | null;
+}
+
+// ── «Новости» (ТЗ-20) ──
+export type NewsType = 'manual' | 'announcement' | 'kudos' | 'poll' | 'highlight' | 'learnings' | 'milestone' | 'release' | 'victory';
+export type NewsFilter = 'all' | 'highlights' | 'kudos' | 'releases' | 'polls' | 'announcements';
+export type NewsVisibility = 'all' | 'department' | 'project' | 'custom';
+export interface NewsFile { fileId: string; name: string; mime: string; size: number }
+export interface NewsCan { post: boolean; announce: boolean; poll: boolean; pin: boolean; approve: boolean; manage: boolean; kudos: boolean }
+export interface NewsPost {
+  id: string;
+  type: NewsType;
+  status: string;
+  title: string | null;
+  body: string;
+  authorId: string | null;
+  authorName: string | null;
+  authorAvatar: string | null;
+  byAgent: boolean;
+  visibility: NewsVisibility;
+  projectId: string | null;
+  projectName: string | null;
+  groups: string[];
+  isPinned: boolean;
+  isNew: boolean;
+  publishedAt: string;
+  createdAt: string;
+  editedAt: string | null;
+  activeUntil: string | null;
+  requiresAck: boolean;
+  acked: boolean;
+  acks: number;
+  cta: { label: string; url: string } | null;
+  comments: number;
+  reactions: { emoji: string; count: number; mine: boolean }[];
+  files: NewsFile[];
+  kudos: { toUserId: string | null; toName: string; toAvatar: string | null; badge: { key: string; label: string } | null } | null;
+  contributors: { userId: string; name: string }[];
+  sources: { label: string; path: string }[];
+  poll: {
+    question: string; deadlineAt: string | null; anonymous: boolean; multiple: boolean; closed: boolean;
+    voters: number; totalVotes: number; voted: boolean; result: string | null;
+    options: { id: string; label: string; votes: number; mine: boolean }[];
+  } | null;
+  can: { edit: boolean; delete: boolean; pin: boolean; close: boolean; readers: boolean; voters: boolean };
+}
+export interface NewsComment { id: string; authorId: string; fullName: string | null; avatarUrl: string | null; body: string; createdAt: string; canDelete: boolean }
+export interface NewsCandidate {
+  id: string; type: 'milestone' | 'release'; title: string; body: string; projectId: string | null; projectName: string | null;
+  visibility: string; createdAt: string; contributors: { userId: string; name: string }[];
+}
+export interface NewsSettings {
+  highlightsEnabled: boolean; highlightsAuto: boolean; highlightHour: number; heroEnabled: boolean;
+  learningsEnabled: boolean; learningsDow: number; learningsHour: number;
 }

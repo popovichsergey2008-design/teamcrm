@@ -34,6 +34,8 @@ export const PERMISSIONS = [
   'focus.view_team', 'focus.knock',
   // «Пульс команды» (ТЗ-19): видеть, выполнять действия, балансировать, публиковать победы
   'radar.view', 'radar.execute_actions', 'radar.rebalance', 'radar.publish_news',
+  // «Новости» (ТЗ-20): писать, объявлять, закреплять, править чужое, опросы, одобрять черновики системы
+  'news.create', 'news.publish_announcement', 'news.pin', 'news.manage_all', 'news.create_poll', 'news.approve',
   // ИИ и автоматизации
   'ai.use', 'ai.manage',
   // интеграции, выгрузки, безопасность
@@ -100,6 +102,8 @@ const BASE: Record<BaseRole, PermissionMap> = {
     'chat.view': ALL, 'chat.write': ALL, 'file.download': ALL,
     'focus.view_team': ALL, 'focus.knock': ALL,
     'radar.view': ALL, 'radar.execute_actions': ALL, 'radar.rebalance': ALL, 'radar.publish_news': ALL,
+    'news.create': ALL, 'news.publish_announcement': ALL, 'news.pin': ALL, 'news.manage_all': ALL,
+    'news.create_poll': ALL, 'news.approve': ALL,
     'ai.use': ALL, 'ai.manage': ALL,
     'integration.view': ALL, 'integration.manage': NO,
     'export.create': ALL,
@@ -119,6 +123,9 @@ const BASE: Record<BaseRole, PermissionMap> = {
     'focus.view_team': ALL, 'focus.knock': ALL,
     // Пульс — экран руководителя; сотруднику владелец может выдать отдельно
     'radar.view': NO, 'radar.execute_actions': NO, 'radar.rebalance': NO, 'radar.publish_news': NO,
+    // новости пишет руководство и должность с правом (пресс-секретарь); опрос и «спасибо» — каждый
+    'news.create': NO, 'news.publish_announcement': NO, 'news.pin': NO, 'news.manage_all': NO,
+    'news.create_poll': ALL, 'news.approve': NO,
     'ai.use': ALL, 'ai.manage': NO,
     'integration.view': ALL, 'integration.manage': NO,
     'export.create': ALL,

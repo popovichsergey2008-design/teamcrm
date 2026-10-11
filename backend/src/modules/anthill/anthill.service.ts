@@ -1,3 +1,4 @@
+import { FeedService } from '../feed/feed.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { ClientsService } from '../clients/clients.service';
 import { AppException } from '../../common/http/app-exception';
@@ -75,9 +76,9 @@ export class AnthillService {
     private readonly activity: TaskActivityRepository,
     tasks: TasksService, chats: ChatsService, search: SearchService, nl: NlService, ask: AskService,
     files: FilesService, taskcard: TaskCardService, forecast: ForecastService, calendar: CalendarService,
-    knowledge: KnowledgeService, clients: ClientsService, briefs: BriefService, mail: MailboxService, pulse: PulseService,
+    knowledge: KnowledgeService, clients: ClientsService, briefs: BriefService, mail: MailboxService, pulse: PulseService, feed: FeedService,
   ) {
-    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse });
+    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed });
   }
 
   private base() { return (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, ''); }

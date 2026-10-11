@@ -51,8 +51,12 @@ export function BottomNav({ route, unread, counters, onMore }: {
           </button>
         );
       })}
-      <button className="bottom-nav-item" onClick={onMore} aria-label="Ещё разделы" aria-haspopup="menu">
-        <span className="bottom-nav-icon"><Icon name="more" size={22} /></span>
+      {/* «Новости» живут в «Ещё» (решение 11.10): новое там — точкой на «Ещё», цифра — внутри */}
+      <button className="bottom-nav-item" onClick={onMore} aria-label={(counters.news?.unread ?? 0) > 0 ? `Ещё разделы, в «Новостях» новое: ${counters.news?.unread}` : 'Ещё разделы'} aria-haspopup="menu">
+        <span className="bottom-nav-icon">
+          <Icon name="more" size={22} />
+          {(counters.news?.unread ?? 0) > 0 && <span className="bottom-nav-badge bottom-nav-dot" aria-hidden="true" />}
+        </span>
         <span className="bottom-nav-label">Ещё</span>
       </button>
     </nav>

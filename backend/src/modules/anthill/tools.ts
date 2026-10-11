@@ -1,3 +1,4 @@
+import { FeedService } from '../feed/feed.service';
 import { AnthillRepository, Source } from './anthill.repository';
 import { ClientsService } from '../clients/clients.service';
 import { nextRun, parseSchedule, scheduleLabel } from './schedule-ru';
@@ -91,6 +92,8 @@ export interface ToolDeps {
   mail: MailboxService;
   /** «Пульс команды» (ТЗ-19): тот же расчёт, что на экране руководителя. */
   pulse: PulseService;
+  /** «Новости» (ТЗ-20): что важного, спасибо коллеге, опрос — тем же сервисом, что экран. */
+  feed: FeedService;
 }
 
 const str = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
@@ -98,7 +101,7 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse } = deps;
+  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed } = deps;
 
   /** Клиент по названию или номеру — тем же поиском, что в разделе, и с теми же правами. */
   const findClient = async (ctx: ToolContext, key: string) => {
@@ -1069,6 +1072,96 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           lines.push(`Проект «${p.name}» опаздывает на ${p.forecast.delayDays} дн. (прогноз ${p.forecast.date}, уверенность ${p.forecast.reliable ? `${p.forecast.confidence}%` : 'низкая'}). Чтобы успеть: ${p.catchUp.join(' ')}`);
         }
         return { text: lines.join('\n'), sources: [{ kind: 'project' as const, id: 'pulse', title: 'Пульс команды', url: `${ctx.base}/radar` }] };
+      },
+    },
+    // ── «Новости» (ТЗ-20, §54) ──
+    {
+      name: 'news_today', kind: 'read',
+      description: 'Что важного произошло в компании: хайлайт дня, свежие релизы и вехи, объявления, благодарности, открытые опросы. Для «что важного произошло сегодня», «что нового в компании», «есть ли объявления».',
+      params: {},
+      async run(ctx) {
+        const r = await feed.list(ctx.tenantId, ctx.user, { limit: 10 });
+        const posts = [...r.top, ...r.items].slice(0, 10);
+        if (!posts.length) return { text: 'В «Новостях» пока пусто.', sources: [] };
+        const kind: Record<string, string> = {
+          highlight: 'Хайлайт дня', learnings: 'Выводы недели', release: 'Релиз', milestone: 'Веха', victory: 'Победа',
+          announcement: 'Объявление', kudos: 'Спасибо', poll: 'Опрос', manual: 'Новость',
+        };
+        const lines = posts.map((p) => {
+          const head = p.type === 'kudos' ? `${p.authorName} → ${p.kudos?.toName}` : (p.title ?? '');
+          const extra = p.poll && !p.poll.closed ? ` (голосов: ${p.poll.voters}${p.poll.voted ? ', вы проголосовали' : ''})` : '';
+          const ack = p.requiresAck && !p.acked ? ' — ждёт вашего «Ознакомился»' : '';
+          return `— ${kind[p.type] ?? 'Новость'}${head ? `: ${head}` : ''}${extra}${ack}. ${clip(p.body.replace(/\s+/g, ' '), 200)}`;
+        });
+        return {
+          text: lines.join('\n'),
+          sources: posts.slice(0, 5).map((p) => ({ kind: 'project' as const, id: `news:${p.id}`, title: p.title ?? kind[p.type] ?? 'Новость', url: `${ctx.base}/news/${p.id}` })),
+        };
+      },
+    },
+    {
+      name: 'news_kudos', kind: 'write',
+      description: 'Поблагодарить коллегу в «Новостях»: «поблагодари Глеба за помощь с интеграцией». badge — один из: saver (Спаситель дня), team (Командный игрок), quality (Мастер качества), speed (Скорость света), idea (Лучшее решение), help (Помощь коллегам); можно не указывать.',
+      params: { person: 'кого благодарим — имя', text: 'за что спасибо', badge: 'необязательно: saver | team | quality | speed | idea | help' },
+      async preview(ctx, p) {
+        const person = await findUser(ctx.tenantId, str(p.person, 80));
+        if (!person) throw new Error('Кого благодарим?');
+        if (String(person.id) === String(ctx.user.userId)) throw new Error('Себя поблагодарить нельзя');
+        const text = String(p.text ?? '').trim().slice(0, 1000);
+        if (text.length < 3) throw new Error('Напишите, за что спасибо');
+        const badge = ['saver', 'team', 'quality', 'speed', 'idea', 'help'].includes(str(p.badge, 10)) ? str(p.badge, 10) : null;
+        return { text: `Поблагодарить ${person.full_name} в «Новостях»?\n«${clip(text, 400)}»`, params: { toUserId: String(person.id), name: person.full_name, text, badge } };
+      },
+      fields: [{ key: 'text', label: 'За что спасибо', type: 'multiline' }],
+      values: (p) => ({ text: String(p.text ?? '') }),
+      async edit(_ctx, p, patch) {
+        const text = String(patch.text ?? p.text ?? '').trim().slice(0, 1000);
+        if (text.length < 3) throw new Error('Напишите, за что спасибо');
+        return { text: `Поблагодарить ${String(p.name)} в «Новостях»?\n«${clip(text, 400)}»`, params: { ...p, text } };
+      },
+      async execute(ctx, p) {
+        const post = await feed.kudos(ctx.tenantId, ctx.user, { toUserId: String(p.toUserId), text: String(p.text), badge: p.badge ? String(p.badge) : undefined });
+        return {
+          text: `Спасибо опубликовано — ${String(p.name)} получит уведомление.`,
+          output: { postId: String(post.id) },
+          sources: [{ kind: 'project' as const, id: `news:${post.id}`, title: 'Спасибо', url: `${ctx.base}/news/${post.id}` }],
+        };
+      },
+      async undo(ctx, output) {
+        await feed.remove(ctx.tenantId, ctx.user, String(output.postId));
+        return 'Благодарность удалена.';
+      },
+    },
+    {
+      name: 'news_poll', kind: 'write',
+      description: 'Создать быстрый опрос в «Новостях»: «создай опрос по времени ретро: 16:00 или 17:00». options — варианты через «;». deadline — когда закрыть (ГГГГ-ММ-ДДTЧЧ:ММ), можно не указывать. anonymous — да/нет.',
+      params: { question: 'вопрос', options: 'варианты через ;', deadline: 'необязательно: ГГГГ-ММ-ДДTЧЧ:ММ', anonymous: 'необязательно: да или нет' },
+      async preview(_ctx, p) {
+        const question = String(p.question ?? '').trim().slice(0, 300);
+        const options = String(p.options ?? '').split(/[;\n]/).map((x) => x.trim()).filter(Boolean).slice(0, 10);
+        if (question.length < 3) throw new Error('Сформулируйте вопрос');
+        if (options.length < 2) throw new Error('Нужно минимум два варианта');
+        const anonymous = /^(да|yes|true|1)$/i.test(str(p.anonymous, 5));
+        const deadline = str(p.deadline, 20) || null;
+        return {
+          text: `Создать опрос${anonymous ? ' (анонимный)' : ''}?\n«${question}»\n${options.map((o) => `○ ${o}`).join('\n')}${deadline ? `\nДо ${deadline.replace('T', ' ')}` : ''}`,
+          params: { question, options, anonymous, deadline },
+        };
+      },
+      async execute(ctx, p) {
+        const post = await feed.createPoll(ctx.tenantId, ctx.user, {
+          question: String(p.question), options: (p.options as string[]) ?? [], anonymous: !!p.anonymous,
+          deadlineAt: p.deadline ? new Date(String(p.deadline)).toISOString() : null,
+        });
+        return {
+          text: 'Опрос опубликован в «Новостях».',
+          output: { postId: String(post.id) },
+          sources: [{ kind: 'project' as const, id: `news:${post.id}`, title: String(p.question), url: `${ctx.base}/news/${post.id}` }],
+        };
+      },
+      async undo(ctx, output) {
+        await feed.remove(ctx.tenantId, ctx.user, String(output.postId));
+        return 'Опрос удалён.';
       },
     },
     // ── почта (ТЗ-18, §8.1–8.2) ──

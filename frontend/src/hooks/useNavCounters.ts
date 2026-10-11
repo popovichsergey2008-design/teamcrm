@@ -1,3 +1,4 @@
+import { getSocket } from '../lib/socket';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 
@@ -51,10 +52,20 @@ export function useNavCounters(enabled: boolean, section: string): NavCounters {
     const soon = () => load();
     window.addEventListener('teamcrm:tasks-changed', now);
     window.addEventListener('focus', soon);
+    // «Новости» (ТЗ-20): зашёл в раздел, нажал «Ознакомился», появился или исчез пост —
+    // счётчик меняется сразу, а не через минуту
+    window.addEventListener('teamcrm:news-seen', now);
+    const socket = getSocket();
+    const onFeed = (p: { kind?: string }) => { if (p?.kind === 'created' || p?.kind === 'deleted') load(true); };
+    socket.on('feed.changed', onFeed);
+    socket.on('feed.seen', now);
     return () => {
       clearInterval(timer);
       window.removeEventListener('teamcrm:tasks-changed', now);
       window.removeEventListener('focus', soon);
+      window.removeEventListener('teamcrm:news-seen', now);
+      socket.off('feed.changed', onFeed);
+      socket.off('feed.seen', now);
     };
   }, [enabled, load]);
 

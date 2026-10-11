@@ -144,9 +144,12 @@ export class AssistantRepository {
                 left(fp.body, 80), NULL, NULL,
                 EXTRACT(EPOCH FROM (now() - m.created_at)) / 3600, u.timezone
            FROM feed_mentions m
-           JOIN feed_posts fp ON fp.id = m.post_id
+           -- удалённый пост или комментарий не зовёт: раньше секретарь напоминал о пустоте
+           JOIN feed_posts fp ON fp.id = m.post_id AND fp.deleted_at IS NULL
            JOIN users u ON u.id = m.user_id AND u.is_active
+      LEFT JOIN feed_comments mc ON mc.id = m.comment_id
           WHERE m.tenant_id = $1
+            AND (m.comment_id IS NULL OR mc.deleted_at IS NULL)
             AND m.created_at < now() - make_interval(hours => $3::int)
             AND NOT EXISTS (
               SELECT 1 FROM feed_comments fc

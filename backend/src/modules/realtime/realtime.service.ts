@@ -135,6 +135,16 @@ export class RealtimeService {
     this.server.to(RealtimeService.tenantRoom(tenantId)).emit(event, payload);
   }
 
+  /**
+   * Событие всем сотрудникам компании, без клиентского портала (ТЗ-20: лента).
+   * В событии — только номер поста и что случилось: видит ли человек пост, решает
+   * сервер, когда экран его перезапросит.
+   */
+  emitToStaff(tenantId: string, event: string, payload: Record<string, unknown>) {
+    if (!this.server) return;
+    this.server.to(RealtimeService.staffRoom(tenantId)).emit(event, payload);
+  }
+
   /** Сообщение чата адресатам: у каждого свои устройства, комната решает это сама. */
   emitToUsers(tenantId: string, userIds: string[], event: string, payload: Record<string, unknown>) {
     if (!this.server) return;

@@ -43,6 +43,8 @@ export type Route = {
   meetId?: string;
   /** карточка клиента: `/clients/:id` (ТЗ-17) */
   clientId?: string;
+  /** пост в «Новостях»: `/news/:id` (ТЗ-20) — ссылки из писем, push и хайлайтов */
+  postId?: string;
 };
 
 const SECTIONS: Section[] = [
@@ -129,6 +131,8 @@ export function parsePath(pathname: string): Route {
         ? { section, projectId: seg[1], taskId: seg[3] }
         : { section, projectId: seg[1] };
     }
+    case 'news':
+      return seg[1] ? { section, postId: seg[1] } : { section };
     case 'chat':
       if (seg[1] === 'meetings') return { section, view: 'meetings' };
       // Лента переехала из чатов в свой раздел «Новости»: она не переписка, а издание.
@@ -164,7 +168,7 @@ export function buildPath(r: Route): string {
         : `/projects/${enc(r.projectId)}`;
     case 'chat':
       if (r.view === 'meetings') return '/chat/meetings';
-      if (r.view === 'feed') return '/chat/feed';
+      if (r.view === 'feed') return '/news';
       if (r.chatId && r.threadId) return `/chat/${enc(r.chatId)}/thread/${enc(r.threadId)}`;
       return r.chatId ? `/chat/${enc(r.chatId)}` : '/chat';
     case 'settings':
@@ -175,6 +179,8 @@ export function buildPath(r: Route): string {
       return r.meetId ? `/meet/${enc(r.meetId)}` : '/calendar';
     case 'clients':
       return r.clientId ? `/clients/${enc(r.clientId)}` : '/clients';
+    case 'news':
+      return r.postId ? `/news/${enc(r.postId)}` : '/news';
     default:
       return `/${r.section}`;
   }

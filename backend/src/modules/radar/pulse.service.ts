@@ -310,7 +310,8 @@ export class PulseService {
       switch (p.action_type) {
         case 'PUBLISH_NEWS':
           await this.need(a, 'radar.publish_news', 'Публиковать победы может руководство');
-          await this.feed.create(a.tenantId, { userId: a.userId, role: a.role }, { body: String(x.text) });
+          // право решает «Пульс» (radar.publish_news): отдельное право на новости не нужно
+          await this.feed.publishVictory(a.tenantId, { userId: a.userId, role: a.role }, String(x.text));
           text = 'Победа опубликована в «Новостях».';
           break;
         case 'TASK_NUDGE':

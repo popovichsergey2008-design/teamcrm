@@ -125,14 +125,18 @@ export class NotificationsService {
    * Письмо уходит в ту же очередь, что и остальные, поэтому автоматически дублируется
    * в Telegram — объявление, которое человек увидит завтра, объявлением не было.
    */
-  async feedAnnouncement(tenantId: string, postId: string, actorId: string, body: string): Promise<void> {
+  async feedAnnouncement(tenantId: string, postId: string, actorId: string, body: string, onlyUserIds?: string[]): Promise<void> {
     try {
-      const [recipients, actorName] = await Promise.all([
+      const [all, actorName] = await Promise.all([
         this.repo.feedRecipients(tenantId, postId, actorId),
         this.repo.actorName(tenantId, actorId),
       ]);
+      // кому пост виден — решает лента (видимость «проект», «свои люди»), а не отделы (ТЗ-20)
+      const only = onlyUserIds ? new Set(onlyUserIds.map(String)) : null;
+      const recipients = only ? all.filter((r) => only.has(String(r.id))) : all;
       if (!recipients.length) return;
-      const url = `${this.baseUrl()}/feed`;
+      // прямо на пост: раньше ссылка вела на /feed — такого раздела нет, открывался «Фокус»
+      const url = `${this.baseUrl()}/news/${postId}`;
       const short = body.replace(/\s+/g, ' ').trim().slice(0, 600);
       for (const r of recipients) {
         const token = await this.repo.ensureUnsubscribeToken(r.id, r.unsubscribe_token);
@@ -168,7 +172,7 @@ export class NotificationsService {
         this.repo.actorName(tenantId, actorId),
       ]);
       if (!recipients.length) return;
-      const url = `${this.baseUrl()}/news`;
+      const url = `${this.baseUrl()}/news/${postId}`;
       const short = body.replace(/\s+/g, ' ').trim().slice(0, 600);
       for (const r of recipients) {
         const token = await this.repo.ensureUnsubscribeToken(r.id, r.unsubscribe_token);

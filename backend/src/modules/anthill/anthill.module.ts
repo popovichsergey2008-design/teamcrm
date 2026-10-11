@@ -1,3 +1,4 @@
+import { FeedModule } from '../feed/feed.module';
 import { Module } from '@nestjs/common';
 import { ClientsModule } from '../clients/clients.module';
 import { AiModule } from '../ai/ai.module';
@@ -43,6 +44,8 @@ import { BriefService } from './brief.service';
     MailboxModule,
     // «Пульс команды» (ТЗ-19): «где главный затык», «кого разгрузить»
     RadarModule,
+    // «Новости» (ТЗ-20): «что важного сегодня», «поблагодари Глеба», «создай опрос»
+    FeedModule,
   ],
   controllers: [AnthillController],
   providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService, BotDelivery, BriefRepository, BriefService],

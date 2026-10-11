@@ -39,6 +39,7 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'embedding', title: 'Индексация задач и документов', where: 'Фоном, при изменении данных', group: 'knowledge' },
   { key: 'knowledge_summary', title: 'Сводка по документу', where: 'База знаний', group: 'knowledge' },
 
+  { key: 'news_highlight', title: 'Новости: хайлайт дня и выводы недели', where: 'Новости — текст из фактов, модель только шлифует', group: 'service' },
   { key: 'bitrix_route', title: 'Разбор импорта из Битрикс24', where: 'Интеграции → Битрикс24', group: 'service' },
   { key: 'promptops_optimize', title: 'Улучшение промптов', where: 'Интеграции → библиотека промптов', group: 'service' },
 ];

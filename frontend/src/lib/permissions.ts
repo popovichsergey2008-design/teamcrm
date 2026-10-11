@@ -50,6 +50,12 @@ const TITLES: Record<string, string> = {
   'radar.execute_actions': 'Действовать из «Пульса»: вопрос, срок, переназначение',
   'radar.rebalance': 'Перераспределять нагрузку',
   'radar.publish_news': 'Публиковать победы команды',
+  'news.create': 'Публиковать новости',
+  'news.publish_announcement': 'Публиковать важные объявления',
+  'news.pin': 'Закреплять новости',
+  'news.manage_all': 'Править и удалять чужие новости',
+  'news.create_poll': 'Создавать опросы',
+  'news.approve': 'Одобрять хайлайты, вехи и релизы',
 
   'ai.use': 'Пользоваться ИИ',
   'ai.manage': 'Настраивать ИИ',
@@ -82,7 +88,8 @@ export const PERMISSION_GROUPS: { title: string; items: string[] }[] = [
   },
   {
     title: 'Переписка и файлы',
-    items: ['chat.view', 'chat.write', 'file.download', 'focus.view_team', 'focus.knock', 'radar.view', 'radar.execute_actions', 'radar.rebalance', 'radar.publish_news'],
+    items: ['chat.view', 'chat.write', 'file.download', 'focus.view_team', 'focus.knock', 'radar.view', 'radar.execute_actions', 'radar.rebalance', 'radar.publish_news',
+      'news.create', 'news.publish_announcement', 'news.pin', 'news.manage_all', 'news.create_poll', 'news.approve'],
   },
   {
     title: 'Люди и организация',

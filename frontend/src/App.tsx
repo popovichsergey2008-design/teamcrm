@@ -220,6 +220,12 @@ export function App() {
   const joinable = activeCalls.find((c) => c.canJoin) ?? null;
   // окно быстрой команды: null — закрыто; текст и голос приходят из командной строки
   const [nl, setNl] = useState<{ text?: string; voice?: boolean } | null>(null);
+  // «Создать задачу» из любого места с готовым текстом (ТЗ-20 §50: комментарий новости → задача)
+  useEffect(() => {
+    const open = (e: Event) => setNl({ text: (e as CustomEvent<{ text?: string }>).detail?.text ?? '' });
+    window.addEventListener('teamcrm:quick-task', open);
+    return () => window.removeEventListener('teamcrm:quick-task', open);
+  }, []);
   const [paletteOpen, setPaletteOpen] = useState<{ voice?: boolean } | null>(null);
   const [secretaryOpen, setSecretaryOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -663,7 +669,7 @@ export function App() {
         )}
         {/* Остальное открывают редко и ненадолго — держать это в памяти незачем */}
         {/* Новости — свой раздел, а не вкладка чатов: это издание компании, а не переписка */}
-        {route.section === 'news' && <Suspense fallback={pageFallback}><FeedPage /></Suspense>}
+        {route.section === 'news' && <Suspense fallback={pageFallback}><FeedPage postId={route.postId} /></Suspense>}
         {route.section === 'chat' && route.view === 'meetings' && (
           <Suspense fallback={pageFallback}><MeetingsPage onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} /></Suspense>
         )}

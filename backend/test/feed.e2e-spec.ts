@@ -7,16 +7,17 @@ import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/http/all-exceptions.filter';
 import { ResponseInterceptor } from '../src/common/http/response.interceptor';
 import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
+import { DbService } from '../src/database/db.service';
+import { NewsAgentService } from '../src/modules/feed/news-agent.service';
 
 /**
- * Лента компании.
- *
- * Смысл объявления — подтверждение прочтения: автор должен видеть поимённо, кто прочитал,
- * а кто нет. Всё остальное в ленте — обычная переписка, которая и так есть в чатах.
+ * «Новости» (ТЗ-20): лента значимых событий компании — объявления с «Ознакомился»,
+ * спасибо, опросы, релизы и вехи, хайлайт дня. Сценарии — из §106 ТЗ.
  */
-describe('Лента компании (e2e)', () => {
+describe('Новости (e2e)', () => {
   let app: INestApplication;
   let http$: any;
+  let db: DbService;
   const uniq = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
   const H = (t: string) => ({ Authorization: `Bearer ${t}` });
 
@@ -30,6 +31,7 @@ describe('Лента компании (e2e)', () => {
     app.useWebSocketAdapter(new RedisIoAdapter(app));
     await app.listen(0, '0.0.0.0');
     http$ = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
+    db = app.get(DbService);
   });
   afterAll(async () => { await app?.close(); });
 
@@ -37,265 +39,338 @@ describe('Лента компании (e2e)', () => {
     .send({ tenantName: name, email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
     .expect(201)).body.data;
 
-  const employee = async (ownerToken: string, role = 'member') => {
+  const employee = async (ownerToken: string, name = 'Сотрудник', role = 'member') => {
     const email = `u_${uniq()}@t.test`;
     const user = (await http$.post('/api/users').set(H(ownerToken))
-      .send({ email, fullName: `Сотрудник ${role}`, password: 'password123', role }).expect(201)).body.data;
+      .send({ email, fullName: name, password: 'password123', role }).expect(201)).body.data;
     const token = (await http$.post('/api/auth/login')
       .send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
-    return { user, token };
+    return { user, token, id: String(user.id) };
   };
 
-  it('объявление: подтверждение прочтения, список прочитавших и оставшихся', async () => {
-    const owner = await org('Лента');
-    const mate = await employee(owner.accessToken);
+  const feed = async (token: string, q = '') => (await http$.get(`/api/feed${q}`).set(H(token)).expect(200)).body.data;
+  const unread = async (token: string) => (await http$.get('/api/feed/unread').set(H(token)).expect(200)).body.data.count;
 
-    const post = (await http$.post('/api/feed').set(H(owner.accessToken))
-      .send({ body: 'В пятницу переезжаем в новый офис', isAnnouncement: true }).expect(201)).body.data;
-    expect(post.isAnnouncement).toBe(true);
+  it('объявление: «Ознакомился», кто прочитал и кто нет, комментарий засчитывается', async () => {
+    const owner = await org('Объявления');
+    const O = owner.accessToken;
+    const mate = await employee(O, 'Глеб');
+    const anna = await employee(O, 'Анна');
 
-    // автор своё объявление читать не должен — он его и написал
-    expect((await http$.get('/api/feed/unread').set(H(owner.accessToken)).expect(200)).body.data.count).toBe(0);
+    const post = (await http$.post('/api/feed').set(H(O))
+      .send({ type: 'announcement', title: 'Переезд', body: 'В пятницу переезжаем в новый офис', ctaLabel: 'Схема', ctaUrl: 'https://example.com/map' })
+      .expect(201)).body.data;
+    expect(post.type).toBe('announcement');
+    expect(post.requiresAck).toBe(true);
+    expect(post.cta).toEqual({ label: 'Схема', url: 'https://example.com/map' });
 
-    // сотруднику оно висит непрочитанным
-    const unread = (await http$.get('/api/feed/unread').set(H(mate.token)).expect(200)).body.data;
-    expect(unread.count).toBe(1);
-    expect(unread.items[0].body).toContain('переезжаем');
+    expect(await unread(mate.token)).toBe(1);
+    expect(await unread(O)).toBe(0); // своё — не новое
 
-    // до подтверждения автор видит его в «ещё не прочитали»
-    const before = (await http$.get(`/api/feed/${post.id}/readers`).set(H(owner.accessToken)).expect(200)).body.data;
-    expect(before.pending.some((p: any) => String(p.fullName).includes('Сотрудник'))).toBe(true);
-
-    await http$.post(`/api/feed/${post.id}/read`).set(H(mate.token)).expect(201);
-
-    const after = (await http$.get(`/api/feed/${post.id}/readers`).set(H(owner.accessToken)).expect(200)).body.data;
-    expect(after.read.some((p: any) => String(p.fullName).includes('Сотрудник'))).toBe(true);
-    expect(after.pending.some((p: any) => String(p.fullName).includes('Сотрудник'))).toBe(false);
-    expect((await http$.get('/api/feed/unread').set(H(mate.token)).expect(200)).body.data.count).toBe(0);
-  });
-
-  /**
-   * Кто пишет новости.
-   *
-   * Лента компании — издание, а не общая стена: публикуют руководитель и тот, кому это
-   * доверено ДОЛЖНОСТЬЮ (пресс-секретарь). Читают и комментируют все — лента без
-   * обсуждения превращается в доску объявлений в подъезде.
-   */
-  it('новости пишет руководитель и должность с правом, читают все', async () => {
-    const owner = await org('Права ленты');
-    const mate = await employee(owner.accessToken);
-
-    // рядовой сотрудник по умолчанию не публикует ничего
-    await http$.post('/api/feed').set(H(mate.token))
-      .send({ body: 'Важное от рядового', isAnnouncement: true }).expect(403);
-    await http$.post('/api/feed').set(H(mate.token))
-      .send({ body: 'Кто-нибудь видел мою кружку?' }).expect(403);
-    expect((await http$.get('/api/feed').set(H(mate.token)).expect(200)).body.data.canPost).toBe(false);
-
-    // владелец заводит должность «Пресс-секретарь», даёт ей право и назначает человеку
-    const position = (await http$.post('/api/positions').set(H(owner.accessToken))
-      .send({ name: `Пресс-секретарь ${uniq()}` }).expect(201)).body.data;
-    await http$.patch(`/api/positions/${position.id}/news-right`).set(H(owner.accessToken))
-      .send({ canPostNews: true }).expect(200);
-    await http$.patch(`/api/users/${mate.user.id}`).set(H(owner.accessToken))
-      .send({ positionId: String(position.id) }).expect(200);
-
-    // теперь он публикует — и знает об этом до того, как напишет текст
-    expect((await http$.get('/api/feed').set(H(mate.token)).expect(200)).body.data.canPost).toBe(true);
-    const normal = (await http$.post('/api/feed').set(H(mate.token))
-      .send({ body: 'Во вторник переезжаем в новый офис' }).expect(201)).body.data;
-    expect(normal.isAnnouncement).toBe(false);
-    // но объявление с подтверждением прочтения — по-прежнему право руководства
-    await http$.post('/api/feed').set(H(mate.token))
-      .send({ body: 'Важное', isAnnouncement: true }).expect(403);
-
-    // право снимается вместе с галочкой у должности — человека трогать не нужно
-    await http$.patch(`/api/positions/${position.id}/news-right`).set(H(owner.accessToken))
-      .send({ canPostNews: false }).expect(200);
-    await http$.post('/api/feed').set(H(mate.token)).send({ body: 'Ещё новость' }).expect(403);
-
-    // список прочитавших — не всеобщее достояние
-    const post = (await http$.post('/api/feed').set(H(owner.accessToken))
-      .send({ body: 'Объявление', isAnnouncement: true }).expect(201)).body.data;
+    const before = (await http$.get(`/api/feed/${post.id}/readers`).set(H(O)).expect(200)).body.data;
+    expect(before.total).toBe(2);
+    expect(before.pending.map((p: any) => p.fullName).sort()).toEqual(['Анна', 'Глеб']);
     await http$.get(`/api/feed/${post.id}/readers`).set(H(mate.token)).expect(403);
+
+    await http$.post(`/api/feed/${post.id}/ack`).set(H(mate.token)).expect(201);
+    await http$.post(`/api/feed/${post.id}/comments`).set(H(anna.token)).send({ body: 'А парковка будет?' }).expect(201);
+    const after = (await http$.get(`/api/feed/${post.id}/readers`).set(H(O)).expect(200)).body.data;
+    expect(after.read).toHaveLength(2);
+    expect(after.pending).toHaveLength(0);
+
+    // посмотрел ленту — новое кончилось; объявление подтверждено — счётчик ноль
+    await http$.post('/api/feed/seen').set(H(mate.token)).expect(201);
+    expect(await unread(mate.token)).toBe(0);
+    // сотруднику объявлять нельзя, ссылка в кнопке — только http(s) или путь
+    await http$.post('/api/feed').set(H(mate.token)).send({ type: 'announcement', body: 'Важное' }).expect(403);
+    await http$.post('/api/feed').set(H(O)).send({ type: 'announcement', body: 'X', ctaLabel: 'A', ctaUrl: 'javascript:alert(1)' }).expect(400);
   });
 
-  it('лента чужой организации не видна, комментарий засчитывается как прочтение', async () => {
-    const a = await org('Своя лента');
-    const b = await org('Чужая лента');
-    const mate = await employee(a.accessToken);
+  it('права: новости — руководство и должность с правом; спасибо и опрос — каждый', async () => {
+    const owner = await org('Права');
+    const O = owner.accessToken;
+    const mate = await employee(O, 'Глеб');
+    await http$.post('/api/feed').set(H(mate.token)).send({ body: 'Кто видел мою кружку?' }).expect(403);
+    const c1 = (await feed(mate.token)).can;
+    expect(c1).toMatchObject({ post: false, announce: false, poll: true, kudos: true, approve: false });
 
-    const post = (await http$.post('/api/feed').set(H(a.accessToken))
-      .send({ body: 'Только для своих', isAnnouncement: true }).expect(201)).body.data;
+    const position = (await http$.post('/api/positions').set(H(O)).send({ name: `Пресс-секретарь ${uniq()}` }).expect(201)).body.data;
+    await http$.patch(`/api/positions/${position.id}/news-right`).set(H(O)).send({ canPostNews: true }).expect(200);
+    await http$.patch(`/api/users/${mate.id}`).set(H(O)).send({ positionId: String(position.id) }).expect(200);
+    expect((await feed(mate.token)).can.post).toBe(true);
+    const p = (await http$.post('/api/feed').set(H(mate.token)).send({ body: 'Во вторник субботник' }).expect(201)).body.data;
+    expect(p.can.edit).toBe(true);
 
-    expect((await http$.get('/api/feed').set(H(b.accessToken)).expect(200)).body.data.items).toEqual([]);
-    await http$.get(`/api/feed/${post.id}/readers`).set(H(b.accessToken)).expect(404);
-
-    // человек ответил на объявление — значит прочитал; спрашивать ещё раз незачем
-    await http$.post(`/api/feed/${post.id}/comments`).set(H(mate.token))
-      .send({ body: 'А во сколько?' }).expect(201);
-    expect((await http$.get('/api/feed/unread').set(H(mate.token)).expect(200)).body.data.count).toBe(0);
-
-    const comments = (await http$.get(`/api/feed/${post.id}/comments`).set(H(a.accessToken)).expect(200)).body.data;
-    expect(comments.items).toHaveLength(1);
-    expect(comments.items[0].body).toBe('А во сколько?');
+    // чужой пост руководство правит и удаляет; сотрудник — нет
+    const other = await employee(O, 'Анна');
+    await http$.patch(`/api/feed/${p.id}`).set(H(other.token)).send({ body: 'Подменил' }).expect(403);
+    const edited = (await http$.patch(`/api/feed/${p.id}`).set(H(O)).send({ body: 'Во вторник субботник в 10:00' }).expect(200)).body.data;
+    expect(edited.body).toContain('10:00');
+    expect(edited.editedAt).toBeTruthy();
   });
 
-  it('закреплённое держится наверху, удалённое пропадает из ленты', async () => {
-    const owner = await org('Закрепление');
-    await http$.post('/api/feed').set(H(owner.accessToken)).send({ body: 'Первое' }).expect(201);
-    const pinned = (await http$.post('/api/feed').set(H(owner.accessToken)).send({ body: 'Второе' }).expect(201)).body.data;
-    await http$.post('/api/feed').set(H(owner.accessToken)).send({ body: 'Третье' }).expect(201);
+  it('видимость: отдел, закрытый проект, чужая организация — по номеру тоже не открыть', async () => {
+    const owner = await org('Видимость');
+    const O = owner.accessToken;
+    const dev = await employee(O, 'Разработчик');
+    const sales = await employee(O, 'Продажник');
+    const group = (await http$.post('/api/groups').set(H(O)).send({ name: `Разработка ${uniq()}`, kind: 'department' }).expect(201)).body.data;
+    await http$.post(`/api/groups/${group.id}/members`).set(H(O)).send({ userId: dev.id }).expect(201);
 
-    await http$.post(`/api/feed/${pinned.id}/pin`).set(H(owner.accessToken)).send({ pinned: true }).expect(201);
-    const list = (await http$.get('/api/feed').set(H(owner.accessToken)).expect(200)).body.data.items;
-    expect(list[0].body).toBe('Второе');
+    const forDev = (await http$.post('/api/feed').set(H(O))
+      .send({ body: 'Только разработке', visibility: 'department', groupIds: [String(group.id)] }).expect(201)).body.data;
+    expect(forDev.visibility).toBe('department');
+    await http$.get(`/api/feed/${forDev.id}`).set(H(dev.token)).expect(200);
+    // раньше по номеру поста комментарии открывались кому угодно (ошибка 3 разбора)
+    await http$.get(`/api/feed/${forDev.id}`).set(H(sales.token)).expect(404);
+    await http$.get(`/api/feed/${forDev.id}/comments`).set(H(sales.token)).expect(404);
+    await http$.post(`/api/feed/${forDev.id}/comments`).set(H(sales.token)).send({ body: 'Подсмотрел' }).expect(404);
+    expect((await feed(sales.token)).items.some((x: any) => x.id === String(forDev.id))).toBe(false);
 
-    await http$.delete(`/api/feed/${pinned.id}`).set(H(owner.accessToken)).expect(200);
-    const after = (await http$.get('/api/feed').set(H(owner.accessToken)).expect(200)).body.data.items;
-    expect(after.some((p: any) => String(p.id) === String(pinned.id))).toBe(false);
-    expect(after).toHaveLength(2);
+    // закрытый проект: «всем» превращается в «проекту» (§56)
+    const project = (await http$.post('/api/projects').set(H(O)).send({ name: 'Тайный' }).expect(201)).body.data;
+    await db.query(`UPDATE projects SET visibility = 'members' WHERE id = $1`, [project.id]);
+    const secret = (await http$.post('/api/feed').set(H(O)).send({ body: 'Секретная веха', projectId: String(project.id) }).expect(201)).body.data;
+    expect(secret.visibility).toBe('project');
+    await http$.get(`/api/feed/${secret.id}`).set(H(dev.token)).expect(404);
+
+    // «свои люди»
+    const custom = (await http$.post('/api/feed').set(H(O)).send({ body: 'Лично вам', visibility: 'custom', userIds: [sales.id] }).expect(201)).body.data;
+    await http$.get(`/api/feed/${custom.id}`).set(H(sales.token)).expect(200);
+    await http$.get(`/api/feed/${custom.id}`).set(H(dev.token)).expect(404);
+
+    const stranger = await org('Чужие');
+    await http$.get(`/api/feed/${custom.id}`).set(H(stranger.accessToken)).expect(404);
+    expect((await feed(stranger.accessToken)).items).toEqual([]);
   });
 
-  it('вложение видно в ленте, приложить его к чужому посту нельзя', async () => {
-    const owner = await org('Вложения');
-    const mate = await employee(owner.accessToken);
-
-    const post = (await http$.post('/api/feed').set(H(owner.accessToken))
-      .send({ body: 'Инструкция по пропускам' }).expect(201)).body.data;
-
-    await http$.post(`/api/feed/${post.id}/files`).set(H(owner.accessToken))
-      .attach('file', Buffer.from('порядок выдачи пропусков'), 'propuska.txt')
-      .expect(201);
-
-    const list = (await http$.get('/api/feed').set(H(mate.token)).expect(200)).body.data.items;
-    const mine = list.find((p: any) => String(p.id) === String(post.id));
-    expect(mine.files).toHaveLength(1);
-    expect(mine.files[0].name).toBe('propuska.txt');
-    expect(Number(mine.files[0].size)).toBeGreaterThan(0);
-
-    // чужая стена: дополнить чужое сообщение файлом рядовой сотрудник не может
-    await http$.post(`/api/feed/${post.id}/files`).set(H(mate.token))
-      .attach('file', Buffer.from('что-то своё'), 'chuzhoe.txt')
-      .expect(403);
-  });
-
-  /**
-   * Постраничность ленты.
-   *
-   * Новости читают не только сегодняшние: к объявлению месячной давности возвращаются,
-   * и добираться до него прокруткой на сотню постов невозможно. Проверяем то, на чём
-   * такие списки ошибаются: размер страницы, общее число и отсутствие нахлёста между
-   * страницами.
-   */
-  it('лента листается по десять, страницы не перекрываются', async () => {
-    const owner = await org(`Постранично ${uniq()}`);
-    for (let i = 1; i <= 12; i++) {
-      await http$.post('/api/feed').set(H(owner.accessToken))
-        .send({ body: `Новость номер ${i}` }).expect(201);
+  it('лента: закреплённые сверху (не больше трёх), курсор, фильтр и поиск', async () => {
+    const owner = await org('Лента');
+    const O = owner.accessToken;
+    const ids: string[] = [];
+    for (let i = 1; i <= 20; i++) {
+      ids.push(String((await http$.post('/api/feed').set(H(O)).send({ body: `Новость номер ${i}` }).expect(201)).body.data.id));
     }
+    for (const id of ids.slice(0, 3)) await http$.post(`/api/feed/${id}/pin`).set(H(O)).send({ pinned: true }).expect(201);
+    await http$.post(`/api/feed/${ids[3]}/pin`).set(H(O)).send({ pinned: true }).expect(409);
 
-    const first = (await http$.get('/api/feed').set(H(owner.accessToken)).expect(200)).body.data;
-    expect(first.items).toHaveLength(10);
-    expect(first.total).toBe(12);
-    expect(first.pages).toBe(2);
-    expect(first.page).toBe(1);
+    const first = await feed(O);
+    expect(first.top.map((p: any) => p.id).sort()).toEqual(ids.slice(0, 3).sort());
+    expect(first.items).toHaveLength(15);
+    expect(first.items[0].body).toBe('Новость номер 20');
+    expect(first.nextCursor).toBeTruthy();
+    const second = await feed(O, `?before=${first.nextCursor}`);
+    expect(second.top).toEqual([]);
+    expect(second.items).toHaveLength(2); // 20 − 3 закреплённых − 15 на первой
+    expect(second.nextCursor).toBeNull();
+    const all = [...first.top, ...first.items, ...second.items].map((p: any) => p.id);
+    expect(new Set(all).size).toBe(20);
 
-    const second = (await http$.get('/api/feed?page=2').set(H(owner.accessToken)).expect(200)).body.data;
-    expect(second.items).toHaveLength(2);
-    expect(second.page).toBe(2);
+    expect((await feed(O, `?q=${encodeURIComponent('номер 7')}`)).items.map((p: any) => p.body)).toEqual(['Новость номер 7']);
+    expect((await feed(O, '?filter=polls')).items).toEqual([]);
 
-    // ни одна новость не попадает на обе страницы сразу
-    const ids = [...first.items, ...second.items].map((p: any) => String(p.id));
-    expect(new Set(ids).size).toBe(12);
-    // и порядок сохраняется: свежее — первым
-    expect(first.items[0].body).toBe('Новость номер 12');
-    expect(second.items[1].body).toBe('Новость номер 1');
+    await http$.delete(`/api/feed/${ids[0]}`).set(H(O)).expect(200);
+    expect((await feed(O)).top.some((p: any) => p.id === ids[0])).toBe(false);
   });
 
-  /**
-   * Длинное обсуждение.
-   *
-   * Комментарии читают с конца: важно, чем всё кончилось, а не начало переписки
-   * трёхмесячной давности. Поэтому отдаём хвост и даём поднять предыдущие — и
-   * проверяем ровно это, включая порядок и отсутствие нахлёста.
-   */
-  it('комментарии отдаются последними десятью, предыдущие поднимаются', async () => {
-    const owner = await org(`Обсуждение ${uniq()}`);
-    const post = (await http$.post('/api/feed').set(H(owner.accessToken))
-      .send({ body: 'Есть что обсудить' }).expect(201)).body.data;
+  it('спасибо: бейдж, уведомление получателю, реакции; себя — нельзя', async () => {
+    const owner = await org('Спасибо');
+    const O = owner.accessToken;
+    const gleb = await employee(O, 'Глеб');
+    const anna = await employee(O, 'Анна');
+    await http$.post('/api/feed/kudos').set(H(anna.token)).send({ toUserId: anna.id, text: 'Себе молодец' }).expect(400);
+    const k = (await http$.post('/api/feed/kudos').set(H(anna.token))
+      .send({ toUserId: gleb.id, text: 'Спас релиз с интеграцией', badge: 'saver' }).expect(201)).body.data;
+    expect(k.type).toBe('kudos');
+    expect(k.kudos).toMatchObject({ toUserId: gleb.id, toName: 'Глеб', badge: { key: 'saver', label: 'Спаситель дня' } });
+    expect(k.can.edit).toBe(false);
 
-    for (let i = 1; i <= 13; i++) {
-      await http$.post(`/api/feed/${post.id}/comments`).set(H(owner.accessToken))
-        .send({ body: `Реплика ${i}` }).expect(201);
+    // получатель узнаёт без почты — запись в ящике уведомлений
+    const inbox = await db.many(`SELECT * FROM notification_inbox WHERE user_id = $1 AND event_key = 'feed.kudos'`, [gleb.id]);
+    expect(inbox).toHaveLength(1);
+    expect(inbox[0].path).toBe(`/news/${k.id}`);
+
+    const r1 = (await http$.post(`/api/feed/${k.id}/reactions`).set(H(gleb.token)).send({ reaction: '❤️' }).expect(201)).body.data;
+    expect(r1.reactions).toEqual([{ emoji: '❤️', count: 1, mine: true }]);
+    await http$.post(`/api/feed/${k.id}/reactions`).set(H(O)).send({ reaction: '❤️' }).expect(201);
+    const r2 = (await http$.post(`/api/feed/${k.id}/reactions`).set(H(gleb.token)).send({ reaction: '❤️' }).expect(201)).body.data;
+    expect(r2.reactions).toEqual([{ emoji: '❤️', count: 1, mine: false }]); // снял свою
+    await http$.post(`/api/feed/${k.id}/reactions`).set(H(gleb.token)).send({ reaction: '💩' }).expect(400);
+    expect((await feed(O, '?filter=kudos')).items.map((p: any) => p.id)).toEqual([k.id]);
+  });
+
+  it('опрос: голос, один вариант, анонимность, закрытие и итог', async () => {
+    const owner = await org('Опросы');
+    const O = owner.accessToken;
+    const gleb = await employee(O, 'Глеб');
+    const anna = await employee(O, 'Анна');
+    await http$.post('/api/feed/polls').set(H(gleb.token)).send({ question: 'Во сколько разбор?', options: ['16:00', '16:00'] }).expect(400);
+    const poll = (await http$.post('/api/feed/polls').set(H(gleb.token))
+      .send({ question: 'Во сколько пятничный разбор?', options: ['16:00', '17:00'], anonymous: true }).expect(201)).body.data;
+    const [o16, o17] = poll.poll.options;
+    await http$.post(`/api/feed/${poll.id}/vote`).set(H(anna.token)).send({ optionIds: [o16.id, o17.id] }).expect(400);
+    await http$.post(`/api/feed/${poll.id}/vote`).set(H(anna.token)).send({ optionIds: [o17.id] }).expect(201);
+    const v = (await http$.post(`/api/feed/${poll.id}/vote`).set(H(O)).send({ optionIds: [o17.id] }).expect(201)).body.data;
+    expect(v.poll.options.find((o: any) => o.id === o17.id)).toMatchObject({ votes: 2, mine: true });
+    expect(v.poll.voters).toBe(2);
+    // анонимный — кто как голосовал, не показываем никому, даже автору
+    await http$.get(`/api/feed/${poll.id}/voters`).set(H(gleb.token)).expect(403);
+    await http$.post(`/api/feed/${poll.id}/close`).set(H(anna.token)).expect(403);
+    const closed = (await http$.post(`/api/feed/${poll.id}/close`).set(H(gleb.token)).expect(201)).body.data;
+    expect(closed.poll.closed).toBe(true);
+    expect(closed.poll.result).toBe('Победил вариант: 17:00');
+    await http$.post(`/api/feed/${poll.id}/vote`).set(H(anna.token)).send({ optionIds: [o16.id] }).expect(409);
+
+    // срок вышел — планировщик закрывает сам и сообщает автору итог
+    const p2 = (await http$.post('/api/feed/polls').set(H(gleb.token)).send({ question: 'Пицца или суши?', options: ['Пицца', 'Суши'] }).expect(201)).body.data;
+    await http$.post(`/api/feed/${p2.id}/vote`).set(H(anna.token)).send({ optionIds: [p2.poll.options[1].id] }).expect(201);
+    await db.query(`UPDATE feed_polls SET deadline_at = now() - interval '1 minute' WHERE post_id = $1`, [p2.id]);
+    await app.get(NewsAgentService).tick();
+    const after = (await http$.get(`/api/feed/${p2.id}`).set(H(gleb.token)).expect(200)).body.data;
+    expect(after.poll.closed).toBe(true);
+    expect(after.poll.result).toBe('Победил вариант: Суши');
+    const note = await db.many(`SELECT * FROM notification_inbox WHERE user_id = $1 AND event_key = 'feed.poll'`, [gleb.id]);
+    expect(note.some((n: any) => n.body === 'Победил вариант: Суши')).toBe(true);
+  });
+
+  it('хайлайт дня: повод — факты, нет повода — пропуск, второй раз — не дублируется', async () => {
+    const owner = await org('Хайлайт');
+    const O = owner.accessToken;
+    const tenantId = String(owner.user.tenantId);
+    // день без событий — честный пропуск (§69)
+    const quiet = (await http$.post('/api/feed/highlights/generate').set(H(O)).expect(201)).body.data;
+    expect(quiet.status).toBe('skipped');
+
+    const owner2 = await org('Хайлайт 2');
+    const O2 = owner2.accessToken;
+    const t2 = String(owner2.user.tenantId);
+    await db.query(`UPDATE tenants SET timezone = 'Europe/Moscow' WHERE id = $1`, [t2]);
+    const project = (await http$.post('/api/projects').set(H(O2)).send({ name: 'Гостевые ссылки' }).expect(201)).body.data;
+    const board = (await http$.get(`/api/projects/${project.id}/board`).set(H(O2)).expect(200)).body.data;
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      ids.push(String((await http$.post('/api/tasks').set(H(O2)).send({ projectId: project.id, columnId: board.columns[0].id, title: `Задача ${i}`, priority: i === 0 ? 'urgent' : 'normal' }).expect(201)).body.data.id));
     }
+    // закрыты «вчера» по Москве (в понедельник хайлайт берёт пятницу и выходные — тоже попадут)
+    await db.query(`UPDATE tasks SET closed_at = date_trunc('day', now() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow' - interval '6 hours' WHERE id = ANY($1::bigint[])`, [ids]);
+    const h = (await http$.post('/api/feed/highlights/generate').set(H(O2)).expect(201)).body.data;
+    expect(h.status).toBe('published');
+    const post = (await http$.get(`/api/feed/${h.postId}`).set(H(O2)).expect(200)).body.data;
+    expect(post.type).toBe('highlight');
+    expect(post.title).toBe('AI-Хайлайты дня');
+    expect(post.byAgent).toBe(true);
+    expect(post.body).toContain('закрыла 6 задач');
+    expect(post.sources.length).toBeGreaterThan(0);
+    expect((await feed(O2)).top.some((p: any) => p.id === h.postId)).toBe(true);
+    const again = (await http$.post('/api/feed/highlights/generate').set(H(O2)).expect(201)).body.data;
+    expect(again.status).toBe('exists');
+    expect(tenantId).toBeTruthy();
 
-    const last = (await http$.get(`/api/feed/${post.id}/comments`).set(H(owner.accessToken)).expect(200)).body.data;
+    // ручное одобрение: хайлайт уходит черновиком в очередь
+    const owner3 = await org('Хайлайт 3');
+    const O3 = owner3.accessToken;
+    await http$.patch('/api/feed/settings').set(H(O3)).send({ highlightsAuto: false }).expect(200);
+    const p3 = (await http$.post('/api/projects').set(H(O3)).send({ name: 'Проект' }).expect(201)).body.data;
+    const b3 = (await http$.get(`/api/projects/${p3.id}/board`).set(H(O3)).expect(200)).body.data;
+    const ids3: string[] = [];
+    for (let i = 0; i < 5; i++) ids3.push(String((await http$.post('/api/tasks').set(H(O3)).send({ projectId: p3.id, columnId: b3.columns[0].id, title: `Т${i}` }).expect(201)).body.data.id));
+    await db.query(`UPDATE tasks SET closed_at = date_trunc('day', now() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow' - interval '6 hours' WHERE id = ANY($1::bigint[])`, [ids3]);
+    const d = (await http$.post('/api/feed/highlights/generate').set(H(O3)).expect(201)).body.data;
+    expect(d.status).toBe('draft');
+    expect((await feed(O3)).top).toEqual([]);
+    const review = (await http$.get('/api/feed/review').set(H(O3)).expect(200)).body.data;
+    expect(review.drafts.map((x: any) => x.id)).toEqual([d.postId]);
+    await http$.post(`/api/feed/${d.postId}/publish`).set(H(O3)).send({}).expect(201);
+    expect((await feed(O3)).top.some((p: any) => p.id === d.postId)).toBe(true);
+  });
+
+  it('релиз и веха: авторы из задач, закрытый проект — только участникам, без дублей', async () => {
+    const owner = await org('Релизы');
+    const O = owner.accessToken;
+    const gleb = await employee(O, 'Глеб');
+    const project = (await http$.post('/api/projects').set(H(O)).send({ name: 'Гостевые ссылки' }).expect(201)).body.data;
+    const board = (await http$.get(`/api/projects/${project.id}/board`).set(H(O)).expect(200)).body.data;
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      ids.push(String((await http$.post('/api/tasks').set(H(O)).send({ projectId: project.id, columnId: board.columns[0].id, title: `Ссылки ${i}`, assigneeId: gleb.id }).expect(201)).body.data.id));
+    }
+    await db.query(`UPDATE tasks SET closed_at = now() - interval '1 hour' WHERE id = ANY($1::bigint[])`, [ids]);
+
+    const tasks = (await http$.get(`/api/feed/releases/tasks?projectId=${project.id}`).set(H(O)).expect(200)).body.data;
+    expect(tasks).toHaveLength(3);
+    const rel = (await http$.post('/api/feed/releases').set(H(O))
+      .send({ projectId: String(project.id), title: 'Гостевые ссылки 1.0', taskIds: ids.slice(0, 2) }).expect(201)).body.data;
+    expect(rel.type).toBe('release');
+    expect(rel.contributors.map((c: any) => c.name)).toEqual(['Глеб']);
+    await http$.post('/api/feed/releases').set(H(O)).send({ projectId: String(project.id), title: 'Гостевые ссылки 1.0' }).expect(409);
+    await http$.post('/api/feed/releases').set(H(gleb.token)).send({ projectId: String(project.id), title: 'Свой релиз' }).expect(403);
+
+    // все задачи проекта закрыты — кандидат на веху; публикуется по одобрению, один раз
+    const found = (await http$.post('/api/feed/candidates/detect').set(H(O)).expect(201)).body.data;
+    expect(found.added).toBeGreaterThanOrEqual(1);
+    expect((await http$.post('/api/feed/candidates/detect').set(H(O)).expect(201)).body.data.added).toBe(0);
+    const review = (await http$.get('/api/feed/review').set(H(O)).expect(200)).body.data;
+    const cand = review.candidates.find((c: any) => c.type === 'milestone');
+    expect(cand.title).toContain('Гостевые ссылки');
+    expect(cand.contributors.map((c: any) => c.name)).toContain('Глеб');
+    await http$.get('/api/feed/review').set(H(gleb.token)).expect(403);
+    const ms = (await http$.post(`/api/feed/candidates/${cand.id}/publish`).set(H(O)).send({ title: 'Веха: ссылки готовы' }).expect(201)).body.data;
+    expect(ms.type).toBe('milestone');
+    expect(ms.title).toBe('Веха: ссылки готовы');
+    await http$.post(`/api/feed/candidates/${cand.id}/publish`).set(H(O)).send({}).expect(409);
+    expect((await feed(O, '?filter=releases')).items.map((p: any) => p.type).sort()).toEqual(['milestone', 'release']);
+  });
+
+  it('ноль системного шума: работа с задачами в ленту не пишет ничего', async () => {
+    const owner = await org('Без шума');
+    const O = owner.accessToken;
+    const project = (await http$.post('/api/projects').set(H(O)).send({ name: 'Работа' }).expect(201)).body.data;
+    const board = (await http$.get(`/api/projects/${project.id}/board`).set(H(O)).expect(200)).body.data;
+    const task = (await http$.post('/api/tasks').set(H(O)).send({ projectId: project.id, columnId: board.columns[0].id, title: 'Обычная задача' }).expect(201)).body.data;
+    await http$.post(`/api/tasks/${task.id}/move`).set(H(O)).send({ columnId: board.columns[board.columns.length - 1].id, position: 0 }).expect(201);
+    await http$.patch(`/api/tasks/${task.id}`).set(H(O)).send({ deadlineAt: new Date(Date.now() + 86400_000).toISOString() }).expect(200);
+    const rows = await db.many(`SELECT id FROM feed_posts WHERE tenant_id = $1`, [owner.user.tenantId]);
+    expect(rows).toEqual([]);
+  });
+
+  it('комментарии: последние десять, предыдущие поднимаются, удалить своё можно', async () => {
+    const owner = await org('Комментарии');
+    const O = owner.accessToken;
+    const mate = await employee(O, 'Глеб');
+    const post = (await http$.post('/api/feed').set(H(O)).send({ body: 'Есть что обсудить' }).expect(201)).body.data;
+    for (let i = 1; i <= 13; i++) await http$.post(`/api/feed/${post.id}/comments`).set(H(O)).send({ body: `Реплика ${i}` }).expect(201);
+    const last = (await http$.get(`/api/feed/${post.id}/comments`).set(H(O)).expect(200)).body.data;
     expect(last.items).toHaveLength(10);
     expect(last.total).toBe(13);
-    expect(last.hasMore).toBe(true);
-    // хвост, а не начало: последняя реплика внизу, порядок обычный — сверху вниз
     expect(last.items[0].body).toBe('Реплика 4');
-    expect(last.items[9].body).toBe('Реплика 13');
-
-    const earlier = (await http$.get(`/api/feed/${post.id}/comments?before=${last.items[0].id}`)
-      .set(H(owner.accessToken)).expect(200)).body.data;
+    const earlier = (await http$.get(`/api/feed/${post.id}/comments?before=${last.items[0].id}`).set(H(O)).expect(200)).body.data;
     expect(earlier.items.map((c: any) => c.body)).toEqual(['Реплика 1', 'Реплика 2', 'Реплика 3']);
-    expect(earlier.hasMore).toBe(false); // выше уже ничего нет
+
+    const mine = (await http$.post(`/api/feed/${post.id}/comments`).set(H(mate.token)).send({ body: 'Моё' }).expect(201)).body.data.items.pop();
+    await http$.delete(`/api/feed/comments/${last.items[0].id}`).set(H(mate.token)).expect(403);
+    await http$.delete(`/api/feed/comments/${mine.id}`).set(H(mate.token)).expect(200);
   });
 
-  it('упоминание чужого человека публикацию не ломает', async () => {
-    const a = await org('Упоминания А');
-    const b = await org('Упоминания Б');
+  it('вложение видно в посте, к чужому посту приложить нельзя, правая колонка считается', async () => {
+    const owner = await org('Файлы');
+    const O = owner.accessToken;
+    const mate = await employee(O, 'Глеб');
+    const post = (await http$.post('/api/feed').set(H(O)).send({ body: 'Инструкция по пропускам' }).expect(201)).body.data;
+    await http$.post(`/api/feed/${post.id}/files`).set(H(O)).attach('file', Buffer.from('пропуск'), 'propuska.txt').expect(201);
+    const got = (await http$.get(`/api/feed/${post.id}`).set(H(mate.token)).expect(200)).body.data;
+    expect(got.files.map((f: any) => f.name)).toEqual(['propuska.txt']);
+    await http$.post(`/api/feed/${post.id}/files`).set(H(mate.token)).attach('file', Buffer.from('x'), 'x.txt').expect(403);
 
-    // id из другой организации до рассылки не доходит, но и падать на нём нельзя:
-    // список упомянутых приходит от клиента, а клиенту верить нельзя ни в чём
-    const post = (await http$.post('/api/feed').set(H(a.accessToken))
-      .send({ body: `Вопрос к @${b.user.fullName}`, mentionIds: [String(b.user.id)] }).expect(201)).body.data;
-    expect(post.body).toContain('Вопрос к');
-
-    const mate = await employee(a.accessToken);
-    await http$.post(`/api/feed/${post.id}/comments`).set(H(a.accessToken))
-      .send({ body: `@${mate.user.fullName}, посмотрите`, mentionIds: [String(mate.user.id)] }).expect(201);
-    const comments = (await http$.get(`/api/feed/${post.id}/comments`).set(H(mate.token)).expect(200)).body.data;
-    expect(comments.items[0].body).toContain('посмотрите');
-  });
-
-  /*
-    Правая колонка.
-
-    Проверка нарочно стоит последней и заводит СВОЮ организацию: четыре списка
-    считаются по всей компании, и любой пост или сотрудник, добавленный соседним
-    случаем, менял бы здесь числа. Тем же кончилась однажды проверка переписки
-    в карточке задачи.
-
-    Смысл случая — что четыре запроса вообще выполняются: у дней рождения и
-    новичков внутри интервалы и даты, а такое ломается не на типах, а в базе.
-  */
-  it('правая колонка: объявления, новости, дни рождения, новички', async () => {
-    const owner = await org('Колонка новостей');
-    const mate = await employee(owner.accessToken);
-
-    await http$.post('/api/feed').set(H(owner.accessToken))
-      .send({ body: 'Обычная новость про кофемашину' }).expect(201);
-    await http$.post('/api/feed').set(H(owner.accessToken))
-      .send({ body: 'В пятницу общий сбор', isAnnouncement: true }).expect(201);
-
-    // День рождения ставит сам человек в своём профиле; год для показа не нужен.
-    // Дату берём сегодняшнюю: блок показывает ближайшие тридцать дней, и с любой
-    // жёстко вписанной датой тест зеленел бы только один месяц в году.
+    await http$.post('/api/feed').set(H(O)).send({ type: 'announcement', body: 'В пятницу общий сбор' }).expect(201);
+    await http$.post('/api/feed/polls').set(H(O)).send({ question: 'Куда едем?', options: ['Лес', 'Море'] }).expect(201);
     const now = new Date();
     const md = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     await http$.patch('/api/me').set(H(mate.token)).send({ birthDate: `1990-${md}` }).expect(200);
-
     const side = (await http$.get('/api/feed/sidebar').set(H(mate.token)).expect(200)).body.data;
     expect(side.announcements.map((a: any) => a.body)).toEqual(['В пятницу общий сбор']);
-    expect(side.announcements[0].isRead).toBe(false);
-    expect(side.latest.map((n: any) => n.body)).toEqual(['Обычная новость про кофемашину']);
-    // Именно членство, а не «через 0 дней»: пояс машины и пояс сервера могут
-    // разойтись на дату, и такой тест падал бы ночью, а не по делу.
-    expect(side.birthdays.map((b: any) => b.fullName)).toContain('Сотрудник member');
-    // оба завелись только что — оба новички
+    expect(side.announcements[0].needsAck).toBe(true);
+    expect(side.polls.map((p: any) => p.question)).toEqual(['Куда едем?']);
+    expect(side.birthdays.map((b: any) => b.fullName)).toContain('Глеб');
     expect(side.newcomers).toHaveLength(2);
   });
 });
