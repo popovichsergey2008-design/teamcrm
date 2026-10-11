@@ -71,7 +71,7 @@ export class MorningVoiceService implements OnModuleInit {
     const lines = briefLines(facts);
     let audioFileId: string | null = null;
     let audio: Buffer | null = null;
-    if (s.morningAudio && prefs.morningAudio) {
+    if (s.morningAudio && prefs.morningAudio && (await this.settings.withinDailyLimit(tenantId, 'morning_voice'))) {
       audio = await this.ai.speak(tenantId, speakable(name, lines)).catch((e) => { this.log.warn(`голос: ${(e as Error).message}`); return null; });
       if (audio) {
         const f = await this.files.upload({

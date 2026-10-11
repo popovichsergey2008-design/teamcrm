@@ -1,3 +1,4 @@
+import { ProactiveService } from '../proactive/proactive.service';
 import { WorkloadGuardService } from '../workload/workload.service';
 import { FeedService } from '../feed/feed.service';
 import { AnthillRepository, Source } from './anthill.repository';
@@ -97,6 +98,8 @@ export interface ToolDeps {
   feed: FeedService;
   /** Страж нагрузки (ТЗ-21): перегруз исполнителя — прямо в карточке подтверждения. */
   workload: WorkloadGuardService;
+  /** Ящик секретаря (ТЗ-21, этап 8): «что ждёт решения», «по второму — создай задачу». */
+  proactive: ProactiveService;
 }
 
 const str = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
@@ -104,7 +107,7 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed, workload } = deps;
+  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed, workload, proactive } = deps;
 
   /** Клиент по названию или номеру — тем же поиском, что в разделе, и с теми же правами. */
   const findClient = async (ctx: ToolContext, key: string) => {
@@ -1093,6 +1096,47 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           lines.push(`Проект «${p.name}» опаздывает на ${p.forecast.delayDays} дн. (прогноз ${p.forecast.date}, уверенность ${p.forecast.reliable ? `${p.forecast.confidence}%` : 'низкая'}). Чтобы успеть: ${p.catchUp.join(' ')}`);
         }
         return { text: lines.join('\n'), sources: [{ kind: 'project' as const, id: 'pulse', title: 'Пульс команды', url: `${ctx.base}/radar` }] };
+      },
+    },
+    // ── Ящик секретаря (ТЗ-21, этап 8): голосом и текстом, кнопки — с подтверждением ──
+    {
+      name: 'secretary_inbox', kind: 'read',
+      description: 'Что ждёт моего решения у секретаря: обещания из переписки и встреч, риск перегруза, письма клиентам после встреч, утренний бриф. Для «что ждёт решения», «что я обещал», «покажи предложения секретаря». Пункты пронумерованы — по номеру потом действуют через secretary_act.',
+      params: {},
+      async run(ctx) {
+        const a = { tenantId: ctx.tenantId, userId: ctx.user.userId, role: ctx.user.role };
+        const { items } = await proactive.list(a);
+        if (!items.length) return { text: 'Решать сейчас нечего.', sources: [] };
+        const lines = items.slice(0, 10).map((p, i) => `${i + 1}. ${p.title}${p.recommend ? ` — предлагаю ${p.recommend}` : ''}. Кнопки: ${p.actions.map((x) => x.label).join(' / ')}`);
+        return { text: lines.join('\n'), sources: [{ kind: 'project' as const, id: 'secretary', title: 'Секретарь', url: `${ctx.base}/secretary` }] };
+      },
+    },
+    {
+      name: 'secretary_act', kind: 'write',
+      description: 'Нажать кнопку в карточке секретаря: «по второму — создай задачу», «первое — уже сделано», «напомни Глебу по третьему», «второе не нужно», «отложи первое до завтра», «обещание — в мой фокус». number — номер из secretary_inbox. action: create_task | remind | done | untrack | focus | move_deadline | reassign | keep | dismiss | snooze.',
+      params: { number: 'номер пункта из списка secretary_inbox', action: 'что сделать' },
+      async preview(ctx, p) {
+        const a = { tenantId: ctx.tenantId, userId: ctx.user.userId, role: ctx.user.role };
+        const { items } = await proactive.list(a);
+        const n = Number(String(p.number ?? '').replace(/\D/g, ''));
+        const item = items[n - 1];
+        if (!item) throw new Error('Такого пункта нет — спросите «что ждёт решения»');
+        const act = str(p.action, 20);
+        if (act === 'dismiss') return { text: `Скрыть «${item.title}» — «не нужно»?`, params: { id: item.id, action: act, title: item.title } };
+        if (act === 'snooze') return { text: `Отложить «${item.title}» до завтра?`, params: { id: item.id, action: act, title: item.title } };
+        const btn = item.actions.find((x) => x.key === act);
+        if (!btn) throw new Error(`У этой карточки нет такой кнопки. Есть: ${item.actions.map((x) => x.label).join(', ')}`);
+        // письмо клиенту голосом не отправляем: его текст человек должен видеть перед отправкой
+        if (btn.risk === 'external') throw new Error('Письмо клиенту отправляется только из карточки — откройте «Секретарь»');
+        return { text: `«${item.title}» → ${btn.label}?${item.effect ? `\n${item.effect}` : ''}`, params: { id: item.id, action: act, title: item.title } };
+      },
+      async execute(ctx, p) {
+        const a = { tenantId: ctx.tenantId, userId: ctx.user.userId, role: ctx.user.role };
+        const id = String(p.id);
+        if (p.action === 'dismiss') { await proactive.dismiss(a, id, { reason: 'not_needed' }); return { text: 'Скрыл.', output: {}, sources: [] }; }
+        if (p.action === 'snooze') { await proactive.snooze(a, id, 'tomorrow'); return { text: 'Отложил до завтрашнего утра.', output: {}, sources: [] }; }
+        const r = await proactive.act(a, id, String(p.action));
+        return { text: r.text, output: {}, sources: r.link ? [{ kind: 'project' as const, id: `proposal:${id}`, title: String(p.title), url: `${ctx.base}${r.link}` }] : [] };
       },
     },
     // ── «Новости» (ТЗ-20, §54) ──

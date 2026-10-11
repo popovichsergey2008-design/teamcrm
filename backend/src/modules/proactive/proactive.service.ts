@@ -241,7 +241,7 @@ export class ProactiveService {
   async saveTenantSettings(a: Actor, s: Record<string, unknown>) {
     await this.needManage(a);
     const allowed = ['enabled', 'commitments', 'workloadGuard', 'smartReply', 'clientFollowup', 'morningAudio', 'secondBrain',
-      'externalSend', 'telegramDelivery', 'commitmentCheckHours', 'commitmentEscalateHours'];
+      'externalSend', 'telegramDelivery', 'commitmentCheckHours', 'commitmentEscalateHours', 'commitmentMinConfidence', 'aiDailyLimits'];
     const patch = Object.fromEntries(Object.entries(s).filter(([k]) => allowed.includes(k)));
     await this.repo.saveTenantSettings(a.tenantId, patch);
     void this.security.record({ tenantId: a.tenantId, actorId: a.userId, event: 'secretary.settings.changed', metadata: patch }).catch(() => undefined);
@@ -251,12 +251,18 @@ export class ProactiveService {
   /** Качество навыков (§110): доля выполненных, отклонённых, «бесполезно». */
   async quality(a: Actor, days = 30) {
     await this.needManage(a);
-    const rows = await this.repo.quality(a.tenantId, days);
-    return rows.map((r) => ({
+    const [rows, x] = await Promise.all([this.repo.quality(a.tenantId, days), this.repo.extraQuality(a.tenantId, days)]);
+    const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) : null);
+    const extra = x ? {
+      replies: { total: x.replies, acceptedPct: pct(x.accepted, x.replies), editedPct: pct(x.edited, x.replies), dismissedPct: pct(x.dismissed, x.replies) },
+      commitments: { total: x.commitments, fulfilledPct: pct(x.fulfilled, x.commitments), untrackedPct: pct(x.untracked, x.commitments), remindedPct: pct(x.reminded, x.commitments) },
+    } : null;
+    const skills = rows.map((r) => ({
       skill: r.skill, total: r.total, executed: r.executed, dismissed: r.dismissed, expired: r.expired,
       acceptRate: r.total ? Math.round((r.executed / r.total) * 100) : 0,
       falsePositiveRate: r.useful + r.useless ? Math.round((r.useless / (r.useful + r.useless)) * 100) : null,
     }));
+    return { skills, extra };
   }
 
   private async needManage(a: Actor) {

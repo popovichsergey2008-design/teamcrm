@@ -59,6 +59,14 @@ export class CommitmentsRepository {
     );
   }
 
+  /** Связанная задача, если ещё жива (для «В мой Фокус»). */
+  taskRef(tenantId: string, taskId: string): Promise<{ id: string; projectId: string } | null> {
+    return this.db.one(
+      `SELECT id::text, project_id::text AS "projectId" FROM tasks WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [tenantId, taskId],
+    );
+  }
+
   async cursor(tenantId: string, source: string): Promise<string> {
     const row = await this.db.one<{ last_id: string }>(`SELECT last_id FROM proactive_cursors WHERE tenant_id=$1 AND source=$2`, [tenantId, source]);
     return row ? String(row.last_id) : '';

@@ -2241,9 +2241,10 @@ export const api = {
     request<ProactivePrefs>('DELETE', `/assistant/proposals/mutes/${skill}?kind=${encodeURIComponent(kind)}`),
   proactiveSettings: () => request<ProactiveSettings>('GET', '/assistant/proposals/settings'),
   saveProactiveSettings: (b: Partial<ProactiveSettings>) => request<ProactiveSettings>('PATCH', '/assistant/proposals/settings', b),
-  proactiveQuality: (days = 30) => request<ProactiveQuality[]>('GET', `/assistant/proposals/quality?days=${days}`),
+  proactiveQuality: (days = 30) => request<{ skills: ProactiveQuality[]; extra: ProactiveQualityExtra | null }>('GET', `/assistant/proposals/quality?days=${days}`),
   commitments: () => request<Commitment[]>('GET', '/assistant/commitments'),
   commitmentFulfilled: (id: string) => request<{ ok: true }>('POST', `/assistant/commitments/${id}/fulfilled`),
+  commitmentFocus: (id: string) => request<{ text: string; link?: string | null }>('POST', `/assistant/commitments/${id}/focus`),
   commitmentDismiss: (id: string) => request<{ ok: true }>('POST', `/assistant/commitments/${id}/dismiss`),
   sendPing: (id: string) => request<any>('POST', `/assistant/pings/${id}/send`),
   dismissPing: (id: string) => request<any>('POST', `/assistant/pings/${id}/dismiss`),
@@ -2997,6 +2998,14 @@ export interface ProactiveSettings {
   enabled: boolean; commitments: boolean; workloadGuard: boolean; smartReply: boolean; clientFollowup: boolean;
   morningAudio: boolean; secondBrain: boolean; externalSend: boolean; telegramDelivery: boolean;
   commitmentCheckHours: number; commitmentEscalateHours: number;
+  /** порог уверенности обещаний 0.5–0.99 (этап 9) */
+  commitmentMinConfidence: number;
+  /** дневные лимиты вызовов ИИ по навыкам на компанию (этап 10) */
+  aiDailyLimits: Record<string, number>;
+}
+export interface ProactiveQualityExtra {
+  replies: { total: number; acceptedPct: number | null; editedPct: number | null; dismissedPct: number | null };
+  commitments: { total: number; fulfilledPct: number | null; untrackedPct: number | null; remindedPct: number | null };
 }
 export interface ProactiveQuality {
   skill: string; total: number; executed: number; dismissed: number; expired: number; acceptRate: number; falsePositiveRate: number | null;

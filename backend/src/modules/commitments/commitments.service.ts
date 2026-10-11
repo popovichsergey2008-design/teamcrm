@@ -1,3 +1,4 @@
+import { FocusDayService } from '../focus/focus-day.service';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { localParts } from '../assistant/ping-rules';
@@ -35,6 +36,8 @@ export class CommitmentsService implements OnModuleInit {
     private readonly tasks: TasksService,
     private readonly push: PushService,
     private readonly telegram: TelegramMirror,
+    /** «В мой Фокус» (ТЗ-21, этап 8): своё обещание — в тройку дня. */
+    private readonly focus: FocusDayService,
   ) {}
 
   onModuleInit(): void {
@@ -50,14 +53,14 @@ export class CommitmentsService implements OnModuleInit {
       const tenantId = String(t.id);
       const settings = await this.proactiveRepo.tenantSettings(tenantId);
       if (!settings.enabled || !settings.commitments) continue;
-      await this.scanSource(tenantId, 'chat_messages', settings.commitmentCheckHours).catch((e) => this.log.warn(`чаты ${tenantId}: ${(e as Error).message}`));
-      await this.scanSource(tenantId, 'task_comments', settings.commitmentCheckHours).catch((e) => this.log.warn(`задачи ${tenantId}: ${(e as Error).message}`));
-      await this.scanMeetings(tenantId, settings.commitmentCheckHours).catch((e) => this.log.warn(`встречи ${tenantId}: ${(e as Error).message}`));
+      await this.scanSource(tenantId, 'chat_messages', settings.commitmentCheckHours, settings.commitmentMinConfidence).catch((e) => this.log.warn(`чаты ${tenantId}: ${(e as Error).message}`));
+      await this.scanSource(tenantId, 'task_comments', settings.commitmentCheckHours, settings.commitmentMinConfidence).catch((e) => this.log.warn(`задачи ${tenantId}: ${(e as Error).message}`));
+      await this.scanMeetings(tenantId, settings.commitmentCheckHours, settings.commitmentMinConfidence).catch((e) => this.log.warn(`встречи ${tenantId}: ${(e as Error).message}`));
     }
   }
 
   /** Новые сообщения после курсора; при первом запуске — с текущего места, без истории. */
-  async scanSource(tenantId: string, source: 'chat_messages' | 'task_comments', checkHours: number): Promise<number> {
+  async scanSource(tenantId: string, source: 'chat_messages' | 'task_comments', checkHours: number, minConf = 0.7): Promise<number> {
     let cur = await this.repo.cursor(tenantId, source);
     if (!cur) {
       await this.repo.setCursor(tenantId, source, await this.repo.maxId(tenantId, source));
@@ -68,7 +71,7 @@ export class CommitmentsService implements OnModuleInit {
     for (const m of rows) {
       const type = source === 'chat_messages' ? 'chat' : 'task';
       await this.afterMessage(tenantId, type, m);
-      if (await this.fromMessage(tenantId, type, m, checkHours)) found++;
+      if (await this.fromMessage(tenantId, type, m, checkHours, minConf)) found++;
       cur = m.id;
     }
     if (rows.length) await this.repo.setCursor(tenantId, source, cur);
@@ -94,11 +97,11 @@ export class CommitmentsService implements OnModuleInit {
     return zonedTime(hint.date, hint.time, tz);
   }
 
-  private async fromMessage(tenantId: string, type: 'chat' | 'task', m: MessageRow, checkHours: number): Promise<boolean> {
+  private async fromMessage(tenantId: string, type: 'chat' | 'task', m: MessageRow, checkHours: number, minConf = 0.7): Promise<boolean> {
     const at = new Date(m.created_at);
     const l = localParts(at, m.tz);
     const d = detectCommitment(m.body, { date: l.date, hour: l.hour, minute: l.minute, isoDow: l.dow === 0 ? 7 : l.dow });
-    if (!d || d.confidence < 0.7) return false;
+    if (!d || d.confidence < minConf) return false;
     let assigner = m.reply_author_id && m.reply_author_id !== m.author_id ? m.reply_author_id
       : m.prev_author_id && m.prev_author_id !== m.author_id ? m.prev_author_id : null;
     if (!assigner && type === 'chat' && m.kind === 'dm') assigner = await this.repo.dmPeer(m.container_id, m.author_id);
@@ -114,7 +117,7 @@ export class CommitmentsService implements OnModuleInit {
     return !!id;
   }
 
-  async scanMeetings(tenantId: string, checkHours: number): Promise<number> {
+  async scanMeetings(tenantId: string, checkHours: number, minConf = 0.7): Promise<number> {
     const cur = await this.repo.cursor(tenantId, 'meetings');
     if (!cur) {
       await this.repo.setCursor(tenantId, 'meetings', await this.repo.maxId(tenantId, 'meetings'));
@@ -127,7 +130,7 @@ export class CommitmentsService implements OnModuleInit {
         const at = new Date(mt.at);
         const l = localParts(at, s.tz);
         const d = detectCommitment(s.text, { date: l.date, hour: l.hour, minute: l.minute, isoDow: l.dow === 0 ? 7 : l.dow });
-        if (!d || d.confidence < 0.7) continue;
+        if (!d || d.confidence < minConf) continue;
         const deadlineAt = this.toAbs(d.deadline, at, s.tz);
         const linked = await this.findTask(tenantId, s.speaker_user_id, d.action, null);
         const id = await this.repo.insert({
@@ -206,6 +209,8 @@ export class CommitmentsService implements OnModuleInit {
     const actions = [
       ...(c.linked_task_id ? [] : [{ key: 'create_task', label: 'Создать задачу', risk: 'high_write', primary: true }]),
       ...(self ? [] : [{ key: 'remind', label: `Напомнить ${c.speaker_name?.split(' ')[0] ?? ''}`.trim(), risk: 'low_write' }]),
+      // своё обещание — сразу в тройку дня (ТЗ-21, этап 8)
+      ...(self ? [{ key: 'focus', label: 'В мой Фокус', risk: 'low_write' }] : []),
       { key: 'done', label: 'Уже выполнено', risk: 'low_write' },
       { key: 'untrack', label: 'Не отслеживать', risk: 'low_write' },
     ];
@@ -264,23 +269,46 @@ export class CommitmentsService implements OnModuleInit {
     }
     if (action === 'create_task') {
       if (c.linked_task_id) return { text: `Задача #${c.linked_task_id} уже есть` };
-      const projectId = c.project_id ? String(c.project_id) : await this.repo.defaultProject(a.tenantId);
-      if (!projectId) throw AppException.conflict('Нет проекта, куда поставить задачу');
-      const src = this.sourceOf(c);
-      const task = await this.tasks.create(a.tenantId, {
-        projectId,
-        title: c.action_text.charAt(0).toUpperCase() + c.action_text.slice(1),
-        description: `Обещание из разговора (${src.label}):\n«${c.quote.slice(0, 1500)}»`,
-        assigneeId: String(c.speaker_user_id),
-        deadlineAt: c.deadline_at ? new Date(c.deadline_at).toISOString() : undefined,
-      } as any, a.userId, { sourceChatMessageId: c.source_type === 'chat' && c.source_message_ids?.[0] ? String(c.source_message_ids[0]) : null });
-      await this.repo.update(String(c.id), {
-        status: 'tracked', linked_task_id: String(task.id),
-        check_at: c.deadline_at && new Date(c.deadline_at).getTime() > Date.now() ? new Date(c.deadline_at) : new Date(Date.now() + 24 * 3600_000),
-      });
-      return { text: `Задача #${task.id} поставлена на ${c.speaker_name}`, link: `/projects/${task.project_id}/task/${task.id}` };
+      const task = await this.ensureTask(a, c);
+      return { text: `Задача #${task.id} поставлена на ${c.speaker_name}`, link: `/projects/${task.projectId}/task/${task.id}` };
+    }
+    if (action === 'focus') {
+      if (String(c.speaker_user_id) !== String(a.userId)) throw AppException.forbidden('В фокус — только своё обещание');
+      const task = await this.ensureTask(a, c);
+      const link = `/projects/${task.projectId}/task/${task.id}`;
+      try {
+        await this.focus.add({ tenantId: a.tenantId, userId: a.userId, role: a.role }, { key: `task:${task.id}` });
+        return { text: `В фокусе дня: «${c.action_text}»`, link: '/focus' };
+      } catch (e) {
+        // задача уже есть — не теряем её: человек поставит в фокус сам
+        const why = e instanceof AppException ? e.message : 'не получилось';
+        return { text: `Задача #${task.id} создана, в фокус не встала: ${why}`, link };
+      }
     }
     throw AppException.validation('Такого действия нет');
+  }
+
+  /** Задача по обещанию: уже связанная — она; иначе новая на обещавшего, со сроком и цитатой. */
+  private async ensureTask(a: Actor, c: CommitmentRow): Promise<{ id: string; projectId: string }> {
+    if (c.linked_task_id) {
+      const t = await this.repo.taskRef(a.tenantId, String(c.linked_task_id));
+      if (t) return t;
+    }
+    const projectId = c.project_id ? String(c.project_id) : await this.repo.defaultProject(a.tenantId);
+    if (!projectId) throw AppException.conflict('Нет проекта, куда поставить задачу');
+    const src = this.sourceOf(c);
+    const task = await this.tasks.create(a.tenantId, {
+      projectId,
+      title: c.action_text.charAt(0).toUpperCase() + c.action_text.slice(1),
+      description: `Обещание из разговора (${src.label}):\n«${c.quote.slice(0, 1500)}»`,
+      assigneeId: String(c.speaker_user_id),
+      deadlineAt: c.deadline_at ? new Date(c.deadline_at).toISOString() : undefined,
+    } as any, a.userId, { sourceChatMessageId: c.source_type === 'chat' && c.source_message_ids?.[0] ? String(c.source_message_ids[0]) : null });
+    await this.repo.update(String(c.id), {
+      status: 'tracked', linked_task_id: String(task.id),
+      check_at: c.deadline_at && new Date(c.deadline_at).getTime() > Date.now() ? new Date(c.deadline_at) : new Date(Date.now() + 24 * 3600_000),
+    });
+    return { id: String(task.id), projectId: String(task.project_id) };
   }
 
   // ───────────────────────── экран «Обещания» ─────────────────────────
@@ -299,6 +327,13 @@ export class CommitmentsService implements OnModuleInit {
         confidence: Number(c.confidence),
       };
     });
+  }
+
+  /** «В мой Фокус» из экрана «Обещания» — то же, что кнопка карточки. */
+  async toFocus(a: Actor, id: string) {
+    const c = await this.repo.get(a.tenantId, String(id));
+    if (!c || String(c.speaker_user_id) !== String(a.userId)) throw AppException.notFound('Обещание не найдено');
+    return this.execute(a, { payload: { commitmentId: String(c.id) } } as unknown as ProposalRow, 'focus');
   }
 
   /** Отметить из экрана «Обещания» (§99): выполнено / не отслеживать. */

@@ -84,6 +84,8 @@ export class SmartReplyService {
       `SELECT count(*)::int AS n FROM smart_reply_drafts WHERE user_id = $1 AND created_at > now() - interval '1 day'`, [a.userId],
     );
     if (used.n >= DAILY_LIMIT) return { ...base, text: null, unavailable: 'limit' as const };
+    // лимит навыка на всю компанию за сутки (этап 10): ключ не сгорит за ночь
+    if (!(await this.proactive.withinDailyLimit(a.tenantId, 'smart_reply'))) return { ...base, text: null, unavailable: 'limit' as const };
 
     const ctx = await this.context(a, chatId, chat, rows);
     const prompt = await this.prompts.resolve(a.tenantId, 'secretary.smart_reply', {}, a.userId);

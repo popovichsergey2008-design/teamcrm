@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { ProactiveService } from './proactive.service';
@@ -41,6 +41,8 @@ class TenantSettingsDto {
   @IsOptional() @IsBoolean() telegramDelivery?: boolean;
   @IsOptional() @IsInt() @Min(2) @Max(168) commitmentCheckHours?: number;
   @IsOptional() @IsInt() @Min(4) @Max(336) commitmentEscalateHours?: number;
+  @IsOptional() @IsNumber() @Min(0.5) @Max(0.99) commitmentMinConfidence?: number;
+  @IsOptional() @IsObject() aiDailyLimits?: Record<string, number>;
 }
 
 /**

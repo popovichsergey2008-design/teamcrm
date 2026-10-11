@@ -59,8 +59,17 @@ export class ClientFollowupService implements OnModuleInit {
     );
     let n = 0;
     for (const m of rows) {
-      await this.db.query(`UPDATE meetings SET followup_checked_at = now() WHERE id = $1`, [m.id]);
-      if (await this.prepare(m).catch((e) => { this.log.warn(`встреча ${m.id}: ${(e as Error).message}`); return false; })) n++;
+      // сбой (сеть, модель) — встреча останется в очереди и будет пройдена на следующем
+      // круге; но не дольше 6 часов: вечный повтор одного и того же сбоя хуже пропуска
+      try {
+        if (await this.prepare(m)) n++;
+        await this.db.query(`UPDATE meetings SET followup_checked_at = now() WHERE id = $1`, [m.id]);
+      } catch (e) {
+        this.log.warn(`встреча ${m.id}: ${(e as Error).message}`);
+        await this.db.query(
+          `UPDATE meetings SET followup_checked_at = now() WHERE id = $1 AND COALESCE(updated_at, created_at) < now() - interval '6 hours'`, [m.id],
+        ).catch(() => undefined);
+      }
     }
     return n;
   }
@@ -116,7 +125,8 @@ export class ClientFollowupService implements OnModuleInit {
       summary: summary.summary, decisions, tasks,
     });
     let body = draft.body;
-    if (await this.ai.hasModel(m.tenant_id)) {
+    // модель только переписывает протокол; лимит исчерпан — письмо остаётся шаблоном
+    if ((await this.ai.hasModel(m.tenant_id)) && (await this.settings.withinDailyLimit(m.tenant_id, 'client_followup'))) {
       const prompt = await this.prompts.resolve(m.tenant_id, 'secretary.client_followup', {}, m.created_by);
       body = (await this.ai.generate(m.tenant_id, prompt?.body ?? SYSTEM_FALLBACK, draft.body, 'client_followup', {
         promptVersionId: prompt?.versionId ?? null, model: prompt?.model, params: prompt?.params,

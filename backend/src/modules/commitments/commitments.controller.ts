@@ -26,6 +26,11 @@ export class CommitmentsController {
     return this.svc.mark(this.a(u), id, 'fulfilled');
   }
 
+  @Post(':id/focus')
+  focus(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.toFocus(this.a(u), id);
+  }
+
   @Post(':id/dismiss')
   dismiss(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.svc.mark(this.a(u), id, 'dismissed');

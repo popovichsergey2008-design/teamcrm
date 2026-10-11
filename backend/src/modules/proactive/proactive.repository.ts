@@ -312,6 +312,10 @@ export class ProactiveRepository {
       telegramDelivery: (row?.telegram_delivery as boolean) ?? true,
       commitmentCheckHours: Number(row?.commitment_check_hours ?? 24),
       commitmentEscalateHours: Number(row?.commitment_escalate_hours ?? 48),
+      /** порог уверенности обещаний (этап 9): выше — меньше лишнего, но больше пропусков */
+      commitmentMinConfidence: Number(row?.commitment_min_confidence ?? 0.7),
+      /** дневные лимиты вызовов ИИ по навыкам на компанию (этап 10) */
+      aiDailyLimits: { smart_reply: 300, client_followup: 30, morning_voice: 20, ...((row?.ai_daily_limits as Record<string, number>) ?? {}) },
     };
   }
 
@@ -320,13 +324,49 @@ export class ProactiveRepository {
     const n = { ...cur, ...s };
     await this.db.query(
       `INSERT INTO proactive_settings (tenant_id, enabled, commitments, workload_guard, smart_reply, client_followup, morning_audio,
-                                       second_brain, external_send, telegram_delivery, commitment_check_hours, commitment_escalate_hours, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now())
+                                       second_brain, external_send, telegram_delivery, commitment_check_hours, commitment_escalate_hours,
+                                       commitment_min_confidence, ai_daily_limits, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb, now())
        ON CONFLICT (tenant_id) DO UPDATE SET enabled=$2, commitments=$3, workload_guard=$4, smart_reply=$5, client_followup=$6,
          morning_audio=$7, second_brain=$8, external_send=$9, telegram_delivery=$10, commitment_check_hours=$11,
-         commitment_escalate_hours=$12, updated_at=now()`,
+         commitment_escalate_hours=$12, commitment_min_confidence=$13, ai_daily_limits=$14::jsonb, updated_at=now()`,
       [tenantId, n.enabled, n.commitments, n.workloadGuard, n.smartReply, n.clientFollowup, n.morningAudio,
-        n.secondBrain, n.externalSend, n.telegramDelivery, n.commitmentCheckHours, n.commitmentEscalateHours],
+        n.secondBrain, n.externalSend, n.telegramDelivery, n.commitmentCheckHours, n.commitmentEscalateHours,
+        n.commitmentMinConfidence, JSON.stringify(n.aiDailyLimits ?? {})],
+    );
+  }
+
+  /**
+   * Не исчерпан ли дневной лимит навыка у компании (этап 10). Считаем по журналу расхода
+   * ИИ за сутки — тем же, что в отчёте: один источник правды о том, сколько ушло.
+   */
+  async withinDailyLimit(tenantId: string, feature: string): Promise<boolean> {
+    const s = await this.tenantSettings(tenantId);
+    const limit = Number((s.aiDailyLimits as Record<string, number>)[feature] ?? 0);
+    if (!limit) return true;
+    const row = await this.db.one<{ n: number }>(
+      `SELECT count(*)::int AS n FROM ai_usage WHERE tenant_id = $1 AND feature = $2 AND created_at > now() - interval '1 day'`,
+      [tenantId, feature],
+    );
+    return (row?.n ?? 0) < limit;
+  }
+
+  /** Качество черновиков и обещаний (этап 9): что берут как есть, что правят, что возвращается. */
+  async extraQuality(tenantId: string, days: number) {
+    return this.db.one<{
+      replies: number; accepted: number; edited: number; dismissed: number;
+      commitments: number; fulfilled: number; untracked: number; reminded: number;
+    }>(
+      `SELECT
+         (SELECT count(*) FROM smart_reply_drafts WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2))::int AS replies,
+         (SELECT count(*) FROM smart_reply_drafts WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2) AND outcome = 'accepted')::int AS accepted,
+         (SELECT count(*) FROM smart_reply_drafts WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2) AND outcome = 'edited')::int AS edited,
+         (SELECT count(*) FROM smart_reply_drafts WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2) AND outcome = 'dismissed')::int AS dismissed,
+         (SELECT count(*) FROM commitments WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2))::int AS commitments,
+         (SELECT count(*) FROM commitments WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2) AND status = 'fulfilled')::int AS fulfilled,
+         (SELECT count(*) FROM commitments WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2) AND status = 'dismissed')::int AS untracked,
+         (SELECT count(*) FROM commitments WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2) AND remind_count > 0)::int AS reminded`,
+      [tenantId, days],
     );
   }
 

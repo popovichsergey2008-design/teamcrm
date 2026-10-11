@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, AssistantProposal, Commitment, ProactivePrefs, ProactiveQuality, ProactiveSettings, ProposalSummary } from '../../lib/api';
+import { api, ApiError, AssistantProposal, Commitment, ProactivePrefs, ProactiveQuality, ProactiveQualityExtra, ProactiveSettings, ProposalSummary } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { fetchBlob } from '../AuthedMedia';
 import { navigate } from '../../lib/router';
@@ -349,6 +349,14 @@ function Commitments({ onNavigate }: { onNavigate: () => void }) {
     finally { setBusy(null); }
   };
 
+  const [note, setNote] = useState('');
+  const toFocus = async (c: Commitment) => {
+    setBusy(c.id);
+    try { setNote((await api.commitmentFocus(c.id)).text); load(); window.dispatchEvent(new Event('teamcrm:focus-changed')); }
+    catch (e) { setNote(e instanceof ApiError ? e.message : 'Не получилось'); }
+    finally { setBusy(null); }
+  };
+
   if (items === null) return <SkeletonList rows={4} />;
   if (!items.length) {
     return (
@@ -366,6 +374,7 @@ function Commitments({ onNavigate }: { onNavigate: () => void }) {
   ];
   return (
     <div className="sp-inbox">
+      {note && <div className="dim sp-elsewhere">{note}</div>}
       {groups.map(([title, list]) => list.length > 0 && (
         <section key={title} className="sp-section">
           <div className="drawer-section-title"><Icon name="handshake" size={14} /> {title} · {list.length}</div>
@@ -382,6 +391,11 @@ function Commitments({ onNavigate }: { onNavigate: () => void }) {
                   : <span>· {c.source.label}</span>}
               </div>
               <div className="sp-actions">
+                {c.mine && (
+                  <Button size="sm" variant="outline" disabled={busy === c.id} onClick={() => void toFocus(c)}>
+                    <Icon name="target" size={13} /> В мой Фокус
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" disabled={busy === c.id} onClick={() => void mark(c, true)}>Выполнено</Button>
                 <Button size="sm" variant="ghost" disabled={busy === c.id} onClick={() => void mark(c, false)}>Не отслеживать</Button>
               </div>
@@ -398,13 +412,14 @@ function Settings() {
   const [prefs, setPrefs] = useState<ProactivePrefs | null>(null);
   const [company, setCompany] = useState<ProactiveSettings | null>(null);
   const [quality, setQuality] = useState<ProactiveQuality[]>([]);
+  const [extra, setExtra] = useState<ProactiveQualityExtra | null>(null);
   const [note, setNote] = useState('');
 
   useEffect(() => {
     api.proactivePrefs().then(setPrefs).catch(() => undefined);
     api.proactiveSettings().then((s) => {
       setCompany(s);
-      api.proactiveQuality(30).then(setQuality).catch(() => undefined);
+      api.proactiveQuality(30).then((q) => { setQuality(q.skills); setExtra(q.extra); }).catch(() => undefined);
     }).catch(() => setCompany(null)); // не владелец — блока компании нет
   }, []);
 
@@ -483,7 +498,30 @@ function Settings() {
                      onChange={(e) => setCompany({ ...company, commitmentEscalateHours: Number(e.target.value) || 48 })}
                      onBlur={() => void saveCompany({ commitmentEscalateHours: company.commitmentEscalateHours })} />
             </label>
+            <label className="sp-field">
+              <span>Порог уверенности для обещаний: {Math.round(company.commitmentMinConfidence * 100)}% — выше порог, меньше лишнего</span>
+              <input type="range" min={50} max={95} step={5} value={Math.round(company.commitmentMinConfidence * 100)}
+                     onChange={(e) => setCompany({ ...company, commitmentMinConfidence: Number(e.target.value) / 100 })}
+                     onMouseUp={() => void saveCompany({ commitmentMinConfidence: company.commitmentMinConfidence })}
+                     onTouchEnd={() => void saveCompany({ commitmentMinConfidence: company.commitmentMinConfidence })}
+                     onKeyUp={() => void saveCompany({ commitmentMinConfidence: company.commitmentMinConfidence })} />
+            </label>
+            <div className="dim">Вызовов ИИ в сутки на компанию, не больше:</div>
+            {([['smart_reply', 'Готовые ответы'], ['client_followup', 'Письма клиентам'], ['morning_voice', 'Утренний голос']] as const).map(([k, label]) => (
+              <label key={k} className="sp-field sp-inline">
+                <span>{label}</span>
+                <input className="input sp-num" type="number" min={0} max={5000} value={company.aiDailyLimits?.[k] ?? 0}
+                       onChange={(e) => setCompany({ ...company, aiDailyLimits: { ...company.aiDailyLimits, [k]: Number(e.target.value) || 0 } })}
+                       onBlur={() => void saveCompany({ aiDailyLimits: company.aiDailyLimits })} />
+              </label>
+            ))}
           </div>
+          {extra && (extra.replies.total > 0 || extra.commitments.total > 0) && (
+            <div className="dim sp-note">
+              {extra.replies.total > 0 && <div>Готовые ответы: {extra.replies.total}, взяли как есть {extra.replies.acceptedPct ?? 0}%, поправили {extra.replies.editedPct ?? 0}%, скрыли {extra.replies.dismissedPct ?? 0}%.</div>}
+              {extra.commitments.total > 0 && <div>Обещания: {extra.commitments.total}, выполнено {extra.commitments.fulfilledPct ?? 0}%, сняли {extra.commitments.untrackedPct ?? 0}%, с напоминанием {extra.commitments.remindedPct ?? 0}%.</div>}
+            </div>
+          )}
           {quality.length > 0 && (
             <>
               <div className="drawer-section-title sp-gap"><Icon name="chart" size={14} /> Качество за 30 дней</div>
