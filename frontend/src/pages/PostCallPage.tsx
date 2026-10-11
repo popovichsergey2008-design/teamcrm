@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import './postcall.css';
 import { Icon, type IconName } from '../components/Icon';
 import { SkeletonList } from '../components/Skeleton';
@@ -11,6 +11,7 @@ import { getSocket } from '../lib/socket';
 import { toastSaved } from '../lib/notifications';
 import type { Project, User } from '../types';
 import { DraftRow, type DraftChoice } from '../components/meetings/DraftRow';
+import { feedback } from '../lib/feedback';
 
 /** Сколько ждать, пока допишется запись и появится встреча: дольше — записи не было. */
 const ROOM_WAIT_MS = 30_000;
@@ -101,6 +102,20 @@ function PostCall({ meetingId }: { meetingId: string }) {
 
   // блоки приходят по готовности; опрос — подстраховка, если событие потерялось
   const processing = data?.review?.status === 'processing';
+  /*
+    Итоги собрались, пока человек смотрел на экран, — главный «вау»-момент (ТЗ-23, §11):
+    мягкий сигнал и короткая вспышка рамки у «Кратко». Один раз, и только при переходе
+    из «обрабатывается»: открыв уже готовые итоги, человек ничего не ждал.
+  */
+  const wasProcessing = useRef(false);
+  const summaryRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (processing) { wasProcessing.current = true; return; }
+    if (wasProcessing.current && data?.review?.status === 'review_required') {
+      wasProcessing.current = false;
+      if (data.review.ai) feedback('postcall.ready', { el: summaryRef.current });
+    }
+  }, [processing, data?.review?.status, data?.review?.ai]);
   useEffect(() => {
     const socket = getSocket();
     const on = (p: { meetingId: string }) => { if (String(p.meetingId) === String(meetingId)) void load(); };
@@ -152,7 +167,8 @@ function PostCall({ meetingId }: { meetingId: string }) {
     setBulk(true); setErr('');
     try {
       const r = await api.postcallCreateBatch(meetingId, list.map((d) => ({ draftId: String(d.id), ...clean(choices[d.id]) })));
-      if (r.failed.length) setErr(`Создано ${r.created.length}, не удалось — ${r.failed.length}. Причина — у черновика, его можно поправить и повторить.`);
+      if (r.created.length) feedback('task.created', { count: r.created.length });
+      if (r.failed.length) { feedback('warning'); setErr(`Создано ${r.created.length}, не удалось — ${r.failed.length}. Причина — у черновика, его можно поправить и повторить.`); }
       else if (r.created.length) toastSaved(`Готово. Создано задач: ${r.created.length}`);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось создать задачи');
@@ -256,7 +272,7 @@ function PostCall({ meetingId }: { meetingId: string }) {
           </Button>
         </header>
 
-        {ai && processing && <Steps items={steps} />}
+        {ai && processing && <div className="ai-working pc-steps-wrap"><Steps items={steps} /></div>}
 
         {!ai && (
           <section className="pc-block">
@@ -291,7 +307,7 @@ function PostCall({ meetingId }: { meetingId: string }) {
 
         {ai && !transcriptFailed && (
           <>
-            <Block title="Кратко" state={blockState('summary')}>
+            <Block title="Кратко" state={blockState('summary')} innerRef={summaryRef}>
               {summary?.summary
                 ? <p className="pc-text pc-summary">{summary.summary}</p>
                 : <p className="pc-text dim">Итогов нет.</p>}
@@ -463,6 +479,7 @@ function Followup({ card, onSent }: { card: NonNullable<PostcallView['followup']
     setBusy(key);
     try {
       const r = await api.proposalAct(card.id, key, { body, subject });
+      feedback('action.confirmed');
       toastSaved(r.text);
       onSent();
     } catch (e) {
@@ -522,9 +539,11 @@ const stamp = (sec: number) => {
   return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 };
 
-function Block({ title, state, children }: { title: string; state: PostcallBlockStatus; children: ReactNode }) {
+function Block({ title, state, children, innerRef }: {
+  title: string; state: PostcallBlockStatus; children: ReactNode; innerRef?: React.Ref<HTMLElement>;
+}) {
   return (
-    <section className="pc-block" aria-busy={state === 'running' || state === 'pending'}>
+    <section ref={innerRef} className="pc-block" aria-busy={state === 'running' || state === 'pending'}>
       <h2 className="pc-block-title">{title}</h2>
       {state === 'pending' || state === 'running'
         ? <SkeletonList rows={2} />

@@ -10,6 +10,7 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { ForegroundService, ServiceType } from '@capawesome-team/capacitor-android-foreground-service';
 import { KeepAwake } from '@capacitor-community/keep-awake';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { registerPlugin, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { browserBridge, BUNDLE_VERSION } from './browser';
 import type { PlatformBridge, PlatformInfo } from './types';
@@ -338,6 +339,14 @@ export const capacitorBridge: PlatformBridge = {
     },
   },
 
+  haptics: {
+    play(kind) {
+      const run = kind === 'light' ? Haptics.impact({ style: ImpactStyle.Light })
+        : kind === 'medium' ? Haptics.impact({ style: ImpactStyle.Medium })
+          : Haptics.notification({ type: kind === 'success' ? NotificationType.Success : kind === 'warning' ? NotificationType.Warning : NotificationType.Error });
+      void run.catch(() => undefined);
+    },
+  },
   calls: {
     ...browserBridge.calls,
     /*

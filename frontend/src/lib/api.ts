@@ -1,3 +1,4 @@
+import type { EffectsPrefs } from './feedback';
 import type {
   Agenda, AiAction, Approval, AssistantMode, AuthResult, Board, Focus, GateSettings, Ping,
   Project, Proposal, SearchResults, SemanticHit, SupportContextInput, SupportConversation,
@@ -941,7 +942,7 @@ export const api = {
 
   /** Личное меню: порядок и скрытые разделы. Настройка человека, а не браузера. */
   /** Настройки интерфейса сливаются на сервере: присылайте только свой кусок. */
-  saveUiPrefs: (prefs: { order?: string[]; hidden?: string[]; chatBar?: { expanded?: boolean; width?: number }; chatSections?: { order?: string[]; collapsed?: string[] }; anthill?: { memoryAuto?: boolean }; checks?: Record<string, boolean> }) =>
+  saveUiPrefs: (prefs: { order?: string[]; hidden?: string[]; chatBar?: { expanded?: boolean; width?: number }; chatSections?: { order?: string[]; collapsed?: string[] }; anthill?: { memoryAuto?: boolean }; checks?: Record<string, boolean>; effects?: EffectsPrefs }) =>
     request<{ uiPrefs: any }>('PUT', '/me/ui-prefs', { prefs }),
   /** Присутствие людей компании — для Chat Bar: в сети, когда видели, что о себе поставили. */
   presence: () => request<{ userId: string; online: boolean; lastSeenAt: string | null; status: 'busy' | 'away' | null }[]>('GET', '/presence'),

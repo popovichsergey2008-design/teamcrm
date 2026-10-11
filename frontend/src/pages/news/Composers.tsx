@@ -8,6 +8,7 @@ import { OptionSelect } from '../../components/ui/option-select';
 import { api, ApiError, NewsPost, NewsVisibility } from '../../lib/api';
 import { MentionUser, stillMentioned } from '../../lib/mentions';
 import { BADGES } from './shared';
+import { feedback } from '../../lib/feedback';
 
 type Group = { id: string; name: string };
 type Project = { id: string; name: string };
@@ -128,6 +129,7 @@ export function PostComposer({ open, announcement, team, canPin, onClose, onPubl
         ctaUrl: announcement && ctaLabel.trim() && ctaUrl.trim() ? ctaUrl.trim() : undefined,
         pin: pin || undefined,
       });
+      feedback('news.published');
       const failed: string[] = [];
       for (const f of files) { try { await api.feedAttach(post.id, f); } catch { failed.push(f.name); } }
       setTitle(''); setBody(''); setMentionIds([]); setFiles([]); setPin(false); setCtaLabel(''); setCtaUrl(''); setActiveUntil('');
@@ -218,6 +220,7 @@ export function KudosDialog({ open, team, meId, presetUserId, onClose, onPublish
     setErr('');
     try {
       const p = await api.feedKudos({ toUserId: to, text: text.trim(), badge: badge || undefined });
+      feedback('kudos.sent', { el: document.activeElement });
       setTo(''); setText(''); setBadge('');
       onPublished(p);
       onClose();

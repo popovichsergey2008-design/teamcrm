@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { ClientsPanel } from './ClientsPanel';
 import { previewSound, setSoundPref, soundPrefs } from '../lib/sound';
+import { effectSoundOn, effectsPrefs, feedback, setEffectSound, setEffectsPrefs, type EffectsPrefs } from '../lib/feedback';
 import { Icon } from './Icon';
 import { api, ApiError, type SessionInfo } from '../lib/api';
 import { SessionsList } from './SessionsList';
@@ -34,6 +35,15 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
     const next = { ...sound, [kind]: !sound[kind] };
     setSoundPref(kind, next[kind]);
     setSound(next);
+  };
+  // эффекты действий (ТЗ-23): звук — на устройстве, остальное — в аккаунте
+  const [fxSound, setFxSound] = useState(effectSoundOn);
+  const [fx, setFx] = useState(effectsPrefs);
+  const toggleFx = (k: keyof EffectsPrefs) => {
+    const next = { ...fx, [k]: !fx[k] };
+    setFx(next);
+    setEffectsPrefs(next);
+    void api.saveUiPrefs({ effects: next }).catch(() => undefined);
   };
   const [me, setMe] = useState<any>(null);
   /*
@@ -450,9 +460,35 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
                 Послушать
               </button>
             </label>
+            <label className="notify-row">
+              <input type="checkbox" checked={fxSound} onChange={() => { setEffectSound(!fxSound); setFxSound(!fxSound); }} />
+              Звуки действий: задача завершена, итоги готовы, фокус окончен
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={(e) => { e.preventDefault(); feedback('task.completed', { el: e.currentTarget }); }}>
+                Послушать
+              </button>
+            </label>
             <div className="dim" style={{ fontSize: 12 }}>
               Пока включён режим «Не беспокоить», звуков нет вовсе — ни сигналов, ни звонка.
             </div>
+
+            {/* Остальные эффекты — свойство человека, а не места: одинаковы на всех его устройствах */}
+            <div className="drawer-section-title" style={{ marginTop: 18 }}>Эффекты интерфейса</div>
+            <label className="notify-row">
+              <input type="checkbox" checked={fx.minimal} onChange={() => toggleFx('minimal')} />
+              Минимальные эффекты — без звуков, вибрации, свечения и праздничных анимаций
+            </label>
+            <label className="notify-row">
+              <input type="checkbox" checked={fx.haptics} disabled={fx.minimal} onChange={() => toggleFx('haptics')} />
+              Вибрация на телефоне
+            </label>
+            <label className="notify-row">
+              <input type="checkbox" checked={fx.ai} disabled={fx.minimal} onChange={() => toggleFx('ai')} />
+              Подсветка, когда ИИ закончил работу
+            </label>
+            <label className="notify-row">
+              <input type="checkbox" checked={fx.celebration} disabled={fx.minimal} onChange={() => toggleFx('celebration')} />
+              Праздничные эффекты: «спасибо», вехи, закрытый день
+            </label>
           </>
         )}
         </div>

@@ -30,6 +30,7 @@ import { useStickyCheck } from '../lib/sticky-checks';
 import { Button } from '../components/ui/button';
 import { confirmAction, promptText } from '../components/ui/dialog';
 import { useTitleHint } from '../lib/page-title';
+import { feedback } from '../lib/feedback';
 
 /*
   Карточка задачи (с чатом, редактором описания, вкладками) и окно создания грузятся
@@ -446,11 +447,15 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
         ? realPosition(target.tasks, opts, visibleIndex)
         : visibleIndex;
       if (current) dispatch({ type: 'UPSERT_TASK', task: { ...current, column_id: columnId, position } });
+      feedback('tap');
       try {
         const server = await api.moveTask(taskId, { columnId, position, confirmGate });
         dispatch({ type: 'UPSERT_TASK', task: server });
         setGate(null);
+        // задача закрылась этим переносом — подтверждение, когда сервер согласился (ТЗ-23)
+        if (server?.closed_at && !current?.closed_at) feedback('task.completed', { el: document.querySelector(`[data-task-id="${CSS.escape(String(taskId))}"]`) });
       } catch (e) {
+        if (!(e instanceof ApiError && gateFromError(e.details))) feedback('error');
         // приёмка работы: не ошибка, а вопрос — показываем, чего не хватает, и даём решить
         const block = e instanceof ApiError ? gateFromError(e.details) : null;
         if (block) setGate({ block, taskId, columnId, position });

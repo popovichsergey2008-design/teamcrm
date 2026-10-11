@@ -62,3 +62,4 @@
 .pc-followup { display: flex; flex-direction: column; gap: 8px; }
 .pc-followup textarea { resize: vertical; font-size: var(--fs-sm); line-height: 1.5; }
 .pc-recap { justify-content: flex-start; }
+.pc-steps-wrap { border-radius: var(--radius); }

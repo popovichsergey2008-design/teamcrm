@@ -1,0 +1,55 @@
+/*
+ * Микродвижение и акцент ИИ (ТЗ-23). Грузится лениво вместе со слоем обратной связи.
+ * Только transform, opacity и короткая тень — без размытий и бесконечных анимаций (§49–51).
+ */
+:root {
+  --motion-fast: 120ms;
+  --motion-normal: 180ms;
+  --motion-slow: 260ms;
+  --ai-glow: color-mix(in srgb, var(--accent) 55%, #b06cff);
+  --ai-glow-soft: color-mix(in srgb, var(--ai-glow) 30%, transparent);
+  --ai-border-active: color-mix(in srgb, var(--ai-glow) 70%, transparent);
+  --ai-success: var(--ok);
+}
+
+/* подтверждение: короткий «щелчок» элемента */
+.fx-pop { animation: fx-pop var(--motion-slow) cubic-bezier(.2, .9, .3, 1.3); }
+@keyframes fx-pop { 0% { transform: scale(1); } 40% { transform: scale(1.035); } 100% { transform: scale(1); } }
+
+/* ИИ закончил: неоновая рамка вспыхивает и гаснет — не постоянное свечение (§10) */
+.fx-ai { position: relative; }
+.fx-ai::after {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  border: 1px solid var(--ai-border-active);
+  box-shadow: 0 0 0 3px var(--ai-glow-soft), 0 0 16px var(--ai-glow-soft);
+  animation: fx-ai 900ms ease-out forwards;
+}
+@keyframes fx-ai { 0% { opacity: 0; } 25% { opacity: 1; } 100% { opacity: 0; } }
+
+/* праздник: несколько искр разлетаются от элемента */
+.fx-burst { position: relative; animation: fx-pop var(--motion-slow) cubic-bezier(.2, .9, .3, 1.3); }
+.fx-burst::before, .fx-burst::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%;
+  pointer-events: none; background: var(--ai-glow);
+  box-shadow: 18px -14px 0 var(--ok), -18px -12px 0 var(--accent), 14px 16px 0 var(--warn), -16px 14px 0 var(--ai-glow);
+  animation: fx-burst 700ms ease-out forwards;
+}
+.fx-burst::after { transform: rotate(45deg); animation-delay: 60ms; }
+@keyframes fx-burst { 0% { opacity: 1; scale: .3; } 100% { opacity: 0; scale: 1.6; } }
+
+/* ошибка: лёгкое «нет» — два коротких сдвига */
+.fx-shake { animation: fx-shake 320ms ease-in-out; }
+@keyframes fx-shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+
+/* пока ИИ думает: мягкий пульс рамки (§9, §40), без звука */
+.ai-working { position: relative; }
+.ai-working::after {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  border: 1px solid var(--ai-border-active); animation: fx-ai-pulse 1.6s ease-in-out infinite;
+}
+@keyframes fx-ai-pulse { 0%, 100% { opacity: .15; } 50% { opacity: .6; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-pop, .fx-burst, .fx-shake { animation: none; }
+  .fx-ai::after, .fx-burst::before, .fx-burst::after, .ai-working::after { animation: none; opacity: 0; }
+}

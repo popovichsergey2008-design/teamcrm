@@ -5,6 +5,7 @@ import { Checkbox } from '../../components/ui/checkbox';
 import { OptionSelect } from '../../components/ui/option-select';
 import { api, ApiError, NewsCandidate, NewsPost, NewsSettings } from '../../lib/api';
 import { TYPE_META } from './shared';
+import { feedback } from '../../lib/feedback';
 
 /**
  * Очередь одобрения (§27, §16): что система предлагает опубликовать — хайлайт дня
@@ -84,6 +85,8 @@ export function ReviewPanel({ onPublished, onOpenSettings }: { onPublished: (p: 
               onClick={() => void run(async () => {
                 const patch = editing === `${it.kind}-${it.id}` ? { title: title.trim(), body: body.trim() } : {};
                 const p = it.kind === 'draft' ? await api.feedPublishDraft(it.id, patch) : await api.feedPublishCandidate(it.id, patch);
+                // релиз и веха — редкий праздник (§15); прочее — обычная публикация
+                feedback(it.type === 'release' || it.type === 'milestone' ? 'milestone' : 'news.published');
                 setEditing(null);
                 onPublished(p);
               }, 'Опубликовано')}>

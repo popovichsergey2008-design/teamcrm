@@ -19,6 +19,7 @@ import { CloseDayDialog } from './CloseDayDialog';
 import { TeamNow } from './TeamNow';
 import { MyStatusBar } from '../components/MyStatusBar';
 import { useAuth } from '../state/auth';
+import { feedback } from '../lib/feedback';
 
 type Day = Extract<FocusToday, { enabled: true }>;
 
@@ -561,7 +562,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
       <CloseDayDialog
         open={closing}
         onClose={() => setClosing(false)}
-        onClosed={(next) => { setClosing(false); apply(next); }}
+        onClosed={(next) => { setClosing(false); apply(next); feedback('focus.dayCompleted', { el: document.querySelector('.fd-closeday, .fd-head') }); }}
       />
 
       {/* Напоминания секретаря — ниже тройки: главное на экране — план, а не россыпь. */}

@@ -31,6 +31,8 @@ export interface User {
     anthill?: { memoryAuto?: boolean };
     /** Запомненные галочки ввода: последний выбор человека становится его значением по умолчанию. */
     checks?: Record<string, boolean>;
+    /** Эффекты интерфейса (ТЗ-23): вибрация, акценты ИИ, праздничные, «минимальные». Звук — на устройстве. */
+    effects?: { haptics?: boolean; ai?: boolean; celebration?: boolean; minimal?: boolean };
   };
 }
 

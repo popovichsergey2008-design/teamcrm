@@ -27,6 +27,7 @@ export const platform: PlatformBridge = {
   get deepLinks() { return current.deepLinks; },
   get calls() { return current.calls; },
   get filesystem() { return current.filesystem; },
+  get haptics() { return current.haptics; },
   openExternal: (url) => current.openExternal(url),
 };
 

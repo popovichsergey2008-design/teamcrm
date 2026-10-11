@@ -230,6 +230,7 @@ function TaskCard({
   return (
     <div
       className={`task-card ${timerActive ? 'task-tracking' : ''}${task.unread ? ' task-card-new' : ''}`}
+      data-task-id={task.id}
       draggable={canEdit}
       onClick={onOpen}
       onDragStart={(e) => {

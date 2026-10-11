@@ -12,6 +12,7 @@ import { confirmAction } from '../ui/dialog';
 import { DropdownMenu, MenuItem, MenuSeparator } from '../ui/dropdown-menu';
 import { Select } from '../ui/select';
 import './secretary.css';
+import { feedback } from '../../lib/feedback';
 
 /**
  * Ящик проактивного секретаря (ТЗ-21, §10): не журнал сделанного, а то, что ждёт
@@ -205,6 +206,7 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
       // «Скопировать» — в буфер до запроса: сервер только отметит, что текст подготовлен
       if (a.key === 'copy') await navigator.clipboard.writeText(editable ? body : String(p.payload.body ?? p.summary ?? '')).catch(() => undefined);
       const r = await api.proposalAct(p.id, a.key, editable ? { body, subject } : undefined);
+      feedback('action.confirmed');
       setResult({ text: r.text, link: r.link });
       window.dispatchEvent(new Event('teamcrm:tasks-changed'));
       // карточка остаётся на экране с результатом, пока человек не уйдёт с вкладки

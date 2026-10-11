@@ -124,6 +124,14 @@ export const browserBridge: PlatformBridge = {
     onOpen: () => () => undefined,
   },
 
+  haptics: {
+    play(kind) {
+      try {
+        if (typeof navigator.vibrate !== 'function' || !window.matchMedia('(pointer: coarse)').matches) return;
+        navigator.vibrate(VIBRATE[kind]);
+      } catch { /* вибрация — дополнение */ }
+    },
+  },
   calls: {
     reportIncoming: () => Promise.resolve(),
     reportEnded: () => Promise.resolve(),
@@ -145,4 +153,9 @@ export const browserBridge: PlatformBridge = {
   openExternal(url) {
     window.open(url, '_blank', 'noopener,noreferrer');
   },
+};
+
+/** Узоры вибрации для браузера (мс): коротко — касание, «тук-пауза-тук» — успех. */
+const VIBRATE: Record<'light' | 'medium' | 'success' | 'warning' | 'error', number | number[]> = {
+  light: 8, medium: 18, success: [10, 60, 14], warning: [20, 80, 20], error: [30, 60, 30, 60, 30],
 };

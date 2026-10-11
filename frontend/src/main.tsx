@@ -10,6 +10,7 @@ import { initTheme } from './lib/theme';
 import { initFontScale } from './lib/font-scale';
 import { initRouter } from './lib/router';
 import { unlockAudio } from './lib/sound';
+import { preloadFeedback } from './lib/feedback';
 import { platform, platformKind, setPlatformBridge } from './platform';
 import { installSupportErrorCapture } from './lib/support-context';
 
@@ -17,6 +18,7 @@ initTheme(); // до первой отрисовки: иначе тёмная т
 initFontScale(); // тоже до отрисовки: увеличенный шрифт не должен моргать обычным
 initRouter(); // адрес должен быть разобран до первого рендера, иначе экран мигнёт разделом по умолчанию
 unlockAudio(); // браузер не даст звучать до первого касания страницы — готовимся заранее
+preloadFeedback(); // звуки и движения действий (ТЗ-23) — на первом касании, не в стартовой сборке
 installSupportErrorCapture(); // сбои окна — в контекст обращения в службу заботы
 
 /*

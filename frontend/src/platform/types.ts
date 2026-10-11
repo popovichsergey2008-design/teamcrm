@@ -118,6 +118,13 @@ export interface DeepLinksBridge {
   onOpen(handler: (path: string) => void): () => void;
 }
 
+/** Тактильная отдача (ТЗ-23): лёгкое касание, средний толчок, успех, предупреждение, ошибка. */
+export type HapticKind = 'light' | 'medium' | 'success' | 'warning' | 'error';
+export interface HapticsBridge {
+  /** Не умеет — молча ничего (компьютер, браузер без вибрации). Никогда не бросает. */
+  play(kind: HapticKind): void;
+}
+
 export interface CallIntegrationBridge {
   /** Показать входящий звонок средствами ОС (CallKit / уведомление о звонке). */
   reportIncoming(call: { id: string; title: string; video: boolean }): Promise<void>;
@@ -149,6 +156,7 @@ export interface PlatformBridge {
   deepLinks: DeepLinksBridge;
   calls: CallIntegrationBridge;
   filesystem: FilesystemBridge;
+  haptics: HapticsBridge;
   /** Открыть внешнюю ссылку: в оболочке — системным браузером, а не внутри WebView. */
   openExternal(url: string): void;
 }

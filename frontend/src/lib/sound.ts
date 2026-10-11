@@ -89,21 +89,33 @@ export function unlockAudio(): void {
 }
 
 /** Одна нота. Огибающая обязательна: прямоугольный старт слышен как щелчок. */
-function note(at: number, freq: number, seconds: number, volume: number): void {
+function note(at: number, freq: number, seconds: number, volume: number, type: OscillatorType = 'sine', attack = 0.02): void {
   const audio = ctx;
   if (!audio) return;
   const gain = audio.createGain();
   gain.gain.setValueAtTime(0.0001, at);
-  gain.gain.exponentialRampToValueAtTime(volume, at + 0.02);
+  gain.gain.exponentialRampToValueAtTime(volume, at + attack);
   gain.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
   gain.connect(audio.destination);
 
   const osc = audio.createOscillator();
-  osc.type = 'sine';
+  osc.type = type;
   osc.frequency.setValueAtTime(freq, at);
   osc.connect(gain);
   osc.start(at);
   osc.stop(at + seconds + 0.02);
+}
+
+/**
+ * Сыграть набор нот: [сдвиг с, частота Гц, длительность с, громкость, форма, атака с].
+ * Для звуков действий (ТЗ-23): какие ноты и когда — решает слой обратной связи,
+ * здесь только звуковой контекст. Настройки и тишину проверяет вызывающий.
+ */
+export function playNotes(notes: [number, number, number, number, OscillatorType?, number?][]): void {
+  const audio = context();
+  if (!audio || audio.state !== 'running') return;
+  const now = audio.currentTime;
+  for (const [off, freq, dur, vol, type, attack] of notes) note(now + off, freq, dur, vol, type, attack);
 }
 
 /** Короткий сигнал о новом сообщении: две ноты вверх, не похоже на системную ошибку. */

@@ -25,6 +25,7 @@ import { confirmAction } from '../ui/dialog';
 import { Tabs } from '../ui/tabs';
 import { Toggle } from '../ui/toggle';
 import { useEnterSend } from '../../hooks/useEnterSend';
+import { feedback } from '../../lib/feedback';
 
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
   task: 'задача', project: 'проект', chat: 'чат', meeting: 'мит',
@@ -69,6 +70,9 @@ type Live = { status: string; text: string; sources: AnthillSource[] };
  * которая ждёт «Создать». Сам агент ничего не меняет — это правило ТЗ, и оно же
  * единственная причина, по которой ему вообще можно доверить запись.
  */
+/** Ответ дольше этого — сигнал «готово» (человек успел переключиться). */
+const LONG_ANSWER_MS = 4000;
+
 export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
   /** Что открыто у человека под окном — уходит ответом на «о чём речь». */
   context?: AnthillContext | null;
@@ -207,6 +211,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
       }, ...steps]);
     };
 
+    const askedAt = performance.now();
     const run = api.anthillAsk(id, question, ctxArg, skill ? skill.id : null, deep, {
       onStatus: (t) => { acc.status = t; show(); },
       onDelta: (t) => { acc.text += t; acc.status = ''; show(); },
@@ -219,7 +224,14 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
           createdAt: new Date().toISOString(), action: s.message.action,
         });
       },
-      onDone: (d) => land(String(d.messageId)),
+      onDone: (d) => {
+        land(String(d.messageId));
+        /*
+          Один сигнал на ответ, не на каждый кусок потока (ТЗ-23, §40–41). И только если
+          ответ шёл долго: человек успел отвернуться. Мгновенный ответ он и так видит.
+        */
+        if (performance.now() - askedAt > LONG_ANSWER_MS) feedback('ai.completed');
+      },
       onError: (m) => setErr(m || 'Не удалось получить ответ. Попробуйте снова.'),
     });
     stopRef.current = run.stop;
@@ -244,6 +256,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     try {
       if (what === 'reject') { await api.anthillReject(actionId); patch('rejected'); return; }
       const r = what === 'confirm' ? await api.anthillConfirm(actionId) : await api.anthillUndo(actionId);
+      if (what === 'confirm') feedback('action.confirmed');
       patch(r.status);
       if (r.text) {
         setMessages((prev) => [...prev, {

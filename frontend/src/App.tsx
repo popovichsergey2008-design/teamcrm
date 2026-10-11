@@ -55,6 +55,7 @@ import { useConsoleAlerts } from './hooks/useConsoleAlerts';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { ConsoleTopBar } from './components/console/ConsoleTopBar';
 import { useSeedStickyChecks } from './lib/sticky-checks';
+import { setEffectsPrefs } from './lib/feedback';
 import { promptText } from './components/ui/dialog';
 
 /*
@@ -471,6 +472,8 @@ export function App() {
 
   // запомненные галочки — сразу при входе, до первой открытой формы
   useSeedStickyChecks();
+  // настройки эффектов (ТЗ-23) — из аккаунта, общие на все устройства
+  setEffectsPrefs(user?.uiPrefs?.effects);
   const counters = useNavCounters(crmAlive, route.section);
   const { incoming, accept, decline } = useIncomingCalls(crmAlive);
   // гость ждёт за дверью, а в комнате никого — зов с кнопкой «Войти» в любом разделе

@@ -19,6 +19,7 @@ import { Checkbox } from './ui/checkbox';
 import { Textarea } from './ui/field';
 import { Input } from './ui/input';
 import { Select } from './ui/select';
+import { feedback } from '../lib/feedback';
 
 /** Что создали в этом заходе — для итоговой страницы: куда ушло и как открыть. */
 interface CreatedTask {
@@ -234,6 +235,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
       const taskId = res?.task ? String(res.task.id) : '';
       const failed = taskId ? await uploadFiles(taskId, draft.files ?? []) : [];
       setDone((d) => [...d, index]);
+      if (res?.task) feedback('task.created');
       remember(draft, res?.task);
       if (failed.length) {
         // Задача создана — предлагать создать её второй раз нельзя, это дубль.
@@ -302,6 +304,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         if (files.length) lostFiles.push(...await uploadFiles(batch.tasks[k].taskId, files));
       }
       setDone((list) => [...list, ...ready.map((r) => r.index)]);
+      // пачка — одно подтверждение, а не по звуку на задачу (§43)
+      if (batch.created) feedback('task.created', { count: batch.created });
       if (batch.failedCount) {
         setMsg(`Создано ${batch.created} из ${batch.requested}. Что не получилось — видно на странице результата.`);
       }

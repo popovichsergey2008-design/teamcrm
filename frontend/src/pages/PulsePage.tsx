@@ -11,6 +11,7 @@ import type { PulseActionType, PulseSummary } from '../lib/api';
 import { navigate } from '../lib/router';
 import { getSocket } from '../lib/socket';
 import { showToast } from '../lib/notifications';
+import { feedback } from '../lib/feedback';
 
 /**
  * «Пульс команды» как командный центр руководителя (ТЗ-19).
@@ -371,6 +372,7 @@ function ActionDialog({ action, people, onClose, onDone }: {
     setBusy(true); setErr('');
     try {
       const r = await api.pulseConfirm(pv.id);
+      feedback('action.confirmed');
       showToast({ kind: 'saved', title: ACTION_TITLE[action.type], body: r.text });
       onDone(); onClose();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
@@ -413,7 +415,7 @@ function RebalanceDialog({ userId, onClose, onDone }: { userId: string; onClose:
           <Button variant="ghost" onClick={close}>Отмена</Button>
           {r?.id && <Button variant="primary" loading={busy} onClick={async () => {
             setBusy(true);
-            try { const x = await api.pulseConfirm(r.id!); showToast({ kind: 'saved', title: 'Балансировка', body: x.text }); onDone(); onClose(); }
+            try { const x = await api.pulseConfirm(r.id!); feedback('action.confirmed'); showToast({ kind: 'saved', title: 'Балансировка', body: x.text }); onDone(); onClose(); }
             catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
             finally { setBusy(false); }
           }}>Применить</Button>}

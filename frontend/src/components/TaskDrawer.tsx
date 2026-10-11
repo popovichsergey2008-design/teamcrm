@@ -37,6 +37,7 @@ import { Input } from './ui/input';
 import { Select } from './ui/select';
 import { Tabs } from './ui/tabs';
 import { useTitleHint } from '../lib/page-title';
+import { feedback } from '../lib/feedback';
 
 interface Props {
   task: Task;
@@ -404,7 +405,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const decide = async (accept: boolean) => {
     setErr('');
     try {
-      if (accept) await api.approveTask(task.id);
+      if (accept) { await api.approveTask(task.id); feedback('task.approved'); }
       else {
         const reason = await promptText({
           title: 'Вернуть в работу',
@@ -496,7 +497,12 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const moveToColumn = async (columnId: string, confirmGate = false) => {
     if (columnId === task.column_id || moving) return;
     setErr(''); setMoving(true);
-    try { await api.moveTask(task.id, { columnId, position: 0, confirmGate }); setGate(null); onRefresh(); }
+    feedback('tap');
+    try {
+      const server = await api.moveTask(task.id, { columnId, position: 0, confirmGate });
+      if (server?.closed_at && !task.closed_at) feedback('task.completed');
+      setGate(null); onRefresh();
+    }
     catch (e) {
       const block = e instanceof ApiError ? gateFromError(e.details) : null;
       if (block) setGate({ block, columnId });

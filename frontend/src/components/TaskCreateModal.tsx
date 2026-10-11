@@ -22,6 +22,7 @@ import { confirmAction } from './ui/dialog';
 import { Field, Textarea } from './ui/field';
 import { Input } from './ui/input';
 import { Select } from './ui/select';
+import { feedback } from '../lib/feedback';
 
 interface Props {
   projectId: string;
@@ -273,6 +274,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         confirmWorkload: o.confirmWorkload || undefined,
       });
       setCreatedId(String(created.id));
+      feedback('task.created');
       clearDraft(); // задача создана — черновик своё отслужил
       /*
         Пункты чек-листа из шаблона — по порядку и по одному: отдельной ручки «создать

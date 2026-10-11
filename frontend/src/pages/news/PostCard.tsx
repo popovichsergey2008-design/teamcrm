@@ -6,6 +6,7 @@ import { MentionUser } from '../../lib/mentions';
 import { navigate, parsePath } from '../../lib/router';
 import { initialsOf } from '../../lib/initials';
 import { audienceLabel, badgeEmoji, Body, isMedia, NewsImage, REACTIONS, TYPE_META, until, when } from './shared';
+import { feedback } from '../../lib/feedback';
 
 /**
  * Пост в ленте (ТЗ-20). Карточка отвечает на «стоит ли читать» и даёт сделать
@@ -178,7 +179,7 @@ export function PollBlock({ post, onUpdated }: { post: NewsPost; onUpdated: (p: 
   const vote = async () => {
     setBusy(true);
     setErr('');
-    try { onUpdated(await api.feedVote(post.id, picked)); }
+    try { onUpdated(await api.feedVote(post.id, picked)); feedback('poll.voted'); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Голос не учтён'); }
     finally { setBusy(false); }
   };

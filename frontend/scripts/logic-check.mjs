@@ -1393,6 +1393,41 @@ test('Enter в чате отправляет, Shift/Ctrl+Enter переноси�
   assert.equal(enterAction(k({ altKey: true })), null);
 });
 
+// ── звук, вибрация и движение действий (ТЗ-23) ───────────────────────────────
+test('эффекты: задача закрыта — звук, касание и «щелчок» карточки; пачка — один сигнал', async () => {
+  const { decide } = await load('lib/feedback-rules.ts');
+  const base = {
+    prefs: { haptics: true, ai: true, celebration: true, minimal: false },
+    soundOn: true, focusSoundOn: true, quiet: false, reducedMotion: false, sinceSame: 99999, sinceSound: 99999, hasEl: true,
+  };
+  assert.deepEqual(decide('task.completed', base), { sound: 'ui_success', haptic: 'light', motion: 'pop' });
+  // пятая задача из пачки через 50 мс: ни звука, ни вибрации — только движение своей карточки
+  assert.deepEqual(decide('task.completed', { ...base, sinceSame: 50, sinceSound: 50 }), { motion: 'pop' });
+  // разные события подряд: второй звук раньше 300 мс не играет, касание — да
+  assert.deepEqual(decide('task.approved', { ...base, sinceSound: 120 }), { haptic: 'success', motion: 'pop' });
+  // создание — только касание (§16), звук не всегда
+  assert.equal(decide('task.created', base).sound, undefined);
+});
+
+test('эффекты: тишина, свои выключатели, «минимальные», reduced motion', async () => {
+  const { decide } = await load('lib/feedback-rules.ts');
+  const base = {
+    prefs: { haptics: true, ai: true, celebration: true, minimal: false },
+    soundOn: true, focusSoundOn: true, quiet: false, reducedMotion: false, sinceSame: 99999, sinceSound: 99999, hasEl: true,
+  };
+  assert.equal(decide('task.completed', { ...base, quiet: true }).sound, undefined, 'в глубоком фокусе звуков нет');
+  assert.equal(decide('focus.completed', { ...base, quiet: true }).sound, 'focus_complete', 'конец фокуса звучит сквозь тишину');
+  assert.equal(decide('focus.completed', { ...base, focusSoundOn: false }).sound, undefined, 'у конца фокуса свой выключатель');
+  assert.equal(decide('task.completed', { ...base, soundOn: false }).sound, undefined, 'звук выключен на устройстве');
+  assert.equal(decide('task.completed', { ...base, prefs: { ...base.prefs, haptics: false } }).haptic, undefined);
+  assert.deepEqual(decide('milestone', { ...base, prefs: { ...base.prefs, minimal: true } }), {}, '«минимальные эффекты» — ничего');
+  assert.equal(decide('postcall.ready', { ...base, reducedMotion: true }).motion, undefined, 'reduced motion — без свечения');
+  assert.equal(decide('postcall.ready', { ...base, prefs: { ...base.prefs, ai: false } }).motion, 'pop', 'без акцентов ИИ — простой «щелчок»');
+  // праздничные выключены — веха звучит обычным «готово» и без искр
+  assert.deepEqual(decide('milestone', { ...base, prefs: { ...base.prefs, celebration: false } }), { sound: 'ui_success', haptic: 'success', motion: 'pop' });
+  assert.equal(decide('error', { ...base, hasEl: false }).motion, undefined, 'нет элемента — нет движения');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

@@ -3,9 +3,10 @@ import './focus-zen.css';
 import { Icon } from './Icon';
 import { Button } from './ui/button';
 import { api, ApiError, FocusSession } from '../lib/api';
-import { focusSoundOn, playFocusDone, setFocusSound } from '../lib/sound';
+import { focusSoundOn, setFocusSound } from '../lib/sound';
 import { refreshFocusSession, remainingNow, setFocusSession, useFocusSession } from '../hooks/useFocusSession';
 import { useEscape } from '../hooks/useEscape';
+import { feedback } from '../lib/feedback';
 
 /**
  * Окно глубокой работы (ТЗ-16, п. 49): таймер, задача, что считать готовым,
@@ -88,7 +89,7 @@ export function FocusZen({ session, onOpenTask }: {
   const elapsed = useCallback(() => {
     setEnded(true);
     setMini(false);
-    playFocusDone();
+    feedback('focus.completed');
   }, []);
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -112,6 +113,7 @@ export function FocusZen({ session, onOpenTask }: {
     setFocusSession(null);
     if (next === 'again') {
       setFocusSession(await api.focusStart({ taskId: task?.id ?? null, itemId: session.itemId }));
+      feedback('focus.started');
     }
     if (next === 'done' && task) onOpenTask(task.projectId, task.id);
     void refreshFocusSession();
