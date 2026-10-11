@@ -51,6 +51,7 @@ export function OnboardingCard({ always = false }: {
     if (step.key === 'company') return setDialog('company');
     if (step.key === 'departments') return setDialog('departments');
     if (step.key === 'team') return setDialog('team');
+    if (step.key === 'ai_demo') return navigate('/onboarding/ai-call?from=checklist');
     // Проект и задача заводятся там же, где их заводят всегда: отдельного «мастера
     // создания» нет намеренно — человек должен запомнить настоящий путь, а не учебный.
     return navigate({ section: 'projects' });
@@ -100,12 +101,14 @@ export function OnboardingCard({ always = false }: {
                   {!s.done && (
                     <span className="onb-actions">
                       <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => go(s)}>
-                        {s.key === 'team' ? 'Пригласить' : s.key === 'project' ? 'Создать' : s.key === 'task' ? 'Поставить' : 'Настроить'}
+                        {s.key === 'team' ? 'Пригласить' : s.key === 'project' ? 'Создать' : s.key === 'task' ? 'Поставить' : s.key === 'ai_demo' ? 'Попробовать' : 'Настроить'}
                       </button>
                       {!s.required && !s.skipped && (
                         <button
                           className="ui-btn ui-btn-ghost ui-btn-sm"
-                          onClick={() => act(() => api.skipOnboardingStep(s.key))}
+                          onClick={() => act(() => (s.key === 'ai_demo'
+                            ? api.aiDemoSkip('checklist').then(() => api.onboarding())
+                            : api.skipOnboardingStep(s.key)))}
                           title="Отложить: шаг останется в списке, но звать к нему не будем"
                         >
                           Позже

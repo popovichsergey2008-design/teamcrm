@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, Suspense, lazy } from 'react';
 import { Icon } from '../components/Icon';
 import { BottomSheet, SheetAction } from '../components/BottomSheet';
 import { EmptyState } from '../components/EmptyState';
@@ -20,6 +20,8 @@ import { Toggle } from '../components/ui/toggle';
 import { lazyComponent } from '../lib/lazy';
 import { MyStatusBar } from '../components/MyStatusBar';
 import type { FocusToday } from '../lib/api';
+// приглашение на демо ИИ-созвона (ТЗ-24) — отдельным куском, не в стартовой сборке
+const AiDemoInvite = lazy(() => import('../components/AiDemoInvite'));
 
 /*
   Новый «Фокус дня» (ТЗ-16) — отдельным куском сборки: пока организации его не
@@ -321,6 +323,7 @@ function LegacyFocusPage({ onOpenTask, onJoinCall, active = true }: FocusProps) 
         напоминаний ещё нет, а колонки пусты — и без подсказки экран отвечает
         «у вас ничего нет» вместо «начните отсюда».
       */}
+      <Suspense fallback={null}><AiDemoInvite /></Suspense>
       <OnboardingCard />
 
       {/* Повестка — первой: встреча начнётся через пять минут, а списки подождут */}

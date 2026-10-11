@@ -290,7 +290,7 @@ export interface Industry {
 
 /** Один шаг пути владельца. */
 export interface OnboardingStep {
-  key: 'workspace' | 'company' | 'departments' | 'team' | 'project' | 'task';
+  key: 'workspace' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'task';
   title: string;
   hint: string;
   done: boolean;

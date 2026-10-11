@@ -89,6 +89,7 @@ export function ConsolePage({ route }: { route: Route }) {
   const [escalations, setEscalations] = useState<SupportEscalation[]>([]);
   /** Воронка: грузится только на своей вкладке — запрос идёт по всем организациям. */
   const [funnel, setFunnel] = useState<FunnelReport | null>(null);
+  const [demoFunnel, setDemoFunnel] = useState<Awaited<ReturnType<typeof api.platformAiDemoFunnel>> | null>(null);
   /** Отбор очереди: пустой означает «вся очередь», как было до этапа 3. */
   const [filter, setFilter] = useState<SupportQueueFilter>({});
   const [roles, setRoles] = useState<{ id: string; title: string }[]>([]);
@@ -133,6 +134,7 @@ export function ConsolePage({ route }: { route: Route }) {
     if (tab !== 'funnel' || funnel) return;
     let alive = true;
     api.platformFunnel().then((r) => alive && setFunnel(r)).catch(() => undefined);
+    api.platformAiDemoFunnel(30).then((r) => alive && setDemoFunnel(r)).catch(() => undefined);
     return () => { alive = false; };
   }, [tab, funnel]);
 
@@ -756,6 +758,7 @@ export function ConsolePage({ route }: { route: Route }) {
                   </div>
                   <div><b>{pct(funnel.summary.voiceAdoption)}</b><span className="dim">диктуют голосом</span></div>
                 </div>
+                {demoFunnel && <AiDemoFunnel f={demoFunnel} />}
                 <div className="funnel-steps">
                   {funnel.summary.steps.map((st) => (
                     <div key={st.key} className="funnel-step">
@@ -789,5 +792,43 @@ export function ConsolePage({ route }: { route: Route }) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Демо «ИИ-созвон за 30 секунд» (ТЗ-24, §53–57) за 30 дней: докуда доходят и сколько
+ * времени от регистрации до первой задачи. Активация — приняли хотя бы одну задачу (§57).
+ */
+function AiDemoFunnel({ f }: { f: Awaited<ReturnType<typeof api.platformAiDemoFunnel>> }) {
+  if (!f.started && !f.skipped) return null;
+  const share = (n: number) => (f.started ? n / f.started : 0);
+  const steps = [
+    { key: 'started', title: 'Начали демо', n: f.started },
+    { key: 'spoke', title: 'Сказали фразу', n: f.spoke },
+    { key: 'reviewed', title: 'Увидели итоги', n: f.reviewed },
+    { key: 'accepted', title: 'Приняли задачи', n: f.accepted },
+    { key: 'converted', title: 'Сделали проект рабочим', n: f.converted },
+  ];
+  const ttfv = f.median_ttfv_sec == null ? '—' : f.median_ttfv_sec < 3600 ? `${Math.max(1, Math.round(f.median_ttfv_sec / 60))} мин` : `${Math.round(f.median_ttfv_sec / 3600)} ч`;
+  return (
+    <>
+      <div className="drawer-section-title" style={{ marginTop: 14 }}>Демо ИИ-созвона · 30 дней</div>
+      <div className="funnel-stats">
+        <div><b>{ttfv}</b><span className="dim">от регистрации до первой задачи (медиана)</span></div>
+        <div><b>{f.accepted}</b><span className="dim">активаций</span></div>
+        <div><b>{f.skipped}</b><span className="dim">пропустили</span></div>
+        <div><b>{f.by_text}</b><span className="dim">текстом вместо голоса</span></div>
+        <div><b>{f.failed}</b><span className="dim">не распознали</span></div>
+      </div>
+      <div className="funnel-steps">
+        {steps.map((st) => (
+          <div key={st.key} className="funnel-step">
+            <span className="funnel-step-title">{st.title}</span>
+            <span className="funnel-bar"><i style={{ width: `${Math.round(share(st.n) * 100)}%` }} /></span>
+            <span className="funnel-step-num dim">{st.n} · {Math.round(share(st.n) * 100)}%</span>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }

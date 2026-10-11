@@ -115,6 +115,7 @@ export function parsePath(pathname: string): Route {
     try { return decodeURIComponent(s); } catch { return s; }
   });
   // встреча живёт в «Чатах → Встречи»; свой короткий адрес — для ссылок на секунду записи
+  if (seg[0] === 'onboarding' && seg[1] === 'ai-call') return { section: 'focus', view: 'ai-call' };
   if (seg[0] === 'meetings' && seg[1] && seg[2] === 'postcall') return { section: 'chat', view: 'postcall', meetingId: seg[1] };
   if (seg[0] === 'postcall' && seg[1] === 'room' && seg[2]) return { section: 'chat', view: 'postcall', roomId: seg[2] };
   if (seg[0] === 'meetings') return seg[1] ? { section: 'chat', view: 'meetings', meetingId: seg[1] } : { section: 'chat', view: 'meetings' };
@@ -167,6 +168,7 @@ export function buildPath(r: Route): string {
   switch (r.section) {
     case 'focus':
       if (r.view === 'inbox') return '/focus/inbox';
+      if (r.view === 'ai-call') return '/onboarding/ai-call';
       return '/focus';
     case 'tasks':
       if (r.view === 'batch' && r.batchId) return `/tasks/batch/${enc(r.batchId)}`;

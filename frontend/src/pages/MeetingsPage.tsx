@@ -136,6 +136,7 @@ export function MeetingsPage({ onEnterGuestMeet, openMeetingId }: { onEnterGuest
           icon="record"
           title="Разборов пока нет"
           hint="Загрузите первую запись формой выше. Через несколько минут здесь появится стенограмма с именами, краткая сводка и задачи, которые ИИ предложит завести по итогам."
+          action={{ label: 'Попробовать AI-созвон за 30 секунд', onClick: () => navigate('/onboarding/ai-call?from=meetings_empty') }}
         />
       )}
 

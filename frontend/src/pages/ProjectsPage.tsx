@@ -147,7 +147,9 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
         <EmptyState
           icon="board"
           title={q ? 'Ничего не нашлось' : slice === 'archived' ? 'Архив пуст' : 'Проектов пока нет'}
-          hint={q ? 'Проверьте название.' : 'Проект — это доска с колонками и задачами. Создайте первый.'}
+          hint={q ? 'Проверьте название.' : 'Проект — это доска с колонками и задачами. Создайте первый — или скажите одну рабочую фразу, и QEVO соберёт его сам.'}
+          // пустой экран — место для демо ИИ-созвона (ТЗ-24, §5)
+          action={!q && slice !== 'archived' ? { label: 'Попробовать AI-созвон', onClick: () => navigate('/onboarding/ai-call?from=projects_empty') } : undefined}
         />
       )}
 

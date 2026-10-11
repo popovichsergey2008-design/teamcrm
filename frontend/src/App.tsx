@@ -77,6 +77,7 @@ const prefetchRadar = () => { void import('./pages/PulsePage').then((m) => m.pre
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 const FeedPage = lazy(() => import('./pages/FeedPage').then((m) => ({ default: m.FeedPage })));
 const MeetingsPage = lazy(() => import('./pages/MeetingsPage').then((m) => ({ default: m.MeetingsPage })));
+const AiDemoPage = lazy(() => import('./pages/AiDemoPage').then((m) => ({ default: m.AiDemoPage })));
 const PostCallPage = lazy(() => import('./pages/PostCallPage').then((m) => ({ default: m.PostCallPage })));
 const SupportPage = lazy(() => import('./pages/SupportPage').then((m) => ({ default: m.SupportPage })));
 const ConsolePage = lazy(() => import('./pages/ConsolePage').then((m) => ({ default: m.ConsolePage })));
@@ -784,6 +785,10 @@ export function App() {
       <SupportDock />
 
       {/* Подразделы, живущие поверх своего раздела: адрес у них свой, экран — родительский */}
+      {/* демо «ИИ-созвон за 30 секунд» (ТЗ-24) — во весь экран, как звонок */}
+      {route.section === 'focus' && route.view === 'ai-call' && (
+        <Suspense fallback={null}><AiDemoPage /></Suspense>
+      )}
       {route.section === 'focus' && route.view === 'inbox' && canManage && (
         <InboxPanel onClose={() => navigate({ section: 'focus' })} />
       )}

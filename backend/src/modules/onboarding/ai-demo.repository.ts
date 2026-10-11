@@ -47,6 +47,13 @@ export class AiDemoRepository {
     );
   }
 
+  /** Новичок: учётной записи меньше двух недель. */
+  isNewcomer(tenantId: string, userId: string): Promise<boolean> {
+    return this.db.one<{ ok: boolean }>(
+      `SELECT created_at > now() - interval '14 days' AS ok FROM users WHERE tenant_id = $1 AND id = $2`, [tenantId, userId],
+    ).then((r) => !!r?.ok);
+  }
+
   /** Принять запись: из «начато», «не вышло» или «итоги без задач» — «Сказать ещё раз» тем же демо. */
   async claimFinish(id: string, input: string): Promise<boolean> {
     const r = await this.db.query(

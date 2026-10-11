@@ -374,6 +374,19 @@ export interface PostcallQualityStats {
   followupSendRate: number | null; recapRate: number | null;
   wrongAssignee: number | null; wrongDeadline: number | null; titleEdited: number | null; wrongProject: number | null;
 }
+/** Демо «ИИ-созвон за 30 секунд» (ТЗ-24). */
+export type AiDemoEntry = 'welcome' | 'checklist' | 'projects_empty' | 'meetings_empty';
+export interface AiDemoDraft {
+  id: string; title: string; kind: 'task' | 'meeting'; deadlineAt: string | null; assigneeHint: string | null;
+  assigneeId: string | null; status: string; taskId: string | null; error: string | null;
+}
+export interface AiDemoView {
+  demoId: string;
+  status: 'started' | 'processing' | 'review' | 'tasks_created' | 'completed' | 'skipped' | 'failed';
+  mode: 'ai' | 'rules'; error: 'stt' | 'extract' | 'create' | null; input: 'voice' | 'text' | null;
+  transcript: string | null; summary: string | null; projectId: string | null; createdTaskCount: number;
+  drafts: AiDemoDraft[];
+}
 export interface PostcallPending { meeting_id: string; title: string; status: string; created_at: string; pending_drafts: number }
 export interface ClientMeeting { kind: 'event' | 'meeting'; id: string; title: string; startsAt: string; endsAt: string | null; roomId: string | null }
 export interface ClientNote { id: string; body: string; pinned: boolean; isPrivate: boolean; authorId: string | null; authorName: string | null; createdAt: string }
@@ -881,6 +894,31 @@ export const api = {
     создать проект мимо неё, и шаг всё равно обязан быть отмечен.
   */
   onboarding: () => request<OnboardingView>('GET', '/onboarding'),
+
+  // демо «ИИ-созвон за 30 секунд» (ТЗ-24)
+  aiDemoState: () => request<{ invite: boolean; last: AiDemoView | null }>('GET', '/onboarding/ai-call'),
+  aiDemoStart: (entryPoint: AiDemoEntry) =>
+    request<{ demoId: string; mode: 'ai' | 'rules'; maxSeconds: number }>('POST', '/onboarding/ai-call/start', { entryPoint }),
+  aiDemoSkip: (entryPoint: AiDemoEntry) => request<{ skipped: true }>('POST', '/onboarding/ai-call/skip', { entryPoint }),
+  aiDemoGet: (demoId: string) => request<AiDemoView>('GET', `/onboarding/ai-call/${demoId}`),
+  /** Конец «звонка»: запись голоса или текст. */
+  aiDemoFinish: async (demoId: string, input: { audio?: Blob; text?: string }) => {
+    const form = new FormData();
+    if (input.audio) form.append('audio', input.audio, input.audio.type.includes('mp4') ? 'demo.mp4' : 'demo.webm');
+    if (input.text) form.append('text', input.text);
+    const res = await fetch(apiUrl(`/api/onboarding/ai-call/${demoId}/finish`), {
+      method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: form,
+    });
+    const env = await res.json();
+    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Не удалось отправить');
+    return env.data as { demoId: string; status: string };
+  },
+  aiDemoCreate: (demoId: string, items: { draftId: string; title?: string; deadlineAt?: string; assignToMe?: boolean }[]) =>
+    request<{ projectId: string; created: string[]; failed: { draftId: string; error: string }[] }>(
+      'POST', `/onboarding/ai-call/${demoId}/create-tasks`, { items }),
+  aiDemoComplete: (demoId: string) => request<{ completed: true }>('POST', `/onboarding/ai-call/${demoId}/complete`),
+  aiDemoConvert: (projectId: string, name?: string) =>
+    request<{ converted: true }>('POST', `/onboarding/ai-call/projects/${projectId}/convert`, name ? { name } : {}),
   onboardingIndustries: () => request<Industry[]>('GET', '/onboarding/industries'),
   onboardingDepartments: (industry: string) => request<{
     industry: string; title: string;
@@ -2032,6 +2070,11 @@ export const api = {
   platformTenants: () => request<PlatformTenant[]>('GET', '/platform/tenants'),
   /** Воронка онбординга: считается по фактам, поэтому запрос не из дешёвых — берём по требованию. */
   platformFunnel: () => request<import('../types').FunnelReport>('GET', '/platform/funnel'),
+  /** Воронка демо «ИИ-созвон за 30 секунд» (ТЗ-24) за период, без вендора. */
+  platformAiDemoFunnel: (days = 30) => request<{
+    started: number; spoke: number; reviewed: number; accepted: number; completed: number; skipped: number;
+    failed: number; by_text: number; median_ttfv_sec: number | null; converted: number;
+  }>('GET', `/platform/ai-demo-funnel?days=${days}`),
 
   supportOverview: () => request<{
     project: { id: string; name: string } | null;

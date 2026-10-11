@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense, lazy } from 'react';
 import './focus-day.css';
 import { Icon } from '../components/Icon';
 import { EmptyState } from '../components/EmptyState';
@@ -20,6 +20,8 @@ import { TeamNow } from './TeamNow';
 import { MyStatusBar } from '../components/MyStatusBar';
 import { useAuth } from '../state/auth';
 import { feedback } from '../lib/feedback';
+// приглашение на демо ИИ-созвона (ТЗ-24) — отдельным куском, не в стартовой сборке
+const AiDemoInvite = lazy(() => import('../components/AiDemoInvite'));
 
 type Day = Extract<FocusToday, { enabled: true }>;
 
@@ -467,6 +469,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
 
       {day.huddle.map(huddleCard)}
 
+      <Suspense fallback={null}><AiDemoInvite /></Suspense>
       <OnboardingCard />
       <MeetingAgenda onJoin={onJoinCall} />
 

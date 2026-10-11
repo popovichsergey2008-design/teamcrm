@@ -52,8 +52,13 @@ export class AiDemoService {
 
   /** Что показывать в приглашении: было ли демо и чем закончилось. */
   async state(a: Actor) {
-    const last = await this.repo.latest(a.tenantId, a.userId);
-    return { last: last ? this.view(last, []) : null };
+    const [last, fresh] = await Promise.all([this.repo.latest(a.tenantId, a.userId), this.repo.isNewcomer(a.tenantId, a.userId)]);
+    /*
+      Звать на демо — новичка (первые две недели), который демо не проходил и не
+      пропускал. Остальным оно доступно из чек-листа и пустых экранов, но не навязывается (§62).
+    */
+    const invite = fresh && (!last || ['started', 'failed'].includes(last.status));
+    return { invite, last: last ? this.view(last, []) : null };
   }
 
   async start(a: Actor, entryPoint: string) {
