@@ -170,7 +170,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   };
 
   /** Встреча, из которой выросла задача: обратный переход в её Summary. */
-  const [meeting, setMeeting] = useState<{ meeting_id: string; title: string | null } | null>(null);
+  const [meeting, setMeeting] = useState<{ meeting_id: string; title: string | null; happened_at?: string | null; source_sec?: string | null } | null>(null);
   /** Из какого сообщения выросла задача: «а это вообще откуда?» — вопрос номер один. */
   const [fromMessage, setFromMessage] = useState<{
     message_id: string; chat_id: string; body: string; author_name: string | null;
@@ -993,6 +993,19 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 <button className="link-btn" onClick={() => navigate({ section: 'chat', view: 'meetings', meetingId: meeting.meeting_id })}>
                   {meeting.title || 'встреча'}
                 </button>
+                {meeting.happened_at && <span className="dim"> · {new Date(meeting.happened_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}</span>}
+                {meeting.source_sec != null && (
+                  // ТЗ-22, §18: «Открыть момент 31:14» — где именно это поручили
+                  <>
+                    {' · '}
+                    <button
+                      className="link-btn"
+                      onClick={() => navigate(`/meetings/${encodeURIComponent(meeting.meeting_id)}?t=${Math.round(Number(meeting.source_sec))}`)}
+                    >
+                      открыть момент {Math.floor(Number(meeting.source_sec) / 60)}:{String(Math.floor(Number(meeting.source_sec) % 60)).padStart(2, '0')}
+                    </button>
+                  </>
+                )}
               </div>
             )}
 

@@ -16,7 +16,8 @@ export function speakerAt(
 ): { sec: number | null; speaker: string | null; speakerUserId: string | null } {
   let at = sec;
   if (at == null && quote) {
-    const q = norm(quote).slice(0, 40);
+    // модель часто переписывает цитату вместе с именем: «Алина: беру интеграцию»
+    const q = norm(quote.replace(/^[^:]{2,40}:\s*/, '')).slice(0, 40);
     const hit = q.length >= 8 ? replies.find((r) => norm(r.text).includes(q)) : undefined;
     if (hit) at = Math.round(hit.start);
   }

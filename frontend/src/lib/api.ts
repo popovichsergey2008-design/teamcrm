@@ -2420,11 +2420,13 @@ export const api = {
     return env.data;
   },
   retryMeeting: (id: string) => request<any>('POST', `/meetings/${id}/retry`),
-  applyMeetingDraft: (draftId: string, b: { title?: string; assigneeId?: string; projectId?: string }) =>
+  applyMeetingDraft: (draftId: string, b: { title?: string; assigneeId?: string; projectId?: string; deadlineAt?: string }) =>
     request<any>('POST', `/meetings/drafts/${draftId}/apply`, b),
   /** Правка черновика ДО создания задачи — она переживает перезагрузку страницы. */
   updateMeetingDraft: (draftId: string, b: {
     title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
+    /** ISO или '' — убрать срок */
+    deadlineAt?: string;
   }) => request<any>('POST', `/meetings/drafts/${draftId}`, b),
   rejectMeetingDraft: (draftId: string) => request<any>('POST', `/meetings/drafts/${draftId}/reject`),
 
@@ -2433,6 +2435,10 @@ export const api = {
   postcallByRoom: (roomId: string) =>
     request<{ meetingId: string | null }>('GET', `/meetings/postcall/by-room/${encodeURIComponent(roomId)}`),
   postcallPending: () => request<PostcallPending[]>('GET', '/meetings/postcall/pending'),
+  /** «Создать выбранные задачи»: упавшие остаются черновиками с причиной, созданные не дублируются. */
+  postcallCreateBatch: (meetingId: string, items: { draftId: string; assigneeId?: string; projectId?: string; deadlineAt?: string }[]) =>
+    request<{ created: { draftId: string; taskId: string; title: string }[]; failed: { draftId: string; error: string }[]; skipped: number }>(
+      'POST', `/meetings/${meetingId}/postcall/tasks/create-batch`, { items }),
   postcallSnooze: (meetingId: string) => request<{ snoozedUntil: string }>('POST', `/meetings/${meetingId}/postcall/snooze`),
   postcallComplete: (meetingId: string, followupSent = false) =>
     request<{ status: string }>('POST', `/meetings/${meetingId}/postcall/complete`, { followupSent }),
@@ -2629,7 +2635,7 @@ export const api = {
     request<Task>('POST', `/tasks/${id}/approval-required`, { enabled }),
   /** Из какой встречи выросла задача (null — задача заведена руками). */
   meetingOfTask: (taskId: string) =>
-    request<{ meeting_id: string; title: string | null; happened_at: string | null } | null>(
+    request<{ meeting_id: string; title: string | null; happened_at: string | null; source_sec: string | null } | null>(
       'GET', `/meetings/of-task/${taskId}`),
 
   /** Карточку открыли — изменения по ней перестают быть новыми. */

@@ -12,7 +12,7 @@ import { TasksService } from '../tasks/tasks.service';
 import { describeFfmpegError, extractAudioChunks, mixTracks } from './audio.util';
 import { MEETING_PROMPT, SUMMARY_PROMPT, validateMeetingAnalysis } from './meeting-schema';
 import { draftConfidence, speakerAt } from './postcall-rules';
-import { MeetingsRepository } from './meetings.repository';
+import { DraftRow, MeetingsRepository } from './meetings.repository';
 import { blocksOf, PostcallService } from './postcall.service';
 import { parseSubtitles, repliesToText, Reply, shiftSegments } from './transcript.util';
 
@@ -640,12 +640,11 @@ export class MeetingsService {
   }
 
   /** Подтверждение черновика: создаём обычную задачу тем же путём, что и руками. */
-  async applyDraft(tenantId: string, actorId: string, draftId: string, patch?: {
-    title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
-  }) {
+  async applyDraft(tenantId: string, actorId: string, draftId: string, patch?: DraftPatch) {
     const draft = await this.repo.draft(tenantId, draftId);
     if (!draft) throw AppException.notFound('Черновик не найден');
-    if (draft.status !== 'pending') throw AppException.conflict('Черновик уже обработан');
+    if (draft.status !== 'pending' && draft.status !== 'failed') throw AppException.conflict('Черновик уже обработан');
+    if (patch) await this.repo.markEdited(draftId, editedFields(draft, patch));
 
     const projectId = patch?.projectId ?? draft.project_id;
     if (!projectId) throw AppException.validation('Выберите проект для задачи');
@@ -668,10 +667,13 @@ export class MeetingsService {
         // подтвердил чужое поручение, и приписывать его себе неправильно.
         managerId: draft.author_id ?? undefined,
         // срок, названный на встрече, раньше терялся здесь
-        deadlineAt: draft.deadline_at ? new Date(draft.deadline_at).toISOString() : undefined,
+        deadlineAt: patch?.deadlineAt !== undefined
+          ? (patch.deadlineAt || undefined)
+          : (draft.deadline_at ? new Date(draft.deadline_at).toISOString() : undefined),
+        priority: (patch?.priority !== undefined ? patch.priority : draft.priority) || undefined,
       } as any, actorId);
     } catch (e) {
-      await this.repo.releaseDraft(draftId);
+      await this.repo.failDraft(draftId, e instanceof AppException ? e.message : 'Не удалось создать задачу');
       throw e;
     }
 
@@ -691,17 +693,43 @@ export class MeetingsService {
    * исправить это ДО создания дешевле, чем потом чинить задачу на доске — и честнее
    * по отношению к тому, кому она достанется.
    */
-  async updateDraft(tenantId: string, draftId: string, patch: {
-    title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
-  }) {
+  async updateDraft(tenantId: string, draftId: string, patch: DraftPatch) {
     const draft = await this.repo.draft(tenantId, draftId);
     if (!draft) throw AppException.notFound('Черновик не найден');
-    if (draft.status !== 'pending') throw AppException.conflict('Черновик уже обработан');
+    if (draft.status !== 'pending' && draft.status !== 'failed') throw AppException.conflict('Черновик уже обработан');
     if (patch.title !== undefined && !String(patch.title).trim()) {
       throw AppException.validation('Название задачи не может быть пустым');
     }
+    await this.repo.markEdited(draftId, editedFields(draft, patch));
     const updated = await this.repo.updateDraft(tenantId, draftId, patch);
     return updated ?? draft;
+  }
+
+  /**
+   * «Создать выбранные задачи» (ТЗ-22, §15–17). Пакет — это сама встреча: у неё есть
+   * номер, состав и состояние каждого черновика. Упавший пункт не отменяет остальные
+   * и остаётся черновиком с причиной; повтор создаёт только его — созданный черновик
+   * второй раз не применяется (занятие черновика атомарно).
+   */
+  async createBatch(tenantId: string, actorId: string, meetingId: string, items: (DraftPatch & { draftId: string })[]) {
+    const drafts = await this.repo.drafts(tenantId, meetingId);
+    const own = new Map(drafts.map((d) => [String(d.id), d]));
+    const created: { draftId: string; taskId: string; title: string }[] = [];
+    const failed: { draftId: string; error: string }[] = [];
+    let skipped = 0;
+    for (const it of items.slice(0, 40)) {
+      const d = own.get(String(it.draftId));
+      if (!d) { failed.push({ draftId: String(it.draftId), error: 'Черновик не из этой встречи' }); continue; }
+      if (d.status === 'applied') { skipped++; continue; } // уже создан — повтор пакета дублей не даёт
+      const { draftId, ...patch } = it;
+      try {
+        const task = await this.applyDraft(tenantId, actorId, String(draftId), Object.keys(patch).length ? patch : undefined);
+        created.push({ draftId: String(draftId), taskId: String(task.id), title: task.title });
+      } catch (e) {
+        failed.push({ draftId: String(draftId), error: e instanceof AppException ? e.message : 'Не удалось создать задачу' });
+      }
+    }
+    return { created, failed, skipped };
   }
 
   async rejectDraft(tenantId: string, draftId: string) {
@@ -759,6 +787,27 @@ export function matchTeamMember(team: { id: string; full_name: string }[], hint:
 
   const byPrefix = team.filter((u) => norm(u.full_name).startsWith(needle));
   return byPrefix.length === 1 ? byPrefix[0].id : null;
+}
+
+/** Правка черновика: то, что человек может поменять до создания задачи. */
+export interface DraftPatch {
+  title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
+  deadlineAt?: string | null; priority?: string | null;
+}
+
+/** Что из услышанного ИИ человек исправил: название, исполнителя, проект, срок (§52). */
+function editedFields(draft: DraftRow, patch: DraftPatch): string[] {
+  const out: string[] = [];
+  const same = (a: unknown, b: unknown) => String(a ?? '') === String(b ?? '');
+  if (patch.title !== undefined && !same(patch.title?.trim(), draft.title)) out.push('title');
+  if (patch.assigneeId !== undefined && !same(patch.assigneeId, draft.assignee_id)) out.push('assignee');
+  if (patch.projectId !== undefined && !same(patch.projectId, draft.project_id)) out.push('project');
+  if (patch.deadlineAt !== undefined) {
+    const was = draft.deadline_at ? new Date(draft.deadline_at).toISOString().slice(0, 10) : '';
+    const now = patch.deadlineAt ? new Date(patch.deadlineAt).toISOString().slice(0, 10) : '';
+    if (was !== now) out.push('deadline');
+  }
+  return out;
 }
 
 /** Сколько дорожек созвона расшифровывать одновременно. */

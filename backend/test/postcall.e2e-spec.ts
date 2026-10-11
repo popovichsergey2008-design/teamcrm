@@ -97,6 +97,46 @@ describe('Итоги встречи после звонка (e2e)', () => {
     expect((await http$.get('/api/meetings/postcall/pending').set(O).expect(200)).body.data).toHaveLength(0);
   });
 
+  it('«Создать выбранные»: упавший пункт не отменяет остальные, повтор создаёт только его', async () => {
+    const { O, tenantId } = await org();
+    const project = (await http$.post('/api/projects').set(O).send({ name: 'Сайт' }).expect(201)).body.data;
+    const vtt = [
+      'WEBVTT', '',
+      '00:00:01.000 --> 00:00:05.000', 'Борис: подготовлю смету к пятнице', '',
+      '00:00:06.000 --> 00:00:09.000', 'Борис: займусь макетом главной', '',
+    ].join('\n');
+    const m = (await http$.post('/api/meetings').set(O).field('title', 'Планёрка').field('projectId', String(project.id))
+      .attach('file', Buffer.from(vtt), 'a.vtt').expect(201)).body.data;
+    let drafts: any[] = [];
+    for (let i = 0; i < 50 && drafts.length < 2; i++) {
+      drafts = (await http$.get(`/api/meetings/${m.id}`).set(O).expect(200)).body.data.drafts;
+      if (drafts.length < 2) await sleep(200);
+    }
+    expect(drafts).toHaveLength(2);
+    // у второго черновика проекта нет — задаче некуда лечь
+    await db.query(`UPDATE meeting_task_drafts SET project_id = NULL WHERE id = $1`, [drafts[1].id]);
+    void tenantId;
+
+    const first = (await http$.post(`/api/meetings/${m.id}/postcall/tasks/create-batch`).set(O)
+      .send({ items: drafts.map((d) => ({ draftId: String(d.id) })) }).expect(201)).body.data;
+    expect(first.created).toHaveLength(1);
+    expect(first.failed).toHaveLength(1);
+    const failed = (await http$.get(`/api/meetings/${m.id}`).set(O).expect(200)).body.data.drafts.find((d: any) => d.id === drafts[1].id);
+    expect(failed.status).toBe('failed');
+    expect(failed.error_message).toMatch(/проект/i);
+
+    // повторяем весь пакет, поправив упавший: созданный второй раз не создаётся
+    const again = (await http$.post(`/api/meetings/${m.id}/postcall/tasks/create-batch`).set(O)
+      .send({ items: [{ draftId: String(drafts[0].id) }, { draftId: String(drafts[1].id), projectId: String(project.id) }] }).expect(201)).body.data;
+    expect(again.created).toHaveLength(1);
+    expect(again.skipped).toBe(1);
+    const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
+    expect(board.columns.flatMap((c: any) => c.tasks)).toHaveLength(2);
+    // правку человека видно: проект выбирал он, а не ИИ
+    const fixed = await db.one<{ edited_fields: string[] }>(`SELECT edited_fields FROM meeting_task_drafts WHERE id = $1`, [drafts[1].id]);
+    expect(fixed?.edited_fields).toContain('project');
+  });
+
   it('загруженная запись без созвона разбора не имеет; задачи со встречи по умолчанию — черновики', async () => {
     const { O, tenantId } = await org();
     const t = await db.one<{ meeting_auto_tasks: boolean }>(`SELECT meeting_auto_tasks FROM tenants WHERE id = $1`, [tenantId]);

@@ -1,0 +1,12 @@
+/* Черновик задачи со встречи (ТЗ-22): общий для раздела «Встречи» и экрана итогов. */
+.draft-top { display: flex; align-items: flex-start; gap: 8px; }
+.draft-main { flex: 1; min-width: 0; }
+.draft-check { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--accent); flex: none; }
+.draft-urgent { margin-left: 6px; }
+.draft-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; }
+.draft-meta .link-btn { display: inline-flex; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+.draft-unsure { font-size: 12px; color: var(--text-dim); font-style: italic; }
+.draft-failed { border-left: 3px solid var(--danger); padding-left: 8px; }
+.draft-fields { display: grid; grid-template-columns: 1fr 1fr 150px; gap: 8px; margin-top: 4px; }
+.draft-fields > * { min-width: 0; }
+@media (max-width: 640px) { .draft-fields { grid-template-columns: 1fr 1fr; } .draft-fields input[type='date'] { grid-column: 1 / -1; } }

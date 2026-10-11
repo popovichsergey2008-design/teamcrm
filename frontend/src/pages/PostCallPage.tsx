@@ -10,7 +10,7 @@ import { navigate } from '../lib/router';
 import { getSocket } from '../lib/socket';
 import { toastSaved } from '../lib/notifications';
 import type { Project, User } from '../types';
-import { DraftRow } from './MeetingsPage';
+import { DraftRow, type DraftChoice } from '../components/meetings/DraftRow';
 
 /** Сколько ждать, пока допишется запись и появится встреча: дольше — записи не было. */
 const ROOM_WAIT_MS = 30_000;
@@ -80,6 +80,11 @@ function PostCall({ meetingId }: { meetingId: string }) {
   const [err, setErr] = useState('');
   const [bulk, setBulk] = useState(false);
   const [closing, setClosing] = useState(false);
+  // выбор для «Создать выбранные»: по умолчанию — уверенные и готовые черновики (§14–15)
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  // выбранное в строках, но не сохранённое — пакет создаёт задачи уже с ним
+  const [choices, setChoices] = useState<Record<string, DraftChoice>>({});
+  const [focused, setFocused] = useState<Record<string, boolean>>({});
 
   const load = useCallback(() => api.postcall(meetingId)
     .then((d) => { setData(d); setLoadErr(''); })
@@ -118,28 +123,53 @@ function PostCall({ meetingId }: { meetingId: string }) {
   const ai = review ? review.ai : true;
   const closed = review?.status === 'reviewed' || review?.status === 'completed';
   const canClose = !!review?.canClose;
-  const pending = drafts.filter((d: any) => d.status === 'pending');
-  const ready = pending.filter((d: any) => d.project_id);
+  // упавший при создании черновик тоже ждёт решения — с причиной и «Повторить»
+  const pending = drafts.filter((d: any) => d.status === 'pending' || d.status === 'failed');
+  const projectOf = (d: any) => choices[d.id]?.projectId ?? d.project_id;
+  const isPicked = (d: any) => picked[d.id] ?? (!!d.project_id && !!d.assignee_id && Number(d.confidence ?? 0.9) >= 0.6 && d.status !== 'failed');
+  const selected = pending.filter((d: any) => isPicked(d) && projectOf(d));
+  const noProject = pending.filter((d: any) => isPicked(d) && !projectOf(d)).length;
+  const failedNow = pending.filter((d: any) => d.status === 'failed');
   const minutes = meeting.duration_sec ? Math.max(1, Math.round(Number(meeting.duration_sec) / 60)) : null;
   const people = review?.participants ?? [];
   const blockState = (b: keyof NonNullable<typeof blocks>): PostcallBlockStatus => blocks?.[b] ?? (meeting.status === 'done' ? 'ready' : 'pending');
 
-  const apply = async (d: any, patch: { assigneeId?: string; projectId?: string }) => {
+  const apply = async (d: any, patch: DraftChoice) => {
     setErr('');
     try { await api.applyMeetingDraft(d.id, patch); await load(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось создать задачу'); }
   };
   const reject = async (d: any) => { try { await api.rejectMeetingDraft(d.id); await load(); } catch { /* */ } };
-  // по одному: упавшая на середине пачка не отменяет созданное; пакет с повтором — на этапе 4
-  const applyAll = async () => {
-    if (!ready.length) return;
+  /**
+   * «Создать выбранные задачи» одним пакетом (§15–17). Упавшая не отменяет остальные
+   * и остаётся черновиком с причиной; повтор создаёт только её.
+   */
+  const createSelected = async (list: any[]) => {
+    if (!list.length) return;
     setBulk(true); setErr('');
-    let failed = 0;
-    for (const d of ready) { try { await api.applyMeetingDraft(d.id, {}); } catch { failed++; } }
-    setBulk(false);
-    setErr(failed ? `Создано ${ready.length - failed} из ${ready.length}. Остальные остались черновиками — можно повторить.` : '');
-    await load();
+    try {
+      const r = await api.postcallCreateBatch(meetingId, list.map((d) => ({ draftId: String(d.id), ...clean(choices[d.id]) })));
+      if (r.failed.length) setErr(`Создано ${r.created.length}, не удалось — ${r.failed.length}. Причина — у черновика, его можно поправить и повторить.`);
+      else if (r.created.length) toastSaved(`Готово. Создано задач: ${r.created.length}`);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось создать задачи');
+    } finally {
+      setBulk(false);
+      await load();
+    }
   };
+  // «В мой Фокус» — срочное или на сегодня из того, что поручили мне (§22)
+  const toFocus = async (taskId: string) => {
+    try {
+      await api.setFocusDate(taskId, new Date().toLocaleDateString('sv-SE'));
+      setFocused((f) => ({ ...f, [taskId]: true }));
+      toastSaved('Добавлено в Фокус дня');
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось добавить в Фокус'); }
+  };
+  const today = new Date().toLocaleDateString('sv-SE');
+  const focusable = (t: any) => !t.closed && String(t.assignee_id ?? '') === String(user?.id ?? '')
+    && (t.priority === 'urgent' || (t.deadline_at && new Date(t.deadline_at).toLocaleDateString('sv-SE') <= today))
+    && t.focus_date !== today && !focused[t.task_id];
 
   const later = async () => {
     try { await api.postcallSnooze(meetingId); } catch { /* итоги и так сохранены */ }
@@ -293,14 +323,23 @@ function PostCall({ meetingId }: { meetingId: string }) {
               )}
               {err && <div className="error-text pc-err">{err}</div>}
               {pending.map((d: any) => (
-                <DraftRow key={d.id} draft={d} projects={projects} users={users} onApply={apply} onReject={reject} onSaved={() => void load()} />
+                <DraftRow
+                  key={d.id} draft={d} projects={projects} users={users} onApply={apply} onReject={reject} onSaved={() => void load()}
+                  selected={isPicked(d)} onSelect={(on) => setPicked((p) => ({ ...p, [d.id]: on }))}
+                  onChoice={(c) => setChoices((m) => ({ ...m, [d.id]: c }))}
+                />
               ))}
-              {pending.length > 1 && (
+              {pending.length > 0 && (
                 <div className="pc-actions">
-                  <Button variant="primary" size="sm" onClick={applyAll} loading={bulk} disabled={bulk || ready.length === 0}>
-                    Создать все ({ready.length})
+                  <Button variant="primary" size="sm" onClick={() => void createSelected(selected)} loading={bulk} disabled={bulk || selected.length === 0}>
+                    Создать выбранные ({selected.length})
                   </Button>
-                  {ready.length < pending.length && <span className="dim pc-note">{pending.length - ready.length} без проекта — их пропущу</span>}
+                  {failedNow.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={() => void createSelected(failedNow.filter(projectOf))} disabled={bulk}>
+                      Повторить ошибочные ({failedNow.length})
+                    </Button>
+                  )}
+                  {noProject > 0 && <span className="dim pc-note">{noProject} без проекта — выберите проект, иначе пропущу</span>}
                 </div>
               )}
               {tasks.length > 0 && (
@@ -313,6 +352,11 @@ function PostCall({ meetingId }: { meetingId: string }) {
                         ? <button className="link-btn" onClick={() => navigate({ section: 'projects', projectId: t.project_id, taskId: t.task_id })}>{t.title}</button>
                         : <span className="dim">Задача удалена</span>}
                       {t.assignee_name && <span className="dim"> · {t.assignee_name}</span>}
+                      {focusable(t) && (
+                        <Button variant="ghost" size="sm" onClick={() => void toFocus(t.task_id)}>
+                          <Icon name="target" size={13} /> В мой Фокус
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -344,6 +388,15 @@ function PostCall({ meetingId }: { meetingId: string }) {
       </div>
     </div>
   );
+}
+
+/** Только то, что человек поменял в строке: пустой выбор — значит, как услышал ИИ. */
+function clean(c: DraftChoice | undefined): DraftChoice {
+  const out: DraftChoice = {};
+  if (c?.assigneeId !== undefined) out.assigneeId = c.assigneeId;
+  if (c?.projectId !== undefined) out.projectId = c.projectId;
+  if (c?.deadlineAt !== undefined) out.deadlineAt = c.deadlineAt;
+  return out;
 }
 
 /** «Источник: 18:42 · Борис» — переход к этому моменту записи (§10). */

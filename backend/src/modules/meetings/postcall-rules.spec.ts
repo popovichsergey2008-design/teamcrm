@@ -27,6 +27,7 @@ describe('итоги встречи: источник пункта', () => {
 
   it('метки нет — ищем реплику по цитате', () => {
     expect(speakerAt(replies, null, 'Глеб, проверь подключение гостя с мобильного')).toEqual({ sec: 1874, speaker: 'Сергей', speakerUserId: '2' });
+    expect(speakerAt(replies, null, 'Сергей: Глеб, проверь подключение гостя')).toMatchObject({ sec: 1874, speaker: 'Сергей' });
     expect(speakerAt(replies, null, 'чего не было')).toEqual({ sec: null, speaker: null, speakerUserId: null });
     expect(speakerAt(replies, null, 'да')).toEqual({ sec: null, speaker: null, speakerUserId: null }); // слишком коротко
   });

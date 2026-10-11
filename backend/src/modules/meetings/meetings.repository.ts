@@ -18,6 +18,8 @@ export interface DraftRow {
   project_hint: string | null; column_id: string | null; column_hint: string | null;
   author_id: string | null; author_hint: string | null;
   deadline_at: Date | null; quote: string | null; status: string; task_id: string | null;
+  source_sec?: string | null; source_speaker?: string | null; confidence?: string | null;
+  priority?: string | null; edited_fields?: string[]; error_message?: string | null;
 }
 
 @Injectable()
@@ -289,11 +291,14 @@ export class MeetingsRepository {
     return this.db.many<{
       draft_id: string; task_id: string; title: string | null; project_id: string | null;
       column_name: string | null; closed: boolean; assignee_name: string | null; manager_name: string | null;
+      assignee_id: string | null; priority: string | null; deadline_at: Date | null; focus_date: string | null;
     }>(
       `SELECT d.id::text AS draft_id, d.task_id::text AS task_id,
               t.title, t.project_id::text AS project_id, c.name AS column_name,
               (t.closed_at IS NOT NULL) AS closed,
-              ua.full_name AS assignee_name, um.full_name AS manager_name
+              ua.full_name AS assignee_name, um.full_name AS manager_name,
+              -- «В мой Фокус» у срочного и на сегодня (ТЗ-22, §22)
+              t.assignee_id::text AS assignee_id, t.priority, t.deadline_at, t.focus_date::text AS focus_date
          FROM meeting_task_drafts d
     LEFT JOIN tasks t ON t.id = d.task_id AND t.tenant_id = d.tenant_id
     LEFT JOIN board_columns c ON c.id = t.column_id
@@ -312,8 +317,8 @@ export class MeetingsRepository {
    * уже есть, ей просто никто не пользовался.
    */
   meetingOfTask(tenantId: string, taskId: string) {
-    return this.db.one<{ meeting_id: string; title: string | null; happened_at: Date | null }>(
-      `SELECT m.id::text AS meeting_id, m.title, m.happened_at
+    return this.db.one<{ meeting_id: string; title: string | null; happened_at: Date | null; source_sec: string | null }>(
+      `SELECT m.id::text AS meeting_id, m.title, m.happened_at, d.source_sec
          FROM meeting_task_drafts d
          JOIN meetings m ON m.id = d.meeting_id
         WHERE d.tenant_id = $1 AND d.task_id = $2
@@ -339,14 +344,17 @@ export class MeetingsRepository {
    */
   async updateDraft(tenantId: string, id: string, patch: {
     title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
+    deadlineAt?: string | null; priority?: string | null;
   }): Promise<DraftRow | null> {
     return this.db.one<DraftRow>(
       `UPDATE meeting_task_drafts
           SET title = COALESCE($3, title),
               description = CASE WHEN $4::text IS NULL THEN description ELSE NULLIF($4::text, '') END,
               assignee_id = CASE WHEN $5::text IS NULL THEN assignee_id ELSE NULLIF($5::text, '')::bigint END,
-              project_id = CASE WHEN $6::text IS NULL THEN project_id ELSE NULLIF($6::text, '')::bigint END
-        WHERE tenant_id=$1 AND id=$2 AND status='pending'
+              project_id = CASE WHEN $6::text IS NULL THEN project_id ELSE NULLIF($6::text, '')::bigint END,
+              deadline_at = CASE WHEN $7::text IS NULL THEN deadline_at ELSE NULLIF($7::text, '')::timestamptz END,
+              priority = CASE WHEN $8::text IS NULL THEN priority ELSE NULLIF($8::text, '') END
+        WHERE tenant_id=$1 AND id=$2 AND status IN ('pending','failed')
         RETURNING *`,
       [
         tenantId, id,
@@ -354,6 +362,8 @@ export class MeetingsRepository {
         patch.description === undefined ? null : String(patch.description ?? ''),
         patch.assigneeId === undefined ? null : String(patch.assigneeId ?? ''),
         patch.projectId === undefined ? null : String(patch.projectId ?? ''),
+        patch.deadlineAt === undefined ? null : String(patch.deadlineAt ?? ''),
+        patch.priority === undefined ? null : String(patch.priority ?? ''),
       ],
     );
   }
@@ -363,16 +373,33 @@ export class MeetingsRepository {
    * только один, второй получит false. Пока задача создаётся — статус 'applying'.
    */
   async claimDraft(id: string): Promise<boolean> {
-    const r = await this.db.query(`UPDATE meeting_task_drafts SET status='applying' WHERE id=$1 AND status='pending'`, [id]);
+    // упавший пункт пакета повторяется тем же путём; созданный — никогда (§17)
+    const r = await this.db.query(
+      `UPDATE meeting_task_drafts SET status='applying' WHERE id=$1 AND status IN ('pending','failed')`, [id],
+    );
     return (r.rowCount ?? 0) > 0;
   }
-  /** Задачу создать не вышло — вернуть черновик в ожидание. */
-  async releaseDraft(id: string): Promise<void> {
-    await this.db.query(`UPDATE meeting_task_drafts SET status='pending' WHERE id=$1 AND status='applying'`, [id]);
+  /** Задачу создать не вышло: черновик остаётся с причиной — его можно поправить и повторить. */
+  async failDraft(id: string, message: string): Promise<void> {
+    await this.db.query(
+      `UPDATE meeting_task_drafts SET status='failed', error_message=$2 WHERE id=$1 AND status='applying'`,
+      [id, message.slice(0, 500)],
+    );
   }
 
   async markDraftApplied(id: string, taskId: string): Promise<void> {
-    await this.db.query(`UPDATE meeting_task_drafts SET status='applied', task_id=$2 WHERE id=$1`, [id, taskId]);
+    await this.db.query(`UPDATE meeting_task_drafts SET status='applied', task_id=$2, error_message=NULL WHERE id=$1`, [id, taskId]);
+  }
+
+  /** Что человек поправил в черновике руками — для качества разбора (§52). */
+  async markEdited(id: string, fields: string[]): Promise<void> {
+    if (!fields.length) return;
+    await this.db.query(
+      `UPDATE meeting_task_drafts
+          SET edited_fields = ARRAY(SELECT DISTINCT unnest(edited_fields || $2::text[]))
+        WHERE id = $1`,
+      [id, fields],
+    );
   }
   /** Вернуть отклонённый черновик в ожидание — путь назад для уборки. */
   async restoreDraft(id: string): Promise<void> {

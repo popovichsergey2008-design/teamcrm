@@ -1,7 +1,8 @@
 import { Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
@@ -26,6 +27,17 @@ class ApplyDraftDto {
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsString() assigneeId?: string;
   @IsOptional() @IsString() projectId?: string;
+  /** Срок: ISO или '' — убрать. */
+  @IsOptional() @IsString() deadlineAt?: string;
+  @IsOptional() @IsIn(['', 'low', 'normal', 'high', 'urgent']) priority?: string;
+}
+
+class BatchItemDto extends ApplyDraftDto {
+  @IsString() draftId!: string;
+}
+
+class CreateBatchDto {
+  @IsArray() @ArrayMaxSize(40) @ValidateNested({ each: true }) @Type(() => BatchItemDto) items!: BatchItemDto[];
 }
 
 /** Встречи: загрузка записи → стенограмма → сводка → черновики задач. Заказчику недоступно. */
@@ -64,6 +76,13 @@ export class MeetingsController {
   @Get(':id/postcall')
   postcallView(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.meetings.postcallView(u.tenantId, id, { userId: u.userId, role: u.role });
+  }
+
+  /** «Создать выбранные задачи»: пакет со встречи, упавшие пункты повторяются отдельно. */
+  @Post(':id/postcall/tasks/create-batch')
+  async createBatch(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CreateBatchDto) {
+    await this.meetings.assertVisible(u.tenantId, id, { userId: u.userId, role: u.role });
+    return this.meetings.createBatch(u.tenantId, u.userId, id, dto.items);
   }
 
   /** «Разобрать позже»: итоги остаются в списке, напоминание откладывается. */
