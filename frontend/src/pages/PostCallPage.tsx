@@ -89,6 +89,8 @@ function PostCall({ meetingId }: { meetingId: string }) {
   const [followupSent, setFollowupSent] = useState(false);
   const [recapBusy, setRecapBusy] = useState(false);
   const [newsDone, setNewsDone] = useState(false);
+  // задачи «уехали» на доску после «Подтвердить всё» — проект, куда вести (§15)
+  const [launched, setLaunched] = useState<string | null>(null);
 
   const load = useCallback(() => api.postcall(meetingId)
     .then((d) => { setData(d); setLoadErr(''); })
@@ -136,6 +138,10 @@ function PostCall({ meetingId }: { meetingId: string }) {
   if (!data) return <div className="pc-page"><div className="pc-shell"><SkeletonList rows={4} /></div></div>;
 
   const { meeting, summary, drafts, tasks = [], review, decisions = [], followup = null } = data;
+  // ТЗ-25: фрагмент записи у черновика, запись для предпросмотра, уже существующие задачи
+  const proofs = data.proofs ?? {};
+  const dups = data.duplicates ?? {};
+  const recordingUrl = data.recording?.url ?? null;
   const questions = summary?.questions ?? [];
   const blocks = review?.blocks;
   const ai = review ? review.ai : true;
@@ -144,7 +150,10 @@ function PostCall({ meetingId }: { meetingId: string }) {
   // упавший при создании черновик тоже ждёт решения — с причиной и «Повторить»
   const pending = drafts.filter((d: any) => d.status === 'pending' || d.status === 'failed');
   const projectOf = (d: any) => choices[d.id]?.projectId ?? d.project_id;
-  const isPicked = (d: any) => picked[d.id] ?? (!!d.project_id && !!d.assignee_id && Number(d.confidence ?? 0.9) >= 0.6 && d.status !== 'failed');
+  const isPicked = (d: any) => picked[d.id] ?? (!!d.project_id && !!d.assignee_id && Number(d.confidence ?? 0.9) >= 0.6 && d.status !== 'failed' && !dups[d.id]);
+  // «Подтвердить всё» (ТЗ-25, §12): готово то, у чего есть проект и исполнитель и что не дубль
+  const assigneeOf = (d: any) => choices[d.id]?.assigneeId ?? d.assignee_id;
+  const readyAll = pending.filter((d: any) => projectOf(d) && assigneeOf(d) && !dups[d.id]);
   const selected = pending.filter((d: any) => isPicked(d) && projectOf(d));
   const noProject = pending.filter((d: any) => isPicked(d) && !projectOf(d)).length;
   const failedNow = pending.filter((d: any) => d.status === 'failed');
@@ -152,22 +161,55 @@ function PostCall({ meetingId }: { meetingId: string }) {
   const people = review?.participants ?? [];
   const blockState = (b: keyof NonNullable<typeof blocks>): PostcallBlockStatus => blocks?.[b] ?? (meeting.status === 'done' ? 'ready' : 'pending');
 
+  /**
+   * Фрагмент откроется тем, кто встречу не видит, или в нём говорит гость, — спросить
+   * (§28, §41). Молча доступ не расширяем: «нет» — задачи создаются без аудио.
+   */
+  const askAudio = async (list: any[]): Promise<Record<string, 'allow' | 'none'>> => {
+    const need = list.filter((d) => proofs[d.id]?.consent);
+    if (!need.length) return {};
+    const users = [...new Set(need.flatMap((d) => proofs[d.id]!.consent!.users))];
+    const guest = need.some((d) => proofs[d.id]!.consent!.guest);
+    const ok = await confirmAction({
+      title: 'Поделиться фрагментами записи?',
+      description: [
+        users.length ? `${users.slice(0, 4).join(', ')}${users.length > 4 ? ' и другие' : ''} не видят эту встречу.` : '',
+        guest ? 'Во фрагменте говорит гость встречи.' : '',
+        'QEVO покажет только короткие фрагменты, относящиеся к задачам, — не всю встречу.',
+      ].filter(Boolean).join(' '),
+      confirmLabel: 'Разрешить фрагменты', cancelLabel: 'Создать без аудио',
+    });
+    return Object.fromEntries(need.map((d) => [d.id, ok ? 'allow' : 'none']));
+  };
+
   const apply = async (d: any, patch: DraftChoice) => {
     setErr('');
-    try { await api.applyMeetingDraft(d.id, patch); await load(); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось создать задачу'); }
+    try {
+      const audio = (await askAudio([d]))[d.id];
+      await api.applyMeetingDraft(d.id, { ...patch, ...(audio ? { audio } : {}) });
+      await load();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось создать задачу'); }
   };
   const reject = async (d: any) => { try { await api.rejectMeetingDraft(d.id); await load(); } catch { /* */ } };
   /**
    * «Создать выбранные задачи» одним пакетом (§15–17). Упавшая не отменяет остальные
    * и остаётся черновиком с причиной; повтор создаёт только её.
    */
-  const createSelected = async (list: any[]) => {
+  const createSelected = async (list: any[], confirmAll = false) => {
     if (!list.length) return;
+    const audio = await askAudio(list);
     setBulk(true); setErr('');
     try {
-      const r = await api.postcallCreateBatch(meetingId, list.map((d) => ({ draftId: String(d.id), ...clean(choices[d.id]) })));
-      if (r.created.length) feedback('task.created', { count: r.created.length });
+      const r = await api.postcallCreateBatch(
+        meetingId,
+        list.map((d) => ({ draftId: String(d.id), ...clean(choices[d.id]), ...(audio[d.id] ? { audio: audio[d.id] } : {}) })),
+        confirmAll,
+      );
+      if (r.created.length) {
+        // «Подтвердить всё» — один мягкий сигнал, касание и вспышка ИИ, а не звук на каждую задачу (§16)
+        if (confirmAll) { feedback('ai.completed', { el: document.querySelector('.pc-magic') }); setLaunched(projectOf(list[0]) ? String(projectOf(list[0])) : ''); }
+        else feedback('task.created', { count: r.created.length });
+      }
       if (r.failed.length) { feedback('warning'); setErr(`Создано ${r.created.length}, не удалось — ${r.failed.length}. Причина — у черновика, его можно поправить и повторить.`); }
       else if (r.created.length) toastSaved(`Готово. Создано задач: ${r.created.length}`);
     } catch (e) {
@@ -353,7 +395,41 @@ function PostCall({ meetingId }: { meetingId: string }) {
               </Block>
             )}
 
-            <Block title={`Черновики задач${pending.length ? ` — ${pending.length}` : ''}`} state={blockState('tasks')}>
+            {blockState('tasks') === 'ready' && (pending.length > 0 || launched !== null) && (
+              <section className="pc-block pc-magic">
+                {launched !== null && !pending.length ? (
+                  <>
+                    <h2 className="pc-magic-title"><Icon name="check" size={18} /> Задачи на доске</h2>
+                    <p className="pc-text">У каждой задачи со встречи есть фрагмент записи — исполнитель услышит, как поручение прозвучало.</p>
+                    {launched && (
+                      <div className="pc-actions">
+                        <Button variant="primary" onClick={() => navigate({ section: 'projects', projectId: launched })}>Открыть доску</Button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <h2 className="pc-magic-title">
+                      <Icon name="sparkles" size={18} /> QEVO Bot услышал {pending.length} {agreements(pending.length)}
+                    </h2>
+                    <p className="pc-text">Я подготовил задачи, исполнителей и сроки. Проверьте их и запустите работу одним нажатием.</p>
+                    {readyAll.length < pending.length && (
+                      <p className="pc-text dim">{readyAll.length} готовы к созданию · {pending.length - readyAll.length} требуют уточнения</p>
+                    )}
+                    <div className="pc-actions">
+                      <Button variant="primary" size="lg" loading={bulk} disabled={bulk || !readyAll.length} onClick={() => void createSelected(readyAll, true)}>
+                        {readyAll.length === pending.length ? 'Подтвердить всё' : `Создать ${readyAll.length} готовые`}
+                      </Button>
+                      <Button variant="ghost" onClick={() => document.querySelector('.pc-drafts')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+                        Проверить по одной
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+
+            <Block title={`Черновики задач${pending.length ? ` — ${pending.length}` : ''}`} state={blockState('tasks')} className="pc-drafts">
               {pending.length > 0 && (
                 <p className="pc-text dim">ИИ услышал поручения так. Поправьте название, исполнителя и проект — задачи появятся только после «Создать».</p>
               )}
@@ -362,6 +438,7 @@ function PostCall({ meetingId }: { meetingId: string }) {
                 <DraftRow
                   key={d.id} draft={d} projects={projects} users={users} onApply={apply} onReject={reject} onSaved={() => void load()}
                   selected={isPicked(d)} onSelect={(on) => setPicked((p) => ({ ...p, [d.id]: on }))}
+                  proof={proofs[d.id]} recordingUrl={recordingUrl} duplicate={dups[d.id]}
                   onChoice={(c) => setChoices((m) => ({ ...m, [d.id]: c }))}
                 />
               ))}
@@ -507,6 +584,14 @@ function Followup({ card, onSent }: { card: NonNullable<PostcallView['followup']
   );
 }
 
+/** «договорённость / договорённости / договорённостей» */
+function agreements(n: number): string {
+  const d = n % 10; const h = n % 100;
+  if (d === 1 && h !== 11) return 'договорённость';
+  if (d >= 2 && d <= 4 && (h < 12 || h > 14)) return 'договорённости';
+  return 'договорённостей';
+}
+
 /** Только то, что человек поменял в строке: пустой выбор — значит, как услышал ИИ. */
 function clean(c: DraftChoice | undefined): DraftChoice {
   const out: DraftChoice = {};
@@ -539,11 +624,11 @@ const stamp = (sec: number) => {
   return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 };
 
-function Block({ title, state, children, innerRef }: {
-  title: string; state: PostcallBlockStatus; children: ReactNode; innerRef?: React.Ref<HTMLElement>;
+function Block({ title, state, children, innerRef, className = '' }: {
+  title: string; state: PostcallBlockStatus; children: ReactNode; innerRef?: React.Ref<HTMLElement>; className?: string;
 }) {
   return (
-    <section ref={innerRef} className="pc-block" aria-busy={state === 'running' || state === 'pending'}>
+    <section ref={innerRef} className={`pc-block ${className}`.trim()} aria-busy={state === 'running' || state === 'pending'}>
       <h2 className="pc-block-title">{title}</h2>
       {state === 'pending' || state === 'running'
         ? <SkeletonList rows={2} />

@@ -351,6 +351,21 @@ export interface PostcallReview {
   reviewedAt: string | null;
   completedAt: string | null;
 }
+/** Фрагмент записи у черновика задачи (ТЗ-25). */
+export interface DraftProof {
+  startSec: number; endSec: number; quote: string; speaker: string | null;
+  consent: { users: string[]; guest: boolean } | null;
+  drifted: boolean;
+}
+/** Аудио-доказательство задачи: «Послушать контекст · 15 сек». */
+export interface TaskAudioProof {
+  status: 'pending' | 'ready' | 'failed' | 'revoked'; error: string | null;
+  startSec: number; endSec: number; anchorSec: number; durationSec: number;
+  quote: string | null; speaker: string | null;
+  meeting: { id: string; title: string; happenedAt: string | null };
+  canOpenMeeting: boolean;
+  playback: { url: string; expiresAt: string } | null;
+}
 /** Пункт итогов с источником: где и кем сказано. */
 export interface PostcallSourced { text: string; sec: number | null; speaker?: string | null }
 export interface PostcallDecision { id: string; text: string; source_sec: string | null; speaker: string | null; superseded_by: string | null }
@@ -359,6 +374,12 @@ export interface PostcallView {
   summary: { summary: string; decisions: string[]; risks: string[]; questions?: PostcallSourced[] } | null;
   /** решения из журнала — с секундой записи и говорящим */
   decisions: PostcallDecision[];
+  /** фрагмент записи у черновика (ТЗ-25): диапазон, текст, кому откроется без доступа к встрече */
+  proofs?: Record<string, DraftProof>;
+  /** подписанная ссылка на запись — для предпросмотра фрагментов */
+  recording?: { url: string; expiresAt: string } | null;
+  /** уже существующая задача по той же договорённости */
+  duplicates?: Record<string, { taskId: string; projectId: string; title: string }>;
   /** письмо клиенту — карточка секретаря (ТЗ-21), только у того, кому подготовлено */
   followup: {
     id: string; status: string; result_text: string | null;
@@ -372,6 +393,7 @@ export interface PostcallQualityStats {
   days: number; meetings: number; reviewRate: number | null; unreviewed: number; medianReviewMin: number | null;
   drafts: number; acceptanceRate: number | null; openDrafts: number; meetingToTask: number | null; decisionCapture: number | null;
   followupSendRate: number | null; recapRate: number | null;
+  confirmAllRate?: number | null; proofs?: number; proofPlayRate?: number | null;
   wrongAssignee: number | null; wrongDeadline: number | null; titleEdited: number | null; wrongProject: number | null;
 }
 /** Демо «ИИ-созвон за 30 секунд» (ТЗ-24). */
@@ -2480,7 +2502,7 @@ export const api = {
     return env.data;
   },
   retryMeeting: (id: string) => request<any>('POST', `/meetings/${id}/retry`),
-  applyMeetingDraft: (draftId: string, b: { title?: string; assigneeId?: string; projectId?: string; deadlineAt?: string }) =>
+  applyMeetingDraft: (draftId: string, b: { title?: string; assigneeId?: string; projectId?: string; deadlineAt?: string; audio?: 'allow' | 'none' }) =>
     request<any>('POST', `/meetings/drafts/${draftId}/apply`, b),
   /** Правка черновика ДО создания задачи — она переживает перезагрузку страницы. */
   updateMeetingDraft: (draftId: string, b: {
@@ -2497,9 +2519,19 @@ export const api = {
   postcallQuality: (days = 30) => request<PostcallQualityStats>('GET', `/meetings/postcall/quality?days=${days}`),
   postcallPending: () => request<PostcallPending[]>('GET', '/meetings/postcall/pending'),
   /** «Создать выбранные задачи»: упавшие остаются черновиками с причиной, созданные не дублируются. */
-  postcallCreateBatch: (meetingId: string, items: { draftId: string; assigneeId?: string; projectId?: string; deadlineAt?: string }[]) =>
+  postcallCreateBatch: (
+    meetingId: string,
+    items: { draftId: string; assigneeId?: string; projectId?: string; deadlineAt?: string; audio?: 'allow' | 'none' }[],
+    confirmAll = false,
+  ) =>
     request<{ created: { draftId: string; taskId: string; title: string }[]; failed: { draftId: string; error: string }[]; skipped: number }>(
-      'POST', `/meetings/${meetingId}/postcall/tasks/create-batch`, { items }),
+      'POST', `/meetings/${meetingId}/postcall/tasks/create-batch`, { items, confirmAll }),
+  // аудио-доказательство задачи (ТЗ-25)
+  taskAudioProof: (taskId: string) => request<TaskAudioProof | null>('GET', `/tasks/${taskId}/audio-proof`),
+  taskAudioProofAdjust: (taskId: string, d: { startDelta?: number; endDelta?: number }) =>
+    request<TaskAudioProof>('PATCH', `/tasks/${taskId}/audio-proof`, d),
+  taskAudioProofReprocess: (taskId: string) => request<TaskAudioProof>('POST', `/tasks/${taskId}/audio-proof/reprocess`),
+  taskAudioProofRevoke: (taskId: string) => request<{ revoked: true }>('DELETE', `/tasks/${taskId}/audio-proof`),
   postcallNews: (meetingId: string) => request<{ candidateId: string | null; already: boolean }>('POST', `/meetings/${meetingId}/postcall/news`),
   postcallRecap: (meetingId: string) => request<{ sent: number }>('POST', `/meetings/${meetingId}/postcall/recap`),
   postcallSnooze: (meetingId: string) => request<{ snoozedUntil: string }>('POST', `/meetings/${meetingId}/postcall/snooze`),

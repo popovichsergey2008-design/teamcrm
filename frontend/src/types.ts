@@ -370,6 +370,8 @@ export interface Task {
   recurrence_id?: string | null;
   commentsCount?: number;
   attachmentsCount?: number;
+  /** длина фрагмента созвона у задачи, сек (ТЗ-25) — значок «🎙 15 сек» на доске */
+  audio_proof_sec?: number | null;
   checklistTotal?: number;
   checklistDone?: number;
   /**

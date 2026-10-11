@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { TaskClientField } from './TaskClientField';
 import { navigate } from '../lib/router';
 import { useAuth } from '../state/auth';
@@ -38,6 +38,8 @@ import { Select } from './ui/select';
 import { Tabs } from './ui/tabs';
 import { useTitleHint } from '../lib/page-title';
 import { feedback } from '../lib/feedback';
+// «Послушать контекст · 15 сек» (ТЗ-25) — отдельным куском, только у задач со встречи
+const TaskAudioProof = lazy(() => import('./meetings/TaskAudioProof'));
 
 interface Props {
   task: Task;
@@ -1013,6 +1015,11 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                   </>
                 )}
               </div>
+            )}
+            {meeting && (
+              <Suspense fallback={null}>
+                <TaskAudioProof taskId={String(task.id)} canEdit={isManager || user?.role === 'manager'} />
+              </Suspense>
             )}
 
             {fromMessage && (

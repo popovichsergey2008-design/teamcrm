@@ -343,6 +343,7 @@ function TaskCard({
         )}
         {!!task.commentsCount && <span className="kv2-stat" title="Комментарии"><Icon name="chat" size={13} /> {task.commentsCount}</span>}
         {!!task.attachmentsCount && <span className="kv2-stat" title="Вложения"><Icon name="paperclip" size={13} /> {task.attachmentsCount}</span>}
+        {!!task.audio_proof_sec && <span className="kv2-stat" title="Есть фрагмент созвона с поручением"><Icon name="mic" size={13} /> {task.audio_proof_sec} сек</span>}
         {!!task.checklistTotal && (
           <span className={`kv2-stat${task.checklistDone === task.checklistTotal ? ' is-done' : ''}`} title="Чек-лист">
             <Icon name="check-circle" size={13} /> {task.checklistDone}/{task.checklistTotal}

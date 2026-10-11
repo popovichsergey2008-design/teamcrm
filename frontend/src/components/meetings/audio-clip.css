@@ -1,0 +1,21 @@
+/* Проигрыватель фрагмента созвона (ТЗ-25). */
+.aclip { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-xs); color: var(--text-dim); }
+.aclip-btn {
+  width: 30px; height: 30px; border-radius: 50%; border: 0; flex: none; cursor: pointer;
+  display: grid; place-items: center; color: var(--accent); background: var(--accent-soft);
+}
+.aclip-btn:disabled { opacity: .5; cursor: default; }
+.aclip-compact .aclip-btn { width: 26px; height: 26px; }
+.aclip-label { font-weight: 600; color: var(--text); white-space: nowrap; }
+.aclip-time { font-variant-numeric: tabular-nums; flex: none; }
+.aclip-bar { flex: 1; min-width: 40px; height: 4px; border-radius: 2px; background: var(--fill-muted); overflow: hidden; }
+.aclip-bar i { display: block; height: 100%; background: var(--accent); transition: width .2s linear; }
+.aclip-err { color: var(--danger); }
+@media (prefers-reduced-motion: reduce) { .aclip-bar i { transition: none; } }
+
+/* аудио-доказательство в карточке задачи (ТЗ-25) */
+.tv2-proof { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); margin: 6px 0; }
+.tv2-proof-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: var(--fs-xs); color: var(--text-mut); }
+.tv2-proof-note { font-size: var(--fs-xs); }
+.tv2-proof-quote { margin: 0; padding-left: 10px; border-left: 2px solid var(--border); font-size: var(--fs-sm); color: var(--text-dim); white-space: pre-wrap; }
+.tv2-proof-tools { display: flex; gap: 12px; font-size: var(--fs-xs); }

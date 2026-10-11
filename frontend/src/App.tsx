@@ -5,9 +5,6 @@ import { api } from './lib/api';
 import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
 import { ProjectsPage } from './pages/ProjectsPage';
-import { AcceptInvitePage } from './pages/AcceptInvitePage';
-import { JoinOrgPage } from './pages/JoinOrgPage';
-import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { FocusPage } from './pages/FocusPage';
 import { TasksPage } from './pages/TasksPage';
 import { toScope } from './lib/task-registry-view';
@@ -77,6 +74,10 @@ const prefetchRadar = () => { void import('./pages/PulsePage').then((m) => m.pre
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 const FeedPage = lazy(() => import('./pages/FeedPage').then((m) => ({ default: m.FeedPage })));
 const MeetingsPage = lazy(() => import('./pages/MeetingsPage').then((m) => ({ default: m.MeetingsPage })));
+// Открываются только по ссылке из письма — в стартовую сборку им незачем (бюджет 292 КБ)
+const AcceptInvitePage = lazy(() => import('./pages/AcceptInvitePage').then((m) => ({ default: m.AcceptInvitePage })));
+const JoinOrgPage = lazy(() => import('./pages/JoinOrgPage').then((m) => ({ default: m.JoinOrgPage })));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
 const AiDemoPage = lazy(() => import('./pages/AiDemoPage').then((m) => ({ default: m.AiDemoPage })));
 const PostCallPage = lazy(() => import('./pages/PostCallPage').then((m) => ({ default: m.PostCallPage })));
 const SupportPage = lazy(() => import('./pages/SupportPage').then((m) => ({ default: m.SupportPage })));
@@ -509,9 +510,9 @@ export function App() {
   // «Скачать приложение» — тоже до входа: ссылку присылают новому сотруднику (волна 12).
   if (window.location.pathname.replace(/\/+$/, '') === '/get') return <Suspense fallback={pageFallback}><GetAppPage /></Suspense>;
 
-  if (inviteToken) return <AcceptInvitePage token={inviteToken} />;
-  if (joinToken) return <JoinOrgPage token={joinToken} />;
-  if (resetToken) return <ResetPasswordPage token={resetToken} />;
+  if (inviteToken) return <Suspense fallback={null}><AcceptInvitePage token={inviteToken} /></Suspense>;
+  if (joinToken) return <Suspense fallback={null}><JoinOrgPage token={joinToken} /></Suspense>;
+  if (resetToken) return <Suspense fallback={null}><ResetPasswordPage token={resetToken} /></Suspense>;
 
   if (loading) {
     return (

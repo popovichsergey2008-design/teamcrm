@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../Icon';
 import { OptionSelect } from '../ui/option-select';
-import { api, ApiError } from '../../lib/api';
+import { api, ApiError, type DraftProof } from '../../lib/api';
+import { AudioClip } from './AudioClip';
 import { navigate } from '../../lib/router';
 import { toastSaved } from '../../lib/notifications';
 import type { Project, User } from '../../types';
@@ -22,7 +23,7 @@ const stamp = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec 
  * должен выполнить. Уверенность в исполнителе видна (§14): названный и найденный —
  * просто имя; угаданный — «ИИ предполагает»; не найденный — «выберите».
  */
-export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, selected, onSelect, onChoice }: {
+export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, selected, onSelect, onChoice, proof, recordingUrl, duplicate }: {
   draft: any; projects: Project[]; users: User[];
   onApply: (d: any, patch: DraftChoice) => void;
   onReject: (d: any) => void;
@@ -31,6 +32,11 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
   selected?: boolean;
   onSelect?: (on: boolean) => void;
   onChoice?: (choice: DraftChoice) => void;
+  /** фрагмент записи с поручением (ТЗ-25, §34) — послушать ещё до создания задачи */
+  proof?: DraftProof;
+  recordingUrl?: string | null;
+  /** уже существующая задача по той же договорённости (§10) */
+  duplicate?: { taskId: string; projectId: string; title: string };
 }) {
   const [assigneeId, setAssigneeId] = useState(draft.assignee_id ?? '');
   const [projectId, setProjectId] = useState(draft.project_id ?? '');
@@ -140,6 +146,32 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
           </button>
         )}
       </div>
+      {duplicate && (
+        <div className="draft-unsure">
+          Похоже, задача уже есть: «{duplicate.title}»{' '}
+          <button type="button" className="link-btn" onClick={() => navigate({ section: 'projects', projectId: duplicate.projectId, taskId: duplicate.taskId })}>Открыть</button>
+        </div>
+      )}
+      {proof && recordingUrl && (
+        <div className="draft-proof">
+          <AudioClip
+            compact url={recordingUrl} start={proof.startSec} end={proof.endSec}
+            label={`Контекст · ${Math.round(proof.endSec - proof.startSec)} сек`}
+          />
+          {proof.consent && (
+            <div className="draft-unsure">
+              {proof.consent.users.length ? `Встречу не видят: ${proof.consent.users.slice(0, 3).join(', ')}${proof.consent.users.length > 3 ? ' и др.' : ''}` : ''}
+              {proof.consent.users.length && proof.consent.guest ? '; ' : ''}
+              {proof.consent.guest ? 'во фрагменте говорит гость' : ''}
+              {' — фрагмент покажем только с вашего разрешения.'}
+            </div>
+          )}
+          {/* формулировку переписали до неузнаваемости (§37) — сервер сверил её с репликой */}
+          {proof.drifted && (
+            <div className="draft-unsure">Формулировка заметно отличается от сказанного — послушайте фрагмент.</div>
+          )}
+        </div>
+      )}
       {draft.assignee_hint && !assigneeId && (
         <div className="draft-unsure">На встрече прозвучало «{draft.assignee_hint}» — сотрудник не опознан, выберите исполнителя.</div>
       )}

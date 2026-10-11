@@ -35,6 +35,8 @@ export function PostcallQuality() {
             <dt>Встреча → задачи</dt><dd>{v(q.meetingToTask)} встреч</dd>
             <dt>Решения записаны</dt><dd>{v(q.decisionCapture)} встреч</dd>
             <dt>Письма клиентам ушли</dt><dd>{v(q.followupSendRate)}</dd>
+            <dt>«Подтвердить всё»</dt><dd>{v(q.confirmAllRate)} встреч</dd>
+            <dt>Слушали фрагмент задачи</dt><dd>{v(q.proofPlayRate)}{q.proofs ? ` из ${q.proofs}` : ''}</dd>
             <dt>Исправляли исполнителя</dt><dd>{v(q.wrongAssignee)}</dd>
             <dt>Исправляли срок</dt><dd>{v(q.wrongDeadline)}</dd>
             <dt>Исправляли название</dt><dd>{v(q.titleEdited)}</dd>

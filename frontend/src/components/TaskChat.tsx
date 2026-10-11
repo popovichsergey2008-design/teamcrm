@@ -74,6 +74,7 @@ const QUICK_ASKS: { label: string; ask: string }[] = [
 
 /** Событие истории по-русски: строка вида «participant_added» человеку ничего не говорит. */
 const ACTIVITY_LABEL: Record<string, string> = {
+  from_meeting: 'создана из договорённости на встрече',
   created: 'создал задачу',
   updated: 'изменил поля',
   moved: 'перенёс',
@@ -105,6 +106,10 @@ const BOT_TOOL_LABEL: Record<string, string> = {
 function activityText(a: { kind: string; detail?: Record<string, any> }): string {
   const label = ACTIVITY_LABEL[a.kind] ?? a.kind;
   if (a.kind === 'moved' && a.detail?.to) return `${label} в «${a.detail.to}»`;
+  if (a.kind === 'from_meeting') {
+    const sec = Number(a.detail?.sec);
+    return `${label} «${a.detail?.meetingTitle ?? ''}»${Number.isFinite(sec) && a.detail?.sec != null ? ` · ${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}` : ''}${a.detail?.audio ? ' · с аудио' : ''}`;
+  }
   if (a.kind === 'approval_returned' && a.detail?.reason) return `${label}: ${a.detail.reason}`;
   // Номер обязателен: «объединил» без номера не отвечает на вопрос «с чем».
   if ((a.kind === 'merged_in' || a.kind === 'merged_into') && a.detail?.taskId) {

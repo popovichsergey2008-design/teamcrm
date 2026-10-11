@@ -10,3 +10,5 @@
 .draft-fields { display: grid; grid-template-columns: 1fr 1fr 150px; gap: 8px; margin-top: 4px; }
 .draft-fields > * { min-width: 0; }
 @media (max-width: 640px) { .draft-fields { grid-template-columns: 1fr 1fr; } .draft-fields input[type='date'] { grid-column: 1 / -1; } }
+
+.draft-proof { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; max-width: 420px; }
