@@ -52,6 +52,31 @@ export class InboxRepository {
     );
   }
 
+  /**
+   * Уведомления о задаче больше не новость (#1531): человек открыл карточку (`userId`)
+   * или задачу закрыли/удалили — тогда у всех (`userId = null`). Путь записи — ссылка
+   * из письма, `/projects/{p}/task/{id}`. Возвращает, у кого что-то погасло.
+   */
+  async markTaskRead(tenantId: string, taskId: string, userId: string | null): Promise<string[]> {
+    const rows = await this.db.many<{ user_id: string }>(
+      `UPDATE notification_inbox SET read_at=now()
+        WHERE tenant_id=$1 AND ($2::bigint IS NULL OR user_id=$2::bigint) AND read_at IS NULL
+          AND path ~ ('/task/' || $3::text || '([/?#]|$)')
+       RETURNING user_id::text`,
+      [tenantId, userId, String(taskId)],
+    );
+    return [...new Set(rows.map((r) => r.user_id))];
+  }
+
+  /** Непрочитанное — что ещё имеет право висеть в шторке телефона. */
+  unreadItems(userId: string, limit: number) {
+    return this.db.many<Pick<InboxRow, 'path' | 'title' | 'body'>>(
+      `SELECT path, title, body FROM notification_inbox
+        WHERE user_id=$1 AND read_at IS NULL ORDER BY id DESC LIMIT $2`,
+      [userId, limit],
+    );
+  }
+
   async unreadCount(userId: string): Promise<number> {
     const row = await this.db.one<{ n: string }>(
       `SELECT count(*)::text AS n FROM notification_inbox WHERE user_id=$1 AND read_at IS NULL`, [userId],

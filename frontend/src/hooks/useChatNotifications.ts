@@ -70,6 +70,8 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
     socket.on('chat.message', onMessage);
     socket.on('chat.created', refresh);
     socket.on('chat.removed', refresh);
+    // прочитано на другом устройстве этого же человека (#1531)
+    socket.on('chat.self-read', refresh);
     window.addEventListener(CHATS_CHANGED, refresh);
     // страховка на случай пропущенного события: раз в минуту сверяемся с сервером
     const timer = setInterval(refresh, 60_000);
@@ -78,6 +80,7 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
       socket.off('chat.message', onMessage);
       socket.off('chat.created', refresh);
       socket.off('chat.removed', refresh);
+      socket.off('chat.self-read', refresh);
       window.removeEventListener(CHATS_CHANGED, refresh);
       clearInterval(timer);
     };

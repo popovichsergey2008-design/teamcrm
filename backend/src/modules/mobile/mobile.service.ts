@@ -82,7 +82,10 @@ export class MobileService {
   async notifications(userId: string, after: string | null, limit: number) {
     const rows = after ? await this.inbox.after(userId, after, limit) : (await this.inbox.latest(userId, limit)).reverse();
     const unread = await this.inbox.unreadCount(userId);
+    // непрочитанное — чтобы телефон убрал из шторки всё остальное (#1531)
+    const unreadItems = unread > 0 ? await this.inbox.unreadItems(userId, 200) : [];
     return {
+      unreadItems: unreadItems.map((r) => ({ path: r.path, title: r.title, body: r.body })),
       items: rows.map((r) => ({
         id: String(r.id), eventKey: r.event_key, title: r.title, body: r.body, path: r.path,
         createdAt: r.created_at, readAt: r.read_at,

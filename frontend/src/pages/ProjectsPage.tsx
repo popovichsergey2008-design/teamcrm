@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { DATA_CHANGED } from '../hooks/useLiveSignals';
 import { api, ApiError } from '../lib/api';
 import { Icon } from '../components/Icon';
 import { navigate } from '../lib/router';
@@ -42,7 +43,12 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
     load();
     // Проект создали, переименовали или заархивировали в другом месте — список обязан знать.
     window.addEventListener(PROJECTS_CHANGED, load);
-    return () => window.removeEventListener(PROJECTS_CHANGED, load);
+    // число задач, просрочка и непрочитанное меняются чужими правками — на лету (#1531)
+    window.addEventListener(DATA_CHANGED, load);
+    return () => {
+      window.removeEventListener(PROJECTS_CHANGED, load);
+      window.removeEventListener(DATA_CHANGED, load);
+    };
   }, []);
 
   const mineId = String(user?.id ?? '');

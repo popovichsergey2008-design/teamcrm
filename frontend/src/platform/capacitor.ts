@@ -56,6 +56,8 @@ type Perm = 'granted' | 'denied' | 'default' | 'unsupported';
 let localPerm: Perm = 'default';
 let nextLocalId = 1;
 const clickHandlers = new Map<number, () => void>();
+/** Локальные уведомления в шторке → путь записи ящика: прочитанное убираем (#1531). */
+const localKeys = new Map<number, string | null>();
 const CALL_NOTIFICATION_ID = 900_001;
 
 function toPerm(v: string | undefined): Perm {
@@ -148,6 +150,48 @@ function requestPushToken(): Promise<string | null> {
   return pushToken;
 }
 
+/**
+ * Шторка Android — только о непрочитанном (#1531).
+ *
+ * Раньше уведомление висело в шторке, пока его не смахнёшь: задачу уже приняли,
+ * сообщение прочитали на компьютере, а напоминание о нём осталось. Теперь после
+ * каждой сверки с ящиком убираем всё, чего среди непрочитанного больше нет.
+ * Push от Firebase несут путь в `data.path`; если система его не отдала — сверяем
+ * по заголовку и тексту, а не угадываем.
+ */
+function stillUnread(
+  keep: { path: string | null; title: string; body: string }[],
+  path: string | null, title: string, body: string,
+): boolean {
+  if (path) return keep.some((k) => k.path === path);
+  return keep.some((k) => k.title === title && (!body || k.body === body));
+}
+async function pruneShade(keep: { path: string | null; title: string; body: string }[] | null): Promise<void> {
+  // локальные — те, что приложение показало само по сокету
+  try {
+    const delivered = (await LocalNotifications.getDeliveredNotifications()).notifications ?? [];
+    const gone = delivered.filter((n) => n.id !== CALL_NOTIFICATION_ID
+      && (!keep || !stillUnread(keep, localKeys.get(n.id) ?? null, n.title ?? '', n.body ?? '')));
+    if (gone.length) {
+      await LocalNotifications.removeDeliveredNotifications({ notifications: gone });
+      for (const n of gone) { localKeys.delete(n.id); clickHandlers.delete(n.id); }
+    }
+  } catch { /* старый WebView */ }
+  // push — те, что показала система, пока приложение спало
+  try {
+    const { notifications } = await PushNotifications.getDeliveredNotifications();
+    const gone = (notifications ?? []).filter((n) => {
+      const data = (n.data ?? {}) as Record<string, unknown>;
+      // звонок и сигналы фокуса в ящик не пишутся — сверять их не с чем, не трогаем
+      if (Object.keys(data).length && !data.inboxId) return false;
+      if (!keep) return true;
+      const path = typeof data.path === 'string' && data.path ? data.path : null;
+      return !stillUnread(keep, path, n.title ?? '', n.body ?? '');
+    });
+    if (gone.length) await PushNotifications.removeDeliveredNotifications({ notifications: gone });
+  } catch { /* push не подключён */ }
+}
+
 void PushNotifications.addListener('pushNotificationActionPerformed', (e) => {
   const path = String(e.notification.data?.path ?? '');
   if (path) for (const h of deepLinkHandlers) h(path);
@@ -210,14 +254,16 @@ export const capacitorBridge: PlatformBridge = {
       try { localPerm = toPerm((await LocalNotifications.requestPermissions()).display); } catch { localPerm = 'denied'; }
       return localPerm;
     },
-    show(title, body, onClick) {
+    show(title, body, onClick, key) {
       if (localPerm !== 'granted') return;
       const id = nextLocalId++;
       if (onClick) clickHandlers.set(id, onClick);
+      localKeys.set(id, key ?? null);
       void LocalNotifications.schedule({
         notifications: [{ id, title, body, channelId: 'anthill', smallIcon: 'ic_stat_notify' }],
       }).catch(() => undefined);
     },
+    prune: pruneShade,
     setBadge: browserBridge.notifications.setBadge,
     pushToken: requestPushToken,
   },

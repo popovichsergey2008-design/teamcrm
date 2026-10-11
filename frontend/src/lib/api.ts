@@ -924,7 +924,11 @@ export const api = {
   mobileRelease: () => rawRequest<{ android: MobileConfig['android'] }>('GET', '/mobile/release', undefined, false),
   /** Ящик уведомлений по курсору: push — сигнал, ящик — правда. */
   mobileNotifications: (after: string | null) =>
-    request<{ items: InboxItem[]; cursor: string | null; unread: number }>('GET', `/mobile/notifications${after ? `?after=${encodeURIComponent(after)}` : ''}`),
+    request<{
+      items: InboxItem[]; cursor: string | null; unread: number;
+      /** Что ещё не прочитано — по нему чистится шторка (#1531). */
+      unreadItems?: { path: string | null; title: string; body: string }[];
+    }>('GET', `/mobile/notifications${after ? `?after=${encodeURIComponent(after)}` : ''}`),
   mobileNotificationsRead: (upTo: string) => request<{ ok: boolean }>('POST', '/mobile/notifications/read', { upTo }),
   /** Политика организации: приватность push и нижняя граница блокировки (владелец). */
   orgPolicy: () => request<OrgPolicy>('GET', '/mobile/org-policy'),
@@ -2392,6 +2396,8 @@ export const api = {
   focusBacklog: () => request<FocusCandidate[]>('GET', '/focus/today/backlog'),
   focusAccept: () => request<FocusToday>('POST', '/focus/today/accept'),
   focusRecalculate: () => request<FocusToday>('POST', '/focus/today/recalculate'),
+  /** «Пересмотреть с ИИ»: сделанное уходит из тройки, свободные места — новыми задачами. */
+  focusRefresh: () => request<FocusToday>('POST', '/focus/today/refresh'),
   focusAdd: (key: string, rank?: number, reason?: FocusChangeReason) =>
     request<FocusToday>('POST', '/focus/today/items', { key, ...(rank ? { rank } : {}), ...(reason ? { reason } : {}) }),
   focusRemove: (itemId: string, reason?: FocusChangeReason) =>

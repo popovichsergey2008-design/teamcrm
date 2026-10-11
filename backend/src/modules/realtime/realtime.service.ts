@@ -69,6 +69,44 @@ export class RealtimeService {
     this.server = server;
   }
 
+  /*
+    «Что-то изменилось» — одним сигналом (#1531).
+
+    События задач уходят в комнату проекта, а в неё входит только открытая доска.
+    Счётчики в меню, «Фокус дня», реестр задач, таблица проектов и шторка их не
+    получали и обновлялись раз в минуту или при переходе в другой раздел. Теперь
+    каждое событие задач, согласований и ящика заодно ставит в очередь короткий
+    сигнал `data.changed` — всей компании (для проектных событий) или адресатам
+    (для личных). Сигналы склеиваются за SIGNAL_MS: пачка правок — один перезапрос.
+    В сигнале нет содержимого — только что за событие и в каком проекте.
+  */
+  private readonly pending = new Map<string, { projects: Set<string>; events: Set<string>; timer: NodeJS.Timeout }>();
+  private static readonly SIGNAL_MS = 300;
+  private static readonly SIGNAL_PREFIXES = ['task.', 'approval.', 'inbox.', 'column.', 'board.', 'project.', 'focus.day', 'deal.', 'client.'];
+
+  private static signals(event: string): boolean {
+    return RealtimeService.SIGNAL_PREFIXES.some((p) => event.startsWith(p));
+  }
+
+  private queueSignal(room: string, event: string, projectId: string | null) {
+    if (!this.server) return;
+    let entry = this.pending.get(room);
+    if (!entry) {
+      entry = {
+        projects: new Set(), events: new Set(),
+        timer: setTimeout(() => {
+          const e = this.pending.get(room);
+          this.pending.delete(room);
+          if (!e || !this.server) return;
+          this.server.to(room).emit('data.changed', { projects: [...e.projects], events: [...e.events] });
+        }, RealtimeService.SIGNAL_MS),
+      };
+      this.pending.set(room, entry);
+    }
+    entry.events.add(event);
+    if (projectId) entry.projects.add(String(projectId));
+  }
+
   /** Кто сейчас онлайн: сокеты по пользователю (мессенджер показывает точку «в сети»). */
   private readonly online = new Map<string, number>();
 
@@ -81,6 +119,10 @@ export class RealtimeService {
   /** Личная комната — доставка сообщений мессенджера конкретному человеку. */
   static userRoom(tenantId: string, userId: string) {
     return `user:${tenantId}:${userId}`;
+  }
+  /** Сотрудники компании без клиентского портала: сюда идёт сигнал `data.changed` (#1531). */
+  static staffRoom(tenantId: string) {
+    return `staff:${tenantId}`;
   }
   /** Комната компании — то, что должны узнать все сразу: статус коллеги, новый чат. */
   static tenantRoom(tenantId: string) {
@@ -96,8 +138,10 @@ export class RealtimeService {
   /** Сообщение чата адресатам: у каждого свои устройства, комната решает это сама. */
   emitToUsers(tenantId: string, userIds: string[], event: string, payload: Record<string, unknown>) {
     if (!this.server) return;
+    const signal = RealtimeService.signals(event);
     for (const userId of new Set(userIds)) {
       this.server.to(RealtimeService.userRoom(tenantId, userId)).emit(event, payload);
+      if (signal) this.queueSignal(RealtimeService.userRoom(tenantId, userId), event, null);
     }
   }
 
@@ -137,6 +181,7 @@ export class RealtimeService {
     this.server
       .to(RealtimeService.clientRoom(tenantId, projectId))
       .emit(event, stripFinancial(payload));
+    if (RealtimeService.signals(event)) this.queueSignal(RealtimeService.staffRoom(tenantId), event, projectId);
   }
 
   /**
@@ -155,6 +200,7 @@ export class RealtimeService {
     if (clientVisible) {
       this.server.to(RealtimeService.clientRoom(tenantId, projectId)).emit(event, stripFinancial(payload));
     }
+    if (RealtimeService.signals(event)) this.queueSignal(RealtimeService.staffRoom(tenantId), event, projectId);
   }
 
   /**

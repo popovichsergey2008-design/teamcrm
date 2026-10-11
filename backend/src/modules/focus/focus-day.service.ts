@@ -316,6 +316,39 @@ export class FocusDayService {
   }
 
   /**
+   * «Пересмотреть с ИИ» (#1532) — работает и после принятия плана.
+   *
+   * Сделанное уходит из тройки (статус `cleared`: в истории дня оно остаётся, на экране
+   * больше не занимает место), освободившиеся места добираются лучшими кандидатами.
+   * Раньше сделанные задачи стояли в тройке до конца дня, а убрать их или заменить
+   * было нечем: «Пересчитать» жил только до принятия.
+   *
+   * Выбранное человеком (незакреплённое тоже) не трогаем, пока есть что освободить.
+   * Если же все три места заняты делом, человек просит именно новых задач —
+   * тогда меняем незакреплённые, как «Пересчитать» до принятия.
+   */
+  async refresh(v: Viewer, now = new Date()) {
+    const plan = await this.requirePlan(v, now);
+    const { tz, today } = await this.context(v, now);
+    const before = await this.repo.items(plan.id);
+    for (const i of before.filter((x) => x.status === 'done')) {
+      await this.repo.setItemStatus(plan.id, String(i.id), 'cleared', 'done');
+    }
+    const accepted = ACCEPTED.includes(plan.status) && plan.status !== 'modified';
+    const freed = before.some((x) => x.status === 'done');
+    if (!accepted || !freed) await this.repo.dropUnpinned(plan.id);
+    const keep = (await this.repo.items(plan.id)).filter((i) => i.status === 'active' || i.status === 'done');
+    // уже сделанное и уже убранное сегодня заново не предлагаем
+    const seen = new Set((await this.repo.allItems(plan.id)).map(keyOfItem));
+    const scored = (await this.scored(v, now, tz, today)).filter((c) => !seen.has(c.key) || keep.some((k) => keyOfItem(k) === c.key));
+    await this.fill(v, plan.id, scored, keep);
+    if (accepted) await this.touched(plan);
+    else await this.repo.setPlan(plan.id, { source: 'recalc' });
+    this.changed(v);
+    return this.today(v, now);
+  }
+
+  /**
    * Добавить действие в тройку: на свободное место или вместо элемента на `rank`.
    * Добавлять можно только своё — то, что есть среди кандидатов человека.
    */
@@ -330,19 +363,22 @@ export class FocusDayService {
       throw AppException.conflict('Это уже в вашем фокусе');
     }
     const active = items.filter((i) => i.status === 'active');
-    let rank = input.rank && [1, 2, 3].includes(input.rank) ? input.rank : [1, 2, 3].find((r) => !items.some((i) => i.rank === r && i.status === 'active'));
+    /*
+      Куда ставить: названное место → совсем свободное → место сделанного (#1533).
+      Раньше сделанное считалось занятым навсегда: при трёх сделанных «В фокус»
+      предлагал «Вместо:» без единой кнопки, а новое ложилось вторым на тот же номер.
+    */
+    let rank = input.rank && [1, 2, 3].includes(input.rank) ? input.rank : [1, 2, 3].find((r) => !items.some((i) => i.rank === r));
+    if (!rank) rank = items.find((i) => i.status === 'done')?.rank;
     if (!rank) throw AppException.conflict('В фокусе уже три действия — замените одно из них');
     const occupant = active.find((i) => i.rank === rank);
     if (occupant) {
       const reason = (CHANGE_REASONS as readonly string[]).includes(input.reason ?? '') ? input.reason! : null;
       await this.repo.setItemStatus(plan.id, occupant.id, 'replaced', reason);
     }
-    // Место сделанного тоже можно занять: «главная миссия завершена — добавить ещё» (п. 129).
+    // Место сделанного занимаем: сделанное уходит из тройки, в истории дня остаётся (п. 129).
     const doneOnRank = items.find((i) => i.rank === rank && i.status === 'done');
-    if (doneOnRank && !occupant) {
-      const freeRank = [1, 2, 3].find((r) => !items.some((i) => i.rank === r));
-      if (freeRank) rank = freeRank;
-    }
+    if (doneOnRank) await this.repo.setItemStatus(plan.id, String(doneOnRank.id), 'cleared', 'done');
     await this.repo.insertItem(v.tenantId, plan.id, {
       type: c.kind, taskId: c.taskId, approvalId: c.approvalId, rank, title: c.title,
       score: c.score, deadline: c.deadlineScore, unlock: c.unlockScore, meeting: c.meetingScore,

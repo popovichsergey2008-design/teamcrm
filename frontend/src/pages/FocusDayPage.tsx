@@ -133,6 +133,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   const top = useMemo(() => [...day.top].sort((a, b) => a.rank - b.rank), [day.top]);
   const activeItems = top.filter((i) => i.status === 'active');
   const freeRanks = [1, 2, 3].filter((r) => !top.some((i) => i.rank === r));
+  const doneItems = top.filter((i) => i.status === 'done');
   const doneCount = top.filter((i) => i.status === 'done').length;
   const proposed = day.plan.status === 'proposed';
   const mission = top.find((i) => i.rank === 1);
@@ -141,9 +142,12 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     if (i.taskId && i.projectId) onOpenTask(i.projectId, i.taskId);
   };
 
-  /** В фокус: на свободное место сразу, иначе — выбрать, что заменить. */
+  /**
+   * В фокус: на свободное место или на место сделанного — сразу, без вопросов (#1533);
+   * если все три заняты делом — выбрать, какую задачу заменить (по названию, не по номеру).
+   */
   const place = (c: FocusCandidate) => {
-    if (freeRanks.length) void run(() => api.focusAdd(c.key));
+    if (freeRanks.length || doneItems.length) void run(() => api.focusAdd(c.key));
     else setPlacing(c);
   };
 
@@ -217,6 +221,11 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           <span className="fd-rank">#{item.rank} {RANK_LABEL[item.rank]}</span>
           {item.pinned && !editing && <span className="fd-pin" title="Закреплено вами — пересчёт его не вытеснит"><Icon name="pin" size={12} /></span>}
           {done && <Badge tone="ok"><Icon name="check" size={11} /> Сделано</Badge>}
+          {editing && done && (
+            <span className="fd-edit">
+              <Button variant="ghost" size="sm" disabled={busy} title="Убрать из тройки — место освободится" onClick={() => void run(() => api.focusRemove(item.id, 'done'))}><Icon name="close" size={14} /> Убрать</Button>
+            </span>
+          )}
           {editing && !done && (
             <span className="fd-edit">
               <Button variant="ghost" size="sm" aria-label="Выше" title="Выше" disabled={busy || item.rank === 1} onClick={() => move(item, -1)}><Icon name="arrow-up" size={14} /></Button>
@@ -405,7 +414,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           <span className="fd-banner-acts">
             <Button variant="primary" size="sm" disabled={busy} onClick={() => void run(api.focusAccept)}><Icon name="check" size={14} /> Принять</Button>
             <Button variant={editing ? 'secondary' : 'outline'} size="sm" aria-pressed={editing} onClick={() => setEditing((v) => !v)}><Icon name="edit" size={14} /> Настроить</Button>
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run(api.focusRecalculate)}><Icon name="refresh" size={14} /> Пересчитать</Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run(api.focusRefresh)}><Icon name="sparkles" size={14} /> Пересмотреть с ИИ</Button>
           </span>
         </section>
       )}
@@ -413,6 +422,11 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         <div className="fd-accepted">
           <span className="dim"><Icon name="check" size={13} /> План на сегодня принят</span>
           <Button variant="ghost" size="sm" aria-pressed={editing} onClick={() => setEditing((v) => !v)}><Icon name="edit" size={13} /> {editing ? 'Готово' : 'Настроить'}</Button>
+          <Button
+            variant={doneItems.length ? 'outline' : 'ghost'} size="sm" disabled={busy}
+            title={doneItems.length ? 'Сделанное уйдёт из тройки, на его место ИИ подберёт новые задачи' : 'ИИ подберёт новые задачи вместо незакреплённых'}
+            onClick={() => void run(api.focusRefresh)}
+          ><Icon name="sparkles" size={13} /> Пересмотреть с ИИ</Button>
           {day.plan.feedback == null ? (
             <span className="fd-feedback">
               <span className="dim">Полезный план?</span>
@@ -468,7 +482,8 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           {mission?.status === 'done' && activeItems.length < 3 && (
             <div className="fd-note">
               <Icon name="check-circle" size={15} /> Главная миссия завершена.
-              <Button variant="ghost" size="sm" onClick={() => setBacklogOpen('all')}>Добавить ещё одну важную задачу</Button>
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => void run(api.focusRefresh)}><Icon name="sparkles" size={13} /> Пересмотреть с ИИ</Button>
+              <Button variant="ghost" size="sm" onClick={() => setBacklogOpen('all')}>Выбрать самому</Button>
             </div>
           )}
           <div className="fd-pair">
@@ -503,10 +518,16 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
                 <span className="dim fd-bl-sub">{[c.projectName, ...c.reasons.slice(0, 2)].filter(Boolean).join(' · ')}</span>
               </div>
               {placing?.key === c.key ? (
-                <span className="fd-place">
-                  <span className="dim">Вместо:</span>
+                <span className="fd-place" role="group" aria-label="Какую задачу заменить">
+                  <span className="dim">Все три места заняты. Заменить:</span>
                   {activeItems.map((i) => (
-                    <Button key={i.id} variant="outline" size="sm" disabled={busy} onClick={() => { setPlacing(null); setAsking({ key: c.key, rank: i.rank, mode: 'replace' }); }}>#{i.rank}</Button>
+                    <Button
+                      key={i.id} variant="outline" size="sm" disabled={busy}
+                      title={`Поставить «${c.title}» вместо «${i.title ?? `#${i.rank}`}»`}
+                      onClick={() => { setPlacing(null); setAsking({ key: c.key, rank: i.rank, mode: 'replace' }); }}
+                    >
+                      {(i.title ?? `#${i.rank}`).length > 40 ? `${(i.title ?? '').slice(0, 40)}…` : (i.title ?? `#${i.rank}`)}
+                    </Button>
                   ))}
                   <Button variant="ghost" size="sm" onClick={() => setPlacing(null)}>Отмена</Button>
                 </span>

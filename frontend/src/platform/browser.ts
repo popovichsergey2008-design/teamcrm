@@ -47,6 +47,9 @@ function notificationPermission(): NotificationPermissionState {
   return Notification.permission;
 }
 
+/** Показанные системные уведомления браузера: прочитанное закрываем (#1531). */
+const shown = new Set<{ n: Notification; key: string | null }>();
+
 export const browserBridge: PlatformBridge = {
   info(): PlatformInfo {
     return { kind: buildKind(), os: detectOs(), nativeVersion: null, bundleVersion: BUNDLE_VERSION, model: deviceModel() };
@@ -66,12 +69,22 @@ export const browserBridge: PlatformBridge = {
       if (notificationPermission() === 'unsupported') return 'unsupported';
       try { return await Notification.requestPermission(); } catch { return Notification.permission; }
     },
-    show(title, body, onClick) {
+    show(title, body, onClick, key) {
       if (notificationPermission() !== 'granted') return;
       try {
         const n = new Notification(title, { body, tag: 'teamcrm-chat', renotify: true } as NotificationOptions);
         n.onclick = () => { window.focus(); n.close(); onClick?.(); };
+        shown.add({ n, key: key ?? null });
+        n.onclose = () => { for (const s of shown) if (s.n === n) shown.delete(s); };
       } catch { /* некоторые браузеры запрещают конструктор вне service worker */ }
+    },
+    prune(keep) {
+      for (const s of [...shown]) {
+        if (keep && s.key && keep.some((k) => k.path === s.key)) continue;
+        if (keep && !s.key) continue; // без пути не знаем, о чём оно, — не трогаем
+        try { s.n.close(); } catch { /* уже закрыто */ }
+        shown.delete(s);
+      }
     },
     setBadge(count) {
       // Значок на иконке PWA — там, где браузер это умеет; заголовок вкладки ведёт tab-alert.

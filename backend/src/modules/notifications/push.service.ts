@@ -47,12 +47,27 @@ export class PushService {
   ) {}
 
   /**
+   * Задача увидена (`userId`) или больше не актуальна для всех (`null`): гасим её записи
+   * в ящике и говорим устройствам пересчитать значок и шторку (#1531).
+   */
+  async taskSeen(tenantId: string, taskId: string, userId: string | null): Promise<void> {
+    try {
+      const users = await this.inbox.markTaskRead(String(tenantId), String(taskId), userId ? String(userId) : null);
+      if (users.length) this.realtime.emitToUsers(String(tenantId), users, 'inbox.read', { taskId: String(taskId) });
+    } catch (e) {
+      this.log.warn(`ящик: отметка задачи ${taskId}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
    * Человек прочитал чат или ветку — гасим их уведомления в ящике и говорим его
    * устройствам пересчитать значок (#1538). Ошибка здесь не должна ломать чтение.
    */
   async chatRead(tenantId: string, userId: string, chatId: string, threadRootId: string | null = null): Promise<void> {
     try {
       const path = threadRootId ? `/chat/${chatId}/thread/${threadRootId}` : `/chat/${chatId}`;
+      // прочитал на одном устройстве — счётчик чатов на остальных гаснет сразу (#1531)
+      this.realtime.emitToUsers(tenantId, [String(userId)], 'chat.self-read', { chatId: String(chatId) });
       if (await this.inbox.markPathRead(String(userId), path)) {
         this.realtime.emitToUsers(tenantId, [String(userId)], 'inbox.read', { path });
       }

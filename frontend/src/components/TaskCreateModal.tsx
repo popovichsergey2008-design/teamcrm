@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DatePicker } from './DatePicker';
 import { Icon } from './Icon';
 import { api, ApiError, TagSettings } from '../lib/api';
@@ -7,6 +7,8 @@ import { TaskTagsField } from './TaskTagsField';
 import { EMPTY_TAGS, tagsReady, TagsValue } from '../lib/tags';
 import { navigate } from '../lib/router';
 import { overlayProps } from '../lib/overlay';
+import { clearDraft, draftHasContent, saveDraft, setDraftEditing, type TaskDraft } from '../lib/task-draft';
+import { useAuth } from '../state/auth';
 import { SuggestAssignee } from './SuggestAssignee';
 import { DirectionsPicker } from './DirectionsPicker';
 import { NlCommandModal } from './NlCommandModal';
@@ -28,6 +30,8 @@ interface Props {
   defaultManagerId?: string;
   onClose: () => void;
   onCreated: () => void;
+  /** Черновик, с которого продолжаем (#1534): поля заполняются им. */
+  draft?: TaskDraft | null;
 }
 
 /** «Через N дней» в значение поля срока: к 18:00, как и при ручной постановке. */
@@ -53,27 +57,29 @@ const PRIORITY_OPTIONS = [
  * иначе задачу приходится заводить в два захода (создал, открыл, дозаполнил).
  * Всё уходит одним запросом: задача с половиной полей хуже, чем ошибка целиком.
  */
-export function TaskCreateModal({ projectId, columnId, columnName, users, defaultManagerId, onClose, onCreated }: Props) {
-  const [title, setTitle] = useState('');
-  const [assigneeId, setAssigneeId] = useState('');
+export function TaskCreateModal({ projectId, columnId, columnName, users, defaultManagerId, onClose, onCreated, draft }: Props) {
+  const { user } = useAuth();
+  const [title, setTitle] = useState(draft?.title ?? '');
+  const [assigneeId, setAssigneeId] = useState(draft?.assigneeId ?? '');
   /*
     Автоподбор (задачи #1295, #1363): по словам в названии и описании отмечаем
     направления и ставим исполнителя из людей этого направления с учётом загрузки.
     Правилами, без модели — бесплатно, поэтому на лету. Как только человек сам тронул
     поле, автоматика его больше не трогает: его выбор главнее.
   */
-  const [directions, setDirections] = useState<string[]>([]);
-  const [dirsTouched, setDirsTouched] = useState(false);
-  const [assigneeTouched, setAssigneeTouched] = useState(false);
+  const [directions, setDirections] = useState<string[]>(draft?.directions ?? []);
+  const [dirsTouched, setDirsTouched] = useState(!!draft?.directions.length);
+  // исполнителя из черновика выбрал человек — подбор его не перебивает
+  const [assigneeTouched, setAssigneeTouched] = useState(!!draft?.assigneeId);
   const [autoNote, setAutoNote] = useState('');
   /** Пунктов в описании: два и больше — это ТЗ, его можно разложить по специалистам. */
   const [items, setItems] = useState(0);
   const [splitOpen, setSplitOpen] = useState(false);
-  const [managerId, setManagerId] = useState(defaultManagerId ?? '');
-  const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState('normal');
-  const [deadline, setDeadline] = useState('');
-  const [estimate, setEstimate] = useState('');
+  const [managerId, setManagerId] = useState(draft?.managerId || defaultManagerId || '');
+  const [description, setDescription] = useState(draft?.description ?? '');
+  const [priority, setPriority] = useState(draft?.priority ?? 'normal');
+  const [deadline, setDeadline] = useState(draft?.deadline ?? '');
+  const [estimate, setEstimate] = useState(draft?.estimate ?? '');
   useEffect(() => {
     const t = title.trim();
     if (t.length < 3 && !description.trim()) return;
@@ -110,7 +116,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
    */
   // Снял или поставил сам — это его привычка, запоминаем. Шаблон значение меняет, но не запоминает.
   const [approvalHabit, rememberApproval] = useStickyCheck('task.requiresApproval', true);
-  const [requiresApproval, setRequiresApproval] = useState(approvalHabit);
+  const [requiresApproval, setRequiresApproval] = useState(draft ? draft.requiresApproval : approvalHabit);
   /*
     Шаблоны задач (просьба заказчика: «кнопка сохранить как шаблон»).
 
@@ -134,6 +140,30 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const [files, setFiles] = useState<File[]>([]);
   /** Задача уже создана, но файлы не долетели: второй раз её создавать нельзя. */
   const [createdId, setCreatedId] = useState<string | null>(null);
+
+  /*
+    Черновик (#1534): набранное сохраняется по мере ввода. Окно закрыли не той
+    кнопкой — появится «Черновик», и всё вернётся одним нажатием. Пока окно открыто,
+    кнопку прячем: она дублировала бы само окно.
+  */
+  useEffect(() => {
+    setDraftEditing(true);
+    return () => setDraftEditing(false);
+  }, []);
+  // пустое новое окно не должно стирать прежний черновик: трогаем его, только когда
+  // окно открыто из черновика или в нём уже что-то набрали
+  const ownsDraft = useRef(!!draft);
+  useEffect(() => {
+    if (createdId || !user?.id) return; // задача уже есть — черновик больше не нужен
+    if (!ownsDraft.current && !draftHasContent({ title, description })) return;
+    ownsDraft.current = true;
+    const t = window.setTimeout(() => saveDraft({
+      userId: String(user.id), projectId: String(projectId), columnId: String(columnId), columnName,
+      title, description, assigneeId, managerId, priority, deadline, estimate, directions, requiresApproval,
+      savedAt: new Date().toISOString(),
+    }), 400);
+    return () => window.clearTimeout(t);
+  }, [user?.id, projectId, columnId, columnName, title, description, assigneeId, managerId, priority, deadline, estimate, directions, requiresApproval, createdId]);
   /**
    * Возможные дубли по набранному названию.
    *
@@ -235,6 +265,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         directions: directions.length ? directions : undefined,
       });
       setCreatedId(String(created.id));
+      clearDraft(); // задача создана — черновик своё отслужил
       /*
         Пункты чек-листа из шаблона — по порядку и по одному: отдельной ручки «создать
         чек-лист целиком» нет, а параллельная отправка перемешала бы порядок.

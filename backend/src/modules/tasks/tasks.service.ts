@@ -14,6 +14,7 @@ import { CreateTaskDto, MoveTaskDto, UpdateTaskDto } from './tasks.dto';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
 import { isDoneColumn, isReviewColumn } from './task-columns';
+import { PushService } from '../notifications/push.service';
 import { handoffGate } from './handoff-gate';
 import { REGISTRY_PAGE_SIZE, RegistryFilters } from './task-registry';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -58,6 +59,8 @@ export class TasksService {
     private readonly security: SecurityService,
     /** Догоняющий вопрос «как идёт работа»: открытый вопрос и ответ на него. */
     private readonly followups: FollowupsRepository,
+    /** Ящик уведомлений: увиденное и неактуальное гасится и в шторке (#1531). */
+    private readonly push: PushService,
   ) {}
 
   /**
@@ -66,8 +69,9 @@ export class TasksService {
    * Ставится по открытию карточки: увидеть изменение можно, только открыв задачу.
    * Гасить счётчик прокруткой доски нельзя — он погас бы сам собой, ничего не показав.
    */
-  markRead(tenantId: string, taskId: string, userId: string): Promise<void> {
-    return this.reads.markRead(tenantId, taskId, userId);
+  async markRead(tenantId: string, taskId: string, userId: string): Promise<void> {
+    await this.reads.markRead(tenantId, taskId, userId);
+    void this.push.taskSeen(tenantId, taskId, userId);
   }
 
   /**
@@ -428,6 +432,7 @@ export class TasksService {
         metadata: { title: task.title, projectId: String(task.project_id), reason: actor?.reason ?? null },
       });
       this.realtime.emit(tenantId, task.project_id, 'task.deleted', { id, project_id: task.project_id } as any);
+      void this.push.taskSeen(tenantId, id, null);
       return { deleted: true, trashed: true };
     }
 
@@ -487,6 +492,7 @@ export class TasksService {
 
     await this.repo.remove(tenantId, id, actorId);
     this.realtime.emit(tenantId, task.project_id, 'task.deleted', { id, project_id: task.project_id } as any);
+    void this.push.taskSeen(tenantId, id, null);
     void actorId; // историю задачи удалили вместе с ней — писать в неё запись не во что
     return { deleted: true };
   }
@@ -592,6 +598,8 @@ export class TasksService {
     // уже был занят первым закрытием, и человек о повторной сдаче не узнавал.
     if (String(task.column_id) !== String(dto.columnId)) {
       void this.notify.taskStatusChanged(tenantId, id, actorId, column.name, isDoneColumn(column.name), moveId);
+      // задача закрыта — напоминания о ней в шторке больше не нужны никому
+      if (isDoneColumn(column.name)) void this.push.taskSeen(tenantId, id, null);
     }
     return moved;
   }

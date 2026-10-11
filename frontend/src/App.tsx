@@ -46,6 +46,8 @@ import { LockScreen } from './components/LockScreen';
 import { UpdateSheet } from './components/UpdateSheet';
 import { useMobileConfig } from './hooks/useMobileConfig';
 import { openInboxItem, useMobileInbox } from './hooks/useMobileInbox';
+import { useLiveSignals } from './hooks/useLiveSignals';
+import { TaskDraftButton } from './components/TaskDraftButton';
 import { useOfflineQueue } from './hooks/useOfflineQueue';
 import { useDeltaSync } from './hooks/useDeltaSync';
 import { OfflineBar } from './components/OfflineBar';
@@ -165,6 +167,7 @@ export function App() {
   const lock = useAppLock(!!user);
   const mobile = useMobileConfig(!!user);
   useMobileInbox(!!user);
+  useLiveSignals(!!user);
   /*
     Консоль техотдела — автономное рабочее место (см. ветку ниже).
 
@@ -761,6 +764,9 @@ export function App() {
       {route.section === 'focus' && route.view === 'inbox' && canManage && (
         <InboxPanel onClose={() => navigate({ section: 'focus' })} />
       )}
+
+      {/* «Черновик» несозданной задачи — в любом разделе (#1534) */}
+      <TaskDraftButton />
 
       <Toasts
         onOpenChat={(chatId, threadId) => navigate({ section: 'chat', chatId: chatId ?? undefined, threadId: chatId ? threadId : undefined })}

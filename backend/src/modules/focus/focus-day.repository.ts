@@ -341,6 +341,11 @@ export class FocusDayRepository {
     );
   }
 
+  /** Всё, что побывало в плане за день, — и убранное, и заменённое. */
+  allItems(planId: string): Promise<ItemRow[]> {
+    return this.db.many<ItemRow>(`SELECT * FROM focus_day_items WHERE plan_id = $1`, [planId]);
+  }
+
   async insertItem(tenantId: string, planId: string, i: {
     type: string; taskId: string | null; approvalId: string | null; rank: number; title: string;
     score: number; deadline: number; unlock: number; meeting: number; base: number; penalty: number;

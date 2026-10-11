@@ -32,11 +32,13 @@ export function useMobileInbox(signedIn: boolean): void {
         if (!alive) return;
         if (r.cursor) localStorage.setItem(CURSOR_KEY, r.cursor);
         platform.notifications.setBadge(r.unread);
+        // шторка — только о непрочитанном: прочитанное в любом месте исчезает и оттуда (#1531)
+        platform.notifications.prune(r.unread > 0 ? (r.unreadItems ?? []) : null);
         // без курсора это первый запуск: не заваливать человека всей историей
         const fresh = cursor ? r.items : [];
         for (const it of fresh.slice(-3)) {
           // приложение свёрнуто — всплывашку никто не увидит: в центр уведомлений ОС (волна 12)
-          if (document.hidden) showNotification(it.title, it.body, () => openInboxItem(it.id, it.path ?? undefined));
+          if (document.hidden) showNotification(it.title, it.body, () => openInboxItem(it.id, it.path ?? undefined), { key: it.path ?? undefined });
           else showToast({ title: it.title, body: it.body, section: 'inbox', inboxPath: it.path ?? undefined, inboxId: it.id });
         }
         if (fresh.length) playMessageChime();

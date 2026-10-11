@@ -32,9 +32,9 @@ export function requestNotificationPermission(): Promise<NotificationPermission 
  * Показ уведомления. Молча ничего не делает, если разрешения нет — и во время
  * глубокой работы, кроме критичного (стук «срочно», безопасность).
  */
-export function showNotification(title: string, body: string, onClick?: () => void, opts?: { critical?: boolean }): void {
+export function showNotification(title: string, body: string, onClick?: () => void, opts?: { critical?: boolean; key?: string }): void {
   if (isQuiet() && !opts?.critical) return;
-  platform.notifications.show(title, body, onClick);
+  platform.notifications.show(title, body, onClick, opts?.key);
 }
 
 /**

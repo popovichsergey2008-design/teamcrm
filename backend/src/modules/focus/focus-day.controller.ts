@@ -91,6 +91,12 @@ export class FocusDayController {
     return this.day.accept(this.v(u));
   }
 
+  /** «Пересмотреть с ИИ»: сделанное — из тройки, на свободные места — новые (#1532). */
+  @Post('refresh')
+  refresh(@CurrentUser() u: AuthUser) {
+    return this.day.refresh(this.v(u));
+  }
+
   @Post('recalculate')
   recalculate(@CurrentUser() u: AuthUser) {
     return this.day.recalculate(this.v(u));

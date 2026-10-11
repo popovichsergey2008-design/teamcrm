@@ -61,6 +61,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       await socket.join(RealtimeService.userRoom(user.tenantId, user.userId));
       // комната компании: статусы коллег приходят всем, кто в сети
       await socket.join(RealtimeService.tenantRoom(user.tenantId));
+      // сотрудникам — сигнал «данные изменились»: клиенту портала он ни к чему (#1531)
+      if (user.role !== 'client') await socket.join(RealtimeService.staffRoom(user.tenantId));
       this.realtime.presenceConnect(user.tenantId, user.userId);
       void this.presence.touch(user.tenantId, user.userId);
       this.realtime.emitToTenant(user.tenantId, 'user.online', { userId: user.userId });

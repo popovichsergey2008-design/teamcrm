@@ -14,6 +14,7 @@ import {
   countMatching, filterActive, filterBoard, MineMode, realPosition,
 } from '../lib/board-filter';
 import { MineFilter } from '../components/MineFilter';
+import { takeDraftOpen, TASK_DRAFT_OPEN, type TaskDraft } from '../lib/task-draft';
 import { LEGACY_VIEWS, TASK_VIEWS } from '../lib/task-views';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
@@ -136,7 +137,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   // задача сдаётся не полностью: помним, что именно человек пытался сделать,
   // чтобы «Сдать всё равно» повторило ровно тот же перенос
   const [gate, setGate] = useState<{ block: GateBlock; taskId: string; columnId: string; position: number } | null>(null);
-  const [createIn, setCreateIn] = useState<{ columnId: string; columnName: string } | null>(null);
+  const [createIn, setCreateIn] = useState<{ columnId: string; columnName: string; draft?: TaskDraft } | null>(null);
   /*
     Лента колонок: к ней привязано автоматическое движение при переносе карточки к краю
     экрана — иначе до колонки, которой не видно, задачу не донести.
@@ -412,6 +413,26 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
     const col = board?.columns.find((c) => c.id === columnId);
     setCreateIn({ columnId, columnName: col?.name ?? '' });
   };
+
+  /*
+    «Черновик» (#1534): нажали кнопку — открываем окно создания с сохранённым текстом.
+    Запрос может прийти раньше, чем загрузится доска нужного проекта, поэтому он
+    лежит в task-draft и забирается, как только доска этого проекта готова.
+    Колонку могли удалить — тогда первая колонка доски.
+  */
+  useEffect(() => {
+    const tryOpen = () => {
+      if (!board || String(board.project?.id ?? selected) !== String(selected)) return;
+      const d = takeDraftOpen(selected);
+      if (!d) return;
+      const col = board.columns.find((c) => String(c.id) === String(d.columnId)) ?? board.columns[0];
+      if (!col) return;
+      setCreateIn({ columnId: col.id, columnName: col.name, draft: d });
+    };
+    tryOpen();
+    window.addEventListener(TASK_DRAFT_OPEN, tryOpen);
+    return () => window.removeEventListener(TASK_DRAFT_OPEN, tryOpen);
+  }, [board, selected]);
 
   const moveTask = useCallback(
     async (taskId: string, columnId: string, visibleIndex: number, confirmGate = false) => {
@@ -755,6 +776,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
           defaultManagerId={user?.id}
           onClose={() => setCreateIn(null)}
           onCreated={reloadBoard}
+          draft={createIn.draft}
         />
       )}
       {showProjectSettings && board && (

@@ -126,9 +126,10 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
    * строки поиска. Ровно этот баг мы ловили в поиске по чатам.
    */
   const seq = useRef(0);
-  const load = useCallback(async (f: RegistryFilters) => {
+  const load = useCallback(async (f: RegistryFilters, quiet = false) => {
     const mine = ++seq.current;
-    setLoading(true);
+    // тихое обновление по сигналу сервера — без скелета: список не мигает под рукой
+    if (!quiet) setLoading(true);
     try {
       const res = await api.taskRegistry(registryQuery(f));
       if (mine !== seq.current) return;
@@ -164,6 +165,10 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
   useEffect(() => {
     if (!active) return;
     void load(request);
+    // задачи меняют другие и сам человек в карточке — реестр обновляется на лету (#1531)
+    const refresh = () => { if (!document.hidden) void load(request, true); };
+    window.addEventListener('teamcrm:tasks-changed', refresh);
+    return () => window.removeEventListener('teamcrm:tasks-changed', refresh);
   }, [active, request, load]);
 
   // Справочники для фильтров грузим один раз при первом открытии раздела.

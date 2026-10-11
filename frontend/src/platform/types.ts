@@ -52,7 +52,13 @@ export interface NotificationsBridge {
   /** Только по явному действию человека: непрошеный запрос браузеры и ОС глушат. */
   requestPermission(): Promise<NotificationPermissionState>;
   /** Показать уведомление, когда приложение не на виду. Молча ничего не делает без разрешения. */
-  show(title: string, body: string, onClick?: () => void): void;
+  /** `key` — путь записи ящика: по нему уведомление потом убирается из шторки. */
+  show(title: string, body: string, onClick?: () => void, key?: string): void;
+  /**
+   * Убрать из шторки то, что уже прочитано (#1531): оставить только уведомления о
+   * непрочитанном, `null` — убрать все. Сопоставляем по пути, а без пути — по тексту.
+   */
+  prune(keep: { path: string | null; title: string; body: string }[] | null): void;
   /** Число на значке приложения / в заголовке вкладки. */
   setBadge(count: number): void;
   /**
