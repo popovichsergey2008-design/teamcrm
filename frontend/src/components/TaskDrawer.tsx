@@ -990,7 +990,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               // Обратная ссылка: из задачи видно, на какой встрече её поручили
               <div className="tv2-origin">
                 <Icon name="record" size={13} /> Создано по итогам встречи:{' '}
-                <button className="link-btn" onClick={() => navigate({ section: 'chat', view: 'meetings' })}>
+                <button className="link-btn" onClick={() => navigate({ section: 'chat', view: 'meetings', meetingId: meeting.meeting_id })}>
                   {meeting.title || 'встреча'}
                 </button>
               </div>

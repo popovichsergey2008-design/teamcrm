@@ -313,6 +313,19 @@ export class MeetingsRepository {
     );
   }
 
+  /**
+   * Занять черновик под создание задачи: из двух одновременных «Создать» пройдёт
+   * только один, второй получит false. Пока задача создаётся — статус 'applying'.
+   */
+  async claimDraft(id: string): Promise<boolean> {
+    const r = await this.db.query(`UPDATE meeting_task_drafts SET status='applying' WHERE id=$1 AND status='pending'`, [id]);
+    return (r.rowCount ?? 0) > 0;
+  }
+  /** Задачу создать не вышло — вернуть черновик в ожидание. */
+  async releaseDraft(id: string): Promise<void> {
+    await this.db.query(`UPDATE meeting_task_drafts SET status='pending' WHERE id=$1 AND status='applying'`, [id]);
+  }
+
   async markDraftApplied(id: string, taskId: string): Promise<void> {
     await this.db.query(`UPDATE meeting_task_drafts SET status='applied', task_id=$2 WHERE id=$1`, [id, taskId]);
   }

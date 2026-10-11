@@ -95,7 +95,7 @@ function hitRoute(h: SemanticHit): Route {
       ? { section: 'projects', projectId: String(h.projectId), taskId: String(h.sourceId) }
       : { section: 'projects' };
   }
-  if (h.sourceType === 'meeting') return { section: 'chat', view: 'meetings' };
+  if (h.sourceType === 'meeting') return { section: 'chat', view: 'meetings', meetingId: String(h.sourceId) };
   if (h.projectId) return { section: 'projects', projectId: String(h.projectId) };
   return { section: 'settings', tab: 'knowledge' };
 }

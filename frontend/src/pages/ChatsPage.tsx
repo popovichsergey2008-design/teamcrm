@@ -2645,7 +2645,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                         ))}
                         <button
                           className="ui-btn ui-btn-ghost ui-btn-sm"
-                          onClick={() => navigate({ section: 'chat', view: 'meetings' })}
+                          onClick={() => navigate({ section: 'chat', view: 'meetings', meetingId: String(m.meeting_id) })}
                           title="Стенограмма, сводка и предложенные задачи"
                         >
                           <Icon name="list" size={13} /> Открыть разбор

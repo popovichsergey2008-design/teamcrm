@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { AddressInfo } from 'net';
 import request from 'supertest';
 
+import { DbService } from '../src/database/db.service';
 import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/http/all-exceptions.filter';
 import { ResponseInterceptor } from '../src/common/http/response.interceptor';
@@ -16,6 +17,7 @@ import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
 describe('Разбор записей встреч (e2e)', () => {
   let app: INestApplication;
   let http$: any;
+  let db: DbService;
   const uniq = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
   const H = (t: string) => ({ Authorization: `Bearer ${t}` });
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -29,6 +31,7 @@ describe('Разбор записей встреч (e2e)', () => {
 
   beforeAll(async () => {
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    db = mod.get(DbService);
     app = mod.createNestApplication();
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
@@ -85,11 +88,18 @@ describe('Разбор записей встреч (e2e)', () => {
     const before = (await http$.get(`/api/projects/${project.id}/board`).set(H(tok)).expect(200)).body.data;
     expect(before.columns.flatMap((c: any) => c.tasks)).toHaveLength(0);
 
-    // подтверждение создаёт обычную задачу
-    const task = (await http$.post(`/api/meetings/drafts/${draft.id}/apply`).set(H(tok))
-      .send({ assigneeId: owner.user.id, projectId: project.id }).expect(201)).body.data;
+    // срок, названный на встрече, переходит в задачу
+    const due = new Date(Date.now() + 3 * 86400_000);
+    await db.query(`UPDATE meeting_task_drafts SET deadline_at = $2 WHERE id = $1`, [draft.id, due]);
+
+    // подтверждение создаёт обычную задачу; два одновременных нажатия — одну
+    const both = await Promise.all([0, 1].map(() => http$.post(`/api/meetings/drafts/${draft.id}/apply`).set(H(tok))
+      .send({ assigneeId: owner.user.id, projectId: project.id })));
+    expect(both.map((x: any) => x.status).sort()).toEqual([201, 409]);
+    const task = both.find((x: any) => x.status === 201).body.data;
     expect(task.title).toMatch(/беру интеграцию/i);
     expect(task.assignee_id).toBe(owner.user.id);
+    expect(new Date(task.deadline_at).getTime()).toBe(due.getTime());
 
     const after = (await http$.get(`/api/projects/${project.id}/board`).set(H(tok)).expect(200)).body.data;
     expect(after.columns.flatMap((c: any) => c.tasks)).toHaveLength(1);

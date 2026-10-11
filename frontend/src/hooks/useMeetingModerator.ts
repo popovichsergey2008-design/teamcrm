@@ -36,7 +36,7 @@ function tasksWord(n: number): string {
  * Живёт в App, а не в календаре: повестка нужна тому, кто занят другим и вот-вот
  * опоздает на встречу, а итог разбора — тому, кто со встречи уже вышел.
  */
-export function useMeetingModerator(enabled: boolean, onOpenFocus: () => void, onOpenMeetings: () => void): void {
+export function useMeetingModerator(enabled: boolean, onOpenFocus: () => void, onOpenMeetings: (meetingId: string) => void): void {
   const focus = useRef(onOpenFocus);
   const meetings = useRef(onOpenMeetings);
   useEffect(() => { focus.current = onOpenFocus; meetings.current = onOpenMeetings; }, [onOpenFocus, onOpenMeetings]);
@@ -59,7 +59,7 @@ export function useMeetingModerator(enabled: boolean, onOpenFocus: () => void, o
         ? `На вас: ${p.mine.slice(0, 3).join('; ')}`
         : `${p.decisions} решений, ${tasksWord(p.created)} создано, черновиков ${p.pending}`;
       showToast({ title: `Встреча разобрана: ${p.title}`, body, section: 'meetings' });
-      showNotification(`Встреча разобрана: ${p.title}`, body, () => meetings.current());
+      showNotification(`Встреча разобрана: ${p.title}`, body, () => meetings.current(p.meetingId));
     };
 
     socket.on('assistant.agenda', onAgenda);

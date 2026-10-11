@@ -529,16 +529,25 @@ export class MeetingsService {
     const columnId = draft.column_id && String(projectId) === String(draft.project_id)
       ? draft.column_id : undefined;
 
-    const task = await this.tasks.create(tenantId, {
-      projectId,
-      columnId,
-      title: (patch?.title ?? draft.title).slice(0, 255),
-      description: patch?.description ?? draft.description ?? undefined,
-      assigneeId: (patch?.assigneeId ?? draft.assignee_id) ?? undefined,
-      // Постановщик — тот, кто поручил на встрече. Нажавший «создать» лишь
-      // подтвердил чужое поручение, и приписывать его себе неправильно.
-      managerId: draft.author_id ?? undefined,
-    } as any, actorId);
+    if (!(await this.repo.claimDraft(draftId))) throw AppException.conflict('Черновик уже обработан');
+    let task: Awaited<ReturnType<TasksService['create']>>;
+    try {
+      task = await this.tasks.create(tenantId, {
+        projectId,
+        columnId,
+        title: (patch?.title ?? draft.title).slice(0, 255),
+        description: patch?.description ?? draft.description ?? undefined,
+        assigneeId: (patch?.assigneeId ?? draft.assignee_id) ?? undefined,
+        // Постановщик — тот, кто поручил на встрече. Нажавший «создать» лишь
+        // подтвердил чужое поручение, и приписывать его себе неправильно.
+        managerId: draft.author_id ?? undefined,
+        // срок, названный на встрече, раньше терялся здесь
+        deadlineAt: draft.deadline_at ? new Date(draft.deadline_at).toISOString() : undefined,
+      } as any, actorId);
+    } catch (e) {
+      await this.repo.releaseDraft(draftId);
+      throw e;
+    }
 
     await this.repo.markDraftApplied(draftId, task.id);
     void this.secretary.record({

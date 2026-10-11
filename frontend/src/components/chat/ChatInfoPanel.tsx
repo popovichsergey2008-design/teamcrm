@@ -669,11 +669,7 @@ function MeetingsBlock({ chatId }: { chatId: string }) {
               {m.summary ? <div className="ci-desc">{m.summary}</div> : <div className="dim">Итога пока нет.</div>}
               <button
                 className="ci-link"
-                onClick={() => {
-                  navigate({ section: 'chat', view: 'meetings' });
-                  // раздел встреч откроет разбор сам — событием, адреса у мита нет
-                  window.setTimeout(() => window.dispatchEvent(new CustomEvent('teamcrm:meeting-open', { detail: { id: m.id } })), 300);
-                }}
+                onClick={() => navigate({ section: 'chat', view: 'meetings', meetingId: m.id })}
               >
                 <Icon name="list" size={13} /> Открыть мит
               </button>

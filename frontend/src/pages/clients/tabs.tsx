@@ -305,7 +305,7 @@ export function MeetingsTab({ clientId, onCreate }: { clientId: string; onCreate
   const [data, setData] = useState<{ upcoming: ClientMeeting[]; past: ClientMeeting[] } | null>(null);
   useEffect(() => { api.clientMeetings(clientId).then(setData).catch(() => setData({ upcoming: [], past: [] })); }, [clientId]);
   const row = (m: ClientMeeting) => (
-    <button key={`${m.kind}${m.id}`} type="button" className="cl-item cl-item-btn" onClick={() => navigate(m.kind === 'meeting' ? { section: 'chat', view: 'meetings' } : { section: 'calendar' })}>
+    <button key={`${m.kind}${m.id}`} type="button" className="cl-item cl-item-btn" onClick={() => navigate(m.kind === 'meeting' ? { section: 'chat', view: 'meetings', meetingId: m.id } : { section: 'calendar' })}>
       <div className="cl-item-main"><Icon name={m.kind === 'meeting' ? 'video' : 'calendar'} size={14} /> <b>{m.title}</b></div>
       <div className="cl-fields dim">{dateTimeRu(m.startsAt)}{m.kind === 'meeting' ? ' · запись и итоги' : ''}</div>
     </button>

@@ -484,7 +484,7 @@ export function App() {
   useMeetingModerator(
     crmAlive,
     () => navigate({ section: 'focus' }),
-    () => navigate({ section: 'chat', view: 'meetings' }),
+    (meetingId) => navigate({ section: 'chat', view: 'meetings', meetingId }),
   );
   const { unread } = useChatNotifications(
     crmAlive,

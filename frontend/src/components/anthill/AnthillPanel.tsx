@@ -304,10 +304,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     if (s.kind === 'project') { navigate({ section: 'projects', projectId: String(s.id) }); return; }
     if (s.kind === 'client') { navigate({ section: 'clients', clientId: String(s.id) }); return; }
     if (s.kind === 'meeting') {
-      navigate({ section: 'chat', view: 'meetings' });
-      window.setTimeout(() => window.dispatchEvent(
-        new CustomEvent('teamcrm:meeting-open', { detail: { id: String(s.id) } }),
-      ), 300);
+      navigate({ section: 'chat', view: 'meetings', meetingId: String(s.id) });
       return;
     }
     const msg = /\/chat\/([^/#?]+)#m([^/#?]+)/.exec(url);
