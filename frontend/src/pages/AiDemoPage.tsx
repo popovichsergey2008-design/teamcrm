@@ -65,9 +65,13 @@ export function AiDemoPage() {
   useEffect(() => {
     if (phase !== 'processing' || !demo) return;
     let stop = false;
+    const since = Date.now();
     const check = async () => {
       const v = await api.aiDemoGet(demo.id).catch(() => null);
-      if (stop || !v) return;
+      if (stop) return;
+      // итогов нет минуту — не крутим вечно: «Сказать ещё раз» или текстом
+      if (Date.now() - since > 60_000 && (!v || v.status === 'processing')) { setPhase('failed'); return; }
+      if (!v) return;
       setView(v);
       if (v.status === 'review') { setPhase('review'); feedback('postcall.ready', { el: document.querySelector('.aid-review') }); }
       else if (v.status === 'failed') { setPhase('failed'); feedback('warning'); }

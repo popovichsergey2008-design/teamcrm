@@ -58,7 +58,9 @@ export class AiDemoRepository {
   async claimFinish(id: string, input: string): Promise<boolean> {
     const r = await this.db.query(
       `UPDATE onboarding_ai_demos SET status = 'processing', input = $2, error = NULL, ended_at = now(), updated_at = now()
-        WHERE id = $1 AND (status IN ('started','failed') OR (status = 'review' AND created_task_count = 0))`,
+        WHERE id = $1 AND (status IN ('started','failed') OR (status = 'review' AND created_task_count = 0)
+                           -- разбор оборвался (перезапуск сервера посреди него) — можно повторить
+                           OR (status = 'processing' AND updated_at < now() - interval '60 seconds'))`,
       [id, input],
     );
     return (r.rowCount ?? 0) > 0;
@@ -67,7 +69,7 @@ export class AiDemoRepository {
   async setStatus(id: string, status: string, patch: { error?: string | null; transcript?: string | null; summary?: string | null; audioSeconds?: number | null } = {}) {
     await this.db.query(
       `UPDATE onboarding_ai_demos
-          SET status = $2,
+          SET status = $2::text,
               error = $3,
               transcript = COALESCE($4, transcript),
               summary = COALESCE($5, summary),
