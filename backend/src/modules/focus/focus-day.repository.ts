@@ -115,7 +115,7 @@ export class FocusDayRepository {
               ORDER BY d.created_at DESC LIMIT 1
            ) mt ON TRUE
           WHERE t.tenant_id = $1 AND t.assignee_id = $2
-            AND t.closed_at IS NULL AND t.deleted_at IS NULL AND p.status <> 'archived'
+            AND t.closed_at IS NULL AND t.deleted_at IS NULL AND p.status <> 'archived' AND NOT p.is_demo
             AND lower(bc.name) <> ALL($3::text[])
           LIMIT 500`,
         [tenantId, userId, REVIEW_COLUMN_NAMES],
@@ -129,7 +129,7 @@ export class FocusDayRepository {
            LEFT JOIN users ua ON ua.id = t.assignee_id
           WHERE t.tenant_id = $1 AND t.created_by = $2
             AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
-            AND t.closed_at IS NULL AND t.deleted_at IS NULL AND p.status <> 'archived'
+            AND t.closed_at IS NULL AND t.deleted_at IS NULL AND p.status <> 'archived' AND NOT p.is_demo
             AND lower(bc.name) = ANY($3::text[])
           LIMIT 200`,
         [tenantId, userId, REVIEW_COLUMN_NAMES],

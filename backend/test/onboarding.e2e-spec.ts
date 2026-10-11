@@ -42,11 +42,11 @@ describe('онбординг владельца (e2e)', () => {
   };
   const step = (view: any, key: string) => view.steps.find((s: any) => s.key === key);
 
-  it('сразу после регистрации пройден один шаг из шести', async () => {
+  it('сразу после регистрации пройден один шаг из семи', async () => {
     const O = await owner('ob1');
     const view = (await http.get('/api/onboarding').set(O).expect(200)).body.data;
 
-    expect(view.total).toBe(6);
+    expect(view.total).toBe(7);
     expect(view.done).toBe(1);
     expect(step(view, 'workspace').done).toBe(true);
     expect(view.completed).toBe(false);
@@ -67,7 +67,8 @@ describe('онбординг владельца (e2e)', () => {
     // владелец-одиночка: ни отделов, ни приглашений — а путь пройден
     expect(step(view, 'team').done).toBe(false);
     expect(view.completed).toBe(true);
-    expect(view.next).toBe('company');
+    // после обязательного первым зовём попробовать ИИ-созвон (ТЗ-24)
+    expect(view.next).toBe('ai_demo');
   });
 
   it('«Позже» переживает перезаход, а обязательный шаг отложить нельзя', async () => {

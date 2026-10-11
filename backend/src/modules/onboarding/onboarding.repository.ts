@@ -54,7 +54,7 @@ export class OnboardingRepository {
    */
   async facts(tenantId: string, ownerUserId: string): Promise<Omit<OnboardingFacts, 'companyConfirmed'>> {
     const row = await this.db.one<{
-      departments: number; teammates: number; invites: number; projects: number; tasks: number;
+      departments: number; teammates: number; invites: number; projects: number; tasks: number; ai_demo: string | null;
     }>(
       `SELECT
          (SELECT COUNT(*)::int FROM groups g
@@ -64,10 +64,14 @@ export class OnboardingRepository {
            WHERE u.tenant_id = $1 AND u.is_active AND u.id <> $2 AND r.code <> 'client') AS teammates,
          (SELECT COUNT(*)::int FROM invites i WHERE i.tenant_id = $1)
          + (SELECT COUNT(*)::int FROM invite_links l WHERE l.tenant_id = $1) AS invites,
+         -- демо-проект (ТЗ-24) — не «первый проект»: после демо зовём создать настоящий
          (SELECT COUNT(*)::int FROM projects p
-           WHERE p.tenant_id = $1 AND p.status <> 'archived') AS projects,
+           WHERE p.tenant_id = $1 AND p.status <> 'archived' AND NOT p.is_demo) AS projects,
          (SELECT COUNT(*)::int FROM tasks t
-           WHERE t.tenant_id = $1 AND t.deleted_at IS NULL) AS tasks`,
+           WHERE t.tenant_id = $1 AND t.deleted_at IS NULL) AS tasks,
+         (SELECT CASE WHEN bool_or(d.created_task_count > 0 OR d.status = 'completed') THEN 'done'
+                      WHEN bool_or(d.status = 'skipped') THEN 'skipped' END
+            FROM onboarding_ai_demos d WHERE d.tenant_id = $1 AND d.user_id = $2) AS ai_demo`,
       [tenantId, ownerUserId],
     );
     return {
@@ -76,6 +80,7 @@ export class OnboardingRepository {
       invites: row?.invites ?? 0,
       projects: row?.projects ?? 0,
       tasks: row?.tasks ?? 0,
+      aiDemo: row?.ai_demo === 'done' || row?.ai_demo === 'skipped' ? row.ai_demo : null,
     };
   }
 

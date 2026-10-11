@@ -33,7 +33,7 @@ export class NewsFactsRepository {
          FROM tasks t JOIN projects p ON p.id = t.project_id
     LEFT JOIN users u ON u.id = t.assignee_id
         WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at >= $2 AND t.closed_at < $3
-          AND COALESCE(p.visibility, 'all') = 'all'
+          AND COALESCE(p.visibility, 'all') = 'all' AND NOT p.is_demo
         ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END, t.closed_at DESC`,
       [tenantId, from, to],
     );
@@ -43,7 +43,7 @@ export class NewsFactsRepository {
     const row = await this.db.one<{ n: number }>(
       `SELECT count(*)::int AS n FROM tasks t JOIN projects p ON p.id = t.project_id
         WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at >= $2 AND t.closed_at < $3
-          AND COALESCE(p.visibility, 'all') = 'all'`,
+          AND COALESCE(p.visibility, 'all') = 'all' AND NOT p.is_demo`,
       [tenantId, from, to],
     );
     return Number(row?.n ?? 0);
@@ -144,7 +144,7 @@ export class NewsFactsRepository {
               count(*) FILTER (WHERE t.closed_at IS NOT NULL)::int AS closed,
               max(t.closed_at) AS last_closed, to_char(p.target_date, 'YYYY-MM-DD') AS target_date
          FROM projects p JOIN tasks t ON t.project_id = p.id AND t.deleted_at IS NULL
-        WHERE p.tenant_id = $1 AND COALESCE(p.status, 'active') <> 'archived'
+        WHERE p.tenant_id = $1 AND COALESCE(p.status, 'active') <> 'archived' AND NOT p.is_demo
         GROUP BY p.id
        HAVING count(*) FILTER (WHERE t.closed_at IS NULL) = 0
           AND count(*) FILTER (WHERE t.closed_at IS NOT NULL) >= 3
@@ -158,7 +158,7 @@ export class NewsFactsRepository {
     return this.db.many<{ id: string; title: string; project_id: string; project_name: string; visibility: string }>(
       `SELECT t.id::text, t.title, t.project_id::text, p.name AS project_name, COALESCE(p.visibility, 'all') AS visibility
          FROM tasks t JOIN projects p ON p.id = t.project_id
-        WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at > now() - interval '48 hours'
+        WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at > now() - interval '48 hours' AND NOT p.is_demo
           AND EXISTS (SELECT 1 FROM task_labels tl JOIN labels l ON l.id = tl.label_id
                        WHERE tl.task_id = t.id AND l.name ILIKE 'релиз%')`,
       [tenantId],

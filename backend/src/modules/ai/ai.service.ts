@@ -22,6 +22,8 @@ const estimateTokens = (s: string) => Math.ceil(s.length / 4);
 export class AiService {
   private readonly logger = new Logger('AI');
   private readonly parserModel: string;
+  /** Ключ OpenAI только для демо онбординга (ТЗ-24): у новой компании своего ключа нет. */
+  private readonly demoOpenai: string | undefined;
 
   constructor(
     config: ConfigService,
@@ -32,6 +34,39 @@ export class AiService {
     private readonly gateway: AiGateway,
   ) {
     this.parserModel = config.get<string>('AI_PARSER_MODEL') ?? 'claude-haiku-4-5';
+    this.demoOpenai = config.get<string>('DEMO_OPENAI_API_KEY') || undefined;
+  }
+
+  /**
+   * ИИ для демо в онбординге (ТЗ-24, решение 11.10). Свой ключ компании — если есть;
+   * иначе ключ демо с сервера (только на демо, с лимитом попыток у вызывающего).
+   * null — ни того, ни другого: демо идёт правилами, речь распознаёт браузер.
+   */
+  async demoAi(tenantId: string): Promise<{
+    transcribe: ((audio: Buffer, filename: string) => Promise<string>) | null;
+    generate: ((system: string, user: string) => Promise<string>) | null;
+  }> {
+    const s = await this.settings.resolve(tenantId);
+    const own = s.openaiKey || s.anthropicKey || s.openrouterKey
+      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel, s.openrouterKey) : null;
+    const demo = this.demoOpenai ? new RealAiProvider(this.demoOpenai, undefined, 'gpt-4o-mini', 'gpt-4o-mini') : null;
+    // Whisper — только OpenAI: компания с ключом Anthropic распознаёт речь ключом демо
+    const stt = s.openaiKey ? own : demo;
+    const llm = own ?? demo;
+    return {
+      transcribe: stt ? async (audio, filename) => {
+        const text = await stt.transcribeAudio(audio, filename);
+        // Whisper — по минутам звука; ~4 КБ на секунду webm/opus
+        await this.recordUsage(tenantId, 'onboarding_demo', 'whisper-1', 0, 0, false,
+          Number(((audio.length / 4000 / 60) * 0.006).toFixed(4))).catch(() => undefined);
+        return text;
+      } : null,
+      generate: llm ? async (system, user) => {
+        const text = await llm.generate(system, user, { maxTokens: 700 });
+        await this.recordUsage(tenantId, 'onboarding_demo', own ? 'tenant' : 'gpt-4o-mini', 0, 0, false, 0.001).catch(() => undefined);
+        return text;
+      } : null,
+    };
   }
 
   /**

@@ -38,7 +38,7 @@ export class PulseRepository {
                 COALESCE((SELECT max(m.created_at) FROM chat_messages m WHERE m.task_id = t.id AND m.deleted_at IS NULL AND NOT m.is_ai), t.created_at)
               ) AS "lastMove"
          FROM tasks t
-         JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
+         JOIN projects p ON p.id = t.project_id AND p.status <> 'archived' AND NOT p.is_demo
          JOIN board_columns bc ON bc.id = t.column_id
     LEFT JOIN users ua ON ua.id = t.assignee_id
     LEFT JOIN users uc ON uc.id = t.created_by
@@ -121,7 +121,7 @@ export class PulseRepository {
               ]::int[] AS weekly
          FROM projects p
     LEFT JOIN tasks t ON t.project_id = p.id AND t.tenant_id = p.tenant_id AND t.deleted_at IS NULL
-        WHERE p.tenant_id = $1 AND p.status <> 'archived'
+        WHERE p.tenant_id = $1 AND p.status <> 'archived' AND NOT p.is_demo
         GROUP BY p.id, p.name, p.target_date`,
       [tenantId],
     );
@@ -146,7 +146,7 @@ export class PulseRepository {
       this.db.many<any>(
         `SELECT t.id::text, t.title, ua.full_name AS who, t.updated_at AS since, t.deadline_at AS "dueAt", t.id::text AS "taskId",
                 t.project_id::text AS "projectId", t.priority
-           FROM tasks t JOIN board_columns bc ON bc.id = t.column_id JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
+           FROM tasks t JOIN board_columns bc ON bc.id = t.column_id JOIN projects p ON p.id = t.project_id AND p.status <> 'archived' AND NOT p.is_demo
       LEFT JOIN users ua ON ua.id = t.assignee_id
           WHERE t.tenant_id=$1 AND t.created_by=$2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
             AND t.closed_at IS NULL AND t.deleted_at IS NULL AND lower(bc.name) = ANY($3::text[]) LIMIT 50`, [tenantId, userId, REVIEW_COLUMN_NAMES]),

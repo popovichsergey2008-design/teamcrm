@@ -58,6 +58,9 @@ x-api-env: &api-env
   # отправки — это рабочий режим, а не ошибка. APP_BASE_URL нужен для ссылок
   # в письмах: по адресу с самоподписанным сертификатом их никто не откроет.
   BREVO_API_KEY: ${BREVO_API_KEY:-}
+  # Ключ OpenAI только для демо «ИИ-созвон за 30 секунд» в онбординге (ТЗ-24): у новой
+  # компании своего ключа нет. Пусто — демо идёт правилами, речь распознаёт браузер.
+  DEMO_OPENAI_API_KEY: ${DEMO_OPENAI_API_KEY:-}
   MAIL_FROM: ${MAIL_FROM:-noreply@anthill.team}
   MAIL_FROM_NAME: ${MAIL_FROM_NAME:-QEVO}
   APP_BASE_URL: ${APP_BASE_URL:-https://qevo.one}

@@ -8,7 +8,7 @@ const EMPTY: OnboardingFacts = {
 describe('путь владельца: шаги и завершение', () => {
   it('сразу после регистрации пройден только первый шаг', () => {
     const steps = buildSteps(EMPTY);
-    expect(progress(steps)).toEqual({ done: 1, total: 6 });
+    expect(progress(steps)).toEqual({ done: 1, total: 7 });
     expect(steps[0].key).toBe('workspace');
     expect(steps[0].done).toBe(true);
     expect(isComplete(steps)).toBe(false);
@@ -48,12 +48,14 @@ describe('путь владельца: шаги и завершение', () => 
   it('зовём сначала к обязательному, отложенное не предлагаем', () => {
     // всё открыто — первым зовём к проекту, а не к настройкам компании
     expect(nextStep(buildSteps(EMPTY))?.key).toBe('project');
-    // проект и задача есть — остаётся необязательное, по порядку
-    expect(nextStep(buildSteps({ ...EMPTY, projects: 1, tasks: 1 }))?.key).toBe('company');
+    // проект и задача есть — остаётся необязательное, по порядку: первым — демо ИИ-созвона (ТЗ-24)
+    expect(nextStep(buildSteps({ ...EMPTY, projects: 1, tasks: 1 }))?.key).toBe('ai_demo');
+    // демо пропустили — к нему больше не зовём
+    expect(nextStep(buildSteps({ ...EMPTY, projects: 1, tasks: 1, aiDemo: 'skipped' }))?.key).toBe('company');
     // отложенное пропускаем
-    expect(nextStep(buildSteps({ ...EMPTY, projects: 1, tasks: 1 }, ['company']))?.key).toBe('departments');
+    expect(nextStep(buildSteps({ ...EMPTY, projects: 1, tasks: 1, aiDemo: 'done' }, ['company']))?.key).toBe('departments');
     // не осталось ничего — звать некуда
-    const all = { companyConfirmed: true, departments: 1, teammates: 1, invites: 0, projects: 1, tasks: 1 };
+    const all = { companyConfirmed: true, departments: 1, teammates: 1, invites: 0, projects: 1, tasks: 1, aiDemo: 'done' as const };
     expect(nextStep(buildSteps(all))).toBeNull();
   });
 

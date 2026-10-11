@@ -1,4 +1,10 @@
 import { Module } from '@nestjs/common';
+import { AiModule } from '../ai/ai.module';
+import { ProjectsModule } from '../projects/projects.module';
+import { TasksModule } from '../tasks/tasks.module';
+import { AiDemoController } from './ai-demo.controller';
+import { AiDemoRepository } from './ai-demo.repository';
+import { AiDemoService } from './ai-demo.service';
 import { OnboardingController } from './onboarding.controller';
 import { OnboardingRepository } from './onboarding.repository';
 import { OnboardingService } from './onboarding.service';
@@ -10,8 +16,9 @@ import { OnboardingService } from './onboarding.service';
  * и приглашения — то есть ни одному из этих модулей не принадлежит.
  */
 @Module({
-  controllers: [OnboardingController],
-  providers: [OnboardingService, OnboardingRepository],
-  exports: [OnboardingService],
+  imports: [AiModule, ProjectsModule, TasksModule],
+  controllers: [OnboardingController, AiDemoController],
+  providers: [OnboardingService, OnboardingRepository, AiDemoService, AiDemoRepository],
+  exports: [OnboardingService, AiDemoService],
 })
 export class OnboardingModule {}

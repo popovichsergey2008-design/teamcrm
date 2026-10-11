@@ -44,7 +44,7 @@ export class RadarRepository {
               MIN(t.deadline_at) FILTER (WHERE t.closed_at IS NULL) AS next_deadline
          FROM projects p
          LEFT JOIN tasks t ON t.project_id = p.id AND t.tenant_id = p.tenant_id AND t.deleted_at IS NULL
-        WHERE p.tenant_id = $1 AND p.status <> 'archived'
+        WHERE p.tenant_id = $1 AND p.status <> 'archived' AND NOT p.is_demo
         GROUP BY p.id, p.name
         ORDER BY overdue DESC, total DESC
         LIMIT 30`,
@@ -72,7 +72,7 @@ export class RadarRepository {
            SELECT t.id, t.assignee_id, t.deadline_at
              FROM tasks t
              JOIN projects p ON p.id = t.project_id
-            WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at IS NULL AND p.status <> 'archived'
+            WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at IS NULL AND p.status <> 'archived' AND NOT p.is_demo
          ) t ON t.assignee_id = u.id
          JOIN roles r ON r.id = u.role_id
         WHERE u.tenant_id = $1 AND u.is_active AND r.code <> 'client'
@@ -99,7 +99,7 @@ export class RadarRepository {
          LEFT JOIN users u ON u.id = t.assignee_id
         WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
           AND t.closed_at IS NULL
-          AND p.status <> 'archived'
+          AND p.status <> 'archived' AND NOT p.is_demo
           AND lower(bc.name) = ANY($3::text[])
           AND t.updated_at < now() - make_interval(hours => $2::int)
         ORDER BY t.updated_at ASC
