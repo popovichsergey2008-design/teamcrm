@@ -12,6 +12,7 @@ import { toastSaved } from '../../lib/notifications';
 import { navigate } from '../../lib/router';
 import type { User } from '../../types';
 import { initialsOf } from '../../lib/initials';
+import { confirmAction } from '../ui/dialog';
 
 const KIND_LABEL: Record<string, string> = {
   dm: 'Личный диалог', group: 'Групповой чат', channel: 'Канал', project: 'Чат проекта',
@@ -24,7 +25,7 @@ const AUDIT_LABEL: Record<string, string> = {
   members_added: 'добавил(а) участников', member_removed: 'убрал(а) участника',
   admin_granted: 'назначил(а) администратора', admin_revoked: 'снял(а) администратора',
   pinned: 'закрепил(а) сообщение', unpinned: 'открепил(а) сообщение', task_created: 'создал(а) задачу из сообщения',
-  call_started: 'начал(а) созвон',
+  call_started: 'начал(а) созвон', guest_removed: 'убрал(а) внешнего участника',
 };
 type Tab = 'media' | 'files' | 'links' | 'voice' | 'docs';
 const TABS: { key: Tab; label: string }[] = [
@@ -124,15 +125,36 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
             <div className="ci-role-group">
               <div className="ci-role-title">Внешние</div>
               {info.guests.map((g) => (
-                <div key={g} className="ci-member">
+                <div key={g.name} className="ci-member">
                   <span className="bar-avatar"><span className="bar-task-mark" aria-hidden="true">⇢</span></span>
                   <span className="ci-member-main">
-                    <span className="ci-member-name">{g}</span>
+                    <span className="ci-member-name">{g.name}</span>
                     <span className="bar-status">внешний пользователь · видит только этот чат</span>
                   </span>
+                  {/* Убрать гостя (#1539): доступ по ссылке у него пропадает сразу */}
+                  {me.canManageGuests && (
+                    <button
+                      className="ui-btn ui-btn-ghost ui-btn-sm"
+                      title={`Убрать ${g.name} из чата — доступ по ссылке пропадёт сразу`}
+                      aria-label={`Убрать ${g.name} из чата`}
+                      onClick={async () => {
+                        if (!await confirmAction({
+                          title: `Убрать ${g.name} из чата?`,
+                          description: 'Человек сразу потеряет доступ к переписке по ссылке. Чтобы по той же ссылке не вошёл кто-то другой, отзовите и её.',
+                          confirmLabel: 'Убрать', danger: true,
+                        })) return;
+                        try { await api.removeChatGuest(chatId, g.name); load(); } catch { /* ошибка видна всплывашкой запроса */ }
+                      }}
+                    >
+                      <Icon name="close" size={13} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
+          )}
+          {info.guestLinks.length > 0 && (
+            <GuestLinksBlock links={info.guestLinks} canRevoke={me.canManageGuests || me.canManage} onChanged={load} />
           )}
         </Section>
 
@@ -166,8 +188,96 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
         <Section title="История" open={open.history} onToggle={() => toggle('history')}>
           <HistoryBlock chatId={chatId} />
         </Section>
+
+        {/* Удалить чат целиком — тому, кто его завёл. Раньше создатель не мог ни выйти,
+            ни удалить: чат оставался висеть у всех навсегда. */}
+        {me.canDelete && (
+          <div className="ci-danger-zone">
+            <button
+              className="ci-link ci-leave"
+              onClick={async () => {
+                if (!await confirmAction({
+                  title: 'Удалить чат для всех?',
+                  description: 'Переписка, файлы и закреплённое исчезнут у всех участников, а гостевые ссылки перестанут действовать. Вернуть чат будет нельзя.',
+                  confirmLabel: 'Удалить чат', danger: true,
+                })) return;
+                try { await api.deleteChat(chatId); onLeft(); onChanged(); } catch { /* ошибка видна всплывашкой запроса */ }
+              }}
+            >
+              <Icon name="trash" size={13} /> Удалить чат
+            </button>
+          </div>
+        )}
       </div>
     </aside>
+  );
+}
+
+/** Сколько осталось до конца срока — человеческой строкой. */
+function leftLabel(ms: number): string {
+  if (ms <= 0) return 'срок вышел';
+  const min = Math.floor(ms / 60_000);
+  const d = Math.floor(min / 1440); const h = Math.floor((min % 1440) / 60); const m = min % 60;
+  if (d > 0) return `ещё ${d} д ${h} ч`;
+  if (h > 0) return `ещё ${h} ч ${m} мин`;
+  if (min > 0) return `ещё ${m} мин`;
+  return `ещё ${Math.ceil(ms / 1000)} с`;
+}
+
+/**
+ * Ссылки для внешних, выданные в этом чате (#1539): сколько каждой осталось действовать —
+ * обратным отсчётом, и «Отозвать». Отзыв закрывает доступ сразу: и в переписку,
+ * и в созвон по этой ссылке.
+ */
+function GuestLinksBlock({ links, canRevoke, onChanged }: {
+  links: ChatInfo['guestLinks']; canRevoke: boolean; onChanged: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  const soonest = Math.min(...links.map((l) => new Date(l.expiresAt).getTime() - now));
+  const lastHour = soonest < 3600_000;
+  const expired = soonest <= 0;
+  // в последний час — по секундам, иначе раз в полминуты: отсчёт не должен грузить вкладку
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), lastHour ? 1000 : 30_000);
+    return () => window.clearInterval(t);
+  }, [lastHour]);
+  // срок вышел — ссылка уже не действует, перечитываем сведения
+  useEffect(() => { if (expired) onChanged(); }, [expired, onChanged]);
+
+  return (
+    <div className="ci-role-group">
+      <div className="ci-role-title">Ссылки для внешних</div>
+      {links.map((l) => {
+        const left = new Date(l.expiresAt).getTime() - now;
+        return (
+          <div key={l.id} className="ci-member">
+            <span className="bar-avatar"><Icon name="link" size={14} /></span>
+            <span className="ci-member-main">
+              <span className="ci-member-name">{l.label || 'Ссылка для гостя'}</span>
+              <span className={`bar-status${left < 3600_000 ? ' ci-link-soon' : ''}`} title={`Действует до ${new Date(l.expiresAt).toLocaleString('ru-RU')}`}>
+                действует {leftLabel(left)}{l.uses ? ` · входов: ${l.uses}` : ''}{l.author ? ` · выдал(а) ${l.author}` : ''}
+              </span>
+            </span>
+            {(canRevoke || l.mine) && (
+              <button
+                className="ui-btn ui-btn-ghost ui-btn-sm"
+                title="Отозвать ссылку: по ней больше никого не пустит, а вошедшие потеряют доступ"
+                onClick={async () => {
+                  if (!await confirmAction({
+                    title: 'Отозвать ссылку?',
+                    description: 'Все, кто вошёл по ней, сразу потеряют доступ к переписке и созвону. Новых по ней не пустит.',
+                    confirmLabel: 'Отозвать', danger: true,
+                  })) return;
+                  try { await api.revokeGuestLink(l.id); onChanged(); } catch { /* ошибка видна всплывашкой запроса */ }
+                }}
+              >
+                Отозвать
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

@@ -400,6 +400,14 @@ export class ChatsRepository {
        ON CONFLICT (root_id, user_id) DO UPDATE SET last_read_at = now()`,
       [rootId, userId, tenantId],
     );
+    // упоминание внутри ветки прочитано вместе с веткой (#1538)
+    await this.db.query(
+      `UPDATE chat_mentions n SET seen_at = now()
+         FROM chat_messages m
+        WHERE n.tenant_id=$1 AND n.user_id=$2 AND n.seen_at IS NULL
+          AND m.id = n.message_id AND (m.id = $3::bigint OR m.thread_root_id = $3::bigint)`,
+      [tenantId, userId, rootId],
+    );
   }
 
   /** Сообщение по id: нужно, чтобы проверить, что отвечают в том же чате. */
@@ -1145,6 +1153,18 @@ export class ChatsRepository {
        ON CONFLICT (chat_id, user_id) DO UPDATE SET last_read_at = now(), marked_unread = false`,
       [chatId, userId, tenantId],
     );
+    /*
+      Прочитал чат — прочитал и упоминания в его ленте (#1538). Раньше они гасли только
+      заходом во «Входящие»: сообщение давно прочитано, а уведомление о нём висит.
+      Упоминания в ветках не трогаем — их гасит открытая ветка (markThreadRead).
+    */
+    await this.db.query(
+      `UPDATE chat_mentions n SET seen_at = now()
+         FROM chat_messages m
+        WHERE n.tenant_id=$1 AND n.user_id=$2 AND n.seen_at IS NULL
+          AND m.id = n.message_id AND m.chat_id = $3 AND m.thread_root_id IS NULL`,
+      [tenantId, userId, chatId],
+    );
   }
 
   /**
@@ -1330,13 +1350,101 @@ export class ChatsRepository {
     return this.db.many(`SELECT user_id, notify FROM chat_members WHERE chat_id=$1`, [chatId]);
   }
 
-  /** Внешние участники: у гостя по ссылке нет учётки, есть только имя в сообщениях. */
-  guestNames(tenantId: string, chatId: string): Promise<{ guest_name: string }[]> {
+  // ── внешние участники (#1539) ──
+
+  /** Гость вошёл по ссылке чата: запоминаем, чтобы его можно было убрать. */
+  async addGuest(i: { tenantId: string; chatId: string; gid: string; name: string; linkId: string | null }): Promise<void> {
+    await this.db.query(
+      `INSERT INTO chat_guests (tenant_id, chat_id, gid, name, link_id) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (gid) WHERE gid IS NOT NULL DO NOTHING`,
+      [i.tenantId, i.chatId, i.gid, i.name.slice(0, 60), i.linkId],
+    );
+  }
+
+  /**
+   * Внешние участники чата — по одному на имя.
+   *
+   * Имя, а не вход: один и тот же человек заходит по ссылке с телефона и с компьютера,
+   * и в списке это один человек. Гости, писавшие до таблицы chat_guests, берутся из
+   * подписей сообщений — иначе убрать их было бы нельзя.
+   */
+  guests(tenantId: string, chatId: string): Promise<{ name: string; last_at: Date | null }[]> {
     return this.db.many(
-      `SELECT DISTINCT guest_name FROM chat_messages
-        WHERE tenant_id=$1 AND chat_id=$2 AND guest_name IS NOT NULL AND deleted_at IS NULL ORDER BY guest_name`,
+      `WITH seen AS (
+         SELECT name, joined_at AS at FROM chat_guests WHERE tenant_id=$1 AND chat_id=$2 AND removed_at IS NULL
+         UNION ALL
+         SELECT guest_name, created_at FROM chat_messages
+          WHERE tenant_id=$1 AND chat_id=$2 AND guest_name IS NOT NULL AND deleted_at IS NULL
+       )
+       SELECT s.name, max(s.at) AS last_at FROM seen s
+        WHERE NOT EXISTS (SELECT 1 FROM chat_guests r
+                           WHERE r.tenant_id=$1 AND r.chat_id=$2 AND r.removed_at IS NOT NULL
+                             AND lower(r.name) = lower(s.name)
+                             AND r.removed_at >= s.at)
+        GROUP BY s.name ORDER BY s.name`,
       [tenantId, chatId],
     );
+  }
+
+  /**
+   * Убрать гостя: все его входы под этим именем помечаются удалёнными.
+   * Если входов в таблице нет (писал до неё) — заводим строку-отметку.
+   */
+  async removeGuest(tenantId: string, chatId: string, name: string, by: string): Promise<void> {
+    const updated = await this.db.query(
+      `UPDATE chat_guests SET removed_at=now(), removed_by=$4
+        WHERE tenant_id=$1 AND chat_id=$2 AND lower(name)=lower($3) AND removed_at IS NULL`,
+      [tenantId, chatId, name, by],
+    );
+    if (!updated.rowCount) {
+      await this.db.query(
+        `INSERT INTO chat_guests (tenant_id, chat_id, gid, name, removed_at, removed_by) VALUES ($1,$2,NULL,$3,now(),$4)`,
+        [tenantId, chatId, name.slice(0, 60), by],
+      );
+    }
+  }
+
+  /**
+   * Убран ли гость с этим входом.
+   *
+   * По gid — точно этот вход. По имени — только отметки, поставленные ПОСЛЕ входа:
+   * иначе человек, которого убрали неделю назад и позвали снова новой ссылкой,
+   * не смог бы войти под своим же именем.
+   */
+  async guestRemoved(tenantId: string, chatId: string, gid: string, name: string): Promise<boolean> {
+    const row = await this.db.one<{ removed: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM chat_guests r
+          WHERE r.tenant_id=$1 AND r.chat_id=$2 AND r.removed_at IS NOT NULL
+            AND (r.gid = $3::uuid OR (lower(r.name) = lower($4) AND r.removed_at >= COALESCE(
+                  (SELECT g.joined_at FROM chat_guests g WHERE g.gid = $3::uuid), '-infinity'::timestamptz)))
+       ) AS removed`,
+      [tenantId, chatId, gid, name],
+    );
+    return !!row?.removed;
+  }
+
+  /** Живые ссылки чата — со сроком: в карточке чата виден обратный отсчёт. */
+  guestLinks(tenantId: string, chatId: string): Promise<{ id: string; label: string | null; expires_at: Date; starts_at: Date | null; uses: number; author: string | null; created_by: string | null }[]> {
+    return this.db.many(
+      `SELECT l.id, l.label, l.expires_at, l.starts_at, l.uses, l.created_by, u.full_name AS author
+         FROM meet_guest_links l LEFT JOIN users u ON u.id = l.created_by
+        WHERE l.tenant_id=$1 AND l.chat_id=$2 AND l.kind='guest' AND l.revoked_at IS NULL AND l.expires_at > now()
+        ORDER BY l.expires_at`,
+      [tenantId, chatId],
+    );
+  }
+
+  /** Удаление чата целиком — переписка, участники и связи уходят каскадом. Ссылки гасим заранее. */
+  async deleteChat(tenantId: string, chatId: string): Promise<boolean> {
+    return this.db.withTransaction(async (c) => {
+      await c.query(
+        `UPDATE meet_guest_links SET revoked_at=now() WHERE tenant_id=$1 AND chat_id=$2 AND revoked_at IS NULL`,
+        [tenantId, chatId],
+      );
+      const r = await c.query(`DELETE FROM chats WHERE tenant_id=$1 AND id=$2`, [tenantId, chatId]);
+      return (r.rowCount ?? 0) > 0;
+    });
   }
 
   // ── связи с CRM (conversation_links) ──

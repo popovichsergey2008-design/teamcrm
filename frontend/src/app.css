@@ -3620,6 +3620,17 @@
 .dp-pop.dp-up { bottom: calc(100% + 6px); }
 .dp-pop.dp-down { top: calc(100% + 6px); }
 .dp-pop.dp-right { left: auto; right: 0; }
+/* Телефон (#1541): календарь — лист у нижнего края, вне окна, на всю ширину.
+   z-index выше окон-листов, иначе он оказывается под окном создания задачи. */
+.dp-sheet-backdrop { position: fixed; inset: 0; z-index: 1190; background: rgba(0, 0, 0, .35); }
+.dp-pop.dp-sheet {
+  position: fixed; z-index: 1200; left: 8px; right: 8px; width: auto; max-width: 420px; margin: 0 auto;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding: 12px;
+}
+.dp-sheet .dp-day { min-height: 40px; }
+.dp-sheet .dp-nav { min-width: 40px; min-height: 36px; }
+.dp-sheet .dp-chip { min-height: 34px; padding-inline: 12px; }
+.dp-chip-done { margin-left: auto; color: var(--text); border-color: var(--accent); }
 .dp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .dp-month { font-size: calc(13px * var(--fs-scale)); font-weight: 600; text-transform: capitalize; }
 .dp-nav {
@@ -3893,6 +3904,8 @@
 }
 .menu-status-btn:hover { color: var(--text); border-color: var(--border-2); }
 .menu-status-btn.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
+/* «Мой статус» на экране «Фокус дня» (#1535): на узком экране кнопки переносятся */
+.my-status, .my-status .menu-status { flex-wrap: wrap; }
 .menu-status-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .menu-theme {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
@@ -4187,7 +4200,7 @@
 .voice-fab:focus-visible, .call-pill-btn:focus-visible, .call-pill-back:focus-visible,
 .project-item:focus-visible, .menu-item:focus-visible,
 .add-column:focus-visible, .chat-ai-toggle:focus-visible, .chat-row:focus-visible,
-.col-btn:focus-visible, .dp-chip:focus-visible, .dp-nav:focus-visible, .dp-trigger:focus-visible,
+.col-btn:focus-visible, .call-ai-status:focus-visible, .dp-chip:focus-visible, .dp-nav:focus-visible, .dp-trigger:focus-visible,
 .file-link:focus-visible, .group-chip:focus-visible, .label-chip:focus-visible,
 .list-row:focus-visible, .member-chip:focus-visible, .notify-row:focus-visible,
 .profile-nav button:focus-visible, .project-del:focus-visible, .sidebar-tab:focus-visible,
@@ -4356,6 +4369,13 @@
 .call-ai-status.on { color: var(--ok); }
 .call-ai-status.on .call-ai-dot { background: var(--ok); animation: voice-bar 1.6s ease-in-out infinite; }
 .call-ai-what { font-size: var(--fs-xs); }
+.call-ai-status { background: none; border: 1px solid transparent; border-radius: 999px; padding: 2px 8px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.call-ai-status:hover:not(:disabled) { border-color: var(--border-2); color: var(--text); }
+.call-ai-status:disabled { cursor: default; }
+/* на телефоне статус — заметная кнопка: это самый короткий путь включить ИИ */
+@media (max-width: 640px) {
+  .call-ai-status { margin-left: 6px; padding: 4px 10px; border-color: var(--border-2); min-height: 30px; }
+}
 
 /* ───── Реестр задач ─────
    Список, а не карточки: реестр читают по столбцам — срок, исполнитель, проект.
@@ -4736,6 +4756,9 @@
 .ci-link:hover { text-decoration: underline; }
 .ci-link:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .ci-leave { color: var(--danger); margin-top: 6px; }
+/* ссылке для гостя осталось меньше часа — отсчёт заметнее */
+.ci-link-soon { color: var(--warn, var(--danger)); }
+.ci-danger-zone { padding: 10px 14px 14px; border-top: 1px solid var(--border); }
 .ci-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 6px 0 0; font-size: var(--fs-xs); }
 .ci-facts dt { color: var(--text-mut); }
 .ci-facts dd { margin: 0; word-break: break-word; }

@@ -59,6 +59,23 @@ export class InboxRepository {
     return Number(row?.n ?? 0);
   }
 
+  /**
+   * Прочитал переписку — гаснут и её уведомления в ящике (#1538).
+   *
+   * Ящик знал о прочтении только по щелчку по самому уведомлению: человек читал
+   * сообщение в чате или в ветке, а значок на иконке приложения и запись в ящике
+   * висели, пока он не открывал уведомления. Путь у записи — тот же, что строит
+   * PushService.chatMessage: лента чата или конкретная ветка.
+   */
+  async markPathRead(userId: string, path: string): Promise<number> {
+    const r = await this.db.query(
+      `UPDATE notification_inbox SET read_at=now()
+        WHERE user_id=$1 AND path=$2 AND read_at IS NULL AND event_key IN ('chat.message', 'chat.mention')`,
+      [userId, path],
+    );
+    return r.rowCount ?? 0;
+  }
+
   markRead(userId: string, upToId: string) {
     return this.db.query(
       `UPDATE notification_inbox SET read_at=now() WHERE user_id=$1 AND id<=$2 AND read_at IS NULL`,

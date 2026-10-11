@@ -94,6 +94,9 @@ class MessageEditDto {
   @IsString() @MaxLength(8000, { message: 'Сообщение длиннее 8000 знаков' }) body!: string;
 }
 
+class RemoveGuestDto {
+  @IsString() @MaxLength(60) name!: string;
+}
 class RenameDto {
   @IsString() @MaxLength(160) title!: string;
 }
@@ -503,6 +506,18 @@ export class ChatsController {
   @Delete(':id/members/:userId')
   removeMember(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('userId') userId: string) {
     return this.chats.removeMember(u.tenantId, id, u, userId);
+  }
+
+  /** Убрать внешнего участника по имени (#1539). */
+  @Post(':id/guests/remove')
+  removeGuest(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: RemoveGuestDto) {
+    return this.chats.removeGuest(u.tenantId, id, u, dto.name);
+  }
+
+  /** Удалить чат целиком — создателю или владельцу компании. */
+  @Delete(':id')
+  deleteChat(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.chats.deleteChat(u.tenantId, id, u);
   }
 
   @Patch(':id')

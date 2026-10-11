@@ -12,6 +12,7 @@ import { openSupport } from './support/SupportDock';
 import { roleLabel } from '../lib/labels';
 import { NavCounters } from '../hooks/useNavCounters';
 import { useEscape } from '../hooks/useEscape';
+import { PRESENCE_CHANGED } from './MyStatusBar';
 import { FocusMenu, focusLine } from './FocusMenu';
 import { humanMinutes } from './SecretaryPanel';
 import { api } from '../lib/api';
@@ -262,11 +263,13 @@ export function Sidebar({
   /** Свой статус присутствия: читается из сводки при входе, ставится из меню профиля. */
   const [myStatus, setMyStatus] = useState<'busy' | 'away' | null>(null);
   useEffect(() => {
-    api.presence()
+    const load = () => api.presence()
       .then((rows) => setMyStatus(rows.find((r) => String(r.userId) === String(user.id))?.status ?? null))
       .catch(() => undefined);
-    // один раз при входе; дальше — своё же действие
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void load();
+    // при входе и когда статус поменяли на экране «Фокус дня» (#1535)
+    window.addEventListener(PRESENCE_CHANGED, load);
+    return () => window.removeEventListener(PRESENCE_CHANGED, load);
   }, [user.id]);
   const setStatus = (status: 'busy' | 'away' | null) => {
     setMyStatus(status);

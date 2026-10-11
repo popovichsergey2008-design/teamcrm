@@ -263,7 +263,10 @@ export class ChatsService {
       гасились счётчики новых сообщений, до которых он ещё не дошёл. То же самое
       делает и переход к сообщению из поиска.
     */
-    if (!beforeId && !afterId) await this.repo.markRead(tenantId, chatId, user.userId);
+    if (!beforeId && !afterId) {
+      await this.repo.markRead(tenantId, chatId, user.userId);
+      void this.push.chatRead(tenantId, user.userId, chatId);
+    }
     /*
       Открыли чат — значит прочитали, и собеседник должен увидеть вторую галочку СЕЙЧАС.
 
@@ -336,6 +339,7 @@ export class ChatsService {
     // возвращалась бы к нему непрочитанной в разделе «Треды».
     if (rootId) await this.repo.markThreadRead(tenantId, rootId, user.userId);
     await this.repo.markRead(tenantId, chatId, user.userId); // своё сообщение прочитанным считаем сразу
+    void this.push.chatRead(tenantId, user.userId, chatId, rootId);
 
     const to = await this.recipients(chat, tenantId);
     /*
@@ -924,6 +928,7 @@ export class ChatsService {
     if (!root || String(root.chat_id) !== String(chatId)) throw AppException.notFound('Ветка не найдена');
     const messages = await this.repo.thread(tenantId, String(root.thread_root_id ?? root.id), user.userId);
     await this.repo.markThreadRead(tenantId, String(root.thread_root_id ?? root.id), user.userId);
+    void this.push.chatRead(tenantId, user.userId, chatId, String(root.thread_root_id ?? root.id));
     return messages;
   }
 
@@ -1127,11 +1132,18 @@ export class ChatsService {
       members: rows.map((r) => ({ ...this.memberOut(r), online: online.has(String(r.user_id)) })),
       // Внешние — по ссылке, без учётки: в списке участников они отдельной группой,
       // чтобы было видно, кто из говорящих здесь не сотрудник.
-      guests: chat.is_external ? (await this.repo.guestNames(tenantId, chatId)).map((g) => g.guest_name) : [],
+      guests: chat.is_external ? (await this.repo.guests(tenantId, chatId)).map((g) => ({ name: g.name, lastAt: g.last_at })) : [],
+      // Ссылки этого чата со сроком: в карточке чата — обратный отсчёт и «Отозвать» (#1539).
+      guestLinks: (await this.repo.guestLinks(tenantId, chatId)).map((l) => ({
+        id: String(l.id), label: l.label, expiresAt: l.expires_at, startsAt: l.starts_at, uses: Number(l.uses ?? 0),
+        author: l.author, mine: String(l.created_by) === String(user.userId),
+      })),
       me: {
         role: my?.role ?? (chat.kind === 'project' ? 'member' : null),
         notify: my?.notify ?? 'all',
         canManage: (chat.kind === 'group' || chat.kind === 'channel') && await this.canManageChat(chat, user),
+        canDelete: this.canDeleteChat(chat, user),
+        canManageGuests: chat.is_external === true && await this.canManageChat(chat, user),
       },
       counts: {
         media: Number(counts?.media ?? 0), voice: Number(counts?.voice ?? 0), docs: Number(counts?.docs ?? 0),
@@ -1351,6 +1363,60 @@ export class ChatsService {
     return { title: name.slice(0, 160) };
   }
 
+  /**
+   * Удалить чат целиком (#1539, п. 5): раньше свой же чат можно было только покинуть,
+   * и он оставался висеть у всех остальных.
+   *
+   * Вправе только создатель и владелец компании — не администратор чата: удаление
+   * стирает переписку у всех, и решать это должен тот, кто чат завёл.
+   * Личные переписки и чаты проектов не удаляются: у первых два хозяина, вторые
+   * живут вместе с проектом.
+   */
+  private canDeleteChat(chat: ChatRow, user: { userId: string; role: string }): boolean {
+    if (!['group', 'channel', 'external'].includes(chat.kind)) return false;
+    return String(chat.created_by) === String(user.userId) || user.role === 'owner';
+  }
+
+  async deleteChat(tenantId: string, chatId: string, user: { userId: string; role: string }) {
+    const chat = await this.access(tenantId, chatId, user);
+    if (!this.canDeleteChat(chat, user)) {
+      throw AppException.forbidden(['group', 'channel', 'external'].includes(chat.kind)
+        ? 'Удалить чат может только тот, кто его создал, или владелец компании'
+        : 'Этот чат удалить нельзя — из него можно только выйти');
+    }
+    // кому сказать «чата больше нет» — считаем до удаления, потом участников уже не будет
+    const to = await this.recipients(chat, tenantId);
+    if (!(await this.repo.deleteChat(tenantId, chatId))) throw AppException.notFound('Чат не найден');
+    this.realtime.emitToUsers(tenantId, to, 'chat.removed', { chatId });
+    return { deleted: true };
+  }
+
+  /** Гость вошёл по ссылке этого чата — запоминаем, чтобы его можно было убрать. */
+  async recordGuest(tenantId: string, chatId: string, gid: string, name: string, linkId: string | null) {
+    await this.repo.addGuest({ tenantId, chatId, gid, name, linkId });
+  }
+
+  guestRemoved(tenantId: string, chatId: string, gid: string, name: string) {
+    return this.repo.guestRemoved(tenantId, chatId, gid, name);
+  }
+
+  /**
+   * Убрать внешнего участника (#1539). Доступ по ссылке у него пропадает сразу —
+   * и на чтение, и на запись; из идущего созвона его выкидывает шлюз (см. контроллер).
+   */
+  async removeGuest(tenantId: string, chatId: string, user: { userId: string; role: string }, name: string) {
+    const chat = await this.access(tenantId, chatId, user);
+    if (!chat.is_external) throw AppException.validation('Внешние участники бывают только во внешних чатах');
+    if (!(await this.canManageChat(chat, user))) throw AppException.forbidden('Убирать участников может владелец или администратор чата');
+    const who = String(name ?? '').trim();
+    if (!who) throw AppException.validation('Кого убрать?');
+    await this.repo.removeGuest(tenantId, chatId, who, user.userId);
+    await this.announce(tenantId, chat, `${who} (внешний участник) удалён(а) из чата`);
+    await this.repo.audit({ tenantId, chatId, actorId: user.userId, action: 'guest_removed', detail: { name: who } });
+    this.emitChatUpdated(tenantId, chat);
+    return { removed: true };
+  }
+
   /** Выйти может каждый. Историю не трогаем: переписка остаётся у оставшихся. */
   async leave(tenantId: string, chatId: string, user: { userId: string; role: string }) {
     const chat = await this.group(tenantId, chatId, user);
@@ -1401,6 +1467,7 @@ export class ChatsService {
   async markRead(tenantId: string, chatId: string, user: { userId: string; role: string }) {
     const chat = await this.access(tenantId, chatId, user);
     await this.repo.markRead(tenantId, chatId, user.userId);
+    void this.push.chatRead(tenantId, user.userId, chatId);
     /*
       Собеседник должен увидеть вторую галочку СРАЗУ, а не после перезагрузки чата.
       Отметку о прочтении шлём остальным участникам: у отправителя галочки на всех

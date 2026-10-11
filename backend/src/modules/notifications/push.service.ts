@@ -47,6 +47,21 @@ export class PushService {
   ) {}
 
   /**
+   * Человек прочитал чат или ветку — гасим их уведомления в ящике и говорим его
+   * устройствам пересчитать значок (#1538). Ошибка здесь не должна ломать чтение.
+   */
+  async chatRead(tenantId: string, userId: string, chatId: string, threadRootId: string | null = null): Promise<void> {
+    try {
+      const path = threadRootId ? `/chat/${chatId}/thread/${threadRootId}` : `/chat/${chatId}`;
+      if (await this.inbox.markPathRead(String(userId), path)) {
+        this.realtime.emitToUsers(tenantId, [String(userId)], 'inbox.read', { path });
+      }
+    } catch (e) {
+      this.log.warn(`ящик: отметка прочтения ${chatId}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
    * Сообщение чата → тем, кого нет в сети (ТЗ-9, волна 6).
    *
    * Письмами чаты не ходят (это был бы спам), поэтому сюда — напрямую, минуя очередь.

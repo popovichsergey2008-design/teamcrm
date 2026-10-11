@@ -59,10 +59,29 @@ export class MeetGuestController {
    *
    * Токен привязан к ОДНОМУ чату: пересланная ссылка не откроет ничего другого.
    */
-  private guestChat(token: string): { tenantId: string; chatId: string; name: string } {
+  /** Организация и номер ссылки нужны серверу, а не гостю: в ответ их не отдаём. */
+  private static forGuest<T extends { tenantId: string; linkId: string }>(r: T): Omit<T, 'tenantId' | 'linkId'> {
+    const out: Partial<T> = { ...r };
+    delete out.tenantId;
+    delete out.linkId;
+    return out as Omit<T, 'tenantId' | 'linkId'>;
+  }
+
+  private async guestChat(token: string): Promise<{ tenantId: string; chatId: string; name: string }> {
     const payload = this.guests.verify(String(token || ''));
     if (!payload) throw AppException.unauthorized('Ссылка недействительна');
     if (!payload.chatId) throw AppException.forbidden('Эта ссылка только на созвон');
+    /*
+      Токен живёт 4 часа сам по себе — поэтому каждый раз сверяемся с тем, что решили
+      в компании (#1539): ссылку отозвали или срок вышел — доступа нет сразу, а не к
+      вечеру; гостя убрали из чата — тоже.
+    */
+    if (payload.linkId && !(await this.guests.linkActive(payload.tenantId, payload.linkId))) {
+      throw AppException.unauthorized('Ссылка больше не действует');
+    }
+    if (await this.chats.guestRemoved(payload.tenantId, String(payload.chatId), payload.gid, payload.name)) {
+      throw AppException.forbidden('Вас удалили из этого разговора');
+    }
     return { tenantId: payload.tenantId, chatId: String(payload.chatId), name: payload.name };
   }
 
@@ -104,22 +123,27 @@ export class MeetGuestController {
   /** Переписка глазами гостя: только тот чат, ради которого выдана ссылка. */
   @Post('meet/guest/chat/messages')
   @Public()
-  guestMessages(@Body() dto: { token: string }) {
-    const g = this.guestChat(dto?.token);
+  async guestMessages(@Body() dto: { token: string }) {
+    const g = await this.guestChat(dto?.token);
     return this.chats.guestMessages(g.tenantId, g.chatId);
   }
 
   @Post('meet/guest/chat/send')
   @Public()
-  guestSend(@Body() dto: GuestMessageDto) {
-    const g = this.guestChat(dto?.token);
+  async guestSend(@Body() dto: GuestMessageDto) {
+    const g = await this.guestChat(dto?.token);
     return this.chats.guestSend(g.tenantId, g.chatId, g.name, dto.body);
   }
 
   @Post('meet/guest/:token/join')
   @Public()
-  join(@Param('token') token: string, @Body() dto: GuestJoinDto) {
-    return this.guests.join(token, dto.name);
+  async join(@Param('token') token: string, @Body() dto: GuestJoinDto) {
+    const r = await this.guests.join(token, dto.name);
+    // вход в чат по ссылке — запоминаем гостя: иначе его нельзя будет убрать (#1539)
+    if (r.chatId) {
+      await this.chats.recordGuest(r.tenantId, r.chatId, r.userId.slice('guest:'.length), r.name, r.linkId);
+    }
+    return MeetGuestController.forGuest(r);
   }
 
   // ───── Встреча по постоянной ссылке /meet/{publicId} (ТЗ-14) ─────
@@ -176,7 +200,7 @@ export class MeetGuestController {
   /** Человек со стороны по общей ссылке встречи: имя — и в зал ожидания. */
   @Post('meet/m/:publicId/guest')
   @Public()
-  meetingGuest(@Param('publicId') publicId: string, @Body() dto: GuestJoinDto) {
-    return this.guests.joinMeetingAsGuest(publicId, dto.name);
+  async meetingGuest(@Param('publicId') publicId: string, @Body() dto: GuestJoinDto) {
+    return MeetGuestController.forGuest(await this.guests.joinMeetingAsGuest(publicId, dto.name));
   }
 }

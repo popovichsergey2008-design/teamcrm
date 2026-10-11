@@ -17,6 +17,7 @@ import { getSocket } from '../lib/socket';
 import { setFocusSession, useFocusSession } from '../hooks/useFocusSession';
 import { CloseDayDialog } from './CloseDayDialog';
 import { TeamNow } from './TeamNow';
+import { MyStatusBar } from '../components/MyStatusBar';
 import { useAuth } from '../state/auth';
 
 type Day = Extract<FocusToday, { enabled: true }>;
@@ -391,6 +392,9 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           </div>
         )}
       </header>
+
+      {/* Свой статус — там, где начинают день (#1535): раньше он жил только в меню профиля. */}
+      <MyStatusBar userId={user?.id} />
 
       {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
 

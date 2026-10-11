@@ -707,13 +707,21 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             {peers.length > 0 && <span className="ui-badge ui-badge-neutral" style={{ marginLeft: 8 }}>участников: {peers.length}</span>}
             {/* Статус ИИ виден всегда и первым делом: человек должен понимать,
                 слушает его система или нет, не разглядывая кнопки внизу. */}
-            <span className={`call-ai-status${recording ? ' on' : ''}`} title={recording
-              ? 'Идёт запись: после созвона будут стенограмма, сводка и предложенные задачи'
-              : 'Запись выключена — стенограммы и задач по этому созвону не будет'}>
+            {/* Статус ещё и переключатель (#1540): на телефоне подписи у кнопок короткие,
+                и «Запись» внизу не читалась как «включить ИИ» — его искали здесь. */}
+            <button
+              type="button"
+              className={`call-ai-status${recording ? ' on' : ''}`}
+              disabled={isGuest}
+              onClick={() => client.current?.setRecording(!recording)}
+              title={isGuest ? undefined : recording
+                ? 'ИИ слушает: после созвона будут стенограмма, сводка и предложенные задачи. Нажмите, чтобы выключить'
+                : 'ИИ выключен — стенограммы и задач по этому созвону не будет. Нажмите, чтобы включить'}
+            >
               <span className="call-ai-dot" aria-hidden="true" />
-              AI: {recording ? 'активен' : aiInvited ? 'ждёт речи' : 'выключен'}
+              ИИ: {recording ? 'активен' : aiInvited ? 'ждёт речи' : 'выключен'}
               {recording && <span className="dim call-ai-what"> — транскрибирует и готовит задачи</span>}
-            </span>
+            </button>
           </span>
           <span className="call-head-actions">
             {/* Позвать человека можно двумя способами, и оба стоят здесь: сотрудника —
@@ -900,11 +908,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             <button
               className={`ui-btn ui-btn-outline ui-btn-sm ${recording ? 'call-rec-on' : 'call-off'}`}
               onClick={() => client.current?.setRecording(!recording)}
-              title={recording ? 'Остановить запись и получить стенограмму' : 'Записать созвон для стенограммы и задач'}
+              title={recording ? 'Выключить ИИ: остановить запись и получить стенограмму' : 'Включить ИИ: записать созвон для стенограммы, сводки и задач'}
             >
-              <Icon name={recording ? 'stop' : 'record'} size={15} />
-              <span className="call-btn-label">AI-запись: {recording ? 'вкл' : 'выкл'}</span>
-              <span className="call-btn-cap">Запись</span>
+              <Icon name={recording ? 'stop' : 'robot'} size={15} />
+              <span className="call-btn-label">ИИ: {recording ? 'вкл' : 'выкл'}</span>
+              <span className="call-btn-cap">{recording ? 'ИИ вкл' : 'Включить ИИ'}</span>
             </button>
           )}
           {/*

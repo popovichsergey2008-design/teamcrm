@@ -809,7 +809,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         */
         if (!document.hidden && onScreen()) {
           api.markChatRead(p.chatId)
-            .then(() => { reload(); notifyChatsChanged(); })
+            .then(() => { reload(); loadInbox(); notifyChatsChanged(); })
             .catch(() => reload());
           if (p.message?.thread_root_id || view === 'threads') void loadThreads();
           return;
@@ -1017,10 +1017,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       // Шапка чата проекта должна отвечать «что это за чат» без похода в карточку проекта.
       api.chatContext(id).then(setCtx).catch(() => setCtx(null));
       reload();
+      loadInbox(); // прочитанное в чате гаснет и во «Входящих» (#1538)
       notifyChatsChanged(); // счётчик в шапке должен упасть сразу
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть чат'); }
     finally { setMsgLoading(false); }
-  }, [reload, loadPinned, loadScheduled, user?.id]);
+  }, [reload, loadPinned, loadScheduled, loadInbox, user?.id]);
 
   /*
     Вернулись во вкладку с открытым чатом — значит прочитали.
@@ -1034,7 +1035,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     const onBack = () => {
       if (document.hidden || !onScreen()) return;
       api.markChatRead(activeId)
-        .then(() => { reload(); notifyChatsChanged(); })
+        .then(() => { reload(); loadInbox(); notifyChatsChanged(); })
         .catch(() => undefined);
     };
     window.addEventListener('focus', onBack);
@@ -1043,7 +1044,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       window.removeEventListener('focus', onBack);
       document.removeEventListener('visibilitychange', onBack);
     };
-  }, [activeId, reload]);
+  }, [activeId, reload, loadInbox]);
 
   // пришли из уведомления — открываем названный чат, а не последний.
   // `anthill` — не чат в базе, а AI-помощник: у него свой экран (ТЗ-6).
@@ -1696,6 +1697,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       const messages = await api.chatThread(chatId, rootId);
       setThread({ rootId: String(rootId), messages });
       if (focus) setThreadFocus((n) => n + 1);
+      /*
+        Открытая ветка = прочитанная (#1538): гасим её и во «Входящих», и в «Тредах»
+        сразу. Раньше «Входящие» перечитывались только заходом в них, и прочитанный
+        ответ висел уведомлением, пока туда не заглянешь.
+      */
+      loadInbox();
+      void loadThreads();
       notifyChatsChanged();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть ветку'); }
     finally { setNavBusy((n) => n - 1); }

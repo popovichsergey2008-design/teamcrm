@@ -625,6 +625,9 @@ export class GuestLinksService {
       token: accessToken,
       roomId: link.room_id,
       name: guestName,
+      // для записи гостя в чат (контроллер убирает их из ответа)
+      tenantId: String(link.tenant_id),
+      linkId: String(link.id),
       // чат ссылки: гость попадает и в переписку, а не только в переговорную
       chatId: link.chat_id ? String(link.chat_id) : null,
       // тот же id, под которым гость появится в комнате: по нему браузер отличает свои потоки
@@ -635,6 +638,11 @@ export class GuestLinksService {
       startsAt: link.starts_at ? new Date(link.starts_at).toISOString() : null,
       opensAt: link.starts_at ? GuestLinksService.opensAt(link.starts_at, link.early_join_min).toISOString() : null,
     };
+  }
+
+  /** Ссылка ещё действует: не отозвана и не истекла. */
+  async linkActive(tenantId: string, linkId: string): Promise<boolean> {
+    return !!(await this.repo.findActive(tenantId, linkId));
   }
 
   /** Проверка гостевого токена — для шлюза сигналинга. */

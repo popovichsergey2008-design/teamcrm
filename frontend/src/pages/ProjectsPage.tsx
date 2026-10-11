@@ -92,7 +92,7 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
             onClick={() => navigate({ section: 'tasks' })}
             title="Задачи по всем проектам: делаю, поручил, помогаю, наблюдаю"
           >
-            <Icon name="check-circle" size={14} /> Все задачи
+            <Icon name="check-circle" size={14} /> Общие задачи
           </button>
           <input
             className="input projects-search"

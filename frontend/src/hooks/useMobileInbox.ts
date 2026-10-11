@@ -51,11 +51,14 @@ export function useMobileInbox(signedIn: boolean): void {
     // Сервер положил запись в ящик — говорит об этом по сокету: пока процесс жив, push не нужен.
     const socket = getSocket();
     socket.on('inbox.item', onPush);
+    // прочитал переписку на любом устройстве — значок пересчитываем сразу (#1538)
+    socket.on('inbox.read', onPush);
     return () => {
       alive = false;
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener(PUSH_FOREGROUND_EVENT, onPush);
       socket.off('inbox.item', onPush);
+      socket.off('inbox.read', onPush);
     };
   }, [signedIn]);
 }

@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
+import { useIsPhone } from '../hooks/useMediaQuery';
 
 interface Props {
   /** «ГГГГ-ММ-ДД» или «ГГГГ-ММ-ДДTЧЧ:ММ» — тот же формат, что у нативного input, чтобы вызывающий код не менялся. */
@@ -45,13 +47,19 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
   const [alignRight, setAlignRight] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const pop = useRef<HTMLDivElement>(null);
+  /*
+    На телефоне календарь — лист у нижнего края экрана (#1541). Привязанный к полю попап
+    в окне создания задачи вылезал за край: ширина экрана меньше «поле + календарь»,
+    а окно-лист прокручивается и срезает всё, что выходит за его границы.
+  */
+  const sheet = useIsPhone();
 
   // открыли — показываем месяц выбранной даты, а не тот, где остановились в прошлый раз
   useEffect(() => { if (open) setView(startOfDay(selected ?? new Date())); }, [open, selected]);
 
   // если сверху не помещается (поле у верхней кромки) — единственный раз падаем вниз
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open || sheet) return;
     const trigger = box.current?.getBoundingClientRect();
     if (!trigger) return;
     const height = pop.current?.offsetHeight ?? 320;
@@ -59,11 +67,14 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
     setPlacement(trigger.top >= height + 12 ? 'up' : 'down');
     // в правой колонке формы попап шире поля — прижимаем к правому краю, чтобы не срезало
     setAlignRight(trigger.left + width > window.innerWidth - 12);
-  }, [open, withTime]);
+  }, [open, withTime, sheet]);
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!box.current?.contains(t) && !pop.current?.contains(t)) setOpen(false);
+    };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -108,6 +119,57 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
       + (withTime ? `, ${pad(selected.getHours())}:${pad(selected.getMinutes())}` : '')
     : placeholder;
 
+  const popup = (
+    <div className={sheet ? 'dp-pop dp-sheet' : `dp-pop ${placement === 'up' ? 'dp-up' : 'dp-down'} ${alignRight ? 'dp-right' : ''}`} ref={pop}>
+      <div className="dp-head">
+        <button type="button" className="dp-nav" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))} aria-label="Предыдущий месяц">‹</button>
+        <span className="dp-month">{view.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</span>
+        <button type="button" className="dp-nav" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} aria-label="Следующий месяц">›</button>
+      </div>
+
+      <div className="dp-week">{WEEKDAYS.map((w) => <span key={w}>{w}</span>)}</div>
+      <div className="dp-grid">
+        {grid.map((d) => {
+          const other = d.getMonth() !== view.getMonth();
+          const weekend = d.getDay() === 0 || d.getDay() === 6;
+          const cls = [
+            'dp-day',
+            other ? 'dp-other' : '',
+            weekend ? 'dp-weekend' : '',
+            sameDay(d, today) ? 'dp-today' : '',
+            selected && sameDay(d, selected) ? 'dp-selected' : '',
+          ].filter(Boolean).join(' ');
+          return (
+            <button type="button" key={d.toISOString()} className={cls} onClick={() => pick(d)}>
+              {d.getDate()}
+            </button>
+          );
+        })}
+      </div>
+
+      {withTime && (
+        <div className="dp-time">
+          <span className="status-label">Время</span>
+          <input
+            className="input dp-time-input"
+            type="time"
+            value={selected ? `${pad(selected.getHours())}:${pad(selected.getMinutes())}` : '18:00'}
+            onChange={(e) => setTime(e.target.value)}
+          />
+        </div>
+      )}
+
+      <div className="dp-quick">
+        <button type="button" className="dp-chip" onClick={() => shiftDays(0)}>Сегодня</button>
+        <button type="button" className="dp-chip" onClick={() => shiftDays(1)}>Завтра</button>
+        <button type="button" className="dp-chip" onClick={() => shiftDays(7)}>Через неделю</button>
+        <button type="button" className="dp-chip dp-chip-clear" onClick={() => { onChange(''); setOpen(false); }}>Убрать</button>
+        {/* на листе нет «щелчка мимо» по полю — выход должен быть виден */}
+        {sheet && <button type="button" className="dp-chip dp-chip-done" onClick={() => setOpen(false)}>Готово</button>}
+      </div>
+    </div>
+  );
+
   return (
     <div className="dp" ref={box}>
       <button
@@ -131,53 +193,14 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
         )}
       </button>
 
-      {open && (
-        <div className={`dp-pop ${placement === 'up' ? 'dp-up' : 'dp-down'} ${alignRight ? 'dp-right' : ''}`} ref={pop}>
-          <div className="dp-head">
-            <button type="button" className="dp-nav" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))} aria-label="Предыдущий месяц">‹</button>
-            <span className="dp-month">{view.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</span>
-            <button type="button" className="dp-nav" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} aria-label="Следующий месяц">›</button>
-          </div>
-
-          <div className="dp-week">{WEEKDAYS.map((w) => <span key={w}>{w}</span>)}</div>
-          <div className="dp-grid">
-            {grid.map((d) => {
-              const other = d.getMonth() !== view.getMonth();
-              const weekend = d.getDay() === 0 || d.getDay() === 6;
-              const cls = [
-                'dp-day',
-                other ? 'dp-other' : '',
-                weekend ? 'dp-weekend' : '',
-                sameDay(d, today) ? 'dp-today' : '',
-                selected && sameDay(d, selected) ? 'dp-selected' : '',
-              ].filter(Boolean).join(' ');
-              return (
-                <button type="button" key={d.toISOString()} className={cls} onClick={() => pick(d)}>
-                  {d.getDate()}
-                </button>
-              );
-            })}
-          </div>
-
-          {withTime && (
-            <div className="dp-time">
-              <span className="status-label">Время</span>
-              <input
-                className="input dp-time-input"
-                type="time"
-                value={selected ? `${pad(selected.getHours())}:${pad(selected.getMinutes())}` : '18:00'}
-                onChange={(e) => setTime(e.target.value)}
-              />
-            </div>
-          )}
-
-          <div className="dp-quick">
-            <button type="button" className="dp-chip" onClick={() => shiftDays(0)}>Сегодня</button>
-            <button type="button" className="dp-chip" onClick={() => shiftDays(1)}>Завтра</button>
-            <button type="button" className="dp-chip" onClick={() => shiftDays(7)}>Через неделю</button>
-            <button type="button" className="dp-chip dp-chip-clear" onClick={() => { onChange(''); setOpen(false); }}>Убрать</button>
-          </div>
-        </div>
+      {open && !sheet && popup}
+      {/* лист — поверх всего, вне окна: иначе его режет прокрутка окна создания задачи */}
+      {open && sheet && createPortal(
+        <>
+          <div className="dp-sheet-backdrop" onClick={() => setOpen(false)} />
+          {popup}
+        </>,
+        document.body,
       )}
     </div>
   );

@@ -18,6 +18,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Toggle } from '../components/ui/toggle';
 import { lazyComponent } from '../lib/lazy';
+import { MyStatusBar } from '../components/MyStatusBar';
 import type { FocusToday } from '../lib/api';
 
 /*
@@ -307,6 +308,9 @@ function LegacyFocusPage({ onOpenTask, onJoinCall, active = true }: FocusProps) 
           </div>
         </div>
       </div>
+
+      {/* Свой статус — там, где начинают день (#1535): раньше он жил только в меню профиля. */}
+      <MyStatusBar userId={user?.id} />
 
       {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
 

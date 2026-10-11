@@ -156,7 +156,11 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
    * Первое — что мне делать, второе — что я жду от других и с чего спрошу.
    */
   const [mineMode, setMineMode] = useState<MineMode>(() => {
-    const saved = localStorage.getItem('teamcrm.boardMine') ?? '';
+    // Ключ сменён (#1542): по умолчанию доска открывается на «Моих задачах» — делаю,
+    // помогаю и поручил вместе. Старый ключ у многих хранит «off» от прежнего умолчания,
+    // поэтому его не читаем: каждый один раз начинает с нового умолчания.
+    const saved = localStorage.getItem('teamcrm.boardMine2');
+    if (saved === null) return 'both';
     if (saved === 'both' || TASK_VIEWS.some((v) => v.key === saved)) return saved as MineMode;
     // прежние названия срезов: у людей они лежат в памяти браузера со вчерашнего дня
     if (LEGACY_VIEWS[saved]) return LEGACY_VIEWS[saved];
@@ -599,7 +603,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                   onClick={() => navigate({ section: 'tasks' })}
                   title="Задачи по всем проектам: делаю, поручил, помогаю, наблюдаю"
                 >
-                  <Icon name="check-circle" size={15} /> Все задачи
+                  <Icon name="check-circle" size={15} /> Общие задачи
                 </Button>
                 {/* Вид доски — переключатель из двух сегментов, а не две отдельные кнопки. */}
                 <span className="kv2-seg" role="group" aria-label="Вид доски">
@@ -619,7 +623,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                       setMineMode(mode);
                       setCreatorId(creator);
                       setInWorkOnly(onlyWork);
-                      localStorage.setItem('teamcrm.boardMine', mode);
+                      localStorage.setItem('teamcrm.boardMine2', mode);
                       localStorage.setItem('teamcrm.boardInWork', onlyWork ? '1' : '0');
                     }}
                   />

@@ -1554,6 +1554,8 @@ export const api = {
   removeChatMember: (chatId: string, userId: string) => request<any>('DELETE', `/chats/${chatId}/members/${userId}`),
   renameChat: (chatId: string, title: string) => request<{ title: string }>('PATCH', `/chats/${chatId}`, { title }),
   leaveChat: (chatId: string) => request<any>('POST', `/chats/${chatId}/leave`),
+  deleteChat: (chatId: string) => request<{ deleted: boolean }>('DELETE', `/chats/${chatId}`),
+  removeChatGuest: (chatId: string, name: string) => request<{ removed: boolean }>('POST', `/chats/${chatId}/guests/remove`, { name }),
   /**
    * Сайдбар чата (ТЗ-5, этап 2): сведения и участники по ролям одним запросом,
    * материалы по вкладкам, своё сохранённое в этом чате, журнал действий.
@@ -2633,8 +2635,16 @@ export interface ChatInfo {
   };
   members: ChatMember[];
   /** Внешние участники по ссылке — без учётки, только имена. */
-  guests: string[];
-  me: { role: string | null; canManage: boolean; notify: 'all' | 'mentions' | 'none' };
+  guests: { name: string; lastAt: string | null }[];
+  /** Живые ссылки этого чата: срок — для обратного отсчёта, id — чтобы отозвать. */
+  guestLinks: { id: string; label: string | null; expiresAt: string; startsAt: string | null; uses: number; author: string | null; mine: boolean }[];
+  me: {
+    role: string | null; canManage: boolean; notify: 'all' | 'mentions' | 'none';
+    /** Удалить чат целиком — создатель или владелец компании. */
+    canDelete: boolean;
+    /** Убирать внешних участников и отзывать ссылки. */
+    canManageGuests: boolean;
+  };
   counts: { media: number; voice: number; docs: number; files: number; links: number; pinned: number };
 }
 export interface ChatMember {
