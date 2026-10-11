@@ -91,6 +91,26 @@ export class WorkloadGuardService {
     return { ...a, assigneeName: me.name, deadlineWord: a.deadlineDate ? dayWord(a.deadlineDate, today) : null };
   }
 
+  /** Кто сейчас выше нормы — той же арифметикой «Пульса» (для утреннего брифа руководителя). */
+  async overloaded(tenantId: string): Promise<string[]> {
+    const tz = await this.tz(tenantId);
+    const now = new Date();
+    const today = localParts(now, tz).date;
+    const [tasks, people] = await Promise.all([
+      this.pulse.openTasks(tenantId),
+      this.pulse.people(tenantId, zonedTime(today, '00:00', tz), zonedTime(tomorrowOf(now, tz), '00:00', tz)),
+    ]);
+    const reviewsOf = new Map<string, number>();
+    for (const t of tasks) if (t.inReview && t.createdBy && t.createdBy !== t.assigneeId) reviewsOf.set(t.createdBy, (reviewsOf.get(t.createdBy) ?? 0) + 1);
+    return people
+      .filter((p) => p.role !== 'client')
+      .filter((p) => loadPoints({
+        tasks: tasks.filter((t) => t.assigneeId === p.id && !t.inReview),
+        reviewsWaiting: reviewsOf.get(p.id) ?? 0, meetingHoursToday: Math.round(p.meetingHours * 10) / 10,
+      }, now).points > (p.norm ?? DEFAULT_NORM_POINTS))
+      .map((p) => p.name);
+  }
+
   /** Местное время для альтернативного срока: 15:00 предложенного дня (§30). */
   async alternativeDeadline(tenantId: string, date: string): Promise<string> {
     return zonedTime(date, '15:00', await this.tz(tenantId)).toISOString();

@@ -30,6 +30,8 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'chat_digest', title: 'Сводка непрочитанного', where: 'Чаты и миты → «Кратко» и «Что я пропустил»', group: 'service' },
   { key: 'chat_search', title: 'Поиск по переписке словами', where: 'Чаты и миты → «Входящие»', group: 'service' },
   { key: 'smart_reply', title: 'Готовый ответ в чате', where: 'Чаты — серый текст в поле ввода', group: 'service' },
+  { key: 'client_followup', title: 'Письмо клиенту после встречи', where: 'Секретарь → «После встреч»', group: 'meetings' },
+  { key: 'morning_voice', title: 'Утренний бриф голосом', where: 'Секретарь → «Сегодня утром», Telegram', group: 'service' },
 
   { key: 'meeting_transcribe', title: 'Расшифровка записи встречи', where: 'Встречи → загрузка записи', group: 'meetings' },
   { key: 'meeting_analyze', title: 'Разбор встречи: сводка и задачи', where: 'Встречи → после расшифровки', group: 'meetings' },

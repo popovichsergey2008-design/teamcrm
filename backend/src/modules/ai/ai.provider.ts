@@ -49,6 +49,8 @@ export interface AiProvider {
   generate(system: string, user: string, opts?: GenerateOpts): Promise<string>;
   /** Потоковая генерация: onDelta вызывается по мере поступления фрагментов; возвращает полный текст. */
   generateStream(system: string, user: string, opts: GenerateOpts | undefined, onDelta: (text: string) => void): Promise<string>;
+  /** Синтез речи (ТЗ-21, утренний бриф): MP3 или null, если синтеза нет (нет ключа OpenAI). */
+  speak?(text: string, voice?: string): Promise<Buffer | null>;
 }
 
 export const EMBED_DIM = 1536;
@@ -185,6 +187,22 @@ export class MockAiProvider implements AiProvider {
 /** Реальный провайдер (OpenAI Whisper + Anthropic) — активен только при наличии ключей. */
 export class RealAiProvider implements AiProvider {
   name = 'real';
+
+  /**
+   * Синтез речи OpenAI (tts-1): говорит по-русски, ~1–2 ₽ за утренний бриф. Только с
+   * ключом OpenAI — у OpenRouter и Anthropic синтеза нет. Предел запроса — 4096 знаков.
+   */
+  async speak(text: string, voice = 'alloy'): Promise<Buffer | null> {
+    if (!this.openaiKey) return null;
+    const res = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.openaiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'tts-1', voice, input: text.slice(0, 4096), response_format: 'mp3' }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!res.ok) throw new Error(`TTS HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
   /**
    * Модель, которая ДЕЙСТВИТЕЛЬНО ответила.
    *

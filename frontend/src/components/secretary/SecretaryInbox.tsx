@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, AssistantProposal, Commitment, ProactivePrefs, ProactiveQuality, ProactiveSettings, ProposalSummary } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
+import { fetchBlob } from '../AuthedMedia';
 import { navigate } from '../../lib/router';
 import { Icon } from '../Icon';
 import { EmptyState } from '../EmptyState';
@@ -186,6 +187,10 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
   const [askReason, setAskReason] = useState(false);
   const [rated, setRated] = useState(false);
   const open = ['new', 'seen', 'snoozed', 'failed'].includes(p.status);
+  /** Письмо клиенту (ТЗ-21): текст правится прямо в карточке и уходит поправленным. */
+  const editable = p.payload.editable === true;
+  const [body, setBody] = useState(String(p.payload.body ?? ''));
+  const [subject, setSubject] = useState(String(p.payload.subject ?? ''));
 
   const go = (link: string | null) => {
     if (!link) return;
@@ -197,7 +202,9 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
     if (a.risk === 'external' && !(await confirmAction({ title: `${a.label}?`, description: p.effect ?? undefined, confirmLabel: a.label }))) return;
     setBusy(true); setErr('');
     try {
-      const r = await api.proposalAct(p.id, a.key);
+      // «Скопировать» — в буфер до запроса: сервер только отметит, что текст подготовлен
+      if (a.key === 'copy') await navigator.clipboard.writeText(editable ? body : String(p.payload.body ?? p.summary ?? '')).catch(() => undefined);
+      const r = await api.proposalAct(p.id, a.key, editable ? { body, subject } : undefined);
       setResult({ text: r.text, link: r.link });
       window.dispatchEvent(new Event('teamcrm:tasks-changed'));
       // карточка остаётся на экране с результатом, пока человек не уйдёт с вкладки
@@ -238,7 +245,12 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
         <span className="sp-time">{when(p.source.at ?? p.createdAt)}</span>
       </div>
       <div className="sp-title">{p.title}</div>
-      {p.summary && <div className="sp-summary">{p.summary}</div>}
+      {p.skill === 'brief' ? <Brief p={p} onGo={go} /> : editable && open && !result ? (
+        <div className="sp-letter">
+          {p.payload.email ? <input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Тема письма" /> : null}
+          <textarea className="input" rows={8} value={body} onChange={(e) => setBody(e.target.value)} aria-label="Текст для клиента" />
+        </div>
+      ) : p.summary && <div className="sp-summary">{p.summary}</div>}
       <dl className="sp-why">
         {p.why && <><dt>Почему</dt><dd>{p.why}</dd></>}
         {p.recommend && <><dt>Предлагаю</dt><dd>{p.recommend}</dd></>}
@@ -282,6 +294,39 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
         )}
       </div>
     </article>
+  );
+}
+
+/**
+ * Утренний бриф (ТЗ-21, этап 7): пункты, голос — если есть, и переходы. Голос грузим по
+ * нажатию: файл личный и весит сотни килобайт.
+ */
+function Brief({ p, onGo }: { p: AssistantProposal; onGo: (link: string | null) => void }) {
+  const lines = (p.payload.lines as string[] | undefined) ?? (p.summary ?? '').split('\n');
+  const audioId = p.payload.audioFileId as string | null | undefined;
+  const links = (p.payload.links as { label: string; path: string }[] | undefined) ?? [];
+  const [url, setUrl] = useState<string | null>(null);
+  const [state, setState] = useState<'idle' | 'loading' | 'failed'>('idle');
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  const listen = async () => {
+    if (!audioId) return;
+    setState('loading');
+    try { setUrl(URL.createObjectURL(await fetchBlob(audioId))); setState('idle'); } catch { setState('failed'); }
+  };
+  return (
+    <div className="sp-brief">
+      <ul>{lines.filter(Boolean).map((l, i) => <li key={i}>{l}</li>)}</ul>
+      {audioId && (url
+        ? <audio src={url} controls autoPlay />
+        : <Button size="sm" variant="outline" disabled={state === 'loading'} onClick={() => void listen()}>
+            <Icon name="play" size={14} /> {state === 'loading' ? 'Загружаю…' : state === 'failed' ? 'Не загрузилось — ещё раз' : 'Слушать'}
+          </Button>)}
+      {links.length > 0 && (
+        <div className="sp-actions">
+          {links.map((l) => <Button key={l.path + l.label} size="sm" variant="ghost" onClick={() => onGo(l.path)}>{l.label}</Button>)}
+        </div>
+      )}
+    </div>
   );
 }
 

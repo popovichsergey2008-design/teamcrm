@@ -43,6 +43,18 @@ export class AiService {
     return (await this.providerFor(tenantId)).provider.name !== 'mock';
   }
 
+  /**
+   * Голос (ТЗ-21, этап 7): текст → MP3. null — синтеза нет (нет ключа OpenAI у компании):
+   * тогда бриф остаётся текстом. Расход — по знакам (tts-1: $15 за миллион).
+   */
+  async speak(tenantId: string, text: string, feature = 'morning_voice'): Promise<Buffer | null> {
+    const { provider } = await this.providerFor(tenantId);
+    if (!provider.speak) return null;
+    const audio = await this.gateway.run(this.priorityOf(feature), () => provider.speak!(text));
+    if (audio) await this.recordUsage(tenantId, feature, 'tts-1', 0, 0, false, Number(((text.length / 1_000_000) * 15).toFixed(4)));
+    return audio;
+  }
+
   /** Подпись модели эмбеддингов арендатора: индекс должен помнить, чем его считали. */
   async embedModelFor(tenantId: string): Promise<string> {
     return (await this.providerFor(tenantId)).embedModel;

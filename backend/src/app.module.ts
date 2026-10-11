@@ -80,6 +80,7 @@ import { CommitmentsModule } from './modules/commitments/commitments.module';
 import { WorkloadModule } from './modules/workload/workload.module';
 import { WorkloadActionsModule } from './modules/workload/workload-actions.module';
 import { SmartReplyModule } from './modules/smart-reply/smart-reply.module';
+import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skills.module';
 
 @Module({
   imports: [
@@ -153,6 +154,7 @@ import { SmartReplyModule } from './modules/smart-reply/smart-reply.module';
     WorkloadModule,
     WorkloadActionsModule,
     SmartReplyModule,
+    SecretarySkillsModule,
     NavModule,
     FocusModule,
     ClientsModule,

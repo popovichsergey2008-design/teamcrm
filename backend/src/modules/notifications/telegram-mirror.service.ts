@@ -54,6 +54,26 @@ export class TelegramMirror {
   }
 
   /**
+   * Голосовой бриф (ТЗ-21, решение 11.10): голосом — только если приватность push в
+   * компании «полностью». Голос не замаскировать: в нём имена клиентов и проектов, а
+   * Telegram — чужой сервер. Иначе — ничего (текстовый бриф уходит своим путём).
+   */
+  async voice(tenantId: string, userId: string, audio: Buffer, caption: string): Promise<boolean> {
+    if (!this.sender.enabled || !userId) return false;
+    try {
+      if ((await this.inbox.pushPrivacyOf(tenantId)) !== 'full') return false;
+      if (!(await this.repo.prefEnabled(tenantId, userId, MIRROR_EVENT_KEY))) return false;
+      if (await this.inbox.isQuiet(tenantId, userId)) return false;
+      const chatId = await this.telegram.chatIdOf(tenantId, userId);
+      if (!chatId) return false;
+      return await this.sender.sendVoice(chatId, audio, caption);
+    } catch (e) {
+      this.log.warn(`голосовое в Telegram не ушло: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
    * Личное сообщение или упоминание — сразу в Telegram (просьба заказчика).
    *
    * Писем о переписке мы не шлём: это был бы спам на каждое «ок». Но личное

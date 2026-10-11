@@ -58,6 +58,25 @@ export class TelegramSender {
     }
   }
 
+  /**
+   * Голосовое сообщение (ТЗ-21, утренний бриф): MP3 файлом, с подписью. Telegram
+   * принимает голосовые в OGG/OPUS, MP3 и M4A. Возвращает, ушло ли.
+   */
+  async sendVoice(chatId: string | number, audio: Buffer, caption?: string): Promise<boolean> {
+    if (!this.token) return false;
+    try {
+      const form = new FormData();
+      form.append('chat_id', String(chatId));
+      form.append('voice', new Blob([new Uint8Array(audio)], { type: 'audio/mpeg' }), 'brief.mp3');
+      if (caption) form.append('caption', caption.slice(0, 1000));
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/sendVoice`, { method: 'POST', body: form });
+      return res.ok;
+    } catch (e) {
+      this.logger.warn(`sendVoice failed: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
   async sendMessage(chatId: string | number, text: string, replyMarkup?: unknown): Promise<void> {
     if (!this.token) {
       this.logger.debug(`(no token) -> ${chatId}: ${text.slice(0, 80)}`);

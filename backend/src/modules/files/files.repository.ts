@@ -67,6 +67,8 @@ export class FilesRepository {
             SELECT 1 FROM chats c WHERE c.id = f.owner_id AND c.tenant_id = $1
                AND ((c.kind = 'project' AND (c.project_id IS NULL OR ${proj('c.project_id')}))
                     OR EXISTS (SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.id AND cm.user_id = $2::bigint)))
+          -- голосовой бриф (ТЗ-21) — личный: только тому, кому его записали (он же «загрузил»)
+          WHEN 'assistant_brief' THEN FALSE
           WHEN 'feed_post' THEN NOT $5::boolean AND EXISTS (
             SELECT 1 FROM feed_posts fp WHERE fp.id = f.owner_id AND ${FEED_VISIBLE('fp')})
           ELSE TRUE END) AS ok
