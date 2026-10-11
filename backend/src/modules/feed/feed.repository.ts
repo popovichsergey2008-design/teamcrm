@@ -278,8 +278,9 @@ export class FeedRepository {
 
   async setStatus(tenantId: string, id: string, status: 'published' | 'skipped', patch?: { title?: string | null; body?: string }): Promise<boolean> {
     const r = await this.db.query(
-      `UPDATE feed_posts SET status = $3, title = COALESCE($4, title), body = COALESCE($5, body),
-              published_at = CASE WHEN $3 = 'published' THEN now() ELSE published_at END
+      // $3 — один тип в обоих местах: иначе Postgres «inconsistent types deduced»
+      `UPDATE feed_posts SET status = $3::text, title = COALESCE($4, title), body = COALESCE($5, body),
+              published_at = CASE WHEN $3::text = 'published' THEN now() ELSE published_at END
         WHERE tenant_id = $1 AND id = $2 AND status = 'draft' AND deleted_at IS NULL`,
       [tenantId, id, status, patch?.title ?? null, patch?.body ?? null],
     );

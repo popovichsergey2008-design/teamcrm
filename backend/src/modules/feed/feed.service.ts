@@ -133,15 +133,18 @@ export class FeedService {
     const types = FEED_FILTERS[o.filter ?? 'all'] ?? FEED_FILTERS.all;
     const q = (o.q ?? '').trim().slice(0, 100) || null;
     const first = !o.before;
-    const showTop = first && !q && (o.filter ?? 'all') === 'all';
-    const [pinned, highlight] = showTop
+    // Закреплённое и хайлайт живут наверху — и исключаются из ленты на ВСЕХ страницах,
+    // а не только на первой: иначе на второй странице они появлялись повторно.
+    const withTop = !q && (o.filter ?? 'all') === 'all';
+    const [pinned, highlight] = withTop
       ? await Promise.all([this.repo.pinned(v), this.repo.latestHighlight(v)])
       : [[], null];
-    const top = [...pinned];
-    if (highlight && !top.some((p) => String(p.id) === String(highlight.id))) top.push(highlight);
+    const above = [...pinned];
+    if (highlight && !above.some((p) => String(p.id) === String(highlight.id))) above.push(highlight);
+    const top = first ? above : [];
     const size = Math.min(Math.max(o.limit ?? PAGE_SIZE, 1), 50);
     const rows = await this.repo.list(v, {
-      types, before: o.before ?? null, limit: size + 1, q, excludeIds: top.map((p) => String(p.id)),
+      types, before: o.before ?? null, limit: size + 1, q, excludeIds: above.map((p) => String(p.id)),
     });
     const more = rows.length > size;
     const page = rows.slice(0, size);

@@ -328,7 +328,7 @@ describe('Новости (e2e)', () => {
     const board = (await http$.get(`/api/projects/${project.id}/board`).set(H(O)).expect(200)).body.data;
     const task = (await http$.post('/api/tasks').set(H(O)).send({ projectId: project.id, columnId: board.columns[0].id, title: 'Обычная задача' }).expect(201)).body.data;
     await http$.post(`/api/tasks/${task.id}/move`).set(H(O)).send({ columnId: board.columns[board.columns.length - 1].id, position: 0 }).expect(201);
-    await http$.patch(`/api/tasks/${task.id}`).set(H(O)).send({ deadlineAt: new Date(Date.now() + 86400_000).toISOString() }).expect(200);
+    await http$.patch(`/api/tasks/${task.id}`).set(H(O)).send({ title: 'Обычная задача, уточнили', isBlocked: true }).expect(200);
     const rows = await db.many(`SELECT id FROM feed_posts WHERE tenant_id = $1`, [owner.user.tenantId]);
     expect(rows).toEqual([]);
   });
