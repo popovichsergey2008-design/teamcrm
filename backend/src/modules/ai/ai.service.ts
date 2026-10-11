@@ -44,6 +44,18 @@ export class AiService {
   }
 
   /**
+   * Распознаётся ли речь (ТЗ-22): без него итоги встречи не из чего собрать, и экран
+   * после звонка показывает короткий вариант. На проде заглушка стоит у компаний без
+   * ключа — значит, не умеет; в тестах и разработке считается умеющей, иначе конвейер
+   * встреч нельзя было бы проверить без ключа.
+   */
+  async canTranscribe(tenantId: string): Promise<boolean> {
+    const { provider } = await this.providerFor(tenantId);
+    if (provider.name === 'mock') return process.env.NODE_ENV !== 'production';
+    return provider.canTranscribe?.() ?? false;
+  }
+
+  /**
    * Голос (ТЗ-21, этап 7): текст → MP3. null — синтеза нет (нет ключа OpenAI у компании):
    * тогда бриф остаётся текстом. Расход — по знакам (tts-1: $15 за миллион).
    */

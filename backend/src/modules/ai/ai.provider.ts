@@ -51,6 +51,8 @@ export interface AiProvider {
   generateStream(system: string, user: string, opts: GenerateOpts | undefined, onDelta: (text: string) => void): Promise<string>;
   /** Синтез речи (ТЗ-21, утренний бриф): MP3 или null, если синтеза нет (нет ключа OpenAI). */
   speak?(text: string, voice?: string): Promise<Buffer | null>;
+  /** Есть ли распознавание речи (Whisper): без ключа OpenAI записи остаются без стенограммы. */
+  canTranscribe?(): boolean;
 }
 
 export const EMBED_DIM = 1536;
@@ -192,6 +194,10 @@ export class RealAiProvider implements AiProvider {
    * Синтез речи OpenAI (tts-1): говорит по-русски, ~1–2 ₽ за утренний бриф. Только с
    * ключом OpenAI — у OpenRouter и Anthropic синтеза нет. Предел запроса — 4096 знаков.
    */
+  canTranscribe(): boolean {
+    return !!this.openaiKey;
+  }
+
   async speak(text: string, voice = 'alloy'): Promise<Buffer | null> {
     if (!this.openaiKey) return null;
     const res = await fetch('https://api.openai.com/v1/audio/speech', {

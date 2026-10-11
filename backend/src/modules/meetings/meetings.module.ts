@@ -6,12 +6,14 @@ import { TaskCardModule } from '../taskcard/taskcard.module';
 import { MeetingsController } from './meetings.controller';
 import { MeetingsRepository } from './meetings.repository';
 import { MeetingsService } from './meetings.service';
+import { PostcallRepository } from './postcall.repository';
+import { PostcallService } from './postcall.service';
 
 /** Этап 6, М2: разбор записей встреч. Свои созвоны появятся позже — источник записи внешний. */
 @Module({
   imports: [AiModule, TasksModule, KnowledgeModule, TaskCardModule],
   controllers: [MeetingsController],
-  providers: [MeetingsService, MeetingsRepository],
-  exports: [MeetingsService, MeetingsRepository], // репозиторий нужен уборке: черновики со встреч
+  providers: [MeetingsService, MeetingsRepository, PostcallService, PostcallRepository],
+  exports: [MeetingsService, MeetingsRepository, PostcallService], // репозиторий нужен уборке: черновики со встреч
 })
 export class MeetingsModule {}

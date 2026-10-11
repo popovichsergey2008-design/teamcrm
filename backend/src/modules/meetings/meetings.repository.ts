@@ -123,6 +123,11 @@ export class MeetingsRepository {
     await this.db.query(`UPDATE meetings SET file_id = $2 WHERE id = $1`, [id, fileId]);
   }
 
+  /** Комната созвона: экран итогов находит по ней встречу, пока номера у него ещё нет (ТЗ-22). */
+  async setRoom(id: string, roomId: string): Promise<void> {
+    await this.db.query(`UPDATE meetings SET room_id = $2 WHERE id = $1`, [id, roomId]);
+  }
+
   async setDuration(id: string, seconds: number): Promise<void> {
     await this.db.query(`UPDATE meetings SET duration_sec=$2, updated_at=now() WHERE id=$1`, [id, seconds]);
   }

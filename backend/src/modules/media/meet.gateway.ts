@@ -974,6 +974,9 @@ export class MeetGateway implements OnModuleInit {
         taskId: room.taskId ?? null,
         // комната = событие календаря, если созвон начали из встречи
         roomId: room.id, title: `Созвон ${when}`, tracks,
+        // для итогов встречи (ТЗ-22): кто был, включая молчавших, и сколько шёл созвон
+        attendees: [...(room.attendees ?? new Map<string, string>()).entries()].map(([userId, name]) => ({ userId, name })),
+        durationSec: Math.round((Date.now() - room.startedAt) / 1000),
       });
     } catch (e) {
       this.log.warn(`обработка записи ${room.id}: ${(e as Error).message}`);

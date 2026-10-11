@@ -1,11 +1,12 @@
 import { Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
 import { MeetingsService } from './meetings.service';
+import { PostcallService } from './postcall.service';
 
 class CreateMeetingDto {
   @IsString() @MinLength(2) @MaxLength(255) title!: string;
@@ -13,6 +14,11 @@ class CreateMeetingDto {
   @IsOptional() @IsString() happenedAt?: string;
   /** Чат, к которому относится встреча: карточка с итогом придёт туда, а сайдбар покажет её в «Митах». */
   @IsOptional() @IsString() chatId?: string;
+}
+
+class CompletePostcallDto {
+  /** Письмо клиенту отправлено с экрана итогов — разбор закрыт полностью. */
+  @IsOptional() @IsBoolean() followupSent?: boolean;
 }
 
 class ApplyDraftDto {
@@ -28,7 +34,7 @@ class ApplyDraftDto {
 @Controller('meetings')
 @Roles('owner', 'manager', 'member')
 export class MeetingsController {
-  constructor(private readonly meetings: MeetingsService) {}
+  constructor(private readonly meetings: MeetingsService, private readonly postcall: PostcallService) {}
 
   @Get()
   list(@CurrentUser() u: AuthUser) {
@@ -41,6 +47,37 @@ export class MeetingsController {
   create(@CurrentUser() u: AuthUser, @Body() dto: CreateMeetingDto, @UploadedFile() file: Express.Multer.File) {
     if (!file) throw AppException.validation('Приложите запись встречи или файл субтитров (.vtt/.srt)');
     return this.meetings.create(u.tenantId, u.userId, dto, file);
+  }
+
+  /** Мои неразобранные итоги встреч (ТЗ-22): плашка «итоги не разобраны». */
+  @Get('postcall/pending')
+  pendingPostcall(@CurrentUser() u: AuthUser) {
+    return this.postcall.pending(u.tenantId, u.userId);
+  }
+
+  /** Номер встречи по комнате созвона: экран итогов ждёт, пока допишется запись. */
+  @Get('postcall/by-room/:roomId')
+  postcallByRoom(@CurrentUser() u: AuthUser, @Param('roomId') roomId: string) {
+    return this.meetings.postcallByRoom(u.tenantId, roomId, { userId: u.userId, role: u.role });
+  }
+
+  @Get(':id/postcall')
+  postcallView(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.meetings.postcallView(u.tenantId, id, { userId: u.userId, role: u.role });
+  }
+
+  /** «Разобрать позже»: итоги остаются в списке, напоминание откладывается. */
+  @Post(':id/postcall/snooze')
+  async snoozePostcall(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    await this.meetings.assertVisible(u.tenantId, id, { userId: u.userId, role: u.role });
+    return this.postcall.snooze(u.tenantId, id, u.userId);
+  }
+
+  /** «Завершить разбор»: можно и не делать всё — решение человека сохраняется. */
+  @Post(':id/postcall/complete')
+  async completePostcall(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: CompletePostcallDto) {
+    await this.meetings.assertVisible(u.tenantId, id, { userId: u.userId, role: u.role });
+    return this.postcall.complete(u.tenantId, id, u.userId, dto.followupSent === true);
   }
 
   @Get(':id')

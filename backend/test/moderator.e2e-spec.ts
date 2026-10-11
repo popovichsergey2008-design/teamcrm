@@ -152,12 +152,13 @@ describe('Модератор встреч (e2e)', () => {
 
   it('настройку «создавать задачи со встречи» задаёт владелец', async () => {
     const s = await org('Задачи');
+    // с экраном итогов (ТЗ-22) задачи со встречи по умолчанию — черновики
     expect((await http.get('/api/assistant/mode').set(H(s.owner.accessToken)).expect(200)).body.data.autoTasks)
-      .toBe(true);
-
-    await http.put('/api/assistant/meeting-tasks').set(H(s.mateToken)).send({ enabled: false }).expect(403);
-    await http.put('/api/assistant/meeting-tasks').set(H(s.owner.accessToken)).send({ enabled: false }).expect(200);
-    expect((await http.get('/api/assistant/mode').set(H(s.mateToken)).expect(200)).body.data.autoTasks)
       .toBe(false);
+
+    await http.put('/api/assistant/meeting-tasks').set(H(s.mateToken)).send({ enabled: true }).expect(403);
+    await http.put('/api/assistant/meeting-tasks').set(H(s.owner.accessToken)).send({ enabled: true }).expect(200);
+    expect((await http.get('/api/assistant/mode').set(H(s.mateToken)).expect(200)).body.data.autoTasks)
+      .toBe(true);
   });
 });

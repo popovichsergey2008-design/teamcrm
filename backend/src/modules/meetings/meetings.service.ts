@@ -12,6 +12,7 @@ import { TasksService } from '../tasks/tasks.service';
 import { describeFfmpegError, extractAudioChunks, mixTracks } from './audio.util';
 import { MEETING_PROMPT, validateMeetingAnalysis } from './meeting-schema';
 import { MeetingsRepository } from './meetings.repository';
+import { blocksOf, PostcallService } from './postcall.service';
 import { parseSubtitles, repliesToText, Reply, shiftSegments } from './transcript.util';
 
 /** Записи встреч тяжелее обычных вложений: час видео легко весит сотни мегабайт. */
@@ -62,6 +63,7 @@ export class MeetingsService {
     private readonly secretary: SecretaryService,
     private readonly realtime: RealtimeService,
     private readonly taskcard: TaskCardService,
+    private readonly postcall: PostcallService,
   ) {}
 
   list(tenantId: string, viewer: ProjectViewer) {
@@ -91,6 +93,42 @@ export class MeetingsService {
       this.repo.linkedTasks(tenantId, id),
     ]);
     return { meeting, segments, summary, drafts, tasks };
+  }
+
+  /**
+   * Итоги встречи после звонка (ТЗ-22): всё, что показывает экран, одним ответом —
+   * разбор с готовностью блоков, сводка, решения, черновики, созданные задачи.
+   * Открытие экрана владельцем отмечается: «итоги не разобраны» ≠ «итоги не видел».
+   */
+  async postcallView(tenantId: string, id: string, viewer: ProjectViewer & { userId: string }) {
+    const details = await this.details(tenantId, id, viewer);
+    const review = await this.postcall.review(tenantId, id);
+    if (review && String(review.owner_id) === String(viewer.userId)) await this.postcall.opened(review);
+    return {
+      ...details,
+      review: review ? {
+        status: review.status,
+        ai: review.ai,
+        blocks: blocksOf(review),
+        ownerId: review.owner_id,
+        canClose: this.postcall.canClose(review, viewer.userId),
+        participants: review.participants,
+        snoozedUntil: review.snoozed_until,
+        reviewedAt: review.reviewed_at,
+        completedAt: review.completed_at,
+      } : null,
+    };
+  }
+
+  /**
+   * Экран итогов открывается сразу после «Завершить», а встреча появляется чуть позже —
+   * когда допишется запись. Экран спрашивает по комнате, пока не получит номер.
+   */
+  async postcallByRoom(tenantId: string, roomId: string, viewer: ProjectViewer) {
+    const row = await this.postcall.meetingByRoom(tenantId, roomId);
+    if (!row) return { meetingId: null };
+    await this.assertVisible(tenantId, row.id, viewer);
+    return { meetingId: row.id };
   }
 
   /** Встреча, из которой выросла задача: обратный переход из карточки в Summary. */
@@ -139,6 +177,10 @@ export class MeetingsService {
     /** Задача, из которой звонили: итог ляжет и в её обсуждение. */
     taskId?: string | null;
     tracks: { userId: string; displayName: string; buffer: Buffer; fileName: string; offsetSec: number }[];
+    /** Все, кто побывал на созвоне (ТЗ-22): итоги показывают и молчавших. */
+    attendees?: { userId: string; name: string }[];
+    /** Сколько шёл созвон — честнее, чем конец последней реплики. */
+    durationSec?: number;
   }): Promise<string | null> {
     if (!input.tracks.length) return null;
 
@@ -151,32 +193,40 @@ export class MeetingsService {
     // Созвон шёл в комнате события — свяжем: итог уйдёт приглашённым, а следующая
     // повестка этой серии узнает, чем закончилась прошлая встреча.
     if (input.roomId) {
+      await this.repo.setRoom(meeting.id, input.roomId).catch(() => undefined);
       const event = await this.repo.eventByRoom(input.tenantId, input.roomId).catch(() => null);
       if (event) await this.repo.linkEvent(meeting.id, event.id).catch(() => undefined);
     }
+    if (input.durationSec) await this.repo.setDuration(meeting.id, input.durationSec).catch(() => undefined);
+
+    // Итоги встречи (ТЗ-22): разбор заводится сразу, экран после звонка уже ждёт его.
+    // Без распознавания речи итогов не собрать — короткий экран: запись, участники, время.
+    const ai = await this.ai.canTranscribe(input.tenantId).catch(() => false);
+    const attendees = input.attendees?.length
+      ? input.attendees
+      : input.tracks.map((t) => ({ userId: t.userId, name: t.displayName }));
+    await this.postcall.start({ tenantId: input.tenantId, meetingId: meeting.id, startedBy: input.actorId, ai, attendees });
 
     void (async () => {
       try {
+        if (!ai) {
+          await this.saveCallRecording(input, meeting.id);
+          await this.repo.setStatus(meeting.id, 'recorded');
+          await this.postcall.mark(input.tenantId, meeting.id, {
+            transcript: 'skipped', summary: 'skipped', decisions: 'skipped', tasks: 'skipped', followup: 'skipped',
+          });
+          return;
+        }
         await this.repo.setStatus(meeting.id, 'transcribing');
+        await this.postcall.mark(input.tenantId, meeting.id, { transcript: 'running' });
         const replies: (Reply & { speakerUserId: string | null })[] = [];
         // Словарь встречи нужен и здесь: записи созвонов идут этим путём,
         // а не тем, куда попадают загруженные вручную файлы.
         const hint = await this.speechHint(input.tenantId);
-
-        // Владелец файлов — сотрудник: files.uploaded_by ссылается на users(id), а дорожка
-        // вполне может принадлежать гостю. Некому владеть — дорожки не храним, но стенограмму
-        // всё равно делаем: она ценнее исходных файлов.
-        const owner = input.actorId ?? input.tracks.find((t) => !t.userId.startsWith('guest:'))?.userId ?? null;
-        if (!owner) this.log.warn(`встреча ${meeting.id}: дорожки не сохранены — в комнате не было сотрудника`);
+        // запись сохраняется параллельно с расшифровкой: сведение ffmpeg не задерживает итоги
+        const saved = this.saveCallRecording(input, meeting.id);
 
         for (const track of input.tracks) {
-          // храним дорожки как вложения встречи — на случай спора «я такого не говорил»
-          if (owner) await this.files.upload({
-            tenantId: input.tenantId, userId: owner, buffer: track.buffer,
-            fileName: track.fileName, contentType: 'audio/ogg',
-            ownerKind: 'meeting_recording', ownerId: meeting.id, maxBytes: MAX_RECORDING_BYTES,
-          }).catch((e) => this.log.warn(`дорожка ${track.userId} не сохранена: ${(e as Error).message}`));
-
           const { chunks } = await extractAudioChunks(track.buffer, track.fileName);
           for (const chunk of chunks) {
             const segments = await this.ai.transcribeSegments(
@@ -194,33 +244,25 @@ export class MeetingsService {
           }
         }
 
+        await saved;
         if (!replies.length) {
           await this.repo.setStatus(meeting.id, 'error', 'Речь не распознана — проверьте ключ OpenAI');
+          await this.postcall.failRest(input.tenantId, meeting.id);
           return;
-        }
-        // Одна запись на всех (ТЗ-21): проигрыватель встречи и переход к секунде из ответа
-        // памяти. Дорожки по людям остаются — на случай спора «я такого не говорил».
-        if (owner) {
-          await mixTracks(input.tracks)
-            .then(async (mixed) => {
-              if (!mixed) return;
-              const f = await this.files.upload({
-                tenantId: input.tenantId, userId: owner, buffer: mixed, fileName: `meeting-${meeting.id}.mp3`, contentType: 'audio/mpeg',
-                ownerKind: 'meeting_recording', ownerId: meeting.id, maxBytes: MAX_RECORDING_BYTES,
-              });
-              await this.repo.setFile(meeting.id, String(f.id));
-            })
-            .catch((e) => this.log.warn(`встреча ${meeting.id}: запись не сведена — ${(e as Error).message}`));
         }
 
         // дорожки писались параллельно: сводим в одну ленту по времени, иначе диалог не читается
         replies.sort((a, b) => a.start - b.start);
         await this.repo.replaceSegments(input.tenantId, meeting.id, replies);
-        await this.repo.setDuration(meeting.id, Math.round(replies[replies.length - 1].end));
+        if (!input.durationSec) await this.repo.setDuration(meeting.id, Math.round(replies[replies.length - 1].end));
+        await this.postcall.mark(input.tenantId, meeting.id, { transcript: 'ready' });
 
         await this.repo.setStatus(meeting.id, 'analyzing');
+        await this.postcall.mark(input.tenantId, meeting.id, { summary: 'running', decisions: 'running', tasks: 'running' });
         await this.analyze(input.tenantId, meeting.id, input.projectId, replies);
         await this.repo.setStatus(meeting.id, 'done');
+        // письмо клиенту готовит навык секретаря (ТЗ-21); в итогах оно появится на этапе 5
+        await this.postcall.mark(input.tenantId, meeting.id, { summary: 'ready', decisions: 'ready', tasks: 'ready', followup: 'skipped' });
         this.knowledge.enqueue(input.tenantId, 'meeting', meeting.id);
         // Итог возвращается в тот разговор, из которого созвон начали: иначе половина
         // договорённостей не доходит до тех, кто в созвоне не был.
@@ -246,10 +288,47 @@ export class MeetingsService {
       } catch (e) {
         this.log.warn(`созвон ${meeting.id}: ${(e as Error).message}`);
         await this.repo.setStatus(meeting.id, 'error', describeFfmpegError(e)).catch(() => undefined);
+        await this.postcall.failRest(input.tenantId, meeting.id).catch(() => undefined);
       }
     })();
 
     return meeting.id;
+  }
+
+  /**
+   * Сохранить запись созвона: дорожки по людям — на случай спора «я такого не говорил»,
+   * и одну сведённую на всех (ТЗ-21) — для проигрывателя и перехода к секунде.
+   *
+   * Владелец файлов — сотрудник: files.uploaded_by ссылается на users(id), а дорожка
+   * вполне может принадлежать гостю. Некому владеть — записи не храним, но стенограмму
+   * всё равно делаем: она ценнее исходных файлов. Ошибки не роняют разбор.
+   */
+  private async saveCallRecording(
+    input: { tenantId: string; actorId: string | null; tracks: { userId: string; buffer: Buffer; fileName: string; offsetSec: number }[] },
+    meetingId: string,
+  ): Promise<void> {
+    const owner = input.actorId ?? input.tracks.find((t) => !t.userId.startsWith('guest:'))?.userId ?? null;
+    if (!owner) {
+      this.log.warn(`встреча ${meetingId}: дорожки не сохранены — в комнате не было сотрудника`);
+      return;
+    }
+    for (const track of input.tracks) {
+      await this.files.upload({
+        tenantId: input.tenantId, userId: owner, buffer: track.buffer,
+        fileName: track.fileName, contentType: 'audio/ogg',
+        ownerKind: 'meeting_recording', ownerId: meetingId, maxBytes: MAX_RECORDING_BYTES,
+      }).catch((e) => this.log.warn(`дорожка ${track.userId} не сохранена: ${(e as Error).message}`));
+    }
+    await mixTracks(input.tracks)
+      .then(async (mixed) => {
+        if (!mixed) return;
+        const f = await this.files.upload({
+          tenantId: input.tenantId, userId: owner, buffer: mixed, fileName: `meeting-${meetingId}.mp3`, contentType: 'audio/mpeg',
+          ownerKind: 'meeting_recording', ownerId: meetingId, maxBytes: MAX_RECORDING_BYTES,
+        });
+        await this.repo.setFile(meetingId, String(f.id));
+      })
+      .catch((e) => this.log.warn(`встреча ${meetingId}: запись не сведена — ${(e as Error).message}`));
   }
 
   /** Повторная обработка — после сбоя или когда появился ключ распознавания. */
@@ -257,6 +336,7 @@ export class MeetingsService {
     const meeting = await this.repo.get(tenantId, id);
     if (!meeting) throw AppException.notFound('Встреча не найдена');
     await this.repo.setStatus(id, 'queued', null);
+    await this.postcall.restart(tenantId, id);
     void this.process(tenantId, id);
     return { restarted: true };
   }
@@ -268,6 +348,7 @@ export class MeetingsService {
       if (!meeting?.file_id) return;
 
       await this.repo.setStatus(meetingId, 'transcribing');
+      await this.postcall.mark(tenantId, meetingId, { transcript: 'running' });
       const { stream } = await this.files.getForDownload(tenantId, meeting.file_id);
       const source = await toBuffer(stream);
 
@@ -280,6 +361,7 @@ export class MeetingsService {
           meeting.source === 'transcript'
             ? 'В файле субтитров не нашлось реплик'
             : 'Распознавание вернуло пустой результат — проверьте ключ OpenAI и качество записи');
+        await this.postcall.failRest(tenantId, meetingId);
         return;
       }
       await this.repo.replaceSegments(tenantId, meetingId, replies);
@@ -287,14 +369,17 @@ export class MeetingsService {
         await this.repo.setDuration(meetingId, Math.round(replies[replies.length - 1].end));
       }
 
+      await this.postcall.mark(tenantId, meetingId, { transcript: 'ready', summary: 'running', decisions: 'running', tasks: 'running' });
       await this.repo.setStatus(meetingId, 'analyzing');
       await this.analyze(tenantId, meetingId, meeting.project_id, replies);
 
       await this.repo.setStatus(meetingId, 'done');
+      await this.postcall.mark(tenantId, meetingId, { summary: 'ready', decisions: 'ready', tasks: 'ready', followup: 'skipped' });
       this.knowledge.enqueue(tenantId, 'meeting', meetingId); // стенограмма → корпоративная память
     } catch (e) {
       this.log.warn(`meeting ${meetingId} failed: ${(e as Error).message}`);
       await this.repo.setStatus(meetingId, 'error', describeFfmpegError(e)).catch(() => undefined);
+      await this.postcall.failRest(tenantId, meetingId).catch(() => undefined);
     }
   }
 

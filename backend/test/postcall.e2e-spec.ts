@@ -1,0 +1,110 @@
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { AddressInfo } from 'net';
+import request from 'supertest';
+
+import { AppModule } from '../src/app.module';
+import { AllExceptionsFilter } from '../src/common/http/all-exceptions.filter';
+import { ResponseInterceptor } from '../src/common/http/response.interceptor';
+import { DbService } from '../src/database/db.service';
+import { MeetingsService } from '../src/modules/meetings/meetings.service';
+
+/**
+ * Итоги встречи после звонка (ТЗ-22, этап 1): созвон закончился → разбор заведён сразу,
+ * встреча находится по комнате, блоки отмечают готовность, разбор закрывает организатор.
+ */
+describe('Итоги встречи после звонка (e2e)', () => {
+  let app: INestApplication;
+  let http$: any;
+  let db: DbService;
+  const uniq = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const H = (t: string) => ({ Authorization: `Bearer ${t}` });
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  beforeAll(async () => {
+    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = mod.createNestApplication();
+    app.setGlobalPrefix('api');
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalFilters(new AllExceptionsFilter());
+    app.useGlobalInterceptors(new ResponseInterceptor());
+    await app.listen(0, '0.0.0.0');
+    http$ = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
+    db = app.get(DbService);
+  });
+  afterAll(async () => { await app?.close(); });
+
+  async function org() {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Итоги', email: `pc_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const email = `pcm_${uniq()}@t.test`;
+    const u = (await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const tok = (await http$.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
+    return { O, ownerId: String(owner.user.id), tenantId: String(owner.user.tenantId), gleb: { id: String(u.id), H: H(tok) } };
+  }
+
+  /** Созвон закончился: шлюз отдаёт дорожки в конвейер встреч. Звук — не настоящий: разбор упадёт, и это тоже проверяем. */
+  async function endCall(tenantId: string, ownerId: string, glebId: string, roomId: string) {
+    return app.get(MeetingsService).ingestCallRecording({
+      tenantId, actorId: ownerId, projectId: null, title: 'Созвон', roomId,
+      tracks: [{ userId: ownerId, displayName: 'Борис', buffer: Buffer.from('not audio'), fileName: 'a.ogg', offsetSec: 0 }],
+      attendees: [{ userId: ownerId, name: 'Борис' }, { userId: glebId, name: 'Глеб' }, { userId: 'guest:x', name: 'Анна' }],
+      durationSec: 2520,
+    });
+  }
+
+  it('разбор заводится сразу, встреча находится по комнате, сбой не крутится вечно', async () => {
+    const { O, ownerId, tenantId, gleb } = await org();
+    const roomId = `room-${uniq()}`;
+    // экран открылся раньше, чем допишется запись — встречи ещё нет
+    expect((await http$.get(`/api/meetings/postcall/by-room/${roomId}`).set(O).expect(200)).body.data.meetingId).toBeNull();
+
+    const meetingId = await endCall(tenantId, ownerId, gleb.id, roomId);
+    expect((await http$.get(`/api/meetings/postcall/by-room/${roomId}`).set(O).expect(200)).body.data.meetingId).toBe(String(meetingId));
+
+    let view: any;
+    for (let i = 0; i < 50; i++) {
+      view = (await http$.get(`/api/meetings/${meetingId}/postcall`).set(O).expect(200)).body.data;
+      if (view.review.status !== 'processing') break;
+      await sleep(200);
+    }
+    expect(view.meeting.duration_sec).toBe(2520);
+    expect(view.review.ownerId).toBe(ownerId);
+    expect(view.review.canClose).toBe(true);
+    expect(view.review.participants.map((p: any) => p.name)).toEqual(['Борис', 'Глеб', 'Анна (гость)']);
+    // звук битый — расшифровка упала, остальные блоки не висят в «считается»
+    expect(view.review.status).toBe('review_required');
+    expect(view.review.blocks.transcript).toBe('failed');
+    expect(view.review.blocks.followup).toBe('skipped');
+    const opened = await db.one<{ opened_at: Date | null }>(`SELECT opened_at FROM meeting_postcall_reviews WHERE meeting_id = $1`, [meetingId]);
+    expect(opened?.opened_at).toBeTruthy();
+
+    // неразобранные итоги — у владельца, не у участника
+    expect((await http$.get('/api/meetings/postcall/pending').set(O).expect(200)).body.data.map((r: any) => r.meeting_id)).toContain(String(meetingId));
+    expect((await http$.get('/api/meetings/postcall/pending').set(gleb.H).expect(200)).body.data).toHaveLength(0);
+
+    // участник видит итоги, но разбор за всех не закрывает
+    const his = (await http$.get(`/api/meetings/${meetingId}/postcall`).set(gleb.H).expect(200)).body.data;
+    expect(his.review.canClose).toBe(false);
+    await http$.post(`/api/meetings/${meetingId}/postcall/complete`).set(gleb.H).send({}).expect(403);
+
+    // «Разобрать позже» не убирает итоги из списка
+    await http$.post(`/api/meetings/${meetingId}/postcall/snooze`).set(O).expect(201);
+    expect((await http$.get('/api/meetings/postcall/pending').set(O).expect(200)).body.data).toHaveLength(1);
+
+    expect((await http$.post(`/api/meetings/${meetingId}/postcall/complete`).set(O).send({}).expect(201)).body.data.status).toBe('completed');
+    expect((await http$.get('/api/meetings/postcall/pending').set(O).expect(200)).body.data).toHaveLength(0);
+  });
+
+  it('загруженная запись без созвона разбора не имеет; задачи со встречи по умолчанию — черновики', async () => {
+    const { O, tenantId } = await org();
+    const t = await db.one<{ meeting_auto_tasks: boolean }>(`SELECT meeting_auto_tasks FROM tenants WHERE id = $1`, [tenantId]);
+    expect(t?.meeting_auto_tasks).toBe(false);
+    const vtt = 'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n<v Борис>Начинаем\n';
+    const m = (await http$.post('/api/meetings').set(O).field('title', 'Планёрка')
+      .attach('file', Buffer.from(vtt), 'a.vtt').expect(201)).body.data;
+    const view = (await http$.get(`/api/meetings/${m.id}/postcall`).set(O).expect(200)).body.data;
+    expect(view.review).toBeNull();
+  });
+});

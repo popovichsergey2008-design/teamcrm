@@ -242,6 +242,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
       producers: new Map(), consumers: new Map(), handRaised: false, conn,
     };
     room.participants.set(userId, p);
+    (room.attendees ??= new Map()).set(userId, displayName);
     if (!userId.startsWith('guest:')) this.presence?.changed(room.tenantId, userId);
     return p;
   }
