@@ -34,6 +34,15 @@ export class AiService {
     this.parserModel = config.get<string>('AI_PARSER_MODEL') ?? 'claude-haiku-4-5';
   }
 
+  /**
+   * Есть ли у компании настоящая модель (свой ключ или общий). Навыки, где заглушка
+   * вместо модели дала бы бессмыслицу (готовый ответ, письмо клиенту, голос), без неё
+   * честно молчат, а не показывают «ответ» заглушки.
+   */
+  async hasModel(tenantId: string): Promise<boolean> {
+    return (await this.providerFor(tenantId)).provider.name !== 'mock';
+  }
+
   /** Подпись модели эмбеддингов арендатора: индекс должен помнить, чем его считали. */
   async embedModelFor(tenantId: string): Promise<string> {
     return (await this.providerFor(tenantId)).embedModel;

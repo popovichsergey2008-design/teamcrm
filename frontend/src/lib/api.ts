@@ -2215,6 +2215,12 @@ export const api = {
   setMeetingAutoTasks: (enabled: boolean) =>
     request<{ autoTasks: boolean }>('PUT', '/assistant/meeting-tasks', { enabled }),
   assistantProposed: () => request<Ping[]>('GET', '/assistant/pings/proposed'),
+  // готовый ответ в чате (ТЗ-21, этап 5)
+  smartReply: (chatId: string, variant = 0) =>
+    request<{ needed: boolean; reason?: string; reasonText?: string; lastMessageId?: string; text?: string | null; unavailable?: string; variant?: number }>(
+      'GET', `/chats/${chatId}/smart-reply?variant=${variant}`),
+  smartReplyOutcome: (chatId: string, lastMessageId: string, variant: number, outcome: 'accepted' | 'edited' | 'dismissed') =>
+    request<{ ok: true }>('POST', `/chats/${chatId}/smart-reply/outcome`, { lastMessageId, variant, outcome }),
   // ящик предложений секретаря (ТЗ-21)
   proposals: (o: { section?: string; history?: boolean } = {}) =>
     request<{ items: AssistantProposal[] }>('GET', `/assistant/proposals?${o.section ? `section=${o.section}&` : ''}${o.history ? 'history=1' : ''}`),

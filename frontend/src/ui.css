@@ -1068,3 +1068,4 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 }
 .auth-logo .logo-word { font-size: 26px; }
 .nav-secretary-waiting { color: var(--accent); font-weight: 600; }
+.input-ghost::placeholder { color: var(--text-dim); font-style: italic; opacity: .85; }

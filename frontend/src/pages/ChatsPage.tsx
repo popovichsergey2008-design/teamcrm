@@ -48,6 +48,10 @@ import { initialsOf } from '../lib/initials';
 import { useEnterSend } from '../hooks/useEnterSend';
 import { DeepFocusGuard } from '../components/DeepFocusGuard';
 import { useTitleHint } from '../lib/page-title';
+import { useSmartReply } from '../components/chat/useSmartReply';
+
+/** Сенсорный экран: подсказки «Tab — вставить» там не работают. */
+const COARSE = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
 
 interface Chat {
   id: string; kind: 'dm' | 'group' | 'project' | 'channel' | 'self' | 'external'; title: string | null;
@@ -257,6 +261,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const [draft, setDraft] = useState('');
   /** Написанное без сети: лежит в очереди и показывается в ленте на месте (волна 9). */
   const queued = useQueuedFor(activeId ? `/chats/${activeId}/messages` : null);
+  /*
+    Готовый ответ (ТЗ-21, этап 5): последний номер сообщения — ключ черновика. Пришло
+    новое — сервер посчитает заново (или скажет, что ответ не нужен).
+  */
+  const lastMsgId = messages.length ? String(messages[messages.length - 1].id) : null;
+  const reply = useSmartReply(activeId, lastMsgId, true);
   /*
     Черновик — свой у каждого чата и переживает перезагрузку (ТЗ-9): при смене чата
     текст подставляется из хранилища, при наборе — сохраняется, при отправке — стирается.
@@ -1182,6 +1192,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const send = async () => {
     const text = draft.trim();
     if (!activeId || (!text && !pending.length)) return;
+    reply.sent(text);
     setUnreadFrom(null); // ответил — значит, дочитал: черта больше не нужна
     const files = pending.map((p) => p.file);
     setDraft('');
@@ -3071,9 +3082,29 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               >
                 <Icon name="smile" size={16} />
               </button>
+              {/* Готовый ответ (ТЗ-21): ✨ — другой вариант; сам текст — серым в поле. */}
+              {(reply.text || reply.loading) && !draft && (
+                <button
+                  className="ui-btn ui-btn-ghost ui-btn-sm smart-reply-btn"
+                  onClick={reply.another}
+                  disabled={reply.loading}
+                  title={`Готовый ответ${reply.reasonText ? ` — ${reply.reasonText}` : ''}. Другой вариант`}
+                  aria-label="Другой вариант ответа"
+                >
+                  <Icon name="sparkles" size={16} />
+                </button>
+              )}
+              {/* На телефоне нет Tab — вставляем кнопкой */}
+              {reply.text && !draft && COARSE && (
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { setDraft(reply.text!); reply.accept(); }} title="Вставить готовый ответ">
+                  Вставить
+                </button>
+              )}
               <MentionField
                 className="chat-mention-input"
                 focusKey={composerFocus}
+                ghost={reply.text}
+                onGhost={(a) => (a === 'accept' ? reply.accept() : reply.dismiss())}
                 value={draft}
                 users={mentionUsers}
                 everyone={!!active && active.kind !== 'dm' && active.kind !== 'self'}

@@ -79,6 +79,7 @@ import { ProactiveModule } from './modules/proactive/proactive.module';
 import { CommitmentsModule } from './modules/commitments/commitments.module';
 import { WorkloadModule } from './modules/workload/workload.module';
 import { WorkloadActionsModule } from './modules/workload/workload-actions.module';
+import { SmartReplyModule } from './modules/smart-reply/smart-reply.module';
 
 @Module({
   imports: [
@@ -151,6 +152,7 @@ import { WorkloadActionsModule } from './modules/workload/workload-actions.modul
     CommitmentsModule,
     WorkloadModule,
     WorkloadActionsModule,
+    SmartReplyModule,
     NavModule,
     FocusModule,
     ClientsModule,

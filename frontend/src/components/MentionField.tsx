@@ -28,6 +28,7 @@ const matchesEveryone = (q: string) => {
 
 export function MentionField({
   value, users, onChange, onMention, placeholder, rows, autoGrow, onEnter, disabled, className, focusKey, everyone,
+  ghost, onGhost,
 }: {
   value: string;
   users: MentionUser[];
@@ -58,6 +59,12 @@ export function MentionField({
   focusKey?: number;
   /** Общий чат: в подсказке есть «@все». В личке и в заметках себе — нет. */
   everyone?: boolean;
+  /**
+   * Готовый ответ (ТЗ-21): серый текст в пустом поле. Tab — вставить, Esc — скрыть.
+   * Сам он никуда не уходит: отправить можно только своей рукой.
+   */
+  ghost?: string | null;
+  onGhost?: (action: 'accept' | 'dismiss') => void;
 }) {
   const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null);
 
@@ -119,7 +126,10 @@ export function MentionField({
     });
   };
 
+  const showGhost = !!ghost && !value;
   const keyDown = (e: React.KeyboardEvent) => {
+    if (showGhost && e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); onChange(ghost!); onGhost?.('accept'); return; }
+    if (showGhost && e.key === 'Escape') { e.preventDefault(); onGhost?.('dismiss'); return; }
     if (found.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); return setActive((i) => (i + 1) % found.length); }
       if (e.key === 'ArrowUp') { e.preventDefault(); return setActive((i) => (i - 1 + found.length) % found.length); }
@@ -132,8 +142,8 @@ export function MentionField({
 
   const common = {
     ref,
-    className: `input ${className ?? ''}`.trim(),
-    placeholder,
+    className: `input ${className ?? ''}${showGhost ? ' input-ghost' : ''}`.trim(),
+    placeholder: showGhost ? ghost! : placeholder,
     value,
     disabled,
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
