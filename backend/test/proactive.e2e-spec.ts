@@ -76,7 +76,9 @@ describe('Проактивный секретарь (e2e)', () => {
     const r = (await http$.post(`/api/assistant/proposals/${inbox[0].id}/confirm`).set(gleb.H).send({ action: 'done' }).expect(201)).body.data;
     expect(r.proposal.status).toBe('executed');
     await http$.post(`/api/assistant/proposals/${inbox[0].id}/confirm`).set(gleb.H).send({ action: 'done' }).expect(409);
-    expect((await http$.get('/api/assistant/commitments').set(gleb.H).expect(200)).body.data).toHaveLength(0);
+    // закрытое ещё неделю видно в списке — уже со статусом «выполнено»
+    const after = (await http$.get('/api/assistant/commitments').set(gleb.H).expect(200)).body.data;
+    expect(after.map((c: any) => c.status)).toEqual(['fulfilled']);
     expect((await http$.get('/api/assistant/proposals?history=1').set(gleb.H).expect(200)).body.data.items).toHaveLength(1);
     void owner;
   });

@@ -73,6 +73,8 @@ export class KnowledgeRepository {
     chatId?: string | null; staffOnly?: boolean;
   }): Promise<void> {
     await this.db.withTransaction(async (c) => {
+      // индексатор и правка могут прийти одновременно: без замка обе удалят и обе вставят — дубль ключа
+      await c.query(`SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2 || ':' || $3))`, [i.tenantId, i.sourceType, i.sourceId]);
       await c.query(`DELETE FROM knowledge_chunks WHERE tenant_id=$1 AND source_type=$2 AND source_id=$3`, [
         i.tenantId, i.sourceType, i.sourceId,
       ]);
