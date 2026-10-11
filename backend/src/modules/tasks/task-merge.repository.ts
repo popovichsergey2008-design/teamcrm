@@ -1,3 +1,4 @@
+import { projectVisibleSql, ProjectViewer, viewerParams } from '../../common/access/project-visibility';
 import { Injectable } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DbService } from '../../database/db.service';
@@ -54,15 +55,21 @@ export class TaskMergeRepository {
    * `q` — ручной поиск: по названию, номеру, проекту, исполнителю и постановщику.
    * Ровно эти пять полей человек и помнит о задаче, которую ищет.
    */
-  candidates(tenantId: string, exceptId: string, q: string | null, limit: number): Promise<MergeTaskRow[]> {
+  candidates(tenantId: string, exceptId: string, q: string | null, limit: number, viewer?: ProjectViewer): Promise<MergeTaskRow[]> {
     const params: unknown[] = [tenantId, exceptId, limit];
     let filter = '';
+    // кандидаты на объединение и «возможные дубли» — только из видимых проектов (ТЗ-21, этап 0)
+    if (viewer) {
+      params.push(...viewerParams(viewer));
+      const n = params.length;
+      filter += ` AND ${projectVisibleSql('t.project_id', { user: `$${n - 2}`, all: `$${n - 1}`, client: `$${n}` })}`;
+    }
     if (q) {
       params.push(`%${q}%`);
       const like = `$${params.length}`;
       // Номер ищем отдельно и точным равенством: «1264» внутри ILIKE нашло бы и 11264
       const asNumber = /^\d+$/.test(q) ? `OR t.id = ${Number(q)}` : '';
-      filter = `AND (
+      filter += ` AND (
         t.title ILIKE ${like}
         OR p.name ILIKE ${like}
         OR a.full_name ILIKE ${like}

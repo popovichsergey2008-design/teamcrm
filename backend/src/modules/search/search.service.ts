@@ -34,8 +34,8 @@ export class SearchService {
 
     const internal = role !== 'client';
     const [tasks, projects, chats, messages, people, docs] = await Promise.all([
-      this.repo.tasks(tenantId, query, PER_SOURCE),
-      this.repo.projects(tenantId, query, PER_SOURCE),
+      this.repo.tasks(tenantId, query, PER_SOURCE, { userId, role }),
+      this.repo.projects(tenantId, query, PER_SOURCE, { userId, role }),
       internal ? this.repo.chats(tenantId, userId, query, PER_SOURCE) : [],
       internal ? this.repo.messages(tenantId, userId, query, PER_SOURCE) : [],
       internal ? this.repo.people(tenantId, query, PER_SOURCE) : [],

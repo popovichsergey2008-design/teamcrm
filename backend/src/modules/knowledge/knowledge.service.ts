@@ -1,3 +1,4 @@
+import { ProjectViewer } from '../../common/access/project-visibility';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { extractText, MAX_FILE_BYTES } from './file-text';
@@ -186,14 +187,14 @@ ${extracted.text}`,
   }
 
   /** Семантический поиск. Опционально в рамках одного проекта (+ общие регламенты). */
-  async search(tenantId: string, query: string, k = 8, projectId?: string, types?: SourceType[]) {
+  async search(tenantId: string, query: string, k = 8, projectId?: string, types?: SourceType[], viewer?: ProjectViewer) {
     const vec = await this.ai.embed(tenantId, query, 'embedding');
-    return this.searchByVector(tenantId, vec, k, projectId, types);
+    return this.searchByVector(tenantId, vec, k, projectId, types, viewer);
   }
 
   /** Поиск по готовому вектору (переиспользуется в AI Brain / кэше — без повторного эмбеддинга). */
-  async searchByVector(tenantId: string, vec: number[], k = 8, projectId?: string, types?: SourceType[]) {
-    const hits = await this.repo.search(tenantId, vec, k, projectId, types);
+  async searchByVector(tenantId: string, vec: number[], k = 8, projectId?: string, types?: SourceType[], viewer?: ProjectViewer) {
+    const hits = await this.repo.search(tenantId, vec, k, projectId, types, viewer);
     // подписи проектов для разреза «по проектам»
     const scopeIds = [...new Set(hits.map((h) => h.access_scope).filter(Boolean) as string[])];
     const names = new Map<string, string>();
@@ -232,10 +233,10 @@ ${extracted.text}`,
   }
 
   /** Список источников базы знаний (для ручного просмотра содержимого) + имена проектов. */
-  async listSources(tenantId: string, opts: { projectId?: string; type?: string; q?: string; limit?: number; offset?: number }) {
+  async listSources(tenantId: string, opts: { projectId?: string; type?: string; q?: string; limit?: number; offset?: number; viewer?: ProjectViewer }) {
     const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
     const offset = Math.max(opts.offset ?? 0, 0);
-    const rows = await this.repo.listSources(tenantId, { projectId: opts.projectId, type: opts.type, q: opts.q, limit, offset });
+    const rows = await this.repo.listSources(tenantId, { projectId: opts.projectId, type: opts.type, q: opts.q, limit, offset, viewer: opts.viewer });
     const scopeIds = [...new Set(rows.map((r) => r.access_scope).filter(Boolean) as string[])];
     const names = new Map<string, string>();
     if (scopeIds.length) {
@@ -251,6 +252,18 @@ ${extracted.text}`,
       })),
       limit, offset, hasMore: rows.length === limit,
     };
+  }
+
+  /** Ключ доступа человека — для кэшей ответов ИИ (см. репозиторий). */
+  accessKey(tenantId: string, viewer: ProjectViewer) {
+    return this.repo.accessKey(tenantId, viewer);
+  }
+
+  /** Источник из закрытого проекта человеку не показываем — даже по прямому номеру. */
+  async canOpenSource(tenantId: string, type: string, id: string, viewer: ProjectViewer): Promise<boolean> {
+    const scope = await this.repo.scopeOf(tenantId, type, id);
+    if (scope === undefined || scope === null) return true;
+    return this.repo.projectVisible(tenantId, String(scope), viewer);
   }
 
   /** Полное содержимое одного источника из исходной таблицы (для просмотра в базе знаний). */

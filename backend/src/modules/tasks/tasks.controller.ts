@@ -50,7 +50,7 @@ export class TasksController {
    */
   @Get(':id/merge/candidates')
   mergeCandidates(@CurrentUser() u: AuthUser, @Param('id') id: string, @Query('q') q?: string) {
-    return this.merge.candidates(u.tenantId, id, q);
+    return this.merge.candidates(u.tenantId, id, q, { userId: u.userId, role: u.role });
   }
 
   /**
@@ -61,7 +61,7 @@ export class TasksController {
    */
   @Get('duplicates')
   duplicates(@CurrentUser() u: AuthUser, @Query() q: DuplicatesQueryDto) {
-    return this.merge.duplicatesOf(u.tenantId, { title: q.title, description: q.description });
+    return this.merge.duplicatesOf(u.tenantId, { title: q.title, description: q.description }, { userId: u.userId, role: u.role });
   }
 
   /** Что получится при объединении — вместе с предложением ИИ. Ничего не меняет. */

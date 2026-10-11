@@ -52,6 +52,10 @@ export class FilesController {
 
   @Get(':id')
   async download(@CurrentUser() user: AuthUser, @Param('id') id: string, @Res() res: Response) {
+    // файл закрытого проекта, чужой переписки или записи чужого созвона — «не найден» (ТЗ-21, этап 0)
+    if (!(await this.files.canDownload(user.tenantId, id, { userId: user.userId, role: user.role }))) {
+      throw AppException.notFound('File not found');
+    }
     const { file, stream } = await this.files.getForDownload(user.tenantId, id);
     /*
       Показываем в окне браузера только то, что безопасно показать. SVG — это документ

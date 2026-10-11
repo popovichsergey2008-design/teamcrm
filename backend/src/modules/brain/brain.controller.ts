@@ -30,7 +30,7 @@ export class BrainController {
    */
   @Post('answer')
   answer(@CurrentUser() u: AuthUser, @Body() dto: AnswerDto) {
-    return this.brain.answer(u.tenantId, u.userId, dto.question, dto.projectId || undefined);
+    return this.brain.answer(u.tenantId, u.userId, dto.question, dto.projectId || undefined, u.role);
   }
 
   @Post('conversations')
@@ -50,7 +50,7 @@ export class BrainController {
 
   @Post('conversations/:id/ask')
   ask(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AskDto) {
-    return this.brain.ask(u.tenantId, u.userId, id, dto.question, dto.projectId || undefined);
+    return this.brain.ask(u.tenantId, u.userId, id, dto.question, dto.projectId || undefined, u.role);
   }
 
   /** Стрим ответа (SSE): события citations → delta* → done|error. Читается фронтом через fetch+ReadableStream. */
@@ -67,7 +67,7 @@ export class BrainController {
       const r = await this.brain.askStream(u.tenantId, u.userId, id, dto.question, dto.projectId || undefined, {
         citations: (c) => send('citations', { citations: c }),
         delta: (t) => send('delta', { text: t }),
-      });
+      }, u.role);
       send('done', { messageId: r.messageId, cached: r.cached, promptVersionId: r.promptVersionId });
     } catch (e) {
       const message = e instanceof AppException ? e.message : 'Ошибка генерации ответа';

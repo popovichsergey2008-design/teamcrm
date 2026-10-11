@@ -1,3 +1,4 @@
+import { ProjectViewer } from '../../common/access/project-visibility';
 import { Injectable, Logger } from '@nestjs/common';
 import { Readable } from 'stream';
 import { AppException } from '../../common/http/app-exception';
@@ -63,11 +64,23 @@ export class MeetingsService {
     private readonly taskcard: TaskCardService,
   ) {}
 
-  list(tenantId: string) {
-    return this.repo.list(tenantId);
+  list(tenantId: string, viewer: ProjectViewer) {
+    return this.repo.list(tenantId, viewer);
   }
 
-  async details(tenantId: string, id: string) {
+  /** Встреча видна человеку — иначе «не найдена», не выдаём, что она есть (ТЗ-21, этап 0). */
+  async assertVisible(tenantId: string, id: string, viewer: ProjectViewer): Promise<void> {
+    if (!(await this.repo.visible(tenantId, String(id), viewer))) throw AppException.notFound('Встреча не найдена');
+  }
+
+  async assertDraftVisible(tenantId: string, draftId: string, viewer: ProjectViewer): Promise<void> {
+    const meetingId = await this.repo.meetingOfDraft(tenantId, String(draftId));
+    if (!meetingId) throw AppException.notFound('Черновик не найден');
+    await this.assertVisible(tenantId, meetingId, viewer);
+  }
+
+  async details(tenantId: string, id: string, viewer?: ProjectViewer) {
+    if (viewer) await this.assertVisible(tenantId, id, viewer);
     const meeting = await this.repo.get(tenantId, id);
     if (!meeting) throw AppException.notFound('Встреча не найдена');
     const [segments, summary, drafts, tasks] = await Promise.all([

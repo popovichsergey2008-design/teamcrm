@@ -313,7 +313,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       description: 'Миты (созвоны и встречи) с итогами: найти по словам или взять последние. Для «что решили на последнем мите по проекту X».',
       params: { q: 'слова или название проекта (необязательно)' },
       async run(ctx, p) {
-        const rows = await repo.meetings(ctx.tenantId, str(p.q, 80) || null);
+        const rows = await repo.meetings(ctx.tenantId, str(p.q, 80) || null, 8, ctx.user);
         if (!rows.length) return { text: 'Митов не найдено.', sources: [] };
         return {
           text: rows.map((m) => `Мит #${m.id} «${m.title}» (${dateRu(m.at)}${m.project_name ? `, ${m.project_name}` : ''}, ${m.status}): ${m.summary ? clip(m.summary, 600) : 'итога пока нет'}`).join('\n'),
@@ -326,7 +326,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       description: 'Мит целиком: итог, решения, задачи из него.',
       params: { meetingId: 'номер мита' },
       async run(ctx, p) {
-        const m = await repo.meeting(ctx.tenantId, str(p.meetingId, 20));
+        const m = await repo.meeting(ctx.tenantId, str(p.meetingId, 20), ctx.user);
         if (!m) return { text: 'Мит не найден.', sources: [] };
         const decisions = Array.isArray(m.decisions) ? (m.decisions as unknown[]).map((d) => String(typeof d === 'object' && d ? (d as any).text ?? JSON.stringify(d) : d)) : [];
         const text = [

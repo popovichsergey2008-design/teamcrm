@@ -1,3 +1,4 @@
+import { meetingVisibleSql, ProjectViewer, viewerParams } from '../../common/access/project-visibility';
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 
@@ -691,25 +692,27 @@ export class AnthillRepository {
     );
   }
 
-  meetings(tenantId: string, q: string | null, limit = 8) {
+  meetings(tenantId: string, q: string | null, limit = 8, viewer?: ProjectViewer) {
     return this.db.many<{ id: string; title: string; at: Date; status: string; summary: string | null; project_name: string | null }>(
       `SELECT m.id, m.title, COALESCE(m.happened_at, m.created_at) AS at, m.status, s.summary, p.name AS project_name
          FROM meetings m LEFT JOIN meeting_summaries s ON s.meeting_id = m.id LEFT JOIN projects p ON p.id = m.project_id
         WHERE m.tenant_id=$1 AND ($2::text IS NULL OR m.title ILIKE $2 OR p.name ILIKE $2 OR s.summary ILIKE $2)
+          AND ($4::bigint IS NULL OR ${meetingVisibleSql('m', { user: '$4', all: '$5', client: '$6' })})
         ORDER BY at DESC LIMIT $3`,
-      [tenantId, q ? `%${q}%` : null, limit],
+      [tenantId, q ? `%${q}%` : null, limit, ...(viewer ? viewerParams(viewer) : [null, false, false])],
     );
   }
 
-  meeting(tenantId: string, id: string) {
+  meeting(tenantId: string, id: string, viewer?: ProjectViewer) {
     return this.db.one<{ id: string; title: string; at: Date; status: string; summary: string | null; decisions: unknown; project_name: string | null;
       drafts: { title: string; status: string; task_id: string | null }[] }>(
       `SELECT m.id, m.title, COALESCE(m.happened_at, m.created_at) AS at, m.status, s.summary, s.decisions, p.name AS project_name,
               COALESCE((SELECT json_agg(json_build_object('title', d.title, 'status', d.status, 'task_id', d.task_id))
                           FROM meeting_task_drafts d WHERE d.meeting_id = m.id), '[]'::json) AS drafts
          FROM meetings m LEFT JOIN meeting_summaries s ON s.meeting_id = m.id LEFT JOIN projects p ON p.id = m.project_id
-        WHERE m.tenant_id=$1 AND m.id=$2`,
-      [tenantId, id],
+        WHERE m.tenant_id=$1 AND m.id=$2
+          AND ($3::bigint IS NULL OR ${meetingVisibleSql('m', { user: '$3', all: '$4', client: '$5' })})`,
+      [tenantId, id, ...(viewer ? viewerParams(viewer) : [null, false, false])],
     );
   }
 

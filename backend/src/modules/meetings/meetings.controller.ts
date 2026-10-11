@@ -32,7 +32,7 @@ export class MeetingsController {
 
   @Get()
   list(@CurrentUser() u: AuthUser) {
-    return this.meetings.list(u.tenantId);
+    return this.meetings.list(u.tenantId, { userId: u.userId, role: u.role });
   }
 
   @Post()
@@ -45,17 +45,19 @@ export class MeetingsController {
 
   @Get(':id')
   details(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.meetings.details(u.tenantId, id);
+    return this.meetings.details(u.tenantId, id, { userId: u.userId, role: u.role });
   }
 
   @Post(':id/retry')
-  retry(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+  async retry(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    await this.meetings.assertVisible(u.tenantId, id, { userId: u.userId, role: u.role });
     return this.meetings.retry(u.tenantId, id);
   }
 
   /** Подтверждение черновика — единственный путь, которым встреча превращается в задачу. */
   @Post('drafts/:draftId/apply')
-  apply(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string, @Body() dto: ApplyDraftDto) {
+  async apply(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string, @Body() dto: ApplyDraftDto) {
+    await this.meetings.assertDraftVisible(u.tenantId, draftId, { userId: u.userId, role: u.role });
     return this.meetings.applyDraft(u.tenantId, u.userId, draftId, dto);
   }
 
@@ -70,12 +72,14 @@ export class MeetingsController {
    * Отдельно от «применить» — человек правит список в несколько заходов.
    */
   @Post('drafts/:draftId')
-  updateDraft(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string, @Body() dto: ApplyDraftDto) {
+  async updateDraft(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string, @Body() dto: ApplyDraftDto) {
+    await this.meetings.assertDraftVisible(u.tenantId, draftId, { userId: u.userId, role: u.role });
     return this.meetings.updateDraft(u.tenantId, draftId, dto);
   }
 
   @Post('drafts/:draftId/reject')
-  reject(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string) {
+  async reject(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string) {
+    await this.meetings.assertDraftVisible(u.tenantId, draftId, { userId: u.userId, role: u.role });
     return this.meetings.rejectDraft(u.tenantId, draftId);
   }
 }

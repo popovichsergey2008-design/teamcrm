@@ -1,3 +1,4 @@
+import { projectVisibleSql, ProjectViewer, viewerParams } from '../../common/access/project-visibility';
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 
@@ -34,7 +35,8 @@ export class SearchRepository {
     return `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   }
 
-  tasks(tenantId: string, q: string, limit: number): Promise<TaskHit[]> {
+  /** Задачи — только видимых проектов (ТЗ-21, этап 0): закрытый проект в поиске не всплывает. */
+  tasks(tenantId: string, q: string, limit: number, viewer: ProjectViewer): Promise<TaskHit[]> {
     return this.db.many<TaskHit>(
       `SELECT t.id, t.title, t.project_id, p.name AS project_name, bc.name AS column_name,
               (t.closed_at IS NOT NULL) AS closed, u.full_name AS assignee_name
@@ -46,22 +48,24 @@ export class SearchRepository {
           AND t.deleted_at IS NULL
           AND p.status <> 'archived'
           AND (t.title ILIKE $2 ESCAPE '\\' OR t.description ILIKE $2 ESCAPE '\\' OR t.id::text = $3)
+          AND ${projectVisibleSql('t.project_id', { user: '$6', all: '$7', client: '$8' })}
         ORDER BY (t.id::text = $3) DESC,
                  (t.title ILIKE $4 ESCAPE '\\') DESC,
                  t.closed_at IS NOT NULL,
                  t.updated_at DESC
         LIMIT $5`,
-      [tenantId, SearchRepository.like(q), q, `${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`, limit],
+      [tenantId, SearchRepository.like(q), q, `${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`, limit, ...viewerParams(viewer)],
     );
   }
 
-  projects(tenantId: string, q: string, limit: number): Promise<ProjectHit[]> {
+  projects(tenantId: string, q: string, limit: number, viewer: ProjectViewer): Promise<ProjectHit[]> {
     return this.db.many<ProjectHit>(
       `SELECT id, name, status FROM projects
         WHERE tenant_id = $1 AND name ILIKE $2 ESCAPE '\\'
+          AND ${projectVisibleSql('projects.id', { user: '$5', all: '$6', client: '$7' })}
         ORDER BY (status = 'archived'), (name ILIKE $3 ESCAPE '\\') DESC, name
         LIMIT $4`,
-      [tenantId, SearchRepository.like(q), `${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`, limit],
+      [tenantId, SearchRepository.like(q), `${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`, limit, ...viewerParams(viewer)],
     );
   }
 

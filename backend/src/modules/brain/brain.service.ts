@@ -43,7 +43,7 @@ export class BrainService {
   }
 
   /** RAG-конвейер: поиск top-k → сборка контекста → LLM → ответ с цитатами. Изоляция по tenant/пользователю. */
-  async ask(tenantId: string, userId: string, conversationId: string, question: string, projectId?: string) {
+  async ask(tenantId: string, userId: string, conversationId: string, question: string, projectId?: string, role = 'member') {
     const conv = await this.repo.conversationOwned(tenantId, userId, conversationId);
     if (!conv) throw AppException.notFound('Диалог не найден');
     const q = question.trim();
@@ -52,7 +52,7 @@ export class BrainService {
     await this.repo.addMessage(conversationId, 'user', q, null);
     await this.repo.setTitle(conversationId, q);
 
-    const r = await this.resolve(tenantId, q, userId, projectId);
+    const r = await this.resolve(tenantId, q, userId, projectId, role);
     return this.finish(tenantId, conversationId, r.answer, r.citations, r.cache, r.versionId);
   }
 
@@ -63,10 +63,10 @@ export class BrainService {
    * Своя копия конвейера означала бы свой кэш и разные ответы на один вопрос в палитре
    * и в разделе «Спросить ИИ» — а это первое, что заметит человек.
    */
-  async answer(tenantId: string, userId: string, question: string, projectId?: string) {
+  async answer(tenantId: string, userId: string, question: string, projectId?: string, role = 'member') {
     const q = question.trim();
     if (q.length < 2) throw AppException.validation('Слишком короткий вопрос');
-    const r = await this.resolve(tenantId, q, userId, projectId);
+    const r = await this.resolve(tenantId, q, userId, projectId, role);
     if (r.cache !== 'miss') await this.ai.recordUsage(tenantId, 'brain', 'cache', 0, 0, true, 0, r.versionId);
     return { answer: r.answer, citations: r.citations, cached: r.cache !== 'miss' };
   }
@@ -78,7 +78,7 @@ export class BrainService {
    * `userId` — ключ A/B-маршрутизации промпта: человек не должен получать то испытуемую
    * версию, то действующую от вопроса к вопросу.
    */
-  private async resolve(tenantId: string, q: string, userId: string, projectId?: string): Promise<{
+  private async resolve(tenantId: string, q: string, userId: string, projectId?: string, role = 'member'): Promise<{
     answer: string;
     citations: { sourceType: string; sourceId: string; title: string | null }[];
     cache: 'exact' | 'semantic' | 'miss';
@@ -92,7 +92,11 @@ export class BrainService {
     const versionKey = versionId ?? 'default';
 
     // 1) точный кэш (Redis) — идентичный вопрос в рамках арендатора, проекта И версии промпта
-    const scopeKey = projectId ? `p${projectId}` : 'all';
+    // Права — до поиска и в ключе кэша (ТЗ-21, этап 0): ответ из закрытого проекта
+    // делят только люди с тем же набором видимых проектов, а не вся компания.
+    const viewer = { userId, role };
+    const access = await this.knowledge.accessKey(tenantId, viewer).catch(() => `u${userId}`);
+    const scopeKey = `${projectId ? `p${projectId}` : 'all'}:${access}`;
     const exactKey = `brain:ans:${tenantId}:${scopeKey}:v${versionKey}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
     const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null);
     if (exact) return { answer: exact.answer, citations: exact.citations, cache: 'exact', versionId };
@@ -102,7 +106,7 @@ export class BrainService {
 
     // 3) семантический кэш (pgvector) — только для общего поиска (не проектного), в разрезе версии промпта
     if (!projectId) {
-      const sem = await this.repo.cacheLookup(tenantId, vec, versionId).catch(() => null);
+      const sem = await this.repo.cacheLookup(tenantId, vec, versionId, access).catch(() => null);
       if (sem && sem.score >= SEMANTIC_THRESHOLD) {
         const citations = sem.citations ?? [];
         await this.redis.setJson(exactKey, { answer: sem.answer, citations }, ANSWER_TTL).catch(() => undefined);
@@ -111,7 +115,7 @@ export class BrainService {
     }
 
     // 4) промах кэша → RAG + LLM (в рамках проекта, если задан)
-    const hits = await this.knowledge.searchByVector(tenantId, vec, 6, projectId);
+    const hits = await this.knowledge.searchByVector(tenantId, vec, 6, projectId, undefined, viewer);
     const seen = new Set<string>();
     const citations: { sourceType: string; sourceId: string; title: string | null }[] = [];
     for (const h of hits) {
@@ -133,7 +137,7 @@ export class BrainService {
 
     // сохранить в кэши (семантический — только для общего разреза, в разрезе версии промпта)
     await this.redis.setJson(exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
-    if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId).catch(() => undefined);
+    if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId, access).catch(() => undefined);
 
     return { answer, citations, cache: 'miss' as const, versionId };
   }
@@ -145,6 +149,7 @@ export class BrainService {
   async askStream(
     tenantId: string, userId: string, conversationId: string, question: string, projectId: string | undefined,
     on: { citations: (c: any[]) => void; delta: (t: string) => void },
+    role = 'member',
   ) {
     const conv = await this.repo.conversationOwned(tenantId, userId, conversationId);
     if (!conv) throw AppException.notFound('Диалог не найден');
@@ -159,7 +164,11 @@ export class BrainService {
     const versionId = prompt?.versionId ?? null;
     const versionKey = versionId ?? 'default';
 
-    const scopeKey = projectId ? `p${projectId}` : 'all';
+    // Права — до поиска и в ключе кэша (ТЗ-21, этап 0): ответ из закрытого проекта
+    // делят только люди с тем же набором видимых проектов, а не вся компания.
+    const viewer = { userId, role };
+    const access = await this.knowledge.accessKey(tenantId, viewer).catch(() => `u${userId}`);
+    const scopeKey = `${projectId ? `p${projectId}` : 'all'}:${access}`;
     const exactKey = `brain:ans:${tenantId}:${scopeKey}:v${versionKey}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
     const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null);
     if (exact) { on.citations(exact.citations); on.delta(exact.answer); return this.finish(tenantId, conversationId, exact.answer, exact.citations, 'exact', versionId); }
@@ -167,7 +176,7 @@ export class BrainService {
     const vec = await this.ai.embed(tenantId, q, 'embedding');
 
     if (!projectId) {
-      const sem = await this.repo.cacheLookup(tenantId, vec, versionId).catch(() => null);
+      const sem = await this.repo.cacheLookup(tenantId, vec, versionId, access).catch(() => null);
       if (sem && sem.score >= SEMANTIC_THRESHOLD) {
         const citations = sem.citations ?? [];
         await this.redis.setJson(exactKey, { answer: sem.answer, citations }, ANSWER_TTL).catch(() => undefined);
@@ -176,7 +185,7 @@ export class BrainService {
       }
     }
 
-    const hits = await this.knowledge.searchByVector(tenantId, vec, 6, projectId);
+    const hits = await this.knowledge.searchByVector(tenantId, vec, 6, projectId, undefined, viewer);
     const seen = new Set<string>();
     const citations: { sourceType: string; sourceId: string; title: string | null }[] = [];
     for (const h of hits) {
@@ -199,7 +208,7 @@ export class BrainService {
     }
 
     await this.redis.setJson(exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
-    if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId).catch(() => undefined);
+    if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId, access).catch(() => undefined);
 
     return this.finish(tenantId, conversationId, answer, citations, 'miss', versionId);
   }

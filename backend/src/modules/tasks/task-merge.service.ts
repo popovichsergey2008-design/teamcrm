@@ -1,3 +1,4 @@
+import { ProjectViewer } from '../../common/access/project-visibility';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
@@ -61,9 +62,9 @@ export class TaskMergeService {
    * `q` — ручной поиск. Когда он задан, порядок задаёт не похожесть, а сам запрос:
    * человек уже знает, что ищет, и подсовывать ему «а вот эти похожее» вредно.
    */
-  async candidates(tenantId: string, taskId: string, q?: string) {
+  async candidates(tenantId: string, taskId: string, q?: string, viewer?: ProjectViewer) {
     const base = await this.task(tenantId, taskId);
-    return this.rank(tenantId, { id: String(base.id), title: base.title, description: base.description }, q);
+    return this.rank(tenantId, { id: String(base.id), title: base.title, description: base.description }, q, undefined, viewer);
   }
 
   /**
@@ -74,7 +75,7 @@ export class TaskMergeService {
    * чем в списке кандидатов: непрошеное предупреждение раздражает сильнее, чем
    * отсутствующее, и показывать «возможно, дубль» на каждое общее слово нельзя.
    */
-  async duplicatesOf(tenantId: string, input: { title: string; description?: string }) {
+  async duplicatesOf(tenantId: string, input: { title: string; description?: string }, viewer?: ProjectViewer) {
     const title = (input.title ?? '').trim();
     // Двух слов мало для вывода: по ним похоже всё подряд.
     if (title.length < 8) return { items: [] };
@@ -83,6 +84,7 @@ export class TaskMergeService {
       { id: '0', title, description: input.description ?? null },
       undefined,
       DUPLICATE_MIN,
+      viewer,
     );
     return { items: ranked.items.slice(0, 3) };
   }
@@ -93,9 +95,10 @@ export class TaskMergeService {
     base: { id: string; title: string; description: string | null },
     q?: string,
     minScore = 0.12,
+    viewer?: ProjectViewer,
   ) {
     const query = (q ?? '').trim();
-    const rows = await this.repo.candidates(tenantId, base.id, query || null, query ? 30 : SCAN_LIMIT);
+    const rows = await this.repo.candidates(tenantId, base.id, query || null, query ? 30 : SCAN_LIMIT, viewer);
 
     const semantic = query ? new Map<string, number>() : await this.semantic(tenantId, base);
 

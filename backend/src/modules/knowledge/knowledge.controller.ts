@@ -31,7 +31,7 @@ export class KnowledgeController {
   search(@CurrentUser() u: AuthUser, @Query() dto: SearchDto) {
     if (!dto.q || dto.q.trim().length < 2) throw AppException.validation('Слишком короткий запрос');
     const k = Math.min(Math.max(Number(dto.k) || 8, 1), 20);
-    return this.knowledge.search(u.tenantId, dto.q.trim(), k, dto.projectId || undefined);
+    return this.knowledge.search(u.tenantId, dto.q.trim(), k, dto.projectId || undefined, undefined, { userId: u.userId, role: u.role });
   }
 
   @Get('knowledge/stats')
@@ -50,11 +50,13 @@ export class KnowledgeController {
   ) {
     return this.knowledge.listSources(u.tenantId, {
       projectId: projectId || undefined, type: type || undefined, q: q?.trim() || undefined, offset: Number(offset) || 0,
+      viewer: { userId: u.userId, role: u.role },
     });
   }
 
   @Get('knowledge/sources/:type/:id')
   async sourceContent(@CurrentUser() u: AuthUser, @Param('type') type: string, @Param('id') id: string) {
+    if (!(await this.knowledge.canOpenSource(u.tenantId, type, id, { userId: u.userId, role: u.role }))) throw AppException.notFound('Источник не найден');
     const r = await this.knowledge.sourceContent(u.tenantId, type, id);
     if (!r) throw AppException.notFound('Источник не найден');
     return r;

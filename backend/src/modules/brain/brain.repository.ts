@@ -55,25 +55,25 @@ export class BrainRepository {
 
   /** Семантический поиск в кэше строго в разрезе версии промпта (PromptOps): смена версии → промах. */
   async cacheLookup(
-    tenantId: string, vec: number[], promptVersionId: string | null,
+    tenantId: string, vec: number[], promptVersionId: string | null, accessKey: string,
   ): Promise<{ answer: string; citations: any; score: number } | null> {
     const r = await this.db.one<{ answer: string; citations: any; score: number }>(
       `SELECT answer, citations, 1 - (embedding <=> $2::vector) AS score
          FROM ai_answer_cache
-        WHERE tenant_id=$1 AND prompt_version_id IS NOT DISTINCT FROM $3
+        WHERE tenant_id=$1 AND prompt_version_id IS NOT DISTINCT FROM $3 AND access_key = $4
         ORDER BY embedding <=> $2::vector LIMIT 1`,
-      [tenantId, this.vec(vec), promptVersionId],
+      [tenantId, this.vec(vec), promptVersionId, accessKey],
     );
     return r ? { answer: r.answer, citations: r.citations, score: Number(r.score) } : null;
   }
 
   async cacheStore(
-    tenantId: string, question: string, vec: number[], answer: string, citations: unknown, promptVersionId: string | null,
+    tenantId: string, question: string, vec: number[], answer: string, citations: unknown, promptVersionId: string | null, accessKey: string,
   ) {
     await this.db.query(
-      `INSERT INTO ai_answer_cache (tenant_id, question, answer, citations, embedding, prompt_version_id)
-       VALUES ($1,$2,$3,$4,$5::vector,$6)`,
-      [tenantId, question, answer, citations ? JSON.stringify(citations) : null, this.vec(vec), promptVersionId],
+      `INSERT INTO ai_answer_cache (tenant_id, question, answer, citations, embedding, prompt_version_id, access_key)
+       VALUES ($1,$2,$3,$4,$5::vector,$6,$7)`,
+      [tenantId, question, answer, citations ? JSON.stringify(citations) : null, this.vec(vec), promptVersionId, accessKey],
     );
   }
 }

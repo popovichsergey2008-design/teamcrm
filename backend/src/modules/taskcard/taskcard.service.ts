@@ -87,6 +87,8 @@ export class TaskCardService {
     await this.activity.log(tenantId, taskId, authorId, 'commented', { commentId: c.id });
     this.realtime.emitScoped(tenantId, task.project_id, 'task.comment_added', { taskId, commentId: c.id, authorId }, clientVisible);
     await this.outbox.enqueue(tenantId, task.project_id, 'comment.create', c.id, { taskId });
+    // в базу знаний — сразу, а не до ночной переиндексации: «что решили в задаче?» ищут по обсуждению
+    if (body.trim().length >= 20) this.knowledge.enqueue(tenantId, 'comment', String(c.id));
     // у сообщения с файлом подписи может не быть вовсе — в письме тогда пусто,
     // и человек не понимает, ради чего его позвали
     void this.notify.taskCommented(tenantId, taskId, authorId, String(c.id), body.trim() || 'прислал файл в обсуждение');

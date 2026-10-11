@@ -1,3 +1,4 @@
+import { ProjectViewer } from '../../common/access/project-visibility';
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
@@ -54,6 +55,11 @@ export class FilesService {
   }
 
   /** Метаданные + поток объекта (access-control по tenant — в контроллере/здесь). */
+  /** Проверка доступа к файлу по его владельцу — см. FilesRepository.canDownload. */
+  canDownload(tenantId: string, id: string, viewer: ProjectViewer): Promise<boolean> {
+    return this.repo.canDownload(tenantId, id, viewer);
+  }
+
   async getForDownload(tenantId: string, id: string): Promise<{ file: FileRow; stream: Readable }> {
     const file = await this.repo.findById(tenantId, id);
     if (!file) throw AppException.notFound('File not found');

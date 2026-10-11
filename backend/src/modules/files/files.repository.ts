@@ -1,3 +1,5 @@
+import { meetingVisibleSql, projectVisibleSql, ProjectViewer, viewerParams } from '../../common/access/project-visibility';
+import { VISIBLE as FEED_VISIBLE } from '../feed/feed.repository';
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 
@@ -42,6 +44,36 @@ export class FilesRepository {
         input.uploadedBy,
       ],
     ) as Promise<FileRow>;
+  }
+
+  /**
+   * Можно ли человеку скачать файл (ТЗ-21, этап 0). Раньше хватало номера и компании:
+   * запись созвона закрытого проекта открывал любой. Теперь — по владельцу файла:
+   * вложение задачи — по проекту, запись встречи — по встрече, файл чата — участникам,
+   * файл новости — тем, кому видна новость. Свой загруженный файл — всегда; аватары,
+   * логотип и прочее служебное — как раньше.
+   */
+  async canDownload(tenantId: string, id: string, viewer: ProjectViewer): Promise<boolean> {
+    const [user, all, client] = viewerParams(viewer);
+    const proj = (expr: string) => projectVisibleSql(expr, { user: '$2', all: '$4', client: '$5' });
+    const row = await this.db.one<{ ok: boolean }>(
+      `SELECT (f.uploaded_by = $2::bigint OR CASE f.owner_kind
+          WHEN 'task_attachment' THEN f.owner_id IS NULL OR EXISTS (
+            SELECT 1 FROM tasks t WHERE t.id = f.owner_id AND t.tenant_id = $1 AND ${proj('t.project_id')})
+          WHEN 'meeting_recording' THEN f.owner_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM meetings m WHERE m.id = f.owner_id AND m.tenant_id = $1
+               AND ${meetingVisibleSql('m', { user: '$2', all: '$4', client: '$5' })})
+          WHEN 'chat_message' THEN f.owner_id IS NULL OR EXISTS (
+            SELECT 1 FROM chats c WHERE c.id = f.owner_id AND c.tenant_id = $1
+               AND ((c.kind = 'project' AND (c.project_id IS NULL OR ${proj('c.project_id')}))
+                    OR EXISTS (SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.id AND cm.user_id = $2::bigint)))
+          WHEN 'feed_post' THEN NOT $5::boolean AND EXISTS (
+            SELECT 1 FROM feed_posts fp WHERE fp.id = f.owner_id AND ${FEED_VISIBLE('fp')})
+          ELSE TRUE END) AS ok
+         FROM files f WHERE f.tenant_id = $1 AND f.id = $6`,
+      [tenantId, user, all, all, client, id],
+    );
+    return !!row?.ok;
   }
 
   findById(tenantId: string, id: string): Promise<FileRow | null> {

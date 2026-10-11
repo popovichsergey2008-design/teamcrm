@@ -1,3 +1,4 @@
+import { meetingVisibleSql, ProjectViewer, viewerParams } from '../../common/access/project-visibility';
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { Reply } from './transcript.util';
@@ -82,13 +83,36 @@ export class MeetingsRepository {
     return this.db.one<MeetingRow>(`SELECT * FROM meetings WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
   }
 
-  list(tenantId: string) {
+  /** Список — только видимые встречи (ТЗ-21, этап 0): закрытый проект и чужой созвон не показываем. */
+  list(tenantId: string, viewer: ProjectViewer) {
     return this.db.many<MeetingRow & { drafts_pending: number }>(
       `SELECT m.*, (SELECT count(*)::int FROM meeting_task_drafts d
                      WHERE d.meeting_id=m.id AND d.status='pending') AS drafts_pending
-         FROM meetings m WHERE m.tenant_id=$1 ORDER BY m.created_at DESC LIMIT 100`,
-      [tenantId],
+         FROM meetings m WHERE m.tenant_id=$1
+          AND ${meetingVisibleSql('m', { user: '$2', all: '$3', client: '$4' })}
+        ORDER BY m.created_at DESC LIMIT 100`,
+      [tenantId, ...viewerParams(viewer)],
     );
+  }
+
+  /** Видна ли встреча человеку — для карточки, черновиков задач и повторного разбора. */
+  async visible(tenantId: string, id: string, viewer: ProjectViewer): Promise<boolean> {
+    const row = await this.db.one<{ ok: boolean }>(
+      `SELECT ${meetingVisibleSql('m', { user: '$3', all: '$4', client: '$5' })} AS ok
+         FROM meetings m WHERE m.tenant_id=$1 AND m.id=$2`,
+      [tenantId, id, ...viewerParams(viewer)],
+    );
+    return !!row?.ok;
+  }
+
+  /** Встреча черновика задачи — чтобы проверить доступ по черновику. */
+  async meetingOfDraft(tenantId: string, draftId: string): Promise<string | null> {
+    const row = await this.db.one<{ meeting_id: string }>(
+      `SELECT d.meeting_id FROM meeting_task_drafts d JOIN meetings m ON m.id = d.meeting_id
+        WHERE m.tenant_id=$1 AND d.id=$2`,
+      [tenantId, draftId],
+    );
+    return row ? String(row.meeting_id) : null;
   }
 
   async setStatus(id: string, status: string, error: string | null = null): Promise<void> {

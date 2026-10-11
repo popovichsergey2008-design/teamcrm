@@ -51,7 +51,7 @@ export interface Viewer {
  *
  * `$1` — организация, `$2` — человек, `$3` — владелец ли он.
  */
-const VISIBLE = (p: string) => `(
+export const VISIBLE = (p: string) => `(
   ${p}.tenant_id = $1 AND ${p}.deleted_at IS NULL
   AND (
     $3::boolean
