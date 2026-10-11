@@ -177,7 +177,8 @@ export class ProactiveService {
         resourceId: String(id), metadata: { skill: row.skill, action, risk: def.risk ?? null },
       }).catch(() => undefined);
       this.realtime.emitToUsers(a.tenantId, [a.userId], 'assistant.proposal', { id: String(id), kind: 'updated' });
-      return { ok: true, text: r.text, link: r.link ?? null, proposal: await this.get(a, String(id)) };
+      // без поля ok: обёртка ответов приняла бы объект за готовый конверт и потеряла data
+      return { done: true, text: r.text, link: r.link ?? null, proposal: await this.get(a, String(id)) };
     } catch (e) {
       const msg = e instanceof AppException ? e.message : 'Не получилось выполнить';
       await this.repo.finish(String(id), 'new', null, null, msg);

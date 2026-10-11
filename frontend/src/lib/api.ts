@@ -2228,7 +2228,7 @@ export const api = {
   proposal: (id: string) => request<AssistantProposal>('GET', `/assistant/proposals/${id}`),
   proposalsSeen: (ids: string[]) => request<{ ok: true }>('POST', '/assistant/proposals/seen', { ids }),
   proposalAct: (id: string, action: string, params?: Record<string, unknown>) =>
-    request<{ ok: true; text: string; link: string | null; proposal: AssistantProposal }>('POST', `/assistant/proposals/${id}/confirm`, { action, params }),
+    request<{ done: true; text: string; link: string | null; proposal: AssistantProposal }>('POST', `/assistant/proposals/${id}/confirm`, { action, params }),
   proposalDismiss: (id: string, o: { mute?: boolean; reason?: string } = {}) =>
     request<{ dismissed: true; muted: boolean }>('POST', `/assistant/proposals/${id}/dismiss`, o),
   proposalSnooze: (id: string, preset: 'hour' | 'afternoon' | 'tomorrow') =>

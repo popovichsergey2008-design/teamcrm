@@ -84,8 +84,8 @@ describe('Проактивный секретарь (e2e)', () => {
   it('карточка: отложить, «больше не предлагать», настройки; компания — только владельцу', async () => {
     const { O, tenantId, gleb } = await org();
     const [p] = await db.many<{ id: string }>(
-      `INSERT INTO assistant_proposals (tenant_id, user_id, skill, kind, title, priority, confidence, actions, fingerprint)
-       VALUES ($1, $2, 'commitment', 'chat:1', 'Проверка', 1, 0.9, '[{"key":"done","label":"Готово"}]', $3) RETURNING id`,
+      `INSERT INTO assistant_proposals (tenant_id, user_id, skill, kind, source_type, source_id, title, priority, confidence, actions, fingerprint)
+       VALUES ($1, $2, 'commitment', 'chat:1', 'chat', '1', 'Проверка', 1, 0.9, '[{"key":"done","label":"Готово"}]', $3) RETURNING id`,
       [tenantId, gleb.id, uniq()],
     );
     await http$.post(`/api/assistant/proposals/${p.id}/snooze`).set(gleb.H).send({ preset: 'tomorrow' }).expect(201);
