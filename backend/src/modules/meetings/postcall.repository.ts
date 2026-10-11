@@ -23,7 +23,16 @@ export interface PostcallRow {
   reviewed_at: Date | null;
   completed_at: Date | null;
   reminded_at: Date | null;
+  recap_sent_at: Date | null;
+  notified_at: Date | null;
   created_at: Date;
+}
+
+/** Черновик письма клиенту из ящика секретаря (ТЗ-21) — в итогах встречи он же. */
+export interface FollowupCard {
+  id: string; status: string; result_text: string | null;
+  actions: { key: string; label: string; primary?: boolean }[];
+  payload: { subject?: string; body?: string; email?: string | null; chatId?: string | null; clientId?: string };
 }
 
 /** Разбор встречи после звонка (ТЗ-22): одна встреча — один разбор. */
@@ -78,6 +87,15 @@ export class PostcallRepository {
     return this.db.one<PostcallRow>(`SELECT * FROM meeting_postcall_reviews WHERE meeting_id = $1`, [meetingId]);
   }
 
+  /** Письмо клиенту так и не понадобилось (клиента нет, навык выключен) — блок не ждёт. */
+  async settleFollowup(meetingId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE meeting_postcall_reviews SET followup_status = 'skipped', updated_at = now()
+        WHERE meeting_id = $1 AND followup_status IN ('pending', 'running')`,
+      [meetingId],
+    );
+  }
+
   /** Повторная обработка: блоки снова ждут, разбор снова «обрабатывается». */
   async reset(id: string): Promise<void> {
     await this.db.query(
@@ -101,8 +119,8 @@ export class PostcallRepository {
   async finish(id: string, status: 'reviewed' | 'completed'): Promise<PostcallRow | null> {
     return this.db.one<PostcallRow>(
       `UPDATE meeting_postcall_reviews
-          SET status = $2, reviewed_at = COALESCE(reviewed_at, now()),
-              completed_at = CASE WHEN $2 = 'completed' THEN now() ELSE completed_at END,
+          SET status = $2::text, reviewed_at = COALESCE(reviewed_at, now()),
+              completed_at = CASE WHEN $2::text = 'completed' THEN now() ELSE completed_at END,
               snoozed_until = NULL, updated_at = now()
         WHERE id = $1 RETURNING *`,
       [id, status],
@@ -132,6 +150,81 @@ export class PostcallRepository {
         ORDER BY id DESC LIMIT 1`,
       [tenantId, roomId],
     );
+  }
+
+  /** Что собралось по встрече — для уведомления «итоги готовы» и рассылки участникам. */
+  counts(meetingId: string) {
+    return this.db.one<{ title: string; summary: string | null; drafts: number; tasks: number; decisions: number; client_id: string | null }>(
+      `SELECT m.title, m.client_id::text AS client_id,
+              (SELECT s.summary FROM meeting_summaries s WHERE s.meeting_id = m.id) AS summary,
+              (SELECT count(*)::int FROM meeting_task_drafts d WHERE d.meeting_id = m.id AND d.status IN ('pending','failed')) AS drafts,
+              (SELECT count(*)::int FROM meeting_task_drafts d WHERE d.meeting_id = m.id AND d.task_id IS NOT NULL) AS tasks,
+              (SELECT count(*)::int FROM decisions x WHERE x.meeting_id = m.id AND x.revoked_at IS NULL) AS decisions
+         FROM meetings m WHERE m.id = $1`,
+      [meetingId],
+    );
+  }
+
+  /**
+   * Кандидат в «Новости» (ТЗ-20) по вехе встречи: дальше его, как и прочих кандидатов,
+   * публикует или отклоняет руководитель в разделе «Новости». Повтор — тот же кандидат.
+   */
+  async addNewsCandidate(c: {
+    tenantId: string; meetingId: string; projectId: string | null; type: 'release' | 'milestone';
+    title: string; body: string; decisions: string[];
+  }): Promise<string | null> {
+    const row = await this.db.one<{ id: string }>(
+      `INSERT INTO feed_candidates (tenant_id, type, source_type, source_id, project_id, facts, suggested_title, suggested_body, visibility, confidence)
+       VALUES ($1, $2, 'meeting', $3, $4, $5::jsonb, $6, $7, $8, 0.7)
+       ON CONFLICT (tenant_id, source_type, source_id) DO NOTHING RETURNING id::text`,
+      [c.tenantId, c.type, String(c.meetingId), c.projectId, JSON.stringify({ decisions: c.decisions }),
+        c.title.slice(0, 200), c.body.slice(0, 4000), c.projectId ? 'project' : 'all'],
+    );
+    return row?.id ?? null;
+  }
+
+  /** Письмо клиенту по этой встрече — у того, кому его подготовили. */
+  followupFor(tenantId: string, userId: string, meetingId: string) {
+    return this.db.one<FollowupCard>(
+      `SELECT id::text, status, result_text, actions, payload FROM assistant_proposals
+        WHERE tenant_id = $1 AND user_id = $2 AND skill = 'followup' AND source_type = 'meeting' AND source_id = $3
+        ORDER BY id DESC LIMIT 1`,
+      [tenantId, userId, String(meetingId)],
+    );
+  }
+
+  /** «Отправить итоги участникам» — один раз: занять право отправки атомарно. */
+  async claimRecap(id: string): Promise<boolean> {
+    const r = await this.db.query(
+      `UPDATE meeting_postcall_reviews SET recap_sent_at = now() WHERE id = $1 AND recap_sent_at IS NULL`, [id],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  /** Итоги, которые пора напомнить: сутки без разбора или кончилось «разобрать позже». */
+  stale() {
+    return this.db.many<{ id: string; tenant_id: string; owner_id: string; meeting_id: string; title: string; created_at: Date; pending_drafts: number }>(
+      `SELECT r.id::text, r.tenant_id::text, r.owner_id::text, r.meeting_id::text, m.title, r.created_at,
+              (SELECT count(*)::int FROM meeting_task_drafts d WHERE d.meeting_id = r.meeting_id AND d.status IN ('pending','failed')) AS pending_drafts
+         FROM meeting_postcall_reviews r JOIN meetings m ON m.id = r.meeting_id
+        WHERE r.status = 'review_required' AND r.owner_id IS NOT NULL AND r.reminded_at IS NULL
+          AND r.created_at > now() - interval '14 days'
+          AND (r.snoozed_until <= now() OR (r.snoozed_until IS NULL AND r.created_at < now() - interval '24 hours'))
+        ORDER BY r.id LIMIT 50`,
+    );
+  }
+
+  async claimRemind(id: string): Promise<boolean> {
+    const r = await this.db.query(`UPDATE meeting_postcall_reviews SET reminded_at = now() WHERE id = $1 AND reminded_at IS NULL`, [id]);
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  /** Сказать владельцу «итоги готовы» — один раз и только если он их ещё не открыл. */
+  async claimNotify(id: string): Promise<boolean> {
+    const r = await this.db.query(
+      `UPDATE meeting_postcall_reviews SET notified_at = now() WHERE id = $1 AND notified_at IS NULL`, [id],
+    );
+    return (r.rowCount ?? 0) > 0;
   }
 
   /** Организатор события, из которого начали созвон: он и владелец разбора. */

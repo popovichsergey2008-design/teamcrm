@@ -85,6 +85,9 @@ function PostCall({ meetingId }: { meetingId: string }) {
   // выбранное в строках, но не сохранённое — пакет создаёт задачи уже с ним
   const [choices, setChoices] = useState<Record<string, DraftChoice>>({});
   const [focused, setFocused] = useState<Record<string, boolean>>({});
+  const [followupSent, setFollowupSent] = useState(false);
+  const [recapBusy, setRecapBusy] = useState(false);
+  const [newsDone, setNewsDone] = useState(false);
 
   const load = useCallback(() => api.postcall(meetingId)
     .then((d) => { setData(d); setLoadErr(''); })
@@ -117,7 +120,7 @@ function PostCall({ meetingId }: { meetingId: string }) {
   }
   if (!data) return <div className="pc-page"><div className="pc-shell"><SkeletonList rows={4} /></div></div>;
 
-  const { meeting, summary, drafts, tasks = [], review, decisions = [] } = data;
+  const { meeting, summary, drafts, tasks = [], review, decisions = [], followup = null } = data;
   const questions = summary?.questions ?? [];
   const blocks = review?.blocks;
   const ai = review ? review.ai : true;
@@ -166,6 +169,23 @@ function PostCall({ meetingId }: { meetingId: string }) {
       toastSaved('Добавлено в Фокус дня');
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось добавить в Фокус'); }
   };
+  const recap = async () => {
+    setRecapBusy(true);
+    try {
+      const r = await api.postcallRecap(meetingId);
+      toastSaved(`Итоги отправлены участникам: ${r.sent}`);
+      await load();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось отправить итоги'); }
+    finally { setRecapBusy(false); }
+  };
+  const toNews = async () => {
+    try {
+      const r = await api.postcallNews(meetingId);
+      setNewsDone(true);
+      toastSaved(r.already ? 'Кандидат в «Новости» уже есть' : 'Пост предложен в «Новости» — руководитель опубликует его там');
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось подготовить пост'); }
+  };
+  const staffOthers = (review?.participants ?? []).filter((p) => p.userId && String(p.userId) !== String(user?.id ?? '')).length;
   const today = new Date().toLocaleDateString('sv-SE');
   const focusable = (t: any) => !t.closed && String(t.assignee_id ?? '') === String(user?.id ?? '')
     && (t.priority === 'urgent' || (t.deadline_at && new Date(t.deadline_at).toLocaleDateString('sv-SE') <= today))
@@ -179,7 +199,7 @@ function PostCall({ meetingId }: { meetingId: string }) {
   const complete = async () => {
     setClosing(true);
     try {
-      await api.postcallComplete(meetingId);
+      await api.postcallComplete(meetingId, followupSent || followup?.status === 'executed');
       toastSaved(tasks.length ? `Разбор завершён. Задач по встрече: ${tasks.length}` : 'Разбор завершён');
       navigate({ section: 'chat', view: 'meetings', meetingId }, { replace: true });
     } catch (e) {
@@ -364,12 +384,37 @@ function PostCall({ meetingId }: { meetingId: string }) {
               {!pending.length && !tasks.length && <p className="pc-text dim">Поручений не прозвучало.</p>}
             </Block>
 
+            {(followup || blockState('followup') === 'running') && (
+              <Block title="Письмо клиенту" state={followup ? 'ready' : blockState('followup')}>
+                {followup && (
+                  <Followup card={followup} onSent={() => { setFollowupSent(true); void load(); }} />
+                )}
+              </Block>
+            )}
+
             {(summary?.risks?.length ?? 0) > 0 && (
               <Block title={`Риски — ${summary!.risks.length}`} state="ready">
                 <ul className="pc-list">{summary!.risks.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul>
               </Block>
             )}
           </>
+        )}
+
+        {ai && canClose && ((staffOthers > 0 && blockState('summary') === 'ready') || review?.newsWorthy) && (
+          <div className="pc-actions pc-recap">
+            {review?.newsWorthy && (
+              newsDone
+                ? <span className="dim pc-note"><Icon name="check" size={12} /> Пост предложен в «Новости»</span>
+                : <Button variant="outline" size="sm" onClick={() => void toNews()}><Icon name="megaphone" size={14} /> Подготовить пост в Новости</Button>
+            )}
+            {staffOthers > 0 && blockState('summary') === 'ready' && (review?.recapSentAt
+              ? <span className="dim pc-note"><Icon name="check" size={12} /> Итоги отправлены участникам</span>
+              : (
+                <Button variant="outline" size="sm" onClick={() => void recap()} loading={recapBusy}>
+                  <Icon name="send" size={14} /> Отправить итоги участникам ({staffOthers})
+                </Button>
+              ))}
+          </div>
         )}
 
         <footer className="pc-foot">
@@ -385,6 +430,61 @@ function PostCall({ meetingId }: { meetingId: string }) {
             </>
           )}
         </footer>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Письмо клиенту (§20, §57): черновик готовит секретарь, человек правит и отправляет.
+ * Наружу — только «предпросмотр → подтверждение → отправка»: молча письмо не уходит.
+ */
+function Followup({ card, onSent }: { card: NonNullable<PostcallView['followup']>; onSent: () => void }) {
+  const [body, setBody] = useState(card.payload.body ?? '');
+  const [subject, setSubject] = useState(card.payload.subject ?? '');
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const done = card.status === 'executed';
+  const hasMail = card.actions.some((a) => a.key === 'send_mail');
+
+  const act = async (key: string, label: string) => {
+    setErr('');
+    if (key === 'copy') {
+      try { await navigator.clipboard.writeText(body); } catch { /* не дали доступа к буферу — текст всё равно виден */ }
+    } else {
+      const where = key === 'send_chat' ? 'во внешний чат клиента' : `письмом на ${card.payload.email ?? 'почту клиента'}`;
+      const ok = await confirmAction({
+        title: 'Отправить итоги клиенту?',
+        description: `Текст уйдёт ${where} от вашего имени — так, как он сейчас в поле.`,
+        confirmLabel: label,
+      });
+      if (!ok) return;
+    }
+    setBusy(key);
+    try {
+      const r = await api.proposalAct(card.id, key, { body, subject });
+      toastSaved(r.text);
+      onSent();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось отправить');
+    } finally { setBusy(''); }
+  };
+
+  if (done) return <p className="pc-text"><Icon name="check" size={14} /> {card.result_text || 'Итоги клиенту отправлены'}</p>;
+  return (
+    <div className="pc-followup">
+      {hasMail && (
+        <input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Тема письма" placeholder="Тема письма" />
+      )}
+      <textarea className="input" rows={8} value={body} onChange={(e) => setBody(e.target.value)} aria-label="Текст письма клиенту" />
+      {err && <div className="error-text pc-err">{err}</div>}
+      <div className="pc-actions">
+        {card.actions.map((a) => (
+          <Button key={a.key} size="sm" variant={a.primary ? 'primary' : 'outline'} loading={busy === a.key} disabled={!!busy || !body.trim()}
+                  onClick={() => void act(a.key, a.label)}>
+            {a.key === 'copy' && <Icon name="copy" size={14} />} {a.label}
+          </Button>
+        ))}
       </div>
     </div>
   );

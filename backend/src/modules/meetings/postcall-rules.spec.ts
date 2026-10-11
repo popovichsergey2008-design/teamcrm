@@ -1,5 +1,5 @@
 import { parseStamp, validateMeetingAnalysis } from './meeting-schema';
-import { draftConfidence, speakerAt } from './postcall-rules';
+import { draftConfidence, newsKind, speakerAt } from './postcall-rules';
 
 const replies = [
   { start: 0, text: 'Начинаем планёрку', speaker: 'Борис', speakerUserId: '1' },
@@ -34,6 +34,14 @@ describe('итоги встречи: источник пункта', () => {
 
   it('метка далеко за концом записи — источника нет', () => {
     expect(speakerAt(replies, 9000).sec).toBeNull();
+  });
+
+  it('в «Новости» — только вехи, обычные итоги — нет', () => {
+    expect(newsKind(['Релиз — в пятницу'])).toBe('release');
+    expect(newsKind(['Запускаем гостевые ссылки для всех'])).toBe('release');
+    expect(newsKind(['Договор с «Аэрос» подписали'])).toBe('milestone');
+    expect(newsKind(['Форму входа не трогаем', 'Созвон по четвергам'])).toBeNull();
+    expect(newsKind(['Перезапуск сервера ночью'])).toBeNull(); // «перезапуск» — не запуск
   });
 
   it('уверенность в исполнителе', () => {

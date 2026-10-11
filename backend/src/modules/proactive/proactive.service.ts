@@ -63,7 +63,7 @@ export class ProactiveService {
       if (!tenant.enabled || prefs.level === 'off') return null;
       const skillOn: Record<string, boolean> = {
         commitment: tenant.commitments, workload: tenant.workloadGuard, reply: tenant.smartReply && prefs.smartReply,
-        followup: tenant.clientFollowup, brief: tenant.morningAudio, decision: true,
+        followup: tenant.clientFollowup, brief: tenant.morningAudio, decision: true, postcall: true,
       };
       if (skillOn[p.skill] === false) return null;
       if (await this.repo.muted(p.tenantId, p.userId, p.skill, p.kind ?? '')) return null;

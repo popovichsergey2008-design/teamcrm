@@ -2,6 +2,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { DbService } from '../../database/db.service';
 import { AiService } from '../ai/ai.service';
+import { MeetingsService } from '../meetings/meetings.service';
+import { PostcallService } from '../meetings/postcall.service';
 import { ChatsService } from '../chats/chats.service';
 import { ClientsRepository } from '../clients/clients.repository';
 import { MailboxService } from '../mailbox/mailbox.service';
@@ -44,11 +46,29 @@ export class ClientFollowupService implements OnModuleInit {
     private readonly chats: ChatsService,
     private readonly mailbox: MailboxService,
     private readonly clients: ClientsRepository,
+    private readonly meetings: MeetingsService,
+    private readonly postcall: PostcallService,
   ) {}
 
   onModuleInit(): void {
     this.proactive.register({ skill: 'followup', execute: (a, p, action, params) => this.execute(a, p, action, params) });
     this.scheduler.add('письмо клиенту: встречи', async () => { await this.scan(); });
+    // Итоги встречи (ТЗ-22): письмо нужно на экране итогов сразу, а не через пару минут
+    this.meetings.onCallProcessed(async (e) => { await this.prepareNow(e.tenantId, e.meetingId); });
+  }
+
+  /** Разобранный созвон — письмо сразу; блок «письмо клиенту» в итогах узнаёт, есть ли оно. */
+  async prepareNow(tenantId: string, meetingId: string): Promise<boolean> {
+    const m = await this.db.one<MeetingRow>(
+      `SELECT id::text, tenant_id::text, title, created_by::text, project_id::text, client_id::text, event_id::text, chat_id::text
+         FROM meetings WHERE id = $1 AND tenant_id = $2 AND followup_checked_at IS NULL`,
+      [meetingId, tenantId],
+    );
+    if (!m) return false;
+    const made = await this.prepare(m).catch((e) => { this.log.warn(`встреча ${meetingId}: ${(e as Error).message}`); return false; });
+    await this.db.query(`UPDATE meetings SET followup_checked_at = now() WHERE id = $1`, [meetingId]);
+    await this.postcall.mark(tenantId, meetingId, { followup: made ? 'ready' : 'skipped' });
+    return made;
   }
 
   /** Разобранные и ещё не просмотренные встречи — по одной, без истории (миграция пометила старые). */

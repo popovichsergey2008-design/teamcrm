@@ -8,6 +8,7 @@ import { AllExceptionsFilter } from '../src/common/http/all-exceptions.filter';
 import { ResponseInterceptor } from '../src/common/http/response.interceptor';
 import { DbService } from '../src/database/db.service';
 import { MeetingsService } from '../src/modules/meetings/meetings.service';
+import { PostcallService } from '../src/modules/meetings/postcall.service';
 
 /**
  * Итоги встречи после звонка (ТЗ-22, этап 1): созвон закончился → разбор заведён сразу,
@@ -93,8 +94,30 @@ describe('Итоги встречи после звонка (e2e)', () => {
     await http$.post(`/api/meetings/${meetingId}/postcall/snooze`).set(O).expect(201);
     expect((await http$.get('/api/meetings/postcall/pending').set(O).expect(200)).body.data).toHaveLength(1);
 
+    // итоги участникам — один раз; участник рассылку не делает
+    await http$.post(`/api/meetings/${meetingId}/postcall/recap`).set(gleb.H).expect(403);
+    expect((await http$.post(`/api/meetings/${meetingId}/postcall/recap`).set(O).expect(201)).body.data.sent).toBe(1);
+    await http$.post(`/api/meetings/${meetingId}/postcall/recap`).set(O).expect(409);
+    const inbox = await db.many<{ path: string }>(
+      `SELECT path FROM notification_inbox WHERE user_id = $1 AND event_key = 'meeting.recap'`, [gleb.id],
+    );
+    expect(inbox.map((i) => i.path)).toEqual([`/meetings/${meetingId}/postcall`]);
+
+    // «отложенное» истекло — итоги возвращаются карточкой в ящик секретаря
+    await db.query(`UPDATE meeting_postcall_reviews SET snoozed_until = now() - interval '1 minute' WHERE meeting_id = $1`, [meetingId]);
+    await app.get(PostcallService).remindStale();
+    const cards = (await http$.get('/api/assistant/proposals').set(O).expect(200)).body.data.items;
+    expect(cards.map((c: any) => c.skill)).toContain('postcall');
+    await app.get(PostcallService).remindStale(); // второй раз не напоминает
+    expect((await http$.get('/api/assistant/proposals').set(O).expect(200)).body.data.items.filter((c: any) => c.skill === 'postcall')).toHaveLength(1);
+
     expect((await http$.post(`/api/meetings/${meetingId}/postcall/complete`).set(O).send({}).expect(201)).body.data.status).toBe('completed');
     expect((await http$.get('/api/meetings/postcall/pending').set(O).expect(200)).body.data).toHaveLength(0);
+    // разбор закрыт — карточка «не разобраны» ушла из ящика сама
+    expect((await http$.get('/api/assistant/proposals').set(O).expect(200)).body.data.items.filter((c: any) => c.skill === 'postcall')).toHaveLength(0);
+    // в списке встреч — «итоги обработаны»
+    const list = (await http$.get('/api/meetings').set(O).expect(200)).body.data;
+    expect(list.find((m: any) => String(m.id) === String(meetingId)).review_status).toBe('completed');
   });
 
   it('«Создать выбранные»: упавший пункт не отменяет остальные, повтор создаёт только его', async () => {

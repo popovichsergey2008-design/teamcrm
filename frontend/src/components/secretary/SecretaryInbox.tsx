@@ -39,7 +39,7 @@ const REASONS: { key: string; label: string }[] = [
 
 const SKILL_TITLE: Record<string, string> = {
   commitment: 'Обещания', workload: 'Страж нагрузки', reply: 'Ответы', followup: 'После встреч с клиентом',
-  brief: 'Утренняя сводка', decision: 'Решения',
+  brief: 'Утренняя сводка', decision: 'Решения', postcall: 'Итоги встреч',
 };
 
 function when(iso: string | null): string {

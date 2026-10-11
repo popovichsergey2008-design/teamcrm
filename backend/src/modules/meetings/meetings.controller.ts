@@ -85,6 +85,19 @@ export class MeetingsController {
     return this.meetings.createBatch(u.tenantId, u.userId, id, dto.items);
   }
 
+  /** «Подготовить пост в Новости»: кандидат по вехе встречи, публикует руководитель. */
+  @Post(':id/postcall/news')
+  postcallNews(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.meetings.postcallNews(u.tenantId, id, { userId: u.userId, role: u.role });
+  }
+
+  /** «Отправить итоги участникам»: каждому сотруднику со встречи, один раз. */
+  @Post(':id/postcall/recap')
+  async recapPostcall(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    await this.meetings.assertVisible(u.tenantId, id, { userId: u.userId, role: u.role });
+    return this.postcall.recap(u.tenantId, id, u.userId);
+  }
+
   /** «Разобрать позже»: итоги остаются в списке, напоминание откладывается. */
   @Post(':id/postcall/snooze')
   async snoozePostcall(@CurrentUser() u: AuthUser, @Param('id') id: string) {

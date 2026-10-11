@@ -147,7 +147,20 @@ export function MeetingsPage({ onEnterGuestMeet, openMeetingId }: { onEnterGuest
                 {m.source === 'transcript' && <span className="ui-badge ui-badge-neutral" title="Загружены готовые субтитры">с именами</span>}
               </div>
               <div className="list-side">
-                {m.drafts_pending > 0 && <span className="ui-badge ui-badge-warn">задач к подтверждению: {m.drafts_pending}</span>}
+                {/* итоги после звонка (ТЗ-22, §50): не разобраны — ведём на экран итогов */}
+                {m.review_status === 'review_required' && (
+                  <button
+                    type="button" className="ui-badge ui-badge-warn meeting-review"
+                    onClick={(e) => { e.stopPropagation(); navigate({ section: 'chat', view: 'postcall', meetingId: String(m.id) }); }}
+                    title="Открыть итоги встречи"
+                  >
+                    Итоги не разобраны
+                  </button>
+                )}
+                {(m.review_status === 'reviewed' || m.review_status === 'completed') && (
+                  <span className="ui-badge ui-badge-ok">Итоги обработаны{m.tasks_created ? ` · задач: ${m.tasks_created}` : ''}</span>
+                )}
+                {m.review_status !== 'review_required' && m.drafts_pending > 0 && <span className="ui-badge ui-badge-warn">задач к подтверждению: {m.drafts_pending}</span>}
                 <span className={`ui-badge ${m.status === 'done' ? 'ui-badge-ok' : m.status === 'error' ? 'ui-badge-danger' : 'ui-badge-info'}`}>
                   {STATUS_LABEL[m.status] ?? m.status}
                 </span>

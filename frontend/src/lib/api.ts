@@ -344,6 +344,9 @@ export interface PostcallReview {
   canClose: boolean;
   participants: { userId: string; name: string; guest: boolean }[];
   snoozedUntil: string | null;
+  recapSentAt: string | null;
+  /** в решениях прозвучала веха — можно предложить пост в «Новости» */
+  newsWorthy?: boolean;
   reviewedAt: string | null;
   completedAt: string | null;
 }
@@ -355,6 +358,12 @@ export interface PostcallView {
   summary: { summary: string; decisions: string[]; risks: string[]; questions?: PostcallSourced[] } | null;
   /** решения из журнала — с секундой записи и говорящим */
   decisions: PostcallDecision[];
+  /** письмо клиенту — карточка секретаря (ТЗ-21), только у того, кому подготовлено */
+  followup: {
+    id: string; status: string; result_text: string | null;
+    actions: { key: string; label: string; primary?: boolean }[];
+    payload: { subject?: string; body?: string; email?: string | null; chatId?: string | null; clientId?: string };
+  } | null;
   review: PostcallReview | null;
 }
 export interface PostcallPending { meeting_id: string; title: string; status: string; created_at: string; pending_drafts: number }
@@ -2439,6 +2448,8 @@ export const api = {
   postcallCreateBatch: (meetingId: string, items: { draftId: string; assigneeId?: string; projectId?: string; deadlineAt?: string }[]) =>
     request<{ created: { draftId: string; taskId: string; title: string }[]; failed: { draftId: string; error: string }[]; skipped: number }>(
       'POST', `/meetings/${meetingId}/postcall/tasks/create-batch`, { items }),
+  postcallNews: (meetingId: string) => request<{ candidateId: string | null; already: boolean }>('POST', `/meetings/${meetingId}/postcall/news`),
+  postcallRecap: (meetingId: string) => request<{ sent: number }>('POST', `/meetings/${meetingId}/postcall/recap`),
   postcallSnooze: (meetingId: string) => request<{ snoozedUntil: string }>('POST', `/meetings/${meetingId}/postcall/snooze`),
   postcallComplete: (meetingId: string, followupSent = false) =>
     request<{ status: string }>('POST', `/meetings/${meetingId}/postcall/complete`, { followupSent }),

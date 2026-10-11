@@ -4,6 +4,7 @@ import { ChatsModule } from '../chats/chats.module';
 import { ClientsModule } from '../clients/clients.module';
 import { FilesModule } from '../files/files.module';
 import { MailboxModule } from '../mailbox/mailbox.module';
+import { MeetingsModule } from '../meetings/meetings.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PromptsModule } from '../prompts/prompts.module';
 import { ClientFollowupService } from './client-followup.service';
@@ -14,7 +15,7 @@ import { MorningVoiceService } from './morning-voice.service';
  * после встречи и утренний бриф голосом. Ящик и планировщик — из глобального модуля.
  */
 @Module({
-  imports: [AiModule, ChatsModule, ClientsModule, FilesModule, MailboxModule, NotificationsModule, PromptsModule],
+  imports: [AiModule, ChatsModule, ClientsModule, FilesModule, MailboxModule, MeetingsModule, NotificationsModule, PromptsModule],
   providers: [ClientFollowupService, MorningVoiceService],
   exports: [ClientFollowupService, MorningVoiceService],
 })

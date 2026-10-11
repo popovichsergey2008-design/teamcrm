@@ -11,7 +11,7 @@ import { SecretaryService } from '../secretary/secretary.service';
 import { TasksService } from '../tasks/tasks.service';
 import { describeFfmpegError, extractAudioChunks, mixTracks } from './audio.util';
 import { MEETING_PROMPT, SUMMARY_PROMPT, validateMeetingAnalysis } from './meeting-schema';
-import { draftConfidence, speakerAt } from './postcall-rules';
+import { draftConfidence, newsKind, speakerAt } from './postcall-rules';
 import { DraftRow, MeetingsRepository } from './meetings.repository';
 import { blocksOf, PostcallService } from './postcall.service';
 import { parseSubtitles, repliesToText, Reply, shiftSegments } from './transcript.util';
@@ -109,9 +109,12 @@ export class MeetingsService {
       this.repo.meetingDecisions(tenantId, id),
     ]);
     if (review && String(review.owner_id) === String(viewer.userId)) await this.postcall.opened(review);
+    // письмо клиенту — только тому, кому его подготовили; отправляет он же
+    const followup = await this.postcall.followupFor(tenantId, viewer.userId, id).catch(() => null);
     return {
       ...details,
       decisions,
+      followup,
       review: review ? {
         status: review.status,
         ai: review.ai,
@@ -119,11 +122,22 @@ export class MeetingsService {
         ownerId: review.owner_id,
         canClose: this.postcall.canClose(review, viewer.userId),
         participants: review.participants,
+        recapSentAt: review.recap_sent_at,
+        // веха прозвучала в решениях — экран предложит пост в «Новости» (§26)
+        newsWorthy: !!newsKind(decisions.map((d) => d.text)),
         snoozedUntil: review.snoozed_until,
         reviewedAt: review.reviewed_at,
         completedAt: review.completed_at,
       } : null,
     };
+  }
+
+  /** «Подготовить пост в Новости» по вехе встречи. */
+  async postcallNews(tenantId: string, id: string, viewer: ProjectViewer & { userId: string }) {
+    await this.assertVisible(tenantId, id, viewer);
+    const [meeting, decisions] = await Promise.all([this.repo.get(tenantId, id), this.repo.meetingDecisions(tenantId, id)]);
+    if (!meeting) throw AppException.notFound('Встреча не найдена');
+    return this.postcall.toNews(tenantId, id, viewer.userId, meeting, decisions.map((d) => d.text));
   }
 
   /**
@@ -269,8 +283,8 @@ export class MeetingsService {
         await this.postcall.mark(input.tenantId, meeting.id, { summary: 'running', decisions: 'running', tasks: 'running' });
         await this.analyze(input.tenantId, meeting.id, input.projectId, replies);
         await this.repo.setStatus(meeting.id, 'done');
-        // письмо клиенту готовит навык секретаря (ТЗ-21); в итогах оно появится на этапе 5
-        await this.postcall.mark(input.tenantId, meeting.id, { summary: 'ready', decisions: 'ready', tasks: 'ready', followup: 'skipped' });
+        // письмо клиенту готовит навык секретаря (ТЗ-21) — подписчиком ниже, сразу после разбора
+        await this.postcall.mark(input.tenantId, meeting.id, { summary: 'ready', decisions: 'ready', tasks: 'ready', followup: 'running' });
         this.knowledge.enqueue(input.tenantId, 'meeting', meeting.id);
         // Итог возвращается в тот разговор, из которого созвон начали: иначе половина
         // договорённостей не доходит до тех, кто в созвоне не был.
@@ -293,6 +307,8 @@ export class MeetingsService {
           await sink({ tenantId: input.tenantId, meetingId: meeting.id, roomId: input.roomId ?? '', summary })
             .catch((e) => this.log.warn(`подписчик разбора созвона: ${(e as Error).message}`));
         }
+        // письма клиенту не случилось (клиента нет, навык выключен, сбой) — блок не ждёт вечно
+        await this.postcall.settleFollowup(input.tenantId, meeting.id);
       } catch (e) {
         this.log.warn(`созвон ${meeting.id}: ${(e as Error).message}`);
         await this.repo.setStatus(meeting.id, 'error', describeFfmpegError(e)).catch(() => undefined);
@@ -647,7 +663,6 @@ export class MeetingsService {
     if (patch) await this.repo.markEdited(draftId, editedFields(draft, patch));
 
     const projectId = patch?.projectId ?? draft.project_id;
-    if (!projectId) throw AppException.validation('Выберите проект для задачи');
 
     // Колонка — только если она принадлежит выбранному проекту: проект могли
     // сменить руками, и колонка из другого проекта сломала бы доску.
@@ -657,6 +672,8 @@ export class MeetingsService {
     if (!(await this.repo.claimDraft(draftId))) throw AppException.conflict('Черновик уже обработан');
     let task: Awaited<ReturnType<TasksService['create']>>;
     try {
+      // без проекта задаче некуда лечь — черновик остаётся с причиной, а не молча «ждёт»
+      if (!projectId) throw AppException.validation('Выберите проект для задачи');
       task = await this.tasks.create(tenantId, {
         projectId,
         columnId,
