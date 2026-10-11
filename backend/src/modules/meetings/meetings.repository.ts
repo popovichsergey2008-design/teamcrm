@@ -118,6 +118,11 @@ export class MeetingsRepository {
   async setStatus(id: string, status: string, error: string | null = null): Promise<void> {
     await this.db.query(`UPDATE meetings SET status=$2, error=$3, updated_at=now() WHERE id=$1`, [id, status, error]);
   }
+  /** Сведённая запись созвона — как «исходный файл» встречи: её играет проигрыватель. */
+  async setFile(id: string, fileId: string): Promise<void> {
+    await this.db.query(`UPDATE meetings SET file_id = $2 WHERE id = $1`, [id, fileId]);
+  }
+
   async setDuration(id: string, seconds: number): Promise<void> {
     await this.db.query(`UPDATE meetings SET duration_sec=$2, updated_at=now() WHERE id=$1`, [id, seconds]);
   }

@@ -9,7 +9,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { TaskCardService } from '../taskcard/taskcard.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { TasksService } from '../tasks/tasks.service';
-import { describeFfmpegError, extractAudioChunks } from './audio.util';
+import { describeFfmpegError, extractAudioChunks, mixTracks } from './audio.util';
 import { MEETING_PROMPT, validateMeetingAnalysis } from './meeting-schema';
 import { MeetingsRepository } from './meetings.repository';
 import { parseSubtitles, repliesToText, Reply, shiftSegments } from './transcript.util';
@@ -198,6 +198,21 @@ export class MeetingsService {
           await this.repo.setStatus(meeting.id, 'error', 'Речь не распознана — проверьте ключ OpenAI');
           return;
         }
+        // Одна запись на всех (ТЗ-21): проигрыватель встречи и переход к секунде из ответа
+        // памяти. Дорожки по людям остаются — на случай спора «я такого не говорил».
+        if (owner) {
+          await mixTracks(input.tracks)
+            .then(async (mixed) => {
+              if (!mixed) return;
+              const f = await this.files.upload({
+                tenantId: input.tenantId, userId: owner, buffer: mixed, fileName: `meeting-${meeting.id}.mp3`, contentType: 'audio/mpeg',
+                ownerKind: 'meeting_recording', ownerId: meeting.id, maxBytes: MAX_RECORDING_BYTES,
+              });
+              await this.repo.setFile(meeting.id, String(f.id));
+            })
+            .catch((e) => this.log.warn(`встреча ${meeting.id}: запись не сведена — ${(e as Error).message}`));
+        }
+
         // дорожки писались параллельно: сводим в одну ленту по времени, иначе диалог не читается
         replies.sort((a, b) => a.start - b.start);
         await this.repo.replaceSegments(input.tenantId, meeting.id, replies);

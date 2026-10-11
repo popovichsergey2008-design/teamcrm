@@ -45,6 +45,8 @@ export type Route = {
   clientId?: string;
   /** пост в «Новостях»: `/news/:id` (ТЗ-20) — ссылки из писем, push и хайлайтов */
   postId?: string;
+  /** встреча с записью: `/meetings/:id?t=735` (ТЗ-21) — из ответов памяти и обещаний */
+  meetingId?: string;
 };
 
 const SECTIONS: Section[] = [
@@ -107,6 +109,8 @@ export function parsePath(pathname: string): Route {
   const seg = pathname.split('/').filter(Boolean).map((s) => {
     try { return decodeURIComponent(s); } catch { return s; }
   });
+  // встреча живёт в «Чатах → Встречи»; свой короткий адрес — для ссылок на секунду записи
+  if (seg[0] === 'meetings') return seg[1] ? { section: 'chat', view: 'meetings', meetingId: seg[1] } : { section: 'chat', view: 'meetings' };
   const section = SECTIONS.includes(seg[0] as Section) ? (seg[0] as Section) : null;
   if (!section) return { section: 'focus' };
 
@@ -167,7 +171,7 @@ export function buildPath(r: Route): string {
         ? `/projects/${enc(r.projectId)}/task/${enc(r.taskId)}`
         : `/projects/${enc(r.projectId)}`;
     case 'chat':
-      if (r.view === 'meetings') return '/chat/meetings';
+      if (r.view === 'meetings') return r.meetingId ? `/meetings/${enc(r.meetingId)}` : '/chat/meetings';
       if (r.view === 'feed') return '/news';
       if (r.chatId && r.threadId) return `/chat/${enc(r.chatId)}/thread/${enc(r.threadId)}`;
       return r.chatId ? `/chat/${enc(r.chatId)}` : '/chat';
@@ -193,8 +197,14 @@ export function buildPath(r: Route): string {
  */
 export function navigate(to: Route | string, opts: { replace?: boolean } = {}) {
   const path = typeof to === 'string' ? to : buildPath(to);
-  if (path === window.location.pathname && !opts.replace) return;
-  window.history[opts.replace ? 'replaceState' : 'pushState']({}, '', path + window.location.search);
+  // свой запрос в адресе (`/meetings/7?t=735`) — его и ставим; иначе сохраняем текущий
+  // секунда записи и номер сообщения относятся к своей странице — дальше их не несём
+  const carry = new URLSearchParams(window.location.search);
+  carry.delete('t'); carry.delete('m');
+  const qs = carry.toString();
+  const full = path.includes('?') ? path : path + (qs ? `?${qs}` : '');
+  if (full === window.location.pathname + window.location.search && !opts.replace) return;
+  window.history[opts.replace ? 'replaceState' : 'pushState']({}, '', full);
   window.dispatchEvent(new Event(NAV_EVENT));
 }
 

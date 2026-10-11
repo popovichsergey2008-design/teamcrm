@@ -207,6 +207,10 @@ export interface Decision {
   decided_at: string;
   created_by: string | null;
   revoked_at: string | null;
+  /** «Решение изменили» (ТЗ-21): на какое заменили и когда */
+  superseded_by?: string | null;
+  superseded_at?: string | null;
+  superseded_text?: string | null;
 }
 export interface ChatAnalysisRun {
   id: string;

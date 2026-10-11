@@ -1287,6 +1287,19 @@ export const api = {
   promptFeedback: (b: { promptVersionId: string; rating: 1 | -1; reworked?: boolean }) => request<{ ok: boolean }>('POST', '/prompt-feedback', b),
 
   // база знаний (Этап 5, K1)
+  /** «Вторая память» (ТЗ-21): по смыслу и словам, с фильтрами и ссылкой на место в источнике. */
+  knowledgeMemory: (q: string, f: { types?: string[]; projectId?: string; from?: string; to?: string; authorId?: string; k?: number } = {}) => {
+    const p = new URLSearchParams({ q });
+    if (f.types?.length) p.set('types', f.types.join(','));
+    if (f.projectId) p.set('projectId', f.projectId);
+    if (f.from) p.set('from', f.from);
+    if (f.to) p.set('to', f.to);
+    if (f.authorId) p.set('authorId', f.authorId);
+    if (f.k) p.set('k', String(f.k));
+    return request<MemoryHit[]>('GET', `/knowledge/memory?${p.toString()}`);
+  },
+  supersedeDecision: (id: string, text: string, details?: string) =>
+    request<{ decisionId: string; supersededId: string }>('POST', `/chat-analysis/decisions/${id}/supersede`, { text, details }),
   knowledgeSearch: (q: string, k = 8, projectId?: string) => request<any[]>('GET', `/knowledge/search?q=${encodeURIComponent(q)}&k=${k}${projectId ? `&projectId=${projectId}` : ''}`),
   knowledgeStats: () => request<{ chunks: string; sources: string }>('GET', '/knowledge/stats'),
   knowledgeReindex: () => request<{ queued: number }>('POST', '/knowledge/reindex'),
@@ -2986,4 +2999,11 @@ export interface Commitment {
   id: string; action: string; quote: string; status: string; mine: boolean; speaker: string; assigner: string | null;
   deadlineAt: string | null; deadlineText: string | null; sourceAt: string;
   source: { type: string; label: string; link: string | null }; taskId: string | null; confidence: number;
+}
+
+/** Находка «второй памяти»: что, откуда, когда, кто — и куда вести (секунда записи, сообщение). */
+export interface MemoryHit {
+  sourceType: string; typeLabel: string; sourceId: string; title: string | null; snippet: string;
+  link: string | null; sec: number | null; at: string | null; author: string | null;
+  projectId: string | null; projectName: string | null; private: boolean; score: number;
 }

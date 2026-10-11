@@ -11,6 +11,15 @@ class RegulationDto {
   @IsString() @MinLength(1) @MaxLength(255) title!: string;
   @IsString() @MinLength(1) body!: string;
 }
+class MemoryDto {
+  @IsString() @MinLength(2) @MaxLength(500) q!: string;
+  @IsOptional() @IsString() types?: string;
+  @IsOptional() @IsString() projectId?: string;
+  @IsOptional() @IsString() from?: string;
+  @IsOptional() @IsString() to?: string;
+  @IsOptional() @IsString() authorId?: string;
+  @IsOptional() @IsString() k?: string;
+}
 class SearchDto {
   @IsString() @MinLength(2) q!: string;
   @IsOptional() @IsString() k?: string;
@@ -32,6 +41,16 @@ export class KnowledgeController {
     if (!dto.q || dto.q.trim().length < 2) throw AppException.validation('Слишком короткий запрос');
     const k = Math.min(Math.max(Number(dto.k) || 8, 1), 20);
     return this.knowledge.search(u.tenantId, dto.q.trim(), k, dto.projectId || undefined, undefined, { userId: u.userId, role: u.role });
+  }
+
+  /** «Вторая память» (ТЗ-21): по смыслу и словам, фильтры типа, проекта, периода и автора. */
+  @Get('knowledge/memory')
+  memory(@CurrentUser() u: AuthUser, @Query() dto: MemoryDto) {
+    const date = (v?: string) => (v && !Number.isNaN(Date.parse(v)) ? new Date(v) : null);
+    return this.knowledge.memory(u.tenantId, dto.q.trim(), { userId: u.userId, role: u.role }, {
+      types: dto.types ? dto.types.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 12) : undefined,
+      projectId: dto.projectId || null, from: date(dto.from), to: date(dto.to), authorId: dto.authorId || null,
+    }, Math.min(Math.max(Number(dto.k) || 10, 1), 30));
   }
 
   @Get('knowledge/stats')

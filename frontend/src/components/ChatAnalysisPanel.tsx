@@ -8,6 +8,7 @@ import { stampLabel } from '../lib/chat-text';
 import type { IconName } from './Icon';
 import type { ChatAnalysisAction, ChatAnalysisRun, ChatAnalysisSettings, ChatAnalysisStats, Decision } from '../types';
 import { OptionSelect } from './ui/option-select';
+import { promptText } from './ui/dialog';
 
 /**
  * «Разбор переписки» в настройках (ТЗ-12, этапы 1–5).
@@ -188,6 +189,19 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
     await api.revokeDecision(d.id);
     setMsg(`Решение снято: «${d.text}»`);
   });
+
+  /** «Решение изменили»: старое остаётся с пометкой и ссылкой на новое (ТЗ-21). */
+  const supersede = async (d: Decision) => {
+    const text = await promptText({
+      title: 'Что решили теперь?', description: `Было: «${d.text}». Старое решение останется в журнале с пометкой «изменено».`,
+      placeholder: 'Новое решение', confirmLabel: 'Записать', minLength: 2, defaultValue: d.text,
+    });
+    if (!text || text.trim() === d.text.trim()) return;
+    await act(async () => {
+      await api.supersedeDecision(d.id, text.trim());
+      setMsg(`Решение изменено: «${text.trim()}»`);
+    });
+  };
 
   const undo = (a: ChatAnalysisAction) => act(async () => {
     await api.undoChatAction(a.id);
@@ -739,6 +753,11 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                 <span className="ca-type"><Icon name={d.meeting_id ? 'record' : 'flag'} size={13} /> Решение</span>
                 <span className="ca-title">{d.text}</span>
               </div>
+              {d.superseded_at && (
+                <div className="dim ca-meta">
+                  <Icon name="refresh" size={12} /> Изменено {stampLabel(d.superseded_at)}: «{d.superseded_text ?? ''}»
+                </div>
+              )}
               <div className="dim ca-meta">
                 {[
                   stampLabel(d.decided_at),
@@ -764,6 +783,11 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                     }}
                   >
                     <Icon name="chat" size={13} /> Где решили
+                  </button>
+                )}
+                {!d.superseded_at && (
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void supersede(d)}>
+                    <Icon name="edit" size={13} /> Изменить
                   </button>
                 )}
                 <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void revoke(d)}>

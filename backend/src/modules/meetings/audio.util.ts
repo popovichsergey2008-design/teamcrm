@@ -71,3 +71,40 @@ export function describeFfmpegError(e: unknown): string {
   if (/ENOENT/.test(msg)) return 'На сервере нет ffmpeg — обработка записей недоступна';
   return `Не удалось обработать запись: ${msg.slice(0, 300)}`;
 }
+
+/**
+ * Сведение дорожек созвона в одну запись (ТЗ-21, этап 4). Дорожки пишутся по человеку и
+ * начинаются в разное время — каждой задержка на её смещение от начала, потом смесь.
+ * amix делит громкость на число входов — возвращаем её обратно, иначе вдвоём тише вдвое.
+ * MP3 моно 32 кбит/с — тем же кодеком, что режем для распознавания: он точно есть в сборке.
+ */
+export function mixArgs(inputs: { file: string; offsetSec: number }[], out: string): string[] {
+  const args: string[] = [];
+  for (const i of inputs) args.push('-i', i.file);
+  const n = inputs.length;
+  const chains = inputs.map((i, k) => `[${k}:a]aresample=24000,adelay=delays=${Math.max(0, Math.round(i.offsetSec * 1000))}:all=1[a${k}]`);
+  const mix = n > 1
+    ? `${inputs.map((_, k) => `[a${k}]`).join('')}amix=inputs=${n}:duration=longest:dropout_transition=0,volume=${n}[out]`
+    : `[a0]anull[out]`;
+  args.push('-filter_complex', [...chains, mix].join(';'), '-map', '[out]', '-ac', '1', '-ar', '24000', '-c:a', 'libmp3lame', '-b:a', '32k', '-y', out);
+  return args;
+}
+
+export async function mixTracks(tracks: { buffer: Buffer; fileName: string; offsetSec: number }[]): Promise<Buffer | null> {
+  if (!tracks.length) return null;
+  const dir = await mkdtemp(join(tmpdir(), 'mix-'));
+  try {
+    const inputs: { file: string; offsetSec: number }[] = [];
+    for (const [k, t] of tracks.entries()) {
+      const ext = (t.fileName.split('.').pop() || 'ogg').replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'ogg';
+      const file = join(dir, `t${k}.${ext}`);
+      await writeFile(file, t.buffer);
+      inputs.push({ file, offsetSec: t.offsetSec });
+    }
+    const out = join(dir, 'mix.mp3');
+    await run('ffmpeg', mixArgs(inputs, out), { timeout: 30 * 60_000, maxBuffer: 1 << 20 });
+    return await readFile(out);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}

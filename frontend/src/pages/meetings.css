@@ -1,0 +1,10 @@
+/* Встреча: проигрыватель записи и стенограмма с переходом к секунде (ТЗ-21, этап 4). */
+.meeting-player { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 4px; }
+.meeting-player audio { width: 100%; max-width: 520px; height: 36px; }
+.meeting-line { padding: 1px 4px; border-radius: var(--radius-sm); }
+.meeting-line-active { background: var(--accent-soft); }
+.meeting-stamp {
+  background: none; border: 0; padding: 0; font: inherit; font-size: 11px; color: var(--text-mut); cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.meeting-stamp:hover { color: var(--accent); text-decoration: underline; }

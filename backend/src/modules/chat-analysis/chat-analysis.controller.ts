@@ -1,11 +1,15 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Max, Min, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, MinLength, Max, Min, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { ChatAnalysisService } from './chat-analysis.service';
 
+class SupersedeDto {
+  @IsString() @MinLength(2) @MaxLength(2000) text!: string;
+  @IsOptional() @IsString() @MaxLength(4000) details?: string;
+}
 class SettingsDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
   /** Сколько тишины считать концом разговора. */
@@ -123,6 +127,13 @@ export class ChatAnalysisController {
   @Roles('owner', 'manager', 'member')
   revokeDecision(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.svc.revokeDecision(u.tenantId, { userId: u.userId, role: u.role }, id);
+  }
+
+  /** «Решение изменили»: новое решение там же, старое — с пометкой и ссылкой (ТЗ-21). */
+  @Post('decisions/:id/supersede')
+  @Roles('owner', 'manager', 'member')
+  supersedeDecision(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: SupersedeDto) {
+    return this.svc.supersedeDecision(u.tenantId, { userId: u.userId, role: u.role }, id, dto.text, dto.details ?? '');
   }
 
   /** «Это не задача». Наблюдение остаётся: по отказам видно, где агент ошибается. */

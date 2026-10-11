@@ -131,6 +131,10 @@ export interface DecisionRow {
   decided_at: Date;
   created_by: string | null;
   revoked_at: Date | null;
+  /** «Решение изменили»: на какое заменили и когда (ТЗ-21 §43) */
+  superseded_by: string | null;
+  superseded_at: Date | null;
+  superseded_text: string | null;
 }
 
 export interface NamedRow { id: string; name: string }
@@ -835,6 +839,7 @@ export class ChatAnalysisRepository {
       `SELECT d.id::text, d.text, d.details, d.project_id::text, p.name AS project_name,
               d.chat_id::text, c.title AS chat_title, d.meeting_id::text, mt.title AS meeting_title,
               d.source_message_id::text, d.decided_at, d.created_by::text, d.revoked_at,
+              d.superseded_by::text, d.superseded_at, (SELECT n.text FROM decisions n WHERE n.id = d.superseded_by) AS superseded_text,
               COALESCE((SELECT json_agg(json_build_object('id', u.id::text, 'name', u.full_name) ORDER BY u.full_name)
                           FROM users u WHERE u.id = ANY(d.participants)), '[]'::json) AS participants
          FROM decisions d
@@ -863,6 +868,29 @@ export class ChatAnalysisRepository {
         WHERE d.tenant_id = $1 AND d.id = $3 AND (d.chat_id IS NULL OR ${VISIBLE})`,
       [tenantId, userId, id],
     );
+  }
+
+  /**
+   * Заменить решение новым: старое остаётся в журнале с пометкой «изменено» и ссылкой на
+   * новое. Новое — там же, где принимали старое (тот же чат или та же встреча, проект).
+   */
+  async supersedeDecision(tenantId: string, id: string, text: string, details: string, userId: string): Promise<string | null> {
+    return this.db.withTransaction(async (c) => {
+      const old = (await c.query(
+        `SELECT project_id, chat_id, meeting_id, participants FROM decisions
+          WHERE tenant_id = $1 AND id = $2 AND revoked_at IS NULL AND superseded_by IS NULL FOR UPDATE`,
+        [tenantId, id],
+      )).rows[0];
+      if (!old) return null;
+      const participants = [...new Set([...(old.participants ?? []).map(String), String(userId)])];
+      const created = (await c.query(
+        `INSERT INTO decisions (tenant_id, project_id, chat_id, meeting_id, text, details, participants, decided_at, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::bigint[],now(),$8) RETURNING id::text`,
+        [tenantId, old.project_id, old.chat_id, old.meeting_id, text, details, participants, userId],
+      )).rows[0];
+      await c.query(`UPDATE decisions SET superseded_by = $3, superseded_at = now() WHERE tenant_id = $1 AND id = $2`, [tenantId, id, created.id]);
+      return String(created.id);
+    });
   }
 
   async revokeDecision(tenantId: string, id: string, userId: string): Promise<void> {

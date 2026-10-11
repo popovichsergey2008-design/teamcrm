@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import './meetings.css';
+import { fetchBlob } from '../components/AuthedMedia';
 import { EmptyState } from '../components/EmptyState';
 import { GuestMeetsPanel } from '../components/GuestMeetsPanel';
 import { Icon } from '../components/Icon';
@@ -27,12 +29,26 @@ const stamp = (sec: number) => {
  * Встречи: загрузили запись → получили стенограмму, сводку и черновики задач.
  * Задачи создаются только по подтверждению — ИИ ничего не заводит молча.
  */
-export function MeetingsPage({ onEnterGuestMeet }: { onEnterGuestMeet: (roomId: string) => void }) {
+export function MeetingsPage({ onEnterGuestMeet, openMeetingId }: { onEnterGuestMeet: (roomId: string) => void; openMeetingId?: string }) {
   const [list, setList] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(openMeetingId ?? null);
+  /*
+    Ссылка `/meetings/:id?t=735` (ТЗ-21): из ответа памяти или карточки обещания —
+    сразу в нужную встречу и на нужную секунду записи.
+  */
+  const [seek, setSeek] = useState<number | null>(() => {
+    const t = Number(new URLSearchParams(window.location.search).get('t'));
+    return openMeetingId && Number.isFinite(t) && t >= 0 && window.location.search.includes('t=') ? t : null;
+  });
+  useEffect(() => {
+    if (!openMeetingId) return;
+    setOpenId(openMeetingId);
+    const t = new URLSearchParams(window.location.search).get('t');
+    setSeek(t != null && Number.isFinite(Number(t)) ? Number(t) : null);
+  }, [openMeetingId]);
   // «Открыть мит» из сайдбара чата: раздел уже открыт, остаётся развернуть разбор
   useEffect(() => {
     const onOpen = (e: Event) => {
@@ -135,7 +151,9 @@ export function MeetingsPage({ onEnterGuestMeet }: { onEnterGuestMeet: (roomId: 
                 </span>
               </div>
             </div>
-            {openId === m.id && <MeetingDetails id={m.id} projects={projects} users={users} onChanged={reload} />}
+            {openId === m.id && (
+              <MeetingDetails id={m.id} projects={projects} users={users} onChanged={reload} seek={openMeetingId === String(m.id) ? seek : null} />
+            )}
           </div>
         ))}
       </div>
@@ -143,10 +161,32 @@ export function MeetingsPage({ onEnterGuestMeet }: { onEnterGuestMeet: (roomId: 
   );
 }
 
-function MeetingDetails({ id, projects, users, onChanged }: { id: string; projects: Project[]; users: User[]; onChanged: () => void }) {
+function MeetingDetails({ id, projects, users, onChanged, seek = null }: {
+  id: string; projects: Project[]; users: User[]; onChanged: () => void; seek?: number | null;
+}) {
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState('');
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useState(seek != null);
+  /** Проигрыватель записи: секунда из ссылки, переход по клику на реплику, подсветка текущей. */
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioState, setAudioState] = useState<'idle' | 'loading' | 'failed'>('idle');
+  const [now, setNow] = useState<number | null>(seek);
+  const pendingSeek = useRef<number | null>(seek);
+  useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
+  const loadAudio = async (fileId: string) => {
+    if (audioUrl || audioState === 'loading') return;
+    setAudioState('loading');
+    try { setAudioUrl(URL.createObjectURL(await fetchBlob(fileId))); setAudioState('idle'); }
+    catch { setAudioState('failed'); }
+  };
+  const jump = (sec: number, fileId: string | null) => {
+    setNow(sec);
+    const a = audioRef.current;
+    if (a) { a.currentTime = sec; void a.play().catch(() => undefined); return; }
+    pendingSeek.current = sec;
+    if (fileId) void loadAudio(fileId);
+  };
   const [bulk, setBulk] = useState(false);
 
   const load = useCallback(() => api.meetingDetails(id).then(setData).catch(() => undefined), [id]);
@@ -154,6 +194,9 @@ function MeetingDetails({ id, projects, users, onChanged }: { id: string; projec
 
   if (!data) return <div style={{ padding: 10 }}><SkeletonList rows={3} /></div>;
   const { meeting, segments, summary, drafts, tasks = [] } = data;
+  // играть есть что, если запись — звук (загруженный или сведённый созвон), а не субтитры
+  const playable: string | null = meeting.file_id && meeting.source !== 'transcript' ? String(meeting.file_id) : null;
+  const activeIdx = now == null ? -1 : segments.reduce((acc: number, s: any, i: number) => (Number(s.start_sec) <= now + 0.5 ? i : acc), -1);
   const pending = drafts.filter((d: any) => d.status === 'pending');
   // Готовы к созданию только те, у кого есть проект: без него задаче некуда лечь.
   const readyCount = pending.filter((d: any) => d.project_id).length;
@@ -285,6 +328,29 @@ function MeetingDetails({ id, projects, users, onChanged }: { id: string; projec
         </>
       )}
 
+      {playable && (
+        <div className="meeting-player">
+          {audioUrl ? (
+            <audio
+              ref={(el) => {
+                audioRef.current = el;
+                if (el && pendingSeek.current != null) {
+                  const t = pendingSeek.current;
+                  pendingSeek.current = null;
+                  el.addEventListener('loadedmetadata', () => { el.currentTime = t; }, { once: true });
+                }
+              }}
+              src={audioUrl} controls preload="metadata"
+              onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}
+            />
+          ) : (
+            <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={audioState === 'loading'} onClick={() => void loadAudio(playable)}>
+              <Icon name="play" size={14} /> {audioState === 'loading' ? 'Загружаю запись…' : seek != null ? `Слушать с ${stamp(seek)}` : 'Слушать запись'}
+            </button>
+          )}
+          {audioState === 'failed' && <span className="error-text" style={{ fontSize: 12 }}>Запись не загрузилась</span>}
+        </div>
+      )}
       <div className="drawer-section-title" style={{ marginTop: 10 }}>Стенограмма ({segments.length})</div>
       {segments.length === 0 && (
         <EmptyState
@@ -297,9 +363,14 @@ function MeetingDetails({ id, projects, users, onChanged }: { id: string; projec
         />
       )}
       <div style={{ maxHeight: showAll ? 'none' : 220, overflow: 'hidden', fontSize: 13, lineHeight: 1.6 }}>
-        {segments.map((s: any) => (
-          <div key={s.idx}>
-            <span className="dim" style={{ fontSize: 11 }}>[{stamp(Number(s.start_sec))}]</span>{' '}
+        {segments.map((s: any, i: number) => (
+          <div
+            key={s.idx}
+            className={i === activeIdx ? 'meeting-line meeting-line-active' : 'meeting-line'}
+            ref={i === activeIdx && seek != null && now === seek ? (el) => el?.scrollIntoView({ block: 'center' }) : undefined}
+          >
+            <button className="meeting-stamp" title={playable ? 'Слушать с этого места' : undefined}
+                    onClick={() => jump(Number(s.start_sec), playable)}>[{stamp(Number(s.start_sec))}]</button>{' '}
             {s.speaker && <b>{s.speaker}: </b>}{s.text}
           </div>
         ))}

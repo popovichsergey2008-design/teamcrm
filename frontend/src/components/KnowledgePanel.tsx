@@ -6,6 +6,8 @@ import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
+import { navigate } from '../lib/router';
+import type { MemoryHit } from '../lib/api';
 
 /** База знаний (Этап 5, K1): семантический поиск + регламенты + реиндекс. */
 export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onClose: () => void }) {
@@ -49,12 +51,21 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
 
   // поиск
   const [q, setQ] = useState('');
-  const [hits, setHits] = useState<any[] | null>(null);
+  const [hits, setHits] = useState<MemoryHit[] | null>(null);
   const [searching, setSearching] = useState(false);
+  /** Фильтры памяти (ТЗ-21): что искать и за какой срок. */
+  const [memType, setMemType] = useState('');
+  const [period, setPeriod] = useState('');
   const doSearch = async () => {
     if (q.trim().length < 2) return;
     setSearching(true);
-    try { setHits(await api.knowledgeSearch(q.trim(), 8, scope || undefined)); }
+    const days = Number(period) || 0;
+    try {
+      setHits(await api.knowledgeMemory(q.trim(), {
+        projectId: scope || undefined, types: memType ? memType.split(',') : undefined, k: 12,
+        from: days ? new Date(Date.now() - days * 86400_000).toISOString() : undefined,
+      }));
+    }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка поиска'); }
     finally { setSearching(false); }
   };
@@ -138,7 +149,10 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
       patch({ content: e instanceof ApiError ? e.message : 'Ошибка' });
     } finally { setThinking(false); }
   };
-  const citeLabel = (c: any) => (c.sourceType === 'task' ? 'задача' : c.sourceType === 'comment' ? 'комментарий' : 'регламент') + (c.title ? `: ${c.title}` : '');
+  const citeLabel = (c: any) => (c.typeLabel ?? (c.sourceType === 'task' ? 'задача' : c.sourceType === 'comment' ? 'комментарий' : 'регламент'))
+    + (c.title ? `: ${c.title}` : '');
+  /** Из ответа — прямо туда, где это было: секунда записи, сообщение, задача. */
+  const open = (link: string | null | undefined) => { if (!link) return; onClose(); navigate(link); };
   // PromptOps P2: оценка ответа → аудит качества версии промпта
   const rate = async (idx: number, rating: 1 | -1) => {
     const m = chat[idx];
@@ -189,7 +203,9 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
                   <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}{m.role === 'assistant' && thinking && !m.content && <span className="dim">думаю…</span>}</div>
                   {m.citations && m.citations.length > 0 && (
                     <div className="brain-cites">
-                      {m.citations.map((c, j) => <span key={j} className="ui-badge ui-badge-neutral" title={citeLabel(c)}>[{j + 1}] {citeLabel(c).slice(0, 40)}</span>)}
+                      {m.citations.map((c, j) => (c.link
+                        ? <button key={j} className="ui-badge ui-badge-neutral brain-cite-link" title={`Открыть: ${citeLabel(c)}`} onClick={() => open(c.link)}>[{j + 1}] {citeLabel(c).slice(0, 40)}</button>
+                        : <span key={j} className="ui-badge ui-badge-neutral" title={citeLabel(c)}>[{j + 1}] {citeLabel(c).slice(0, 40)}</span>))}
                     </div>
                   )}
                   {m.role === 'assistant' && m.promptVersionId && (
@@ -219,23 +235,49 @@ export function KnowledgePanel({ canManage, onClose }: { canManage: boolean; onC
 
         {tab === 'search' && (
           <>
-            <div className="team-rate"><ScopeSelect /></div>
+            <div className="team-rate">
+              <ScopeSelect />
+              <OptionSelect className="input" style={{ maxWidth: 180 }} value={memType} onChange={(e) => setMemType(e.target.value)} title="Где искать">
+                <option value="">Везде</option>
+                <option value="chat">Переписка</option>
+                <option value="meeting">Встречи</option>
+                <option value="decision">Решения</option>
+                <option value="task,comment">Задачи и обсуждения</option>
+                <option value="news">Новости</option>
+                <option value="client_note">Клиенты</option>
+                <option value="regulation,gdoc,file">Документы</option>
+              </OptionSelect>
+              <OptionSelect className="input" style={{ maxWidth: 150 }} value={period} onChange={(e) => setPeriod(e.target.value)} title="За какой срок">
+                <option value="">За всё время</option>
+                <option value="7">За неделю</option>
+                <option value="30">За месяц</option>
+                <option value="90">За квартал</option>
+              </OptionSelect>
+            </div>
             <div className="team-rate">
               <input className="input" placeholder="Спросите: как мы решали…?" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doSearch()} />
               <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={doSearch} disabled={searching}>{searching ? '…' : 'Найти'}</button>
             </div>
             {hits && hits.length === 0 && (
-              <EmptyState compact icon="search" title="Ничего не нашлось"
-                hint="Поиск идёт по смыслу, а не по точным словам. Попробуйте переформулировать вопрос — или проверьте на вкладке «Содержимое», что нужные источники проиндексированы." />
+              <EmptyState compact icon="search" title="Не нашёл"
+                hint="Ищу по смыслу и по словам в задачах, переписке (только вашей), встречах, решениях и документах. Переформулируйте вопрос или расширьте срок." />
             )}
             {hits?.map((h, i) => (
               <div key={i} className="team-row">
                 <div className="team-head">
                   <span>
-                    <span className="ui-badge ui-badge-neutral">{h.sourceType === 'task' ? 'задача' : h.sourceType === 'comment' ? 'комментарий' : 'регламент'}</span>
+                    <span className="ui-badge ui-badge-neutral">{h.typeLabel}</span>
+                    {h.private && <span className="ui-badge ui-badge-neutral" title="Видно только участникам переписки"><Icon name="lock" size={11} /></span>}
                     {h.projectName && <span className="ui-badge ui-badge-neutral" title="Проект"><Icon name="folder" size={12} /> {h.projectName}</span>} {h.title || '—'}
                   </span>
-                  <span className="dim" style={{ fontSize: 12 }}>{Math.round((h.score ?? 0) * 100)}%</span>
+                  {h.link && (
+                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => open(h.link)}>
+                      {h.sec != null ? <><Icon name="play" size={12} /> с {Math.floor(h.sec / 60)}:{String(Math.floor(h.sec % 60)).padStart(2, '0')}</> : 'Открыть'}
+                    </button>
+                  )}
+                </div>
+                <div className="dim" style={{ fontSize: 12 }}>
+                  {[h.at ? new Date(h.at).toLocaleDateString('ru-RU') : null, h.author].filter(Boolean).join(' · ')}
                 </div>
                 <div className="dim" style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{h.snippet}</div>
               </div>

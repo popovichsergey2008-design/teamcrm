@@ -60,11 +60,11 @@ export class FilesService {
     return this.repo.canDownload(tenantId, id, viewer);
   }
 
-  async getForDownload(tenantId: string, id: string): Promise<{ file: FileRow; stream: Readable }> {
+  async getForDownload(tenantId: string, id: string, range?: { start: number; end: number } | null): Promise<{ file: FileRow; stream: Readable }> {
     const file = await this.repo.findById(tenantId, id);
     if (!file) throw AppException.notFound('File not found');
     const res = await this.s3.client.send(
-      new GetObjectCommand({ Bucket: this.s3.bucket, Key: file.object_key }),
+      new GetObjectCommand({ Bucket: this.s3.bucket, Key: file.object_key, ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}) }),
     );
     return { file, stream: res.Body as Readable };
   }

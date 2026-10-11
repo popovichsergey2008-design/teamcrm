@@ -18,6 +18,32 @@ const SYSTEM_FALLBACK = [
   'Дай чёткий пошаговый ответ на русском. Ссылайся на источники в квадратных скобках, например [1], [2], соответствующих номерам в контексте.',
 ].join(' ');
 
+/** Источник ответа: куда вести (секунда записи, сообщение, задача) и что это. */
+interface Citation {
+  sourceType: string; sourceId: string; title: string | null;
+  typeLabel?: string; link?: string | null; at?: Date | string | null; sec?: number | null;
+}
+
+type Hit = Awaited<ReturnType<KnowledgeService['recall']>>[number];
+
+function citationsOf(hits: Hit[]): Citation[] {
+  return hits.map((h) => ({
+    sourceType: h.sourceType, sourceId: h.sourceId, title: h.title, typeLabel: h.typeLabel, link: h.link, at: h.at, sec: h.sec,
+  }));
+}
+
+/**
+ * Контекст модели: номер, род источника, дата, кто сказал. Номера — те же, что у ссылок
+ * под ответом: [2] в тексте ведёт ровно на второй источник.
+ */
+function contextOf(hits: Hit[]): string {
+  return hits.map((h, i) => {
+    const when = h.at ? new Date(h.at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null;
+    const head = [h.typeLabel, when, h.author, h.title].filter(Boolean).join(' · ');
+    return `[${i + 1}] (${head})\n${h.snippet}`;
+  }).join('\n\n');
+}
+
 @Injectable()
 export class BrainService {
   constructor(
@@ -80,7 +106,7 @@ export class BrainService {
    */
   private async resolve(tenantId: string, q: string, userId: string, projectId?: string, role = 'member'): Promise<{
     answer: string;
-    citations: { sourceType: string; sourceId: string; title: string | null }[];
+    citations: Citation[];
     cache: 'exact' | 'semantic' | 'miss';
     versionId: string | null;
   }> {
@@ -98,7 +124,8 @@ export class BrainService {
     const access = await this.knowledge.accessKey(tenantId, viewer).catch(() => `u${userId}`);
     const scopeKey = `${projectId ? `p${projectId}` : 'all'}:${access}`;
     const exactKey = `brain:ans:${tenantId}:${scopeKey}:v${versionKey}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
-    const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null);
+    const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null)
+      ?? await this.redis.getJson<{ answer: string; citations: any[] }>(`${exactKey}:u${userId}`).catch(() => null);
     if (exact) return { answer: exact.answer, citations: exact.citations, cache: 'exact', versionId };
 
     // 2) эмбеддинг вопроса — переиспользуется для семантического кэша И для поиска
@@ -115,29 +142,24 @@ export class BrainService {
     }
 
     // 4) промах кэша → RAG + LLM (в рамках проекта, если задан)
-    const hits = await this.knowledge.searchByVector(tenantId, vec, 6, projectId, undefined, viewer);
-    const seen = new Set<string>();
-    const citations: { sourceType: string; sourceId: string; title: string | null }[] = [];
-    for (const h of hits) {
-      const key = `${h.sourceType}:${h.sourceId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      citations.push({ sourceType: h.sourceType, sourceId: h.sourceId, title: h.title });
-    }
+    const hits = await this.knowledge.recall(tenantId, q, vec, viewer, projectId);
+    const citations = citationsOf(hits);
+    // ответ из чужих глаз закрытой переписки не должен достаться другому человеку из кэша
+    const personal = hits.some((h) => h.private);
 
     let answer: string;
     if (!hits.length) {
       answer = 'В базе знаний не нашлось материалов по этому вопросу. Возможно, стоит переиндексировать знания или задать вопрос иначе.';
     } else {
-      const context = hits.map((h, i) => `[${i + 1}] (${h.sourceType}${h.title ? `: ${h.title}` : ''})\n${h.snippet}`).join('\n\n');
+      const context = contextOf(hits);
       answer = (await this.ai.generate(tenantId, system, `Вопрос: ${q}\n\nКОНТЕКСТ:\n${context}`, 'brain', {
         promptVersionId: versionId, model: prompt?.model, params: prompt?.params,
       })).trim() || 'Не удалось сформировать ответ.';
     }
 
     // сохранить в кэши (семантический — только для общего разреза, в разрезе версии промпта)
-    await this.redis.setJson(exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
-    if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId, access).catch(() => undefined);
+    await this.redis.setJson(personal ? `${exactKey}:u${userId}` : exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
+    if (hits.length && !projectId && !personal) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId, access).catch(() => undefined);
 
     return { answer, citations, cache: 'miss' as const, versionId };
   }
@@ -170,7 +192,8 @@ export class BrainService {
     const access = await this.knowledge.accessKey(tenantId, viewer).catch(() => `u${userId}`);
     const scopeKey = `${projectId ? `p${projectId}` : 'all'}:${access}`;
     const exactKey = `brain:ans:${tenantId}:${scopeKey}:v${versionKey}:${createHash('sha256').update(normalize(q)).digest('hex')}`;
-    const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null);
+    const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null)
+      ?? await this.redis.getJson<{ answer: string; citations: any[] }>(`${exactKey}:u${userId}`).catch(() => null);
     if (exact) { on.citations(exact.citations); on.delta(exact.answer); return this.finish(tenantId, conversationId, exact.answer, exact.citations, 'exact', versionId); }
 
     const vec = await this.ai.embed(tenantId, q, 'embedding');
@@ -185,15 +208,10 @@ export class BrainService {
       }
     }
 
-    const hits = await this.knowledge.searchByVector(tenantId, vec, 6, projectId, undefined, viewer);
-    const seen = new Set<string>();
-    const citations: { sourceType: string; sourceId: string; title: string | null }[] = [];
-    for (const h of hits) {
-      const key = `${h.sourceType}:${h.sourceId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      citations.push({ sourceType: h.sourceType, sourceId: h.sourceId, title: h.title });
-    }
+    const hits = await this.knowledge.recall(tenantId, q, vec, viewer, projectId);
+    const citations = citationsOf(hits);
+    // ответ из чужих глаз закрытой переписки не должен достаться другому человеку из кэша
+    const personal = hits.some((h) => h.private);
     on.citations(citations);
 
     let answer: string;
@@ -201,14 +219,14 @@ export class BrainService {
       answer = 'В базе знаний не нашлось материалов по этому вопросу. Возможно, стоит переиндексировать знания или задать вопрос иначе.';
       on.delta(answer);
     } else {
-      const context = hits.map((h, i) => `[${i + 1}] (${h.sourceType}${h.title ? `: ${h.title}` : ''})\n${h.snippet}`).join('\n\n');
+      const context = contextOf(hits);
       answer = (await this.ai.generateStream(tenantId, system, `Вопрос: ${q}\n\nКОНТЕКСТ:\n${context}`, on.delta, 'brain', {
         promptVersionId: versionId, model: prompt?.model, params: prompt?.params,
       })).trim() || 'Не удалось сформировать ответ.';
     }
 
-    await this.redis.setJson(exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
-    if (hits.length && !projectId) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId, access).catch(() => undefined);
+    await this.redis.setJson(personal ? `${exactKey}:u${userId}` : exactKey, { answer, citations }, ANSWER_TTL).catch(() => undefined);
+    if (hits.length && !projectId && !personal) await this.repo.cacheStore(tenantId, q, vec, answer, citations, versionId, access).catch(() => undefined);
 
     return this.finish(tenantId, conversationId, answer, citations, 'miss', versionId);
   }

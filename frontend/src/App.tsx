@@ -681,7 +681,7 @@ export function App() {
         {/* Новости — свой раздел, а не вкладка чатов: это издание компании, а не переписка */}
         {route.section === 'news' && <Suspense fallback={pageFallback}><FeedPage postId={route.postId} /></Suspense>}
         {route.section === 'chat' && route.view === 'meetings' && (
-          <Suspense fallback={pageFallback}><MeetingsPage onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} /></Suspense>
+          <Suspense fallback={pageFallback}><MeetingsPage openMeetingId={route.meetingId} onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} /></Suspense>
         )}
         {route.section === 'calendar' && (
           <Suspense fallback={pageFallback}><CalendarPage onStartCall={(roomId) => { setCallInvite([]); setCallId(roomId); }} /></Suspense>

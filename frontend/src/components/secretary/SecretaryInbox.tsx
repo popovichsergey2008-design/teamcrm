@@ -190,7 +190,7 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
   const go = (link: string | null) => {
     if (!link) return;
     onNavigate();
-    navigate(link.split('?')[0]);
+    navigate(link);
   };
 
   const act = async (a: AssistantProposal['actions'][number]) => {
@@ -333,7 +333,7 @@ function Commitments({ onNavigate }: { onNavigate: () => void }) {
                 {c.status === 'tracked' && <span>· есть задача</span>}
                 {c.status === 'needs_followup' && <span className="sp-late">· напомнил</span>}
                 {c.source.link
-                  ? <button className="sp-src" onClick={() => { onNavigate(); navigate(c.source.link!.split('?')[0]); }}>{c.source.label}</button>
+                  ? <button className="sp-src" onClick={() => { onNavigate(); navigate(c.source.link!); }}>{c.source.label}</button>
                   : <span>· {c.source.label}</span>}
               </div>
               <div className="sp-actions">

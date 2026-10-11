@@ -1,3 +1,4 @@
+import { KnowledgeService } from '../knowledge/knowledge.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
@@ -118,6 +119,8 @@ export class ChatAnalysisService {
     private readonly calendar: CalendarService,
     /** Полная сводка дня — в Telegram, как и вечерний свод. */
     private readonly telegram: TelegramMirror,
+    /** Изменённое решение переиндексируется сразу: память не должна выдавать старое. */
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   /** Сообщение от бота всем, кто видит чат. */
@@ -543,6 +546,26 @@ export class ChatAnalysisService {
     if (!allowed) throw AppException.forbidden('Снять решение могут участники, записавший или руководитель');
     await this.repo.revokeDecision(tenantId, id, user.userId);
     return { decisionId: id, revoked: true };
+  }
+
+  /**
+   * «Решение изменили» (ТЗ-21 §43): старое не стирается, а ведёт на новое — память
+   * отвечает «решили X, 02.09 изменили на Y», а не выдаёт устаревшее как действующее.
+   * Менять могут те же, кто может снять.
+   */
+  async supersedeDecision(tenantId: string, user: { userId: string; role: string }, id: string, text: string, details = '') {
+    const d = await this.repo.oneDecision(tenantId, user.userId, id);
+    if (!d) throw AppException.notFound('Решение не найдено');
+    if (d.revoked_at) throw AppException.conflict('Решение снято — менять нечего');
+    const me = String(user.userId);
+    const allowed = user.role === 'owner' || user.role === 'manager'
+      || String(d.created_by ?? '') === me || (d.participants ?? []).map(String).includes(me);
+    if (!allowed) throw AppException.forbidden('Изменить решение могут участники, записавший или руководитель');
+    const newId = await this.repo.supersedeDecision(tenantId, id, text.trim().slice(0, 2000), details.trim().slice(0, 4000), user.userId);
+    if (!newId) throw AppException.conflict('Решение уже изменено');
+    void this.knowledge.enqueue(tenantId, 'decision', id);
+    void this.knowledge.enqueue(tenantId, 'decision', newId);
+    return { decisionId: newId, supersededId: id };
   }
 
   /** «Это не задача». Наблюдение не удаляем: по отказам видно, где агент ошибается. */
