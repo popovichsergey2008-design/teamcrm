@@ -75,6 +75,10 @@ import { AssistantModule } from './modules/assistant/assistant.module';
 import { ChatsModule } from './modules/chats/chats.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { FeedModule } from './modules/feed/feed.module';
+import { ProactiveModule } from './modules/proactive/proactive.module';
+import { CommitmentsModule } from './modules/commitments/commitments.module';
+import { WorkloadModule } from './modules/workload/workload.module';
+import { WorkloadActionsModule } from './modules/workload/workload-actions.module';
 
 @Module({
   imports: [
@@ -143,6 +147,10 @@ import { FeedModule } from './modules/feed/feed.module';
     MediaModule,
     CalendarModule,
     FeedModule,
+    ProactiveModule,
+    CommitmentsModule,
+    WorkloadModule,
+    WorkloadActionsModule,
     NavModule,
     FocusModule,
     ClientsModule,

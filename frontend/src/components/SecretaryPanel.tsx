@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { api } from '../lib/api';
 import { EmptyState } from './EmptyState';
@@ -7,6 +7,12 @@ import type { AiAction, Ping, Proposal } from '../types';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { confirmAction } from './ui/dialog';
+import { Tabs } from './ui/tabs';
+import { getSocket } from '../lib/socket';
+import type { SecretaryTab } from './secretary/SecretaryInbox';
+
+// ящик предложений (ТЗ-21) — отдельным куском: панель открывают не каждый день
+const SecretaryInbox = lazy(() => import('./secretary/SecretaryInbox').then((m) => ({ default: m.SecretaryInbox })));
 
 /**
  * Журнал «AI Секретаря»: что система сделала за людей сама.
@@ -45,8 +51,24 @@ function when(iso: string): string {
   return sameDay ? time : `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')} ${time}`;
 }
 
-export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boolean; onClose: () => void }) {
+export function SecretaryPanel({ canManage = false, focusId = null, onClose }: { canManage?: boolean; focusId?: string | null; onClose: () => void }) {
   useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
+  /*
+    Первая вкладка — «Ждут решения» (ТЗ-21): секретарь не только отчитывается о
+    сделанном, но и приносит то, что без человека не решить. Журнал — рядом.
+  */
+  const [tab, setTab] = useState<SecretaryTab | 'journal'>('inbox');
+  const [waiting, setWaiting] = useState<{ total: number; commitments: number }>({ total: 0, commitments: 0 });
+  useEffect(() => {
+    const load = () => api.proposalsSummary()
+      .then((s) => setWaiting({ total: s.total, commitments: s.bySection.commitments ?? 0 }))
+      .catch(() => undefined);
+    load();
+    const socket = getSocket();
+    socket.on('assistant.proposal', load);
+    return () => { socket.off('assistant.proposal', load); };
+  }, []);
+  useEffect(() => { if (focusId) setTab('inbox'); }, [focusId]);
   const [items, setItems] = useState<AiAction[] | null>(null);
   const [summary, setSummary] = useState<{ actions: number; savedMinutes: number } | null>(null);
   const [reaction, setReaction] = useState<{ rate: number; sent: number; muted: string[] } | null>(null);
@@ -64,6 +86,27 @@ export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boo
           <h3><Icon name="sparkles" size={18} /> AI Секретарь</h3>
           <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
+
+        <Tabs
+          className="sp-tabs"
+          ariaLabel="Разделы секретаря"
+          value={tab}
+          onValueChange={setTab}
+          items={[
+            { value: 'inbox', label: 'Ждут решения', count: waiting.total },
+            { value: 'commitments', label: 'Обещания' },
+            { value: 'journal', label: 'Журнал' },
+            { value: 'settings', label: 'Настройки' },
+          ]}
+        />
+
+        {tab !== 'journal' && (
+          <Suspense fallback={<SkeletonList rows={4} />}>
+            <SecretaryInbox tab={tab} focusId={focusId} onNavigate={onClose} />
+          </Suspense>
+        )}
+
+        {tab === 'journal' && (<>
 
         <div className="secretary-summary">
           <div>
@@ -118,6 +161,7 @@ export function SecretaryPanel({ canManage = false, onClose }: { canManage?: boo
             ))}
           </div>
         )}
+        </>)}
       </aside>
     </div>
   );

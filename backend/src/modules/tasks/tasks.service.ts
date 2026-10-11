@@ -1,3 +1,4 @@
+import { WorkloadGuardService } from '../workload/workload.service';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { TagsService } from '../tags/tags.service';
@@ -59,6 +60,8 @@ export class TasksService {
     private readonly security: SecurityService,
     /** Догоняющий вопрос «как идёт работа»: открытый вопрос и ответ на него. */
     private readonly followups: FollowupsRepository,
+    /** Страж нагрузки (ТЗ-21): глобальный, без встречной зависимости от задач. */
+    private readonly workload: WorkloadGuardService,
     /** Ящик уведомлений: увиденное и неактуальное гасится и в шторке (#1531). */
     private readonly push: PushService,
   ) {}
@@ -180,7 +183,14 @@ export class TasksService {
     await this.tags.assertGate(tenantId, {
       tagIds: dto.labelIds, tagsConfirmed: dto.tagsConfirmed, confirmedWithoutTags: dto.confirmedWithoutTags,
     });
-    const task = await this.create(tenantId, dto, user.userId);
+    // страж нагрузки — ДО создания (ТЗ-21 §28): перегруз → предупреждение с вариантами
+    if (dto.assigneeId) {
+      await this.workload.guard({ tenantId, userId: user.userId }, {
+        assigneeId: String(dto.assigneeId), projectId: String(dto.projectId), priority: dto.priority ?? null,
+        deadlineAt: dto.deadlineAt ?? null, directions: dto.directions ?? [], title: dto.title,
+      }, dto.confirmWorkload === true);
+    }
+    const task = await this.create(tenantId, dto, user.userId, { workloadChecked: true });
     // Источник тега и поправки человека — сразу после создания: через месяц по задаче
     // видно, поставил тег человек или предложил ИИ.
     await this.tags.applyToNewTask(tenantId, user, String(task.id), String(task.project_id), {
@@ -196,7 +206,7 @@ export class TasksService {
    */
   async create(
     tenantId: string, dto: CreateTaskDto, actorId: string | null = null,
-    origin: { sourceChatMessageId?: string | null; createdByAi?: boolean } = {},
+    origin: { sourceChatMessageId?: string | null; createdByAi?: boolean; workloadChecked?: boolean } = {},
   ): Promise<TaskRow> {
     const project = await this.projects.findById(tenantId, dto.projectId);
     if (!project) throw AppException.notFound('Project not found');
@@ -271,6 +281,10 @@ export class TasksService {
       });
     }
     await this.activity.log(tenantId, task.id, actorId, 'created', { title: task.title });
+    // фоновые пути (разбор переписки, встречи, пакет): спросить некого — карточка в ящик (ТЗ-21)
+    if (!origin.workloadChecked && actorId) {
+      void this.workload.afterCreate({ tenantId, userId: String(actorId) }, { ...task, directions: dto.directions ?? [] } as any);
+    }
     this.knowledge.enqueue(tenantId, 'task', task.id); // в базу знаний (открытые проекты тоже)
     await this.outbox.enqueue(tenantId, task.project_id, 'task.create', task.id); // выгрузка во внешнюю систему
     void this.notify.taskCreated(tenantId, task.id, actorId); // письмо исполнителю; ответа не ждём

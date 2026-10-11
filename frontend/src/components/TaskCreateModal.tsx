@@ -10,6 +10,7 @@ import { overlayProps } from '../lib/overlay';
 import { clearDraft, draftHasContent, saveDraft, setDraftEditing, type TaskDraft } from '../lib/task-draft';
 import { useAuth } from '../state/auth';
 import { SuggestAssignee } from './SuggestAssignee';
+import { localInput, workloadOf, WorkloadInfo, WorkloadWarning } from './WorkloadWarning';
 import { DirectionsPicker } from './DirectionsPicker';
 import { NlCommandModal } from './NlCommandModal';
 import { isAnonymousClipboardName, screenshotName } from '../lib/attachments';
@@ -241,21 +242,27 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
 
   const chosenTpl = templates.find((t) => String(t.id) === tplId) ?? null;
 
-  const submit = async () => {
+  /** Страж нагрузки (ТЗ-21): сервер предупредил о перегрузе — человек выбирает вариант. */
+  const [workload, setWorkload] = useState<WorkloadInfo | null>(null);
+
+  const submit = async (o: { assigneeId?: string; deadline?: string; confirmWorkload?: boolean } = {}) => {
     if (!title.trim()) return setErr('Введите название задачи');
     setErr('');
+    setWorkload(null);
     setBusy(true);
+    const who = o.assigneeId ?? assigneeId;
+    const when = o.deadline ?? deadline;
     try {
       const created = await api.createTask({
         projectId,
         columnId,
         title: title.trim(),
         description: description.trim() || undefined,
-        assigneeId: assigneeId || undefined,
+        assigneeId: who || undefined,
         managerId: managerId || undefined,
         priority,
         // поле даёт локальное время без зоны — приводим к ISO, как это делает карточка
-        deadlineAt: deadline ? new Date(deadline).toISOString() : undefined,
+        deadlineAt: when ? new Date(when).toISOString() : undefined,
         estimateHours: estimate ? Number(estimate) : undefined,
         labelIds: tags.tagIds.length ? tags.tagIds : undefined,
         suggestedTagIds: tags.suggested.length ? tags.suggested : undefined,
@@ -263,6 +270,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         confirmedWithoutTags: tags.confirmedWithoutTags,
         requiresApproval,
         directions: directions.length ? directions : undefined,
+        confirmWorkload: o.confirmWorkload || undefined,
       });
       setCreatedId(String(created.id));
       clearDraft(); // задача создана — черновик своё отслужил
@@ -299,7 +307,9 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
       onCreated();
       onClose();
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Не удалось создать задачу');
+      const w = workloadOf(e);
+      if (w) setWorkload(w);
+      else setErr(e instanceof ApiError ? e.message : 'Не удалось создать задачу');
       setBusy(false);
     }
   };
@@ -546,6 +556,19 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
             )}
           </Field>
 
+          {workload && (
+            <WorkloadWarning
+              info={workload}
+              busy={busy}
+              onMove={workload.alternativeDeadline ? () => {
+                const v = localInput(workload.alternativeDeadline!);
+                setDeadline(v);
+                void submit({ deadline: v });
+              } : undefined}
+              onReassign={(id) => { setAssigneeId(id); void submit({ assigneeId: id }); }}
+              onKeep={() => void submit({ confirmWorkload: true })}
+            />
+          )}
           {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
         </div>
 
@@ -561,7 +584,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
                 /* Теги не подтверждены — создавать нельзя: то же правило проверяет сервер. */
                 disabled={!canCreate}
                 loading={busy}
-                onClick={submit}
+                onClick={() => void submit()}
                 title={canCreate ? undefined : 'Подтвердите теги задачи'}
               >
                 {busy

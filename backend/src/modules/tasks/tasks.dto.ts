@@ -16,6 +16,11 @@ import {
 } from 'class-validator';
 
 export class CreateTaskDto {
+  /** Страж нагрузки (ТЗ-21): человек видел предупреждение о перегрузе и всё равно ставит. */
+  @IsOptional()
+  @IsBoolean()
+  confirmWorkload?: boolean;
+
   @IsString()
   projectId!: string;
 

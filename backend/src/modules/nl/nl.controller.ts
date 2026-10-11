@@ -181,6 +181,6 @@ export class NlController {
 
   @Post('apply')
   apply(@CurrentUser() u: AuthUser, @Body() dto: ApplyDto) {
-    return this.nl.apply(u.tenantId, u.userId, dto);
+    return this.nl.apply(u.tenantId, u.userId, dto, { interactive: true });
   }
 }

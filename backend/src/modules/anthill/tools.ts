@@ -1,3 +1,4 @@
+import { WorkloadGuardService } from '../workload/workload.service';
 import { FeedService } from '../feed/feed.service';
 import { AnthillRepository, Source } from './anthill.repository';
 import { ClientsService } from '../clients/clients.service';
@@ -94,6 +95,8 @@ export interface ToolDeps {
   pulse: PulseService;
   /** «Новости» (ТЗ-20): что важного, спасибо коллеге, опрос — тем же сервисом, что экран. */
   feed: FeedService;
+  /** Страж нагрузки (ТЗ-21): перегруз исполнителя — прямо в карточке подтверждения. */
+  workload: WorkloadGuardService;
 }
 
 const str = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
@@ -101,7 +104,7 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed } = deps;
+  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed, workload } = deps;
 
   /** Клиент по названию или номеру — тем же поиском, что в разделе, и с теми же правами. */
   const findClient = async (ctx: ToolContext, key: string) => {
@@ -472,9 +475,26 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           project: ctxp.projects?.find((x: any) => String(x.id) === String(t.projectId))?.name,
           assignee: ctxp.users?.find((x: any) => String(x.id) === String(t.assigneeId))?.name,
         });
+        // страж нагрузки (ТЗ-21 §27): предупреждение — в самой карточке; «Создать» по ней —
+        // осознанное «оставить как есть», оно пишется в журнал
+        let warn = '';
+        if (t.assigneeId && t.projectId) {
+          const a = await workload.assess(ctx.tenantId, {
+            assigneeId: String(t.assigneeId), projectId: String(t.projectId), priority: t.priority ?? null,
+            deadlineAt: t.deadline ? `${String(t.deadline).slice(0, 10)}T18:00:00` : null,
+            directions: Array.isArray(t.directions) ? t.directions : [],
+          }).catch(() => null);
+          if (a?.warn) {
+            const alts = [
+              a.alternativeDate ? `срок ${a.alternativeDate.split('-').reverse().join('.')}` : null,
+              ...a.alternatives.slice(0, 2).map((x) => `${x.name} (${x.after}%)`),
+            ].filter(Boolean);
+            warn = `\n⚠ ${a.reasons.join(' ')}${alts.length ? `\nМожно: ${alts.join(' · ')} — поправьте поля или скажите мне.` : ''}`;
+          }
+        }
         return {
-          text: client ? `${card}\nКлиент: ${client.name}` : card,
-          params: { intent: 'create_task', task: { ...t, requiresApproval: true }, ...(client ? { clientId: client.id } : {}) },
+          text: (client ? `${card}\nКлиент: ${client.name}` : card) + warn,
+          params: { intent: 'create_task', task: { ...t, requiresApproval: true, ...(warn ? { confirmWorkload: true } : {}) }, ...(client ? { clientId: client.id } : {}) },
         };
       },
       fields: [
@@ -500,7 +520,8 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       },
       async execute(ctx, p) {
         const { clientId, ...body } = p as any;
-        const res: any = await nl.apply(ctx.tenantId, ctx.user.userId, body);
+        // человек подтвердил карточку (с предупреждением, если оно было) — проверка пройдена
+        const res: any = await nl.apply(ctx.tenantId, ctx.user.userId, body, { interactive: true });
         const task = res?.task;
         if (!task?.id) throw new Error('Задача не создалась');
         // клиент — после создания: разбор фразы о клиентах не знает, привязку ставим сами

@@ -4,6 +4,7 @@ import { TaskCardWindow } from './TaskCardWindow';
 import { TaskTagsField } from './TaskTagsField';
 import { confirmTags, EMPTY_TAGS, pendingTagCount } from '../lib/tags';
 import { api, ApiError, TagSettings, VoiceJob } from '../lib/api';
+import { workloadOf, WorkloadWarning } from './WorkloadWarning';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { DatePicker } from './DatePicker';
 import { DirectionsPicker } from './DirectionsPicker';
@@ -219,7 +220,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     return failed;
   };
 
-  const applyOne = async (draft: any, index: number) => {
+  const applyOne = async (draft: any, index: number, over: Record<string, unknown> = {}) => {
+    if (Object.keys(over).length) draft = { ...draft, task: { ...draft.task, ...over } };
     setBusy(true); setMsg('');
     if (!draft?.task?.projectId) {
       patchDraft(index, { error: 'Выберите проект — без него задачу не создать' });
@@ -228,7 +230,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     }
     try {
       const res: any = await api.nlApply(bodyOf(draft));
-      patchDraft(index, { error: null });
+      patchDraft(index, { error: null, workload: null });
       const taskId = res?.task ? String(res.task.id) : '';
       const failed = taskId ? await uploadFiles(taskId, draft.files ?? []) : [];
       setDone((d) => [...d, index]);
@@ -244,7 +246,12 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         onCreated(String(res.task.project_id ?? res.task.projectId), String(res.task.id));
         onClose();
       }
-    } catch (e) { patchDraft(index, { error: e instanceof ApiError ? e.message : 'Не удалось создать' }); }
+    } catch (e) {
+      // страж нагрузки (ТЗ-21): предупреждение с вариантами, а не ошибка
+      const w = workloadOf(e);
+      if (w) patchDraft(index, { error: null, workload: w, task: draft.task });
+      else patchDraft(index, { error: e instanceof ApiError ? e.message : 'Не удалось создать' });
+    }
     finally { setBusy(false); }
   };
 
@@ -526,7 +533,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             onPatchDeal={(patch) => patchDeal(i, patch)}
             onPatchDraft={(patch) => patchDraft(i, patch)}
             onDrop={() => dropDraft(i)}
-            onApply={() => applyOne(draft, i)}
+            onApply={(over?: Record<string, unknown>) => applyOne(draft, i, over)}
           />
         ))}
 
@@ -609,7 +616,7 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
   onPatchDeal: (patch: any) => void;
   onPatchDraft: (patch: any) => void;
   onDrop: () => void;
-  onApply: () => void;
+  onApply: (over?: Record<string, unknown>) => void;
 }) {
   const [approvalHabit, setApprovalHabit] = useStickyCheck('task.requiresApproval', true);
   const ctx = draft?.context ?? { projects: [], users: [], clients: [] };
@@ -651,6 +658,15 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
         </div>
         {draft.error && (
           <div className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {draft.error}</div>
+        )}
+        {draft.workload && (
+          <WorkloadWarning
+            info={draft.workload}
+            busy={busy}
+            onMove={draft.workload.alternativeDate ? () => onApply({ deadline: draft.workload.alternativeDate }) : undefined}
+            onReassign={(id) => onApply({ assigneeId: id })}
+            onKeep={() => onApply({ confirmWorkload: true })}
+          />
         )}
         {draft.warnings?.map((w: string, i: number) => (
           <div key={i} className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {w}</div>
@@ -804,7 +820,7 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
         )}
 
         <Button variant="primary" className="tv2-wide"
-                onClick={onApply} disabled={!draft.task.projectId} loading={busy}>
+                onClick={() => onApply()} disabled={!draft.task.projectId} loading={busy}>
           {!draft.task.projectId
             ? 'Выберите проект'
             : (files.length ? `Создать задачу и прикрепить ${files.length}` : 'Создать задачу')}
@@ -832,7 +848,7 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
           onValueChange={(v) => onPatchDeal({ clientId: v || null })}
           options={[{ value: '', label: 'Клиент не выбран' }, ...ctx.clients.map((c: any) => ({ value: String(c.id), label: c.name }))]}
         />
-        <Button variant="primary" className="tv2-wide" onClick={onApply} loading={busy}>
+        <Button variant="primary" className="tv2-wide" onClick={() => onApply()} loading={busy}>
           Создать сделку
         </Button>
       </div>

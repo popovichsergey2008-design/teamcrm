@@ -228,6 +228,16 @@ export function App() {
   }, []);
   const [paletteOpen, setPaletteOpen] = useState<{ voice?: boolean } | null>(null);
   const [secretaryOpen, setSecretaryOpen] = useState(false);
+  /** Предложение секретаря из push или ссылки `/secretary/:id` (ТЗ-21). */
+  const [secretaryFocus, setSecretaryFocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user) return; // до входа адрес не трогаем — после входа ссылка сработает
+    const m = window.location.pathname.match(/^\/secretary(?:\/(\d+))?\/?$/);
+    if (!m) return;
+    setSecretaryFocus(m[1] ?? null);
+    setSecretaryOpen(true);
+    navigate('/focus', { replace: true });
+  }, [route, user]);
   const [helpOpen, setHelpOpen] = useState(false);
   /*
     Chat Bar и окно чата поверх CRM (ТЗ-5, этап 1).
@@ -845,7 +855,8 @@ export function App() {
       {secretaryOpen && (
         <SecretaryPanel
           canManage={user.role === 'owner' || user.role === 'manager'}
-          onClose={() => setSecretaryOpen(false)}
+          focusId={secretaryFocus}
+          onClose={() => { setSecretaryOpen(false); setSecretaryFocus(null); }}
         />
       )}
       {helpOpen && <ShortcutsHelp onClose={() => setHelpOpen(false)} />}

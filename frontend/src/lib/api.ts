@@ -1063,6 +1063,8 @@ export const api = {
     suggestedTagIds?: string[]; tagsConfirmed?: boolean; confirmedWithoutTags?: boolean;
     /** клиент задачи напрямую (ТЗ-17) */
     clientId?: string;
+    /** страж нагрузки (ТЗ-21): видел предупреждение и всё равно ставлю */
+    confirmWorkload?: boolean;
   }) =>
     request<Task>('POST', '/tasks', b),
   /**
@@ -2200,6 +2202,30 @@ export const api = {
   setMeetingAutoTasks: (enabled: boolean) =>
     request<{ autoTasks: boolean }>('PUT', '/assistant/meeting-tasks', { enabled }),
   assistantProposed: () => request<Ping[]>('GET', '/assistant/pings/proposed'),
+  // ящик предложений секретаря (ТЗ-21)
+  proposals: (o: { section?: string; history?: boolean } = {}) =>
+    request<{ items: AssistantProposal[] }>('GET', `/assistant/proposals?${o.section ? `section=${o.section}&` : ''}${o.history ? 'history=1' : ''}`),
+  proposalsSummary: () => request<ProposalSummary>('GET', '/assistant/proposals/summary'),
+  proposal: (id: string) => request<AssistantProposal>('GET', `/assistant/proposals/${id}`),
+  proposalsSeen: (ids: string[]) => request<{ ok: true }>('POST', '/assistant/proposals/seen', { ids }),
+  proposalAct: (id: string, action: string, params?: Record<string, unknown>) =>
+    request<{ ok: true; text: string; link: string | null; proposal: AssistantProposal }>('POST', `/assistant/proposals/${id}/confirm`, { action, params }),
+  proposalDismiss: (id: string, o: { mute?: boolean; reason?: string } = {}) =>
+    request<{ dismissed: true; muted: boolean }>('POST', `/assistant/proposals/${id}/dismiss`, o),
+  proposalSnooze: (id: string, preset: 'hour' | 'afternoon' | 'tomorrow') =>
+    request<{ snoozedUntil: string }>('POST', `/assistant/proposals/${id}/snooze`, { preset }),
+  proposalFeedback: (id: string, useful: boolean, reason?: string) =>
+    request<{ ok: true }>('POST', `/assistant/proposals/${id}/feedback`, { useful, reason }),
+  proactivePrefs: () => request<ProactivePrefs>('GET', '/assistant/proposals/prefs'),
+  saveProactivePrefs: (b: Partial<Omit<ProactivePrefs, 'mutes'>>) => request<ProactivePrefs>('PATCH', '/assistant/proposals/prefs', b),
+  proactiveUnmute: (skill: string, kind: string) =>
+    request<ProactivePrefs>('DELETE', `/assistant/proposals/mutes/${skill}?kind=${encodeURIComponent(kind)}`),
+  proactiveSettings: () => request<ProactiveSettings>('GET', '/assistant/proposals/settings'),
+  saveProactiveSettings: (b: Partial<ProactiveSettings>) => request<ProactiveSettings>('PATCH', '/assistant/proposals/settings', b),
+  proactiveQuality: (days = 30) => request<ProactiveQuality[]>('GET', `/assistant/proposals/quality?days=${days}`),
+  commitments: () => request<Commitment[]>('GET', '/assistant/commitments'),
+  commitmentFulfilled: (id: string) => request<{ ok: true }>('POST', `/assistant/commitments/${id}/fulfilled`),
+  commitmentDismiss: (id: string) => request<{ ok: true }>('POST', `/assistant/commitments/${id}/dismiss`),
   sendPing: (id: string) => request<any>('POST', `/assistant/pings/${id}/send`),
   dismissPing: (id: string) => request<any>('POST', `/assistant/pings/${id}/dismiss`),
   feedReaders: (id: string) =>
@@ -2923,4 +2949,41 @@ export interface NewsCandidate {
 export interface NewsSettings {
   highlightsEnabled: boolean; highlightsAuto: boolean; highlightHour: number; heroEnabled: boolean;
   learningsEnabled: boolean; learningsDow: number; learningsHour: number;
+}
+
+/** Предложение секретаря (ТЗ-21): что увидел, почему, что предлагаю, что изменится. */
+export interface AssistantProposal {
+  id: string;
+  skill: 'commitment' | 'workload' | 'reply' | 'followup' | 'brief' | 'decision';
+  kind: string;
+  section: 'attention' | 'commitments' | 'replies' | 'meetings' | 'morning';
+  title: string; summary: string | null; why: string | null; recommend: string | null; effect: string | null;
+  priority: number; priorityLabel: string; confidence: number;
+  status: 'new' | 'seen' | 'snoozed' | 'executing' | 'executed' | 'dismissed' | 'expired' | 'failed';
+  source: { type: string | null; id: string | null; at: string | null; label: string | null; link: string | null };
+  actions: { key: string; label: string; risk?: string; primary?: boolean }[];
+  payload: Record<string, unknown>;
+  snoozeUntil: string | null; createdAt: string; resolvedAt: string | null; resolvedAction: string | null;
+  result: string | null; error?: string | null;
+}
+export interface ProposalSummary {
+  total: number; urgent: number; bySection: Record<string, number>; line: string;
+  elsewhere: { pings: number; chatActions: number; meetingDrafts: number; news: number };
+}
+export interface ProactivePrefs {
+  level: 'normal' | 'quiet' | 'off'; dailyLimit: number; smartReply: boolean; morningAudio: boolean;
+  mutes: { skill: string; kind: string }[];
+}
+export interface ProactiveSettings {
+  enabled: boolean; commitments: boolean; workloadGuard: boolean; smartReply: boolean; clientFollowup: boolean;
+  morningAudio: boolean; secondBrain: boolean; externalSend: boolean; telegramDelivery: boolean;
+  commitmentCheckHours: number; commitmentEscalateHours: number;
+}
+export interface ProactiveQuality {
+  skill: string; total: number; executed: number; dismissed: number; expired: number; acceptRate: number; falsePositiveRate: number | null;
+}
+export interface Commitment {
+  id: string; action: string; quote: string; status: string; mine: boolean; speaker: string; assigner: string | null;
+  deadlineAt: string | null; deadlineText: string | null; sourceAt: string;
+  source: { type: string; label: string; link: string | null }; taskId: string | null; confidence: number;
 }

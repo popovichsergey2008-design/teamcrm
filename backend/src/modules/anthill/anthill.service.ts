@@ -1,3 +1,4 @@
+import { WorkloadGuardService } from '../workload/workload.service';
 import { FeedService } from '../feed/feed.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { ClientsService } from '../clients/clients.service';
@@ -76,9 +77,9 @@ export class AnthillService {
     private readonly activity: TaskActivityRepository,
     tasks: TasksService, chats: ChatsService, search: SearchService, nl: NlService, ask: AskService,
     files: FilesService, taskcard: TaskCardService, forecast: ForecastService, calendar: CalendarService,
-    knowledge: KnowledgeService, clients: ClientsService, briefs: BriefService, mail: MailboxService, pulse: PulseService, feed: FeedService,
+    knowledge: KnowledgeService, clients: ClientsService, briefs: BriefService, mail: MailboxService, pulse: PulseService, feed: FeedService, workload: WorkloadGuardService,
   ) {
-    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed });
+    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed, workload });
   }
 
   private base() { return (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, ''); }

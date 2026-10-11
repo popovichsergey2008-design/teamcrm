@@ -15,6 +15,7 @@ import { useEscape } from '../hooks/useEscape';
 import { PRESENCE_CHANGED } from './MyStatusBar';
 import { FocusMenu, focusLine } from './FocusMenu';
 import { humanMinutes } from './SecretaryPanel';
+import { getSocket } from '../lib/socket';
 import { api } from '../lib/api';
 import type { Focus } from '../types';
 import { AppUpdateRow } from './AppUpdateRow';
@@ -213,6 +214,16 @@ export function Sidebar({
   });
   const [focus, setFocus] = useState<Focus | null>(null);
   const [secretary, setSecretary] = useState<{ actions: number; savedMinutes: number } | null>(null);
+  /** Сколько предложений секретаря ждут решения (ТЗ-21) — живьём по событию. */
+  const [waiting, setWaiting] = useState(0);
+  useEffect(() => {
+    const load = () => api.proposalsSummary().then((s) => setWaiting(s.total)).catch(() => undefined);
+    load();
+    const socket = getSocket();
+    socket.on('assistant.proposal', load);
+    socket.on('connect', load);
+    return () => { socket.off('assistant.proposal', load); socket.off('connect', load); };
+  }, []);
   const menuRef = useRef<HTMLDivElement>(null);
 
   /**
@@ -744,7 +755,9 @@ export function Sidebar({
             <span className="nav-label nav-secretary-text">
               <span>AI Секретарь · {secretary?.actions ?? 0}</span>
               <span className="nav-secretary-saved">
-                {secretary && secretary.savedMinutes > 0 ? `сэкономлено ${humanMinutes(secretary.savedMinutes)}` : 'действий сегодня'}
+                {waiting > 0
+                  ? <b className="nav-secretary-waiting">ждут решения: {waiting}</b>
+                  : secretary && secretary.savedMinutes > 0 ? `сэкономлено ${humanMinutes(secretary.savedMinutes)}` : 'действий сегодня'}
               </span>
             </span>
           </button>

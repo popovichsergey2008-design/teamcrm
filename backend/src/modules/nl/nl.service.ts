@@ -1,3 +1,4 @@
+import { WorkloadGuardService } from '../workload/workload.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { TagsService } from '../tags/tags.service';
@@ -114,6 +115,7 @@ export class NlService {
     private readonly secretary: SecretaryService,
     private readonly users: UsersRepository,
     private readonly security: SecurityService,
+    private readonly workload: WorkloadGuardService,
   ) {}
 
   private async context(tenantId: string) {
@@ -630,7 +632,12 @@ export class NlService {
   }
 
   /** Применяет подтверждённый (возможно отредактированный) черновик — создаёт сущность. */
-  async apply(tenantId: string, userId: string, body: { intent: Intent; task?: any; deal?: any }) {
+  /**
+   * `interactive` — человек сидит в окне быстрой команды и может ответить на предупреждение
+   * стража нагрузки. Остальные пути (бот, пакет, из сообщения, входящие) задачу ставят, а
+   * перегруз приходит карточкой в ящик (ТЗ-21, этап 3).
+   */
+  async apply(tenantId: string, userId: string, body: { intent: Intent; task?: any; deal?: any }, opts: { interactive?: boolean } = {}) {
     if (body.intent === 'create_task') {
       const t = body.task ?? {};
       if (!t.projectId) throw AppException.validation('Выберите проект для задачи');
@@ -650,6 +657,13 @@ export class NlService {
       const deadlineAt = /^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? ''))
         ? new Date(`${t.deadline}T18:00:00`).toISOString() // день без времени — считаем концом рабочего дня
         : undefined;
+      if (t.assigneeId && opts.interactive) {
+        await this.workload.guard({ tenantId, userId }, {
+          assigneeId: String(t.assigneeId), projectId: String(t.projectId),
+          priority: PRIORITIES.includes(String(t.priority)) ? String(t.priority) : null,
+          deadlineAt: deadlineAt ?? null, directions: Array.isArray(t.directions) ? t.directions.map(String) : [], title: String(t.title),
+        }, t.confirmWorkload === true);
+      }
       const task = await this.tasks.create(tenantId, {
         projectId: String(t.projectId), title: String(t.title).trim().slice(0, 255),
         description: t.description ? String(t.description) : undefined,
@@ -663,7 +677,7 @@ export class NlService {
           ? t.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean)
           : undefined,
         directions: Array.isArray(t.directions) ? t.directions.filter(isSkill) : undefined,
-      } as any, userId);
+      } as any, userId, { workloadChecked: !!opts.interactive });
       await this.tags.applyToNewTask(tenantId, { userId }, String(task.id), String(task.project_id), {
         tagIds: Array.isArray(t.tagIds) ? t.tagIds.map(String) : [],
         suggestedTagIds: Array.isArray(t.suggestedTagIds) ? t.suggestedTagIds.map(String) : [],
