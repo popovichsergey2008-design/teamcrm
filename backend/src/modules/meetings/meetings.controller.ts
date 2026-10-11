@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -65,6 +65,13 @@ export class MeetingsController {
   @Get('postcall/pending')
   pendingPostcall(@CurrentUser() u: AuthUser) {
     return this.postcall.pending(u.tenantId, u.userId);
+  }
+
+  /** Качество итогов встреч (§52): руководителю — принимают ли черновики, где ИИ ошибается. */
+  @Get('postcall/quality')
+  @Roles('owner', 'manager')
+  postcallQuality(@CurrentUser() u: AuthUser, @Query('days') days?: string) {
+    return this.postcall.quality(u.tenantId, Math.min(Math.max(Number(days) || 30, 1), 180));
   }
 
   /** Номер встречи по комнате созвона: экран итогов ждёт, пока допишется запись. */

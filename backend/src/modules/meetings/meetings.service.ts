@@ -5,6 +5,7 @@ import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
 import { FilesService } from '../files/files.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { PromptsService } from '../prompts/prompts.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TaskCardService } from '../taskcard/taskcard.service';
 import { SecretaryService } from '../secretary/secretary.service';
@@ -65,6 +66,7 @@ export class MeetingsService {
     private readonly realtime: RealtimeService,
     private readonly taskcard: TaskCardService,
     private readonly postcall: PostcallService,
+    private readonly prompts: PromptsService,
   ) {}
 
   list(tenantId: string, viewer: ProjectViewer) {
@@ -536,7 +538,10 @@ export class MeetingsService {
       разбором. Первый полезный блок появляется на экране за секунды, а не после того,
       как модель разберёт задачи и решения целиком.
     */
-    const quick = this.ai.generate(tenantId, SUMMARY_PROMPT, text.slice(0, 60_000), 'meeting_summary_quick')
+    const quick = this.prompts.resolve(tenantId, 'meeting.summary_quick', {}).catch(() => null)
+      .then((prompt) => this.ai.generate(tenantId, prompt?.body ?? SUMMARY_PROMPT, text.slice(0, 60_000), 'meeting_summary_quick', {
+        promptVersionId: prompt?.versionId ?? null, model: prompt?.model, params: prompt?.params,
+      }))
       .then(async (raw) => {
         const summary = String(raw ?? '').trim().slice(0, 4000);
         if (!summary) return null;

@@ -219,6 +219,48 @@ export class PostcallRepository {
     return (r.rowCount ?? 0) > 0;
   }
 
+  /**
+   * Качество итогов встречи за период (§52) — по фактам, без отдельной таблицы событий:
+   * разборы, черновики (что приняли, что правили), решения, письма клиентам.
+   */
+  quality(tenantId: string, days: number) {
+    return this.db.one<{
+      meetings: number; ai_meetings: number; reviewed: number; unreviewed: number; median_review_min: number | null;
+      drafts: number; applied: number; rejected: number; open_drafts: number;
+      edit_assignee: number; edit_deadline: number; edit_title: number; edit_project: number;
+      with_tasks: number; with_decisions: number; followup_ready: number; followup_sent: number; recap_sent: number;
+    }>(
+      `WITH r AS (
+         SELECT * FROM meeting_postcall_reviews WHERE tenant_id = $1 AND created_at > now() - make_interval(days => $2::int)
+       ), d AS (
+         SELECT d.* FROM meeting_task_drafts d JOIN r ON r.meeting_id = d.meeting_id
+       )
+       SELECT
+         (SELECT count(*)::int FROM r) AS meetings,
+         (SELECT count(*)::int FROM r WHERE ai) AS ai_meetings,
+         (SELECT count(*)::int FROM r WHERE status IN ('reviewed','completed')) AS reviewed,
+         (SELECT count(*)::int FROM r WHERE status = 'review_required' AND created_at < now() - interval '24 hours') AS unreviewed,
+         (SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM reviewed_at - created_at) / 60))::int
+            FROM r WHERE reviewed_at IS NOT NULL) AS median_review_min,
+         (SELECT count(*)::int FROM d) AS drafts,
+         (SELECT count(*)::int FROM d WHERE task_id IS NOT NULL) AS applied,
+         (SELECT count(*)::int FROM d WHERE status = 'rejected') AS rejected,
+         (SELECT count(*)::int FROM d WHERE status IN ('pending','failed')) AS open_drafts,
+         (SELECT count(*)::int FROM d WHERE task_id IS NOT NULL AND 'assignee' = ANY(edited_fields)) AS edit_assignee,
+         (SELECT count(*)::int FROM d WHERE task_id IS NOT NULL AND 'deadline' = ANY(edited_fields)) AS edit_deadline,
+         (SELECT count(*)::int FROM d WHERE task_id IS NOT NULL AND 'title' = ANY(edited_fields)) AS edit_title,
+         (SELECT count(*)::int FROM d WHERE task_id IS NOT NULL AND 'project' = ANY(edited_fields)) AS edit_project,
+         (SELECT count(DISTINCT meeting_id)::int FROM d WHERE task_id IS NOT NULL) AS with_tasks,
+         (SELECT count(DISTINCT x.meeting_id)::int FROM decisions x JOIN r ON r.meeting_id = x.meeting_id WHERE x.revoked_at IS NULL) AS with_decisions,
+         (SELECT count(*)::int FROM r WHERE followup_status = 'ready') AS followup_ready,
+         (SELECT count(*)::int FROM assistant_proposals p JOIN r ON p.source_id = r.meeting_id::text
+           WHERE p.tenant_id = $1 AND p.skill = 'followup' AND p.source_type = 'meeting' AND p.status = 'executed'
+             AND p.resolved_action IN ('send_chat','send_mail')) AS followup_sent,
+         (SELECT count(*)::int FROM r WHERE recap_sent_at IS NOT NULL) AS recap_sent`,
+      [tenantId, days],
+    );
+  }
+
   /** Сказать владельцу «итоги готовы» — один раз и только если он их ещё не открыл. */
   async claimNotify(id: string): Promise<boolean> {
     const r = await this.db.query(

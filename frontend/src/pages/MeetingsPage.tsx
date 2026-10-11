@@ -9,6 +9,8 @@ import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import type { Project, User } from '../types';
 import { DraftRow, type DraftChoice } from '../components/meetings/DraftRow';
+import { PostcallQuality } from '../components/meetings/PostcallQuality';
+import { useAuth } from '../state/auth';
 import { OptionSelect } from '../components/ui/option-select';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -32,6 +34,7 @@ const stamp = (sec: number) => {
  * Задачи создаются только по подтверждению — ИИ ничего не заводит молча.
  */
 export function MeetingsPage({ onEnterGuestMeet, openMeetingId }: { onEnterGuestMeet: (roomId: string) => void; openMeetingId?: string }) {
+  const { user } = useAuth();
   const [list, setList] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -126,6 +129,7 @@ export function MeetingsPage({ onEnterGuestMeet, openMeetingId }: { onEnterGuest
       {err && <div className="error-text">{err}</div>}
 
       <div className="drawer-section-title" style={{ marginTop: 16 }}>Встречи ({list.length})</div>
+      {(user?.role === 'owner' || user?.role === 'manager') && <PostcallQuality />}
       {!loaded && <SkeletonList rows={3} />}
       {loaded && list.length === 0 && (
         <EmptyState

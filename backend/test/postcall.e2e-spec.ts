@@ -118,6 +118,11 @@ describe('Итоги встречи после звонка (e2e)', () => {
     // в списке встреч — «итоги обработаны»
     const list = (await http$.get('/api/meetings').set(O).expect(200)).body.data;
     expect(list.find((m: any) => String(m.id) === String(meetingId)).review_status).toBe('completed');
+
+    // качество итогов — руководителю; разбор закрыт, участникам итоги разосланы
+    await http$.get('/api/meetings/postcall/quality').set(gleb.H).expect(403);
+    const q = (await http$.get('/api/meetings/postcall/quality?days=7').set(O).expect(200)).body.data;
+    expect(q).toMatchObject({ days: 7, meetings: 1, reviewRate: 100, recapRate: 100, unreviewed: 0 });
   });
 
   it('«Создать выбранные»: упавший пункт не отменяет остальные, повтор создаёт только его', async () => {

@@ -187,6 +187,35 @@ export class PostcallService implements OnModuleInit {
     return { sent: people.length };
   }
 
+  /**
+   * Качество итогов (§52): доли, а не сырые счётчики — руководителю важно, «принимают ли
+   * черновики» и «как часто ИИ ошибается в исполнителе», а не сколько их было.
+   */
+  async quality(tenantId: string, days: number) {
+    const q = await this.repo.quality(tenantId, days);
+    if (!q) return null;
+    const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : null);
+    return {
+      days,
+      meetings: q.meetings,
+      reviewRate: pct(q.reviewed, q.meetings),
+      unreviewed: q.unreviewed,
+      medianReviewMin: q.median_review_min,
+      drafts: q.drafts,
+      acceptanceRate: pct(q.applied, q.applied + q.rejected),
+      openDrafts: q.open_drafts,
+      meetingToTask: pct(q.with_tasks, q.ai_meetings),
+      decisionCapture: pct(q.with_decisions, q.ai_meetings),
+      followupSendRate: pct(q.followup_sent, q.followup_ready),
+      recapRate: pct(q.recap_sent, q.meetings),
+      // как часто человек исправлял услышанное ИИ — среди созданных задач
+      wrongAssignee: pct(q.edit_assignee, q.applied),
+      wrongDeadline: pct(q.edit_deadline, q.applied),
+      titleEdited: pct(q.edit_title, q.applied),
+      wrongProject: pct(q.edit_project, q.applied),
+    };
+  }
+
   /** «Подготовить пост в Новости» — только у встречи с вехой (§26). */
   async toNews(tenantId: string, meetingId: string, userId: string, meeting: { title: string; project_id: string | null }, decisions: string[]) {
     await this.own(tenantId, meetingId, userId);

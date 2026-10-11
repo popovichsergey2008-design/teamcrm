@@ -366,6 +366,13 @@ export interface PostcallView {
   } | null;
   review: PostcallReview | null;
 }
+/** Качество итогов встреч за период (ТЗ-22, §52): доли в процентах, null — не из чего считать. */
+export interface PostcallQualityStats {
+  days: number; meetings: number; reviewRate: number | null; unreviewed: number; medianReviewMin: number | null;
+  drafts: number; acceptanceRate: number | null; openDrafts: number; meetingToTask: number | null; decisionCapture: number | null;
+  followupSendRate: number | null; recapRate: number | null;
+  wrongAssignee: number | null; wrongDeadline: number | null; titleEdited: number | null; wrongProject: number | null;
+}
 export interface PostcallPending { meeting_id: string; title: string; status: string; created_at: string; pending_drafts: number }
 export interface ClientMeeting { kind: 'event' | 'meeting'; id: string; title: string; startsAt: string; endsAt: string | null; roomId: string | null }
 export interface ClientNote { id: string; body: string; pinned: boolean; isPrivate: boolean; authorId: string | null; authorName: string | null; createdAt: string }
@@ -2443,6 +2450,7 @@ export const api = {
   postcall: (meetingId: string) => request<PostcallView>('GET', `/meetings/${meetingId}/postcall`),
   postcallByRoom: (roomId: string) =>
     request<{ meetingId: string | null }>('GET', `/meetings/postcall/by-room/${encodeURIComponent(roomId)}`),
+  postcallQuality: (days = 30) => request<PostcallQualityStats>('GET', `/meetings/postcall/quality?days=${days}`),
   postcallPending: () => request<PostcallPending[]>('GET', '/meetings/postcall/pending'),
   /** «Создать выбранные задачи»: упавшие остаются черновиками с причиной, созданные не дублируются. */
   postcallCreateBatch: (meetingId: string, items: { draftId: string; assigneeId?: string; projectId?: string; deadlineAt?: string }[]) =>
