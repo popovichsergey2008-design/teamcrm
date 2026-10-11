@@ -45,7 +45,7 @@ describe('Встречи: валидация разбора LLM', () => {
   it('решения и риски — только строки, длина ограничена', () => {
     const { value } = validateMeetingAnalysis({ ...ok, decisions: ['ок', 42, null, 'x'.repeat(900)], risks: 'не массив' });
     expect(value!.decisions).toHaveLength(2); // число и null выброшены, остались две строки
-    expect(value!.decisions[1]).toHaveLength(500);
+    expect(value!.decisions[1].text).toHaveLength(500);
     expect(value!.risks).toEqual([]);
   });
 });

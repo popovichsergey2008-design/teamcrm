@@ -10,7 +10,8 @@ import { TaskCardService } from '../taskcard/taskcard.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { TasksService } from '../tasks/tasks.service';
 import { describeFfmpegError, extractAudioChunks, mixTracks } from './audio.util';
-import { MEETING_PROMPT, validateMeetingAnalysis } from './meeting-schema';
+import { MEETING_PROMPT, SUMMARY_PROMPT, validateMeetingAnalysis } from './meeting-schema';
+import { draftConfidence, speakerAt } from './postcall-rules';
 import { MeetingsRepository } from './meetings.repository';
 import { blocksOf, PostcallService } from './postcall.service';
 import { parseSubtitles, repliesToText, Reply, shiftSegments } from './transcript.util';
@@ -102,10 +103,15 @@ export class MeetingsService {
    */
   async postcallView(tenantId: string, id: string, viewer: ProjectViewer & { userId: string }) {
     const details = await this.details(tenantId, id, viewer);
-    const review = await this.postcall.review(tenantId, id);
+    const [review, decisions] = await Promise.all([
+      this.postcall.review(tenantId, id),
+      // решения — из журнала: с секундой, кто сказал, и можно отметить «изменили»
+      this.repo.meetingDecisions(tenantId, id),
+    ]);
     if (review && String(review.owner_id) === String(viewer.userId)) await this.postcall.opened(review);
     return {
       ...details,
+      decisions,
       review: review ? {
         status: review.status,
         ai: review.ai,
@@ -226,7 +232,9 @@ export class MeetingsService {
         // запись сохраняется параллельно с расшифровкой: сведение ffmpeg не задерживает итоги
         const saved = this.saveCallRecording(input, meeting.id);
 
-        for (const track of input.tracks) {
+        // Дорожки расшифровываются параллельно (ТЗ-22): итоги после звонка ждут самую
+        // длинную дорожку, а не сумму всех. Не больше трёх разом — у Whisper свои пределы.
+        await inPool(input.tracks, TRANSCRIBE_PARALLEL, async (track) => {
           const { chunks } = await extractAudioChunks(track.buffer, track.fileName);
           for (const chunk of chunks) {
             const segments = await this.ai.transcribeSegments(
@@ -242,7 +250,7 @@ export class MeetingsService {
               });
             }
           }
-        }
+        });
 
         await saved;
         if (!replies.length) {
@@ -500,17 +508,44 @@ export class MeetingsService {
       ? `Проекты и их колонки:\n${projects.slice(0, 40)
         .map((p) => `- ${p.name}: ${(p.columns ?? []).map((c) => c.name).join(', ') || '—'}`).join('\n')}\n`
       : '';
-    const transcript = `${roster}${boards}\n${repliesToText(replies).slice(0, 120_000)}`; // защита от гигантских встреч
+    // Без даты встречи модель не переведёт «до пятницы» в срок — и срок терялся.
+    const meeting = await this.repo.get(tenantId, meetingId);
+    const when = new Date(meeting?.happened_at ?? Date.now())
+      .toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' });
+    const text = repliesToText(replies).slice(0, 120_000); // защита от гигантских встреч
+    const transcript = `Дата встречи: ${when}.\n${roster}${boards}\n${text}`;
+
+    /*
+      Итоги встречи (ТЗ-22): «Кратко» — отдельным коротким вызовом, параллельно с полным
+      разбором. Первый полезный блок появляется на экране за секунды, а не после того,
+      как модель разберёт задачи и решения целиком.
+    */
+    const quick = this.ai.generate(tenantId, SUMMARY_PROMPT, text.slice(0, 60_000), 'meeting_summary_quick')
+      .then(async (raw) => {
+        const summary = String(raw ?? '').trim().slice(0, 4000);
+        if (!summary) return null;
+        await this.repo.saveSummaryText(tenantId, meetingId, summary);
+        await this.postcall.mark(tenantId, meetingId, { summary: 'ready' });
+        return summary;
+      })
+      .catch((e) => { this.log.warn(`встреча ${meetingId}: краткие итоги — ${(e as Error).message}`); return null; });
+
     const raw = await this.ai.generate(tenantId, MEETING_PROMPT, transcript, 'meeting_analyze');
     const parsed = safeJson(raw);
     const { value, errors } = validateMeetingAnalysis(parsed);
     if (errors.length) this.log.warn(`meeting ${meetingId}: разбор с замечаниями — ${errors.join('; ')}`);
+    const quickSummary = await quick;
     if (!value) {
-      await this.repo.saveSummary(tenantId, meetingId, 'ИИ не смог разобрать встречу. Стенограмма доступна целиком.', [], []);
+      await this.repo.saveSummary(tenantId, meetingId, quickSummary ?? 'ИИ не смог разобрать встречу. Стенограмма доступна целиком.', [], [], []);
       return;
     }
 
-    await this.repo.saveSummary(tenantId, meetingId, value.summary, value.decisions, value.risks);
+    // Кто произнёс решение или вопрос — по реплике в этой секунде, а не со слов модели:
+    // говорящий у своих созвонов известен достоверно, по дорожке участника.
+    const sourced = (list: { text: string; sec: number | null }[]) => list.map((d) => ({ ...d, ...speakerAt(replies, d.sec) }));
+    await this.repo.saveSummary(
+      tenantId, meetingId, quickSummary ?? value.summary, sourced(value.decisions), value.risks, sourced(value.questions),
+    );
     // Протокол встречи — самая дорогая ручная работа из всего, что делает ассистент:
     // раньше его писал человек по памяти, если вообще писал.
     void this.secretary.record({
@@ -524,10 +559,12 @@ export class MeetingsService {
       // говорят о деле, а поле в форме часто оставляют пустым.
       const project = matchNamed(projects, t.projectHint);
       const column = project ? matchNamed(project.columns ?? [], t.columnHint) : null;
+      const assigneeId = matchTeamMember(team, t.assigneeHint);
+      const at = speakerAt(replies, t.sec, t.quote);
       return {
         title: t.title,
         description: t.description,
-        assigneeId: matchTeamMember(team, t.assigneeHint),
+        assigneeId,
         assigneeHint: t.assigneeHint,
         projectId: project?.id ?? projectId,
         projectHint: t.projectHint,
@@ -538,10 +575,14 @@ export class MeetingsService {
         authorHint: t.authorHint,
         deadlineAt: t.deadline,
         quote: t.quote,
+        sourceSec: at.sec,
+        sourceSpeaker: at.speaker,
+        confidence: draftConfidence(!!assigneeId, t.confidence),
+        priority: t.urgent ? 'urgent' : null,
       };
     }));
 
-    await this.afterMeeting(tenantId, meetingId, value.summary, value.decisions.length);
+    await this.afterMeeting(tenantId, meetingId, quickSummary ?? value.summary, value.decisions.length);
   }
 
   /**
@@ -718,4 +759,16 @@ export function matchTeamMember(team: { id: string; full_name: string }[], hint:
 
   const byPrefix = team.filter((u) => norm(u.full_name).startsWith(needle));
   return byPrefix.length === 1 ? byPrefix[0].id : null;
+}
+
+/** Сколько дорожек созвона расшифровывать одновременно. */
+const TRANSCRIBE_PARALLEL = 3;
+
+/** Выполнить по элементам не больше `limit` разом; первая ошибка обрывает всё, как и раньше. */
+async function inPool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) await fn(items[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }

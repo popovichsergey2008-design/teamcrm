@@ -347,8 +347,14 @@ export interface PostcallReview {
   reviewedAt: string | null;
   completedAt: string | null;
 }
+/** Пункт итогов с источником: где и кем сказано. */
+export interface PostcallSourced { text: string; sec: number | null; speaker?: string | null }
+export interface PostcallDecision { id: string; text: string; source_sec: string | null; speaker: string | null; superseded_by: string | null }
 export interface PostcallView {
-  meeting: any; segments: any[]; summary: any; drafts: any[]; tasks: any[];
+  meeting: any; segments: any[]; drafts: any[]; tasks: any[];
+  summary: { summary: string; decisions: string[]; risks: string[]; questions?: PostcallSourced[] } | null;
+  /** решения из журнала — с секундой записи и говорящим */
+  decisions: PostcallDecision[];
   review: PostcallReview | null;
 }
 export interface PostcallPending { meeting_id: string; title: string; status: string; created_at: string; pending_drafts: number }

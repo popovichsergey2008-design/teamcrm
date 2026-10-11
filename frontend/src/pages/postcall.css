@@ -51,3 +51,9 @@
   .pc-page { position: fixed; inset: 0; z-index: 880; padding: max(12px, env(safe-area-inset-top)) 12px 0; }
   .pc-foot > * { flex: 1; }
 }
+
+/* источник пункта: кто сказал и переход к секунде записи */
+.pc-source { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: var(--fs-xs); color: var(--text-mut); white-space: nowrap; }
+.pc-source .link-btn { display: inline-flex; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+.pc-questions { list-style: none; padding-left: 0; }
+.pc-questions li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }

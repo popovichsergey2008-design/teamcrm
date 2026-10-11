@@ -112,7 +112,8 @@ function PostCall({ meetingId }: { meetingId: string }) {
   }
   if (!data) return <div className="pc-page"><div className="pc-shell"><SkeletonList rows={4} /></div></div>;
 
-  const { meeting, summary, drafts, tasks = [], review } = data;
+  const { meeting, summary, drafts, tasks = [], review, decisions = [] } = data;
+  const questions = summary?.questions ?? [];
   const blocks = review?.blocks;
   const ai = review ? review.ai : true;
   const closed = review?.status === 'reviewed' || review?.status === 'completed';
@@ -249,11 +250,42 @@ function PostCall({ meetingId }: { meetingId: string }) {
               </button>
             </Block>
 
-            <Block title={`Решения${summary?.decisions?.length ? ` — ${summary.decisions.length}` : ''}`} state={blockState('decisions')}>
-              {summary?.decisions?.length
-                ? <ul className="pc-list pc-decisions">{summary.decisions.map((d: string, i: number) => <li key={i}><Icon name="check" size={14} /> {d}</li>)}</ul>
+            <Block title={`Решения${decisions.length ? ` — ${decisions.length}` : ''}`} state={blockState('decisions')}>
+              {decisions.length
+                ? (
+                  <ul className="pc-list pc-decisions">
+                    {decisions.map((d) => (
+                      <li key={d.id}>
+                        <Icon name="check" size={14} />
+                        <span>
+                          {d.text}
+                          {d.superseded_by && <span className="dim"> · решение изменили позже</span>}
+                          <Source meetingId={meetingId} sec={d.source_sec} speaker={d.speaker} />
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )
                 : <p className="pc-text dim">Решений не прозвучало.</p>}
             </Block>
+
+            {questions.length > 0 && (
+              <Block title={`Открытые вопросы — ${questions.length}`} state={blockState('decisions')}>
+                <ul className="pc-list pc-questions">
+                  {questions.map((q, i) => (
+                    <li key={i}>
+                      <span>
+                        {q.text}
+                        <Source meetingId={meetingId} sec={q.sec} speaker={q.speaker} />
+                      </span>
+                      <Button variant="ghost" size="sm" onClick={() => window.dispatchEvent(new CustomEvent('teamcrm:quick-task', { detail: { text: q.text } }))}>
+                        <Icon name="plus" size={14} /> Задача
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </Block>
+            )}
 
             <Block title={`Черновики задач${pending.length ? ` — ${pending.length}` : ''}`} state={blockState('tasks')}>
               {pending.length > 0 && (
@@ -288,9 +320,9 @@ function PostCall({ meetingId }: { meetingId: string }) {
               {!pending.length && !tasks.length && <p className="pc-text dim">Поручений не прозвучало.</p>}
             </Block>
 
-            {summary?.risks?.length > 0 && (
-              <Block title={`Риски и открытые вопросы — ${summary.risks.length}`} state="ready">
-                <ul className="pc-list">{summary.risks.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul>
+            {(summary?.risks?.length ?? 0) > 0 && (
+              <Block title={`Риски — ${summary!.risks.length}`} state="ready">
+                <ul className="pc-list">{summary!.risks.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul>
               </Block>
             )}
           </>
@@ -313,6 +345,29 @@ function PostCall({ meetingId }: { meetingId: string }) {
     </div>
   );
 }
+
+/** «Источник: 18:42 · Борис» — переход к этому моменту записи (§10). */
+function Source({ meetingId, sec, speaker }: { meetingId: string; sec: number | string | null | undefined; speaker?: string | null }) {
+  const at = sec == null ? null : Math.round(Number(sec));
+  if (at == null && !speaker) return null;
+  return (
+    <span className="pc-source">
+      {speaker && <span>{speaker}</span>}
+      {at != null && (
+        <button className="link-btn" onClick={() => navigate(`/meetings/${encodeURIComponent(meetingId)}?t=${at}`)} title="Открыть этот момент записи">
+          <Icon name="play" size={11} /> {stamp(at)}
+        </button>
+      )}
+    </span>
+  );
+}
+
+const stamp = (sec: number) => {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = String(sec % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+};
 
 function Block({ title, state, children }: { title: string; state: PostcallBlockStatus; children: ReactNode }) {
   return (

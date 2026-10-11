@@ -3,6 +3,9 @@ import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { Reply } from './transcript.util';
 
+/** Пункт итогов с источником: текст, секунда записи, кто произнёс. */
+export interface SourcedLine { text: string; sec: number | null; speaker?: string | null; speakerUserId?: string | null }
+
 export interface MeetingRow {
   id: string; tenant_id: string; project_id: string | null; title: string;
   happened_at: Date | null; source: string; file_id: string | null; duration_sec: number | null;
@@ -157,13 +160,31 @@ export class MeetingsRepository {
     );
   }
 
-  async saveSummary(tenantId: string, meetingId: string, summary: string, decisions: string[], risks: string[]): Promise<void> {
+  /**
+   * «Кратко» отдельно от полного разбора (ТЗ-22): появляется на экране итогов раньше
+   * решений и задач. Полный разбор потом допишет остальное, не трогая этот текст.
+   */
+  async saveSummaryText(tenantId: string, meetingId: string, summary: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO meeting_summaries (meeting_id, tenant_id, summary, decisions, risks)
+       VALUES ($1, $2, $3, '[]'::jsonb, '[]'::jsonb)
+       ON CONFLICT (meeting_id) DO UPDATE SET summary = EXCLUDED.summary`,
+      [meetingId, tenantId, summary],
+    );
+  }
+
+  async saveSummary(
+    tenantId: string, meetingId: string, summary: string,
+    decisions: SourcedLine[], risks: string[], questions: SourcedLine[] = [],
+  ): Promise<void> {
     await this.db.withTransaction(async (client) => {
+      // в сводке решения — строками, как раньше: их читают бриф, письмо клиенту, бот
       await client.query(
-        `INSERT INTO meeting_summaries (meeting_id, tenant_id, summary, decisions, risks)
-         VALUES ($1,$2,$3,$4::jsonb,$5::jsonb)
-         ON CONFLICT (meeting_id) DO UPDATE SET summary=EXCLUDED.summary, decisions=EXCLUDED.decisions, risks=EXCLUDED.risks`,
-        [meetingId, tenantId, summary, JSON.stringify(decisions), JSON.stringify(risks)],
+        `INSERT INTO meeting_summaries (meeting_id, tenant_id, summary, decisions, risks, questions)
+         VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb)
+         ON CONFLICT (meeting_id) DO UPDATE SET summary=EXCLUDED.summary, decisions=EXCLUDED.decisions,
+                                                risks=EXCLUDED.risks, questions=EXCLUDED.questions`,
+        [meetingId, tenantId, summary, JSON.stringify(decisions.map((d) => d.text)), JSON.stringify(risks), JSON.stringify(questions)],
       );
       /*
         Решения встречи — ещё и в общий журнал решений (ТЗ-12, этап 5), рядом с решениями
@@ -174,22 +195,38 @@ export class MeetingsRepository {
         `DELETE FROM decisions WHERE tenant_id = $1 AND meeting_id = $2 AND revoked_at IS NULL`,
         [tenantId, meetingId],
       );
+      // в журнал — с источником (ТЗ-22): секунда записи и кто произнёс
       await client.query(
-        `INSERT INTO decisions (tenant_id, project_id, meeting_id, text, decided_at)
-         SELECT m.tenant_id, m.project_id, m.id, btrim(t.text), COALESCE(m.happened_at, m.created_at)
+        `INSERT INTO decisions (tenant_id, project_id, meeting_id, text, decided_at, source_sec, speaker, speaker_user_id)
+         SELECT m.tenant_id, m.project_id, m.id, btrim(t.text), COALESCE(m.happened_at, m.created_at),
+                t.sec, NULLIF(t.speaker, ''), NULLIF(t.speaker_user_id, '')::bigint
            FROM meetings m
-          CROSS JOIN unnest($3::text[]) AS t(text)
+          CROSS JOIN unnest($3::text[], $4::numeric[], $5::text[], $6::text[]) AS t(text, sec, speaker, speaker_user_id)
           WHERE m.tenant_id = $1 AND m.id = $2 AND btrim(t.text) <> ''
             AND NOT EXISTS (SELECT 1 FROM decisions x
                              WHERE x.meeting_id = m.id AND x.revoked_at IS NOT NULL AND x.text = btrim(t.text))`,
-        [tenantId, meetingId, decisions],
+        [tenantId, meetingId, decisions.map((d) => d.text), decisions.map((d) => d.sec),
+          decisions.map((d) => d.speaker ?? ''), decisions.map((d) => d.speakerUserId ?? '')],
       );
     });
   }
 
   summary(tenantId: string, meetingId: string) {
-    return this.db.one<{ summary: string; decisions: string[]; risks: string[] }>(
-      `SELECT summary, decisions, risks FROM meeting_summaries WHERE tenant_id=$1 AND meeting_id=$2`,
+    return this.db.one<{ summary: string; decisions: string[]; risks: string[]; questions: SourcedLine[] }>(
+      `SELECT summary, decisions, risks, questions FROM meeting_summaries WHERE tenant_id=$1 AND meeting_id=$2`,
+      [tenantId, meetingId],
+    );
+  }
+
+  /** Решения встречи из журнала — с источником и отметкой «изменили» (ТЗ-22, §10, §56). */
+  meetingDecisions(tenantId: string, meetingId: string) {
+    return this.db.many<{
+      id: string; text: string; source_sec: string | null; speaker: string | null;
+      superseded_by: string | null; revoked_at: Date | null;
+    }>(
+      `SELECT id::text, text, source_sec, speaker, superseded_by::text, revoked_at
+         FROM decisions WHERE tenant_id = $1 AND meeting_id = $2 AND revoked_at IS NULL
+        ORDER BY source_sec NULLS LAST, id`,
       [tenantId, meetingId],
     );
   }
@@ -201,6 +238,7 @@ export class MeetingsRepository {
     columnId: string | null; columnHint: string | null;
     authorId: string | null; authorHint: string | null;
     deadlineAt: string | null; quote: string | null;
+    sourceSec?: number | null; sourceSpeaker?: string | null; confidence?: number | null; priority?: string | null;
   }[]): Promise<void> {
     await this.db.withTransaction(async (c) => {
       await c.query(`DELETE FROM meeting_task_drafts WHERE meeting_id=$1 AND status='pending'`, [meetingId]);
@@ -208,10 +246,12 @@ export class MeetingsRepository {
         await c.query(
           `INSERT INTO meeting_task_drafts
              (tenant_id, meeting_id, title, description, assignee_id, assignee_hint,
-              project_id, project_hint, column_id, column_hint, author_id, author_hint, deadline_at, quote)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+              project_id, project_hint, column_id, column_hint, author_id, author_hint, deadline_at, quote,
+              source_sec, source_speaker, confidence, priority)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
           [tenantId, meetingId, d.title, d.description, d.assigneeId, d.assigneeHint,
-            d.projectId, d.projectHint, d.columnId, d.columnHint, d.authorId, d.authorHint, d.deadlineAt, d.quote],
+            d.projectId, d.projectHint, d.columnId, d.columnHint, d.authorId, d.authorHint, d.deadlineAt, d.quote,
+            d.sourceSec ?? null, d.sourceSpeaker ?? null, d.confidence ?? null, d.priority ?? null],
         );
       }
     });

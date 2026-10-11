@@ -402,7 +402,7 @@ describe('разбор переписки (e2e)', () => {
       [owner.user.tenantId],
     );
     const meetings = app.get(MeetingsRepository);
-    await meetings.saveSummary(String(owner.user.tenantId), meeting!.id, 'итоги', ['Релиз в четверг', 'Форму не трогаем'], []);
+    await meetings.saveSummary(String(owner.user.tenantId), meeting!.id, 'итоги', [{ text: 'Релиз в четверг', sec: null }, { text: 'Форму не трогаем', sec: null }], []);
 
     const log = (await http.get('/api/chat-analysis/decisions').set(O).expect(200)).body.data
       .filter((d: any) => d.meeting_id === meeting!.id);
@@ -410,7 +410,7 @@ describe('разбор переписки (e2e)', () => {
 
     const wrong = log.find((d: any) => d.text === 'Форму не трогаем');
     await http.post(`/api/chat-analysis/decisions/${wrong.id}/revoke`).set(O).send({}).expect(201);
-    await meetings.saveSummary(String(owner.user.tenantId), meeting!.id, 'итоги', ['Релиз в четверг', 'Форму не трогаем'], []);
+    await meetings.saveSummary(String(owner.user.tenantId), meeting!.id, 'итоги', [{ text: 'Релиз в четверг', sec: null }, { text: 'Форму не трогаем', sec: null }], []);
 
     const again = (await http.get('/api/chat-analysis/decisions').set(O).expect(200)).body.data
       .filter((d: any) => d.meeting_id === meeting!.id);
