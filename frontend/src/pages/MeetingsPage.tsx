@@ -16,6 +16,8 @@ const STATUS_LABEL: Record<string, string> = {
   transcribing: 'Расшифровываю…',
   analyzing: 'Разбираю…',
   done: 'Готово',
+  // ТЗ-22: распознавания речи нет — запись сохранена, итогов ИИ нет
+  recorded: 'Запись без ИИ',
   error: 'Ошибка',
 };
 
@@ -384,7 +386,7 @@ function MeetingDetails({ id, projects, users, onChanged, seek = null }: {
   );
 }
 
-function DraftRow({ draft, projects, users, onApply, onReject, onSaved }: {
+export function DraftRow({ draft, projects, users, onApply, onReject, onSaved }: {
   draft: any; projects: Project[]; users: User[];
   onApply: (d: any, patch: { assigneeId?: string; projectId?: string }) => void;
   onReject: (d: any) => void;

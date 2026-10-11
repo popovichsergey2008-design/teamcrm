@@ -32,7 +32,7 @@ import { pageTitleFor, TITLE_HINTS_EVENT } from './lib/page-title';
 import { setPageTitle } from './lib/tab-alert';
 import { lastProject } from './lib/last-project';
 import { dropCache } from './lib/cache';
-import { START_CALL_EVENT, StartCallRequest } from './lib/notifications';
+import { showToast, START_CALL_EVENT, StartCallRequest } from './lib/notifications';
 import { useShortcuts } from './hooks/useShortcuts';
 import { lazyComponent } from './lib/lazy';
 import { SecretaryPanel } from './components/SecretaryPanel';
@@ -76,6 +76,7 @@ const prefetchRadar = () => { void import('./pages/PulsePage').then((m) => m.pre
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 const FeedPage = lazy(() => import('./pages/FeedPage').then((m) => ({ default: m.FeedPage })));
 const MeetingsPage = lazy(() => import('./pages/MeetingsPage').then((m) => ({ default: m.MeetingsPage })));
+const PostCallPage = lazy(() => import('./pages/PostCallPage').then((m) => ({ default: m.PostCallPage })));
 const SupportPage = lazy(() => import('./pages/SupportPage').then((m) => ({ default: m.SupportPage })));
 const ConsolePage = lazy(() => import('./pages/ConsolePage').then((m) => ({ default: m.ConsolePage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
@@ -680,6 +681,9 @@ export function App() {
         {/* Остальное открывают редко и ненадолго — держать это в памяти незачем */}
         {/* Новости — свой раздел, а не вкладка чатов: это издание компании, а не переписка */}
         {route.section === 'news' && <Suspense fallback={pageFallback}><FeedPage postId={route.postId} /></Suspense>}
+        {route.section === 'chat' && route.view === 'postcall' && (
+          <Suspense fallback={pageFallback}><PostCallPage meetingId={route.meetingId} roomId={route.roomId} /></Suspense>
+        )}
         {route.section === 'chat' && route.view === 'meetings' && (
           <Suspense fallback={pageFallback}><MeetingsPage openMeetingId={route.meetingId} onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} /></Suspense>
         )}
@@ -808,7 +812,14 @@ export function App() {
           meetingId={callId}
           inviteUserIds={callInvite}
           withCamera={callCamera}
-          onClose={() => { setCallId(null); setCallInvite([]); setCallCamera(false); }}
+          onClose={(end) => {
+            setCallId(null); setCallInvite([]); setCallCamera(false);
+            // Итоги встречи (ТЗ-22): звонок с записью не исчезает молча. Вышел последним —
+            // сразу итоги; ушёл раньше остальных — итоги придут, когда встреча закончится.
+            if (!end?.recorded) return;
+            if (end.last) navigate({ section: 'chat', view: 'postcall', roomId: end.roomId });
+            else showToast({ title: 'Вы вышли из созвона', body: 'Итоги встречи придут, когда она закончится', section: 'meetings' });
+          }}
         /></Suspense>
       )}
       {/* В этой же комнате уже сидим — звать незачем */}

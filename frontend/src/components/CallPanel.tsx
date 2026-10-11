@@ -54,6 +54,13 @@ const STATE_LABEL: Record<string, string> = {
  * Окно созвона. Микрофон включается сразу, камера — по желанию: на рабочих
  * планёрках она нужна не всегда, а трафик экономит заметно.
  */
+/**
+ * Как закончился звонок (ТЗ-22): велась ли запись хоть раз и остался ли кто-то в комнате.
+ * Вышел последним или встречу завершили для всех — итоги открываются сразу; ушёл раньше
+ * остальных — итоги придут, когда встреча закончится.
+ */
+export interface CallEnd { roomId: string; recorded: boolean; last: boolean }
+
 export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = false, onClose }: {
   meetingId: string;
   inviteUserIds?: string[];
@@ -70,7 +77,8 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
    * у гостя нет. Внутри окна он отличается только урезанными правами.
    */
   guest?: { token: string; iceServers: RTCIceServer[]; userId: string };
-  onClose: () => void;
+  /** Чем кончился звонок: по этому решают, открыть ли итоги встречи (ТЗ-22). */
+  onClose: (end?: CallEnd) => void;
 }) {
   const { user } = useAuth();
   const isGuest = !!guest;
@@ -93,6 +101,13 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   const [screenOn, setScreenOn] = useState(false);
   const [hand, setHand] = useState(false);
   const [recording, setRecording] = useState(false);
+  // запись могли выключить посреди разговора — итоги всё равно будут
+  const everRecorded = useRef(false);
+  useEffect(() => { if (recording) everRecorded.current = true; }, [recording]);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  const peersRef = useRef<Peer[]>([]);
+  useEffect(() => { peersRef.current = peers; }, [peers]);
   const [aiInvited, setAiInvited] = useState(false);
   const [err, setErr] = useState('');
   /** Гости, стучащиеся в дверь (видит только сотрудник). */
@@ -345,6 +360,14 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             setGuestNote('Вы подключились к этому созвону в другой вкладке или на другом устройстве — здесь он закрыт.');
           },
           onEnded: (by) => {
+            // сотрудника с записанной встречи ведём сразу в итоги; гостю — только записка
+            if (!isGuest && everRecorded.current) {
+              pipRef.current?.close();
+              pipRef.current = null;
+              client.current?.leave();
+              onCloseRef.current({ roomId: meetingId, recorded: true, last: true });
+              return;
+            }
             setGuestState('rejected');
             setGuestNote(by ? `${by} завершил(а) встречу для всех.` : 'Встреча завершена для всех.');
           },
@@ -502,7 +525,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
     pipRef.current?.close();
     pipRef.current = null;
     client.current?.leave();
-    onClose();
+    const me = String(guest?.userId ?? user?.id ?? '');
+    const others = peersRef.current.filter((p) => !p.isAi && String(p.userId) !== me).length;
+    onClose(isGuest ? undefined : { roomId: meetingId, recorded: everRecorded.current, last: others === 0 });
   };
 
   /** Впустить гостя или отказать — одинаково из полного окна и из свёрнутого. */

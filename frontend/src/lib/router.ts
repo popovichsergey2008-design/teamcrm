@@ -47,6 +47,11 @@ export type Route = {
   postId?: string;
   /** встреча с записью: `/meetings/:id?t=735` (ТЗ-21) — из ответов памяти и обещаний */
   meetingId?: string;
+  /**
+   * Итоги встречи сразу после звонка (ТЗ-22): `/postcall/room/:roomId`, пока встреча ещё
+   * дописывается, затем `/meetings/:id/postcall`.
+   */
+  roomId?: string;
 };
 
 const SECTIONS: Section[] = [
@@ -110,6 +115,8 @@ export function parsePath(pathname: string): Route {
     try { return decodeURIComponent(s); } catch { return s; }
   });
   // встреча живёт в «Чатах → Встречи»; свой короткий адрес — для ссылок на секунду записи
+  if (seg[0] === 'meetings' && seg[1] && seg[2] === 'postcall') return { section: 'chat', view: 'postcall', meetingId: seg[1] };
+  if (seg[0] === 'postcall' && seg[1] === 'room' && seg[2]) return { section: 'chat', view: 'postcall', roomId: seg[2] };
   if (seg[0] === 'meetings') return seg[1] ? { section: 'chat', view: 'meetings', meetingId: seg[1] } : { section: 'chat', view: 'meetings' };
   const section = SECTIONS.includes(seg[0] as Section) ? (seg[0] as Section) : null;
   if (!section) return { section: 'focus' };
@@ -172,6 +179,11 @@ export function buildPath(r: Route): string {
         : `/projects/${enc(r.projectId)}`;
     case 'chat':
       if (r.view === 'meetings') return r.meetingId ? `/meetings/${enc(r.meetingId)}` : '/chat/meetings';
+      if (r.view === 'postcall') {
+        if (r.meetingId) return `/meetings/${enc(r.meetingId)}/postcall`;
+        if (r.roomId) return `/postcall/room/${enc(r.roomId)}`;
+        return '/chat/meetings';
+      }
       if (r.view === 'feed') return '/news';
       if (r.chatId && r.threadId) return `/chat/${enc(r.chatId)}/thread/${enc(r.threadId)}`;
       return r.chatId ? `/chat/${enc(r.chatId)}` : '/chat';

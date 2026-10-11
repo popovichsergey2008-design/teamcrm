@@ -1,0 +1,53 @@
+/* Итоги встречи после звонка (ТЗ-22). Грузится лениво вместе с экраном. */
+.pc-page { padding: 16px; overflow-y: auto; height: 100%; background: var(--bg); }
+.pc-shell { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; padding-bottom: 8px; }
+
+.pc-head { display: flex; align-items: flex-start; gap: 12px; }
+.pc-head-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pc-kicker { font-size: var(--fs-xs); color: var(--text-mut); text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: center; gap: 8px; }
+.pc-done { display: inline-flex; align-items: center; gap: 3px; color: var(--ok); text-transform: none; letter-spacing: 0; }
+.pc-title { margin: 0; font-size: var(--fs-xl, 22px); line-height: 1.25; overflow-wrap: anywhere; }
+.pc-sub { font-size: var(--fs-sm); color: var(--text-dim); }
+.pc-people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.pc-person { font-size: var(--fs-xs); padding: 2px 8px; border-radius: 999px; background: var(--fill-muted); color: var(--text-dim); }
+.pc-guest { background: transparent; border: 1px dashed var(--border); }
+
+.pc-steps { list-style: none; margin: 0; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 6px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.pc-step { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-mut); }
+.pc-step-ready { color: var(--text); }
+.pc-step-ready svg { color: var(--ok); }
+.pc-step-failed svg { color: var(--danger); }
+.pc-step-running { color: var(--text); }
+.pc-step-running svg { animation: pc-spin 1.2s linear infinite; }
+@keyframes pc-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pc-step-running svg { animation: none; } }
+
+.pc-block { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.pc-block-title { margin: 0; font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mut); }
+.pc-fail { border-left: 3px solid var(--danger); }
+.pc-text { margin: 0; font-size: var(--fs-sm); line-height: 1.5; }
+.pc-summary { font-size: var(--fs-md); white-space: pre-wrap; }
+.pc-more { align-self: flex-start; font-size: var(--fs-xs); }
+.pc-list { margin: 0; padding-left: 18px; font-size: var(--fs-sm); line-height: 1.5; display: flex; flex-direction: column; gap: 4px; }
+.pc-decisions { list-style: none; padding-left: 0; }
+.pc-decisions li { display: flex; gap: 6px; align-items: baseline; }
+.pc-decisions svg { color: var(--ok); flex: none; position: relative; top: 2px; }
+.pc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pc-note { font-size: var(--fs-xs); }
+.pc-err { font-size: var(--fs-xs); }
+.pc-created { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border); }
+.pc-created-title { font-size: var(--fs-xs); color: var(--text-mut); }
+.pc-created-row { display: flex; align-items: baseline; gap: 6px; font-size: var(--fs-sm); min-width: 0; }
+.pc-created-row svg { color: var(--ok); flex: none; }
+
+/* кнопки разбора всегда под рукой — список задач бывает длинным */
+.pc-foot {
+  position: sticky; bottom: 0; display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 0 max(10px, env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--border);
+}
+
+/* телефон: итоги во весь экран, а не в ленте раздела (§42) */
+@media (max-width: 640px) {
+  .pc-page { position: fixed; inset: 0; z-index: 880; padding: max(12px, env(safe-area-inset-top)) 12px 0; }
+  .pc-foot > * { flex: 1; }
+}

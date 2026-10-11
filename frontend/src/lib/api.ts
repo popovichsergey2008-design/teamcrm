@@ -333,6 +333,25 @@ export interface ClientTask {
   id: string; title: string; projectId: string | null; projectName: string | null; deadlineAt: string | null;
   priority: string | null; closed: boolean; assigneeName: string | null; column: string | null;
 }
+/** Готовность блока итогов встречи (ТЗ-22). */
+export type PostcallBlockStatus = 'pending' | 'running' | 'ready' | 'failed' | 'skipped';
+export interface PostcallReview {
+  status: 'processing' | 'review_required' | 'reviewed' | 'completed';
+  /** false — у компании нет распознавания речи: короткий экран без итогов ИИ */
+  ai: boolean;
+  blocks: Record<'transcript' | 'summary' | 'decisions' | 'tasks' | 'followup', PostcallBlockStatus>;
+  ownerId: string | null;
+  canClose: boolean;
+  participants: { userId: string; name: string; guest: boolean }[];
+  snoozedUntil: string | null;
+  reviewedAt: string | null;
+  completedAt: string | null;
+}
+export interface PostcallView {
+  meeting: any; segments: any[]; summary: any; drafts: any[]; tasks: any[];
+  review: PostcallReview | null;
+}
+export interface PostcallPending { meeting_id: string; title: string; status: string; created_at: string; pending_drafts: number }
 export interface ClientMeeting { kind: 'event' | 'meeting'; id: string; title: string; startsAt: string; endsAt: string | null; roomId: string | null }
 export interface ClientNote { id: string; body: string; pinned: boolean; isPrivate: boolean; authorId: string | null; authorName: string | null; createdAt: string }
 export interface SummaryLine { text: string; sources: string[]; tone?: 'risk' | 'info' }
@@ -2402,6 +2421,15 @@ export const api = {
     title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
   }) => request<any>('POST', `/meetings/drafts/${draftId}`, b),
   rejectMeetingDraft: (draftId: string) => request<any>('POST', `/meetings/drafts/${draftId}/reject`),
+
+  // итоги встречи после звонка (ТЗ-22)
+  postcall: (meetingId: string) => request<PostcallView>('GET', `/meetings/${meetingId}/postcall`),
+  postcallByRoom: (roomId: string) =>
+    request<{ meetingId: string | null }>('GET', `/meetings/postcall/by-room/${encodeURIComponent(roomId)}`),
+  postcallPending: () => request<PostcallPending[]>('GET', '/meetings/postcall/pending'),
+  postcallSnooze: (meetingId: string) => request<{ snoozedUntil: string }>('POST', `/meetings/${meetingId}/postcall/snooze`),
+  postcallComplete: (meetingId: string, followupSent = false) =>
+    request<{ status: string }>('POST', `/meetings/${meetingId}/postcall/complete`, { followupSent }),
 
   /** Сквозные вкладки: мои задачи и порученные другим (по всем проектам). */
   // согласования: вопросы, на которые нужен ответ «да» или «нет»
