@@ -20,6 +20,16 @@ let lastError: { text: string; requestId?: string } | null = null;
 /** Номер последнего запроса к серверу — нитка к строке в журнале (волна 10). */
 let lastRequestId: string | null = null;
 
+/**
+ * Последние неудачные запросы (ТЗ-29, п. 20): метод, путь БЕЗ параметров, код и номер.
+ * Ни тел, ни заголовков — только то, что поможет найти строку в журнале.
+ */
+const failed: { method: string; path: string; status: number; requestId: string | null; at: string }[] = [];
+export function noteFailedRequest(method: string, path: string, status: number, requestId: string | null | undefined): void {
+  failed.push({ method, path: path.split('?')[0].split('#')[0].slice(0, 160), status, requestId: requestId ? String(requestId).slice(0, 64) : null, at: new Date().toISOString() });
+  if (failed.length > 5) failed.shift();
+}
+
 /** Запомнить ошибку. Зовётся из перехватчика ответов и из обработчика сбоев окна. */
 export function noteSupportError(text: string, requestId?: string): void {
   const clean = String(text ?? '').trim().slice(0, 500);
@@ -101,6 +111,7 @@ export function collectSupportContext(): SupportContextInput {
     platform: info.kind,
     nativeVersion: info.nativeVersion?.slice(0, 40) ?? undefined,
     device: info.kind === 'web' ? undefined : info.model?.slice(0, 80) ?? undefined,
+    failedRequests: failed.length ? [...failed] : undefined,
   };
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { EmptyState } from '../components/EmptyState';
 import { SkeletonList } from '../components/Skeleton';
@@ -13,6 +13,8 @@ import type {
   SupportEscalation, SupportHandbook, SupportQueueFilter, SupportQueueItem,
 } from '../types';
 import { OptionSelect } from '../components/ui/option-select';
+// консьерж (ТЗ-29): свой статус, смены, метрики — отдельным куском
+const ConciergeConsole = lazy(() => import('../components/support/Concierge').then((m) => ({ default: m.ConciergeConsole })));
 
 /** Секунды человеческими словами: «28 сек», «4 мин», «1 ч 10 мин». */
 function dur(sec: number | null): string {
@@ -429,6 +431,9 @@ export function ConsolePage({ route }: { route: Route }) {
         */}
         {ready && !isEngineer && tab === 'team' && (
           <>
+            <Suspense fallback={null}>
+              <ConciergeConsole staff={staff.map((s) => ({ userId: s.userId, name: s.name }))} canManage={isAdmin} />
+            </Suspense>
             <div className="support-block">
               <div className="drawer-section-title">Кто дежурит</div>
               <p className="dim">

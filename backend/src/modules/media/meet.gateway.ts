@@ -29,7 +29,11 @@ const GUEST_ALLOWED = new Set([
   'meet.restart-ice', 'meet.set-consumer-layers', 'meet.get-participants', 'meet.leave',
   // из зала ожидания: «Сообщить организатору, что я жду» (ТЗ-14, §35)
   'meet.notify-host',
+  // подсветка на показанном экране (ТЗ-29, п. 18): только картинка, не клик
+  'meet.pointer',
 ]);
+
+const POINTER_KINDS = new Set(['circle', 'arrow', 'pulse']);
 
 /** Как часто пересматриваем зал ожидания: наступило время встречи — участники входят сами. */
 const LOBBY_TICK_MS = 15_000;
@@ -50,6 +54,8 @@ interface Client {
   guestLinkId?: string;
   /** Сотрудник стоит за дверью чужого созвона — в этой комнате. */
   knockRoomId?: string;
+  /** Последняя подсветка (ТЗ-29) — предохранитель от потока отметок. */
+  lastPointerAt?: number;
 }
 
 /**
@@ -554,6 +560,27 @@ export class MeetGateway implements OnModuleInit {
         return;
       }
 
+      /*
+        Подсветка на чужом показанном экране (ТЗ-29, п. 18). Пересылаем только
+        нормированные координаты и вид отметки — ни клика, ни ввода: у того, кто
+        показывает, рисуется круг поверх страницы, и всё.
+      */
+      case 'meet.pointer': {
+        if (!room || !room.participants.has(c.userId)) return;
+        const x = Number(p.x), y = Number(p.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) return;
+        const now = Date.now();
+        if (now - (c.lastPointerAt ?? 0) < 150) return; // не чаще ~7 раз в секунду
+        c.lastPointerAt = now;
+        this.broadcast(room, 'meet.pointer', {
+          meeting_id: room.id, user_id: c.userId, name: c.displayName,
+          x, y, kind: POINTER_KINDS.has(String(p.kind)) ? String(p.kind) : 'pulse',
+          // чей показ подсвечиваем — номер участника, который показывает экран
+          target: typeof p.target === 'string' ? p.target.slice(0, 80) : null,
+        }, c.userId);
+        return;
+      }
+
       case 'meet.reaction': {
         if (!room || !room.participants.has(c.userId) || typeof p.emoji !== 'string') return;
         this.broadcast(room, 'meet.reaction', { meeting_id: room.id, user_id: c.userId, emoji: p.emoji.slice(0, 8) }, c.userId);
@@ -940,6 +967,19 @@ export class MeetGateway implements OnModuleInit {
   /** Запуск записи + оповещение: плашка у всех и ИИ в списке участников. */
   private async startRecording(room: MeetingRoom, actorId: string): Promise<void> {
     if (this.recording.isRecording(room.id)) return;
+    /*
+      Звонок поддержки пишем только с согласия обратившегося (ТЗ-29, п. 29): по
+      умолчанию записи нет, ни кнопкой, ни автозапуском ИИ.
+    */
+    const support = await this.db.one<{ consent: boolean | null }>(
+      `SELECT c.recording_consent AS consent FROM support_huddles h JOIN support_conversations c ON c.id = h.conversation_id
+        WHERE h.room_id = $1 AND h.ended_at IS NULL ORDER BY h.id DESC LIMIT 1`,
+      [room.id],
+    ).catch(() => null);
+    if (support && support.consent !== true) {
+      this.toUser(room.tenantId, actorId, 'meet.error', { message: 'Звонок поддержки записывается только с разрешения пользователя' });
+      return;
+    }
     try {
       await this.recording.start(room, actorId);
     } catch (e) {

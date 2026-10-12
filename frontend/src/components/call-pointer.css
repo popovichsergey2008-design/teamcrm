@@ -1,0 +1,11 @@
+/* Подсветка на показанном экране (ТЗ-29): только картинка, клики проходят насквозь */
+.call-pointable { position: relative; cursor: crosshair; }
+.call-pointable:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.ptr-local { position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; border: 3px solid var(--accent); pointer-events: none; animation: ptr-ping 1s ease-out 1; }
+.ptr-layer { position: fixed; inset: 0; pointer-events: none; z-index: 2147483000; }
+.ptr-mark { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; border: 3px solid #f59e0b; box-shadow: 0 0 0 6px rgba(245, 158, 11, .25); animation: ptr-ping 1.2s ease-out 2; }
+.ptr-arrow { border-radius: 4px; transform: rotate(45deg); }
+.ptr-name { position: absolute; top: 48px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 600 12px/1.2 system-ui, sans-serif; color: #fff; background: rgba(17, 24, 39, .85); padding: 2px 8px; border-radius: 999px; }
+.call-pointer-note { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 6px 12px; background: color-mix(in srgb, #f59e0b 14%, var(--bg-elev)); }
+@keyframes ptr-ping { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ptr-local, .ptr-mark { animation: none; } }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import './call-pointer.css';
 import { Icon } from './Icon';
 import { CallInvite } from './CallInvite';
 import { CallMini } from './CallMini';
@@ -17,6 +18,7 @@ import { clampTo, useDragMove } from '../hooks/useDragMove';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { savedDevices } from './DeviceCheck';
 import { confirmAction } from './ui/dialog';
+import { PointerMark, pointerWhere, sensitiveRoute, videoPoint } from '../lib/screen-pointer';
 
 /**
  * Размер свёрнутого созвона по умолчанию.
@@ -99,6 +101,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   const [audioRoute, setAudioRoute] = useState<string | null>(null);
   const [camOn, setCamOn] = useState(withCamera);
   const [screenOn, setScreenOn] = useState(false);
+  // ТЗ-29: пауза показа, подсветка инженера, звонок ли это поддержки
+  const [screenPaused, setScreenPaused] = useState(false);
+  const [marks, setMarks] = useState<PointerMark[]>([]);
+  const [pointerNote, setPointerNote] = useState('');
+  const [support, setSupport] = useState<{ support: boolean; requester?: boolean; recordingConsent?: boolean | null } | null>(null);
   const [hand, setHand] = useState(false);
   const [recording, setRecording] = useState(false);
   // запись могли выключить посреди разговора — итоги всё равно будут
@@ -323,6 +330,17 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           onState: setState,
           onRecording: setRecording,
           onAiInvited: () => setAiInvited(true),
+          onPointer: (p) => {
+            // подсвечивают мой показ: на странице, если показана эта вкладка, иначе — словами в окне
+            if (p.target !== String(guest?.userId ?? user?.id ?? '')) return;
+            const tr = screenStream.current?.getVideoTracks()[0];
+            if (!tr) return;
+            const surface = (tr.getSettings() as MediaTrackSettings & { displaySurface?: string }).displaySurface;
+            const mark: PointerMark = { id: `${Date.now()}-${Math.random()}`, x: p.x, y: p.y, kind: p.kind, name: p.name, page: surface === 'browser' && document.visibilityState === 'visible' };
+            setMarks((m) => [...m.slice(-4), mark]);
+            if (!mark.page) setPointerNote(`${p.name || 'Собеседник'} показывает: ${pointerWhere(p.x, p.y)}`);
+            window.setTimeout(() => setMarks((m) => m.filter((x) => x.id !== mark.id)), 2600);
+          },
           onKnocks: (list) => {
             // звук только на прибавление: список приходит и когда гость ушёл сам
             setKnocks((prev) => { if (list.length > prev.length) playKnock(); return list; });
@@ -469,12 +487,69 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
     // дорожки гасим сами: браузер держит полосу «идёт показ», пока жив хоть один трек
     screenStream.current?.getTracks().forEach((t) => { t.onended = null; t.stop(); });
     screenStream.current = null;
+    setScreenPaused(false);
+  }, []);
+
+  // Звонок поддержки? Тогда — согласие перед показом и запись только с разрешения (ТЗ-29)
+  useEffect(() => {
+    if (isGuest || state !== 'connected' || support) return;
+    api.supportRoom(meetingId).then(setSupport).catch(() => setSupport({ support: false }));
+  }, [isGuest, state, meetingId, support]);
+  const pageMarks = marks.some((m) => m.page)
+    ? createPortal(
+      <div className="ptr-layer" aria-hidden="true">
+        {marks.filter((m) => m.page).map((m) => (
+          <span key={m.id} className={`ptr-mark ptr-${m.kind}`} style={{ left: `${m.x * 100}vw`, top: `${m.y * 100}vh` }}>
+            {m.name && <span className="ptr-name">{m.name}</span>}
+          </span>
+        ))}
+      </div>,
+      document.body,
+    )
+    : null;
+  const recordBlocked = !!support?.support && support.recordingConsent !== true;
+
+  /** Пауза показа (п. 30): картинка замирает чёрным, показ не обрывается. */
+  const togglePause = useCallback(() => {
+    const tr = screenStream.current?.getVideoTracks()[0];
+    if (!tr) return;
+    tr.enabled = !tr.enabled;
+    setScreenPaused(!tr.enabled);
+  }, []);
+
+  /** Щелчок по чужому показу — подсветка этого места у показывающего (п. 18). */
+  const pointAt = useCallback((e: React.MouseEvent<HTMLDivElement>, target: string) => {
+    const v = e.currentTarget.querySelector('video');
+    if (!v) return;
+    const pt = videoPoint(v, e.clientX, e.clientY);
+    if (!pt) return;
+    client.current?.point(pt.x, pt.y, 'pulse', target);
+    const mark: PointerMark = { id: `${Date.now()}`, x: pt.x, y: pt.y, kind: 'pulse', name: '', page: false, local: true };
+    setMarks((m) => [...m.slice(-4), mark]);
+    window.setTimeout(() => setMarks((m) => m.filter((x) => x.id !== mark.id)), 1200);
   }, []);
 
   const toggleScreen = useCallback(async () => {
     const c = client.current;
     if (!c) return;
     if (screenOn) { await stopScreen(); return; }
+    /*
+      ТЗ-29 (п. 17, 30): в звонке поддержки — что инженер увидит и чего не сможет;
+      на чувствительной странице — предупредить закрыть лишнее. Решает человек.
+    */
+    const risky = sensitiveRoute(window.location.pathname);
+    if (support?.support || risky) {
+      const ok = await confirmAction({
+        title: 'Показать экран?',
+        description: [
+          'Вы сами выбираете, какую вкладку или экран показать. Собеседник не сможет управлять вашим компьютером — только видеть и подсвечивать.',
+          risky ? 'Перед демонстрацией экрана закройте чувствительные данные: на этой странице могут быть ключи, пароли или оплата.' : '',
+          'Остановить или поставить показ на паузу можно в любой момент.',
+        ].filter(Boolean).join(' '),
+        confirmLabel: 'Выбрать, что показать',
+      });
+      if (!ok) return;
+    }
     let display: MediaStream | null = null;
     try {
       display = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -497,7 +572,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
       diag('meet', 'screen.cancelled', meetingId, { error: (e as Error)?.name ?? (e as Error)?.message });
       setErr('Демонстрация экрана отменена');
     }
-  }, [screenOn, meetingId, stopScreen]);
+  }, [screenOn, meetingId, stopScreen, support?.support]);
 
   /*
     Звук к уху, как в Телеграме (задача #1464). Chromium в приложении при звонке сам
@@ -701,6 +776,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
     return (
       <>
         {sound}
+        {pageMarks}
         {pipWin
           ? createPortal(panel, pipWin.document.body)
           : (
@@ -720,6 +796,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   return (
     <>
     {sound}
+    {pageMarks}
     <div className={`call-overlay${narrow ? '' : ' call-overlay-floating'}`}>
       <div
         className="call-window"
@@ -737,9 +814,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             <button
               type="button"
               className={`call-ai-status${recording ? ' on' : ''}`}
-              disabled={isGuest}
+              disabled={isGuest || (recordBlocked && !recording)}
               onClick={() => client.current?.setRecording(!recording)}
-              title={isGuest ? undefined : recording
+              title={isGuest ? undefined : recordBlocked && !recording ? 'Звонок поддержки записывается только с разрешения пользователя' : recording
                 ? 'ИИ слушает: после созвона будут стенограмма, сводка и предложенные задачи. Нажмите, чтобы выключить'
                 : 'ИИ выключен — стенограммы и задач по этому созвону не будет. Нажмите, чтобы включить'}
             >
@@ -866,15 +943,25 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           </div>
         )}
 
+        {pointerNote && screenOn && (
+          <div className="call-pointer-note" role="status"><Icon name="target" size={13} /> {pointerNote}</div>
+        )}
         {/* Показ экрана занимает сцену целиком, люди уезжают в полосу снизу:
             в общей сетке демонстрация выходила мелкой и нечитаемой. */}
         {guestState === 'in' && (
         <div className="call-stage">
           {screenTrack && (
-            <div className="call-spotlight">
+            <div
+              className="call-spotlight call-pointable"
+              title="Щёлкните, чтобы подсветить это место у показывающего"
+              onClick={(e) => pointAt(e, screenTrack.userId)}
+            >
               {/* ключ по потоку: сменился показывающий — элемент пересоздаётся целиком,
                   а не переиспользуется вместе с застрявшим кадром прежнего показа */}
               <RemoteMedia key={screenTrack.consumerId} track={screenTrack.track} />
+              {marks.filter((m) => m.local).map((m) => (
+                <span key={m.id} className="ptr-local" style={{ left: `${m.x * 100}%`, top: `${m.y * 100}%` }} aria-hidden="true" />
+              ))}
             </div>
           )}
           <div className={screenTrack ? 'call-strip' : 'call-grid'}>
@@ -924,6 +1011,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             <span className="call-btn-cap">Экран</span>
           </button>
           )}
+          {screenOn && (
+            <button className={`ui-btn ui-btn-outline ui-btn-sm ${screenPaused ? 'call-rec-on' : ''}`} onClick={togglePause} title={screenPaused ? 'Продолжить показ' : 'Поставить показ на паузу'}>
+              <Icon name={screenPaused ? 'play' : 'pause'} size={15} /><span className="call-btn-label">{screenPaused ? 'Продолжить показ' : 'Пауза показа'}</span>
+              <span className="call-btn-cap">Пауза</span>
+            </button>
+          )}
           <button className={`ui-btn ui-btn-outline ui-btn-sm ${hand ? '' : 'call-off'}`} onClick={() => { setHand(!hand); client.current?.raiseHand(!hand); }}>
             <Icon name="hand" size={15} /><span className="call-btn-label"> Рука</span>
             <span className="call-btn-cap">Рука</span>
@@ -933,7 +1026,8 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             <button
               className={`ui-btn ui-btn-outline ui-btn-sm ${recording ? 'call-rec-on' : 'call-off'}`}
               onClick={() => client.current?.setRecording(!recording)}
-              title={recording ? 'Выключить ИИ: остановить запись и получить стенограмму' : 'Включить ИИ: записать созвон для стенограммы, сводки и задач'}
+              disabled={recordBlocked && !recording}
+              title={recordBlocked && !recording ? 'Звонок поддержки записывается только с разрешения пользователя' : recording ? 'Выключить ИИ: остановить запись и получить стенограмму' : 'Включить ИИ: записать созвон для стенограммы, сводки и задач'}
             >
               <Icon name={recording ? 'stop' : 'robot'} size={15} />
               <span className="call-btn-label">ИИ: {recording ? 'вкл' : 'выкл'}</span>

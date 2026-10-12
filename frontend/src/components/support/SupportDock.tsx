@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { collectSupportContext, describeContext } from '../../lib/support-context';
@@ -14,6 +14,10 @@ import { MessageText } from '../MessageText';
 import type { SupportConversation, SupportDesk, SupportQueueItem } from '../../types';
 import { OptionSelect } from '../ui/option-select';
 import { useEnterSend } from '../../hooks/useEnterSend';
+// консьерж (ТЗ-29) — своим куском: панель службы заботы входит в стартовую сборку
+const ConciergeHead = lazy(() => import('./Concierge').then((m) => ({ default: m.ConciergeHead })));
+const ConciergeCards = lazy(() => import('./Concierge').then((m) => ({ default: m.ConciergeCards })));
+const ConciergeTools = lazy(() => import('./Concierge').then((m) => ({ default: m.ConciergeTools })));
 
 /**
  * Открыть службу заботы откуда угодно.
@@ -398,14 +402,11 @@ export function SupportDock({ embedded = false }: {
   useEffect(() => {
     const socket = getSocket();
     const refresh = () => { void load(); };
-    for (const ev of ['support.message.created', 'support.status.changed', 'support.agent.joined', 'support.resolved']) {
-      socket.on(ev, refresh);
-    }
-    return () => {
-      for (const ev of ['support.message.created', 'support.status.changed', 'support.agent.joined', 'support.resolved']) {
-        socket.off(ev, refresh);
-      }
-    };
+    const events = ['support.message.created', 'support.status.changed', 'support.agent.joined', 'support.resolved',
+      // ТЗ-29: итог помощи, согласие на запись, тест, доступ к настройкам
+      'support.request.resolution', 'support.recording.consent', 'support.test.offered', 'support.access.requested', 'support.access.changed'];
+    for (const ev of events) socket.on(ev, refresh);
+    return () => { for (const ev of events) socket.off(ev, refresh); };
   }, [load]);
 
   // Лента всегда на последней реплике: разговор читают с конца.
@@ -657,6 +658,16 @@ export function SupportDock({ embedded = false }: {
 
           {err && <div className="error-text support-err">{err}</div>}
 
+          {/* Живой инженер и честное ожидание (ТЗ-29): пока специалист не подключился */}
+          {mineConversation && view === 'chat' && !agent && (
+            <Suspense fallback={null}>
+              <ConciergeHead
+                hasConversation={!!conv}
+                onHelpNow={() => { if (conv) void callHuman(); else document.querySelector<HTMLTextAreaElement>('.support-dock textarea')?.focus(); }}
+              />
+            </Suspense>
+          )}
+
           {view === 'queue' ? (
             <div className="support-feed">
               {!queue.length && <p className="dim support-empty">Сейчас никто не ждёт — тишина.</p>}
@@ -814,6 +825,12 @@ export function SupportDock({ embedded = false }: {
                 </div>
               )}
 
+              {conv && (
+                <Suspense fallback={null}>
+                  <ConciergeCards conv={conv} mine={mineConversation} onChange={setConv} />
+                </Suspense>
+              )}
+
               {/*
                 «Всё работает?» — единственный способ закрыть разговор.
 
@@ -914,6 +931,13 @@ export function SupportDock({ embedded = false }: {
                     <dt>Ошибка</dt><dd>{diag?.context?.last_error ?? 'не было'}</dd>
                     <dt>Сеть</dt><dd>{diag?.context?.network ?? '—'}</dd>
                   </dl>
+                  <Suspense fallback={null}>
+                    <ConciergeTools
+                      conv={conv}
+                      failed={((diag?.context as { metadata?: { failedRequests?: [] } } | null)?.metadata?.failedRequests ?? [])}
+                      onChange={setConv}
+                    />
+                  </Suspense>
                   {!!diag?.issues.length && (
                     <div className="support-issues">
                       {diag.issues.map((i) => (

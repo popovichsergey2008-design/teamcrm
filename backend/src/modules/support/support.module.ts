@@ -10,6 +10,9 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { SupportController } from './support.controller';
 import { SupportDeskController } from './support-desk.controller';
+import { SupportConciergeController } from './support-concierge.controller';
+import { SupportConciergeRepository } from './support-concierge.repository';
+import { SupportConciergeService } from './support-concierge.service';
 import { SupportDeskRepository } from './support-desk.repository';
 import { SupportDeskService } from './support-desk.service';
 import { SupportRepository } from './support.repository';
@@ -31,8 +34,9 @@ import { NotificationsModule } from '../notifications/notifications.module';
     // Записка специалисту о том, что уже пробовали, — короткий вызов модели напрямую.
     AiModule,
   ],
-  controllers: [SupportController, SupportDeskController],
-  providers: [SupportService, SupportRepository, SupportDeskService, SupportDeskRepository],
+  // консьерж (ТЗ-29) — ПЕРВЫМ: его «support/desk/concierge…» не должен уйти в «support/desk/:id»
+  controllers: [SupportConciergeController, SupportController, SupportDeskController],
+  providers: [SupportService, SupportRepository, SupportDeskService, SupportDeskRepository, SupportConciergeService, SupportConciergeRepository],
   exports: [SupportDeskService],
 })
 export class SupportModule {}

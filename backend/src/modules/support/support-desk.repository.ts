@@ -79,6 +79,8 @@ export interface ContextInput {
   platform?: string | null;
   nativeVersion?: string | null;
   device?: string | null;
+  /** ТЗ-29: последние неудачные запросы (метод, путь без параметров, код, номер) — уже очищены */
+  failedRequests?: unknown[] | null;
 }
 
 /**
@@ -509,20 +511,22 @@ export class SupportDeskRepository {
     await this.db.query(
       `INSERT INTO support_context
          (conversation_id, url, route, entity_type, entity_id, browser, os, app_version, build_id,
-          last_error, request_id, network, platform, native_version, device, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
+          last_error, request_id, network, platform, native_version, device, metadata, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, $16::jsonb, now())
        ON CONFLICT (conversation_id) DO UPDATE SET
          url=EXCLUDED.url, route=EXCLUDED.route, entity_type=EXCLUDED.entity_type,
          entity_id=EXCLUDED.entity_id, browser=EXCLUDED.browser, os=EXCLUDED.os,
          app_version=EXCLUDED.app_version, build_id=EXCLUDED.build_id,
          last_error=EXCLUDED.last_error, request_id=EXCLUDED.request_id,
          network=EXCLUDED.network, platform=EXCLUDED.platform,
-         native_version=EXCLUDED.native_version, device=EXCLUDED.device, updated_at=now()`,
+         native_version=EXCLUDED.native_version, device=EXCLUDED.device,
+         metadata=support_context.metadata || EXCLUDED.metadata, updated_at=now()`,
       [
         conversationId, c.url ?? null, c.route ?? null, c.entityType ?? null, c.entityId ?? null,
         c.browser ?? null, c.os ?? null, c.appVersion ?? null, c.buildId ?? null,
         c.lastError ?? null, c.requestId ?? null, c.network ?? null,
         c.platform ?? null, c.nativeVersion ?? null, c.device ?? null,
+        JSON.stringify(c.failedRequests?.length ? { failedRequests: c.failedRequests } : {}),
       ],
     );
   }

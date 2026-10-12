@@ -92,6 +92,8 @@ class EngineerDto {
 
 class BugDto {
   @IsOptional() @IsString() @MaxLength(200) title?: string;
+  /** ТЗ-29: баг или пожелание к продукту */
+  @IsOptional() @IsIn(['bug', 'feedback']) kind?: 'bug' | 'feedback';
 }
 
 class HuddleDto {
@@ -309,7 +311,7 @@ export class SupportDeskController {
   /** Завести баг из разговора: контекст уезжает в задачу сам. */
   @Post(':id/bug')
   async bug(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: BugDto) {
-    return this.desk.createBug(await this.desk.deskTenant(u, id), u, id, dto.title);
+    return this.desk.createBug(await this.desk.deskTenant(u, id), u, id, dto.title, dto.kind === 'feedback' ? 'feedback' : 'bug');
   }
 
   /*

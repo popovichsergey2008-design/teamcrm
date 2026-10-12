@@ -561,6 +561,10 @@ export interface SupportMessage {
 export interface SupportConversation extends SupportAiState {
   id: string;
   subject: string;
+  /** ТЗ-29: согласие на запись звонка, итог помощи, предложенный 10-секундный тест */
+  recordingConsent?: boolean | null;
+  resolution?: { problem: string; fixed: string; checked: string; next: string; at: string | null; feedback: string | null } | null;
+  testOfferedAt?: string | null;
   /** Организация обратившегося: специалист вендора видит чужие компании рядом. */
   orgName?: string | null;
   status: string;
@@ -701,4 +705,6 @@ export interface SupportContextInput {
   platform?: 'web' | 'mobile-web' | 'capacitor';
   nativeVersion?: string;
   device?: string;
+  /** ТЗ-29: последние неудачные запросы — метод, путь без параметров, код, номер */
+  failedRequests?: { method: string; path: string; status: number; requestId: string | null; at: string }[];
 }

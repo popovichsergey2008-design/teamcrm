@@ -6,6 +6,7 @@ import { api, ApiError, type AiDemoDraft, type AiDemoEntry, type AiDemoView } fr
 import { feedback } from '../lib/feedback';
 import { navigate } from '../lib/router';
 import { getSocket } from '../lib/socket';
+import { openSupport } from '../components/support/SupportDock';
 
 /**
  * «Протестировать магию ИИ-созвона за 30 секунд» (ТЗ-24).
@@ -513,6 +514,11 @@ function Done({ view }: { view: AiDemoView }) {
         <button type="button" className="link-btn" onClick={() => navigate({ section: 'projects' })}>Создать настоящий проект</button>
         <button type="button" className="link-btn" onClick={() => navigate({ section: 'settings', tab: 'team' })}>Пригласить команду</button>
       </div>
+      {/* ТЗ-29 (п. 51): нужна помощь с настройкой — живой инженер, прямо здесь */}
+      <p className="dim aid-note">
+        Нужна помощь с настройкой? Живой инженер QEVO может подключиться прямо здесь.{' '}
+        <button type="button" className="link-btn" onClick={() => openSupport()}>Позвать инженера</button>
+      </p>
     </section>
   );
 }

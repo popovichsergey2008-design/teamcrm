@@ -23,6 +23,9 @@ import { LIMITS, LimitKind, limitKey } from './support-limits';
 import { RedisService } from '../../cache/redis.service';
 import { Q_SUPPORT_ROUTING, RabbitMQService } from '../../messaging/rabbitmq.service';
 import { PushService } from '../notifications/push.service';
+import { SecurityService } from '../security/security.service';
+import { SupportConciergeRepository } from './support-concierge.repository';
+import { sanitizeFailedRequests } from './support-concierge';
 
 /**
  * Служба заботы: живой разговор вместо заявок (ТЗ-8).
@@ -78,7 +81,20 @@ export class SupportDeskService implements OnModuleInit {
     private readonly redis: RedisService,
     private readonly mq: RabbitMQService,
     private readonly push: PushService,
+    private readonly concierge: SupportConciergeRepository,
+    private readonly security: SecurityService,
   ) {}
+
+  /** Подписчики «созвон поддержки завершён» (ТЗ-29: итог помощи) — без кольца модулей. */
+  private readonly huddleDone: ((conversationId: string, tenantId: string, summary: string | null) => Promise<void>)[] = [];
+  onHuddleDone(fn: (conversationId: string, tenantId: string, summary: string | null) => Promise<void>) {
+    this.huddleDone.push(fn);
+  }
+
+  /** Работает ли человек с этим разговором — для консьерж-сервиса (ТЗ-29). */
+  canWorkOn(tenantId: string, user: { userId: string; role: string }, conversationId: string): Promise<boolean> {
+    return this.canWork(tenantId, user, conversationId);
+  }
 
   /**
    * Предел частоты.
@@ -222,7 +238,7 @@ export class SupportDeskService implements OnModuleInit {
   }
 
   private async view(tenantId: string, conv: ConversationRow) {
-    const [messages, participants, context, actions, call, orgName, persona] = await Promise.all([
+    const [messages, participants, context, actions, call, orgName, persona, extras] = await Promise.all([
       this.repo.messages(String(conv.id)),
       this.repo.participants(String(conv.id)),
       this.repo.context(String(conv.id)),
@@ -230,6 +246,7 @@ export class SupportDeskService implements OnModuleInit {
       this.repo.liveCallRequest(String(conv.id)),
       this.repo.tenantName(String(conv.tenant_id)),
       this.platform.persona(),
+      this.concierge.extras(String(conv.id)),
     ]);
     return {
       id: String(conv.id),
@@ -267,6 +284,10 @@ export class SupportDeskService implements OnModuleInit {
       closedAt: conv.closed_at,
       csat: conv.csat_score,
       reopens: conv.reopens,
+      // ТЗ-29: согласие на запись, итог помощи, предложенный «10-секундный тест»
+      recordingConsent: extras?.recording_consent ?? null,
+      resolution: extras?.resolution_json ? { ...extras.resolution_json, at: extras.resolution_at, feedback: extras.resolution_feedback } : null,
+      testOfferedAt: extras?.test_offered_at ?? null,
       participants,
       context: context ?? null,
       /** Предложенные действия: их человек и разрешает (разд. 38). */
@@ -323,7 +344,7 @@ export class SupportDeskService implements OnModuleInit {
       // Справочник должен быть на месте к первому же вопросу новой компании.
       void this.handbook.ensure(tenantId);
     }
-    if (ctx) await this.repo.saveContext(String(conv.id), ctx);
+    if (ctx) await this.repo.saveContext(String(conv.id), { ...ctx, failedRequests: sanitizeFailedRequests((ctx as { failedRequests?: unknown }).failedRequests) });
 
     const msg = await this.repo.addMessage({
       tenantId, conversationId: String(conv.id), authorId: user.userId, kind: 'user', body, fileId,
@@ -677,6 +698,11 @@ export class SupportDeskService implements OnModuleInit {
       for (const t of new Set(people.map((p) => p.tenantId))) {
         for (const id of this.realtime.onlineUsers(t)) online.add(id);
       }
+      // ТЗ-29: «отошёл» и вне своей смены — обращений не получает, хоть и в сети
+      const ids = people.map((p) => p.userId);
+      const [manual, shifts] = await Promise.all([this.concierge.manualStatuses(ids), this.concierge.shiftState(ids)]);
+      for (const m of manual) if (m.status === 'away') online.delete(m.user_id);
+      for (const s of shifts) if (s.has_shifts && !s.on_shift) online.delete(s.user_id);
 
       const candidates: Candidate[] = people.map((p) => ({
         userId: p.userId,
@@ -1207,7 +1233,7 @@ export class SupportDeskService implements OnModuleInit {
    * разговор. Переписывать это руками — ровно та работа, ради отмены которой
    * поддержка и собирает контекст.
    */
-  async createBug(tenantId: string, user: { userId: string; role: string }, id: string, title?: string) {
+  async createBug(tenantId: string, user: { userId: string; role: string }, id: string, title?: string, kind: 'bug' | 'feedback' = 'bug') {
     await this.assertCanWork(tenantId, user, id);
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
@@ -1236,6 +1262,7 @@ export class SupportDeskService implements OnModuleInit {
       c.platform && c.platform !== 'web' ? `Где: ${c.platform === 'capacitor' ? `приложение ${c.native_version ?? ''}`.trim() : 'сайт в телефоне'}${c.device ? ` · ${c.device}` : ''}` : '',
       c.last_error ? `Последняя ошибка: ${c.last_error}` : '',
       c.request_id ? `Request ID: ${c.request_id}` : '',
+      ...failedLines(c),
       '',
       `Обращение №${id}.`,
     ].filter(Boolean).join('\n');
@@ -1253,17 +1280,21 @@ export class SupportDeskService implements OnModuleInit {
       await this.support.setProject(home, String(created.id));
       project = { id: String(created.id), name: created.name };
     }
+    const baseTitle = (title?.trim() || conv.subject || 'Разобраться с обращением');
     const task = await this.tasks.create(home, {
       projectId: String(project.id),
-      title: (title?.trim() || conv.subject || 'Разобраться с обращением').slice(0, 200),
-      description,
+      // пожелание к продукту — тем же путём, но видно с первого взгляда (ТЗ-29, п. 28)
+      title: (kind === 'feedback' ? `Пожелание: ${baseTitle}` : baseTitle).slice(0, 200),
+      description: kind === 'feedback' ? description.replace('**Из разговора службы заботы.**', '**Пожелание к продукту из разговора службы заботы.**') : description,
       priority: conv.priority === 'critical' ? 'urgent' : 'normal',
     } as never, user.userId);
 
-    await this.repo.linkIssue(id, String(task.id));
+    await this.repo.linkIssue(id, String(task.id), kind);
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: user.userId, kind: 'system',
-      body: `завёл задачу #${task.id} — «${task.title}». Сообщим, когда исправление выйдет.`,
+      body: kind === 'feedback'
+        ? `передал(а) пожелание команде продукта — #${task.id} «${task.title}». Спасибо, что подсказали.`
+        : `завёл задачу #${task.id} — «${task.title}». Сообщим, когда исправление выйдет.`,
     });
     const next = (await this.repo.byId(tenantId, id))!;
     await this.emit(tenantId, next, 'support.issue.linked', { conversationId: id, taskId: String(task.id) });
@@ -1381,7 +1412,7 @@ export class SupportDeskService implements OnModuleInit {
     */
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: null, kind: 'system',
-      body: 'Разговор может записываться: расшифровка и итог вернутся сюда же.',
+      body: 'Без записи по умолчанию. Записать созвон можно только с разрешения обратившегося — тогда расшифровка и итог вернутся сюда же.',
     });
     await this.repo.markRecordingNotice(id, room.roomId);
     await this.emit(tenantId, conv, 'support.call.accepted', { conversationId: id, roomId: room.roomId });
@@ -1436,6 +1467,7 @@ export class SupportDeskService implements OnModuleInit {
         if (summary?.trim()) {
           await this.emit(h.tenant_id, conv, 'support.call.summary.ready', { conversationId: h.conversation_id });
         }
+        for (const fn of this.huddleDone) await fn(String(h.conversation_id), String(h.tenant_id), summary).catch(() => undefined);
       }
     } catch (e) {
       this.log.warn(`итог созвона ${roomId}: ${(e as Error).message}`);
@@ -1460,6 +1492,10 @@ export class SupportDeskService implements OnModuleInit {
     await this.assertCanWork(tenantId, user, id);
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
+    // кто из поддержки смотрел технический контекст — видно в журнале организации клиента
+    await this.security.record({
+      tenantId, actorId: user.userId, event: 'support.diagnostics.viewed', resourceType: 'support_conversation', resourceId: id,
+    }).catch(() => undefined);
     const [ctx, issues, routing] = await Promise.all([
       this.repo.context(id), this.repo.issues(id), this.repo.routingOf(id),
     ]);
@@ -2007,4 +2043,12 @@ export class SupportDeskService implements OnModuleInit {
     const home = (await this.platform.tenantId()) ?? tenantId;
     this.realtime.emitToUsers(home, [String(conv.assigned_agent_id)], event, payload);
   }
+}
+
+/** Последние неудачные запросы из контекста — строками для описания бага (ТЗ-29, п. 27). */
+function failedLines(c: Record<string, unknown>): string[] {
+  const meta = (c.metadata ?? {}) as { failedRequests?: unknown };
+  const list = sanitizeFailedRequests(meta.failedRequests);
+  if (!list.length) return [];
+  return ['', '**Неудачные запросы**', ...list.map((f) => `${f.method} ${f.path} → ${f.status}${f.requestId ? ` · ${f.requestId}` : ''}`)];
 }

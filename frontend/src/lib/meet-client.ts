@@ -55,6 +55,8 @@ export interface MeetEvents {
   onHostNotified?: (ok: boolean) => void;
   /** Сотруднику: список стучащихся изменился. */
   onKnocks?: (knocks: Knock[]) => void;
+  /** Подсветка на показанном экране (ТЗ-29): кто отметил, где (0..1) и чей показ. */
+  onPointer?: (p: { from: string; name: string; x: number; y: number; kind: string; target: string | null }) => void;
   onError: (message: string) => void;
 }
 
@@ -384,6 +386,10 @@ export class MeetClient {
         return;
       }
 
+      case 'meet.pointer':
+        this.ev.onPointer?.({ from: String(p.user_id), name: String(p.name ?? ''), x: Number(p.x), y: Number(p.y), kind: String(p.kind ?? 'pulse'), target: p.target ? String(p.target) : null });
+        return;
+
       case 'meet.hand-raised':
       case 'meet.hand-lowered': {
         const peer = this.peers.get(p.user_id);
@@ -613,6 +619,11 @@ export class MeetClient {
     this.producers.delete(producerId);
     this.log('unpublish', { producerId, known: !!producer });
     this.emit('meet.producer-close', { producer_id: producerId });
+  }
+
+  /** Отметить место на показанном экране участника `target` (ТЗ-29): только подсветка. */
+  point(x: number, y: number, kind: 'circle' | 'arrow' | 'pulse', target: string): void {
+    this.emit('meet.pointer', { x, y, kind, target });
   }
 
   raiseHand(up: boolean): void {

@@ -14,6 +14,7 @@ export type FeedbackEvent =
   | 'task.completed' | 'task.created' | 'task.approved'
   | 'ai.started' | 'ai.completed' | 'postcall.ready'
   | 'focus.started' | 'focus.completed' | 'focus.dayCompleted'
+  | 'support.engineerJoined' | 'support.solved'
   | 'kudos.sent' | 'news.published' | 'milestone' | 'poll.voted'
   | 'action.confirmed' | 'warning' | 'error';
 

@@ -27,6 +27,9 @@ export const RULES: Record<FeedbackEvent, Rule> = {
   'ai.completed': { sound: 'ai_ready', haptic: 'success', motion: 'ai' },
   'postcall.ready': { sound: 'ai_ready', haptic: 'success', motion: 'ai' },
   'focus.started': { haptic: 'light' },
+  // консьерж-поддержка (ТЗ-29): тихий щелчок на подключении инженера, успех на «всё работает»
+  'support.engineerJoined': { sound: 'ui_click', haptic: 'light' },
+  'support.solved': { sound: 'ui_success', haptic: 'success', motion: 'pop' },
   'focus.completed': { sound: 'focus_complete', haptic: 'success', throughQuiet: true },
   'focus.dayCompleted': { sound: 'milestone', haptic: 'success', motion: 'burst', celebration: true },
   'kudos.sent': { sound: 'kudos', haptic: 'light', motion: 'burst', celebration: true },

@@ -9,7 +9,7 @@ import type {
 import { platform } from '../platform';
 import type { MobileConfig } from './mobile-config';
 import { enqueue, newChangeId, type QueuedChange } from './offline-queue';
-import { noteRequestId, noteSupportError } from './support-context';
+import { noteFailedRequest, noteRequestId, noteSupportError } from './support-context';
 import { apiUrl } from './origin';
 
 const ACCESS_KEY = 'teamcrm.access';
@@ -218,6 +218,17 @@ export interface FocusItem {
   source: string;
   /** «Взять в работу» (ТЗ-27): когда человек взялся — без таймера */
   startedAt?: string | null;
+}
+
+/** Консьерж (ТЗ-29): кто на связи и сколько ждать. */
+export interface SupportConcierge {
+  engineers: { userId: string; name: string; role: string; verified: boolean; avatarUrl: string | null; status: 'available' | 'busy' | 'in_huddle' | 'away' | 'offline'; statusText: string }[];
+  estimate: { kind: 'now' | 'queue' | 'offline'; text: string; minutes: [number, number] | null };
+  available: number;
+}
+export interface SupportAccessGrant {
+  id: string; engineer: string | null; projectId: string | null; projectName: string | null; reason: string | null;
+  status: 'requested' | 'granted' | 'declined' | 'revoked' | 'expired'; requestedAt: string; expiresAt: string | null;
 }
 
 /** Бренд гостевых страниц (ТЗ-28): гостю — без внутренних полей. */
@@ -612,7 +623,10 @@ async function rawRequest<T>(
   }
   if (!env.ok) {
     // Последняя ошибка на экране — в контекст обращения; истёкшая сессия не ошибка, она обновится.
-    if (env.error?.code !== 'UNAUTHORIZED') noteSupportError(`${env.error?.message ?? 'Error'} (${method} ${path.split('?')[0]})`, env.error?.requestId ?? requestId ?? undefined);
+    if (env.error?.code !== 'UNAUTHORIZED') {
+      noteSupportError(`${env.error?.message ?? 'Error'} (${method} ${path.split('?')[0]})`, env.error?.requestId ?? requestId ?? undefined);
+      noteFailedRequest(method, path, res.status, env.error?.requestId ?? requestId);
+    }
     throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Error', env.error?.details);
   }
   return env.data as T;
@@ -1993,10 +2007,35 @@ export const api = {
   supportAddEngineer: (id: string, userId: string) =>
     request<SupportConversation>('POST', `/support/desk/${id}/engineer`, { userId }),
   /** Завести баг из разговора: контекст уезжает в задачу сам. */
-  supportCreateBug: (id: string, title?: string) =>
+  supportCreateBug: (id: string, title?: string, kind: 'bug' | 'feedback' = 'bug') =>
     request<{ taskId: string; projectId: string; conversation: SupportConversation }>(
-      'POST', `/support/desk/${id}/bug`, { title },
+      'POST', `/support/desk/${id}/bug`, { title, kind },
     ),
+  // консьерж-поддержка (ТЗ-29)
+  supportConcierge: () => request<SupportConcierge>('GET', '/support/desk/concierge'),
+  supportSetMyStatus: (status: 'available' | 'busy' | 'away') => request<SupportConcierge>('PATCH', '/support/desk/concierge/me', { status }),
+  supportShifts: () => request<{ id: string; userId: string; name: string; startsAt: string; endsAt: string }[]>('GET', '/support/desk/concierge/shifts'),
+  supportAddShift: (userId: string, startsAt: string, endsAt: string) =>
+    request<{ id: string; userId: string; name: string; startsAt: string; endsAt: string }[]>('POST', '/support/desk/concierge/shifts', { userId, startsAt, endsAt }),
+  supportCancelShift: (id: string) => request<{ id: string; userId: string; name: string; startsAt: string; endsAt: string }[]>('DELETE', `/support/desk/concierge/shifts/${id}`),
+  supportConciergeMetrics: () => request<{ huddleOffered: number; huddleAcceptRate: number | null; resolved: number; firstContactResolution: number | null }>('GET', '/support/desk/concierge/metrics'),
+  supportCallbackState: () => request<{ waiting: boolean; since: string | null }>('GET', '/support/desk/concierge/callback'),
+  supportCallback: () => request<{ waiting: boolean; since: string | null }>('POST', '/support/desk/concierge/callback'),
+  supportCancelCallback: () => request<{ waiting: boolean }>('DELETE', '/support/desk/concierge/callback'),
+  supportRecording: (id: string, allow: boolean) => request<SupportConversation>('POST', `/support/desk/${id}/recording`, { allow }),
+  supportResolution: (id: string, works: boolean) => request<SupportConversation>('POST', `/support/desk/${id}/resolution`, { works }),
+  supportOfferTest: (id: string) => request<SupportConversation>('POST', `/support/desk/${id}/offer-test`),
+  supportAccess: (id: string) => request<SupportAccessGrant[]>('GET', `/support/desk/${id}/access`),
+  supportRequestAccess: (id: string, reason?: string) => request<SupportAccessGrant[]>('POST', `/support/desk/${id}/access`, reason ? { reason } : {}),
+  supportDecideAccess: (id: string, grantId: string, allow: boolean, projectId?: string) =>
+    request<SupportAccessGrant[]>('POST', `/support/desk/${id}/access/${grantId}/decide`, { allow, ...(projectId ? { projectId } : {}) }),
+  supportRevokeAccess: (id: string, grantId: string) => request<SupportAccessGrant[]>('POST', `/support/desk/${id}/access/${grantId}/revoke`),
+  supportAccessView: (id: string, grantId: string) => request<{
+    project: { id: string; name: string; description: string | null; visibility: string; owner_name: string | null; created_at: string; client_name: string | null } | null;
+    columns: { name: string; position: number; tasks: number }[];
+    members: { full_name: string }[];
+    expiresAt: string;
+  }>('GET', `/support/desk/${id}/access/${grantId}/view`),
   /**
    * Созвон по просьбе и согласию.
    *
@@ -2774,6 +2813,8 @@ export const api = {
   }>('GET', '/focus/today/settings'),
   focusSettings: (enabled: boolean) => request<{ enabled: boolean }>('PATCH', '/focus/today/settings', { enabled }),
   // брифинг «Фокуса дня» (ТЗ-27)
+  /** ТЗ-29: звонок поддержки ли в этой комнате — согласие перед показом, запись по разрешению. */
+  supportRoom: (roomId: string) => request<{ support: boolean; conversationId?: string; requester?: boolean; recordingConsent?: boolean | null }>('GET', `/support/desk/concierge/room/${encodeURIComponent(roomId)}`),
   focusBrief: () => request<FocusBrief>('GET', '/focus/today/brief'),
   focusBriefGenerate: () => request<FocusBrief>('POST', '/focus/today/brief/generate'),
   focusBriefRefresh: () => request<FocusBrief>('POST', '/focus/today/brief/refresh'),
