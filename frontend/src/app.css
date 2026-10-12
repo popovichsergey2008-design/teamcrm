@@ -2919,6 +2919,8 @@
 .msg, .msg-main, .chat-msg { position: relative; }
 .msg-main { padding-right: 22px; }
 .chat-msg { padding-right: 26px; }
+/* «⋯» и палочка (ТЗ-26) стоят рядом — место под обе, иначе палочка ложится на текст (#1544) */
+.chat-msg:has(> .msg-wand) { padding-right: 50px; }
 
 /*
   Сообщение, по которому открыто меню.
