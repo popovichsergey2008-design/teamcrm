@@ -681,8 +681,8 @@ describe('служба заботы (e2e)', () => {
       .send({ roomId: 'room-42', joinUrl: 'https://anthill.team/meet/token' }).expect(201)).body.data;
     expect(started.call).toBeNull();
     expect(started.messages.some((m: any) => String(m.body).includes('meet/token'))).toBe(true);
-    // и о записи предупредили в самом разговоре, а не галочкой
-    expect(started.messages.some((m: any) => String(m.body).includes('может записываться'))).toBe(true);
+    // и о записи предупредили в самом разговоре: с ТЗ-29 — только с разрешения обратившегося
+    expect(started.messages.some((m: any) => String(m.body).includes('только с разрешения'))).toBe(true);
   }, 60000);
 
   /*

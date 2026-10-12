@@ -100,15 +100,14 @@ describe('ТЗ-29 — консьерж-поддержка (e2e)', () => {
 
     // 8. Доступ на 15 минут: просит специалист, разрешает пользователь — по своему проекту
     const proj = (await http.post('/api/projects').set(O).send({ name: 'Заказчик А' }).expect(201)).body.data;
-    const hidden = (await http.post('/api/projects').set(O).send({ name: 'Закрытый', visibility: 'members' }).expect(201)).body.data;
+    const hidden = (await http.post('/api/projects').set(O).send({ name: 'Закрытый' }).expect(201)).body.data;
+    await http.patch(`/api/projects/${hidden.id}`).set(O).send({ visibility: 'members' }).expect(200);
     const asked = (await http.post(`/api/support/desk/${conv.id}/access`).set(O).send({ reason: 'Проверить привязку протокола' }).expect(201)).body.data;
     expect(asked[0].status).toBe('requested');
     const grantId = asked[0].id;
     // специалист сам себе не разрешает; закрытый от пользователя проект разрешить нельзя
     await http.post(`/api/support/desk/${conv.id}/access/${grantId}/decide`).set(O).send({ allow: true, projectId: String(proj.id) }).expect(404);
-    if (hidden.visibility && hidden.visibility !== 'all') {
-      await http.post(`/api/support/desk/${conv.id}/access/${grantId}/decide`).set(M).send({ allow: true, projectId: String(hidden.id) }).expect(400);
-    }
+    await http.post(`/api/support/desk/${conv.id}/access/${grantId}/decide`).set(M).send({ allow: true, projectId: String(hidden.id) }).expect(400);
     // до разрешения — ничего не видно
     await http.get(`/api/support/desk/${conv.id}/access/${grantId}/view`).set(O).expect(403);
     const granted = (await http.post(`/api/support/desk/${conv.id}/access/${grantId}/decide`).set(M).send({ allow: true, projectId: String(proj.id) }).expect(201)).body.data;
