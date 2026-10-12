@@ -105,6 +105,9 @@ describe('Смарт-пинги ассистента (e2e)', () => {
 
   it('автопилот: напоминание уходит сразу и попадает в журнал ассистента', async () => {
     const s = await setup('Автопилот');
+    // Здесь проверяется прежняя сводка «Коротко о делах». С ТЗ-27 новый «Фокус дня»
+    // включён по умолчанию и заменяет её строкой «ваш фокус готов» — выключаем его.
+    await http.patch('/api/focus/today/settings').set(H(s.owner.accessToken)).send({ enabled: false }).expect(200);
     await http.put('/api/assistant/mode').set(H(s.owner.accessToken)).send({ mode: 'autopilot' }).expect(200);
 
     await scheduler.tick();
