@@ -1,0 +1,13 @@
+/* Задача из сообщения / голосового (ТЗ-26). Грузится вместе с окном. */
+.mtt-steps { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); color: var(--text-mut); }
+.mtt-steps li { display: inline-flex; align-items: center; gap: 6px; }
+.mtt-steps li.now { color: var(--text); }
+.mtt-steps li.now svg { animation: mtt-spin 1.2s linear infinite; }
+@keyframes mtt-spin { to { transform: rotate(360deg); } }
+.mtt-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.mtt-chip { border: 1px solid var(--border); background: var(--bg-elev); color: var(--text); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.mtt-chip:hover { border-color: var(--accent); color: var(--accent); }
+.mtt-split-list { margin: 4px 0 0; padding-left: 20px; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 2px; }
+.mtt-ask-row { display: flex; gap: 6px; }
+.mtt-ask-row .input { flex: 1; min-width: 0; }
+@media (prefers-reduced-motion: reduce) { .mtt-steps li.now svg { animation: none; } }

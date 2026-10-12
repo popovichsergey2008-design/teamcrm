@@ -43,7 +43,12 @@ export default function TaskAudioProof({ taskId, canEdit }: { taskId: string; ca
     <div className="tv2-proof">
       <div className="tv2-proof-head">
         <Icon name="mic" size={13} />
-        <span>Источник: {proof.meeting.title}{proof.meeting.happenedAt ? ` · ${new Date(proof.meeting.happenedAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}` : ''} · {stamp(proof.anchorSec)}</span>
+        <span>Источник: {proof.meeting.title}{proof.meeting.happenedAt ? ` · ${new Date(proof.meeting.happenedAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}` : ''}{proof.source !== 'chat' ? ` · ${stamp(proof.anchorSec)}` : ''}</span>
+        {proof.message && (
+          <button type="button" className="link-btn" onClick={() => navigate(`/chat/${encodeURIComponent(proof.message!.chatId)}#m${proof.message!.messageId}`)}>
+            Открыть сообщение
+          </button>
+        )}
         {proof.canOpenMeeting && (
           <button type="button" className="link-btn" onClick={() => navigate(`/meetings/${encodeURIComponent(proof.meeting.id)}?t=${Math.round(proof.anchorSec)}`)}>
             Открыть созвон с {stamp(proof.anchorSec)}
@@ -63,8 +68,13 @@ export default function TaskAudioProof({ taskId, canEdit }: { taskId: string; ca
       {proof.quote && <blockquote className="tv2-proof-quote">{proof.quote}</blockquote>}
       {canEdit && proof.status !== 'pending' && (
         <div className="tv2-proof-tools">
-          <button type="button" className="link-btn" disabled={busy} onClick={() => void act(() => api.taskAudioProofAdjust(taskId, { startDelta: -5 }))}>−5 сек</button>
-          <button type="button" className="link-btn" disabled={busy} onClick={() => void act(() => api.taskAudioProofAdjust(taskId, { endDelta: 10 }))}>+10 сек</button>
+          {/* у голосового из чата фрагмент — вся запись: сдвигать нечего */}
+          {proof.source !== 'chat' && (
+            <>
+              <button type="button" className="link-btn" disabled={busy} onClick={() => void act(() => api.taskAudioProofAdjust(taskId, { startDelta: -5 }))}>−5 сек</button>
+              <button type="button" className="link-btn" disabled={busy} onClick={() => void act(() => api.taskAudioProofAdjust(taskId, { endDelta: 10 }))}>+10 сек</button>
+            </>
+          )}
           <button type="button" className="link-btn" disabled={busy} onClick={() => void remove()}>Убрать аудио</button>
         </div>
       )}

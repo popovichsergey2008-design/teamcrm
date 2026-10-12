@@ -1016,7 +1016,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 )}
               </div>
             )}
-            {meeting && (
+            {/* фрагмент записи — у задач со встречи и из голосового в чате (ТЗ-25, ТЗ-26) */}
+            {(meeting || fromMessage) && (
               <Suspense fallback={null}>
                 <TaskAudioProof taskId={String(task.id)} canEdit={isManager || user?.role === 'manager'} />
               </Suspense>

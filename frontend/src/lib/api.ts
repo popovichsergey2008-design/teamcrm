@@ -362,8 +362,12 @@ export interface TaskAudioProof {
   status: 'pending' | 'ready' | 'failed' | 'revoked'; error: string | null;
   startSec: number; endSec: number; anchorSec: number; durationSec: number;
   quote: string | null; speaker: string | null;
+  /** откуда фрагмент: созвон или голосовое в чате (ТЗ-26) */
+  source?: 'meeting' | 'chat';
   meeting: { id: string; title: string; happenedAt: string | null };
   canOpenMeeting: boolean;
+  /** голосовое в чате — «Открыть сообщение», если чат виден */
+  message?: { chatId: string; messageId: string } | null;
   playback: { url: string; expiresAt: string } | null;
 }
 /** Пункт итогов с источником: где и кем сказано. */
@@ -1799,11 +1803,18 @@ export const api = {
   askMessageTaskDraft: (draftId: string) => request<any>('POST', `/chats/task-drafts/${draftId}/ask`, {}),
   confirmMessageTaskDraft: (
     draftId: string,
-    tags?: { tagIds?: string[]; suggestedTagIds?: string[]; tagsConfirmed?: boolean; confirmedWithoutTags?: boolean },
+    tags?: {
+      tagIds?: string[]; suggestedTagIds?: string[]; tagsConfirmed?: boolean; confirmedWithoutTags?: boolean;
+      /** ТЗ-26: «оставить как есть» в предупреждении о перегрузе, несколько задач, фрагмент голосового */
+      confirmWorkload?: boolean; mode?: 'single' | 'split'; audio?: 'allow' | 'none';
+    },
   ) =>
-    request<{ taskId: string; title: string; projectId: string; already: boolean }>(
+    request<{ taskId: string; title: string; projectId: string; already: boolean; taskIds?: string[] }>(
       'POST', `/chats/task-drafts/${draftId}/confirm`, tags ?? {},
     ),
+  /** «Сделай короче», «разбей на 3», «поставь Сергея», «срок пятница» (ТЗ-26). */
+  instructMessageTaskDraft: (draftId: string, text: string) => request<any>('POST', `/chats/task-drafts/${draftId}/instruct`, { text }),
+  retryMessageTaskDraft: (draftId: string) => request<any>('POST', `/chats/task-drafts/${draftId}/retry`, {}),
   cancelMessageTaskDraft: (draftId: string) => request<any>('POST', `/chats/task-drafts/${draftId}/cancel`, {}),
   /** Незавершённые черновики чата — строки состояния под сообщениями. */
   openTaskDrafts: (chatId: string) => request<{ items: any[] }>('GET', `/chats/${chatId}/task-drafts`),

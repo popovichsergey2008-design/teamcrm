@@ -2904,6 +2904,10 @@
 .msg:hover .msg-dots, .chat-msg:hover .msg-dots, .msg-dots:hover { opacity: 1; background: var(--hover); }
 .msg-dots:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; opacity: 1; }
 @media (hover: none) { .msg-dots { opacity: .8; } }
+.msg-wand { right: 26px; color: var(--accent); }
+.chat-transcript { margin-top: 4px; font-size: 12px; color: var(--text-dim); }
+.chat-transcript summary { cursor: pointer; }
+.chat-transcript summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 /*
   Место под кнопку, чтобы она не легла на текст.
 

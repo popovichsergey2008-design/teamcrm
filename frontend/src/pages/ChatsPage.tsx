@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
 import { api, ApiError, QUEUED, Scheduled } from '../lib/api';
@@ -28,7 +28,9 @@ import { longPressProps, MenuAt, MessageMenu } from '../components/MessageMenu';
 import { useDismiss } from '../hooks/useDismiss';
 import { selectionIn } from '../lib/selection';
 import { shrinkAll } from '../lib/image-shrink';
-import { MessageToTask, MessageTaskDraft } from '../components/MessageToTask';
+import type { MessageTaskDraft } from '../components/MessageToTask';
+// окно «Задача из сообщения» (ТЗ-26) — по нажатию палочки, не в стартовой сборке
+const MessageToTask = lazy(() => import('../components/MessageToTask').then((m) => ({ default: m.MessageToTask })));
 import { EmojiPicker } from '../components/EmojiPicker';
 import { ForwardDialog } from '../components/ForwardDialog';
 import { QUICK_REACTIONS } from '../lib/emoji';
@@ -96,6 +98,9 @@ interface Message {
   task_title?: string | null;
   /** Проект задачи: адрес задачи без него не собрать — ссылка уводила в список проектов. */
   task_project_id?: string | null;
+  /** Расшифровка голосового (ТЗ-26): «Текст» под плеером */
+  transcript?: string | null;
+  transcript_status?: string | null;
   /** Все вложения сообщения: несколько картинок — это одно сообщение. */
   files?: { fileId: string; name: string; mime?: string; size?: number }[];
   /** Сколько собеседников прочитали сообщение и сколько их всего — для галочек. */
@@ -869,6 +874,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     };
     // задачу по сообщению завёл кто-то другой — отметка должна появиться и у нас,
     // иначе по той же фразе заведут вторую
+    const onTranscript = (p: { chatId: string; messageId: string; transcript: string }) => {
+      if (String(p.chatId) !== String(activeId)) return;
+      setMessages((prev) => prev.map((m) => (String(m.id) === String(p.messageId)
+        ? { ...m, transcript: p.transcript, transcript_status: 'ready' } : m)));
+    };
     const onTaskLinked = (p: { chatId: string; messageId: string; taskId: string; title: string; projectId?: string }) => {
       if (String(p.chatId) !== String(activeId)) return;
       setMessages((prev) => prev.map((m) => (String(m.id) === String(p.messageId)
@@ -914,6 +924,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     };
     socket.on('chat.message_edited', onEdited);
     socket.on('chat.task_linked', onTaskLinked);
+    socket.on('chat.message.transcript', onTranscript);
     socket.on('chat.reminder', onReminder);
     socket.on('chat.mention', onMention);
     socket.on('chat.pinned', onPinned);
@@ -977,6 +988,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       socket.off('chat.read', onRead);
       socket.off('chat.message_edited', onEdited);
       socket.off('chat.task_linked', onTaskLinked);
+      socket.off('chat.message.transcript', onTranscript);
       socket.off('chat.reminder', onReminder);
       socket.off('chat.mention', onMention);
       socket.off('chat.pinned', onPinned);
@@ -1680,7 +1692,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         picked: selectionIn(e.currentTarget as Element),
       });
     },
-    ...longPressProps((at) => setCtxFor({ id: String(m.id), at, picked: '' })),
+    ...withSwipeLeft(longPressProps((at) => setCtxFor({ id: String(m.id), at, picked: '' })), () => setToTask(m)),
   });
 
   /**
@@ -2695,6 +2707,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                         >
                           <Icon name="more" size={14} />
                         </button>
+                        {/* «Волшебная палочка» (ТЗ-26): превратить в задачу — на виду, а не в меню */}
+                        {!m.is_ai && (
+                          <button
+                            className="msg-dots msg-wand"
+                            title={m.task_id ? `Уже есть задача #${m.task_id} — создать ещё?` : 'Превратить в задачу'}
+                            aria-label="Превратить в задачу"
+                            onClick={(e) => { e.stopPropagation(); setToTask(m); }}
+                          >
+                            <Icon name="wand" size={14} />
+                          </button>
+                        )}
                         {m.is_ai && <div className="chat-author"><Icon name="robot" size={11} /> QEVO Bot</div>}
                         {/* Кто именно писал со стороны: через месяц «внешний участник»
                             без имени в переписке не значит ничего. */}
@@ -2791,6 +2814,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                             onOpen={() => openPreview(messages, String(f.fileId))}
                           />
                         ))}
+                        {m.transcript && (
+                          <details className="chat-transcript">
+                            <summary>Текст</summary>
+                            <div>{m.transcript}</div>
+                          </details>
+                        )}
                       </div>
                       {/* Поставленные реакции видны всегда: в них весь смысл — ответить
                           «понял», не засоряя переписку и не будя всех уведомлением. */}
@@ -3480,7 +3509,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       )}
 
       {toTask && activeId && (
-        <MessageToTask
+        <Suspense fallback={null}><MessageToTask
           chatId={activeId}
           messageId={String(toTask.id)}
           messageText={String(toTask.body || toTask.file_name || '')}
@@ -3492,7 +3521,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             setToTask(null);
             showToast({ title: 'Задача создана', body: title, section: 'chat' });
           }}
-        />
+        /></Suspense>
       )}
 
       {/*
@@ -3633,4 +3662,37 @@ function ChatRow({ chat, active, group, onClick, onStar }: {
     )}
     </div>
   );
+}
+
+/**
+ * Свайп влево по сообщению = «В задачу» (ТЗ-26, решение 12.10), поверх долгого нажатия.
+ *
+ * Порог умеренный (70 px) и только почти горизонтально: вертикальная прокрутка ленты и
+ * системный «назад» от края экрана жестом задачи не становятся. Вправо оставлен свободным
+ * под будущий «Ответить».
+ */
+type TouchHandlers = { onTouchStart?: (e: React.TouchEvent) => void; onTouchMove?: (e: React.TouchEvent) => void; onTouchEnd?: (e: React.TouchEvent) => void };
+// начало жеста — на уровне модуля: обработчики пересоздаются при каждой перерисовке
+// ленты, а палец на экране один
+let swipeStart: { x: number; y: number } | null = null;
+function withSwipeLeft<T extends TouchHandlers>(base: T, onSwipe: () => void): T {
+  return {
+    ...base,
+    onTouchStart: (e: React.TouchEvent) => {
+      const t = e.touches[0];
+      // от самого края — это системный жест «назад», не наш
+      swipeStart = t && t.clientX > 24 && t.clientX < window.innerWidth - 24 ? { x: t.clientX, y: t.clientY } : null;
+      base.onTouchStart?.(e);
+    },
+    onTouchMove: (e: React.TouchEvent) => { base.onTouchMove?.(e); },
+    onTouchEnd: (e: React.TouchEvent) => {
+      base.onTouchEnd?.(e);
+      const t = e.changedTouches[0];
+      if (!swipeStart || !t) return;
+      const dx = t.clientX - swipeStart.x;
+      const dy = Math.abs(t.clientY - swipeStart.y);
+      swipeStart = null;
+      if (dx < -70 && dy < 40) onSwipe();
+    },
+  };
 }

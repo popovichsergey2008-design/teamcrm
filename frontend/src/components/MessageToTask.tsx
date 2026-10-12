@@ -7,13 +7,17 @@ import { humanSize } from '../lib/attachments';
 import { TaskTagsField } from './TaskTagsField';
 import { EMPTY_TAGS, tagsReady, TagsValue } from '../lib/tags';
 import { OptionSelect } from './ui/option-select';
+import { confirmAction } from './ui/dialog';
+import { workloadOf, WorkloadInfo, WorkloadWarning } from './WorkloadWarning';
+import { feedback } from '../lib/feedback';
+import './message-to-task.css';
 
 /** Черновик задачи из сообщения — то, что отдаёт сервер и правит человек. */
 export interface MessageTaskDraft {
   draftId: string;
   chatId: string;
   messageId: string;
-  status: 'analyzing' | 'needs_clarification' | 'ready' | 'created' | 'cancelled' | 'failed';
+  status: 'transcribing' | 'analyzing' | 'needs_clarification' | 'ready' | 'created' | 'cancelled' | 'failed';
   title: string;
   description: string;
   projectId: string | null;
@@ -27,7 +31,13 @@ export interface MessageTaskDraft {
   authorId: string | null;
   initiatorId: string;
   taskId: string | null;
+  createdTaskIds?: string[];
+  /** несколько поручений в одном сообщении (ТЗ-26, §9) */
+  split?: { title: string; assigneeId: string | null; deadline: string | null; checklist: string[] }[];
 }
+
+/** Голосовое у черновика: расшифровка и кому фрагмент откроется без доступа к чату. */
+interface VoiceInfo { fileId: string; transcript: string | null; transcriptStatus: string | null; error: 'no_stt' | 'stt' | null; gap: string[] }
 
 /**
  * Задача из сообщения — то, ради чего чат живёт внутри CRM, а не рядом с ней.
@@ -57,9 +67,18 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
 }) {
   useEscape(onClose);
   const [draft, setDraft] = useState<MessageTaskDraft | null>(null);
-  const [ctx, setCtx] = useState<{ projects: { id: string; name: string }[]; users: { id: string; name: string }[] }>({
+  const [ctx, setCtx] = useState<{ projects: { id: string; name: string }[]; users: { id: string; name: string }[]; suggested?: string[] }>({
     projects: [], users: [],
   });
+  const [voice, setVoice] = useState<VoiceInfo | null>(null);
+  const [mode, setMode] = useState<'single' | 'split'>('single');
+  const [wish, setWish] = useState('');
+  const [workload, setWorkload] = useState<WorkloadInfo | null>(null);
+  /** любой ответ сервера по черновику: сам черновик, списки, голосовое */
+  const take = (r: any) => {
+    setDraft(r.draft); if (r.context) setCtx(r.context);
+    if (r.voice !== undefined) setVoice(r.voice);
+  };
   const [already, setAlready] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -75,7 +94,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
     api.startMessageTaskDraft(chatId, messageId)
       .then((r) => {
         if (dead) return;
-        setDraft(r.draft); setCtx(r.context); setAlready(r.already ?? null);
+        take(r); setAlready(r.already ?? null);
       })
       .catch((e) => { if (!dead) setErr(e instanceof ApiError ? e.message : 'Не удалось разобрать сообщение'); })
       .finally(() => { if (!dead) setLoading(false); });
@@ -88,8 +107,15 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
     что ответ уже был.
   */
   useEffect(() => {
-    if (outside && draft && outside.draftId === draft.draftId) setDraft(outside);
-  }, [outside, draft]);
+    if (!outside || !draft || outside.draftId !== draft.draftId) return;
+    // голосовое расшифровалось и разобрано — перечитать вместе с расшифровкой; черновик готов — вспышка ИИ
+    if (draft.status === 'transcribing' && outside.status !== 'transcribing') {
+      void api.messageTaskDraftById(draft.draftId).then(take).catch(() => setDraft(outside));
+      if (outside.status !== 'failed') feedback('ai.started', { el: document.querySelector('.mtt-drawer') });
+      return;
+    }
+    setDraft(outside);
+  }, [outside, draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Правку отправляем сразу: черновик на сервере, и вкладка может закрыться в любой момент. */
   const patch = async (body: Record<string, unknown>) => {
@@ -97,7 +123,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
     setDraft({ ...draft, ...(body as Partial<MessageTaskDraft>) });
     try {
       const r = await api.patchMessageTaskDraft(draft.draftId, body);
-      setDraft(r.draft);
+      take(r);
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Правка не сохранилась'); }
   };
 
@@ -111,10 +137,23 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
     finally { setBusy(false); }
   };
 
-  const create = async () => {
+  const create = async (extra: { confirmWorkload?: boolean } = {}) => {
     if (!draft) return;
     if (!draft.projectId) return setErr('Выберите проект или спросите автора');
     if (!draft.title.trim()) return setErr('Назовите задачу');
+    /*
+      Голосовое из переписки, а задачу увидят те, кто её не видел (ТЗ-26, §17): молча
+      доступ не расширяем — спрашиваем. «Нет» — задача без аудио, расшифровка в описании.
+    */
+    let audio: 'allow' | 'none' | undefined;
+    if (voice?.gap?.length && !extra.confirmWorkload) {
+      const ok = await confirmAction({
+        title: 'Поделиться голосовым?',
+        description: `${voice.gap.slice(0, 4).join(', ')}${voice.gap.length > 4 ? ' и другие' : ''} не видят эту переписку. QEVO может приложить к задаче только это голосовое — не весь чат.`,
+        confirmLabel: 'Разрешить голосовое', cancelLabel: 'Без аудио',
+      });
+      audio = ok ? 'allow' : 'none';
+    }
     setBusy(true); setErr('');
     try {
       const res = await api.confirmMessageTaskDraft(draft.draftId, {
@@ -122,11 +161,40 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
         suggestedTagIds: tags.suggested,
         tagsConfirmed: tags.confirmed,
         confirmedWithoutTags: tags.confirmedWithoutTags,
+        ...(mode === 'split' && (draft.split?.length ?? 0) >= 2 ? { mode: 'split' as const } : {}),
+        ...(extra.confirmWorkload ? { confirmWorkload: true } : {}),
+        ...(audio ? { audio } : {}),
       });
+      setWorkload(null);
+      // один сигнал на всё — и на одну задачу, и на три (§33)
+      feedback('task.created', { count: res.taskIds?.length ?? 1 });
       onCreated(String(res.taskId), res.title, String(res.projectId ?? draft.projectId));
     } catch (e) {
+      // страж нагрузки (§24): не запрет, а вопрос — «Оставить / Перенести / Другого»
+      const w = workloadOf(e);
+      if (w) { setWorkload(w); return; }
       setErr(e instanceof ApiError ? e.message : 'Задача не создалась');
     } finally { setBusy(false); }
+  };
+
+  /** Правка словами (§23): «сделай короче», «разбей на 3», «поставь Сергея», «срок пятница». */
+  const instruct = async () => {
+    if (!draft || !wish.trim()) return;
+    setBusy(true); setErr('');
+    try {
+      const r = await api.instructMessageTaskDraft(draft.draftId, wish.trim());
+      take(r); setWish('');
+      if ((r.draft?.split?.length ?? 0) >= 2) setMode('split');
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось поправить'); }
+    finally { setBusy(false); }
+  };
+
+  const retry = async () => {
+    if (!draft) return;
+    setBusy(true); setErr('');
+    try { take(await api.retryMessageTaskDraft(draft.draftId)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось повторить'); }
+    finally { setBusy(false); }
   };
 
   /*
@@ -151,9 +219,9 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
 
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
-      <aside className="drawer" onClick={(e) => e.stopPropagation()}>
+      <aside className="drawer mtt-drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
-          <h3><Icon name="sparkles" size={16} /> Задача из сообщения</h3>
+          <h3><Icon name="wand" size={16} /> {voice ? 'Задача из голосового' : 'Задача из сообщения'}</h3>
           <button className="drawer-close" onClick={onClose} title="Закрыть" aria-label="Закрыть">
             <Icon name="close" size={20} />
           </button>
@@ -161,7 +229,36 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
 
         {/* Исходная фраза перед глазами: правя формулировку, легко уехать от того,
             о чём вообще была речь. */}
-        <div className="msg-quote-src">«{messageText.slice(0, 300)}»</div>
+        {/* У голосового «исходная фраза» — его расшифровка */}
+        {(voice ? voice.transcript : messageText.trim()) && (
+          <div className="msg-quote-src">«{(voice ? voice.transcript ?? '' : messageText).slice(0, 400)}»</div>
+        )}
+
+        {/* Голосовое расшифровывается (§5): прогресс по шагам, а не пустое окно */}
+        {draft?.status === 'transcribing' && (
+          <ol className="mtt-steps" aria-label="Готовность">
+            <li className="now"><Icon name="refresh" size={13} /> Расшифровка голосового</li>
+            <li><Icon name="clock" size={13} /> Формируем задачу</li>
+          </ol>
+        )}
+        {draft?.status === 'failed' && voice?.error === 'no_stt' && (
+          <div className="task-draft-ask">
+            <Icon name="mic" size={14} />
+            <div>
+              <b>Голосовые расшифровывает ИИ компании</b>
+              <div className="dim">Подключите ключ ИИ в настройках — и любое голосовое станет задачей одним нажатием. Пока можно заполнить задачу вручную.</div>
+            </div>
+          </div>
+        )}
+        {draft?.status === 'failed' && voice?.error !== 'no_stt' && (
+          <div className="task-draft-ask">
+            <Icon name="alert" size={14} />
+            <div><b>{voice ? 'Не удалось расшифровать голосовое' : 'Не получилось разобрать сообщение'}</b>
+              <div className="dim">Голос цел — можно повторить или заполнить задачу вручную.</div>
+            </div>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void retry()} disabled={busy}>Повторить</button>
+          </div>
+        )}
 
         {/* По этому сообщению задача уже была: молча заводить вторую нельзя. */}
         {already && (
@@ -219,6 +316,15 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
             </div>
             <div className="field">
               <label>Проект</label>
+              {/* три вероятных — в один клик (§10); в чате проекта он и так выбран */}
+              {!draft.projectId && (ctx.suggested?.length ?? 0) > 0 && (
+                <div className="mtt-chips" aria-label="Вероятные проекты">
+                  {ctx.suggested!.map((id) => {
+                    const p = ctx.projects.find((x) => x.id === id);
+                    return p ? <button key={id} type="button" className="mtt-chip" onClick={() => void patch({ projectId: id })}>{p.name}</button> : null;
+                  })}
+                </div>
+              )}
               <OptionSelect className="input" value={draft.projectId ?? ''} onChange={(e) => void patch({ projectId: e.target.value || null })}>
                 <option value="">— выберите —</option>
                 {ctx.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -307,6 +413,46 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
               </button>
             </div>
 
+            {/* Несколько поручений (§9): разные исполнители и сроки — отдельные задачи */}
+            {(draft.split?.length ?? 0) >= 2 && (
+              <div className="field mtt-split">
+                <label>В сообщении {draft.split!.length} поручения</label>
+                <label className="notify-row"><input type="radio" checked={mode === 'split'} onChange={() => setMode('split')} /> Создать {draft.split!.length} отдельные задачи</label>
+                <label className="notify-row"><input type="radio" checked={mode === 'single'} onChange={() => setMode('single')} /> Создать одну задачу с чек-листом</label>
+                {mode === 'split' && (
+                  <ol className="mtt-split-list">
+                    {draft.split!.map((x, i) => (
+                      <li key={i}>{x.title}{x.assigneeId ? <span className="dim"> · {ctx.users.find((u) => u.id === String(x.assigneeId))?.name ?? ''}</span> : null}{x.deadline ? <span className="dim"> · до {x.deadline}</span> : null}</li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            )}
+
+            {/* Правка словами (§23) — QEVO меняет черновик, задачу без «Создать» не заводит */}
+            <div className="field mtt-ask">
+              <label>Попросить QEVO</label>
+              <div className="mtt-ask-row">
+                <input
+                  className="input" value={wish} onChange={(e) => setWish(e.target.value)} maxLength={500}
+                  placeholder="«срок пятница», «поставь Глеба», «разбей на 2», «короче»"
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void instruct(); } }}
+                  aria-label="Что поменять в черновике"
+                />
+                <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void instruct()} disabled={busy || !wish.trim()}>Поправить</button>
+              </div>
+            </div>
+
+            {workload && (
+              <WorkloadWarning
+                info={workload}
+                busy={busy}
+                onMove={workload.alternativeDate ? () => { void patch({ deadline: workload.alternativeDate }).then(() => create()); } : undefined}
+                onReassign={(id) => { void patch({ assigneeId: id }).then(() => create()); }}
+                onKeep={() => void create({ confirmWorkload: true })}
+              />
+            )}
+
             <TaskTagsField
               task={{ title: draft.title, description: draft.description, checklist: draft.checklist }}
               value={tags}
@@ -322,7 +468,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                 disabled={busy || !tagsReady(tagSettings, tags)}
                 title={tagsReady(tagSettings, tags) ? undefined : 'Подтвердите теги задачи'}
               >
-                {busy ? 'Создаю…' : 'Создать задачу'}
+                {busy ? 'Создаю…' : mode === 'split' && (draft.split?.length ?? 0) >= 2 ? `Создать ${draft.split!.length} задачи` : 'Создать задачу'}
               </button>
               {/* Отказ — явным действием: закрытое окно черновик не отменяет, он может ждать ответа. */}
               <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={() => void cancel()} disabled={busy} title="Не создавать задачу по этому сообщению">
