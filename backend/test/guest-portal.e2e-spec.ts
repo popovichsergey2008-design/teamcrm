@@ -42,9 +42,11 @@ describe('ТЗ-28 — гостевой портал (e2e)', () => {
     const owner = (await http$.post('/api/auth/register')
       .send({ tenantName: 'Агентство', email: `gp_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' })
       .expect(201)).body.data;
-    const mate = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: `gpm_${uniq()}@t.test`, fullName: 'Глеб', password: 'password123', role: 'member' })
+    const mateEmail = `gpm_${uniq()}@t.test`;
+    const mateUser = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' })
       .expect(201)).body.data;
+    const mate = { ...(await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data, id: mateUser.id };
 
     // 1. Бренд: светлый цвет затемняется до читаемого; согласие на запись обязательно
     const brand = (await http$.patch('/api/settings/guest-brand').set(H(owner.accessToken))
