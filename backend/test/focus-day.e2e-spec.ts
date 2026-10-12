@@ -60,7 +60,9 @@ describe('ТЗ-16 — Фокус дня: правило трёх (e2e)', () => {
     const appr = (await http.post('/api/approvals').set(H(mem.accessToken))
       .send({ approverId: String(me), subject: 'Бюджет на рекламу' }).expect(201)).body.data;
 
-    // 0. Флаг организации выключен — ничего не собирается; включает владелец, не сотрудник
+    // 0. С ТЗ-27 новый фокус включён всем по умолчанию; владелец может выключить —
+    // тогда ничего не собирается; включает и выключает владелец, не сотрудник
+    await http.patch('/api/focus/today/settings').set(H(tok)).send({ enabled: false }).expect(200);
     expect((await http.get('/api/focus/today').set(H(tok)).expect(200)).body.data).toEqual({ enabled: false });
     await http.patch('/api/focus/today/settings').set(H(mem.accessToken)).send({ enabled: true }).expect(403);
     await http.patch('/api/focus/today/settings').set(H(tok)).send({ enabled: true }).expect(200);

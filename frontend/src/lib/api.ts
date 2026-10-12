@@ -216,6 +216,40 @@ export interface FocusItem {
   parts: { deadline: number; unlock: number; meeting: number; base: number; penalty: number };
   pinned: boolean;
   source: string;
+  /** «Взять в работу» (ТЗ-27): когда человек взялся — без таймера */
+  startedAt?: string | null;
+}
+
+/** Персональный брифинг «Фокуса дня» (ТЗ-27): один снимок на день — текст, голос, источники. */
+export type FocusBriefSource = { id: string; kind: string; label: string; link: string | null };
+export type FocusBriefAudioStatus = 'none' | 'pending' | 'ready' | 'failed' | 'off';
+export type FocusBrief =
+  | { enabled: false }
+  | { enabled: true; status: 'generating' }
+  | {
+    enabled: true;
+    status: 'ready';
+    id: string;
+    date: string;
+    text: string;
+    /** предложения со ссылками на источники — у текста правил; у отшлифованного моделью — null */
+    sentences: { text: string; refs: string[] }[] | null;
+    sources: FocusBriefSource[];
+    actions: { kind: string; label: string; link: string }[];
+    polished: boolean;
+    generatedAt: string | null;
+    canRefresh: boolean;
+    feedback: 1 | -1 | null;
+    audio: { status: FocusBriefAudioStatus; durationSec: number | null; label: string; canRetry: boolean };
+  };
+export type FocusBriefEvent = 'viewed' | 'audio_played' | 'audio_completed' | 'source_opened' | 'refreshed'
+  | 'take_work' | 'deep_work_from_brief' | 'team_pulse_opened' | 'zen_enabled' | 'action_opened';
+export interface FocusBriefSettings {
+  enabled: boolean; generateAt: string; audio: boolean; voice: string; length: 'short' | 'normal';
+  teamSignals: boolean | null; clients: boolean | null;
+  effective: { teamSignals: boolean; clients: boolean };
+  boss: boolean;
+  voices: string[];
 }
 
 export interface FocusCandidate {
@@ -242,6 +276,8 @@ export type FocusToday =
       scoreVersion: string; acceptedAt: string | null; completedAt: string | null; closedAt: string | null;
       feedback: 1 | -1 | null;
     };
+    /** брифинг (ТЗ-27); null — не подключён или упал: экран живёт без него */
+    brief?: FocusBrief | null;
     top: FocusItem[];
     backlogCount: number;
     waitingDecision: number;
@@ -2659,6 +2695,21 @@ export const api = {
     closeDay: number | null; huddleInFocus: number; thumbsUp: number; thumbsDown: number;
   }>('GET', '/focus/today/settings'),
   focusSettings: (enabled: boolean) => request<{ enabled: boolean }>('PATCH', '/focus/today/settings', { enabled }),
+  // брифинг «Фокуса дня» (ТЗ-27)
+  focusBrief: () => request<FocusBrief>('GET', '/focus/today/brief'),
+  focusBriefGenerate: () => request<FocusBrief>('POST', '/focus/today/brief/generate'),
+  focusBriefRefresh: () => request<FocusBrief>('POST', '/focus/today/brief/refresh'),
+  focusBriefAudio: () => request<{ status: FocusBriefAudioStatus; durationSec: number | null; playbackUrl: string | null; expiresAt: string | null; canRetry?: boolean }>('GET', '/focus/today/brief/audio'),
+  focusBriefAudioRegenerate: () => request<{ status: 'pending' }>('POST', '/focus/today/brief/audio/regenerate'),
+  focusBriefFeedback: (value: 1 | -1, reason?: string) => request<{ saved: true }>('POST', '/focus/today/brief/feedback', { value, ...(reason ? { reason } : {}) }),
+  focusBriefEvent: (event: FocusBriefEvent) => request<{ saved: true }>('POST', '/focus/today/brief/event', { event }),
+  focusBriefSettings: () => request<FocusBriefSettings>('GET', '/focus/today/brief/settings'),
+  focusBriefSaveSettings: (patch: Partial<Omit<FocusBriefSettings, 'effective' | 'boss' | 'voices'>>) => request<FocusBriefSettings>('PATCH', '/focus/today/brief/settings', patch),
+  focusBriefMetrics: () => request<{
+    days: number; briefs: number; viewRate: number | null; audioPlayRate: number | null; briefToAction: number | null;
+    briefToDeep: number | null; polishedShare: number | null; thumbsUp: number; thumbsDown: number;
+  }>('GET', '/focus/today/brief/metrics'),
+  focusTakeToWork: (itemId: string) => request<FocusToday & { started?: { itemId: string; taskId: string; column: string | null } }>('POST', `/focus/today/items/${itemId}/start`),
   mobileFocus: () => request<{ mine: any[]; delegated: any[]; review: any[]; approvals: Approval[] }>('GET', '/mobile/focus'),
   myTasks: (scope: 'mine' | 'delegated' | 'review', closed = false) =>
     request<any[]>('GET', `/tasks/my?scope=${scope}${closed ? '&closed=1' : ''}`),

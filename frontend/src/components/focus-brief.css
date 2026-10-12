@@ -1,0 +1,60 @@
+/*
+  Персональный брифинг «Фокуса дня» (ТЗ-27). Грузится вместе с карточкой отдельным
+  куском — стартовый CSS у предела бюджета.
+*/
+.fb-card {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 18px; border-radius: 14px;
+  border: 1px solid var(--accent-line);
+  background: linear-gradient(135deg, var(--accent-soft), var(--bg-elev) 70%);
+}
+.fb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fb-title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--accent);
+}
+.fb-tools { display: inline-flex; gap: 2px; }
+.fb-text { margin: 0; font-size: 15px; line-height: 1.55; }
+.fb-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.fb-row { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
+.fb-row .aclip { flex: 1 1 260px; min-width: 0; }
+.fb-rate { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.fb-note { font-size: 13px; }
+.fb-reasons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.fb-sources {
+  list-style: none; margin: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px;
+  border-radius: 10px; background: var(--bg-elev-2); font-size: 13px;
+}
+.fb-sources li::before { content: '·'; margin-right: 6px; color: var(--text-dim); }
+.fb-settings {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
+  border-radius: 10px; background: var(--bg-elev-2); font-size: 13px;
+}
+.fb-settings label { display: flex; align-items: center; gap: 8px; }
+.fb-settings select, .fb-settings input[type='time'] {
+  font: inherit; color: var(--text); background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 3px 6px;
+}
+.fb-settings-hint { font-size: 12px; }
+
+/* ход сборки (п. 15) */
+.fb-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-dim); }
+.fb-steps li { display: flex; align-items: center; gap: 6px; }
+.fb-step-done { color: var(--text); }
+.fb-step-done .icon { color: var(--ok); }
+.fb-step-now { animation: fb-pulse 1.2s ease-in-out infinite; }
+
+/* мягкий акцент при первом появлении, без постоянного свечения (п. 71) */
+.fb-accent { animation: fb-in .42s ease-out 1; }
+@keyframes fb-in {
+  from { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); transform: translateY(4px); opacity: .6; }
+  to { box-shadow: 0 0 0 0 transparent; transform: none; opacity: 1; }
+}
+@keyframes fb-pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) {
+  .fb-accent, .fb-step-now { animation: none; }
+}
+
+@media (max-width: 640px) {
+  .fb-card { padding: 12px 14px; }
+  .fb-text { font-size: 14.5px; }
+}

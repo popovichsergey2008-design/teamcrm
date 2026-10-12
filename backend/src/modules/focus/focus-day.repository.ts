@@ -38,6 +38,7 @@ export interface ItemRow {
   pinned_by_user: boolean;
   status: string;
   change_reason: string | null;
+  started_at?: Date | null;
 }
 
 /** Живые данные элемента плана: что сейчас с задачей / согласованием. */
@@ -358,6 +359,13 @@ export class FocusDayRepository {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16)`,
       [tenantId, planId, i.type, i.taskId, i.approvalId, i.rank, i.title.slice(0, 255),
         i.score, i.deadline, i.unlock, i.meeting, i.base, i.penalty, JSON.stringify(i.reasons), i.source, i.pinned],
+    );
+  }
+
+  async markStarted(planId: string, itemId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE focus_day_items SET started_at = COALESCE(started_at, now()), updated_at = now() WHERE plan_id = $1 AND id = $2`,
+      [planId, itemId],
     );
   }
 

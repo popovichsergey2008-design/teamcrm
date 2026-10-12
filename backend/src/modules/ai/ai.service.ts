@@ -94,10 +94,10 @@ export class AiService {
    * Голос (ТЗ-21, этап 7): текст → MP3. null — синтеза нет (нет ключа OpenAI у компании):
    * тогда бриф остаётся текстом. Расход — по знакам (tts-1: $15 за миллион).
    */
-  async speak(tenantId: string, text: string, feature = 'morning_voice'): Promise<Buffer | null> {
+  async speak(tenantId: string, text: string, feature = 'morning_voice', voice?: string): Promise<Buffer | null> {
     const { provider } = await this.providerFor(tenantId);
     if (!provider.speak) return null;
-    const audio = await this.gateway.run(this.priorityOf(feature), () => provider.speak!(text));
+    const audio = await this.gateway.run(this.priorityOf(feature), () => provider.speak!(text, voice));
     if (audio) await this.recordUsage(tenantId, feature, 'tts-1', 0, 0, false, Number(((text.length / 1_000_000) * 15).toFixed(4)));
     return audio;
   }

@@ -32,6 +32,8 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'smart_reply', title: 'Готовый ответ в чате', where: 'Чаты — серый текст в поле ввода', group: 'service' },
   { key: 'client_followup', title: 'Письмо клиенту после встречи', where: 'Секретарь → «После встреч»', group: 'meetings' },
   { key: 'morning_voice', title: 'Утренний бриф голосом', where: 'Секретарь → «Сегодня утром», Telegram', group: 'service' },
+  { key: 'focus_brief', title: 'Брифинг «Фокуса дня»: формулировка', where: 'Фокус дня → персональный брифинг', group: 'service' },
+  { key: 'focus_brief_voice', title: 'Брифинг «Фокуса дня» голосом', where: 'Фокус дня → «Прослушать»', group: 'service' },
 
   { key: 'meeting_transcribe', title: 'Расшифровка записи встречи', where: 'Встречи → загрузка записи', group: 'meetings' },
   { key: 'meeting_analyze', title: 'Разбор встречи: сводка и задачи', where: 'Встречи → после расшифровки', group: 'meetings' },

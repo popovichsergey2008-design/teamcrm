@@ -22,6 +22,12 @@ import { useAuth } from '../state/auth';
 import { feedback } from '../lib/feedback';
 // приглашение на демо ИИ-созвона (ТЗ-24) — отдельным куском, не в стартовой сборке
 const AiDemoInvite = lazy(() => import('../components/AiDemoInvite'));
+// персональный брифинг (ТЗ-27) — своим куском: экран и тройка не ждут его загрузки
+const FocusBriefCard = lazy(() => import('../components/FocusBriefCard'));
+
+const ZEN_KEY = 'teamcrm.focusZen';
+const readZen = () => { try { return localStorage.getItem(ZEN_KEY) === '1'; } catch { return false; } };
+const track = (e: Parameters<typeof api.focusBriefEvent>[0]) => { void api.focusBriefEvent(e).catch(() => undefined); };
 
 type Day = Extract<FocusToday, { enabled: true }>;
 
@@ -83,6 +89,16 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   const { session } = useFocusSession();
   const [closing, setClosing] = useState(false);
   const [huddleOpen, setHuddleOpen] = useState<string | null>(null);
+  // Дзен-режим (ТЗ-27, п. 38–39): только тройка, начатое и таймер; таймер сам не запускает
+  const [zen, setZen] = useState(readZen);
+  const toggleZen = () => {
+    const next = !zen;
+    setZen(next);
+    try { localStorage.setItem(ZEN_KEY, next ? '1' : '0'); } catch { /* только на этом устройстве */ }
+    if (next) track('zen_enabled');
+  };
+  const boss = user?.role === 'owner' || user?.role === 'manager';
+  const briefOn = !!day.brief && day.brief.enabled;
 
   const apply = (next: FocusToday) => {
     if (next.enabled) setDay(next);
@@ -188,9 +204,18 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     setMeetingSoon(null);
     await run(async () => {
       setFocusSession(await api.focusStart({ taskId: item.taskId, itemId: item.id, minutes }));
+      if (briefOn) track('deep_work_from_brief');
       return api.focusToday();
     });
   };
+
+  /** «Взять в работу» (ТЗ-27, п. 24): задача — в «В работе», статус — «работаю», без таймера. */
+  const takeToWork = (item: FocusItem) => run(async () => {
+    const next = await api.focusTakeToWork(item.id);
+    window.dispatchEvent(new Event('teamcrm:tasks-changed'));
+    feedback('focus.started');
+    return next;
+  });
 
   const toggleWhy = (id: string) => setWhy((s) => {
     const n = new Set(s);
@@ -280,9 +305,17 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
               )}
               {item.kind === 'task' && !done && item.taskId && !session && (
                 <Button
-                  variant={isMission ? 'primary' : 'outline'} size="sm" disabled={busy}
+                  variant={isMission ? 'primary' : 'ghost'} size="sm" disabled={busy}
                   onClick={() => void startFocus(item)}
                 ><Icon name="target" size={14} /> {isMission ? 'Войти в глубокий фокус · 50 мин' : 'Фокус · 50 мин'}</Button>
+              )}
+              {item.kind === 'task' && !done && item.taskId && !item.startedAt && (
+                <Button variant="outline" size="sm" disabled={busy} title="Задача — в «В работе», статус — «работаю над задачей». Таймер не запускается." onClick={() => void takeToWork(item)}>
+                  <Icon name="play" size={13} /> Взять в работу
+                </Button>
+              )}
+              {item.kind === 'task' && !done && item.startedAt && (
+                <span className="fd-started"><Icon name="play" size={12} /> В работе</span>
               )}
               {item.kind === 'task' && !done && isMission && item.taskId && (
                 <Button variant="ghost" size="sm" onClick={() => open(item)}><Icon name="board" size={14} /> Открыть задачу</Button>
@@ -392,27 +425,36 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   const critical = day.criticalCandidate;
 
   return (
-    <div className="focus-page fd-page">
+    <div className={`focus-page fd-page${zen ? ' fd-zen' : ''}`}>
       <header className="fd-head">
         <div>
           <div className="focus-hello">{greeting()}, {user?.fullName?.split(' ')[0] ?? ''}!</div>
           <div className="dim">{DATE_FMT.format(new Date())}</div>
         </div>
-        {top.length > 0 && (
-          <div className="fd-score" aria-label={`Сделано ${doneCount} из ${top.length} главных`}>
-            <b>{doneCount} / {top.length}</b> <span className="dim">главных</span>
-          </div>
-        )}
+        <div className="fd-head-side">
+          {top.length > 0 && (
+            <div className="fd-score" aria-label={`Сделано ${doneCount} из ${top.length} главных`}>
+              <b>{doneCount} / {top.length}</b> <span className="dim">главных</span>
+            </div>
+          )}
+          <Button variant={zen ? 'secondary' : 'outline'} size="sm" aria-pressed={zen} title="Только главное: тройка, начатая работа и таймер" onClick={toggleZen}>
+            <Icon name={zen ? 'eye' : 'eye-off'} size={14} /> {zen ? 'Выйти из Дзена' : 'Дзен-режим'}
+          </Button>
+        </div>
       </header>
 
-      {/* Свой статус — там, где начинают день (#1535): раньше он жил только в меню профиля. */}
-      <MyStatusBar userId={user?.id} />
+      {/* Персональный брифинг (ТЗ-27): прочитал → понял → тройка сразу ниже. */}
+      {day.brief && day.brief.enabled && (
+        <div className="fd-secondary">
+          <Suspense fallback={null}><FocusBriefCard initial={day.brief} /></Suspense>
+        </div>
+      )}
 
       {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
 
       {/* Предложение системы — пока человек его не принял (п. 34). */}
       {proposed && top.length > 0 && (
-        <section className="fd-banner" aria-label="Предложение QEVO AI">
+        <section className="fd-banner fd-secondary" aria-label="Предложение QEVO AI">
           <span className="fd-banner-text"><Icon name="sparkles" size={16} /> QEVO AI подготовил ваш фокус дня</span>
           <span className="fd-banner-acts">
             <Button variant="primary" size="sm" disabled={busy} onClick={() => void run(api.focusAccept)}><Icon name="check" size={14} /> Принять</Button>
@@ -422,7 +464,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         </section>
       )}
       {!proposed && top.length > 0 && (
-        <div className="fd-accepted">
+        <div className="fd-accepted fd-secondary">
           <span className="dim"><Icon name="check" size={13} /> План на сегодня принят</span>
           <Button variant="ghost" size="sm" aria-pressed={editing} onClick={() => setEditing((v) => !v)}><Icon name="edit" size={13} /> {editing ? 'Готово' : 'Настроить'}</Button>
           <Button
@@ -445,7 +487,15 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         <section className="fd-critical" role="status">
           <div className="fd-critical-line">
             <Icon name="zap" size={16} />
-            <span>Появилась новая критичная задача. Она может заменить #{critical.replaceRank}.</span>
+            <span>
+              {briefOn ? <><b>Появилось важное изменение.</b> «{critical.title}» стала критичной — может заменить #{critical.replaceRank}.</>
+                : <>Появилась новая критичная задача. Она может заменить #{critical.replaceRank}.</>}
+            </span>
+            {briefOn && (
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => void run(async () => { await api.focusBriefRefresh(); return api.focusToday(); })}>
+                <Icon name="refresh" size={13} /> Обновить брифинг
+              </Button>
+            )}
             <Button variant="outline" size="sm" aria-expanded={criticalOpen} onClick={() => setCriticalOpen((v) => !v)}>Посмотреть</Button>
           </div>
           {criticalOpen && (
@@ -456,7 +506,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
                 <Button variant="primary" size="sm" disabled={busy} onClick={() => setAsking({ key: critical.key, rank: critical.replaceRank, mode: 'replace' })}>
                   Поставить #{critical.replaceRank}
                 </Button>
-                <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run(() => api.focusDismiss(critical.key))}>Не сейчас</Button>
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run(() => api.focusDismiss(critical.key))}>{briefOn ? 'Оставить текущий план' : 'Не сейчас'}</Button>
               </span>
               {asking && 'key' in asking && asking.key === critical.key && reasonPicker((r) => {
                 setAsking(null); setCriticalOpen(false);
@@ -467,11 +517,6 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         </section>
       )}
 
-      {day.huddle.map(huddleCard)}
-
-      <Suspense fallback={null}><AiDemoInvite /></Suspense>
-      <OnboardingCard />
-      <MeetingAgenda onJoin={onJoinCall} />
 
       {top.length === 0 ? (
         <EmptyState
@@ -499,20 +544,28 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         </section>
       )}
 
+      {/* Всё остальное — ниже тройки (ТЗ-27, п. 3): в Дзене прячется. */}
+      <div className="fd-secondary fd-stack">
+        {day.huddle.map(huddleCard)}
+        <Suspense fallback={null}><AiDemoInvite /></Suspense>
+        <OnboardingCard />
+        <MeetingAgenda onJoin={onJoinCall} />
+      </div>
+
       {/* Решение заказчика: вместо колонки «Требует моего решения» — одна строка. */}
       {day.waitingDecision > 0 && (
-        <button type="button" className="fd-row" aria-expanded={backlogOpen === 'decisions'} onClick={() => setBacklogOpen((v) => (v === 'decisions' ? null : 'decisions'))}>
+        <button type="button" className="fd-row fd-secondary" aria-expanded={backlogOpen === 'decisions'} onClick={() => setBacklogOpen((v) => (v === 'decisions' ? null : 'decisions'))}>
           <Icon name="handshake" size={15} /> Ждут вашего решения: <b>{day.waitingDecision}</b>
           <Icon name={backlogOpen === 'decisions' ? 'chevron-up' : 'chevron-down'} size={14} />
         </button>
       )}
-      <button type="button" className="fd-row" aria-expanded={backlogOpen === 'all'} onClick={() => setBacklogOpen((v) => (v === 'all' ? null : 'all'))}>
+      <button type="button" className="fd-row fd-secondary" aria-expanded={backlogOpen === 'all'} onClick={() => setBacklogOpen((v) => (v === 'all' ? null : 'all'))}>
         <Icon name="list" size={15} /> Остальные задачи и действия ({day.backlogCount})
         <Icon name={backlogOpen === 'all' ? 'chevron-up' : 'chevron-down'} size={14} />
       </button>
 
       {backlogOpen && (
-        <section className="fd-backlog" aria-label="Остальные действия">
+        <section className="fd-backlog fd-secondary" aria-label="Остальные действия">
           {backlog === null && <SkeletonList rows={4} />}
           {backlog !== null && listed.length === 0 && <div className="dim fd-empty">Здесь пусто.</div>}
           {listed.map((c) => (
@@ -547,18 +600,21 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         </section>
       )}
 
-      {/* Кто чем занят — без «ты свободен?» (п. 61). */}
-      <TeamNow meId={user?.id} />
+      {/* Кто чем занят — без «ты свободен?» (п. 61); свой статус — рядом (#1535). */}
+      <div className="fd-secondary fd-stack">
+        <MyStatusBar userId={user?.id} />
+        <TeamNow meId={user?.id} onOpenPulse={boss ? () => { track('team_pulse_opened'); navigate({ section: 'radar' }); } : undefined} />
+      </div>
 
       {/* «Завершить день» — по нажатию, поверх работы само не открывается (п. 80). */}
       {day.closeDay.workdayClosedUntil ? (
-        <section className="fd-closed" role="status">
+        <section className="fd-closed fd-secondary" role="status">
           <Icon name="moon" size={16} />
           <span>День завершён. Тихо до {new Date(day.closeDay.workdayClosedUntil).toLocaleString('ru-RU', { weekday: 'short', hour: '2-digit', minute: '2-digit' })} — отдыхайте.</span>
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run(api.focusReopen)}>Я ещё поработаю</Button>
         </section>
       ) : day.closeDay.available && (
-        <section className="fd-closeday">
+        <section className="fd-closeday fd-secondary">
           <Button variant="outline" onClick={() => setClosing(true)}><Icon name="moon" size={15} /> Завершить день и подвести итоги</Button>
         </section>
       )}
@@ -569,7 +625,9 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
       />
 
       {/* Напоминания секретаря — ниже тройки: главное на экране — план, а не россыпь. */}
-      <AssistantPings today={day.plan.date} onOpenTask={onOpenTask} onPlanned={() => void reload()} />
+      <div className="fd-secondary">
+        <AssistantPings today={day.plan.date} onOpenTask={onOpenTask} onPlanned={() => void reload()} />
+      </div>
     </div>
   );
 }

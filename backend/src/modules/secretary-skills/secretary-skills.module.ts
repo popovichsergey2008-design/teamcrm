@@ -1,3 +1,4 @@
+import { FocusBriefModule } from '../focus-brief/focus-brief.module';
 import { Module } from '@nestjs/common';
 import { AiModule } from '../ai/ai.module';
 import { ChatsModule } from '../chats/chats.module';
@@ -15,7 +16,7 @@ import { MorningVoiceService } from './morning-voice.service';
  * после встречи и утренний бриф голосом. Ящик и планировщик — из глобального модуля.
  */
 @Module({
-  imports: [AiModule, ChatsModule, ClientsModule, FilesModule, MailboxModule, MeetingsModule, NotificationsModule, PromptsModule],
+  imports: [FocusBriefModule, AiModule, ChatsModule, ClientsModule, FilesModule, MailboxModule, MeetingsModule, NotificationsModule, PromptsModule],
   providers: [ClientFollowupService, MorningVoiceService],
   exports: [ClientFollowupService, MorningVoiceService],
 })

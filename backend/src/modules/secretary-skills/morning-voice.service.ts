@@ -10,6 +10,7 @@ import { ProactiveRepository } from '../proactive/proactive.repository';
 import { ProactiveScheduler } from '../proactive/proactive.scheduler';
 import { WorkloadGuardService } from '../workload/workload.service';
 import { BriefFacts, briefLines, speakable } from './skills-rules';
+import { FocusBriefService } from '../focus-brief/focus-brief.service';
 
 /**
  * Утренний бриф руководителя (ТЗ-21, этап 7). Приходит следом за обычной утренней
@@ -31,6 +32,7 @@ export class MorningVoiceService implements OnModuleInit {
     private readonly settings: ProactiveRepository,
     private readonly scheduler: ProactiveScheduler,
     private readonly workload: WorkloadGuardService,
+    private readonly focusBrief: FocusBriefService,
   ) {}
 
   onModuleInit(): void {
@@ -67,11 +69,19 @@ export class MorningVoiceService implements OnModuleInit {
     const prefs = await this.settings.prefs(tenantId, userId);
     if (prefs.level === 'off') return null;
 
+    /*
+      Один снимок на всё (ТЗ-27, решение 12.10): если у человека есть брифинг «Фокуса
+      дня», бриф в ящике и в Telegram — тот же текст и тот же голос, синтез один раз.
+      Брифинг выключен или «Фокус дня» у организации выключен — прежние строки ТЗ-21.
+    */
+    const shared = await this.focusBrief.forMorning(tenantId, userId, 'manager', now)
+      .catch((e) => { this.log.warn(`снимок брифинга: ${(e as Error).message}`); return null; });
     const facts = await this.facts(tenantId, userId, tz, now);
-    const lines = briefLines(facts);
-    let audioFileId: string | null = null;
-    let audio: Buffer | null = null;
-    if (s.morningAudio && prefs.morningAudio && (await this.settings.withinDailyLimit(tenantId, 'morning_voice'))) {
+    const lines = shared ? shared.lines : briefLines(facts);
+    const voiceOn = s.morningAudio && prefs.morningAudio;
+    let audioFileId: string | null = shared && voiceOn ? shared.audioFileId : null;
+    let audio: Buffer | null = shared && voiceOn ? shared.audio : null;
+    if (!shared && s.morningAudio && prefs.morningAudio && (await this.settings.withinDailyLimit(tenantId, 'morning_voice'))) {
       audio = await this.ai.speak(tenantId, speakable(name, lines)).catch((e) => { this.log.warn(`голос: ${(e as Error).message}`); return null; });
       if (audio) {
         const f = await this.files.upload({

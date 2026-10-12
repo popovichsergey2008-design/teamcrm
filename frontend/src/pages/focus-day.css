@@ -177,3 +177,15 @@
 @media (prefers-reduced-motion: no-preference) {
   .fd-card { transition: border-color .15s, background-color .15s; }
 }
+
+/* ТЗ-27 */
+/* Дзен-режим (п. 38): только тройка, начатая работа и таймер */
+.fd-zen .fd-secondary { display: none !important; }
+.fd-zen-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+
+/* «Взять в работу» */
+.fd-started { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--accent); font-weight: 600; }
+.fd-head-side { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.fd-stack { display: flex; flex-direction: column; gap: var(--sp-3); }
+.fd-stack:empty { display: none; }
+.tn-pulse { margin-left: auto; font-weight: 500; }

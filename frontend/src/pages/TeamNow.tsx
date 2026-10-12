@@ -92,7 +92,7 @@ const Row = memo(function Row({ p, me, open, onToggle }: { p: TeamPresence; me: 
  *
  * Событие `presence.updated` меняет одну строку, а не весь экран (п. 116).
  */
-export function TeamNow({ meId }: { meId: string | undefined }) {
+export function TeamNow({ meId, onOpenPulse }: { meId: string | undefined; onOpenPulse?: () => void }) {
   const [people, setPeople] = useState<TeamPresence[] | null>(null);
   const [denied, setDenied] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -124,7 +124,11 @@ export function TeamNow({ meId }: { meId: string | undefined }) {
 
   return (
     <section className="tn" aria-label="Команда сейчас">
-      <h3 className="tn-head"><Icon name="users" size={15} /> Команда сейчас</h3>
+      <h3 className="tn-head">
+        <Icon name="users" size={15} /> Команда сейчас
+        {/* руководителю — переход в полный «Пульс команды» (ТЗ-27, п. 37) */}
+        {onOpenPulse && <Button variant="ghost" size="sm" className="tn-pulse" onClick={onOpenPulse}>Открыть Пульс команды</Button>}
+      </h3>
       {GROUPS.map((g) => {
         const list = others.filter((p) => g.status.includes(p.status));
         if (!list.length) return null;

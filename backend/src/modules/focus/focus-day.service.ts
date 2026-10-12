@@ -9,6 +9,15 @@ import { PresenceService } from '../presence/presence.service';
 
 export type Viewer = { tenantId: string; userId: string; role: string };
 
+/** Пункт тройки так, как его видит экран (и брифинг, ТЗ-27). */
+export type FocusTopItem = ReturnType<typeof present>;
+
+/**
+ * Брифинг (ТЗ-27) подключается к экрану снаружи, из своего модуля: ему нужны задачи,
+ * ИИ и файлы, а «Фокус дня» нужен им самим — прямой импорт замкнул бы модули в кольцо.
+ */
+export type BriefHook = (v: Viewer, ctx: { planDate: string; tz: string; top: FocusTopItem[]; critical: { key: string; title: string } | null }) => Promise<unknown>;
+
 /** Статусы, после которых план считается принятым: молча его не меняем (п. 37, 75). */
 const ACCEPTED = ['accepted', 'modified', 'in_progress', 'completed', 'closed'];
 
@@ -32,6 +41,9 @@ export class FocusDayService {
     private readonly realtime: RealtimeService,
     private readonly presence: PresenceService,
   ) {}
+
+  private briefHook: BriefHook | null = null;
+  attachBrief(fn: BriefHook) { this.briefHook = fn; }
 
   private async context(v: Viewer, now: Date) {
     const tz = await this.repo.timezone(v.tenantId, v.userId);
@@ -64,11 +76,16 @@ export class FocusDayService {
   }
 
   /** Главный экран одним запросом (п. 114–115). */
-  async today(v: Viewer, now = new Date()) {
+  async today(v: Viewer, now = new Date(), opts: { brief?: boolean } = {}) {
     const enabled = await this.repo.enabled(v.tenantId);
     // Новый фокус выключен — ничего не собираем: старый экран живёт как жил, а
     // планы не копятся у тех, кто их не видит.
     if (!enabled) return { enabled: false as const };
+    const { plan, scored } = await this.ensurePlan(v, now);
+    return this.aggregate(v, plan, scored, enabled, now, opts.brief !== false);
+  }
+
+  private async ensurePlan(v: Viewer, now: Date) {
     const { tz, today } = await this.context(v, now);
     let plan = await this.repo.plan(v.tenantId, v.userId, today);
     const scored = await this.scored(v, now, tz, today);
@@ -77,10 +94,48 @@ export class FocusDayService {
       if (created) await this.fill(v, id, scored, []);
       plan = await this.repo.plan(v.tenantId, v.userId, today);
     }
-    return this.aggregate(v, plan!, scored, enabled, now);
+    return { plan: plan!, scored, tz, today };
   }
 
-  private async aggregate(v: Viewer, plan: PlanRow, scored: (Scored & { createdAt: Date })[], enabled: boolean, now: Date) {
+  /**
+   * Тройка для брифинга (ТЗ-27, п. 17): тот же план, что на экране, — собирается здесь
+   * же, если его ещё нет. Брифинг объясняет выбор движка, а не выбирает сам.
+   */
+  async planForBrief(v: Viewer, now = new Date()) {
+    if (!(await this.repo.enabled(v.tenantId))) return null;
+    const { plan, tz, today } = await this.ensurePlan(v, now);
+    const boss = v.role === 'owner' || v.role === 'manager';
+    const [items, live, work] = await Promise.all([
+      this.repo.items(plan.id),
+      this.repo.live(v.tenantId, { userId: v.userId, boss }, plan.id),
+      this.repo.workDay(v.tenantId),
+    ]);
+    const liveBy = new Map(live.map((l) => [String(l.item_id), l]));
+    const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
+    return {
+      tz, today,
+      dayOff: work.weekendDays.includes(dow) || work.holidays.includes(today),
+      top: items.map((i) => present(i, liveBy.get(String(i.id)))),
+    };
+  }
+
+  /**
+   * «Взять в работу» (ТЗ-27, п. 24): пункт плана отмечается начатым. Доску и статус
+   * присутствия двигает модуль брифинга — здесь только сам план. Возвращает задачу.
+   */
+  async markStarted(v: Viewer, itemId: string, now = new Date()) {
+    const plan = await this.requirePlan(v, now);
+    const item = (await this.repo.items(plan.id)).find((i) => String(i.id) === String(itemId));
+    if (!item) throw AppException.notFound('Такого действия в плане нет');
+    if (item.item_type !== 'task' || !item.task_id) throw AppException.validation('Взять в работу можно только задачу');
+    await this.repo.markStarted(plan.id, item.id);
+    if (plan.status === 'proposed') await this.repo.setPlan(plan.id, { status: 'in_progress', accepted: true });
+    else if (plan.status === 'accepted' || plan.status === 'modified') await this.repo.setPlan(plan.id, { status: 'in_progress' });
+    this.changed(v);
+    return { taskId: String(item.task_id), title: item.title_snapshot };
+  }
+
+  private async aggregate(v: Viewer, plan: PlanRow, scored: (Scored & { createdAt: Date })[], enabled: boolean, now: Date, withBrief = true) {
     const boss = v.role === 'owner' || v.role === 'manager';
     const [items, live] = await Promise.all([
       this.repo.items(plan.id),
@@ -109,17 +164,25 @@ export class FocusDayService {
     const [work, workday] = await Promise.all([this.repo.workDay(v.tenantId), this.repo.workdayState(v.tenantId, v.userId)]);
     const doneTop = items.filter((i) => i.status === 'done').length;
 
+    const top = items.map((i) => present(i, liveBy.get(String(i.id))));
+    const critical = this.critical(plan, items, rest);
+    // брифинг не должен ронять экран: тройка важнее текста (п. 31)
+    const brief = this.briefHook && withBrief
+      ? await this.briefHook(v, { planDate: plan.focus_date, tz: plan.timezone, top, critical: critical && { key: critical.key, title: critical.title } }).catch(() => null)
+      : null;
+
     return {
       enabled,
+      brief,
       plan: {
         id: String(plan.id), date: plan.focus_date, timezone: plan.timezone, status: plan.status,
         scoreVersion: plan.score_version, acceptedAt: plan.accepted_at, completedAt: plan.completed_at,
         closedAt: plan.closed_at, feedback: plan.feedback,
       },
-      top: items.map((i) => present(i, liveBy.get(String(i.id)))),
+      top,
       backlogCount: rest.length,
       waitingDecision,
-      criticalCandidate: this.critical(plan, items, rest),
+      criticalCandidate: critical,
       huddle: await this.huddle(v, plan, items, rest),
       // «Завершить день» — после всей тройки или к концу рабочего дня (п. 78–80)
       closeDay: {
@@ -450,7 +513,8 @@ export class FocusDayService {
    */
   async morningLine(tenantId: string, userId: string, now = new Date()): Promise<string | null> {
     if (!(await this.repo.enabled(tenantId))) return null;
-    const day = await this.today({ tenantId, userId, role: 'member' }, now);
+    // без брифинга: роль здесь условная, а снимок брифинга собирается по настоящей
+    const day = await this.today({ tenantId, userId, role: 'member' }, now, { brief: false });
     if (!('top' in day)) return null;
     const top = day.top.filter((i) => i.status === 'active' && i.title);
     if (!top.length) return 'На сегодня критичных задач нет — день свободен для своего.';
@@ -533,6 +597,7 @@ function present(i: ItemRow, l: ItemLive | undefined) {
     },
     pinned: i.pinned_by_user,
     source: i.source,
+    startedAt: i.started_at ?? null,
   };
 }
 

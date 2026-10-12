@@ -22,9 +22,12 @@ export function FocusSettingsPanel({ canManage, onClose }: { canManage: boolean;
   const [s, setS] = useState<Settings | null>(null);
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
+  const [brief, setBrief] = useState<Awaited<ReturnType<typeof api.focusBriefMetrics>> | null>(null);
 
   useEffect(() => {
     api.focusSettingsView().then(setS).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить'));
+    // брифинг (ТЗ-27): читают ли, слушают ли, начинают ли после него работу
+    api.focusBriefMetrics().then(setBrief).catch(() => setBrief(null));
   }, []);
 
   const toggle = async () => {
@@ -53,6 +56,13 @@ export function FocusSettingsPanel({ canManage, onClose }: { canManage: boolean;
     ['Закрывали день', pct(s.closeDay), '«Завершить день и подвести итоги»'],
     ['Со встреч — в фокус', String(s.huddleInFocus), 'поручений со встреч попали в тройку'],
     ['Оценка плана', `👍 ${s.thumbsUp} · 👎 ${s.thumbsDown}`, '«Полезный план?»'],
+    ...(brief && brief.briefs > 0 ? ([
+      ['Брифинг прочитали', pct(brief.viewRate), `из ${brief.briefs} утренних брифингов`],
+      ['Слушали голосом', pct(brief.audioPlayRate), 'от прочитанных'],
+      ['После брифинга — за дело', pct(brief.briefToAction), '«Взять в работу» или глубокий фокус'],
+      ['Сразу в глубокий фокус', pct(brief.briefToDeep), 'от прочитанных'],
+      ['Оценка брифинга', `👍 ${brief.thumbsUp} · 👎 ${brief.thumbsDown}`, '«Полезно» / «Не то главное»'],
+    ] as [string, string, string][]) : []),
   ] : [];
 
   return (

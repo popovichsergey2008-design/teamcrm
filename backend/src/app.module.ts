@@ -65,6 +65,7 @@ import { MeetingsModule } from './modules/meetings/meetings.module';
 import { MediaModule } from './modules/media/media.module';
 import { NavModule } from './modules/nav/nav.module';
 import { FocusModule } from './modules/focus/focus.module';
+import { FocusBriefModule } from './modules/focus-brief/focus-brief.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { MailboxModule } from './modules/mailbox/mailbox.module';
 import { RadarModule } from './modules/radar/radar.module';
@@ -157,6 +158,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     SecretarySkillsModule,
     NavModule,
     FocusModule,
+    FocusBriefModule,
     ClientsModule,
     MailboxModule,
     RadarModule,
