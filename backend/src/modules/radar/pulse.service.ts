@@ -200,7 +200,7 @@ export class PulseService {
       stuck: tasks.filter((t) => isStuck(t, now)).length,
       reviewStuck: tasks.filter((t) => t.inReview && isStuck(t, now)).length,
       noAssignee: tasks.filter((t) => !t.assigneeId).length,
-      people: workload.filter((w) => w.active > 0 || w.pct > 0),
+      people: workload.filter((w) => w.active > 0 || w.pct > 0 || w.submitted > 0),
       last7: stats.last7, prev7: stats.prev7,
     });
     const score = healthScore(components);
@@ -235,7 +235,8 @@ export class PulseService {
       },
       decisions: decisions.slice(0, 30).map((d) => ({ ...d, since: d.since.toISOString(), dueAt: d.dueAt?.toISOString() ?? null })),
       bottlenecks: bottlenecks.slice(0, 30),
-      workload: workload.filter((w) => w.active > 0 || w.meetingHours > 0 || w.reviews > 0),
+      // ТЗ-30: всё сдал на проверку — человек остаётся в списке: «передано на проверку N»
+      workload: workload.filter((w) => w.active > 0 || w.meetingHours > 0 || w.reviews > 0 || w.submitted > 0 || w.returned > 0),
       velocity: { last7: stats.last7, prev7: stats.prev7, delta: vDelta, label: 'закрытых задач за 7 дней' },
       victories: wins,
       projects: projectRisks.slice(0, 5),
