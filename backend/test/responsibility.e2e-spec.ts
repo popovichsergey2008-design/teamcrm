@@ -96,7 +96,8 @@ describe('ТЗ-30 — просрочка по ответственности (e2
     expect(mine.find((t: any) => String(t.id) === String(task.id)).personal_overdue).toBe(false);
 
     // 6. Новый срок руками отменяет окно доработки
-    await http.patch(`/api/tasks/${task.id}`).set(O).send({ deadlineAt: new Date(Date.now() + 3 * 86400_000).toISOString() }).expect(200);
+    // (срок меняют переносом срока; здесь важен сам триггер — меняем напрямую)
+    await db.query(`UPDATE tasks SET deadline_at = now() + interval '3 days' WHERE id = $1`, [task.id]);
     expect((await db.one<{ fix_deadline_at: Date | null }>(`SELECT fix_deadline_at FROM tasks WHERE id = $1`, [task.id]))!.fix_deadline_at).toBeNull();
 
     // 7. Тип колонки руками: «В работе» → «ждём клиента»; назад — по названию
