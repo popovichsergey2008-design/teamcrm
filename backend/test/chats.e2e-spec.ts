@@ -514,4 +514,26 @@ describe('Чаты команды (e2e)', () => {
     await http$.get(`/api/chats/${chat.id}/messages`).set(M).expect(200);
     expect(await unreadOf()).toBe(0);
   });
+  it('удаление группы: автор удаляет, участник — нет, список знает автора', async () => {
+    // жалоба 12.10: «не работает удаление чата, не вижу кнопки управления»
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'DL', email: `dl_${uniq()}@t.test`, password: 'password123', fullName: 'Анна Владелец' })
+      .expect(201)).body.data;
+    const mateEmail = `dl_m_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(H(owner.accessToken))
+      .send({ email: mateEmail, fullName: 'Борис Коллега', password: 'password123', role: 'member' })
+      .expect(201)).body.data;
+    const mateLogin = (await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const M = H(mateLogin.accessToken);
+
+    const g = (await http$.post('/api/chats/groups').set(O).send({ title: 'Удаляемая', userIds: [mate.id] }).expect(201)).body.data;
+    const listed = (await http$.get('/api/chats').set(O).expect(200)).body.data.find((c: any) => String(c.id) === String(g.id));
+    expect(listed.createdBy).toBe(String(owner.user.id));
+
+    await http$.delete(`/api/chats/${g.id}`).set(M).expect((r: any) => expect(r.status).toBeGreaterThanOrEqual(400));
+    await http$.delete(`/api/chats/${g.id}`).set(O).expect(200);
+    const after = (await http$.get('/api/chats').set(M).expect(200)).body.data;
+    expect(after.some((c: any) => String(c.id) === String(g.id))).toBe(false);
+  });
 });

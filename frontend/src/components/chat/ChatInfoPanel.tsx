@@ -90,6 +90,37 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
         <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть" aria-label="Закрыть сведения"><Icon name="close" size={15} /></button>
       </div>
       <div className="chat-info-body">
+        {/* Управление чатом — первым делом, а не в самом низу под десятком разделов */}
+        {(me.canDelete || chat.kind === 'group' || chat.kind === 'channel') && (
+          <div className="ci-manage">
+            {(chat.kind === 'group' || chat.kind === 'channel') && (
+              <button
+                className="ui-btn ui-btn-outline ui-btn-sm"
+                onClick={async () => {
+                  if (!await confirmAction({ title: 'Выйти из чата?', description: 'Переписка останется у остальных участников.', confirmLabel: 'Выйти', danger: true })) return;
+                  try { await api.leaveChat(chatId); onLeft(); onChanged(); } catch { /* ошибка видна всплывашкой запроса */ }
+                }}
+              >
+                <Icon name="logout" size={13} /> Выйти из чата
+              </button>
+            )}
+            {me.canDelete && (
+              <button
+                className="ui-btn ui-btn-outline ui-btn-sm ci-delete"
+                onClick={async () => {
+                  if (!await confirmAction({
+                    title: 'Удалить чат для всех?',
+                    description: 'Переписка, файлы и закреплённое исчезнут у всех участников, а гостевые ссылки перестанут действовать. Вернуть чат будет нельзя.',
+                    confirmLabel: 'Удалить чат', danger: true,
+                  })) return;
+                  try { await api.deleteChat(chatId); onLeft(); onChanged(); } catch { /* ошибка видна всплывашкой запроса */ }
+                }}
+              >
+                <Icon name="trash" size={13} /> Удалить чат
+              </button>
+            )}
+          </div>
+        )}
         <Section title="О чате" open={open.about} onToggle={() => toggle('about')}>
           <AboutBlock chat={chat} manageable={manageable} onChanged={() => { load(); onChanged(); }} />
           <NotifyRow chatId={chatId} value={me.notify} onChanged={() => { load(); onChanged(); }} />
@@ -189,25 +220,6 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
           <HistoryBlock chatId={chatId} />
         </Section>
 
-        {/* Удалить чат целиком — тому, кто его завёл. Раньше создатель не мог ни выйти,
-            ни удалить: чат оставался висеть у всех навсегда. */}
-        {me.canDelete && (
-          <div className="ci-danger-zone">
-            <button
-              className="ci-link ci-leave"
-              onClick={async () => {
-                if (!await confirmAction({
-                  title: 'Удалить чат для всех?',
-                  description: 'Переписка, файлы и закреплённое исчезнут у всех участников, а гостевые ссылки перестанут действовать. Вернуть чат будет нельзя.',
-                  confirmLabel: 'Удалить чат', danger: true,
-                })) return;
-                try { await api.deleteChat(chatId); onLeft(); onChanged(); } catch { /* ошибка видна всплывашкой запроса */ }
-              }}
-            >
-              <Icon name="trash" size={13} /> Удалить чат
-            </button>
-          </div>
-        )}
       </div>
     </aside>
   );

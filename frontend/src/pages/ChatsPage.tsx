@@ -46,6 +46,7 @@ import { pasteBelongsHere, pasteInForeignField } from '../lib/paste-scope';
 import type { User } from '../types';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { confirmAction, promptText } from '../components/ui/dialog';
+import { DropdownMenu, MenuItem, MenuSeparator } from '../components/ui/dropdown-menu';
 import { initialsOf } from '../lib/initials';
 import { useEnterSend } from '../hooks/useEnterSend';
 import { DeepFocusGuard } from '../components/DeepFocusGuard';
@@ -67,6 +68,8 @@ interface Chat {
   description?: string | null;
   /** В разговоре есть человек со стороны: всё сказанное здесь он увидит. */
   isExternal?: boolean;
+  /** Кто завёл чат — удалить его может он или владелец компании. */
+  createdBy?: string | null;
 }
 interface Message {
   id: string; author_id: string | null; author_name: string | null; body: string;
@@ -1864,11 +1867,38 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   }, [users]);
   const groupFor = (userId?: string | null) => (userId ? groupOf.get(String(userId)) : undefined);
   /* Секции списка чатов: строки готовятся здесь, порядок задаёт человек. */
+  /** Удалить чат может тот, кто его завёл, или владелец компании; личные и проектные — нет. */
+  const canDeleteChat = (c: Chat) => ['group', 'channel', 'external'].includes(c.kind)
+    && (String(c.createdBy ?? '') === String(user?.id ?? '') || user?.role === 'owner');
+  const deleteFromList = async (c: Chat) => {
+    if (!(await confirmAction({
+      title: `Удалить чат «${c.title ?? 'Чат'}» для всех?`,
+      description: 'Переписка, файлы и закреплённое исчезнут у всех участников, а гостевые ссылки перестанут действовать. Вернуть чат будет нельзя.',
+      confirmLabel: 'Удалить чат', danger: true,
+    }))) return;
+    try {
+      await api.deleteChat(String(c.id));
+      if (String(c.id) === String(activeId)) { setActiveId(null); setMessages([]); setInfoOpen(false); }
+      reload();
+    } catch { /* ошибка видна всплывашкой запроса */ }
+  };
+  const leaveFromList = async (c: Chat) => {
+    if (!(await confirmAction({ title: `Выйти из чата «${c.title ?? 'Чат'}»?`, description: 'Переписка останется у остальных участников. Вернуть вас сможет администратор чата.', confirmLabel: 'Выйти', danger: true }))) return;
+    try {
+      await api.leaveChat(String(c.id));
+      if (String(c.id) === String(activeId)) { setActiveId(null); setMessages([]); setInfoOpen(false); }
+      reload();
+    } catch { /* ошибка видна всплывашкой запроса */ }
+  };
+
   const rowOf = (c: Chat, withGroup = false) => (
     <ChatRow
       key={c.id} chat={c} active={String(c.id) === String(activeId)}
       group={withGroup && c.kind === 'dm' ? groupFor(c.peerId) : undefined}
       onClick={() => openChat(c.id)} onStar={() => star(c)}
+      onInfo={c.kind === 'self' ? undefined : () => { openChat(c.id); setThread(null); setInfoOpen(true); }}
+      onLeave={c.kind === 'group' || c.kind === 'channel' ? () => void leaveFromList(c) : undefined}
+      onDelete={canDeleteChat(c) ? () => void deleteFromList(c) : undefined}
     />
   );
   const unreadOf = (list: Chat[]) => list.reduce((n, c) => n + (Number(c.unread) || 0), 0);
@@ -3621,10 +3651,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   );
 }
 
-function ChatRow({ chat, active, group, onClick, onStar }: {
+function ChatRow({ chat, active, group, onClick, onStar, onInfo, onLeave, onDelete }: {
   chat: Chat; active: boolean; group?: string; onClick: () => void;
   /** Закрепить сверху. В списке из сорока переписок нужные четыре ищут глазами. */
   onStar?: () => void;
+  /** Действия с чатом прямо из списка: сведения, выйти, удалить (нет — пункта нет). */
+  onInfo?: () => void;
+  onLeave?: () => void;
+  onDelete?: () => void;
 }) {
   const icon = initialsOf(chat.title);
   return (
@@ -3659,6 +3693,25 @@ function ChatRow({ chat, active, group, onClick, onStar }: {
       >
         <Icon name="star" size={13} />
       </button>
+    )}
+    {/* Управление чатом из списка: раньше «Удалить» пряталось в самом низу «Сведений» */}
+    {(onInfo || onLeave || onDelete) && (
+      <DropdownMenu
+        trigger={(
+          <button className="chat-star chat-row-more" title="Действия с чатом" aria-label={`Действия с чатом «${chat.title ?? 'Чат'}»`}>
+            <Icon name="more" size={13} />
+          </button>
+        )}
+      >
+        {onInfo && <MenuItem onSelect={onInfo} icon={<Icon name="info" size={15} />}>Сведения и участники</MenuItem>}
+        {onLeave && <MenuItem onSelect={onLeave} icon={<Icon name="logout" size={15} />}>Выйти из чата</MenuItem>}
+        {onDelete && (
+          <>
+            <MenuSeparator />
+            <MenuItem destructive onSelect={onDelete} icon={<Icon name="trash" size={15} />}>Удалить чат</MenuItem>
+          </>
+        )}
+      </DropdownMenu>
     )}
     </div>
   );

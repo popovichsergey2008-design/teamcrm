@@ -75,6 +75,8 @@ export class ChatsService {
       peerStatus: c.peer_status ?? null,
       avatarUrl: c.peer_avatar ? `/api/files/${c.peer_avatar}` : null,
       projectId: c.project_id,
+      // кто завёл чат: удалить его может он или владелец компании (меню в списке чатов)
+      createdBy: c.created_by ? String(c.created_by) : null,
       unread: Number(c.unread ?? 0),
       // ручная пометка «непрочитанное»: в списке — точка, в счётчике — единица
       markedUnread: c.marked_unread === true,

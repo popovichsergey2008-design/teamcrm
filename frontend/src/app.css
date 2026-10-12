@@ -2463,6 +2463,7 @@
 }
 .chat-star:hover, .chat-star.on { opacity: 1; color: var(--warn); }
 .chat-star:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.chat-row-more:hover { color: var(--text); }
 
 /* Выбор «публичный / закрытый» объяснён словами: половина каналов иначе окажется
    закрытой по недосмотру, и общее знание опять не соберётся. */
@@ -4614,7 +4615,8 @@
 .ci-leave { color: var(--danger); margin-top: 6px; }
 /* ссылке для гостя осталось меньше часа — отсчёт заметнее */
 .ci-link-soon { color: var(--warn, var(--danger)); }
-.ci-danger-zone { padding: 10px 14px 14px; border-top: 1px solid var(--border); }
+.ci-manage { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.ci-delete { color: var(--danger); }
 .ci-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 6px 0 0; font-size: var(--fs-xs); }
 .ci-facts dt { color: var(--text-mut); }
 .ci-facts dd { margin: 0; word-break: break-word; }
