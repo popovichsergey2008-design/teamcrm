@@ -11,6 +11,16 @@ describe('ответственность за срок (ТЗ-30)', () => {
     expect(stageOfColumnName('Ждём клиента')).toBe('waiting_external');
     expect(stageOfColumnName('Готово')).toBe('done');
     expect(stageOfColumnName('В работе')).toBe('work');
+    // по частям слова (жалоба 12.10: свои названия колонок не узнавались)
+    expect(stageOfColumnName('На тесте')).toBe('testing');
+    expect(stageOfColumnName('Тестируется')).toBe('testing');
+    expect(stageOfColumnName('QA / тест')).toBe('testing');
+    expect(stageOfColumnName('Ready for test')).toBe('testing');
+    expect(stageOfColumnName('Проверка заказчиком')).toBe('review');
+    expect(stageOfColumnName('Согласование с клиентом')).toBe('approval');
+    expect(stageOfColumnName('Ждём ответа клиента')).toBe('waiting_external');
+    expect(stageOfColumnName('К выполнению')).toBe('work');
+    expect(stageOfColumnName('Новые')).toBe('work');
   });
 
   it('ждёт приёмки в «Готово» — согласование, закрыта — готово', () => {

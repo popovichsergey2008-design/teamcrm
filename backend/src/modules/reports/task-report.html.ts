@@ -166,7 +166,7 @@ function verdictCell(t: TaskLine): string {
     case 'nodeadline': return '<span class="pill muted">без срока</span>';
     case 'overdue': return `<span class="pill bad">${t.days} дн.</span>`;
     case 'soon': return `<span class="pill warn">${t.days === 0 ? 'сегодня' : `через ${t.days} дн.`}</span>`;
-    case 'review': return '<span class="pill warn">ждёт приёмки</span>';
+    case 'review': return t.days ? `<span class="pill warn">на проверке · срок прошёл ${t.days} дн.</span>` : '<span class="pill warn">на проверке</span>';
   }
 }
 
@@ -214,7 +214,7 @@ export function renderTaskReportHtml(r: TaskReport): string {
       taskTable(r.overdue, r, 'overdue'), 'breakable'));
   }
   if (r.soon.length) blocks.push(section(++n, 'Под риском', 'Открытые задачи, срок которых наступает в ближайшие 3 дня', taskTable(r.soon, r, 'soon'), 'breakable'));
-  if (r.review.length) blocks.push(section(++n, 'Ждут приёмки', 'Исполнитель сдал работу, постановщик ещё не принял', taskTable(r.review, r, 'review'), 'breakable'));
+  if (r.review.length) blocks.push(section(++n, 'Ждут проверки', 'Исполнитель сдал работу — задача на тестировании, проверке, согласовании или у клиента. Просрочкой исполнителя не считается', taskTable(r.review, r, 'review'), 'breakable'));
   if (r.topHours.length) blocks.push(section(++n, 'Больше всего времени', 'Задачи, на которые ушло больше всего часов за период', taskTable(r.topHours, r, 'hours'), 'breakable'));
   if (r.completed.length) {
     blocks.push(section(++n, 'Выполненные задачи', `В порядке закрытия${r.completedTotal > r.completed.length ? ` · показаны ${r.completed.length} из ${r.completedTotal}` : ''}`,

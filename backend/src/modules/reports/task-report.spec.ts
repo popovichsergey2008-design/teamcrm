@@ -66,9 +66,27 @@ describe('Отчёт по задачам за период', () => {
       task({ deadline_at: at('2026-10-01T12:00:00Z') }),
     ], { now: at('2026-09-30T09:00:00Z') }));
     expect(r.ongoing).toBe(true);
-    expect(kpi(r, 'overdue').value).toBe(1);
+    // ТЗ-30: сдана и ждёт приёмки — не просрочка исполнителя, а «ждут проверки» с пометкой о сроке
+    expect(kpi(r, 'overdue').value).toBe(0);
+    expect(r.overdue).toHaveLength(0);
     expect(r.review).toHaveLength(1);
+    expect(r.review[0].days).toBe(1);
     expect(r.soon.map((t) => t.verdict)).toEqual(['soon']); // срок через сутки — под риском
+  });
+
+  it('ТЗ-30: на тестировании за сроком — не в просроченных; опоздание исполнителя — до сдачи', () => {
+    const r = buildTaskReport(input([
+      // сдал на тестирование вовремя, проверка затянулась после срока
+      task({ deadline_at: at('2026-09-28T10:00:00Z'), stage: 'testing', submitted_at: at('2026-09-27T10:00:00Z'), first_submitted_at: at('2026-09-27T10:00:00Z') }),
+      // в работе и срок прошёл — это просрочка
+      task({ deadline_at: at('2026-09-28T10:00:00Z'), stage: 'work' }),
+      // закрыта после срока, но сдана до срока — «в срок»
+      task({ deadline_at: at('2026-09-29T10:00:00Z'), closed_at: at('2026-09-30T08:00:00Z'), first_submitted_at: at('2026-09-29T09:00:00Z'), stage: 'done' }),
+    ], { now: at('2026-09-30T09:00:00Z') }));
+    expect(kpi(r, 'overdue').value).toBe(1);
+    expect(r.overdue).toHaveLength(1);
+    expect(r.review.map((t) => t.verdict)).toEqual(['review']);
+    expect(r.completed.map((t) => t.verdict)).toEqual(['ontime']);
   });
 
   it('сравнение с прошлым периодом той же длины', () => {

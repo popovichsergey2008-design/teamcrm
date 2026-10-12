@@ -224,11 +224,20 @@ function overdueAt(t: ReportTaskRow, at: Date) {
  * Просрочка ЧЕЛОВЕКА на момент (ТЗ-30): сдал работу до этого момента и она с тех пор
  * на проверке — не его просрочка. После возврата на доработку — срок доработки.
  */
+function isPausedStage(t: ReportTaskRow) {
+  return t.stage === 'testing' || t.stage === 'review' || t.stage === 'approval' || t.stage === 'waiting_external';
+}
+
 function personalOverdueAt(t: ReportTaskRow, at: Date) {
   if (!overdueAt(t, at)) return false;
+  // ждёт приёмки (лежит в «Готово») — работа сдана
+  if (t.approval_state === 'pending' && !t.closed_at) return false;
   const sub = d(t.submitted_at ?? null);
-  const paused = t.stage === 'testing' || t.stage === 'review' || t.stage === 'approval' || t.stage === 'waiting_external';
-  if (sub && sub <= at && paused) return false;
+  const first = d(t.first_submitted_at ?? null);
+  // сейчас на проверке и сдана до момента — не просрочка исполнителя
+  if (isPausedStage(t) && sub && sub <= at) return false;
+  // уже закрыта, а первый раз сдана до момента — на тот момент работа была у проверяющего
+  if (t.closed_at && first && first <= at) return false;
   const fix = d(t.fix_deadline_at ?? null);
   return !fix || fix < at;
 }
@@ -238,7 +247,7 @@ function handedAt(t: ReportTaskRow): Date | null {
   return d(t.first_submitted_at ?? null) ?? d(t.closed_at);
 }
 
-function stats(tasks: ReportTaskRow[], w: Window, personal = false) {
+function stats(tasks: ReportTaskRow[], w: Window, personal = true) {
   const created = tasks.filter((t) => within(d(t.created_at), w)).length;
   const done = tasks.filter((t) => within(d(t.closed_at), w));
   let onTime = 0; let late = 0; let noDeadline = 0;
@@ -329,7 +338,7 @@ export function buildTaskReport(input: ReportInput): TaskReport {
     .sort((a, b2) => b2.count - a.count).slice(0, 8);
 
   // таблицы по проектам и людям
-  const group = (keyOf: (t: ReportTaskRow) => string, nameOf: (t: ReportTaskRow) => string, hoursOf: (key: string) => number, personal = false): GroupRow[] => {
+  const group = (keyOf: (t: ReportTaskRow) => string, nameOf: (t: ReportTaskRow) => string, hoursOf: (key: string) => number, personal = true): GroupRow[] => {
     const keys = new Map<string, string>();
     for (const t of tasks) {
       if (within(d(t.created_at), cur) || within(d(t.closed_at), cur) || openAt(t, cur.snap)) keys.set(keyOf(t), nameOf(t));
@@ -354,12 +363,14 @@ export function buildTaskReport(input: ReportInput): TaskReport {
   const completed = completedTasks
     .sort((a, b2) => d(a.closed_at)!.getTime() - d(b2.closed_at)!.getTime())
     .map((t) => {
-      const dl = d(t.deadline_at); const cl = d(t.closed_at)!;
+      // вовремя ли СДАНА работа (ТЗ-30): время на проверке исполнителю не засчитывается
+      const dl = d(t.deadline_at); const cl = handedAt(t) ?? d(t.closed_at)!;
       if (!dl) return line(t, 'nodeadline', null);
       if (cl <= dl) return line(t, 'ontime', null);
       return line(t, 'late', Math.ceil((cl.getTime() - dl.getTime()) / DAY));
     });
-  const overdueAll = tasks.filter((t) => overdueAt(t, cur.snap))
+  // просрочено — то, что на исполнителях; сданное на проверку — в «Ждут проверки» (ТЗ-30)
+  const overdueAll = tasks.filter((t) => personalOverdueAt(t, cur.snap))
     .sort((a, b2) => d(a.deadline_at)!.getTime() - d(b2.deadline_at)!.getTime())
     .map((t) => line(t, 'overdue', Math.ceil((cur.snap.getTime() - d(t.deadline_at)!.getTime()) / DAY)));
   const soon = tasks.filter((t) => {
@@ -369,8 +380,16 @@ export function buildTaskReport(input: ReportInput): TaskReport {
     .slice(0, LIST_LIMITS.soon)
     .map((t) => line(t, 'soon', Math.max(0, Math.ceil((d(t.deadline_at)!.getTime() - cur.snap.getTime()) / DAY))));
   // «ждёт приёмки» — состояние на сейчас: прошлое в базе не хранится, поэтому только для идущего периода
+  // ждёт проверки, согласования или приёмки сейчас — с пометкой, если срок задачи уже прошёл
   const review = ongoing
-    ? tasks.filter((t) => !t.closed_at && t.approval_state === 'pending').slice(0, LIST_LIMITS.review).map((t) => line(t, 'review', null))
+    ? tasks.filter((t) => !t.closed_at && (t.approval_state === 'pending' || isPausedStage(t)))
+      .sort((a, b2) => (d(a.deadline_at)?.getTime() ?? Infinity) - (d(b2.deadline_at)?.getTime() ?? Infinity))
+      .slice(0, LIST_LIMITS.review)
+      .map((t) => {
+        const dl = d(t.deadline_at);
+        const late = dl && dl < cur.snap ? Math.ceil((cur.snap.getTime() - dl.getTime()) / DAY) : null;
+        return line(t, 'review', late);
+      })
     : [];
   const topHours = showHours
     ? tasks.filter((t) => (hoursByTask.get(String(t.id)) ?? 0) > 0)

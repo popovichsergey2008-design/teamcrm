@@ -55,6 +55,12 @@ const NAMES: [Stage, string[]][] = [
 export function stageOfColumnName(name: string): Stage {
   const n = String(name ?? '').trim().toLowerCase();
   for (const [stage, list] of NAMES) if (list.includes(n)) return stage;
+  // по частям слова (0181): «На тесте», «Тестируется», «QA / тест», «Согласование у заказчика»…
+  if (/(жд[её]м|ожида).*(клиент|заказчик)|(клиент|заказчик).*(жд[её]т|ожида)|waiting.*(client|customer)/.test(n)) return 'waiting_external';
+  if (/(соглас|при[её]мк|утвержд|approv|accept)/.test(n)) return 'approval';
+  if (/(тест|test|(^|[^a-z])qa([^a-z]|$)|qc([^a-z]|$))/.test(n)) return 'testing';
+  if (/(провер|ревью|review|ревю)/.test(n)) return 'review';
+  if (/(^|\s)(готов|done|выполнен|завершен|завершён|закрыт|сделан)/.test(n) && !/(к работе|к выполн|to do)/.test(n)) return 'done';
   return 'work';
 }
 
