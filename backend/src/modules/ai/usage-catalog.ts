@@ -35,6 +35,7 @@ export const AI_FEATURES: FeatureInfo[] = [
 
   { key: 'meeting_transcribe', title: 'Расшифровка записи встречи', where: 'Встречи → загрузка записи', group: 'meetings' },
   { key: 'meeting_analyze', title: 'Разбор встречи: сводка и задачи', where: 'Встречи → после расшифровки', group: 'meetings' },
+  { key: 'chat_task_instruct', title: 'Задача из сообщения: правка словами', where: 'Чат → ✨ → «сделай короче», «разбей на 3»', group: 'meetings' },
   { key: 'onboarding_demo', title: 'Демо ИИ-созвона в онбординге', where: 'Онбординг → «Протестировать магию ИИ-созвона»', group: 'meetings' },
   { key: 'meeting_summary_quick', title: 'Итоги встречи: «Кратко»', where: 'Экран итогов после звонка', group: 'meetings' },
   { key: 'meeting_agenda', title: 'Повестка перед встречей', where: 'Секретарь, за 5 минут до начала', group: 'meetings' },

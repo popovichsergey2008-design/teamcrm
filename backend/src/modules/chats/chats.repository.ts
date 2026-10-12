@@ -242,7 +242,7 @@ export class ChatsRepository {
   ): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
@@ -296,7 +296,7 @@ export class ChatsRepository {
   thread(tenantId: string, rootId: string, viewerId: string): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
@@ -467,7 +467,7 @@ export class ChatsRepository {
     }
     const full = await this.db.one<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status,
               m.thread_root_id, m.reply_count, m.last_reply_at,
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
               m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author,
@@ -523,7 +523,7 @@ export class ChatsRepository {
   pinned(tenantId: string, chatId: string): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               COALESCE((
                 SELECT json_agg(json_build_object(
@@ -698,7 +698,7 @@ export class ChatsRepository {
            ORDER BY id LIMIT 20)
        )
        SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,

@@ -9,7 +9,8 @@ import { cutClips } from './audio.util';
 import { guestInRange, proofDrifted, proofRange, type Segment } from './postcall-rules';
 
 interface ProofRow {
-  id: string; tenant_id: string; task_id: string; meeting_id: string; draft_id: string | null;
+  id: string; tenant_id: string; task_id: string; meeting_id: string | null; draft_id: string | null;
+  chat_message_id: string | null; chat_id: string | null;
   source_file_id: string | null; clip_file_id: string | null; anchor_ms: number; start_ms: number; end_ms: number;
   speaker: string | null; speaker_user_id: string | null; quote_text: string | null; visibility_policy: string;
   status: string; error: string | null; play_count: number; created_by: string | null;
@@ -185,11 +186,18 @@ export class AudioProofService {
   async view(tenantId: string, viewer: ProjectViewer, taskId: string) {
     const row = await this.visibleRow(tenantId, viewer, taskId);
     if (!row) return null;
-    const meeting = await this.db.one<{ title: string; happened_at: Date | null; ok: boolean }>(
+    const meeting = row.meeting_id ? await this.db.one<{ title: string; happened_at: Date | null; ok: boolean }>(
       `SELECT m.title, m.happened_at, ${meetingVisibleSql('m', { user: '$3', all: '$4', client: '$5' })} AS ok
          FROM meetings m WHERE m.tenant_id = $1 AND m.id = $2`,
       [tenantId, row.meeting_id, ...viewerParams(viewer)],
-    );
+    ) : null;
+    // голосовое в чате (ТЗ-26): «Открыть сообщение» — тем, кто этот чат видит
+    const chat = row.chat_id ? await this.db.one<{ title: string | null; kind: string; created_at: Date; ok: boolean }>(
+      `SELECT c.title, c.kind, m.created_at,
+              (c.kind = 'project' OR EXISTS (SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.id AND cm.user_id = $3::bigint)) AS ok
+         FROM chats c JOIN chat_messages m ON m.id = $4 WHERE c.tenant_id = $1 AND c.id = $2`,
+      [tenantId, row.chat_id, viewer.userId, row.chat_message_id],
+    ) : null;
     const playable = row.status === 'ready' && row.clip_file_id;
     if (playable) {
       await this.db.query(`UPDATE task_audio_proofs SET play_count = play_count + 1, last_played_at = now() WHERE id = $1`, [row.id]);
@@ -203,9 +211,13 @@ export class AudioProofService {
       startSec: row.start_ms / 1000, endSec: row.end_ms / 1000, anchorSec: row.anchor_ms / 1000,
       durationSec: Math.round((row.end_ms - row.start_ms) / 1000),
       quote: row.quote_text, speaker: row.speaker,
-      meeting: { id: row.meeting_id, title: meeting?.title ?? 'Встреча', happenedAt: meeting?.happened_at ?? null },
+      source: row.meeting_id ? 'meeting' : 'chat',
+      meeting: row.meeting_id
+        ? { id: row.meeting_id, title: meeting?.title ?? 'Встреча', happenedAt: meeting?.happened_at ?? null }
+        : { id: '', title: chat?.kind === 'dm' ? 'Голосовое в личной переписке' : `Голосовое в чате${chat?.title ? ` «${chat.title}»` : ''}`, happenedAt: chat?.created_at ?? null },
       // «Открыть созвон с 31:14» — только тем, кто встречу видит (§32)
       canOpenMeeting: !!meeting?.ok,
+      message: row.chat_message_id && chat?.ok ? { chatId: String(row.chat_id), messageId: String(row.chat_message_id) } : null,
       playback: playable ? this.files.signPlay(tenantId, String(row.clip_file_id), 600) : null,
     };
   }
@@ -214,6 +226,7 @@ export class AudioProofService {
   async adjust(tenantId: string, viewer: ProjectViewer, taskId: string, d: { startDelta?: number; endDelta?: number }) {
     const row = await this.visibleRow(tenantId, viewer, taskId);
     if (!row || row.status === 'revoked') throw AppException.notFound('У задачи нет фрагмента');
+    if (!row.meeting_id) throw AppException.validation('У голосового из чата фрагмент — вся запись');
     const start = Math.max(0, row.start_ms + Math.round((d.startDelta ?? 0) * 1000));
     let end = row.end_ms + Math.round((d.endDelta ?? 0) * 1000);
     if (end - start < 5000) end = start + 5000;
@@ -232,6 +245,7 @@ export class AudioProofService {
   async reprocess(tenantId: string, viewer: ProjectViewer, taskId: string) {
     const row = await this.visibleRow(tenantId, viewer, taskId);
     if (!row || row.status === 'revoked') throw AppException.notFound('У задачи нет фрагмента');
+    if (!row.meeting_id) return this.view(tenantId, viewer, taskId);
     await this.db.query(`UPDATE task_audio_proofs SET status = 'pending', error = NULL WHERE id = $1`, [row.id]);
     await this.cutPending(tenantId, row.meeting_id);
     return this.view(tenantId, viewer, taskId);
@@ -241,7 +255,8 @@ export class AudioProofService {
   async revoke(tenantId: string, viewer: ProjectViewer, taskId: string) {
     const row = await this.visibleRow(tenantId, viewer, taskId);
     if (!row) throw AppException.notFound('У задачи нет фрагмента');
-    if (row.clip_file_id) await this.files.removeInternal(tenantId, row.clip_file_id).catch(() => undefined);
+    // у голосового без копии «фрагмент» — сам файл сообщения: его не удаляем, только отвязываем
+    if (row.clip_file_id && row.clip_file_id !== row.source_file_id) await this.files.removeInternal(tenantId, row.clip_file_id).catch(() => undefined);
     await this.db.query(`UPDATE task_audio_proofs SET status = 'revoked', clip_file_id = NULL, updated_at = now() WHERE id = $1`, [row.id]);
     void this.security.record({
       tenantId, actorId: viewer.userId, event: 'task.audio_proof.revoked', resourceType: 'task', resourceId: taskId, metadata: {},

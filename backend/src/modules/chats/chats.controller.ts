@@ -254,10 +254,25 @@ export class ChatsController {
     return this.drafts.ask(u.tenantId, u, draftId);
   }
 
+  /** «Сделай короче», «разбей на 3», «поставь Сергея», «срок пятница» (ТЗ-26, §23). */
+  @Post('task-drafts/:draftId/instruct')
+  instructTaskDraft(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string, @Body() body: { text?: string }) {
+    return this.drafts.instruct(u.tenantId, u, draftId, String(body?.text ?? ''));
+  }
+
+  /** «Повторить»: расшифровка или разбор не вышли — голос и черновик целы (ТЗ-26, §22). */
+  @Post('task-drafts/:draftId/retry')
+  retryTaskDraft(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string) {
+    return this.drafts.retry(u.tenantId, u, draftId);
+  }
+
   @Post('task-drafts/:draftId/confirm')
   confirmTaskDraft(
     @CurrentUser() u: AuthUser, @Param('draftId') draftId: string,
-    @Body() body: { tagIds?: string[]; suggestedTagIds?: string[]; tagsConfirmed?: boolean; confirmedWithoutTags?: boolean },
+    @Body() body: {
+      tagIds?: string[]; suggestedTagIds?: string[]; tagsConfirmed?: boolean; confirmedWithoutTags?: boolean;
+      confirmWorkload?: boolean; mode?: 'single' | 'split'; audio?: 'allow' | 'none';
+    },
   ) {
     return this.drafts.confirm(u.tenantId, u, draftId, body ?? {});
   }

@@ -142,3 +142,16 @@ export async function cutClips(source: Buffer, sourceName: string, ranges: { sta
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
+
+/** Длительность записи в памяти (голосовое в чате, ТЗ-26). 0 — не удалось узнать. */
+export async function probeBufferSec(source: Buffer, fileName: string): Promise<number> {
+  const dir = await mkdtemp(join(tmpdir(), 'probe-'));
+  try {
+    const ext = (fileName.split('.').pop() || 'bin').replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'bin';
+    const input = join(dir, `input.${ext}`);
+    await writeFile(input, source);
+    return await probeDurationSec(input).catch(() => 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
