@@ -135,7 +135,8 @@ export class ChatTaskDraftService {
     if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
 
     const open = await this.repo.openByMessage(tenantId, messageId);
-    if (open) return { draft: this.view(open), context: await this.context(tenantId), already: null };
+    // открытый черновик — со списками того, кто смотрит: закрытые проекты чужого черновика не светим
+    if (open) return { draft: this.view(open), context: await this.context(tenantId, user, open), already: null, voice: await this.voiceInfo(tenantId, open) };
 
     // По этому сообщению задача уже есть — говорим об этом, а не заводим молча вторую.
     const already = msg.task_id ? String(msg.task_id) : null;
