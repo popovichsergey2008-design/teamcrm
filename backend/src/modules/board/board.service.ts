@@ -114,6 +114,9 @@ export class BoardService {
         id: c.id,
         name: c.name,
         position: c.position,
+        // ТЗ-30: тип этапа — для меню колонки и значка «на проверке» вместо «просрочен»
+        stage_type: c.stage_type ?? 'work',
+        stage_type_manual: !!c.stage_type_manual,
         tasks: tasksByColumn.get(c.id) ?? [],
       })),
     };
