@@ -96,7 +96,10 @@ export class PulseService {
       const l = loadPoints({ tasks: mine.filter((t) => !t.inReview), reviewsWaiting: reviewsOf.get(p.id) ?? 0, meetingHoursToday: Math.round(p.meetingHours * 10) / 10 }, now);
       const norm = p.norm ?? DEFAULT_NORM_POINTS;
       const pct = capacityPct(l.points, norm);
-      return { id: p.id, name: p.name, pct, band: band(pct), norm, risk: delayRisk(pct, l.overdue), available: p.available, ...l };
+      // ТЗ-30: «передано на проверку» и «возвращено на доработку» — рядом с личной просрочкой
+      const submitted = mine.filter((t) => t.inReview).length;
+      const returned = mine.filter((t) => !t.inReview && !!t.returnedAt).length;
+      return { id: p.id, name: p.name, pct, band: band(pct), norm, risk: delayRisk(pct, l.overdue), available: p.available, ...l, submitted, returned };
     }).sort((x, y) => y.pct - x.pct);
     const overloaded = new Set(workload.filter((w) => w.pct > 100).map((w) => w.id));
 
@@ -106,6 +109,8 @@ export class PulseService {
       if (!type || dismissed.has(`bottleneck:${t.id}`)) return null;
       return {
         taskId: t.id, title: t.title, projectId: t.projectId, projectName: t.projectName, assignee: t.assigneeName,
+        // ТЗ-30: задержка на проверке — у проверяющего (постановщика), не у исполнителя
+        reviewer: type === 'WAITING_REVIEW' ? (t.createdByName ?? null) : null,
         type, typeTitle: BOTTLENECK_TITLE[type], why: bottleneckWhy(t, type, now), actions: ACTIONS_FOR[type],
         severity: bottleneckSeverity(t, type, now), priority: t.priority,
       };
@@ -132,8 +137,18 @@ export class PulseService {
 
     // проекты: прогноз и риск
     const overdueBy = new Map<string, number>(); const stuckBy = new Map<string, number>(); const onOver = new Map<string, number>();
+    // ТЗ-30: где задержка у просроченных задач проекта — исполнение, проверка, согласование, клиент
+    const overdueStages = new Map<string, { work: number; review: number; approval: number; client: number }>();
     for (const t of tasks) {
-      if (t.deadlineAt && t.deadlineAt < now) overdueBy.set(t.projectId, (overdueBy.get(t.projectId) ?? 0) + 1);
+      if (t.deadlineAt && t.deadlineAt < now) {
+        overdueBy.set(t.projectId, (overdueBy.get(t.projectId) ?? 0) + 1);
+        const s = overdueStages.get(t.projectId) ?? { work: 0, review: 0, approval: 0, client: 0 };
+        if (t.stage === 'approval') s.approval += 1;
+        else if (t.stage === 'waiting_external') s.client += 1;
+        else if (t.inReview) s.review += 1;
+        else s.work += 1;
+        overdueStages.set(t.projectId, s);
+      }
       if (isStuck(t, now)) stuckBy.set(t.projectId, (stuckBy.get(t.projectId) ?? 0) + 1);
       if (t.assigneeId && overloaded.has(t.assigneeId)) onOver.set(t.projectId, (onOver.get(t.projectId) ?? 0) + 1);
     }
@@ -146,14 +161,19 @@ export class PulseService {
       const projTasks = tasks.filter((t) => t.projectId === p.id);
       const blockers = bottlenecks.filter((b) => b.projectId === p.id).slice(0, 3).map((b) => ({ id: b.taskId, title: b.title }));
       const factors: string[] = [];
-      if ((overdueBy.get(p.id) ?? 0) > 0) factors.push(`просрочено: ${overdueBy.get(p.id)}`);
+      if ((overdueBy.get(p.id) ?? 0) > 0) {
+        // ТЗ-30, п. 20: причина просрочки — где задача стоит сейчас
+        const st = overdueStages.get(p.id);
+        const where = st ? [st.work ? `исполнение ${st.work}` : '', st.review ? `проверка ${st.review}` : '', st.approval ? `согласование ${st.approval}` : '', st.client ? `клиент ${st.client}` : ''].filter(Boolean).join(', ') : '';
+        factors.push(`просрочено: ${overdueBy.get(p.id)}${where && (st!.review || st!.approval || st!.client) ? ` (${where})` : ''}`);
+      }
       if ((stuckBy.get(p.id) ?? 0) > 0) factors.push(`без движения: ${stuckBy.get(p.id)}`);
       const inReview = projTasks.filter((t) => t.inReview).length;
       if (inReview) factors.push(`ждут проверки: ${inReview}`);
       factors.push(`темп ${f.perWeek} задач в неделю`);
       return {
         id: p.id, name: p.name, targetDate: p.targetDate, open: p.open, progress: p.total ? Math.round((p.closed / p.total) * 100) : 0,
-        overdue: overdueBy.get(p.id) ?? 0, stuck: stuckBy.get(p.id) ?? 0, risk,
+        overdue: overdueBy.get(p.id) ?? 0, overdueStages: overdueStages.get(p.id) ?? { work: 0, review: 0, approval: 0, client: 0 }, stuck: stuckBy.get(p.id) ?? 0, risk,
         forecast: { ...f, date: f.date ? f.date.toISOString().slice(0, 10) : null, factors, version: FORECAST_VERSION },
         catchUp: catchUpPlan(f, {
           topBlockers: blockers, noAssignee: projTasks.filter((t) => !t.assigneeId).slice(0, 2).map((t) => ({ id: t.id, title: t.title })),
@@ -186,7 +206,13 @@ export class PulseService {
     const score = healthScore(components);
     const vDelta = velocityDelta(stats.last7, stats.prev7);
     const stuckGroups = new Map<string, number>();
-    for (const b of bottlenecks) if (b.assignee && (b.type === 'NO_ACTIVITY' || b.type === 'WAITING_REVIEW' || b.type === 'ASSIGNEE_OVERLOADED')) stuckGroups.set(b.assignee, (stuckGroups.get(b.assignee) ?? 0) + 1);
+    for (const b of bottlenecks) {
+      // проверка — узкое место этапа и проверяющего, а не того, кто давно сдал работу (ТЗ-30, п. 15)
+      const key = b.type === 'WAITING_REVIEW'
+        ? `этап проверки${b.reviewer ? ` (проверяет ${b.reviewer})` : ''}`
+        : b.assignee && (b.type === 'NO_ACTIVITY' || b.type === 'ASSIGNEE_OVERLOADED') ? b.assignee : null;
+      if (key) stuckGroups.set(key, (stuckGroups.get(key) ?? 0) + 1);
+    }
     const topGroup = [...stuckGroups.entries()].sort((x, y) => y[1] - x[1])[0];
     const v = verdict({
       score, components, velocityDelta: vDelta, last7: stats.last7,

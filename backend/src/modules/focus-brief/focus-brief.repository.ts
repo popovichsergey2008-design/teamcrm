@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { meetingVisibleSql } from '../../common/access/project-visibility';
 import { VISIBLE as FEED_VISIBLE } from '../feed/feed.repository';
+import { assigneeOwesSql, pausedSql, personalDeadlineSql } from '../tasks/responsibility';
 
 export interface SnapshotRow {
   id: string;
@@ -255,14 +256,26 @@ export class FocusBriefRepository {
   /** Своё со сроком сегодня или просроченное — кроме того, что уже в тройке. */
   dueOutside(tenantId: string, userId: string, dayEnd: Date, exclude: string[]) {
     return this.db.many<{ id: string; project_id: string; title: string; deadline_at: Date }>(
-      `SELECT t.id::text, t.project_id::text, t.title, t.deadline_at
+      `SELECT t.id::text, t.project_id::text, t.title, ${personalDeadlineSql('t')} AS deadline_at
          FROM tasks t
         WHERE t.tenant_id = $1 AND t.assignee_id = $2 AND t.deleted_at IS NULL AND t.closed_at IS NULL
-          AND t.deadline_at IS NOT NULL AND t.deadline_at < $3
+          -- ТЗ-30: только то, что сейчас на мне; сданное на проверку — не «горит у меня»
+          AND ${assigneeOwesSql('t')}
+          AND ${personalDeadlineSql('t')} IS NOT NULL AND ${personalDeadlineSql('t')} < $3
           AND NOT (t.id = ANY($4::bigint[]))
-        ORDER BY (t.priority = 'urgent') DESC, t.deadline_at LIMIT 3`,
+        ORDER BY (t.priority = 'urgent') DESC, ${personalDeadlineSql('t')} LIMIT 3`,
       [tenantId, userId, dayEnd, exclude],
     );
+  }
+
+  /** Моя работа сдана и ждёт проверки или согласования (ТЗ-30): не просрочка, но знать стоит. */
+  async submittedWaiting(tenantId: string, userId: string): Promise<number> {
+    const r = await this.db.one<{ n: number }>(
+      `SELECT count(*)::int AS n FROM tasks t
+        WHERE t.tenant_id = $1 AND t.assignee_id = $2 AND t.deleted_at IS NULL AND t.closed_at IS NULL AND ${pausedSql('t')}`,
+      [tenantId, userId],
+    );
+    return r?.n ?? 0;
   }
 
   async waiting(tenantId: string, userId: string) {

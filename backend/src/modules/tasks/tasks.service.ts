@@ -547,7 +547,7 @@ export class TasksService {
     const column = await this.projects.findColumn(tenantId, task.project_id, dto.columnId);
     if (!column) throw AppException.notFound('Target column not found');
 
-    const missing = await this.handoffMissing(tenantId, task, column.name, actorId);
+    const missing = await this.handoffMissing(tenantId, task, column, actorId);
     /*
       Обязательный чек-лист не обходится «сдать всё равно» (задача #1386): постановщик
       сказал, что без него задачу не примет, и исполнитель должен это видеть сразу,
@@ -988,8 +988,10 @@ export class TasksService {
    * Машинные переносы (агент, разбор дейлика) сюда не попадают: они идут без актора
    * или с confirmGate — диалог показывать некому.
    */
-  private async handoffMissing(tenantId: string, task: TaskRow, columnName: string, actorId: string | null) {
-    const handingOver = isReviewColumn(columnName) || isDoneColumn(columnName);
+  private async handoffMissing(tenantId: string, task: TaskRow, column: { name: string; stage_type?: string | null }, actorId: string | null) {
+    // сдача работы — в колонку проверки, согласования, «ждём клиента» или «готово» (тип этапа, ТЗ-30)
+    const stage = column.stage_type ?? (isReviewColumn(column.name) ? 'review' : isDoneColumn(column.name) ? 'done' : 'work');
+    const handingOver = stage !== 'work';
     if (!handingOver || !actorId || String(task.assignee_id ?? '') !== String(actorId)) return [];
     const [req, facts] = await Promise.all([
       this.repo.gateSettings(tenantId),

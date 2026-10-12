@@ -18,7 +18,15 @@ export interface TaskFact {
   inReview: boolean; isBlocked: boolean;
   /** Последнее осмысленное движение: статус, чек-лист, комментарий, файл, исполнитель (§22). */
   lastMove: Date;
+  /** ТЗ-30: этап, личный срок исполнителя (после возврата — срок доработки), когда сдал и когда вернули. */
+  stage?: string;
+  personalDeadlineAt?: Date | null;
+  submittedAt?: Date | null;
+  returnedAt?: Date | null;
 }
+
+/** Срок, за который отвечает исполнитель: после возврата — срок доработки (ТЗ-30). */
+const personalDue = (t: Pick<TaskFact, 'deadlineAt' | 'personalDeadlineAt'>) => (t.personalDeadlineAt !== undefined ? t.personalDeadlineAt : t.deadlineAt);
 
 const H = 3_600_000;
 const D = 24 * H;
@@ -69,8 +77,17 @@ export function isStuck(t: TaskFact, now: Date): boolean {
 export function bottleneckType(t: TaskFact, now: Date, overloaded: Set<string>): BottleneckType | null {
   const stuck = isStuck(t, now);
   if (!t.assigneeId) return now.getTime() - t.createdAt.getTime() > D ? 'NO_ASSIGNEE' : null;
-  if (t.deadlineAt && t.deadlineAt.getTime() < now.getTime()) return 'OVERDUE';
-  if (t.inReview && stuck) return 'WAITING_REVIEW';
+  /*
+    ТЗ-30: сданное на проверку — задержка на этапе проверки, а не просрочка исполнителя.
+    Проверяем РАНЬШЕ просрочки: иначе задача, четыре дня ждущая QA, обвиняла бы того,
+    кто её давно сдал.
+  */
+  if (t.inReview) {
+    const overdueTask = !!t.deadlineAt && t.deadlineAt.getTime() < now.getTime();
+    return stuck || overdueTask ? 'WAITING_REVIEW' : null;
+  }
+  const due = personalDue(t);
+  if (due && due.getTime() < now.getTime()) return 'OVERDUE';
   if (t.isBlocked) return 'BLOCKED';
   if (stuck && overloaded.has(t.assigneeId)) return 'ASSIGNEE_OVERLOADED';
   if (stuck) return 'NO_ACTIVITY';
@@ -93,10 +110,16 @@ export function bottleneckWhy(t: TaskFact, type: BottleneckType, now: Date): str
   switch (type) {
     case 'NO_ASSIGNEE': return `Исполнитель не назначен ${Math.floor((now.getTime() - t.createdAt.getTime()) / D)} дн.`;
     case 'OVERDUE': {
-      const days = Math.max(1, Math.ceil((now.getTime() - t.deadlineAt!.getTime()) / D));
-      return `Срок прошёл ${days} дн. назад · ${idleText}`;
+      const due = personalDue(t) ?? t.deadlineAt!;
+      const days = Math.max(1, Math.ceil((now.getTime() - due.getTime()) / D));
+      return `${t.returnedAt && t.personalDeadlineAt ? 'Срок доработки' : 'Срок'} прошёл ${days} дн. назад · ${idleText}`;
     }
-    case 'WAITING_REVIEW': return `Сдана на проверку, ${idleText}`;
+    case 'WAITING_REVIEW': {
+      const since = t.submittedAt ?? t.lastMove;
+      const h = Math.max(1, Math.floor((now.getTime() - since.getTime()) / H));
+      const late = t.deadlineAt && t.deadlineAt.getTime() < now.getTime() ? ' · срок задачи прошёл, задержка — на проверке' : '';
+      return `Исполнитель сдал работу, ждёт проверки ${h >= 48 ? `${Math.floor(h / 24)} дн.` : `${h} ч`}${late}`;
+    }
     case 'BLOCKED': return `Исполнитель отметил блокер · ${idleText}`;
     case 'ASSIGNEE_OVERLOADED': return `${idleText}, а у исполнителя загрузка выше нормы`;
     default: return idleText;
@@ -108,7 +131,7 @@ export function bottleneckWhy(t: TaskFact, type: BottleneckType, now: Date): str
 export const DEFAULT_NORM_POINTS = 12;
 
 export interface LoadInput {
-  tasks: Pick<TaskFact, 'priority' | 'deadlineAt'>[];
+  tasks: Pick<TaskFact, 'priority' | 'deadlineAt' | 'personalDeadlineAt'>[];
   /** Сданное мне на проверку и ждущее меня. */
   reviewsWaiting: number;
   meetingHoursToday: number;
@@ -127,8 +150,9 @@ export function loadPoints(i: LoadInput, now: Date): LoadBreakdown {
   for (const t of i.tasks) {
     points += 1;
     if (t.priority === 'high' || t.priority === 'urgent') { points += 1; urgent += 1; }
-    if (t.deadlineAt) {
-      const left = t.deadlineAt.getTime() - now.getTime();
+    const due = personalDue(t);
+    if (due) {
+      const left = due.getTime() - now.getTime();
       if (left < 0) { points += 1; overdue += 1; } else if (left <= 3 * D) { points += 1; dueSoon += 1; }
     }
   }

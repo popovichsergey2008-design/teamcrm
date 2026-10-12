@@ -6,7 +6,7 @@ import { CalendarSyncService } from './calendar-sync.service';
 import { buildIcs, icsUid } from './ics';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
 
-const DEFAULT_WORK = { workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] as string[] };
+const DEFAULT_WORK = { workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] as string[], fixWindowHours: 24 };
 const MAX_RANGE_DAYS = 62; // два месяца: больше одного экрана календаря не показывает
 
 export interface EventDto {
@@ -145,12 +145,13 @@ export class CalendarService {
       workEnd: s.work_end.slice(0, 5),
       weekendDays: s.weekend_days ?? [0, 6],
       holidays: (s.holidays ?? []).map((d) => (typeof d === 'string' ? d : d.toISOString().slice(0, 10))),
+      fixWindowHours: s.fix_window_hours ?? 24,
     };
   }
 
   /** Рабочее время задаёт владелец (их может быть несколько — это и есть «помощник владельца»). */
   async saveWork(tenantId: string, user: { userId: string; role: string }, dto: {
-    workStart: string; workEnd: string; weekendDays: number[]; holidays: string[];
+    workStart: string; workEnd: string; weekendDays: number[]; holidays: string[]; fixWindowHours?: number;
   }) {
     if (user.role !== 'owner') throw AppException.forbidden('Рабочее время задаёт владелец');
     if (dto.workStart >= dto.workEnd) throw AppException.validation('Начало рабочего дня должно быть раньше конца');
@@ -159,6 +160,8 @@ export class CalendarService {
       workEnd: dto.workEnd,
       weekendDays: [...new Set(dto.weekendDays.filter((d) => d >= 0 && d <= 6))],
       holidays: [...new Set(dto.holidays)].slice(0, 200),
+      // ТЗ-30: сколько часов на доработку после возврата, если старый срок уже прошёл
+      fixWindowHours: dto.fixWindowHours && dto.fixWindowHours >= 1 && dto.fixWindowHours <= 240 ? Math.round(dto.fixWindowHours) : ((await this.repo.workSettings(tenantId))?.fix_window_hours ?? 24),
     });
     return this.work(tenantId);
   }

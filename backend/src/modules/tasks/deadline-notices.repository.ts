@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { assigneeOwesSql, personalDeadlineSql } from './responsibility';
 import { DbService } from '../../database/db.service';
 import { NoticeKind } from './deadline-notice';
+
+/** Личный срок исполнителя (ТЗ-30): после возврата на доработку — срок доработки. */
+const PDL = personalDeadlineSql('t');
 
 export interface DeadlineCandidate {
   tenant_id: string;
@@ -43,28 +47,31 @@ export class DeadlineNoticesRepository {
   due(now: Date, soonMs: number, limit = 200): Promise<DeadlineCandidate[]> {
     return this.db.many<DeadlineCandidate>(
       `SELECT t.tenant_id::text, t.id::text AS task_id, t.project_id::text, t.title,
-              t.deadline_at, (t.closed_at IS NOT NULL) AS closed,
+              ${PDL}, (t.closed_at IS NOT NULL) AS closed,
               t.assignee_id::text, u.full_name AS assignee_name, u.timezone,
               org.timezone AS org_timezone,
               COALESCE((
                 SELECT array_agg(n.kind)
                   FROM task_deadline_notices n
-                 WHERE n.task_id = t.id AND n.deadline_at = t.deadline_at
+                 WHERE n.task_id = t.id AND n.deadline_at = ${PDL}
               ), ARRAY[]::text[]) AS said
          FROM tasks t
          LEFT JOIN users u ON u.id = t.assignee_id
          JOIN tenants org ON org.id = t.tenant_id
          JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
-        WHERE t.deadline_at IS NOT NULL
+        -- ТЗ-30: напоминаем исполнителю только то, что сейчас на нём; сданное на проверку — нет.
+        -- Срок — личный: после возврата на доработку — срок доработки, а не старый.
+        WHERE ${PDL} IS NOT NULL
+          AND ${assigneeOwesSql('t')}
           AND t.closed_at IS NULL
           AND t.deleted_at IS NULL
-          AND t.deadline_at <= $1::timestamptz + ($2::bigint || ' milliseconds')::interval
+          AND ${PDL} <= $1::timestamptz + ($2::bigint || ' milliseconds')::interval
           AND NOT EXISTS (
                 SELECT 1 FROM task_deadline_notices n
-                 WHERE n.task_id = t.id AND n.deadline_at = t.deadline_at
-                   AND n.kind = CASE WHEN t.deadline_at <= $1::timestamptz THEN 'overdue' ELSE 'soon' END
+                 WHERE n.task_id = t.id AND n.deadline_at = ${PDL}
+                   AND n.kind = CASE WHEN ${PDL} <= $1::timestamptz THEN 'overdue' ELSE 'soon' END
               )
-        ORDER BY t.deadline_at
+        ORDER BY ${PDL}
         LIMIT $3`,
       [now.toISOString(), String(soonMs), limit],
     );

@@ -23,9 +23,11 @@ interface Work {
   workEnd: string;
   weekendDays: number[];
   holidays: string[];
+  /** ТЗ-30: сколько часов на доработку после возврата с проверки, если срок уже прошёл */
+  fixWindowHours?: number;
 }
 
-const DEFAULT_WORK: Work = { workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] };
+const DEFAULT_WORK: Work = { workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [], fixWindowHours: 24 };
 
 export function WorkSettingsPanel({ canManage, onClose }: { canManage: boolean; onClose: () => void }) {
   useEscape(onClose);
@@ -139,6 +141,27 @@ export function WorkSettingsPanel({ canManage, onClose }: { canManage: boolean; 
                 : setErr('Начало рабочего дня должно быть раньше конца')}
             />
           </label>
+        </div>
+
+        <div className="drawer-section-title">Доработка после проверки</div>
+        <label className="work-hours">
+          <input
+            className="input"
+            type="number"
+            min={1}
+            max={240}
+            value={work.fixWindowHours ?? 24}
+            disabled={!canManage || saving}
+            onChange={(e) => setWork({ ...work, fixWindowHours: Number(e.target.value) })}
+            onBlur={() => save(work)}
+            aria-label="Часов на доработку"
+          />
+          <span className="dim">часов</span>
+        </label>
+        <div className="dim gate-panel-hint">
+          Если задачу вернули с проверки, когда её срок уже прошёл, у исполнителя есть столько
+          часов на доработку — старый срок не превращается сразу в многодневную просрочку.
+          Время на проверке исполнителю не засчитывается.
         </div>
 
         <div className="drawer-section-title">Выходные дни</div>

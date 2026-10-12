@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
 import { PingCandidate, WorkHours } from './ping-rules';
 
 export type AssistantMode = 'off' | 'copilot' | 'autopilot';
@@ -96,7 +95,10 @@ export class AssistantRepository {
   candidates(tenantId: string, stuckHours: number, silentDays: number): Promise<PingCandidate[]> {
     return this.db.many<PingCandidate>(
       `WITH live AS (
-         SELECT t.*, p.name AS project_name, bc.name AS column_name
+         -- ТЗ-30: этап и личный срок — из единого движка (task_stage, срок доработки)
+         SELECT t.*, p.name AS project_name, bc.name AS column_name,
+                task_stage(t.column_id, t.approval_state, t.closed_at) AS stage,
+                COALESCE(t.fix_deadline_at, t.deadline_at) AS personal_deadline
            FROM tasks t
            JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
            JOIN board_columns bc ON bc.id = t.column_id
@@ -106,28 +108,29 @@ export class AssistantRepository {
          SELECT 'overdue' AS kind, t.assignee_id::text AS "userId", t.id::text AS "taskId",
                 t.id::text AS "subjectId",
                 t.title, t.project_name AS "projectName", t.project_id::text AS "projectId",
-                EXTRACT(EPOCH FROM (now() - t.deadline_at)) / 3600 AS hours, u.timezone
+                EXTRACT(EPOCH FROM (now() - t.personal_deadline)) / 3600 AS hours, u.timezone
            FROM live t JOIN users u ON u.id = t.assignee_id AND u.is_active
-          WHERE t.deadline_at < now() AND lower(t.column_name) <> ALL($2::text[])
+          WHERE t.stage = 'work' AND t.personal_deadline < now()
          UNION ALL
          SELECT 'due_soon', t.assignee_id::text, t.id::text, t.id::text, t.title, t.project_name, t.project_id::text,
-                EXTRACT(EPOCH FROM (t.deadline_at - now())) / 3600, u.timezone
+                EXTRACT(EPOCH FROM (t.personal_deadline - now())) / 3600, u.timezone
            FROM live t JOIN users u ON u.id = t.assignee_id AND u.is_active
-          WHERE t.deadline_at BETWEEN now() AND now() + interval '24 hours'
-            AND lower(t.column_name) <> ALL($2::text[])
+          WHERE t.personal_deadline BETWEEN now() AND now() + interval '24 hours'
+            AND t.stage = 'work'
          UNION ALL
          SELECT 'stuck_review', t.created_by::text, t.id::text, t.id::text, t.title, t.project_name, t.project_id::text,
-                EXTRACT(EPOCH FROM (now() - t.updated_at)) / 3600, u.timezone
+                EXTRACT(EPOCH FROM (now() - COALESCE(t.submitted_at, t.updated_at))) / 3600, u.timezone
            FROM live t JOIN users u ON u.id = t.created_by AND u.is_active
-          WHERE lower(t.column_name) = ANY($2::text[])
-            AND t.updated_at < now() - make_interval(hours => $3::int)
+          -- проверку держит постановщик (решение 12.10): «ждёт проверки N часов» — ему
+          WHERE t.stage IN ('testing', 'review', 'approval')
+            AND COALESCE(t.submitted_at, t.updated_at) < now() - make_interval(hours => $2::int)
          UNION ALL
          SELECT 'silent', t.assignee_id::text, t.id::text, t.id::text, t.title, t.project_name, t.project_id::text,
                 EXTRACT(EPOCH FROM (now() - t.updated_at)) / 3600, u.timezone
            FROM live t JOIN users u ON u.id = t.assignee_id AND u.is_active
           WHERE t.deadline_at IS NULL
-            AND lower(t.column_name) <> ALL($2::text[])
-            AND t.updated_at < now() - make_interval(days => $4::int)
+            AND t.stage = 'work'
+            AND t.updated_at < now() - make_interval(days => $3::int)
          UNION ALL
          -- Согласование, которое ждёт решения. Забывается чаще срока: у задачи есть
          -- доска и календарь, а у вопроса «подтверди» — только тот, кто его задал.
@@ -136,7 +139,7 @@ export class AssistantRepository {
                 EXTRACT(EPOCH FROM (now() - a.created_at)) / 3600, u.timezone
            FROM approvals a JOIN users u ON u.id = a.approver_id AND u.is_active
           WHERE a.tenant_id = $1 AND a.status = 'pending'
-            AND a.created_at < now() - make_interval(hours => $3::int)
+            AND a.created_at < now() - make_interval(hours => $2::int)
          UNION ALL
          -- Позвали в ленте и не дождались ответа. Ответом считаем ЛЮБОЙ его комментарий
          -- к этому посту после упоминания: «прочитал и промолчал» и «ответил» — разное.
@@ -150,7 +153,7 @@ export class AssistantRepository {
       LEFT JOIN feed_comments mc ON mc.id = m.comment_id
           WHERE m.tenant_id = $1
             AND (m.comment_id IS NULL OR mc.deleted_at IS NULL)
-            AND m.created_at < now() - make_interval(hours => $3::int)
+            AND m.created_at < now() - make_interval(hours => $2::int)
             AND NOT EXISTS (
               SELECT 1 FROM feed_comments fc
                WHERE fc.post_id = m.post_id AND fc.author_id = m.user_id
@@ -159,7 +162,7 @@ export class AssistantRepository {
        ) c
        ORDER BY hours DESC
        LIMIT 200`,
-      [tenantId, REVIEW_COLUMN_NAMES, stuckHours, silentDays],
+      [tenantId, stuckHours, silentDays],
     );
   }
 

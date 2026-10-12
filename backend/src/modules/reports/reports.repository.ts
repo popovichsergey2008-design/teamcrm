@@ -52,6 +52,8 @@ export class ReportsRepository {
       `SELECT t.id::text, t.title, t.project_id::text, p.name AS project_name,
               t.assignee_id::text, ua.full_name AS assignee_name, uc.full_name AS creator_name,
               t.priority, t.created_at, t.closed_at, t.deadline_at, t.status, t.approval_state,
+              -- ТЗ-30: когда исполнитель сдал работу — опоздание человека считаем до сдачи
+              t.first_submitted_at, t.submitted_at, t.fix_deadline_at, task_stage(t.column_id, t.approval_state, t.closed_at) AS stage,
               (SELECT array_agg(l.name ORDER BY l.name)
                  FROM task_labels tl JOIN labels l ON l.id = tl.label_id
                 WHERE tl.task_id = t.id) AS tags

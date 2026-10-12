@@ -161,7 +161,9 @@ export class FocusDayService {
     const inPlan = new Set(items.map(keyOfItem));
     const rest = scored.filter((c) => !inPlan.has(c.key));
     const waitingDecision = scored.filter((c) => c.kind !== 'task').length;
-    const [work, workday] = await Promise.all([this.repo.workDay(v.tenantId), this.repo.workdayState(v.tenantId, v.userId)]);
+    const [work, workday, waitingReview] = await Promise.all([
+      this.repo.workDay(v.tenantId), this.repo.workdayState(v.tenantId, v.userId), this.repo.waitingReview(v.tenantId, v.userId),
+    ]);
     const doneTop = items.filter((i) => i.status === 'done').length;
 
     const top = items.map((i) => present(i, liveBy.get(String(i.id))));
@@ -182,6 +184,8 @@ export class FocusDayService {
       top,
       backlogCount: rest.length,
       waitingDecision,
+      /** ТЗ-30: моя сданная работа ждёт проверки — не просрочка и не в тройке */
+      waitingReview,
       criticalCandidate: critical,
       huddle: await this.huddle(v, plan, items, rest),
       // «Завершить день» — после всей тройки или к концу рабочего дня (п. 78–80)

@@ -42,7 +42,7 @@ const DAY_MS = 86_400_000;
 /** Тон плашки нового интерфейса (ТЗ-15): смысл, а не цвет — цвет даёт тема. */
 export type BadgeTone = 'neutral' | 'warn' | 'danger';
 
-export function deadlineBadge(deadlineAt?: string | null, closed = false): { text: string; cls: string; title: string; label: string; tone: BadgeTone } | null {
+export function deadlineBadge(deadlineAt?: string | null, closed = false, paused = false): { text: string; cls: string; title: string; label: string; tone: BadgeTone } | null {
   if (!deadlineAt) return null;
   const due = new Date(deadlineAt);
   if (Number.isNaN(due.getTime())) return null;
@@ -56,6 +56,8 @@ export function deadlineBadge(deadlineAt?: string | null, closed = false): { tex
   const title = `Срок: ${due.toLocaleDateString('ru-RU')}`;
 
   if (closed) return { text: `⏰ ${date}`, cls: 'badge badge-muted', title, label: date, tone: 'neutral' };
+  // ТЗ-30: работа сдана на проверку — срок задачи прошёл, но это не просрочка исполнителя
+  if (paused && days < 0) return { text: `⏰ ${date} · на проверке`, cls: 'badge badge-warn', title: `${title} — срок задачи прошёл; исполнитель сдал работу, задержка на проверке`, label: `${date} · на проверке`, tone: 'warn' };
   if (days < 0) return { text: `⏰ ${date} · просрочен`, cls: 'badge badge-danger', title: `${title} — просрочен на ${-days} дн.`, label: `${date} · просрочен`, tone: 'danger' };
   if (days === 0) return { text: '⏰ сегодня', cls: 'badge badge-danger', title, label: 'сегодня', tone: 'danger' };
   if (days === 1) return { text: '⏰ завтра', cls: 'badge badge-warn', title, label: 'завтра', tone: 'warn' };

@@ -15,6 +15,12 @@ export class CreateProjectDto {
   budget?: number;
 }
 
+/** Тип этапа колонки (ТЗ-30): auto — по названию, остальное — руками. */
+export class ColumnStageDto {
+  @IsIn(['auto', 'work', 'testing', 'review', 'approval', 'waiting_external', 'done'])
+  stage!: 'auto' | 'work' | 'testing' | 'review' | 'approval' | 'waiting_external' | 'done';
+}
+
 export class ColumnDto {
   @IsString({ message: 'Название колонки обязательно' })
   @MinLength(1, { message: 'Название колонки не может быть пустым' })

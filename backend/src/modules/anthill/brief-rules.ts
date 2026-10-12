@@ -21,6 +21,8 @@ export interface MorningData {
   decisions: { approvals: number; reviews: number; shifts: number };
   /** Личные чаты, где мне написали и я не прочитал: имя собеседника и сколько. */
   unreadDms: { name: string; count: number }[];
+  /** ТЗ-30: моя работа сдана и ждёт проверки — не просрочка, но знать стоит. */
+  submittedWaiting?: number;
 }
 
 export interface EveningData {
@@ -74,6 +76,7 @@ export function morningText(d: MorningData, tz: string): string | null {
     lines.push(`Встречи (${d.meetings.length}): ${first}${d.meetings.length > 4 ? '…' : ''}`);
   }
   if (d.overdue.length) lines.push(`Просрочено (${d.overdue.length}): ${list(d.overdue)}`);
+  if (d.submittedWaiting) lines.push(`Ещё ${d.submittedWaiting} ${plural(d.submittedWaiting, 'выполненная задача ждёт', 'выполненные задачи ждут', 'выполненных задач ждут')} проверки`);
   if (d.dueToday.length) lines.push(`Срок сегодня (${d.dueToday.length}): ${list(d.dueToday)}`);
   if (d.blocked.length) lines.push(`С блокером (${d.blocked.length}): ${list(d.blocked)}`);
   const dec: string[] = [];

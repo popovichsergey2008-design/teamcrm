@@ -203,7 +203,9 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
    * с экрана ради одного числа.
    */
   const runCommand = async (cmd: Command) => {
-    const overdue = (t: any) => t.deadline_at && !t.closed_at && new Date(t.deadline_at) < new Date();
+    // ТЗ-30: «мои просроченные» — по ответственности с сервера; сданное на проверку не моё
+    const overdue = (t: any) => (t.personal_overdue !== undefined ? !!t.personal_overdue
+      : t.deadline_at && !t.closed_at && new Date(t.deadline_at) < new Date());
     const endOfDayMinutes = () => {
       const end = new Date();
       end.setHours(23, 59, 59, 999);

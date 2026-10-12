@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
+import { pausedSql, personalDeadlineSql, stageSql } from '../tasks/responsibility';
 import { Priority, TaskFact } from './pulse-rules';
 
 /** Виды записей ленты задачи, которые считаются движением (§22): не «посмотрел», а сделал. */
@@ -31,24 +31,27 @@ export class PulseRepository {
               t.assignee_id::text AS "assigneeId", ua.full_name AS "assigneeName",
               t.created_by::text AS "createdBy", uc.full_name AS "createdByName",
               COALESCE(t.priority, 'normal') AS priority, t.deadline_at AS "deadlineAt", t.created_at AS "createdAt",
-              (lower(bc.name) = ANY($2::text[])) AS "inReview", COALESCE(t.is_blocked, false) AS "isBlocked",
+              -- ТЗ-30: этап и личный срок — из единого движка; «на проверке» — и ждущее приёмки, и ждущее клиента
+              (${pausedSql('t')}) AS "inReview", ${stageSql('t')} AS stage, COALESCE(t.is_blocked, false) AS "isBlocked",
+              ${personalDeadlineSql('t')} AS "personalDeadlineAt", t.submitted_at AS "submittedAt", t.returned_at AS "returnedAt",
               COALESCE(t.directions, '{}') AS directions,
               GREATEST(t.created_at,
-                COALESCE((SELECT max(a.created_at) FROM task_activity a WHERE a.task_id = t.id AND a.kind = ANY($3::text[])), t.created_at),
+                COALESCE((SELECT max(a.created_at) FROM task_activity a WHERE a.task_id = t.id AND a.kind = ANY($2::text[])), t.created_at),
                 COALESCE((SELECT max(m.created_at) FROM chat_messages m WHERE m.task_id = t.id AND m.deleted_at IS NULL AND NOT m.is_ai), t.created_at)
               ) AS "lastMove"
          FROM tasks t
          JOIN projects p ON p.id = t.project_id AND p.status <> 'archived' AND NOT p.is_demo
-         JOIN board_columns bc ON bc.id = t.column_id
     LEFT JOIN users ua ON ua.id = t.assignee_id
     LEFT JOIN users uc ON uc.id = t.created_by
         WHERE t.tenant_id = $1 AND t.closed_at IS NULL AND t.deleted_at IS NULL
         LIMIT 3000`,
-      [tenantId, REVIEW_COLUMN_NAMES, MOVE_KINDS],
+      [tenantId, MOVE_KINDS],
     );
     return rows.map((r) => ({
       ...r, priority: (['low', 'normal', 'high', 'urgent'].includes(r.priority) ? r.priority : 'normal') as Priority,
       deadlineAt: r.deadlineAt ? new Date(r.deadlineAt) : null, createdAt: new Date(r.createdAt), lastMove: new Date(r.lastMove),
+      personalDeadlineAt: r.personalDeadlineAt ? new Date(r.personalDeadlineAt) : null,
+      submittedAt: r.submittedAt ? new Date(r.submittedAt) : null, returnedAt: r.returnedAt ? new Date(r.returnedAt) : null,
     }));
   }
 
@@ -149,7 +152,7 @@ export class PulseRepository {
            FROM tasks t JOIN board_columns bc ON bc.id = t.column_id JOIN projects p ON p.id = t.project_id AND p.status <> 'archived' AND NOT p.is_demo
       LEFT JOIN users ua ON ua.id = t.assignee_id
           WHERE t.tenant_id=$1 AND t.created_by=$2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
-            AND t.closed_at IS NULL AND t.deleted_at IS NULL AND lower(bc.name) = ANY($3::text[]) LIMIT 50`, [tenantId, userId, REVIEW_COLUMN_NAMES]),
+            AND t.closed_at IS NULL AND t.deleted_at IS NULL AND ${stageSql('t')} IN ('testing', 'review', 'approval') LIMIT 50`, [tenantId, userId]),
       this.db.many<any>(
         `SELECT t.id::text, t.title, ua.full_name AS who, t.updated_at AS since, t.deadline_shift_to AS "dueAt", t.id::text AS "taskId",
                 t.project_id::text AS "projectId"

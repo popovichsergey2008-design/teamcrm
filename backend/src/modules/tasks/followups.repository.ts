@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { FollowupAnswer } from './followup-rules';
-import { REVIEW_COLUMN_NAMES } from './task-columns';
+import { pausedSql } from './responsibility';
 
 export interface FollowupCandidate {
   tenant_id: string;
@@ -52,9 +52,9 @@ export class FollowupsRepository {
     return this.db.many<FollowupCandidate>(
       `SELECT t.tenant_id::text, t.id::text AS task_id, t.project_id::text, t.title,
               t.deadline_at, (t.closed_at IS NOT NULL) AS closed,
-              -- «Сдана и ждёт приёмки» определяем по КОЛОНКЕ: у нас нет отдельного
-              -- статуса, а имена стадии свои у каждой импортированной доски.
-              (lower(c.name) = ANY($4::text[])) AS waiting_approval,
+              -- «Сдана и ждёт приёмки» — этап задачи из единого движка (ТЗ-30): тип колонки
+              -- (по названию или выставленный руками) и отметка «ждёт приёмки».
+              (${pausedSql('t')}) AS waiting_approval,
               t.assignee_id::text, u.timezone, org.timezone AS org_timezone,
               COALESCE(w.work_start, TIME '09:00')::text AS work_start,
               COALESCE(w.work_end, TIME '18:00')::text AS work_end,
@@ -78,7 +78,7 @@ export class FollowupsRepository {
           AND t.deadline_at <= $1::timestamptz + ($2::bigint || ' milliseconds')::interval
         ORDER BY t.deadline_at
         LIMIT $3`,
-      [now.toISOString(), String(windowMs), limit, REVIEW_COLUMN_NAMES],
+      [now.toISOString(), String(windowMs), limit],
     );
   }
 

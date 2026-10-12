@@ -343,6 +343,8 @@ export type FocusToday =
     top: FocusItem[];
     backlogCount: number;
     waitingDecision: number;
+    /** ТЗ-30: моя сданная работа ждёт проверки — не просрочка, вне тройки */
+    waitingReview?: number;
     criticalCandidate: (FocusCandidate & { replaceRank: number }) | null;
     closeDay: { available: boolean; closedAt: string | null; workdayClosedUntil: string | null; workEnd: string };
     /** созвон → фокус: поручения со встреч за сутки, по встречам */
@@ -1254,6 +1256,8 @@ export const api = {
   // колонки доски
   addColumn: (projectId: string, name: string) => request<any>('POST', `/projects/${projectId}/columns`, { name }),
   renameColumn: (projectId: string, colId: string, name: string) => request<any>('PATCH', `/projects/${projectId}/columns/${colId}`, { name }),
+  /** ТЗ-30: тип этапа колонки; auto — снова по названию. */
+  setColumnStage: (projectId: string, colId: string, stage: string) => request<any>('PATCH', `/projects/${projectId}/columns/${colId}/stage`, { stage }),
   moveColumn: (projectId: string, colId: string, direction: 'left' | 'right') => request<any>('POST', `/projects/${projectId}/columns/${colId}/move`, { direction }),
   reorderColumns: (projectId: string, orderedIds: string[]) => request<any>('POST', `/projects/${projectId}/columns/reorder`, { orderedIds }),
   deleteColumn: (projectId: string, colId: string) => request<{ deleted: boolean }>('DELETE', `/projects/${projectId}/columns/${colId}`),
@@ -3127,7 +3131,7 @@ export interface PulseSummary {
   verdict: { headline: string; lines: string[]; sources: { projects: number; tasks: number; stuck: number; people: number; last7: number; prev7: number } };
   decisions: { kind: string; id: string; title: string; who: string | null; since: string; dueAt: string | null; taskId: string | null; projectId: string | null; clientId: string | null; urgent: boolean; score: number }[];
   bottlenecks: { taskId: string; title: string; projectId: string; projectName: string; assignee: string | null; type: string; typeTitle: string; why: string; actions: PulseActionType[]; severity: number; priority: string }[];
-  workload: { id: string; name: string; pct: number; band: 'available' | 'normal' | 'high' | 'overloaded'; norm: number; risk: string; available: boolean; points: number; active: number; urgent: number; overdue: number; dueSoon: number; reviews: number; meetingHours: number }[];
+  workload: { id: string; name: string; pct: number; band: 'available' | 'normal' | 'high' | 'overloaded'; norm: number; risk: string; available: boolean; points: number; active: number; urgent: number; overdue: number; dueSoon: number; reviews: number; meetingHours: number; submitted?: number; returned?: number }[];
   velocity: { last7: number; prev7: number; delta: number | null; label: string };
   victories: string[];
   projects: { id: string; name: string; targetDate: string | null; open: number; progress: number; overdue: number; stuck: number; risk: { score: number; level: 'high' | 'medium' | 'low' }; forecast: PulseForecast; catchUp: string[] }[];

@@ -30,6 +30,10 @@ describe('pulse-rules: застрявшие задачи', () => {
     expect(bottleneckType(task({ lastMove: idle }), NOW, new Set(['u1']))).toBe('ASSIGNEE_OVERLOADED');
     expect(bottleneckType(task({ lastMove: idle }), NOW, none)).toBe('NO_ACTIVITY');
     expect(bottleneckType(task(), NOW, none)).toBeNull();
+    // ТЗ-30: сдано на проверку и срок задачи прошёл — задержка на проверке, не просрочка исполнителя
+    expect(bottleneckType(task({ inReview: true, deadlineAt: new Date(NOW.getTime() - 3 * D) }), NOW, none)).toBe('WAITING_REVIEW');
+    // вернули на доработку: старый срок прошёл, но срок доработки ещё нет — не просрочка
+    expect(bottleneckType(task({ deadlineAt: new Date(NOW.getTime() - 3 * D), personalDeadlineAt: new Date(NOW.getTime() + 10 * H) }), NOW, none)).toBeNull();
   });
 });
 

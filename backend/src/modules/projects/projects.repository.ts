@@ -23,6 +23,9 @@ export interface ColumnRow {
   project_id: string;
   name: string;
   position: number;
+  /** ТЗ-30: тип этапа — по названию или выставленный руками */
+  stage_type?: string;
+  stage_type_manual?: boolean;
 }
 
 const DEFAULT_COLUMNS = ['Новые', 'В работе', 'На тестировании', 'Готово'];
@@ -437,6 +440,17 @@ export class ProjectsRepository {
     return this.db.one<ColumnRow>(
       `UPDATE board_columns SET name = $4 WHERE tenant_id = $1 AND project_id = $2 AND id = $3 RETURNING *`,
       [tenantId, projectId, columnId, name],
+    );
+  }
+
+  /** Тип этапа колонки (ТЗ-30): «auto» — снова по названию (пересчитает триггер). */
+  setColumnStage(tenantId: string, projectId: string, columnId: string, stage: string): Promise<ColumnRow | null> {
+    return this.db.one<ColumnRow>(
+      `UPDATE board_columns
+          SET stage_type_manual = ($4::text <> 'auto'),
+              stage_type = CASE WHEN $4::text = 'auto' THEN column_stage_by_name(name) ELSE $4::text END
+        WHERE tenant_id = $1 AND project_id = $2 AND id = $3 RETURNING *`,
+      [tenantId, projectId, columnId, stage],
     );
   }
 

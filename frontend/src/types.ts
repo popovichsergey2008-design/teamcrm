@@ -389,7 +389,13 @@ export interface BoardColumn {
   name: string;
   position: number;
   tasks: Task[];
+  /** ТЗ-30: тип этапа — работа, проверка, согласование, ждём клиента, готово */
+  stage_type?: StageType;
+  stage_type_manual?: boolean;
 }
+
+/** Тип этапа колонки (ТЗ-30): от него зависит, чья просрочка, пока задача в колонке. */
+export type StageType = 'work' | 'testing' | 'review' | 'approval' | 'waiting_external' | 'done';
 
 export interface Board {
   project: Project;

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
+import { assigneeOwesSql, personalDeadlineSql, stageSql } from '../tasks/responsibility';
 
 export type NavCountsRow = {
   decide: number;
@@ -33,16 +33,18 @@ export class NavRepository {
              AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
              AND t.closed_at IS NULL
              AND p.status <> 'archived'
-             AND lower(bc.name) = ANY($4::text[]))::int AS decide,
+             AND ${stageSql('t')} IN ('testing', 'review', 'approval'))::int AS decide,
          (SELECT COUNT(*) FROM tasks t
             JOIN projects p ON p.id = t.project_id
            WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
              AND t.assignee_id = $2
              AND t.closed_at IS NULL
              AND p.status <> 'archived'
-             AND t.deadline_at IS NOT NULL
-             AND t.deadline_at <= $3)::int AS today,
-         (CASE WHEN $5 THEN (
+             -- ТЗ-30: «сегодня» — то, что на мне; сданное на проверку не горит у меня
+             AND ${assigneeOwesSql('t')}
+             AND ${personalDeadlineSql('t')} IS NOT NULL
+             AND ${personalDeadlineSql('t')} <= $3)::int AS today,
+         (CASE WHEN $4 THEN (
             SELECT COUNT(*) FROM tasks t
               JOIN projects p ON p.id = t.project_id
              WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
@@ -51,7 +53,7 @@ export class NavRepository {
                AND t.deadline_at IS NOT NULL
                AND t.deadline_at < now())
           ELSE 0 END)::int AS risks`,
-      [tenantId, userId, endOfDay, REVIEW_COLUMN_NAMES, withRisks],
+      [tenantId, userId, endOfDay, withRisks],
     );
   }
 }

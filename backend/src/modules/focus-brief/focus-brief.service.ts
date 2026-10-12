@@ -208,7 +208,7 @@ export class FocusBriefService implements OnModuleInit {
       }));
     const topTaskIds = top.map((i) => i.taskId).filter((x): x is string => !!x);
 
-    const [meetings, postcall, commitments, due, waiting, cal, ann, overloaded] = await Promise.all([
+    const [meetings, postcall, commitments, due, waiting, cal, ann, overloaded, submitted] = await Promise.all([
       this.repo.meetingsYesterday(v.tenantId, v.userId, boss, v.role === 'client', yStart, dayStart),
       this.repo.postcallPending(v.tenantId, v.userId),
       this.repo.commitments(v.tenantId, v.userId, yStart, dayEnd),
@@ -217,6 +217,7 @@ export class FocusBriefService implements OnModuleInit {
       this.repo.calendar(v.tenantId, v.userId, now, dayStart, dayEnd),
       this.repo.announcements(v.tenantId, v.userId, v.role === 'owner'),
       preset.teamSignals ? this.workload.overloaded(v.tenantId).catch(() => [] as string[]) : Promise.resolve(null),
+      this.repo.submittedWaiting(v.tenantId, v.userId),
     ]);
 
     const label = (type: string, at: Date) => {
@@ -236,6 +237,7 @@ export class FocusBriefService implements OnModuleInit {
         sourceLink: c.task_id && c.project_id ? `/projects/${c.project_id}/task/${c.task_id}`
           : c.source_type === 'chat' ? `/chat/${c.source_id}` : c.source_type === 'meeting' ? `/meetings/${c.source_id}` : null,
       })),
+      submittedWaiting: submitted,
       dueOutside: due.map((d) => ({ taskId: d.id, projectId: d.project_id, title: d.title, overdue: new Date(d.deadline_at).getTime() < dayStart.getTime() })),
       waiting: { proposals: waiting.proposals, approvals: waiting.approvals },
       meetingsToday: cal.count,

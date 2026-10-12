@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { stageSql } from '../tasks/responsibility';
 import { DbService } from '../../database/db.service';
 
 /** Кто смотрит и в каком охвате: `own` — только свои клиенты (п. 46, scope assigned). */
@@ -442,13 +443,14 @@ export class ClientsRepository {
     return this.db.query(`UPDATE projects SET client_id = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2`, [tenantId, projectId, clientId]);
   }
 
-  tasks(tenantId: string, clientId: string, filter: string, reviewNames: string[]) {
+  tasks(tenantId: string, clientId: string, filter: string) {
+    // просрочка здесь — задачи клиента как проекта (ТЗ-30, п. 4); «на согласовании» — по этапу
     const extra = filter === 'overdue' ? 'AND t.closed_at IS NULL AND t.deadline_at < now()'
-      : filter === 'approval' ? 'AND t.closed_at IS NULL AND lower(bc.name) = ANY($3::text[])'
+      : filter === 'approval' ? `AND t.closed_at IS NULL AND ${stageSql('t')} IN ('testing', 'review', 'approval', 'waiting_external')`
       : filter === 'all' ? '' : 'AND t.closed_at IS NULL';
     return this.db.many<any>(
       `SELECT t.id, t.title, t.project_id, tp.name AS project_name, t.deadline_at, t.priority, t.closed_at,
-              ua.full_name AS assignee_name, bc.name AS column_name
+              ua.full_name AS assignee_name, bc.name AS column_name, ${stageSql('t')} AS stage
          FROM tasks t LEFT JOIN projects tp ON tp.id = t.project_id
          JOIN board_columns bc ON bc.id = t.column_id
          LEFT JOIN users ua ON ua.id = t.assignee_id
@@ -456,7 +458,7 @@ export class ClientsRepository {
           AND (t.client_id = $2 OR (t.client_id IS NULL AND tp.client_id = $2)) ${extra}
         ORDER BY t.closed_at IS NOT NULL, t.deadline_at NULLS LAST, t.created_at DESC
         LIMIT 200`,
-      filter === 'approval' ? [tenantId, clientId, reviewNames] : [tenantId, clientId],
+      [tenantId, clientId],
     );
   }
 

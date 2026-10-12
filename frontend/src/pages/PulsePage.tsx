@@ -193,7 +193,8 @@ export function PulsePage() {
               </div>
               <span className="pulse-bar"><i style={{ width: `${Math.min(100, w.pct)}%` }} /></span>
               <div className="dim pulse-load-meta">
-                {w.active} задач · {w.urgent} срочных · {w.overdue} просрочено{w.reviews ? ` · проверить ${w.reviews}` : ''}{w.meetingHours ? ` · встречи ${w.meetingHours} ч` : ''}
+                {/* ТЗ-30: просрочено — только то, что сейчас на человеке; сданное — отдельно */}
+                {w.active} в работе · {w.urgent} срочных · {w.overdue} просрочено у него{w.submitted ? ` · передано на проверку ${w.submitted}` : ''}{w.returned ? ` · возвращено на доработку ${w.returned}` : ''}{w.reviews ? ` · проверить ${w.reviews}` : ''}{w.meetingHours ? ` · встречи ${w.meetingHours} ч` : ''}
                 {' '}· {BAND_TITLE[w.band]} · риск задержек {w.risk}
               </div>
               <div className="pulse-acts">

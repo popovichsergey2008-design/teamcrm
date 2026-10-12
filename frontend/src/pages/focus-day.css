@@ -189,3 +189,4 @@
 .fd-stack { display: flex; flex-direction: column; gap: var(--sp-3); }
 .fd-stack:empty { display: none; }
 .tn-pulse { margin-left: auto; font-weight: 500; }
+.fd-row-static { cursor: default; }

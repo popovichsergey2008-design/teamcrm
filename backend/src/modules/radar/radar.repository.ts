@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
+import { personalDeadlineSql, stageSql } from '../tasks/responsibility';
 
 export type ProjectHealth = {
   id: string;
@@ -18,6 +18,8 @@ export type PersonLoad = {
   open: number;
   overdue: number;
   due_today: number;
+  /** ТЗ-30: сдано на проверку — не просрочка */
+  in_review?: number;
 };
 
 export type StuckTask = {
@@ -64,12 +66,15 @@ export class RadarRepository {
       // Архивные проекты отсекаем ВНУТРИ подзапроса: условие в ON у LEFT JOIN
       // их бы не убрало — строка задачи осталась бы, просто без проекта.
       `SELECT u.id AS user_id, u.full_name,
-              COUNT(t.id)::int AS open,
-              COUNT(t.id) FILTER (WHERE t.deadline_at < now())::int AS overdue,
-              COUNT(t.id) FILTER (WHERE t.deadline_at IS NOT NULL AND t.deadline_at <= $2)::int AS due_today
+              -- ТЗ-30: в работе, просрочено и сроки — только то, что сейчас у человека;
+              -- сданное на проверку — отдельной цифрой, не просрочкой
+              COUNT(t.id) FILTER (WHERE t.stage = 'work')::int AS open,
+              COUNT(t.id) FILTER (WHERE t.stage = 'work' AND t.pdl < now())::int AS overdue,
+              COUNT(t.id) FILTER (WHERE t.stage = 'work' AND t.pdl IS NOT NULL AND t.pdl <= $2)::int AS due_today,
+              COUNT(t.id) FILTER (WHERE t.stage IN ('testing', 'review', 'approval', 'waiting_external'))::int AS in_review
          FROM users u
          LEFT JOIN (
-           SELECT t.id, t.assignee_id, t.deadline_at
+           SELECT t.id, t.assignee_id, t.deadline_at, ${stageSql('t')} AS stage, ${personalDeadlineSql('t')} AS pdl
              FROM tasks t
              JOIN projects p ON p.id = t.project_id
             WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at IS NULL AND p.status <> 'archived' AND NOT p.is_demo
@@ -100,11 +105,11 @@ export class RadarRepository {
         WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
           AND t.closed_at IS NULL
           AND p.status <> 'archived' AND NOT p.is_demo
-          AND lower(bc.name) = ANY($3::text[])
-          AND t.updated_at < now() - make_interval(hours => $2::int)
-        ORDER BY t.updated_at ASC
+          AND ${stageSql('t')} IN ('testing', 'review', 'approval')
+          AND COALESCE(t.submitted_at, t.updated_at) < now() - make_interval(hours => $2::int)
+        ORDER BY COALESCE(t.submitted_at, t.updated_at) ASC
         LIMIT 20`,
-      [tenantId, hours, REVIEW_COLUMN_NAMES],
+      [tenantId, hours],
     );
   }
 

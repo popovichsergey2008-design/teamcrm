@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
+import { assigneeOwesSql } from '../tasks/responsibility';
 import { Candidate } from './maintenance-rules';
 
 export interface ProposalRow {
@@ -57,11 +57,11 @@ export class MaintenanceRepository {
          JOIN board_columns bc ON bc.id = t.column_id
         WHERE t.tenant_id = $1
           AND t.closed_at IS NULL
-          AND lower(bc.name) <> ALL($3::text[])
+          AND ${assigneeOwesSql('t')}
           AND t.updated_at < now() - make_interval(days => $2::int)
         ORDER BY t.updated_at
         LIMIT 50`,
-      [tenantId, days, REVIEW_COLUMN_NAMES],
+      [tenantId, days],
     );
   }
 

@@ -5,7 +5,7 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { ProjectsService } from './projects.service';
 import {
   ColumnDto, CreateProjectDto, MoveColumnDto, ProjectDefaultDto, ProjectMembersDto, ProjectOrderDto,
-  ProjectOwnerDto, ReorderColumnsDto, UpdateProjectDto,
+  ProjectOwnerDto, ReorderColumnsDto, UpdateProjectDto, ColumnStageDto,
 } from './projects.dto';
 
 @ApiTags('projects')
@@ -137,6 +137,17 @@ export class ProjectsController {
   @Post(':id/columns')
   addColumn(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ColumnDto) {
     return this.projects.addColumn(user.tenantId, id, dto.name);
+  }
+
+  /** Тип этапа колонки (ТЗ-30): работа / проверка / согласование / ждём клиента / готово. */
+  @Patch(':id/columns/:colId/stage')
+  setColumnStage(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('colId') colId: string,
+    @Body() dto: ColumnStageDto,
+  ) {
+    return this.projects.setColumnStage(user.tenantId, id, colId, dto.stage);
   }
 
   @Patch(':id/columns/:colId')

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
+import { assigneeOwesSql, personalDeadlineSql, personalOverdueSql } from '../tasks/responsibility';
 import { SecretaryService } from '../secretary/secretary.service';
 import {
   classifyAsk, hotAnswer, loadAnswer, projectAnswer, unknownAnswer,
@@ -102,7 +102,8 @@ export class AskService {
     const rows = await this.db.many<{ full_name: string; open: string; overdue: string; hours: string }>(
       `SELECT u.full_name,
               COUNT(t.id) FILTER (WHERE t.closed_at IS NULL) AS open,
-              COUNT(t.id) FILTER (WHERE t.closed_at IS NULL AND t.deadline_at < now()) AS overdue,
+              -- ТЗ-30: просрочено у человека — то, что сейчас на нём; сданное на проверку не в счёт
+              COUNT(t.id) FILTER (WHERE t.closed_at IS NULL AND t.deleted_at IS NULL AND ${personalOverdueSql('t')}) AS overdue,
               COALESCE(SUM(t.estimate_hours) FILTER (WHERE t.closed_at IS NULL), 0) AS hours
          FROM users u
          JOIN roles r ON r.id = u.role_id
@@ -122,18 +123,17 @@ export class AskService {
       title: string; assignee_name: string | null; project_name: string; overdue_hours: string;
     }>(
       `SELECT t.title, u.full_name AS assignee_name, p.name AS project_name,
-              GREATEST(0, EXTRACT(EPOCH FROM (now() - t.deadline_at)) / 3600) AS overdue_hours
+              GREATEST(0, EXTRACT(EPOCH FROM (now() - ${personalDeadlineSql('t')})) / 3600) AS overdue_hours
          FROM tasks t
          JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
-         JOIN board_columns c ON c.id = t.column_id
     LEFT JOIN users u ON u.id = t.assignee_id
-        WHERE t.tenant_id=$1 AND t.closed_at IS NULL
-          AND lower(c.name) <> ALL($2::text[])
-          AND (t.deadline_at < now() OR t.risk_level IN ('red','yellow'))
-          AND ($3::bigint IS NULL OR t.assignee_id = $3::bigint)
-        ORDER BY t.deadline_at NULLS LAST
+        WHERE t.tenant_id=$1 AND t.closed_at IS NULL AND t.deleted_at IS NULL
+          AND ${assigneeOwesSql('t')}
+          AND (${personalDeadlineSql('t')} < now() OR t.risk_level IN ('red','yellow'))
+          AND ($2::bigint IS NULL OR t.assignee_id = $2::bigint)
+        ORDER BY ${personalDeadlineSql('t')} NULLS LAST
         LIMIT 30`,
-      [tenantId, REVIEW_COLUMN_NAMES, userId],
+      [tenantId, userId],
     );
     return hotAnswer(rows.map((r) => ({
       title: r.title,

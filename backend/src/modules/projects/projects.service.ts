@@ -225,6 +225,15 @@ export class ProjectsService {
     return col;
   }
 
+  /** Тип этапа колонки (ТЗ-30): от него зависит, чья просрочка, пока задача в ней. */
+  async setColumnStage(tenantId: string, projectId: string, columnId: string, stage: string) {
+    await this.getOrThrow(tenantId, projectId);
+    const col = await this.repo.setColumnStage(tenantId, projectId, columnId, stage);
+    if (!col) throw AppException.notFound('Колонка не найдена');
+    this.notifyColumns(tenantId, projectId);
+    return col;
+  }
+
   async deleteColumn(tenantId: string, projectId: string, columnId: string) {
     await this.getOrThrow(tenantId, projectId);
     const column = await this.repo.findColumn(tenantId, projectId, columnId);

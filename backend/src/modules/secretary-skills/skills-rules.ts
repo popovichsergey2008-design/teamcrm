@@ -45,6 +45,8 @@ export interface BriefFacts {
   closedYesterday: number;
   createdYesterday: number;
   overdue: number;
+  /** ТЗ-30: где задержка у просроченных — у исполнителей, на проверке, на согласовании, у клиента */
+  overdueBy?: { work: number; review: number; approval: number; client: number };
   dueToday: number;
   hottest: { title: string; who: string | null } | null;
   decisionsWaiting: number;
@@ -61,7 +63,12 @@ export function briefLines(f: BriefFacts): string[] {
   if (f.closedYesterday || f.createdYesterday) out.push(`Вчера закрыто задач: ${f.closedYesterday}, новых: ${f.createdYesterday}.`);
   if (f.dueToday || f.overdue) {
     const hot = f.hottest ? ` Главное — «${f.hottest.title}»${f.hottest.who ? ` (${f.hottest.who})` : ''}.` : '';
-    out.push(`Горит: срок сегодня — ${f.dueToday}, просрочено — ${f.overdue}.${hot}`);
+    const by = f.overdueBy;
+    // «за сроком» — задача проекта; кто её держит — отдельно, чтобы не обвинять сдавших (п. 19)
+    const where = by && f.overdue && (by.review || by.approval || by.client)
+      ? ` (${[by.work ? `у исполнителей — ${by.work}` : '', by.review ? `на проверке — ${by.review}` : '', by.approval ? `на согласовании — ${by.approval}` : '', by.client ? `ждут клиента — ${by.client}` : ''].filter(Boolean).join(', ')})`
+      : '';
+    out.push(`Горит: срок сегодня — ${f.dueToday}, просрочено — ${f.overdue}${where}.${hot}`);
   }
   if (f.decisionsWaiting || f.approvalsWaiting) {
     out.push(`Ждут вашего решения: ${[f.decisionsWaiting ? `предложений секретаря — ${f.decisionsWaiting}` : null, f.approvalsWaiting ? `согласований — ${f.approvalsWaiting}` : null].filter(Boolean).join(', ')}.`);

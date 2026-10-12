@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
+import { assigneeOwesSql, pausedSql, personalDeadlineSql, stageSql } from '../tasks/responsibility';
 import { Candidate } from './rule-of-3';
 import { DEFAULT_DAY, WorkDay } from './close-day';
 
@@ -68,6 +68,16 @@ const VISIBLE = `($3::boolean OR p.visibility = 'all' OR p.owner_user_id = $2::b
 export class FocusDayRepository {
   constructor(private readonly db: DbService) {}
 
+  /** Моя сданная работа ждёт проверки или согласования (ТЗ-30, п. 17). */
+  async waitingReview(tenantId: string, userId: string): Promise<number> {
+    const r = await this.db.one<{ n: number }>(
+      `SELECT count(*)::int AS n FROM tasks t
+        WHERE t.tenant_id = $1 AND t.assignee_id = $2 AND t.deleted_at IS NULL AND t.closed_at IS NULL AND ${pausedSql('t')}`,
+      [tenantId, userId],
+    );
+    return r?.n ?? 0;
+  }
+
   async enabled(tenantId: string): Promise<boolean> {
     const row = await this.db.one<{ focus_v2: boolean }>(`SELECT focus_v2 FROM tenants WHERE id = $1`, [tenantId]);
     return !!row?.focus_v2;
@@ -102,7 +112,8 @@ export class FocusDayRepository {
   async candidates(tenantId: string, userId: string, today: string): Promise<(Candidate & { createdAt: Date })[]> {
     const [own, reviews, approvals] = await Promise.all([
       this.db.many<any>(
-        `SELECT t.id, t.title, p.name AS project_name, t.deadline_at, t.priority, t.is_blocked,
+        // ТЗ-30: срок — личный (после возврата — срок доработки), кандидаты — только то, что на мне
+        `SELECT t.id, t.title, p.name AS project_name, ${personalDeadlineSql('t')} AS deadline_at, t.priority, t.is_blocked,
                 t.estimate_hours, t.focus_date::text AS focus_date, t.created_at,
                 mt.meeting_id, mt.meeting_title
            FROM tasks t
@@ -117,9 +128,9 @@ export class FocusDayRepository {
            ) mt ON TRUE
           WHERE t.tenant_id = $1 AND t.assignee_id = $2
             AND t.closed_at IS NULL AND t.deleted_at IS NULL AND p.status <> 'archived' AND NOT p.is_demo
-            AND lower(bc.name) <> ALL($3::text[])
+            AND ${assigneeOwesSql('t')}
           LIMIT 500`,
-        [tenantId, userId, REVIEW_COLUMN_NAMES],
+        [tenantId, userId],
       ),
       this.db.many<any>(
         `SELECT t.id, t.title, p.name AS project_name, t.deadline_at, t.priority, t.created_at,
@@ -131,9 +142,9 @@ export class FocusDayRepository {
           WHERE t.tenant_id = $1 AND t.created_by = $2
             AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
             AND t.closed_at IS NULL AND t.deleted_at IS NULL AND p.status <> 'archived' AND NOT p.is_demo
-            AND lower(bc.name) = ANY($3::text[])
+            AND ${stageSql('t')} IN ('testing', 'review', 'approval')
           LIMIT 200`,
-        [tenantId, userId, REVIEW_COLUMN_NAMES],
+        [tenantId, userId],
       ),
       this.db.many<any>(
         `SELECT a.id, a.subject, a.task_id, a.due_at, a.created_at, au.full_name AS author_name
@@ -440,7 +451,7 @@ export class FocusDayRepository {
               t.deadline_at, t.priority,
               (t.closed_at IS NOT NULL) AS closed,
               (i.item_type <> 'approval' AND (t.id IS NULL OR t.deleted_at IS NOT NULL OR NOT ${VISIBLE})) AS gone,
-              (lower(bc.name) = ANY($5::text[])) AS in_review,
+              (${pausedSql('t')}) AS in_review,
               (a.status = 'pending') AS approval_pending, a.subject AS approval_subject,
               (SELECT count(*)::int FROM task_checklist_items ci WHERE ci.task_id = t.id) AS checklist_total,
               (SELECT count(*)::int FROM task_checklist_items ci WHERE ci.task_id = t.id AND ci.is_done) AS checklist_done,
@@ -452,7 +463,7 @@ export class FocusDayRepository {
          LEFT JOIN users ua ON ua.id = t.assignee_id
          LEFT JOIN approvals a ON a.id = i.approval_id
         WHERE i.tenant_id = $1 AND i.plan_id = $4 AND i.status IN ('active', 'done')`,
-      [tenantId, viewer.userId, viewer.boss, planId, REVIEW_COLUMN_NAMES],
+      [tenantId, viewer.userId, viewer.boss, planId],
     );
   }
 }

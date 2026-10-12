@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
+import { pausedSql, personalDeadlineSql, personalOverdueSql } from '../tasks/responsibility';
 
 export interface DueEvent {
   id: string;
@@ -104,12 +104,12 @@ export class ModeratorRepository {
          LEFT JOIN users a ON a.id = t.assignee_id
          LEFT JOIN users c ON c.id = t.created_by
         WHERE t.tenant_id = $1 AND t.closed_at IS NULL
-          AND lower(bc.name) = ANY($3::text[])
+          AND ${pausedSql('t')}
           AND t.assignee_id = ANY($2::bigint[])
           AND t.created_by = ANY($2::bigint[])
         ORDER BY t.updated_at
         LIMIT 4`,
-      [tenantId, userIds, REVIEW_COLUMN_NAMES],
+      [tenantId, userIds],
     );
   }
 
@@ -117,12 +117,13 @@ export class ModeratorRepository {
   overdue(tenantId: string, userIds: string[]) {
     return this.db.many<{ title: string; assignee: string | null; days: number }>(
       `SELECT t.title, u.full_name AS assignee,
-              GREATEST(1, (EXTRACT(EPOCH FROM (now() - t.deadline_at)) / 86400)::int) AS days
+              GREATEST(1, (EXTRACT(EPOCH FROM (now() - ${personalDeadlineSql('t')})) / 86400)::int) AS days
          FROM tasks t
          JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
          LEFT JOIN users u ON u.id = t.assignee_id
+        -- ТЗ-30: «просрочено у участника» — только то, что сейчас на нём, не на проверке
         WHERE t.tenant_id = $1 AND t.closed_at IS NULL
-          AND t.deadline_at < now()
+          AND ${personalOverdueSql('t')}
           AND t.assignee_id = ANY($2::bigint[])
         ORDER BY t.deadline_at
         LIMIT 4`,

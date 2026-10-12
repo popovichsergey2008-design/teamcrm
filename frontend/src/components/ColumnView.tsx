@@ -25,6 +25,8 @@ interface Props {
   onMoveTask: (taskId: string, columnId: string, position: number) => void;
   onOpenTask: (task: Task) => void;
   onRenameColumn?: (columnId: string, name: string) => void;
+  /** ТЗ-30: тип этапа колонки */
+  onSetStage?: (columnId: string, stage: string) => void;
   onMoveColumn?: (columnId: string, direction: 'left' | 'right') => void;
   onDeleteColumn?: (columnId: string, name: string) => void;
   onColumnDrop?: (sourceId: string, targetId: string) => void;
@@ -35,6 +37,17 @@ interface Props {
    */
   columns?: { id: string; name: string; count: number }[];
 }
+
+/** Тип этапа колонки (ТЗ-30) — что значит «задача стоит здесь» для сроков. */
+const STAGE_OPTIONS: { id: string; label: string }[] = [
+  { id: 'work', label: 'Этап: работа' },
+  { id: 'testing', label: 'Этап: тестирование' },
+  { id: 'review', label: 'Этап: проверка' },
+  { id: 'approval', label: 'Этап: согласование' },
+  { id: 'waiting_external', label: 'Этап: ждём клиента' },
+  { id: 'done', label: 'Этап: готово' },
+];
+const PAUSED_STAGES = ['testing', 'review', 'approval', 'waiting_external'];
 
 export function ColumnView({
   column,
@@ -49,6 +62,7 @@ export function ColumnView({
   onMoveTask,
   onOpenTask,
   onRenameColumn,
+  onSetStage,
   onMoveColumn,
   onDeleteColumn,
   onColumnDrop,
@@ -59,6 +73,7 @@ export function ColumnView({
   const [dragging, setDragging] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [colName, setColName] = useState(column.name);
+  const stageNow = column.stage_type ?? 'work';
 
   const submitRename = () => {
     const v = colName.trim();
@@ -154,6 +169,21 @@ export function ColumnView({
               )}
             >
               <MenuItem onSelect={() => setRenaming(true)} icon={<Icon name="edit" size={15} />}>Переименовать</MenuItem>
+              {/* ТЗ-30: тип этапа — от него зависит, чья просрочка, пока задача в этой колонке */}
+              {onSetStage && (
+                <>
+                  <MenuSeparator />
+                  {STAGE_OPTIONS.map((o) => (
+                    <MenuItem key={o.id} onSelect={() => onSetStage(column.id, o.id)}
+                      icon={<Icon name={stageNow === o.id ? 'check' : 'target'} size={15} />}>
+                      {o.label}
+                    </MenuItem>
+                  ))}
+                  <MenuItem onSelect={() => onSetStage(column.id, 'auto')} icon={<Icon name={column.stage_type_manual ? 'refresh' : 'check'} size={15} />}>
+                    Тип по названию
+                  </MenuItem>
+                </>
+              )}
               <MenuItem onSelect={() => onMoveColumn?.(column.id, 'left')} disabled={isFirst} icon={<Icon name="arrow-left" size={15} />}>Сдвинуть влево</MenuItem>
               <MenuItem onSelect={() => onMoveColumn?.(column.id, 'right')} disabled={isLast} icon={<Icon name="arrow-right" size={15} />}>Сдвинуть вправо</MenuItem>
               {canDelete && (
@@ -178,6 +208,7 @@ export function ColumnView({
             timerActive={activeTimerTask === t.id}
             onOpen={() => onOpenTask(t)}
             onDropBefore={(e) => onDropCard(e, i)}
+            paused={PAUSED_STAGES.includes(stageNow) || t.approval_state === 'pending'}
             moveTargets={columns?.filter((c) => c.id !== column.id)}
             onMoveTo={(columnId) => onMoveTask(t.id, columnId, columns?.find((c) => c.id === columnId)?.count ?? 0)}
           />
@@ -201,6 +232,7 @@ function TaskCard({
   timerActive,
   onOpen,
   onDropBefore,
+  paused = false,
   moveTargets,
   onMoveTo,
 }: {
@@ -212,13 +244,15 @@ function TaskCard({
   timerActive: boolean;
   onOpen: () => void;
   onDropBefore: (e: DragEvent) => void;
+  /** ТЗ-30: задача на проверке — срок прошёл не по вине исполнителя */
+  paused?: boolean;
   /** Куда можно перенести без перетаскивания: остальные колонки доски. */
   moveTargets?: { id: string; name: string; count: number }[];
   onMoveTo?: (columnId: string) => void;
 }) {
   const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
   const prio = priorityBadge(task.priority);
-  const due = deadlineBadge(task.deadline_at, !!task.closed_at);
+  const due = deadlineBadge(task.deadline_at, !!task.closed_at, paused);
   /*
     «Переместить» — кнопка на карточке.
 

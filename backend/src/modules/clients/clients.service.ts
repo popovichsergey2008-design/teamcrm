@@ -4,7 +4,6 @@ import { DbService } from '../../database/db.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SecurityService } from '../security/security.service';
 import { can, maskContact, Permission, PermissionMap, scopeOf } from '../security/permissions';
-import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
 import { readTable, splitHeader } from '../integrations/file/table-read';
 import { ClientScope, ClientsRepository, ListFilters } from './clients.repository';
 import {
@@ -191,8 +190,8 @@ export class ClientsService {
       this.repo.members(id),
       can(c.perms, 'crm.view') ? this.repo.deals(id) : Promise.resolve([]),
       this.repo.projects(me.tenantId, id),
-      this.repo.tasks(me.tenantId, id, 'open', REVIEW_COLUMN_NAMES),
-      this.repo.tasks(me.tenantId, id, 'overdue', REVIEW_COLUMN_NAMES),
+      this.repo.tasks(me.tenantId, id, 'open'),
+      this.repo.tasks(me.tenantId, id, 'overdue'),
       this.repo.meetings(me.tenantId, id),
       this.repo.notes(id, me.userId, c.boss).then((n) => n.filter((x) => x.pinned).slice(0, 3)),
     ]);
@@ -465,7 +464,7 @@ export class ClientsService {
   async tasks(me: Me, clientId: string, filter: string) {
     const c = await this.ctx(me);
     await this.client(me, c, clientId);
-    return (await this.repo.tasks(me.tenantId, clientId, filter, REVIEW_COLUMN_NAMES)).map(presentTask);
+    return (await this.repo.tasks(me.tenantId, clientId, filter)).map(presentTask);
   }
 
   async meetings(me: Me, clientId: string) {

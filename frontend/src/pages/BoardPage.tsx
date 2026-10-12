@@ -369,6 +369,15 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
     }
   };
 
+  /** ТЗ-30: тип этапа колонки — чья просрочка, пока задача в ней. */
+  const setColumnStage = async (columnId: string, stage: string) => {
+    if (!selected) return;
+    try {
+      await api.setColumnStage(selected, columnId, stage);
+      reloadBoard();
+    } catch (e) { setError(e instanceof ApiError ? e.message : 'Не удалось поменять тип колонки'); }
+  };
+
   const moveColumn = async (columnId: string, direction: 'left' | 'right') => {
     if (!selected) return;
     try {
@@ -739,6 +748,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                     onMoveTask={moveTask}
                     onOpenTask={(t) => setOpenTaskId(t.id)}
                     onRenameColumn={renameColumn}
+                    onSetStage={setColumnStage}
                     onMoveColumn={moveColumn}
                     onDeleteColumn={deleteColumn}
                     onColumnDrop={reorderColumns}

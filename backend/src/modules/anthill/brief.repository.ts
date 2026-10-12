@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
+import { assigneeOwesSql, pausedSql, personalOverdueSql } from '../tasks/responsibility';
 import { BriefMeeting, BriefTask, EveningData, MorningData } from './brief-rules';
 import { DigestMessage, Unanswered } from './chat-digest-rules';
 
@@ -84,18 +84,20 @@ export class BriefRepository {
           ORDER BY e.starts_at LIMIT 20`,
         [tenantId, userId, from, to],
       ),
-      this.db.many(`SELECT t.id, t.title, t.project_id, t.deadline_at FROM tasks t WHERE ${OPEN_MINE} AND t.deadline_at < now() ORDER BY t.deadline_at LIMIT 50`, [tenantId, userId]),
-      this.db.many(`SELECT t.id, t.title, t.project_id, t.deadline_at FROM tasks t WHERE ${OPEN_MINE} AND t.deadline_at >= now() AND t.deadline_at < $3 ORDER BY t.deadline_at LIMIT 50`, [tenantId, userId, to]),
+      // ТЗ-30: просрочено — только то, что сейчас на мне; сданное на проверку не моё
+      this.db.many(`SELECT t.id, t.title, t.project_id, t.deadline_at FROM tasks t WHERE ${OPEN_MINE} AND ${personalOverdueSql('t')} ORDER BY t.deadline_at LIMIT 50`, [tenantId, userId]),
+      this.db.many(`SELECT t.id, t.title, t.project_id, t.deadline_at FROM tasks t WHERE ${OPEN_MINE} AND ${assigneeOwesSql('t')} AND t.deadline_at >= now() AND t.deadline_at < $3 ORDER BY t.deadline_at LIMIT 50`, [tenantId, userId, to]),
       this.db.many(`SELECT t.id, t.title, t.project_id FROM tasks t WHERE ${OPEN_MINE} AND t.is_blocked LIMIT 50`, [tenantId, userId]),
-      this.db.one<{ approvals: number; reviews: number; shifts: number }>(
+      this.db.one<{ approvals: number; reviews: number; shifts: number; waiting: number }>(
         `SELECT
            (SELECT count(*)::int FROM approvals a WHERE a.tenant_id = $1 AND a.approver_id = $2 AND a.status = 'pending') AS approvals,
            (SELECT count(*)::int FROM tasks t JOIN board_columns bc ON bc.id = t.column_id
              WHERE t.tenant_id = $1 AND t.created_by = $2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
-               AND t.closed_at IS NULL AND t.deleted_at IS NULL AND lower(bc.name) = ANY($3::text[])) AS reviews,
+               AND t.closed_at IS NULL AND t.deleted_at IS NULL AND ${pausedSql('t')}) AS reviews,
+           (SELECT count(*)::int FROM tasks t WHERE ${OPEN_MINE} AND ${pausedSql('t')}) AS waiting,
            (SELECT count(*)::int FROM tasks t WHERE t.tenant_id = $1 AND t.created_by = $2 AND t.deadline_shift_to IS NOT NULL
                AND t.closed_at IS NULL AND t.deleted_at IS NULL) AS shifts`,
-        [tenantId, userId, REVIEW_COLUMN_NAMES],
+        [tenantId, userId],
       ),
       this.db.many<{ name: string; count: number }>(
         `SELECT peer.full_name AS name, count(*)::int AS count
@@ -114,6 +116,7 @@ export class BriefRepository {
       meetings: meetings.map((m) => ({ title: m.title, startsAt: m.starts_at })),
       overdue: overdue.map(task), dueToday: dueToday.map(task), blocked: blocked.map(task),
       decisions: { approvals: Number(decisions?.approvals ?? 0), reviews: Number(decisions?.reviews ?? 0), shifts: Number(decisions?.shifts ?? 0) },
+      submittedWaiting: Number(decisions?.waiting ?? 0),
       unreadDms: dms.map((x) => ({ name: x.name, count: Number(x.count) })),
     };
   }
@@ -246,7 +249,7 @@ export class BriefRepository {
             FROM time_logs l WHERE l.tenant_id = $1 AND l.user_id = $2 AND l.timestamp_start >= $3 AND l.timestamp_start < $4) AS tracked,
          (SELECT count(*)::int FROM tasks t
            WHERE t.tenant_id = $1 AND t.assignee_id = $2 AND t.deleted_at IS NULL AND t.closed_at >= $3 AND t.closed_at < $4) AS closed,
-         (SELECT count(*)::int FROM tasks t WHERE ${OPEN_MINE} AND t.deadline_at < now()) AS overdue`,
+         (SELECT count(*)::int FROM tasks t WHERE ${OPEN_MINE} AND ${personalOverdueSql('t')}) AS overdue`,
       [tenantId, userId, from, to],
     );
     return {

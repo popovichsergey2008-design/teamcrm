@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { REVIEW_COLUMN_NAMES } from '../tasks/task-columns';
+import { pausedSql, personalOverdueSql } from '../tasks/responsibility';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { TelegramMirror } from '../notifications/telegram-mirror.service';
@@ -100,18 +100,17 @@ export class EveningService {
         [tenantId, tz],
       ),
       this.db.many<{ title: string; hours: number }>(
-        `SELECT t.title, EXTRACT(EPOCH FROM (now() - t.updated_at)) / 3600 AS hours
-           FROM tasks t JOIN board_columns c ON c.id = t.column_id
-          WHERE t.tenant_id=$1 AND t.closed_at IS NULL AND lower(c.name) = ANY($2::text[])
-          ORDER BY t.updated_at LIMIT 20`,
-        [tenantId, REVIEW_COLUMN_NAMES],
+        `SELECT t.title, EXTRACT(EPOCH FROM (now() - COALESCE(t.submitted_at, t.updated_at))) / 3600 AS hours
+           FROM tasks t
+          WHERE t.tenant_id=$1 AND t.closed_at IS NULL AND ${pausedSql('t')}
+          ORDER BY COALESCE(t.submitted_at, t.updated_at) LIMIT 20`,
+        [tenantId],
       ),
       this.db.one<{ tasks: string; people: string }>(
         `SELECT COUNT(*) AS tasks, COUNT(DISTINCT t.assignee_id) AS people
-           FROM tasks t JOIN board_columns c ON c.id = t.column_id
-          WHERE t.tenant_id=$1 AND t.closed_at IS NULL
-            AND t.deadline_at < now() AND lower(c.name) <> ALL($2::text[])`,
-        [tenantId, REVIEW_COLUMN_NAMES],
+           FROM tasks t
+          WHERE t.tenant_id=$1 AND t.closed_at IS NULL AND ${personalOverdueSql('t')}`,
+        [tenantId],
       ),
       // Светофор рисков считает прогноз (Этап 4) — здесь только читаем его вывод.
       this.db.many<{ title: string; assignee_name: string | null }>(

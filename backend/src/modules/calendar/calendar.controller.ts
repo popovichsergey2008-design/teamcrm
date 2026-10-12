@@ -76,6 +76,8 @@ class WorkDto {
   @Matches(/^\d{2}:\d{2}$/) workEnd!: string;
   @IsArray() @ArrayMaxSize(7) @IsInt({ each: true }) @Min(0, { each: true }) @Max(6, { each: true }) weekendDays!: number[];
   @IsArray() @ArrayMaxSize(200) @IsDateString({}, { each: true }) holidays!: string[];
+  /** ТЗ-30: окно доработки после возврата с проверки, часов */
+  @IsOptional() @IsInt() @Min(1) @Max(240) fixWindowHours?: number;
 }
 
 /** Календарь: личные события и события компании. Заказчику (роль client) не показывается. */

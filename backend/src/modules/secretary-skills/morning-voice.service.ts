@@ -10,6 +10,7 @@ import { ProactiveRepository } from '../proactive/proactive.repository';
 import { ProactiveScheduler } from '../proactive/proactive.scheduler';
 import { WorkloadGuardService } from '../workload/workload.service';
 import { BriefFacts, briefLines, speakable } from './skills-rules';
+import { assigneeOwesSql, stageSql } from '../tasks/responsibility';
 import { FocusBriefService } from '../focus-brief/focus-brief.service';
 
 /**
@@ -119,10 +120,14 @@ export class MorningVoiceService implements OnModuleInit {
     const dayEnd = zonedTime(tomorrowOf(now, tz), '00:00', tz);
     const yStart = new Date(dayStart.getTime() - 86400_000);
     const [c, hot, waiting, meetings, first, prepared, overloaded] = await Promise.all([
-      this.db.one<{ closed: number; created: number; overdue: number; due: number }>(
+      this.db.one<{ closed: number; created: number; overdue: number; due: number; o_work: number; o_review: number; o_approval: number; o_client: number }>(
         `SELECT count(*) FILTER (WHERE closed_at >= $2 AND closed_at < $3)::int AS closed,
                 count(*) FILTER (WHERE created_at >= $2 AND created_at < $3)::int AS created,
                 count(*) FILTER (WHERE closed_at IS NULL AND deadline_at < $3)::int AS overdue,
+                count(*) FILTER (WHERE closed_at IS NULL AND deadline_at < $3 AND ${stageSql('tasks')} = 'work')::int AS o_work,
+                count(*) FILTER (WHERE closed_at IS NULL AND deadline_at < $3 AND ${stageSql('tasks')} IN ('testing', 'review'))::int AS o_review,
+                count(*) FILTER (WHERE closed_at IS NULL AND deadline_at < $3 AND ${stageSql('tasks')} = 'approval')::int AS o_approval,
+                count(*) FILTER (WHERE closed_at IS NULL AND deadline_at < $3 AND ${stageSql('tasks')} = 'waiting_external')::int AS o_client,
                 count(*) FILTER (WHERE closed_at IS NULL AND deadline_at >= $3 AND deadline_at < $4)::int AS due
            FROM tasks WHERE tenant_id = $1 AND deleted_at IS NULL`,
         [tenantId, yStart, dayStart, dayEnd],
@@ -130,6 +135,8 @@ export class MorningVoiceService implements OnModuleInit {
       this.db.one<{ title: string; who: string | null }>(
         `SELECT t.title, u.full_name AS who FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id
           WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at IS NULL AND t.deadline_at < $2
+            -- «горит у такого-то» — только если задача сейчас у исполнителя (ТЗ-30)
+            AND ${assigneeOwesSql('t')}
           ORDER BY (t.priority = 'urgent') DESC, (t.priority = 'high') DESC, t.deadline_at LIMIT 1`,
         [tenantId, dayEnd],
       ),
@@ -160,6 +167,7 @@ export class MorningVoiceService implements OnModuleInit {
     const time = first ? localParts(new Date(first.starts_at), tz) : null;
     return {
       closedYesterday: c?.closed ?? 0, createdYesterday: c?.created ?? 0, overdue: c?.overdue ?? 0, dueToday: c?.due ?? 0,
+      overdueBy: { work: c?.o_work ?? 0, review: c?.o_review ?? 0, approval: c?.o_approval ?? 0, client: c?.o_client ?? 0 },
       hottest: hot ?? null,
       decisionsWaiting: waiting?.proposals ?? 0, approvalsWaiting: waiting?.approvals ?? 0,
       meetingsToday: meetings?.n ?? 0,

@@ -553,6 +553,13 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
       </div>
 
       {/* Решение заказчика: вместо колонки «Требует моего решения» — одна строка. */}
+      {/* ТЗ-30 (п. 17): сданное ждёт проверки — от меня ничего не нужно, поэтому строкой, не в тройке */}
+      {(day.waitingReview ?? 0) > 0 && (
+        <div className="fd-row fd-secondary fd-row-static" role="status">
+          <Icon name="check-circle" size={15} /> Ждут проверки: <b>{day.waitingReview}</b>
+          <span className="dim"> — работа сдана, срок за вами не числится</span>
+        </div>
+      )}
       {day.waitingDecision > 0 && (
         <button type="button" className="fd-row fd-secondary" aria-expanded={backlogOpen === 'decisions'} onClick={() => setBacklogOpen((v) => (v === 'decisions' ? null : 'decisions'))}>
           <Icon name="handshake" size={15} /> Ждут вашего решения: <b>{day.waitingDecision}</b>

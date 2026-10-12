@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { REVIEW_COLUMN_NAMES } from './task-columns';
+import { personalOverdueSql, stageSql } from './responsibility';
 import { GateFacts, GateRequirements } from './handoff-gate';
 import { buildRegistry, RegistryFilters } from './task-registry';
 
@@ -257,11 +257,9 @@ export class TasksRepository {
                AND tp.user_id = $2 AND tp.role = 'co_assignee'))`
       : scope === 'review'
         ? `t.created_by = $2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
-           AND t.closed_at IS NULL AND lower(bc.name) = ANY($4::text[])`
+           AND t.closed_at IS NULL AND ${stageSql('t')} IN ('testing', 'review', 'approval')`
         : `t.created_by = $2 AND (t.assignee_id IS NULL OR t.assignee_id <> $2)`;
-    const params: unknown[] = scope === 'review'
-      ? [tenantId, userId, includeClosed, REVIEW_COLUMN_NAMES]
-      : [tenantId, userId, includeClosed];
+    const params: unknown[] = [tenantId, userId, includeClosed];
     // Граница для закрытых — параметром, только когда задана: лишний параметр Postgres
     // не прощает (грабли реестра).
     let closedBound = '';
@@ -275,6 +273,8 @@ export class TasksRepository {
     return this.db.many(
       `SELECT t.*, p.name AS project_name, bc.name AS column_name,
               ua.full_name AS assignee_name, um.full_name AS manager_name,
+              -- ТЗ-30: этап и личная просрочка — экрану не нужно гадать по названию колонки
+              ${stageSql('t')} AS stage, ${personalOverdueSql('t')} AS personal_overdue,
               (SELECT count(*)::int FROM task_checklist_items ci WHERE ci.task_id = t.id) AS "checklistTotal",
               (SELECT count(*)::int FROM task_checklist_items ci WHERE ci.task_id = t.id AND ci.is_done) AS "checklistDone"
          FROM tasks t
@@ -805,6 +805,7 @@ export class TasksRepository {
               (t.assignee_id = $2) AS is_mine,
               (t.closed_at IS NULL AND t.deadline_at IS NOT NULL
                AND t.deadline_at < $3::timestamptz - interval '1 day') AS overdue,
+              ${stageSql('t')} AS stage,
               COUNT(*) OVER () AS total
          FROM tasks t
          JOIN projects p ON p.id = t.project_id

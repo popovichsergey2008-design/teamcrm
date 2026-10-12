@@ -31,6 +31,11 @@ export interface ReportTaskRow {
   status: string | null;
   approval_state: string | null;
   tags: string[] | null;
+  /** ТЗ-30: первая и последняя сдача на проверку, срок доработки, текущий этап */
+  first_submitted_at?: Date | string | null;
+  submitted_at?: Date | string | null;
+  fix_deadline_at?: Date | string | null;
+  stage?: string | null;
 }
 
 export interface ReportHoursRow {
@@ -215,14 +220,34 @@ function overdueAt(t: ReportTaskRow, at: Date) {
   return openAt(t, at) && !!dl && dl < at;
 }
 
-function stats(tasks: ReportTaskRow[], w: Window) {
+/**
+ * Просрочка ЧЕЛОВЕКА на момент (ТЗ-30): сдал работу до этого момента и она с тех пор
+ * на проверке — не его просрочка. После возврата на доработку — срок доработки.
+ */
+function personalOverdueAt(t: ReportTaskRow, at: Date) {
+  if (!overdueAt(t, at)) return false;
+  const sub = d(t.submitted_at ?? null);
+  const paused = t.stage === 'testing' || t.stage === 'review' || t.stage === 'approval' || t.stage === 'waiting_external';
+  if (sub && sub <= at && paused) return false;
+  const fix = d(t.fix_deadline_at ?? null);
+  return !fix || fix < at;
+}
+
+/** Когда работа сдана исполнителем: первая сдача на проверку, иначе закрытие (п. 9–10). */
+function handedAt(t: ReportTaskRow): Date | null {
+  return d(t.first_submitted_at ?? null) ?? d(t.closed_at);
+}
+
+function stats(tasks: ReportTaskRow[], w: Window, personal = false) {
   const created = tasks.filter((t) => within(d(t.created_at), w)).length;
   const done = tasks.filter((t) => within(d(t.closed_at), w));
   let onTime = 0; let late = 0; let noDeadline = 0;
   for (const t of done) {
     const dl = d(t.deadline_at);
+    // у человека — вовремя ли СДАЛ; время на проверке ему не начисляется (ТЗ-30)
+    const at = personal ? handedAt(t) : d(t.closed_at);
     if (!dl) noDeadline++;
-    else if (d(t.closed_at)! <= dl) onTime++;
+    else if (at! <= dl) onTime++;
     else late++;
   }
   const lead = median(done.map((t) => (d(t.closed_at)!.getTime() - d(t.created_at)!.getTime()) / DAY));
@@ -232,7 +257,7 @@ function stats(tasks: ReportTaskRow[], w: Window) {
     onTime, late, noDeadline,
     onTimePct: onTime + late > 0 ? Math.round((onTime / (onTime + late)) * 100) : null,
     openEnd: tasks.filter((t) => openAt(t, w.snap)).length,
-    overdueEnd: tasks.filter((t) => overdueAt(t, w.snap)).length,
+    overdueEnd: tasks.filter((t) => (personal ? personalOverdueAt(t, w.snap) : overdueAt(t, w.snap))).length,
     leadDays: lead === null ? null : round1(lead),
   };
 }
@@ -304,13 +329,13 @@ export function buildTaskReport(input: ReportInput): TaskReport {
     .sort((a, b2) => b2.count - a.count).slice(0, 8);
 
   // таблицы по проектам и людям
-  const group = (keyOf: (t: ReportTaskRow) => string, nameOf: (t: ReportTaskRow) => string, hoursOf: (key: string) => number): GroupRow[] => {
+  const group = (keyOf: (t: ReportTaskRow) => string, nameOf: (t: ReportTaskRow) => string, hoursOf: (key: string) => number, personal = false): GroupRow[] => {
     const keys = new Map<string, string>();
     for (const t of tasks) {
       if (within(d(t.created_at), cur) || within(d(t.closed_at), cur) || openAt(t, cur.snap)) keys.set(keyOf(t), nameOf(t));
     }
     return [...keys.entries()].map(([key, name]) => {
-      const st = stats(tasks.filter((t) => keyOf(t) === key), cur);
+      const st = stats(tasks.filter((t) => keyOf(t) === key), cur, personal);
       return {
         name, created: st.created, completed: st.completed, onTimePct: st.onTimePct,
         overdueEnd: st.overdueEnd, openEnd: st.openEnd, hours: round1(hoursOf(key)), leadDays: st.leadDays,
@@ -318,7 +343,8 @@ export function buildTaskReport(input: ReportInput): TaskReport {
     }).sort((a, b2) => b2.completed - a.completed || b2.openEnd - a.openEnd || a.name.localeCompare(b2.name, 'ru'));
   };
   const projects = group((t) => t.project_id, (t) => t.project_name, (k) => hoursByProject.get(k) ?? 0);
-  const people = group((t) => t.assignee_id ?? '—', (t) => t.assignee_name ?? 'Без исполнителя', (k) => hoursByUser.get(k)?.hours ?? 0);
+  // люди — по фактической ответственности: опоздание до сдачи, просрочка без сданного на проверку
+  const people = group((t) => t.assignee_id ?? '—', (t) => t.assignee_name ?? 'Без исполнителя', (k) => hoursByUser.get(k)?.hours ?? 0, true);
 
   // списки
   const line = (t: ReportTaskRow, verdict: TaskLine['verdict'], days: number | null): TaskLine => ({

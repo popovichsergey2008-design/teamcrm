@@ -42,6 +42,8 @@ export interface BriefFacts {
   postcall: { meetingId: string; title: string }[];
   /** его невыполненные обещания, срок которых наступил */
   commitments: { id: string; action: string; taskId: string | null; projectId: string | null; sourceLabel: string; sourceLink: string | null }[];
+  /** ТЗ-30: моя работа сдана и ждёт проверки — не просрочка */
+  submittedWaiting?: number;
   /** своё со сроком сегодня/просроченное, не попавшее в тройку */
   dueOutside: { taskId: string; projectId: string; title: string; overdue: boolean }[];
   /** ждут его решения: предложения секретаря и согласования */
@@ -200,6 +202,15 @@ export function composeBrief(f: BriefFacts, length: BriefLength = 'normal'): Com
       },
     });
     mentions.push(`task:${d.taskId}`);
+  }
+
+  // ── сдано и ждёт проверки (ТЗ-30): не просрочка, одной строкой ──
+  if (f.submittedWaiting) {
+    const n = f.submittedWaiting;
+    cand.push({
+      weight: 35, section: 'today',
+      s: { text: `Ещё ${n} ${plural(n, 'выполненная задача ждёт', 'выполненные задачи ждут', 'выполненных задач ждут')} проверки — от вас по ним ничего не нужно.`, refs: [] },
+    });
   }
 
   // ── обещания (п. 44) ──

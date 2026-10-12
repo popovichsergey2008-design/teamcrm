@@ -433,7 +433,7 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
             </div>
             {rows.map((t) => {
               const prio = priorityBadge(t.priority);
-              const due = deadlineBadge(t.deadline_at, !!t.closed_at);
+              const due = deadlineBadge(t.deadline_at, !!t.closed_at, ['testing', 'review', 'approval', 'waiting_external'].includes(String((t as { stage?: string }).stage ?? '')));
               const who = showWho === 'assignee' ? t.assignee_name : t.manager_name;
               return (
                 <button

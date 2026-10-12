@@ -60,6 +60,8 @@ export interface WorkSettingsRow {
   work_end: string;
   weekend_days: number[];
   holidays: (Date | string)[];
+  /** ТЗ-30: окно доработки после возврата с проверки, часов */
+  fix_window_hours?: number;
 }
 
 @Injectable()
@@ -447,23 +449,24 @@ export class CalendarRepository {
       // holidays приводим к тексту прямо в запросе: как DATE[] драйвер отдаёт JS-даты в
       // локальном поясе процесса, и «1 января» на сервере с поясом +3 превращалось бы
       // в «31 декабря» — праздник тихо съезжал бы на день
-      `SELECT work_start::text, work_end::text, weekend_days, holidays::text[] AS holidays
+      `SELECT work_start::text, work_end::text, weekend_days, holidays::text[] AS holidays, fix_window_hours
          FROM org_work_settings WHERE tenant_id = $1`,
       [tenantId],
     );
   }
 
   async saveWorkSettings(tenantId: string, actorId: string, s: {
-    workStart: string; workEnd: string; weekendDays: number[]; holidays: string[];
+    workStart: string; workEnd: string; weekendDays: number[]; holidays: string[]; fixWindowHours: number;
   }): Promise<void> {
     await this.db.query(
-      `INSERT INTO org_work_settings (tenant_id, work_start, work_end, weekend_days, holidays, updated_by, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6, now())
+      `INSERT INTO org_work_settings (tenant_id, work_start, work_end, weekend_days, holidays, fix_window_hours, updated_by, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7, now())
        ON CONFLICT (tenant_id) DO UPDATE
           SET work_start = EXCLUDED.work_start, work_end = EXCLUDED.work_end,
               weekend_days = EXCLUDED.weekend_days, holidays = EXCLUDED.holidays,
+              fix_window_hours = EXCLUDED.fix_window_hours,
               updated_by = EXCLUDED.updated_by, updated_at = now()`,
-      [tenantId, s.workStart, s.workEnd, s.weekendDays, s.holidays, actorId],
+      [tenantId, s.workStart, s.workEnd, s.weekendDays, s.holidays, s.fixWindowHours, actorId],
     );
   }
 
