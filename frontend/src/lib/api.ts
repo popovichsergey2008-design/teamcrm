@@ -2031,7 +2031,7 @@ export const api = {
     request<SupportAccessGrant[]>('POST', `/support/desk/${id}/access/${grantId}/decide`, { allow, ...(projectId ? { projectId } : {}) }),
   supportRevokeAccess: (id: string, grantId: string) => request<SupportAccessGrant[]>('POST', `/support/desk/${id}/access/${grantId}/revoke`),
   supportAccessView: (id: string, grantId: string) => request<{
-    project: { id: string; name: string; description: string | null; visibility: string; owner_name: string | null; created_at: string; client_name: string | null } | null;
+    project: { id: string; name: string; visibility: string; owner_name: string | null; created_at: string; client_name: string | null } | null;
     columns: { name: string; position: number; tasks: number }[];
     members: { full_name: string }[];
     expiresAt: string;

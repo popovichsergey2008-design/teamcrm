@@ -218,8 +218,8 @@ export class SupportConciergeRepository {
   /** Настройки проекта только на чтение: без задач, файлов и переписки. */
   async projectSnapshot(tenantId: string, projectId: string) {
     const [project, columns, members] = await Promise.all([
-      this.db.one<{ id: string; name: string; description: string | null; visibility: string; owner_name: string | null; created_at: Date; client_name: string | null }>(
-        `SELECT p.id::text, p.name, p.description, p.visibility, u.full_name AS owner_name, p.created_at, c.name AS client_name
+      this.db.one<{ id: string; name: string; visibility: string; owner_name: string | null; created_at: Date; client_name: string | null }>(
+        `SELECT p.id::text, p.name, p.visibility, u.full_name AS owner_name, p.created_at, c.name AS client_name
            FROM projects p LEFT JOIN users u ON u.id = p.owner_user_id LEFT JOIN clients c ON c.id = p.client_id
           WHERE p.tenant_id = $1 AND p.id = $2`,
         [tenantId, projectId],
