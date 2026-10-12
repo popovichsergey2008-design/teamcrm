@@ -10,6 +10,7 @@ import { GuestLinkRow, GuestLinksRepository, HostCallRow } from './guest-links.r
 import { CalendarMailService } from '../calendar/calendar-mail.service';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
 import { MediaService } from './media.service';
+import { GuestSessionsRepository } from './guest-sessions.repository';
 
 /** Токен гостя живёт заметно меньше ссылки: ссылку присылают заранее, входят один раз. */
 const GUEST_TOKEN_TTL_SEC = 4 * 60 * 60;
@@ -54,6 +55,18 @@ export interface GuestTokenPayload {
 
 export type LinkRefusal = 'unknown' | 'revoked' | 'expired' | 'used-up' | 'cancelled' | 'invite-revoked';
 
+/** Что гость сообщил о себе перед входом (ТЗ-28, п. 14, 26). */
+export interface GuestIdentity {
+  email?: string | null;
+  company?: string | null;
+  language?: string | null;
+  /** отметил «знаю о записи и ИИ-протоколе» */
+  consent?: boolean;
+}
+
+/** Версия текста предупреждения о записи: меняется — меняется и версия в согласии. */
+export const GUEST_POLICY_VERSION = 'rec-v1';
+
 @Injectable()
 export class GuestLinksService {
   private readonly log = new Logger('MeetGuest');
@@ -68,6 +81,7 @@ export class GuestLinksService {
     private readonly telegram: TelegramMirror,
     private readonly mail: CalendarMailService,
     private readonly crypto: IntegrationCryptoService,
+    private readonly sessions: GuestSessionsRepository,
   ) {}
 
   /** Комната → когда последний раз звали хозяина. */
@@ -415,7 +429,7 @@ export class GuestLinksService {
   }
 
   /** Гость по общей ссылке встречи: имя — и в зал ожидания (решение заказчика 05.10: гости остаются). */
-  async joinMeetingAsGuest(publicId: string, name: string) {
+  async joinMeetingAsGuest(publicId: string, name: string, identity: GuestIdentity = {}) {
     const link = await this.repo.meetingByPublicId(String(publicId || '').slice(0, 16));
     if (!link) throw AppException.notFound('Встреча не найдена');
     const state = GuestLinksService.meetingState(link, this.roomLive(link.room_id).live);
@@ -426,7 +440,22 @@ export class GuestLinksService {
     if (state === 'scheduled') {
       throw AppException.validation(`Войти можно будет за ${link.early_join_min ?? OPEN_BEFORE_MIN} минут до начала`);
     }
-    return this.issueGuest(link, name);
+    return this.issueGuest(link, name, identity);
+  }
+
+  /**
+   * Повторный вход по гостевой сессии (ТЗ-28, п. 86): связь оборвалась или вкладку
+   * закрыли — имя и согласие уже есть, вводить заново не нужно. Ссылку за это время
+   * могли отозвать или встречу отменить — тогда и сессия не пускает.
+   */
+  async rejoin(sessionKey: string) {
+    const s = await this.sessions.byKey(String(sessionKey || ''));
+    if (!s) throw AppException.unauthorized('Сессия истекла — войдите по ссылке ещё раз');
+    const link = await this.repo.findActive(s.tenant_id, s.link_id);
+    if (!link) throw AppException.unauthorized('Ссылка больше не действует');
+    const refusal = this.refusalFor(link as GuestLinkRow & { tenant_name: string });
+    if (refusal) throw AppException.unauthorized(this.refusalMessage(refusal));
+    return this.issueGuest(link, s.name, {}, s);
   }
 
   /**
@@ -587,7 +616,7 @@ export class GuestLinksService {
    * Вход по ссылке: выдаём гостевой токен, привязанный к одной комнате.
    * Комнату здесь же поднимаем — иначе гость, пришедший первым, увидит «созвон не найден».
    */
-  async join(token: string, name: string) {
+  async join(token: string, name: string, identity: GuestIdentity = {}) {
     const link = await this.repo.findByHash(this.sha256(String(token || '')));
     if (!link) throw AppException.unauthorized('Ссылка недействительна');
     const refusal = this.refusalFor(link);
@@ -601,14 +630,31 @@ export class GuestLinksService {
     if (!link.chat_id && GuestLinksService.tooEarly(link.starts_at, Date.now(), link.early_join_min)) {
       throw AppException.validation(`Вход откроется за ${link.early_join_min ?? OPEN_BEFORE_MIN} минут до начала встречи`);
     }
-    return this.issueGuest(link, name);
+    return this.issueGuest(link, name, identity);
   }
 
   /** Гостевой токен на одну комнату — для гостевой ссылки и для общей ссылки встречи. */
-  private async issueGuest(link: GuestLinkRow, name: string) {
+  private async issueGuest(link: GuestLinkRow, name: string, identity: GuestIdentity = {}, existing: { id: string; guest_id: string } | null = null) {
     const guestName = String(name || '').trim().slice(0, 60);
     if (guestName.length < 2) throw AppException.validation('Представьтесь, пожалуйста');
-    const gid = randomUUID();
+    /*
+      Запись и ИИ-протокол (ТЗ-28, п. 26–27): если организация требует отметку — без неё
+      не пускаем; сама отметка хранится в гостевой сессии вместе с версией текста.
+    */
+    const policy = await this.sessions.consentPolicy(String(link.tenant_id));
+    if (!existing && policy.required && identity.consent !== true) {
+      throw AppException.validation('Подтвердите, что знаете о записи встречи');
+    }
+    // повторный вход по сессии — тот же гость в комнате, не второй
+    const gid = existing?.guest_id ?? randomUUID();
+    const email = identity.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity.email.trim()) ? identity.email.trim().slice(0, 320).toLowerCase() : (link.invite_email ?? null);
+    const session = existing ? { id: existing.id, key: null as string | null } : await this.sessions.create({
+      tenantId: String(link.tenant_id), linkId: String(link.id), roomId: link.room_id, guestId: gid, name: guestName,
+      email, company: identity.company ? identity.company.trim().slice(0, 120) || null : null,
+      language: identity.language ? identity.language.slice(0, 8) : null,
+      consent: policy.notice ? identity.consent === true : null, policyVersion: policy.notice ? GUEST_POLICY_VERSION : null,
+    });
+    await this.sessions.event(String(link.tenant_id), { linkId: String(link.id), sessionId: session.id, event: 'joined' }).catch(() => undefined);
     const payload: GuestTokenPayload = {
       kind: 'guest', gid, tenantId: link.tenant_id, roomId: link.room_id, name: guestName,
       chatId: link.chat_id ? String(link.chat_id) : null,
@@ -637,6 +683,8 @@ export class GuestLinksService {
       iceServers: this.media.iceServers(`guest:${gid}`),
       startsAt: link.starts_at ? new Date(link.starts_at).toISOString() : null,
       opensAt: link.starts_at ? GuestLinksService.opensAt(link.starts_at, link.early_join_min).toISOString() : null,
+      // ключ гостевой сессии (ТЗ-28): повторный вход и протокол после встречи; при повторном входе — прежний
+      sessionKey: session.key,
     };
   }
 

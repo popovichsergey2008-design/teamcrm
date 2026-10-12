@@ -1,0 +1,24 @@
+/* «Клиентский протокол» на экране итогов встречи (ТЗ-28) — отдельным куском */
+@import './guest.css';
+
+.gsp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.gsp-head h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 15px; }
+.gsp-status { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--bg-elev-2); }
+.gsp-status-published { color: var(--ok); }
+.gsp-hint { font-size: 13px; margin: 4px 0 8px; }
+.gsp-form { display: flex; flex-direction: column; gap: 12px; }
+.gsp-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.gsp-field > span { font-weight: 600; }
+.gsp-inline { flex-direction: row; align-items: center; gap: 10px; }
+.gsp-inline select { width: auto; }
+.gsp-agreement { display: grid; grid-template-columns: minmax(0, 1fr) 120px 140px auto; gap: 6px; align-items: center; }
+.gsp-file { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.gsp-preview { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; border: 1px dashed var(--border-2); }
+.gsp-preview p { margin: 0; }
+.gsp-feedback { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.gsp-acks { display: flex; align-items: center; gap: 6px; color: var(--ok); margin: 0; font-size: 13px; }
+.gsp-fb { padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--warn) 8%, var(--bg-elev)); font-size: 13px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+@media (max-width: 640px) {
+  .gsp-agreement { grid-template-columns: 1fr 1fr; }
+  .gsp-agreement > input:first-child { grid-column: 1 / -1; }
+}

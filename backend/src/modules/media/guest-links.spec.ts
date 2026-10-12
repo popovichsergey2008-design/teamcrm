@@ -37,6 +37,8 @@ describe('Гостевая ссылка в созвон', () => {
     return new GuestLinksService(
       repo as any, media as any, jwt as any, config as any,
       { emitToUsers: calls.realtime } as any, { meetHost: calls.push } as any, { push: calls.telegram } as any, {} as any, {} as any,
+      // гостевые сессии (ТЗ-28): согласие не требуется, сессия выдаётся
+      { consentPolicy: async () => ({ notice: true, required: false }), create: async () => ({ id: '1', key: 'k'.repeat(32) }), event: async () => undefined } as any,
     );
   };
 

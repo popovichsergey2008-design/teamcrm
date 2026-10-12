@@ -13,6 +13,7 @@ import { KnowledgePanel } from '../components/KnowledgePanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { FocusSettingsPanel } from '../components/FocusSettingsPanel';
 import { MailPanel } from '../components/MailPanel';
+import { GuestBrandPanel } from '../components/GuestBrandPanel';
 import { navigate, Route } from '../lib/router';
 
 /**
@@ -125,6 +126,13 @@ const CARDS: Card[] = [
     roles: ['owner', 'manager'],
   },
   {
+    tab: 'guest',
+    title: 'Гостевая страница',
+    hint: 'Как клиент видит встречу по ссылке: логотип, цвет, приветствие, запись и итоги',
+    icon: 'users',
+    roles: ['owner', 'manager'],
+  },
+  {
     tab: 'focus',
     title: 'Фокус дня',
     hint: 'Три главных действия дня, глубокая работа, «Команда сейчас» — включение и как работает',
@@ -148,6 +156,7 @@ const DENIED: [string, string[]][] = [
   ['integrations', ['owner']],
   ['ai-usage', ['owner', 'manager']],
   ['focus', ['owner', 'manager']],
+  ['guest', ['owner', 'manager']],
 ];
 
 export function SettingsPage({ route, role }: { route: Route; role: string }) {
@@ -186,6 +195,7 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}
       {route.tab === 'assistant' && <AssistantPanel canManage={role === 'owner'} onClose={close} />}
       {route.tab === 'focus' && canManage && <FocusSettingsPanel canManage={role === 'owner'} onClose={close} />}
+      {route.tab === 'guest' && canManage && <GuestBrandPanel canManage={role === 'owner'} onClose={close} />}
       {/* Что агент понял в переписке, журнал решений и счётчики попадания (ТЗ-12). */}
       {route.tab === 'chat-analysis' && canManage
         && <ChatAnalysisPanel canManage={role === 'owner'} onClose={close} />}

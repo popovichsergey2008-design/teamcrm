@@ -1,7 +1,9 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
+import '../components/guest/guest.css';
 import { CallPanel } from '../components/CallPanel';
 import { Icon } from '../components/Icon';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, GuestBrand, GuestCred } from '../lib/api';
 import { GuestChat } from '../components/GuestChat';
 import { Logo } from '../components/Logo';
 import { DeviceCheck } from '../components/DeviceCheck';
@@ -37,6 +39,14 @@ interface Admission {
   chatId: string | null;
 }
 
+// итоги встречи (ТЗ-28) — своим куском: до встречи гостю не нужны
+const GuestPostcall = lazy(() => import('../components/guest/GuestPostcall'));
+
+/** Ключ гостевой сессии на этом устройстве — по ссылке, через которую гость вошёл. */
+const sessionStore = (key: string) => `teamcrm.guest.session:${key.slice(0, 64)}`;
+const readSession = (key: string) => { try { return localStorage.getItem(sessionStore(key)); } catch { return null; } };
+const writeSession = (key: string, v: string) => { try { localStorage.setItem(sessionStore(key), v); } catch { /* приватное окно */ } };
+
 const REFUSAL: Record<string, string> = {
   unknown: 'Такой ссылки нет. Проверьте, что скопировали её целиком.',
   revoked: 'Ссылку отозвали — попросите новую у организатора.',
@@ -67,6 +77,21 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [admission, setAdmission] = useState<Admission | null>(null);
+  // ТЗ-28: бренд компании, о себе, согласие на запись, экран итогов после встречи
+  const linkKey = publicId ?? token ?? '';
+  const [brand, setBrand] = useState<GuestBrand | null>(null);
+  const [email, setEmail] = useState(() => localStorage.getItem('teamcrm.guest-email') ?? '');
+  const [company, setCompany] = useState('');
+  const [consent, setConsent] = useState(false);
+  const [session, setSession] = useState<string | null>(() => (linkKey ? readSession(linkKey) : null));
+  const [after, setAfter] = useState(false);
+  const [refusalCode, setRefusalCode] = useState('');
+  // итоги уже опубликованы — вернувшийся по ссылке гость сразу видит их, а не форму входа
+  const [notesReady, setNotesReady] = useState(false);
+  const cred: GuestCred | null = useMemo(
+    () => (session ? { session, ...(token ? { token } : {}) } : token ? { token } : null),
+    [session, token],
+  );
   /**
    * Гость вошёл в переговорную.
    *
@@ -89,6 +114,25 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
     const t = window.setInterval(() => setNow(Date.now()), 15_000);
     return () => window.clearInterval(t);
   }, [opensAtMs]);
+
+  useEffect(() => {
+    if (!linkKey) return;
+    api.guestBrand(publicId ? { publicId } : { token }).then(setBrand).catch(() => setBrand(null));
+    void api.guestEvent(publicId ? { publicId } : { token }, 'opened');
+    // приватные встречи поисковикам не показываем (п. 55)
+    const meta = document.createElement('meta');
+    meta.name = 'robots';
+    meta.content = 'noindex, nofollow';
+    document.head.appendChild(meta);
+    return () => { meta.remove(); };
+  }, [linkKey, publicId, token]);
+
+  useEffect(() => {
+    if (!cred) return;
+    let alive = true;
+    api.guestPostcall(cred).then((r) => { if (alive) setNotesReady(r.state === 'ready'); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [cred]);
 
   // Постоянная ссылка встречи: состояние с сервера, перенос и отмена видны без перезагрузки.
   useEffect(() => {
@@ -125,7 +169,7 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
           // приглашённого по email встречаем по имени — его и подставляем
           if (r.invitedAs && !r.invitedAs.includes('@')) setName((cur) => cur || r.invitedAs!);
         }
-        else setRefusal(REFUSAL[r.reason] ?? 'Ссылка недействительна.');
+        else { setRefusal(REFUSAL[r.reason] ?? 'Ссылка недействительна.'); setRefusalCode(r.reason); }
       })
       .catch((e) => alive && setRefusal(e instanceof ApiError ? e.message : 'Не удалось проверить ссылку'));
     return () => { alive = false; };
@@ -136,9 +180,16 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
     setError('');
     setBusy(true);
     try {
-      const r = publicId ? await api.meetingGuestJoin(publicId, name.trim()) : await api.guestJoin(String(token), name.trim());
+      const identity = {
+        email: email.trim() || undefined, company: company.trim() || undefined,
+        language: navigator.language, consent: brand?.recordingNotice !== false ? consent : undefined,
+      };
+      const r = publicId ? await api.meetingGuestJoin(publicId, name.trim(), identity) : await api.guestJoin(String(token), name.trim(), identity);
       // имя запоминаем на этом устройстве: со второй попытки входа его не спросят заново
       localStorage.setItem('teamcrm.guest-name', r.name);
+      if (email.trim()) localStorage.setItem('teamcrm.guest-email', email.trim());
+      // гостевая сессия: повторный вход без формы и итоги после встречи (ТЗ-28)
+      if (r.sessionKey) { writeSession(linkKey, r.sessionKey); setSession(r.sessionKey); }
       setAdmission({
         token: r.token, roomId: r.roomId, userId: r.userId, iceServers: r.iceServers,
         chatId: r.chatId ?? null,
@@ -152,15 +203,84 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
     }
   }
 
+  /** Вернуться во встречу по гостевой сессии — без имени и согласия заново (п. 86). */
+  async function rejoin() {
+    if (!session) return;
+    setError('');
+    try {
+      const r = await api.guestRejoin(session);
+      setAdmission({ token: r.token, roomId: r.roomId, userId: r.userId, iceServers: r.iceServers, chatId: r.chatId ?? null });
+      setAfter(false);
+      if (!r.chatId) setInCall(true);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось вернуться во встречу');
+      setAfter(false);
+    }
+  }
+
+  // Бренд компании (п. 10–12): цвет, фон, логотип и подписи — у всех экранов гостя
+  const brandStyle = (brand?.accent ? { '--guest-accent': brand.accent } : {}) as CSSProperties;
+  const brandClass = `guest-branded guest-bg-${brand?.background ?? 'soft'}`;
+  const head = (
+    brand?.logoUrl || brand?.companyName ? (
+      <div className="guest-brand-head">
+        {brand.logoUrl ? <img className="guest-brand-logo" src={brand.logoUrl} alt={brand.companyName ?? ''} /> : null}
+        {brand.companyName && <div className="guest-brand-name">{brand.companyName}</div>}
+      </div>
+    ) : (
+      <div className="auth-logo">
+        <Logo size={88} />
+        <span className="logo-word">QEVO</span>
+      </div>
+    )
+  );
+  const footer = (
+    <div className="guest-footer">
+      {brand?.footerText && <span>{brand.footerText}</span>}
+      {brand?.poweredBy !== false && (
+        <a href="https://qevo.one/?utm_source=guest&utm_medium=footer" target="_blank" rel="noopener noreferrer" onClick={() => void api.guestEvent(cred ?? (publicId ? { publicId } : {}), 'cta_clicked')}>Сделано в QEVO</a>
+      )}
+    </div>
+  );
+  const frame = (children: ReactNode, wide = false) => (
+    <div className={`center-screen ${brandClass}`} style={brandStyle}>
+      <div className={`card auth-card${wide ? ' guest-postcall-card' : ''}`}>
+        {head}
+        {children}
+        {footer}
+      </div>
+    </div>
+  );
+
   if (admission && inCall) {
     return (
       <CallPanel
         meetingId={admission.roomId}
         guest={{ token: admission.token, iceServers: admission.iceServers, userId: admission.userId }}
         // Выход из созвона возвращает в переписку, а не выбрасывает со страницы:
-        // разговор продолжается словами, даже когда созвон закончился.
-        onClose={() => (admission.chatId ? setInCall(false) : setAdmission(null))}
+        // разговор продолжается словами, даже когда созвон закончился. Без переписки —
+        // не «звонок завершён», а «спасибо за встречу» и итоги (ТЗ-28, п. 28).
+        onClose={() => {
+          if (admission.chatId) { setInCall(false); return; }
+          setAdmission(null);
+          if (cred) setAfter(true);
+        }}
       />
+    );
+  }
+
+  // Итоги встречи: сразу после выхода, на завершённой встрече или по истёкшей персональной ссылке
+  const meetingLive = !!info && (info.state === 'live' || info.state === 'open' || (!info.state && info.roomActive));
+  const showPostcall = !!cred && (after || info?.state === 'ended' || (notesReady && !meetingLive)
+    || (!!token && ['expired', 'used-up'].includes(refusalCode)));
+  if (showPostcall && cred) {
+    const live = meetingLive;
+    return frame(
+      <Suspense fallback={<p className="dim">…</p>}>
+        <GuestPostcall cred={cred} companyName={brand?.companyName ?? info?.orgName ?? null} onRejoin={session && live ? () => void rejoin() : undefined} />
+        {error && <div className="error-text">{error}</div>}
+      </Suspense>,
+      true,
     );
   }
 
@@ -188,14 +308,13 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
     );
   }
 
+  const consentBlocks = brand?.recordingNotice !== false && !!brand?.consentRequired && !consent;
   return (
-    <div className="center-screen">
+    <div className={`center-screen ${brandClass}`} style={brandStyle}>
       <form className="card auth-card" onSubmit={submit}>
-        {/* Первое, что видит человек. Знак крупнее слова — его и запоминают. */}
-        <div className="auth-logo">
-          <Logo size={88} />
-          <span className="logo-word">QEVO</span>
-        </div>
+        {/* Первое, что видит человек: бренд компании, без него — знак QEVO. */}
+        {head}
+        {brand?.welcomeText && !refusal && <p className="guest-welcome">{brand.welcomeText}</p>}
 
         {refusal ? (
           <>
@@ -255,11 +374,37 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
                 className="input"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Имя и компания"
+                placeholder="Имя"
                 autoFocus
                 maxLength={60}
               />
             </div>
+            {/* Почта — чтобы прислать итоги встречи; компания — подпись для организатора (п. 14) */}
+            <div className="guest-optional">
+              <div className="field">
+                <label htmlFor="guest-email">Почта <span className="dim">— для итогов</span></label>
+                <input id="guest-email" className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={320} autoComplete="email" />
+              </div>
+              <div className="field">
+                <label htmlFor="guest-company">Компания</label>
+                <input id="guest-company" className="input" value={company} onChange={(e) => setCompany(e.target.value)} maxLength={120} autoComplete="organization" />
+              </div>
+            </div>
+            {/* Запись и ИИ-протокол (п. 26–27): сказать до входа, а не после */}
+            {brand?.recordingNotice !== false && (
+              <label className="guest-consent">
+                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+                <span>
+                  Встреча может быть записана и расшифрована, чтобы подготовить итоговый протокол.
+                  {brand?.consentRequired ? ' Чтобы войти, отметьте, что согласны.' : ''}
+                </span>
+              </label>
+            )}
+            {session && (
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void rejoin()}>
+                <Icon name="phone" size={14} /> Вернуться во встречу как {name || 'прежде'}
+              </button>
+            )}
 
             <p className="dim" style={{ fontSize: 12 }}>
               {early
@@ -281,7 +426,7 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
             <button
               className="ui-btn ui-btn-primary ui-btn-md auth-submit"
               type="submit"
-              disabled={busy || name.trim().length < 2 || (early && !info.hasChat)}
+              disabled={busy || name.trim().length < 2 || (early && !info.hasChat) || consentBlocks}
             >
               <Icon name={early && info.hasChat ? 'chat' : 'phone'} size={15} />{' '}
               {busy ? 'Подключаюсь…' : early && info.hasChat ? 'Открыть переписку' : 'Войти во встречу'}
@@ -298,6 +443,7 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
             </>)}
           </>
         )}
+        {footer}
       </form>
     </div>
   );

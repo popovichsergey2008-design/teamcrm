@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
-import { IsInt, IsISO8601, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsISO8601, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -29,6 +29,15 @@ class InviteGuestDto {
 
 class GuestJoinDto {
   @IsString() name!: string;
+  // ТЗ-28: о себе и согласие на запись
+  @IsOptional() @IsString() @MaxLength(320) email?: string;
+  @IsOptional() @IsString() @MaxLength(120) company?: string;
+  @IsOptional() @IsString() @MaxLength(8) language?: string;
+  @IsOptional() @IsBoolean() consent?: boolean;
+}
+
+class RejoinDto {
+  @IsString() @MaxLength(64) session!: string;
 }
 class GuestMessageDto {
   @IsString() token!: string;
@@ -138,7 +147,7 @@ export class MeetGuestController {
   @Post('meet/guest/:token/join')
   @Public()
   async join(@Param('token') token: string, @Body() dto: GuestJoinDto) {
-    const r = await this.guests.join(token, dto.name);
+    const r = await this.guests.join(token, dto.name, dto);
     // вход в чат по ссылке — запоминаем гостя: иначе его нельзя будет убрать (#1539)
     if (r.chatId) {
       await this.chats.recordGuest(r.tenantId, r.chatId, r.userId.slice('guest:'.length), r.name, r.linkId);
@@ -201,6 +210,13 @@ export class MeetGuestController {
   @Post('meet/m/:publicId/guest')
   @Public()
   async meetingGuest(@Param('publicId') publicId: string, @Body() dto: GuestJoinDto) {
-    return MeetGuestController.forGuest(await this.guests.joinMeetingAsGuest(publicId, dto.name));
+    return MeetGuestController.forGuest(await this.guests.joinMeetingAsGuest(publicId, dto.name, dto));
+  }
+
+  /** Повторный вход по гостевой сессии (ТЗ-28, п. 86): без имени и согласия заново. */
+  @Post('meet/guest-session/rejoin')
+  @Public()
+  async rejoin(@Body() dto: RejoinDto) {
+    return MeetGuestController.forGuest(await this.guests.rejoin(dto.session));
   }
 }

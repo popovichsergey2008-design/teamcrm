@@ -79,20 +79,59 @@ export function QuickMeetingDialog({ clientId, clientName, ownerId, users, onClo
   const [people, setPeople] = useState<Set<string>>(new Set([String(user?.id ?? ''), ...(ownerId ? [ownerId] : [])].filter(Boolean)));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // ТЗ-28 (п. 88): после создания — «клиентская ссылка готова»: скопировать или позвать по почте
+  const [made, setMade] = useState<{ eventId: string; url: string } | null>(null);
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestName, setGuestName] = useState('');
+  const [invited, setInvited] = useState<string[]>([]);
   const save = async () => {
     setBusy(true); setErr('');
     try {
       const starts = new Date(`${v.date}T${v.time}:00`);
       const ends = new Date(starts.getTime() + Number(v.minutes) * 60_000);
-      await api.calendarCreate({
+      const ev = await api.calendarCreate({
         title: v.title.trim(), startsAt: starts.toISOString(), endsAt: ends.toISOString(), clientId,
         participantIds: [...people], isCall: v.call,
       });
       toastSaved('Встреча назначена', clientName);
-      onDone();
+      if (ev?.meeting?.url) setMade({ eventId: String(ev.id), url: ev.meeting.url });
+      else onDone();
     } catch (e) { setErr(errText(e, 'Встреча не создалась')); }
     finally { setBusy(false); }
   };
+  const invite = async () => {
+    if (!made) return;
+    setBusy(true); setErr('');
+    try {
+      await api.meetingInvite(made.eventId, guestEmail.trim(), guestName.trim() || undefined);
+      setInvited((l) => [...l, guestEmail.trim()]);
+      setGuestEmail(''); setGuestName('');
+    } catch (e) { setErr(errText(e, 'Приглашение не отправилось')); }
+    finally { setBusy(false); }
+  };
+  if (made) {
+    return (
+      <Dialog open onOpenChange={(o) => { if (!o) onDone(); }} title="Клиентская ссылка готова"
+        footer={<Button variant="primary" onClick={onDone}>Готово</Button>}>
+        <div className="cl-form">
+          <p className="dim" style={{ margin: 0 }}>Клиент войдёт без регистрации — на странице с вашим брендом, а после встречи увидит итоги, которые вы опубликуете.</p>
+          <div className="cl-form-row">
+            <input className="input" readOnly value={made.url} aria-label="Ссылка встречи" onFocus={(e) => e.target.select()} />
+            <Button variant="outline" onClick={() => { void navigator.clipboard?.writeText(made.url); toastSaved('Ссылка скопирована'); }}><Icon name="copy" size={14} /> Копировать</Button>
+          </div>
+          <Field label="Отправить персональное приглашение">
+            <div className="cl-form-row">
+              <input className="input" type="email" placeholder="почта клиента" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} />
+              <input className="input" placeholder="имя (необязательно)" value={guestName} onChange={(e) => setGuestName(e.target.value)} />
+              <Button variant="primary" disabled={busy || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())} onClick={() => void invite()}><Icon name="send" size={14} /> Отправить</Button>
+            </div>
+          </Field>
+          {invited.length > 0 && <p className="dim" style={{ margin: 0 }}><Icon name="check" size={12} /> Приглашены: {invited.join(', ')}</p>}
+          {err && <div className="error-text" role="alert">{err}</div>}
+        </div>
+      </Dialog>
+    );
+  }
   const toggle = (id: string) => setPeople((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Новая встреча"

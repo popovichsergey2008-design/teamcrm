@@ -1,0 +1,63 @@
+/*
+  Гостевые страницы (ТЗ-28): бренд компании и итоги встречи. Отдельный кусок сборки —
+  гость не тянет CRM. Цвет бренда приходит уже затемнённым до контраста AA с белым.
+*/
+.guest-branded { --guest-accent: var(--accent); }
+.guest-branded.guest-bg-soft { background: linear-gradient(180deg, color-mix(in srgb, var(--guest-accent) 8%, var(--bg)), var(--bg) 60%); }
+.guest-branded.guest-bg-gradient { background: linear-gradient(135deg, color-mix(in srgb, var(--guest-accent) 22%, var(--bg)), var(--bg) 70%); }
+.guest-branded .auth-submit,
+.guest-branded .gp-primary {
+  background: var(--guest-accent); border-color: var(--guest-accent); color: #fff;
+}
+.guest-branded .auth-submit:hover:not(:disabled),
+.guest-branded .gp-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--guest-accent) 88%, #000); }
+
+.guest-brand-head { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 10px; text-align: center; }
+.guest-brand-logo { max-height: 64px; max-width: 220px; object-fit: contain; }
+.guest-brand-name { font-size: 20px; font-weight: 650; }
+.guest-welcome { font-size: 14px; line-height: 1.5; text-align: center; margin: 0 0 6px; }
+.guest-footer { margin-top: 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); text-align: center; }
+.guest-footer a { color: inherit; }
+.guest-consent { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.45; padding: 8px 10px; border-radius: 10px; background: var(--bg-elev-2); }
+.guest-consent input { margin-top: 2px; }
+.guest-optional { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 480px) { .guest-optional { grid-template-columns: 1fr; } }
+
+/* итоги встречи */
+.gp-card { display: flex; flex-direction: column; gap: 12px; }
+.gp-thanks { font-size: 22px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+.gp-meeting { font-size: 13px; margin-top: -6px; }
+.gp-processing { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 12px; background: var(--bg-elev-2); }
+.gp-spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border-2); border-top-color: var(--guest-accent, var(--accent)); animation: gp-spin 1s linear infinite; flex-shrink: 0; }
+@keyframes gp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .gp-spinner { animation: none; } }
+.gp-strong { font-weight: 600; }
+.gp-small { font-size: 12px; }
+.gp-fixed { display: inline-flex; align-items: center; gap: 8px; font-weight: 650; font-size: 16px; color: var(--ok); }
+.gp-section h2 { font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); margin: 0 0 6px; }
+.gp-section p { margin: 0; line-height: 1.55; }
+.gp-agreements { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.gp-agreements li { display: flex; gap: 8px; align-items: baseline; padding: 8px 10px; border-radius: 10px; background: var(--bg-elev-2); line-height: 1.45; }
+.gp-side { flex-shrink: 0; font-size: 11px; font-weight: 650; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-2); }
+.gp-side-client { border-color: var(--guest-accent, var(--accent)); color: var(--text); }
+.gp-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.gp-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.gp-acked { display: inline-flex; align-items: center; gap: 6px; color: var(--ok); font-weight: 600; font-size: 14px; }
+.gp-feedback { display: flex; flex-direction: column; gap: 8px; }
+.gp-chip { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--bg-elev); color: var(--text); cursor: pointer; }
+.gp-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.gp-chip-on { border-color: var(--guest-accent, var(--accent)); background: color-mix(in srgb, var(--guest-accent, var(--accent)) 12%, var(--bg-elev)); }
+.gp-viral { font-size: 12px; text-align: center; margin-top: 6px; }
+.gp-viral a { color: inherit; }
+.gp-rejoin { align-self: flex-start; }
+.guest-postcall-card { width: 560px; max-width: 100%; }
+
+/* настройки бренда (ТЗ-28) */
+.gbp { display: flex; flex-direction: column; gap: 12px; }
+.gbp-form { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.gbp-form .field > span { font-size: 13px; font-weight: 600; }
+.gbp-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gbp-note { font-size: 12px; }
+.gbp-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.gbp-preview { padding: 18px; border-radius: 14px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.gbp-metrics { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }

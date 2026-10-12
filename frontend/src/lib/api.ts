@@ -220,6 +220,57 @@ export interface FocusItem {
   startedAt?: string | null;
 }
 
+/** Бренд гостевых страниц (ТЗ-28): гостю — без внутренних полей. */
+export interface GuestBrand {
+  companyName: string | null;
+  logoUrl?: string | null;
+  /** уже затемнённый до контраста AA с белым текстом */
+  accent?: string | null;
+  background?: 'plain' | 'soft' | 'gradient' | string;
+  welcomeText?: string | null;
+  footerText?: string | null;
+  poweredBy?: boolean;
+  recordingNotice?: boolean;
+  consentRequired?: boolean;
+}
+/** Что гость сообщает о себе перед входом и его согласие на запись. */
+export interface GuestIdentityInput { email?: string; company?: string; language?: string; consent?: boolean }
+/** Доступ гостя к итогам: ключ гостевой сессии или персональная ссылка из письма. */
+export type GuestCred = { session?: string; token?: string };
+export interface GuestAgreement { text: string; side: 'ours' | 'client' | 'both' | 'unassigned' | string; deadlineAt: string | null }
+export interface GuestPostcall {
+  state: 'none' | 'processing' | 'ready' | 'expired';
+  guestName: string;
+  brand: GuestBrand | null;
+  meeting: { title: string; at: string | null; organizer: string | null };
+  summary: null | {
+    version: number; updated: boolean; publishedAt: string; language: string; text: string;
+    agreements: GuestAgreement[];
+    files: { id: string; name: string; size: number; canDownload: boolean }[];
+    nextMeeting: null | { title: string; at: string; url: string | null; google: string; outlook: string };
+  };
+  acknowledgedAt: string | null;
+}
+export interface GuestSummaryHost {
+  eligible: boolean;
+  canPublishTo: number;
+  guests: { kind: 'invite' | 'session'; name: string | null; email: string | null; revoked: boolean }[];
+  meetingUrl: string | null;
+  summary: null | {
+    id: string; status: 'draft' | 'published'; version: number; dirty: boolean; language: string; text: string;
+    draftModel: string | null; publishedAt: string | null;
+    nextMeeting: { title: string; at: string; url: string | null } | null;
+    agreements: (GuestAgreement & { fromDecision?: boolean; fromTask?: boolean })[];
+    files: { id: string; name: string; size: number }[];
+    feedback: { id: string; name: string; kind: string; body: string | null; version: number; handledAt: string | null; at: string }[];
+  };
+}
+export interface GuestBrandSettings {
+  companyName: string | null; logoFileId: string | null; accent: string | null; background: string;
+  welcomeText: string | null; footerText: string | null; poweredBy: boolean; recordingNotice: boolean;
+  consentRequired: boolean; summaryDays: number; tenantName: string; preview: GuestBrand;
+}
+
 /** Персональный брифинг «Фокуса дня» (ТЗ-27): один снимок на день — текст, голос, источники. */
 export type FocusBriefSource = { id: string; kind: string; label: string; link: string | null };
 export type FocusBriefAudioStatus = 'none' | 'pending' | 'ready' | 'failed' | 'off';
@@ -2482,9 +2533,36 @@ export const api = {
   meetingInviteRevoke: (eventId: string, inviteId: string) =>
     request<{ id: string; kicked: number }>('DELETE', `/calendar/events/${eventId}/guests/${inviteId}`),
   /** Человек со стороны по общей ссылке встречи. */
-  meetingGuestJoin: (publicId: string, name: string) =>
+  meetingGuestJoin: (publicId: string, name: string, identity: GuestIdentityInput = {}) =>
+    rawRequest<{ token: string; roomId: string; name: string; userId: string; iceServers: RTCIceServer[]; chatId: string | null; startsAt: string | null; opensAt: string | null; sessionKey?: string | null }>(
+      'POST', `/meet/m/${encodeURIComponent(publicId)}/guest`, { name, ...identity }, false),
+  /** Повторный вход по гостевой сессии (ТЗ-28): имя и согласие уже есть. */
+  guestRejoin: (session: string) =>
     rawRequest<{ token: string; roomId: string; name: string; userId: string; iceServers: RTCIceServer[]; chatId: string | null; startsAt: string | null; opensAt: string | null }>(
-      'POST', `/meet/m/${encodeURIComponent(publicId)}/guest`, { name }, false),
+      'POST', '/meet/guest-session/rejoin', { session }, false),
+  // гостевой портал (ТЗ-28) — без учётной записи
+  guestBrand: (q: { publicId?: string; token?: string; session?: string }) =>
+    rawRequest<GuestBrand>('GET', `/guest/brand?${new URLSearchParams(Object.entries(q).filter(([, v]) => !!v) as [string, string][]).toString()}`, undefined, false),
+  guestPostcall: (c: GuestCred) => rawRequest<GuestPostcall>('POST', '/guest/postcall', c, false),
+  guestAcknowledge: (c: GuestCred, version: number) => rawRequest<{ acknowledged: true }>('POST', '/guest/postcall/acknowledge', { ...c, version }, false),
+  guestFeedback: (c: GuestCred, kind: 'question' | 'correction' | 'comment', body: string) =>
+    rawRequest<{ saved: true }>('POST', '/guest/postcall/feedback', { ...c, kind, body }, false),
+  guestFile: (c: GuestCred, fileId: string) => rawRequest<{ url: string; expiresAt: string }>('POST', `/guest/postcall/files/${encodeURIComponent(fileId)}`, c, false),
+  guestIcsUrl: (c: GuestCred) => apiUrl(`/api/guest/postcall/next.ics?${new URLSearchParams(Object.entries(c).filter(([, v]) => !!v) as [string, string][]).toString()}`),
+  guestEvent: (c: GuestCred & { publicId?: string }, event: string) =>
+    rawRequest<{ saved: true }>('POST', '/guest/event', { ...c, event }, false).catch(() => undefined),
+  // клиентский протокол глазами хозяина
+  guestSummary: (meetingId: string) => request<GuestSummaryHost>('GET', `/meetings/${meetingId}/guest-summary`),
+  guestSummaryDraft: (meetingId: string, language?: string) => request<GuestSummaryHost>('POST', `/meetings/${meetingId}/guest-summary/draft`, language ? { language } : {}),
+  guestSummarySave: (meetingId: string, d: { language: string; text: string; agreements: GuestAgreement[]; nextMeeting?: { title: string; at: string; url?: string | null } | null }) =>
+    request<GuestSummaryHost>('PUT', `/meetings/${meetingId}/guest-summary`, d),
+  guestSummaryPublish: (meetingId: string) => request<GuestSummaryHost & { mailed: number }>('POST', `/meetings/${meetingId}/guest-summary/publish`),
+  guestSummaryAddFile: (meetingId: string, fileId: string) => request<GuestSummaryHost>('POST', `/meetings/${meetingId}/guest-summary/files`, { fileId }),
+  guestSummaryRemoveFile: (meetingId: string, fileId: string) => request<GuestSummaryHost>('DELETE', `/meetings/${meetingId}/guest-summary/files/${fileId}`),
+  guestFeedbackHandled: (meetingId: string, id: string) => request<GuestSummaryHost>('POST', `/meetings/${meetingId}/guest-summary/feedback/${id}/handled`),
+  guestBrandSettings: () => request<GuestBrandSettings>('GET', '/settings/guest-brand'),
+  guestBrandSave: (p: Partial<Omit<GuestBrandSettings, 'tenantName' | 'preview'>>) => request<GuestBrandSettings>('PATCH', '/settings/guest-brand', p),
+  guestBrandMetrics: () => request<{ days: number; opened: number; joined: number; published: number; viewed: number; acknowledged: number; feedback: number; cta: number; ackRate: number | null }>('GET', '/settings/guest-brand/metrics'),
 
   // отчёты из личного кабинета
   /** Сводка отчёта по задачам — те же цифры, что попадут в PDF. */
@@ -2528,12 +2606,12 @@ export const api = {
       }
       | { valid: false; reason: string }
     >('GET', `/meet/guest/${encodeURIComponent(token)}`, undefined, false),
-  guestJoin: (token: string, name: string) =>
+  guestJoin: (token: string, name: string, identity: GuestIdentityInput = {}) =>
     rawRequest<{
       token: string; roomId: string; name: string; userId: string; iceServers: RTCIceServer[];
-      chatId: string | null; startsAt: string | null; opensAt: string | null;
+      chatId: string | null; startsAt: string | null; opensAt: string | null; sessionKey?: string | null;
     }>(
-      'POST', `/meet/guest/${encodeURIComponent(token)}/join`, { name }, false),
+      'POST', `/meet/guest/${encodeURIComponent(token)}/join`, { name, ...identity }, false),
 
   // встречи: запись → стенограмма → сводка → черновики задач
   listMeetings: () => request<any[]>('GET', '/meetings'),

@@ -1,3 +1,4 @@
+import { GuestSessionsRepository } from './guest-sessions.repository';
 import { Module } from '@nestjs/common';
 import { MeetingsModule } from '../meetings/meetings.module';
 import { ChatsModule } from '../chats/chats.module';
@@ -23,7 +24,7 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
   // в переговорную; проверка гостевого токена при этом остаётся здесь, в одном месте.
   imports: [MeetingsModule, ChatsModule, NotificationsModule, CalendarModule],
   controllers: [MediaController, MeetGuestController],
-  providers: [MediaService, MeetGateway, RecordingService, GuestLinksService, GuestLinksRepository, GuestLinksScheduler, IntegrationCryptoService],
-  exports: [MediaService],
+  providers: [MediaService, MeetGateway, RecordingService, GuestLinksService, GuestLinksRepository, GuestLinksScheduler, IntegrationCryptoService, GuestSessionsRepository],
+  exports: [MediaService, GuestLinksService, GuestLinksRepository, GuestSessionsRepository],
 })
 export class MediaModule {}

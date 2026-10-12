@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import './postcall.css';
 import { Icon, type IconName } from '../components/Icon';
 import { SkeletonList } from '../components/Skeleton';
@@ -12,6 +12,8 @@ import { toastSaved } from '../lib/notifications';
 import type { Project, User } from '../types';
 import { DraftRow, type DraftChoice } from '../components/meetings/DraftRow';
 import { feedback } from '../lib/feedback';
+// клиентский протокол для гостей встречи (ТЗ-28) — своим куском, только где есть гости
+const GuestSummaryPanel = lazy(() => import('../components/meetings/GuestSummaryPanel'));
 
 /** Сколько ждать, пока допишется запись и появится встреча: дольше — записи не было. */
 const ROOM_WAIT_MS = 30_000;
@@ -492,6 +494,8 @@ function PostCall({ meetingId }: { meetingId: string }) {
             )}
           </>
         )}
+
+        {!processing && <Suspense fallback={null}><GuestSummaryPanel meetingId={meetingId} /></Suspense>}
 
         {ai && canClose && ((staffOthers > 0 && blockState('summary') === 'ready') || review?.newsWorthy) && (
           <div className="pc-actions pc-recap">
