@@ -264,14 +264,4 @@ export class CommitmentsRepository {
       [tenantId, userId],
     );
   }
-
-  /** Основной проект компании — куда ставить задачу по обещанию из личной переписки. */
-  async defaultProject(tenantId: string): Promise<string | null> {
-    const row = await this.db.one<{ id: string }>(
-      `SELECT id::text FROM projects WHERE tenant_id=$1 AND COALESCE(status,'active') <> 'archived'
-        ORDER BY is_default DESC, sort_order, created_at LIMIT 1`,
-      [tenantId],
-    );
-    return row?.id ?? null;
-  }
 }

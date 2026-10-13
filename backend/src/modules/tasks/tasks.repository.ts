@@ -58,6 +58,12 @@ export interface TaskRow {
 export class TasksRepository {
   constructor(private readonly db: DbService) {}
 
+  /** Роль человека — для проверки «видит ли проект» там, где роли под рукой нет. */
+  async userRole(tenantId: string, userId: string): Promise<string | null> {
+    const r = await this.db.one<{ role: string }>(`SELECT role FROM users WHERE tenant_id = $1 AND id = $2`, [tenantId, userId]);
+    return r?.role ?? null;
+  }
+
   /**
    * Задача по номеру.
    *

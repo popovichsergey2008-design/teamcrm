@@ -24,6 +24,8 @@ export type ErrorCode =
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'CONFLICT'
+  /** Запрос понятен, но выполнить нельзя по смыслу: задача без проекта (ТЗ-31) и т. п. */
+  | 'UNPROCESSABLE'
   | 'RATE_LIMITED'
   | 'INTERNAL';
 
@@ -34,6 +36,7 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,
+  UNPROCESSABLE: 422,
   RATE_LIMITED: 429,
   INTERNAL: 500,
 };

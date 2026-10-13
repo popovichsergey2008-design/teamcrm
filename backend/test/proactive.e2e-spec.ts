@@ -73,6 +73,15 @@ describe('Проактивный секретарь (e2e)', () => {
     // чужую карточку не видно и не выполнить
     await http$.get(`/api/assistant/proposals/${inbox[0].id}`).set(O).expect(404);
 
+    // ТЗ-31: обещание из лички, проектов несколько — задача не уезжает молча в «основной»,
+    // а просит выбрать проект; карточка остаётся открытой
+    await http$.post('/api/projects').set(O).send({ name: 'Сайт банка' }).expect(201);
+    await http$.post('/api/projects').set(O).send({ name: 'Склад' }).expect(201);
+    const ask = (await http$.post(`/api/assistant/proposals/${inbox[0].id}/confirm`).set(gleb.H).send({ action: 'create_task' }).expect(422)).body;
+    expect(ask.error.details.code).toBe('PROJECT_REQUIRED');
+    expect(ask.error.details.projects.length).toBeGreaterThanOrEqual(2);
+    expect((await http$.get(`/api/assistant/proposals/${inbox[0].id}`).set(gleb.H).expect(200)).body.data.status).toBe('new');
+
     const r = (await http$.post(`/api/assistant/proposals/${inbox[0].id}/confirm`).set(gleb.H).send({ action: 'done' }).expect(201)).body.data;
     expect(r.proposal.status).toBe('executed');
     await http$.post(`/api/assistant/proposals/${inbox[0].id}/confirm`).set(gleb.H).send({ action: 'done' }).expect(409);

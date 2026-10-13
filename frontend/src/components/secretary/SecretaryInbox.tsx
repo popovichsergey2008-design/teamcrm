@@ -11,6 +11,7 @@ import { Checkbox } from '../ui/checkbox';
 import { confirmAction } from '../ui/dialog';
 import { DropdownMenu, MenuItem, MenuSeparator } from '../ui/dropdown-menu';
 import { Select } from '../ui/select';
+import { OptionSelect } from '../ui/option-select';
 import './secretary.css';
 import { feedback } from '../../lib/feedback';
 
@@ -199,19 +200,32 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
     navigate(link);
   };
 
-  const act = async (a: AssistantProposal['actions'][number]) => {
+  /*
+    Быстрый выбор проекта (ТЗ-31, §29): задача по обещанию из лички — проект не ясен.
+    Сервер отвечает «к какому проекту?» с вариантами; выбрали — то же действие ещё раз.
+  */
+  const [pick, setPick] = useState<{ action: AssistantProposal['actions'][number]; candidates: { id: string; name: string }[]; projects: { id: string; name: string }[] } | null>(null);
+
+  const act = async (a: AssistantProposal['actions'][number], extra?: Record<string, unknown>) => {
     if (a.risk === 'external' && !(await confirmAction({ title: `${a.label}?`, description: p.effect ?? undefined, confirmLabel: a.label }))) return;
     setBusy(true); setErr('');
     try {
       // «Скопировать» — в буфер до запроса: сервер только отметит, что текст подготовлен
       if (a.key === 'copy') await navigator.clipboard.writeText(editable ? body : String(p.payload.body ?? p.summary ?? '')).catch(() => undefined);
-      const r = await api.proposalAct(p.id, a.key, editable ? { body, subject } : undefined);
+      const params = { ...(editable ? { body, subject } : {}), ...(extra ?? {}) };
+      const r = await api.proposalAct(p.id, a.key, Object.keys(params).length ? params : undefined);
+      setPick(null);
       feedback('action.confirmed');
       setResult({ text: r.text, link: r.link });
       window.dispatchEvent(new Event('teamcrm:tasks-changed'));
       // карточка остаётся на экране с результатом, пока человек не уйдёт с вкладки
       setTimeout(() => onDone(r.proposal), 2500);
     } catch (e) {
+      const d = e instanceof ApiError ? (e.details as { code?: string; candidates?: { id: string; name: string }[]; projects?: { id: string; name: string }[] } | undefined) : undefined;
+      if (d?.code === 'PROJECT_REQUIRED' && d.projects?.length) {
+        setPick({ action: a, candidates: d.candidates ?? [], projects: d.projects });
+        return;
+      }
       setErr(e instanceof ApiError ? e.message : 'Не получилось — попробуйте ещё раз');
     } finally { setBusy(false); }
   };
@@ -266,7 +280,26 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
           {result.link && <button className="sp-src" onClick={() => go(result.link)}>Открыть</button>}
         </div>
       )}
-      {open && !result && (
+      {pick && open && !result && (
+        <div className="sp-pick" role="group" aria-label="К какому проекту относится задача">
+          <div className="sp-pick-q">К какому проекту относится задача?</div>
+          <div className="sp-pick-row">
+            {pick.candidates.map((c) => (
+              <Button key={c.id} size="sm" variant="outline" disabled={busy} onClick={() => void act(pick.action, { projectId: c.id })}>{c.name}</Button>
+            ))}
+            <OptionSelect
+              className="sp-pick-other"
+              value=""
+              aria-label="Выбрать другой проект"
+              onChange={(e) => { if (e.target.value) void act(pick.action, { projectId: e.target.value }); }}
+            >
+              <option value="">{pick.candidates.length ? 'Другой…' : 'Выберите проект…'}</option>
+              {pick.projects.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </OptionSelect>
+          </div>
+        </div>
+      )}
+      {open && !result && !pick && (
         <div className="sp-actions">
           {actions.map((a) => (
             <Button key={a.key} size="sm" variant={a.primary ? 'primary' : 'outline'} disabled={busy} onClick={() => void act(a)}>

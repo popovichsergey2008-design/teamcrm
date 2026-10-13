@@ -29,7 +29,7 @@ describe('NL-команда (e2e)', () => {
 
   afterAll(async () => { await app?.close(); });
 
-  it('parse отдаёт контекст; apply создаёт задачу; без проекта — 400', async () => {
+  it('parse отдаёт контекст; apply создаёт задачу; без проекта — 422', async () => {
     const email = `nl_${uniq()}@t.test`;
     const reg = (await http$.post('/api/auth/register').send({ tenantName: 'NL', email, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
     const tok = reg.accessToken;
@@ -88,8 +88,9 @@ describe('NL-команда (e2e)', () => {
     expect(task).toBeTruthy();
     expect(task.priority).toBe('high');
 
-    // apply задачи без проекта → 400
-    await http$.post('/api/nl/apply').set(H(tok)).send({ intent: 'create_task', task: { title: 'Без проекта' } }).expect(400);
+    // apply задачи без проекта → 422 PROJECT_REQUIRED (ТЗ-31)
+    const np = (await http$.post('/api/nl/apply').set(H(tok)).send({ intent: 'create_task', task: { title: 'Без проекта' } }).expect(422)).body;
+    expect(np.error.details.code).toBe('PROJECT_REQUIRED');
 
     // apply сделки
     const deal = (await http$.post('/api/nl/apply').set(H(tok)).send({ intent: 'create_deal', deal: { title: 'Продажа Иванову', amount: 5000 } }).expect(201)).body.data;

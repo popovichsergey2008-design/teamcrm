@@ -640,7 +640,8 @@ export class NlService {
   async apply(tenantId: string, userId: string, body: { intent: Intent; task?: any; deal?: any }, opts: { interactive?: boolean } = {}) {
     if (body.intent === 'create_task') {
       const t = body.task ?? {};
-      if (!t.projectId) throw AppException.validation('Выберите проект для задачи');
+      // проект — общей проверкой (ТЗ-31): нет, архив, недоступен человеку
+      await this.tasks.assertProject(tenantId, t.projectId, { userId });
       if (!String(t.title ?? '').trim()) throw AppException.validation('Укажите название задачи');
       /*
         Теги подтверждены (ТЗ по тегам, п. 34 и 52).

@@ -108,6 +108,13 @@ export class RecurrenceScheduler implements OnModuleInit, OnModuleDestroy {
       this.repo.templateChecklist(row.tenant_id, row.task_id),
     ]);
 
+    // проект ушёл в архив — копии туда не ставим (ТЗ-31), расписание ждёт, пока вернут
+    const archived = await this.tasks.assertProject(row.tenant_id, String(template.project_id)).then(() => false, () => true);
+    if (archived) {
+      await this.repo.markRun(row.id, now, upcoming);
+      return false;
+    }
+
     const created = await this.tasks.create(
       row.tenant_id,
       {

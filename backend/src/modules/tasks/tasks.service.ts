@@ -180,6 +180,8 @@ export class TasksService {
    * подтверждения тегов нельзя — подтверждать там некому, а работа встанет.
    */
   async createByPerson(tenantId: string, dto: CreateTaskDto, user: { userId: string; role: string }): Promise<TaskRow> {
+    // проект — первым: без него остальное не важно, а ошибка должна указать на поле (ТЗ-31)
+    await this.assertProject(tenantId, dto.projectId, user);
     await this.tags.assertGate(tenantId, {
       tagIds: dto.labelIds, tagsConfirmed: dto.tagsConfirmed, confirmedWithoutTags: dto.confirmedWithoutTags,
     });
@@ -200,6 +202,35 @@ export class TasksService {
   }
 
   /**
+   * Инвариант ТЗ-31: задачи без проекта не бывает. ОДНА проверка на все пути создания —
+   * форма, быстрая команда, голос, бот, итоги встречи, палочка в чате, обещания, API.
+   *
+   * - нет проекта — 422 PROJECT_REQUIRED (поле подсвечивается, остальное не теряется);
+   * - нет такого — 404 PROJECT_NOT_FOUND;
+   * - в архиве — 422 PROJECT_ARCHIVED: в закрытый проект задачи не ставят;
+   * - человек его не видит — 403 PROJECT_FORBIDDEN (только когда ставит человек:
+   *   системные пути — служба заботы, повторы — идут от имени компании).
+   */
+  async assertProject(tenantId: string, projectId: string | null | undefined, viewer?: { userId: string; role?: string | null }) {
+    const id = String(projectId ?? '').trim();
+    if (!id) {
+      throw new AppException('UNPROCESSABLE', 'Выберите проект — без проекта задачу создать нельзя', { code: 'PROJECT_REQUIRED', field: 'project_id' });
+    }
+    const project = /^\d+$/.test(id) ? await this.projects.findById(tenantId, id) : null;
+    if (!project) throw new AppException('NOT_FOUND', 'Проект не найден', { code: 'PROJECT_NOT_FOUND', field: 'project_id' });
+    if (project.status === 'archived') {
+      throw new AppException('UNPROCESSABLE', `Проект «${project.name}» в архиве — выберите другой`, { code: 'PROJECT_ARCHIVED', field: 'project_id' });
+    }
+    if (viewer?.userId) {
+      const role = viewer.role ?? (await this.repo.userRole(tenantId, viewer.userId));
+      if (!role || !(await this.projects.canSee(tenantId, id, { userId: String(viewer.userId), role }))) {
+        throw new AppException('FORBIDDEN', 'Этот проект вам недоступен — выберите другой', { code: 'PROJECT_FORBIDDEN', field: 'project_id' });
+      }
+    }
+    return project;
+  }
+
+  /**
    * `origin` — откуда задача, если не из формы. Отдельным параметром, а не полем DTO:
    * пометку «завёл ИИ» клиент ставить себе не должен. Записывается в той же вставке,
    * потому что письмо о задаче уходит сразу и должно уже знать, откуда она.
@@ -208,8 +239,7 @@ export class TasksService {
     tenantId: string, dto: CreateTaskDto, actorId: string | null = null,
     origin: { sourceChatMessageId?: string | null; createdByAi?: boolean; workloadChecked?: boolean } = {},
   ): Promise<TaskRow> {
-    const project = await this.projects.findById(tenantId, dto.projectId);
-    if (!project) throw AppException.notFound('Project not found');
+    await this.assertProject(tenantId, dto.projectId);
 
     const columns = await this.projects.listColumns(tenantId, dto.projectId);
     if (columns.length === 0) throw AppException.conflict('Project has no columns');

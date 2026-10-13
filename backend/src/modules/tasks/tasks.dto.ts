@@ -21,6 +21,11 @@ export class CreateTaskDto {
   @IsBoolean()
   confirmWorkload?: boolean;
 
+  /*
+    Обязателен (ТЗ-31), но проверяет его сервис, а не валидатор: так ответ один на все
+    пути — 422 PROJECT_REQUIRED с полем, а не общее «projectId must be a string».
+  */
+  @IsOptional()
   @IsString()
   projectId!: string;
 

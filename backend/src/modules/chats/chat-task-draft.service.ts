@@ -306,11 +306,14 @@ export class ChatTaskDraftService {
     const res = (draft?.analysis as any)?.projectResolution as { level?: string; alternatives?: { projectId: string }[] } | null | undefined;
     const visible = new Set(projects.map((p) => String(p.id)));
     // определитель не уверен — его варианты (только видимые смотрящему); старый черновик — как раньше
-    const suggested = res && res.level !== 'HIGH' && Array.isArray(res.alternatives)
+    const fromResolver = res && res.level !== 'HIGH' && Array.isArray(res.alternatives)
       ? res.alternatives.map((a) => String(a.projectId)).filter((id) => visible.has(id) && id !== String(draft?.project_id ?? ''))
-      : viewer && draft && !draft.project_id
-        ? (await this.repo.suggestProjects(tenantId, viewer, draft.author_id).catch(() => [])).map((p) => p.id)
-        : [];
+      : [];
+    // определителю нечего предложить, а проект не выбран — прежние три вероятных (§10)
+    const fallback = viewer && draft && !draft.project_id && fromResolver.length < 3 && (!res || res.level !== 'HIGH')
+      ? (await this.repo.suggestProjects(tenantId, viewer, draft.author_id).catch(() => [])).map((p) => String(p.id))
+      : [];
+    const suggested = [...new Set([...fromResolver, ...fallback])].slice(0, 3);
     return {
       projects: projects.map((p) => ({ id: String(p.id), name: p.name })),
       users: users.map((u) => ({ id: String(u.id), name: u.full_name })),

@@ -1,4 +1,5 @@
 import { FocusDayService } from '../focus/focus-day.service';
+import { ProjectResolverService } from '../nl/project-resolver.service';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { localParts } from '../assistant/ping-rules';
@@ -38,10 +39,12 @@ export class CommitmentsService implements OnModuleInit {
     private readonly telegram: TelegramMirror,
     /** «В мой Фокус» (ТЗ-21, этап 8): своё обещание — в тройку дня. */
     private readonly focus: FocusDayService,
+    /** Проект задачи по обещанию (ТЗ-31): вместо «первого попавшегося» — определитель. */
+    private readonly resolver: ProjectResolverService,
   ) {}
 
   onModuleInit(): void {
-    this.proactive.register({ skill: 'commitment', execute: (a, p, action) => this.execute(a, p, action) });
+    this.proactive.register({ skill: 'commitment', execute: (a, p, action, params) => this.execute(a, p, action, params) });
     this.scheduler.add('обещания: поиск', () => this.scanAll());
     this.scheduler.add('обещания: проверка', () => this.checkDue());
   }
@@ -245,7 +248,7 @@ export class CommitmentsService implements OnModuleInit {
 
   // ───────────────────────── кнопки карточки ─────────────────────────
 
-  private async execute(a: Actor, p: ProposalRow, action: string) {
+  private async execute(a: Actor, p: ProposalRow, action: string, params: Record<string, unknown> = {}) {
     const c = await this.repo.get(a.tenantId, String(p.payload.commitmentId));
     if (!c) throw AppException.notFound('Обещание не найдено');
     const isParty = [c.speaker_user_id, c.assigner_user_id].map(String).includes(String(a.userId));
@@ -269,12 +272,12 @@ export class CommitmentsService implements OnModuleInit {
     }
     if (action === 'create_task') {
       if (c.linked_task_id) return { text: `Задача #${c.linked_task_id} уже есть` };
-      const task = await this.ensureTask(a, c);
+      const task = await this.ensureTask(a, c, params.projectId ? String(params.projectId) : null);
       return { text: `Задача #${task.id} поставлена на ${c.speaker_name}`, link: `/projects/${task.projectId}/task/${task.id}` };
     }
     if (action === 'focus') {
       if (String(c.speaker_user_id) !== String(a.userId)) throw AppException.forbidden('В фокус — только своё обещание');
-      const task = await this.ensureTask(a, c);
+      const task = await this.ensureTask(a, c, params.projectId ? String(params.projectId) : null);
       const link = `/projects/${task.projectId}/task/${task.id}`;
       try {
         await this.focus.add({ tenantId: a.tenantId, userId: a.userId, role: a.role }, { key: `task:${task.id}` });
@@ -289,13 +292,38 @@ export class CommitmentsService implements OnModuleInit {
   }
 
   /** Задача по обещанию: уже связанная — она; иначе новая на обещавшего, со сроком и цитатой. */
-  private async ensureTask(a: Actor, c: CommitmentRow): Promise<{ id: string; projectId: string }> {
+  private async ensureTask(a: Actor, c: CommitmentRow, chosen: string | null = null): Promise<{ id: string; projectId: string }> {
     if (c.linked_task_id) {
       const t = await this.repo.taskRef(a.tenantId, String(c.linked_task_id));
       if (t) return t;
     }
-    const projectId = c.project_id ? String(c.project_id) : await this.repo.defaultProject(a.tenantId);
-    if (!projectId) throw AppException.conflict('Нет проекта, куда поставить задачу');
+    /*
+      Проект (ТЗ-31, §29). Раньше обещание из личной переписки молча уезжало в «основной»
+      проект компании. Теперь: проект источника (чат проекта, задача, встреча) или
+      выбранный человеком; иначе — определитель, и если он не уверен, карточка
+      открывает быстрый выбор проекта с вариантами.
+    */
+    let projectId = chosen ?? (c.project_id ? String(c.project_id) : null);
+    let predicted: { projectId: string | null; confidence: number; resolution: string; reasonCodes: string[] } | null = null;
+    if (!projectId) {
+      const r = await this.resolver.resolve(a.tenantId, { userId: a.userId, role: a.role }, {
+        text: `${c.action_text} ${c.quote}`,
+        peopleIds: [c.speaker_user_id, c.assigner_user_id],
+      });
+      predicted = r;
+      if (r.level === 'HIGH') projectId = r.projectId;
+      else {
+        const options = [...(r.projectId ? [{ projectId: r.projectId, name: r.projectName }] : []), ...r.alternatives]
+          .map((x) => ({ id: String(x.projectId), name: String(x.name) }));
+        throw new AppException('UNPROCESSABLE', 'К какому проекту относится задача?', {
+          code: 'PROJECT_REQUIRED', field: 'project_id',
+          candidates: options.slice(0, 3),
+          projects: r.projects.slice(0, 60).map((p) => ({ id: String(p.id), name: p.name })),
+        });
+      }
+    }
+    if (!projectId) throw new AppException('UNPROCESSABLE', 'К какому проекту относится задача?', { code: 'PROJECT_REQUIRED', field: 'project_id' });
+    if (chosen) await this.tasks.assertProject(a.tenantId, chosen, { userId: a.userId, role: a.role });
     const src = this.sourceOf(c);
     const task = await this.tasks.create(a.tenantId, {
       projectId,
@@ -304,6 +332,12 @@ export class CommitmentsService implements OnModuleInit {
       assigneeId: String(c.speaker_user_id),
       deadlineAt: c.deadline_at ? new Date(c.deadline_at).toISOString() : undefined,
     } as any, a.userId, { sourceChatMessageId: c.source_type === 'chat' && c.source_message_ids?.[0] ? String(c.source_message_ids[0]) : null });
+    if (chosen || predicted) {
+      void this.resolver.feedback(a.tenantId, a.userId, 'commitment', {
+        predictedProjectId: predicted?.projectId ?? null, selectedProjectId: projectId, confidence: predicted?.confidence ?? null,
+        resolution: predicted?.resolution ?? null, reasonCodes: predicted?.reasonCodes ?? [], taskId: String(task.id),
+      });
+    }
     await this.repo.update(String(c.id), {
       status: 'tracked', linked_task_id: String(task.id),
       check_at: c.deadline_at && new Date(c.deadline_at).getTime() > Date.now() ? new Date(c.deadline_at) : new Date(Date.now() + 24 * 3600_000),
