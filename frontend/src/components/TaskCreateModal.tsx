@@ -565,7 +565,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
               onMove={workload.alternativeDeadline ? () => {
                 const v = localInput(workload.alternativeDeadline!);
                 setDeadline(v);
-                void submit({ deadline: v });
+                // свободный день — это и есть решение: ставим без повторного предупреждения
+                void submit({ deadline: v, confirmWorkload: true });
               } : undefined}
               onReassign={(id) => { setAssigneeId(id); void submit({ assigneeId: id }); }}
               onKeep={() => void submit({ confirmWorkload: true })}

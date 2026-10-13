@@ -64,10 +64,11 @@ export class WorkloadGuardService {
     ]);
     const reviewsOf = new Map<string, number>();
     for (const t of tasks) if (t.inReview && t.createdBy && t.createdBy !== t.assigneeId) reviewsOf.set(t.createdBy, (reviewsOf.get(t.createdBy) ?? 0) + 1);
-    const loadOf = (id: string, meetingHours: number) => loadPoints({
+    const breakdownOf = (id: string, meetingHours: number) => loadPoints({
       tasks: tasks.filter((t) => t.assigneeId === id && !t.inReview),
       reviewsWaiting: reviewsOf.get(id) ?? 0, meetingHoursToday: Math.round(meetingHours * 10) / 10,
-    }, now).points;
+    }, now);
+    const loadOf = (id: string, meetingHours: number) => breakdownOf(id, meetingHours).points;
     const me = people.find((p) => p.id === String(input.assigneeId));
     if (!me) return null;
     const allowed = project?.visibility === 'members'
@@ -79,6 +80,7 @@ export class WorkloadGuardService {
     const a = assess(
       {
         id: me.id, name: me.name, points: loadOf(me.id, me.meetingHours), norm: me.norm ?? DEFAULT_NORM_POINTS,
+        breakdown: breakdownOf(me.id, me.meetingHours),
         tasks: tasks.filter((t) => t.assigneeId === me.id && !t.inReview).map((t) => ({ priority: t.priority, deadlineAt: t.deadlineAt })),
       },
       { priority, deadlineAt, directions: input.directions ?? [], allowed },

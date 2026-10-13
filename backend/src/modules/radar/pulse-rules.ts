@@ -130,34 +130,62 @@ export function bottleneckWhy(t: TaskFact, type: BottleneckType, now: Date): str
 
 export const DEFAULT_NORM_POINTS = 12;
 
+/** Окно нагрузки (решение 13.10, #1553): сколько дней вперёд считаем задачи со сроком. */
+export const LOAD_WINDOW_DAYS = 14;
+/** Задача без срока в нагрузке, только если её двигали (или завели) за эти дни. */
+export const LOAD_ACTIVE_DAYS = 7;
+
 export interface LoadInput {
-  tasks: Pick<TaskFact, 'priority' | 'deadlineAt' | 'personalDeadlineAt'>[];
+  tasks: (Pick<TaskFact, 'priority' | 'deadlineAt' | 'personalDeadlineAt'> & { lastMove?: Date | null })[];
   /** Сданное мне на проверку и ждущее меня. */
   reviewsWaiting: number;
   meetingHoursToday: number;
 }
 
-export interface LoadBreakdown { points: number; active: number; urgent: number; overdue: number; dueSoon: number; reviews: number; meetingHours: number }
+export interface LoadBreakdown {
+  points: number; active: number; urgent: number; overdue: number; dueSoon: number; reviews: number; meetingHours: number;
+  /** Со сроком в окне (не просроченные). */
+  inWindow: number;
+  /** Без срока, но в работе (двигали недавно). */
+  moving: number;
+  /** Не в нагрузке: срок не скоро или давно лежат без движения. */
+  later: number;
+}
 
 /**
- * Очки нагрузки: каждая открытая задача — 1; срочная или высокая +1; просроченная +1;
- * срок в ближайшие 3 дня +1; проверка чужой работы — 0,5; час встреч сегодня — 1.
- * Подписываем на экране, что это оценка по задачам, а не по часам: оценок времени
- * у задач нет, и проценты в часах были бы выдуманными.
+ * Очки нагрузки — что лежит на человеке в ближайшие две недели (решение 13.10, #1553).
+ *
+ * Раньше считались ВСЕ открытые задачи, включая давний бэклог без срока, и просрочка шла
+ * двойным весом: у человека с 28 задачами выходило 417%, а сдвиг срока ничего не менял.
+ * Теперь в нагрузке: просроченное, задачи со сроком в окне 14 дней и задачи без срока,
+ * которые двигали (или завели) за последнюю неделю, — то есть в работе. Срок позже окна —
+ * не нагрузка сейчас.
+ *
+ * Каждая такая задача — 1; срочная или высокая +1; срок в ближайшие 3 дня +1; проверка
+ * чужой работы — 0,5; час встреч сегодня — 1. Это оценка по задачам, а не по часам:
+ * оценок времени у задач нет, и проценты в часах были бы выдуманными.
  */
 export function loadPoints(i: LoadInput, now: Date): LoadBreakdown {
-  let points = 0; let urgent = 0; let overdue = 0; let dueSoon = 0;
+  let points = 0; let urgent = 0; let overdue = 0; let dueSoon = 0; let inWindow = 0; let moving = 0; let later = 0;
+  const windowEnd = now.getTime() + LOAD_WINDOW_DAYS * D;
   for (const t of i.tasks) {
+    const due = personalDue(t);
+    const left = due ? due.getTime() - now.getTime() : null;
+    // нет сведений о движении (новая задача) — считаем как «в работе»
+    const recent = t.lastMove === undefined || (!!t.lastMove && now.getTime() - t.lastMove.getTime() <= LOAD_ACTIVE_DAYS * D);
+    if (left !== null && left < 0) overdue += 1;
+    else if (due && due.getTime() <= windowEnd) inWindow += 1;
+    else if (!due && recent) moving += 1;
+    else { later += 1; continue; }
     points += 1;
     if (t.priority === 'high' || t.priority === 'urgent') { points += 1; urgent += 1; }
-    const due = personalDue(t);
-    if (due) {
-      const left = due.getTime() - now.getTime();
-      if (left < 0) { points += 1; overdue += 1; } else if (left <= 3 * D) { points += 1; dueSoon += 1; }
-    }
+    if (left !== null && left >= 0 && left <= 3 * D) { points += 1; dueSoon += 1; }
   }
   points += i.reviewsWaiting * 0.5 + i.meetingHoursToday;
-  return { points: Math.round(points * 10) / 10, active: i.tasks.length, urgent, overdue, dueSoon, reviews: i.reviewsWaiting, meetingHours: i.meetingHoursToday };
+  return {
+    points: Math.round(points * 10) / 10, active: overdue + inWindow + moving, urgent, overdue, dueSoon,
+    reviews: i.reviewsWaiting, meetingHours: i.meetingHoursToday, inWindow, moving, later,
+  };
 }
 
 export function capacityPct(points: number, norm: number | null | undefined): number {
@@ -412,7 +440,7 @@ export interface MovableTask {
 export interface Move { taskId: string; title: string; toId: string; toName: string; reason: string }
 
 /** Сколько очков задача добавляет человеку — та же арифметика, что в loadPoints. */
-export function taskPoints(t: Pick<TaskFact, 'priority' | 'deadlineAt'>, now: Date): number {
+export function taskPoints(t: Pick<TaskFact, 'priority' | 'deadlineAt'> & { lastMove?: Date | null }, now: Date): number {
   return loadPoints({ tasks: [t], reviewsWaiting: 0, meetingHoursToday: 0 }, now).points;
 }
 

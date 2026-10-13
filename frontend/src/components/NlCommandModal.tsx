@@ -667,7 +667,7 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
           <WorkloadWarning
             info={draft.workload}
             busy={busy}
-            onMove={draft.workload.alternativeDate ? () => onApply({ deadline: draft.workload.alternativeDate }) : undefined}
+            onMove={draft.workload.alternativeDate ? () => onApply({ deadline: draft.workload.alternativeDate, confirmWorkload: true }) : undefined}
             onReassign={(id) => onApply({ assigneeId: id })}
             onKeep={() => onApply({ confirmWorkload: true })}
           />

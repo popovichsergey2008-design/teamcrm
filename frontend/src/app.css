@@ -3474,9 +3474,8 @@
   background: var(--bg-elev); border: 1px solid var(--border-2); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 8px;
 }
-.dp-pop.dp-up { bottom: calc(100% + 6px); }
-.dp-pop.dp-down { top: calc(100% + 6px); }
-.dp-pop.dp-right { left: auto; right: 0; }
+/* компьютер (#1553): поверх окон, у поля, вниз — если помещается */
+.dp-pop.dp-float { position: fixed; z-index: 1200; }
 /* Телефон (#1541): календарь — лист у нижнего края, вне окна, на всю ширину.
    z-index выше окон-листов, иначе он оказывается под окном создания задачи. */
 .dp-sheet-backdrop { position: fixed; inset: 0; z-index: 1190; background: rgba(0, 0, 0, .35); }

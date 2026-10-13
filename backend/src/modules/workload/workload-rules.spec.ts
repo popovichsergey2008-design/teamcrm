@@ -1,4 +1,4 @@
-import { assess, dayWord, LocalDate } from './workload-rules';
+import { assess, basisText, dayWord, LocalDate } from './workload-rules';
 
 const now = new Date('2026-10-12T08:00:00Z'); // понедельник
 const local: LocalDate = (d) => {
@@ -21,7 +21,8 @@ describe('страж нагрузки', () => {
     ], now, local);
     expect(a.warn).toBe(true);
     expect(a.reasons[0]).toBe('Сергей: на четверг уже 4 срочные задачи.');
-    expect(a.alternativeDate).toBe('2026-10-16');
+    // от сегодня (пн 12.10): вторник свободен
+    expect(a.alternativeDate).toBe('2026-10-13');
     expect(a.alternatives.map((x) => x.name)).toEqual(['Константин']);
   });
 
@@ -46,5 +47,39 @@ describe('страж нагрузки', () => {
     expect(dayWord('2026-10-13', '2026-10-12')).toBe('на завтра');
     expect(dayWord('2026-10-15', '2026-10-12')).toBe('на четверг');
     expect(dayWord('2026-10-30', '2026-10-12')).toBe('на 30.10');
+  });
+});
+
+describe('страж нагрузки: дата и разбивка (#1553)', () => {
+  const busy = (dates: string[]) => dates.map((d) => ({ priority: 'normal' as const, deadlineAt: new Date(`${d}T12:00:00Z`) }));
+
+  it('другой срок — от сегодня и не дальше двух недель, повтор не уводит дату', () => {
+    const gleb = { id: '1', name: 'Глеб', points: 20, norm: 12, tasks: busy(['2026-10-13', '2026-10-13', '2026-10-14', '2026-10-14']) };
+    const a = assess(gleb, { priority: 'normal', deadlineAt: new Date('2026-10-20T15:00:00Z'), directions: [], allowed: null }, [], now, local);
+    expect(a.warn).toBe(true);
+    expect(a.alternativeDate).toBe('2026-10-15');
+    // со сроком позже (как после «сдвинуть») — та же дата, а не ещё на день дальше
+    const again = assess(gleb, { priority: 'normal', deadlineAt: new Date('2026-10-22T15:00:00Z'), directions: [], allowed: null }, [], now, local);
+    expect(again.alternativeDate).toBe('2026-10-15');
+  });
+
+  it('все две недели заняты — дату не предлагаем', () => {
+    const days = Array.from({ length: 20 }, (_, i) => new Date(now.getTime() + (i + 1) * 86_400_000).toISOString().slice(0, 10));
+    const a = assess({ id: '1', name: 'Глеб', points: 20, norm: 12, tasks: busy([...days, ...days]) },
+      { priority: 'normal', deadlineAt: null, directions: [], allowed: null }, [], now, local);
+    expect(a.warn).toBe(true);
+    expect(a.alternativeDate).toBeNull();
+  });
+
+  it('задача со сроком через месяц сегодняшнюю загрузку не меняет — без предупреждения', () => {
+    const a = assess({ id: '1', name: 'Глеб', points: 20, norm: 12, tasks: [] },
+      { priority: 'normal', deadlineAt: new Date('2026-11-20T15:00:00Z'), directions: [], allowed: null }, [], now, local);
+    expect(a.warn).toBe(false);
+  });
+
+  it('разбивка словами', () => {
+    expect(basisText({ overdue: 18, inWindow: 1, moving: 4, later: 8, reviews: 0, meetingHours: 0 }))
+      .toBe('Считаем задачи на ближайшие 2 недели, часы не нужны: 18 просрочено, 1 со сроком в эти 2 недели, 4 в работе без срока. Не считаем 8 задач без движения и без близкого срока.');
+    expect(basisText(undefined)).toBeNull();
   });
 });

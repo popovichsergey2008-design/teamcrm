@@ -554,6 +554,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const feedRef = useRef<HTMLDivElement | null>(null);
   /** Вся область переписки: по ней отличаем свою вставку от вставки в чужое поле. */
   const chatPaneRef = useRef<HTMLElement | null>(null);
+  /** Панель ветки — рядом с перепиской, а не внутри неё: вставка в её поле тоже «наша». */
+  const threadPaneRef = useRef<HTMLElement | null>(null);
   /*
     Лента у нижнего края (задачи #1373, #1362).
 
@@ -1098,7 +1100,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       // Поверх переписки открыли задачу или окно — снимок нужен ИМ, а не нам (задача #1367).
       if (!pasteBelongsHere(feedRef.current)) return;
       // Вставили в чужое поле ввода (описание, поиск) — там своя обработка, не мешаем.
-      if (pasteInForeignField(e.target, chatPaneRef.current)) return;
+      // Поле ветки — не чужое (#1556: снимок, вставленный в ответ ветки, молча пропадал).
+      const inThread = !!threadPaneRef.current && e.target instanceof Node && threadPaneRef.current.contains(e.target);
+      if (!inThread && pasteInForeignField(e.target, chatPaneRef.current)) return;
       e.preventDefault();
       // Открыта ветка — вставляем в НЕЁ: человек смотрит туда, туда и кладём.
       if (thread) { attachToThread(images); return; }
@@ -3322,7 +3326,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         />
       )}
       {thread && (
-        <section className="chat-thread">
+        <section
+          className="chat-thread"
+          ref={threadPaneRef}
+          // Файл, брошенный на ветку, — в ветку (#1556): раньше браузер просто открывал его.
+          onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }}
+          onDrop={(e) => { const list = Array.from(e.dataTransfer.files ?? []); if (list.length) { e.preventDefault(); e.stopPropagation(); attachToThread(list); } }}
+        >
           <div className="chat-head">
             <span><Icon name="chat" size={15} /> <b>Ветка обсуждения</b></span>
             <button

@@ -447,7 +447,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
               <WorkloadWarning
                 info={workload}
                 busy={busy}
-                onMove={workload.alternativeDate ? () => { void patch({ deadline: workload.alternativeDate }).then(() => create()); } : undefined}
+                onMove={workload.alternativeDate ? () => { void patch({ deadline: workload.alternativeDate }).then(() => create({ confirmWorkload: true })); } : undefined}
                 onReassign={(id) => { void patch({ assigneeId: id }).then(() => create()); }}
                 onKeep={() => void create({ confirmWorkload: true })}
               />

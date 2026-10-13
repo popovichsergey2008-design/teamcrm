@@ -42,9 +42,12 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
   const selected = useMemo(() => parseValue(value), [value]);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState(() => startOfDay(selected ?? new Date()));
-  // раскрываем вверх: поле срока обычно у нижнего края карточки, и вниз календарь уходил за экран
-  const [placement, setPlacement] = useState<'up' | 'down'>('up');
-  const [alignRight, setAlignRight] = useState(false);
+  /*
+    Где показать календарь на компьютере (#1553): поверх всего, привязанным к полю, и
+    ВНИЗ — к кнопке «Создать задачу», если снизу помещается; иначе вверх. Раньше попап
+    жил внутри окна, раскрывался вверх и срезался прокруткой окна.
+  */
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const pop = useRef<HTMLDivElement>(null);
   /*
@@ -57,16 +60,23 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
   // открыли — показываем месяц выбранной даты, а не тот, где остановились в прошлый раз
   useEffect(() => { if (open) setView(startOfDay(selected ?? new Date())); }, [open, selected]);
 
-  // если сверху не помещается (поле у верхней кромки) — единственный раз падаем вниз
   useLayoutEffect(() => {
-    if (!open || sheet) return;
-    const trigger = box.current?.getBoundingClientRect();
-    if (!trigger) return;
-    const height = pop.current?.offsetHeight ?? 320;
-    const width = pop.current?.offsetWidth ?? 244;
-    setPlacement(trigger.top >= height + 12 ? 'up' : 'down');
-    // в правой колонке формы попап шире поля — прижимаем к правому краю, чтобы не срезало
-    setAlignRight(trigger.left + width > window.innerWidth - 12);
+    if (!open || sheet) { setPos(null); return; }
+    const place = () => {
+      const r = box.current?.getBoundingClientRect();
+      if (!r) return;
+      const h = pop.current?.offsetHeight ?? 320;
+      const w = pop.current?.offsetWidth ?? 244;
+      const below = window.innerHeight - r.bottom;
+      const top = below >= h + 12 ? r.bottom + 6 : Math.max(8, r.top - 6 - h);
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+      setPos((p) => (p && p.top === top && p.left === left ? p : { top, left }));
+    };
+    place();
+    // окно прокрутили или растянули — календарь едет вместе с полем
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); };
   }, [open, withTime, sheet]);
 
   useEffect(() => {
@@ -120,7 +130,12 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
     : placeholder;
 
   const popup = (
-    <div className={sheet ? 'dp-pop dp-sheet' : `dp-pop ${placement === 'up' ? 'dp-up' : 'dp-down'} ${alignRight ? 'dp-right' : ''}`} ref={pop}>
+    <div
+      className={sheet ? 'dp-pop dp-sheet' : 'dp-pop dp-float'}
+      data-pop
+      ref={pop}
+      style={sheet ? undefined : { top: pos?.top ?? -9999, left: pos?.left ?? -9999 }}
+    >
       <div className="dp-head">
         <button type="button" className="dp-nav" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))} aria-label="Предыдущий месяц">‹</button>
         <span className="dp-month">{view.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</span>
@@ -193,7 +208,7 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
         )}
       </button>
 
-      {open && !sheet && popup}
+      {open && !sheet && createPortal(popup, document.body)}
       {/* лист — поверх всего, вне окна: иначе его режет прокрутка окна создания задачи */}
       {open && sheet && createPortal(
         <>

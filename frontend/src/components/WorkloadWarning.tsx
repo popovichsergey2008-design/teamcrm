@@ -20,6 +20,8 @@ export interface WorkloadInfo {
   /** ISO, 15:00 местного дня — для окна задачи */
   alternativeDeadline: string | null;
   alternatives: { id: string; name: string; after: number }[];
+  /** Из чего сложилась загрузка — словами (13.10, #1553). */
+  basis?: string | null;
 }
 
 export function workloadOf(e: unknown): WorkloadInfo | null {
@@ -56,10 +58,19 @@ export function WorkloadWarning({ info, busy, onMove, onReassign, onKeep }: {
         {info.level === 'overloaded' ? 'Перегруз' : 'Высокая загрузка'}: {info.assigneeName}, {info.before}% → {info.after}%
       </div>
       {info.reasons.map((r, i) => <div key={i}>{r}</div>)}
+      {info.basis && <div className="tv2-callout-sub">{info.basis}</div>}
+      {/*
+        #1553: главная кнопка — поставить как есть (её не замечали в «призрачном» виде).
+        Свободный день — второй вариант: ставит задачу сразу на эту дату, без повторного
+        предупреждения (раньше каждый повтор сдвигал срок ещё на день).
+      */}
       <div className="tv2-callout-actions">
+        <Button variant="primary" size="sm" disabled={busy} onClick={onKeep}>
+          <Icon name="check" size={14} /> Поставить как есть
+        </Button>
         {onMove && info.alternativeDate && (
-          <Button variant="primary" size="sm" disabled={busy} onClick={onMove}>
-            Срок: {dayLabel(info.alternativeDate)}
+          <Button variant="outline" size="sm" disabled={busy} onClick={onMove}>
+            Поставить на {dayLabel(info.alternativeDate)}
           </Button>
         )}
         {onReassign && alt && (
@@ -67,9 +78,7 @@ export function WorkloadWarning({ info, busy, onMove, onReassign, onKeep }: {
             Передать: {alt.name} ({alt.after}%)
           </Button>
         )}
-        <Button variant="ghost" size="sm" disabled={busy} onClick={onKeep}>Оставить как есть</Button>
       </div>
-      <div className="tv2-callout-sub">Это предупреждение, а не запрет: решение «оставить» запишется в журнал.</div>
     </div>
   );
 }

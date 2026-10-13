@@ -38,17 +38,17 @@ describe('pulse-rules: застрявшие задачи', () => {
 });
 
 describe('pulse-rules: загрузка в очках', () => {
-  it('задача 1, срочная +1, просроченная +1, срок ≤ 3 дней +1, проверка 0,5, час встреч 1', () => {
+  it('задача 1, срочная +1, срок ≤ 3 дней +1, проверка 0,5, час встреч 1; просрочка без двойного веса', () => {
     const l = loadPoints({
       tasks: [
-        { priority: 'urgent', deadlineAt: new Date(NOW.getTime() - D) }, // 3
+        { priority: 'urgent', deadlineAt: new Date(NOW.getTime() - D) }, // 2 (13.10: просрочка больше не +1)
         { priority: 'normal', deadlineAt: new Date(NOW.getTime() + D) }, // 2
         { priority: 'low', deadlineAt: null }, // 1
       ],
       reviewsWaiting: 2, meetingHoursToday: 1.5,
     }, NOW);
-    expect(l).toMatchObject({ points: 8.5, active: 3, urgent: 1, overdue: 1, dueSoon: 1 });
-    expect(capacityPct(l.points, null)).toBe(71);
+    expect(l).toMatchObject({ points: 7.5, active: 3, urgent: 1, overdue: 1, dueSoon: 1, inWindow: 1, moving: 1, later: 0 });
+    expect(capacityPct(l.points, null)).toBe(63);
     expect(capacityPct(14, 12)).toBe(117);
     expect(capacityPct(6, 0)).toBe(50); // мусорная норма — по умолчанию
   });
@@ -157,5 +157,21 @@ describe('pulse-rules: балансировка', () => {
       [mv('1', { directions: ['design'] }), mv('2', { allowed: new Set(['A']) })],
       [cand('G', 2), cand('A', 2, { skills: ['design'] }), cand('V', 0, { available: false }), cand('N', 0, { canReceive: false })], NOW);
     expect(r.moves.map((m: any) => [m.taskId, m.toId])).toEqual([['1', 'A'], ['2', 'A']]);
+  });
+});
+
+describe('pulse-rules: окно нагрузки 2 недели (#1553)', () => {
+  it('давний бэклог без срока и сроки через месяц не грузят; в работе — грузят', () => {
+    const old = new Date(NOW.getTime() - 30 * D);
+    const l = loadPoints({
+      tasks: [
+        { priority: 'normal', deadlineAt: null, lastMove: old }, // лежит без движения — не считаем
+        { priority: 'normal', deadlineAt: new Date(NOW.getTime() + 40 * D), lastMove: old }, // срок не скоро — не считаем
+        { priority: 'normal', deadlineAt: null, lastMove: new Date(NOW.getTime() - 2 * D) }, // в работе — 1
+        { priority: 'normal', deadlineAt: new Date(NOW.getTime() + 10 * D), lastMove: old }, // в окне — 1
+      ],
+      reviewsWaiting: 0, meetingHoursToday: 0,
+    }, NOW);
+    expect(l).toMatchObject({ points: 2, active: 2, later: 2, moving: 1, inWindow: 1 });
   });
 });
