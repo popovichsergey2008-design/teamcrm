@@ -21,6 +21,9 @@ const VARIANT_HINT = ['', 'Дай другой вариант: короче, о�
 
 type Actor = { tenantId: string; userId: string };
 
+/** Подсказка ответа выключена (13.10): из чатов её убрали. */
+const DISABLED = true;
+
 /**
  * Готовый ответ (ТЗ-21, этап 5). Черновик считается, когда человек открыл чат и правила
  * говорят «ответ ждут от вас»; хранится до нового сообщения; никогда не отправляется
@@ -38,6 +41,9 @@ export class SmartReplyService {
   ) {}
 
   async suggest(a: Actor, chatId: string, variant = 0) {
+    // 13.10 заказчик: подсказку ответа в поле ввода убрали совсем — сбивала с толку.
+    // Старые APK ещё спрашивают — отвечаем «выключено».
+    if (DISABLED) return { needed: false, unavailable: 'off' as const };
     const chat = await this.db.one<{ kind: string; title: string | null; project: string | null; client: string | null; members: number }>(
       `SELECT c.kind, c.title, p.name AS project, cl.name AS client,
               (SELECT count(*)::int FROM chat_members x WHERE x.chat_id = c.id) AS members

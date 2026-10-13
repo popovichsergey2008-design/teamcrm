@@ -461,7 +461,6 @@ function Settings() {
           onBlur={() => void savePrefs({ dailyLimit: prefs.dailyLimit })}
         />
       </label>
-      <Checkbox checked={prefs.smartReply} onCheckedChange={(v) => void savePrefs({ smartReply: !!v })} label="Подсказывать ответ в чате" />
       <Checkbox checked={prefs.morningAudio} onCheckedChange={(v) => void savePrefs({ morningAudio: !!v })} label="Утренняя сводка голосом" />
       {prefs.mutes.length > 0 && (
         <div className="sp-mutes">
@@ -482,7 +481,6 @@ function Settings() {
           <div className="sp-indent">
             <Checkbox checked={company.commitments} onCheckedChange={(v) => void saveCompany({ commitments: !!v })} label="Следить за обещаниями (чаты, комментарии, встречи)" />
             <Checkbox checked={company.workloadGuard} onCheckedChange={(v) => void saveCompany({ workloadGuard: !!v })} label="Предупреждать о перегрузе при постановке задачи" />
-            <Checkbox checked={company.smartReply} onCheckedChange={(v) => void saveCompany({ smartReply: !!v })} label="Подсказки ответов в чатах" />
             <Checkbox checked={company.clientFollowup} onCheckedChange={(v) => void saveCompany({ clientFollowup: !!v })} label="Письмо клиенту после встречи" />
             <Checkbox checked={company.externalSend} onCheckedChange={(v) => void saveCompany({ externalSend: !!v })} label="Разрешить отправку клиентам (после подтверждения)" />
             <Checkbox checked={company.morningAudio} onCheckedChange={(v) => void saveCompany({ morningAudio: !!v })} label="Утренняя сводка голосом" />

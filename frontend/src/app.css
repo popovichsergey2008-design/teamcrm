@@ -5826,6 +5826,13 @@ button.chat-pop-row:hover { background: var(--hover); }
 .lightbox-prev { left: 8px; }
 .lightbox-next { right: 8px; }
 @media (max-width: 720px) { .lightbox-nav { width: 38px; height: 38px; } }
+/* увеличение снимка: жесты обрабатываем сами, увеличенное не вылезает из окна */
+.lightbox-stage { overflow: hidden; touch-action: none; }
+@media (max-width: 720px) {
+  .lightbox-overlay { padding: 0; }
+  .lightbox-body { max-width: 100vw; max-height: 100dvh; width: 100vw; height: 100dvh; border-radius: 0; border: none; }
+  .lightbox-img { max-width: 100vw; max-height: calc(100dvh - 56px); }
+}
 
 /* «ИИ определил правильно?» — строка в панели разбора и в карточке задачи (ТЗ-12, этап 9). */
 .ai-fb { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: var(--fs-xs); }
