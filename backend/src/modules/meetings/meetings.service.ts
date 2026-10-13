@@ -413,18 +413,49 @@ export class MeetingsService {
         await this.repo.setDuration(meetingId, Math.round(replies[replies.length - 1].end));
       }
 
-      await this.postcall.mark(tenantId, meetingId, { transcript: 'ready', summary: 'running', decisions: 'running', tasks: 'running' });
-      await this.repo.setStatus(meetingId, 'analyzing');
-      await this.analyze(tenantId, meetingId, meeting.project_id, replies);
-
-      await this.repo.setStatus(meetingId, 'done');
-      await this.postcall.mark(tenantId, meetingId, { summary: 'ready', decisions: 'ready', tasks: 'ready', followup: 'skipped' });
-      this.knowledge.enqueue(tenantId, 'meeting', meetingId); // стенограмма → корпоративная память
+      await this.runAnalysis(tenantId, meetingId, meeting.project_id, replies);
     } catch (e) {
       this.log.warn(`meeting ${meetingId} failed: ${(e as Error).message}`);
-      await this.repo.setStatus(meetingId, 'error', describeFfmpegError(e)).catch(() => undefined);
+      await this.repo.setStatus(meetingId, 'error', meetingError(e)).catch(() => undefined);
       await this.postcall.failRest(tenantId, meetingId).catch(() => undefined);
     }
+  }
+
+  /** Разбор по готовой стенограмме и отметки «готово» — общий для первого прохода и повтора. */
+  private async runAnalysis(tenantId: string, meetingId: string, projectId: string | null, replies: Reply[]): Promise<void> {
+    await this.postcall.mark(tenantId, meetingId, { transcript: 'ready', summary: 'running', decisions: 'running', tasks: 'running' });
+    await this.repo.setStatus(meetingId, 'analyzing');
+    await this.analyze(tenantId, meetingId, projectId, replies);
+
+    await this.repo.setStatus(meetingId, 'done');
+    await this.postcall.mark(tenantId, meetingId, { summary: 'ready', decisions: 'ready', tasks: 'ready', followup: 'skipped' });
+    this.knowledge.enqueue(tenantId, 'meeting', meetingId); // стенограмма → корпоративная память
+  }
+
+  /**
+   * «Разобрать заново» (13.10): итоги и задачи — по уже готовой стенограмме, без
+   * повторного распознавания записи (оно долгое и платное). Нужно, когда разбор не
+   * удался (кончились деньги на API) или вышел пустым. Созданные задачи не трогаем —
+   * пересобираются только неподтверждённые черновики. Стенограммы нет — полный повтор.
+   */
+  async reanalyze(tenantId: string, id: string) {
+    const meeting = await this.repo.get(tenantId, id);
+    if (!meeting) throw AppException.notFound('Встреча не найдена');
+    if (['queued', 'transcribing', 'analyzing'].includes(String(meeting.status))) {
+      throw AppException.conflict('Встреча ещё обрабатывается — дождитесь окончания');
+    }
+    const segs = await this.repo.segments(tenantId, id);
+    if (!segs.length) return this.retry(tenantId, id);
+    const replies: Reply[] = segs.map((s) => ({
+      start: Number(s.start_sec), end: Number(s.end_sec ?? s.start_sec), speaker: s.speaker, text: s.text,
+    }));
+    await this.repo.setStatus(id, 'analyzing', null);
+    void this.runAnalysis(tenantId, id, meeting.project_id, replies).catch(async (e) => {
+      this.log.warn(`meeting ${id} reanalyze failed: ${(e as Error).message}`);
+      await this.repo.setStatus(id, 'error', meetingError(e)).catch(() => undefined);
+      await this.postcall.failRest(tenantId, id).catch(() => undefined);
+    });
+    return { restarted: true, mode: 'analysis' as const };
   }
 
   /**
@@ -557,11 +588,13 @@ export class MeetingsService {
       как модель разберёт задачи и решения целиком.
     */
     const quick = this.prompts.resolve(tenantId, 'meeting.summary_quick', {}).catch(() => null)
-      .then((prompt) => this.ai.generate(tenantId, prompt?.body ?? SUMMARY_PROMPT, text.slice(0, 60_000), 'meeting_summary_quick', {
+      .then((prompt) => this.ai.generateWithModel(tenantId, prompt?.body ?? SUMMARY_PROMPT, text.slice(0, 60_000), 'meeting_summary_quick', {
         promptVersionId: prompt?.versionId ?? null, model: prompt?.model, params: prompt?.params,
       }))
-      .then(async (raw) => {
-        const summary = String(raw ?? '').trim().slice(0, 4000);
+      .then(async (r) => {
+        // ИИ не ответил — заглушку за итоги не выдаём
+        if (r.degraded) return null;
+        const summary = String(r.text ?? '').trim().slice(0, 4000);
         if (!summary) return null;
         await this.repo.saveSummaryText(tenantId, meetingId, summary);
         await this.postcall.mark(tenantId, meetingId, { summary: 'ready' });
@@ -569,7 +602,14 @@ export class MeetingsService {
       })
       .catch((e) => { this.log.warn(`встреча ${meetingId}: краткие итоги — ${(e as Error).message}`); return null; });
 
-    const raw = await this.ai.generate(tenantId, MEETING_PROMPT, transcript, 'meeting_analyze');
+    const answer = await this.ai.generateWithModel(tenantId, MEETING_PROMPT, transcript, 'meeting_analyze');
+    /*
+      Ключ есть, а ИИ не ответил (13.10: кончились деньги на API) — это сбой, а не
+      «встреча без задач». Раньше заглушка сохранялась как итог, статус был «готово»,
+      и повторить разбор было нечем. Теперь — ошибка с понятной причиной и кнопкой.
+    */
+    if (answer.degraded) { await quick; throw new AiUnavailableError(); }
+    const raw = answer.text;
     const parsed = safeJson(raw);
     const { value, errors } = validateMeetingAnalysis(parsed);
     if (errors.length) this.log.warn(`meeting ${meetingId}: разбор с замечаниями — ${errors.join('; ')}`);
@@ -598,6 +638,15 @@ export class MeetingsService {
       задаче (участники, клиент, недавнее) от имени того, кто загрузил запись. Только
       уверенный (HIGH): иначе черновик ждёт выбора — «4 готовы, 1 требует проекта».
     */
+    /*
+      Повторный разбор («Разобрать заново»): задачи, уже созданные или отклонённые по
+      этой встрече, второй раз не предлагаем — иначе автосоздание завело бы дубли.
+    */
+    const norm = (t: string) => t.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+    const decided = new Set((await this.repo.drafts(tenantId, meetingId).catch(() => []))
+      .filter((d) => d.status !== 'pending').map((d) => norm(String(d.title ?? ''))));
+    if (decided.size) value.tasks = value.tasks.filter((t) => !decided.has(norm(t.title)));
+
     const resolvedFor = new Map<number, string>();
     if (!projectId && meeting?.created_by) {
       await Promise.all(value.tasks.map(async (t, i) => {
@@ -909,3 +958,17 @@ async function inPool<T>(items: T[], limit: number, fn: (item: T) => Promise<voi
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
+
+/** ИИ не ответил, хотя ключ есть: кончились деньги на API, ключ отозван, сбой провайдера. */
+class AiUnavailableError extends Error {
+  constructor() { super('ИИ не ответил — закончились средства на API или недоступен ключ'); }
+}
+
+/** Текст ошибки встречи для экрана: сбой ИИ — отдельно от проблем с записью. */
+function meetingError(e: unknown): string {
+  if (e instanceof AiUnavailableError) {
+    return 'ИИ не ответил при разборе — закончились средства на API или недоступен ключ. Пополните баланс и нажмите «Разобрать заново»: стенограмма сохранена.';
+  }
+  return describeFfmpegError(e);
+}
+

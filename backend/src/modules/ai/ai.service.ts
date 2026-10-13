@@ -184,7 +184,7 @@ export class AiService {
       promptVersionId?: string | null; model?: string | null; params?: Record<string, unknown>;
       images?: { mime: string; base64: string }[];
     },
-  ): Promise<{ text: string; model: string }> {
+  ): Promise<{ text: string; model: string; degraded: boolean }> {
     const { provider, brainModel } = await this.providerFor(tenantId);
     const masked = maskPII(user).masked;
     const model = opts?.model || brainModel;
@@ -199,7 +199,12 @@ export class AiService {
       tenantId, feature, provider.lastModel || model,
       estimateTokens(system + masked), estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
     );
-    return { text, model: provider.lastModel || model };
+    /*
+      degraded — ключи есть, но ни один бэкенд не ответил (кончились деньги, сбой API),
+      и вместо ответа — заглушка. Там, где это важно (разбор встречи), такой ответ нельзя
+      выдавать за результат: «готово, 0 задач» прячет сбой и кнопку повтора.
+    */
+    return { text, model: provider.lastModel || model, degraded: provider.lastModel === 'mock-llm' };
   }
 
   /** Потоковая генерация (Brain «печатается»): маскирование + метеринг как в generate(); onDelta — фрагменты. */

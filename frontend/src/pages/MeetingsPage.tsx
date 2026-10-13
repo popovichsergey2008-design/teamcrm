@@ -12,6 +12,7 @@ import { DraftRow, type DraftChoice } from '../components/meetings/DraftRow';
 import { PostcallQuality } from '../components/meetings/PostcallQuality';
 import { useAuth } from '../state/auth';
 import { OptionSelect } from '../components/ui/option-select';
+import { confirmAction } from '../components/ui/dialog';
 
 const STATUS_LABEL: Record<string, string> = {
   queued: 'В очереди',
@@ -208,9 +209,17 @@ function MeetingDetails({ id, projects, users, onChanged, seek = null }: {
     if (fileId) void loadAudio(fileId);
   };
   const [bulk, setBulk] = useState(false);
+  const [reBusy, setReBusy] = useState(false);
 
   const load = useCallback(() => api.meetingDetails(id).then(setData).catch(() => undefined), [id]);
   useEffect(() => { load(); }, [load]);
+  // идёт разбор (в том числе «Разобрать заново») — подтягиваем результат сам
+  const busyStatus = ['queued', 'transcribing', 'analyzing'].includes(String(data?.meeting?.status ?? ''));
+  useEffect(() => {
+    if (!busyStatus) return undefined;
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [busyStatus, load]);
 
   if (!data) return <div style={{ padding: 10 }}><SkeletonList rows={3} /></div>;
   const { meeting, segments, summary, drafts, tasks = [] } = data;
@@ -259,6 +268,31 @@ function MeetingDetails({ id, projects, users, onChanged, seek = null }: {
           {meeting.error}
           <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ marginLeft: 8 }}
                   onClick={async () => { await api.retryMeeting(id); onChanged(); }}>Повторить обработку</button>
+        </div>
+      )}
+      {/*
+        «Разобрать заново» (13.10): разбор сорвался (кончились деньги на API) или вышел
+        пустым — итоги и задачи собираются по уже готовой стенограмме, запись заново не
+        распознаётся. Созданные задачи не трогаются и второй раз не предлагаются.
+      */}
+      {(meeting.status === 'done' || meeting.status === 'error') && (
+        <div style={{ marginBottom: 8 }}>
+          <button
+            className="ui-btn ui-btn-outline ui-btn-sm"
+            disabled={reBusy}
+            onClick={async () => {
+              const ok = await confirmAction({
+                title: 'Разобрать встречу заново?',
+                description: 'ИИ заново соберёт итоги, решения и задачи по стенограмме. Уже созданные задачи останутся и повторно не предложатся.',
+                confirmLabel: 'Разобрать',
+              });
+              if (!ok) return;
+              setReBusy(true);
+              try { await api.reanalyzeMeeting(id); onChanged(); } finally { setReBusy(false); }
+            }}
+          >
+            <Icon name="sparkles" size={13} /> Разобрать заново
+          </button>
         </div>
       )}
 

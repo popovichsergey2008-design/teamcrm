@@ -2669,6 +2669,8 @@ export const api = {
     return env.data;
   },
   retryMeeting: (id: string) => request<any>('POST', `/meetings/${id}/retry`),
+  /** Итоги и задачи заново по готовой стенограмме — без повторного распознавания (13.10). */
+  reanalyzeMeeting: (id: string) => request<{ restarted: boolean; mode?: string }>('POST', `/meetings/${id}/reanalyze`),
   applyMeetingDraft: (draftId: string, b: { title?: string; assigneeId?: string; projectId?: string; deadlineAt?: string; audio?: 'allow' | 'none' }) =>
     request<any>('POST', `/meetings/drafts/${draftId}/apply`, b),
   /** Правка черновика ДО создания задачи — она переживает перезагрузку страницы. */

@@ -134,6 +134,13 @@ export class MeetingsController {
     return this.meetings.retry(u.tenantId, id);
   }
 
+  /** «Разобрать заново»: итоги и задачи по готовой стенограмме, без повторного распознавания. */
+  @Post(':id/reanalyze')
+  async reanalyze(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    await this.meetings.assertVisible(u.tenantId, id, { userId: u.userId, role: u.role });
+    return this.meetings.reanalyze(u.tenantId, id);
+  }
+
   /** Подтверждение черновика — единственный путь, которым встреча превращается в задачу. */
   @Post('drafts/:draftId/apply')
   async apply(@CurrentUser() u: AuthUser, @Param('draftId') draftId: string, @Body() dto: ApplyDraftDto) {

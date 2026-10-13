@@ -107,6 +107,20 @@ describe('Разбор записей встреч (e2e)', () => {
     // повторное подтверждение того же черновика отклоняется
     await http$.post(`/api/meetings/drafts/${draft.id}/apply`).set(H(tok)).send({ projectId: project.id }).expect(409);
 
+    // «Разобрать заново» (13.10): по готовой стенограмме, без повторного распознавания;
+    // уже созданная задача второй раз черновиком не предлагается
+    const re = (await http$.post(`/api/meetings/${created.id}/reanalyze`).set(H(tok)).expect(201)).body.data;
+    expect(re).toMatchObject({ restarted: true, mode: 'analysis' });
+    let again: any;
+    for (let i = 0; i < 60; i++) {
+      again = (await http$.get(`/api/meetings/${created.id}`).set(H(tok)).expect(200)).body.data;
+      if (['done', 'error'].includes(again.meeting.status)) break;
+      await sleep(200);
+    }
+    expect(again.meeting.status).toBe('done');
+    expect(again.segments.length).toBe(3);
+    expect(again.drafts.filter((d: any) => d.status === 'pending' && /беру интеграцию/i.test(d.title))).toHaveLength(0);
+
     // список показывает встречу и её статус
     const list = (await http$.get('/api/meetings').set(H(tok)).expect(200)).body.data;
     expect(list.some((m: any) => m.id === created.id)).toBe(true);

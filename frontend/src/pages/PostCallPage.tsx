@@ -358,6 +358,20 @@ function PostCall({ meetingId }: { meetingId: string }) {
               <button className="link-btn pc-more" onClick={() => navigate({ section: 'chat', view: 'meetings', meetingId })}>
                 Подробнее: стенограмма и запись
               </button>
+              {/* 13.10: разбор сорвался или вышел пустым — заново по готовой стенограмме */}
+              {(meeting.status === 'done' || meeting.status === 'error') && (
+                <button className="link-btn pc-more" onClick={async () => {
+                  if (!(await confirmAction({
+                    title: 'Разобрать встречу заново?',
+                    description: 'ИИ заново соберёт итоги, решения и задачи по стенограмме. Уже созданные задачи останутся и повторно не предложатся.',
+                    confirmLabel: 'Разобрать',
+                  }))) return;
+                  await api.reanalyzeMeeting(meetingId).catch(() => undefined);
+                  await load();
+                }}>
+                  Разобрать заново
+                </button>
+              )}
             </Block>
 
             <Block title={`Решения${decisions.length ? ` — ${decisions.length}` : ''}`} state={blockState('decisions')}>
