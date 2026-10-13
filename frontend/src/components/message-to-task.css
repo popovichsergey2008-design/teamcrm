@@ -11,3 +11,5 @@
 .mtt-ask-row { display: flex; gap: 6px; }
 .mtt-ask-row .input { flex: 1; min-width: 0; }
 @media (prefers-reduced-motion: reduce) { .mtt-steps li.now svg { animation: none; } }
+/* ТЗ-31: определитель сомневается — подпись заметнее обычной */
+.mtt-project-warn { color: var(--warn); font-weight: 500; }

@@ -8,6 +8,7 @@ import { extractAudioChunks, probeBufferSec } from '../meetings/audio.util';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SecurityService } from '../security/security.service';
 import { NlService } from '../nl/nl.service';
+import { ProjectResolverService } from '../nl/project-resolver.service';
 import { matchUserInText } from '../nl/nl.match';
 import { matchProjectInText, pickDeadline } from '../nl/task-draft';
 import { splitDemoPhrase } from '../onboarding/ai-demo-rules';
@@ -62,6 +63,7 @@ export class ChatTaskDraftService {
     private readonly files: FilesService,
     private readonly db: DbService,
     private readonly security: SecurityService,
+    private readonly resolver: ProjectResolverService,
   ) {}
 
   /** Картинки и видео прикладываем сразу: обычно они и есть половина постановки. */
@@ -97,12 +99,26 @@ export class ChatTaskDraftService {
     };
   }
 
+  /**
+   * Для строки под сообщением (#1554): «→ Новый сайт · Глеб» — видно, куда и кому
+   * уйдёт задача, не открывая черновик. Строку видят все участники чата, поэтому
+   * название закрытого проекта не показываем — только «проект выбран».
+   */
+  private async named(tenantId: string, d: DraftRow) {
+    const v = this.view(d);
+    const [p, u] = await Promise.all([
+      d.project_id ? this.db.one<{ name: string; visibility: string }>(`SELECT name, visibility FROM projects WHERE tenant_id=$1 AND id=$2`, [tenantId, d.project_id]) : null,
+      d.assignee_id ? this.db.one<{ full_name: string }>(`SELECT full_name FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, d.assignee_id]) : null,
+    ]).catch(() => [null, null] as const);
+    return { ...v, projectName: p && p.visibility === 'all' ? p.name : null, assigneeName: u?.full_name ?? null };
+  }
+
   /** Событие о черновике всем, кто видит чат: строка под сообщением одинакова у всех. */
   private async announce(tenantId: string, chatId: string, draft: DraftRow): Promise<void> {
     const chat = await this.chats.get(tenantId, chatId);
     if (!chat) return;
     const to = chat.kind === 'project' ? await this.chats.teamIds(tenantId) : await this.chats.memberIds(chatId);
-    this.realtime.emitToUsers(tenantId, to, 'chat.task_draft', this.view(draft));
+    this.realtime.emitToUsers(tenantId, to, 'chat.task_draft', await this.named(tenantId, draft));
   }
 
   private async access(tenantId: string, chatId: string, user: { userId: string; role: string }) {
@@ -287,9 +303,14 @@ export class ChatTaskDraftService {
       this.repo.projects(tenantId, viewer),
       this.chats.tenantUsers(tenantId),
     ]);
-    const suggested = viewer && draft && !draft.project_id
-      ? (await this.repo.suggestProjects(tenantId, viewer, draft.author_id).catch(() => [])).map((p) => p.id)
-      : [];
+    const res = (draft?.analysis as any)?.projectResolution as { level?: string; alternatives?: { projectId: string }[] } | null | undefined;
+    const visible = new Set(projects.map((p) => String(p.id)));
+    // определитель не уверен — его варианты (только видимые смотрящему); старый черновик — как раньше
+    const suggested = res && res.level !== 'HIGH' && Array.isArray(res.alternatives)
+      ? res.alternatives.map((a) => String(a.projectId)).filter((id) => visible.has(id) && id !== String(draft?.project_id ?? ''))
+      : viewer && draft && !draft.project_id
+        ? (await this.repo.suggestProjects(tenantId, viewer, draft.author_id).catch(() => [])).map((p) => p.id)
+        : [];
     return {
       projects: projects.map((p) => ({ id: String(p.id), name: p.name })),
       users: users.map((u) => ({ id: String(u.id), name: u.full_name })),
@@ -337,21 +358,35 @@ export class ChatTaskDraftService {
     ].filter(Boolean).join('\n');
 
     /*
-      Проект берём НЕ у модели.
+      Проект — определителем (ТЗ-31, #1554), а НЕ догадкой модели.
 
-      В быстрой команде догадке модели верить можно: человек стоит на доске и диктует
-      задачу — обстановка сама подсказывает проект. В переписке обстановки нет, и модель
-      на фразе «тут всё съезжает, поправь» уверенно называет первый попавшийся проект.
-      Задача, уехавшая не в тот проект, хуже, чем задача, о которой переспросили, —
-      поэтому берём только твёрдые основания: чат проекта, название проекта прямо в
-      тексте или единственный проект в компании. Иначе спрашиваем автора.
+      В переписке модель на фразе «тут всё съезжает, поправь» уверенно называет первый
+      попавшийся проект. Определитель берёт основания: чат проекта, название (и другие
+      названия) прямо в тексте, клиента чата, проекты, где работают участники переписки,
+      недавние задачи. Уверен — подставляет; «скорее всего этот» — подставляет, но окно
+      просит проверить и показывает другие варианты; не знает — спрашиваем автора.
+      Окно черновика — это и есть подтверждение: задача не создаётся без нажатия.
     */
-    const projects = await this.repo.projects(tenantId, viewer);
-    const named = matchProjectInText(base, projects);
-    const projectId = src.projectHint
-      ?? named
-      ?? (projects.length === 1 ? String(projects[0].id) : null);
-    const projectSource = src.projectHint ? 'chat' : named ? 'text' : projects.length === 1 ? 'only' : 'none';
+    const chatRow = await this.chats.get(tenantId, String(draft.chat_id));
+    const members = chatRow && chatRow.kind !== 'project' ? await this.chats.memberIds(String(draft.chat_id)).catch(() => [] as string[]) : [];
+    const people = members.length >= 2 && members.length <= 8 ? members : [draft.author_id, userId];
+    const resolved = await this.resolver.resolve(tenantId, viewer, {
+      text: [base, context].filter(Boolean).join(' '),
+      chatProjectId: src.projectHint,
+      clientId: chatRow?.client_id ? String(chatRow.client_id) : null,
+      peopleIds: people,
+    }).catch((e) => { this.log.warn(`определитель проекта: ${(e as Error).message}`); return null; });
+    const projectId = resolved?.projectId ?? src.projectHint ?? null;
+    const projectSource = !resolved ? (src.projectHint ? 'chat' : 'none')
+      : resolved.reasonCodes[0] === 'CHAT_PROJECT' ? 'chat'
+        : resolved.reasonCodes[0] === 'EXPLICIT_PROJECT_MENTION' ? 'text'
+          : resolved.reasonCodes[0] === 'ONLY_PROJECT' ? 'only'
+            : projectId ? 'resolver' : 'none';
+    const projectResolution = resolved ? {
+      projectId: resolved.projectId, confidence: resolved.confidence, level: resolved.level, resolution: resolved.resolution,
+      reasonCodes: resolved.reasonCodes, hint: resolved.hint, notFoundName: resolved.notFoundName,
+      alternatives: resolved.alternatives.map((a) => ({ projectId: a.projectId, confidence: a.confidence })),
+    } : null;
 
     let patch: Parameters<ChatTaskDraftRepository['patch']>[2] = {};
     try {
@@ -364,7 +399,7 @@ export class ChatTaskDraftService {
         deadline: /^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? '')) ? String(t.deadline) : null,
         priority: String(t.priority ?? 'normal'),
         checklist: Array.isArray(t.checklist) ? t.checklist.map(String).slice(0, 12) : [],
-        analysis: { note: parsed?.note ?? null, project: projectSource },
+        analysis: { note: parsed?.note ?? null, project: projectSource, projectResolution },
       };
     } catch (e) {
       // Модель недоступна — человек уже нажал «Создать задачу», и пустое окно было бы
@@ -373,7 +408,7 @@ export class ChatTaskDraftService {
       patch = {
         title: base.slice(0, 255),
         projectId,
-        analysis: { note: 'ИИ недоступен — собрал по самой фразе', project: projectSource },
+        analysis: { note: 'ИИ недоступен — собрал по самой фразе', project: projectSource, projectResolution },
       };
     }
 
@@ -533,7 +568,7 @@ export class ChatTaskDraftService {
   /** Открытые черновики чата: по ним рисуются строки состояния под сообщениями. */
   async openInChat(tenantId: string, chatId: string, user: { userId: string; role: string }) {
     await this.access(tenantId, chatId, user);
-    return { items: (await this.repo.openInChat(tenantId, chatId)).map((d) => this.view(d)) };
+    return { items: await Promise.all((await this.repo.openInChat(tenantId, chatId)).map((d) => this.named(tenantId, d))) };
   }
 
   /** Правки человека в предпросмотре. Проект появился — черновик снова готов. */
@@ -739,6 +774,12 @@ export class ChatTaskDraftService {
     }
 
     await this.repo.addCreatedTask(tenantId, draftId, taskId);
+    const predicted = (draft.analysis as any)?.projectResolution;
+    void this.resolver.feedback(tenantId, user.userId, 'chat_draft', {
+      predictedProjectId: predicted?.projectId ?? null, selectedProjectId: String(draft.project_id),
+      confidence: predicted?.confidence ?? null, resolution: predicted?.resolution ?? null,
+      reasonCodes: predicted?.reasonCodes ?? [], taskId,
+    });
     // задача из голосового — «▶ Послушать контекст» (ТЗ-26, §15–17)
     await this.attachVoiceProof(tenantId, user, draft, taskId, String(draft.project_id), tags?.audio)
       .catch((e) => this.log.warn(`фрагмент голосового для задачи ${taskId}: ${(e as Error).message}`));

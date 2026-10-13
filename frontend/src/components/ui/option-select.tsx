@@ -46,7 +46,7 @@ function collect(children: ReactNode, out: Option[] = []): Option[] {
  */
 export function OptionSelect({
   value, defaultValue, onChange, onClick, children, className, disabled, id, title, style,
-  'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby,
+  'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledby, 'aria-invalid': ariaInvalid, 'aria-required': ariaRequired,
 }: {
   value?: string | number | null;
   defaultValue?: string | number;
@@ -61,6 +61,9 @@ export function OptionSelect({
   style?: CSSProperties;
   'aria-label'?: string;
   'aria-labelledby'?: string;
+  /** Обязательное поле с ошибкой (ТЗ-31): красная рамка и подсказка читалкам. */
+  'aria-invalid'?: boolean;
+  'aria-required'?: boolean | 'true' | 'false';
 }) {
   const options = collect(children);
   const [inner, setInner] = useState<string>(defaultValue === undefined ? (options[0]?.value ?? '') : String(defaultValue));
@@ -93,6 +96,8 @@ export function OptionSelect({
         className={cn('ui-select-trigger', 'ui-input-md', fill && 'ui-select-fill', rest)}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledby}
+        aria-invalid={ariaInvalid || undefined}
+        aria-required={ariaRequired}
       >
         <Base.Value className="ui-select-value" />
         <Base.Icon className="ui-select-icon"><ChevronsUpDown size={14} /></Base.Icon>

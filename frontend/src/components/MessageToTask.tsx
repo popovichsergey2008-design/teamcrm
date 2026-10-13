@@ -28,6 +28,9 @@ export interface MessageTaskDraft {
   checklist: string[];
   files: { fileId: string; name: string | null; mime: string | null; include: boolean; size?: number }[];
   analysis: Record<string, unknown>;
+  /** Для строки под сообщением (#1554); у закрытого проекта — null. */
+  projectName?: string | null;
+  assigneeName?: string | null;
   authorId: string | null;
   initiatorId: string;
   taskId: string | null;
@@ -139,7 +142,10 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
 
   const create = async (extra: { confirmWorkload?: boolean } = {}) => {
     if (!draft) return;
-    if (!draft.projectId) return setErr('Выберите проект или спросите автора');
+    if (!draft.projectId) {
+      document.getElementById('mtt-project')?.focus();
+      return setErr('Выберите проект — без проекта задачу создать нельзя');
+    }
     if (!draft.title.trim()) return setErr('Назовите задачу');
     /*
       Голосовое из переписки, а задачу увидят те, кто её не видел (ТЗ-26, §17): молча
@@ -315,17 +321,26 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
               />
             </div>
             <div className="field">
-              <label>Проект</label>
-              {/* три вероятных — в один клик (§10); в чате проекта он и так выбран */}
-              {!draft.projectId && (ctx.suggested?.length ?? 0) > 0 && (
+              <label htmlFor="mtt-project">Проект <span aria-hidden="true">*</span></label>
+              <ProjectHint draft={draft} />
+              {/* вероятные — в один клик (§10, ТЗ-31): когда не выбран или определитель сомневается */}
+              {(ctx.suggested?.length ?? 0) > 0 && (
                 <div className="mtt-chips" aria-label="Вероятные проекты">
+                  {draft.projectId && <span className="dim nl-hint">Или:</span>}
                   {ctx.suggested!.map((id) => {
                     const p = ctx.projects.find((x) => x.id === id);
                     return p ? <button key={id} type="button" className="mtt-chip" onClick={() => void patch({ projectId: id })}>{p.name}</button> : null;
                   })}
                 </div>
               )}
-              <OptionSelect className="input" value={draft.projectId ?? ''} onChange={(e) => void patch({ projectId: e.target.value || null })}>
+              <OptionSelect
+                id="mtt-project"
+                className="input"
+                aria-required="true"
+                aria-invalid={!!err && !draft.projectId}
+                value={draft.projectId ?? ''}
+                onChange={(e) => void patch({ projectId: e.target.value || null })}
+              >
                 <option value="">— выберите —</option>
                 {ctx.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </OptionSelect>
@@ -481,4 +496,23 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
       </aside>
     </div>
   );
+}
+
+/**
+ * Откуда взят проект (ТЗ-31, #1554): уверенно — подпись «✨ чат этого проекта»;
+ * «скорее всего» — просим проверить; названный проект не найден — говорим прямо.
+ * Человек выбрал другой — подпись пропадает: она про предложение, а не про выбор.
+ */
+function ProjectHint({ draft }: { draft: { projectId: string | null; analysis: Record<string, unknown> } }) {
+  const r = draft.analysis?.projectResolution as {
+    projectId: string | null; level: 'HIGH' | 'MEDIUM' | 'LOW'; hint: string; notFoundName: string | null;
+  } | null | undefined;
+  if (!r) return null;
+  if (r.notFoundName && !draft.projectId) {
+    return <span className="dim nl-hint mtt-project-warn">Проект «{r.notFoundName}» не найден среди доступных — выберите существующий.</span>;
+  }
+  if (!r.projectId || String(r.projectId) !== String(draft.projectId ?? '')) return null;
+  return r.level === 'HIGH'
+    ? <span className="dim nl-hint"><Icon name="sparkles" size={11} /> Определено: {r.hint}</span>
+    : <span className="nl-hint mtt-project-warn"><Icon name="sparkles" size={11} /> Скорее всего этот — {r.hint}. Проверьте проект.</span>;
 }

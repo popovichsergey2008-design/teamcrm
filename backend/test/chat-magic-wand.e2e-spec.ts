@@ -137,4 +137,22 @@ describe('Волшебная палочка в чатах (e2e)', () => {
     const board = (await http$.get(`/api/projects/${p1.id}/board`).set(O).expect(200)).body.data;
     expect(board.columns.flatMap((c: any) => c.tasks).map((x: any) => x.title).sort()).toEqual(['Обновить логотип', 'Созвониться с маркетологом']);
   });
+  it('ТЗ-31 / #1554: в личке общий проект двоих подставляется с «проверьте», выбор пишется в отзывы', async () => {
+    const { O, dm, p1, gleb, tenantId } = await setup();
+    // оба работают в «Сайте»: задача Глебу от владельца
+    await http$.post('/api/tasks').set(O).send({ projectId: p1.id, title: 'Шапка', assigneeId: gleb.id, confirmWorkload: true }).expect(201);
+    const msg = (await http$.post(`/api/chats/${dm.id}/messages`).set(O).send({ body: 'Поправь кнопку оплаты' }).expect(201)).body.data;
+    const s = (await http$.post(`/api/chats/${dm.id}/messages/${msg.id}/task-draft`).set(O).expect(201)).body.data;
+    expect(String(s.draft.projectId)).toBe(String(p1.id));
+    expect(s.draft.analysis.projectResolution.level).toBe('MEDIUM');
+    expect(s.draft.analysis.projectResolution.reasonCodes).toContain('PEOPLE_PROJECT');
+
+    const c = (await http$.post(`/api/chats/task-drafts/${s.draft.draftId}/confirm`).set(O)
+      .send({ confirmWorkload: true }).expect(201)).body.data;
+    expect(String(c.projectId)).toBe(String(p1.id));
+    const fb = await db.one<{ outcome: string }>(
+      `SELECT outcome FROM project_resolution_feedback WHERE tenant_id = $1 AND task_id = $2`, [tenantId, c.taskId],
+    );
+    expect(fb?.outcome).toBe('accepted');
+  });
 });

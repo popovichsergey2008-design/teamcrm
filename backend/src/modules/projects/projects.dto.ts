@@ -1,4 +1,4 @@
-import { ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, MaxLength, MinLength, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, MaxLength, MinLength, Min } from 'class-validator';
 
 export class CreateProjectDto {
   @IsString()
@@ -46,6 +46,8 @@ export class UpdateProjectDto {
   /** all — видят все; members — только участники, ответственный и руководство. */
   @IsOptional() @IsIn(['all', 'members']) visibility?: 'all' | 'members';
   @IsOptional() @IsNumber() @Min(0) budget?: number;
+  /** Другие названия — для распознавания голосом и в переписке (ТЗ-31, §24). */
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(80, { each: true }) aliases?: string[];
 }
 
 /** Кого допустить к закрытому проекту. */

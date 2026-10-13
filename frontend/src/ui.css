@@ -79,7 +79,7 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
   outline: none; border-color: var(--accent-2);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.ui-input[aria-invalid="true"], .ui-input-group[data-invalid] { border-color: var(--danger); }
+.ui-input[aria-invalid="true"], .ui-input-group[data-invalid], .ui-select-trigger[aria-invalid="true"] { border-color: var(--danger); }
 .ui-input-group { gap: 8px; padding-right: 6px; }
 .ui-input-group input {
   flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; padding: 0;

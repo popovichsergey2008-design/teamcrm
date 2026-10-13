@@ -15,6 +15,8 @@ export interface ProjectRow {
   /** all — видят все сотрудники; members — только участники, ответственный и руководство. */
   visibility?: string;
   owner_user_id?: string | null;
+  /** Другие названия (ТЗ-31). */
+  aliases?: string[];
 }
 
 export interface ColumnRow {
@@ -111,7 +113,7 @@ export class ProjectsRepository {
 
   /** Правка проекта: название и видимость. Пустые поля не трогаем. */
   async update(
-    tenantId: string, id: string, patch: { name?: string; visibility?: string; budget?: number | null },
+    tenantId: string, id: string, patch: { name?: string; visibility?: string; budget?: number | null; aliases?: string[] },
   ): Promise<ProjectRow | null> {
     const set: string[] = [];
     const vals: unknown[] = [tenantId, id];
@@ -119,6 +121,7 @@ export class ProjectsRepository {
     if (patch.name !== undefined) { set.push(`name = $${i++}`); vals.push(patch.name); }
     if (patch.visibility !== undefined) { set.push(`visibility = $${i++}`); vals.push(patch.visibility); }
     if (patch.budget !== undefined) { set.push(`budget = $${i++}`); vals.push(patch.budget); }
+    if (patch.aliases !== undefined) { set.push(`aliases = $${i++}::text[]`); vals.push(patch.aliases); }
     if (!set.length) return this.findById(tenantId, id);
     set.push('updated_at = now()');
     return this.db.one<ProjectRow>(

@@ -31,6 +31,8 @@ import { shrinkAll } from '../lib/image-shrink';
 import type { MessageTaskDraft } from '../components/MessageToTask';
 // окно «Задача из сообщения» (ТЗ-26) — по нажатию палочки, не в стартовой сборке
 const MessageToTask = lazy(() => import('../components/MessageToTask').then((m) => ({ default: m.MessageToTask })));
+// созданная из сообщения задача — сразу окном поверх чата (#1554)
+const TaskCardWindow = lazy(() => import('../components/TaskCardWindow').then((m) => ({ default: m.TaskCardWindow })));
 import { EmojiPicker } from '../components/EmojiPicker';
 import { ForwardDialog } from '../components/ForwardDialog';
 import { QUICK_REACTIONS } from '../lib/emoji';
@@ -505,6 +507,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     refs: { messageId: string; chatId: string; chat: string; author: string | null; at: string; text: string }[];
   } | null>(null);
   /** Из какого сообщения делаем задачу: окно с черновиком от ИИ. */
+  const [cardTask, setCardTask] = useState<{ projectId: string; taskId: string } | null>(null);
   const [toTask, setToTask] = useState<Message | null>(null);
   /*
     Черновики задач по сообщениям этого чата (ТЗ «задача из сообщения»).
@@ -2927,6 +2930,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                               : taskDrafts[String(m.id)].status === 'analyzing'
                                 ? ' ИИ разбирает сообщение…'
                                 : ' Черновик задачи готов'}
+                            {/* #1554: куда и кому уйдёт задача — видно сразу, без открытия черновика */}
+                            {taskDrafts[String(m.id)].status !== 'analyzing' && (taskDrafts[String(m.id)].projectId || taskDrafts[String(m.id)].assigneeId) && (
+                              <span className="dim">
+                                {' → '}{taskDrafts[String(m.id)].projectId ? (taskDrafts[String(m.id)].projectName ?? 'проект выбран') : 'без проекта'}
+                                {taskDrafts[String(m.id)].assigneeName ? ` · ${taskDrafts[String(m.id)].assigneeName}` : ''}
+                              </span>
+                            )}
                           </button>
                         )}
                         {m.pinned_at && <span className="dim chat-under-mark"><Icon name="flag" size={11} /> закреплено</span>}
@@ -3530,9 +3540,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             setMessages((prev) => prev.map((m) => (String(m.id) === String(toTask.id)
               ? { ...m, task_id: taskId, task_title: title, task_project_id: projectId } : m)));
             setToTask(null);
-            showToast({ title: 'Задача создана', body: title, section: 'chat' });
+            /*
+              #1554: после «Создать задачу» — окно задачи, а не обратно в чат: туда
+              дописывают правки, файлы, чек-лист. Закрыли — снова в переписке.
+            */
+            setCardTask({ projectId: String(projectId), taskId: String(taskId) });
           }}
         /></Suspense>
+      )}
+      {cardTask && (
+        <Suspense fallback={null}>
+          <TaskCardWindow projectId={cardTask.projectId} taskId={cardTask.taskId} onClose={() => setCardTask(null)} />
+        </Suspense>
       )}
 
       {/*

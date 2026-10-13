@@ -19,7 +19,7 @@ import { OptionSelect } from './ui/option-select';
 export function ProjectSettingsModal({ project, onClose, onChanged }: {
   project: {
     id: string; name: string; is_default?: boolean; is_support?: boolean;
-    owner_user_id?: string | null; visibility?: string;
+    owner_user_id?: string | null; visibility?: string; aliases?: string[];
   };
   onClose: () => void;
   onChanged: () => void;
@@ -30,6 +30,9 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
   /** all — видят все сотрудники; members — только участники и руководство. */
   const [visibility, setVisibility] = useState(project.visibility === 'members' ? 'members' : 'all');
   const [members, setMembers] = useState<{ user_id: string; full_name: string }[]>([]);
+  /** Другие названия (ТЗ-31): по ним проект узнаётся голосом и в переписке. */
+  const savedAliases = (project.aliases ?? []).join(', ');
+  const [aliases, setAliases] = useState(savedAliases);
 
   useEffect(() => {
     if (visibility !== 'members') return;
@@ -48,6 +51,18 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
     } catch (e) {
       setName(project.name);
       setErr(e instanceof ApiError ? e.message : 'Не удалось переименовать');
+    } finally { setBusy(false); }
+  };
+
+  const saveAliases = async () => {
+    const list = aliases.split(',').map((a) => a.trim()).filter(Boolean);
+    setErr(''); setDone(''); setBusy(true);
+    try {
+      await api.updateProject(String(project.id), { aliases: list });
+      onChanged();
+      setDone(list.length ? 'Другие названия сохранены — QEVO узнает проект и по ним' : 'Другие названия убраны');
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось сохранить');
     } finally { setBusy(false); }
   };
 
@@ -213,6 +228,29 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
               Сохранить
             </button>
           </div>
+        </div>
+
+        <div className="drawer-section">
+          <div className="drawer-section-title">Как ещё называют проект</div>
+          <div className="drawer-row">
+            <input
+              className="input"
+              value={aliases}
+              onChange={(e) => setAliases(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void saveAliases(); }}
+              disabled={busy}
+              placeholder="Например: Alpha, Клиент Альфа"
+              aria-label="Другие названия проекта, через запятую"
+            />
+            <button
+              className="ui-btn ui-btn-outline ui-btn-sm"
+              onClick={() => void saveAliases()}
+              disabled={busy || aliases.trim() === savedAliases}
+            >
+              Сохранить
+            </button>
+          </div>
+          <div className="dim nl-hint">Через запятую. По этим названиям QEVO поймёт проект, когда задачу ставят голосом или из переписки.</div>
         </div>
 
         <div className="drawer-section">

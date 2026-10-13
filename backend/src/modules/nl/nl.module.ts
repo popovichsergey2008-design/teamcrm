@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TasksModule } from '../tasks/tasks.module';
 import { DealsModule } from '../deals/deals.module';
 import { NlController } from './nl.controller';
+import { ProjectResolverService } from './project-resolver.service';
 import { NlService } from './nl.service';
 import { VoiceRepository } from './voice.repository';
 import { VoiceService } from './voice.service';
@@ -19,7 +20,7 @@ import { TagsModule } from '../tags/tags.module';
   // TagsModule — подтверждение тегов перед созданием задачи (ТЗ по тегам).
   imports: [TasksModule, DealsModule, FilesModule, UsersModule, TagsModule],
   controllers: [NlController],
-  providers: [NlService, VoiceService, VoiceRepository, BatchService, BatchRepository],
-  exports: [NlService],
+  providers: [NlService, VoiceService, VoiceRepository, BatchService, BatchRepository, ProjectResolverService],
+  exports: [NlService, ProjectResolverService],
 })
 export class NlModule {}

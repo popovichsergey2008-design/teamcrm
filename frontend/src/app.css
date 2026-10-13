@@ -1818,6 +1818,9 @@
   padding: 2px 6px; margin: -2px -6px;
 }
 .drawer-title-input:hover { border-color: var(--border); }
+/* #1554: на телефоне наведения нет — рамка видна сразу, иначе не понять, что название правится */
+@media (hover: none) { .drawer-title-input { border-color: var(--border); background: var(--bg-elev); } }
+.task-desc-tap { cursor: text; }
 .drawer-title-input:focus { outline: none; border-color: var(--accent); background: var(--bg-elev); }
 .drawer-title-input::placeholder { color: var(--text-mut); font-weight: 400; }
 .task-save-note { font-size: var(--fs-xs); color: var(--text-mut); }

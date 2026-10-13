@@ -74,9 +74,19 @@ export class ProjectsService {
    */
   async update(
     tenantId: string, id: string, actor: { userId: string; role: string },
-    patch: { name?: string; visibility?: string; budget?: number | null },
+    patch: { name?: string; visibility?: string; budget?: number | null; aliases?: string[] },
   ) {
     const project = await this.getOrThrow(tenantId, id);
+    // другие названия: без пустых, повторов и самого имени проекта
+    if (patch.aliases !== undefined) {
+      const own = (patch.name ?? project.name).trim().toLowerCase();
+      const seen = new Set<string>();
+      patch = { ...patch, aliases: patch.aliases.map((a) => a.trim()).filter((a) => {
+        const k = a.toLowerCase();
+        if (!a || k === own || seen.has(k)) return false;
+        seen.add(k); return true;
+      }) };
+    }
     if (patch.visibility !== undefined) {
       const boss = actor.role === 'owner' || actor.role === 'manager'
         || String(project.owner_user_id ?? '') === String(actor.userId);

@@ -1239,7 +1239,7 @@ export const api = {
     })[]>('GET', `/projects/stats${includeArchived ? '?archived=1' : ''}`),
   createProject: (b: { name: string; budget?: number }) => request<Project>('POST', '/projects', b),
   /** Правка проекта: переименование и видимость («видят все» / «только участники»). */
-  updateProject: (id: string, patch: { name?: string; visibility?: 'all' | 'members'; budget?: number }) =>
+  updateProject: (id: string, patch: { name?: string; visibility?: 'all' | 'members'; budget?: number; aliases?: string[] }) =>
     request<Project>('PATCH', `/projects/${id}`, patch),
   /** Кто допущен к закрытому проекту. */
   projectMembers: (id: string) =>

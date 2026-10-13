@@ -267,8 +267,9 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
    * Согласование идёт своей ручкой намеренно: она пишет отдельное событие в историю
    * задачи и рассылает уведомления — сливать её с общей правкой полей нельзя.
    */
-  const saveAll = async (confirmOverload = false) => {
-    if (!title.trim()) return setErr('Название не может быть пустым');
+  /** true — сохранено (или ушло в очередь без сети); false — нет, причина на экране. */
+  const saveAll = async (confirmOverload = false): Promise<boolean> => {
+    if (!title.trim()) { setErr('Название не может быть пустым'); return false; }
     setErr('');
     setSaving(true);
     const estimateHours = estimate ? Number(estimate) : undefined;
@@ -286,7 +287,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
       if (assigneeId && (changedAssignee || confirmOverload)) {
         // назначение идёт через прогноз — он и предупредит о перегрузе
         const res = await api.assignTask(task.id, { assigneeId, confirmOverload, estimateHours, deadlineAt });
-        if (res.warning && !confirmOverload) { setWarn(res); setSaving(false); return; }
+        if (res.warning && !confirmOverload) { setWarn(res); setSaving(false); return false; }
         setWarn(null);
       } else {
         if (changedPlan) await api.saveTaskPlan(task.id, { estimateHours, deadlineAt });
@@ -307,7 +308,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           // Сети нет — правка легла в очередь и уйдёт сама; для человека это «сохранено».
           if (e instanceof ApiError && e.code === QUEUED) {
             toastSaved('Сохранится, когда появится сеть');
-            return;
+            return true;
           }
           const d = (e instanceof ApiError && e.code === 'CONFLICT' ? e.details : null) as
             { reason?: string; task?: Record<string, unknown>; fields?: string[] } | null;
@@ -317,7 +318,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               ifMatch: task.version ?? null, label: `Правка задачи #${task.id}`,
               preview: String(patch.title ?? patch.description ?? ''),
             }, d.task, d.fields ?? []));
-            return;
+            return false;
           }
           throw e;
         }
@@ -327,8 +328,25 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
       onRefresh();
       toastSaved('Задача сохранена');
-    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
+      return true;
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); return false; }
     finally { setSaving(false); }
+  };
+
+  /*
+    Закрыть карточку (#1554). Правки названия и описания сохраняются кнопкой — на
+    телефоне её легко не заметить, и закрытие молча теряло написанное. Теперь
+    спрашиваем: сохранить или нет; не сохранилось — карточка остаётся открытой.
+  */
+  const closeSafe = async () => {
+    if (!dirty) { onClose(); return; }
+    const save = await confirmAction({
+      title: 'Сохранить изменения?',
+      description: 'Вы поправили задачу, но не сохранили правки.',
+      confirmLabel: 'Сохранить', cancelLabel: 'Не сохранять',
+    });
+    if (!save) { onClose(); return; }
+    if (await saveAll()) onClose();
   };
   /**
    * Решение постановщика по сданной работе.
@@ -624,7 +642,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   ];
 
   return (
-    <div className="drawer-overlay" {...overlayProps(onClose)}>
+    <div className="drawer-overlay" {...overlayProps(() => void closeSafe())}>
       {/*
         Карточка и чат стоят рядом постоянно, как в Битриксе: слева задача целиком —
         со всеми полями, статусами и вкладками, справа разговор по ней.
@@ -683,7 +701,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           {task.is_blocked && <Badge tone="danger"><Icon name="alert" size={11} /> BLOCKED</Badge>}
           {/* Закрытие — крупной кнопкой: карточка на пол-экрана, и уходить из неё
               человек должен уверенным движением, а не целясь в мелкий значок. */}
-          <Button variant="ghost" size="icon" className="tv2-close" onClick={onClose} title="Закрыть карточку" aria-label="Закрыть карточку">
+          <Button variant="ghost" size="icon" className="tv2-close" onClick={() => void closeSafe()} title="Закрыть карточку" aria-label="Закрыть карточку">
             <Icon name="close" size={18} />
           </Button>
         </div>
@@ -1091,7 +1109,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                   placeholder="Что нужно сделать. Картинку можно вставить из буфера (Ctrl+V)"
                 />
               ) : (
-                <TaskDescription text={desc} onEmptyClick={() => setEditingDesc(true)} onOpenImage={setDescPreview} />
+                <TaskDescription text={desc} onEmptyClick={() => setEditingDesc(true)} onEdit={() => setEditingDesc(true)} onOpenImage={setDescPreview} />
               )}
               {descPreview && (
                 <Lightbox items={[{ url: descPreview.url, name: descPreview.name, mime: descPreview.mime }]} onClose={() => setDescPreview(null)} />
@@ -1746,9 +1764,11 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
  * нельзя было сделать, пока описание всегда было полем ввода. Разметка та же, что
  * пишет редактор (lib/rich-text); плоский текст старых задач проходит как был.
  */
-function TaskDescription({ text, onEmptyClick, onOpenImage }: {
+function TaskDescription({ text, onEmptyClick, onEdit, onOpenImage }: {
   text: string;
   onEmptyClick: () => void;
+  /** Нажатие на сам текст — править (#1554: на телефоне маленькую кнопку не находили). */
+  onEdit?: () => void;
   onOpenImage?: (p: { url: string; name: string; mime: string }) => void;
 }) {
   const body = String(text ?? '');
@@ -1759,7 +1779,20 @@ function TaskDescription({ text, onEmptyClick, onOpenImage }: {
       </button>
     );
   }
-  return <RichText text={body} className="task-desc" onOpenImage={onOpenImage} />;
+  return (
+    <div
+      className="task-desc-tap"
+      title="Нажмите на текст, чтобы изменить"
+      onClick={(e) => {
+        // ссылка, картинка, флажок — у них своё действие; выделяют текст — не мешаем
+        if ((e.target as HTMLElement).closest('a, img, button, input, video, audio')) return;
+        if (window.getSelection()?.toString()) return;
+        onEdit?.();
+      }}
+    >
+      <RichText text={body} className="task-desc" onOpenImage={onOpenImage} />
+    </div>
+  );
 }
 
 /**
