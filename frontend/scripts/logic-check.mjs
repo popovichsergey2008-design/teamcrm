@@ -600,7 +600,8 @@ test('виды задач на доске: делаю, помогаю, пору�
   const withWatch = [{ id: 'c', name: 'x', tasks: [{ id: 't8', assignee_id: '9', created_by: '9', watchers: [{ userId: '7' }] }] }];
   assert.equal(countMatching(withWatch, me('watching')), 1);
   assert.equal(countMatching(withWatch, me('doing')), 0, 'наблюдатель ничего не делает');
-  assert.equal(countMatching(withWatch, me('both')), 0, 'и в «мою работу» не попадает');
+  // #1545: «Мои задачи» — всё, где я участвую, наблюдение тоже
+  assert.equal(countMatching(withWatch, me('both')), 1, 'в «Мои задачи» наблюдаемое попадает');
 
   // «Делаю» и «Поручил» — разные списки, и это главное различие
   assert.deepEqual(

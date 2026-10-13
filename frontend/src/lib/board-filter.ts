@@ -36,7 +36,7 @@ interface ColumnLike<T> {
  * Что показывать. Четыре вида — общие для доски и раздела «Задачи» (см. `task-views`):
  * `doing` — я исполнитель; `delegated` — я поручил; `helping` — я соисполнитель;
  * `watching` — я наблюдатель. Плюс два особых значения: `off` — всю команду и
- * `both` — вся моя работа целиком (делаю, помогаю и поручил вместе).
+ * `both` — всё, где я участвую: делаю, помогаю, поручил и наблюдаю (#1545).
  */
 export type MineMode = 'off' | TaskView | 'both';
 
@@ -84,7 +84,7 @@ export function matches<T extends TaskLike>(task: T, o: FilterOpts): boolean {
     case 'helping': return isHelping(task, o.userId);
     case 'delegated': return isCreatedBy(task, o.userId);
     case 'watching': return isWatching(task, o.userId);
-    case 'both': return isAssignedTo(task, o.userId) || isCreatedBy(task, o.userId);
+    case 'both': return isAssignedTo(task, o.userId) || isCreatedBy(task, o.userId) || isWatching(task, o.userId);
     default: return true;
   }
 }

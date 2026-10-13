@@ -76,7 +76,7 @@ export function MineFilter({ mode, creatorId, creators, count, inWorkOnly, onCha
           ))}
           <button className={`mine-filter-item ${mode === 'both' ? 'active' : ''}`} onClick={() => pick('both')}>
             <Icon name="board" size={14} /> Мои задачи
-            <span className="dim">делаю, помогаю и поручил вместе</span>
+            <span className="dim">я делаю, помогаю, поручил и наблюдаю</span>
           </button>
 
           {/*
@@ -90,8 +90,9 @@ export function MineFilter({ mode, creatorId, creators, count, inWorkOnly, onCha
               checked={inWorkOnly}
               onChange={(e) => onChange({ mode, creatorId, inWorkOnly: e.target.checked })}
             />
-            Только в работе
-            <span className="dim">скрыть завершённые</span>
+            {/* #1547: название — что делает галочка, подсказка — что видно сейчас */}
+            Скрыть завершённые
+            <span className="dim">{inWorkOnly ? 'видны только задачи в работе' : 'сейчас видны и завершённые'}</span>
           </label>
 
           {creators.length > 0 && (
