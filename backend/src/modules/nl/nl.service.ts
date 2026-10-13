@@ -1,3 +1,4 @@
+import { ProjectResolverService } from './project-resolver.service';
 import { WorkloadGuardService } from '../workload/workload.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
@@ -16,8 +17,8 @@ import { AssigneeCandidate, pickAssignee, SURE_CONFIDENCE } from './assignee-pic
 import { Department, departmentOf, isDepartment, isSkill, Skill, SKILL_LABEL, skillsCatalog } from '../team/skills';
 import { directionsFromText, listItemsCount, MAX_AUTO_DIRECTIONS, TASK_DIRECTIONS } from '../team/direction-rules';
 import {
-  chooseProject, cleanTitle, matchProjectInText, pickApproval, pickDeadline, pickPriority,
-  PROJECT_HINT, taskTitleFrom,
+  cleanTitle, pickApproval, pickDeadline, pickPriority,
+  taskTitleFrom,
 } from './task-draft';
 import { buildEventDraft, EventDraft } from './event-draft';
 
@@ -34,6 +35,15 @@ export interface NlDraft {
     projectId: string | null; projectName: string | null;
     /** Почему выбран этот проект: человек должен видеть, откуда он взялся. */
     projectHint: string;
+    /**
+     * Определитель проекта (ТЗ-31): уверенность и варианты. HIGH — проект подставлен;
+     * MEDIUM — варианты, человек выбирает; LOW — спрашиваем. Без проекта задача не создаётся.
+     */
+    projectResolution?: {
+      predictedProjectId: string | null; confidence: number; level: 'HIGH' | 'MEDIUM' | 'LOW';
+      resolution: string; reasonCodes: string[]; hint: string;
+      candidates: { id: string; name: string }[]; notFoundName: string | null;
+    };
     assigneeId: string | null; assigneeName: string | null;
     priority: string; deadline: string | null;
     /** Завершать только с согласия постановщика. Умолчание — да. */
@@ -116,13 +126,25 @@ export class NlService {
     private readonly users: UsersRepository,
     private readonly security: SecurityService,
     private readonly workload: WorkloadGuardService,
+    private readonly projectResolver: ProjectResolverService,
   ) {}
 
-  private async context(tenantId: string) {
+  private async roleOf(tenantId: string, userId: string): Promise<string | null> {
+    return (await this.db.one<{ role: string }>(`SELECT r.code AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE u.tenant_id=$1 AND u.id=$2`, [tenantId, userId]))?.role ?? null;
+  }
+
+  /**
+   * Люди, проекты и клиенты для разбора. Проекты — только живые и видимые человеку
+   * (ТЗ-31, §23): модель не должна даже предлагать проект, которого человек не видит.
+   */
+  private async context(tenantId: string, userId?: string) {
     const users = await this.db.many<{ id: string; name: string }>(
       `SELECT id, full_name AS name FROM users WHERE tenant_id=$1 AND is_active=TRUE ORDER BY full_name`, [tenantId]);
-    const projects = await this.db.many<{ id: string; name: string }>(
-      `SELECT id, name FROM projects WHERE tenant_id=$1 ORDER BY created_at DESC`, [tenantId]);
+    const role = userId ? await this.roleOf(tenantId, userId) : null;
+    const projects = userId && role
+      ? (await this.projectResolver.candidates(tenantId, { userId, role })).map((p) => ({ id: p.id, name: p.name }))
+      : await this.db.many<{ id: string; name: string }>(
+        `SELECT id, name FROM projects WHERE tenant_id=$1 AND status <> 'archived' ORDER BY created_at DESC`, [tenantId]);
     const clients = await this.db.many<{ id: string; name: string }>(
       `SELECT id, name FROM clients WHERE tenant_id=$1 ORDER BY created_at DESC`, [tenantId]).catch(() => []);
     return { users, projects, clients };
@@ -217,12 +239,13 @@ export class NlService {
   async parse(
     tenantId: string, userId: string, text: string,
     currentProjectId?: string | null, whole?: string | null,
+    opts: { currentKind?: 'board' | 'last' } = {},
   ): Promise<NlDraft> {
     const clean = (text ?? '').trim();
     /** Общая часть надиктовки: пусто, когда поручение и есть вся команда. */
     const around = (whole ?? '').trim() && (whole ?? '').trim() !== clean ? String(whole).trim() : '';
     if (clean.length < 3) throw AppException.validation('Слишком короткая команда');
-    const { users, projects, clients } = await this.context(tenantId);
+    const { users, projects, clients } = await this.context(tenantId, userId);
     const today = new Date().toISOString().slice(0, 10);
 
     const prompt = await this.prompts.resolve(tenantId, 'nl.command', { today }, userId);
@@ -264,14 +287,31 @@ export class NlService {
       const t = parsed.task ?? {};
       const title = String(t.title ?? '').trim();
       if (!title) { base.intent = 'none'; warnings.push('Не понял, какую задачу создать'); return base; }
-      // Проект — по всей доступной обстановке, а не только по ответу модели.
-      const { projectId, source } = chooseProject({
-        spokenId: matchProjectInText(clean, projects) ?? (around ? matchProjectInText(around, projects) : null),
-        modelId: idIn(t.projectId, projectSet),
-        currentId: currentProjectId ? String(currentProjectId) : null,
-        projects,
-      });
-      if (!projectId) warnings.push('Проект не распознан — выберите вручную');
+      /*
+        Проект — определителем (ТЗ-31): названное в речи (и другие названия проекта),
+        доска, на которой человек стоит, клиент, названные люди, недавнее; модель —
+        только выбор среди своих. HIGH — подставляем; MEDIUM — варианты; LOW — спросим.
+        «Лучше спросить, чем уверенно поставить не туда».
+      */
+      const named = [matchUserInText(clean, users), around ? matchUserInText(around, users) : null].filter(Boolean) as string[];
+      const resolved = await this.projectResolver.resolve(tenantId, { userId, role: (await this.roleOf(tenantId, userId)) ?? 'member' }, {
+        text: [clean, around].filter(Boolean).join(' '),
+        sourceProjectId: currentProjectId && opts.currentKind !== 'last' ? String(currentProjectId) : null,
+        peopleIds: named.length ? [userId, ...named] : [],
+        model: idIn(t.projectId, projectSet) ? { projectId: String(t.projectId), confidence: Number(parsed?.confidence) || 0.6 } : null,
+      }).catch((e) => { this.log.warn(`определитель проекта: ${(e as Error).message}`); return null; });
+      // последняя открытая доска — только слабая подсказка: ставим её в варианты, если других нет
+      const lastBoard = currentProjectId && opts.currentKind === 'last' && projectSet.has(String(currentProjectId)) ? String(currentProjectId) : null;
+      const projectId = resolved?.level === 'HIGH' ? resolved.projectId : null;
+      const candidates = resolved
+        ? [...(resolved.projectId && resolved.level !== 'HIGH' ? [{ id: resolved.projectId, name: resolved.projectName ?? '' }] : []),
+          ...resolved.alternatives.map((a) => ({ id: a.projectId, name: a.name })),
+          ...(lastBoard ? [{ id: lastBoard, name: projectSet.get(lastBoard)! }] : [])]
+          .filter((c, i, arr) => c.id !== projectId && arr.findIndex((x) => x.id === c.id) === i).slice(0, 3)
+        : [];
+      if (resolved?.notFoundName) warnings.push(`Проект «${resolved.notFoundName}» не найден среди доступных — выберите существующий`);
+      else if (!projectId && candidates.length) warnings.push('К какому проекту относится задача? Выберите из вариантов');
+      else if (!projectId) warnings.push('Проект не определён — выберите проект');
       // Модель часто не возвращает исполнителя, хотя он назван прямым текстом,
       // — тогда ищем имя в команде сами.
       const assigneeId = idIn(t.assigneeId, userSet)
@@ -298,7 +338,12 @@ export class NlService {
         title: cleanTitle(title, t.description ? String(t.description) : null).slice(0, 255),
         description: t.description ? String(t.description) : null,
         projectId, projectName: projectId ? projectSet.get(projectId)! : null,
-        projectHint: projectId ? PROJECT_HINT[source] : '',
+        projectHint: projectId && resolved ? resolved.hint : '',
+        projectResolution: resolved ? {
+          predictedProjectId: resolved.projectId, confidence: resolved.confidence, level: resolved.level,
+          resolution: resolved.resolution, reasonCodes: resolved.reasonCodes, hint: resolved.hint,
+          candidates, notFoundName: resolved.notFoundName,
+        } : undefined,
         assigneeId, assigneeName: assigneeId ? userSet.get(assigneeId)! : null,
         priority, deadline, requiresApproval, checklist,
       };
@@ -333,11 +378,12 @@ export class NlService {
    */
   async parseMany(
     tenantId: string, userId: string, text: string, currentProjectId?: string | null,
+    opts: { currentKind?: 'board' | 'last' } = {},
   ): Promise<NlDraft[]> {
     const clean = (text ?? '').trim();
     if (clean.length < 3) throw AppException.validation('Слишком короткая команда');
 
-    const { users, projects, clients } = await this.context(tenantId);
+    const { users, projects, clients } = await this.context(tenantId, userId);
     const today = new Date().toISOString().slice(0, 10);
     // Справочник отделов — модели, а не в коде промпта: список меняется, промпт нет.
     const userMsg = JSON.stringify({ text: clean, projects, users, clients, today, catalog: skillsCatalog() });
@@ -350,7 +396,7 @@ export class NlService {
       удвоить время ответа ради редкого случая. Одиночный черновик всё равно нужен как
       запасной, поэтому считаем его сразу и отдаём, если поручение оказалось одно.
     */
-    const single = this.parse(tenantId, userId, clean, currentProjectId);
+    const single = this.parse(tenantId, userId, clean, currentProjectId, null, opts);
     // Если пачка собралась, одиночный ответ не нужен — но его отказ не должен всплыть необработанным.
     single.catch(() => undefined);
     let items: any[] = [];
@@ -376,7 +422,7 @@ export class NlService {
       if (byRules.length >= 2) {
         this.log.log(`команда разделена правилами на ${byRules.length}: модель не ответила`);
         const ruleDrafts = (await Promise.all(
-          byRules.map((part) => this.parse(tenantId, userId, part, currentProjectId, clean).catch(() => null)),
+          byRules.map((part) => this.parse(tenantId, userId, part, currentProjectId, clean, opts).catch(() => null)),
         )).filter((d): d is NlDraft => !!d?.task);
         /*
           ТЗ по пунктам без модели (задача #1363). Раньше пункты здесь только делились:
@@ -405,7 +451,7 @@ export class NlService {
       // Кусок исходной речи, из которого выросла задача: по нему человек проверяет,
       // не выдумал ли ИИ, и правит формулировку осмысленно.
       const source = String(item?.source ?? '').trim() || clean;
-      const draft = await this.parse(tenantId, userId, source, currentProjectId, clean).catch(() => null);
+      const draft = await this.parse(tenantId, userId, source, currentProjectId, clean, opts).catch(() => null);
       if (!draft?.task) return null;
       draft.task.title = cleanTitle(title, item?.description ? String(item.description) : null).slice(0, 255);
       if (item?.description) draft.task.description = String(item.description);
@@ -687,6 +733,16 @@ export class NlService {
         tenantId, userId, kind: 'nl_task',
         summary: `Задача из фразы: «${task.title}»`, subjectType: 'task', subjectId: task.id,
       });
+      // Определитель предлагал проект — запоминаем, оставили его или выбрали другой (ТЗ-31, §25)
+      const pr = t.projectResolution;
+      if (pr && typeof pr === 'object') {
+        void this.projectResolver.feedback(tenantId, userId, t.voice ? 'voice' : 'nl', {
+          predictedProjectId: pr.predictedProjectId ? String(pr.predictedProjectId) : null,
+          selectedProjectId: String(task.project_id), confidence: Number(pr.confidence) || null,
+          resolution: pr.resolution ? String(pr.resolution).slice(0, 32) : null,
+          reasonCodes: Array.isArray(pr.reasonCodes) ? pr.reasonCodes.map(String).slice(0, 10) : [], taskId: String(task.id),
+        });
+      }
       return { type: 'task', task };
     }
     if (body.intent === 'create_deal') {

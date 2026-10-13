@@ -52,7 +52,7 @@ const JOB_LABEL: Record<VoiceJob['status'], string> = {
   error: 'Не получилось',
 };
 
-export function NlCommandModal({ onClose, initialText, autoRecord, currentProjectId, onCreated }: {
+export function NlCommandModal({ onClose, initialText, autoRecord, currentProjectId, currentKind = 'board', onCreated }: {
   onClose: () => void;
   /** Текст, набранный в командной строке: переспрашивать уже сформулированное незачем. */
   initialText?: string;
@@ -60,6 +60,11 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   autoRecord?: boolean;
   /** Доска, открытая у человека: из неё берётся проект, если он не назван вслух. */
   currentProjectId?: string | null;
+  /**
+   * ТЗ-31: board — человек на этой доске (проект подставится); last — просто последняя
+   * открытая доска (будет среди вариантов, но не подставится молча).
+   */
+  currentKind?: 'board' | 'last';
   /** Задача создана — показать её вместо перезагрузки всего приложения. */
   onCreated?: (projectId: string, taskId: string) => void;
 }) {
@@ -100,7 +105,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     setBusy(true); setMsg(''); setDrafts([]); setDone([]); setCreated([]); setStage('compose'); setJob(null);
     try {
       // Несколько поручений в одной строке — несколько черновиков, как и у надиктовки.
-      setDrafts(await api.nlParseMany(command, currentProjectId));
+      setDrafts(await api.nlParseMany(command, currentProjectId, currentKind));
       setHeard(command);
     } catch (e) { setMsg(e instanceof ApiError ? e.message : 'Ошибка распознавания'); }
     finally { setBusy(false); }
@@ -132,7 +137,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   const sendRecording = async (blob: Blob) => {
     setMsg(''); setDrafts([]); setDone([]);
     try {
-      setJob(await api.voiceStart(blob, currentProjectId));
+      setJob(await api.voiceStart(blob, currentKind === 'board' ? currentProjectId : null));
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : 'Не удалось отправить запись');
     }
@@ -338,7 +343,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   const retry = async () => {
     if (!job) return;
     setMsg('');
-    try { setJob(await api.voiceRetry(job.id, currentProjectId)); }
+    try { setJob(await api.voiceRetry(job.id, currentKind === 'board' ? currentProjectId : null)); }
     catch (e) { setMsg(e instanceof ApiError ? e.message : 'Не удалось повторить обработку'); }
   };
 
@@ -696,7 +701,18 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
           />
         </div>
         {/* Откуда взялся проект: подставленный молча, он однажды окажется не тем. */}
-        {draft.task.projectHint && <div className="dim nl-hint">{draft.task.projectHint}</div>}
+        {draft.task.projectHint && draft.task.projectId && draft.task.projectId === draft.task.projectResolution?.predictedProjectId && (
+          <div className="dim nl-hint"><Icon name="sparkles" size={11} /> Определено: {draft.task.projectHint}</div>
+        )}
+        {/* ТЗ-31: не уверен — «К какому проекту относится задача?» и 2–3 варианта кнопками */}
+        {!draft.task.projectId && (draft.task.projectResolution?.candidates?.length ?? 0) > 0 && (
+          <div className="nl-project-pick" role="group" aria-label="К какому проекту относится задача">
+            <span className="nl-hint">К какому проекту относится задача?</span>
+            {draft.task.projectResolution.candidates.map((c: { id: string; name: string }) => (
+              <button key={c.id} type="button" className="nl-pchip" onClick={() => onPatchTask({ projectId: String(c.id) })}>{c.name}</button>
+            ))}
+          </div>
+        )}
         {/*
           Кого и почему предложил ИИ (ТЗ-10, этап 4).
 

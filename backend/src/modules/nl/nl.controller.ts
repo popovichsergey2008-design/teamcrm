@@ -14,6 +14,11 @@ class ParseDto {
   @IsString() @MaxLength(2000) text!: string;
   /** Открытая доска: задачу почти всегда ставят в проект, на который человек смотрит. */
   @IsOptional() @IsString() @MaxLength(32) currentProjectId?: string;
+  /**
+   * ТЗ-31: откуда этот проект. board — человек на этой доске (сильный сигнал);
+   * last — просто последняя открытая доска (слабый: недавнее, а не обстановка).
+   */
+  @IsOptional() @IsIn(['board', 'last']) currentKind?: 'board' | 'last';
 }
 class ParseEventDto {
   @IsString() @MaxLength(2000) text!: string;
@@ -111,7 +116,7 @@ export class NlController {
 
   @Post('parse')
   parse(@CurrentUser() u: AuthUser, @Body() dto: ParseDto) {
-    return this.nl.parse(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null);
+    return this.nl.parse(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null, null, { currentKind: dto.currentKind });
   }
 
   /**
@@ -123,7 +128,7 @@ export class NlController {
    */
   @Post('parse-many')
   parseMany(@CurrentUser() u: AuthUser, @Body() dto: ParseDto) {
-    return this.nl.parseMany(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null);
+    return this.nl.parseMany(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null, { currentKind: dto.currentKind });
   }
 
   /** Надиктованная встреча → заполненный черновик события (ничего не создаёт). */

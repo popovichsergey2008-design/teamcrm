@@ -156,7 +156,8 @@ export function spokenProjectName(text: string): string | null {
   const stopAt = /^(постав|сдела|созда|добав|задач|нужн|надо|до|к|и|а|что|чтобы|глеб|котор)/i;
   const parts = m[1].split(/\s+/);
   const kept: string[] = [];
-  for (const p of parts) { if (kept.length && stopAt.test(p)) break; kept.push(p); }
+  // и на глаголе в неопределённой форме: «по проекту Tesla обновить баннер» → «Tesla»
+  for (const p of parts) { if (kept.length && (stopAt.test(p) || /(ть|ти|чь)$/i.test(p))) break; kept.push(p); }
   const name = kept.join(' ').trim();
   return name.length >= 2 ? name : null;
 }

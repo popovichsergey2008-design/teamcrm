@@ -889,6 +889,8 @@ export function App() {
              а не «выберите проект из списка». Раздел мог смениться — тогда берём
              последнюю открытую доску. */
           currentProjectId={route.projectId ?? boardReported.current.projectId ?? null}
+          /* ТЗ-31: на доске — она и есть проект; не на доске — последняя доска лишь среди вариантов */
+          currentKind={route.projectId ? 'board' : 'last'}
           onCreated={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
         />
       )}

@@ -1570,11 +1570,11 @@ export const api = {
   // NL-команда / Zero-UI
   // Открытая доска едет вместе с командой: задачу почти всегда ставят в проект,
   // на который человек в этот момент смотрит.
-  nlParse: (text: string, currentProjectId?: string | null) =>
-    request<any>('POST', '/nl/parse', currentProjectId ? { text, currentProjectId } : { text }),
+  nlParse: (text: string, currentProjectId?: string | null, currentKind?: 'board' | 'last') =>
+    request<any>('POST', '/nl/parse', currentProjectId ? { text, currentProjectId, ...(currentKind ? { currentKind } : {}) } : { text }),
   /** Та же команда, но с несколькими поручениями сразу: черновиков столько, сколько задач. */
-  nlParseMany: (text: string, currentProjectId?: string | null) =>
-    request<any[]>('POST', '/nl/parse-many', currentProjectId ? { text, currentProjectId } : { text }),
+  nlParseMany: (text: string, currentProjectId?: string | null, currentKind?: 'board' | 'last') =>
+    request<any[]>('POST', '/nl/parse-many', currentProjectId ? { text, currentProjectId, ...(currentKind ? { currentKind } : {}) } : { text }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),
   /**
    * Пакет задач из одной команды (ТЗ-10, этап 2).

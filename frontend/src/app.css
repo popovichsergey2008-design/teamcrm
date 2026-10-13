@@ -2061,6 +2061,11 @@
   background: var(--bg-elev-2);
 }
 .nl-hint { font-size: calc(11px * var(--fs-scale)); margin-top: 3px; }
+/* ТЗ-31: варианты проекта кнопками */
+.nl-project-pick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.nl-pchip { border: 1px solid var(--border); background: var(--bg-elev); color: var(--text); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.nl-pchip:hover { border-color: var(--accent); color: var(--accent); }
+.nl-pchip:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 /* Ряд действий по Telegram: код, переход в сам чат, отвязка. Ссылка выглядит
    кнопкой, но ведёт наружу — подчёркивание здесь читалось бы как ошибка вёрстки. */

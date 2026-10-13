@@ -56,6 +56,17 @@ describe('NL-команда (e2e)', () => {
     expect(String(spoken.task.projectId)).toBe(String(other.id));
     expect(spoken.task.priority).toBe('urgent'); // «срочно» слышно и без модели
 
+    // ТЗ-31: последняя открытая доска (человек не на ней) — не основание, а вариант
+    const weak = (await http$.post('/api/nl/parse').set(H(tok))
+      .send({ text: 'обновить баннер на главной', currentProjectId: String(proj.id), currentKind: 'last' }).expect(201)).body.data;
+    expect(weak.task.projectId).toBeNull();
+    expect(weak.task.projectResolution.candidates.map((c: any) => String(c.id))).toContain(String(proj.id));
+    // назвали проект, которого нет, — говорим прямо, а не подставляем другой
+    const nf = (await http$.post('/api/nl/parse').set(H(tok))
+      .send({ text: 'по проекту Tesla обновить баннер', currentProjectId: String(proj.id) }).expect(201)).body.data;
+    expect(nf.task.projectId).toBeNull();
+    expect(nf.warnings.join(' ')).toContain('Tesla');
+
     // Длинная надиктовка: запись принимается отдельно от разбора и переживает ошибки.
     // Проверяем сам конвейер приёма — распознавание на CI мокнуто и текста не даёт.
     const started = (await http$.post('/api/nl/voice').set(H(tok))

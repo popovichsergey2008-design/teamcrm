@@ -81,5 +81,6 @@ describe('определитель проекта (ТЗ-31)', () => {
     expect(spokenProjectName('Сделай задачу по проекту Tesla')).toBe('Tesla');
     expect(spokenProjectName('в проекте Новый сайт поставь Глебу')).toBe('Новый сайт');
     expect(spokenProjectName('поставь Глебу задачу')).toBeNull();
+    expect(spokenProjectName('по проекту Tesla обновить баннер')).toBe('Tesla');
   });
 });
