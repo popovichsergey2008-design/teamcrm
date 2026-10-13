@@ -70,6 +70,15 @@ describe('Изменения по задачам (e2e)', () => {
     const csv = await http$.get(`/api/radar/changes/export?${q}`).set(O).expect(200);
     expect(String(csv.text)).toContain('Проверить форму');
 
+    expect(s.digest).toContain('ушли в тест');
+
+    // смена исполнителя и срока — отдельные счётчики (§2), автор дописан
+    await http$.patch(`/api/tasks/${task.id}`).set(O).send({ priority: 'high' }).expect(200);
+    const f = (await http$.get(`/api/radar/changes?${q}`).set(O).expect(200)).body.data;
+    expect(f.fields.priority).toBe(1);
+    const pr = (await http$.get(`/api/radar/changes/events?${q}&kind=field:priority`).set(O).expect(200)).body.data;
+    expect(pr.items[0]).toMatchObject({ toLabel: 'высокий', actorName: 'Сергей Владелец' });
+
     // без права на «Пульс» — нельзя
     const login = (await http$.post('/api/auth/login').send({ email: gleb.email, password: 'password123' }).expect(201)).body.data;
     await http$.get(`/api/radar/changes?${q}`).set(H(login.accessToken)).expect(403);

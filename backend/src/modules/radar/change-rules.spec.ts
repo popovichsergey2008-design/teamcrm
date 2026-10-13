@@ -1,4 +1,4 @@
-import { kindsOf, returnRate, summarize } from './change-rules';
+import { digestText, kindsOf, returnRate, summarize } from './change-rules';
 
 describe('счётчики изменений (ТЗ-32)', () => {
   it('правила подсчёта (§9)', () => {
@@ -38,5 +38,12 @@ describe('счётчики изменений (ТЗ-32)', () => {
   it('автоматика без автора — отдельной строкой', () => {
     const s = summarize([{ taskId: '1', actorId: null, assigneeId: null, from: 'work', to: 'done' }]);
     expect(s.users[0].userId).toBeNull();
+  });
+
+  it('сводка словами: цифры те же, проект с возвратами назван (§15–16)', () => {
+    const c = { entered_testing: 12, returned_to_work: 4, moved_to_done: 9, reopened: 2, blocked: 0, unblocked: 0 };
+    expect(digestText('Сегодня', c, [{ name: 'Сайт', n: 3 }, { name: 'CRM', n: 1 }]))
+      .toBe('Сегодня: 12 задач ушли в тест, 4 вернулись на доработку, 9 закрыто, 2 переоткрыты. Больше всего возвратов — «Сайт» (3).');
+    expect(digestText('Сегодня', { ...c, entered_testing: 0, returned_to_work: 0, moved_to_done: 0, reopened: 0 }, [])).toBeNull();
   });
 });

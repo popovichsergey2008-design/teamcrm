@@ -406,6 +406,7 @@ export class TasksService {
     }
     const changed = Object.keys(dto).filter((k) => (dto as any)[k] !== undefined);
     await this.activity.log(tenantId, id, actorId, 'updated', { fields: changed });
+    if (actorId) await this.repo.stampTransition(tenantId, id, actorId, 'MANUAL').catch(() => undefined);
     if (dto.title !== undefined || dto.description !== undefined) this.knowledge.enqueue(tenantId, 'task', id); // переиндексация при смене текста
     await this.outbox.enqueue(tenantId, existing.project_id, 'task.update', id);
     return updated as TaskRow;
@@ -892,6 +893,7 @@ export class TasksService {
       await this.shiftRecurrence(tenantId, task, to);
     }
     await this.repo.clearDeadlineShift(tenantId, id);
+    await this.repo.stampTransition(tenantId, id, actor.userId, 'MANUAL').catch(() => undefined);
     await this.activity.log(
       tenantId, id, actor.userId,
       approve ? 'deadline_shifted' : 'deadline_shift_declined', { to: to.toISOString() },
@@ -973,6 +975,7 @@ export class TasksService {
     const column = same ?? columns[0];
 
     const moved = await this.repo.moveToProject(tenantId, id, projectId, String(column.id), column.name);
+    await this.repo.stampTransition(tenantId, id, actor.userId, 'MANUAL').catch(() => undefined);
     await this.activity.log(tenantId, id, actor.userId, 'project_moved', {
       from: from?.name ?? null, to: target.name, column: column.name,
     });

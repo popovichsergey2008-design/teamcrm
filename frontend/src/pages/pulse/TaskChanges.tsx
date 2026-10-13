@@ -53,7 +53,7 @@ export function TaskChanges() {
   const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
   const [data, setData] = useState<ChangeSummary | null>(null);
   const [err, setErr] = useState('');
-  const [drill, setDrill] = useState<{ kind: ChangeKindKey; userId?: string | null; title: string } | null>(null);
+  const [drill, setDrill] = useState<{ kind: string; userId?: string | null; title: string } | null>(null);
 
   useEffect(() => {
     api.listProjects().then((ps: any[]) => setProjects(ps.map((p) => ({ id: String(p.id), name: p.name })))).catch(() => undefined);
@@ -128,6 +128,7 @@ export function TaskChanges() {
       {err && <div className="error-text"><Icon name="alert" size={12} /> {err}</div>}
       {data && (
         <>
+          {data.digest && <div className="tch-digest">{data.digest}</div>}
           <div className="tch-totals">
             {MAIN.map((k) => (
               <button key={k} className="tch-total" onClick={() => data.totals[k] && setDrill({ kind: k, title: label(k) })} disabled={!data.totals[k]}>
@@ -137,6 +138,15 @@ export function TaskChanges() {
               </button>
             ))}
           </div>
+          {data.fieldKinds.some((k) => data.fields[k.key] > 0) && (
+            <div className="tch-fields">
+              {data.fieldKinds.filter((k) => data.fields[k.key] > 0).map((k) => (
+                <button key={k.key} className="tch-field" onClick={() => setDrill({ kind: `field:${k.key}`, title: k.label })}>
+                  {k.label}: <b>{data.fields[k.key]}</b>
+                </button>
+              ))}
+            </div>
+          )}
           {(data.totals.blocked > 0 || data.totals.unblocked > 0) && (
             <div className="dim tch-extra">
               Заблокировано: {data.totals.blocked} · разблокировано: {data.totals.unblocked}

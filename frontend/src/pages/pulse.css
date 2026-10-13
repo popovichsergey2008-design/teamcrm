@@ -129,3 +129,8 @@
 .tch-urow { display: grid; grid-template-columns: minmax(120px, 2fr) repeat(4, minmax(48px, 1fr)); gap: 6px; padding: 5px 0; border-top: 1px solid var(--border); align-items: center; }
 .tch-uhead { font-size: var(--fs-xs); color: var(--text-mut); border-top: none; }
 .tch-event .pulse-link { flex: 1 1 260px; }
+.tch-digest { margin: 2px 0 8px; font-weight: 500; }
+.tch-fields { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tch-field { border: 1px solid var(--border); background: var(--bg-elev); color: var(--text); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.tch-field:hover { border-color: var(--accent); }
+.tch-field:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }

@@ -1,3 +1,4 @@
+import { stampTaskChanges } from '../../common/task-changes/stamp';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -102,6 +103,7 @@ export class ForecastService {
     }
 
     await this.repo.assign(tenantId, taskId, assigneeId);
+    await stampTaskChanges(this.repo.dbHandle, tenantId, taskId, actorId, 'MANUAL').catch(() => undefined);
     await this.repo.auditAssignment({
       tenantId,
       taskId,
@@ -131,8 +133,10 @@ export class ForecastService {
   async setEstimateDeadline(
     tenantId: string, taskId: string,
     patch: { estimate?: number | null; deadline?: string | null },
+    actorId: string | null = null,
   ) {
     const res = await this.repo.setEstimateDeadline(tenantId, taskId, patch);
+    if (actorId) await stampTaskChanges(this.repo.dbHandle, tenantId, taskId, actorId, 'MANUAL').catch(() => undefined);
     // Снятый срок внешней системе тоже важен: там задача иначе останется просроченной.
     if (patch.deadline !== undefined) await this.outbox.enqueueForTask(tenantId, taskId, 'task.update');
     return res;

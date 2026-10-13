@@ -1,3 +1,4 @@
+import { stampTaskChanges, TransitionSource } from '../../common/task-changes/stamp';
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { personalOverdueSql, stageSql } from './responsibility';
@@ -54,8 +55,7 @@ export interface TaskRow {
   recurrence_id?: string | null;
 }
 
-/** Откуда переход задачи (ТЗ-32, §21). */
-export type TransitionSource = 'MANUAL' | 'AI' | 'AUTOMATION' | 'API' | 'IMPORT';
+export type { TransitionSource } from '../../common/task-changes/stamp';
 
 @Injectable()
 export class TasksRepository {
@@ -67,13 +67,7 @@ export class TasksRepository {
    * actor_type SYSTEM_AGENT, автор — человек, который его запустил.
    */
   async stampTransition(tenantId: string, taskId: string, actorId: string | null, source: TransitionSource): Promise<void> {
-    await this.db.query(
-      `UPDATE task_status_transitions
-          SET actor_user_id = COALESCE(actor_user_id, $3::bigint), source = $4, actor_type = $5
-        WHERE tenant_id = $1 AND task_id = $2 AND source = 'AUTOMATION' AND actor_user_id IS NULL
-          AND changed_at > clock_timestamp() - interval '30 seconds'`,
-      [tenantId, taskId, actorId, source, source === 'AI' ? 'SYSTEM_AGENT' : 'USER'],
-    );
+    await stampTaskChanges(this.db, tenantId, taskId, actorId, source);
   }
 
   /** Роль человека — для проверки «видит ли проект» там, где роли под рукой нет. */

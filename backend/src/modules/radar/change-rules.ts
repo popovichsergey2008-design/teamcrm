@@ -106,3 +106,34 @@ export function kindSql(kind: ChangeKind, a = 'x'): string {
 
 /** Доля возвратов (§20) — только справочно, не KPI сотрудника. */
 export const returnRate = (c: Counts) => (c.entered_testing ? Math.round((c.returned_to_work / c.entered_testing) * 100) : null);
+
+// ── смена полей (§2, «дополнительно») ──
+
+export type FieldKey = 'assignee' | 'deadline' | 'priority' | 'project';
+export const FIELD_KEYS: FieldKey[] = ['assignee', 'deadline', 'priority', 'project'];
+export const FIELD_LABEL: Record<FieldKey, string> = {
+  assignee: 'Сменили исполнителя', deadline: 'Перенесли срок', priority: 'Сменили приоритет', project: 'Перенесли в другой проект',
+};
+
+const plural = (n: number, one: string, few: string, many: string) => {
+  const m10 = n % 10; const m100 = n % 100;
+  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+};
+const tasksWord = (n: number) => `${n} ${plural(n, 'задача', 'задачи', 'задач')}`;
+
+/**
+ * Сводка словами (§15–16): «За сегодня 12 задач ушли в тест, 4 вернулись на доработку —
+ * больше всего по проекту A». Цифры — те же, что в карточках; модель тут не нужна.
+ */
+export function digestText(period: string, c: Counts, returnsByProject: { name: string; n: number }[]): string | null {
+  const parts: string[] = [];
+  if (c.entered_testing) parts.push(`${tasksWord(c.entered_testing)} ${plural(c.entered_testing, 'ушла', 'ушли', 'ушли')} в тест`);
+  if (c.returned_to_work) parts.push(`${c.returned_to_work} ${plural(c.returned_to_work, 'вернулась', 'вернулись', 'вернулись')} на доработку`);
+  if (c.moved_to_done) parts.push(`${c.moved_to_done} ${plural(c.moved_to_done, 'закрыта', 'закрыты', 'закрыто')}`);
+  if (c.reopened) parts.push(`${c.reopened} ${plural(c.reopened, 'переоткрыта', 'переоткрыты', 'переоткрыто')}`);
+  if (!parts.length) return null;
+  const top = [...returnsByProject].sort((a, b) => b.n - a.n)[0];
+  const tail = top && c.returned_to_work >= 2 && top.n >= 2 ? ` Больше всего возвратов — «${top.name}» (${top.n}).` : '';
+  return `${period}: ${parts.join(', ')}.${tail}`;
+}
+

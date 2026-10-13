@@ -16,6 +16,9 @@ export interface ForecastTaskRow {
 export class ForecastRepository {
   constructor(private readonly db: DbService) {}
 
+  /** Для пометки автора изменений задачи (ТЗ-32). */
+  get dbHandle(): DbService { return this.db; }
+
   getTask(tenantId: string, taskId: string): Promise<ForecastTaskRow | null> {
     return this.db.one<ForecastTaskRow>(
       `SELECT id, project_id, assignee_id, estimate_hours, deadline_at,

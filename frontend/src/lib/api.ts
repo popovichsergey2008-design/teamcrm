@@ -3352,6 +3352,11 @@ export interface ChangeSummary {
   returnRate: number | null;
   transitions: number;
   users: { userId: string | null; name: string; counts: Record<ChangeKindKey, number>; total: number }[];
+  /** Смена исполнителя, срока, приоритета, проекта. */
+  fields: Record<'assignee' | 'deadline' | 'priority' | 'project', number>;
+  fieldKinds: { key: 'assignee' | 'deadline' | 'priority' | 'project'; label: string }[];
+  /** Сводка словами — те же цифры. */
+  digest: string | null;
   journalSince: string | null;
 }
 export interface ChangeEvent {
