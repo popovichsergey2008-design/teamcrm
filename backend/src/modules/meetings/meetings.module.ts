@@ -1,3 +1,4 @@
+import { NlModule } from '../nl/nl.module';
 import { Module } from '@nestjs/common';
 import { AiModule } from '../ai/ai.module';
 import { ClientsModule } from '../clients/clients.module';
@@ -16,7 +17,7 @@ import { PostcallService } from './postcall.service';
 
 /** Этап 6, М2: разбор записей встреч. Свои созвоны появятся позже — источник записи внешний. */
 @Module({
-  imports: [AiModule, TasksModule, KnowledgeModule, TaskCardModule, NotificationsModule, ClientsModule, PromptsModule],
+  imports: [AiModule, TasksModule, KnowledgeModule, TaskCardModule, NotificationsModule, ClientsModule, PromptsModule, NlModule],
   controllers: [MeetingsController, AudioProofController],
   providers: [MeetingsService, MeetingsRepository, PostcallService, PostcallRepository, AudioProofService],
   exports: [MeetingsService, MeetingsRepository, PostcallService], // репозиторий нужен уборке: черновики со встреч

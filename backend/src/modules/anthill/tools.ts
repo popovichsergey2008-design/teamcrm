@@ -472,6 +472,17 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         const draft = await nl.parse(ctx.tenantId, ctx.user.userId, str(p.instruction, 4000), str(p.projectId, 20) || null);
         if (draft.intent !== 'create_task' || !draft.task) throw new Error('Не понял, какую задачу создать — уточните, пожалуйста');
         const t = draft.task as any;
+        /*
+          ТЗ-31, §28: без проекта бот задачу не предлагает — сначала уточняет. Варианты
+          определителя — в вопросе: человек отвечает одним словом, бот повторяет с projectId.
+        */
+        if (!t.projectId) {
+          const r = t.projectResolution;
+          const options = (r?.candidates ?? []).map((c: any) => `«${c.name}» (projectId ${c.id})`).join(', ');
+          throw new Error(r?.notFoundName
+            ? `Проект «${r.notFoundName}» не найден среди доступных. Спросите человека, в какой проект поставить задачу${options ? `: ${options}` : ''}.`
+            : `К какому проекту относится задача? Спросите человека${options ? ` — вероятные: ${options}` : ''}, затем вызовите create_task с projectId.`);
+        }
         const ctxp = (draft as any).context ?? { projects: [], users: [] };
         const client = p.client ? await findClient(ctx, str(p.client, 120)).catch(() => null) : null;
         const card = await taskCard(ctx, t, {

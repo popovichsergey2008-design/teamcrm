@@ -1,3 +1,4 @@
+import { ProjectResolverService } from '../nl/project-resolver.service';
 import { ProjectViewer } from '../../common/access/project-visibility';
 import { Injectable, Logger } from '@nestjs/common';
 import { Readable } from 'stream';
@@ -71,6 +72,8 @@ export class MeetingsService {
     private readonly prompts: PromptsService,
     private readonly proofs: AudioProofService,
     private readonly activity: TaskActivityRepository,
+    /** ТЗ-31: проект черновика, если у встречи его нет. */
+    private readonly projectResolver: ProjectResolverService,
   ) {}
 
   list(tenantId: string, viewer: ProjectViewer) {
@@ -590,7 +593,24 @@ export class MeetingsService {
       subjectType: 'meeting', subjectId: meetingId,
     });
 
-    await this.repo.replaceDrafts(tenantId, meetingId, value.tasks.map((t) => {
+    /*
+      ТЗ-31, §26: у встречи нет проекта и вслух его не назвали — определитель по каждой
+      задаче (участники, клиент, недавнее) от имени того, кто загрузил запись. Только
+      уверенный (HIGH): иначе черновик ждёт выбора — «4 готовы, 1 требует проекта».
+    */
+    const resolvedFor = new Map<number, string>();
+    if (!projectId && meeting?.created_by) {
+      await Promise.all(value.tasks.map(async (t, i) => {
+        if (matchNamed(projects, t.projectHint)) return;
+        const r = await this.projectResolver.resolveAs(tenantId, String(meeting.created_by), {
+          text: [t.title, t.projectHint, t.quote].filter(Boolean).join(' '),
+          peopleIds: [matchTeamMember(team, t.assigneeHint), matchTeamMember(team, t.authorHint)],
+        }).catch(() => null);
+        if (r?.level === 'HIGH' && r.projectId) resolvedFor.set(i, r.projectId);
+      }));
+    }
+
+    await this.repo.replaceDrafts(tenantId, meetingId, value.tasks.map((t, i) => {
       // Названный вслух проект важнее выбранного при загрузке записи: на встрече
       // говорят о деле, а поле в форме часто оставляют пустым.
       const project = matchNamed(projects, t.projectHint);
@@ -602,7 +622,7 @@ export class MeetingsService {
         description: t.description,
         assigneeId,
         assigneeHint: t.assigneeHint,
-        projectId: project?.id ?? projectId,
+        projectId: project?.id ?? projectId ?? resolvedFor.get(i) ?? null,
         projectHint: t.projectHint,
         columnId: column?.id ?? null,
         columnHint: t.columnHint,

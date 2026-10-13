@@ -28,6 +28,13 @@ export class ProjectResolverService {
 
   constructor(private readonly db: DbService) {}
 
+  /** Определить от имени человека, когда роли под рукой нет (фоновые пути: встречи). */
+  async resolveAs(tenantId: string, userId: string, req: ResolveRequest) {
+    const r = await this.db.one<{ role: string }>(
+      `SELECT r.code AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE u.tenant_id = $1 AND u.id = $2`, [tenantId, userId]);
+    return r ? this.resolve(tenantId, { userId, role: r.role }, req) : null;
+  }
+
   /** Проекты, из которых вообще можно выбирать: не архив, не демо, видны человеку. */
   async candidates(tenantId: string, viewer: ProjectViewer): Promise<ResolverProject[]> {
     const rows = await this.db.many<{ id: string; name: string; aliases: string[] | null; client_id: string | null; client_name: string | null }>(
