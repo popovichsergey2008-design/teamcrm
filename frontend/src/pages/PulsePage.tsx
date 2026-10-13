@@ -12,6 +12,7 @@ import { navigate } from '../lib/router';
 import { getSocket } from '../lib/socket';
 import { showToast } from '../lib/notifications';
 import { feedback } from '../lib/feedback';
+import { TaskChanges } from './pulse/TaskChanges';
 
 /**
  * «Пульс команды» как командный центр руководителя (ТЗ-19).
@@ -235,6 +236,9 @@ export function PulsePage() {
             </div>
           ))}
         </section>
+
+        {/* 8. Изменения по задачам (ТЗ-32): в тест, возвраты, готово, переоткрыто — и кто двигал */}
+        <TaskChanges />
       </div>
 
       {action && <ActionDialog action={action} people={data.workload} onClose={() => setAction(null)} onDone={load} />}

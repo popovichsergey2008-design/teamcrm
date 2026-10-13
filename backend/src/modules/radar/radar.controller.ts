@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Patch, Post, Query } from '@nestjs/common';
 import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -6,6 +6,7 @@ import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { RadarService } from './radar.service';
 import { PulseService } from './pulse.service';
+import { ChangesService } from './changes.service';
 
 class ActionDto {
   @IsIn(['TASK_NUDGE', 'TASK_REASSIGN', 'TASK_RESCHEDULE', 'TASK_CREATE_MEETING', 'REVIEW_REMINDER', 'TASK_FOCUS', 'PUBLISH_NEWS'])
@@ -21,6 +22,17 @@ class FeedbackDto {
   @IsIn(['not_stuck', 'load_wrong', 'not_critical', 'outdated', 'other']) reason!: string;
 }
 class TargetDto { @IsOptional() @IsString() @MaxLength(10) date?: string | null; }
+/** Изменения по задачам (ТЗ-32): период — местные дни, пояс — смотрящего. */
+class ChangesQuery {
+  @IsString() @MaxLength(10) from!: string;
+  @IsString() @MaxLength(10) to!: string;
+  @IsOptional() @IsString() @MaxLength(64) tz?: string;
+  @IsOptional() @IsString() @MaxLength(20) projectId?: string;
+  @IsOptional() @IsString() @MaxLength(20) userId?: string;
+  @IsOptional() @IsIn(['actor', 'assignee']) by?: 'actor' | 'assignee';
+  @IsOptional() @IsString() @MaxLength(24) kind?: string;
+  @IsOptional() @IsString() @MaxLength(20) cursor?: string;
+}
 class NormDto { @IsOptional() @Type(() => Number) @IsInt() @Min(2) @Max(60) norm?: number | null; }
 
 /** «Пульс команды» — экран руководителя. Рядовому сотруднику он не показывается. */
@@ -28,7 +40,26 @@ class NormDto { @IsOptional() @Type(() => Number) @IsInt() @Min(2) @Max(60) norm
 @ApiBearerAuth()
 @Controller('radar')
 export class RadarController {
-  constructor(private readonly radar: RadarService, private readonly pulse: PulseService) {}
+  constructor(private readonly radar: RadarService, private readonly pulse: PulseService, private readonly changes: ChangesService) {}
+
+  /** Сколько задач ушло в тест, вернулось, закрыто, переоткрыто — и кто двигал (ТЗ-32). */
+  @Get('changes')
+  changesSummary(@CurrentUser() u: AuthUser, @Query() q: ChangesQuery) {
+    return this.changes.summary(u, q);
+  }
+
+  /** Конкретные переходы по клику на цифру. */
+  @Get('changes/events')
+  changeEvents(@CurrentUser() u: AuthUser, @Query() q: ChangesQuery) {
+    return this.changes.events(u, q);
+  }
+
+  @Get('changes/export')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="task-changes.csv"')
+  changesExport(@CurrentUser() u: AuthUser, @Query() q: ChangesQuery) {
+    return this.changes.exportCsv(u, q);
+  }
 
   /** @param tz смещение часового пояса в минутах (Date#getTimezoneOffset). Прежняя сводка — её читают выпущенные приложения. */
   @Get()

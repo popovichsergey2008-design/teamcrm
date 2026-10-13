@@ -4,6 +4,7 @@ import { RadarService } from './radar.service';
 import { RadarRepository } from './radar.repository';
 import { PulseRepository } from './pulse.repository';
 import { PulseService } from './pulse.service';
+import { ChangesService } from './changes.service';
 import { TasksModule } from '../tasks/tasks.module';
 import { ForecastModule } from '../forecast/forecast.module';
 import { CalendarModule } from '../calendar/calendar.module';
@@ -15,7 +16,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
 @Module({
   imports: [TasksModule, ForecastModule, CalendarModule, FeedModule, NotificationsModule, RealtimeModule],
   controllers: [RadarController],
-  providers: [RadarService, RadarRepository, PulseRepository, PulseService],
+  providers: [RadarService, RadarRepository, PulseRepository, PulseService, ChangesService],
   exports: [PulseService],
 })
 export class RadarModule {}

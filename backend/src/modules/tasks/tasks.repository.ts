@@ -54,9 +54,27 @@ export interface TaskRow {
   recurrence_id?: string | null;
 }
 
+/** Откуда переход задачи (ТЗ-32, §21). */
+export type TransitionSource = 'MANUAL' | 'AI' | 'AUTOMATION' | 'API' | 'IMPORT';
+
 @Injectable()
 export class TasksRepository {
   constructor(private readonly db: DbService) {}
+
+  /**
+   * Кто и откуда перенёс задачу (ТЗ-32). Сам переход пишет триггер базы — автора он не
+   * знает; дописываем в свежие записи этой задачи, ещё не помеченные. Действие ИИ —
+   * actor_type SYSTEM_AGENT, автор — человек, который его запустил.
+   */
+  async stampTransition(tenantId: string, taskId: string, actorId: string | null, source: TransitionSource): Promise<void> {
+    await this.db.query(
+      `UPDATE task_status_transitions
+          SET actor_user_id = COALESCE(actor_user_id, $3::bigint), source = $4, actor_type = $5
+        WHERE tenant_id = $1 AND task_id = $2 AND source = 'AUTOMATION' AND actor_user_id IS NULL
+          AND changed_at > clock_timestamp() - interval '30 seconds'`,
+      [tenantId, taskId, actorId, source, source === 'AI' ? 'SYSTEM_AGENT' : 'USER'],
+    );
+  }
 
   /** Роль человека — для проверки «видит ли проект» там, где роли под рукой нет. */
   async userRole(tenantId: string, userId: string): Promise<string | null> {

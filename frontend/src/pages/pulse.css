@@ -107,3 +107,25 @@
 .pulse-preview { white-space: pre-line; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); }
 .pulse-move { display: flex; flex-wrap: wrap; gap: 6px 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .pulse-text { width: 100%; resize: vertical; }
+
+/* ТЗ-32: изменения по задачам */
+.tch-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.tch-range { display: inline-flex; gap: 6px; }
+.tch-range .input { width: auto; }
+.tch-totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 720px) { .tch-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tch-total {
+  display: grid; gap: 2px; text-align: left; padding: 10px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-elev); color: var(--text); font: inherit; cursor: pointer;
+}
+.tch-total:disabled { cursor: default; opacity: .7; }
+.tch-total:not(:disabled):hover { border-color: var(--accent); }
+.tch-total:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.tch-num { font-size: 1.6em; font-weight: 700; line-height: 1.1; }
+.tch-label { font-size: var(--fs-sm); }
+.tch-uniq, .tch-extra { font-size: var(--fs-xs); }
+.tch-extra { margin-top: 6px; }
+.tch-users { margin-top: 10px; display: grid; }
+.tch-urow { display: grid; grid-template-columns: minmax(120px, 2fr) repeat(4, minmax(48px, 1fr)); gap: 6px; padding: 5px 0; border-top: 1px solid var(--border); align-items: center; }
+.tch-uhead { font-size: var(--fs-xs); color: var(--text-mut); border-top: none; }
+.tch-event .pulse-link { flex: 1 1 260px; }

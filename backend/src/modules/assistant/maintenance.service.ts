@@ -107,8 +107,9 @@ export class MaintenanceService {
     if (p.kind === 'task_stale') {
       const columns = await this.projects.listColumns(tenantId, String(p.undo.projectId));
       const done = pickDoneColumn(columns as { id: string; name: string }[]);
-      if (done) await this.tasks.move(tenantId, p.subject_id, { columnId: done.id, position: 0, confirmGate: true }, user.userId);
+      if (done) await this.tasks.move(tenantId, p.subject_id, { columnId: done.id, position: 0, confirmGate: true }, user.userId, null, 'AUTOMATION');
       else await this.tasksRepo.closeTask(tenantId, p.subject_id);
+      await this.tasksRepo.stampTransition(tenantId, p.subject_id, user.userId, 'AUTOMATION').catch(() => undefined);
     } else if (p.kind === 'project_idle') {
       await this.projects.setArchived(tenantId, p.subject_id, true);
     } else {

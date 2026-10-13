@@ -6,7 +6,7 @@ import { SecurityService } from '../security/security.service';
 import { inScope, scopeOf } from '../security/permissions';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { RealtimeService } from '../realtime/realtime.service';
-import { TaskRow, TasksRepository } from './tasks.repository';
+import { TaskRow, TasksRepository, TransitionSource } from './tasks.repository';
 import { TaskActivityRepository } from './task-activity.repository';
 import { ruleOf, TaskRecurrenceRepository } from './task-recurrence.repository';
 import { describeRule, nextRun, normalizeRule } from './recurrence';
@@ -569,6 +569,8 @@ export class TasksService {
     dto: MoveTaskDto,
     actorId: string | null = null,
     expectedVersion: number | null = null,
+    /** ТЗ-32: кто двигал — человек, ИИ-агент, автоматика. По умолчанию — человек, если он есть. */
+    source?: TransitionSource,
   ): Promise<TaskRow> {
     const task = await this.repo.findById(tenantId, id);
     if (!task) throw AppException.notFound('Task not found');
@@ -645,6 +647,7 @@ export class TasksService {
       // задача закрыта — напоминания о ней в шторке больше не нужны никому
       if (isDoneColumn(column.name)) void this.push.taskSeen(tenantId, id, null);
     }
+    await this.repo.stampTransition(tenantId, id, actorId, source ?? (actorId ? 'MANUAL' : 'AUTOMATION')).catch(() => undefined);
     return moved;
   }
 
@@ -712,6 +715,7 @@ export class TasksService {
     }
     await this.repo.closeTask(tenantId, id);
     await this.repo.clearApproval(tenantId, id);
+    await this.repo.stampTransition(tenantId, id, actor.userId, 'MANUAL').catch(() => undefined);
     await this.activity.log(tenantId, id, actor.userId, 'approval_confirmed', {});
     this.knowledge.enqueue(tenantId, 'task', id);
     void this.announceClosed(tenantId, id, task.title);
@@ -747,6 +751,7 @@ export class TasksService {
     }
     if (task.closed_at) await this.repo.reopenTask(tenantId, id);
     await this.repo.clearApproval(tenantId, id);
+    await this.repo.stampTransition(tenantId, id, actor.userId, 'MANUAL').catch(() => undefined);
     // Причина живёт в истории задачи: там её видно рядом с самим возвратом,
     // а не отдельным комментарием, который потеряется в переписке.
     await this.activity.log(tenantId, id, actor.userId, 'approval_returned', { reason: note.slice(0, 300) });

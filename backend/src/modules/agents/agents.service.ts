@@ -222,7 +222,7 @@ export class AgentsService {
         if (col && col.id !== task.column_id) {
           // confirmGate: результат агента и есть отчёт (комментарий + .docx во вложениях),
           // а диалог «чего не хватает» показывать здесь некому — переносит машина
-          await this.tasksService.move(tenantId, taskId, { columnId: col.id, position: 0, confirmGate: true }, userId);
+          await this.tasksService.move(tenantId, taskId, { columnId: col.id, position: 0, confirmGate: true }, userId, null, 'AI');
           movedTo = col.name;
         }
         // готовый результат прикрепляем файлом .docx во вкладку «Файлы» (best-effort — не роняем запуск)

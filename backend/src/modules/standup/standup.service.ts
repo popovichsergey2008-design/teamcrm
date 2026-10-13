@@ -222,8 +222,9 @@ export class StandupService {
           detail.statusError = `no column for ${a.status_change}`;
         } else {
           detail.move = { from: task.column_id, to: col.id };
-          await this.tasks.move(tenantId, a.task_id, { columnId: col.id, position: APPEND });
+          await this.tasks.move(tenantId, a.task_id, { columnId: col.id, position: APPEND }, null, null, 'AI');
           if (a.status_change === 'DONE') await this.tasksRepo.closeTask(tenantId, a.task_id);
+          await this.tasksRepo.stampTransition(tenantId, a.task_id, null, 'AI').catch(() => undefined);
         }
       }
 

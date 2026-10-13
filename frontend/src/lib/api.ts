@@ -1198,6 +1198,11 @@ export const api = {
   /** Сводка «Пульса команды»: проекты, загрузка людей, узкие места, скорость. */
   /** «Пульс команды» как командный центр (ТЗ-19): всё одним запросом. */
   pulse: () => request<PulseSummary>('GET', `/radar/summary?tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || '')}`),
+  // изменения по задачам в «Пульсе» (ТЗ-32)
+  radarChanges: (q: Record<string, string | undefined>) =>
+    request<ChangeSummary>('GET', `/radar/changes?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
+  radarChangeEvents: (q: Record<string, string | undefined>) =>
+    request<{ items: ChangeEvent[]; nextCursor: string | null }>('GET', `/radar/changes/events?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
   pulsePreview: (i: { type: PulseActionType; taskId?: string; toUserId?: string; date?: string; text?: string }) =>
     request<{ id: string; preview: string }>('POST', '/radar/actions/preview', i),
   pulseConfirm: (id: string) => request<{ status: string; text: string }>('POST', `/radar/actions/${id}/confirm`, {}),
@@ -3335,4 +3340,23 @@ export interface MemoryHit {
   sourceType: string; typeLabel: string; sourceId: string; title: string | null; snippet: string;
   link: string | null; sec: number | null; at: string | null; author: string | null;
   projectId: string | null; projectName: string | null; private: boolean; score: number;
+}
+
+/** Изменения по задачам (ТЗ-32). */
+export type ChangeKindKey = 'entered_testing' | 'returned_to_work' | 'moved_to_done' | 'reopened' | 'blocked' | 'unblocked';
+export interface ChangeSummary {
+  by: 'actor' | 'assignee';
+  kinds: { key: ChangeKindKey; label: string }[];
+  totals: Record<ChangeKindKey, number>;
+  unique: Record<ChangeKindKey, number>;
+  returnRate: number | null;
+  transitions: number;
+  users: { userId: string | null; name: string; counts: Record<ChangeKindKey, number>; total: number }[];
+  journalSince: string | null;
+}
+export interface ChangeEvent {
+  id: string; taskId: string; title: string; projectId: string | null; projectName: string | null;
+  from: string; to: string; fromLabel: string; toLabel: string;
+  actorName: string | null; actorType: string; assigneeName: string | null;
+  source: string; sourceLabel: string; changedAt: string;
 }

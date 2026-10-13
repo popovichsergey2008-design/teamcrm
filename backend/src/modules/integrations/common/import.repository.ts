@@ -214,6 +214,12 @@ export class ImportRepository {
         [i.tenantId, ref.local_id, i.title, i.description, i.columnId, i.assigneeId,
           i.priority, i.deadlineAt, i.status, i.closed, position],
       );
+      // ТЗ-32: переход этапа, если он случился, — от синхронизации, а не «автоматики»
+      await this.db.query(
+        `UPDATE task_status_transitions SET source = 'IMPORT'
+          WHERE task_id = $1 AND source = 'AUTOMATION' AND actor_user_id IS NULL AND changed_at > clock_timestamp() - interval '30 seconds'`,
+        [ref.local_id],
+      );
       await this.putRef({ tenantId: i.tenantId, connectionId: i.connectionId, entityType: 'task', externalId: i.externalId, localId: ref.local_id, hash: i.hash });
       return { id: ref.local_id, created: false, changed: true };
     }
