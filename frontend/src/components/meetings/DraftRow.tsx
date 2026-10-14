@@ -187,7 +187,7 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
           <option value="">— исполнитель —</option>
           {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
         </OptionSelect>
-        <OptionSelect className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Проект">
+        <OptionSelect className="input" value={projectId} onChange={(e) => { setProjectId(e.target.value); if (e.target.value) setErr(''); }} aria-label="Проект" aria-invalid={!projectId && !!err}>
           <option value="">— проект —</option>
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </OptionSelect>
@@ -202,7 +202,7 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
           </>
         ) : (
           <>
-            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => onApply(draft, choice)} disabled={busy}>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => (projectId ? onApply(draft, choice) : setErr('Выберите проект — без проекта задачу создать нельзя'))} disabled={busy}>
               {draft.status === 'failed' ? 'Повторить' : 'Создать задачу'}
             </button>
             <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setEditing(true)} disabled={busy}>

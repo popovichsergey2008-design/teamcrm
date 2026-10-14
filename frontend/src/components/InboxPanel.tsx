@@ -59,10 +59,12 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
     try { await api.inboxDeleteSource(id); loadSources(); } catch { /* */ }
   };
 
+  /** #1549: создать без проекта — поле этой строки красным. */
+  const [noProject, setNoProject] = useState<string | null>(null);
   const setEdit = (id: string, patch: any) => setEdits((s) => ({ ...s, [id]: { ...s[id], ...patch } }));
   const confirmItem = async (id: string) => {
     const t = edits[id];
-    if (!t?.projectId) return flash('Выберите проект');
+    if (!t?.projectId) { setNoProject(id); return flash('Выберите проект — без проекта задачу создать нельзя'); }
     if (!t?.title?.trim()) return flash('Укажите название');
     try { await api.inboxConfirm(id, t); flash('Задача создана'); loadItems(); loadSources(); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка создания'); }
@@ -143,7 +145,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
                   <div className="dim" style={{ fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 80, overflow: 'auto', margin: '4px 0', opacity: 0.7 }}>{(it.body ?? '').slice(0, 400)}</div>
                   <input className="input" placeholder="Название задачи" value={e.title ?? ''} onChange={(ev) => setEdit(it.id, { title: ev.target.value })} />
                   <div className="team-rate" style={{ marginTop: 6 }}>
-                    <OptionSelect className="input" value={e.projectId ?? ''} onChange={(ev) => setEdit(it.id, { projectId: ev.target.value })}>
+                    <OptionSelect className="input" aria-label="Проект" aria-invalid={noProject === it.id && !e.projectId} value={e.projectId ?? ''} onChange={(ev) => setEdit(it.id, { projectId: ev.target.value })}>
                       <option value="">— проект —</option>
                       {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </OptionSelect>

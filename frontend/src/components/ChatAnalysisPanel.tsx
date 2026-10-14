@@ -86,6 +86,8 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
   const [limit, setLimit] = useState('');
   const [open, setOpen] = useState<string | null>(null);
   /** Чем дополнить наблюдение перед заведением: проект и исполнитель, если их нет. */
+  /** #1549: нажали «Завести задачу» без проекта — подсвечиваем поле этой строки. */
+  const [noProject, setNoProject] = useState<string | null>(null);
   const [patch, setPatch] = useState<Record<string, { projectId?: string; assigneeId?: string; taskId?: string; startsAt?: string }>>({});
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
@@ -547,8 +549,9 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                       <OptionSelect
                         className="input"
                         aria-label="Проект задачи"
+                        aria-invalid={noProject === a.id}
                         value={patch[a.id]?.projectId ?? ''}
-                        onChange={(e) => setPatch((p) => ({ ...p, [a.id]: { ...p[a.id], projectId: e.target.value } }))}
+                        onChange={(e) => { setPatch((p) => ({ ...p, [a.id]: { ...p[a.id], projectId: e.target.value } })); setNoProject(null); }}
                       >
                         <option value="">Проект не выбран</option>
                         {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -565,6 +568,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                         {people.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                       </OptionSelect>
                     )}
+                    {noProject === a.id && <div className="error-text" style={{ fontSize: 12 }}>Выберите проект — без проекта задачу создать нельзя</div>}
                   </div>
                 )}
 
@@ -573,9 +577,8 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                     <>
                       <button
                         className="ui-btn ui-btn-primary ui-btn-sm"
-                        disabled={busy || !(patch[a.id]?.projectId ?? a.project_id)}
-                        onClick={() => void confirm(a)}
-                        title={!(patch[a.id]?.projectId ?? a.project_id) ? 'Сначала выберите проект' : undefined}
+                        disabled={busy}
+                        onClick={() => { if (!(patch[a.id]?.projectId ?? a.project_id)) { setNoProject(a.id); return; } void confirm(a); }}
                       >
                         <Icon name="check" size={13} /> Завести задачу
                       </button>

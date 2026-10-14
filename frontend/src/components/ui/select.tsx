@@ -11,7 +11,7 @@ export interface SelectOption { value: string; label: string }
  * лист во весь экран. Здесь — одинаковый везде, с клавиатурой (стрелки, поиск по
  * первым буквам, Escape) и не обрезается у краёв экрана: положение считает Base UI.
  */
-export function Select({ value, onValueChange, options, ariaLabel, placeholder, className, size = 'md', disabled }: {
+export function Select({ value, onValueChange, options, ariaLabel, placeholder, className, size = 'md', disabled, invalid }: {
   value: string;
   onValueChange: (value: string) => void;
   options: SelectOption[];
@@ -20,6 +20,8 @@ export function Select({ value, onValueChange, options, ariaLabel, placeholder, 
   className?: string;
   size?: 'sm' | 'md';
   disabled?: boolean;
+  /** Обязательное поле не заполнено: красная рамка и подсказка читалкам (#1549). */
+  invalid?: boolean;
 }) {
   const items = Object.fromEntries(options.map((o) => [o.value, o.label]));
   return (
@@ -29,7 +31,7 @@ export function Select({ value, onValueChange, options, ariaLabel, placeholder, 
       onValueChange={(v) => onValueChange(String(v ?? ''))}
       disabled={disabled}
     >
-      <Base.Trigger className={cn('ui-select-trigger', `ui-input-${size}`, className)} aria-label={ariaLabel}>
+      <Base.Trigger className={cn('ui-select-trigger', `ui-input-${size}`, className)} aria-label={ariaLabel} aria-invalid={invalid || undefined}>
         <Base.Value className="ui-select-value" placeholder={placeholder} />
         <Base.Icon className="ui-select-icon"><ChevronsUpDown size={14} /></Base.Icon>
       </Base.Trigger>

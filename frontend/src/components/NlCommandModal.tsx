@@ -230,7 +230,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     if (Object.keys(over).length) draft = { ...draft, task: { ...draft.task, ...over } };
     setBusy(true); setMsg('');
     if (!draft?.task?.projectId) {
-      patchDraft(index, { error: 'Выберите проект — без него задачу не создать' });
+      patchDraft(index, { error: 'Выберите проект — без проекта задачу создать нельзя' });
       setBusy(false);
       return;
     }
@@ -287,7 +287,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     for (let i = 0; i < drafts.length; i++) {
       const d = drafts[i];
       if (done.includes(i) || d.intent !== 'create_task') continue;
-      if (!d.task?.projectId) { skipped++; patchDraft(i, { error: 'Выберите проект — без него задачу не создать' }); continue; }
+      if (!d.task?.projectId) { skipped++; patchDraft(i, { error: 'Выберите проект — без проекта задачу создать нельзя' }); continue; }
       ready.push({ index: i, draft: d });
     }
     if (!ready.length) {
@@ -690,6 +690,7 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
             className="tv2-wide"
             value={String(draft.task.projectId ?? '')}
             onValueChange={(v) => onPatchTask({ projectId: v || null, projectHint: '' })}
+            invalid={!draft.task.projectId && !!draft.error}
             options={[{ value: '', label: 'Проект (обязательно)' }, ...ctx.projects.map((p: any) => ({ value: String(p.id), label: p.name }))]}
           />
           <Select
@@ -839,11 +840,9 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
           </div>
         )}
 
-        <Button variant="primary" className="tv2-wide"
-                onClick={() => onApply()} disabled={!draft.task.projectId} loading={busy}>
-          {!draft.task.projectId
-            ? 'Выберите проект'
-            : (files.length ? `Создать задачу и прикрепить ${files.length}` : 'Создать задачу')}
+        {/* #1549: без проекта кнопка не прячется — нажатие объясняет, что проект обязателен, и подсвечивает поле */}
+        <Button variant="primary" className="tv2-wide" onClick={() => onApply()} loading={busy}>
+          {files.length ? `Создать задачу и прикрепить ${files.length}` : 'Создать задачу'}
         </Button>
       </div>
     );
