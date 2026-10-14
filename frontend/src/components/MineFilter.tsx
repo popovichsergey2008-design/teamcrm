@@ -90,9 +90,7 @@ export function MineFilter({ mode, creatorId, creators, count, inWorkOnly, onCha
               checked={inWorkOnly}
               onChange={(e) => onChange({ mode, creatorId, inWorkOnly: e.target.checked })}
             />
-            {/* #1547: название — что делает галочка, подсказка — что видно сейчас */}
-            Скрыть завершённые
-            <span className="dim">{inWorkOnly ? 'видны только задачи в работе' : 'сейчас видны и завершённые'}</span>
+            Скрыть завершённые задачи
           </label>
 
           {creators.length > 0 && (

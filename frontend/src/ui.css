@@ -299,7 +299,9 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
   border-radius: var(--radius); font-size: var(--fs-sm);
 }
 .tasks-v2-error .ui-btn { margin-left: auto; }
-.tasks-v2-row { grid-template-columns: minmax(0, 1fr) 150px 110px 170px 130px 140px; }
+/* прокрутка: вкладка зажата по высоте окна — список прокручивается внутри страницы */
+.ui-page.tasks-v2 { flex: 1; min-height: 0; overflow-y: auto; }
+.tasks-v2-row { grid-template-columns: minmax(0, 1fr) 150px 110px 170px 130px 190px; }
 .tasks-v2-row.late { box-shadow: inset 3px 0 0 var(--danger); }
 .tasks-v2-row.done .tasks-v2-name { color: var(--text-mut); text-decoration: line-through; }
 .tasks-v2-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -312,8 +314,9 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
   font-size: var(--fs-xs); font-weight: 600; line-height: 18px; text-align: center;
 }
 .tasks-v2-who { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-sm); }
-.tasks-v2-tags-cell { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
-.tasks-v2-tags-cell .label-chip { white-space: nowrap; flex: none; }
+/* теги переносятся на вторую строку, а не обрезаются; длинный — с многоточием и подсказкой */
+.tasks-v2-tags-cell { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.tasks-v2-tags-cell .label-chip { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
 @media (max-width: 1100px) {
   .tasks-v2-row { grid-template-columns: minmax(0, 1fr) 130px 160px 120px; }

@@ -273,6 +273,15 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
         поэтому он выключает роли, а не складывается с ними.
       */}
       <nav className="ui-toolbar" aria-label="Мои роли в задачах">
+        {/* «Мои задачи» — вся моя работа: делаю, поручил, помогаю, наблюдаю (просьба 14.10) */}
+        <Toggle
+          pressed={!picked.includes('all') && ROLE_TABS.every((t) => picked.includes(t.key))}
+          onPressedChange={(on) => setScopes(on ? ROLE_TABS.map((t) => t.key) : ['all'])}
+          title="Только мои задачи: где я исполнитель, постановщик, соисполнитель или наблюдатель"
+        >
+          <Icon name="user" size={14} /> Мои задачи
+        </Toggle>
+        <span className="tasks-v2-sep" aria-hidden />
         {ROLE_TABS.map((t) => (
           <Toggle key={t.key} pressed={picked.includes(t.key)} onPressedChange={(on) => toggleRole(t.key, on)} title={t.hint}>
             {t.label}
@@ -488,6 +497,7 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
                         key={tag.id}
                         className="label-chip label-chip-sm"
                         style={{ background: tag.color, color: labelTextColor(tag.color) }}
+                        title={tag.name}
                       >
                         {tag.name}
                       </span>
