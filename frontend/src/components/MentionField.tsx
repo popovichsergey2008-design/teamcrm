@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Avatar } from './Avatar';
-import { htmlToMd } from '../lib/rich-text';
+import { cleanPastedText, htmlToMd } from '../lib/rich-text';
 import { activeQuery, MentionUser, suggest } from '../lib/mentions';
 import { initialsOf } from '../lib/initials';
 import { useEnterSend } from '../hooks/useEnterSend';
@@ -166,7 +166,19 @@ export function MentionField({
     */
     onPaste: (e: React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const html = e.clipboardData?.getData('text/html');
-      if (!html?.trim()) return;
+      if (!html?.trim()) {
+        // плоский текст со служебным мусором Таблиц (#1559) — вставляем очищенный
+        const plain = e.clipboardData?.getData('text/plain') ?? '';
+        const clean = cleanPastedText(plain);
+        if (clean === plain) return;
+        e.preventDefault();
+        const el = e.currentTarget;
+        const from = el.selectionStart ?? value.length;
+        const to = el.selectionEnd ?? from;
+        onChange(`${value.slice(0, from)}${clean}${value.slice(to)}`);
+        requestAnimationFrame(() => { const pos = from + clean.length; el.setSelectionRange(pos, pos); setCaret(pos); });
+        return;
+      }
       const md = htmlToMd(new DOMParser().parseFromString(html, 'text/html').body);
       if (!md.trim()) return;
       e.preventDefault();

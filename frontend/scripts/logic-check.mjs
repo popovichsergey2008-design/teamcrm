@@ -490,6 +490,17 @@ test('вставка из Word и с сайта: списки и абзацы д
 
   // перенос строки внутри абзаца не теряется и не удваивается
   assert.equal(mdToHtml('первая\nвторая'), '<p>первая<br>вторая</p>');
+
+  // #1559: буфер Google Таблиц — стиль ячейки не текст
+  const sheets = el('body', [
+    el('google-sheets-html-origin', [
+      el('style', [text('<!--td {border: 1px solid #cccccc;}br {mso-data-placement:same-cell;}-->')]),
+      el('span', [text('Изистом Новосибирск')]),
+    ]),
+  ]);
+  assert.equal(htmlToMd(sheets), 'Изистом Новосибирск');
+  const { cleanPastedText } = await load('lib/rich-text.ts');
+  assert.equal(cleanPastedText('<!--td {border: 1px solid #cccccc;}br {mso-data-placement:same-cell;}-->Изистом Новосибирск'), 'Изистом Новосибирск');
 });
 
 test('описание задачи: разметка → HTML и обратно, без потерь и без мусора', async () => {

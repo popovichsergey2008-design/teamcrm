@@ -1,3 +1,4 @@
+import { stripPasteJunk } from '../../common/text/paste-junk';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -66,6 +67,7 @@ export class TaskCardService {
       fileIds?: string[];
     },
   ) {
+    body = stripPasteJunk(body);
     const task = await this.task(tenantId, taskId);
     await this.repo.addWatcher(tenantId, taskId, authorId); // автор — наблюдатель
     /*
@@ -108,6 +110,7 @@ export class TaskCardService {
     return this.repo.listComments(tenantId, taskId, role !== 'client', viewerId, limit);
   }
   async editComment(tenantId: string, taskId: string, commentId: string, userId: string, role: string, body: string) {
+    body = stripPasteJunk(body);
     const c = await this.repo.getComment(tenantId, commentId);
     if (!c || c.task_id !== taskId) throw AppException.notFound('Comment not found');
     if (c.author_id !== userId && role !== 'owner' && role !== 'manager') throw AppException.forbidden('Not your comment');

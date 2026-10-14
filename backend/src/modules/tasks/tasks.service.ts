@@ -1,3 +1,4 @@
+import { stripPasteJunk } from '../../common/text/paste-junk';
 import { WorkloadGuardService } from '../workload/workload.service';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
@@ -258,7 +259,7 @@ export class TasksService {
       columnId: column.id,
       status: column.name,
       title: dto.title,
-      description: dto.description ?? null,
+      description: stripPasteJunk(dto.description ?? null),
       assigneeId: dto.assigneeId ?? null,
       createdBy: dto.managerId ?? actorId, // руководитель: явный из формы либо создатель
       priority: dto.priority ?? null,
@@ -382,7 +383,7 @@ export class TasksService {
     const updated = await this.repo.update(tenantId, id, {
       client_id: dto.clientId === '' ? null : dto.clientId,
       title: dto.title,
-      description: dto.description,
+      description: stripPasteJunk(dto.description),
       assignee_id: dto.assigneeId,
       created_by: dto.managerId,
       is_blocked: dto.isBlocked,

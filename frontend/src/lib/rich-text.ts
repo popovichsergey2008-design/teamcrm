@@ -159,6 +159,12 @@ function inlineMd(node: NodeLike): string {
   const tag = node.nodeName.toLowerCase();
   const inner = () => Array.from(node.childNodes).map(inlineMd).join('');
   switch (tag) {
+    /*
+      Служебное содержимое буфера — не текст (#1559). Google Таблицы кладут в HTML
+      <style><!--td {border: 1px solid #cccccc;}…--></style>, и его содержимое
+      приезжало в сообщение и комментарий как «<!--td {…}-->Изистом Новосибирск».
+    */
+    case 'style': case 'script': case 'head': case 'title': case 'meta': case 'template': case 'noscript': return '';
     case 'br': return '\n';
     case 'strong': case 'b': {
       const t = inner();
@@ -266,3 +272,15 @@ export function htmlToMd(root: NodeLike): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
+
+/**
+ * Плоский текст из буфера без служебного мусора (#1559). Google Таблицы иногда кладут
+ * стиль ячейки и в простой текст: «<!--td {border: 1px solid #cccccc;}br {…}-->». HTML-
+ * комментарии и блоки <style> человек сам не печатает — убираем их целиком.
+ */
+export function cleanPastedText(text: string): string {
+  return String(text ?? '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+}
+

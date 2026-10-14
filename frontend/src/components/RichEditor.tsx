@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { hydrateImages } from './RichText';
-import { htmlToMd, mdToHtml } from '../lib/rich-text';
+import { cleanPastedText, htmlToMd, mdToHtml } from '../lib/rich-text';
 import { promptText } from './ui/dialog';
 
 /**
@@ -114,11 +114,18 @@ export function RichEditor({ value, onChange, onUploadImage, placeholder, autoFo
       void insertImage(image);
       return;
     }
-    const text = e.clipboardData?.getData('text/plain');
+    const text = cleanPastedText(e.clipboardData?.getData('text/plain') ?? '');
     if (text) {
       e.preventDefault();
       document.execCommand('insertText', false, text);
       emit();
+    } else if (e.clipboardData?.getData('text/html')) {
+      // только HTML (бывает у Таблиц) — не даём браузеру вставить стили как есть
+      e.preventDefault();
+      const doc = new DOMParser().parseFromString(e.clipboardData.getData('text/html'), 'text/html');
+      doc.querySelectorAll('style, script, meta, title, template, noscript').forEach((n) => n.remove());
+      const plain = cleanPastedText(doc.body.textContent ?? '').trim();
+      if (plain) { document.execCommand('insertText', false, plain); emit(); }
     }
   };
 

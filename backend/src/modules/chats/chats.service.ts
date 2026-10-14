@@ -1,3 +1,4 @@
+import { stripPasteJunk } from '../../common/text/paste-junk';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { NlService } from '../nl/nl.service';
@@ -316,7 +317,7 @@ export class ChatsService {
     reply?: { toId?: string | null; excerpt?: string | null },
   ) {
     const chat = await this.access(tenantId, chatId, user);
-    const text = (body ?? '').trim();
+    const text = stripPasteJunk(body ?? '').trim();
     if (!text && !fileId) throw AppException.validation('Пустое сообщение');
 
     const rootId = await this.threadRoot(tenantId, chatId, thread?.rootId ?? null);
@@ -1495,7 +1496,7 @@ export class ChatsService {
     const message = await this.repo.message(tenantId, messageId);
     if (!message || String(message.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
     if (String(message.author_id) !== String(user.userId)) throw AppException.forbidden('Это не ваше сообщение');
-    const text = String(body ?? '').trim();
+    const text = stripPasteJunk(String(body ?? '')).trim();
     // Пустое сообщение — это удаление, и делается оно отдельной кнопкой: иначе
     // человек стирает текст, а в переписке остаётся пустой пузырь.
     if (!text && !message.file_id) throw AppException.validation('Пустое сообщение — удалите его целиком');
