@@ -118,6 +118,23 @@ say "поднимаем хранилища, nginx и цвет $NEW; ждём з�
 # выкладка «успешна» ровно в тот момент, когда приложение ещё не поднялось.
 docker compose --profile "$NEW" up -d --wait --wait-timeout 240
 
+# ── прежняя сборка интерфейса — рядом с новой ────────────────────────────────
+# Белый экран (14.10): у человека открыта вкладка прежней версии, он переходит в
+# раздел, которого ещё не открывал, — браузер просит кусок СТАРОЙ сборки, а в новом
+# контейнере его уже нет (404), и приложение падает до пустого фона. Поэтому файлы
+# прежней сборки копируем в новый контейнер до переключения: открытые вкладки
+# продолжают работать. Старше 14 дней не тащим — иначе каталог растёт бесконечно.
+OLD_WEB="$(docker ps --format '{{.Names}}' | grep -E "^teamcrm-crm-web(-${OLD})?-1$" | head -1 || true)"
+NEW_WEB="$(docker ps --format '{{.Names}}' | grep -E "^teamcrm-crm-web-${NEW}-1$" | head -1 || true)"
+if [ -n "$OLD_WEB" ] && [ -n "$NEW_WEB" ]; then
+  rm -rf /tmp/web-assets-prev && mkdir -p /tmp/web-assets-prev
+  if docker cp "$OLD_WEB:/usr/share/nginx/html/assets/." /tmp/web-assets-prev/ >/dev/null 2>&1; then
+    find /tmp/web-assets-prev -type f -mtime +14 -delete 2>/dev/null || true
+    docker cp /tmp/web-assets-prev/. "$NEW_WEB:/usr/share/nginx/html/assets/" >/dev/null 2>&1       && say "файлы прежней сборки перенесены: $(find /tmp/web-assets-prev -type f | wc -l)"       || say "ВНИМАНИЕ: не удалось перенести файлы прежней сборки — открытые вкладки обновятся сами"
+  fi
+  rm -rf /tmp/web-assets-prev
+fi
+
 # ── переключение ──────────────────────────────────────────────────────────────
 say "переключаем nginx на $NEW (мягкая перезагрузка, соединения не рвутся)"
 printf 'set $api_upstream crm-api-%s:3000;\nset $web_upstream crm-web-%s:80;\n' "$NEW" "$NEW" > "$COLOR_FILE"

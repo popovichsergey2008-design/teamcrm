@@ -6106,3 +6106,10 @@ body.is-dragging { user-select: none; cursor: grabbing; }
 }
 .app-update-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
 .app-update-title { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: var(--fs-sm); color: var(--text); }
+
+/* перехват падения экрана (14.10): вместо пустого фона — сообщение и «Обновить» */
+.screen-crash { flex: 1; display: grid; place-items: center; padding: 24px; min-height: 240px; }
+.screen-crash-full { min-height: 100vh; background: var(--bg); color: var(--text); }
+.screen-crash-card { max-width: 420px; text-align: center; display: grid; gap: 10px; }
+.screen-crash-card h2 { margin: 0; font-size: 18px; }
+.screen-crash-actions { display: flex; gap: 8px; justify-content: center; }

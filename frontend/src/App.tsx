@@ -1,3 +1,4 @@
+import { ScreenBoundary } from './components/ScreenBoundary';
 import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { CLIENTS_ENABLED } from './config';
 import { useAuth } from './state/auth';
@@ -102,7 +103,8 @@ const pageFallback = <div className="center-screen"><div className="spinner" /><
  * позицию прокрутки, а сеть не трогается вовсе.
  */
 function Pane({ active, children }: { active: boolean; children: ReactNode }) {
-  return <div className="pane" style={{ display: active ? 'flex' : 'none' }}>{children}</div>;
+  // сбой одного раздела не роняет приложение до пустого фона (14.10)
+  return <div className="pane" style={{ display: active ? 'flex' : 'none' }}><ScreenBoundary>{children}</ScreenBoundary></div>;
 }
 
 /*
