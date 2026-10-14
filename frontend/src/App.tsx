@@ -41,7 +41,6 @@ import { platform } from './platform';
 import { useAppLock } from './hooks/useAppLock';
 import { useDeviceRegistration } from './hooks/useDeviceRegistration';
 import { LockScreen } from './components/LockScreen';
-import { UpdateSheet } from './components/UpdateSheet';
 import { useMobileConfig } from './hooks/useMobileConfig';
 import { openInboxItem, useMobileInbox } from './hooks/useMobileInbox';
 import { useLiveSignals } from './hooks/useLiveSignals';
@@ -70,6 +69,8 @@ const TaskBatchPage = lazy(() => import('./pages/TaskBatchPage').then((m) => ({ 
 // Клиенты (ТЗ-17) — отдельным куском: пока раздел только в сборке для dev
 const ClientsPage = lazy(() => import('./pages/clients/ClientsPage').then((m) => ({ default: m.ClientsPage })));
 // «Пульс команды» (ТЗ-19) — своим куском сборки со своими стилями: экран руководителя, первый экран за него не платит
+// окно обновления — только телефону и только при новой версии: из стартовой сборки вон
+const UpdateSheet = lazy(() => import('./components/UpdateSheet').then((m) => ({ default: m.UpdateSheet })));
 const PulsePage = lazy(() => import('./pages/PulsePage').then((m) => ({ default: m.PulsePage })));
 const prefetchRadar = () => { void import('./pages/PulsePage').then((m) => m.prefetchPulse()); };
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
@@ -534,7 +535,7 @@ export function App() {
   if (lock.locked) return <LockScreen onUnlock={lock.unlock} />;
   // Версия оболочки ниже минимальной — только «скачать обновление».
   if (mobile.verdict === 'required' && mobile.config?.android) {
-    return <UpdateSheet release={mobile.config.android} required onClose={() => undefined} />;
+    return <Suspense fallback={null}><UpdateSheet release={mobile.config.android} required onClose={() => undefined} /></Suspense>;
   }
 
   // клиент видит отдельный портал (без внутренних досок/финансов)
@@ -816,7 +817,7 @@ export function App() {
         в этом запуске; при следующем запуске окно появится снова.
       */}
       {mobile.offer && mobile.config?.android && (
-        <UpdateSheet release={mobile.config.android} onClose={mobile.skip} />
+        <Suspense fallback={null}><UpdateSheet release={mobile.config.android} onClose={mobile.skip} /></Suspense>
       )}
       {callId && (
         <Suspense fallback={null}><CallPanel
