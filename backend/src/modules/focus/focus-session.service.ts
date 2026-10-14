@@ -214,6 +214,25 @@ export class FocusSessionService {
    * Сессию не закрываем: итог («готово», «ещё фокус», «перерыв») выбирает человек.
    */
   async notifyEnded(): Promise<number> {
+    /*
+      Забытые сессии (#1563). Время вышло, а человек не ответил «готово / ещё / перерыв»
+      и ушёл: сессия висела «идёт» бесконечно — кнопка фокуса пропадала у всех задач,
+      «не беспокоить» не снималось. Через 2 часа после конца — закрываем как сделанную
+      (до запланированного конца); пауза дольше 8 часов — отменяем.
+    */
+    const stale = await this.db.many<{ tenant_id: string; user_id: string }>(
+      `UPDATE focus_sessions
+          SET status = CASE WHEN status = 'running' THEN 'completed' ELSE 'cancelled' END,
+              ended_at = CASE WHEN status = 'running' THEN planned_end_at ELSE now() END
+        WHERE (status = 'running' AND planned_end_at < now() - interval '2 hours')
+           OR (status = 'paused' AND COALESCE(paused_at, started_at) < now() - interval '8 hours')
+        RETURNING tenant_id::text, user_id::text`,
+    ).catch(() => []);
+    for (const r of stale) {
+      this.presence.changed(r.tenant_id, r.user_id);
+      this.realtime.emitToUsers(r.tenant_id, [r.user_id], 'focus.session.completed', {});
+    }
+
     const rows = await this.db.many<any>(
       `UPDATE focus_sessions s SET end_notified_at = now()
         WHERE s.status = 'running' AND s.end_notified_at IS NULL

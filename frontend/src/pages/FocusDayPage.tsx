@@ -303,11 +303,17 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
               {item.kind === 'review' && !done && item.taskId && (
                 <Button variant={isMission ? 'primary' : 'outline'} size="sm" onClick={() => open(item)}><Icon name="check-circle" size={14} /> Открыть и принять</Button>
               )}
-              {item.kind === 'task' && !done && item.taskId && !session && (
+              {/*
+                #1563: глубокий фокус — и для проверки чужой работы. У руководителя тройка дня
+                бывает целиком из «Проверить и принять», и кнопки фокуса у него не было вовсе.
+              */}
+              {(item.kind === 'task' || item.kind === 'review') && !done && item.taskId && !session && (
                 <Button
-                  variant={isMission ? 'primary' : 'ghost'} size="sm" disabled={busy}
+                  variant={isMission && item.kind === 'task' ? 'primary' : item.kind === 'review' ? 'outline' : 'ghost'} size="sm" disabled={busy}
                   onClick={() => void startFocus(item)}
-                ><Icon name="target" size={14} /> {isMission ? 'Войти в глубокий фокус · 50 мин' : 'Фокус · 50 мин'}</Button>
+                ><Icon name="target" size={14} /> {item.kind === 'review'
+                  ? (isMission ? 'Глубокий фокус на проверку · 50 мин' : 'Фокус на проверку · 50 мин')
+                  : (isMission ? 'Войти в глубокий фокус · 50 мин' : 'Фокус · 50 мин')}</Button>
               )}
               {item.kind === 'task' && !done && item.taskId && !item.startedAt && (
                 <Button variant="outline" size="sm" disabled={busy} title="Задача — в «В работе», статус — «работаю над задачей». Таймер не запускается." onClick={() => void takeToWork(item)}>
