@@ -192,7 +192,16 @@ function PostCall({ meetingId }: { meetingId: string }) {
       await load();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось создать задачу'); }
   };
-  const reject = async (d: any) => { try { await api.rejectMeetingDraft(d.id); await load(); } catch { /* */ } };
+  const reject = async (d: any) => {
+    try { await api.rejectMeetingDraft(d.id); await load(); }
+    catch (e) {
+      // черновика уже нет — встречу разобрали заново: свежий список вместо молчания
+      await load();
+      setErr(e instanceof ApiError && e.code === 'NOT_FOUND'
+        ? 'Список задач обновился — встречу разобрали заново.'
+        : e instanceof ApiError ? e.message : 'Не удалось отклонить');
+    }
+  };
   /**
    * «Создать выбранные задачи» одним пакетом (§15–17). Упавшая не отменяет остальные
    * и остаётся черновиком с причиной; повтор создаёт только её.

@@ -214,6 +214,12 @@ function MeetingDetails({ id, projects, users, onChanged, seek = null }: {
   const load = useCallback(() => api.meetingDetails(id).then(setData).catch(() => undefined), [id]);
   useEffect(() => { load(); }, [load]);
   // идёт разбор (в том числе «Разобрать заново») — подтягиваем результат сам
+  // вернулись на вкладку — свежие черновики: пока её не было, встречу могли разобрать заново
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [load]);
   const busyStatus = ['queued', 'transcribing', 'analyzing'].includes(String(data?.meeting?.status ?? ''));
   useEffect(() => {
     if (!busyStatus) return undefined;
@@ -231,13 +237,28 @@ function MeetingDetails({ id, projects, users, onChanged, seek = null }: {
   // Готовы к созданию только те, у кого есть проект: без него задаче некуда лечь.
   const readyCount = pending.filter((d: any) => d.project_id).length;
 
+  /*
+    Черновика уже нет (14.10): встречу разобрали заново, и неподтверждённые черновики
+    заменились новыми, а на экране висел старый список — кнопки «Создать» и «Не
+    создавать» били в пустоту, ошибка молча глоталась. Теперь — свежий список и слово.
+  */
+  const stale = async (e: unknown) => {
+    if (e instanceof ApiError && e.code === 'NOT_FOUND') {
+      await load();
+      setErr('Список черновиков обновился — встречу разобрали заново. Проверьте задачи ещё раз.');
+      return true;
+    }
+    return false;
+  };
   const apply = async (d: any, patch: DraftChoice) => {
     setErr('');
     try { await api.applyMeetingDraft(d.id, patch); await load(); onChanged(); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось создать задачу'); }
+    catch (e) { if (!(await stale(e))) setErr(e instanceof ApiError ? e.message : 'Не удалось создать задачу'); }
   };
   const reject = async (d: any) => {
-    try { await api.rejectMeetingDraft(d.id); await load(); onChanged(); } catch { /* */ }
+    setErr('');
+    try { await api.rejectMeetingDraft(d.id); await load(); onChanged(); }
+    catch (e) { if (!(await stale(e))) setErr(e instanceof ApiError ? e.message : 'Не удалось отклонить черновик'); }
   };
 
   /**
