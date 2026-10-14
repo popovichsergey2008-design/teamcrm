@@ -110,7 +110,8 @@ export class FollowupsRepository {
             VALUES ($1, $2, 'followup', $3, $4, 'sent', $5, now())
        ON CONFLICT (tenant_id, dedup_key) DO NOTHING
          RETURNING id::text`,
-      [input.tenantId, input.userId, input.taskId, input.text, input.dedupKey],
+      // text — VARCHAR(300): длинное название задачи не должно ронять вопрос (#1572)
+      [input.tenantId, input.userId, input.taskId, clip300(input.text), input.dedupKey],
     );
     return row?.id ?? null;
   }
@@ -141,4 +142,8 @@ export class FollowupsRepository {
       [pingId],
     );
   }
+}
+
+function clip300(s: string): string {
+  return s.length <= 300 ? s : `${s.slice(0, 299)}…`;
 }

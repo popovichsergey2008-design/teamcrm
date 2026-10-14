@@ -17,7 +17,7 @@ import { findSlots } from '../anthill/slot-rules';
 import {
   ACTIONS_FOR, ActionType, band, BOTTLENECK_TITLE, bottleneckSeverity, bottleneckType, bottleneckWhy, BottleneckType,
   capacityPct, catchUpPlan, Decision, decisionScore, DEFAULT_NORM_POINTS, delayRisk, forecast, FORECAST_VERSION,
-  HEALTH_VERSION, healthComponents, healthScore, isStuck, loadPoints, pickRebalance, projectRisk, taskPoints,
+  HEALTH_VERSION, healthComponents, healthScore, isStuck, loadPoints, pickRebalance, projectRisk, shortTitle, taskPoints,
   velocityDelta, verdict, victories, zone,
 } from './pulse-rules';
 import { OpenTaskRow, PulseRepository } from './pulse.repository';
@@ -156,6 +156,7 @@ export class PulseService {
       const f = forecast({ remaining: p.open, weekly: p.weekly, planDate: p.targetDate ? new Date(`${p.targetDate}T18:00:00Z`) : null, now });
       const risk = projectRisk({
         open: p.open, overdue: overdueBy.get(p.id) ?? 0, stuck: stuckBy.get(p.id) ?? 0, delayDays: f.delayDays,
+        stalled: f.stalled, blocked: tasks.filter((t) => t.projectId === p.id && t.isBlocked).length,
         onOverloaded: p.open ? (onOver.get(p.id) ?? 0) / p.open : 0, last7: p.weekly[3], prev7: p.weekly[2],
       });
       const projTasks = tasks.filter((t) => t.projectId === p.id);
@@ -168,6 +169,9 @@ export class PulseService {
         factors.push(`просрочено: ${overdueBy.get(p.id)}${where && (st!.review || st!.approval || st!.client) ? ` (${where})` : ''}`);
       }
       if ((stuckBy.get(p.id) ?? 0) > 0) factors.push(`без движения: ${stuckBy.get(p.id)}`);
+      const blockedN = projTasks.filter((t) => t.isBlocked).length;
+      if (blockedN) factors.push(`заблокировано: ${blockedN}`);
+      if (f.stalled) factors.push('за 4 недели не закрыто ни одной задачи');
       const inReview = projTasks.filter((t) => t.inReview).length;
       if (inReview) factors.push(`ждут проверки: ${inReview}`);
       factors.push(`темп ${f.perWeek} задач в неделю`);
@@ -206,11 +210,12 @@ export class PulseService {
     const score = healthScore(components);
     const vDelta = velocityDelta(stats.last7, stats.prev7);
     const stuckGroups = new Map<string, number>();
+    // проверка — узкое место этапа и проверяющего, а не того, кто давно сдал работу (ТЗ-30, п. 15)
+    const groupOf = (b: (typeof bottlenecks)[number]) => (b.type === 'WAITING_REVIEW'
+      ? `этап проверки${b.reviewer ? ` (проверяет ${b.reviewer})` : ''}`
+      : b.assignee && (b.type === 'NO_ACTIVITY' || b.type === 'ASSIGNEE_OVERLOADED') ? b.assignee : null);
     for (const b of bottlenecks) {
-      // проверка — узкое место этапа и проверяющего, а не того, кто давно сдал работу (ТЗ-30, п. 15)
-      const key = b.type === 'WAITING_REVIEW'
-        ? `этап проверки${b.reviewer ? ` (проверяет ${b.reviewer})` : ''}`
-        : b.assignee && (b.type === 'NO_ACTIVITY' || b.type === 'ASSIGNEE_OVERLOADED') ? b.assignee : null;
+      const key = groupOf(b);
       if (key) stuckGroups.set(key, (stuckGroups.get(key) ?? 0) + 1);
     }
     const topGroup = [...stuckGroups.entries()].sort((x, y) => y[1] - x[1])[0];
@@ -221,6 +226,7 @@ export class PulseService {
       overloaded: workload.filter((w) => w.pct > 100).map((w) => ({ name: w.name, pct: w.pct })),
       decisions: decisions.length,
       lateProjects: projectViews.filter((p) => p.forecast.delayDays && p.forecast.delayDays > 0).map((p) => ({ name: p.name, delayDays: p.forecast.delayDays! })),
+      stalledProjects: projectViews.filter((p) => p.forecast.stalled && p.targetDate).map((p) => p.name),
     });
 
     const completed = projects.filter((p) => p.open === 0 && p.weekly[3] > 0).map((p) => p.name);
@@ -231,9 +237,13 @@ export class PulseService {
       health: { score, zone: zone(score), components, version: HEALTH_VERSION },
       verdict: {
         ...v,
+        // #1573: «застряли 50 задач» в вердикте кликабельно — вот эти задачи
+        stuck: topGroup && topGroup[1] >= 2
+          ? { title: topGroup[0], count: topGroup[1], items: bottlenecks.filter((b) => groupOf(b) === topGroup[0]).slice(0, 100) }
+          : null,
         sources: { projects: projectViews.length, tasks: tasks.length, stuck: bottlenecks.length, people: workload.length, last7: stats.last7, prev7: stats.prev7 },
       },
-      decisions: decisions.slice(0, 30).map((d) => ({ ...d, since: d.since.toISOString(), dueAt: d.dueAt?.toISOString() ?? null })),
+      decisions: decisions.slice(0, 100).map((d) => ({ ...d, since: d.since.toISOString(), dueAt: d.dueAt?.toISOString() ?? null })),
       bottlenecks: bottlenecks.slice(0, 30),
       // ТЗ-30: всё сдал на проверку — человек остаётся в списке: «передано на проверку N»
       workload: workload.filter((w) => w.active > 0 || w.meetingHours > 0 || w.reviews > 0 || w.submitted > 0 || w.returned > 0),
@@ -271,7 +281,7 @@ export class PulseService {
         if (last && Date.now() - last.getTime() < NUDGE_COOLDOWN_H * 3_600_000) {
           throw AppException.conflict(`По этой задаче уже спрашивали ${last.toLocaleString('ru-RU', { timeZone: tz, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} — дайте человеку ответить`);
         }
-        preview = `Спросить ${t.assigneeName}:\n«По задаче «${t.title}» давно не было обновлений. Какой сейчас статус?»\nВарианты ответа: успеваю · есть блокер · нужен перенос.`;
+        preview = `Спросить ${t.assigneeName}:\n«По задаче #${t.id} «${shortTitle(t.title)}» давно не было обновлений. Какой сейчас статус?»\nВарианты ответа: успеваю · есть блокер · нужен перенос.`;
         payload = { ...payload, userId: t.assigneeId };
         break;
       }
@@ -327,9 +337,40 @@ export class PulseService {
     return { status: 'rejected' };
   }
 
-  async confirm(a: Actor, id: string) {
+  /**
+   * Ручной выбор в балансировке (#1575): передавать можно только задачи из этого
+   * предложения и только действующим сотрудникам; проект «только для своих» —
+   * его участникам и руководству.
+   */
+  private async manualMoves(a: Actor, x: Record<string, unknown>, override: { taskId: string; toId?: string | null }[]) {
+    const allowedTasks = new Set(((x.taskIds as string[]) ?? (x.moves as { taskId: string }[] ?? []).map((m) => m.taskId)).map(String));
+    const [people, tasks, members] = await Promise.all([
+      this.repo.people(a.tenantId, new Date(), new Date()), this.repo.openTasks(a.tenantId), this.repo.projectMembers(a.tenantId),
+    ]);
+    const out: { taskId: string; toId: string }[] = [];
+    for (const o of override) {
+      if (!o.toId) continue;
+      const taskId = String(o.taskId); const toId = String(o.toId);
+      if (!allowedTasks.has(taskId)) throw AppException.validation(`Задача #${taskId} не из этой балансировки`);
+      const to = people.find((p) => p.id === toId);
+      if (!to) throw AppException.validation('Такого сотрудника нет или он отключён');
+      const t = tasks.find((y) => y.id === taskId);
+      if (!t) throw AppException.conflict(`Задача #${taskId} уже закрыта`);
+      if (t.assigneeId === toId) continue;
+      if (t.projectVisibility === 'members' && !(members.get(t.projectId)?.has(toId)) && to.role !== 'owner' && to.role !== 'manager') {
+        throw AppException.validation(`${to.name} не участник проекта задачи #${taskId}`);
+      }
+      out.push({ taskId, toId });
+    }
+    return out;
+  }
+
+  async confirm(a: Actor, id: string, override?: { taskId: string; toId?: string | null }[]) {
     const p = await this.repo.proposal(a.tenantId, a.userId, id);
     if (!p) throw AppException.notFound('Предложение не найдено');
+    // ручной выбор проверяем ДО захвата предложения: ошибка в выборе не должна его «сжечь»
+    const manual = p.action_type === 'REBALANCE' && override ? await this.manualMoves(a, p.payload_json ?? {}, override) : null;
+    if (manual && !manual.length) throw AppException.validation('Выберите, кому передать хотя бы одну задачу');
     if (!(await this.repo.claimProposal(id))) throw AppException.conflict('Предложение уже обработано или устарело — откройте его заново');
     const x = p.payload_json ?? {};
     try {
@@ -375,11 +416,12 @@ export class PulseService {
           await this.need(a, 'radar.rebalance', 'Перераспределять нагрузку может руководство');
           await this.need(a, 'task.assign', 'Нет права назначать исполнителя');
           let done = 0;
-          for (const m of (x.moves as { taskId: string; toId: string }[]) ?? []) {
+          const moves = manual ?? ((x.moves as { taskId: string; toId: string }[]) ?? []);
+          for (const m of moves) {
             try { await this.tasks.update(a.tenantId, m.taskId, { assigneeId: m.toId } as any, a.userId); done += 1; } catch (e) { this.log.warn(`перенос #${m.taskId}: ${(e as Error).message}`); }
           }
           void this.security.record({ tenantId: a.tenantId, actorId: a.userId, event: 'radar.rebalance.executed', metadata: { moves: x.moves } }).catch(() => undefined);
-          text = `Передано задач: ${done}.`;
+          text = done === moves.length ? `Передано задач: ${done}.` : `Передано задач: ${done} из ${moves.length} — остальные не удалось, проверьте права на проекты.`;
           break;
         }
         default: throw new Error('Неизвестное действие');
@@ -401,7 +443,7 @@ export class PulseService {
   private async nudge(a: Actor, taskId: string, userId: string) {
     const t = (await this.repo.openTasks(a.tenantId)).find((x) => x.id === taskId);
     if (!t) throw new Error('Задача уже закрыта');
-    const text = `По задаче «${t.title}» давно не было обновлений. Какой сейчас статус? Ответьте в задаче: успеваю · есть блокер · нужен перенос.`;
+    const text = `По задаче #${t.id} «${shortTitle(t.title)}» давно не было обновлений. Какой сейчас статус? Ответьте в задаче: успеваю · есть блокер · нужен перенос.`;
     if (t.deadlineAt) {
       const pingId = await this.followups.addPing({ tenantId: a.tenantId, userId, taskId, text, dedupKey: `pulse:${taskId}:${Date.now()}` });
       await this.followups.remember(a.tenantId, taskId, userId, t.deadlineAt.toISOString(), pingId).catch(() => false);
@@ -441,11 +483,43 @@ export class PulseService {
         : null,
     }));
     const r = pickRebalance({ id: from.id, name: from.name, points: from.points, norm: from.norm }, movable, cands, now);
-    if (!r.moves.length) return { id: null, moves: [], before: r.before, after: r.after, loads: [], note: 'Подходящих получателей нет: остальные загружены или не работают в этих направлениях.' };
+    /*
+      #1575: ИИ предлагает, решает руководитель. В окне — все задачи, которые можно
+      передать (не на проверке), у каждой список всех сотрудников: по умолчанию стоит
+      совет ИИ, остальные — «не передавать». Подходящих по правилам нет — окно всё равно
+      открывается, и передать можно вручную.
+    */
+    const suggested = new Map(r.moves.map((m) => [m.taskId, m]));
+    const order: Record<string, number> = { low: 0, normal: 1, high: 2, urgent: 3 };
+    const pool = movable.filter((t) => !t.inReview)
+      .sort((x, y) => Number(suggested.has(y.id)) - Number(suggested.has(x.id))
+        || (order[x.priority] ?? 1) - (order[y.priority] ?? 1)
+        || (y.deadlineAt?.getTime() ?? Infinity) - (x.deadlineAt?.getTime() ?? Infinity))
+      .slice(0, 40);
+    const items = pool.map((t) => ({
+      taskId: t.id, title: t.title, cost: taskPoints(t, now),
+      toId: suggested.get(t.id)?.toId ?? null, reason: suggested.get(t.id)?.reason ?? null,
+      allowedIds: t.allowed ? [...t.allowed] : null,
+    }));
+    const staff = cands.filter((c) => c.id !== from.id)
+      .map((c) => ({ id: c.id, name: c.name, points: c.points, norm: c.norm, available: c.available }));
     const loads = Object.entries(r.loads).map(([id, v]) => ({ id, name: cands.find((c) => c.id === id)?.name ?? id, ...v }));
-    const preview = r.moves.map((m) => `#${m.taskId} «${m.title}»: ${from.name} → ${m.toName}`).join('\n') + `\nНагрузка ${from.name}: ${r.before}% → ${r.after}%`;
-    const p = await this.repo.createProposal({ tenantId: a.tenantId, actorId: a.userId, sourceType: 'workload', sourceId: from.id, actionType: 'REBALANCE', payload: { moves: r.moves.map((m) => ({ taskId: m.taskId, toId: m.toId })) }, preview, reason: null });
-    return { id: p!.id, moves: r.moves, before: r.before, after: r.after, loads, fromName: from.name, cost: r.moves.map((m) => taskPoints(movable.find((t) => t.id === m.taskId)!, now)) };
+    const preview = r.moves.length
+      ? r.moves.map((m) => `#${m.taskId} «${m.title}»: ${from.name} → ${m.toName}`).join('\n') + `\nНагрузка ${from.name}: ${r.before}% → ${r.after}%`
+      : `Ручная балансировка: ${from.name}`;
+    const p = items.length
+      ? await this.repo.createProposal({
+        tenantId: a.tenantId, actorId: a.userId, sourceType: 'workload', sourceId: from.id, actionType: 'REBALANCE',
+        payload: { moves: r.moves.map((m) => ({ taskId: m.taskId, toId: m.toId })), taskIds: items.map((x) => x.taskId) }, preview, reason: null,
+      })
+      : null;
+    return {
+      id: p?.id ?? null, moves: r.moves, before: r.before, after: r.after, loads, fromName: from.name,
+      fromPoints: from.points, fromNorm: from.norm, items, people: staff,
+      note: r.moves.length ? undefined : (items.length
+        ? 'ИИ не нашёл, кому передать без перегруза: остальные загружены или не работают в этих направлениях. Выберите исполнителя вручную.'
+        : 'Передавать нечего: все задачи сотрудника на проверке.'),
+    };
   }
 
   // ── мелкое ──
@@ -476,3 +550,4 @@ export class PulseService {
 }
 
 export type { BottleneckType };
+

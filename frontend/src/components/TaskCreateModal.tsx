@@ -558,22 +558,32 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
             )}
           </Field>
 
-          {workload && (
-            <WorkloadWarning
-              info={workload}
-              busy={busy}
-              onMove={workload.alternativeDeadline ? () => {
-                const v = localInput(workload.alternativeDeadline!);
-                setDeadline(v);
-                // свободный день — это и есть решение: ставим без повторного предупреждения
-                void submit({ deadline: v, confirmWorkload: true });
-              } : undefined}
-              onReassign={(id) => { setAssigneeId(id); void submit({ assigneeId: id }); }}
-              onKeep={() => void submit({ confirmWorkload: true })}
-            />
-          )}
-          {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
         </div>
+
+        {/*
+          #1576: почему задача не создалась — прямо над кнопкой «Создать», вне прокрутки.
+          В конце длинной формы предупреждение о перегрузе оставалось за краем окна:
+          нажал «Создать» — ничего не произошло, а ответ надо искать прокруткой.
+        */}
+        {(workload || err) && (
+          <div className="ui-modal-alerts">
+            {workload && (
+              <WorkloadWarning
+                info={workload}
+                busy={busy}
+                onMove={workload.alternativeDeadline ? () => {
+                  const v = localInput(workload.alternativeDeadline!);
+                  setDeadline(v);
+                  // свободный день — это и есть решение: ставим без повторного предупреждения
+                  void submit({ deadline: v, confirmWorkload: true });
+                } : undefined}
+                onReassign={(id) => { setAssigneeId(id); void submit({ assigneeId: id }); }}
+                onKeep={() => void submit({ confirmWorkload: true })}
+              />
+            )}
+            {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
+          </div>
+        )}
 
         <footer className="ui-modal-foot">
           <span className="ui-modal-hint">Ctrl+Enter — создать</span>

@@ -500,6 +500,10 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
   padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg-elev-2);
 }
 .ui-modal-hint { margin-right: auto; color: var(--text-mut); font-size: var(--fs-xs); }
+/* #1576: причина отказа — над кнопками, вне прокрутки формы */
+.ui-modal-alerts { display: flex; flex-direction: column; gap: 8px; padding: 10px 20px 0; max-height: 45%; overflow-y: auto; border-top: 1px solid var(--border); }
+.nl-draft-alerts { display: flex; flex-direction: column; gap: 8px; }
+.nl-draft-alerts:empty { display: none; }
 
 .tc-row { display: flex; gap: 8px; align-items: center; }
 .tc-grid3 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, .8fr); gap: 12px; }

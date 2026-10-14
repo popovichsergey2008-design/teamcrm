@@ -1,6 +1,6 @@
 import {
   band, pickRebalance, RebalanceCandidate, MovableTask, bottleneckType, capacityPct, catchUpPlan, decisionScore, delayRisk, forecast, healthComponents, healthScore,
-  isStuck, loadPoints, projectRisk, TaskFact, velocityDelta, verdict, victories, zone,
+  isStuck, loadPoints, projectRisk, shortTitle, TaskFact, velocityDelta, verdict, victories, zone,
 } from './pulse-rules';
 
 const NOW = new Date('2026-10-09T09:00:00Z');
@@ -97,6 +97,36 @@ describe('pulse-rules: прогноз', () => {
     expect(f.neededPerWeek).toBe(15);
     expect(catchUpPlan(f, { topBlockers: [{ id: '7', title: 'API' }], noAssignee: [], lowPriority: 3 }))
       .toEqual(['Закрывать 15 задач в неделю вместо 10.', 'Снять затык по #7 «API».', 'Вынести из этого срока задачи с низким приоритетом: 3.']);
+  });
+
+  it('#1577: вероятность срыва — от темпа и его разброса; стоящий проект — почти наверняка', () => {
+    const plan = new Date(NOW.getTime() + 14 * D);
+    // ровно 10 в неделю, осталось 30 за две недели — скорее не успеют
+    expect(forecast({ remaining: 30, weekly: [10, 10, 10, 10], planDate: plan, now: NOW }).missChance).toBeGreaterThan(90);
+    // осталось 10 за две недели при темпе 10 — почти наверняка успеют
+    expect(forecast({ remaining: 10, weekly: [10, 10, 10, 10], planDate: plan, now: NOW }).missChance).toBeLessThan(5);
+    // ровно на грани — около половины
+    const edge = forecast({ remaining: 20, weekly: [10, 10, 10, 10], planDate: plan, now: NOW }).missChance!;
+    expect(edge).toBeGreaterThan(40); expect(edge).toBeLessThan(60);
+    // Nevada Movers 14.10: 8 открытых, за 4 недели ни одной закрытой, срок через 4,5 месяца
+    const st = forecast({ remaining: 8, weekly: [0, 0, 0, 0], planDate: new Date(NOW.getTime() + 137 * D), now: NOW });
+    expect(st).toMatchObject({ stalled: true, date: null, delayDays: null, missChance: 95 });
+    expect(catchUpPlan(st, { topBlockers: [{ id: '1317', title: '1 тз' }], noAssignee: [], lowPriority: 0 })[0]).toBe('Закрывать 0.5 задач в неделю вместо 0.');
+    // стоящий проект — риск выше, чем такой же, но двигающийся
+    const base = { open: 8, overdue: 2, stuck: 2, delayDays: null, onOverloaded: 0, last7: 0, prev7: 0 };
+    expect(projectRisk({ ...base, stalled: true }).score).toBeGreaterThan(projectRisk(base).score);
+    expect(projectRisk({ ...base, blocked: 4 }).score).toBeGreaterThan(projectRisk(base).score);
+    // без плана — без вероятности
+    expect(forecast({ remaining: 5, weekly: [1, 1, 1, 1], planDate: null, now: NOW }).missChance).toBeNull();
+  });
+
+  it('#1572: длинное название в вопросе исполнителю обрезается по слову', () => {
+    const long = 'Проект тим crm-включение голосового поиск-Принцип работы в CRM Team: Пользователь нажимает Alt + V, в центре экрана плавно появляется пульсирующий индикатор звуковой волны и текст';
+    const s = shortTitle(long);
+    expect(s.length).toBeLessThanOrEqual(121);
+    expect(s.endsWith('…')).toBe(true);
+    expect(long.startsWith(s.slice(0, -1))).toBe(true);
+    expect(shortTitle('  Короткое   название ')).toBe('Короткое название');
   });
 
   it('мало данных — ненадёжен; ничего не закрывают — даты нет', () => {

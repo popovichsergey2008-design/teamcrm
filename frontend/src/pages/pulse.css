@@ -60,6 +60,13 @@
   font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pulse-link:hover { text-decoration: underline; }
+/* #1573: цифра в вердикте — кнопка со списком за ней */
+.pulse-drill {
+  background: none; border: 0; padding: 0 2px; font: inherit; font-weight: 700; color: var(--accent); cursor: pointer;
+  text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px;
+}
+.pulse-drill:hover { text-decoration-style: solid; }
+.pulse-drill:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
 .pulse-link:focus-visible, .pulse-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 .pulse-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--border); }
@@ -105,7 +112,9 @@
 
 /* окна действий */
 .pulse-preview { white-space: pre-line; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); }
-.pulse-move { display: flex; flex-wrap: wrap; gap: 6px 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.pulse-move { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.pulse-move > b { flex: 1 1 100%; }
+.pulse-move-to { min-width: 220px; max-width: 100%; }
 .pulse-text { width: 100%; resize: vertical; }
 
 /* ТЗ-32: изменения по задачам */

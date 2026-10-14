@@ -630,6 +630,11 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
   const [approvalHabit, setApprovalHabit] = useStickyCheck('task.requiresApproval', true);
   const ctx = draft?.context ?? { projects: [], users: [], clients: [] };
   const files: File[] = draft?.files ?? [];
+  // #1576: появилась причина отказа — показываем её, даже если карточка прокручена
+  const alertRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (draft?.error || draft?.workload) alertRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [draft?.error, draft?.workload]);
   /** Одноимённые не копим: файл выбирают дважды чаще, чем прикладывают два одинаковых. */
   const addFiles = (list: FileList | null) => {
     if (!list?.length) return;
@@ -665,18 +670,6 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
             <Icon name="close" size={14} />
           </Button>
         </div>
-        {draft.error && (
-          <div className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {draft.error}</div>
-        )}
-        {draft.workload && (
-          <WorkloadWarning
-            info={draft.workload}
-            busy={busy}
-            onMove={draft.workload.alternativeDate ? () => onApply({ deadline: draft.workload.alternativeDate, confirmWorkload: true }) : undefined}
-            onReassign={(id) => onApply({ assigneeId: id })}
-            onKeep={() => onApply({ confirmWorkload: true })}
-          />
-        )}
         {draft.warnings?.map((w: string, i: number) => (
           <div key={i} className="error-text" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {w}</div>
         ))}
@@ -840,6 +833,21 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
           </div>
         )}
 
+        {/* #1576: почему не создалось — рядом с кнопкой, а не вверху карточки за краем экрана */}
+        <div ref={alertRef} className="nl-draft-alerts">
+          {draft.error && (
+            <div className="error-text" role="alert" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {draft.error}</div>
+          )}
+          {draft.workload && (
+            <WorkloadWarning
+              info={draft.workload}
+              busy={busy}
+              onMove={draft.workload.alternativeDate ? () => onApply({ deadline: draft.workload.alternativeDate, confirmWorkload: true }) : undefined}
+              onReassign={(id) => onApply({ assigneeId: id })}
+              onKeep={() => onApply({ confirmWorkload: true })}
+            />
+          )}
+        </div>
         {/* #1549: без проекта кнопка не прячется — нажатие объясняет, что проект обязателен, и подсвечивает поле */}
         <Button variant="primary" className="tv2-wide" onClick={() => onApply()} loading={busy}>
           {files.length ? `Создать задачу и прикрепить ${files.length}` : 'Создать задачу'}

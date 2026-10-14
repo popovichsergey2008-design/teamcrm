@@ -280,6 +280,22 @@ export interface Forecast {
   delayDays: number | null;
   /** Сколько нужно закрывать в неделю, чтобы успеть к плану. */
   neededPerWeek: number | null;
+  /**
+   * Вероятность не успеть к плану, % (#1577); null — плана нет. Темп недели — случайная
+   * величина с разбросом последних четырёх недель: успеем, если за оставшиеся недели
+   * закроем остаток. Ничего не закрывают — почти наверняка не успеют.
+   */
+  missChance: number | null;
+  /** Есть открытые задачи, а за четыре недели не закрыто ни одной — проект стоит. */
+  stalled: boolean;
+}
+
+/** Функция распределения стандартного нормального (приближение Абрамовица — Стиган). */
+function normCdf(z: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989423 * Math.exp((-z * z) / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return z > 0 ? 1 - p : p;
 }
 
 /**
@@ -302,18 +318,32 @@ export function forecast(i: ForecastInput): Forecast {
   const date = i.remaining === 0 ? i.now : perWeek > 0 ? new Date(i.now.getTime() + (i.remaining / perWeek) * 7 * D) : null;
   let delayDays: number | null = null;
   let neededPerWeek: number | null = null;
+  let missChance: number | null = null;
+  const stalled = i.remaining > 0 && total === 0;
   if (i.planDate) {
     if (date) delayDays = Math.round((date.getTime() - i.planDate.getTime()) / D);
     const weeksLeft = (i.planDate.getTime() - i.now.getTime()) / (7 * D);
     neededPerWeek = weeksLeft > 0 ? Math.ceil((i.remaining / weeksLeft) * 10) / 10 : null;
+    if (i.remaining === 0) missChance = 0;
+    else if (weeksLeft <= 0) missChance = 100;
+    else if (perWeek === 0) missChance = 95; // темп ноль: без перемен не успеют, но и прошлый месяц — не приговор
+    else {
+      // разброс не меньше пуассоновского: даже ровные четыре недели не гарантируют пятую
+      const sd = Math.sqrt(Math.max(variance, perWeek) * weeksLeft);
+      missChance = clamp(Math.round(normCdf((i.remaining - perWeek * weeksLeft) / sd) * 100), 1, 99);
+    }
   }
-  return { date, perWeek: Math.round(perWeek * 10) / 10, confidence, reliable, delayDays, neededPerWeek };
+  return { date, perWeek: Math.round(perWeek * 10) / 10, confidence, reliable, delayDays, neededPerWeek, missChance, stalled };
 }
 
 // ── риск проекта (§45) ──
 
 export interface ProjectRiskInput {
   open: number; overdue: number; stuck: number; delayDays: number | null;
+  /** #1577: проект стоит (ни одной закрытой задачи за 4 недели) — риск, даже если дату не назвать. */
+  stalled?: boolean;
+  /** Задачи с отметкой «заблокирована» — их нельзя закрыть, пока не снят блокер. */
+  blocked?: number;
   /** Доля открытых задач проекта у перегруженных людей. */
   onOverloaded: number;
   last7: number; prev7: number;
@@ -324,7 +354,10 @@ export function projectRisk(i: ProjectRiskInput): { score: number; level: 'high'
   const stuckRatio = i.open ? i.stuck / i.open : 0;
   const delay = i.delayDays && i.delayDays > 0 ? Math.min(25, i.delayDays * 2) : 0;
   const slowdown = i.prev7 > 0 && i.last7 < i.prev7 * 0.6 ? 10 : 0;
-  const score = Math.round(overdueRatio * 40 + stuckRatio * 25 + delay + i.onOverloaded * 10 + slowdown);
+  // раньше у стоящего проекта дата прогноза пустая — и опоздание не добавляло риска вовсе
+  const stall = i.stalled ? 15 : 0;
+  const blockedRatio = i.open ? (i.blocked ?? 0) / i.open : 0;
+  const score = Math.round(overdueRatio * 40 + stuckRatio * 25 + delay + i.onOverloaded * 10 + slowdown + stall + blockedRatio * 15);
   return { score, level: score >= 45 ? 'high' : score >= 20 ? 'medium' : 'low' };
 }
 
@@ -338,6 +371,8 @@ export interface VerdictInput {
   overloaded: { name: string; pct: number }[];
   decisions: number;
   lateProjects: { name: string; delayDays: number }[];
+  /** #1577: проекты со сроком, где за 4 недели не закрыто ни одной задачи. */
+  stalledProjects?: string[];
 }
 
 const COMPONENT_TITLE: Record<keyof HealthComponents, string> = {
@@ -359,6 +394,7 @@ export function verdict(i: VerdictInput): { headline: string; lines: string[] } 
   else if (i.topBottleneck) lines.push(`Главное узкое место: #${i.topBottleneck.id} «${i.topBottleneck.title}» — ${i.topBottleneck.why.toLowerCase()}.`);
   if (i.overloaded.length) lines.push(`Выше нормы загружены: ${i.overloaded.slice(0, 3).map((p) => `${p.name} (${p.pct}%)`).join(', ')}.`);
   if (i.lateProjects.length) lines.push(`Не успевают к сроку: ${i.lateProjects.slice(0, 2).map((p) => `${p.name} (+${p.delayDays} дн.)`).join(', ')}.`);
+  if (i.stalledProjects?.length) lines.push(`Стоят на месте при заданном сроке: ${i.stalledProjects.slice(0, 2).join(', ')} — за 4 недели не закрыто ни одной задачи.`);
 
   const rec: string[] = [];
   if (i.overloaded.length) rec.push('перераспределить задачи с перегруженных');
@@ -385,7 +421,8 @@ export function catchUpPlan(f: Forecast, i: {
   topBlockers: { id: string; title: string }[]; noAssignee: { id: string; title: string }[]; lowPriority: number;
 }): string[] {
   const out: string[] = [];
-  if (f.delayDays === null || f.delayDays <= 0) return out;
+  // #1577: проект стоит — даты прогноза нет, но догонять надо тем более
+  if (!(f.stalled && f.neededPerWeek !== null) && (f.delayDays === null || f.delayDays <= 0)) return out;
   if (f.neededPerWeek !== null) out.push(`Закрывать ${f.neededPerWeek} задач в неделю вместо ${f.perWeek}.`);
   for (const t of i.topBlockers.slice(0, 2)) out.push(`Снять затык по #${t.id} «${t.title}».`);
   for (const t of i.noAssignee.slice(0, 2)) out.push(`Назначить исполнителя на #${t.id} «${t.title}».`);
@@ -488,4 +525,13 @@ export function pickRebalance(
     if (before !== after) loads[c.id] = { before, after };
   }
   return { moves, before: Math.round((from.points / from.norm) * 100), after: Math.round((fromPoints / from.norm) * 100), loads };
+}
+
+/** Название в вопросе исполнителю: длинное (описание в заголовке) — обрезаем по слову (#1572). */
+export function shortTitle(title: string, max = 120): string {
+  const s = String(title ?? '').replace(/\s+/g, ' ').trim();
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const sp = cut.lastIndexOf(' ');
+  return `${(sp > max * 0.6 ? cut.slice(0, sp) : cut).replace(/[\s,.;:–—-]+$/, '')}…`;
 }

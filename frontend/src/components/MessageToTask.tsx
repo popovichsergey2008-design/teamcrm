@@ -458,6 +458,13 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
               </div>
             </div>
 
+            <TaskTagsField
+              task={{ title: draft.title, description: draft.description, checklist: draft.checklist }}
+              value={tags}
+              onChange={setTags}
+            />
+
+            {/* #1576: перегруз — рядом с кнопкой «Создать задачу» */}
             {workload && (
               <WorkloadWarning
                 info={workload}
@@ -467,13 +474,6 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                 onKeep={() => void create({ confirmWorkload: true })}
               />
             )}
-
-            <TaskTagsField
-              task={{ title: draft.title, description: draft.description, checklist: draft.checklist }}
-              value={tags}
-              onChange={setTags}
-            />
-
             {err && <div className="error-text">{err}</div>}
             <div className="drawer-row">
               <button

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Header, Param, Patch, Post, Query } from '@nestjs/common';
-import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
@@ -20,6 +20,14 @@ class FeedbackDto {
   @IsIn(['bottleneck', 'decision', 'workload', 'forecast', 'project']) kind!: string;
   @IsString() @MaxLength(64) ref!: string;
   @IsIn(['not_stuck', 'load_wrong', 'not_critical', 'outdated', 'other']) reason!: string;
+}
+/** Балансировка с ручным выбором (#1575): кому передать каждую задачу; toId пустой — не передавать. */
+class MoveDto {
+  @IsString() @MaxLength(20) taskId!: string;
+  @IsOptional() @IsString() @MaxLength(20) toId?: string | null;
+}
+class ConfirmDto {
+  @IsOptional() @IsArray() @ArrayMaxSize(40) @ValidateNested({ each: true }) @Type(() => MoveDto) moves?: MoveDto[];
 }
 class TargetDto { @IsOptional() @IsString() @MaxLength(10) date?: string | null; }
 /** Изменения по задачам (ТЗ-32): период — местные дни, пояс — смотрящего. */
@@ -81,8 +89,8 @@ export class RadarController {
   }
 
   @Post('actions/:id/confirm')
-  confirm(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.pulse.confirm(u, id);
+  confirm(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ConfirmDto) {
+    return this.pulse.confirm(u, id, dto?.moves);
   }
 
   @Post('actions/:id/reject')

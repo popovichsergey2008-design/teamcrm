@@ -60,6 +60,8 @@ export function PulsePage() {
   const [rebalanceFor, setRebalanceFor] = useState<string | null>(null);
   const [triage, setTriage] = useState<number | null>(null);
   const [allBottlenecks, setAllBottlenecks] = useState(false);
+  /** #1573: цифры вердикта кликабельны — список за цифрой */
+  const [drill, setDrill] = useState<'stuck' | 'decisions' | null>(null);
 
   const load = useCallback(() => {
     api.pulse().then((d) => { setData(d); setErr(''); }).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось собрать «Пульс»'));
@@ -92,7 +94,7 @@ export function PulsePage() {
   const h = data.health;
   const top = data.bottlenecks[0];
   const shownBottlenecks = allBottlenecks ? data.bottlenecks : data.bottlenecks.slice(0, 6);
-  const forecasts = data.allProjects.filter((p) => p.open > 0).sort((a, b) => (b.forecast.delayDays ?? -999) - (a.forecast.delayDays ?? -999));
+  const forecasts = data.allProjects.filter((p) => p.open > 0).sort((a, b) => (b.forecast.missChance ?? -1) - (a.forecast.missChance ?? -1) || (b.forecast.delayDays ?? -999) - (a.forecast.delayDays ?? -999));
 
   return (
     <div className="page pulse-page">
@@ -114,7 +116,23 @@ export function PulsePage() {
         </div>
         <div className="pulse-verdict-text">
           <div className="pulse-headline">{data.verdict.headline}</div>
-          {data.verdict.lines.map((l) => <p key={l}>{l}</p>)}
+          {data.verdict.lines.map((l) => (
+            <p key={l}>
+              {/* #1573: «застряли 50 задач» и «принять 38 решений» — открывают список за цифрой */}
+              {l.split(/(застряли \d+|принять \d+)/).map((part, i) => {
+                const m = /^(застряли|принять) (\d+)$/.exec(part);
+                const kind = m?.[1] === 'застряли' ? (data.verdict.stuck ? 'stuck' : null) : m ? 'decisions' : null;
+                if (!m || !kind) return part;
+                return (
+                  <span key={i}>
+                    {m[1]}{' '}
+                    <button className="pulse-drill" onClick={() => setDrill(kind)}
+                      title={kind === 'stuck' ? 'Показать застрявшие задачи' : 'Показать решения'}>{m[2]}</button>
+                  </span>
+                );
+              })}
+            </p>
+          ))}
           <div className="dim pulse-sources">
             Основано на: {data.verdict.sources.projects} проектах · {data.verdict.sources.tasks} открытых задачах ·
             {' '}{data.verdict.sources.people} сотрудниках · скорость {data.verdict.sources.last7} против {data.verdict.sources.prev7}
@@ -242,6 +260,32 @@ export function PulsePage() {
       </div>
 
       {action && <ActionDialog action={action} people={data.workload} onClose={() => setAction(null)} onDone={load} />}
+      {drill === 'stuck' && data.verdict.stuck && (
+        <Dialog open onOpenChange={(o) => { if (!o) setDrill(null); }} size="lg"
+          title={`Узкое место — ${data.verdict.stuck.title}: ${data.verdict.stuck.count}`}>
+          {data.verdict.stuck.items.map((b) => (
+            <BottleneckRow key={b.taskId} b={b} canAct={data.can.act}
+              onAction={(type) => { setDrill(null); setAction({ type, taskId: b.taskId, title: b.title }); }}
+              onNotProblem={(reason) => { void notProblem('bottleneck', b.taskId, reason); }} />
+          ))}
+          {data.verdict.stuck.count > data.verdict.stuck.items.length && (
+            <div className="dim">Показаны первые {data.verdict.stuck.items.length} из {data.verdict.stuck.count}.</div>
+          )}
+        </Dialog>
+      )}
+      {drill === 'decisions' && (
+        <Dialog open onOpenChange={(o) => { if (!o) setDrill(null); }} size="lg"
+          title={`Требуют вашего решения — ${data.decisions.length}`}
+          footer={data.decisions.length > 0 ? <Button variant="primary" onClick={() => { setDrill(null); setTriage(0); }}>Разобрать по одному</Button> : undefined}>
+          {data.decisions.map((d) => (
+            <div key={d.id} className="pulse-row">
+              <Badge tone={d.urgent || d.kind === 'blocked' ? 'danger' : d.kind === 'client' ? 'warn' : 'neutral'}>{DECISION_TITLE[d.kind] ?? d.kind}</Badge>
+              <button className="pulse-link" onClick={() => { setDrill(null); openDecision(d); }}>{d.title}</button>
+              <span className="dim">{d.who ? `${d.who} · ` : ''}ждёт {ago(d.since)}</span>
+            </div>
+          ))}
+        </Dialog>
+      )}
       {rebalanceFor && <RebalanceDialog userId={rebalanceFor} onClose={() => setRebalanceFor(null)} onDone={load} />}
       {triage !== null && data.decisions[triage] && (
         <Dialog open onOpenChange={(o) => { if (!o) setTriage(null); }} title={`Решение ${triage + 1} из ${data.decisions.length}`} size="md"
@@ -320,7 +364,14 @@ function ForecastRow({ p, onSaved }: { p: PulseSummary['allProjects'][number]; o
       <div className="pulse-fc-top">
         <button className="pulse-link" onClick={() => navigate({ section: 'projects', projectId: p.id })}>{p.name}</button>
         {late && <Badge tone="danger">+{f.delayDays} дн.</Badge>}
+        {f.stalled && <Badge tone="danger">стоит</Badge>}
         {f.delayDays !== null && f.delayDays <= 0 && <Badge tone="ok">успевает</Badge>}
+        {/* #1577: вероятность срыва — от темпа и его разброса за 4 недели */}
+        {f.missChance != null && (
+          <span className="dim" title="Вероятность не успеть к плану при нынешнем темпе">
+            риск срыва {f.missChance}%
+          </span>
+        )}
       </div>
       <div className="pulse-fc-grid">
         <label className="pulse-fc-cell"><span className="dim">План</span>
@@ -407,39 +458,88 @@ function ActionDialog({ action, people, onClose, onDone }: {
   );
 }
 
+/**
+ * Балансировка (#1575): ИИ предлагает, кому передать, — руководитель решает. У каждой
+ * задачи список всех сотрудников: по умолчанию стоит совет ИИ, можно выбрать любого
+ * или «не передавать». Нагрузка «было → станет» пересчитывается по выбору сразу.
+ */
 function RebalanceDialog({ userId, onClose, onDone }: { userId: string; onClose: () => void; onDone: () => void }) {
   const [r, setR] = useState<Awaited<ReturnType<typeof api.pulseRebalance>> | null>(null);
+  const [pick, setPick] = useState<Record<string, string>>({});
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { api.pulseRebalance(userId).then(setR).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось подобрать')); }, [userId]);
+  useEffect(() => {
+    api.pulseRebalance(userId).then((x) => {
+      setR(x);
+      setPick(Object.fromEntries((x.items ?? []).map((i) => [i.taskId, i.toId ?? ''])));
+    }).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось подобрать'));
+  }, [userId]);
   const close = () => { if (r?.id) void api.pulseReject(r.id).catch(() => undefined); onClose(); };
+  const items = useMemo(() => r?.items ?? [], [r]);
+  const pct = (points: number, norm: number) => Math.round((points / Math.max(norm, 1)) * 100);
+  // нагрузка по текущему выбору — те же очки, что считает сервер
+  const loads = useMemo(() => {
+    const add = new Map<string, number>();
+    let moved = 0;
+    for (const it of items) {
+      const to = pick[it.taskId];
+      if (!to) continue;
+      add.set(to, (add.get(to) ?? 0) + it.cost);
+      moved += it.cost;
+    }
+    return { add, moved, count: items.filter((it) => pick[it.taskId]).length };
+  }, [items, pick]);
+  const changed = items.some((it) => (pick[it.taskId] ?? '') !== (it.toId ?? ''));
+  const options = (allowed: string[] | null) => [
+    { value: '', label: 'Не передавать' },
+    ...(r?.people ?? []).filter((p) => !allowed || allowed.includes(p.id)).map((p) => ({
+      value: p.id,
+      label: `${p.name} · ${pct(p.points + (loads.add.get(p.id) ?? 0), p.norm)}%${p.available ? '' : ' · не на месте'}`,
+    })),
+  ];
   return (
     <Dialog open onOpenChange={(o) => { if (!o) close(); }} title={`Балансировка${r?.fromName ? `: ${r.fromName}` : ''}`} size="md"
       footer={(
         <>
           <Button variant="ghost" onClick={close}>Отмена</Button>
-          {r?.id && <Button variant="primary" loading={busy} onClick={async () => {
+          {r?.id && <Button variant="primary" loading={busy} disabled={!loads.count} onClick={async () => {
             setBusy(true);
-            try { const x = await api.pulseConfirm(r.id!); feedback('action.confirmed'); showToast({ kind: 'saved', title: 'Балансировка', body: x.text }); onDone(); onClose(); }
-            catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
+            try {
+              const moves = changed ? items.map((it) => ({ taskId: it.taskId, toId: pick[it.taskId] || null })) : undefined;
+              const x = await api.pulseConfirm(r.id!, moves);
+              feedback('action.confirmed'); showToast({ kind: 'saved', title: 'Балансировка', body: x.text }); onDone(); onClose();
+            } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
             finally { setBusy(false); }
-          }}>Применить</Button>}
+          }}>{loads.count ? `Передать: ${loads.count}` : 'Применить'}</Button>}
         </>
       )}>
       {!r && !err && <div className="dim">Подбираю, кому передать…</div>}
-      {r && !r.moves.length && <div className="dim">{r.note}</div>}
-      {r && r.moves.length > 0 && (
+      {r?.note && <div className="dim">{r.note}</div>}
+      {items.length > 0 && (
         <>
-          {r.moves.map((m) => (
-            <div key={m.taskId} className="pulse-move">
-              <b>#{m.taskId} {m.title}</b>
-              <span>→ {m.toName}</span>
-              <span className="dim">{m.reason}</span>
+          {items.map((it) => (
+            <div key={it.taskId} className="pulse-move">
+              <b>#{it.taskId} {it.title}</b>
+              <Select
+                ariaLabel={`Кому передать #${it.taskId}`}
+                size="sm"
+                className="pulse-move-to"
+                value={pick[it.taskId] ?? ''}
+                onValueChange={(v) => setPick((p) => ({ ...p, [it.taskId]: v }))}
+                options={options(it.allowedIds)}
+              />
+              {it.toId && (
+                <span className="dim">
+                  <Icon name="sparkles" size={11} /> ИИ: {(r?.people ?? []).find((p) => p.id === it.toId)?.name}{it.reason ? ` — ${it.reason}` : ''}
+                </span>
+              )}
             </div>
           ))}
           <div className="pulse-preview">
-            Нагрузка {r.fromName}: {r.before}% → {r.after}%
-            {r.loads.filter((l) => l.id !== userId).map((l) => <div key={l.id}>{l.name}: {l.before}% → {l.after}%</div>)}
+            Нагрузка {r?.fromName}: {pct(r?.fromPoints ?? 0, r?.fromNorm ?? 1)}% → {pct((r?.fromPoints ?? 0) - loads.moved, r?.fromNorm ?? 1)}%
+            {(r?.people ?? []).filter((p) => loads.add.has(p.id)).map((p) => (
+              <div key={p.id}>{p.name}: {pct(p.points, p.norm)}% → {pct(p.points + loads.add.get(p.id)!, p.norm)}%</div>
+            ))}
           </div>
         </>
       )}

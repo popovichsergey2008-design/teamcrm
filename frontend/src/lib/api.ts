@@ -1205,7 +1205,8 @@ export const api = {
     request<{ items: ChangeEvent[]; nextCursor: string | null }>('GET', `/radar/changes/events?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
   pulsePreview: (i: { type: PulseActionType; taskId?: string; toUserId?: string; date?: string; text?: string }) =>
     request<{ id: string; preview: string }>('POST', '/radar/actions/preview', i),
-  pulseConfirm: (id: string) => request<{ status: string; text: string }>('POST', `/radar/actions/${id}/confirm`, {}),
+  pulseConfirm: (id: string, moves?: { taskId: string; toId: string | null }[]) =>
+    request<{ status: string; text: string }>('POST', `/radar/actions/${id}/confirm`, moves ? { moves } : {}),
   pulseReject: (id: string) => request<{ status: string }>('POST', `/radar/actions/${id}/reject`, {}),
   pulseRebalance: (userId: string) => request<PulseRebalance>('POST', `/radar/rebalance/${userId}/preview`, {}),
   pulseFeedback: (kind: string, ref: string, reason: string) => request<{ ok: boolean }>('POST', '/radar/feedback', { kind, ref, reason }),
@@ -3125,11 +3126,17 @@ export type PulseZone = 'healthy' | 'attention' | 'risk' | 'critical';
 export interface PulseForecast {
   date: string | null; perWeek: number; confidence: number; reliable: boolean; delayDays: number | null;
   neededPerWeek: number | null; factors: string[]; version: string;
+  /** #1577: вероятность не успеть к плану, %; стоит — ни одной закрытой задачи за 4 недели */
+  missChance?: number | null; stalled?: boolean;
 }
 export interface PulseSummary {
   generatedAt: string;
   health: { score: number; zone: PulseZone; components: Record<'delivery' | 'deadlines' | 'flow' | 'capacity' | 'velocity', number>; version: string };
-  verdict: { headline: string; lines: string[]; sources: { projects: number; tasks: number; stuck: number; people: number; last7: number; prev7: number } };
+  verdict: {
+    headline: string; lines: string[]; sources: { projects: number; tasks: number; stuck: number; people: number; last7: number; prev7: number };
+    /** #1573: задачи главного узкого места — по клику на «застряли N задач» */
+    stuck?: { title: string; count: number; items: PulseSummary['bottlenecks'] } | null;
+  };
   decisions: { kind: string; id: string; title: string; who: string | null; since: string; dueAt: string | null; taskId: string | null; projectId: string | null; clientId: string | null; urgent: boolean; score: number }[];
   bottlenecks: { taskId: string; title: string; projectId: string; projectName: string; assignee: string | null; type: string; typeTitle: string; why: string; actions: PulseActionType[]; severity: number; priority: string }[];
   workload: { id: string; name: string; pct: number; band: 'available' | 'normal' | 'high' | 'overloaded'; norm: number; risk: string; available: boolean; points: number; active: number; urgent: number; overdue: number; dueSoon: number; reviews: number; meetingHours: number; submitted?: number; returned?: number }[];
@@ -3142,6 +3149,10 @@ export interface PulseSummary {
 export interface PulseRebalance {
   id: string | null; moves: { taskId: string; title: string; toId: string; toName: string; reason: string }[];
   before: number; after: number; loads: { id: string; name: string; before: number; after: number }[]; fromName?: string; note?: string;
+  /** #1575: все задачи, которые можно передать, — у каждой совет ИИ (toId) или null */
+  items?: { taskId: string; title: string; cost: number; toId: string | null; reason: string | null; allowedIds: string[] | null }[];
+  people?: { id: string; name: string; points: number; norm: number; available: boolean }[];
+  fromPoints?: number; fromNorm?: number;
 }
 /** Напоминание бота (ТЗ-18): разовое или с повтором. */
 export interface AnthillReminder { id: string; text: string; dueAt: string; repeat: string | null; sent: number }
