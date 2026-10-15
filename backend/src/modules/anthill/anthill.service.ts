@@ -271,6 +271,13 @@ export class AnthillService {
       if (aborted()) return;
     }
 
+    /*
+      ТЗ-33 §7: человек явно просит интернет (ссылка, «найди в интернете», «сайт»), а его
+      нет — это главное, что нужно сказать. Кладём объяснение первой находкой: иначе
+      модель отвечает «в базе знаний не нашлось», и человек не узнаёт, что дело в тарифе.
+    */
+    if (web.note && WANTS_WEB.test(text)) findings.unshift(`[интернет]\n${web.note}`);
+
     // 3. Действия — карточки на подтверждение (или сразу, где это разрешено), без ответа моделью
     if (plan.actions.length) {
       const done = await this.actOn(tctx, settings, sessionId, text, plan.actions, used, findings, emit);
@@ -979,6 +986,9 @@ function plural(n: number, one: string, few: string, many: string) {
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
   return many;
 }
+
+/** Просьба, которой нужен интернет: ссылка, сайт, «найди в интернете», конкуренты. */
+const WANTS_WEB = /https?:\/\/|www\.|интернет|в сети|сайт|гугл|google|загугли|конкурент|web/i;
 
 const STATUS_OF: Record<string, string> = {
   search_tasks: 'Ищу задачи…', get_task: 'Читаю задачу…', search_messages: 'Ищу в переписке…',
