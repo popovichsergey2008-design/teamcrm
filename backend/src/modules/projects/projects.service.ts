@@ -13,6 +13,17 @@ function toClientProject(row: ProjectRow) {
   return rest;
 }
 
+/** Другие названия и ключевые слова: без пустых, повторов и самого имени проекта. */
+function cleanAliases(list: string[], name: string): string[] {
+  const own = name.trim().toLowerCase();
+  const seen = new Set<string>();
+  return list.map((a) => a.trim()).filter((a) => {
+    const k = a.toLowerCase();
+    if (!a || k === own || seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+}
+
 @Injectable()
 export class ProjectsService {
   constructor(
@@ -74,19 +85,11 @@ export class ProjectsService {
    */
   async update(
     tenantId: string, id: string, actor: { userId: string; role: string },
-    patch: { name?: string; visibility?: string; budget?: number | null; aliases?: string[] },
+    patch: { name?: string; visibility?: string; budget?: number | null; aliases?: string[]; description?: string },
   ) {
     const project = await this.getOrThrow(tenantId, id);
-    // другие названия: без пустых, повторов и самого имени проекта
-    if (patch.aliases !== undefined) {
-      const own = (patch.name ?? project.name).trim().toLowerCase();
-      const seen = new Set<string>();
-      patch = { ...patch, aliases: patch.aliases.map((a) => a.trim()).filter((a) => {
-        const k = a.toLowerCase();
-        if (!a || k === own || seen.has(k)) return false;
-        seen.add(k); return true;
-      }) };
-    }
+    if (patch.aliases !== undefined) patch = { ...patch, aliases: cleanAliases(patch.aliases, patch.name ?? project.name) };
+    if (patch.description !== undefined) patch = { ...patch, description: patch.description.trim() };
     if (patch.visibility !== undefined) {
       const boss = actor.role === 'owner' || actor.role === 'manager'
         || String(project.owner_user_id ?? '') === String(actor.userId);
@@ -185,6 +188,10 @@ export class ProjectsService {
       name: dto.name,
       clientId: dto.clientId ?? null,
       budget: dto.budget ?? null,
+      // #1580: описание и ключевые слова — сразу при создании (форма их требует;
+      // импорт и прочие пути создают проект и без них)
+      description: dto.description?.trim() ?? '',
+      aliases: cleanAliases(dto.aliases ?? [], dto.name),
     });
   }
 

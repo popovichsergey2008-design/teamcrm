@@ -37,8 +37,8 @@ export class ProjectResolverService {
 
   /** Проекты, из которых вообще можно выбирать: не архив, не демо, видны человеку. */
   async candidates(tenantId: string, viewer: ProjectViewer): Promise<ResolverProject[]> {
-    const rows = await this.db.many<{ id: string; name: string; aliases: string[] | null; client_id: string | null; client_name: string | null }>(
-      `SELECT p.id::text, p.name, p.aliases, p.client_id::text, c.name AS client_name
+    const rows = await this.db.many<{ id: string; name: string; aliases: string[] | null; description: string | null; client_id: string | null; client_name: string | null }>(
+      `SELECT p.id::text, p.name, p.aliases, p.description, p.client_id::text, c.name AS client_name
          FROM projects p
     LEFT JOIN clients c ON c.id = p.client_id
         WHERE p.tenant_id = $1 AND p.status <> 'archived' AND NOT p.is_demo
@@ -46,7 +46,7 @@ export class ProjectResolverService {
         ORDER BY p.name`,
       [tenantId, ...viewerParams(viewer)],
     );
-    return rows.map((r) => ({ id: r.id, name: r.name, aliases: r.aliases ?? [], clientId: r.client_id, clientName: r.client_name }));
+    return rows.map((r) => ({ id: r.id, name: r.name, aliases: r.aliases ?? [], description: r.description ?? '', clientId: r.client_id, clientName: r.client_name }));
   }
 
   async resolve(tenantId: string, viewer: ProjectViewer, req: ResolveRequest): Promise<Resolution & { projects: ResolverProject[] }> {

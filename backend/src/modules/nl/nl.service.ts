@@ -91,7 +91,7 @@ export interface NlDraft {
 const FALLBACK_SYSTEM = [
   'Ты — постановщик задач в CRM, а не расшифровщик речи. Дослушай фразу целиком и только потом решай,',
   'что здесь название работы, что описание, а что служебное («задача на Сергея», «поставь задачу»).',
-  'В JSON-входе: text, projects[{id,name}], users[{id,name}], clients[{id,name}], today.',
+  'В JSON-входе: text, projects[{id,name,about?}] (about — ключевые слова и описание проекта), users[{id,name}], clients[{id,name}], today.',
   'Сопоставляй имена с id ТОЛЬКО из списков (иначе null, не выдумывай).',
   'title — НАЗВАНИЕ РАБОТЫ с глагола, до 70 символов, без имени исполнителя и без слова «задача».',
   'НЕПРАВИЛЬНО: «Задача на Сергея», «Сергею», «Нужно посмотреть». ПРАВИЛЬНО: «Добавить кнопку выхода из настройки меню».',
@@ -142,7 +142,13 @@ export class NlService {
       `SELECT id, full_name AS name FROM users WHERE tenant_id=$1 AND is_active=TRUE ORDER BY full_name`, [tenantId]);
     const role = userId ? await this.roleOf(tenantId, userId) : null;
     const projects = userId && role
-      ? (await this.projectResolver.candidates(tenantId, { userId, role })).map((p) => ({ id: p.id, name: p.name }))
+      ? (await this.projectResolver.candidates(tenantId, { userId, role })).map((p) => ({
+        id: p.id, name: p.name,
+        // #1580: модели — о чём проект и как его ещё называют, коротко
+        ...(p.description || p.aliases?.length ? {
+          about: [p.aliases?.length ? `ключевые слова: ${p.aliases.join(', ')}` : '', (p.description ?? '').slice(0, 200)].filter(Boolean).join('. '),
+        } : {}),
+      }))
       : await this.db.many<{ id: string; name: string }>(
         `SELECT id, name FROM projects WHERE tenant_id=$1 AND status <> 'archived' ORDER BY created_at DESC`, [tenantId]);
     const clients = await this.db.many<{ id: string; name: string }>(

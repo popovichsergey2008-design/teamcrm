@@ -27,6 +27,7 @@ export type ReasonCode =
   | 'CURRENT_ROUTE'
   | 'PEOPLE_PROJECT'
   | 'SEMANTIC_MATCH'
+  | 'DESCRIPTION_MATCH'
   | 'RECENT_PROJECT'
   | 'ONLY_PROJECT';
 
@@ -38,6 +39,8 @@ export interface ResolverProject {
   name: string;
   /** Другие названия: «Alpha», «Клиент Альфа» (§24). */
   aliases?: string[] | null;
+  /** #1580: о чём проект — его особые слова тоже указывают на проект. */
+  description?: string | null;
   clientId?: string | null;
   clientName?: string | null;
 }
@@ -95,6 +98,8 @@ const W: Record<ReasonCode, number> = {
   CURRENT_ROUTE: 0.8,
   PEOPLE_PROJECT: 0.7,
   SEMANTIC_MATCH: 0.75,
+  // одно особое слово из описания — «скорее всего этот», два — уже уверенно
+  DESCRIPTION_MATCH: 0.7,
   RECENT_PROJECT: 0.15,
   ONLY_PROJECT: 0.95,
 };
@@ -108,6 +113,7 @@ const HINT: Record<ReasonCode, string> = {
   CURRENT_ROUTE: 'открыт этот проект',
   PEOPLE_PROJECT: 'проект, где вы работаете вместе',
   SEMANTIC_MATCH: 'по смыслу задачи',
+  DESCRIPTION_MATCH: 'по описанию проекта',
   RECENT_PROJECT: 'ваши недавние задачи',
   ONLY_PROJECT: 'в компании один проект',
 };
@@ -115,7 +121,7 @@ const HINT: Record<ReasonCode, string> = {
 /** Порядок важности причин — для подписи берём самую весомую. */
 const ORDER: ReasonCode[] = [
   'EXPLICIT_PROJECT_MENTION', 'CHAT_PROJECT', 'SOURCE_PROJECT', 'MEETING_PROJECT', 'CLIENT_RELATION',
-  'ONLY_PROJECT', 'CURRENT_ROUTE', 'SEMANTIC_MATCH', 'PEOPLE_PROJECT', 'RECENT_PROJECT',
+  'ONLY_PROJECT', 'CURRENT_ROUTE', 'SEMANTIC_MATCH', 'DESCRIPTION_MATCH', 'PEOPLE_PROJECT', 'RECENT_PROJECT',
 ];
 
 const STOP = new Set(['и', 'в', 'на', 'по', 'для', 'the', 'проект', 'проекта', 'проекту', 'проекте', 'crm']);
@@ -125,6 +131,30 @@ function sameWord(spoken: string, target: string): boolean {
   if (spoken === target) return true;
   if (target.length < 4) return false;
   return spoken.startsWith(target.slice(0, target.length - 1)) && spoken.length <= target.length + 2;
+}
+
+/** Общие слова описаний — ни на какой проект не указывают. */
+const COMMON = new Set([
+  'проект', 'проекта', 'проекты', 'задача', 'задачи', 'работа', 'работы', 'сайта', 'сайты', 'клиент', 'клиента',
+  'клиенты', 'нужно', 'сделать', 'компания', 'компании', 'который', 'которые', 'также', 'через', 'разработка',
+  'поддержка', 'настройка', 'страница', 'страницы', 'услуги', 'внутренний', 'внутренние', 'общие', 'всего',
+]);
+
+/**
+ * #1580: особые слова описаний — встречаются в описании (или ключевых словах) ТОЛЬКО
+ * этого проекта. Длиной от 5 букв: короткие слова слишком часто совпадают случайно.
+ */
+export function descriptionKeys(projects: ResolverProject[]): Map<string, string[]> {
+  const raw = new Map<string, string[]>();
+  for (const p of projects) {
+    const ws = words(p.description ?? '').filter((w) => w.length >= 5 && !COMMON.has(w)).map(latinKey).filter((k) => k.length >= 4);
+    raw.set(String(p.id), [...new Set(ws)]);
+  }
+  const owners = new Map<string, number>();
+  for (const ks of raw.values()) for (const k of ks) owners.set(k, (owners.get(k) ?? 0) + 1);
+  const out = new Map<string, string[]>();
+  for (const [id, ks] of raw) out.set(id, ks.filter((k) => owners.get(k) === 1));
+  return out;
 }
 
 /**
@@ -199,6 +229,17 @@ export function resolveProject(i: ResolverInput): Resolution {
       const s = n === total ? (everyone.length === 1 ? W.PEOPLE_PROJECT : 0.5) : 0.45 * (n / total);
       add(id, 'PEOPLE_PROJECT', s);
     }
+  }
+
+  /*
+    #1580: особые слова описания проекта в тексте — «крипта» для проекта про
+    криптовалюту, даже когда имя проекта не прозвучало. Одно слово — предложить,
+    два и больше — достаточно, чтобы подставить.
+  */
+  const spokenKeys = words(text).map(latinKey).filter(Boolean);
+  for (const [id, keys] of descriptionKeys(i.projects)) {
+    const hits = keys.filter((k) => spokenKeys.some((s) => sameWord(s, k))).length;
+    if (hits) add(id, 'DESCRIPTION_MATCH', hits >= 2 ? 0.92 : W.DESCRIPTION_MATCH);
   }
 
   if (i.model && i.model.confidence > 0) add(i.model.projectId, 'SEMANTIC_MATCH', Math.min(W.SEMANTIC_MATCH, i.model.confidence * 0.8));

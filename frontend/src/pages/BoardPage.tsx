@@ -553,7 +553,12 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                 : 'Как только вас добавят в проект, его доска откроется здесь.'}
               action={canManageBoard
                 // поле создания живёт в меню слева — просим его принять курсор
-                ? { label: 'Создать проект', onClick: () => window.dispatchEvent(new Event(NEW_PROJECT_FOCUS)) }
+                ? { label: 'Создать проект', onClick: () => {
+                  // окно нового проекта живёт в «Проектах» (#1580): туда и ведём
+                  try { sessionStorage.setItem(NEW_PROJECT_FOCUS, '1'); } catch { /* нет хранилища */ }
+                  navigate({ section: 'projects' });
+                  window.dispatchEvent(new Event(NEW_PROJECT_FOCUS));
+                } }
                 : undefined}
             />
           ) : (

@@ -17,6 +17,8 @@ export interface ProjectRow {
   owner_user_id?: string | null;
   /** Другие названия (ТЗ-31). */
   aliases?: string[];
+  /** #1580: о чём проект. */
+  description?: string;
 }
 
 export interface ColumnRow {
@@ -113,7 +115,7 @@ export class ProjectsRepository {
 
   /** Правка проекта: название и видимость. Пустые поля не трогаем. */
   async update(
-    tenantId: string, id: string, patch: { name?: string; visibility?: string; budget?: number | null; aliases?: string[] },
+    tenantId: string, id: string, patch: { name?: string; visibility?: string; budget?: number | null; aliases?: string[]; description?: string },
   ): Promise<ProjectRow | null> {
     const set: string[] = [];
     const vals: unknown[] = [tenantId, id];
@@ -122,6 +124,7 @@ export class ProjectsRepository {
     if (patch.visibility !== undefined) { set.push(`visibility = $${i++}`); vals.push(patch.visibility); }
     if (patch.budget !== undefined) { set.push(`budget = $${i++}`); vals.push(patch.budget); }
     if (patch.aliases !== undefined) { set.push(`aliases = $${i++}::text[]`); vals.push(patch.aliases); }
+    if (patch.description !== undefined) { set.push(`description = $${i++}`); vals.push(patch.description); }
     if (!set.length) return this.findById(tenantId, id);
     set.push('updated_at = now()');
     return this.db.one<ProjectRow>(
@@ -258,12 +261,14 @@ export class ProjectsRepository {
     name: string;
     clientId?: string | null;
     budget?: number | null;
+    description?: string;
+    aliases?: string[];
   }): Promise<ProjectRow> {
     return this.db.withTransaction(async (client) => {
       const proj = await client.query<ProjectRow>(
-        `INSERT INTO projects (tenant_id, name, client_id, budget)
-         VALUES ($1, $2, $3, $4) RETURNING *`,
-        [input.tenantId, input.name, input.clientId ?? null, input.budget ?? null],
+        `INSERT INTO projects (tenant_id, name, client_id, budget, description, aliases)
+         VALUES ($1, $2, $3, $4, $5, $6::text[]) RETURNING *`,
+        [input.tenantId, input.name, input.clientId ?? null, input.budget ?? null, input.description ?? '', input.aliases ?? []],
       );
       const project = proj.rows[0];
       await this.seedColumns(client, input.tenantId, project.id);

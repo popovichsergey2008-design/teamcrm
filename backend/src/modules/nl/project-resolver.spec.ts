@@ -83,4 +83,22 @@ describe('определитель проекта (ТЗ-31)', () => {
     expect(spokenProjectName('поставь Глебу задачу')).toBeNull();
     expect(spokenProjectName('по проекту Tesla обновить баннер')).toBe('Tesla');
   });
+
+  it('#1580: ключевое слово и особые слова описания указывают на проект', () => {
+    const projects = [
+      { id: '1', name: 'Alphabet', aliases: ['крипта'], description: 'Биржевой бот для криптовалюты, кошельки и стейкинг' },
+      { id: '2', name: 'vrtorg.ru', aliases: [], description: 'Интернет-магазин торгового оборудования, яндекс фид' },
+      { id: '3', name: 'Стоматология', aliases: [], description: 'Сайт клиники: запись к стоматологу, акции' },
+    ];
+    // ключевое слово — как названный проект, в любом падеже
+    expect(resolveProject({ text: 'по крипте надо обновить график', projects })).toMatchObject({ projectId: '1', level: 'HIGH' });
+    // одно особое слово описания — предложение, не уверенность
+    const one = resolveProject({ text: 'поправь кошельки на главной', projects });
+    expect(one).toMatchObject({ projectId: '1', level: 'MEDIUM' });
+    expect(one.reasonCodes).toContain('DESCRIPTION_MATCH');
+    // два — подставляем
+    expect(resolveProject({ text: 'стейкинг и кошельки не грузятся', projects })).toMatchObject({ projectId: '1', level: 'HIGH' });
+    // общие слова («сайт», «клиент») ни на кого не указывают
+    expect(resolveProject({ text: 'на сайте клиента поправить шапку', projects }).projectId).toBeNull();
+  });
 });

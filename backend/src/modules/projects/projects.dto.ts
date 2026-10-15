@@ -13,6 +13,11 @@ export class CreateProjectDto {
   @IsNumber()
   @Min(0)
   budget?: number;
+
+  /** #1580: о чём проект — по описанию ИИ узнаёт проект в переписке. */
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
+  /** Ключевые слова и другие названия (ТЗ-31 aliases): «крипта», «Alpha». */
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(80, { each: true }) aliases?: string[];
 }
 
 /** Тип этапа колонки (ТЗ-30): auto — по названию, остальное — руками. */
@@ -47,7 +52,9 @@ export class UpdateProjectDto {
   @IsOptional() @IsIn(['all', 'members']) visibility?: 'all' | 'members';
   @IsOptional() @IsNumber() @Min(0) budget?: number;
   /** Другие названия — для распознавания голосом и в переписке (ТЗ-31, §24). */
-  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(80, { each: true }) aliases?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(80, { each: true }) aliases?: string[];
+  /** #1580: о чём проект. */
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
 }
 
 /** Кого допустить к закрытому проекту. */

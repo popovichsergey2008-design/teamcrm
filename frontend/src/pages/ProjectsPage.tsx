@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { DATA_CHANGED } from '../hooks/useLiveSignals';
 import { api, ApiError } from '../lib/api';
 import { Icon } from '../components/Icon';
 import { navigate } from '../lib/router';
 import { EmptyState } from '../components/EmptyState';
 import { useAuth } from '../state/auth';
-import { PROJECTS_CHANGED } from '../components/ProjectsNav';
+import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
+
+// окно нового проекта — редкое, грузится по нажатию (бюджет первого экрана)
+const NewProjectDialog = lazy(() => import('../components/NewProjectDialog'));
 
 type Row = Awaited<ReturnType<typeof api.projectsStats>>[number];
 
@@ -31,8 +34,18 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
   const [slice, setSlice] = useState<Slice>('active');
   /** Новый проект заводят прямо отсюда: это и есть место, где проекты живут. */
   const [adding, setAdding] = useState(false);
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
+  // «Создать проект» с пустой доски — открывает это же окно
+  useEffect(() => {
+    const open = () => {
+      try { sessionStorage.removeItem(NEW_PROJECT_FOCUS); } catch { /* нет хранилища */ }
+      setAdding(true);
+    };
+    window.addEventListener(NEW_PROJECT_FOCUS, open);
+    try {
+      if (sessionStorage.getItem(NEW_PROJECT_FOCUS)) { sessionStorage.removeItem(NEW_PROJECT_FOCUS); setAdding(true); }
+    } catch { /* нет хранилища */ }
+    return () => window.removeEventListener(NEW_PROJECT_FOCUS, open);
+  }, []);
 
   const load = () => {
     api.projectsStats(true)
@@ -67,20 +80,6 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
     mine: (rows ?? []).filter((p) => p.status !== 'archived' && String(p.owner_user_id ?? '') === mineId).length,
     archived: (rows ?? []).filter((p) => p.status === 'archived').length,
   }), [rows, mineId]);
-
-  const create = async () => {
-    const title = name.trim();
-    if (!title) return;
-    setBusy(true); setErr('');
-    try {
-      const created = await api.createProject({ name: title });
-      window.dispatchEvent(new Event(PROJECTS_CHANGED));
-      setName(''); setAdding(false);
-      onOpen(String(created.id));
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Не удалось создать проект');
-    } finally { setBusy(false); }
-  };
 
   /** Срок человеческой строкой: в таблице важен день, а не минуты. */
   const deadline = (at: string | null) => (at
@@ -119,24 +118,14 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
             </button>
           </span>
           {user?.role !== 'client' && (
-            adding ? (
-              <span className="projects-new">
-                <input
-                  className="input"
-                  value={name}
-                  autoFocus
-                  placeholder="Название проекта"
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') void create(); if (e.key === 'Escape') setAdding(false); }}
-                />
-                <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy || !name.trim()} onClick={() => void create()}>Создать</button>
-                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { setAdding(false); setName(''); }}>Отмена</button>
-              </span>
-            ) : (
-              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => setAdding(true)}>
-                <Icon name="plus" size={15} /> Новый проект
-              </button>
-            )
+            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => setAdding(true)}>
+              <Icon name="plus" size={15} /> Новый проект
+            </button>
+          )}
+          {adding && (
+            <Suspense fallback={null}>
+              <NewProjectDialog onClose={() => setAdding(false)} onCreated={(id) => { setAdding(false); onOpen(id); }} />
+            </Suspense>
           )}
         </div>
       </div>

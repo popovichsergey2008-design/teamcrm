@@ -5127,7 +5127,9 @@ button.chat-pop-row:hover { background: var(--hover); }
 .projects-page .page-head { flex-wrap: wrap; }
 .projects-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
 .projects-search { width: 220px; max-width: 42vw; }
-.projects-new { display: inline-flex; align-items: center; gap: 6px; }
+.projects-new-form { display: flex; flex-direction: column; gap: 10px; }
+.projects-new-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); }
+.projects-new-field b { color: var(--danger); font-weight: 600; }
 .table-wrap { flex: 1; min-height: 0; overflow: auto; padding: 0 20px 20px; }
 .projects-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .projects-table th {
