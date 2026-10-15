@@ -9,6 +9,8 @@ import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
 
 // окно нового проекта — редкое, грузится по нажатию (бюджет первого экрана)
 const NewProjectDialog = lazy(() => import('../components/NewProjectDialog'));
+// «⋯» в строке: архив и удаление — тоже отдельным куском, таблица видна без него
+const ProjectRowActions = lazy(() => import('../components/ProjectRowActions'));
 
 type Row = Awaited<ReturnType<typeof api.projectsStats>>[number];
 
@@ -154,6 +156,7 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
                 <th>Ближайший срок</th>
                 <th>Ответственный</th>
                 <th>Доступ</th>
+                <th aria-label="Действия" />
               </tr>
             </thead>
             <tbody>
@@ -186,6 +189,9 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
                         </span>
                       )
                       : <span className="dim">вся команда</span>}
+                  </td>
+                  <td className="projects-actions">
+                    <Suspense fallback={null}><ProjectRowActions project={p} onError={setErr} /></Suspense>
                   </td>
                 </tr>
               ))}

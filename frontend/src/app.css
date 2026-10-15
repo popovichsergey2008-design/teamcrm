@@ -5139,6 +5139,8 @@ button.chat-pop-row:hover { background: var(--hover); }
 .projects-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .projects-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .projects-row { cursor: pointer; }
+.projects-table td.projects-actions { width: 72px; padding: 4px 8px; text-align: right; white-space: nowrap; }
+.projects-acts .projects-del:hover { color: var(--danger); }
 .projects-row:hover { background: var(--hover); }
 /* Строку открывают мышью, а с клавиатуры — ссылкой в ней: подсвечиваем строку целиком. */
 .projects-row:focus-visible,
@@ -5168,6 +5170,8 @@ button.chat-pop-row:hover { background: var(--hover); }
   .projects-table td[data-label] { display: flex; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); }
   .projects-table td[data-label]::before { content: attr(data-label); color: var(--text-dim); font-weight: 400; }
   .projects-table .num { text-align: right; }
+  .projects-row { position: relative; }
+  .projects-table td.projects-actions { position: absolute; top: 4px; right: 4px; width: auto; padding: 0; }
 }
 
 /* Переключатель досок в названии проекта. */
