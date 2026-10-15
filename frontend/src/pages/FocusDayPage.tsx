@@ -14,7 +14,8 @@ import { navigate } from '../lib/router';
 import { plural } from '../lib/chat-text';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import { getSocket } from '../lib/socket';
-import { setFocusSession, useFocusSession } from '../hooks/useFocusSession';
+import { FOCUS_MINUTES, readFocusMinutes, saveFocusMinutes, setFocusSession, useFocusSession } from '../hooks/useFocusSession';
+import { DropdownMenu, MenuItem } from '../components/ui/dropdown-menu';
 import { CloseDayDialog } from './CloseDayDialog';
 import { TeamNow } from './TeamNow';
 import { MyStatusBar } from '../components/MyStatusBar';
@@ -87,6 +88,9 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   // перед стартом фокуса: встреча раньше его конца (п. 132)
   const [meetingSoon, setMeetingSoon] = useState<null | { item: FocusItem; title: string; minutesLeft: number }>(null);
   const { session } = useFocusSession();
+  // #1568: сколько длится фокус — выбор человека, запоминается
+  const [focusMin, setFocusMin] = useState(readFocusMinutes);
+  const pickFocusMin = (v: number) => { setFocusMin(v); saveFocusMinutes(v); };
   const [closing, setClosing] = useState(false);
   const [huddleOpen, setHuddleOpen] = useState<string | null>(null);
   // Дзен-режим (ТЗ-27, п. 38–39): только тройка, начатое и таймер; таймер сам не запускает
@@ -195,7 +199,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   };
 
   /** Войти в глубокий фокус по действию плана: сначала — нет ли встречи раньше конца. */
-  const startFocus = async (item: FocusItem, minutes = 50, skipCheck = false) => {
+  const startFocus = async (item: FocusItem, minutes = focusMin, skipCheck = false) => {
     setErr('');
     if (!skipCheck) {
       const pre = await api.focusPreflight(minutes).catch(() => ({ meeting: null }));
@@ -308,12 +312,26 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
                 бывает целиком из «Проверить и принять», и кнопки фокуса у него не было вовсе.
               */}
               {(item.kind === 'task' || item.kind === 'review') && !done && item.taskId && !session && (
-                <Button
-                  variant={isMission && item.kind === 'task' ? 'primary' : item.kind === 'review' ? 'outline' : 'ghost'} size="sm" disabled={busy}
-                  onClick={() => void startFocus(item)}
-                ><Icon name="target" size={14} /> {item.kind === 'review'
-                  ? (isMission ? 'Глубокий фокус на проверку · 50 мин' : 'Фокус на проверку · 50 мин')
-                  : (isMission ? 'Войти в глубокий фокус · 50 мин' : 'Фокус · 50 мин')}</Button>
+                <span className="fd-focus-start">
+                  <Button
+                    variant={isMission && item.kind === 'task' ? 'primary' : item.kind === 'review' ? 'outline' : 'ghost'} size="sm" disabled={busy}
+                    onClick={() => void startFocus(item)}
+                  ><Icon name="target" size={14} /> {item.kind === 'review'
+                    ? (isMission ? 'Глубокий фокус на проверку' : 'Фокус на проверку')
+                    : (isMission ? 'Войти в глубокий фокус' : 'Фокус')} · {focusMin} мин</Button>
+                  {/* #1568: длительность — рядом с кнопкой, выбор запоминается */}
+                  <DropdownMenu align="start" trigger={(
+                    <Button variant="outline" size="sm" disabled={busy} aria-label={`Длительность фокуса: ${focusMin} мин. Изменить`} title="Сколько длится фокус">
+                      <Icon name="clock" size={13} /> {focusMin} мин <Icon name="chevron-down" size={12} />
+                    </Button>
+                  )}>
+                    {FOCUS_MINUTES.map((m) => (
+                      <MenuItem key={m} onSelect={() => pickFocusMin(m)}>
+                        {m} минут{m === focusMin ? ' ✓' : ''}
+                      </MenuItem>
+                    ))}
+                  </DropdownMenu>
+                </span>
               )}
               {item.kind === 'task' && !done && item.taskId && !item.startedAt && (
                 <Button variant="outline" size="sm" disabled={busy} title="Задача — в «В работе», статус — «работаю над задачей». Таймер не запускается." onClick={() => void takeToWork(item)}>
@@ -346,7 +364,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
               {meetingSoon.minutesLeft >= 5 && (
                 <Button variant="primary" size="sm" disabled={busy} onClick={() => void startFocus(item, meetingSoon.minutesLeft, true)}>Фокус на {meetingSoon.minutesLeft} мин</Button>
               )}
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => void startFocus(item, 50, true)}>Начать 50 минут всё равно</Button>
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => void startFocus(item, focusMin, true)}>Начать {focusMin} минут всё равно</Button>
               <Button variant="ghost" size="sm" onClick={() => setMeetingSoon(null)}>Отмена</Button>
             </span>
           </div>

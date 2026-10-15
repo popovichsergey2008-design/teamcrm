@@ -4,7 +4,7 @@ import { Icon } from './Icon';
 import { Button } from './ui/button';
 import { api, ApiError, FocusSession } from '../lib/api';
 import { focusSoundOn, setFocusSound } from '../lib/sound';
-import { refreshFocusSession, remainingNow, setFocusSession, useFocusSession } from '../hooks/useFocusSession';
+import { readFocusMinutes, refreshFocusSession, remainingNow, setFocusSession, useFocusSession } from '../hooks/useFocusSession';
 import { useEscape } from '../hooks/useEscape';
 import { feedback } from '../lib/feedback';
 
@@ -112,7 +112,8 @@ export function FocusZen({ session, onOpenTask }: {
     }
     setFocusSession(null);
     if (next === 'again') {
-      setFocusSession(await api.focusStart({ taskId: task?.id ?? null, itemId: session.itemId }));
+      // «ещё раз» — той же длительности, что человек выбрал (#1568)
+      setFocusSession(await api.focusStart({ taskId: task?.id ?? null, itemId: session.itemId, minutes: readFocusMinutes() }));
       feedback('focus.started');
     }
     if (next === 'done' && task) onOpenTask(task.projectId, task.id);

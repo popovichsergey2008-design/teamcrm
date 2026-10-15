@@ -50,3 +50,19 @@ export function useFocusSession(): State {
   }, []);
   return s;
 }
+
+/*
+  Длительность глубокого фокуса (#1568): выбирает человек — 20, 30, 50 минут и так далее.
+  Запоминаем у него в браузере: кто работает отрезками по 30 минут, выбирает это один раз.
+*/
+export const FOCUS_MINUTES = [20, 30, 45, 50, 60, 90, 120];
+const FOCUS_MINUTES_KEY = 'qevo.focusMinutes';
+export function readFocusMinutes(): number {
+  try {
+    const v = Number(localStorage.getItem(FOCUS_MINUTES_KEY));
+    return FOCUS_MINUTES.includes(v) ? v : 50;
+  } catch { return 50; }
+}
+export function saveFocusMinutes(v: number): void {
+  try { localStorage.setItem(FOCUS_MINUTES_KEY, String(v)); } catch { /* приватный режим — просто не запомним */ }
+}

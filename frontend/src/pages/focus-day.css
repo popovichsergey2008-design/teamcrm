@@ -79,6 +79,8 @@
 .fd-check { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); }
 .fd-progress { height: 6px; border-radius: 99px; background: var(--bg-elev-2); overflow: hidden; }
 .fd-progress > span { display: block; height: 100%; background: var(--brand-gradient, var(--accent)); }
+/* #1568: кнопка фокуса и выбор его длительности — одной парой */
+.fd-focus-start { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 .fd-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .fd-why { margin: 0; padding: 8px 12px 8px 26px; border-radius: 10px; background: var(--bg-elev-2); font-size: 13px; color: var(--text-dim); }
 .fd-why li + li { margin-top: 2px; }
