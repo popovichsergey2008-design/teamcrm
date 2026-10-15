@@ -54,7 +54,7 @@ export class OnboardingRepository {
    */
   async facts(tenantId: string, ownerUserId: string): Promise<Omit<OnboardingFacts, 'companyConfirmed'>> {
     const row = await this.db.one<{
-      departments: number; teammates: number; invites: number; projects: number; tasks: number; ai_demo: string | null;
+      departments: number; teammates: number; invites: number; projects: number; tasks: number; ai_demo: string | null; ai_plan: boolean;
     }>(
       `SELECT
          (SELECT COUNT(*)::int FROM groups g
@@ -71,7 +71,8 @@ export class OnboardingRepository {
            WHERE t.tenant_id = $1 AND t.deleted_at IS NULL) AS tasks,
          (SELECT CASE WHEN bool_or(d.created_task_count > 0 OR d.status = 'completed') THEN 'done'
                       WHEN bool_or(d.status = 'skipped') THEN 'skipped' END
-            FROM onboarding_ai_demos d WHERE d.tenant_id = $1 AND d.user_id = $2) AS ai_demo`,
+            FROM onboarding_ai_demos d WHERE d.tenant_id = $1 AND d.user_id = $2) AS ai_demo,
+         EXISTS (SELECT 1 FROM tenant_ai_plans ap WHERE ap.tenant_id = $1) AS ai_plan`,
       [tenantId, ownerUserId],
     );
     return {
@@ -81,6 +82,7 @@ export class OnboardingRepository {
       projects: row?.projects ?? 0,
       tasks: row?.tasks ?? 0,
       aiDemo: row?.ai_demo === 'done' || row?.ai_demo === 'skipped' ? row.ai_demo : null,
+      aiPlan: !!row?.ai_plan,
     };
   }
 

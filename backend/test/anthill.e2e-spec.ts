@@ -448,9 +448,9 @@ describe('QEVO Bot (e2e)', () => {
       .send({ tenantName: 'AB9', email: `ab9_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
 
-    // по умолчанию агент включён всем, веб-поиск выключен — он работает на данных CRM
+    // по умолчанию агент включён всем; выключатель интернета включён — сам интернет решает тариф (ТЗ-33)
     const def = (await http$.get('/api/anthill/admin').set(O).expect(200)).body.data;
-    expect(def).toMatchObject({ enabled: true, webSearch: false, filesAllowed: true, actionsAllowed: true, hasWebSearchKey: false });
+    expect(def).toMatchObject({ enabled: true, webSearch: true, filesAllowed: true, actionsAllowed: true, hasWebSearchKey: false });
     expect(def.allowedRoles).toEqual(expect.arrayContaining(['owner', 'manager', 'member']));
     expect(def.limits.requestsPerDay).toBeGreaterThan(0);
 

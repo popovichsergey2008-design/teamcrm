@@ -59,6 +59,9 @@ const TITLES: Record<string, string> = {
 
   'ai.use': 'Пользоваться ИИ',
   'ai.manage': 'Настраивать ИИ',
+  'ai.web.use': 'ИИ может искать в интернете',
+  'ai.billing.view': 'Видеть тариф и расход ИИ',
+  'ai.billing.manage': 'Менять тариф и лимиты ИИ',
 
   'integration.view': 'Видеть интеграции',
   'integration.manage': 'Подключать интеграции',
@@ -97,7 +100,7 @@ export const PERMISSION_GROUPS: { title: string; items: string[] }[] = [
   },
   {
     title: 'ИИ, интеграции и выгрузки',
-    items: ['ai.use', 'ai.manage', 'integration.view', 'integration.manage', 'export.create'],
+    items: ['ai.use', 'ai.manage', 'ai.web.use', 'ai.billing.view', 'ai.billing.manage', 'integration.view', 'integration.manage', 'export.create'],
   },
   {
     title: 'Безопасность',

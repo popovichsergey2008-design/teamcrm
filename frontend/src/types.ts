@@ -290,7 +290,7 @@ export interface Industry {
 
 /** Один шаг пути владельца. */
 export interface OnboardingStep {
-  key: 'workspace' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'task';
+  key: 'workspace' | 'ai_plan' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'task';
   title: string;
   hint: string;
   done: boolean;
@@ -692,6 +692,31 @@ export interface PlatformCandidate {
 export interface PlatformTenant {
   id: string; name: string; people: number; openConversations: number;
   lastSeenAt: string | null; createdAt: string;
+  /** Тариф ИИ (ТЗ-33): null — организация ещё не выбрала. */
+  aiPlan: {
+    plan: AiPlanCode; status: AiPlanStatus; trialEndsAt: string | null;
+    webCredits: number; webUsed: number; upgradeRequestedAt: string | null;
+  } | null;
+}
+
+export type AiPlanCode = 'AI_BASIC' | 'AI_EXTENDED';
+export type AiPlanStatus = 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED';
+
+/** Тариф ИИ организации — экран «Тариф и ИИ» (ТЗ-33, §38). */
+export interface AiPlanView {
+  selected: boolean;
+  plan: AiPlanCode | null;
+  planTitle: string | null;
+  status: AiPlanStatus | null;
+  trialEndsAt: string | null;
+  trialExpired: boolean;
+  webActive: boolean;
+  upgradeRequestedAt: string | null;
+  capabilities: Record<string, boolean>;
+  web: { used: number; reserved: number; limit: number; hardLimit: boolean; periodStart: string; periodEnd: string; forecast: number };
+  internal: { tokens: number; calls: number };
+  byFeature: { feature: string; credits: number; pages: number; searches: number }[];
+  byUser: { user_id: string; name: string; credits: number }[];
 }
 
 /** Безопасный технический контекст: только то, что видно на экране (разд. 15–16). */

@@ -389,14 +389,22 @@ export class PlatformService implements OnModuleInit {
     return this.db.many<{
       id: string; name: string; people: string; open_convs: string;
       last_seen: Date | null; created_at: Date; is_platform: boolean;
+      plan_code: string | null; plan_status: string | null; trial_ends_at: Date | null; web_credits: number | null;
+      web_used: number | null; upgrade_requested_at: Date | null;
     }>(
       `SELECT t.id::text, t.name, t.is_platform,
+              ap.plan_code, ap.status AS plan_status, ap.trial_ends_at, ap.included_web_credits AS web_credits,
+              ap.upgrade_requested_at,
+              (SELECT COALESCE(SUM(a.web_credits), 0)::int FROM ai_usage a
+                WHERE a.tenant_id = t.id AND a.usage_category = 'AI_WEB'
+                  AND a.created_at >= date_trunc('month', now())) AS web_used,
               (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.is_active) AS people,
               (SELECT COUNT(*) FROM support_conversations c
                 WHERE c.tenant_id = t.id AND c.closed_at IS NULL) AS open_convs,
               (SELECT MAX(u.last_seen_at) FROM users u WHERE u.tenant_id = t.id) AS last_seen,
               t.created_at
          FROM tenants t
+    LEFT JOIN tenant_ai_plans ap ON ap.tenant_id = t.id
         WHERE $1::bigint IS NULL OR t.id <> $1::bigint
         ORDER BY last_seen DESC NULLS LAST, t.id
         LIMIT $2`,

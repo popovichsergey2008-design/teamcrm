@@ -2,13 +2,13 @@ import { buildSteps, isComplete, nextStep, OnboardingFacts, progress } from './o
 import { industryByCode, INDUSTRIES, suggestedDepartments } from './industries';
 
 const EMPTY: OnboardingFacts = {
-  companyConfirmed: false, departments: 0, teammates: 0, invites: 0, projects: 0, tasks: 0,
+  companyConfirmed: false, departments: 0, teammates: 0, invites: 0, projects: 0, tasks: 0, aiPlan: true,
 };
 
 describe('путь владельца: шаги и завершение', () => {
   it('сразу после регистрации пройден только первый шаг', () => {
-    const steps = buildSteps(EMPTY);
-    expect(progress(steps)).toEqual({ done: 1, total: 7 });
+    const steps = buildSteps({ ...EMPTY, aiPlan: false });
+    expect(progress(steps)).toEqual({ done: 1, total: 8 });
     expect(steps[0].key).toBe('workspace');
     expect(steps[0].done).toBe(true);
     expect(isComplete(steps)).toBe(false);
@@ -28,6 +28,13 @@ describe('путь владельца: шаги и завершение', () => 
     expect(steps.find((s) => s.key === 'departments')?.done).toBe(false);
     // требование ТЗ: приглашение команды не блокирует завершение
     expect(isComplete(steps)).toBe(true);
+  });
+
+  it('ТЗ-33: без выбранного тарифа ИИ путь не завершается и зовём сначала к нему', () => {
+    const noPlan = buildSteps({ ...EMPTY, aiPlan: false, projects: 1, tasks: 1 });
+    expect(isComplete(noPlan)).toBe(false);
+    expect(nextStep(noPlan)?.key).toBe('ai_plan');
+    expect(nextStep(buildSteps({ ...EMPTY, aiPlan: false }))?.key).toBe('ai_plan');
   });
 
   it('«команду позвал» — это и отправленное приглашение, а не только пришедший коллега', () => {
@@ -55,7 +62,7 @@ describe('путь владельца: шаги и завершение', () => 
     // отложенное пропускаем
     expect(nextStep(buildSteps({ ...EMPTY, projects: 1, tasks: 1, aiDemo: 'done' }, ['company']))?.key).toBe('departments');
     // не осталось ничего — звать некуда
-    const all = { companyConfirmed: true, departments: 1, teammates: 1, invites: 0, projects: 1, tasks: 1, aiDemo: 'done' as const };
+    const all = { companyConfirmed: true, departments: 1, teammates: 1, invites: 0, projects: 1, tasks: 1, aiDemo: 'done' as const, aiPlan: true };
     expect(nextStep(buildSteps(all))).toBeNull();
   });
 

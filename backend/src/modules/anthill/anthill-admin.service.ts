@@ -78,7 +78,8 @@ export class AnthillAdminService {
     const value = {
       enabled: row?.enabled ?? true,
       allowedRoles: row?.allowed_roles ?? ['owner', 'manager', 'member'],
-      webSearch: row?.web_search ?? false,
+      // ТЗ-33: интернет решает тариф; выключатель владельца по умолчанию включён
+      webSearch: row?.web_search ?? true,
       hasWebSearchKey: !!row?.web_search_key,
       filesAllowed: row?.files_allowed ?? true,
       actionsAllowed: row?.actions_allowed ?? true,

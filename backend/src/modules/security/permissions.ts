@@ -38,6 +38,8 @@ export const PERMISSIONS = [
   'news.create', 'news.publish_announcement', 'news.pin', 'news.manage_all', 'news.create_poll', 'news.approve',
   // ИИ и автоматизации
   'ai.use', 'ai.manage',
+  // тарифы ИИ (ТЗ-33): интернет для ИИ, видеть расход и тариф, менять тариф и лимиты
+  'ai.web.use', 'ai.billing.view', 'ai.billing.manage',
   // интеграции, выгрузки, безопасность
   'integration.view', 'integration.manage',
   'export.create',
@@ -105,6 +107,7 @@ const BASE: Record<BaseRole, PermissionMap> = {
     'news.create': ALL, 'news.publish_announcement': ALL, 'news.pin': ALL, 'news.manage_all': ALL,
     'news.create_poll': ALL, 'news.approve': ALL,
     'ai.use': ALL, 'ai.manage': ALL,
+    'ai.web.use': ALL, 'ai.billing.view': ALL, 'ai.billing.manage': NO,
     'integration.view': ALL, 'integration.manage': NO,
     'export.create': ALL,
     'organization.manage': NO, 'security.manage': NO, 'audit.view': ALL,
@@ -127,6 +130,8 @@ const BASE: Record<BaseRole, PermissionMap> = {
     'news.create': NO, 'news.publish_announcement': NO, 'news.pin': NO, 'news.manage_all': NO,
     'news.create_poll': ALL, 'news.approve': NO,
     'ai.use': ALL, 'ai.manage': NO,
+    // интернет сотруднику по умолчанию открыт — владелец закрывает ролью или лично (§41)
+    'ai.web.use': ALL, 'ai.billing.view': NO, 'ai.billing.manage': NO,
     'integration.view': ALL, 'integration.manage': NO,
     'export.create': ALL,
     'organization.manage': NO, 'security.manage': NO, 'audit.view': NO,

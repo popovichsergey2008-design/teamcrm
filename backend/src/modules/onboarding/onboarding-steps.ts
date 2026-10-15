@@ -12,7 +12,7 @@
  * есть значение по умолчанию, и «не трогал» от «оставил как есть» по данным не отличить.
  */
 
-export type StepKey = 'workspace' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'task';
+export type StepKey = 'workspace' | 'ai_plan' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'task';
 
 /** Что известно про организацию на самом деле. */
 export interface OnboardingFacts {
@@ -27,6 +27,8 @@ export interface OnboardingFacts {
   tasks: number;
   /** Демо «ИИ-созвон за 30 секунд» (ТЗ-24): прошёл, пропустил или ещё нет. */
   aiDemo?: 'done' | 'skipped' | null;
+  /** Тариф ИИ выбран (ТЗ-33): без него путь не завершается. */
+  aiPlan?: boolean;
 }
 
 export interface OnboardingStep {
@@ -49,6 +51,12 @@ const TITLES: Record<StepKey, { title: string; hint: string; required: boolean }
   workspace: {
     title: 'Создать пространство',
     hint: 'Готово — организация создана вместе с вашей учётной записью.',
+    required: true,
+  },
+  // сразу за пространством (ТЗ-33, §9): Registration → Workspace → AI Plan → Onboarding
+  ai_plan: {
+    title: 'Выбрать тариф ИИ',
+    hint: '«Базовый» — ИИ работает с данными QEVO. «Расширенный» — ещё и интернет: поиск, сайты, исследования.',
     required: true,
   },
   // первым после пространства (ТЗ-24, §33): сначала почувствовать пользу, потом настраивать
@@ -94,6 +102,7 @@ export function buildSteps(facts: OnboardingFacts, skipped: readonly string[] = 
   const was = (key: StepKey) => skipped.includes(key);
   const done: Record<StepKey, boolean> = {
     workspace: true,
+    ai_plan: !!facts.aiPlan,
     ai_demo: facts.aiDemo === 'done',
     company: facts.companyConfirmed,
     departments: facts.departments > 0,

@@ -113,7 +113,7 @@ export function AnthillAdmin() {
           {toggle('QEVO Bot включён', 'выключенный отвечает понятной фразой, а не молчанием', s.enabled, (v) => void save({ enabled: v }))}
           {toggle('Может менять CRM', 'создавать задачи, переносить сроки, писать сообщения — всегда с подтверждением человека', s.actionsAllowed, (v) => void save({ actionsAllowed: v }))}
           {toggle('Может читать файлы и собирать документы', 'вложения задач и чатов: PDF, docx, xlsx, txt, csv', s.filesAllowed, (v) => void save({ filesAllowed: v }))}
-          {toggle('Может искать в интернете', 'по умолчанию агент работает только на данных QEVO', s.webSearch, (v) => void save({ webSearch: v }))}
+          {toggle('Может ходить в интернет', 'поиск и чтение сайтов — только в тарифе «Расширенный» (Настройки → Тариф и ИИ); выключите, чтобы бот отвечал только по данным QEVO', s.webSearch, (v) => void save({ webSearch: v }))}
         </div>
       </div>
 
@@ -147,10 +147,11 @@ export function AnthillAdmin() {
 
       {s.webSearch && (
         <div className="anthill-group">
-          <div className="anthill-group-head">Ключ поиска</div>
+          <div className="anthill-group-head">Свой ключ поиска (необязательно)</div>
           <div className="anthill-card">
             <div className="dim">
-              Поиск идёт через Tavily. {s.hasWebSearchKey ? 'Ключ задан.' : 'Ключа нет — агент будет отвечать только по данным QEVO и скажет об этом.'}
+              Поиск идёт через Tavily. Без своего ключа — по интернет-лимиту тарифа.
+              {s.hasWebSearchKey ? ' Задан свой ключ: поиск идёт за ваш счёт и лимит тарифа не расходует.' : ' Свой ключ — поиск без лимита тарифа, за ваш счёт.'}
             </div>
             {canEdit && (
               <div className="anthill-form-acts">

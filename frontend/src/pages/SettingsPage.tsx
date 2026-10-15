@@ -9,6 +9,7 @@ import { OnboardingPanel } from '../components/OnboardingPanel';
 import { ChatAnalysisPanel } from '../components/ChatAnalysisPanel';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { AiUsagePanel } from '../components/AiUsagePanel';
+import { AiPlanPanel } from '../components/AiPlanPanel';
 import { KnowledgePanel } from '../components/KnowledgePanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { FocusSettingsPanel } from '../components/FocusSettingsPanel';
@@ -62,6 +63,14 @@ const CARDS: Card[] = [
     hint: 'Ваш ящик Gmail, Яндекс, Mail.ru, Outlook или свой: секретарь разбирает письма и готовит ответы',
     icon: 'mail',
     roles: ['owner', 'manager', 'member'],
+  },
+  {
+    // ТЗ-33: тариф ИИ, интернет-лимит и смена тарифа
+    tab: 'ai-plan',
+    title: 'Тариф и ИИ',
+    hint: '«Базовый» или «Расширенный» с интернетом, сколько интернет-запросов осталось, лимит',
+    icon: 'sparkles',
+    roles: ['owner', 'manager'],
   },
   {
     tab: 'ai-usage',
@@ -155,6 +164,7 @@ const DENIED: [string, string[]][] = [
   ['team', ['owner', 'manager']],
   ['integrations', ['owner']],
   ['ai-usage', ['owner', 'manager']],
+  ['ai-plan', ['owner', 'manager']],
   ['focus', ['owner', 'manager']],
   ['guest', ['owner', 'manager']],
 ];
@@ -188,6 +198,7 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'team' && canManage && <TeamPanel onClose={close} />}
       {route.tab === 'integrations' && role === 'owner' && <IntegrationsPanel onClose={close} />}
       {route.tab === 'ai-usage' && canManage && <AiUsagePanel onClose={close} />}
+      {route.tab === 'ai-plan' && canManage && <AiPlanPanel canManage={role === 'owner'} onClose={close} />}
       {/* Личный ящик — у каждого свой (ТЗ-18): письма не видит никто, кроме хозяина. */}
       {route.tab === 'mail' && role !== 'client' && <MailPanel onClose={close} />}
       {route.tab === 'reports' && role !== 'client' && <ReportsPanel canManage={canManage} onClose={close} />}

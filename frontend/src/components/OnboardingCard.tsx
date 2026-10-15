@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
@@ -6,6 +6,9 @@ import { CompanyStepDialog } from './CompanyStepDialog';
 import { DepartmentsStepDialog } from './DepartmentsStepDialog';
 import { InviteTeamDialog } from './InviteTeamDialog';
 import type { OnboardingStep, OnboardingView } from '../types';
+
+// выбор тарифа ИИ (ТЗ-33) — окно на один раз, грузится по нажатию
+const AiPlanChooser = lazy(() => import('./AiPlanChooser'));
 
 /**
  * Путь владельца: что уже сделано и что осталось (ТЗ-11, разд. 8).
@@ -30,7 +33,7 @@ export function OnboardingCard({ always = false }: {
 }) {
   const [view, setView] = useState<OnboardingView | null>(null);
   const [open, setOpen] = useState(true);
-  const [dialog, setDialog] = useState<'company' | 'departments' | 'team' | null>(null);
+  const [dialog, setDialog] = useState<'company' | 'departments' | 'team' | 'ai_plan' | null>(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
@@ -48,6 +51,7 @@ export function OnboardingCard({ always = false }: {
 
   /** Куда ведёт шаг. Настройки компании и отделы — свои окна, остальное — разделы. */
   const go = (step: OnboardingStep) => {
+    if (step.key === 'ai_plan') return setDialog('ai_plan');
     if (step.key === 'company') return setDialog('company');
     if (step.key === 'departments') return setDialog('departments');
     if (step.key === 'team') return setDialog('team');
@@ -101,7 +105,7 @@ export function OnboardingCard({ always = false }: {
                   {!s.done && (
                     <span className="onb-actions">
                       <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => go(s)}>
-                        {s.key === 'team' ? 'Пригласить' : s.key === 'project' ? 'Создать' : s.key === 'task' ? 'Поставить' : s.key === 'ai_demo' ? 'Попробовать' : 'Настроить'}
+                        {s.key === 'team' ? 'Пригласить' : s.key === 'project' ? 'Создать' : s.key === 'task' ? 'Поставить' : s.key === 'ai_demo' ? 'Попробовать' : s.key === 'ai_plan' ? 'Выбрать' : 'Настроить'}
                       </button>
                       {!s.required && !s.skipped && (
                         <button
@@ -124,6 +128,11 @@ export function OnboardingCard({ always = false }: {
         )}
       </section>
 
+      {dialog === 'ai_plan' && (
+        <Suspense fallback={null}>
+          <AiPlanChooser onClose={() => setDialog(null)} onDone={() => { setDialog(null); act(() => api.onboarding()); }} />
+        </Suspense>
+      )}
       {dialog === 'company' && (
         <CompanyStepDialog
           company={view.company}

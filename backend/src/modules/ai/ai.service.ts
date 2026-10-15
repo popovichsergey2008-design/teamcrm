@@ -400,10 +400,12 @@ export class AiService {
     tenantId: string, feature: string, model: string, inputTokens: number, outputTokens: number, cacheHit: boolean,
     cost = 0, promptVersionId: string | null = null,
   ): Promise<void> {
+    // категория расхода (ТЗ-33, §22): речь, голос и векторы считаются отдельно от CRM-ИИ
+    const category = /whisper|stt/i.test(model) ? 'STT' : /^tts/i.test(model) ? 'TTS' : feature === 'embedding' || /embedding/i.test(model) ? 'EMBEDDINGS' : 'AI_INTERNAL';
     await this.db.query(
-      `INSERT INTO ai_usage (tenant_id, feature, model, input_tokens, output_tokens, cache_hit, cost_estimate, prompt_version_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [tenantId, feature, model, inputTokens, outputTokens, cacheHit, cost, promptVersionId],
+      `INSERT INTO ai_usage (tenant_id, feature, model, input_tokens, output_tokens, cache_hit, cost_estimate, prompt_version_id, usage_category)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [tenantId, feature, model, inputTokens, outputTokens, cacheHit, cost, promptVersionId, category],
     ).catch((e) => this.logger.warn(`ai_usage write failed: ${(e as Error).message}`));
   }
 

@@ -70,7 +70,9 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   team_status: { ...READ, permission: 'task.view' },
   global_search: READ,
   how_to: READ,
-  web_search: READ,
+  // интернет (ТЗ-33): кроме права роли — тариф «Расширенный», это решает AnthillService.webState
+  web_search: { ...READ, permission: 'ai.web.use' },
+  read_url: { ...READ, permission: 'ai.web.use' },
   list_files: { ...READ, permission: 'file.download' },
   read_file: { ...READ, permission: 'file.download' },
   find_slots: READ,

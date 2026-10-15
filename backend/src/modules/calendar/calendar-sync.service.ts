@@ -1,3 +1,4 @@
+import { safeFetch, UnsafeUrlError } from '../../common/net/safe-fetch';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { ConfigService } from '@nestjs/config';
@@ -190,18 +191,25 @@ export class CalendarSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async fetchIcs(url: string, from: Date, to: Date): Promise<ExternalEvent[]> {
-    let res: Response;
+    /*
+      Ссылку присылает человек, запрос уходит с нашего сервера — поэтому через
+      safeFetch (ТЗ-33, §49): без localhost, внутренней сети и служебных адресов облака.
+    */
+    let page: Awaited<ReturnType<typeof safeFetch>>;
     try {
-      res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(20_000) });
+      page = await safeFetch(url.replace(/^webcal:/i, 'https:'), {
+        timeoutMs: 20_000, maxBytes: MAX_BYTES,
+        types: /^(text\/(calendar|plain|html)|application\/(octet-stream|ics|x-ical|calendar))|^$/i,
+      });
     } catch (e) {
-      throw AppException.validation(`Календарь не отвечает: ${(e as Error).message}`);
+      throw AppException.validation(e instanceof UnsafeUrlError ? e.message : `Календарь не отвечает: ${(e as Error).message}`);
     }
-    if (!res.ok) {
-      throw AppException.validation(res.status === 404
+    if (page.status >= 400) {
+      throw AppException.validation(page.status === 404
         ? 'По этому адресу календаря нет. В Google это «Секретный адрес в формате iCal» из настроек календаря'
-        : `Календарь ответил ${res.status}`);
+        : `Календарь ответил ${page.status}`);
     }
-    const text = (await res.text()).slice(0, MAX_BYTES);
+    const text = page.body.slice(0, MAX_BYTES);
     if (!/BEGIN:VCALENDAR/i.test(text)) {
       throw AppException.validation('По адресу лежит не календарь. Нужна ссылка на файл .ics');
     }

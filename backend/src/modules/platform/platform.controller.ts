@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { CurrentUser } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { PLATFORM_ROLES, PlatformService, ROLE_TITLES } from './platform.service';
+import { AiPlanService } from '../ai-plan/ai-plan.service';
 
 class StaffDto {
   @IsString() userId!: string;
@@ -15,6 +16,15 @@ class StaffDto {
   @IsOptional() @IsInt() @Min(1) @Max(50) maxConversations?: number;
   /** Совсем убрать из техотдела. */
   @IsOptional() @IsBoolean() remove?: boolean;
+}
+
+/** Тариф ИИ организации — как договорились с клиентом (ТЗ-33: оплаты в продукте пока нет). */
+class AiPlanDto {
+  @IsIn(['AI_BASIC', 'AI_EXTENDED']) plan!: 'AI_BASIC' | 'AI_EXTENDED';
+  @IsIn(['TRIAL', 'ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED']) status!: 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED';
+  @IsOptional() @IsInt() @Min(0) @Max(1_000_000) webCredits?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(365) trialDays?: number;
+  @IsOptional() @IsBoolean() hardLimit?: boolean;
 }
 
 /**
@@ -31,7 +41,7 @@ class StaffDto {
 @ApiBearerAuth()
 @Controller('platform')
 export class PlatformController {
-  constructor(private readonly platform: PlatformService) {}
+  constructor(private readonly platform: PlatformService, private readonly aiPlans: AiPlanService) {}
 
   /** Кто я для платформы: по этому фронт решает, что вообще показывать в консоли. */
   @Get('me')
@@ -103,6 +113,18 @@ export class PlatformController {
     return rows.map((t) => ({
       id: t.id, name: t.name, people: Number(t.people),
       openConversations: Number(t.open_convs), lastSeenAt: t.last_seen, createdAt: t.created_at,
+      aiPlan: t.plan_code ? {
+        plan: t.plan_code, status: t.plan_status, trialEndsAt: t.trial_ends_at,
+        webCredits: Number(t.web_credits ?? 0), webUsed: Number(t.web_used ?? 0), upgradeRequestedAt: t.upgrade_requested_at,
+      } : null,
     }));
+  }
+
+  /** Сменить тариф ИИ организации — только администратор техотдела. */
+  @Post('tenants/:id/ai-plan')
+  async setAiPlan(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AiPlanDto) {
+    await this.platform.assertAdmin(u.userId);
+    await this.aiPlans.setByVendor(id, u.userId, dto);
+    return this.aiPlans.view(id);
   }
 }

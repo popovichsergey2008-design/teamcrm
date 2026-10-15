@@ -2,7 +2,7 @@ import type { EffectsPrefs } from './feedback';
 import type {
   Agenda, AiAction, Approval, AssistantMode, AuthResult, Board, Focus, GateSettings, Ping,
   Project, Proposal, SearchResults, SemanticHit, SupportContextInput, SupportConversation,
-  PlatformCandidate, PlatformStaff, PlatformTenant,
+  PlatformCandidate, PlatformStaff, PlatformTenant, AiPlanView, AiPlanCode, AiPlanStatus,
   SupportEngineerGrant, SupportEscalation, SupportQueueFilter,
   Industry, OnboardingView, SupportDesk, SupportHandbook, SupportQueueItem, Task, TaskTemplate,
 } from '../types';
@@ -1023,6 +1023,12 @@ export const api = {
     создать проект мимо неё, и шаг всё равно обязан быть отмечен.
   */
   onboarding: () => request<OnboardingView>('GET', '/onboarding'),
+  // ── тариф ИИ (ТЗ-33) ──
+  aiPlan: () => request<AiPlanView>('GET', '/ai/plan'),
+  aiPlanSelect: (plan: AiPlanCode) => request<AiPlanView>('POST', '/ai/plan/select', { plan_code: plan }),
+  aiPlanDowngrade: () => request<AiPlanView>('POST', '/ai/plan/downgrade', {}),
+  aiPlanUpgrade: () => request<AiPlanView>('POST', '/ai/plan/upgrade', {}),
+  aiLimits: (hardLimit: boolean) => request<AiPlanView>('PATCH', '/ai/limits', { hardLimit }),
 
   // демо «ИИ-созвон за 30 секунд» (ТЗ-24)
   aiDemoState: () => request<{ invite: boolean; last: AiDemoView | null }>('GET', '/onboarding/ai-call'),
@@ -2237,6 +2243,9 @@ export const api = {
   setChatAnalysisFlag: (chatId: string, enabled: boolean) =>
     request<{ chatId: string; enabled: boolean }>('PATCH', `/chat-analysis/chats/${chatId}`, { enabled }),
   platformTenants: () => request<PlatformTenant[]>('GET', '/platform/tenants'),
+  /** Консоль: тариф ИИ организации — как договорились с клиентом (ТЗ-33). */
+  platformSetAiPlan: (tenantId: string, b: { plan: AiPlanCode; status: AiPlanStatus; webCredits?: number; trialDays?: number; hardLimit?: boolean }) =>
+    request<AiPlanView>('POST', `/platform/tenants/${tenantId}/ai-plan`, b),
   /** Воронка онбординга: считается по фактам, поэтому запрос не из дешёвых — берём по требованию. */
   platformFunnel: () => request<import('../types').FunnelReport>('GET', '/platform/funnel'),
   /** Воронка демо «ИИ-созвон за 30 секунд» (ТЗ-24) за период, без вендора. */

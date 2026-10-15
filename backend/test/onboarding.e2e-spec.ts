@@ -42,20 +42,38 @@ describe('онбординг владельца (e2e)', () => {
   };
   const step = (view: any, key: string) => view.steps.find((s: any) => s.key === key);
 
-  it('сразу после регистрации пройден один шаг из семи', async () => {
+  it('сразу после регистрации пройден один шаг из восьми, первым зовём выбрать тариф ИИ', async () => {
     const O = await owner('ob1');
     const view = (await http.get('/api/onboarding').set(O).expect(200)).body.data;
 
-    expect(view.total).toBe(7);
+    expect(view.total).toBe(8);
     expect(view.done).toBe(1);
     expect(step(view, 'workspace').done).toBe(true);
     expect(view.completed).toBe(false);
-    // зовём к обязательному, а не к настройкам компании
-    expect(view.next).toBe('project');
+    // ТЗ-33: Registration → Workspace → AI Plan — обязательный шаг первым
+    expect(view.next).toBe('ai_plan');
+
+    // выбор — один раз; «Расширенный» — пробный с жёстким лимитом
+    const plan = (await http.post('/api/ai/plan/select').set(O).send({ plan_code: 'AI_EXTENDED' }).expect(201)).body.data;
+    expect(plan).toMatchObject({ plan: 'AI_EXTENDED', status: 'TRIAL', webActive: true });
+    expect(plan.web.limit).toBe(50);
+    expect(plan.capabilities['ai.web_search']).toBe(true);
+    await http.post('/api/ai/plan/select').set(O).send({ plan_code: 'AI_BASIC' }).expect(409);
+    const after = (await http.get('/api/onboarding').set(O).expect(200)).body.data;
+    expect(step(after, 'ai_plan').done).toBe(true);
+    expect(after.next).toBe('project');
+
+    // понижение — сам владелец: интернет закрыт сразу
+    const basic = (await http.post('/api/ai/plan/downgrade').set(O).expect(201)).body.data;
+    expect(basic).toMatchObject({ plan: 'AI_BASIC', webActive: false });
+    const ent = (await http.get('/api/ai/entitlements').set(O).expect(200)).body.data;
+    expect(ent.capabilities['ai.web_search']).toBe(false);
+    expect(ent.capabilities['ai.internal']).toBe(true);
   });
 
   it('шаг закрывается работой, сделанной МИМО подсказки', async () => {
     const O = await owner('ob2');
+    await http.post('/api/ai/plan/select').set(O).send({ plan_code: 'AI_BASIC' }).expect(201);
     const proj = (await http.post('/api/projects').set(O).send({ name: 'П' }).expect(201)).body.data;
     const board = (await http.get(`/api/projects/${proj.id}/board`).set(O).expect(200)).body.data;
     await http.post('/api/tasks').set(O)
@@ -77,8 +95,8 @@ describe('онбординг владельца (e2e)', () => {
 
     const view = (await http.get('/api/onboarding').set(O).expect(200)).body.data;
     expect(step(view, 'team').skipped).toBe(true);
-    // к отложенному больше не зовём
-    expect(view.next).toBe('project');
+    // к отложенному больше не зовём; первым — обязательный выбор тарифа ИИ (ТЗ-33)
+    expect(view.next).toBe('ai_plan');
 
     // «позже» на проект — отказ: без него системой не пользуются
     await http.post('/api/onboarding/skip').set(O).send({ step: 'project' }).expect(400);

@@ -13,6 +13,7 @@ import type {
   SupportEscalation, SupportHandbook, SupportQueueFilter, SupportQueueItem,
 } from '../types';
 import { OptionSelect } from '../components/ui/option-select';
+import { aiPlanLabel, ConsoleAiPlanDialog } from '../components/ConsoleAiPlan';
 // консьерж (ТЗ-29): свой статус, смены, метрики — отдельным куском
 const ConciergeConsole = lazy(() => import('../components/support/Concierge').then((m) => ({ default: m.ConciergeConsole })));
 
@@ -88,6 +89,8 @@ export function ConsolePage({ route }: { route: Route }) {
   const [known, setKnown] = useState<Awaited<ReturnType<typeof api.supportKnownIssues>>>([]);
   const [hb, setHb] = useState<SupportHandbook | null>(null);
   const [clients, setClients] = useState<PlatformTenant[]>([]);
+  /** Тариф ИИ какой организации правим (ТЗ-33). */
+  const [planFor, setPlanFor] = useState<PlatformTenant | null>(null);
   const [escalations, setEscalations] = useState<SupportEscalation[]>([]);
   /** Воронка: грузится только на своей вкладке — запрос идёт по всем организациям. */
   const [funnel, setFunnel] = useState<FunnelReport | null>(null);
@@ -711,19 +714,29 @@ export function ConsolePage({ route }: { route: Route }) {
               заходили. Содержимого досок и переписок отсюда не видно.
             </p>
             <div className="console-table" role="table">
-              <div className="console-row console-row-head" role="row">
-                <span>Организация</span><span>Людей</span><span>Обращений</span><span>Были</span>
+              <div className="console-row console-row-plan console-row-head" role="row">
+                <span>Организация</span><span>Людей</span><span>Обращений</span><span>Были</span><span>Тариф ИИ</span>
               </div>
               {clients.map((c) => (
-                <div key={c.id} className="console-row" role="row">
+                <div key={c.id} className="console-row console-row-plan" role="row">
                   <span>{c.name}</span>
                   <span>{c.people}</span>
                   <span>{c.openConversations || '—'}</span>
                   <span className="dim">{c.lastSeenAt ? stampLabel(c.lastSeenAt) : 'ни разу'}</span>
+                  <span className="console-row-acts">
+                    <span className={c.aiPlan?.upgradeRequestedAt && c.aiPlan.plan !== 'AI_EXTENDED' ? 'error-text' : ''}>{aiPlanLabel(c.aiPlan)}</span>
+                    {isAdmin && (
+                      <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setPlanFor(c)} aria-label={`Изменить тариф ИИ: ${c.name}`}>Изменить</button>
+                    )}
+                  </span>
                 </div>
               ))}
               {!clients.length && <p className="dim">Клиентов пока нет.</p>}
             </div>
+            {planFor && (
+              <ConsoleAiPlanDialog tenant={planFor} onClose={() => setPlanFor(null)}
+                onSaved={() => { setPlanFor(null); void api.platformTenants().then(setClients).catch(() => undefined); }} />
+            )}
           </div>
         )}
 

@@ -27,6 +27,9 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'inbox_draft', title: 'Черновик задачи из входящего письма', where: 'Входящие', group: 'tasks' },
   { key: 'task_assistant', title: 'Помощник в обсуждении задачи', where: 'Карточка задачи → «Обсуждение»', group: 'tasks' },
   { key: 'chat_assistant', title: 'Помощник в чате (@AI)', where: 'Чаты и миты → любой чат', group: 'service' },
+  // интернет (ТЗ-33): не токены, а веб-кредиты — считаются в «Настройки → Тариф и ИИ»
+  { key: 'web_search', title: 'Поиск в интернете (QEVO Bot)', where: 'QEVO Bot — тариф «Расширенный»', group: 'knowledge' },
+  { key: 'read_url', title: 'Чтение страницы по ссылке (QEVO Bot)', where: 'QEVO Bot — тариф «Расширенный»', group: 'knowledge' },
   { key: 'chat_digest', title: 'Сводка непрочитанного', where: 'Чаты и миты → «Кратко» и «Что я пропустил»', group: 'service' },
   { key: 'chat_search', title: 'Поиск по переписке словами', where: 'Чаты и миты → «Входящие»', group: 'service' },
   { key: 'smart_reply', title: 'Готовый ответ в чате', where: 'Чаты — серый текст в поле ввода', group: 'service' },
