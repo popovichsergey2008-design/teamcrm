@@ -204,12 +204,17 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     for (const r of this.rooms.values()) {
       if (r.tenantId !== tenantId) continue;
       const people = [...r.participants.values()];
-      // пустая комната (ссылку выдали, а никто ещё не пришёл) — не «идущий созвон»
-      if (!people.length) continue;
+      // пустая комната (ссылку выдали, а никто ещё не пришёл) — не «идущий созвон»;
+      // исключение — ждущая вернувшегося после обрыва: её видят свои, чтобы вернуться
+      const waiting = !people.length && !!r.graceUntil && r.graceUntil > Date.now();
+      if (!people.length && !waiting) continue;
       let canJoin = r.allowed.has(userId);
       if (!canJoin && r.linked && isMember) canJoin = await isMember(r).catch(() => false);
+      if (waiting && !canJoin) continue;
       out.push({
         id: r.id, projectId: r.projectId, startedAt: r.startedAt, aiEnabled: r.aiEnabled, canJoin,
+        // был внутри — кнопка зовёт «вернуться», а не «присоединиться»
+        wasIn: !!r.joined?.has(userId),
         participants: people.map((p) => ({ userId: p.userId, displayName: p.displayName })),
       });
     }

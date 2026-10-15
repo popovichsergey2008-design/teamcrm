@@ -2371,7 +2371,12 @@ export const api = {
   mediaHealth: () => request<{ available: boolean; workers: number; error: string | null }>('GET', '/media/health'),
   iceServers: () => request<{ iceServers: RTCIceServer[] }>('GET', '/media/ice'),
   /** canJoin — свой ли человек комнате: войти по кнопке можно только в свой созвон, в чужой — постучаться. */
-  activeCalls: () => request<{ id: string; projectId: string | null; canJoin: boolean; participants: { userId: string; displayName: string }[] }[]>('GET', '/media/rooms'),
+  activeCalls: () => request<{
+    id: string; projectId: string | null; canJoin: boolean; startedAt?: number;
+    /** я уже был в этом созвоне — «вернуться», а не «присоединиться» */
+    wasIn?: boolean;
+    participants: { userId: string; displayName: string }[];
+  }[]>('GET', '/media/rooms'),
   /**
    * Поднять комнату созвона.
    *

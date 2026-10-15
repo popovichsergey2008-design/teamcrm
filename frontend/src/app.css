@@ -354,8 +354,30 @@
 }
 .nav-sub:hover { background: var(--hover); color: var(--text); }
 .nav-sub.active { color: var(--accent); font-weight: 600; }
-.nav-call { color: var(--ok); }
-.nav-call:hover { color: var(--ok); }
+/* #1567: идущий созвон — яркий зелёный блок под «Чаты & Миты», по нажатию — в разговор */
+.nav-call {
+  display: flex; align-items: flex-start; gap: 10px; width: calc(100% - 8px); margin: 4px 4px 6px;
+  padding: 9px 10px; border: 0; border-radius: var(--radius); cursor: pointer; text-align: left;
+  font: inherit; color: #fff; background: #15803d; box-shadow: 0 0 0 0 rgba(22, 163, 74, .55);
+  animation: nav-call-glow 2s ease-out infinite;
+}
+.nav-call:hover { background: #166534; }
+.nav-call:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.nav-call-icon {
+  display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(255, 255, 255, .2);
+}
+.nav-call-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.nav-call-head { font-weight: 600; font-size: var(--fs-sm); }
+.nav-call-who { font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-call-go { font-size: var(--fs-xs); font-weight: 600; margin-top: 2px; }
+@keyframes nav-call-glow {
+  0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, .55); }
+  70% { box-shadow: 0 0 0 8px rgba(22, 163, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+.nav-collapsed .nav-call { justify-content: center; padding: 8px 0; }
+@media (prefers-reduced-motion: reduce) { .nav-call { animation: none; } }
 
 /*
   Служба заботы в подвале панели: кружок и строка под ним.

@@ -39,6 +39,8 @@ const POINTER_KINDS = new Set(['circle', 'arrow', 'pulse']);
 const LOBBY_TICK_MS = 15_000;
 /** Опоздавшему организатору напоминаем не больше стольких раз (ТЗ-14, §57: «без бесконечного спама»). */
 const LATE_CALLS_MAX = 3;
+/** Сколько пустая комната ждёт вернувшегося после обрыва (перезагрузка, сеть). */
+const ROOM_GRACE_MS = 90_000;
 
 interface Client {
   ws: WebSocket;
@@ -220,7 +222,7 @@ export class MeetGateway implements OnModuleInit {
     });
     ws.on('close', () => {
       if (client.isGuest || client.knockRoomId) this.leaveLobby(client);
-      if (client.meetingId) void this.leave(client);
+      if (client.meetingId) void this.leave(client, true);
       this.clients.delete(ws);
       this.untrack(client, ws);
     });
@@ -698,6 +700,8 @@ export class MeetGateway implements OnModuleInit {
       this.broadcast(room, 'meet.peer-left', { meeting_id: room.id, user_id: c.userId });
     }
     this.ringing.stop(room.id, c.userId); // вошёл — звонить ему больше не о чем
+    // вернулся после обрыва — комната больше не ждёт закрытия
+    if (room.graceTimer) { clearTimeout(room.graceTimer); room.graceTimer = undefined; room.graceUntil = undefined; }
     this.media.addParticipant(room, c.userId, c.displayName, c.ws);
     (room.joined ??= new Set()).add(c.userId);
     // комнату по гостевой ссылке поднимает тот, кто вошёл первым; хозяином становится
@@ -1057,8 +1061,14 @@ export class MeetGateway implements OnModuleInit {
     return null;
   }
 
-  /** Выход: последний участник закрывает комнату, иначе роутеры копились бы вечно. */
-  private async leave(c: Client): Promise<void> {
+  /**
+   * Выход: последний участник закрывает комнату, иначе роутеры копились бы вечно.
+   *
+   * `dropped` — ушёл не кнопкой, а обрывом (перезагрузил страницу, пропала сеть). Тогда
+   * пустая комната ждёт его ROOM_GRACE_MS: раньше перезагрузка у того, кто был в созвоне
+   * один (ждал остальных), убивала созвон, и вернуться было некуда.
+   */
+  private async leave(c: Client, dropped = false): Promise<void> {
     const room = c.meetingId ? this.media.getRoom(c.meetingId) : null;
     const wasIn = c.meetingId;
     c.meetingId = null;
@@ -1073,7 +1083,27 @@ export class MeetGateway implements OnModuleInit {
     });
 
     this.broadcast(room, 'meet.peer-left', { meeting_id: room.id, user_id: c.userId });
+    if (room.participants.size === 0 && dropped) {
+      room.graceUntil = Date.now() + ROOM_GRACE_MS;
+      if (room.graceTimer) clearTimeout(room.graceTimer);
+      room.graceTimer = setTimeout(() => {
+        room.graceTimer = undefined;
+        if (room.participants.size || this.media.getRoom(room.id) !== room) return;
+        void this.closeEmpty(room, c);
+      }, ROOM_GRACE_MS);
+      return;
+    }
     if (room.participants.size === 0) {
+      await this.closeEmpty(room, c);
+    } else {
+      await this.media.recalcQuality(room);
+    }
+  }
+
+  /** Комната опустела насовсем: гасим вызовы, дописываем запись, закрываем. */
+  private async closeEmpty(room: MeetingRoom, c: Client): Promise<void> {
+    room.graceUntil = undefined;
+    {
       // Звонящий передумал и вышел — у вызываемого окно вызова должно погаснуть само.
       // Гасим именно на ПУСТОЙ комнате: если позвавший вышел, а разговор продолжается,
       // приглашение остаётся в силе — человека ждут на живой встрече.
@@ -1084,8 +1114,6 @@ export class MeetGateway implements OnModuleInit {
       // иначе ffmpeg остался бы висеть, а запись пропала
       await this.finishRecording(room, c.isGuest ? null : c.userId);
       this.media.closeRoom(room.id);
-    } else {
-      await this.media.recalcQuality(room);
     }
   }
 }

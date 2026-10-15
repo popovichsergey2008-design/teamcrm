@@ -178,7 +178,7 @@ function readFolded(): Set<string> {
 }
 
 export function Sidebar({
-  route, user, organizations, avatarPath, unread, counters, activeCall, inCall,
+  route, user, organizations, avatarPath, unread, counters, activeCalls, inCall,
   onSwitchOrg, onSearch, onJoinCall, onOpenSecretary, onHoverSection, onLogout,
 }: {
   route: Route;
@@ -187,14 +187,17 @@ export function Sidebar({
   avatarPath: string | null;
   unread: number;
   counters: NavCounters;
-  /** Идёт созвон в компании — можно присоединиться. Не повод запрещать свой звонок. */
-  activeCall: { participants: number } | null;
+  /**
+   * Идущие созвоны, куда мне МОЖНО войти: начатые мной, куда звали или впускали.
+   * Чужие сюда не попадают вовсе — ни кнопкой, ни именами (#1567).
+   */
+  activeCalls: { id: string; startedAt?: number; wasIn: boolean; names: string[] }[];
   /** Я сам сейчас в разговоре: тогда «присоединиться» к нему незачем. */
   inCall: boolean;
   onSwitchOrg: (tenantId: string) => void;
   /** voice — открыть окно поиска сразу со включённым микрофоном. */
   onSearch: (voice?: boolean) => void;
-  onJoinCall: () => void;
+  onJoinCall: (roomId: string) => void;
   onOpenSecretary: () => void;
   /** наведение на пункт меню — повод прогреть данные раздела заранее */
   onHoverSection: (section: Section) => void;
@@ -203,6 +206,14 @@ export function Sidebar({
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1');
   // на узком экране панель выезжает поверх содержимого, а не сжимает его
   const [open, setOpen] = useState(false);
+  // часы для «созвон идёт N мин»: тикают, только пока есть что показывать
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!activeCalls.length) return;
+    setNow(Date.now());
+    const t = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(t);
+  }, [activeCalls.length]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [folded, setFolded] = useState<Set<string>>(readFolded);
 
@@ -348,6 +359,34 @@ export function Sidebar({
 
   // переход по разделу закрывает выехавшую панель — иначе она перекрывает то, куда шли
   const go = (to: Route) => { navigate(to); setOpen(false); };
+
+  /*
+    Созвон, в который можно войти (#1567). Яркий зелёный блок с тем, кто внутри и
+    сколько идёт, — по нажатию сразу в разговор. Видят его только свои (сервер отдаёт
+    лишь созвоны, куда человека звали), а пока я сам в разговоре — он не нужен.
+  */
+  const callWidget = inCall ? null : activeCalls.map((c) => {
+    const who = c.names.length === 0 ? 'пока никого — вас ждут'
+      : c.names.length <= 2 ? c.names.join(', ')
+      : `${c.names.slice(0, 2).join(', ')} и ещё ${c.names.length - 2}`;
+    const action = c.wasIn ? 'Вернуться в созвон' : 'Присоединиться';
+    const mins = c.startedAt ? Math.max(0, Math.floor((now - c.startedAt) / 60_000)) : null;
+    const title = `${action}. В созвоне: ${c.names.join(', ') || 'никого'}`;
+    return (
+      <button key={c.id} className="nav-call" onClick={() => { onJoinCall(c.id); setOpen(false); }} title={title} aria-label={title}>
+        <span className="nav-call-icon"><Icon name="phone" size={16} /></span>
+        {!collapsed && (
+          <span className="nav-call-text">
+            <span className="nav-call-head">
+              {c.wasIn ? 'Вы вышли из созвона' : 'Идёт созвон'}{mins !== null ? ` · ${mins < 1 ? 'только начался' : `${mins} мин`}` : ''}
+            </span>
+            <span className="nav-call-who">{who}</span>
+            <span className="nav-call-go">{action} →</span>
+          </span>
+        )}
+      </button>
+    );
+  });
 
   const link = (
     to: Route, active: boolean, cls: string, title: string, children: ReactNode,
@@ -691,9 +730,12 @@ export function Sidebar({
                 ))}
                 </>
                 )}
+                {/* #1567: идущий созвон — сразу под «Чаты & Миты», а не в самом низу под прокруткой */}
+                {item.section === 'chat' && !tuning && callWidget}
               </div>
             );
           })}
+          {!tuning && !menuItems.some((i) => i.section === 'chat') && callWidget}
 
           {/* Вход в настройку — внизу списка и мелко: ею пользуются один раз,
               а место в панели занимают каждый день. В самой настройке этой строки
@@ -709,13 +751,6 @@ export function Sidebar({
             </div>
           )}
 
-          {/* Созвон уже идёт — вход в него, иначе к разговору не присоединиться тому, кого не позвали */}
-          {activeCall && !inCall && (
-            <button className="nav-item nav-call" onClick={onJoinCall} title="Идёт созвон — присоединиться">
-              <Icon name="phone" size={18} />
-              <span className="nav-label">Идёт созвон · {activeCall.participants}</span>
-            </button>
-          )}
         </nav>
 
         {/* ── нижний блок ── */}

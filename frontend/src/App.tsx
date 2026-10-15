@@ -3,6 +3,7 @@ import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } f
 import { CLIENTS_ENABLED } from './config';
 import { useAuth } from './state/auth';
 import { api } from './lib/api';
+import { getSocket } from './lib/socket';
 import { LoginPage } from './pages/LoginPage';
 import { BoardPage } from './pages/BoardPage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -217,14 +218,17 @@ export function App() {
   }, [callId]);
   // какой чат открыт — чтобы не слать уведомление о сообщении, которое человек и так видит
   const [openChatId, setOpenChatId] = useState<string | null>(null);
-  const [activeCalls, setActiveCalls] = useState<{ id: string; canJoin?: boolean; participants: { userId?: string; displayName: string }[] }[]>([]);
+  const [activeCalls, setActiveCalls] = useState<{
+    id: string; canJoin?: boolean; startedAt?: number; wasIn?: boolean;
+    participants: { userId?: string; displayName: string }[];
+  }[]>([]);
   /*
     Созвон, в который можно войти по кнопке «Идёт созвон», — только СВОЙ: начатый мной,
     куда меня звали или впустили. Раньше кнопка вела в первый попавшийся созвон компании,
     и любой коллега мог войти в чужой разговор — или к человеку, забывшему выйти.
     Кто в созвоне, по-прежнему видно всем (статус «занят»), но войти в чужой нельзя.
+    Фильтр canJoin — в панели (см. Sidebar activeCalls) и в joinActiveCall.
   */
-  const joinable = activeCalls.find((c) => c.canJoin) ?? null;
   // окно быстрой команды: null — закрыто; текст и голос приходят из командной строки
   const [nl, setNl] = useState<{ text?: string; voice?: boolean } | null>(null);
   // «Создать задачу» из любого места с готовым текстом (ТЗ-20 §50: комментарий новости → задача)
@@ -359,14 +363,26 @@ export function App() {
     if (user) api.me().then((m) => setAvatarPath(m.avatarUrl)).catch(() => undefined);
   }, [user]);
 
-  // Кто-то уже созванивается — показываем вход в комнату. Опрос, а не push:
-  // постоянное WS-соединение ради этого держать не нужно.
+  /*
+    Кто-то уже созванивается — показываем вход в комнату. Вход и выход из созвона
+    сервер и так рассылает компании как смену присутствия («на мите»): по ней список
+    обновляется сразу, а не к следующему опросу (#1567: «не показывает, пока не
+    перезагрузишь»). Опрос остаётся страховкой на случай оборванного сокета.
+  */
   useEffect(() => {
     if (!crmAlive) return;
     const poll = () => api.activeCalls().then(setActiveCalls).catch(() => undefined);
     poll();
-    const t = setInterval(poll, 10_000);
-    return () => clearInterval(t);
+    const t = setInterval(poll, 15_000);
+    let soon: number | undefined;
+    const onPresence = () => { window.clearTimeout(soon); soon = window.setTimeout(poll, 400); };
+    const socket = getSocket();
+    socket.on('presence.updated', onPresence);
+    socket.on('connect', onPresence);
+    return () => {
+      clearInterval(t); window.clearTimeout(soon);
+      socket.off('presence.updated', onPresence); socket.off('connect', onPresence);
+    };
   }, [crmAlive]);
 
   // Адрес сменился извне доски (клик по разделу, «назад», уведомление) — пересобираем доску.
@@ -415,8 +431,8 @@ export function App() {
   }, []);
 
   /** Присоединиться к уже идущему созвону. */
-  const joinActiveCall = () => {
-    const existing = joinable;
+  const joinActiveCall = (roomId?: string) => {
+    const existing = activeCalls.find((c) => c.canJoin && (!roomId || c.id === roomId));
     if (!existing) return;
     setCallInvite([]);
     setCallId(existing.id);
@@ -611,7 +627,11 @@ export function App() {
         avatarPath={avatarPath}
         unread={unread}
         counters={counters}
-        activeCall={joinable ? { participants: joinable.participants.length } : null}
+        activeCalls={activeCalls.filter((c) => c.canJoin).map((c) => ({
+          id: c.id, startedAt: c.startedAt, wasIn: !!c.wasIn,
+          // себя в списке «кто в созвоне» не показываем
+          names: c.participants.filter((p) => String(p.userId ?? '') !== String(user.id)).map((p) => p.displayName),
+        }))}
         inCall={!!callId}
         onSwitchOrg={onSwitchOrg}
         onSearch={(voice) => setPaletteOpen({ voice })}
