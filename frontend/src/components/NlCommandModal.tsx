@@ -268,6 +268,10 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     Меняется, только когда человек начинает новую команду.
   */
   const requestId = useRef(newChangeId());
+  const batchMsgRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (msg && drafts.length > 1) batchMsgRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [msg, drafts.length]);
 
   /**
    * Создать все проверенные — одной пакетной операцией (ТЗ-10, этап 2).
@@ -475,7 +479,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           Скажите или напишите обычным языком — черновики соберутся сами, вам останется подтвердить.
           В одной записи можно надиктовать сразу несколько задач разным людям.
         </div>
-        {msg && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {msg}</div>}
+        {/* #1571: когда черновики уже есть, сообщение — внизу, у кнопки «Создать» */}
+        {msg && drafts.length <= 1 && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {msg}</div>}
 
         <textarea
           className="ui-textarea"
@@ -595,6 +600,10 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
               ? 'Одной задаче не хватает проекта — выберите его в карточке ниже.'
               : `Задачам без проекта: ${needProject}. Выберите проект в каждой — иначе они не создадутся.`}
           </div>
+        )}
+        {/* #1571: почему не создалось — у кнопки, а не вверху окна за прокруткой */}
+        {msg && drafts.length > 1 && (
+          <div ref={batchMsgRef} className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {msg}</div>
         )}
         {/* Часть создали, часть нет (ошибка или выбросили) — к созданным всё равно можно перейти. */}
         {drafts.length > 1 && created.length > 0 && readyCount > 0 && !busy && (

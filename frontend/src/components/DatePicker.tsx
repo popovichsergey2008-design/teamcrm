@@ -155,7 +155,13 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
             selected && sameDay(d, selected) ? 'dp-selected' : '',
           ].filter(Boolean).join(' ');
           return (
-            <button type="button" key={d.toISOString()} className={cls} onClick={() => pick(d)}>
+            <button
+              type="button" key={d.toISOString()} className={cls}
+              onClick={() => pick(d)}
+              // #1581: двойной щелчок — выбрать день и сразу закрыть, без возни со временем
+              onDoubleClick={() => { pick(d); setOpen(false); }}
+              title={withTime ? 'Щелчок — выбрать день, двойной щелчок — выбрать и закрыть' : undefined}
+            >
               {d.getDate()}
             </button>
           );
@@ -179,8 +185,12 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
         <button type="button" className="dp-chip" onClick={() => shiftDays(1)}>Завтра</button>
         <button type="button" className="dp-chip" onClick={() => shiftDays(7)}>Через неделю</button>
         <button type="button" className="dp-chip dp-chip-clear" onClick={() => { onChange(''); setOpen(false); }}>Убрать</button>
-        {/* на листе нет «щелчка мимо» по полю — выход должен быть виден */}
-        {sheet && <button type="button" className="dp-chip dp-chip-done" onClick={() => setOpen(false)}>Готово</button>}
+        {/*
+          На листе нет «щелчка мимо» по полю — выход должен быть виден. Со временем календарь
+          после выбора дня остаётся открытым (правят часы) — и на компьютере нужна та же
+          кнопка: щелчок мимо календаря угадывали не все (#1581).
+        */}
+        {(sheet || withTime) && <button type="button" className="dp-chip dp-chip-done" onClick={() => setOpen(false)}>Готово</button>}
       </div>
     </div>
   );

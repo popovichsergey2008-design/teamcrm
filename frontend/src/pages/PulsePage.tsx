@@ -26,6 +26,21 @@ type Data = PulseSummary;
 type Bottleneck = Data['bottlenecks'][number];
 
 const ZONE_TITLE: Record<Data['health']['zone'], string> = { healthy: 'Здорово', attention: 'Внимание', risk: 'Риск', critical: 'Критично' };
+/**
+ * #1574: «25 критично» читали как «25 критичных задач». Это индекс здоровья 0–100,
+ * поэтому у каждой его части — что она меряет, её вес и вклад в итог.
+ */
+const COMPONENT_WEIGHT: Record<keyof Data['health']['components'], number> = {
+  delivery: 0.25, deadlines: 0.2, flow: 0.2, capacity: 0.2, velocity: 0.15,
+};
+const COMPONENT_HINT: Record<keyof Data['health']['components'], string> = {
+  delivery: 'Сколько задач закрыто за 30 дней против заведённых за те же 30 дней. 100 — закрыли не меньше, чем завели.',
+  deadlines: 'Доля задач со сроком, которые не просрочены. Минус за долгие просрочки и за просроченные срочные задачи.',
+  flow: 'Доля задач, которые двигаются. Минус за задачи без движения и за застрявшие на проверке.',
+  capacity: 'Равномерность нагрузки: минус 15 за каждого выше нормы, 5 — за близкого к норме, 2 — за задачу без исполнителя.',
+  velocity: 'Закрыто за эту неделю против прошлой. Тот же темп — 75, вдвое быстрее — 100, вдвое медленнее — 50.',
+};
+const ZONE_RANGE = 'до 50 — критично, 50–69 — риск, 70–84 — внимание, от 85 — здорово';
 const COMPONENT_TITLE: Record<keyof Data['health']['components'], string> = {
   delivery: 'Закрываем столько, сколько приходит', deadlines: 'Сроки', flow: 'Движение задач', capacity: 'Загрузка', velocity: 'Скорость',
 };
@@ -106,15 +121,17 @@ export function PulsePage() {
 
       {/* 1. Вердикт */}
       <section className={`pulse-card pulse-verdict pz-${h.zone}`}>
-        <div className="pulse-score" aria-label={`Индекс здоровья ${h.score} из 100`}>
+        <div className="pulse-score" aria-label={`Индекс здоровья команды ${h.score} из 100: ${ZONE_TITLE[h.zone].toLowerCase()}`}
+          title={`Индекс здоровья команды: ${h.score} из 100. Это не число задач. Шкала: ${ZONE_RANGE}.`}>
           <svg viewBox="0 0 64 64" aria-hidden="true">
             <circle cx="32" cy="32" r="28" className="pulse-ring-bg" />
             <circle cx="32" cy="32" r="28" className="pulse-ring" strokeDasharray={`${(h.score / 100) * 175.9} 175.9`} />
           </svg>
           <b>{h.score}</b>
-          <span>{ZONE_TITLE[h.zone]}</span>
+          <span>из 100</span>
         </div>
         <div className="pulse-verdict-text">
+          <div className="pulse-index-cap">Индекс здоровья команды — {ZONE_TITLE[h.zone].toLowerCase()}</div>
           <div className="pulse-headline">{data.verdict.headline}</div>
           {data.verdict.lines.map((l) => (
             <p key={l}>
@@ -138,7 +155,7 @@ export function PulsePage() {
             {' '}{data.verdict.sources.people} сотрудниках · скорость {data.verdict.sources.last7} против {data.verdict.sources.prev7}
           </div>
           <div className="pulse-acts">
-            <Button size="sm" variant="ghost" onClick={() => setWhy((v) => !v)} aria-expanded={why}>Почему {h.score}?</Button>
+            <Button size="sm" variant="ghost" onClick={() => setWhy((v) => !v)} aria-expanded={why}>Из чего {h.score} из 100?</Button>
             {top && data.can.act && (
               <Button size="sm" variant="primary" onClick={() => setAction({ type: top.actions[0], taskId: top.taskId, title: top.title })}>
                 Разрулить главное: #{top.taskId}
@@ -147,14 +164,24 @@ export function PulsePage() {
           </div>
           {why && (
             <div className="pulse-why">
+              <div className="dim">
+                {h.score} — индекс здоровья команды по шкале от 0 до 100, а не число задач. Шкала: {ZONE_RANGE}.
+                Индекс складывается из пяти частей, каждая тоже от 0 до 100:
+              </div>
               {(Object.keys(h.components) as (keyof typeof h.components)[]).map((k) => (
                 <div key={k} className="pulse-why-row">
-                  <span>{COMPONENT_TITLE[k]}</span>
+                  <span>
+                    {COMPONENT_TITLE[k]} <span className="dim">· вес {Math.round(COMPONENT_WEIGHT[k] * 100)}%</span>
+                    <small className="dim pulse-why-hint">{COMPONENT_HINT[k]}</small>
+                  </span>
                   <span className="pulse-bar"><i style={{ width: `${h.components[k]}%` }} className={h.components[k] >= 85 ? 'ok' : h.components[k] >= 70 ? 'mid' : 'bad'} /></span>
-                  <b>{h.components[k]}</b>
+                  <b title={`${h.components[k]} из 100, вклад в индекс +${Math.round(h.components[k] * COMPONENT_WEIGHT[k] * 10) / 10}`}>{h.components[k]}</b>
                 </div>
               ))}
-              <div className="dim">Формула {h.version}: доставка 25% · сроки 20% · движение 20% · загрузка 20% · скорость 15%.</div>
+              <div className="dim">
+                Итог ({h.version}): {(Object.keys(h.components) as (keyof typeof h.components)[])
+                  .map((k) => `${h.components[k]}×${Math.round(COMPONENT_WEIGHT[k] * 100)}%`).join(' + ')} = {h.score} из 100.
+              </div>
             </div>
           )}
         </div>

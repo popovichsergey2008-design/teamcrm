@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -639,11 +640,18 @@ export class FeedService {
    */
   async publishVictory(tenantId: string, a: Actor, text: string) {
     const body = text.trim().slice(0, 8000);
+    /*
+      #1578: одну и ту же победу публиковали снова и снова — «Пульс» показывает её всю
+      неделю, и кнопка «В новости» срабатывала каждый раз. Ключ — текст и неделя (с
+      понедельника): тот же текст на этой неделе второй раз не выходит.
+    */
+    const week = Math.floor((Date.now() / 86_400_000 + 3) / 7);
+    const dedupKey = `victory:${week}:${createHash('sha1').update(body.replace(/\s+/g, ' ').toLowerCase()).digest('hex').slice(0, 16)}`;
     const post = await this.repo.create({
       tenantId, authorId: String(a.userId), type: 'victory', title: 'Победа команды', body,
-      visibility: 'all', projectId: null, requiresAck: false, meta: { source: 'radar' },
+      visibility: 'all', projectId: null, requiresAck: false, meta: { source: 'radar' }, dedupKey,
     });
-    if (!post) throw AppException.conflict('Не получилось опубликовать');
+    if (!post) throw AppException.conflict('Эта победа уже опубликована в «Новостях» на этой неделе');
     this.audit(tenantId, String(a.userId), 'news.created', String(post.id), { type: 'victory' });
     this.changed(tenantId, String(post.id), 'created');
     return post;

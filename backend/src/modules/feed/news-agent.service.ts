@@ -91,6 +91,14 @@ export class NewsAgentService {
     const local = localParts(now, tz);
     const isoDow = local.dow === 0 ? 7 : local.dow;
     if (!force && (isoDow === 6 || isoDow === 7)) return { status: 'weekend' as const };
+    /*
+      #1578: хайлайт за этот день уже есть — ничего не пересобираем. Раньше планировщик
+      каждые 5 минут своего трёхчасового окна заново считал факты, звал модель на
+      шлифовку и пытался вставить пост ещё раз — вставку гасил ключ дня, но модель
+      работала вхолостую 36 раз за утро, а номера постов улетали на сотни вперёд.
+    */
+    const key = `highlight:${local.date}`;
+    if (await this.repo.hasPost(tenantId, key)) return { status: 'exists' as const, postId: null };
     const back = isoDow === 1 ? 3 : 1;
     const fromDate = addDays(local.date, -back);
     const from = zonedTime(fromDate, '00:00', tz);
@@ -131,7 +139,6 @@ export class NewsAgentService {
       prevWeekClosed: prevWeek,
       criticalClosers: [...closers.values()],
     };
-    const key = `highlight:${local.date}`;
     const reason = highlightReason(f);
     if (!reason) {
       await this.feed.createSystem(tenantId, { type: 'highlight', title: 'AI-Хайлайты дня', body: '', status: 'skipped', meta: { facts: f, reason: 'no_occasion' }, dedupKey: key });
@@ -154,6 +161,9 @@ export class NewsAgentService {
 
   async weeklyLearnings(tenantId: string, tz: string, now = new Date(), force = false) {
     const local = localParts(now, tz);
+    // #1578: одни выводы на неделю — уже вышли (или пропущены), повторно не собираем
+    const key = `learnings:${isoWeek(local.date)}`;
+    if (await this.repo.hasPost(tenantId, key)) return { status: 'exists' as const, postId: null };
     const from = zonedTime(addDays(local.date, -6), '00:00', tz);
     const to = now;
     const [decisions, meetings, releases, kudos, blockers, closed] = await Promise.all([
@@ -172,7 +182,6 @@ export class NewsAgentService {
       kudosCount: kudos.length,
       closedTasks: closed,
     });
-    const key = `learnings:${isoWeek(local.date)}`;
     if (!text) {
       if (!force) await this.feed.createSystem(tenantId, { type: 'learnings', title: 'Выводы недели', body: '', status: 'skipped', meta: { reason: 'too_little' }, dedupKey: key });
       return { status: 'skipped' as const };

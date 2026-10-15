@@ -46,6 +46,9 @@
 .pulse-sources { font-size: var(--fs-xs); }
 @media (max-width: 600px) { .pulse-verdict { flex-direction: column; align-items: center; } }
 
+/* #1574: подпись над вердиктом — что за число в кольце */
+.pulse-index-cap { font-size: var(--fs-xs); color: var(--text-mut); text-transform: uppercase; letter-spacing: .04em; }
+.pulse-why-hint { display: block; margin-top: 2px; font-size: var(--fs-xs); line-height: 1.35; }
 .pulse-why { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
 .pulse-why-row { display: grid; grid-template-columns: minmax(120px, 1.4fr) 2fr 34px; gap: 10px; align-items: center; font-size: var(--fs-sm); }
 .pulse-bar { display: block; height: 6px; border-radius: 4px; background: var(--border); overflow: hidden; }

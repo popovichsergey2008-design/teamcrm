@@ -214,6 +214,15 @@ export class FeedRepository {
 
   // ── создание и правка ──
 
+  /** Пост с этим ключом уже есть (выпущен, ждёт одобрения или пропущен) — #1578. */
+  async hasPost(tenantId: string, dedupKey: string): Promise<boolean> {
+    const row = await this.db.one<{ ok: number }>(
+      `SELECT 1 AS ok FROM feed_posts WHERE tenant_id = $1 AND dedup_key = $2 AND deleted_at IS NULL LIMIT 1`,
+      [tenantId, dedupKey],
+    );
+    return !!row;
+  }
+
   async create(input: {
     tenantId: string; authorId: string | null; type: string; title: string | null; body: string;
     status?: string; visibility: string; projectId: string | null; requiresAck: boolean;
