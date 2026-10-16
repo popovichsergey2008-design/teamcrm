@@ -94,6 +94,27 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   }, [inviteUserIds.length, peers.length, isGuest]);
   const [tracks, setTracks] = useState<RemoteTrack[]>([]);
   const [micOn, setMicOn] = useState(true);
+  /*
+    Перезаход после обрыва связи (16.10: «общаемся, и связь потеряна»). Раньше окно
+    писало «восстанавливаю…», но не восстанавливало ничего — человек выходил и входил
+    руками. Теперь при обрыве сигнального канала окно само входит в ту же комнату:
+    сначала через секунду, дальше реже; включённый/выключенный микрофон сохраняется.
+  */
+  const [rejoin, setRejoin] = useState(0);
+  const rejoinTries = useRef(0);
+  const rejoinTimer = useRef<number | null>(null);
+  // закрыто НАМЕРЕННО (завершили для всех, отказали, вошёл с другого устройства) — не перезаходим
+  const noRejoin = useRef(false);
+  const micOnRef = useRef(true);
+  micOnRef.current = micOn;
+  const scheduleRejoin = useCallback(() => {
+    if (rejoinTimer.current !== null) return;
+    const n = rejoinTries.current++;
+    if (n >= 12) { setErr('Связь с сервером созвонов не восстановилась — выйдите и зайдите снова'); return; }
+    const delay = Math.min(15_000, 1000 * 2 ** Math.min(n, 4));
+    rejoinTimer.current = window.setTimeout(() => { rejoinTimer.current = null; setRejoin((k) => k + 1); }, delay);
+  }, []);
+  useEffect(() => () => { if (rejoinTimer.current !== null) window.clearTimeout(rejoinTimer.current); }, []);
   /**
    * Куда идёт звук (задача #1464): null — платформа не умеет выбирать (браузер), и
    * кнопки громкой связи нет; иначе earpiece | speaker | headset.
@@ -327,7 +348,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           // правила сложения потоков — в call-mini: там же они и проверяются
           onTrack: (t) => setTracks((prev) => mergeTrack(prev, t)),
           onTrackGone: (id) => setTracks((prev) => prev.filter((x) => x.consumerId !== id)),
-          onState: setState,
+          onState: (s) => {
+            setState(s);
+            // вошли заново — счётчик попыток с нуля
+            if (s === 'connected') rejoinTries.current = 0;
+          },
+          onSocketLost: () => { if (!cancelled && !noRejoin.current) scheduleRejoin(); },
           onRecording: setRecording,
           onAiInvited: () => setAiInvited(true),
           onPointer: (p) => {
@@ -367,6 +393,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           },
           onGuestAdmitted: () => { setGuestState('in'); setGuestNote(''); },
           onGuestRejected: (reason) => {
+            noRejoin.current = true;
             setGuestState('rejected');
             setGuestNote(REJECT_NOTE[reason]
               ?? (isGuest ? 'Организатор отклонил вход.' : 'Участники созвона не впустили вас.'));
@@ -374,10 +401,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           onRole: (r) => { setHostRole(r.host); setLocked(r.locked); },
           onLocked: setLocked,
           onReplaced: () => {
+            noRejoin.current = true;
             setGuestState('rejected');
             setGuestNote('Вы подключились к этому созвону в другой вкладке или на другом устройстве — здесь он закрыт.');
           },
           onEnded: (by) => {
+            noRejoin.current = true;
             // сотрудника с записанной встречи ведём сразу в итоги; гостю — только записка
             if (!isGuest && everRecorded.current) {
               pipRef.current?.close();
@@ -393,6 +422,15 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           onError: setErr,
         }, String(guest?.userId ?? user?.id ?? ''));
         client.current = c;
+        if (rejoin > 0) {
+          // перезаход: чужие дорожки и своя камера были привязаны к прежним каналам
+          setTracks([]);
+          camProducer.current = null;
+          localStream.current?.getVideoTracks().forEach((t) => t.stop());
+          setSelfVideo(null);
+          setCamOn(false);
+          diag('meet', 'rejoin', meetingId, { attempt: rejoinTries.current });
+        }
         await c.join();
 
         // микрофон берём сразу: звонок без звука бессмысленен
@@ -416,11 +454,16 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
         // молчание в одну сторону — самая обидная поломка созвона, поэтому говорим прямо
         if (!audio) setErr('Микрофон не найден — вас не будет слышно');
         else if (!(await c.publish(audio))) setErr('Микрофон не удалось передать — перезайдите в созвон');
+        // после перезахода микрофон остаётся таким, каким его оставил человек
+        else if (rejoin > 0 && !micOnRef.current) await c.setMuted('audio', true);
+        if (rejoin > 0) setErr('');
 
         // зовём собеседников уже после того, как сами вошли: иначе человек примет
-        // звонок и попадёт в пустую комнату
-        if (inviteUserIds.length) c.invite(inviteUserIds);
+        // звонок и попадёт в пустую комнату. При перезаходе не зовём второй раз.
+        if (inviteUserIds.length && rejoin === 0) c.invite(inviteUserIds);
       } catch (e) {
+        // перезаход не удался (сервер ещё не поднялся, сеть не вернулась) — пробуем снова
+        if (rejoin > 0 && !cancelled) { scheduleRejoin(); return; }
         setErr(e instanceof ApiError ? e.message : (e as Error)?.message ?? 'Не удалось подключиться');
       }
     })();
@@ -435,7 +478,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
     };
     // список приглашаемых берётся один раз при входе в комнату — перезаходить на его смену нельзя
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meetingId]);
+  }, [meetingId, rejoin]);
 
   const toggleMic = useCallback(async () => {
     const next = !micOn;

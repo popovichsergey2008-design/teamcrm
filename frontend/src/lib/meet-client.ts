@@ -33,6 +33,12 @@ export interface MeetEvents {
   onTrack: (t: RemoteTrack) => void;
   onTrackGone: (consumerId: string) => void;
   onState: (state: 'connecting' | 'connected' | 'reconnecting' | 'closed') => void;
+  /**
+   * Оборвался сигнальный канал (веб-сокет) — не по нашей воле. Восстановить его
+   * изнутри клиента нельзя: сервер, увидев обрыв, уже вывел человека из комнаты
+   * и закрыл его каналы. Поэтому окно созвона входит заново само (16.10).
+   */
+  onSocketLost?: () => void;
   onRecording: (active: boolean) => void;
   onAiInvited?: () => void;
   /** Гостю: стучимся, ждём впуска (hostPresent — есть ли кому впускать). */
@@ -160,7 +166,12 @@ export class MeetClient {
       try { msg = JSON.parse(e.data); } catch { return; }
       this.onMessage(msg).catch((err) => this.ev.onError(String(err?.message ?? err)));
     };
-    this.ws.onclose = () => { if (!this.closed) this.ev.onState('reconnecting'); };
+    this.ws.onclose = () => {
+      if (this.closed) return;
+      this.log('socket.lost', {});
+      this.ev.onState('reconnecting');
+      this.ev.onSocketLost?.();
+    };
     this.ws.onerror = () => this.ev.onError('Соединение с сервером созвонов потеряно');
     await new Promise<void>((resolve, reject) => {
       this.ws!.onopen = () => resolve();
