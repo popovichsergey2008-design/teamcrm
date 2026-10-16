@@ -2023,8 +2023,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             <MenuItem icon={<Icon name="hash" size={15} />} onSelect={() => setChannelOpen(true)}>
               <span className="chat-new-item"><b>Канал</b><small>Для публикации новостей и общих тем</small></span>
             </MenuItem>
+            {/*
+              #1586: у внешнего разговора свой значок (рукопожатие). Значок ссылки — только
+              у внешней ссылки на созвон, и подсказка у неё везде одна и та же.
+            */}
             <MenuItem
-              icon={<Icon name="link" size={15} />}
+              icon={<Icon name="handshake" size={15} />}
               onSelect={async () => {
                 const title = await promptText({ title: 'Внешний разговор', description: 'С кем разговор? Например, «ООО Вектор».', placeholder: 'Название компании или имя', confirmLabel: 'Создать' });
                 if (!title?.trim()) return;
@@ -2036,10 +2040,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось создать разговор'); }
               }}
             >
-              <span className="chat-new-item"><b>Внешний разговор</b><small>С клиентом или подрядчиком, без доступа к остальному</small></span>
+              <span className="chat-new-item"><b>Внешний разговор</b><small>Отдельный чат с клиентом или подрядчиком — без доступа к остальному</small></span>
             </MenuItem>
             <MenuItem icon={<Icon name="video" size={15} />} onSelect={() => setGuestKey((k) => k + 1)}>
-              <span className="chat-new-item"><b>Видеоконференция</b><small>Для встреч с внешними участниками</small></span>
+              <span className="chat-new-item"><b>Видеоконференция</b><small>Внешняя ссылка для человека со стороны — войдёт из браузера, без регистрации</small></span>
             </MenuItem>
             <MenuSeparator />
             <MenuItem icon={<Icon name="search" size={15} />} onSelect={() => { setView('channels'); loadChannels(); }}>
@@ -2489,7 +2493,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         )}
         {active && view === 'chat' && (
           <>
-            <div className="chat-head">
+            {/* #1584: на телефоне открытый поиск занимает шапку целиком — имя собеседника
+                и подсказка «введите два знака» налезали друг на друга, а поле сжималось в щель */}
+            <div className={`chat-head${inChatSearch ? ' chat-head-searching' : ''}`}>
               {/* Назад к списку: на телефоне переписка занимает весь экран, и вернуться
                   к выбору собеседника иначе нечем. На широком экране кнопки нет. */}
               <button
@@ -2526,7 +2532,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                       }
                     }}
                   />
-                  <span className="dim chat-insearch-count">
+                  <span className={`dim chat-insearch-count${inChatQuery.trim().length < 2 ? ' is-hint' : ''}`}>
                     {inChatQuery.trim().length < 2 ? 'введите два знака'
                       : !inChatHits.length ? 'нет совпадений'
                         : `${inChatPos + 1} из ${inChatHits.length}`}
@@ -2560,7 +2566,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   </button>
                 </span>
               )}
-              <span>
+              <span className="chat-head-title">
                 {active.kind === 'dm' && <span className={`presence ${active.peerOnline ? 'on' : ''}`} title={active.peerOnline ? 'в сети' : 'не в сети'} />}
                 <b>{active.title ?? 'Чат'}</b>
                 {active.kind === 'dm' && groupFor(active.peerId) && (

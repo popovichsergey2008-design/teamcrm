@@ -86,6 +86,15 @@ export class RecurrenceScheduler implements OnModuleInit, OnModuleDestroy {
 
     const last = await this.repo.lastInstance(row.tenant_id, row.id);
     if (last && !last.closed_at) {
+      /*
+        Срок уже стоит на этом срабатывании или позже (его перенесли руками) — двигать
+        нечего. Запись в журнал здесь была бы пустой новостью: она зажигает красную
+        единицу у исполнителя и наблюдателей, а в задаче ничего не поменялось (#1585).
+      */
+      if (last.deadline_at && new Date(last.deadline_at).getTime() >= dueAt.getTime()) {
+        await this.repo.markRun(row.id, now, upcoming);
+        return false;
+      }
       // НЕ ПЛОДИМ. Прежняя задача жива — двигаем ей срок на новое срабатывание.
       await this.repo.pushDeadline(row.tenant_id, last.id, dueAt);
       await this.activity.log(row.tenant_id, last.id, null, 'recurrence_shifted', {

@@ -934,12 +934,17 @@ export class TasksService {
    * ночью «замечает», что срок этого повтора наступил, и возвращает старую дату (по
    * правилу «не плодить, а переносить»). Нажатие оказалось бы бессмысленным.
    * Двигаем только вперёд: расписание, ушедшее дальше переноса, трогать незачем.
+   *
+   * Следующее срабатывание — ближайшее ПО ПРАВИЛУ после нового срока, а не сам срок
+   * (#1585). Раньше ставили ровно новый срок: в этот миг повтор срабатывал, «переносил»
+   * срок на ту же дату и писал это в журнал — у людей загоралась красная единица на
+   * задаче, в которой ничего не изменилось, а просроченная задача так и висела.
    */
   private async shiftRecurrence(tenantId: string, task: TaskRow, to: Date): Promise<void> {
     if (!task.recurrence_id) return;
     const rule = await this.recurrence.byTask(tenantId, String(task.id));
-    if (!rule || new Date(rule.next_run_at).getTime() >= to.getTime()) return;
-    await this.recurrence.markRun(String(rule.id), new Date(rule.last_run_at ?? new Date()), to);
+    if (!rule || new Date(rule.next_run_at).getTime() > to.getTime()) return;
+    await this.recurrence.markRun(String(rule.id), new Date(rule.last_run_at ?? new Date()), nextRun(ruleOf(rule), to));
   }
 
   /**

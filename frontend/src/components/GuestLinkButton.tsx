@@ -92,7 +92,7 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption, o
         className={`ui-btn ui-btn-sm ${compact ? 'ui-btn-ghost' : 'ui-btn-outline'}`}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        title="Ссылка для человека со стороны: он войдёт в браузере, без регистрации"
+        title="Внешняя ссылка для человека со стороны — войдёт в созвон из браузера, без регистрации"
       >
         <Icon name="link" size={15} /> {caption ?? (compact ? 'Ссылка' : 'Внешняя ссылка')}
       </button>

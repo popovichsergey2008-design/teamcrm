@@ -111,10 +111,10 @@ export class TaskRecurrenceRepository {
    * самую свежую по номеру: копии создаются по порядку, и номер здесь надёжнее даты.
    */
   async lastInstance(tenantId: string, recurrenceId: string): Promise<
-    { id: string; closed_at: string | null; title: string; project_id: string } | null
+    { id: string; closed_at: string | null; title: string; project_id: string; deadline_at: string | null } | null
   > {
     return this.db.one(
-      `SELECT id, closed_at, title, project_id
+      `SELECT id, closed_at, title, project_id, deadline_at
          FROM tasks
         WHERE tenant_id = $1 AND recurrence_id = $2
         ORDER BY id DESC

@@ -773,9 +773,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
               ? `Просятся в созвон (${knocks.length}) — вернитесь в окно, чтобы впустить`
               : 'Идёт созвон — вернуться в окно разговора'}
           >
-            {recording
-              ? <span className="mini-rec-dot" aria-hidden="true" />
-              : <Icon name="phone" size={13} />}
+            {/* #1589: значок «развернуть» по центру — видно, куда нажать, чтобы вернуть окно */}
+            <span className="call-pill-expand" aria-hidden="true"><Icon name="maximize" size={16} /></span>
+            {recording && <span className="mini-rec-dot" aria-hidden="true" />}
             <span>{callTime(elapsed)}</span>
             {/* Гость, стучащийся в дверь, обязан быть виден даже в убранном созвоне:
                 иначе он стоит там, пока о нём не вспомнят. */}

@@ -95,6 +95,9 @@ const ACTIVITY_LABEL: Record<string, string> = {
   merged_in: 'объединил сюда другую задачу',
   merged_into: 'объединил эту задачу с другой',
   via_bot: 'через QEVO Bot',
+  // повтор по расписанию (#1585): без подписи в истории было видно «recurrence_shifted»
+  recurrence_shifted: 'повтор: задача не закрыта — срок перенесён на новое срабатывание',
+  recurrence_created: 'создана по расписанию повтора',
 };
 
 /** Что именно сделал бот — словами, а не именем инструмента. */
@@ -111,6 +114,9 @@ function activityText(a: { kind: string; detail?: Record<string, any> }): string
     return `${label} «${a.detail?.meetingTitle ?? ''}»${Number.isFinite(sec) && a.detail?.sec != null ? ` · ${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}` : ''}${a.detail?.audio ? ' · с аудио' : ''}`;
   }
   if (a.kind === 'approval_returned' && a.detail?.reason) return `${label}: ${a.detail.reason}`;
+  if (a.kind === 'recurrence_shifted' && a.detail?.deadlineAt) {
+    return `${label} — ${new Date(a.detail.deadlineAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`;
+  }
   // Номер обязателен: «объединил» без номера не отвечает на вопрос «с чем».
   if ((a.kind === 'merged_in' || a.kind === 'merged_into') && a.detail?.taskId) {
     return `${label} #${a.detail.taskId}${a.detail.title ? ` «${a.detail.title}»` : ''}`;

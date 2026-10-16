@@ -300,27 +300,32 @@
   прятать разговор нельзя: человек не должен обнаружить включённый микрофон через
   полчаса. Отсюда же его и выключают, не разворачивая созвон обратно.
 */
+/* #1589: на полсантиметра крупнее прежнего (кнопки 26 → 36 точек) — проще попасть */
 .call-pill {
   position: fixed; right: 16px; bottom: 16px; z-index: 120;
-  display: inline-flex; align-items: center; gap: 4px; padding: 4px;
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px;
   background: var(--bg-elev); border: 1px solid var(--border);
   border-radius: 999px; box-shadow: var(--shadow-lg);
 }
 .call-pill-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
   color: #fff; background: rgba(46, 52, 64, .92); border: 1px solid rgba(255, 255, 255, .18);
 }
 .call-pill-btn:hover { background: rgba(70, 78, 94, .95); }
 /* Выключенный микрофон — красным, как в самом созвоне: состояние читается мгновенно. */
 .call-pill-off { background: #c62828; }
 .call-pill-back {
-  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
-  height: 26px; padding: 0 10px 0 8px; border-radius: 999px;
-  font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  height: 36px; padding: 0 12px 0 4px; border-radius: 999px;
+  font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
   color: var(--text); background: transparent; border: none;
 }
 .call-pill-back:hover { background: var(--hover); }
+.call-pill-expand {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  color: #fff; background: var(--fill-info);
+}
 .call-pill-knock {
   display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px;
   border-radius: 999px; background: #c62828; color: #fff; font-size: calc(10px * var(--fs-scale)); font-weight: 600;
@@ -3294,6 +3299,9 @@
 .chat-insearch { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .chat-insearch .input { flex: 1; min-width: 0; font-size: var(--fs-sm); padding: 5px 8px; }
 .chat-insearch-count { white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+  .chat-head-searching .chat-head-title, .chat-insearch-count.is-hint { display: none; }
+}
 /* Найденное в этом чате подсвечено рамкой; то, на котором стоим, — рамкой поярче. */
 .chat-match .chat-msg { box-shadow: 0 0 0 2px var(--accent-line); }
 .chat-match-current .chat-msg { box-shadow: 0 0 0 2px var(--accent); }

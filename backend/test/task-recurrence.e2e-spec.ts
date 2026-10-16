@@ -130,6 +130,20 @@ describe('регулярные задачи (e2e)', () => {
     expect(history.some((h: any) => h.kind === 'recurrence_shifted')).toBe(true);
   });
 
+  it('срок уже позже срабатывания — двигать нечего, пустой записи в истории нет (#1585)', async () => {
+    const { owner, task } = await setup();
+    // срок перенесли руками далеко вперёд — повтор не должен «переносить» его на то же место
+    const far = new Date(Date.now() + 10 * DAY).toISOString();
+    await http.patch(`/api/tasks/${task.id}`).set(H(owner.accessToken)).send({ deadlineAt: far }).expect(200);
+    await http.put(`/api/tasks/${task.id}/recurrence`).set(H(owner.accessToken))
+      .send({ freq: 'daily', atTime: '10:00', tz: 'Europe/Moscow' }).expect(200);
+
+    await app.get(RecurrenceScheduler).tick(new Date(Date.now() + 2 * DAY));
+
+    const history = (await http.get(`/api/tasks/${task.id}/activity`).set(H(owner.accessToken)).expect(200)).body.data;
+    expect(history.some((h: any) => h.kind === 'recurrence_shifted')).toBe(false);
+  });
+
   it('снятый повтор больше не срабатывает', async () => {
     const { owner, project, task } = await setup();
     await http.put(`/api/tasks/${task.id}/recurrence`).set(H(owner.accessToken))
