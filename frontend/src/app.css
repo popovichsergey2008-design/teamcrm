@@ -300,7 +300,7 @@
   прятать разговор нельзя: человек не должен обнаружить включённый микрофон через
   полчаса. Отсюда же его и выключают, не разворачивая созвон обратно.
 */
-/* #1589: на полсантиметра крупнее прежнего (кнопки 26 → 36 точек) — проще попасть */
+/* #1589: на полсантиметра крупнее прежнего (высота 36 → 54 точки) — проще попасть */
 .call-pill {
   position: fixed; right: 16px; bottom: 16px; z-index: 120;
   display: inline-flex; align-items: center; gap: 6px; padding: 6px;
@@ -309,7 +309,7 @@
 }
 .call-pill-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+  width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
   color: #fff; background: rgba(46, 52, 64, .92); border: 1px solid rgba(255, 255, 255, .18);
 }
 .call-pill-btn:hover { background: rgba(70, 78, 94, .95); }
@@ -317,13 +317,13 @@
 .call-pill-off { background: #c62828; }
 .call-pill-back {
   display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-  height: 36px; padding: 0 12px 0 4px; border-radius: 999px;
+  height: 40px; padding: 0 12px 0 4px; border-radius: 999px;
   font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
   color: var(--text); background: transparent; border: none;
 }
 .call-pill-back:hover { background: var(--hover); }
 .call-pill-expand {
-  display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
   color: #fff; background: var(--fill-info);
 }
 .call-pill-knock {
