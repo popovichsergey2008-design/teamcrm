@@ -131,10 +131,12 @@ describe('регулярные задачи (e2e)', () => {
   });
 
   it('срок уже позже срабатывания — двигать нечего, пустой записи в истории нет (#1585)', async () => {
-    const { owner, task } = await setup();
-    // срок перенесли руками далеко вперёд — повтор не должен «переносить» его на то же место
+    const { owner, project } = await setup();
+    // срок стоит далеко впереди (как после ручного переноса) — повтор не должен «переносить» его на то же место
     const far = new Date(Date.now() + 10 * DAY).toISOString();
-    await http.patch(`/api/tasks/${task.id}`).set(H(owner.accessToken)).send({ deadlineAt: far }).expect(200);
+    const task = (await http.post('/api/tasks').set(H(owner.accessToken))
+      .send({ projectId: project.id, title: 'Сводка', assigneeId: owner.user.id, deadlineAt: far, requiresApproval: false })
+      .expect(201)).body.data;
     await http.put(`/api/tasks/${task.id}/recurrence`).set(H(owner.accessToken))
       .send({ freq: 'daily', atTime: '10:00', tz: 'Europe/Moscow' }).expect(200);
 
