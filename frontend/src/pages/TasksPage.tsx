@@ -290,7 +290,7 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
           >
             <Icon name="user" size={14} /> Мои задачи
             {myPicked.length > 0 && myPicked.length < ROLE_TABS.length && (
-              <span className="tasks-my-part">: {myPicked.map((t) => t.label.toLowerCase()).join(', ')}</span>
+              <span className="tasks-my-part">· {myPicked.map((t) => t.label.toLowerCase()).join(', ')}</span>
             )}
           </Toggle>
           <Menu.Root>
@@ -310,7 +310,7 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
                       title={t.hint}
                     >
                       <span className="tasks-my-check" aria-hidden>
-                        <Menu.CheckboxItemIndicator keepMounted><Icon name="check" size={14} /></Menu.CheckboxItemIndicator>
+                        <Menu.CheckboxItemIndicator><Icon name="check" size={14} /></Menu.CheckboxItemIndicator>
                       </span>
                       <span className="ui-menu-label">{t.label}</span>
                     </Menu.CheckboxItem>
