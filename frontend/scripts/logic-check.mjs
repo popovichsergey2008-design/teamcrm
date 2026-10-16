@@ -843,6 +843,12 @@ test('разбор сообщения: упоминания, ссылки, ск�
   // без схемы href считается адресом ВНУТРИ приложения — дописываем протокол
   assert.equal(hrefOf('teamsmrt.com/x'), 'https://teamsmrt.com/x');
 
+  // #1588: «Скопировать ссылку» — все адреса сообщения, без повторов, со схемой
+  const { linksIn } = await load('lib/chat-text.ts');
+  assert.deepEqual(linksIn('смотри [макет](https://figma.com/f/1) и qevo.one/tasks, ещё https://figma.com/f/1.'),
+    ['https://figma.com/f/1', 'https://qevo.one/tasks']);
+  assert.deepEqual(linksIn('без ссылок, т.д.'), []);
+
   const now = new Date(2026, 8, 2, 12, 0);
   assert.equal(dayLabel(new Date(2026, 8, 2, 9, 0).toISOString(), now), 'Сегодня');
   assert.equal(dayLabel(new Date(2026, 8, 1, 9, 0).toISOString(), now), 'Вчера');

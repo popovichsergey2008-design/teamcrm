@@ -24,7 +24,7 @@ import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from
 import { remindLabel, remindOptions } from '../lib/remind-times';
 import { MentionField } from '../components/MentionField';
 import { MessageText } from '../components/MessageText';
-import { longPressProps, MenuAt, MessageMenu } from '../components/MessageMenu';
+import { linkMenuItems, linkUnder, longPressProps, MenuAt, MessageMenu } from '../components/MessageMenu';
 import { useDismiss } from '../hooks/useDismiss';
 import { selectionIn } from '../lib/selection';
 import { shrinkAll } from '../lib/image-shrink';
@@ -434,7 +434,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    * Просьба заказчика: «убрать эти троеточия везде и сделать один в один как в
    * телеграме». Одно меню на страницу: у какого сообщения открыто и в какой точке.
    */
-  const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt; picked: string } | null>(null);
+  const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt; picked: string; link?: string } | null>(null);
   /** Какой раздел открыт вместо переписки: входящие, треды, сохранённое. */
   const [view, setView] = useState<'chat' | 'inbox' | 'threads' | 'saved' | 'channels' | 'anthill'>('chat');
   /**
@@ -1608,7 +1608,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    * непрочитанным». Раньше те же действия стояли значками под каждым сообщением —
    * заказчик попросил убрать их совсем и повторить поведение Telegram.
    */
-  const messageMenuItems = (m: Message, mine: boolean, picked = '') => [
+  const messageMenuItems = (m: Message, mine: boolean, picked = '', link = '') => [
     {
       label: picked ? 'Ответить с цитатой' : 'Ответить',
       icon: 'reply' as const,
@@ -1640,6 +1640,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       icon: 'copy' as const,
       onClick: () => { void navigator.clipboard?.writeText(String(m.body)).catch(() => undefined); },
     }] : []),
+    ...linkMenuItems(m.body, link),
     { label: m.pinned_at ? 'Открепить' : 'Закрепить', icon: 'flag' as const, onClick: () => togglePin(m) },
     {
       label: savedIds.has(String(m.id)) ? 'Убрать из сохранённого' : 'Сохранить',
@@ -1691,9 +1692,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         id: String(m.id),
         at: { x: e.clientX, y: e.clientY },
         picked: selectionIn(e.currentTarget as Element),
+        link: linkUnder(e.target),
       });
     },
-    ...withSwipeLeft(longPressProps((at) => setCtxFor({ id: String(m.id), at, picked: '' })), () => setToTask(m)),
+    ...withSwipeLeft(longPressProps((at, target) => setCtxFor({ id: String(m.id), at, picked: '', link: linkUnder(target) })), () => setToTask(m)),
   });
 
   /**
@@ -2628,7 +2630,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   reactions={REACTIONS}
                   onReact={(emoji) => react(String(m.id), emoji)}
                   onMoreEmoji={(at) => setEmojiFor({ id: String(m.id), at })}
-                  items={messageMenuItems(m, String(m.author_id) === String(user?.id), ctxFor.picked)}
+                  items={messageMenuItems(m, String(m.author_id) === String(user?.id), ctxFor.picked, ctxFor.link)}
                   onClose={() => setCtxFor(null)}
                 />
               );

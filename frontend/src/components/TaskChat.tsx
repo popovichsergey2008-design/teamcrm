@@ -10,7 +10,7 @@ import { OFFLINE_FLUSHED_EVENT, useQueuedFor } from '../hooks/useOfflineQueue';
 import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync';
 import { dayLabel, plural, sameGroup, stampLabel } from '../lib/chat-text';
 import { MessageText } from './MessageText';
-import { longPressProps, MenuAt, MessageMenu } from './MessageMenu';
+import { linkMenuItems, linkUnder, longPressProps, MenuAt, MessageMenu } from './MessageMenu';
 import { EmojiPicker } from './EmojiPicker';
 import { QUICK_REACTIONS } from '../lib/emoji';
 import { pasteBelongsHere, pasteInForeignField } from '../lib/paste-scope';
@@ -237,7 +237,7 @@ export function TaskChat({
    * каждой репликой стояли «Ответить», «В ветку», смайл и троеточие — заказчик
    * попросил убрать их и сделать «один в один как в телеграме».
    */
-  const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt; picked: string } | null>(null);
+  const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt; picked: string; link?: string } | null>(null);
   /** Палитра эмодзи: реакция на сообщение (`id`) либо вставка в текст (`id: null`). */
   const [emojiFor, setEmojiFor] = useState<{ id: string | null; at: { x: number; y: number } } | null>(null);
 
@@ -1292,9 +1292,10 @@ export function TaskChat({
                     id: String(c.id),
                     at: { x: e.clientX, y: e.clientY },
                     picked: selectionIn(e.currentTarget as Element),
+                    link: linkUnder(e.target),
                   });
                 }}
-                {...longPressProps((at) => setCtxFor({ id: String(c.id), at, picked: '' }))}
+                {...longPressProps((at, target) => setCtxFor({ id: String(c.id), at, picked: '', link: linkUnder(target) }))}
               >
                 <div className="msg-avatar" aria-hidden="true">
                   {grouped ? '' : c.is_ai ? <Icon name="robot" size={14} /> : initials(name)}
@@ -1511,6 +1512,7 @@ export function TaskChat({
             icon: 'copy' as const,
             onClick: () => { void navigator.clipboard?.writeText(String(c.body)).catch(() => undefined); },
           }] : []),
+          ...linkMenuItems(c.body, ctxFor.link),
           {
             label: c.pinned_at ? 'Открепить' : 'Закрепить',
             icon: 'flag' as const,

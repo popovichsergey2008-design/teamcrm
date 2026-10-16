@@ -82,6 +82,22 @@ export function splitMessage(text: string): Piece[] {
   return out.filter((p) => p.value !== '');
 }
 
+/**
+ * Все адреса в сообщении — для пункта «Скопировать ссылку» в меню (#1588, «как в ТГ»).
+ *
+ * Берём и ссылки разметкой «[текст](адрес)», и голые адреса; повторы убираем, порядок
+ * сохраняем. Отдаём уже пригодными для вставки в браузер — со схемой.
+ */
+export function linksIn(text: string): string[] {
+  const src = String(text ?? '');
+  const out: string[] = [];
+  const add = (u: string) => { const h = hrefOf(u); if (!out.includes(h)) out.push(h); };
+  const MD = /\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g;
+  for (const m of src.matchAll(MD)) add(m[1]);
+  for (const p of splitMessage(src.replace(MD, ' '))) if (p.kind === 'link') add(p.value);
+  return out;
+}
+
 /** Подпись дня над сообщениями: «Сегодня» читается быстрее, чем «2 сентября». */
 export function dayLabel(iso: string, now = new Date()): string {
   const d = new Date(iso);

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
+import { linksIn } from '../lib/chat-text';
 
 /** Пункт меню сообщения. `danger` — красный: удаление ни с чем не спутаешь. */
 export interface MsgMenuItem {
@@ -11,6 +12,34 @@ export interface MsgMenuItem {
 
 /** Где открыть меню: координаты курсора (или пальца) в окне. */
 export interface MenuAt { x: number; y: number }
+
+/** Ссылка, на которой нажали правую кнопку (или держат палец), — если нажали на ссылку. */
+export function linkUnder(target: EventTarget | null): string {
+  const a = (target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+  return a && /^https?:/i.test(a.href) ? a.href : '';
+}
+
+/**
+ * «Скопировать ссылку» — как в Telegram (#1588): не выделять адрес руками.
+ *
+ * Нажали прямо на ссылку — копируем её. Иначе копируем ссылки из сообщения: одна —
+ * одним пунктом, несколько — пунктом на каждую (до трёх), с адресом в подписи,
+ * чтобы было видно, какая из них.
+ */
+export function linkMenuItems(body: unknown, clicked = ''): MsgMenuItem[] {
+  const copy = (url: string) => () => { void navigator.clipboard?.writeText(url).catch(() => undefined); };
+  if (clicked) return [{ label: 'Скопировать ссылку', icon: 'link', onClick: copy(clicked) }];
+  const links = linksIn(String(body ?? ''));
+  if (links.length === 1) return [{ label: 'Скопировать ссылку', icon: 'link', onClick: copy(links[0]) }];
+  return links.slice(0, 3).map((url) => {
+    const short = url.replace(/^https?:\/\/(www\.)?/i, '');
+    return {
+      label: `Скопировать ссылку ${short.length > 32 ? `${short.slice(0, 31)}…` : short}`,
+      icon: 'link' as const,
+      onClick: copy(url),
+    };
+  });
+}
 
 /**
  * Меню сообщения по ПРАВОЙ КНОПКЕ — как в Telegram.
@@ -193,6 +222,8 @@ let pressStart: { x: number; y: number } | null = null;
 let pressOpened = false;
 /** Сообщение под пальцем: подсвечиваем сразу, не дожидаясь меню. */
 let pressEl: HTMLElement | null = null;
+/** Куда именно лёг палец — чтобы узнать, держат ли его на ссылке. */
+let pressTarget: EventTarget | null = null;
 
 function stopPress(): void {
   if (pressTimer) window.clearTimeout(pressTimer);
@@ -218,7 +249,7 @@ const PRESS_SLOP = 14;
  * а пузырь подсвечивается сразу — видно, что нажатие принято.
  * Сдвинул палец дальше допуска — значит листает, а не зовёт меню.
  */
-export function longPressProps(open: (at: MenuAt) => void) {
+export function longPressProps(open: (at: MenuAt, target: EventTarget | null) => void) {
   return {
     onTouchStart: (e: React.TouchEvent) => {
       const t = e.touches[0];
@@ -226,11 +257,12 @@ export function longPressProps(open: (at: MenuAt) => void) {
       stopPress();
       pressOpened = false;
       pressStart = { x: t.clientX, y: t.clientY };
+      pressTarget = e.target;
       pressEl = e.currentTarget as HTMLElement;
       pressEl.classList.add('is-pressing');
       pressTimer = window.setTimeout(() => {
         pressOpened = true;
-        open({ x: pressStart!.x, y: pressStart!.y });
+        open({ x: pressStart!.x, y: pressStart!.y }, pressTarget);
         navigator.vibrate?.(10); // лёгкий отклик, как у системного меню
         stopPress();
       }, PRESS_MS);
